@@ -1,8 +1,8 @@
-# Plan - Timeline Task Manager
+# Pravah - Timeline Task Manager
 
 ## Project Overview
 
-- **Name**: Plan
+- **Name**: Pravah
 - **Type**: Web application (React + Convex)
 - **Core functionality**: Horizontal timeline-based task manager with drag-drop, AI-agent accessible via API
 - **Target users**: Single user (Snehit)
