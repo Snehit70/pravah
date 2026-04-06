@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useEffect } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -19,6 +19,7 @@ import { Timeline } from "./components/Timeline";
 import { TaskCard } from "./components/TaskCard";
 import { TaskPopup } from "./components/TaskPopup";
 import { InboxSidebar } from "./components/InboxSidebar";
+import { QuickAdd } from "./components/QuickAdd";
 import { useState } from "react";
 
 interface Task {
@@ -41,10 +42,27 @@ interface Task {
 export function App() {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
 
   const tasks = useQuery(api.tasks.listTasks, {});
   const moveTask = useMutation(api.tasks.moveTask);
   const reorderTasks = useMutation(api.tasks.reorderTasks);
+
+  // Keyboard shortcut: Cmd/Ctrl + N for quick add
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "n") {
+        e.preventDefault();
+        setShowQuickAdd(true);
+      }
+      if (e.key === "Escape") {
+        setShowQuickAdd(false);
+        setSelectedTask(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -106,15 +124,17 @@ export function App() {
       const activeTask = tasks?.find((t) => t._id === activeId);
       if (!activeTask) return;
 
-      // Check if dropping on a date column
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      
+      // Dropping on a date column - cross day movement
       if (dateRegex.test(overId)) {
-        // Moving to a new date
         const targetDate = overId;
 
+        // Deadline constraint check
         if (activeTask.type === "deadline" && activeTask.deadline) {
           if (targetDate > activeTask.deadline) {
-            return; // Can't move past deadline
+            console.warn("Cannot move deadline task past its deadline");
+            return;
           }
         }
 
@@ -131,7 +151,7 @@ export function App() {
         const oldIndex = dayTasks.findIndex((t) => t._id === activeId);
         const newIndex = dayTasks.findIndex((t) => t._id === overId);
 
-        if (oldIndex !== -1 && newIndex !== -1) {
+        if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
           const newOrder = arrayMove(dayTasks, oldIndex, newIndex);
           await reorderTasks({
             date: activeTask.scheduledDate,
@@ -169,6 +189,10 @@ export function App() {
           task={selectedTask}
           onClose={() => setSelectedTask(null)}
         />
+      )}
+
+      {showQuickAdd && (
+        <QuickAdd onClose={() => setShowQuickAdd(false)} />
       )}
     </DndContext>
   );
