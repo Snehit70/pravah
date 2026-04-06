@@ -19,7 +19,6 @@ export function Settings({ onClose }: SettingsProps) {
   const [calendarEnabled, setCalendarEnabled] = useState(false);
   const [gmailEnabled, setGmailEnabled] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
     const tokens = getGoogleTokens();
