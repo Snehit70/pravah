@@ -28,5 +28,8 @@ export default defineSchema({
     createdBy: v.string(),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }),
+  })
+    .index("by_status", ["status"])
+    .index("by_scheduled_date", ["scheduledDate"])
+    .index("by_status_and_date", ["status", "scheduledDate"]),
 });

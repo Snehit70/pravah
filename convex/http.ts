@@ -1,9 +1,6 @@
-// @ts-ignore
 import { httpRouter } from "convex/server";
-// @ts-ignore
 import { httpAction } from "./_generated/server";
-// @ts-ignore
-import { internal } from "./_generated/api";
+import { api } from "./_generated/api";
 
 const http = httpRouter();
 
@@ -16,7 +13,7 @@ http.route({
     const date = url.searchParams.get("date") || undefined;
     const status = url.searchParams.get("status") || undefined;
 
-    const tasks = await ctx.runQuery(internal.tasks.listTasks, { date, status });
+    const tasks = await ctx.runQuery(api.tasks.listTasks, { date, status });
     
     return new Response(JSON.stringify(tasks), {
       headers: { "Content-Type": "application/json" },
@@ -40,7 +37,7 @@ http.route({
       });
     }
 
-    const taskId = await ctx.runMutation(internal.tasks.addTask, {
+    const taskId = await ctx.runMutation(api.tasks.addTask, {
       title,
       description,
       type: type || "open",
@@ -66,7 +63,7 @@ http.route({
     const { taskId, targetDate, position } = body;
 
     try {
-      await ctx.runMutation(internal.tasks.moveTask, {
+      await ctx.runMutation(api.tasks.moveTask, {
         taskId,
         targetDate,
         position,
@@ -92,7 +89,7 @@ http.route({
     const body = await request.json();
     const { date, taskIds } = body;
 
-    await ctx.runMutation(internal.tasks.reorderTasks, { date, taskIds });
+    await ctx.runMutation(api.tasks.reorderTasks, { date, taskIds });
     
     return new Response(JSON.stringify({ success: true }), {
       headers: { "Content-Type": "application/json" },
@@ -108,7 +105,7 @@ http.route({
     const body = await request.json();
     const { taskId } = body;
 
-    await ctx.runMutation(internal.tasks.completeTask, { taskId });
+    await ctx.runMutation(api.tasks.completeTask, { taskId });
     
     return new Response(JSON.stringify({ success: true }), {
       headers: { "Content-Type": "application/json" },
@@ -124,7 +121,7 @@ http.route({
     const body = await request.json();
     const { taskId, ...updates } = body;
 
-    await ctx.runMutation(internal.tasks.updateTask, { taskId, ...updates });
+    await ctx.runMutation(api.tasks.updateTask, { taskId, ...updates });
     
     return new Response(JSON.stringify({ success: true }), {
       headers: { "Content-Type": "application/json" },
@@ -140,7 +137,7 @@ http.route({
     const body = await request.json();
     const { taskId } = body;
 
-    await ctx.runMutation(internal.tasks.deleteTask, { taskId });
+    await ctx.runMutation(api.tasks.deleteTask, { taskId });
     
     return new Response(JSON.stringify({ success: true }), {
       headers: { "Content-Type": "application/json" },
@@ -164,7 +161,7 @@ http.route({
       });
     }
 
-    const timeline = await ctx.runQuery(internal.tasks.getTimeline, { startDate, endDate });
+    const timeline = await ctx.runQuery(api.tasks.getTimeline, { startDate, endDate });
     
     return new Response(JSON.stringify(timeline), {
       headers: { "Content-Type": "application/json" },
@@ -177,7 +174,7 @@ http.route({
   path: "/inbox",
   method: "GET",
   handler: httpAction(async (ctx, _request) => {
-    const tasks = await ctx.runQuery(internal.tasks.listTasks, { status: "inbox" });
+    const tasks = await ctx.runQuery(api.tasks.listTasks, { status: "inbox" });
     
     return new Response(JSON.stringify(tasks), {
       headers: { "Content-Type": "application/json" },

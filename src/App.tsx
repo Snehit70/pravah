@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useEffect } from "react";
+import { useCallback, useMemo, useEffect, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -9,39 +9,21 @@ import {
   useSensors,
   type DragEndEvent,
   type DragStartEvent,
-  type DragOverEvent,
 } from "@dnd-kit/core";
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
+import type { Task } from "./types";
 import { Timeline } from "./components/Timeline";
 import { TaskCard } from "./components/TaskCard";
 import { TaskPopup } from "./components/TaskPopup";
 import { InboxSidebar } from "./components/InboxSidebar";
 import { QuickAdd } from "./components/QuickAdd";
 import { Settings } from "./components/Settings";
-import { useState } from "react";
-
-interface Task {
-  _id: Id<"tasks">;
-  title: string;
-  description?: string;
-  type: "open" | "deadline";
-  scheduledDate?: string;
-  deadline?: string;
-  position: number;
-  status: "inbox" | "scheduled" | "completed" | "cancelled";
-  source?: "manual" | "ai-agent" | "gmail" | "gcal";
-  estimatedMinutes?: number;
-  tags?: string[];
-  createdBy: string;
-  createdAt: number;
-  updatedAt: number;
-}
 
 export function App() {
-  const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -50,7 +32,6 @@ export function App() {
   const moveTask = useMutation(api.tasks.moveTask);
   const reorderTasks = useMutation(api.tasks.reorderTasks);
 
-  // Keyboard shortcut: Cmd/Ctrl + N for quick add
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "n") {
@@ -67,21 +48,17 @@ export function App() {
   }, []);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   const inboxTasks = useMemo(
-    () => tasks?.filter((t) => t.status === "inbox") || [],
+    () => tasks?.filter((t) => t.status === "inbox") ?? [],
     [tasks]
   );
 
   const scheduledTasks = useMemo(
-    () => tasks?.filter((t) => t.status === "scheduled") || [],
+    () => tasks?.filter((t) => t.status === "scheduled") ?? [],
     [tasks]
   );
 
@@ -101,62 +78,44 @@ export function App() {
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
       const task = tasks?.find((t) => t._id === event.active.id);
-      if (task) setActiveTask(task);
+      if (task) setDraggedTask(task);
     },
     [tasks]
-  );
-
-  const handleDragOver = useCallback(
-    (_event: DragOverEvent) => {
-      // Future: handle drag over for cross-container movement
-    },
-    []
   );
 
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
       const { active, over } = event;
-      setActiveTask(null);
+      setDraggedTask(null);
 
       if (!over) return;
 
       const activeId = active.id as Id<"tasks">;
       const overId = over.id as string;
-
-      const activeTask = tasks?.find((t) => t._id === activeId);
-      if (!activeTask) return;
+      const sourceTask = tasks?.find((t) => t._id === activeId);
+      if (!sourceTask) return;
 
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-      
-      // Dropping on a date column - cross day movement
+
+      // Cross-day movement: dropping on a date column
       if (dateRegex.test(overId)) {
-        const targetDate = overId;
-
-        // Deadline constraint check
-        if (activeTask.type === "deadline" && activeTask.deadline) {
-          if (targetDate > activeTask.deadline) {
-            console.warn("Cannot move deadline task past its deadline");
-            return;
-          }
+        if (sourceTask.type === "deadline" && sourceTask.deadline && overId > sourceTask.deadline) {
+          return; // Can't move past deadline
         }
-
-        await moveTask({
-          taskId: activeId,
-          targetDate,
-        });
+        await moveTask({ taskId: activeId, targetDate: overId });
         return;
       }
 
       // Reordering within same day
-      if (activeTask.scheduledDate) {
-        const dayTasks = tasksByDate[activeTask.scheduledDate] || [];
+      if (sourceTask.scheduledDate) {
+        const dayTasks = tasksByDate[sourceTask.scheduledDate] ?? [];
         const oldIndex = dayTasks.findIndex((t) => t._id === activeId);
         const newIndex = dayTasks.findIndex((t) => t._id === overId);
 
         if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
           const newOrder = arrayMove(dayTasks, oldIndex, newIndex);
           await reorderTasks({
-            date: activeTask.scheduledDate,
+            date: sourceTask.scheduledDate,
             taskIds: newOrder.map((t) => t._id),
           });
         }
@@ -165,45 +124,40 @@ export function App() {
     [tasks, tasksByDate, moveTask, reorderTasks]
   );
 
+  const handleTaskClick = useCallback((task: Task) => {
+    setSelectedTask(task);
+  }, []);
+
   return (
     <DndContext
       sensors={sensors}
       collisionDetection={closestCorners}
       onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex h-screen bg-[#0a0a0a]">
-        <InboxSidebar tasks={inboxTasks} />
+      <div className="flex h-screen bg-[#09090b]">
+        <InboxSidebar tasks={inboxTasks} onTaskClick={handleTaskClick} />
         <main className="flex-1 overflow-hidden">
-          <Timeline 
-            tasksByDate={tasksByDate} 
-            onTaskClick={(task) => setSelectedTask(task)}
+          <Timeline
+            tasksByDate={tasksByDate}
+            onTaskClick={handleTaskClick}
             onOpenSettings={() => setShowSettings(true)}
+            onOpenQuickAdd={() => setShowQuickAdd(true)}
           />
         </main>
       </div>
 
-      <DragOverlay>
-        {activeTask && (
-          <TaskCard task={activeTask} isDragging />
-        )}
+      <DragOverlay dropAnimation={null}>
+        {draggedTask && <TaskCard task={draggedTask} isDragOverlay />}
       </DragOverlay>
 
       {selectedTask && (
-        <TaskPopup
-          task={selectedTask}
-          onClose={() => setSelectedTask(null)}
-        />
+        <TaskPopup task={selectedTask} onClose={() => setSelectedTask(null)} />
       )}
 
-      {showQuickAdd && (
-        <QuickAdd onClose={() => setShowQuickAdd(false)} />
-      )}
+      {showQuickAdd && <QuickAdd onClose={() => setShowQuickAdd(false)} />}
 
-      {showSettings && (
-        <Settings onClose={() => setShowSettings(false)} />
-      )}
+      {showSettings && <Settings onClose={() => setShowSettings(false)} />}
     </DndContext>
   );
 }
