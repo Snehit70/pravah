@@ -20,6 +20,7 @@ import { TaskCard } from "./components/TaskCard";
 import { TaskPopup } from "./components/TaskPopup";
 import { InboxSidebar } from "./components/InboxSidebar";
 import { QuickAdd } from "./components/QuickAdd";
+import { Settings } from "./components/Settings";
 import { useState } from "react";
 
 interface Task {
@@ -43,6 +44,7 @@ export function App() {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   const tasks = useQuery(api.tasks.listTasks, {});
   const moveTask = useMutation(api.tasks.moveTask);
@@ -174,7 +176,11 @@ export function App() {
       <div className="flex h-screen bg-[#0a0a0a]">
         <InboxSidebar tasks={inboxTasks} />
         <main className="flex-1 overflow-hidden">
-          <Timeline tasksByDate={tasksByDate} onTaskClick={(task) => setSelectedTask(task)} />
+          <Timeline 
+            tasksByDate={tasksByDate} 
+            onTaskClick={(task) => setSelectedTask(task)}
+            onOpenSettings={() => setShowSettings(true)}
+          />
         </main>
       </div>
 
@@ -193,6 +199,10 @@ export function App() {
 
       {showQuickAdd && (
         <QuickAdd onClose={() => setShowQuickAdd(false)} />
+      )}
+
+      {showSettings && (
+        <Settings onClose={() => setShowSettings(false)} />
       )}
     </DndContext>
   );
