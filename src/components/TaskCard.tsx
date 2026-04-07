@@ -40,6 +40,21 @@ export function TaskCard({ task, onClick, isDragOverlay }: TaskCardProps) {
     !isCompleted &&
     daysBetween(today, task.deadline) <= DUE_SOON_DAYS;
 
+  // Determine the accent color based on status
+  const getAccentColor = () => {
+    if (isCompleted) return "#34D399"; // emerald
+    if (isOverdue) return "#F87171"; // red
+    if (isDueSoon) return "#FBBF24"; // amber/warning
+    return "#E8A945"; // primary amber
+  };
+
+  const getAccentGlow = () => {
+    if (isCompleted) return "rgba(52, 211, 153, 0.3)";
+    if (isOverdue) return "rgba(248, 113, 113, 0.3)";
+    if (isDueSoon) return "rgba(251, 191, 36, 0.3)";
+    return "rgba(232, 169, 69, 0.2)";
+  };
+
   return (
     <motion.div
       ref={setNodeRef}
@@ -51,37 +66,52 @@ export function TaskCard({ task, onClick, isDragOverlay }: TaskCardProps) {
         onClick?.();
       }}
       layout={!isDragOverlay}
-      initial={isDragOverlay ? false : { opacity: 0, y: 6 }}
+      initial={isDragOverlay ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: isDragging ? 0.4 : 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
+      whileHover={isDragOverlay ? undefined : {
+        y: -3,
+        transition: { duration: 0.2, ease: [0.22, 1, 0.36, 1] }
+      }}
       className={cn(
-        "group relative px-3 py-2.5 rounded-xl cursor-grab active:cursor-grabbing",
-        "border transition-all duration-150 select-none",
+        "group relative rounded-xl cursor-grab active:cursor-grabbing",
+        "transition-shadow duration-200 select-none overflow-hidden",
         // Base styles
-        "bg-zinc-800/80 border-zinc-700/40",
-        // Hover
-        "hover:bg-zinc-700/60 hover:border-zinc-600/50",
-        // Status colors
-        isOverdue && "border-red-500/40 bg-red-950/30 hover:bg-red-950/40",
-        isDueSoon && "border-amber-500/30 bg-amber-950/20 hover:bg-amber-950/30",
-        !isOverdue && !isDueSoon && task.type === "open" && !isCompleted && "border-zinc-700/40",
-        // Completed
+        "bg-zinc-800/90 backdrop-blur-sm",
+        // Hover state
+        "hover:bg-zinc-750",
+        // Completed state
         isCompleted && "opacity-50 hover:opacity-60",
-        // Drag overlay
-        isDragOverlay && "shadow-2xl shadow-black/50 ring-1 ring-white/10 rotate-2 scale-105",
+        // Drag overlay state
+        isDragOverlay && "rotate-2 scale-105",
       )}
+      style={{
+        ...style,
+        boxShadow: isDragOverlay
+          ? `0 20px 40px rgba(0,0,0,0.4), 0 0 0 1px ${getAccentColor()}40`
+          : `0 2px 8px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.03)`,
+      }}
     >
-      <div className="flex items-start gap-2.5">
+      {/* Left accent bar */}
+      <div
+        className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl"
+        style={{
+          backgroundColor: getAccentColor(),
+          boxShadow: `0 0 8px ${getAccentGlow()}`,
+        }}
+      />
+
+      <div className="flex items-start gap-2.5 px-3 py-2.5 pl-4">
         {/* Status indicator */}
         <div
           className={cn(
             "mt-0.5 flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center",
             "transition-colors duration-150",
-            isCompleted && "bg-emerald-500/20 text-emerald-400",
-            isOverdue && !isCompleted && "bg-red-500/20 text-red-400",
-            isDueSoon && !isCompleted && "bg-amber-500/20 text-amber-400",
-            !isCompleted && !isOverdue && !isDueSoon && "bg-zinc-700/50 text-zinc-500",
           )}
+          style={{
+            backgroundColor: `${getAccentColor()}20`,
+            color: getAccentColor(),
+          }}
         >
           {isCompleted ? (
             <Check size={10} strokeWidth={3} />
@@ -90,15 +120,20 @@ export function TaskCard({ task, onClick, isDragOverlay }: TaskCardProps) {
           ) : task.type === "deadline" ? (
             <Clock size={9} strokeWidth={2.5} />
           ) : (
-            <div className="w-1.5 h-1.5 rounded-full bg-current" />
+            <div
+              className="w-1.5 h-1.5 rounded-full"
+              style={{ backgroundColor: getAccentColor() }}
+            />
           )}
         </div>
 
         <div className="flex-1 min-w-0">
           <p
             className={cn(
-              "text-[13px] leading-tight text-zinc-200",
-              isCompleted && "line-through text-zinc-500",
+              "text-[13px] leading-snug font-medium",
+              isCompleted
+                ? "line-through text-zinc-500"
+                : "text-zinc-100",
             )}
           >
             {task.title}
@@ -106,24 +141,34 @@ export function TaskCard({ task, onClick, isDragOverlay }: TaskCardProps) {
 
           {task.deadline && !isCompleted && (
             <p
-              className={cn(
-                "text-[11px] mt-1 font-medium",
-                isOverdue && "text-red-400",
-                isDueSoon && "text-amber-400",
-                !isOverdue && !isDueSoon && "text-zinc-500",
-              )}
+              className="text-[11px] mt-1 font-medium"
+              style={{
+                color: isOverdue
+                  ? "#F87171"
+                  : isDueSoon
+                    ? "#FBBF24"
+                    : "#71717A"
+              }}
             >
               {formatDeadline(task.deadline, today)}
             </p>
           )}
 
           {task.estimatedMinutes && !isCompleted && (
-            <p className="text-[11px] mt-0.5 text-zinc-600">
+            <p className="text-[11px] mt-0.5 text-zinc-500">
               {task.estimatedMinutes}m
             </p>
           )}
         </div>
       </div>
+
+      {/* Hover glow effect */}
+      <div
+        className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+        style={{
+          boxShadow: `inset 0 0 20px ${getAccentGlow()}`,
+        }}
+      />
     </motion.div>
   );
 }

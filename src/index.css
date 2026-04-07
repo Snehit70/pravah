@@ -1,11 +1,117 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "DM Sans", system-ui, -apple-system, sans-serif;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-display: "Newsreader", Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
 :root {
+  /* ═══════════════════════════════════════
+     PRAVAH FLOW DESIGN SYSTEM
+     ═══════════════════════════════════════ */
+
+  /* Color Tokens - Backgrounds */
+  --color-bg-base: #0C0C0E;
+  --color-bg-surface: #161619;
+  --color-bg-elevated: #1E1E22;
+  --color-bg-floating: #252528;
+  --color-bg-overlay: rgba(0, 0, 0, 0.65);
+
+  /* Color Tokens - Text */
+  --color-text-primary: #F0EEE6;
+  --color-text-secondary: #8A8A8F;
+  --color-text-muted: #5C5C63;
+  --color-text-inverse: #0C0C0E;
+
+  /* Color Tokens - Accent (Amber Flow) */
+  --color-accent-primary: #E8A945;
+  --color-accent-primary-hover: #F0B85A;
+  --color-accent-primary-muted: rgba(232, 169, 69, 0.15);
+  --color-accent-secondary: #D4763D;
+  --color-accent-glow: rgba(232, 169, 69, 0.2);
+
+  /* Color Tokens - Semantic */
+  --color-success: #34D399;
+  --color-success-muted: rgba(52, 211, 153, 0.15);
+  --color-warning: #FBBF24;
+  --color-warning-muted: rgba(251, 191, 36, 0.15);
+  --color-error: #F87171;
+  --color-error-muted: rgba(248, 113, 113, 0.15);
+  --color-info: #60A5FA;
+  --color-info-muted: rgba(96, 165, 250, 0.15);
+
+  /* Color Tokens - Borders */
+  --color-border-subtle: rgba(255, 255, 255, 0.06);
+  --color-border-default: rgba(255, 255, 255, 0.1);
+  --color-border-focus: rgba(232, 169, 69, 0.5);
+
+  /* Spacing Tokens (4px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Typography Tokens */
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 14px;
+  --font-size-md: 16px;
+  --font-size-lg: 20px;
+  --font-size-xl: 28px;
+  --font-size-2xl: 36px;
+
+  /* Radius Tokens */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* Shadow Tokens */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 0 20px var(--color-accent-glow);
+  --shadow-glow-strong: 0 0 30px var(--color-accent-glow), 0 0 60px rgba(232, 169, 69, 0.1);
+  --shadow-focus: 0 0 0 3px var(--color-border-focus);
+
+  /* Z-Index Tokens */
+  --z-base: 0;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-overlay: 300;
+  --z-modal: 400;
+  --z-toast: 500;
+  --z-tooltip: 600;
+
+  /* Motion Tokens */
+  --duration-instant: 50ms;
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+  --duration-slower: 600ms;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Layout Tokens */
+  --sidebar-width-expanded: 260px;
+  --sidebar-width-collapsed: 56px;
+  --header-height: 56px;
+  --timeline-day-min-width: 180px;
+
+  /* Base typography */
   font-family: var(--font-sans);
   line-height: 1.5;
   font-weight: 400;
@@ -19,8 +125,8 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: #09090b;
-  color: #fafafa;
+  background: var(--color-bg-base);
+  color: var(--color-text-primary);
 }
 
 #root {
@@ -33,7 +139,7 @@ body {
   box-sizing: border-box;
 }
 
-/* Refined scrollbar */
+/* Refined scrollbar with Flow styling */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -44,32 +150,142 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #27272a;
-  border-radius: 3px;
+  background: var(--color-bg-elevated);
+  border-radius: var(--radius-full);
+  transition: background var(--duration-fast) var(--ease-out);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
+  background: var(--color-bg-floating);
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-bg-elevated) transparent;
 }
 
 /* Date input styling for dark mode */
 input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(0.7);
   cursor: pointer;
+  transition: filter var(--duration-fast) var(--ease-out);
 }
 
-/* Focus ring utility */
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  filter: invert(0.9);
+}
+
+/* Focus ring utility - amber accent */
 *:focus-visible {
-  outline: 2px solid #a1a1aa;
+  outline: 2px solid var(--color-accent-primary);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
+}
+
+/* Selection styling */
+::selection {
+  background: var(--color-accent-primary-muted);
+  color: var(--color-text-primary);
 }
 
 /* Reduce motion for users who prefer it */
 @media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-instant: 0ms;
+    --duration-fast: 50ms;
+    --duration-normal: 100ms;
+    --duration-slow: 150ms;
+    --duration-slower: 200ms;
+    --ease-spring: var(--ease-out);
+  }
+
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: var(--duration-normal) !important;
   }
+}
+
+/* Utility classes for the design system */
+.text-gradient-flow {
+  background: linear-gradient(135deg, var(--color-accent-primary) 0%, var(--color-accent-secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.glow-accent {
+  box-shadow: var(--shadow-glow);
+}
+
+.glow-accent-strong {
+  box-shadow: var(--shadow-glow-strong);
+}
+
+/* Today marker pulse animation */
+@keyframes pulse-glow {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.8;
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s var(--ease-in-out) infinite;
+}
+
+/* Subtle breathing animation for ambient elements */
+@keyframes breathe {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+  }
+}
+
+.animate-breathe {
+  animation: breathe 4s var(--ease-in-out) infinite;
+}
+
+/* Flow line animation */
+@keyframes flow-line {
+  0% {
+    stroke-dashoffset: 100;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Fade edges for horizontal scroll */
+.fade-edges {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 40px,
+    black calc(100% - 40px),
+    transparent
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 40px,
+    black calc(100% - 40px),
+    transparent
+  );
+}
+
+/* Font face for Newsreader (display font) */
+@font-face {
+  font-family: 'Newsreader';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('https://fonts.gstatic.com/s/newsreader/v20/cY9qfjOCX1hbuyalUrK49dLac06G1ZGsZBtoBCzBDXXD9JVF438w.woff2') format('woff2');
 }
