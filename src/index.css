@@ -169,8 +169,17 @@ body::after {
 .radial-dots-surface {
   background-color: var(--color-bg-base);
   background-image:
-    radial-gradient(circle, rgba(240, 238, 230, 0.08) 1.2px, transparent 1.2px);
-  background-size: 48px 48px;
+    repeating-radial-gradient(circle at 55% 28%, rgba(232, 169, 69, 0.14) 0px, rgba(232, 169, 69, 0.14) 1px, transparent 1px, transparent 30px),
+    radial-gradient(circle, rgba(240, 238, 230, 0.12) 1.3px, transparent 1.3px);
+  background-size: auto, 44px 44px;
+}
+
+.radial-bloom-surface {
+  background-color: rgba(9, 9, 11, 0.78);
+  background-image:
+    radial-gradient(70% 55% at 55% 28%, rgba(232, 169, 69, 0.10) 0%, rgba(232, 169, 69, 0.03) 40%, transparent 78%),
+    repeating-radial-gradient(circle at 55% 28%, rgba(232, 169, 69, 0.10) 0px, rgba(232, 169, 69, 0.10) 1px, transparent 1px, transparent 34px);
+  background-size: auto, auto;
 }
 
 * {
