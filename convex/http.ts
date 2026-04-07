@@ -1,8 +1,32 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { api } from "./_generated/api";
+import { z } from "zod";
 
 const http = httpRouter();
+
+// Validation schemas
+const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+const createTaskSchema = z.object({
+  title: z.string().min(1, "Title is required").max(500, "Title too long"),
+  description: z.string().max(5000, "Description too long").optional(),
+  type: z.enum(["open", "deadline"]).default("open"),
+  scheduledDate: z.string().regex(dateRegex, "Invalid date format (YYYY-MM-DD)").optional(),
+  deadline: z.string().regex(dateRegex, "Invalid date format (YYYY-MM-DD)").optional(),
+  source: z.enum(["manual", "ai-agent", "gmail", "gcal"]).default("ai-agent"),
+  estimatedMinutes: z.number().int().positive("Estimated minutes must be positive").optional(),
+  tags: z.array(z.string().max(50)).max(20, "Too many tags").optional(),
+});
+
+const updateTaskSchema = z.object({
+  taskId: z.string().min(1, "Task ID is required"),
+  title: z.string().min(1, "Title cannot be empty").max(500, "Title too long").optional(),
+  description: z.string().max(5000, "Description too long").optional(),
+  deadline: z.string().regex(dateRegex, "Invalid date format (YYYY-MM-DD)").optional(),
+  estimatedMinutes: z.number().int().positive("Estimated minutes must be positive").optional(),
+  tags: z.array(z.string().max(50)).max(20, "Too many tags").optional(),
+});
 
 function requireAuth(request: Request): Response | null {
   const envKey = process.env.CONVEX_HTTP_API_KEY;
@@ -51,27 +75,32 @@ http.route({
     if (authError) return authError;
 
     const body = await request.json();
-    
-    const { title, description, type, scheduledDate, deadline, source, estimatedMinutes, tags } = body;
-    
-    if (!title) {
-      return new Response(JSON.stringify({ error: "Title is required" }), {
+
+    // Validate request body
+    const validation = createTaskSchema.safeParse(body);
+    if (!validation.success) {
+      return new Response(JSON.stringify({
+        error: "Validation failed",
+        details: validation.error.errors
+      }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
     }
 
+    const data = validation.data;
+
     const taskId = await ctx.runMutation(api.tasks.addTask, {
-      title,
-      description,
-      type: type || "open",
-      scheduledDate,
-      deadline,
-      source: source || "ai-agent",
-      estimatedMinutes,
-      tags,
+      title: data.title,
+      description: data.description,
+      type: data.type,
+      scheduledDate: data.scheduledDate,
+      deadline: data.deadline,
+      source: data.source,
+      estimatedMinutes: data.estimatedMinutes,
+      tags: data.tags,
     });
-    
+
     return new Response(JSON.stringify({ taskId }), {
       headers: { "Content-Type": "application/json" },
     });
@@ -155,10 +184,23 @@ http.route({
     if (authError) return authError;
 
     const body = await request.json();
-    const { taskId, ...updates } = body;
+
+    // Validate request body
+    const validation = updateTaskSchema.safeParse(body);
+    if (!validation.success) {
+      return new Response(JSON.stringify({
+        error: "Validation failed",
+        details: validation.error.errors
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const { taskId, ...updates } = validation.data;
 
     await ctx.runMutation(api.tasks.updateTask, { taskId, ...updates });
-    
+
     return new Response(JSON.stringify({ success: true }), {
       headers: { "Content-Type": "application/json" },
     });
