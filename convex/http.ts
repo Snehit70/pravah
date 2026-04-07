@@ -1,6 +1,7 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { api } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { z } from "zod";
 
 const http = httpRouter();
@@ -20,7 +21,10 @@ const createTaskSchema = z.object({
 });
 
 const updateTaskSchema = z.object({
-  taskId: z.string().min(1, "Task ID is required"),
+  taskId: z
+    .string()
+    .min(1, "Task ID is required")
+    .transform((value) => value as Id<"tasks">),
   title: z.string().min(1, "Title cannot be empty").max(500, "Title too long").optional(),
   description: z.string().max(5000, "Description too long").optional(),
   deadline: z.string().regex(dateRegex, "Invalid date format (YYYY-MM-DD)").optional(),
@@ -29,7 +33,12 @@ const updateTaskSchema = z.object({
 });
 
 function requireAuth(request: Request): Response | null {
-  const envKey = process.env.CONVEX_HTTP_API_KEY;
+  const env = (
+    globalThis as typeof globalThis & {
+      process?: { env?: Record<string, string | undefined> };
+    }
+  ).process?.env;
+  const envKey = env?.CONVEX_HTTP_API_KEY;
   if (!envKey) {
     return new Response(JSON.stringify({ error: "Server configuration error: API key not configured" }), {
       status: 500,
@@ -81,7 +90,7 @@ http.route({
     if (!validation.success) {
       return new Response(JSON.stringify({
         error: "Validation failed",
-        details: validation.error.errors
+        details: validation.error.issues
       }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -128,8 +137,9 @@ http.route({
       return new Response(JSON.stringify({ success: true }), {
         headers: { "Content-Type": "application/json" },
       });
-    } catch (error: any) {
-      return new Response(JSON.stringify({ error: error.message }), {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to move task";
+      return new Response(JSON.stringify({ error: message }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
@@ -190,7 +200,7 @@ http.route({
     if (!validation.success) {
       return new Response(JSON.stringify({
         error: "Validation failed",
-        details: validation.error.errors
+        details: validation.error.issues
       }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
