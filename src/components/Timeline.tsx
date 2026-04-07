@@ -148,7 +148,7 @@ export function Timeline({
   }, []);
 
   return (
-    <div className="h-full flex flex-col bg-zinc-950">
+    <div className="h-full flex flex-col bg-zinc-950/90">
       {/* Header */}
       <motion.header
         initial={{ opacity: 0, y: -8 }}

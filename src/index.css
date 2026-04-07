@@ -165,6 +165,14 @@ body::after {
   z-index: 10;
 }
 
+/* Apply visible radial pattern on app surfaces (not hidden by opaque children) */
+.radial-dots-surface {
+  background-color: var(--color-bg-base);
+  background-image:
+    radial-gradient(circle, rgba(240, 238, 230, 0.08) 1.2px, transparent 1.2px);
+  background-size: 48px 48px;
+}
+
 * {
   box-sizing: border-box;
 }
