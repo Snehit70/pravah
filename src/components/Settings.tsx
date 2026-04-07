@@ -7,6 +7,7 @@ import {
   clearGoogleTokens,
   getGoogleOAuthUrl,
   parseGoogleTokens,
+  exchangeGoogleAuthCode,
   fetchCalendarEvents,
   fetchGmailMessages,
 } from "../lib/google/api";
@@ -17,6 +18,17 @@ import { useToast } from "./useToast";
 interface SettingsProps {
   onClose: () => void;
 }
+
+const overlayVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1 },
+};
+
+const modalVariants = {
+  hidden: { opacity: 0, scale: 0.95, y: -10 },
+  visible: { opacity: 1, scale: 1, y: 0 },
+  exit: { opacity: 0, scale: 0.98, y: -10 },
+};
 
 export function Settings({ onClose }: SettingsProps) {
   const [googleConnected, setGoogleConnected] = useState(() => {
@@ -37,28 +49,67 @@ export function Settings({ onClose }: SettingsProps) {
   }, [onClose]);
 
   useEffect(() => {
-    let timer: number | undefined;
+    let cancelled = false;
+
+    const handleOAuthCallback = async () => {
+      const url = new URL(window.location.href);
+      const code = url.searchParams.get("code");
+      const error = url.searchParams.get("error");
+
+      if (error) {
+        showError("Google sign-in was cancelled or failed.");
+        return;
+      }
+
+      if (!code) {
+        return;
+      }
+
+      try {
+        const tokens = await exchangeGoogleAuthCode(code);
+        saveGoogleTokens(tokens.accessToken, tokens.expiresIn);
+
+        if (!cancelled) {
+          setGoogleConnected(true);
+          showSuccess("Google connected successfully!");
+        }
+      } catch (error) {
+        console.error("Google OAuth callback failed", error);
+        if (!cancelled) {
+          showError("Failed to complete Google sign-in.");
+        }
+      } finally {
+        url.searchParams.delete("code");
+        url.searchParams.delete("scope");
+        url.searchParams.delete("authuser");
+        url.searchParams.delete("prompt");
+        url.searchParams.delete("error");
+        window.history.replaceState({}, "", url.toString());
+      }
+    };
+
     const hash = window.location.hash;
     if (hash.startsWith("#")) {
       const parsedTokens = parseGoogleTokens(hash);
       if (parsedTokens) {
         saveGoogleTokens(parsedTokens.accessToken, parsedTokens.expiresIn);
         window.location.hash = "";
-        timer = window.setTimeout(() => {
+        window.setTimeout(() => {
           setGoogleConnected(true);
         }, 0);
       }
     }
 
-    return () => {
-      if (timer !== undefined) {
-        window.clearTimeout(timer);
-      }
-    };
-  }, []);
+    void handleOAuthCallback();
 
-  const handleGoogleConnect = () => {
-    window.location.href = getGoogleOAuthUrl();
+    return () => {
+      cancelled = true;
+    };
+  }, [showError, showSuccess]);
+
+  const handleGoogleConnect = async () => {
+    const oauthUrl = await getGoogleOAuthUrl();
+    window.location.href = oauthUrl;
   };
 
   const handleGoogleDisconnect = () => {
@@ -100,24 +151,40 @@ export function Settings({ onClose }: SettingsProps) {
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-start justify-center pt-24 bg-black/60 backdrop-blur-sm"
+        initial="hidden"
+        animate="visible"
+        exit="hidden"
+        variants={overlayVariants}
+        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+        className={cn(
+          "fixed inset-0 z-50 flex items-start justify-center pt-24",
+          "bg-black/60 backdrop-blur-sm"
+        )}
         onClick={handleBackdropClick}
       >
         <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: -10 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: -10 }}
-          transition={{ type: "spring", duration: 0.3, bounce: 0.1 }}
-          className="bg-zinc-900 border border-zinc-700/50 rounded-2xl w-full max-w-lg p-5 shadow-2xl max-h-[80vh] overflow-y-auto mx-4 md:mx-0"
+          initial="hidden"
+          animate="visible"
+          exit="exit"
+          variants={modalVariants}
+          transition={{ duration: 0.25, ease: [0.34, 1.56, 0.64, 1] }}
+          className={cn(
+            "w-full max-w-lg p-6 mx-4 md:mx-0 max-h-[80vh] overflow-y-auto",
+            "bg-zinc-900 rounded-2xl",
+            "border border-zinc-800/80",
+            "shadow-2xl shadow-black/50"
+          )}
         >
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-white">Settings</h2>
+            <h2 className="text-xl font-semibold text-zinc-100">Settings</h2>
             <button
               onClick={onClose}
-              className="p-2 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded-lg transition-colors"
+              className={cn(
+                "p-2 rounded-lg",
+                "text-zinc-500 hover:text-zinc-300",
+                "hover:bg-zinc-800/60",
+                "transition-colors duration-150"
+              )}
             >
               <X size={18} />
             </button>
@@ -125,28 +192,35 @@ export function Settings({ onClose }: SettingsProps) {
 
           <div className="space-y-6">
             <section>
-              <h3 className="text-sm font-medium text-zinc-400 mb-3 flex items-center gap-2">
-                <Calendar size={16} />
-                Google Integrations
+              <h3 className={cn(
+                "text-[11px] font-medium uppercase tracking-[0.08em] mb-3",
+                "text-zinc-500 flex items-center gap-2"
+              )}>
+                <Calendar size={14} />
+                Integrations
               </h3>
 
-              <div className="bg-zinc-800/50 rounded-xl p-4 space-y-4">
+              <div className={cn(
+                "rounded-xl p-4 space-y-4",
+                "bg-zinc-800/60",
+                "border border-zinc-700/50"
+              )}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div
                       className={cn(
-                        "p-2 rounded-lg",
-                        googleConnected ? "bg-green-500/20" : "bg-zinc-700"
+                        "p-2 rounded-xl",
+                        googleConnected ? "bg-emerald-500/15" : "bg-zinc-800/80"
                       )}
                     >
                       {googleConnected ? (
-                        <CheckCircle size={20} className="text-green-400" />
+                        <CheckCircle size={20} className="text-emerald-400" />
                       ) : (
                         <XCircle size={20} className="text-zinc-500" />
                       )}
                     </div>
                     <div>
-                      <p className="text-white font-medium">Google Account</p>
+                      <p className="text-zinc-100 font-medium">Google Account</p>
                       <p className="text-xs text-zinc-500">
                         {googleConnected ? "Connected" : "Not connected"}
                       </p>
@@ -158,7 +232,7 @@ export function Settings({ onClose }: SettingsProps) {
                       onClick={handleGoogleDisconnect}
                       variant="ghost"
                       size="sm"
-                      className="text-red-400 hover:text-red-300"
+                      className="text-red-400 hover:text-red-400"
                     >
                       Disconnect
                     </Button>
@@ -181,14 +255,15 @@ export function Settings({ onClose }: SettingsProps) {
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
-                      className="space-y-4"
+                      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                      className="space-y-4 overflow-hidden"
                     >
-                      <div className="border-t border-zinc-700 pt-4">
+                      <div className="border-t border-zinc-700/50 pt-4">
                         <label className="flex items-center justify-between cursor-pointer">
                           <div className="flex items-center gap-3">
                             <Calendar size={18} className="text-zinc-400" />
                             <div>
-                              <p className="text-white text-sm">Google Calendar</p>
+                              <p className="text-zinc-100 text-sm">Google Calendar</p>
                               <p className="text-xs text-zinc-500">
                                 Sync deadlines with calendar events
                               </p>
@@ -197,25 +272,25 @@ export function Settings({ onClose }: SettingsProps) {
                           <button
                             onClick={() => setCalendarEnabled(!calendarEnabled)}
                             className={cn(
-                              "w-10 h-6 rounded-full transition-colors",
-                              calendarEnabled ? "bg-cyan-500" : "bg-zinc-600"
+                              "w-11 h-6 rounded-full transition-colors duration-150",
+                              calendarEnabled ? "bg-amber-500" : "bg-zinc-700"
                             )}
                           >
                             <motion.div
-                              animate={{ x: calendarEnabled ? 20 : 4 }}
+                              animate={{ x: calendarEnabled ? 22 : 4 }}
                               transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                              className="w-4 h-4 bg-white rounded-full"
+                              className="w-4 h-4 bg-white rounded-full shadow-sm"
                             />
                           </button>
                         </label>
                       </div>
 
-                      <div className="border-t border-zinc-700 pt-4">
+                      <div className="border-t border-zinc-700/50 pt-4">
                         <label className="flex items-center justify-between cursor-pointer">
                           <div className="flex items-center gap-3">
                             <Mail size={18} className="text-zinc-400" />
                             <div>
-                              <p className="text-white text-sm">Gmail</p>
+                              <p className="text-zinc-100 text-sm">Gmail</p>
                               <p className="text-xs text-zinc-500">
                                 Extract tasks from starred emails
                               </p>
@@ -224,14 +299,14 @@ export function Settings({ onClose }: SettingsProps) {
                           <button
                             onClick={() => setGmailEnabled(!gmailEnabled)}
                             className={cn(
-                              "w-10 h-6 rounded-full transition-colors",
-                              gmailEnabled ? "bg-cyan-500" : "bg-zinc-600"
+                              "w-11 h-6 rounded-full transition-colors duration-150",
+                              gmailEnabled ? "bg-amber-500" : "bg-zinc-700"
                             )}
                           >
                             <motion.div
-                              animate={{ x: gmailEnabled ? 20 : 4 }}
+                              animate={{ x: gmailEnabled ? 22 : 4 }}
                               transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                              className="w-4 h-4 bg-white rounded-full"
+                              className="w-4 h-4 bg-white rounded-full shadow-sm"
                             />
                           </button>
                         </label>
@@ -243,6 +318,7 @@ export function Settings({ onClose }: SettingsProps) {
                             initial={{ opacity: 0, y: -10 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
                           >
                             <Button
                               onClick={handleSync}
@@ -266,11 +342,20 @@ export function Settings({ onClose }: SettingsProps) {
             </section>
 
             <section>
-              <h3 className="text-sm font-medium text-zinc-400 mb-3">About</h3>
-              <div className="bg-zinc-800/50 rounded-xl p-4">
-                <p className="text-white font-medium">Pravah</p>
+              <h3 className={cn(
+                "text-[11px] font-medium uppercase tracking-[0.08em] mb-3",
+                "text-zinc-500"
+              )}>
+                About
+              </h3>
+              <div className={cn(
+                "rounded-xl p-4",
+                "bg-zinc-800/60",
+                "border border-zinc-700/50"
+              )}>
+                <p className="text-zinc-100 font-medium">Pravah</p>
                 <p className="text-xs text-zinc-500 mt-1">
-                  A horizontal timeline-based task manager
+                  A timeline-first task manager
                 </p>
                 <p className="text-xs text-zinc-600 mt-2">Version 0.1.0</p>
               </div>
