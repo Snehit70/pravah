@@ -4,11 +4,27 @@ import { api } from "./_generated/api";
 
 const http = httpRouter();
 
+function requireAuth(request: Request): Response | null {
+  const envKey = process.env.CONVEX_HTTP_API_KEY;
+  if (!envKey) return null;
+  const key = request.headers.get("x-api-key");
+  if (key !== envKey) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  return null;
+}
+
 // GET /tasks - List all tasks
 http.route({
   path: "/tasks",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
     const url = new URL(request.url);
     const date = url.searchParams.get("date") || undefined;
     const status = url.searchParams.get("status") || undefined;
@@ -26,6 +42,9 @@ http.route({
   path: "/tasks",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
     const body = await request.json();
     
     const { title, description, type, scheduledDate, deadline, source, estimatedMinutes, tags } = body;
@@ -59,6 +78,9 @@ http.route({
   path: "/tasks/move",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
     const body = await request.json();
     const { taskId, targetDate, position } = body;
 
@@ -86,6 +108,9 @@ http.route({
   path: "/tasks/reorder",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
     const body = await request.json();
     const { date, taskIds } = body;
 
@@ -102,6 +127,9 @@ http.route({
   path: "/tasks/complete",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
     const body = await request.json();
     const { taskId } = body;
 
@@ -118,6 +146,9 @@ http.route({
   path: "/tasks/update",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
     const body = await request.json();
     const { taskId, ...updates } = body;
 
@@ -134,6 +165,9 @@ http.route({
   path: "/tasks/delete",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
     const body = await request.json();
     const { taskId } = body;
 

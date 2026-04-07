@@ -5,7 +5,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
-const CONVEX_URL = "https://befitting-swan-125.eu-west-1.convex.site";
+const CONVEX_URL = process.env.CONVEX_URL ?? "https://befitting-swan-125.eu-west-1.convex.site";
 
 async function callConvexAPI(endpoint: string, method: string, body?: any) {
   const response = await fetch(`${CONVEX_URL}${endpoint}`, {
@@ -77,9 +77,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         inputSchema: {
           type: "object",
           properties: {
+            date: { type: "string", description: "The date the tasks belong to (YYYY-MM-DD)" },
             taskIds: { type: "array", items: { type: "string" }, description: "Array of task IDs in new order" },
           },
-          required: ["taskIds"],
+          required: ["date", "taskIds"],
         },
       },
       {

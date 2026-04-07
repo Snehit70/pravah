@@ -117,9 +117,14 @@ export const reorderTasks = mutation({
     taskIds: v.array(v.id("tasks")),
   },
   handler: async (ctx, args) => {
-    for (let i = 0; i < args.taskIds.length; i++) {
-      await ctx.db.patch(args.taskIds[i], {
-        position: i,
+    for (const taskId of args.taskIds) {
+      const task = await ctx.db.get(taskId);
+      if (!task) continue;
+      if (task.scheduledDate !== args.date) {
+        throw new Error(`Task ${taskId} does not belong to date ${args.date}`);
+      }
+      await ctx.db.patch(taskId, {
+        position: args.taskIds.indexOf(taskId),
         updatedAt: Date.now(),
       });
     }
