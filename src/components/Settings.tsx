@@ -170,9 +170,9 @@ export function Settings({ onClose }: SettingsProps) {
           transition={{ duration: 0.25, ease: [0.34, 1.56, 0.64, 1] }}
           className={cn(
             "w-full max-w-lg p-6 mx-4 md:mx-0 max-h-[80vh] overflow-y-auto",
-            "bg-zinc-900 rounded-2xl",
-            "border border-zinc-800/80",
-            "shadow-2xl shadow-black/50"
+            "bg-zinc-900/95 backdrop-blur-xl rounded-2xl",
+            "border border-zinc-700/50",
+            "shadow-2xl shadow-black/60"
           )}
         >
           <div className="flex items-center justify-between mb-6">

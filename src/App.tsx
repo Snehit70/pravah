@@ -141,8 +141,10 @@ export function App() {
       onDragEnd={handleDragEnd}
     >
       <div className="radial-dots-surface flex h-screen">
-        <InboxSidebar tasks={inboxTasks} onTaskClick={handleTaskClick} />
-        <main className="flex-1 overflow-hidden">
+        <div className="radial-bloom-surface">
+          <InboxSidebar tasks={inboxTasks} onTaskClick={handleTaskClick} />
+        </div>
+        <main className="flex-1 overflow-hidden radial-bloom-surface">
           <Timeline
             tasksByDate={tasksByDate}
             onTaskClick={handleTaskClick}

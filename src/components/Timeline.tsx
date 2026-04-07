@@ -156,8 +156,8 @@ export function Timeline({
         transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
         className={cn(
           "flex items-center justify-between px-6 h-14",
-          "border-b border-zinc-800/60",
-          "bg-zinc-950/80 backdrop-blur-md",
+          "border-b border-zinc-800/40",
+          "bg-zinc-950/50 backdrop-blur-xl",
           "sticky top-0 z-50"
         )}
       >

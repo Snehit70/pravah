@@ -111,8 +111,8 @@ export function InboxSidebar({ tasks, onTaskClick }: InboxSidebarProps) {
       transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
       className={cn(
         "relative flex flex-col overflow-hidden flex-shrink-0",
-        "bg-zinc-900/60 backdrop-blur-sm",
-        "border-r border-zinc-800/80"
+        "bg-zinc-950/40 backdrop-blur-xl",
+        "border-r border-zinc-800/50"
       )}
     >
       {/* Collapse toggle */}
