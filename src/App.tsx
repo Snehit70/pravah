@@ -22,6 +22,7 @@ import { InboxSidebar } from "./components/InboxSidebar";
 import { QuickAdd } from "./components/QuickAdd";
 import { Settings } from "./components/Settings";
 import { LoadingSkeleton } from "./components/LoadingSkeleton";
+import { GoogleCallback } from "./components/GoogleCallback";
 
 export function App() {
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
@@ -140,6 +141,7 @@ export function App() {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
+      <GoogleCallback />
       <div className="radial-dots-surface flex h-screen">
         <div className="radial-bloom-surface">
           <InboxSidebar tasks={inboxTasks} onTaskClick={handleTaskClick} />

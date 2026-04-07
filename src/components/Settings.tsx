@@ -73,8 +73,8 @@ export function Settings({ onClose }: SettingsProps) {
           setGoogleConnected(true);
           showSuccess("Google connected successfully!");
         }
-      } catch (error) {
-        console.error("Google OAuth callback failed", error);
+      } catch (err) {
+        console.error("Google OAuth callback failed", err);
         if (!cancelled) {
           showError("Failed to complete Google sign-in.");
         }

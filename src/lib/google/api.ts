@@ -46,8 +46,6 @@ export async function getGoogleOAuthUrl(): Promise<string> {
 }
 
 export async function exchangeGoogleAuthCode(code: string): Promise<{ accessToken: string; expiresIn: number }> {
-  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-  const clientSecret = import.meta.env.VITE_GOOGLE_CLIENT_SECRET as string | undefined;
   const redirectUri = `${window.location.origin}/google-callback`;
   const codeVerifier = sessionStorage.getItem(GOOGLE_CODE_VERIFIER_KEY);
 
@@ -55,27 +53,24 @@ export async function exchangeGoogleAuthCode(code: string): Promise<{ accessToke
     throw new Error("Missing PKCE verifier. Please retry Google sign-in.");
   }
 
-  const body = new URLSearchParams({
-    code,
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    grant_type: "authorization_code",
-    code_verifier: codeVerifier,
-  });
-
-  if (clientSecret) {
-    body.set("client_secret", clientSecret);
+  const convexUrl = import.meta.env.VITE_CONVEX_URL;
+  if (!convexUrl) {
+    throw new Error("Convex URL not configured");
   }
 
-  const response = await fetch("https://oauth2.googleapis.com/token", {
+  const response = await fetch(`${convexUrl}/google/token`, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      code,
+      codeVerifier,
+      redirectUri,
+    }),
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Google token exchange failed: ${response.status} ${errorText}`);
+    const errorData = await response.json();
+    throw new Error(errorData.error || `Token exchange failed: ${response.status}`);
   }
 
   const tokenData = (await response.json()) as GoogleTokenResponse;

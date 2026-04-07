@@ -116,6 +116,31 @@ http.route({
   }),
 });
 
+const moveTaskSchema = z.object({
+  taskId: z.string().min(1, "Task ID is required").transform((v) => v as Id<"tasks">),
+  targetDate: z.string().regex(dateRegex, "Invalid date format (YYYY-MM-DD)"),
+  position: z.number().int().min(0).optional(),
+});
+
+const reorderTaskSchema = z.object({
+  date: z.string().regex(dateRegex, "Invalid date format (YYYY-MM-DD)"),
+  taskIds: z.array(z.string().min(1).transform((v) => v as Id<"tasks">)).min(1, "At least one task ID required"),
+});
+
+const completeTaskSchema = z.object({
+  taskId: z.string().min(1, "Task ID is required").transform((v) => v as Id<"tasks">),
+});
+
+const deleteTaskSchema = z.object({
+  taskId: z.string().min(1, "Task ID is required").transform((v) => v as Id<"tasks">),
+});
+
+const googleTokenExchangeSchema = z.object({
+  code: z.string().min(1, "Authorization code is required"),
+  codeVerifier: z.string().min(1, "PKCE code verifier is required"),
+  redirectUri: z.string().url("Invalid redirect URI"),
+});
+
 // POST /tasks/move - Move task to different date
 http.route({
   path: "/tasks/move",
@@ -125,7 +150,18 @@ http.route({
     if (authError) return authError;
 
     const body = await request.json();
-    const { taskId, targetDate, position } = body;
+    const validation = moveTaskSchema.safeParse(body);
+    if (!validation.success) {
+      return new Response(JSON.stringify({
+        error: "Validation failed",
+        details: validation.error.issues
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const { taskId, targetDate, position } = validation.data;
 
     try {
       await ctx.runMutation(api.tasks.moveTask, {
@@ -156,7 +192,18 @@ http.route({
     if (authError) return authError;
 
     const body = await request.json();
-    const { date, taskIds } = body;
+    const validation = reorderTaskSchema.safeParse(body);
+    if (!validation.success) {
+      return new Response(JSON.stringify({
+        error: "Validation failed",
+        details: validation.error.issues
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const { date, taskIds } = validation.data;
 
     await ctx.runMutation(api.tasks.reorderTasks, { date, taskIds });
     
@@ -175,7 +222,18 @@ http.route({
     if (authError) return authError;
 
     const body = await request.json();
-    const { taskId } = body;
+    const validation = completeTaskSchema.safeParse(body);
+    if (!validation.success) {
+      return new Response(JSON.stringify({
+        error: "Validation failed",
+        details: validation.error.issues
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const { taskId } = validation.data;
 
     await ctx.runMutation(api.tasks.completeTask, { taskId });
     
@@ -226,7 +284,18 @@ http.route({
     if (authError) return authError;
 
     const body = await request.json();
-    const { taskId } = body;
+    const validation = deleteTaskSchema.safeParse(body);
+    if (!validation.success) {
+      return new Response(JSON.stringify({
+        error: "Validation failed",
+        details: validation.error.issues
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const { taskId } = validation.data;
 
     await ctx.runMutation(api.tasks.deleteTask, { taskId });
     
@@ -274,6 +343,73 @@ http.route({
     const tasks = await ctx.runQuery(api.tasks.listTasks, { status: "inbox" });
     
     return new Response(JSON.stringify(tasks), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// POST /google/token - Exchange authorization code for tokens (server-side)
+http.route({
+  path: "/google/token",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const body = await request.json();
+    const validation = googleTokenExchangeSchema.safeParse(body);
+    if (!validation.success) {
+      return new Response(JSON.stringify({
+        error: "Validation failed",
+        details: validation.error.issues
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const { code, codeVerifier, redirectUri } = validation.data;
+    
+    const env = (
+      globalThis as typeof globalThis & {
+        process?: { env?: Record<string, string | undefined> };
+      }
+    ).process?.env;
+    const clientId = env?.VITE_GOOGLE_CLIENT_ID;
+    const clientSecret = env?.GOOGLE_OAUTH_CLIENT_SECRET;
+
+    if (!clientId) {
+      return new Response(JSON.stringify({ error: "Google OAuth not configured" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const tokenParams = new URLSearchParams({
+      code,
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      grant_type: "authorization_code",
+      code_verifier: codeVerifier,
+    });
+
+    if (clientSecret) {
+      tokenParams.set("client_secret", clientSecret);
+    }
+
+    const response = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: tokenParams.toString(),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return new Response(JSON.stringify({ error: `Token exchange failed: ${errorText}` }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const tokenData = await response.json();
+    return new Response(JSON.stringify(tokenData), {
       headers: { "Content-Type": "application/json" },
     });
   }),
