@@ -5,6 +5,7 @@ import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Task } from "../types";
 import { cn } from "../lib/utils";
+import { Button } from "./Button";
 
 interface TaskPopupProps {
   task: Task;
@@ -152,40 +153,32 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
             {/* Actions */}
             <div className="flex items-center gap-2 pt-2">
               {!isCompleted && (
-                <button
+                <Button
                   onClick={handleComplete}
-                  className={cn(
-                    "flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors",
-                    "bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white",
-                  )}
+                  variant="secondary"
+                  className="flex-1"
                 >
                   Complete
-                </button>
+                </Button>
               )}
 
-              <button
+              <Button
                 onClick={handleDelete}
                 onBlur={() => setConfirmingDelete(false)}
-                className={cn(
-                  "px-3 py-2.5 rounded-xl text-sm transition-colors flex items-center gap-1.5",
-                  confirmingDelete
-                    ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
-                    : "text-zinc-500 hover:text-red-400",
-                )}
+                variant={confirmingDelete ? "danger" : "ghost"}
+                className="flex items-center gap-1.5"
               >
                 <Trash2 size={14} />
                 {confirmingDelete ? "Confirm" : "Delete"}
-              </button>
+              </Button>
 
-              <button
+              <Button
                 onClick={handleSave}
-                className={cn(
-                  "flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors",
-                  "bg-white text-zinc-900 hover:bg-zinc-200",
-                )}
+                variant="primary"
+                className="flex-1"
               >
                 Save
-              </button>
+              </Button>
             </div>
           </div>
         </motion.div>

@@ -11,6 +11,7 @@ import {
   fetchGmailMessages,
 } from "../lib/google/api";
 import { cn } from "../lib/utils";
+import { Button } from "./Button";
 
 interface SettingsProps {
   onClose: () => void;
@@ -137,22 +138,24 @@ export function Settings({ onClose }: SettingsProps) {
                   </div>
 
                   {googleConnected ? (
-                    <button
+                    <Button
                       onClick={handleGoogleDisconnect}
-                      className="text-sm text-red-400 hover:text-red-300 transition-colors"
+                      variant="ghost"
+                      size="sm"
+                      className="text-red-400 hover:text-red-300"
                     >
                       Disconnect
-                    </button>
+                    </Button>
                   ) : (
-                    <motion.button
+                    <Button
                       onClick={handleGoogleConnect}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      className="px-4 py-2 bg-white text-zinc-900 rounded-lg text-sm font-medium hover:bg-zinc-100 flex items-center gap-2 transition-colors"
+                      variant="primary"
+                      size="sm"
+                      className="flex items-center gap-2"
                     >
                       Connect
                       <ExternalLink size={14} />
-                    </motion.button>
+                    </Button>
                   )}
                 </div>
 
@@ -220,22 +223,24 @@ export function Settings({ onClose }: SettingsProps) {
 
                       <AnimatePresence>
                         {(calendarEnabled || gmailEnabled) && (
-                          <motion.button
+                          <motion.div
                             initial={{ opacity: 0, y: -10 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -10 }}
-                            onClick={handleSync}
-                            disabled={syncing}
-                            whileHover={{ scale: syncing ? 1 : 1.01 }}
-                            whileTap={{ scale: syncing ? 1 : 0.99 }}
-                            className="w-full py-2.5 bg-zinc-700 text-white rounded-lg text-sm flex items-center justify-center gap-2 hover:bg-zinc-600 disabled:opacity-50 transition-colors"
                           >
-                            <RefreshCw
-                              size={16}
-                              className={syncing ? "animate-spin" : ""}
-                            />
-                            {syncing ? "Syncing..." : "Sync Now"}
-                          </motion.button>
+                            <Button
+                              onClick={handleSync}
+                              disabled={syncing}
+                              variant="secondary"
+                              className="w-full flex items-center justify-center gap-2"
+                            >
+                              <RefreshCw
+                                size={16}
+                                className={syncing ? "animate-spin" : ""}
+                              />
+                              {syncing ? "Syncing..." : "Sync Now"}
+                            </Button>
+                          </motion.div>
                         )}
                       </AnimatePresence>
                     </motion.div>

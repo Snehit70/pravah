@@ -4,6 +4,7 @@ import { useMutation } from "convex/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "../../convex/_generated/api";
 import { cn } from "../lib/utils";
+import { Button } from "./Button";
 
 interface QuickAddProps {
   onClose: () => void;
@@ -124,15 +125,14 @@ export function QuickAdd({ onClose }: QuickAddProps) {
 
               <div className="flex-1" />
 
-              <motion.button
+              <Button
                 type="submit"
                 disabled={!title.trim()}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="px-4 py-1.5 bg-white text-zinc-900 rounded-lg text-sm font-medium hover:bg-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                variant="primary"
+                size="sm"
               >
                 Add Task
-              </motion.button>
+              </Button>
             </div>
 
             <div className="flex items-center gap-4 text-xs text-zinc-600 mt-4 pt-3 border-t border-zinc-800">
