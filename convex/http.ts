@@ -184,6 +184,9 @@ http.route({
   path: "/timeline",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
     const url = new URL(request.url);
     const startDate = url.searchParams.get("startDate");
     const endDate = url.searchParams.get("endDate");
@@ -207,7 +210,10 @@ http.route({
 http.route({
   path: "/inbox",
   method: "GET",
-  handler: httpAction(async (ctx, _request) => {
+  handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
     const tasks = await ctx.runQuery(api.tasks.listTasks, { status: "inbox" });
     
     return new Response(JSON.stringify(tasks), {

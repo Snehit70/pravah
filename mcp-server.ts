@@ -6,11 +6,16 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 const CONVEX_URL = process.env.CONVEX_URL ?? "https://befitting-swan-125.eu-west-1.convex.site";
+const CONVEX_HTTP_API_KEY = process.env.CONVEX_HTTP_API_KEY;
 
 async function callConvexAPI(endpoint: string, method: string, body?: any) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (CONVEX_HTTP_API_KEY) {
+    headers["x-api-key"] = CONVEX_HTTP_API_KEY;
+  }
   const response = await fetch(`${CONVEX_URL}${endpoint}`, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
   return response.json();
