@@ -5,10 +5,38 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
-const CONVEX_URL = process.env.CONVEX_URL ?? "https://befitting-swan-125.eu-west-1.convex.site";
-const CONVEX_HTTP_API_KEY = process.env.CONVEX_HTTP_API_KEY;
+type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
 
-async function callConvexAPI(endpoint: string, method: string, body?: any) {
+type ToolArguments = Record<string, JsonValue>;
+
+function toToolArguments(value: unknown): ToolArguments {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value as ToolArguments;
+}
+
+function readStringArg(args: ToolArguments, key: string): string | undefined {
+  const value = args[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+const env = (
+  globalThis as typeof globalThis & {
+    process?: { env?: Record<string, string | undefined> };
+  }
+).process?.env;
+
+const CONVEX_URL = env?.CONVEX_URL ?? "https://befitting-swan-125.eu-west-1.convex.site";
+const CONVEX_HTTP_API_KEY = env?.CONVEX_HTTP_API_KEY;
+
+async function callConvexAPI(endpoint: string, method: string, body?: ToolArguments) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (CONVEX_HTTP_API_KEY) {
     headers["x-api-key"] = CONVEX_HTTP_API_KEY;
@@ -151,12 +179,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
+  const { name } = request.params;
+  const args = toToolArguments(request.params.arguments);
 
   try {
     switch (name) {
       case "list_tasks": {
-        const tasks = await callConvexAPI(`/tasks?status=${args.status || ""}&date=${args.date || ""}`, "GET");
+        const status = readStringArg(args, "status") ?? "";
+        const date = readStringArg(args, "date") ?? "";
+        const tasks = await callConvexAPI(`/tasks?status=${status}&date=${date}`, "GET");
         return { content: [{ type: "text", text: JSON.stringify(tasks, null, 2) }] };
       }
       case "add_task": {
@@ -172,7 +203,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: JSON.stringify(reordered, null, 2) }] };
       }
       case "complete_task": {
-        const completed = await callConvexAPI("/tasks/complete", "POST", { taskId: args.taskId });
+        const taskId = readStringArg(args, "taskId");
+        const completed = await callConvexAPI("/tasks/complete", "POST", taskId ? { taskId } : {});
         return { content: [{ type: "text", text: JSON.stringify(completed, null, 2) }] };
       }
       case "update_task": {
@@ -180,11 +212,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
       }
       case "delete_task": {
-        const deleted = await callConvexAPI("/tasks/delete", "POST", { taskId: args.taskId });
+        const taskId = readStringArg(args, "taskId");
+        const deleted = await callConvexAPI("/tasks/delete", "POST", taskId ? { taskId } : {});
         return { content: [{ type: "text", text: JSON.stringify(deleted, null, 2) }] };
       }
       case "get_timeline": {
-        const timeline = await callConvexAPI(`/timeline?startDate=${args.startDate}&endDate=${args.endDate}`, "GET");
+        const startDate = readStringArg(args, "startDate") ?? "";
+        const endDate = readStringArg(args, "endDate") ?? "";
+        const timeline = await callConvexAPI(`/timeline?startDate=${startDate}&endDate=${endDate}`, "GET");
         return { content: [{ type: "text", text: JSON.stringify(timeline, null, 2) }] };
       }
       case "get_inbox": {
@@ -194,8 +229,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       default:
         return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
     }
-  } catch (error: any) {
-    return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
   }
 });
 

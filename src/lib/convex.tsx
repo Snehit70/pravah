@@ -10,5 +10,3 @@ export function ConvexClientProvider({ children }: { children: ReactNode }) {
     </ConvexProvider>
   );
 }
-
-export { convex };

@@ -4,17 +4,32 @@ import { useMutation } from "convex/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "../../convex/_generated/api";
 import { cn } from "../lib/utils";
+import { Button } from "./Button";
+import { useToast } from "./useToast";
 
 interface QuickAddProps {
   onClose: () => void;
 }
 
+const overlayVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1 },
+};
+
+const modalVariants = {
+  hidden: { opacity: 0, scale: 0.95, y: -10 },
+  visible: { opacity: 1, scale: 1, y: 0 },
+  exit: { opacity: 0, scale: 0.98, y: -10 },
+};
+
 export function QuickAdd({ onClose }: QuickAddProps) {
   const [title, setTitle] = useState("");
   const [type, setType] = useState<"open" | "deadline">("open");
   const [deadline, setDeadline] = useState("");
+  const [titleError, setTitleError] = useState("");
 
   const addTask = useMutation(api.tasks.addTask);
+  const { showError, showSuccess } = useToast();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -26,16 +41,25 @@ export function QuickAdd({ onClose }: QuickAddProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim()) {
+      setTitleError("Title is required");
+      return;
+    }
+    setTitleError("");
 
-    await addTask({
-      title: title.trim(),
-      type,
-      deadline: type === "deadline" ? deadline : undefined,
-    });
+    try {
+      await addTask({
+        title: title.trim(),
+        type,
+        deadline: type === "deadline" ? deadline : undefined,
+      });
 
-    setTitle("");
-    onClose();
+      showSuccess("Task added!");
+      setTitle("");
+      onClose();
+    } catch {
+      showError("Failed to add task");
+    }
   };
 
   const handleBackdropClick = (e: React.MouseEvent) => {
@@ -45,51 +69,84 @@ export function QuickAdd({ onClose }: QuickAddProps) {
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-start justify-center pt-24 bg-black/60 backdrop-blur-sm"
+        initial="hidden"
+        animate="visible"
+        exit="hidden"
+        variants={overlayVariants}
+        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+        className={cn(
+          "fixed inset-0 z-50 flex items-start justify-center pt-24",
+          "bg-black/60 backdrop-blur-sm"
+        )}
         onClick={handleBackdropClick}
       >
         <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: -10 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: -10 }}
-          transition={{ type: "spring", duration: 0.3, bounce: 0.1 }}
-          className="bg-zinc-900 border border-zinc-700/50 rounded-2xl w-full max-w-lg p-5 shadow-2xl"
+          initial="hidden"
+          animate="visible"
+          exit="exit"
+          variants={modalVariants}
+          transition={{ duration: 0.25, ease: [0.34, 1.56, 0.64, 1] }}
+          className={cn(
+            "w-full max-w-lg p-5 mx-4 md:mx-0",
+            "bg-zinc-900 rounded-2xl",
+            "border border-zinc-800/80",
+            "shadow-2xl shadow-black/50"
+          )}
         >
           <form onSubmit={handleSubmit}>
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2.5 bg-zinc-800 rounded-xl">
-                <Plus size={20} className="text-zinc-400" />
+              <div className={cn(
+                "p-2.5 rounded-xl",
+                "bg-amber-500/15"
+              )}>
+                <Plus size={20} className="text-amber-500" />
               </div>
               <input
                 type="text"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => {
+                  setTitle(e.target.value);
+                  if (titleError) setTitleError("");
+                }}
                 placeholder="What needs to be done?"
-                className="flex-1 bg-transparent text-lg text-white placeholder-zinc-500 outline-none"
+                className={cn(
+                  "flex-1 bg-transparent text-lg text-zinc-100",
+                  "placeholder-zinc-600 outline-none"
+                )}
                 autoFocus
               />
               <button
                 type="button"
                 onClick={onClose}
-                className="p-2 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded-lg transition-colors"
+                className={cn(
+                  "p-2 rounded-lg",
+                  "text-zinc-500 hover:text-zinc-300",
+                  "hover:bg-zinc-800/60",
+                  "transition-colors duration-150"
+                )}
               >
                 <X size={18} />
               </button>
             </div>
 
+            {titleError && (
+              <p className="text-xs text-red-400 -mt-2 mb-2">{titleError}</p>
+            )}
+
             <div className="flex items-center gap-3 text-sm">
-              <div className="flex gap-1 p-1 bg-zinc-800/50 rounded-lg">
+              <div className={cn(
+                "flex gap-1 p-1 rounded-xl",
+                "bg-zinc-800/80"
+              )}>
                 <button
                   type="button"
                   onClick={() => setType("open")}
                   className={cn(
-                    "px-3 py-1.5 rounded-md transition-all",
+                    "px-3 py-1.5 rounded-lg",
+                    "transition-all duration-150",
                     type === "open"
-                      ? "bg-cyan-500/20 text-cyan-400 shadow-sm"
-                      : "text-zinc-500 hover:text-zinc-300"
+                      ? "bg-amber-500/20 text-amber-400 shadow-sm"
+                      : "text-zinc-500 hover:text-zinc-400"
                   )}
                 >
                   Open
@@ -98,10 +155,11 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                   type="button"
                   onClick={() => setType("deadline")}
                   className={cn(
-                    "px-3 py-1.5 rounded-md transition-all",
+                    "px-3 py-1.5 rounded-lg",
+                    "transition-all duration-150",
                     type === "deadline"
-                      ? "bg-amber-500/20 text-amber-400 shadow-sm"
-                      : "text-zinc-500 hover:text-zinc-300"
+                      ? "bg-yellow-500/20 text-yellow-400 shadow-sm"
+                      : "text-zinc-500 hover:text-zinc-400"
                   )}
                 >
                   Deadline
@@ -114,34 +172,50 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                     initial={{ opacity: 0, width: 0 }}
                     animate={{ opacity: 1, width: "auto" }}
                     exit={{ opacity: 0, width: 0 }}
+                    transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
                     type="date"
                     value={deadline}
                     onChange={(e) => setDeadline(e.target.value)}
-                    className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-white"
+                    min={new Date().toISOString().split('T')[0]}
+                    className={cn(
+                      "px-3 py-1.5 text-sm rounded-xl",
+                      "bg-zinc-800/80 text-zinc-100",
+                      "border border-zinc-700/50",
+                      "focus:border-amber-500/50 focus:outline-none"
+                    )}
                   />
                 )}
               </AnimatePresence>
 
               <div className="flex-1" />
 
-              <motion.button
+              <Button
                 type="submit"
                 disabled={!title.trim()}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="px-4 py-1.5 bg-white text-zinc-900 rounded-lg text-sm font-medium hover:bg-zinc-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                variant="primary"
+                size="sm"
               >
                 Add Task
-              </motion.button>
+              </Button>
             </div>
 
-            <div className="flex items-center gap-4 text-xs text-zinc-600 mt-4 pt-3 border-t border-zinc-800">
+            <div className={cn(
+              "flex items-center gap-4 text-xs mt-4 pt-3",
+              "text-zinc-600",
+              "border-t border-zinc-800/60"
+            )}>
               <span className="flex items-center gap-1.5">
-                <kbd className="px-1.5 py-0.5 bg-zinc-800 rounded text-zinc-500 font-mono">Enter</kbd>
+                <kbd className={cn(
+                  "px-1.5 py-0.5 rounded-lg font-mono",
+                  "bg-zinc-800/80 text-zinc-400 border border-zinc-700/50"
+                )}>Enter</kbd>
                 <span>to add</span>
               </span>
               <span className="flex items-center gap-1.5">
-                <kbd className="px-1.5 py-0.5 bg-zinc-800 rounded text-zinc-500 font-mono">Esc</kbd>
+                <kbd className={cn(
+                  "px-1.5 py-0.5 rounded-lg font-mono",
+                  "bg-zinc-800/80 text-zinc-400 border border-zinc-700/50"
+                )}>Esc</kbd>
                 <span>to close</span>
               </span>
             </div>

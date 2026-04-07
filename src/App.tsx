@@ -21,6 +21,8 @@ import { TaskPopup } from "./components/TaskPopup";
 import { InboxSidebar } from "./components/InboxSidebar";
 import { QuickAdd } from "./components/QuickAdd";
 import { Settings } from "./components/Settings";
+import { LoadingSkeleton } from "./components/LoadingSkeleton";
+import { GoogleCallback } from "./components/GoogleCallback";
 
 export function App() {
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
@@ -128,6 +130,10 @@ export function App() {
     setSelectedTask(task);
   }, []);
 
+  if (tasks === undefined) {
+    return <LoadingSkeleton />;
+  }
+
   return (
     <DndContext
       sensors={sensors}
@@ -135,9 +141,12 @@ export function App() {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex h-screen bg-[#09090b]">
-        <InboxSidebar tasks={inboxTasks} onTaskClick={handleTaskClick} />
-        <main className="flex-1 overflow-hidden">
+      <GoogleCallback />
+      <div className="radial-dots-surface flex h-screen">
+        <div className="radial-bloom-surface">
+          <InboxSidebar tasks={inboxTasks} onTaskClick={handleTaskClick} />
+        </div>
+        <main className="flex-1 overflow-hidden radial-bloom-surface">
           <Timeline
             tasksByDate={tasksByDate}
             onTaskClick={handleTaskClick}
