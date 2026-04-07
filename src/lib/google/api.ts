@@ -5,14 +5,86 @@ interface GoogleListResponse<T> {
   labels?: T[];
 }
 
-export function getGoogleOAuthUrl(): string {
+interface GoogleTokenResponse {
+  access_token: string;
+  expires_in: number;
+  token_type?: string;
+  scope?: string;
+}
+
+const GOOGLE_CODE_VERIFIER_KEY = "pravah_google_pkce_verifier";
+
+function base64UrlEncode(bytes: Uint8Array): string {
+  const binary = String.fromCharCode(...bytes);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function randomString(length: number): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+  const randomValues = crypto.getRandomValues(new Uint8Array(length));
+  return Array.from(randomValues, (value) => alphabet[value % alphabet.length]).join("");
+}
+
+async function createPkceChallenge(verifier: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(verifier));
+  return base64UrlEncode(new Uint8Array(digest));
+}
+
+export async function getGoogleOAuthUrl(): Promise<string> {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
   const redirectUri = `${window.location.origin}/google-callback`;
   const scope = encodeURIComponent(
     "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.readonly"
   );
+
+  const codeVerifier = randomString(96);
+  sessionStorage.setItem(GOOGLE_CODE_VERIFIER_KEY, codeVerifier);
+  const codeChallenge = await createPkceChallenge(codeVerifier);
   
-  return `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=token&scope=${scope}&prompt=consent`;
+  return `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&prompt=consent&access_type=offline&code_challenge=${codeChallenge}&code_challenge_method=S256`;
+}
+
+export async function exchangeGoogleAuthCode(code: string): Promise<{ accessToken: string; expiresIn: number }> {
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  const clientSecret = import.meta.env.VITE_GOOGLE_CLIENT_SECRET as string | undefined;
+  const redirectUri = `${window.location.origin}/google-callback`;
+  const codeVerifier = sessionStorage.getItem(GOOGLE_CODE_VERIFIER_KEY);
+
+  if (!codeVerifier) {
+    throw new Error("Missing PKCE verifier. Please retry Google sign-in.");
+  }
+
+  const body = new URLSearchParams({
+    code,
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    grant_type: "authorization_code",
+    code_verifier: codeVerifier,
+  });
+
+  if (clientSecret) {
+    body.set("client_secret", clientSecret);
+  }
+
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Google token exchange failed: ${response.status} ${errorText}`);
+  }
+
+  const tokenData = (await response.json()) as GoogleTokenResponse;
+  sessionStorage.removeItem(GOOGLE_CODE_VERIFIER_KEY);
+
+  return {
+    accessToken: tokenData.access_token,
+    expiresIn: tokenData.expires_in,
+  };
 }
 
 export async function fetchCalendarEvents(
