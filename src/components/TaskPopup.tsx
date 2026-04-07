@@ -6,6 +6,7 @@ import { api } from "../../convex/_generated/api";
 import type { Task } from "../types";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
+import { Input, Textarea } from "./Input";
 
 interface TaskPopupProps {
   task: Task;
@@ -82,57 +83,30 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
 
           <div className="space-y-4">
             {/* Title */}
-            <div>
-              <label className="text-[11px] text-zinc-500 uppercase tracking-wider font-medium">
-                Title
-              </label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className={cn(
-                  "w-full bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-3 text-white mt-1.5",
-                  "placeholder:text-zinc-600 focus:border-zinc-600 focus:outline-none",
-                  "transition-colors duration-150",
-                )}
-              />
-            </div>
+            <Input
+              label="Title"
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
 
             {/* Description */}
-            <div>
-              <label className="text-[11px] text-zinc-500 uppercase tracking-wider font-medium">
-                Description
-              </label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                placeholder="Add notes..."
-                className={cn(
-                  "w-full bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-3 text-white mt-1.5 resize-none",
-                  "placeholder:text-zinc-600 focus:border-zinc-600 focus:outline-none",
-                  "transition-colors duration-150",
-                )}
-              />
-            </div>
+            <Textarea
+              label="Description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              placeholder="Add notes..."
+            />
 
             {/* Deadline */}
             {task.type === "deadline" && (
-              <div>
-                <label className="text-[11px] text-zinc-500 uppercase tracking-wider font-medium">
-                  Deadline
-                </label>
-                <input
-                  type="date"
-                  value={deadline}
-                  onChange={(e) => setDeadline(e.target.value)}
-                  className={cn(
-                    "w-full bg-zinc-800/80 border border-zinc-700/50 rounded-xl p-3 text-white mt-1.5",
-                    "focus:border-zinc-600 focus:outline-none",
-                    "transition-colors duration-150",
-                  )}
-                />
-              </div>
+              <Input
+                label="Deadline"
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+              />
             )}
 
             {/* Metadata */}

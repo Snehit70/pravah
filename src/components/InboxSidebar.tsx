@@ -7,6 +7,7 @@ import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Task } from "../types";
 import { cn } from "../lib/utils";
+import { Button } from "./Button";
 
 interface InboxSidebarProps {
   tasks: Task[];
@@ -185,23 +186,23 @@ export function InboxSidebar({ tasks, onTaskClick }: InboxSidebarProps) {
                       </button>
                     </div>
                     <div className="flex gap-2">
-                      <button
+                      <Button
                         onClick={() => setIsAdding(false)}
-                        className="flex-1 py-1.5 text-xs text-zinc-500 hover:text-zinc-400 transition-colors"
+                        variant="ghost"
+                        size="sm"
+                        className="flex-1"
                       >
                         Cancel
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         onClick={handleAdd}
                         disabled={!newTitle.trim()}
-                        className={cn(
-                          "flex-1 py-1.5 text-xs rounded-md transition-colors",
-                          "bg-white text-black hover:bg-zinc-200",
-                          "disabled:opacity-40 disabled:cursor-not-allowed",
-                        )}
+                        variant="primary"
+                        size="sm"
+                        className="flex-1"
                       >
                         Add
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 </motion.div>
