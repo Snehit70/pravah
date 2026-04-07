@@ -12,14 +12,17 @@ import {
 } from "../lib/google/api";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
-import { useToast } from "./Toast";
+import { useToast } from "./useToast";
 
 interface SettingsProps {
   onClose: () => void;
 }
 
 export function Settings({ onClose }: SettingsProps) {
-  const [googleConnected, setGoogleConnected] = useState(false);
+  const [googleConnected, setGoogleConnected] = useState(() => {
+    const storedTokens = getGoogleTokens();
+    return !!storedTokens && !storedTokens.expired;
+  });
   const [calendarEnabled, setCalendarEnabled] = useState(false);
   const [gmailEnabled, setGmailEnabled] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -34,18 +37,24 @@ export function Settings({ onClose }: SettingsProps) {
   }, [onClose]);
 
   useEffect(() => {
-    const storedTokens = getGoogleTokens();
-    setGoogleConnected(!!storedTokens && !storedTokens.expired);
-
+    let timer: number | undefined;
     const hash = window.location.hash;
     if (hash.startsWith("#")) {
       const parsedTokens = parseGoogleTokens(hash);
       if (parsedTokens) {
         saveGoogleTokens(parsedTokens.accessToken, parsedTokens.expiresIn);
         window.location.hash = "";
-        setGoogleConnected(true);
+        timer = window.setTimeout(() => {
+          setGoogleConnected(true);
+        }, 0);
       }
     }
+
+    return () => {
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+      }
+    };
   }, []);
 
   const handleGoogleConnect = () => {

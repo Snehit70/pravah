@@ -1,30 +1,13 @@
-import { createContext, useContext, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, AlertCircle, CheckCircle, Info } from "lucide-react";
 import { cn } from "../lib/utils";
-
-type ToastType = "success" | "error" | "info";
+import { ToastContext, type ToastType } from "./useToast";
 
 interface Toast {
   id: string;
   message: string;
   type: ToastType;
-}
-
-interface ToastContextValue {
-  showToast: (message: string, type?: ToastType) => void;
-  showError: (message: string) => void;
-  showSuccess: (message: string) => void;
-}
-
-const ToastContext = createContext<ToastContextValue | null>(null);
-
-export function useToast() {
-  const context = useContext(ToastContext);
-  if (!context) {
-    throw new Error("useToast must be used within ToastProvider");
-  }
-  return context;
 }
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {

@@ -1,10 +1,11 @@
 import { motion } from "framer-motion";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { cn } from "../lib/utils";
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends Omit<ComponentPropsWithoutRef<typeof motion.button>, "children"> {
   variant?: "primary" | "secondary" | "danger" | "ghost";
   size?: "sm" | "md" | "lg";
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 export function Button({

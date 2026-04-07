@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { api } from "../../convex/_generated/api";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
-import { useToast } from "./Toast";
+import { useToast } from "./useToast";
 
 interface QuickAddProps {
   onClose: () => void;
@@ -46,7 +46,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
       showSuccess("Task added!");
       setTitle("");
       onClose();
-    } catch (error) {
+    } catch {
       showError("Failed to add task");
     }
   };

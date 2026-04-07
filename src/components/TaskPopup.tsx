@@ -6,7 +6,7 @@ import type { Task } from "../types";
 import { Button } from "./Button";
 import { Input, Textarea } from "./Input";
 import { Modal } from "./Modal";
-import { useToast } from "./Toast";
+import { useToast } from "./useToast";
 
 interface TaskPopupProps {
   task: Task;
@@ -41,7 +41,7 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
       });
       showSuccess("Task updated successfully");
       onClose();
-    } catch (error) {
+    } catch {
       showError("Failed to update task");
     }
   };
@@ -51,7 +51,7 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
       await completeTask({ taskId: task._id });
       showSuccess("Task completed!");
       onClose();
-    } catch (error) {
+    } catch {
       showError("Failed to complete task");
     }
   };
@@ -65,7 +65,7 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
       await deleteTask({ taskId: task._id });
       showSuccess("Task deleted");
       onClose();
-    } catch (error) {
+    } catch {
       showError("Failed to delete task");
     }
   };
