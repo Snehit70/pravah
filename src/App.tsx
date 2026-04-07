@@ -140,7 +140,7 @@ export function App() {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex h-screen bg-[#09090b]">
+      <div className="flex h-screen bg-[var(--color-bg-base)]">
         <InboxSidebar tasks={inboxTasks} onTaskClick={handleTaskClick} />
         <main className="flex-1 overflow-hidden">
           <Timeline
