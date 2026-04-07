@@ -22,6 +22,7 @@ export function Timeline({
   const todayRef = useRef<HTMLDivElement>(null);
 
   const dates = useMemo(() => generateDateRange(7, 14), []);
+  const hasAnyTasks = Object.keys(tasksByDate).length > 0;
 
   // Scroll to today on mount
   useEffect(() => {
@@ -92,7 +93,36 @@ export function Timeline({
       </motion.header>
 
       {/* Timeline scroll area */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden" ref={scrollRef}>
+      <div className="flex-1 overflow-x-auto overflow-y-hidden relative" ref={scrollRef}>
+        {!hasAnyTasks && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.3 }}
+            className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none"
+          >
+            <div className="text-center max-w-md px-6">
+              <div className="mb-4 text-zinc-700">
+                <Plus size={48} className="mx-auto mb-2" />
+              </div>
+              <h2 className="text-xl font-medium text-zinc-400 mb-2">
+                Get started with Pravah
+              </h2>
+              <p className="text-sm text-zinc-600 mb-4">
+                Add tasks to your inbox and drag them onto the timeline to schedule them.
+              </p>
+              <div className="flex flex-col gap-2 text-xs text-zinc-700">
+                <div className="flex items-center justify-center gap-2">
+                  <Command size={12} />
+                  <span>Press</span>
+                  <kbd className="px-2 py-1 bg-zinc-800/50 rounded font-mono">Cmd+N</kbd>
+                  <span>to quickly add a task</span>
+                </div>
+                <div>Or use the + button in the inbox sidebar</div>
+              </div>
+            </div>
+          </motion.div>
+        )}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
