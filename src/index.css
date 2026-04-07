@@ -1,17 +1,12 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: "DM Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
 :root {
-  --bg-primary: #0a0a0a;
-  --bg-card: #171717;
-  --bg-card-hover: #1f1f1f;
-  --border: #262626;
-  --text-primary: #fafafa;
-  --text-secondary: #a1a1aa;
-  --text-muted: #71717a;
-  --accent: #fafafa;
-  --accent-subtle: #262626;
-  
-  font-family: Inter, system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
   line-height: 1.5;
   font-weight: 400;
   color-scheme: dark;
@@ -24,8 +19,8 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  background: #09090b;
+  color: #fafafa;
 }
 
 #root {
@@ -38,20 +33,43 @@ body {
   box-sizing: border-box;
 }
 
+/* Refined scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-primary);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
+  background: #27272a;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  background: #3f3f46;
+}
+
+/* Date input styling for dark mode */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+  cursor: pointer;
+}
+
+/* Focus ring utility */
+*:focus-visible {
+  outline: 2px solid #a1a1aa;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

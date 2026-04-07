@@ -1,4 +1,4 @@
-import { query, internalMutation } from "./_generated/server";
+import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
 export const listTasks = query({
@@ -20,7 +20,7 @@ export const listTasks = query({
   },
 });
 
-export const addTask = internalMutation({
+export const addTask = mutation({
   args: {
     title: v.string(),
     description: v.optional(v.string()),
@@ -73,7 +73,7 @@ export const addTask = internalMutation({
   },
 });
 
-export const moveTask = internalMutation({
+export const moveTask = mutation({
   args: {
     taskId: v.id("tasks"),
     targetDate: v.string(),
@@ -111,22 +111,27 @@ export const moveTask = internalMutation({
   },
 });
 
-export const reorderTasks = internalMutation({
+export const reorderTasks = mutation({
   args: {
     date: v.string(),
     taskIds: v.array(v.id("tasks")),
   },
   handler: async (ctx, args) => {
-    for (let i = 0; i < args.taskIds.length; i++) {
-      await ctx.db.patch(args.taskIds[i], {
-        position: i,
+    for (const taskId of args.taskIds) {
+      const task = await ctx.db.get(taskId);
+      if (!task) continue;
+      if (task.scheduledDate !== args.date) {
+        throw new Error(`Task ${taskId} does not belong to date ${args.date}`);
+      }
+      await ctx.db.patch(taskId, {
+        position: args.taskIds.indexOf(taskId),
         updatedAt: Date.now(),
       });
     }
   },
 });
 
-export const completeTask = internalMutation({
+export const completeTask = mutation({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.taskId, {
@@ -136,7 +141,7 @@ export const completeTask = internalMutation({
   },
 });
 
-export const updateTask = internalMutation({
+export const updateTask = mutation({
   args: {
     taskId: v.id("tasks"),
     title: v.optional(v.string()),
@@ -154,7 +159,7 @@ export const updateTask = internalMutation({
   },
 });
 
-export const deleteTask = internalMutation({
+export const deleteTask = mutation({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
     await ctx.db.delete(args.taskId);
