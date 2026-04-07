@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { api } from "../../convex/_generated/api";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
+import { useToast } from "./Toast";
 
 interface QuickAddProps {
   onClose: () => void;
@@ -16,6 +17,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
   const [deadline, setDeadline] = useState("");
 
   const addTask = useMutation(api.tasks.addTask);
+  const { showError, showSuccess } = useToast();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -29,14 +31,19 @@ export function QuickAdd({ onClose }: QuickAddProps) {
     e.preventDefault();
     if (!title.trim()) return;
 
-    await addTask({
-      title: title.trim(),
-      type,
-      deadline: type === "deadline" ? deadline : undefined,
-    });
+    try {
+      await addTask({
+        title: title.trim(),
+        type,
+        deadline: type === "deadline" ? deadline : undefined,
+      });
 
-    setTitle("");
-    onClose();
+      showSuccess("Task added!");
+      setTitle("");
+      onClose();
+    } catch (error) {
+      showError("Failed to add task");
+    }
   };
 
   const handleBackdropClick = (e: React.MouseEvent) => {

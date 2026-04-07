@@ -6,6 +6,7 @@ import type { Task } from "../types";
 import { Button } from "./Button";
 import { Input, Textarea } from "./Input";
 import { Modal } from "./Modal";
+import { useToast } from "./Toast";
 
 interface TaskPopupProps {
   task: Task;
@@ -21,20 +22,31 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
   const updateTask = useMutation(api.tasks.updateTask);
   const completeTask = useMutation(api.tasks.completeTask);
   const deleteTask = useMutation(api.tasks.deleteTask);
+  const { showError, showSuccess } = useToast();
 
   const handleSave = async () => {
-    await updateTask({
-      taskId: task._id,
-      title: title.trim() || task.title,
-      description: description || undefined,
-      deadline: deadline || undefined,
-    });
-    onClose();
+    try {
+      await updateTask({
+        taskId: task._id,
+        title: title.trim() || task.title,
+        description: description || undefined,
+        deadline: deadline || undefined,
+      });
+      showSuccess("Task updated successfully");
+      onClose();
+    } catch (error) {
+      showError("Failed to update task");
+    }
   };
 
   const handleComplete = async () => {
-    await completeTask({ taskId: task._id });
-    onClose();
+    try {
+      await completeTask({ taskId: task._id });
+      showSuccess("Task completed!");
+      onClose();
+    } catch (error) {
+      showError("Failed to complete task");
+    }
   };
 
   const handleDelete = async () => {
@@ -42,8 +54,13 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
       setConfirmingDelete(true);
       return;
     }
-    await deleteTask({ taskId: task._id });
-    onClose();
+    try {
+      await deleteTask({ taskId: task._id });
+      showSuccess("Task deleted");
+      onClose();
+    } catch (error) {
+      showError("Failed to delete task");
+    }
   };
 
   const isCompleted = task.status === "completed";

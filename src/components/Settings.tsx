@@ -12,6 +12,7 @@ import {
 } from "../lib/google/api";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
+import { useToast } from "./Toast";
 
 interface SettingsProps {
   onClose: () => void;
@@ -22,6 +23,7 @@ export function Settings({ onClose }: SettingsProps) {
   const [calendarEnabled, setCalendarEnabled] = useState(false);
   const [gmailEnabled, setGmailEnabled] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const { showError, showSuccess } = useToast();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -59,7 +61,10 @@ export function Settings({ onClose }: SettingsProps) {
 
   const handleSync = async () => {
     const tokens = getGoogleTokens();
-    if (!tokens || tokens.expired) return;
+    if (!tokens || tokens.expired) {
+      showError("Google authentication expired. Please reconnect.");
+      return;
+    }
 
     setSyncing(true);
     try {
@@ -71,8 +76,10 @@ export function Settings({ onClose }: SettingsProps) {
         const messages = await fetchGmailMessages(tokens.accessToken);
         console.log("Gmail messages:", messages);
       }
+      showSuccess("Sync completed successfully!");
     } catch (error) {
       console.error("Sync error:", error);
+      showError("Failed to sync with Google. Please try again.");
     }
     setSyncing(false);
   };
