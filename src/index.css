@@ -138,10 +138,10 @@ body::before {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.1;
+  opacity: 0.03;
   background-image: 
-    radial-gradient(circle, var(--color-text-primary) 1.5px, transparent 1.5px);
-  background-size: 48px 48px;
+    radial-gradient(circle, var(--color-text-primary) 1px, transparent 1px);
+  background-size: 64px 64px;
   background-position: center center;
 }
 
@@ -152,7 +152,7 @@ body::after {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.05;
+  opacity: 0.025;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
   mix-blend-mode: overlay;
 }
@@ -169,17 +169,39 @@ body::after {
 .radial-dots-surface {
   background-color: var(--color-bg-base);
   background-image:
-    repeating-radial-gradient(circle at 55% 28%, rgba(232, 169, 69, 0.14) 0px, rgba(232, 169, 69, 0.14) 1px, transparent 1px, transparent 30px),
-    radial-gradient(circle, rgba(240, 238, 230, 0.12) 1.3px, transparent 1.3px);
-  background-size: auto, 44px 44px;
+    radial-gradient(42% 35% at 56% 24%, rgba(232, 169, 69, 0.08) 0%, rgba(232, 169, 69, 0.03) 45%, transparent 100%),
+    radial-gradient(30% 24% at 14% 10%, rgba(240, 238, 230, 0.035) 0%, transparent 100%),
+    radial-gradient(circle, rgba(240, 238, 230, 0.07) 1px, transparent 1px);
+  background-size: auto, auto, 64px 64px;
 }
 
 .radial-bloom-surface {
-  background-color: rgba(9, 9, 11, 0.78);
-  background-image:
-    radial-gradient(70% 55% at 55% 28%, rgba(232, 169, 69, 0.10) 0%, rgba(232, 169, 69, 0.03) 40%, transparent 78%),
-    repeating-radial-gradient(circle at 55% 28%, rgba(232, 169, 69, 0.10) 0px, rgba(232, 169, 69, 0.10) 1px, transparent 1px, transparent 34px);
-  background-size: auto, auto;
+  position: relative;
+  overflow: hidden;
+  background-color: rgba(9, 9, 11, 0.9);
+}
+
+.radial-bloom-surface::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+  opacity: 0.22;
+  background-image: repeating-conic-gradient(
+    from 0deg at 55% 28%,
+    rgba(232, 169, 69, 0.13) 0deg 9deg,
+    transparent 9deg 30deg
+  );
+  mask-image: radial-gradient(36% 28% at 55% 28%, black 0%, transparent 78%);
+  -webkit-mask-image: radial-gradient(36% 28% at 55% 28%, black 0%, transparent 78%);
+}
+
+.radial-bloom-surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(44% 34% at 55% 28%, rgba(232, 169, 69, 0.11) 0%, rgba(232, 169, 69, 0.03) 48%, transparent 100%);
 }
 
 * {
