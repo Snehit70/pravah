@@ -6,7 +6,12 @@ const http = httpRouter();
 
 function requireAuth(request: Request): Response | null {
   const envKey = process.env.CONVEX_HTTP_API_KEY;
-  if (!envKey) return null;
+  if (!envKey) {
+    return new Response(JSON.stringify({ error: "Server configuration error: API key not configured" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
   const key = request.headers.get("x-api-key");
   if (key !== envKey) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
