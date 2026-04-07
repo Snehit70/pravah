@@ -1,4 +1,9 @@
-import type { GoogleCalendarEvent, CalendarSyncConfig, GmailSyncConfig } from "./types";
+import type { GoogleCalendarEvent, GoogleGmailMessage } from "./types";
+
+interface GoogleListResponse<T> {
+  messages?: T[];
+  labels?: T[];
+}
 
 export function getGoogleOAuthUrl(): string {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -110,7 +115,7 @@ export async function fetchGmailMessages(
   accessToken: string,
   query: string = "is:unread",
   maxResults: number = 10
-): Promise<any[]> {
+): Promise<GoogleGmailMessage[]> {
   const response = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages?query=${encodeURIComponent(query)}&maxResults=${maxResults}`,
     {
@@ -122,14 +127,14 @@ export async function fetchGmailMessages(
     throw new Error(`Failed to fetch gmail messages: ${response.statusText}`);
   }
   
-  const data = await response.json();
+  const data = (await response.json()) as GoogleListResponse<GoogleGmailMessage>;
   return data.messages || [];
 }
 
 export async function getGmailMessage(
   accessToken: string,
   messageId: string
-): Promise<any> {
+): Promise<GoogleGmailMessage> {
   const response = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`,
     {
@@ -141,10 +146,10 @@ export async function getGmailMessage(
     throw new Error(`Failed to fetch gmail message: ${response.statusText}`);
   }
   
-  return response.json();
+  return (await response.json()) as GoogleGmailMessage;
 }
 
-export async function getGmailLabels(accessToken: string): Promise<any[]> {
+export async function getGmailLabels(accessToken: string): Promise<{ id: string; name: string }[]> {
   const response = await fetch(
     "https://gmail.googleapis.com/gmail/v1/users/me/labels",
     {
@@ -156,7 +161,7 @@ export async function getGmailLabels(accessToken: string): Promise<any[]> {
     throw new Error(`Failed to fetch gmail labels: ${response.statusText}`);
   }
   
-  const data = await response.json();
+  const data = (await response.json()) as GoogleListResponse<{ id: string; name: string }>;
   return data.labels || [];
 }
 
