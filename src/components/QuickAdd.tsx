@@ -137,6 +137,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                     type="date"
                     value={deadline}
                     onChange={(e) => setDeadline(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
                     className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-white"
                   />
                 )}

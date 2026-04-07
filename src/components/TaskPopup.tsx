@@ -103,6 +103,7 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
                 type="date"
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
               />
             )}
 
