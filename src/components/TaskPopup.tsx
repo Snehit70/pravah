@@ -18,6 +18,7 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
   const [description, setDescription] = useState(task.description ?? "");
   const [deadline, setDeadline] = useState(task.deadline ?? "");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [titleError, setTitleError] = useState("");
 
   const updateTask = useMutation(api.tasks.updateTask);
   const completeTask = useMutation(api.tasks.completeTask);
@@ -25,10 +26,16 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
   const { showError, showSuccess } = useToast();
 
   const handleSave = async () => {
+    if (!title.trim()) {
+      setTitleError("Title is required");
+      return;
+    }
+    setTitleError("");
+
     try {
       await updateTask({
         taskId: task._id,
-        title: title.trim() || task.title,
+        title: title.trim(),
         description: description || undefined,
         deadline: deadline || undefined,
       });
@@ -73,7 +80,11 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
               label="Title"
               type="text"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                if (titleError) setTitleError("");
+              }}
+              error={titleError}
             />
 
             {/* Description */}

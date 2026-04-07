@@ -15,6 +15,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
   const [title, setTitle] = useState("");
   const [type, setType] = useState<"open" | "deadline">("open");
   const [deadline, setDeadline] = useState("");
+  const [titleError, setTitleError] = useState("");
 
   const addTask = useMutation(api.tasks.addTask);
   const { showError, showSuccess } = useToast();
@@ -29,7 +30,11 @@ export function QuickAdd({ onClose }: QuickAddProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim()) {
+      setTitleError("Title is required");
+      return;
+    }
+    setTitleError("");
 
     try {
       await addTask({
@@ -74,7 +79,10 @@ export function QuickAdd({ onClose }: QuickAddProps) {
               <input
                 type="text"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => {
+                  setTitle(e.target.value);
+                  if (titleError) setTitleError("");
+                }}
                 placeholder="What needs to be done?"
                 className="flex-1 bg-transparent text-lg text-white placeholder-zinc-500 outline-none"
                 autoFocus
@@ -87,6 +95,10 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                 <X size={18} />
               </button>
             </div>
+
+            {titleError && (
+              <p className="text-xs text-red-400 -mt-2">{titleError}</p>
+            )}
 
             <div className="flex items-center gap-3 text-sm">
               <div className="flex gap-1 p-1 bg-zinc-800/50 rounded-lg">
