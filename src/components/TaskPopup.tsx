@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { X, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Task } from "../types";
-import { cn } from "../lib/utils";
 import { Button } from "./Button";
 import { Input, Textarea } from "./Input";
+import { Modal } from "./Modal";
 
 interface TaskPopupProps {
   task: Task;
@@ -50,38 +49,8 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
   const isCompleted = task.status === "completed";
 
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.15 }}
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-[2px]"
-        onClick={onClose}
-      >
-        <motion.div
-          initial={{ opacity: 0, scale: 0.96, y: 8 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.96, y: 8 }}
-          transition={{ duration: 0.2, ease: [0.25, 0.46, 0.45, 0.94] }}
-          onClick={(e) => e.stopPropagation()}
-          role="dialog"
-          aria-label="Edit task"
-          className="bg-zinc-900 border border-zinc-700/60 rounded-2xl w-full max-w-md p-6 shadow-2xl shadow-black/40"
-        >
-          {/* Header */}
-          <div className="flex justify-between items-center mb-5">
-            <h2 className="text-base font-medium text-white">Edit Task</h2>
-            <button
-              onClick={onClose}
-              aria-label="Close"
-              className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-            >
-              <X size={18} />
-            </button>
-          </div>
-
-          <div className="space-y-4">
+    <Modal isOpen={true} onClose={onClose} title="Edit Task">
+      <div className="space-y-4">
             {/* Title */}
             <Input
               label="Title"
@@ -155,8 +124,6 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
               </Button>
             </div>
           </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+    </Modal>
   );
 }
