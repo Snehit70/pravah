@@ -7,6 +7,7 @@ import { Button } from "./Button";
 import { Input, Textarea } from "./Input";
 import { Modal } from "./Modal";
 import { useToast } from "./useToast";
+import { cn } from "../lib/utils";
 
 interface TaskPopupProps {
   task: Task;
@@ -75,107 +76,115 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
   return (
     <Modal isOpen={true} onClose={onClose} title="Edit Task">
       <div className="space-y-4">
-            {/* Title */}
-            <Input
-              label="Title"
-              type="text"
-              value={title}
-              onChange={(e) => {
-                setTitle(e.target.value);
-                if (titleError) setTitleError("");
-              }}
-              error={titleError}
-            />
+        {/* Title */}
+        <Input
+          label="Title"
+          type="text"
+          value={title}
+          onChange={(e) => {
+            setTitle(e.target.value);
+            if (titleError) setTitleError("");
+          }}
+          error={titleError}
+        />
 
-            {/* Description */}
-            <Textarea
-              label="Description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              placeholder="Add notes..."
-            />
+        {/* Description */}
+        <Textarea
+          label="Description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={3}
+          placeholder="Add notes..."
+        />
 
-            {/* Deadline */}
-            {task.type === "deadline" && (
-              <Input
-                label="Deadline"
-                type="date"
-                value={deadline}
-                onChange={(e) => setDeadline(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-              />
+        {/* Deadline */}
+        {task.type === "deadline" && (
+          <Input
+            label="Deadline"
+            type="date"
+            value={deadline}
+            onChange={(e) => setDeadline(e.target.value)}
+            min={new Date().toISOString().split('T')[0]}
+          />
+        )}
+
+        {/* Metadata */}
+        <div className="flex items-center gap-3 text-[11px] text-zinc-500">
+          <span
+            className={cn(
+              "px-2 py-0.5 rounded-full",
+              task.type === "deadline"
+                ? "bg-yellow-500/15 text-yellow-400"
+                : "bg-amber-500/15 text-amber-400"
             )}
+          >
+            {task.type === "deadline" ? "Deadline" : "Open"} task
+          </span>
+          <span className="text-zinc-500">{task.status}</span>
+          {task.source && task.source !== "manual" && (
+            <>
+              <span className="text-zinc-500">via {task.source}</span>
+            </>
+          )}
+        </div>
 
-            {/* Metadata */}
-            <div className="flex items-center gap-3 text-[11px] text-zinc-600">
-              <span>
-                {task.type === "deadline" ? "Deadline" : "Open"} task
-              </span>
-              <span>&middot;</span>
-              <span>{task.status}</span>
-              {task.source && task.source !== "manual" && (
-                <>
-                  <span>&middot;</span>
-                  <span>via {task.source}</span>
-                </>
+        {/* Actions */}
+        <div className={cn(
+          "flex items-center gap-2 pt-4",
+          "border-t border-zinc-800/60"
+        )}>
+          {!confirmingDelete ? (
+            <>
+              {!isCompleted && (
+                <Button
+                  onClick={handleComplete}
+                  variant="secondary"
+                  className="flex-1"
+                >
+                  Complete
+                </Button>
               )}
-            </div>
 
-            {/* Actions */}
-            <div className="flex items-center gap-2 pt-2">
-              {!confirmingDelete ? (
-                <>
-                  {!isCompleted && (
-                    <Button
-                      onClick={handleComplete}
-                      variant="secondary"
-                      className="flex-1"
-                    >
-                      Complete
-                    </Button>
-                  )}
+              <Button
+                onClick={() => setConfirmingDelete(true)}
+                variant="ghost"
+                className="flex items-center gap-1.5 text-zinc-500 hover:text-red-400"
+              >
+                <Trash2 size={14} />
+                Delete
+              </Button>
 
-                  <Button
-                    onClick={() => setConfirmingDelete(true)}
-                    variant="ghost"
-                    className="flex items-center gap-1.5"
-                  >
-                    <Trash2 size={14} />
-                    Delete
-                  </Button>
-
-                  <Button
-                    onClick={handleSave}
-                    variant="primary"
-                    className="flex-1"
-                  >
-                    Save
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <p className="flex-1 text-sm text-zinc-400">Delete this task?</p>
-                  <Button
-                    onClick={() => setConfirmingDelete(false)}
-                    variant="secondary"
-                    size="sm"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleDelete}
-                    variant="danger"
-                    size="sm"
-                    className="flex items-center gap-1.5"
-                  >
-                    <Trash2 size={14} />
-                    Delete
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
+              <Button
+                onClick={handleSave}
+                variant="primary"
+                className="flex-1"
+              >
+                Save
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="flex-1 text-sm text-zinc-400">Delete this task?</p>
+              <Button
+                onClick={() => setConfirmingDelete(false)}
+                variant="secondary"
+                size="sm"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleDelete}
+                variant="danger"
+                size="sm"
+                className="flex items-center gap-1.5"
+              >
+                <Trash2 size={14} />
+                Delete
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
     </Modal>
   );
 }
