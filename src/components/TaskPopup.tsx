@@ -124,33 +124,56 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
 
             {/* Actions */}
             <div className="flex items-center gap-2 pt-2">
-              {!isCompleted && (
-                <Button
-                  onClick={handleComplete}
-                  variant="secondary"
-                  className="flex-1"
-                >
-                  Complete
-                </Button>
+              {!confirmingDelete ? (
+                <>
+                  {!isCompleted && (
+                    <Button
+                      onClick={handleComplete}
+                      variant="secondary"
+                      className="flex-1"
+                    >
+                      Complete
+                    </Button>
+                  )}
+
+                  <Button
+                    onClick={() => setConfirmingDelete(true)}
+                    variant="ghost"
+                    className="flex items-center gap-1.5"
+                  >
+                    <Trash2 size={14} />
+                    Delete
+                  </Button>
+
+                  <Button
+                    onClick={handleSave}
+                    variant="primary"
+                    className="flex-1"
+                  >
+                    Save
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="flex-1 text-sm text-zinc-400">Delete this task?</p>
+                  <Button
+                    onClick={() => setConfirmingDelete(false)}
+                    variant="secondary"
+                    size="sm"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleDelete}
+                    variant="danger"
+                    size="sm"
+                    className="flex items-center gap-1.5"
+                  >
+                    <Trash2 size={14} />
+                    Delete
+                  </Button>
+                </>
               )}
-
-              <Button
-                onClick={handleDelete}
-                onBlur={() => setConfirmingDelete(false)}
-                variant={confirmingDelete ? "danger" : "ghost"}
-                className="flex items-center gap-1.5"
-              >
-                <Trash2 size={14} />
-                {confirmingDelete ? "Confirm" : "Delete"}
-              </Button>
-
-              <Button
-                onClick={handleSave}
-                variant="primary"
-                className="flex-1"
-              >
-                Save
-              </Button>
             </div>
           </div>
     </Modal>
