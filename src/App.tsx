@@ -21,6 +21,7 @@ import { TaskPopup } from "./components/TaskPopup";
 import { InboxSidebar } from "./components/InboxSidebar";
 import { QuickAdd } from "./components/QuickAdd";
 import { Settings } from "./components/Settings";
+import { LoadingSkeleton } from "./components/LoadingSkeleton";
 
 export function App() {
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
@@ -127,6 +128,10 @@ export function App() {
   const handleTaskClick = useCallback((task: Task) => {
     setSelectedTask(task);
   }, []);
+
+  if (tasks === undefined) {
+    return <LoadingSkeleton />;
+  }
 
   return (
     <DndContext
