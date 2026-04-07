@@ -59,7 +59,8 @@ function InboxTask({ task, onClick }: { task: Task; onClick: () => void }) {
 }
 
 export function InboxSidebar({ tasks, onTaskClick }: InboxSidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  // Start collapsed on mobile, expanded on desktop
+  const [collapsed, setCollapsed] = useState(window.innerWidth < 768);
   const [isAdding, setIsAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newType, setNewType] = useState<"open" | "deadline">("open");

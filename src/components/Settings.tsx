@@ -102,7 +102,7 @@ export function Settings({ onClose }: SettingsProps) {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: -10 }}
           transition={{ type: "spring", duration: 0.3, bounce: 0.1 }}
-          className="bg-zinc-900 border border-zinc-700/50 rounded-2xl w-full max-w-lg p-5 shadow-2xl max-h-[80vh] overflow-y-auto"
+          className="bg-zinc-900 border border-zinc-700/50 rounded-2xl w-full max-w-lg p-5 shadow-2xl max-h-[80vh] overflow-y-auto mx-4 md:mx-0"
         >
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold text-white">Settings</h2>

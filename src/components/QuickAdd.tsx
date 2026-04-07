@@ -69,7 +69,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: -10 }}
           transition={{ type: "spring", duration: 0.3, bounce: 0.1 }}
-          className="bg-zinc-900 border border-zinc-700/50 rounded-2xl w-full max-w-lg p-5 shadow-2xl"
+          className="bg-zinc-900 border border-zinc-700/50 rounded-2xl w-full max-w-lg p-5 shadow-2xl mx-4 md:mx-0"
         >
           <form onSubmit={handleSubmit}>
             <div className="flex items-center gap-3 mb-4">

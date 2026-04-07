@@ -52,7 +52,8 @@ export function Modal({
           aria-label={title}
           className={cn(
             "bg-zinc-900 border border-zinc-700/60 rounded-2xl shadow-2xl",
-            "w-full max-w-md p-6",
+            "w-full max-w-md p-6 mx-4",
+            "md:mx-0",
             className
           )}
         >
