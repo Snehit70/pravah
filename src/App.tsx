@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -14,16 +14,23 @@ import { api } from "../convex/_generated/api";
 import type { Task } from "./types";
 import { Timeline } from "./components/Timeline";
 import { TaskCard } from "./components/TaskCard";
-import { TaskPopup } from "./components/TaskPopup";
 import { InboxSidebar } from "./components/InboxSidebar";
-import { QuickAdd } from "./components/QuickAdd";
-import { Settings } from "./components/Settings";
 import { LoadingSkeleton } from "./components/LoadingSkeleton";
 import { GoogleCallback } from "./components/GoogleCallback";
 import { useTaskBoardData } from "./hooks/useTaskBoardData";
 import { useTaskDragHandlers } from "./hooks/useTaskDragHandlers";
 import { useAppKeyboardShortcuts } from "./hooks/useAppKeyboardShortcuts";
 import { useAppOverlays } from "./hooks/useAppOverlays";
+
+const TaskPopup = lazy(() =>
+  import("./components/TaskPopup").then((module) => ({ default: module.TaskPopup }))
+);
+const QuickAdd = lazy(() =>
+  import("./components/QuickAdd").then((module) => ({ default: module.QuickAdd }))
+);
+const Settings = lazy(() =>
+  import("./components/Settings").then((module) => ({ default: module.Settings }))
+);
 
 export function App() {
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
@@ -94,13 +101,15 @@ export function App() {
         {draggedTask && <TaskCard task={draggedTask} isDragOverlay />}
       </DragOverlay>
 
-      {selectedTask && (
-        <TaskPopup task={selectedTask} onClose={closeTaskPopup} />
-      )}
+      <Suspense fallback={null}>
+        {selectedTask && (
+          <TaskPopup task={selectedTask} onClose={closeTaskPopup} />
+        )}
 
-      {showQuickAdd && <QuickAdd onClose={closeQuickAdd} />}
+        {showQuickAdd && <QuickAdd onClose={closeQuickAdd} />}
 
-      {showSettings && <Settings onClose={closeSettings} />}
+        {showSettings && <Settings onClose={closeSettings} />}
+      </Suspense>
     </DndContext>
   );
 }
