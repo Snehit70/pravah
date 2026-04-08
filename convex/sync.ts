@@ -432,14 +432,6 @@ export const importGoogleCalendarEvents = mutation({
       importedCount += 1;
     }
 
-    await ctx.db.patch(args.runId, {
-      status: "success",
-      importedCount,
-      updatedCount,
-      skippedCount,
-      finishedAt: now,
-    });
-
     return {
       importedCount,
       updatedCount,

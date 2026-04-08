@@ -92,19 +92,44 @@ export const importGoogleCalendarAction = action({
         events,
       });
 
-      if (result.maxUpdatedAt) {
-        await ctx.runMutation(api.sync.updateSyncCursor, {
+      let postImportError: string | undefined;
+      try {
+        if (result.maxUpdatedAt) {
+          await ctx.runMutation(api.sync.updateSyncCursor, {
+            provider: "google_calendar",
+            cursor: result.maxUpdatedAt,
+          });
+        }
+
+        await ctx.runMutation(api.sync.upsertIntegration, {
           provider: "google_calendar",
-          cursor: result.maxUpdatedAt,
+          status: "connected",
+          syncEnabled: true,
+          tokenExpiresAt: args.tokenExpiresAt,
         });
+      } catch (error) {
+        postImportError =
+          error instanceof Error ? error.message : "Post-import sync update failed";
       }
 
-      await ctx.runMutation(api.sync.upsertIntegration, {
-        provider: "google_calendar",
-        status: "connected",
-        syncEnabled: true,
-        tokenExpiresAt: args.tokenExpiresAt,
+      await ctx.runMutation(api.sync.completeSyncRun, {
+        runId,
+        status: "success",
+        importedCount: result.importedCount,
+        updatedCount: result.updatedCount,
+        skippedCount: result.skippedCount,
+        errorMessage: postImportError,
       });
+
+      if (postImportError) {
+        await ctx.runMutation(api.sync.upsertIntegration, {
+          provider: "google_calendar",
+          status: "error",
+          syncEnabled: true,
+          tokenExpiresAt: args.tokenExpiresAt,
+          lastError: postImportError,
+        });
+      }
 
       return result;
     } catch (error) {
