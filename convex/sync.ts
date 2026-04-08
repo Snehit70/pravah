@@ -363,15 +363,21 @@ export const importGoogleCalendarEvents = mutation({
       if (mapping) {
         const mappedTask = await ctx.db.get(mapping.taskId);
         if (mappedTask) {
-          await ctx.db.patch(mapping.taskId, {
-            title: event.title,
-            description: event.description,
-            scheduledDate: event.scheduledDate,
-            deadline: event.deadline,
-            status: event.scheduledDate ? "scheduled" : "inbox",
-            source: "gcal",
-            updatedAt: now,
-          });
+          const isContentChanged = mapping.contentHash !== contentHash || mapping.isDeleted;
+          if (isContentChanged) {
+            await ctx.db.patch(mapping.taskId, {
+              title: event.title,
+              description: event.description,
+              scheduledDate: event.scheduledDate,
+              deadline: event.deadline,
+              status: event.scheduledDate ? "scheduled" : "inbox",
+              source: "gcal",
+              updatedAt: now,
+            });
+            updatedCount += 1;
+          } else {
+            skippedCount += 1;
+          }
         } else {
           const position = await getNextPosition(ctx, event.scheduledDate);
           const newTaskId = await ctx.db.insert("tasks", {
@@ -388,6 +394,7 @@ export const importGoogleCalendarEvents = mutation({
             updatedAt: now,
           });
           await ctx.db.patch(mapping._id, { taskId: newTaskId });
+          updatedCount += 1;
         }
 
         await ctx.db.patch(mapping._id, {
@@ -396,7 +403,6 @@ export const importGoogleCalendarEvents = mutation({
           isDeleted: false,
           lastSyncedAt: now,
         });
-        updatedCount += 1;
         continue;
       }
 
