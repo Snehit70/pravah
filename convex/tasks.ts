@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 
 export const listTasks = query({
   args: {
@@ -231,10 +232,20 @@ export const bulkReschedule = mutation({
       .collect();
 
     let nextPosition = Math.max(...tasksOnDay.map((t) => t.position), -1) + 1;
+    const skippedTaskIds: Id<"tasks">[] = [];
+
     for (const taskId of args.taskIds) {
       const task = await ctx.db.get(taskId);
-      if (!task) continue;
+      if (!task) {
+        skippedTaskIds.push(taskId);
+        continue;
+      }
+      if (task.status !== "inbox" && task.status !== "scheduled") {
+        skippedTaskIds.push(taskId);
+        continue;
+      }
       if (task.type === "deadline" && task.deadline && args.targetDate > task.deadline) {
+        skippedTaskIds.push(taskId);
         continue;
       }
 
@@ -246,6 +257,11 @@ export const bulkReschedule = mutation({
       });
       nextPosition += 1;
     }
+
+    return {
+      movedCount: args.taskIds.length - skippedTaskIds.length,
+      skippedTaskIds,
+    };
   },
 });
 

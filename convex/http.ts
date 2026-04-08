@@ -399,8 +399,8 @@ http.route({
       });
     }
 
-    await ctx.runMutation(api.tasks.bulkReschedule, validation.data);
-    return new Response(JSON.stringify({ success: true }), {
+    const result = await ctx.runMutation(api.tasks.bulkReschedule, validation.data);
+    return new Response(JSON.stringify({ success: true, ...result }), {
       headers: { "Content-Type": "application/json" },
     });
   }),

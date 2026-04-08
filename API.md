@@ -129,6 +129,15 @@ Reschedule multiple tasks to a single date.
 }
 ```
 
+**Response:**
+```json
+{
+  "success": true,
+  "movedCount": 2,
+  "skippedTaskIds": []
+}
+```
+
 ### GET /timeline
 Get timeline for date range.
 
