@@ -118,6 +118,69 @@ Get all inbox tasks.
 curl "https://befitting-swan-125.eu-west-1.convex.site/inbox"
 ```
 
+### GET /sync/status
+Get integration health and latest sync status.
+
+**Query Parameters:**
+- `provider` (optional): `google_calendar` or `gmail` (default: `google_calendar`)
+
+### POST /sync/google-calendar/import
+Run one-way import from Google Calendar into Pravah.
+
+**Request Body (optional):**
+```json
+{
+  "calendarId": "primary",
+  "timeMin": "2026-04-01T00:00:00Z",
+  "timeMax": "2026-04-30T23:59:59Z"
+}
+```
+
+### GET /review-queue
+List items waiting for manual approval.
+
+**Query Parameters:**
+- `status` (optional): `pending`, `approved`, `rejected`
+- `limit` (optional): max items to return
+
+### POST /review-queue/approve
+Approve a queue item and create a real task.
+
+**Request Body:**
+```json
+{
+  "reviewId": "review_queue_id",
+  "scheduledDate": "YYYY-MM-DD"
+}
+```
+
+### POST /review-queue/reject
+Reject a queue item.
+
+**Request Body:**
+```json
+{
+  "reviewId": "review_queue_id",
+  "reason": "optional reason"
+}
+```
+
+### POST /gmail/candidates
+Enqueue Gmail-derived candidate task for manual approval.
+
+**Request Body:**
+```json
+{
+  "externalId": "gmail_message_id",
+  "title": "Follow up with team",
+  "description": "Optional details from email",
+  "deadline": "YYYY-MM-DD",
+  "estimatedMinutes": 20,
+  "tags": ["email", "follow-up"],
+  "payloadJson": "{\"threadId\":\"...\"}"
+}
+```
+
 ## MCP Server
 
 Run the MCP server for AI agent integration:
@@ -139,3 +202,9 @@ bun run mcp-server.ts
 | delete_task | Delete a task |
 | get_timeline | Get timeline for date range |
 | get_inbox | Get all inbox tasks |
+| get_sync_status | Get integration and sync status |
+| import_google_calendar | Trigger Google Calendar import |
+| list_review_queue | List manual approval queue |
+| approve_review_item | Approve queue item into tasks |
+| reject_review_item | Reject queue item |
+| enqueue_gmail_candidate | Add Gmail candidate to review queue |

@@ -10,6 +10,8 @@
 
 import type * as http from "../http.js";
 import type * as index from "../index.js";
+import type * as sync from "../sync.js";
+import type * as syncActions from "../syncActions.js";
 import type * as tasks from "../tasks.js";
 
 import type {
@@ -21,6 +23,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   http: typeof http;
   index: typeof index;
+  sync: typeof sync;
+  syncActions: typeof syncActions;
   tasks: typeof tasks;
 }>;
 

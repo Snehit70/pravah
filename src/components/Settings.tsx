@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { X, Calendar, Mail, CheckCircle, XCircle, RefreshCw, ExternalLink } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useAction, useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import {
   getGoogleTokens,
   saveGoogleTokens,
@@ -8,7 +10,6 @@ import {
   getGoogleOAuthUrl,
   parseGoogleTokens,
   exchangeGoogleAuthCode,
-  fetchCalendarEvents,
   fetchGmailMessages,
 } from "../lib/google/api";
 import { cn } from "../lib/utils";
@@ -38,6 +39,8 @@ export function Settings({ onClose }: SettingsProps) {
   const [calendarEnabled, setCalendarEnabled] = useState(false);
   const [gmailEnabled, setGmailEnabled] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const upsertIntegration = useMutation(api.sync.upsertIntegration);
+  const importGoogleCalendar = useAction(api.syncActions.importGoogleCalendarAction);
   const { showError, showSuccess } = useToast();
 
   useEffect(() => {
@@ -114,6 +117,11 @@ export function Settings({ onClose }: SettingsProps) {
 
   const handleGoogleDisconnect = () => {
     clearGoogleTokens();
+    void upsertIntegration({
+      provider: "google_calendar",
+      status: "disconnected",
+      syncEnabled: false,
+    });
     setGoogleConnected(false);
     setCalendarEnabled(false);
     setGmailEnabled(false);
@@ -129,8 +137,13 @@ export function Settings({ onClose }: SettingsProps) {
     setSyncing(true);
     try {
       if (calendarEnabled) {
-        const events = await fetchCalendarEvents(tokens.accessToken);
-        console.log("Calendar events:", events);
+        await upsertIntegration({
+          provider: "google_calendar",
+          status: "connected",
+          syncEnabled: true,
+          accessToken: tokens.accessToken,
+        });
+        await importGoogleCalendar({});
       }
       if (gmailEnabled) {
         const messages = await fetchGmailMessages(tokens.accessToken);
