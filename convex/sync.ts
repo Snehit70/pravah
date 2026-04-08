@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 
 const providerValidator = v.union(v.literal("google_calendar"), v.literal("gmail"));
 
@@ -12,20 +13,17 @@ function computeContentHash(input: {
   return JSON.stringify(input);
 }
 
-async function getNextPosition(
-  ctx: { db: { query: (table: "tasks") => any } },
-  scheduledDate?: string
-) {
+async function getNextPosition(ctx: MutationCtx, scheduledDate?: string) {
   let tasksQuery = ctx.db.query("tasks");
   if (scheduledDate) {
-    tasksQuery = tasksQuery.filter((q: any) =>
+    tasksQuery = tasksQuery.filter((q) =>
       q.and(
         q.eq(q.field("scheduledDate"), scheduledDate),
         q.eq(q.field("status"), "scheduled")
       )
     );
   } else {
-    tasksQuery = tasksQuery.filter((q: any) => q.eq(q.field("status"), "inbox"));
+    tasksQuery = tasksQuery.filter((q) => q.eq(q.field("status"), "inbox"));
   }
 
   const tasks = await tasksQuery.collect();

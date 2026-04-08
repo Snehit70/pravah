@@ -58,7 +58,7 @@ export function GoogleCallback() {
     };
 
     handleCallback();
-  }, [processed, showError, showSuccess]);
+  }, [processed, showError, showSuccess, upsertIntegration]);
 
   return null;
 }

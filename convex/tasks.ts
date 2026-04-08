@@ -147,8 +147,10 @@ export const reopenTask = mutation({
     const task = await ctx.db.get(args.taskId);
     if (!task) throw new Error("Task not found");
 
-    let q = ctx.db.query("tasks").filter((q) => q.eq(q.field("status"), "inbox"));
-    const inboxTasks = await q.collect();
+    const inboxTasks = await ctx.db
+      .query("tasks")
+      .filter((q) => q.eq(q.field("status"), "inbox"))
+      .collect();
     const maxPosition = inboxTasks.reduce((max, t) => Math.max(max, t.position), -1);
 
     await ctx.db.patch(args.taskId, {
