@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -23,21 +23,30 @@ import { GoogleCallback } from "./components/GoogleCallback";
 import { useTaskBoardData } from "./hooks/useTaskBoardData";
 import { useTaskDragHandlers } from "./hooks/useTaskDragHandlers";
 import { useAppKeyboardShortcuts } from "./hooks/useAppKeyboardShortcuts";
+import { useAppOverlays } from "./hooks/useAppOverlays";
 
 export function App() {
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [showQuickAdd, setShowQuickAdd] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+  const {
+    selectedTask,
+    showQuickAdd,
+    showSettings,
+    openTaskPopup,
+    closeTaskPopup,
+    openQuickAdd,
+    closeQuickAdd,
+    openSettings,
+    closeSettings,
+  } = useAppOverlays();
 
   const tasks = useQuery(api.tasks.listTasks, {});
   const moveTask = useMutation(api.tasks.moveTask);
   const reorderTasks = useMutation(api.tasks.reorderTasks);
 
   useAppKeyboardShortcuts({
-    openQuickAdd: () => setShowQuickAdd(true),
-    closeQuickAdd: () => setShowQuickAdd(false),
-    closeTaskPopup: () => setSelectedTask(null),
+    openQuickAdd,
+    closeQuickAdd,
+    closeTaskPopup,
   });
 
   const sensors = useSensors(
@@ -55,10 +64,6 @@ export function App() {
     setDraggedTask,
   });
 
-  const handleTaskClick = useCallback((task: Task) => {
-    setSelectedTask(task);
-  }, []);
-
   if (tasks === undefined) {
     return <LoadingSkeleton />;
   }
@@ -73,14 +78,14 @@ export function App() {
       <GoogleCallback />
       <div className="radial-dots-surface flex h-screen">
         <div className="radial-bloom-surface">
-          <InboxSidebar tasks={inboxTasks} onTaskClick={handleTaskClick} />
+          <InboxSidebar tasks={inboxTasks} onTaskClick={openTaskPopup} />
         </div>
         <main className="flex-1 overflow-hidden radial-bloom-surface">
           <Timeline
             tasksByDate={tasksByDate}
-            onTaskClick={handleTaskClick}
-            onOpenSettings={() => setShowSettings(true)}
-            onOpenQuickAdd={() => setShowQuickAdd(true)}
+            onTaskClick={openTaskPopup}
+            onOpenSettings={openSettings}
+            onOpenQuickAdd={openQuickAdd}
           />
         </main>
       </div>
@@ -90,12 +95,12 @@ export function App() {
       </DragOverlay>
 
       {selectedTask && (
-        <TaskPopup task={selectedTask} onClose={() => setSelectedTask(null)} />
+        <TaskPopup task={selectedTask} onClose={closeTaskPopup} />
       )}
 
-      {showQuickAdd && <QuickAdd onClose={() => setShowQuickAdd(false)} />}
+      {showQuickAdd && <QuickAdd onClose={closeQuickAdd} />}
 
-      {showSettings && <Settings onClose={() => setShowSettings(false)} />}
+      {showSettings && <Settings onClose={closeSettings} />}
     </DndContext>
   );
 }
