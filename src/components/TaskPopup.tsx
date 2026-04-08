@@ -23,6 +23,8 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
 
   const updateTask = useMutation(api.tasks.updateTask);
   const completeTask = useMutation(api.tasks.completeTask);
+  const reopenTask = useMutation(api.tasks.reopenTask);
+  const unscheduleTask = useMutation(api.tasks.unscheduleTask);
   const deleteTask = useMutation(api.tasks.deleteTask);
   const { showError, showSuccess } = useToast();
 
@@ -71,7 +73,28 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
     }
   };
 
+  const handleReopen = async () => {
+    try {
+      await reopenTask({ taskId: task._id });
+      showSuccess("Task reopened to inbox");
+      onClose();
+    } catch {
+      showError("Failed to reopen task");
+    }
+  };
+
+  const handleUnschedule = async () => {
+    try {
+      await unscheduleTask({ taskId: task._id });
+      showSuccess("Task moved back to inbox");
+      onClose();
+    } catch {
+      showError("Failed to unschedule task");
+    }
+  };
+
   const isCompleted = task.status === "completed";
+  const isScheduled = task.status === "scheduled";
 
   return (
     <Modal isOpen={true} onClose={onClose} title="Edit Task">
@@ -142,6 +165,26 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
                   className="flex-1"
                 >
                   Complete
+                </Button>
+              )}
+
+              {isCompleted && (
+                <Button
+                  onClick={handleReopen}
+                  variant="secondary"
+                  className="flex-1"
+                >
+                  Reopen
+                </Button>
+              )}
+
+              {isScheduled && !isCompleted && (
+                <Button
+                  onClick={handleUnschedule}
+                  variant="ghost"
+                  className="flex-1"
+                >
+                  Unschedule
                 </Button>
               )}
 

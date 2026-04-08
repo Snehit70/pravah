@@ -20,7 +20,7 @@
    - User Type: **External**
    - Fill in required fields (app name, email)
 4. Application type: **Web application**
-5. Add authorized redirect URI: `http://localhost:5173/auth/callback`
+5. Add authorized redirect URI: `http://localhost:5173/google-callback`
 6. Copy **Client ID** and **Client Secret**
 
 ## Create Service Account (for server-side)

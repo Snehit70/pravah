@@ -58,7 +58,6 @@ export function TaskCard({ task, onClick, isDragOverlay }: TaskCardProps) {
   return (
     <motion.div
       ref={setNodeRef}
-      style={style}
       {...attributes}
       {...listeners}
       onClick={(e) => {

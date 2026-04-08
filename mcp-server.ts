@@ -128,6 +128,40 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
+        name: "reopen_task",
+        description: "Reopen a completed task back into inbox",
+        inputSchema: {
+          type: "object",
+          properties: {
+            taskId: { type: "string", description: "Task ID" },
+          },
+          required: ["taskId"],
+        },
+      },
+      {
+        name: "unschedule_task",
+        description: "Move a scheduled task back to inbox",
+        inputSchema: {
+          type: "object",
+          properties: {
+            taskId: { type: "string", description: "Task ID" },
+          },
+          required: ["taskId"],
+        },
+      },
+      {
+        name: "bulk_reschedule",
+        description: "Reschedule multiple tasks to one date",
+        inputSchema: {
+          type: "object",
+          properties: {
+            taskIds: { type: "array", items: { type: "string" } },
+            targetDate: { type: "string", description: "Target date YYYY-MM-DD" },
+          },
+          required: ["taskIds", "targetDate"],
+        },
+      },
+      {
         name: "update_task",
         description: "Update a task's details",
         inputSchema: {
@@ -174,6 +208,87 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {},
         },
       },
+      {
+        name: "get_sync_status",
+        description: "Get sync status, last run, and integration health",
+        inputSchema: {
+          type: "object",
+          properties: {
+            provider: {
+              type: "string",
+              enum: ["google_calendar", "gmail"],
+              description: "Integration provider",
+            },
+          },
+        },
+      },
+      {
+        name: "import_google_calendar",
+        description: "Run one-way Google Calendar import into Pravah",
+        inputSchema: {
+          type: "object",
+          properties: {
+            accessToken: { type: "string", description: "Google OAuth access token" },
+            tokenExpiresAt: { type: "number", description: "Token expiry timestamp in ms" },
+            calendarId: { type: "string", description: "Calendar ID (default: primary)" },
+            timeMin: { type: "string", description: "Optional lower bound ISO datetime" },
+            timeMax: { type: "string", description: "Optional upper bound ISO datetime" },
+          },
+          required: ["accessToken"],
+        },
+      },
+      {
+        name: "list_review_queue",
+        description: "List review queue items for manual approval",
+        inputSchema: {
+          type: "object",
+          properties: {
+            status: { type: "string", enum: ["pending", "approved", "rejected"] },
+            limit: { type: "number", description: "Max number of items" },
+          },
+        },
+      },
+      {
+        name: "approve_review_item",
+        description: "Approve a review queue item and create a real task",
+        inputSchema: {
+          type: "object",
+          properties: {
+            reviewId: { type: "string", description: "Review queue item ID" },
+            scheduledDate: { type: "string", description: "Optional target date YYYY-MM-DD" },
+          },
+          required: ["reviewId"],
+        },
+      },
+      {
+        name: "reject_review_item",
+        description: "Reject a review queue item",
+        inputSchema: {
+          type: "object",
+          properties: {
+            reviewId: { type: "string", description: "Review queue item ID" },
+            reason: { type: "string", description: "Optional rejection reason" },
+          },
+          required: ["reviewId"],
+        },
+      },
+      {
+        name: "enqueue_gmail_candidate",
+        description: "Add a Gmail-derived candidate task into manual review queue",
+        inputSchema: {
+          type: "object",
+          properties: {
+            externalId: { type: "string", description: "Source message ID" },
+            title: { type: "string", description: "Candidate task title" },
+            description: { type: "string", description: "Candidate task description" },
+            deadline: { type: "string", description: "Optional deadline YYYY-MM-DD" },
+            estimatedMinutes: { type: "number", description: "Optional effort estimate" },
+            tags: { type: "array", items: { type: "string" } },
+            payloadJson: { type: "string", description: "Optional source payload snapshot" },
+          },
+          required: ["externalId", "title"],
+        },
+      },
     ],
   };
 });
@@ -207,6 +322,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const completed = await callConvexAPI("/tasks/complete", "POST", taskId ? { taskId } : {});
         return { content: [{ type: "text", text: JSON.stringify(completed, null, 2) }] };
       }
+      case "reopen_task": {
+        const reopened = await callConvexAPI("/tasks/reopen", "POST", args);
+        return { content: [{ type: "text", text: JSON.stringify(reopened, null, 2) }] };
+      }
+      case "unschedule_task": {
+        const unscheduled = await callConvexAPI("/tasks/unschedule", "POST", args);
+        return { content: [{ type: "text", text: JSON.stringify(unscheduled, null, 2) }] };
+      }
+      case "bulk_reschedule": {
+        const moved = await callConvexAPI("/tasks/bulk-reschedule", "POST", args);
+        return { content: [{ type: "text", text: JSON.stringify(moved, null, 2) }] };
+      }
       case "update_task": {
         const updated = await callConvexAPI("/tasks/update", "POST", args);
         return { content: [{ type: "text", text: JSON.stringify(updated, null, 2) }] };
@@ -225,6 +352,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "get_inbox": {
         const inbox = await callConvexAPI("/inbox", "GET");
         return { content: [{ type: "text", text: JSON.stringify(inbox, null, 2) }] };
+      }
+      case "get_sync_status": {
+        const provider = readStringArg(args, "provider") ?? "google_calendar";
+        const status = await callConvexAPI(`/sync/status?provider=${provider}`, "GET");
+        return { content: [{ type: "text", text: JSON.stringify(status, null, 2) }] };
+      }
+      case "import_google_calendar": {
+        const imported = await callConvexAPI("/sync/google-calendar/import", "POST", args);
+        return { content: [{ type: "text", text: JSON.stringify(imported, null, 2) }] };
+      }
+      case "list_review_queue": {
+        const status = readStringArg(args, "status") ?? "";
+        const limit = typeof args.limit === "number" ? args.limit : "";
+        const queue = await callConvexAPI(`/review-queue?status=${status}&limit=${limit}`, "GET");
+        return { content: [{ type: "text", text: JSON.stringify(queue, null, 2) }] };
+      }
+      case "approve_review_item": {
+        const approved = await callConvexAPI("/review-queue/approve", "POST", args);
+        return { content: [{ type: "text", text: JSON.stringify(approved, null, 2) }] };
+      }
+      case "reject_review_item": {
+        const rejected = await callConvexAPI("/review-queue/reject", "POST", args);
+        return { content: [{ type: "text", text: JSON.stringify(rejected, null, 2) }] };
+      }
+      case "enqueue_gmail_candidate": {
+        const queued = await callConvexAPI("/gmail/candidates", "POST", args);
+        return { content: [{ type: "text", text: JSON.stringify(queued, null, 2) }] };
       }
       default:
         return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };

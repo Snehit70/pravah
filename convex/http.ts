@@ -131,6 +131,19 @@ const completeTaskSchema = z.object({
   taskId: z.string().min(1, "Task ID is required").transform((v) => v as Id<"tasks">),
 });
 
+const reopenTaskSchema = z.object({
+  taskId: z.string().min(1, "Task ID is required").transform((v) => v as Id<"tasks">),
+});
+
+const unscheduleTaskSchema = z.object({
+  taskId: z.string().min(1, "Task ID is required").transform((v) => v as Id<"tasks">),
+});
+
+const bulkRescheduleSchema = z.object({
+  taskIds: z.array(z.string().min(1).transform((v) => v as Id<"tasks">)).min(1),
+  targetDate: z.string().regex(dateRegex, "Invalid date format (YYYY-MM-DD)"),
+});
+
 const deleteTaskSchema = z.object({
   taskId: z.string().min(1, "Task ID is required").transform((v) => v as Id<"tasks">),
 });
@@ -139,6 +152,43 @@ const googleTokenExchangeSchema = z.object({
   code: z.string().min(1, "Authorization code is required"),
   codeVerifier: z.string().min(1, "PKCE code verifier is required"),
   redirectUri: z.string().url("Invalid redirect URI"),
+});
+
+const syncStatusSchema = z.object({
+  provider: z.enum(["google_calendar", "gmail"]).default("google_calendar"),
+});
+
+const reviewQueueListSchema = z.object({
+  status: z.enum(["pending", "approved", "rejected"]).optional(),
+  limit: z.coerce.number().int().positive().max(200).optional(),
+});
+
+const reviewApproveSchema = z.object({
+  reviewId: z.string().min(1, "Review ID is required").transform((v) => v as Id<"reviewQueue">),
+  scheduledDate: z.string().regex(dateRegex, "Invalid date format (YYYY-MM-DD)").optional(),
+});
+
+const reviewRejectSchema = z.object({
+  reviewId: z.string().min(1, "Review ID is required").transform((v) => v as Id<"reviewQueue">),
+  reason: z.string().max(500).optional(),
+});
+
+const gmailCandidateSchema = z.object({
+  externalId: z.string().min(1, "External ID is required"),
+  title: z.string().min(1, "Title is required").max(500, "Title too long"),
+  description: z.string().max(5000).optional(),
+  deadline: z.string().regex(dateRegex, "Invalid date format (YYYY-MM-DD)").optional(),
+  estimatedMinutes: z.number().int().positive().optional(),
+  tags: z.array(z.string().max(50)).max(20, "Too many tags").optional(),
+  payloadJson: z.string().max(20000).optional(),
+});
+
+const googleCalendarImportSchema = z.object({
+  accessToken: z.string().min(1, "Access token is required"),
+  tokenExpiresAt: z.number().int().positive().optional(),
+  calendarId: z.string().optional(),
+  timeMin: z.string().optional(),
+  timeMax: z.string().optional(),
 });
 
 // POST /tasks/move - Move task to different date
@@ -275,6 +325,87 @@ http.route({
   }),
 });
 
+// POST /tasks/reopen - Reopen a completed task back to inbox
+http.route({
+  path: "/tasks/reopen",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
+    const body = await request.json();
+    const validation = reopenTaskSchema.safeParse(body);
+    if (!validation.success) {
+      return new Response(JSON.stringify({
+        error: "Validation failed",
+        details: validation.error.issues
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    await ctx.runMutation(api.tasks.reopenTask, validation.data);
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// POST /tasks/unschedule - Move task into inbox
+http.route({
+  path: "/tasks/unschedule",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
+    const body = await request.json();
+    const validation = unscheduleTaskSchema.safeParse(body);
+    if (!validation.success) {
+      return new Response(JSON.stringify({
+        error: "Validation failed",
+        details: validation.error.issues
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    await ctx.runMutation(api.tasks.unscheduleTask, validation.data);
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// POST /tasks/bulk-reschedule - Reschedule multiple tasks in one operation
+http.route({
+  path: "/tasks/bulk-reschedule",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
+    const body = await request.json();
+    const validation = bulkRescheduleSchema.safeParse(body);
+    if (!validation.success) {
+      return new Response(JSON.stringify({
+        error: "Validation failed",
+        details: validation.error.issues
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const result = await ctx.runMutation(api.tasks.bulkReschedule, validation.data);
+    return new Response(JSON.stringify({ success: true, ...result }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
 // POST /tasks/delete - Delete a task
 http.route({
   path: "/tasks/delete",
@@ -352,7 +483,10 @@ http.route({
 http.route({
   path: "/google/token",
   method: "POST",
-  handler: httpAction(async (ctx, request) => {
+  handler: httpAction(async (_ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
     const body = await request.json();
     const validation = googleTokenExchangeSchema.safeParse(body);
     if (!validation.success) {
@@ -410,6 +544,181 @@ http.route({
 
     const tokenData = await response.json();
     return new Response(JSON.stringify(tokenData), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// GET /sync/status - Get integration and sync status
+http.route({
+  path: "/sync/status",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
+    const url = new URL(request.url);
+    const validation = syncStatusSchema.safeParse({
+      provider: url.searchParams.get("provider") || undefined,
+    });
+    if (!validation.success) {
+      return new Response(JSON.stringify({
+        error: "Validation failed",
+        details: validation.error.issues,
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const { provider } = validation.data;
+    const status = await ctx.runQuery(api.sync.getIntegrationStatus, { provider });
+    return new Response(JSON.stringify(status), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// POST /sync/google-calendar/import - Trigger one-way import into Pravah
+http.route({
+  path: "/sync/google-calendar/import",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
+    const body = await request.json();
+    const validation = googleCalendarImportSchema.safeParse(body);
+    if (!validation.success) {
+      return new Response(JSON.stringify({
+        error: "Validation failed",
+        details: validation.error.issues,
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const data = validation.data;
+
+    const result = await ctx.runAction(api.syncActions.importGoogleCalendarAction, {
+      accessToken: data.accessToken,
+      tokenExpiresAt: data.tokenExpiresAt,
+      calendarId: data.calendarId,
+      timeMin: data.timeMin,
+      timeMax: data.timeMax,
+    });
+    return new Response(JSON.stringify(result), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// GET /review-queue - List review queue items
+http.route({
+  path: "/review-queue",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
+    const url = new URL(request.url);
+    const validation = reviewQueueListSchema.safeParse({
+      status: url.searchParams.get("status") || undefined,
+      limit: url.searchParams.get("limit") || undefined,
+    });
+    if (!validation.success) {
+      return new Response(JSON.stringify({
+        error: "Validation failed",
+        details: validation.error.issues,
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const queue = await ctx.runQuery(api.sync.listReviewQueue, validation.data);
+    return new Response(JSON.stringify(queue), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// POST /review-queue/approve - Approve one review item into tasks
+http.route({
+  path: "/review-queue/approve",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
+    const body = await request.json();
+    const validation = reviewApproveSchema.safeParse(body);
+    if (!validation.success) {
+      return new Response(JSON.stringify({
+        error: "Validation failed",
+        details: validation.error.issues,
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const result = await ctx.runMutation(api.sync.approveReviewItem, validation.data);
+    return new Response(JSON.stringify(result), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// POST /review-queue/reject - Reject one review item
+http.route({
+  path: "/review-queue/reject",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
+    const body = await request.json();
+    const validation = reviewRejectSchema.safeParse(body);
+    if (!validation.success) {
+      return new Response(JSON.stringify({
+        error: "Validation failed",
+        details: validation.error.issues,
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    await ctx.runMutation(api.sync.rejectReviewItem, validation.data);
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// POST /gmail/candidates - Enqueue Gmail-derived candidate for manual approval
+http.route({
+  path: "/gmail/candidates",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
+    const body = await request.json();
+    const validation = gmailCandidateSchema.safeParse(body);
+    if (!validation.success) {
+      return new Response(JSON.stringify({
+        error: "Validation failed",
+        details: validation.error.issues,
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const result = await ctx.runMutation(api.sync.enqueueGmailCandidate, validation.data);
+    return new Response(JSON.stringify(result), {
       headers: { "Content-Type": "application/json" },
     });
   }),

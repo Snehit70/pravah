@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import { X, Calendar, Mail, CheckCircle, XCircle, RefreshCw, ExternalLink } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 import {
   getGoogleTokens,
   saveGoogleTokens,
@@ -8,7 +11,6 @@ import {
   getGoogleOAuthUrl,
   parseGoogleTokens,
   exchangeGoogleAuthCode,
-  fetchCalendarEvents,
   fetchGmailMessages,
 } from "../lib/google/api";
 import { cn } from "../lib/utils";
@@ -38,6 +40,16 @@ export function Settings({ onClose }: SettingsProps) {
   const [calendarEnabled, setCalendarEnabled] = useState(false);
   const [gmailEnabled, setGmailEnabled] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [activeReviewActionId, setActiveReviewActionId] = useState<string | null>(null);
+  const upsertIntegration = useMutation(api.sync.upsertIntegration);
+  const enqueueGmailCandidate = useMutation(api.sync.enqueueGmailCandidate);
+  const approveReviewItem = useMutation(api.sync.approveReviewItem);
+  const rejectReviewItem = useMutation(api.sync.rejectReviewItem);
+  const importGoogleCalendar = useAction(api.syncActions.importGoogleCalendarAction);
+  const pendingReviewItems = useQuery(api.sync.listReviewQueue, {
+    status: "pending",
+    limit: 25,
+  });
   const { showError, showSuccess } = useToast();
 
   useEffect(() => {
@@ -114,6 +126,11 @@ export function Settings({ onClose }: SettingsProps) {
 
   const handleGoogleDisconnect = () => {
     clearGoogleTokens();
+    void upsertIntegration({
+      provider: "google_calendar",
+      status: "disconnected",
+      syncEnabled: false,
+    });
     setGoogleConnected(false);
     setCalendarEnabled(false);
     setGmailEnabled(false);
@@ -129,12 +146,42 @@ export function Settings({ onClose }: SettingsProps) {
     setSyncing(true);
     try {
       if (calendarEnabled) {
-        const events = await fetchCalendarEvents(tokens.accessToken);
-        console.log("Calendar events:", events);
+        await upsertIntegration({
+          provider: "google_calendar",
+          status: "connected",
+          syncEnabled: true,
+        });
+        await importGoogleCalendar({ accessToken: tokens.accessToken });
       }
       if (gmailEnabled) {
         const messages = await fetchGmailMessages(tokens.accessToken);
-        console.log("Gmail messages:", messages);
+        let queuedCount = 0;
+        for (const message of messages) {
+          const candidateTitle =
+            message.subject?.trim() ||
+            message.snippet?.trim() ||
+            `Email follow-up ${message.id.slice(0, 8)}`;
+          const result = await enqueueGmailCandidate({
+            externalId: message.id,
+            title: candidateTitle,
+            description: message.snippet,
+            payloadJson: JSON.stringify({
+              threadId: message.threadId,
+              from: message.from,
+              date: message.date,
+            }),
+          });
+          if (!result.deduplicated) {
+            queuedCount += 1;
+          }
+        }
+        if (messages.length > 0) {
+          showSuccess(
+            queuedCount > 0
+              ? `Queued ${queuedCount} Gmail item(s) for approval`
+              : "No new Gmail candidates to review"
+          );
+        }
       }
       showSuccess("Sync completed successfully!");
     } catch (error) {
@@ -142,6 +189,32 @@ export function Settings({ onClose }: SettingsProps) {
       showError("Failed to sync with Google. Please try again.");
     }
     setSyncing(false);
+  };
+
+  const handleApproveReviewItem = async (reviewId: Id<"reviewQueue">) => {
+    setActiveReviewActionId(reviewId);
+    try {
+      await approveReviewItem({ reviewId });
+      showSuccess("Approved and added to tasks");
+    } catch (error) {
+      console.error("Approve review item failed", error);
+      showError("Failed to approve review item");
+    } finally {
+      setActiveReviewActionId(null);
+    }
+  };
+
+  const handleRejectReviewItem = async (reviewId: Id<"reviewQueue">) => {
+    setActiveReviewActionId(reviewId);
+    try {
+      await rejectReviewItem({ reviewId });
+      showSuccess("Review item rejected");
+    } catch (error) {
+      console.error("Reject review item failed", error);
+      showError("Failed to reject review item");
+    } finally {
+      setActiveReviewActionId(null);
+    }
   };
 
   const handleBackdropClick = (e: React.MouseEvent) => {
@@ -335,6 +408,59 @@ export function Settings({ onClose }: SettingsProps) {
                           </motion.div>
                         )}
                       </AnimatePresence>
+
+                      <div className="border-t border-zinc-700/50 pt-4 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs uppercase tracking-[0.08em] text-zinc-500">
+                            Review Queue
+                          </p>
+                          <span className="text-xs text-zinc-400">
+                            {(pendingReviewItems ?? []).length} pending
+                          </span>
+                        </div>
+
+                        {(pendingReviewItems ?? []).length === 0 ? (
+                          <p className="text-xs text-zinc-600">
+                            No pending approvals
+                          </p>
+                        ) : (
+                          <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                            {(pendingReviewItems ?? []).map((item) => (
+                              <div
+                                key={item._id}
+                                className="rounded-lg border border-zinc-700/60 bg-zinc-800/60 p-2.5"
+                              >
+                                <p className="text-sm text-zinc-100 leading-snug">{item.title}</p>
+                                {item.description && (
+                                  <p className="text-xs text-zinc-500 mt-1 line-clamp-2">
+                                    {item.description}
+                                  </p>
+                                )}
+                                <div className="flex items-center gap-2 mt-2">
+                                  <Button
+                                    onClick={() => handleApproveReviewItem(item._id)}
+                                    size="sm"
+                                    variant="primary"
+                                    disabled={activeReviewActionId === item._id}
+                                    className="flex-1"
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    onClick={() => handleRejectReviewItem(item._id)}
+                                    size="sm"
+                                    variant="ghost"
+                                    disabled={activeReviewActionId === item._id}
+                                    className="flex-1 text-red-400 hover:text-red-400"
+                                  >
+                                    Reject
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
