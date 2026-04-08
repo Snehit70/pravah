@@ -128,6 +128,40 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
+        name: "reopen_task",
+        description: "Reopen a completed task back into inbox",
+        inputSchema: {
+          type: "object",
+          properties: {
+            taskId: { type: "string", description: "Task ID" },
+          },
+          required: ["taskId"],
+        },
+      },
+      {
+        name: "unschedule_task",
+        description: "Move a scheduled task back to inbox",
+        inputSchema: {
+          type: "object",
+          properties: {
+            taskId: { type: "string", description: "Task ID" },
+          },
+          required: ["taskId"],
+        },
+      },
+      {
+        name: "bulk_reschedule",
+        description: "Reschedule multiple tasks to one date",
+        inputSchema: {
+          type: "object",
+          properties: {
+            taskIds: { type: "array", items: { type: "string" } },
+            targetDate: { type: "string", description: "Target date YYYY-MM-DD" },
+          },
+          required: ["taskIds", "targetDate"],
+        },
+      },
+      {
         name: "update_task",
         description: "Update a task's details",
         inputSchema: {
@@ -284,6 +318,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const taskId = readStringArg(args, "taskId");
         const completed = await callConvexAPI("/tasks/complete", "POST", taskId ? { taskId } : {});
         return { content: [{ type: "text", text: JSON.stringify(completed, null, 2) }] };
+      }
+      case "reopen_task": {
+        const reopened = await callConvexAPI("/tasks/reopen", "POST", args);
+        return { content: [{ type: "text", text: JSON.stringify(reopened, null, 2) }] };
+      }
+      case "unschedule_task": {
+        const unscheduled = await callConvexAPI("/tasks/unschedule", "POST", args);
+        return { content: [{ type: "text", text: JSON.stringify(unscheduled, null, 2) }] };
+      }
+      case "bulk_reschedule": {
+        const moved = await callConvexAPI("/tasks/bulk-reschedule", "POST", args);
+        return { content: [{ type: "text", text: JSON.stringify(moved, null, 2) }] };
       }
       case "update_task": {
         const updated = await callConvexAPI("/tasks/update", "POST", args);

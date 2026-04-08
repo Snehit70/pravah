@@ -131,6 +131,19 @@ const completeTaskSchema = z.object({
   taskId: z.string().min(1, "Task ID is required").transform((v) => v as Id<"tasks">),
 });
 
+const reopenTaskSchema = z.object({
+  taskId: z.string().min(1, "Task ID is required").transform((v) => v as Id<"tasks">),
+});
+
+const unscheduleTaskSchema = z.object({
+  taskId: z.string().min(1, "Task ID is required").transform((v) => v as Id<"tasks">),
+});
+
+const bulkRescheduleSchema = z.object({
+  taskIds: z.array(z.string().min(1).transform((v) => v as Id<"tasks">)).min(1),
+  targetDate: z.string().regex(dateRegex, "Invalid date format (YYYY-MM-DD)"),
+});
+
 const deleteTaskSchema = z.object({
   taskId: z.string().min(1, "Task ID is required").transform((v) => v as Id<"tasks">),
 });
@@ -298,6 +311,87 @@ http.route({
 
     await ctx.runMutation(api.tasks.updateTask, { taskId, ...updates });
 
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// POST /tasks/reopen - Reopen a completed task back to inbox
+http.route({
+  path: "/tasks/reopen",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
+    const body = await request.json();
+    const validation = reopenTaskSchema.safeParse(body);
+    if (!validation.success) {
+      return new Response(JSON.stringify({
+        error: "Validation failed",
+        details: validation.error.issues
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    await ctx.runMutation(api.tasks.reopenTask, validation.data);
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// POST /tasks/unschedule - Move task into inbox
+http.route({
+  path: "/tasks/unschedule",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
+    const body = await request.json();
+    const validation = unscheduleTaskSchema.safeParse(body);
+    if (!validation.success) {
+      return new Response(JSON.stringify({
+        error: "Validation failed",
+        details: validation.error.issues
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    await ctx.runMutation(api.tasks.unscheduleTask, validation.data);
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// POST /tasks/bulk-reschedule - Reschedule multiple tasks in one operation
+http.route({
+  path: "/tasks/bulk-reschedule",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const authError = requireAuth(request);
+    if (authError) return authError;
+
+    const body = await request.json();
+    const validation = bulkRescheduleSchema.safeParse(body);
+    if (!validation.success) {
+      return new Response(JSON.stringify({
+        error: "Validation failed",
+        details: validation.error.issues
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    await ctx.runMutation(api.tasks.bulkReschedule, validation.data);
     return new Response(JSON.stringify({ success: true }), {
       headers: { "Content-Type": "application/json" },
     });

@@ -75,6 +75,26 @@ Mark a task as completed.
 }
 ```
 
+### POST /tasks/reopen
+Reopen a completed task back to inbox.
+
+**Request Body:**
+```json
+{
+  "taskId": "task_id"
+}
+```
+
+### POST /tasks/unschedule
+Move a task from timeline back to inbox.
+
+**Request Body:**
+```json
+{
+  "taskId": "task_id"
+}
+```
+
 ### POST /tasks/update
 Update a task.
 
@@ -95,6 +115,17 @@ Delete a task.
 ```json
 {
   "taskId": "task_id"
+}
+```
+
+### POST /tasks/bulk-reschedule
+Reschedule multiple tasks to a single date.
+
+**Request Body:**
+```json
+{
+  "taskIds": ["id1", "id2"],
+  "targetDate": "YYYY-MM-DD"
 }
 ```
 
@@ -198,6 +229,9 @@ bun run mcp-server.ts
 | move_task | Move task to different date |
 | reorder_tasks | Reorder tasks within a day |
 | complete_task | Mark task as completed |
+| reopen_task | Reopen completed task |
+| unschedule_task | Move task back to inbox |
+| bulk_reschedule | Reschedule multiple tasks |
 | update_task | Update task details |
 | delete_task | Delete a task |
 | get_timeline | Get timeline for date range |

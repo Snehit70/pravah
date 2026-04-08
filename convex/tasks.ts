@@ -141,6 +141,46 @@ export const completeTask = mutation({
   },
 });
 
+export const reopenTask = mutation({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) throw new Error("Task not found");
+
+    let q = ctx.db.query("tasks").filter((q) => q.eq(q.field("status"), "inbox"));
+    const inboxTasks = await q.collect();
+    const maxPosition = inboxTasks.reduce((max, t) => Math.max(max, t.position), -1);
+
+    await ctx.db.patch(args.taskId, {
+      status: "inbox",
+      scheduledDate: undefined,
+      position: maxPosition + 1,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const unscheduleTask = mutation({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) throw new Error("Task not found");
+
+    const inboxTasks = await ctx.db
+      .query("tasks")
+      .filter((q) => q.eq(q.field("status"), "inbox"))
+      .collect();
+    const maxPosition = inboxTasks.reduce((max, t) => Math.max(max, t.position), -1);
+
+    await ctx.db.patch(args.taskId, {
+      status: "inbox",
+      scheduledDate: undefined,
+      position: maxPosition + 1,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 export const updateTask = mutation({
   args: {
     taskId: v.id("tasks"),
@@ -163,6 +203,41 @@ export const deleteTask = mutation({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
     await ctx.db.delete(args.taskId);
+  },
+});
+
+export const bulkReschedule = mutation({
+  args: {
+    taskIds: v.array(v.id("tasks")),
+    targetDate: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const tasksOnDay = await ctx.db
+      .query("tasks")
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("scheduledDate"), args.targetDate),
+          q.eq(q.field("status"), "scheduled")
+        )
+      )
+      .collect();
+
+    let nextPosition = Math.max(...tasksOnDay.map((t) => t.position), -1) + 1;
+    for (const taskId of args.taskIds) {
+      const task = await ctx.db.get(taskId);
+      if (!task) continue;
+      if (task.type === "deadline" && task.deadline && args.targetDate > task.deadline) {
+        continue;
+      }
+
+      await ctx.db.patch(taskId, {
+        status: "scheduled",
+        scheduledDate: args.targetDate,
+        position: nextPosition,
+        updatedAt: Date.now(),
+      });
+      nextPosition += 1;
+    }
   },
 });
 
