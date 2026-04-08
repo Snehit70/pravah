@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -7,13 +7,10 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  type DragEndEvent,
-  type DragStartEvent,
 } from "@dnd-kit/core";
-import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
-import type { Id } from "../convex/_generated/dataModel";
 import type { Task } from "./types";
 import { Timeline } from "./components/Timeline";
 import { TaskCard } from "./components/TaskCard";
@@ -23,6 +20,8 @@ import { QuickAdd } from "./components/QuickAdd";
 import { Settings } from "./components/Settings";
 import { LoadingSkeleton } from "./components/LoadingSkeleton";
 import { GoogleCallback } from "./components/GoogleCallback";
+import { useTaskBoardData } from "./hooks/useTaskBoardData";
+import { useTaskDragHandlers } from "./hooks/useTaskDragHandlers";
 
 export function App() {
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
@@ -54,77 +53,15 @@ export function App() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const inboxTasks = useMemo(
-    () => tasks?.filter((t) => t.status === "inbox") ?? [],
-    [tasks]
-  );
+  const { inboxTasks, tasksByDate } = useTaskBoardData(tasks);
 
-  const scheduledTasks = useMemo(
-    () => tasks?.filter((t) => t.status === "scheduled") ?? [],
-    [tasks]
-  );
-
-  const tasksByDate = useMemo(() => {
-    const grouped: Record<string, Task[]> = {};
-    for (const task of scheduledTasks) {
-      if (!task.scheduledDate) continue;
-      if (!grouped[task.scheduledDate]) grouped[task.scheduledDate] = [];
-      grouped[task.scheduledDate].push(task);
-    }
-    for (const date of Object.keys(grouped)) {
-      grouped[date].sort((a, b) => a.position - b.position);
-    }
-    return grouped;
-  }, [scheduledTasks]);
-
-  const handleDragStart = useCallback(
-    (event: DragStartEvent) => {
-      const task = tasks?.find((t) => t._id === event.active.id);
-      if (task) setDraggedTask(task);
-    },
-    [tasks]
-  );
-
-  const handleDragEnd = useCallback(
-    async (event: DragEndEvent) => {
-      const { active, over } = event;
-      setDraggedTask(null);
-
-      if (!over) return;
-
-      const activeId = active.id as Id<"tasks">;
-      const overId = over.id as string;
-      const sourceTask = tasks?.find((t) => t._id === activeId);
-      if (!sourceTask) return;
-
-      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-
-      // Cross-day movement: dropping on a date column
-      if (dateRegex.test(overId)) {
-        if (sourceTask.type === "deadline" && sourceTask.deadline && overId > sourceTask.deadline) {
-          return; // Can't move past deadline
-        }
-        await moveTask({ taskId: activeId, targetDate: overId });
-        return;
-      }
-
-      // Reordering within same day
-      if (sourceTask.scheduledDate) {
-        const dayTasks = tasksByDate[sourceTask.scheduledDate] ?? [];
-        const oldIndex = dayTasks.findIndex((t) => t._id === activeId);
-        const newIndex = dayTasks.findIndex((t) => t._id === overId);
-
-        if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
-          const newOrder = arrayMove(dayTasks, oldIndex, newIndex);
-          await reorderTasks({
-            date: sourceTask.scheduledDate,
-            taskIds: newOrder.map((t) => t._id),
-          });
-        }
-      }
-    },
-    [tasks, tasksByDate, moveTask, reorderTasks]
-  );
+  const { handleDragStart, handleDragEnd } = useTaskDragHandlers({
+    tasks,
+    tasksByDate,
+    moveTask,
+    reorderTasks,
+    setDraggedTask,
+  });
 
   const handleTaskClick = useCallback((task: Task) => {
     setSelectedTask(task);
