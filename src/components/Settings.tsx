@@ -124,13 +124,18 @@ export function Settings({ onClose }: SettingsProps) {
     window.location.href = oauthUrl;
   };
 
-  const handleGoogleDisconnect = () => {
+  const handleGoogleDisconnect = async () => {
     clearGoogleTokens();
-    void upsertIntegration({
-      provider: "google_calendar",
-      status: "disconnected",
-      syncEnabled: false,
-    });
+    try {
+      await upsertIntegration({
+        provider: "google_calendar",
+        status: "disconnected",
+        syncEnabled: false,
+      });
+    } catch (error) {
+      console.error("Failed to persist Google disconnect state", error);
+      showError("Disconnected locally, but failed to update server state.");
+    }
     setGoogleConnected(false);
     setCalendarEnabled(false);
     setGmailEnabled(false);
