@@ -183,6 +183,14 @@ const gmailCandidateSchema = z.object({
   payloadJson: z.string().max(20000).optional(),
 });
 
+const googleCalendarImportSchema = z.object({
+  accessToken: z.string().min(1, "Access token is required"),
+  tokenExpiresAt: z.number().int().positive().optional(),
+  calendarId: z.string().optional(),
+  timeMin: z.string().optional(),
+  timeMax: z.string().optional(),
+});
+
 // POST /tasks/move - Move task to different date
 http.route({
   path: "/tasks/move",
@@ -576,16 +584,25 @@ http.route({
     const authError = requireAuth(request);
     if (authError) return authError;
 
-    const body = (await request.json()) as {
-      calendarId?: string;
-      timeMin?: string;
-      timeMax?: string;
-    };
+    const body = await request.json();
+    const validation = googleCalendarImportSchema.safeParse(body);
+    if (!validation.success) {
+      return new Response(JSON.stringify({
+        error: "Validation failed",
+        details: validation.error.issues,
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const data = validation.data;
 
     const result = await ctx.runAction(api.syncActions.importGoogleCalendarAction, {
-      calendarId: body.calendarId,
-      timeMin: body.timeMin,
-      timeMax: body.timeMax,
+      accessToken: data.accessToken,
+      tokenExpiresAt: data.tokenExpiresAt,
+      calendarId: data.calendarId,
+      timeMin: data.timeMin,
+      timeMax: data.timeMax,
     });
     return new Response(JSON.stringify(result), {
       headers: { "Content-Type": "application/json" },

@@ -146,6 +146,9 @@ export const reopenTask = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) throw new Error("Task not found");
+    if (task.status !== "completed") {
+      throw new Error("Task is not completed");
+    }
 
     const inboxTasks = await ctx.db
       .query("tasks")
@@ -167,6 +170,9 @@ export const unscheduleTask = mutation({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) throw new Error("Task not found");
+    if (task.status !== "scheduled") {
+      throw new Error("Task is not scheduled");
+    }
 
     const inboxTasks = await ctx.db
       .query("tasks")

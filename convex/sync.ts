@@ -10,7 +10,12 @@ function computeContentHash(input: {
   scheduledDate?: string;
   deadline?: string;
 }) {
-  return JSON.stringify(input);
+  return [
+    input.title,
+    input.description ?? "",
+    input.scheduledDate ?? "",
+    input.deadline ?? "",
+  ].join("|");
 }
 
 async function getNextPosition(ctx: MutationCtx, scheduledDate?: string) {
@@ -47,11 +52,14 @@ export const getIntegrationStatus = query({
       .order("desc")
       .first();
 
-    const pendingReviewCount = (
+    const pendingReviewItems = (
       await ctx.db
         .query("reviewQueue")
         .withIndex("by_status", (q) => q.eq("status", "pending"))
         .collect()
+    );
+    const pendingReviewCount = pendingReviewItems.filter(
+      (item) => item.provider === args.provider
     ).length;
 
     return {
@@ -67,7 +75,6 @@ export const upsertIntegration = mutation({
     provider: providerValidator,
     status: v.union(v.literal("connected"), v.literal("disconnected"), v.literal("error")),
     syncEnabled: v.boolean(),
-    accessToken: v.optional(v.string()),
     tokenExpiresAt: v.optional(v.number()),
     lastError: v.optional(v.string()),
   },

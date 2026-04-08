@@ -36,7 +36,6 @@ export function GoogleCallback() {
           provider: "google_calendar",
           status: "connected",
           syncEnabled: true,
-          accessToken: tokens.accessToken,
           tokenExpiresAt: Date.now() + tokens.expiresIn * 1000,
         });
         showSuccess("Google connected successfully!");

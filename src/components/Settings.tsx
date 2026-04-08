@@ -150,9 +150,8 @@ export function Settings({ onClose }: SettingsProps) {
           provider: "google_calendar",
           status: "connected",
           syncEnabled: true,
-          accessToken: tokens.accessToken,
         });
-        await importGoogleCalendar({});
+        await importGoogleCalendar({ accessToken: tokens.accessToken });
       }
       if (gmailEnabled) {
         const messages = await fetchGmailMessages(tokens.accessToken);

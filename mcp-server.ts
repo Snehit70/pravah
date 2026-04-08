@@ -228,10 +228,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         inputSchema: {
           type: "object",
           properties: {
+            accessToken: { type: "string", description: "Google OAuth access token" },
+            tokenExpiresAt: { type: "number", description: "Token expiry timestamp in ms" },
             calendarId: { type: "string", description: "Calendar ID (default: primary)" },
             timeMin: { type: "string", description: "Optional lower bound ISO datetime" },
             timeMax: { type: "string", description: "Optional upper bound ISO datetime" },
           },
+          required: ["accessToken"],
         },
       },
       {

@@ -161,6 +161,8 @@ Run one-way import from Google Calendar into Pravah.
 **Request Body (optional):**
 ```json
 {
+  "accessToken": "google-oauth-access-token",
+  "tokenExpiresAt": 1770000000000,
   "calendarId": "primary",
   "timeMin": "2026-04-01T00:00:00Z",
   "timeMax": "2026-04-30T23:59:59Z"

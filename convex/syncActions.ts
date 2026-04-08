@@ -10,6 +10,8 @@ function toDateString(input: string | undefined): string | undefined {
 
 export const importGoogleCalendarAction = action({
   args: {
+    accessToken: v.string(),
+    tokenExpiresAt: v.optional(v.number()),
     calendarId: v.optional(v.string()),
     timeMin: v.optional(v.string()),
     timeMax: v.optional(v.string()),
@@ -26,12 +28,8 @@ export const importGoogleCalendarAction = action({
     })) as Id<"syncRuns">;
 
     try {
-      const status = await ctx.runQuery(api.sync.getIntegrationStatus, {
-        provider: "google_calendar",
-      });
-      const integration = status.integration;
-      if (!integration || !integration.accessToken) {
-        throw new Error("Google Calendar integration is not connected");
+      if (args.tokenExpiresAt && args.tokenExpiresAt < Date.now()) {
+        throw new Error("Google Calendar token has expired - please reconnect");
       }
 
       const cursorDoc = await ctx.runQuery(api.sync.getCursor, {
@@ -51,7 +49,7 @@ export const importGoogleCalendarAction = action({
         `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
         {
           headers: {
-            Authorization: `Bearer ${integration.accessToken}`,
+            Authorization: `Bearer ${args.accessToken}`,
           },
         }
       );
@@ -105,8 +103,7 @@ export const importGoogleCalendarAction = action({
         provider: "google_calendar",
         status: "connected",
         syncEnabled: true,
-        accessToken: integration.accessToken,
-        tokenExpiresAt: integration.tokenExpiresAt,
+        tokenExpiresAt: args.tokenExpiresAt,
       });
 
       return result;
@@ -133,4 +130,3 @@ export const importGoogleCalendarAction = action({
     }
   },
 });
-
