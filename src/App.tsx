@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -22,6 +22,7 @@ import { LoadingSkeleton } from "./components/LoadingSkeleton";
 import { GoogleCallback } from "./components/GoogleCallback";
 import { useTaskBoardData } from "./hooks/useTaskBoardData";
 import { useTaskDragHandlers } from "./hooks/useTaskDragHandlers";
+import { useAppKeyboardShortcuts } from "./hooks/useAppKeyboardShortcuts";
 
 export function App() {
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
@@ -33,20 +34,11 @@ export function App() {
   const moveTask = useMutation(api.tasks.moveTask);
   const reorderTasks = useMutation(api.tasks.reorderTasks);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "n") {
-        e.preventDefault();
-        setShowQuickAdd(true);
-      }
-      if (e.key === "Escape") {
-        setShowQuickAdd(false);
-        setSelectedTask(null);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  useAppKeyboardShortcuts({
+    openQuickAdd: () => setShowQuickAdd(true),
+    closeQuickAdd: () => setShowQuickAdd(false),
+    closeTaskPopup: () => setSelectedTask(null),
+  });
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
