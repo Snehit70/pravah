@@ -48,7 +48,7 @@ export default defineSchema({
   }).index("by_provider", ["provider"]),
   syncCursors: defineTable({
     provider: v.union(v.literal("google_calendar"), v.literal("gmail")),
-    cursor: v.optional(v.string()),
+    cursor: v.string(),
     updatedAt: v.number(),
   }).index("by_provider", ["provider"]),
   externalTaskMappings: defineTable({
