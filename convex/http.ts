@@ -352,7 +352,7 @@ http.route({
 http.route({
   path: "/google/token",
   method: "POST",
-  handler: httpAction(async (ctx, request) => {
+  handler: httpAction(async (_ctx, request) => {
     const body = await request.json();
     const validation = googleTokenExchangeSchema.safeParse(body);
     if (!validation.success) {

@@ -37,7 +37,6 @@ function InboxTask({ task, onClick }: { task: Task; onClick: () => void }) {
   return (
     <motion.div
       ref={setNodeRef}
-      style={style}
       {...attributes}
       {...listeners}
       onClick={(e) => {
