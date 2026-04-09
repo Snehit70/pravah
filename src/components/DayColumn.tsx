@@ -1,6 +1,6 @@
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { TaskCard } from "./TaskCard";
 import type { Task } from "../types";
 import { cn, getLocalDateString, formatDay } from "../lib/utils";
@@ -13,6 +13,7 @@ interface DayColumnProps {
 
 export function DayColumn({ date, tasks, onTaskClick }: DayColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: date });
+  const shouldReduceMotion = useReducedMotion();
 
   const today = getLocalDateString();
   const { dayName, dayNum, monthShort } = formatDay(date);
@@ -65,16 +66,26 @@ export function DayColumn({ date, tasks, onTaskClick }: DayColumnProps) {
               "relative flex items-center justify-center",
               isToday && "w-11 h-11"
             )}
-            animate={isToday ? { scale: [1, 1.03, 1] } : undefined}
-            transition={isToday ? { duration: 3, repeat: Infinity, ease: "easeInOut" } : undefined}
+            animate={isToday && !shouldReduceMotion ? { scale: [1, 1.03, 1] } : undefined}
+            transition={
+              isToday && !shouldReduceMotion
+                ? { duration: 3, repeat: Infinity, ease: "easeInOut" }
+                : undefined
+            }
           >
             {isToday && (
               <>
                 {/* Outer glow ring */}
                 <motion.div
                   className="absolute inset-0 rounded-full bg-amber-500"
-                  animate={{ scale: [1, 1.3], opacity: [0.3, 0] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }}
+                  animate={
+                    shouldReduceMotion ? { opacity: 0.15 } : { scale: [1, 1.3], opacity: [0.3, 0] }
+                  }
+                  transition={
+                    shouldReduceMotion
+                      ? undefined
+                      : { duration: 2, repeat: Infinity, ease: "easeOut" }
+                  }
                 />
                 {/* Main circle */}
                 <div
@@ -100,8 +111,8 @@ export function DayColumn({ date, tasks, onTaskClick }: DayColumnProps) {
           {hasIncomplete && (
             <motion.span
               className="w-2 h-2 bg-red-500 rounded-full"
-              animate={{ opacity: [1, 0.5, 1] }}
-              transition={{ duration: 1.5, repeat: Infinity }}
+              animate={shouldReduceMotion ? undefined : { opacity: [1, 0.5, 1] }}
+              transition={shouldReduceMotion ? undefined : { duration: 1.5, repeat: Infinity }}
               title="Incomplete tasks"
             />
           )}
@@ -149,8 +160,14 @@ export function DayColumn({ date, tasks, onTaskClick }: DayColumnProps) {
           {isToday && (
             <motion.div
               className="absolute inset-0 w-4 h-4 -m-1 rounded-full bg-amber-500"
-              animate={{ scale: [1, 2], opacity: [0.4, 0] }}
-              transition={{ duration: 1.5, repeat: Infinity, ease: "easeOut" }}
+              animate={
+                shouldReduceMotion ? { opacity: 0.25 } : { scale: [1, 2], opacity: [0.4, 0] }
+              }
+              transition={
+                shouldReduceMotion
+                  ? undefined
+                  : { duration: 1.5, repeat: Infinity, ease: "easeOut" }
+              }
             />
           )}
           {/* Main dot */}

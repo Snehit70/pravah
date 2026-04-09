@@ -1,5 +1,5 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Settings as SettingsIcon, Plus, Command } from "lucide-react";
 import { DayColumn } from "./DayColumn";
 import type { Task } from "../types";
@@ -15,6 +15,8 @@ interface TimelineProps {
 
 // Flow illustration SVG component for empty state
 function FlowIllustration() {
+  const shouldReduceMotion = useReducedMotion();
+
   return (
     <motion.svg
       width="240"
@@ -33,9 +35,9 @@ function FlowIllustration() {
         strokeWidth="2"
         strokeLinecap="round"
         fill="none"
-        initial={{ pathLength: 0 }}
-        animate={{ pathLength: 1 }}
-        transition={{ duration: 2, ease: "easeOut" }}
+        initial={shouldReduceMotion ? undefined : { pathLength: 0 }}
+        animate={shouldReduceMotion ? undefined : { pathLength: 1 }}
+        transition={shouldReduceMotion ? undefined : { duration: 2, ease: "easeOut" }}
       />
       {/* Gradient definition */}
       <defs>
@@ -70,9 +72,11 @@ function FlowIllustration() {
         cy="40"
         r="8"
         fill="#E8A945"
-        initial={{ scale: 1, opacity: 0.5 }}
-        animate={{ scale: 2, opacity: 0 }}
-        transition={{ delay: 1.2, duration: 1.5, repeat: Infinity }}
+        initial={shouldReduceMotion ? { opacity: 0.25 } : { scale: 1, opacity: 0.5 }}
+        animate={shouldReduceMotion ? { opacity: 0.25 } : { scale: 2, opacity: 0 }}
+        transition={
+          shouldReduceMotion ? undefined : { delay: 1.2, duration: 1.5, repeat: Infinity }
+        }
       />
       <motion.circle
         cx="200"
