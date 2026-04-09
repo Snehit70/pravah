@@ -179,7 +179,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
           aria-labelledby={quickAddTitleId}
           aria-describedby={quickAddDescriptionId}
           className={cn(
-            "w-full max-w-lg p-5 mx-0 sm:mx-4 md:mx-0",
+            "w-full max-w-xl p-4 sm:p-5 mx-0 sm:mx-4 md:mx-0",
             "bg-zinc-900 rounded-t-2xl sm:rounded-2xl",
             "border border-zinc-800/80",
             "shadow-2xl shadow-black/50"
@@ -203,7 +203,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
           >
             <div className="flex items-center gap-3 mb-4">
               <div className={cn(
-                "p-2.5 rounded-xl",
+                "p-2.5 rounded-xl shrink-0",
                 "bg-amber-500/15"
               )}>
                 <Plus size={20} className="text-amber-500" />
@@ -220,7 +220,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                 aria-invalid={Boolean(titleError)}
                 aria-describedby={titleError ? titleErrorId : undefined}
                 className={cn(
-                  "flex-1 bg-transparent text-lg text-zinc-100",
+                  "min-w-0 flex-1 bg-transparent text-lg text-zinc-100",
                   "placeholder-zinc-600 outline-none"
                 )}
                 autoFocus
@@ -246,80 +246,90 @@ export function QuickAdd({ onClose }: QuickAddProps) {
               <p id={titleErrorId} className="text-xs text-red-400 -mt-2 mb-2">{titleError}</p>
             )}
 
-            <div className="flex items-center gap-3 text-sm">
+            <div className="space-y-3">
               <div className={cn(
+                "flex flex-wrap items-center gap-2",
+              )}>
+                <div className={cn(
                 "flex gap-1 p-1 rounded-xl",
                 "bg-zinc-800/80"
-              )}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setType("open");
-                    setDeadlineError("");
-                  }}
-                  disabled={isSubmitting}
-                  className={cn(
-                    "px-3 py-1.5 rounded-lg",
-                    "transition-all duration-150",
-                    "disabled:opacity-50 disabled:cursor-not-allowed",
-                    type === "open"
-                      ? "bg-amber-500/20 text-amber-400 shadow-sm"
-                      : "text-zinc-500 hover:text-zinc-400"
-                  )}
-                >
-                  Open
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setType("deadline");
-                    if (!deadline) {
-                      setDeadline(getTomorrowDateString());
-                    }
-                  }}
-                  disabled={isSubmitting}
-                  className={cn(
-                    "px-3 py-1.5 rounded-lg",
-                    "transition-all duration-150",
-                    "disabled:opacity-50 disabled:cursor-not-allowed",
-                    type === "deadline"
-                      ? "bg-yellow-500/20 text-yellow-400 shadow-sm"
-                      : "text-zinc-500 hover:text-zinc-400"
-                  )}
-                >
-                  Deadline
-                </button>
+                )}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setType("open");
+                      setDeadlineError("");
+                    }}
+                    disabled={isSubmitting}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg",
+                      "transition-all duration-150",
+                      "disabled:opacity-50 disabled:cursor-not-allowed",
+                      type === "open"
+                        ? "bg-amber-500/20 text-amber-400 shadow-sm"
+                        : "text-zinc-500 hover:text-zinc-400"
+                    )}
+                  >
+                    Open
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setType("deadline");
+                      if (!deadline) {
+                        setDeadline(getTomorrowDateString());
+                      }
+                    }}
+                    disabled={isSubmitting}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg",
+                      "transition-all duration-150",
+                      "disabled:opacity-50 disabled:cursor-not-allowed",
+                      type === "deadline"
+                        ? "bg-yellow-500/20 text-yellow-400 shadow-sm"
+                        : "text-zinc-500 hover:text-zinc-400"
+                    )}
+                  >
+                    Deadline
+                  </button>
+                </div>
               </div>
 
-              <AnimatePresence>
+              <AnimatePresence initial={false}>
                 {type === "deadline" && (
                   <motion.div
-                    initial={{ opacity: 0, width: 0 }}
-                    animate={{ opacity: 1, width: "auto" }}
-                    exit={{ opacity: 0, width: 0 }}
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
                     transition={TRANSITION_FAST}
-                    className="flex items-center gap-2"
+                    className="space-y-3"
                   >
-                    <input
-                      type="date"
-                      value={deadline}
-                      onChange={(e) => {
-                        setDeadline(e.target.value);
-                        if (deadlineError && e.target.value) setDeadlineError("");
-                      }}
-                      min={minDate}
-                      disabled={isSubmitting}
-                      aria-invalid={Boolean(deadlineError)}
-                      aria-describedby={deadlineError ? deadlineErrorId : undefined}
-                      className={cn(
-                        "px-3 py-1.5 text-sm rounded-xl",
-                        "bg-zinc-800/80 text-zinc-100",
-                        "border border-zinc-700/50",
-                        "disabled:opacity-50 disabled:cursor-not-allowed",
-                        "focus:border-amber-500/50 focus:outline-none"
-                      )}
-                    />
-                    <div className="hidden md:flex items-center gap-1">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
+                        Due
+                      </span>
+                      <input
+                        type="date"
+                        value={deadline}
+                        onChange={(e) => {
+                          setDeadline(e.target.value);
+                          if (deadlineError && e.target.value) setDeadlineError("");
+                        }}
+                        min={minDate}
+                        disabled={isSubmitting}
+                        aria-invalid={Boolean(deadlineError)}
+                        aria-describedby={deadlineError ? deadlineErrorId : undefined}
+                        className={cn(
+                          "w-full sm:w-auto min-w-0 px-3 py-2 text-sm rounded-xl",
+                          "bg-zinc-800/80 text-zinc-100",
+                          "border border-zinc-700/50",
+                          "disabled:opacity-50 disabled:cursor-not-allowed",
+                          "focus:border-amber-500/50 focus:outline-none"
+                        )}
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
                       {deadlinePresets.map((preset) => (
                         <button
                           key={preset.label}
@@ -330,11 +340,11 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                             setDeadlineError("");
                           }}
                           className={cn(
-                            "px-2 py-1 rounded-lg text-[11px]",
+                            "px-2.5 py-1.5 rounded-full text-[11px]",
                             "transition-colors duration-150",
                             deadline === preset.value
-                              ? "bg-amber-500/20 text-amber-300"
-                              : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60",
+                              ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                              : "text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 border border-zinc-700/40",
                             "disabled:opacity-50 disabled:cursor-not-allowed"
                           )}
                         >
@@ -345,17 +355,6 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                   </motion.div>
                 )}
               </AnimatePresence>
-
-              <div className="flex-1" />
-
-              <Button
-                type="submit"
-                disabled={!title.trim() || isSubmitting}
-                variant="primary"
-                size="sm"
-              >
-                {isSubmitting ? "Adding..." : "Add Task"}
-              </Button>
             </div>
 
             {deadlineError && (
@@ -371,31 +370,35 @@ export function QuickAdd({ onClose }: QuickAddProps) {
             )}
 
             <div className={cn(
-              "flex items-center gap-4 text-xs mt-4 pt-3",
-              "text-zinc-600",
-              "border-t border-zinc-800/60"
+              "mt-4 pt-4 border-t border-zinc-800/60",
+              "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
             )}>
-              <span className="flex items-center gap-1.5">
-                <kbd className={cn(
-                  "px-1.5 py-0.5 rounded-lg font-mono",
-                  "bg-zinc-800/80 text-zinc-400 border border-zinc-700/50"
-                )}>Enter</kbd>
-                <span>to add</span>
-              </span>
-              <span className="flex items-center gap-1.5">
-                <kbd className={cn(
-                  "px-1.5 py-0.5 rounded-lg font-mono",
-                  "bg-zinc-800/80 text-zinc-400 border border-zinc-700/50"
-                )}>Esc</kbd>
-                <span>to close</span>
-              </span>
-              <span className="flex items-center gap-1.5">
-                <kbd className={cn(
-                  "px-1.5 py-0.5 rounded-lg font-mono",
-                  "bg-zinc-800/80 text-zinc-400 border border-zinc-700/50"
-                )}>Ctrl/⌘ + Enter</kbd>
-                <span>to submit</span>
-              </span>
+              <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-600">
+                <span className="flex items-center gap-1.5">
+                  <kbd className={cn(
+                    "px-1.5 py-0.5 rounded-lg font-mono",
+                    "bg-zinc-800/80 text-zinc-400 border border-zinc-700/50"
+                  )}>Esc</kbd>
+                  <span>close</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <kbd className={cn(
+                    "px-1.5 py-0.5 rounded-lg font-mono",
+                    "bg-zinc-800/80 text-zinc-400 border border-zinc-700/50"
+                  )}>Ctrl/⌘ + Enter</kbd>
+                  <span>submit</span>
+                </span>
+              </div>
+
+              <Button
+                type="submit"
+                disabled={!title.trim() || isSubmitting}
+                variant="primary"
+                size="sm"
+                className="w-full sm:w-auto sm:min-w-28 justify-center"
+              >
+                {isSubmitting ? "Adding..." : "Add Task"}
+              </Button>
             </div>
           </form>
         </motion.div>
