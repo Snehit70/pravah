@@ -33,19 +33,32 @@ const env = (
   }
 ).process?.env;
 
-const CONVEX_URL = env?.CONVEX_URL ?? "https://befitting-swan-125.eu-west-1.convex.site";
+const CONVEX_URL = env?.CONVEX_URL;
 const CONVEX_HTTP_API_KEY = env?.CONVEX_HTTP_API_KEY;
 
 async function callConvexAPI(endpoint: string, method: string, body?: ToolArguments) {
+  if (!CONVEX_URL) {
+    throw new Error("CONVEX_URL is not configured");
+  }
+
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (CONVEX_HTTP_API_KEY) {
     headers["x-api-key"] = CONVEX_HTTP_API_KEY;
   }
+
   const response = await fetch(`${CONVEX_URL}${endpoint}`, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Convex API ${method} ${endpoint} failed (${response.status}): ${errorText}`
+    );
+  }
+
   return response.json();
 }
 
