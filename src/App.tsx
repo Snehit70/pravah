@@ -97,6 +97,7 @@ export function App() {
             tasks={inboxTasks}
             onTaskClick={openTaskPopup}
             onOpenQuickAdd={openQuickAdd}
+            onOpenSettings={openSettings}
           />
         </div>
       </div>

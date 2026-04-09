@@ -1,6 +1,6 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { Settings as SettingsIcon, Plus, Command } from "lucide-react";
+import { Plus, Command } from "lucide-react";
 import { DayColumn } from "./DayColumn";
 import { TRANSITION_SLOW, withDelay } from "../lib/motion";
 import type { Task } from "../types";
@@ -182,22 +182,7 @@ export function Timeline({
           </span>
         </div>
 
-        <div className="flex items-center gap-1">
-          {onOpenSettings && (
-            <button
-              onClick={onOpenSettings}
-              aria-label="Settings"
-              className={cn(
-                "p-2 rounded-xl",
-                "text-zinc-500 hover:text-zinc-200",
-                "hover:bg-zinc-800/60",
-                "transition-all duration-200",
-              )}
-            >
-              <SettingsIcon size={16} />
-            </button>
-          )}
-        </div>
+        <div />
       </motion.header>
 
       {/* Timeline scroll area */}

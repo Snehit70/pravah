@@ -1,6 +1,6 @@
 import { memo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Inbox, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Inbox, ChevronLeft, ChevronRight, Settings as SettingsIcon } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { TRANSITION_FAST, TRANSITION_PANEL } from "../lib/motion";
@@ -11,6 +11,7 @@ interface InboxSidebarProps {
   tasks: Task[];
   onTaskClick: (task: Task) => void;
   onOpenQuickAdd?: () => void;
+  onOpenSettings?: () => void;
 }
 
 function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void }) {
@@ -90,7 +91,12 @@ function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void
 const InboxTask = memo(InboxTaskComponent);
 InboxTask.displayName = "InboxTask";
 
-function InboxSidebarComponent({ tasks, onTaskClick, onOpenQuickAdd }: InboxSidebarProps) {
+function InboxSidebarComponent({
+  tasks,
+  onTaskClick,
+  onOpenQuickAdd,
+  onOpenSettings,
+}: InboxSidebarProps) {
   const [collapsed, setCollapsed] = useState(window.innerWidth < 768);
 
   return (
@@ -137,7 +143,7 @@ function InboxSidebarComponent({ tasks, onTaskClick, onOpenQuickAdd }: InboxSide
             )}
           </div>
 
-          <div className="mt-auto p-2 border-t border-zinc-800/60">
+          <div className="mt-auto p-2 border-t border-zinc-800/60 space-y-2">
             <button
               onClick={() => {
                 setCollapsed(false);
@@ -153,6 +159,19 @@ function InboxSidebarComponent({ tasks, onTaskClick, onOpenQuickAdd }: InboxSide
               )}
             >
               <Plus size={14} className="mx-auto" />
+            </button>
+            <button
+              onClick={onOpenSettings}
+              aria-label="Open settings"
+              className={cn(
+                "w-full p-2 rounded-xl flex items-center justify-center",
+                "bg-zinc-800/60 hover:bg-zinc-700/60",
+                "text-zinc-400 hover:text-zinc-200",
+                "border border-zinc-700/40 hover:border-zinc-600/60",
+                "transition-all duration-200",
+              )}
+            >
+              <SettingsIcon size={14} className="mx-auto" />
             </button>
           </div>
         </div>
@@ -201,7 +220,7 @@ function InboxSidebarComponent({ tasks, onTaskClick, onOpenQuickAdd }: InboxSide
             )}
           </div>
 
-          <div className="p-3 pt-2 border-t border-zinc-800/60">
+          <div className="p-3 pt-2 border-t border-zinc-800/60 grid grid-cols-[1fr_auto] gap-2">
             <button
               onClick={onOpenQuickAdd}
               className={cn(
@@ -214,6 +233,19 @@ function InboxSidebarComponent({ tasks, onTaskClick, onOpenQuickAdd }: InboxSide
             >
               <Plus size={15} />
               Quick Add
+            </button>
+            <button
+              onClick={onOpenSettings}
+              aria-label="Open settings"
+              className={cn(
+                "px-3 rounded-xl flex items-center justify-center",
+                "bg-zinc-800/60 hover:bg-zinc-700/60",
+                "text-zinc-400 hover:text-zinc-200",
+                "border border-zinc-700/40 hover:border-zinc-600/60",
+                "transition-all duration-200",
+              )}
+            >
+              <SettingsIcon size={15} />
             </button>
           </div>
         </>
