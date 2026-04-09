@@ -9,12 +9,14 @@ import {
   saveGoogleTokens,
   clearGoogleTokens,
   fetchGoogleAccountEmail,
+  fetchGoogleCalendars,
   getGoogleAuthErrorMessage,
   getGoogleOAuthUrl,
   parseGoogleTokens,
   exchangeGoogleAuthCode,
   fetchGmailMessages,
 } from "../lib/google/api";
+import type { GoogleCalendarListEntry } from "../lib/google/types";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
 import { useToast } from "./useToast";
@@ -54,6 +56,8 @@ const modalVariants = {
   exit: { opacity: 0, scale: 0.98, y: -10 },
 };
 
+const CALENDAR_SELECTION_STORAGE_KEY = "pravah_google_calendar_selection";
+
 export function Settings({ onClose }: SettingsProps) {
   const [googleConnected, setGoogleConnected] = useState(() => {
     const storedTokens = getGoogleTokens();
@@ -66,6 +70,9 @@ export function Settings({ onClose }: SettingsProps) {
   );
   const [attemptedEmailHydration, setAttemptedEmailHydration] = useState(false);
   const [hydratedToggleState, setHydratedToggleState] = useState(false);
+  const [availableCalendars, setAvailableCalendars] = useState<GoogleCalendarListEntry[]>([]);
+  const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>([]);
+  const [loadingCalendars, setLoadingCalendars] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [activeReviewActionId, setActiveReviewActionId] = useState<string | null>(null);
   const upsertIntegration = useMutation(api.sync.upsertIntegration);
@@ -221,6 +228,58 @@ export function Settings({ onClose }: SettingsProps) {
     calendarIntegrationStatus,
   ]);
 
+  useEffect(() => {
+    if (!googleConnected) {
+      setAvailableCalendars([]);
+      setSelectedCalendarIds([]);
+      return;
+    }
+
+    const tokens = getGoogleTokens();
+    if (!tokens || tokens.expired) return;
+
+    let cancelled = false;
+    setLoadingCalendars(true);
+    void (async () => {
+      try {
+        const calendars = await fetchGoogleCalendars(tokens.accessToken);
+        if (cancelled) return;
+        setAvailableCalendars(calendars);
+
+        const storedRaw = localStorage.getItem(CALENDAR_SELECTION_STORAGE_KEY);
+        const storedIds = storedRaw ? (JSON.parse(storedRaw) as string[]) : [];
+        const calendarIds = calendars.map((calendar) => calendar.id);
+        const nextSelection =
+          storedIds.length > 0
+            ? storedIds.filter((id) => calendarIds.includes(id))
+            : calendarIds;
+        setSelectedCalendarIds(nextSelection);
+      } catch (error) {
+        console.warn("Failed to fetch Google calendar list", error);
+        if (!cancelled) {
+          setAvailableCalendars([{ id: "primary", summary: "Primary", primary: true }]);
+          setSelectedCalendarIds(["primary"]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingCalendars(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [googleConnected]);
+
+  useEffect(() => {
+    if (selectedCalendarIds.length === 0) {
+      localStorage.removeItem(CALENDAR_SELECTION_STORAGE_KEY);
+      return;
+    }
+    localStorage.setItem(CALENDAR_SELECTION_STORAGE_KEY, JSON.stringify(selectedCalendarIds));
+  }, [selectedCalendarIds]);
+
   const persistIntegrationToggle = async (
     provider: "google_calendar" | "gmail",
     syncEnabled: boolean
@@ -320,6 +379,7 @@ export function Settings({ onClose }: SettingsProps) {
         });
         await importGoogleCalendar({
           accessToken: tokens.accessToken,
+          calendarIds: selectedCalendarIds.length > 0 ? selectedCalendarIds : undefined,
           fullResync,
         });
       }
@@ -359,6 +419,12 @@ export function Settings({ onClose }: SettingsProps) {
       showError(getSyncErrorMessage(error));
     }
     setSyncing(false);
+  };
+
+  const toggleCalendarSelection = (calendarId: string) => {
+    setSelectedCalendarIds((prev) =>
+      prev.includes(calendarId) ? prev.filter((id) => id !== calendarId) : [...prev, calendarId]
+    );
   };
 
   const handleApproveReviewItem = async (reviewId: Id<"reviewQueue">) => {
@@ -538,6 +604,42 @@ export function Settings({ onClose }: SettingsProps) {
                         </label>
                       </div>
 
+                      {calendarEnabled && (
+                        <div className="border-t border-zinc-700/50 pt-4 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs uppercase tracking-[0.08em] text-zinc-500">
+                              Calendars To Sync
+                            </p>
+                            <span className="text-xs text-zinc-400">
+                              {selectedCalendarIds.length}/{availableCalendars.length || 1}
+                            </span>
+                          </div>
+                          {loadingCalendars ? (
+                            <p className="text-xs text-zinc-500">Loading calendars...</p>
+                          ) : (
+                            <div className="space-y-1.5 max-h-28 overflow-y-auto pr-1">
+                              {availableCalendars.map((calendar) => (
+                                <label
+                                  key={calendar.id}
+                                  className="flex items-center gap-2.5 text-xs text-zinc-300 cursor-pointer"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedCalendarIds.includes(calendar.id)}
+                                    onChange={() => toggleCalendarSelection(calendar.id)}
+                                    className="accent-amber-500"
+                                  />
+                                  <span className="truncate">
+                                    {calendar.summary}
+                                    {calendar.primary ? " (Primary)" : ""}
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       <div className="border-t border-zinc-700/50 pt-4">
                         <label className="flex items-center justify-between cursor-pointer">
                           <div className="flex items-center gap-3">
@@ -576,7 +678,9 @@ export function Settings({ onClose }: SettingsProps) {
                             <div className="grid grid-cols-2 gap-2">
                               <Button
                                 onClick={() => void handleSync(false)}
-                                disabled={syncing}
+                                disabled={
+                                  syncing || (calendarEnabled && selectedCalendarIds.length === 0)
+                                }
                                 variant="secondary"
                                 className="w-full flex items-center justify-center gap-2"
                               >
@@ -588,7 +692,9 @@ export function Settings({ onClose }: SettingsProps) {
                               </Button>
                               <Button
                                 onClick={() => void handleSync(true)}
-                                disabled={syncing}
+                                disabled={
+                                  syncing || (calendarEnabled && selectedCalendarIds.length === 0)
+                                }
                                 variant="ghost"
                                 className="w-full flex items-center justify-center gap-2 text-amber-300 hover:text-amber-200"
                               >
