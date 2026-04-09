@@ -10,6 +10,31 @@ function makeId(value: string) {
   return value as Id<"tasks">;
 }
 
+type InternalHandler<TArgs, TResult> = {
+  _handler: (ctx: unknown, args: TArgs) => Promise<TResult>;
+};
+
+const moveTaskHandler = (
+  moveTask as unknown as InternalHandler<
+    { taskId: Id<"tasks">; targetDate: string; position?: number },
+    void
+  >
+)._handler;
+
+const reorderTasksHandler = (
+  reorderTasks as unknown as InternalHandler<
+    { date: string; taskIds: Id<"tasks">[] },
+    void
+  >
+)._handler;
+
+const bulkRescheduleHandler = (
+  bulkReschedule as unknown as InternalHandler<
+    { taskIds: Id<"tasks">[]; targetDate: string },
+    { movedCount: number; skippedTaskIds: Id<"tasks">[] }
+  >
+)._handler;
+
 describe("convex/tasks handlers", () => {
   it("moveTask rejects moves past deadline", async () => {
     const db = {
@@ -22,10 +47,10 @@ describe("convex/tasks handlers", () => {
       patch: vi.fn(),
     };
 
-    const ctx = { db } as unknown as Parameters<typeof moveTask._handler>[0];
+    const ctx = { db };
 
     await expect(
-      moveTask._handler(ctx, {
+      moveTaskHandler(ctx, {
         taskId: makeId("task-1"),
         targetDate: "2026-04-11",
       })
@@ -51,9 +76,9 @@ describe("convex/tasks handlers", () => {
       patch: vi.fn().mockResolvedValue(undefined),
     };
 
-    const ctx = { db } as unknown as Parameters<typeof moveTask._handler>[0];
+    const ctx = { db };
 
-    await moveTask._handler(ctx, {
+    await moveTaskHandler(ctx, {
       taskId: makeId("task-2"),
       targetDate: "2026-04-12",
     });
@@ -75,10 +100,10 @@ describe("convex/tasks handlers", () => {
       patch: vi.fn(),
     };
 
-    const ctx = { db } as unknown as Parameters<typeof reorderTasks._handler>[0];
+    const ctx = { db };
 
     await expect(
-      reorderTasks._handler(ctx, {
+      reorderTasksHandler(ctx, {
         date: "2026-04-10",
         taskIds: [makeId("task-3")],
       })
@@ -123,9 +148,9 @@ describe("convex/tasks handlers", () => {
       patch: vi.fn().mockResolvedValue(undefined),
     };
 
-    const ctx = { db } as unknown as Parameters<typeof bulkReschedule._handler>[0];
+    const ctx = { db };
 
-    const result = await bulkReschedule._handler(ctx, {
+    const result = await bulkRescheduleHandler(ctx, {
       taskIds: [taskA, taskB, taskC],
       targetDate: "2026-04-10",
     });
