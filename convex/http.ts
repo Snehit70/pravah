@@ -408,11 +408,14 @@ http.route({
         process?: { env?: Record<string, string | undefined> };
       }
     ).process?.env;
-    const clientId = env?.VITE_GOOGLE_CLIENT_ID;
+    const clientId = env?.GOOGLE_OAUTH_CLIENT_ID ?? env?.VITE_GOOGLE_CLIENT_ID;
     const clientSecret = env?.GOOGLE_OAUTH_CLIENT_SECRET;
 
     if (!clientId) {
-      return new Response(JSON.stringify({ error: "Google OAuth not configured" }), {
+      return new Response(JSON.stringify({
+        error:
+          "Google OAuth not configured (set GOOGLE_OAUTH_CLIENT_ID on Convex deployment).",
+      }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });

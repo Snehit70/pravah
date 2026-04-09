@@ -226,7 +226,8 @@ describe("http route handlers", () => {
     expect(ctx.runMutation).not.toHaveBeenCalled();
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({
-      error: "Google OAuth not configured",
+      error:
+        "Google OAuth not configured (set GOOGLE_OAUTH_CLIENT_ID on Convex deployment).",
     });
   });
 });
