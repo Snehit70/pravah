@@ -60,6 +60,17 @@ export function Settings({ onClose }: SettingsProps) {
   const safePendingReviewItems = shouldLoadReviewQueue ? (pendingReviewItems ?? []) : [];
   const { showError, showSuccess } = useToast();
 
+  const getSyncErrorMessage = (error: unknown): string => {
+    const raw = getGoogleAuthErrorMessage(error, "Failed to sync with Google. Please try again.");
+    if (raw.includes("SERVICE_DISABLED") || raw.includes("accessNotConfigured")) {
+      return "Google Calendar API is disabled in your Google Cloud project. Enable it, wait a few minutes, then retry sync.";
+    }
+    if (raw.includes("insufficientPermissions")) {
+      return "Google permissions are insufficient. Reconnect Google and grant Calendar access.";
+    }
+    return raw;
+  };
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -203,7 +214,7 @@ export function Settings({ onClose }: SettingsProps) {
       showSuccess("Sync completed successfully!");
     } catch (error) {
       console.error("Sync error:", error);
-      showError("Failed to sync with Google. Please try again.");
+      showError(getSyncErrorMessage(error));
     }
     setSyncing(false);
   };
