@@ -13,7 +13,6 @@ import { Button } from "./Button";
 interface InboxSidebarProps {
   tasks: Task[];
   onTaskClick: (task: Task) => void;
-  onOpenQuickAdd?: () => void;
 }
 
 function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void }) {
@@ -93,7 +92,7 @@ function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void
 const InboxTask = memo(InboxTaskComponent);
 InboxTask.displayName = "InboxTask";
 
-function InboxSidebarComponent({ tasks, onTaskClick, onOpenQuickAdd }: InboxSidebarProps) {
+function InboxSidebarComponent({ tasks, onTaskClick }: InboxSidebarProps) {
   const [collapsed, setCollapsed] = useState(window.innerWidth < 768);
   const [isAdding, setIsAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -114,7 +113,7 @@ function InboxSidebarComponent({ tasks, onTaskClick, onOpenQuickAdd }: InboxSide
       animate={{ width: collapsed ? 56 : 260 }}
       transition={TRANSITION_PANEL}
       className={cn(
-        "relative flex flex-col overflow-hidden flex-shrink-0",
+        "relative flex flex-col overflow-hidden flex-shrink-0 h-full",
         "bg-zinc-950/40 backdrop-blur-xl",
         "border-l border-zinc-800/50"
       )}
@@ -155,23 +154,24 @@ function InboxSidebarComponent({ tasks, onTaskClick, onOpenQuickAdd }: InboxSide
             )}
           </div>
 
-          {onOpenQuickAdd && (
-            <div className="mt-auto p-2 border-t border-zinc-800/60">
-              <button
-                onClick={onOpenQuickAdd}
-                aria-label="Quick add task"
-                className={cn(
-                  "w-full p-2 rounded-xl",
-                  "bg-amber-500/15 hover:bg-amber-500/20",
-                  "text-amber-300 hover:text-amber-200",
-                  "border border-amber-500/30 hover:border-amber-400/40",
-                  "transition-all duration-200",
-                )}
-              >
-                <Plus size={14} className="mx-auto" />
-              </button>
-            </div>
-          )}
+          <div className="mt-auto p-2 border-t border-zinc-800/60">
+            <button
+              onClick={() => {
+                setCollapsed(false);
+                setIsAdding(true);
+              }}
+              aria-label="Add task"
+              className={cn(
+                "w-full p-2 rounded-xl",
+                "bg-zinc-800/60 hover:bg-zinc-700/60",
+                "text-zinc-400 hover:text-zinc-200",
+                "border border-zinc-700/40 hover:border-amber-500/30",
+                "transition-all duration-200",
+              )}
+            >
+              <Plus size={14} className="mx-auto" />
+            </button>
+          </div>
         </div>
       ) : (
         <>
@@ -314,21 +314,6 @@ function InboxSidebarComponent({ tasks, onTaskClick, onOpenQuickAdd }: InboxSide
               )}
             </AnimatePresence>
 
-            {onOpenQuickAdd && (
-              <button
-                onClick={onOpenQuickAdd}
-                className={cn(
-                  "w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm",
-                  "bg-amber-500/15 hover:bg-amber-500/20",
-                  "text-amber-300 hover:text-amber-200",
-                  "border border-amber-500/30 hover:border-amber-400/40",
-                  "transition-all duration-200",
-                )}
-              >
-                <Plus size={15} />
-                Quick Add
-              </button>
-            )}
           </div>
         </>
       )}

@@ -92,11 +92,10 @@ export function App() {
             onOpenQuickAdd={openQuickAdd}
           />
         </main>
-        <div className="radial-bloom-surface">
+        <div className="radial-bloom-surface h-full">
           <InboxSidebar
             tasks={inboxTasks}
             onTaskClick={openTaskPopup}
-            onOpenQuickAdd={openQuickAdd}
           />
         </div>
       </div>
