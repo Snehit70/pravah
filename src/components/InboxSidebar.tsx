@@ -13,6 +13,7 @@ import { Button } from "./Button";
 interface InboxSidebarProps {
   tasks: Task[];
   onTaskClick: (task: Task) => void;
+  onOpenQuickAdd?: () => void;
 }
 
 function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void }) {
@@ -92,7 +93,7 @@ function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void
 const InboxTask = memo(InboxTaskComponent);
 InboxTask.displayName = "InboxTask";
 
-function InboxSidebarComponent({ tasks, onTaskClick }: InboxSidebarProps) {
+function InboxSidebarComponent({ tasks, onTaskClick, onOpenQuickAdd }: InboxSidebarProps) {
   const [collapsed, setCollapsed] = useState(window.innerWidth < 768);
   const [isAdding, setIsAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -115,7 +116,7 @@ function InboxSidebarComponent({ tasks, onTaskClick }: InboxSidebarProps) {
       className={cn(
         "relative flex flex-col overflow-hidden flex-shrink-0",
         "bg-zinc-950/40 backdrop-blur-xl",
-        "border-r border-zinc-800/50"
+        "border-l border-zinc-800/50"
       )}
     >
       {/* Collapse toggle */}
@@ -135,21 +136,41 @@ function InboxSidebarComponent({ tasks, onTaskClick }: InboxSidebarProps) {
 
       {collapsed ? (
         /* Collapsed state */
-        <div className="flex flex-col items-center pt-4 gap-3">
-          <div className="p-2 text-zinc-500">
-            <Inbox size={16} />
+        <div className="flex flex-col h-full">
+          <div className="flex flex-col items-center pt-4 gap-3">
+            <div className="p-2 text-zinc-500">
+              <Inbox size={16} />
+            </div>
+            {tasks.length > 0 && (
+              <motion.span
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className={cn(
+                  "text-[10px] font-semibold rounded-full w-5 h-5 flex items-center justify-center",
+                  "bg-amber-500/20 text-amber-400"
+                )}
+              >
+                {tasks.length}
+              </motion.span>
+            )}
           </div>
-          {tasks.length > 0 && (
-            <motion.span
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              className={cn(
-                "text-[10px] font-semibold rounded-full w-5 h-5 flex items-center justify-center",
-                "bg-amber-500/20 text-amber-400"
-              )}
-            >
-              {tasks.length}
-            </motion.span>
+
+          {onOpenQuickAdd && (
+            <div className="mt-auto p-2 border-t border-zinc-800/60">
+              <button
+                onClick={onOpenQuickAdd}
+                aria-label="Quick add task"
+                className={cn(
+                  "w-full p-2 rounded-xl",
+                  "bg-amber-500/15 hover:bg-amber-500/20",
+                  "text-amber-300 hover:text-amber-200",
+                  "border border-amber-500/30 hover:border-amber-400/40",
+                  "transition-all duration-200",
+                )}
+              >
+                <Plus size={14} className="mx-auto" />
+              </button>
+            </div>
           )}
         </div>
       ) : (
@@ -292,6 +313,24 @@ function InboxSidebarComponent({ tasks, onTaskClick }: InboxSidebarProps) {
               </motion.div>
             )}
           </div>
+
+          {onOpenQuickAdd && (
+            <div className="p-3 pt-2 border-t border-zinc-800/60">
+              <button
+                onClick={onOpenQuickAdd}
+                className={cn(
+                  "w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm",
+                  "bg-amber-500/15 hover:bg-amber-500/20",
+                  "text-amber-300 hover:text-amber-200",
+                  "border border-amber-500/30 hover:border-amber-400/40",
+                  "transition-all duration-200",
+                )}
+              >
+                <Plus size={15} />
+                Quick Add
+              </button>
+            </div>
+          )}
         </>
       )}
     </motion.aside>

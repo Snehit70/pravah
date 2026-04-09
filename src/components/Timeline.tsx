@@ -183,23 +183,6 @@ export function Timeline({
         </div>
 
         <div className="flex items-center gap-1">
-          {onOpenQuickAdd && (
-            <button
-              onClick={onOpenQuickAdd}
-              className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm",
-                "text-zinc-500 hover:text-zinc-200",
-                "hover:bg-zinc-800/60",
-                "transition-all duration-200",
-              )}
-            >
-              <Plus size={15} />
-              <span className="hidden sm:flex items-center gap-1 text-xs text-zinc-600">
-                <Command size={10} />N
-              </span>
-            </button>
-          )}
-
           {onOpenSettings && (
             <button
               onClick={onOpenSettings}

@@ -84,9 +84,6 @@ export function App() {
     >
       <GoogleCallback />
       <div className="radial-dots-surface flex h-screen">
-        <div className="radial-bloom-surface">
-          <InboxSidebar tasks={inboxTasks} onTaskClick={openTaskPopup} />
-        </div>
         <main className="flex-1 overflow-hidden radial-bloom-surface">
           <Timeline
             tasksByDate={tasksByDate}
@@ -95,6 +92,13 @@ export function App() {
             onOpenQuickAdd={openQuickAdd}
           />
         </main>
+        <div className="radial-bloom-surface">
+          <InboxSidebar
+            tasks={inboxTasks}
+            onTaskClick={openTaskPopup}
+            onOpenQuickAdd={openQuickAdd}
+          />
+        </div>
       </div>
 
       <DragOverlay dropAnimation={null}>
