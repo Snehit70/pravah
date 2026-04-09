@@ -257,6 +257,7 @@ export function Settings({ onClose }: SettingsProps) {
             <h2 className="text-xl font-semibold text-zinc-100">Settings</h2>
             <button
               onClick={onClose}
+              aria-label="Close settings"
               className={cn(
                 "p-2 rounded-lg",
                 "text-zinc-500 hover:text-zinc-300",

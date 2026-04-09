@@ -119,6 +119,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
               <button
                 type="button"
                 onClick={onClose}
+                aria-label="Close quick add"
                 className={cn(
                   "p-2 rounded-lg",
                   "text-zinc-500 hover:text-zinc-300",

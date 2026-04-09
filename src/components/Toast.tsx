@@ -43,7 +43,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ showToast, showError, showSuccess }}>
       {children}
-      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-md">
+      <div
+        className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-md"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
         <AnimatePresence>
           {toasts.map((toast) => (
             <ToastItem key={toast.id} toast={toast} onClose={() => removeToast(toast.id)} />
@@ -89,6 +94,7 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
       <p className="flex-1 text-sm text-zinc-100">{toast.message}</p>
       <button
         onClick={onClose}
+        aria-label="Dismiss notification"
         className={cn(
           "p-1 rounded-lg",
           "text-zinc-500 hover:text-zinc-300",
