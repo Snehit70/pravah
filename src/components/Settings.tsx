@@ -23,6 +23,26 @@ interface SettingsProps {
   onClose: () => void;
 }
 
+interface ReviewPayloadPreview {
+  from?: string;
+  date?: string;
+  threadId?: string;
+}
+
+function parseReviewPayload(payloadJson?: string): ReviewPayloadPreview | null {
+  if (!payloadJson) return null;
+  try {
+    const parsed = JSON.parse(payloadJson) as Record<string, unknown>;
+    return {
+      from: typeof parsed.from === "string" ? parsed.from : undefined,
+      date: typeof parsed.date === "string" ? parsed.date : undefined,
+      threadId: typeof parsed.threadId === "string" ? parsed.threadId : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 const overlayVariants = {
   hidden: { opacity: 0 },
   visible: { opacity: 1 },
@@ -41,6 +61,9 @@ export function Settings({ onClose }: SettingsProps) {
   });
   const [calendarEnabled, setCalendarEnabled] = useState(false);
   const [gmailEnabled, setGmailEnabled] = useState(false);
+  const [reviewScheduleOverrides, setReviewScheduleOverrides] = useState<Record<string, string>>(
+    {}
+  );
   const [attemptedEmailHydration, setAttemptedEmailHydration] = useState(false);
   const [hydratedToggleState, setHydratedToggleState] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -324,9 +347,18 @@ export function Settings({ onClose }: SettingsProps) {
 
   const handleApproveReviewItem = async (reviewId: Id<"reviewQueue">) => {
     setActiveReviewActionId(reviewId);
+    const scheduledDate = reviewScheduleOverrides[reviewId];
     try {
-      await approveReviewItem({ reviewId });
+      await approveReviewItem({
+        reviewId,
+        scheduledDate: scheduledDate || undefined,
+      });
       showSuccess("Approved and added to tasks");
+      setReviewScheduleOverrides((prev) => {
+        const next = { ...prev };
+        delete next[reviewId];
+        return next;
+      });
     } catch (error) {
       console.error("Approve review item failed", error);
       showError("Failed to approve review item");
@@ -544,12 +576,20 @@ export function Settings({ onClose }: SettingsProps) {
                       <div className="border-t border-zinc-700/50 pt-4 space-y-2">
                         <div className="flex items-center justify-between">
                           <p className="text-xs uppercase tracking-[0.08em] text-zinc-500">
-                            Review Queue
+                            Your Task Review Queue
                           </p>
                           <span className="text-xs text-zinc-400">
                             {safePendingReviewItems.length} pending
                           </span>
                         </div>
+                        <p className="text-xs text-zinc-500">
+                          Gmail suggestions wait here for your approval. Items become tasks only
+                          after you approve.
+                        </p>
+                        <p className="text-xs text-zinc-500">
+                          Detected deadlines are shown below each item. You can optionally choose
+                          a schedule date before approving.
+                        </p>
 
                         {safePendingReviewItems.length === 0 ? (
                           <p className="text-xs text-zinc-600">
@@ -557,65 +597,100 @@ export function Settings({ onClose }: SettingsProps) {
                           </p>
                         ) : (
                           <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                            {safePendingReviewItems.map((item) => (
-                              <div
-                                key={item._id}
-                                className="rounded-lg border border-zinc-700/60 bg-zinc-800/60 p-2.5"
-                              >
-                                <p className="text-sm text-zinc-100 leading-snug">{item.title}</p>
-                                {item.description && (
-                                  <p className="text-xs text-zinc-500 mt-1 line-clamp-2">
-                                    {item.description}
-                                  </p>
-                                )}
-                                <div className="flex items-center gap-2 mt-2">
-                                  <Button
-                                    onClick={() => handleApproveReviewItem(item._id)}
-                                    size="sm"
-                                    variant="primary"
-                                    disabled={activeReviewActionId === item._id}
-                                    className="flex-1"
-                                  >
-                                    Approve
-                                  </Button>
-                                  <Button
-                                    onClick={() => handleRejectReviewItem(item._id)}
-                                    size="sm"
-                                    variant="ghost"
-                                    disabled={activeReviewActionId === item._id}
-                                    className="flex-1 text-red-400 hover:text-red-400"
-                                  >
-                                    Reject
-                                  </Button>
+                            {safePendingReviewItems.map((item) => {
+                              const reviewPayload = parseReviewPayload(item.payloadJson);
+                              return (
+                                <div
+                                  key={item._id}
+                                  className="rounded-lg border border-zinc-700/60 bg-zinc-800/60 p-2.5"
+                                >
+                                  <p className="text-sm text-zinc-100 leading-snug">{item.title}</p>
+                                  {item.description && (
+                                    <p className="text-xs text-zinc-500 mt-1 line-clamp-2">
+                                      {item.description}
+                                    </p>
+                                  )}
+                                  <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+                                    <span
+                                      className={cn(
+                                        "px-1.5 py-0.5 rounded-full",
+                                        item.deadline
+                                          ? "bg-yellow-500/20 text-yellow-300"
+                                          : "bg-amber-500/20 text-amber-300"
+                                      )}
+                                    >
+                                      {item.deadline ? "Deadline task" : "Open task"}
+                                    </span>
+                                    <span className="px-1.5 py-0.5 rounded-full bg-zinc-700/60 text-zinc-300">
+                                      {item.deadline
+                                        ? `Detected deadline: ${item.deadline}`
+                                        : "No deadline detected"}
+                                    </span>
+                                    {item.estimatedMinutes && (
+                                      <span className="px-1.5 py-0.5 rounded-full bg-zinc-700/60 text-zinc-300">
+                                        {item.estimatedMinutes} min
+                                      </span>
+                                    )}
+                                    {reviewPayload?.from && (
+                                      <span className="px-1.5 py-0.5 rounded-full bg-zinc-700/60 text-zinc-300">
+                                        From: {reviewPayload.from}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="mt-2">
+                                    <label
+                                      htmlFor={`schedule-${item._id}`}
+                                      className="block text-[10px] uppercase tracking-[0.08em] text-zinc-500 mb-1"
+                                    >
+                                      Schedule date on approve (optional)
+                                    </label>
+                                    <input
+                                      id={`schedule-${item._id}`}
+                                      type="date"
+                                      value={reviewScheduleOverrides[item._id] ?? ""}
+                                      onChange={(event) =>
+                                        setReviewScheduleOverrides((prev) => ({
+                                          ...prev,
+                                          [item._id]: event.target.value,
+                                        }))
+                                      }
+                                      className={cn(
+                                        "w-full px-2 py-1.5 text-xs rounded-lg",
+                                        "bg-zinc-900/70 text-zinc-100",
+                                        "border border-zinc-700/60",
+                                        "focus:outline-none focus:border-amber-500/60"
+                                      )}
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-2">
+                                    <Button
+                                      onClick={() => handleApproveReviewItem(item._id)}
+                                      size="sm"
+                                      variant="primary"
+                                      disabled={activeReviewActionId === item._id}
+                                      className="flex-1"
+                                    >
+                                      Approve
+                                    </Button>
+                                    <Button
+                                      onClick={() => handleRejectReviewItem(item._id)}
+                                      size="sm"
+                                      variant="ghost"
+                                      disabled={activeReviewActionId === item._id}
+                                      className="flex-1 text-red-400 hover:text-red-400"
+                                    >
+                                      Reject
+                                    </Button>
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
-              </div>
-            </section>
-
-            <section>
-              <h3 className={cn(
-                "text-[11px] font-medium uppercase tracking-[0.08em] mb-3",
-                "text-zinc-500"
-              )}>
-                About
-              </h3>
-              <div className={cn(
-                "rounded-xl p-4",
-                "bg-zinc-800/60",
-                "border border-zinc-700/50"
-              )}>
-                <p className="text-zinc-100 font-medium">Pravah</p>
-                <p className="text-xs text-zinc-500 mt-1">
-                  A timeline-first task manager
-                </p>
-                <p className="text-xs text-zinc-600 mt-2">Version 0.1.0</p>
               </div>
             </section>
           </div>
