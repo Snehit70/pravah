@@ -72,7 +72,7 @@ describe("google api helpers", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toContain(
-      "query=is%3Aunread%20from%3Aboss&maxResults=5"
+      "q=is%3Aunread%20from%3Aboss&maxResults=5"
     );
     expect(messages).toEqual([{ id: "m1", threadId: "t1" }]);
   });
