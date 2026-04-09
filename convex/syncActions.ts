@@ -32,9 +32,9 @@ interface GoogleCalendarEventItem {
   end?: { date?: string; dateTime?: string };
 }
 
-export function buildExternalId(calendarId: string, eventId: string): string {
+export function buildExternalId(calendarId: string, eventId: string, isPrimaryCalendar = false): string {
   // Backward compatibility: historical primary-calendar mappings used raw event IDs.
-  return calendarId === "primary" ? eventId : `${calendarId}:${eventId}`;
+  return calendarId === "primary" || isPrimaryCalendar ? eventId : `${calendarId}:${eventId}`;
 }
 
 export function shouldRetryCalendarWithoutUpdatedMin(status: number, bodyText: string): boolean {
@@ -89,8 +89,8 @@ export const importGoogleCalendarAction = action({
         }
       }
 
-      const listCalendars = async (): Promise<string[]> => {
-        const discoveredIds: string[] = [];
+      const listCalendars = async (): Promise<GoogleCalendarListEntry[]> => {
+        const calendars: GoogleCalendarListEntry[] = [];
         let pageToken: string | undefined;
 
         do {
@@ -121,12 +121,12 @@ export const importGoogleCalendarAction = action({
 
           for (const calendar of payload.items ?? []) {
             if (!calendar.id) continue;
-            discoveredIds.push(calendar.id);
+            calendars.push(calendar);
           }
           pageToken = payload.nextPageToken;
         } while (pageToken);
 
-        return discoveredIds.length > 0 ? discoveredIds : ["primary"];
+        return calendars;
       };
 
       const fetchCalendarEvents = async (
@@ -174,12 +174,26 @@ export const importGoogleCalendarAction = action({
         return events;
       };
 
-      const targetCalendarIds =
-        (args.calendarIds && args.calendarIds.length > 0
+      const discoveredCalendars = await listCalendars();
+      const discoveredCalendarIds = discoveredCalendars
+        .map((calendar) => calendar.id)
+        .filter((id): id is string => Boolean(id));
+      const primaryCalendarIds = new Set<string>(["primary"]);
+      for (const calendar of discoveredCalendars) {
+        if (calendar.primary && calendar.id) {
+          primaryCalendarIds.add(calendar.id);
+        }
+      }
+
+      const targetCalendarIds = (
+        args.calendarIds && args.calendarIds.length > 0
           ? args.calendarIds
           : args.calendarId
             ? [args.calendarId]
-            : await listCalendars()).filter((id, index, array) => array.indexOf(id) === index);
+            : discoveredCalendarIds.length > 0
+              ? discoveredCalendarIds
+              : ["primary"]
+      ).filter((id, index, array) => array.indexOf(id) === index);
 
       const events: Array<{
         externalId: string;
@@ -218,7 +232,7 @@ export const importGoogleCalendarAction = action({
           const scheduledDate = toDateString(item.start?.date ?? item.start?.dateTime);
           const deadline = toDateString(item.end?.date ?? item.end?.dateTime);
           events.push({
-            externalId: buildExternalId(calendarId, item.id),
+            externalId: buildExternalId(calendarId, item.id, primaryCalendarIds.has(calendarId)),
             title: item.summary?.trim() || "(Untitled calendar event)",
             description: item.description,
             scheduledDate,

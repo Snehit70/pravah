@@ -72,6 +72,7 @@ export function Settings({ onClose }: SettingsProps) {
   const [hydratedToggleState, setHydratedToggleState] = useState(false);
   const [availableCalendars, setAvailableCalendars] = useState<GoogleCalendarListEntry[]>([]);
   const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>([]);
+  const [calendarSelectionHydrated, setCalendarSelectionHydrated] = useState(false);
   const [loadingCalendars, setLoadingCalendars] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [activeReviewActionId, setActiveReviewActionId] = useState<string | null>(null);
@@ -232,6 +233,7 @@ export function Settings({ onClose }: SettingsProps) {
     if (!googleConnected) {
       setAvailableCalendars([]);
       setSelectedCalendarIds([]);
+      setCalendarSelectionHydrated(false);
       return;
     }
 
@@ -254,11 +256,13 @@ export function Settings({ onClose }: SettingsProps) {
             ? storedIds.filter((id) => calendarIds.includes(id))
             : calendarIds;
         setSelectedCalendarIds(nextSelection);
+        setCalendarSelectionHydrated(true);
       } catch (error) {
         console.warn("Failed to fetch Google calendar list", error);
         if (!cancelled) {
           setAvailableCalendars([{ id: "primary", summary: "Primary", primary: true }]);
           setSelectedCalendarIds(["primary"]);
+          setCalendarSelectionHydrated(true);
         }
       } finally {
         if (!cancelled) {
@@ -273,12 +277,13 @@ export function Settings({ onClose }: SettingsProps) {
   }, [googleConnected]);
 
   useEffect(() => {
+    if (!googleConnected || !calendarSelectionHydrated) return;
     if (selectedCalendarIds.length === 0) {
       localStorage.removeItem(CALENDAR_SELECTION_STORAGE_KEY);
       return;
     }
     localStorage.setItem(CALENDAR_SELECTION_STORAGE_KEY, JSON.stringify(selectedCalendarIds));
-  }, [selectedCalendarIds]);
+  }, [googleConnected, calendarSelectionHydrated, selectedCalendarIds]);
 
   const persistIntegrationToggle = async (
     provider: "google_calendar" | "gmail",

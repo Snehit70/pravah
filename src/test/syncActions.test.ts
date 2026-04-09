@@ -37,6 +37,7 @@ describe("syncActions helpers", () => {
 
   it("keeps primary calendar IDs backward compatible and namespaces others", () => {
     expect(buildExternalId("primary", "abc123")).toBe("abc123");
+    expect(buildExternalId("user@gmail.com", "abc123", true)).toBe("abc123");
     expect(buildExternalId("team-calendar@group.calendar.google.com", "abc123")).toBe(
       "team-calendar@group.calendar.google.com:abc123"
     );

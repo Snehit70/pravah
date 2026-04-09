@@ -186,4 +186,23 @@ describe("Settings", () => {
       });
     });
   });
+
+  it("preserves stored calendar selection during hydration", async () => {
+    localStorage.setItem("pravah_google_calendar_selection", JSON.stringify(["team@example.com"]));
+    render(<Settings onClose={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Team")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Full Resync" }));
+
+    await waitFor(() => {
+      expect(importGoogleCalendarMock).toHaveBeenCalledWith({
+        accessToken: "token",
+        calendarIds: ["team@example.com"],
+        fullResync: true,
+      });
+    });
+  });
 });
