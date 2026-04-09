@@ -8,6 +8,7 @@ import {
   getGoogleTokens,
   saveGoogleTokens,
   clearGoogleTokens,
+  fetchGoogleAccountEmail,
   getGoogleAuthErrorMessage,
   getGoogleOAuthUrl,
   parseGoogleTokens,
@@ -40,6 +41,7 @@ export function Settings({ onClose }: SettingsProps) {
   });
   const [calendarEnabled, setCalendarEnabled] = useState(false);
   const [gmailEnabled, setGmailEnabled] = useState(false);
+  const [attemptedEmailHydration, setAttemptedEmailHydration] = useState(false);
   const [hydratedToggleState, setHydratedToggleState] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [activeReviewActionId, setActiveReviewActionId] = useState<string | null>(null);
@@ -65,6 +67,7 @@ export function Settings({ onClose }: SettingsProps) {
       : "skip"
   );
   const safePendingReviewItems = shouldLoadReviewQueue ? (pendingReviewItems ?? []) : [];
+  const googleAccountEmail = calendarIntegrationStatus?.integration?.accountEmail;
   const { showError, showSuccess } = useToast();
 
   const getSyncErrorMessage = (error: unknown): string => {
@@ -106,6 +109,19 @@ export function Settings({ onClose }: SettingsProps) {
       try {
         const tokens = await exchangeGoogleAuthCode(code);
         saveGoogleTokens(tokens.accessToken, tokens.expiresIn);
+        let accountEmail: string | undefined;
+        try {
+          accountEmail = await fetchGoogleAccountEmail(tokens.accessToken);
+        } catch (profileError) {
+          console.warn("Unable to load Google account email", profileError);
+        }
+        await upsertIntegration({
+          provider: "google_calendar",
+          status: "connected",
+          syncEnabled: calendarEnabled,
+          accountEmail,
+          tokenExpiresAt: Date.now() + tokens.expiresIn * 1000,
+        });
 
         if (!cancelled) {
           setGoogleConnected(true);
@@ -143,7 +159,7 @@ export function Settings({ onClose }: SettingsProps) {
     return () => {
       cancelled = true;
     };
-  }, [showError, showSuccess]);
+  }, [showError, showSuccess, upsertIntegration, calendarEnabled]);
 
   useEffect(() => {
     if (hydratedToggleState) return;
@@ -153,6 +169,33 @@ export function Settings({ onClose }: SettingsProps) {
     setGmailEnabled(Boolean(gmailIntegrationStatus.integration?.syncEnabled));
     setHydratedToggleState(true);
   }, [hydratedToggleState, calendarIntegrationStatus, gmailIntegrationStatus]);
+
+  useEffect(() => {
+    if (!googleConnected || googleAccountEmail || attemptedEmailHydration) return;
+    const tokens = getGoogleTokens();
+    if (!tokens || tokens.expired) return;
+
+    setAttemptedEmailHydration(true);
+    void (async () => {
+      try {
+        const accountEmail = await fetchGoogleAccountEmail(tokens.accessToken);
+        await upsertIntegration({
+          provider: "google_calendar",
+          status: "connected",
+          syncEnabled: calendarEnabled,
+          accountEmail,
+        });
+      } catch (error) {
+        console.warn("Unable to hydrate Google account email", error);
+      }
+    })();
+  }, [
+    googleConnected,
+    googleAccountEmail,
+    attemptedEmailHydration,
+    upsertIntegration,
+    calendarEnabled,
+  ]);
 
   const persistIntegrationToggle = async (
     provider: "google_calendar" | "gmail",
@@ -206,11 +249,13 @@ export function Settings({ onClose }: SettingsProps) {
           provider: "google_calendar",
           status: "disconnected",
           syncEnabled: false,
+          accountEmail: undefined,
         }),
         upsertIntegration({
           provider: "gmail",
           status: "disconnected",
           syncEnabled: false,
+          accountEmail: undefined,
         }),
       ]);
     } catch (error) {
@@ -382,7 +427,7 @@ export function Settings({ onClose }: SettingsProps) {
                     <div>
                       <p className="text-zinc-100 font-medium">Google Account</p>
                       <p className="text-xs text-zinc-500">
-                        {googleConnected ? "Connected" : "Not connected"}
+                        {googleConnected ? (googleAccountEmail ?? "Connected") : "Not connected"}
                       </p>
                     </div>
                   </div>

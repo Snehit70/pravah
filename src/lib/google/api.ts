@@ -242,6 +242,22 @@ export async function fetchGmailMessages(
   return data.messages || [];
 }
 
+export async function fetchGoogleAccountEmail(accessToken: string): Promise<string> {
+  const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch google account email: ${response.statusText}`);
+  }
+
+  const data = (await response.json()) as { emailAddress?: string };
+  if (!data.emailAddress) {
+    throw new Error("Failed to fetch google account email: missing emailAddress");
+  }
+  return data.emailAddress;
+}
+
 export async function getGmailMessage(
   accessToken: string,
   messageId: string

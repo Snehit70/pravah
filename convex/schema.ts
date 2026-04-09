@@ -40,6 +40,7 @@ export default defineSchema({
       v.literal("error")
     ),
     syncEnabled: v.boolean(),
+    accountEmail: v.optional(v.string()),
     tokenExpiresAt: v.optional(v.number()),
     lastSyncedAt: v.optional(v.number()),
     lastError: v.optional(v.string()),

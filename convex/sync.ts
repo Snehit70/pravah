@@ -75,6 +75,7 @@ export const upsertIntegration = mutation({
     provider: providerValidator,
     status: v.union(v.literal("connected"), v.literal("disconnected"), v.literal("error")),
     syncEnabled: v.boolean(),
+    accountEmail: v.optional(v.string()),
     tokenExpiresAt: v.optional(v.number()),
     lastError: v.optional(v.string()),
   },

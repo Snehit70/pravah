@@ -3,6 +3,7 @@ import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import {
   exchangeGoogleAuthCode,
+  fetchGoogleAccountEmail,
   getGoogleAuthErrorMessage,
   saveGoogleTokens,
 } from "../lib/google/api";
@@ -36,10 +37,17 @@ export function GoogleCallback() {
       try {
         const tokens = await exchangeGoogleAuthCode(code!);
         saveGoogleTokens(tokens.accessToken, tokens.expiresIn);
+        let accountEmail: string | undefined;
+        try {
+          accountEmail = await fetchGoogleAccountEmail(tokens.accessToken);
+        } catch (profileError) {
+          console.warn("Unable to load Google account email", profileError);
+        }
         await upsertIntegration({
           provider: "google_calendar",
           status: "connected",
           syncEnabled: true,
+          accountEmail,
           tokenExpiresAt: Date.now() + tokens.expiresIn * 1000,
         });
         showSuccess("Google connected successfully!");

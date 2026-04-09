@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearGoogleTokens,
+  fetchGoogleAccountEmail,
   fetchGmailMessages,
   getGoogleAuthErrorMessage,
   getGoogleTokens,
@@ -84,6 +85,15 @@ describe("google api helpers", () => {
     await expect(fetchGmailMessages("bad-token")).rejects.toThrow(
       "Failed to fetch gmail messages: Unauthorized"
     );
+  });
+
+  it("fetches account email via gmail profile endpoint", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ emailAddress: "user@example.com" }),
+    } as Response);
+
+    await expect(fetchGoogleAccountEmail("access")).resolves.toBe("user@example.com");
   });
 
   it("formats oauth error messages safely", () => {
