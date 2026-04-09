@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Id } from "../../convex/_generated/dataModel";
 import {
+  addTask,
   bulkReschedule,
   moveTask,
   reorderTasks,
@@ -35,7 +36,57 @@ const bulkRescheduleHandler = (
   >
 )._handler;
 
+const addTaskHandler = (
+  addTask as unknown as InternalHandler<
+    {
+      title: string;
+      description?: string;
+      type: "open" | "deadline";
+      scheduledDate?: string;
+      deadline?: string;
+      source?: "manual" | "ai-agent" | "gmail" | "gcal";
+      estimatedMinutes?: number;
+      tags?: string[];
+    },
+    Id<"tasks">
+  >
+)._handler;
+
 describe("convex/tasks handlers", () => {
+  it("addTask schedules deadline tasks on their deadline by default", async () => {
+    const db = {
+      query: vi.fn().mockReturnValue({
+        filter: vi.fn().mockReturnThis(),
+        collect: vi.fn().mockResolvedValue([{ position: 0 }, { position: 2 }]),
+      }),
+      insert: vi.fn().mockResolvedValue(makeId("task-new")),
+    };
+
+    const ctx = { db };
+
+    await addTaskHandler(ctx, {
+      title: "Ship report",
+      type: "deadline",
+      deadline: "2026-04-15",
+    });
+
+    expect(db.insert).toHaveBeenCalledWith("tasks", {
+      title: "Ship report",
+      description: undefined,
+      type: "deadline",
+      scheduledDate: "2026-04-15",
+      deadline: "2026-04-15",
+      position: 3,
+      status: "scheduled",
+      source: "manual",
+      estimatedMinutes: undefined,
+      tags: undefined,
+      createdBy: "user",
+      createdAt: expect.any(Number),
+      updatedAt: expect.any(Number),
+    });
+  });
+
   it("moveTask rejects moves past deadline", async () => {
     const db = {
       get: vi.fn().mockResolvedValue({

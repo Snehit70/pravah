@@ -40,12 +40,16 @@ export const addTask = mutation({
     tags: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
+    const scheduledDate =
+      args.scheduledDate ??
+      (args.type === "deadline" ? args.deadline : undefined);
+
     let q = ctx.db.query("tasks");
-    
-    if (args.scheduledDate) {
+
+    if (scheduledDate) {
       q = q.filter((q) => 
         q.and(
-          q.eq(q.field("scheduledDate"), args.scheduledDate),
+          q.eq(q.field("scheduledDate"), scheduledDate),
           q.eq(q.field("status"), "scheduled")
         )
       );
@@ -60,10 +64,10 @@ export const addTask = mutation({
       title: args.title,
       description: args.description,
       type: args.type,
-      scheduledDate: args.scheduledDate,
+      scheduledDate,
       deadline: args.deadline,
       position: maxPosition + 1,
-      status: args.scheduledDate ? "scheduled" : "inbox",
+      status: scheduledDate ? "scheduled" : "inbox",
       source: args.source || "manual",
       estimatedMinutes: args.estimatedMinutes,
       tags: args.tags,
