@@ -14,6 +14,34 @@ interface GoogleTokenResponse {
 
 const GOOGLE_CODE_VERIFIER_KEY = "pravah_google_pkce_verifier";
 
+export function getGoogleAuthErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return fallback;
+}
+
+export function resolveConvexHttpUrl(
+  env: Record<string, string | boolean | undefined>
+): string | null {
+  const explicit =
+    (env.VITE_CONVEX_HTTP_URL as string | undefined) ??
+    (env.VITE_CONVEX_SITE_URL as string | undefined);
+  if (explicit) {
+    return explicit.replace(/\/+$/, "");
+  }
+
+  const convexUrl = env.VITE_CONVEX_URL as string | undefined;
+  if (!convexUrl) {
+    return null;
+  }
+  const normalized = convexUrl.replace(/\/+$/, "");
+  if (normalized.includes(".convex.cloud")) {
+    return normalized.replace(".convex.cloud", ".convex.site");
+  }
+  return normalized;
+}
+
 function base64UrlEncode(bytes: Uint8Array): string {
   const binary = String.fromCharCode(...bytes);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
@@ -33,6 +61,15 @@ async function createPkceChallenge(verifier: string): Promise<string> {
 
 export async function getGoogleOAuthUrl(): Promise<string> {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  if (!clientId) {
+    throw new Error("Google sign-in is not configured (missing VITE_GOOGLE_CLIENT_ID).");
+  }
+
+  const convexUrl = import.meta.env.VITE_CONVEX_URL;
+  if (!convexUrl) {
+    throw new Error("Google sign-in is not configured (missing VITE_CONVEX_URL).");
+  }
+
   const redirectUri = `${window.location.origin}/google-callback`;
   const scope = encodeURIComponent(
     "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.readonly"
@@ -42,7 +79,7 @@ export async function getGoogleOAuthUrl(): Promise<string> {
   sessionStorage.setItem(GOOGLE_CODE_VERIFIER_KEY, codeVerifier);
   const codeChallenge = await createPkceChallenge(codeVerifier);
   
-  return `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&prompt=consent&access_type=offline&code_challenge=${codeChallenge}&code_challenge_method=S256`;
+  return `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${scope}&prompt=consent&access_type=offline&code_challenge=${codeChallenge}&code_challenge_method=S256`;
 }
 
 export async function exchangeGoogleAuthCode(code: string): Promise<{ accessToken: string; expiresIn: number }> {
@@ -53,12 +90,14 @@ export async function exchangeGoogleAuthCode(code: string): Promise<{ accessToke
     throw new Error("Missing PKCE verifier. Please retry Google sign-in.");
   }
 
-  const convexUrl = import.meta.env.VITE_CONVEX_URL;
-  if (!convexUrl) {
-    throw new Error("Convex URL not configured");
+  const convexHttpUrl = resolveConvexHttpUrl(import.meta.env);
+  if (!convexHttpUrl) {
+    throw new Error(
+      "Convex HTTP URL not configured (set VITE_CONVEX_HTTP_URL or VITE_CONVEX_SITE_URL)."
+    );
   }
 
-  const response = await fetch(`${convexUrl}/google/token`, {
+  const response = await fetch(`${convexHttpUrl}/google/token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -69,8 +108,13 @@ export async function exchangeGoogleAuthCode(code: string): Promise<{ accessToke
   });
 
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || `Token exchange failed: ${response.status}`);
+    const errorText = await response.text();
+    try {
+      const errorData = JSON.parse(errorText) as { error?: string };
+      throw new Error(errorData.error || `Token exchange failed: ${response.status}`);
+    } catch {
+      throw new Error(errorText || `Token exchange failed: ${response.status}`);
+    }
   }
 
   const tokenData = (await response.json()) as GoogleTokenResponse;
@@ -196,6 +240,22 @@ export async function fetchGmailMessages(
   
   const data = (await response.json()) as GoogleListResponse<GoogleGmailMessage>;
   return data.messages || [];
+}
+
+export async function fetchGoogleAccountEmail(accessToken: string): Promise<string> {
+  const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch google account email: ${response.statusText}`);
+  }
+
+  const data = (await response.json()) as { emailAddress?: string };
+  if (!data.emailAddress) {
+    throw new Error("Failed to fetch google account email: missing emailAddress");
+  }
+  return data.emailAddress;
 }
 
 export async function getGmailMessage(

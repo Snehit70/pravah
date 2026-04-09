@@ -1,7 +1,8 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Settings as SettingsIcon, Plus, Command } from "lucide-react";
 import { DayColumn } from "./DayColumn";
+import { TRANSITION_SLOW, withDelay } from "../lib/motion";
 import type { Task } from "../types";
 import { cn, generateDateRange } from "../lib/utils";
 import { Button } from "./Button";
@@ -15,6 +16,8 @@ interface TimelineProps {
 
 // Flow illustration SVG component for empty state
 function FlowIllustration() {
+  const shouldReduceMotion = useReducedMotion();
+
   return (
     <motion.svg
       width="240"
@@ -33,9 +36,9 @@ function FlowIllustration() {
         strokeWidth="2"
         strokeLinecap="round"
         fill="none"
-        initial={{ pathLength: 0 }}
-        animate={{ pathLength: 1 }}
-        transition={{ duration: 2, ease: "easeOut" }}
+        initial={shouldReduceMotion ? undefined : { pathLength: 0 }}
+        animate={shouldReduceMotion ? undefined : { pathLength: 1 }}
+        transition={shouldReduceMotion ? undefined : { duration: 2, ease: "easeOut" }}
       />
       {/* Gradient definition */}
       <defs>
@@ -70,9 +73,11 @@ function FlowIllustration() {
         cy="40"
         r="8"
         fill="#E8A945"
-        initial={{ scale: 1, opacity: 0.5 }}
-        animate={{ scale: 2, opacity: 0 }}
-        transition={{ delay: 1.2, duration: 1.5, repeat: Infinity }}
+        initial={shouldReduceMotion ? { opacity: 0.25 } : { scale: 1, opacity: 0.5 }}
+        animate={shouldReduceMotion ? { opacity: 0.25 } : { scale: 2, opacity: 0 }}
+        transition={
+          shouldReduceMotion ? undefined : { delay: 1.2, duration: 1.5, repeat: Infinity }
+        }
       />
       <motion.circle
         cx="200"
@@ -153,7 +158,7 @@ export function Timeline({
       <motion.header
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        transition={TRANSITION_SLOW}
         className={cn(
           "flex items-center justify-between px-6 h-14",
           "border-b border-zinc-800/40",
@@ -230,7 +235,7 @@ export function Timeline({
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
+            transition={withDelay({ duration: 0.5 }, 0.3)}
             className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none"
           >
             <div className="text-center max-w-md px-6">
@@ -285,7 +290,7 @@ export function Timeline({
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.15 }}
+          transition={withDelay({ duration: 0.5 }, 0.15)}
           className="flex px-4 py-4 min-w-max gap-1"
         >
           {dates.map((date, index) => (

@@ -8,6 +8,8 @@ import {
   getGoogleTokens,
   saveGoogleTokens,
   clearGoogleTokens,
+  fetchGoogleAccountEmail,
+  getGoogleAuthErrorMessage,
   getGoogleOAuthUrl,
   parseGoogleTokens,
   exchangeGoogleAuthCode,
@@ -19,6 +21,26 @@ import { useToast } from "./useToast";
 
 interface SettingsProps {
   onClose: () => void;
+}
+
+interface ReviewPayloadPreview {
+  from?: string;
+  date?: string;
+  threadId?: string;
+}
+
+function parseReviewPayload(payloadJson?: string): ReviewPayloadPreview | null {
+  if (!payloadJson) return null;
+  try {
+    const parsed = JSON.parse(payloadJson) as Record<string, unknown>;
+    return {
+      from: typeof parsed.from === "string" ? parsed.from : undefined,
+      date: typeof parsed.date === "string" ? parsed.date : undefined,
+      threadId: typeof parsed.threadId === "string" ? parsed.threadId : undefined,
+    };
+  } catch {
+    return null;
+  }
 }
 
 const overlayVariants = {
@@ -39,6 +61,11 @@ export function Settings({ onClose }: SettingsProps) {
   });
   const [calendarEnabled, setCalendarEnabled] = useState(false);
   const [gmailEnabled, setGmailEnabled] = useState(false);
+  const [reviewScheduleOverrides, setReviewScheduleOverrides] = useState<Record<string, string>>(
+    {}
+  );
+  const [attemptedEmailHydration, setAttemptedEmailHydration] = useState(false);
+  const [hydratedToggleState, setHydratedToggleState] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [activeReviewActionId, setActiveReviewActionId] = useState<string | null>(null);
   const upsertIntegration = useMutation(api.sync.upsertIntegration);
@@ -46,11 +73,36 @@ export function Settings({ onClose }: SettingsProps) {
   const approveReviewItem = useMutation(api.sync.approveReviewItem);
   const rejectReviewItem = useMutation(api.sync.rejectReviewItem);
   const importGoogleCalendar = useAction(api.syncActions.importGoogleCalendarAction);
-  const pendingReviewItems = useQuery(api.sync.listReviewQueue, {
-    status: "pending",
-    limit: 25,
+  const calendarIntegrationStatus = useQuery(api.sync.getIntegrationStatus, {
+    provider: "google_calendar",
   });
+  const gmailIntegrationStatus = useQuery(api.sync.getIntegrationStatus, {
+    provider: "gmail",
+  });
+  const shouldLoadReviewQueue = googleConnected && gmailEnabled;
+  const pendingReviewItems = useQuery(
+    api.sync.listReviewQueue,
+    shouldLoadReviewQueue
+      ? ({
+          status: "pending",
+          limit: 25,
+        } as const)
+      : "skip"
+  );
+  const safePendingReviewItems = shouldLoadReviewQueue ? (pendingReviewItems ?? []) : [];
+  const googleAccountEmail = calendarIntegrationStatus?.integration?.accountEmail;
   const { showError, showSuccess } = useToast();
+
+  const getSyncErrorMessage = (error: unknown): string => {
+    const raw = getGoogleAuthErrorMessage(error, "Failed to sync with Google. Please try again.");
+    if (raw.includes("SERVICE_DISABLED") || raw.includes("accessNotConfigured")) {
+      return "Google Calendar API is disabled in your Google Cloud project. Enable it, wait a few minutes, then retry sync.";
+    }
+    if (raw.includes("insufficientPermissions")) {
+      return "Google permissions are insufficient. Reconnect Google and grant Calendar access.";
+    }
+    return raw;
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -80,6 +132,19 @@ export function Settings({ onClose }: SettingsProps) {
       try {
         const tokens = await exchangeGoogleAuthCode(code);
         saveGoogleTokens(tokens.accessToken, tokens.expiresIn);
+        let accountEmail: string | undefined;
+        try {
+          accountEmail = await fetchGoogleAccountEmail(tokens.accessToken);
+        } catch (profileError) {
+          console.warn("Unable to load Google account email", profileError);
+        }
+        await upsertIntegration({
+          provider: "google_calendar",
+          status: "connected",
+          syncEnabled: calendarEnabled,
+          accountEmail,
+          tokenExpiresAt: Date.now() + tokens.expiresIn * 1000,
+        });
 
         if (!cancelled) {
           setGoogleConnected(true);
@@ -88,7 +153,7 @@ export function Settings({ onClose }: SettingsProps) {
       } catch (err) {
         console.error("Google OAuth callback failed", err);
         if (!cancelled) {
-          showError("Failed to complete Google sign-in.");
+          showError(getGoogleAuthErrorMessage(err, "Failed to complete Google sign-in."));
         }
       } finally {
         url.searchParams.delete("code");
@@ -117,21 +182,118 @@ export function Settings({ onClose }: SettingsProps) {
     return () => {
       cancelled = true;
     };
-  }, [showError, showSuccess]);
+  }, [showError, showSuccess, upsertIntegration, calendarEnabled]);
+
+  useEffect(() => {
+    if (hydratedToggleState) return;
+    if (!calendarIntegrationStatus || !gmailIntegrationStatus) return;
+
+    setCalendarEnabled(Boolean(calendarIntegrationStatus.integration?.syncEnabled));
+    setGmailEnabled(Boolean(gmailIntegrationStatus.integration?.syncEnabled));
+    setHydratedToggleState(true);
+  }, [hydratedToggleState, calendarIntegrationStatus, gmailIntegrationStatus]);
+
+  useEffect(() => {
+    if (!calendarIntegrationStatus) return;
+    if (!googleConnected || googleAccountEmail || attemptedEmailHydration) return;
+    const tokens = getGoogleTokens();
+    if (!tokens || tokens.expired) return;
+
+    setAttemptedEmailHydration(true);
+    void (async () => {
+      try {
+        const accountEmail = await fetchGoogleAccountEmail(tokens.accessToken);
+        await upsertIntegration({
+          provider: "google_calendar",
+          status: "connected",
+          syncEnabled: Boolean(calendarIntegrationStatus.integration?.syncEnabled),
+          accountEmail,
+        });
+      } catch (error) {
+        console.warn("Unable to hydrate Google account email", error);
+      }
+    })();
+  }, [
+    googleConnected,
+    googleAccountEmail,
+    attemptedEmailHydration,
+    upsertIntegration,
+    calendarIntegrationStatus,
+  ]);
+
+  const persistIntegrationToggle = async (
+    provider: "google_calendar" | "gmail",
+    syncEnabled: boolean
+  ) => {
+    const payload: {
+      provider: "google_calendar" | "gmail";
+      status: "connected" | "disconnected";
+      syncEnabled: boolean;
+      accountEmail?: string;
+    } = {
+      provider,
+      status: googleConnected ? "connected" : "disconnected",
+      syncEnabled,
+    };
+
+    // Preserve the known Google account identity while updating toggle state.
+    if (googleAccountEmail) {
+      payload.accountEmail = googleAccountEmail;
+    }
+
+    await upsertIntegration(payload);
+  };
+
+  const handleCalendarToggle = async () => {
+    const next = !calendarEnabled;
+    setCalendarEnabled(next);
+    try {
+      await persistIntegrationToggle("google_calendar", next);
+    } catch (error) {
+      console.error("Failed to persist calendar toggle", error);
+      setCalendarEnabled(!next);
+      showError("Failed to save Google Calendar toggle.");
+    }
+  };
+
+  const handleGmailToggle = async () => {
+    const next = !gmailEnabled;
+    setGmailEnabled(next);
+    try {
+      await persistIntegrationToggle("gmail", next);
+    } catch (error) {
+      console.error("Failed to persist Gmail toggle", error);
+      setGmailEnabled(!next);
+      showError("Failed to save Gmail toggle.");
+    }
+  };
 
   const handleGoogleConnect = async () => {
-    const oauthUrl = await getGoogleOAuthUrl();
-    window.location.href = oauthUrl;
+    try {
+      const oauthUrl = await getGoogleOAuthUrl();
+      window.location.href = oauthUrl;
+    } catch (error) {
+      showError(getGoogleAuthErrorMessage(error, "Failed to start Google sign-in."));
+    }
   };
 
   const handleGoogleDisconnect = async () => {
     clearGoogleTokens();
     try {
-      await upsertIntegration({
-        provider: "google_calendar",
-        status: "disconnected",
-        syncEnabled: false,
-      });
+      await Promise.all([
+        upsertIntegration({
+          provider: "google_calendar",
+          status: "disconnected",
+          syncEnabled: false,
+          accountEmail: undefined,
+        }),
+        upsertIntegration({
+          provider: "gmail",
+          status: "disconnected",
+          syncEnabled: false,
+          accountEmail: undefined,
+        }),
+      ]);
     } catch (error) {
       console.error("Failed to persist Google disconnect state", error);
       showError("Disconnected locally, but failed to update server state.");
@@ -191,16 +353,25 @@ export function Settings({ onClose }: SettingsProps) {
       showSuccess("Sync completed successfully!");
     } catch (error) {
       console.error("Sync error:", error);
-      showError("Failed to sync with Google. Please try again.");
+      showError(getSyncErrorMessage(error));
     }
     setSyncing(false);
   };
 
   const handleApproveReviewItem = async (reviewId: Id<"reviewQueue">) => {
     setActiveReviewActionId(reviewId);
+    const scheduledDate = reviewScheduleOverrides[reviewId];
     try {
-      await approveReviewItem({ reviewId });
+      await approveReviewItem({
+        reviewId,
+        scheduledDate: scheduledDate || undefined,
+      });
       showSuccess("Approved and added to tasks");
+      setReviewScheduleOverrides((prev) => {
+        const next = { ...prev };
+        delete next[reviewId];
+        return next;
+      });
     } catch (error) {
       console.error("Approve review item failed", error);
       showError("Failed to approve review item");
@@ -257,6 +428,7 @@ export function Settings({ onClose }: SettingsProps) {
             <h2 className="text-xl font-semibold text-zinc-100">Settings</h2>
             <button
               onClick={onClose}
+              aria-label="Close settings"
               className={cn(
                 "p-2 rounded-lg",
                 "text-zinc-500 hover:text-zinc-300",
@@ -300,7 +472,7 @@ export function Settings({ onClose }: SettingsProps) {
                     <div>
                       <p className="text-zinc-100 font-medium">Google Account</p>
                       <p className="text-xs text-zinc-500">
-                        {googleConnected ? "Connected" : "Not connected"}
+                        {googleConnected ? (googleAccountEmail ?? "Connected") : "Not connected"}
                       </p>
                     </div>
                   </div>
@@ -348,7 +520,7 @@ export function Settings({ onClose }: SettingsProps) {
                             </div>
                           </div>
                           <button
-                            onClick={() => setCalendarEnabled(!calendarEnabled)}
+                            onClick={handleCalendarToggle}
                             className={cn(
                               "w-11 h-6 rounded-full transition-colors duration-150",
                               calendarEnabled ? "bg-amber-500" : "bg-zinc-700"
@@ -375,7 +547,7 @@ export function Settings({ onClose }: SettingsProps) {
                             </div>
                           </div>
                           <button
-                            onClick={() => setGmailEnabled(!gmailEnabled)}
+                            onClick={handleGmailToggle}
                             className={cn(
                               "w-11 h-6 rounded-full transition-colors duration-150",
                               gmailEnabled ? "bg-amber-500" : "bg-zinc-700"
@@ -417,78 +589,121 @@ export function Settings({ onClose }: SettingsProps) {
                       <div className="border-t border-zinc-700/50 pt-4 space-y-2">
                         <div className="flex items-center justify-between">
                           <p className="text-xs uppercase tracking-[0.08em] text-zinc-500">
-                            Review Queue
+                            Your Task Review Queue
                           </p>
                           <span className="text-xs text-zinc-400">
-                            {(pendingReviewItems ?? []).length} pending
+                            {safePendingReviewItems.length} pending
                           </span>
                         </div>
+                        <p className="text-xs text-zinc-500">
+                          Gmail suggestions wait here for your approval. Items become tasks only
+                          after you approve.
+                        </p>
+                        <p className="text-xs text-zinc-500">
+                          Detected deadlines are shown below each item. You can optionally choose
+                          a schedule date before approving.
+                        </p>
 
-                        {(pendingReviewItems ?? []).length === 0 ? (
+                        {safePendingReviewItems.length === 0 ? (
                           <p className="text-xs text-zinc-600">
                             No pending approvals
                           </p>
                         ) : (
                           <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                            {(pendingReviewItems ?? []).map((item) => (
-                              <div
-                                key={item._id}
-                                className="rounded-lg border border-zinc-700/60 bg-zinc-800/60 p-2.5"
-                              >
-                                <p className="text-sm text-zinc-100 leading-snug">{item.title}</p>
-                                {item.description && (
-                                  <p className="text-xs text-zinc-500 mt-1 line-clamp-2">
-                                    {item.description}
-                                  </p>
-                                )}
-                                <div className="flex items-center gap-2 mt-2">
-                                  <Button
-                                    onClick={() => handleApproveReviewItem(item._id)}
-                                    size="sm"
-                                    variant="primary"
-                                    disabled={activeReviewActionId === item._id}
-                                    className="flex-1"
-                                  >
-                                    Approve
-                                  </Button>
-                                  <Button
-                                    onClick={() => handleRejectReviewItem(item._id)}
-                                    size="sm"
-                                    variant="ghost"
-                                    disabled={activeReviewActionId === item._id}
-                                    className="flex-1 text-red-400 hover:text-red-400"
-                                  >
-                                    Reject
-                                  </Button>
+                            {safePendingReviewItems.map((item) => {
+                              const reviewPayload = parseReviewPayload(item.payloadJson);
+                              return (
+                                <div
+                                  key={item._id}
+                                  className="rounded-lg border border-zinc-700/60 bg-zinc-800/60 p-2.5"
+                                >
+                                  <p className="text-sm text-zinc-100 leading-snug">{item.title}</p>
+                                  {item.description && (
+                                    <p className="text-xs text-zinc-500 mt-1 line-clamp-2">
+                                      {item.description}
+                                    </p>
+                                  )}
+                                  <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+                                    <span
+                                      className={cn(
+                                        "px-1.5 py-0.5 rounded-full",
+                                        item.deadline
+                                          ? "bg-yellow-500/20 text-yellow-300"
+                                          : "bg-amber-500/20 text-amber-300"
+                                      )}
+                                    >
+                                      {item.deadline ? "Deadline task" : "Open task"}
+                                    </span>
+                                    <span className="px-1.5 py-0.5 rounded-full bg-zinc-700/60 text-zinc-300">
+                                      {item.deadline
+                                        ? `Detected deadline: ${item.deadline}`
+                                        : "No deadline detected"}
+                                    </span>
+                                    {item.estimatedMinutes && (
+                                      <span className="px-1.5 py-0.5 rounded-full bg-zinc-700/60 text-zinc-300">
+                                        {item.estimatedMinutes} min
+                                      </span>
+                                    )}
+                                    {reviewPayload?.from && (
+                                      <span className="px-1.5 py-0.5 rounded-full bg-zinc-700/60 text-zinc-300">
+                                        From: {reviewPayload.from}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="mt-2">
+                                    <label
+                                      htmlFor={`schedule-${item._id}`}
+                                      className="block text-[10px] uppercase tracking-[0.08em] text-zinc-500 mb-1"
+                                    >
+                                      Schedule date on approve (optional)
+                                    </label>
+                                    <input
+                                      id={`schedule-${item._id}`}
+                                      type="date"
+                                      value={reviewScheduleOverrides[item._id] ?? ""}
+                                      onChange={(event) =>
+                                        setReviewScheduleOverrides((prev) => ({
+                                          ...prev,
+                                          [item._id]: event.target.value,
+                                        }))
+                                      }
+                                      className={cn(
+                                        "w-full px-2 py-1.5 text-xs rounded-lg",
+                                        "bg-zinc-900/70 text-zinc-100",
+                                        "border border-zinc-700/60",
+                                        "focus:outline-none focus:border-amber-500/60"
+                                      )}
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-2">
+                                    <Button
+                                      onClick={() => handleApproveReviewItem(item._id)}
+                                      size="sm"
+                                      variant="primary"
+                                      disabled={activeReviewActionId === item._id}
+                                      className="flex-1"
+                                    >
+                                      Approve
+                                    </Button>
+                                    <Button
+                                      onClick={() => handleRejectReviewItem(item._id)}
+                                      size="sm"
+                                      variant="ghost"
+                                      disabled={activeReviewActionId === item._id}
+                                      className="flex-1 text-red-400 hover:text-red-400"
+                                    >
+                                      Reject
+                                    </Button>
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
-              </div>
-            </section>
-
-            <section>
-              <h3 className={cn(
-                "text-[11px] font-medium uppercase tracking-[0.08em] mb-3",
-                "text-zinc-500"
-              )}>
-                About
-              </h3>
-              <div className={cn(
-                "rounded-xl p-4",
-                "bg-zinc-800/60",
-                "border border-zinc-700/50"
-              )}>
-                <p className="text-zinc-100 font-medium">Pravah</p>
-                <p className="text-xs text-zinc-500 mt-1">
-                  A timeline-first task manager
-                </p>
-                <p className="text-xs text-zinc-600 mt-2">Version 0.1.0</p>
               </div>
             </section>
           </div>

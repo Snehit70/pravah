@@ -40,12 +40,16 @@ export const addTask = mutation({
     tags: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
+    const scheduledDate =
+      args.scheduledDate ??
+      (args.type === "deadline" ? args.deadline : undefined);
+
     let q = ctx.db.query("tasks");
-    
-    if (args.scheduledDate) {
+
+    if (scheduledDate) {
       q = q.filter((q) => 
         q.and(
-          q.eq(q.field("scheduledDate"), args.scheduledDate),
+          q.eq(q.field("scheduledDate"), scheduledDate),
           q.eq(q.field("status"), "scheduled")
         )
       );
@@ -60,10 +64,10 @@ export const addTask = mutation({
       title: args.title,
       description: args.description,
       type: args.type,
-      scheduledDate: args.scheduledDate,
+      scheduledDate,
       deadline: args.deadline,
       position: maxPosition + 1,
-      status: args.scheduledDate ? "scheduled" : "inbox",
+      status: scheduledDate ? "scheduled" : "inbox",
       source: args.source || "manual",
       estimatedMinutes: args.estimatedMinutes,
       tags: args.tags,
@@ -187,6 +191,53 @@ export const unscheduleTask = mutation({
       position: maxPosition + 1,
       updatedAt: Date.now(),
     });
+  },
+});
+
+export const backfillDeadlineTasksToDeadlineDate = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const allTasks = await ctx.db.query("tasks").collect();
+    const positionByDate = new Map<string, number>();
+
+    for (const task of allTasks) {
+      if (task.status !== "scheduled" || !task.scheduledDate) continue;
+      const currentMax = positionByDate.get(task.scheduledDate) ?? -1;
+      positionByDate.set(task.scheduledDate, Math.max(currentMax, task.position));
+    }
+
+    const candidates = allTasks
+      .filter(
+        (task) =>
+          task.type === "deadline" &&
+          !!task.deadline &&
+          task.status !== "completed" &&
+          task.status !== "cancelled" &&
+          (task.scheduledDate !== task.deadline || task.status !== "scheduled")
+      )
+      .sort((a, b) => a.createdAt - b.createdAt);
+
+    const updatedTaskIds: Id<"tasks">[] = [];
+    const now = Date.now();
+
+    for (const task of candidates) {
+      const targetDate = task.deadline!;
+      const nextPosition = (positionByDate.get(targetDate) ?? -1) + 1;
+      positionByDate.set(targetDate, nextPosition);
+
+      await ctx.db.patch(task._id, {
+        scheduledDate: targetDate,
+        status: "scheduled",
+        position: nextPosition,
+        updatedAt: now,
+      });
+      updatedTaskIds.push(task._id);
+    }
+
+    return {
+      updatedCount: updatedTaskIds.length,
+      updatedTaskIds,
+    };
   },
 });
 

@@ -31,7 +31,9 @@ export default defineSchema({
   })
     .index("by_status", ["status"])
     .index("by_scheduled_date", ["scheduledDate"])
-    .index("by_status_and_date", ["status", "scheduledDate"]),
+    .index("by_status_and_date", ["status", "scheduledDate"])
+    .index("by_status_position", ["status", "position"])
+    .index("by_status_date_position", ["status", "scheduledDate", "position"]),
   integrations: defineTable({
     provider: v.union(v.literal("google_calendar"), v.literal("gmail")),
     status: v.union(
@@ -40,6 +42,7 @@ export default defineSchema({
       v.literal("error")
     ),
     syncEnabled: v.boolean(),
+    accountEmail: v.optional(v.string()),
     tokenExpiresAt: v.optional(v.number()),
     lastSyncedAt: v.optional(v.number()),
     lastError: v.optional(v.string()),

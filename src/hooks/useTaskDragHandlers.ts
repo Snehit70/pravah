@@ -27,6 +27,29 @@ interface UseTaskDragHandlersOptions {
   setDraggedTask: (task: Task | null) => void;
 }
 
+export function resolveDropTargetDate(
+  sourceTask: Task,
+  overId: string,
+  tasks: Task[] | undefined
+): string | null {
+  if (isDateDropId(overId)) {
+    return canScheduleTaskOnDate(sourceTask, overId) ? overId : null;
+  }
+
+  const overTask = tasks?.find((t) => t._id === overId);
+  if (!overTask?.scheduledDate) {
+    return null;
+  }
+
+  if (overTask.scheduledDate === sourceTask.scheduledDate) {
+    return null;
+  }
+
+  return canScheduleTaskOnDate(sourceTask, overTask.scheduledDate)
+    ? overTask.scheduledDate
+    : null;
+}
+
 export function useTaskDragHandlers({
   tasks,
   tasksByDate,
@@ -54,11 +77,9 @@ export function useTaskDragHandlers({
       const sourceTask = tasks?.find((t) => t._id === activeId);
       if (!sourceTask) return;
 
-      if (isDateDropId(overId)) {
-        if (!canScheduleTaskOnDate(sourceTask, overId)) {
-          return;
-        }
-        await moveTask({ taskId: activeId, targetDate: overId });
+      const targetDate = resolveDropTargetDate(sourceTask, overId, tasks);
+      if (targetDate) {
+        await moveTask({ taskId: activeId, targetDate });
         return;
       }
 

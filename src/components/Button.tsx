@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import { TRANSITION_XFAST } from "../lib/motion";
 import { cn } from "../lib/utils";
 
 interface ButtonProps extends Omit<ComponentPropsWithoutRef<typeof motion.button>, "children"> {
@@ -55,7 +56,7 @@ export function Button({
     <motion.button
       whileHover={disabled ? undefined : { scale: 1.02 }}
       whileTap={disabled ? undefined : { scale: 0.98 }}
-      transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
+      transition={TRANSITION_XFAST}
       className={cn(baseStyles, variants[variant], sizes[size], className)}
       disabled={disabled}
       {...props}

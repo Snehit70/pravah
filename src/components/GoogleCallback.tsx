@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { exchangeGoogleAuthCode, saveGoogleTokens } from "../lib/google/api";
+import {
+  exchangeGoogleAuthCode,
+  fetchGoogleAccountEmail,
+  getGoogleAuthErrorMessage,
+  saveGoogleTokens,
+} from "../lib/google/api";
 import { useToast } from "./useToast";
 
 export function GoogleCallback() {
@@ -32,16 +37,23 @@ export function GoogleCallback() {
       try {
         const tokens = await exchangeGoogleAuthCode(code!);
         saveGoogleTokens(tokens.accessToken, tokens.expiresIn);
+        let accountEmail: string | undefined;
+        try {
+          accountEmail = await fetchGoogleAccountEmail(tokens.accessToken);
+        } catch (profileError) {
+          console.warn("Unable to load Google account email", profileError);
+        }
         await upsertIntegration({
           provider: "google_calendar",
           status: "connected",
           syncEnabled: true,
+          accountEmail,
           tokenExpiresAt: Date.now() + tokens.expiresIn * 1000,
         });
         showSuccess("Google connected successfully!");
       } catch (err) {
         console.error("Google OAuth callback failed", err);
-        showError("Failed to complete Google sign-in.");
+        showError(getGoogleAuthErrorMessage(err, "Failed to complete Google sign-in."));
       } finally {
         cleanupUrl();
       }

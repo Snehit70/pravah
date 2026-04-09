@@ -8,6 +8,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    pool: 'threads',
     include: ['src/**/*.test.{ts,tsx}', 'src/**/*.spec.{ts,tsx}'],
+    setupFiles: ['./src/test/setup.ts'],
   },
 })

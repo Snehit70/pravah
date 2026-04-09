@@ -2,6 +2,8 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { motion } from "framer-motion";
 import { Check, Clock, AlertTriangle } from "lucide-react";
+import { memo } from "react";
+import { TRANSITION_FAST } from "../lib/motion";
 import type { Task } from "../types";
 import { cn, getLocalDateString, daysBetween, formatDeadline, DUE_SOON_DAYS } from "../lib/utils";
 
@@ -11,7 +13,7 @@ interface TaskCardProps {
   isDragOverlay?: boolean;
 }
 
-export function TaskCard({ task, onClick, isDragOverlay }: TaskCardProps) {
+function TaskCardComponent({ task, onClick, isDragOverlay }: TaskCardProps) {
   const {
     attributes,
     listeners,
@@ -70,7 +72,7 @@ export function TaskCard({ task, onClick, isDragOverlay }: TaskCardProps) {
       exit={{ opacity: 0, scale: 0.95 }}
       whileHover={isDragOverlay ? undefined : {
         y: -3,
-        transition: { duration: 0.2, ease: [0.22, 1, 0.36, 1] }
+        transition: TRANSITION_FAST
       }}
       className={cn(
         "group relative rounded-xl cursor-grab active:cursor-grabbing",
@@ -171,3 +173,6 @@ export function TaskCard({ task, onClick, isDragOverlay }: TaskCardProps) {
     </motion.div>
   );
 }
+
+export const TaskCard = memo(TaskCardComponent);
+TaskCard.displayName = "TaskCard";

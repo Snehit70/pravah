@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { cn } from "../lib/utils";
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -6,14 +7,21 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 }
 
 export function Input({ label, error, className, ...props }: InputProps) {
+  const generatedId = useId();
+  const inputId = props.id ?? generatedId;
+
   return (
     <div>
       {label && (
-        <label className="block text-[11px] text-zinc-500 uppercase tracking-[0.08em] font-medium mb-1.5">
+        <label
+          htmlFor={inputId}
+          className="block text-[11px] text-zinc-500 uppercase tracking-[0.08em] font-medium mb-1.5"
+        >
           {label}
         </label>
       )}
       <input
+        id={inputId}
         className={cn(
           "w-full bg-zinc-800/80 rounded-xl p-3 text-zinc-100",
           "border border-zinc-700/50",
@@ -39,14 +47,21 @@ interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement
 }
 
 export function Textarea({ label, error, className, ...props }: TextareaProps) {
+  const generatedId = useId();
+  const textareaId = props.id ?? generatedId;
+
   return (
     <div>
       {label && (
-        <label className="block text-[11px] text-zinc-500 uppercase tracking-[0.08em] font-medium mb-1.5">
+        <label
+          htmlFor={textareaId}
+          className="block text-[11px] text-zinc-500 uppercase tracking-[0.08em] font-medium mb-1.5"
+        >
           {label}
         </label>
       )}
       <textarea
+        id={textareaId}
         className={cn(
           "w-full bg-zinc-800/80 rounded-xl p-3 text-zinc-100 resize-none",
           "border border-zinc-700/50",

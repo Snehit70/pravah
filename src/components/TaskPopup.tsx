@@ -7,7 +7,7 @@ import { Button } from "./Button";
 import { Input, Textarea } from "./Input";
 import { Modal } from "./Modal";
 import { useToast } from "./useToast";
-import { cn } from "../lib/utils";
+import { cn, getLocalDateString } from "../lib/utils";
 
 interface TaskPopupProps {
   task: Task;
@@ -27,6 +27,7 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
   const unscheduleTask = useMutation(api.tasks.unscheduleTask);
   const deleteTask = useMutation(api.tasks.deleteTask);
   const { showError, showSuccess } = useToast();
+  const minDate = getLocalDateString();
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -88,7 +89,12 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
       await unscheduleTask({ taskId: task._id });
       showSuccess("Task moved back to inbox");
       onClose();
-    } catch {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("Could not find public function for 'tasks:unscheduleTask'")) {
+        showError("Unschedule is unavailable on this backend. Run convex dev/deploy.");
+        return;
+      }
       showError("Failed to unschedule task");
     }
   };
@@ -127,7 +133,7 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
             type="date"
             value={deadline}
             onChange={(e) => setDeadline(e.target.value)}
-            min={new Date().toISOString().split('T')[0]}
+            min={minDate}
           />
         )}
 
