@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearGoogleTokens,
   fetchGmailMessages,
+  getGoogleAuthErrorMessage,
   getGoogleTokens,
   parseGoogleTokens,
   saveGoogleTokens,
@@ -82,5 +83,12 @@ describe("google api helpers", () => {
     await expect(fetchGmailMessages("bad-token")).rejects.toThrow(
       "Failed to fetch gmail messages: Unauthorized"
     );
+  });
+
+  it("formats oauth error messages safely", () => {
+    expect(getGoogleAuthErrorMessage(new Error("PKCE missing"), "fallback")).toBe(
+      "PKCE missing"
+    );
+    expect(getGoogleAuthErrorMessage("oops", "fallback")).toBe("fallback");
   });
 });

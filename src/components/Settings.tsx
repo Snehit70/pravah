@@ -8,6 +8,7 @@ import {
   getGoogleTokens,
   saveGoogleTokens,
   clearGoogleTokens,
+  getGoogleAuthErrorMessage,
   getGoogleOAuthUrl,
   parseGoogleTokens,
   exchangeGoogleAuthCode,
@@ -95,7 +96,7 @@ export function Settings({ onClose }: SettingsProps) {
       } catch (err) {
         console.error("Google OAuth callback failed", err);
         if (!cancelled) {
-          showError("Failed to complete Google sign-in.");
+          showError(getGoogleAuthErrorMessage(err, "Failed to complete Google sign-in."));
         }
       } finally {
         url.searchParams.delete("code");
@@ -127,8 +128,12 @@ export function Settings({ onClose }: SettingsProps) {
   }, [showError, showSuccess]);
 
   const handleGoogleConnect = async () => {
-    const oauthUrl = await getGoogleOAuthUrl();
-    window.location.href = oauthUrl;
+    try {
+      const oauthUrl = await getGoogleOAuthUrl();
+      window.location.href = oauthUrl;
+    } catch (error) {
+      showError(getGoogleAuthErrorMessage(error, "Failed to start Google sign-in."));
+    }
   };
 
   const handleGoogleDisconnect = async () => {

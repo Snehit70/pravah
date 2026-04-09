@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { exchangeGoogleAuthCode, saveGoogleTokens } from "../lib/google/api";
+import {
+  exchangeGoogleAuthCode,
+  getGoogleAuthErrorMessage,
+  saveGoogleTokens,
+} from "../lib/google/api";
 import { useToast } from "./useToast";
 
 export function GoogleCallback() {
@@ -41,7 +45,7 @@ export function GoogleCallback() {
         showSuccess("Google connected successfully!");
       } catch (err) {
         console.error("Google OAuth callback failed", err);
-        showError("Failed to complete Google sign-in.");
+        showError(getGoogleAuthErrorMessage(err, "Failed to complete Google sign-in."));
       } finally {
         cleanupUrl();
       }
