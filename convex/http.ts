@@ -35,6 +35,27 @@ function requireAuth(request: Request): Response | null {
   });
 }
 
+function getGoogleCorsHeaders(request: Request): HeadersInit {
+  const origin = request.headers.get("origin") ?? "*";
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Max-Age": "86400",
+    Vary: "Origin",
+  };
+}
+
+function googleJsonResponse(request: Request, payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      ...getGoogleCorsHeaders(request),
+    },
+  });
+}
+
 // GET /tasks - List all tasks
 http.route({
   path: "/tasks",
@@ -387,18 +408,26 @@ http.route({
 // POST /google/token - Exchange authorization code for tokens (server-side)
 http.route({
   path: "/google/token",
+  method: "OPTIONS",
+  handler: httpAction(async (_ctx, request) => {
+    return new Response(null, {
+      status: 204,
+      headers: getGoogleCorsHeaders(request),
+    });
+  }),
+});
+
+http.route({
+  path: "/google/token",
   method: "POST",
   handler: httpAction(async (_ctx, request) => {
     const body = await request.json();
     const validation = googleTokenExchangeSchema.safeParse(body);
     if (!validation.success) {
-      return new Response(JSON.stringify({
+      return googleJsonResponse(request, {
         error: "Validation failed",
         details: validation.error.issues
-      }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      }, 400);
     }
 
     const { code, codeVerifier, redirectUri } = validation.data;
@@ -412,13 +441,10 @@ http.route({
     const clientSecret = env?.GOOGLE_OAUTH_CLIENT_SECRET;
 
     if (!clientId) {
-      return new Response(JSON.stringify({
+      return googleJsonResponse(request, {
         error:
           "Google OAuth not configured (set GOOGLE_OAUTH_CLIENT_ID on Convex deployment).",
-      }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
+      }, 500);
     }
 
     const tokenParams = new URLSearchParams({
@@ -441,16 +467,11 @@ http.route({
 
     if (!response.ok) {
       const errorText = await response.text();
-      return new Response(JSON.stringify({ error: `Token exchange failed: ${errorText}` }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return googleJsonResponse(request, { error: `Token exchange failed: ${errorText}` }, 400);
     }
 
     const tokenData = await response.json();
-    return new Response(JSON.stringify(tokenData), {
-      headers: { "Content-Type": "application/json" },
-    });
+    return googleJsonResponse(request, tokenData);
   }),
 });
 
