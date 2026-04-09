@@ -89,7 +89,12 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
       await unscheduleTask({ taskId: task._id });
       showSuccess("Task moved back to inbox");
       onClose();
-    } catch {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("Could not find public function for 'tasks:unscheduleTask'")) {
+        showError("Unschedule is unavailable on this backend. Run convex dev/deploy.");
+        return;
+      }
       showError("Failed to unschedule task");
     }
   };

@@ -110,4 +110,23 @@ describe("TaskPopup", () => {
     expect(showSuccessMock).toHaveBeenCalledWith("Task deleted");
     expect(onClose).toHaveBeenCalled();
   });
+
+  it("shows a specific message when unschedule mutation is unavailable on backend", async () => {
+    const onClose = vi.fn();
+    unscheduleTaskMock.mockRejectedValue(
+      new Error("Could not find public function for 'tasks:unscheduleTask'")
+    );
+
+    render(<TaskPopup task={makeTask({ status: "scheduled" })} onClose={onClose} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Unschedule" }));
+
+    await waitFor(() => {
+      expect(showErrorMock).toHaveBeenCalledWith(
+        "Unschedule is unavailable on this backend. Run convex dev/deploy."
+      );
+    });
+
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });
