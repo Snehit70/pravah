@@ -96,6 +96,7 @@ export function App() {
           <InboxSidebar
             tasks={inboxTasks}
             onTaskClick={openTaskPopup}
+            onOpenQuickAdd={openQuickAdd}
           />
         </div>
       </div>

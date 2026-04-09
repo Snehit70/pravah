@@ -3,16 +3,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Inbox, ChevronLeft, ChevronRight } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useMutation } from "convex/react";
-import { api } from "../../convex/_generated/api";
-import { TRANSITION_BASE, TRANSITION_FAST, TRANSITION_PANEL } from "../lib/motion";
+import { TRANSITION_FAST, TRANSITION_PANEL } from "../lib/motion";
 import type { Task } from "../types";
 import { cn } from "../lib/utils";
-import { Button } from "./Button";
 
 interface InboxSidebarProps {
   tasks: Task[];
   onTaskClick: (task: Task) => void;
+  onOpenQuickAdd?: () => void;
 }
 
 function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void }) {
@@ -92,20 +90,8 @@ function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void
 const InboxTask = memo(InboxTaskComponent);
 InboxTask.displayName = "InboxTask";
 
-function InboxSidebarComponent({ tasks, onTaskClick }: InboxSidebarProps) {
+function InboxSidebarComponent({ tasks, onTaskClick, onOpenQuickAdd }: InboxSidebarProps) {
   const [collapsed, setCollapsed] = useState(window.innerWidth < 768);
-  const [isAdding, setIsAdding] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const [newType, setNewType] = useState<"open" | "deadline">("open");
-
-  const addTask = useMutation(api.tasks.addTask);
-
-  const handleAdd = async () => {
-    if (!newTitle.trim()) return;
-    await addTask({ title: newTitle.trim(), type: newType });
-    setNewTitle("");
-    setIsAdding(false);
-  };
 
   return (
     <motion.aside
@@ -158,14 +144,14 @@ function InboxSidebarComponent({ tasks, onTaskClick }: InboxSidebarProps) {
             <button
               onClick={() => {
                 setCollapsed(false);
-                setIsAdding(true);
+                onOpenQuickAdd?.();
               }}
-              aria-label="Add task"
+              aria-label="Quick add task"
               className={cn(
-                "w-full p-2 rounded-xl",
-                "bg-zinc-800/60 hover:bg-zinc-700/60",
-                "text-zinc-400 hover:text-zinc-200",
-                "border border-zinc-700/40 hover:border-amber-500/30",
+                "w-full p-2 rounded-xl flex items-center justify-center",
+                "bg-amber-500/15 hover:bg-amber-500/20",
+                "text-amber-300 hover:text-amber-200",
+                "border border-amber-500/30 hover:border-amber-400/40",
                 "transition-all duration-200",
               )}
             >
@@ -218,102 +204,20 @@ function InboxSidebarComponent({ tasks, onTaskClick }: InboxSidebarProps) {
             )}
           </div>
 
-          <div className="p-3 pt-2 border-t border-zinc-800/60 space-y-2">
+          <div className="p-3 pt-2 border-t border-zinc-800/60">
             <button
-              onClick={() => setIsAdding(true)}
+              onClick={onOpenQuickAdd}
               className={cn(
                 "w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm",
-                "bg-zinc-800/60 hover:bg-zinc-700/60",
-                "text-zinc-400 hover:text-zinc-200",
-                "border border-zinc-700/40 hover:border-amber-500/30",
+                "bg-amber-500/15 hover:bg-amber-500/20",
+                "text-amber-300 hover:text-amber-200",
+                "border border-amber-500/30 hover:border-amber-400/40",
                 "transition-all duration-200",
-                "hover:shadow-[0_0_15px_rgba(232,169,69,0.1)]",
               )}
             >
               <Plus size={15} />
-              Add Task
+              Quick Add
             </button>
-
-            <AnimatePresence>
-              {isAdding && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={TRANSITION_BASE}
-                  className="overflow-hidden"
-                >
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      value={newTitle}
-                      onChange={(e) => setNewTitle(e.target.value)}
-                      placeholder="Task title..."
-                      className={cn(
-                        "w-full p-2.5 text-sm rounded-xl",
-                        "bg-zinc-800/80 text-zinc-100",
-                        "border border-zinc-700/50",
-                        "placeholder:text-zinc-600",
-                        "focus:border-amber-500/50 focus:outline-none",
-                        "focus:shadow-[0_0_0_3px_rgba(232,169,69,0.15)]",
-                        "transition-all duration-200",
-                      )}
-                      autoFocus
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleAdd();
-                        if (e.key === "Escape") setIsAdding(false);
-                      }}
-                    />
-                    <div className="flex gap-1.5">
-                      <button
-                        onClick={() => setNewType("open")}
-                        className={cn(
-                          "flex-1 py-1.5 text-xs rounded-lg font-medium",
-                          "transition-all duration-200",
-                          newType === "open"
-                            ? "bg-amber-500/20 text-amber-400 shadow-sm"
-                            : "text-zinc-500 hover:text-zinc-400 hover:bg-zinc-800/50",
-                        )}
-                      >
-                        Open
-                      </button>
-                      <button
-                        onClick={() => setNewType("deadline")}
-                        className={cn(
-                          "flex-1 py-1.5 text-xs rounded-lg font-medium",
-                          "transition-all duration-200",
-                          newType === "deadline"
-                            ? "bg-yellow-500/20 text-yellow-400 shadow-sm"
-                            : "text-zinc-500 hover:text-zinc-400 hover:bg-zinc-800/50",
-                        )}
-                      >
-                        Deadline
-                      </button>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={() => setIsAdding(false)}
-                        variant="ghost"
-                        size="sm"
-                        className="flex-1"
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        onClick={handleAdd}
-                        disabled={!newTitle.trim()}
-                        variant="primary"
-                        size="sm"
-                        className="flex-1"
-                      >
-                        Add
-                      </Button>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
           </div>
         </>
       )}
