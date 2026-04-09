@@ -186,7 +186,39 @@ function InboxSidebarComponent({ tasks, onTaskClick, onOpenQuickAdd }: InboxSide
                 </span>
               )}
             </div>
+          </div>
 
+          {/* Task list */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            <AnimatePresence mode="popLayout">
+              {tasks.map((task) => (
+                <InboxTask
+                  key={task._id}
+                  task={task}
+                  onClick={() => onTaskClick(task)}
+                />
+              ))}
+            </AnimatePresence>
+
+            {tasks.length === 0 && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.2 }}
+                className="text-center py-12"
+              >
+                <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-zinc-800/50 flex items-center justify-center">
+                  <Inbox size={20} className="text-zinc-600" />
+                </div>
+                <p className="text-sm text-zinc-500 font-medium">No tasks in inbox</p>
+                <p className="text-xs text-zinc-600 mt-1">
+                  Add tasks here to sort them later
+                </p>
+              </motion.div>
+            )}
+          </div>
+
+          <div className="p-3 pt-2 border-t border-zinc-800/60 space-y-2">
             <button
               onClick={() => setIsAdding(true)}
               className={cn(
@@ -202,7 +234,6 @@ function InboxSidebarComponent({ tasks, onTaskClick, onOpenQuickAdd }: InboxSide
               Add Task
             </button>
 
-            {/* Inline add form */}
             <AnimatePresence>
               {isAdding && (
                 <motion.div
@@ -212,7 +243,7 @@ function InboxSidebarComponent({ tasks, onTaskClick, onOpenQuickAdd }: InboxSide
                   transition={TRANSITION_BASE}
                   className="overflow-hidden"
                 >
-                  <div className="mt-3 space-y-2">
+                  <div className="space-y-2">
                     <input
                       type="text"
                       value={newTitle}
@@ -282,40 +313,8 @@ function InboxSidebarComponent({ tasks, onTaskClick, onOpenQuickAdd }: InboxSide
                 </motion.div>
               )}
             </AnimatePresence>
-          </div>
 
-          {/* Task list */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            <AnimatePresence mode="popLayout">
-              {tasks.map((task) => (
-                <InboxTask
-                  key={task._id}
-                  task={task}
-                  onClick={() => onTaskClick(task)}
-                />
-              ))}
-            </AnimatePresence>
-
-            {tasks.length === 0 && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.2 }}
-                className="text-center py-12"
-              >
-                <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-zinc-800/50 flex items-center justify-center">
-                  <Inbox size={20} className="text-zinc-600" />
-                </div>
-                <p className="text-sm text-zinc-500 font-medium">No tasks in inbox</p>
-                <p className="text-xs text-zinc-600 mt-1">
-                  Add tasks here to sort them later
-                </p>
-              </motion.div>
-            )}
-          </div>
-
-          {onOpenQuickAdd && (
-            <div className="p-3 pt-2 border-t border-zinc-800/60">
+            {onOpenQuickAdd && (
               <button
                 onClick={onOpenQuickAdd}
                 className={cn(
@@ -329,8 +328,8 @@ function InboxSidebarComponent({ tasks, onTaskClick, onOpenQuickAdd }: InboxSide
                 <Plus size={15} />
                 Quick Add
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </>
       )}
     </motion.aside>
