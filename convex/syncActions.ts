@@ -8,6 +8,25 @@ function toDateString(input: string | undefined): string | undefined {
   return input.includes("T") ? input.slice(0, 10) : input;
 }
 
+interface GoogleApiErrorBody {
+  error?: {
+    code?: number;
+    message?: string;
+    errors?: Array<{ reason?: string; message?: string }>;
+  };
+}
+
+export function shouldRetryCalendarWithoutUpdatedMin(status: number, bodyText: string): boolean {
+  if (status !== 410) return false;
+  try {
+    const parsed = JSON.parse(bodyText) as GoogleApiErrorBody;
+    const reason = parsed.error?.errors?.[0]?.reason ?? "";
+    return reason === "updatedMinTooLongAgo";
+  } catch {
+    return false;
+  }
+}
+
 export const importGoogleCalendarAction = action({
   args: {
     accessToken: v.string(),
@@ -45,18 +64,34 @@ export const importGoogleCalendarAction = action({
       if (!args.timeMin && cursorDoc?.cursor) params.set("updatedMin", cursorDoc.cursor);
 
       const calendarId = args.calendarId ?? "primary";
-      const response = await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
-        {
-          headers: {
-            Authorization: `Bearer ${args.accessToken}`,
-          },
+      const fetchEvents = async (includeCursor: boolean) => {
+        const requestParams = new URLSearchParams(params);
+        if (!includeCursor) {
+          requestParams.delete("updatedMin");
         }
-      );
 
+        return await fetch(
+          `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${requestParams}`,
+          {
+            headers: {
+              Authorization: `Bearer ${args.accessToken}`,
+            },
+          }
+        );
+      };
+
+      let response = await fetchEvents(true);
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Calendar import failed: ${errorText}`);
+        if (params.has("updatedMin") && shouldRetryCalendarWithoutUpdatedMin(response.status, errorText)) {
+          response = await fetchEvents(false);
+          if (!response.ok) {
+            const retryErrorText = await response.text();
+            throw new Error(`Calendar import failed: ${retryErrorText}`);
+          }
+        } else {
+          throw new Error(`Calendar import failed: ${errorText}`);
+        }
       }
 
       const payload = (await response.json()) as {
