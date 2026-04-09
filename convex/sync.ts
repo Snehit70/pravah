@@ -19,23 +19,21 @@ function computeContentHash(input: {
 }
 
 async function getNextPosition(ctx: MutationCtx, scheduledDate?: string) {
-  let tasksQuery = ctx.db.query("tasks");
-  if (scheduledDate) {
-    tasksQuery = tasksQuery.filter((q) =>
-      q.and(
-        q.eq(q.field("scheduledDate"), scheduledDate),
-        q.eq(q.field("status"), "scheduled")
-      )
-    );
-  } else {
-    tasksQuery = tasksQuery.filter((q) => q.eq(q.field("status"), "inbox"));
-  }
+  const latestTask = scheduledDate
+    ? await ctx.db
+        .query("tasks")
+        .withIndex("by_status_date_position", (q) =>
+          q.eq("status", "scheduled").eq("scheduledDate", scheduledDate)
+        )
+        .order("desc")
+        .first()
+    : await ctx.db
+        .query("tasks")
+        .withIndex("by_status_position", (q) => q.eq("status", "inbox"))
+        .order("desc")
+        .first();
 
-  const tasks = await tasksQuery.collect();
-  const maxPosition = tasks.reduce((max: number, task: { position: number }) => {
-    return Math.max(max, task.position);
-  }, -1);
-  return maxPosition + 1;
+  return (latestTask?.position ?? -1) + 1;
 }
 
 export const getIntegrationStatus = query({
