@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Inbox, ChevronLeft, ChevronRight } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
@@ -15,7 +15,7 @@ interface InboxSidebarProps {
   onTaskClick: (task: Task) => void;
 }
 
-function InboxTask({ task, onClick }: { task: Task; onClick: () => void }) {
+function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void }) {
   const {
     attributes,
     listeners,
@@ -89,7 +89,10 @@ function InboxTask({ task, onClick }: { task: Task; onClick: () => void }) {
   );
 }
 
-export function InboxSidebar({ tasks, onTaskClick }: InboxSidebarProps) {
+const InboxTask = memo(InboxTaskComponent);
+InboxTask.displayName = "InboxTask";
+
+function InboxSidebarComponent({ tasks, onTaskClick }: InboxSidebarProps) {
   const [collapsed, setCollapsed] = useState(window.innerWidth < 768);
   const [isAdding, setIsAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -294,3 +297,6 @@ export function InboxSidebar({ tasks, onTaskClick }: InboxSidebarProps) {
     </motion.aside>
   );
 }
+
+export const InboxSidebar = memo(InboxSidebarComponent);
+InboxSidebar.displayName = "InboxSidebar";

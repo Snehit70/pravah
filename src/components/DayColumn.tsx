@@ -1,6 +1,7 @@
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { memo } from "react";
 import { TaskCard } from "./TaskCard";
 import type { Task } from "../types";
 import { cn, getLocalDateString, formatDay } from "../lib/utils";
@@ -11,7 +12,7 @@ interface DayColumnProps {
   onTaskClick: (task: Task) => void;
 }
 
-export function DayColumn({ date, tasks, onTaskClick }: DayColumnProps) {
+function DayColumnComponent({ date, tasks, onTaskClick }: DayColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: date });
   const shouldReduceMotion = useReducedMotion();
 
@@ -210,3 +211,6 @@ export function DayColumn({ date, tasks, onTaskClick }: DayColumnProps) {
     </div>
   );
 }
+
+export const DayColumn = memo(DayColumnComponent);
+DayColumn.displayName = "DayColumn";
