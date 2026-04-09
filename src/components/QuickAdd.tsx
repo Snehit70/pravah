@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { X, Plus } from "lucide-react";
+import { X } from "lucide-react";
 import { useMutation } from "convex/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "../../convex/_generated/api";
@@ -202,12 +202,6 @@ export function QuickAdd({ onClose }: QuickAddProps) {
             }}
           >
             <div className="flex items-center gap-3 mb-4">
-              <div className={cn(
-                "p-2.5 rounded-xl shrink-0",
-                "bg-amber-500/15"
-              )}>
-                <Plus size={20} className="text-amber-500" />
-              </div>
               <input
                 type="text"
                 value={title}
