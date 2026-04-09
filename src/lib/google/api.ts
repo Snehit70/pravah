@@ -277,7 +277,7 @@ export async function fetchGmailMessages(
   maxResults: number = 10
 ): Promise<GoogleGmailMessage[]> {
   const response = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages?query=${encodeURIComponent(query)}&maxResults=${maxResults}`,
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=${maxResults}`,
     {
       headers: { Authorization: `Bearer ${accessToken}` },
     }
