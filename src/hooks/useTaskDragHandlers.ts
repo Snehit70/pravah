@@ -53,12 +53,22 @@ export function useTaskDragHandlers({
       const overId = over.id as string;
       const sourceTask = tasks?.find((t) => t._id === activeId);
       if (!sourceTask) return;
+      const overTask = tasks?.find((t) => t._id === overId);
 
       if (isDateDropId(overId)) {
         if (!canScheduleTaskOnDate(sourceTask, overId)) {
           return;
         }
         await moveTask({ taskId: activeId, targetDate: overId });
+        return;
+      }
+
+      // Dropping on a task card from another day should still move across days.
+      if (overTask?.scheduledDate && overTask.scheduledDate !== sourceTask.scheduledDate) {
+        if (!canScheduleTaskOnDate(sourceTask, overTask.scheduledDate)) {
+          return;
+        }
+        await moveTask({ taskId: activeId, targetDate: overTask.scheduledDate });
         return;
       }
 
