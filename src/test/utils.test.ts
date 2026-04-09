@@ -1,133 +1,69 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  DUE_SOON_DAYS,
+  daysBetween,
+  formatDay,
+  formatDeadline,
+  generateDateRange,
+  getLocalDateString,
+  parseLocalDate,
+} from "../lib/utils";
 
-describe("Utility Functions", () => {
-  describe("Date helpers", () => {
-    it("formats date correctly", () => {
-      const date = "2026-04-07";
-      const formatted = new Date(date).toLocaleDateString("en-US", {
-        weekday: "short",
-      });
-      expect(formatted).toBe("Tue");
-    });
-
-    it("compares dates correctly", () => {
-      const earlier = "2026-04-05";
-      const later = "2026-04-10";
-      expect(earlier < later).toBe(true);
-    });
-
-    it("detects past dates", () => {
-      const past = "2020-01-01";
-      const today = new Date().toISOString().split("T")[0];
-      expect(past < today).toBe(true);
-    });
+describe("utils", () => {
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
-  describe("Task filtering", () => {
-    const tasks = [
-      { type: "open", status: "inbox" },
-      { type: "deadline", status: "scheduled", deadline: "2026-04-10" },
-      { type: "deadline", status: "completed", deadline: "2026-04-05" },
-      { type: "open", status: "scheduled" },
-    ];
-
-    it("filters inbox tasks", () => {
-      const inbox = tasks.filter((t) => t.status === "inbox");
-      expect(inbox.length).toBe(1);
-    });
-
-    it("filters scheduled tasks", () => {
-      const scheduled = tasks.filter((t) => t.status === "scheduled");
-      expect(scheduled.length).toBe(2);
-    });
-
-    it("filters deadline tasks", () => {
-      const deadlineTasks = tasks.filter((t) => t.type === "deadline");
-      expect(deadlineTasks.length).toBe(2);
-    });
-
-    it("filters open tasks", () => {
-      const openTasks = tasks.filter((t) => t.type === "open");
-      expect(openTasks.length).toBe(2);
-    });
-
-    it("detects overdue deadline tasks", () => {
-      const pastDeadline = "2020-01-01";
-      const today = new Date().toISOString().split("T")[0];
-      const isOverdue = pastDeadline < today && tasks[1].status !== "completed";
-      expect(isOverdue).toBe(true);
-    });
+  it("returns local date strings in YYYY-MM-DD format", () => {
+    const date = new Date(2026, 3, 9, 20, 30, 0);
+    expect(getLocalDateString(date)).toBe("2026-04-09");
   });
 
-  describe("Task grouping by date", () => {
-    it("groups tasks by scheduledDate", () => {
-      const tasks = [
-        { scheduledDate: "2026-04-07", title: "Task 1" },
-        { scheduledDate: "2026-04-07", title: "Task 2" },
-        { scheduledDate: "2026-04-08", title: "Task 3" },
-      ];
-
-      const grouped: Record<string, typeof tasks> = {};
-      for (const task of tasks) {
-        if (!task.scheduledDate) continue;
-        if (!grouped[task.scheduledDate]) grouped[task.scheduledDate] = [];
-        grouped[task.scheduledDate].push(task);
-      }
-
-      expect(Object.keys(grouped)).toEqual(["2026-04-07", "2026-04-08"]);
-      expect(grouped["2026-04-07"].length).toBe(2);
-      expect(grouped["2026-04-08"].length).toBe(1);
-    });
-
-    it("sorts tasks by position", () => {
-      const tasks = [
-        { position: 2, title: "Task 3" },
-        { position: 0, title: "Task 1" },
-        { position: 1, title: "Task 2" },
-      ];
-
-      tasks.sort((a, b) => a.position - b.position);
-
-      expect(tasks[0].title).toBe("Task 1");
-      expect(tasks[1].title).toBe("Task 2");
-      expect(tasks[2].title).toBe("Task 3");
-    });
+  it("parses local dates without UTC rollover issues", () => {
+    const parsed = parseLocalDate("2026-04-09");
+    expect(parsed.getFullYear()).toBe(2026);
+    expect(parsed.getMonth()).toBe(3);
+    expect(parsed.getDate()).toBe(9);
   });
 
-  describe("Drag and drop logic", () => {
-    it("calculates new position after reorder", () => {
-      const items = [1, 2, 3, 4];
-      const fromIndex = 0;
-      const toIndex = 3;
+  it("formats day metadata consistently", () => {
+    const formatted = formatDay("2026-04-09");
+    expect(formatted.dayName).toBe("Thu");
+    expect(formatted.dayNum).toBe(9);
+    expect(formatted.monthShort).toBe("Apr");
+  });
 
-      const result = [...items];
-      const [moved] = result.splice(fromIndex, 1);
-      result.splice(toIndex, 0, moved);
+  it("calculates day differences correctly", () => {
+    expect(daysBetween("2026-04-09", "2026-04-09")).toBe(0);
+    expect(daysBetween("2026-04-09", "2026-04-12")).toBe(3);
+    expect(daysBetween("2026-04-12", "2026-04-09")).toBe(-3);
+  });
 
-      expect(result).toEqual([2, 3, 4, 1]);
-    });
+  it("formats deadline states for overdue, near-term, and far dates", () => {
+    expect(formatDeadline("2026-04-08", "2026-04-09")).toBe("Overdue");
+    expect(formatDeadline("2026-04-09", "2026-04-09")).toBe("Due today");
+    expect(formatDeadline("2026-04-10", "2026-04-09")).toBe("Due tomorrow");
+    expect(formatDeadline("2026-04-11", "2026-04-09")).toBe("Due in 2d");
+    expect(formatDeadline("2026-04-25", "2026-04-09")).toBe("Due Apr 25");
+  });
 
-    it("validates date format", () => {
-      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-      expect(dateRegex.test("2026-04-07")).toBe(true);
-      expect(dateRegex.test("2026-4-7")).toBe(false);
-      expect(dateRegex.test("invalid")).toBe(false);
-    });
+  it("keeps due soon threshold at expected UX boundary", () => {
+    expect(DUE_SOON_DAYS).toBe(3);
+    expect(daysBetween("2026-04-09", "2026-04-12")).toBeLessThanOrEqual(DUE_SOON_DAYS);
+    expect(daysBetween("2026-04-09", "2026-04-13")).toBeGreaterThan(DUE_SOON_DAYS);
+  });
 
-    it("enforces deadline constraint", () => {
-      const task = { type: "deadline" as const, deadline: "2026-04-07" };
-      const _targetDate = "2026-04-10";
+  it("generates a stable date window around today", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 3, 9, 9, 0, 0));
 
-      const canMove = _targetDate <= task.deadline;
-      expect(canMove).toBe(false);
-    });
-
-    it("allows moving open tasks to any date", () => {
-      const taskType = "open";
-
-      // Open tasks don't have deadline constraint
-      const canMove = taskType === "open";
-      expect(canMove).toBe(true);
-    });
+    const dates = generateDateRange(2, 3);
+    expect(dates).toEqual([
+      "2026-04-07",
+      "2026-04-08",
+      "2026-04-09",
+      "2026-04-10",
+      "2026-04-11",
+    ]);
   });
 });
