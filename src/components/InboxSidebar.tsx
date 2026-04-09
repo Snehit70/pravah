@@ -162,12 +162,12 @@ function InboxSidebarComponent({ tasks, onTaskClick, onOpenQuickAdd }: InboxSide
       ) : (
         <>
           {/* Header */}
-          <div className="p-4 pb-3 border-b border-zinc-800/60">
-            <div className="flex items-center gap-2 text-zinc-400 mb-3">
+          <div className="p-4 pb-3 pr-10 border-b border-zinc-800/60">
+            <div className="flex min-w-0 items-center gap-2 text-zinc-400">
               <Inbox size={15} />
-              <span className="text-sm font-medium">Inbox</span>
+              <span className="min-w-0 text-sm font-medium truncate">Inbox</span>
               {tasks.length > 0 && (
-                <span className="text-[11px] text-amber-400/80 font-semibold tabular-nums bg-amber-500/10 px-1.5 py-0.5 rounded-full">
+                <span className="shrink-0 text-[11px] text-amber-400/80 font-semibold tabular-nums bg-amber-500/10 px-1.5 py-0.5 rounded-full">
                   {tasks.length}
                 </span>
               )}
