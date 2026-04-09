@@ -145,4 +145,23 @@ describe("Settings", () => {
       });
     });
   });
+
+  it("preserves accountEmail when persisting calendar toggle state", async () => {
+    render(<Settings onClose={vi.fn()} />);
+
+    const calendarLabel = screen.getByText("Google Calendar").closest("label");
+    const calendarToggle = calendarLabel?.querySelector("button");
+    expect(calendarToggle).toBeTruthy();
+
+    fireEvent.click(calendarToggle!);
+
+    await waitFor(() => {
+      expect(upsertIntegrationMock).toHaveBeenCalledWith({
+        provider: "google_calendar",
+        status: "connected",
+        syncEnabled: false,
+        accountEmail: "user@example.com",
+      });
+    });
+  });
 });

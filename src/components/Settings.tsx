@@ -194,6 +194,7 @@ export function Settings({ onClose }: SettingsProps) {
   }, [hydratedToggleState, calendarIntegrationStatus, gmailIntegrationStatus]);
 
   useEffect(() => {
+    if (!calendarIntegrationStatus) return;
     if (!googleConnected || googleAccountEmail || attemptedEmailHydration) return;
     const tokens = getGoogleTokens();
     if (!tokens || tokens.expired) return;
@@ -205,7 +206,7 @@ export function Settings({ onClose }: SettingsProps) {
         await upsertIntegration({
           provider: "google_calendar",
           status: "connected",
-          syncEnabled: calendarEnabled,
+          syncEnabled: Boolean(calendarIntegrationStatus.integration?.syncEnabled),
           accountEmail,
         });
       } catch (error) {
@@ -217,18 +218,30 @@ export function Settings({ onClose }: SettingsProps) {
     googleAccountEmail,
     attemptedEmailHydration,
     upsertIntegration,
-    calendarEnabled,
+    calendarIntegrationStatus,
   ]);
 
   const persistIntegrationToggle = async (
     provider: "google_calendar" | "gmail",
     syncEnabled: boolean
   ) => {
-    await upsertIntegration({
+    const payload: {
+      provider: "google_calendar" | "gmail";
+      status: "connected" | "disconnected";
+      syncEnabled: boolean;
+      accountEmail?: string;
+    } = {
       provider,
       status: googleConnected ? "connected" : "disconnected",
       syncEnabled,
-    });
+    };
+
+    // Preserve the known Google account identity while updating toggle state.
+    if (googleAccountEmail) {
+      payload.accountEmail = googleAccountEmail;
+    }
+
+    await upsertIntegration(payload);
   };
 
   const handleCalendarToggle = async () => {
