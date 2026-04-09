@@ -3,7 +3,7 @@ import { X, Plus } from "lucide-react";
 import { useMutation } from "convex/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "../../convex/_generated/api";
-import { cn } from "../lib/utils";
+import { cn, getLocalDateString } from "../lib/utils";
 import { Button } from "./Button";
 import { useToast } from "./useToast";
 
@@ -30,6 +30,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
 
   const addTask = useMutation(api.tasks.addTask);
   const { showError, showSuccess } = useToast();
+  const minDate = getLocalDateString();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -176,7 +177,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                     type="date"
                     value={deadline}
                     onChange={(e) => setDeadline(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
+                    min={minDate}
                     className={cn(
                       "px-3 py-1.5 text-sm rounded-xl",
                       "bg-zinc-800/80 text-zinc-100",

@@ -7,7 +7,7 @@ import { Button } from "./Button";
 import { Input, Textarea } from "./Input";
 import { Modal } from "./Modal";
 import { useToast } from "./useToast";
-import { cn } from "../lib/utils";
+import { cn, getLocalDateString } from "../lib/utils";
 
 interface TaskPopupProps {
   task: Task;
@@ -27,6 +27,7 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
   const unscheduleTask = useMutation(api.tasks.unscheduleTask);
   const deleteTask = useMutation(api.tasks.deleteTask);
   const { showError, showSuccess } = useToast();
+  const minDate = getLocalDateString();
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -127,7 +128,7 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
             type="date"
             value={deadline}
             onChange={(e) => setDeadline(e.target.value)}
-            min={new Date().toISOString().split('T')[0]}
+            min={minDate}
           />
         )}
 
