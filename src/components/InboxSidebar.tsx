@@ -5,6 +5,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { TRANSITION_BASE, TRANSITION_FAST, TRANSITION_PANEL } from "../lib/motion";
 import type { Task } from "../types";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
@@ -49,7 +50,7 @@ function InboxTask({ task, onClick }: { task: Task; onClick: () => void }) {
       exit={{ opacity: 0, x: -10, scale: 0.95 }}
       whileHover={{
         y: -2,
-        transition: { duration: 0.2, ease: [0.22, 1, 0.36, 1] }
+        transition: TRANSITION_FAST
       }}
       className={cn(
         "group relative rounded-xl cursor-grab active:cursor-grabbing",
@@ -107,7 +108,7 @@ export function InboxSidebar({ tasks, onTaskClick }: InboxSidebarProps) {
     <motion.aside
       initial={false}
       animate={{ width: collapsed ? 56 : 260 }}
-      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+      transition={TRANSITION_PANEL}
       className={cn(
         "relative flex flex-col overflow-hidden flex-shrink-0",
         "bg-zinc-950/40 backdrop-blur-xl",
@@ -184,7 +185,7 @@ export function InboxSidebar({ tasks, onTaskClick }: InboxSidebarProps) {
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: "auto", opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                  transition={TRANSITION_BASE}
                   className="overflow-hidden"
                 >
                   <div className="mt-3 space-y-2">

@@ -3,6 +3,7 @@ import { X, Plus } from "lucide-react";
 import { useMutation } from "convex/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "../../convex/_generated/api";
+import { TRANSITION_FAST, TRANSITION_OVERSHOOT } from "../lib/motion";
 import { cn, getLocalDateString } from "../lib/utils";
 import { Button } from "./Button";
 import { useToast } from "./useToast";
@@ -74,7 +75,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
         animate="visible"
         exit="hidden"
         variants={overlayVariants}
-        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+        transition={TRANSITION_FAST}
         className={cn(
           "fixed inset-0 z-50 flex items-start justify-center pt-24",
           "bg-black/60 backdrop-blur-sm"
@@ -86,7 +87,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
           animate="visible"
           exit="exit"
           variants={modalVariants}
-          transition={{ duration: 0.25, ease: [0.34, 1.56, 0.64, 1] }}
+          transition={TRANSITION_OVERSHOOT}
           className={cn(
             "w-full max-w-lg p-5 mx-4 md:mx-0",
             "bg-zinc-900 rounded-2xl",
@@ -174,7 +175,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                     initial={{ opacity: 0, width: 0 }}
                     animate={{ opacity: 1, width: "auto" }}
                     exit={{ opacity: 0, width: 0 }}
-                    transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                    transition={TRANSITION_FAST}
                     type="date"
                     value={deadline}
                     onChange={(e) => setDeadline(e.target.value)}

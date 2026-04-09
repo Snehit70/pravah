@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
+import { TRANSITION_FAST, TRANSITION_OVERSHOOT } from "../lib/motion";
 import { cn } from "../lib/utils";
 
 interface ModalProps {
@@ -55,7 +56,7 @@ export function Modal({
         animate="visible"
         exit="hidden"
         variants={overlayVariants}
-        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+        transition={TRANSITION_FAST}
         className={cn(
           "fixed inset-0 z-50 flex",
           "bg-black/60 backdrop-blur-sm",
@@ -69,10 +70,7 @@ export function Modal({
           animate="visible"
           exit="exit"
           variants={modalVariants}
-          transition={{
-            duration: 0.25,
-            ease: [0.34, 1.56, 0.64, 1],
-          }}
+          transition={TRANSITION_OVERSHOOT}
           onClick={(e) => e.stopPropagation()}
           role="dialog"
           aria-modal="true"

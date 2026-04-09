@@ -2,6 +2,7 @@ import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Settings as SettingsIcon, Plus, Command } from "lucide-react";
 import { DayColumn } from "./DayColumn";
+import { TRANSITION_SLOW, withDelay } from "../lib/motion";
 import type { Task } from "../types";
 import { cn, generateDateRange } from "../lib/utils";
 import { Button } from "./Button";
@@ -157,7 +158,7 @@ export function Timeline({
       <motion.header
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        transition={TRANSITION_SLOW}
         className={cn(
           "flex items-center justify-between px-6 h-14",
           "border-b border-zinc-800/40",
@@ -234,7 +235,7 @@ export function Timeline({
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
+            transition={withDelay({ duration: 0.5 }, 0.3)}
             className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none"
           >
             <div className="text-center max-w-md px-6">
@@ -289,7 +290,7 @@ export function Timeline({
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.15 }}
+          transition={withDelay({ duration: 0.5 }, 0.15)}
           className="flex px-4 py-4 min-w-max gap-1"
         >
           {dates.map((date, index) => (
