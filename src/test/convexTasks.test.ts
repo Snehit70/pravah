@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Id } from "../../convex/_generated/dataModel";
 import {
   addTask,
+  backfillDeadlineTasksToDeadlineDate,
   bulkReschedule,
   moveTask,
   reorderTasks,
@@ -52,7 +53,96 @@ const addTaskHandler = (
   >
 )._handler;
 
+const backfillDeadlineTasksHandler = (
+  backfillDeadlineTasksToDeadlineDate as unknown as InternalHandler<
+    Record<string, never>,
+    { updatedCount: number; updatedTaskIds: Id<"tasks">[] }
+  >
+)._handler;
+
 describe("convex/tasks handlers", () => {
+  it("backfills existing deadline tasks onto their deadline date", async () => {
+    const updateA = makeId("deadline-a");
+    const updateB = makeId("deadline-b");
+    const unchanged = makeId("deadline-ok");
+    const completed = makeId("deadline-done");
+
+    const db = {
+      query: vi.fn().mockReturnValue({
+        collect: vi.fn().mockResolvedValue([
+          {
+            _id: updateA,
+            type: "deadline",
+            deadline: "2026-04-16",
+            scheduledDate: "2026-04-11",
+            status: "scheduled",
+            position: 0,
+            createdAt: 1,
+          },
+          {
+            _id: updateB,
+            type: "deadline",
+            deadline: "2026-04-17",
+            scheduledDate: undefined,
+            status: "inbox",
+            position: 2,
+            createdAt: 2,
+          },
+          {
+            _id: unchanged,
+            type: "deadline",
+            deadline: "2026-04-18",
+            scheduledDate: "2026-04-18",
+            status: "scheduled",
+            position: 3,
+            createdAt: 3,
+          },
+          {
+            _id: completed,
+            type: "deadline",
+            deadline: "2026-04-19",
+            scheduledDate: "2026-04-10",
+            status: "completed",
+            position: 1,
+            createdAt: 4,
+          },
+          {
+            _id: makeId("open-task"),
+            type: "open",
+            deadline: undefined,
+            scheduledDate: "2026-04-16",
+            status: "scheduled",
+            position: 4,
+            createdAt: 5,
+          },
+        ]),
+      }),
+      patch: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const ctx = { db };
+
+    const result = await backfillDeadlineTasksHandler(ctx, {});
+
+    expect(result).toEqual({
+      updatedCount: 2,
+      updatedTaskIds: [updateA, updateB],
+    });
+    expect(db.patch).toHaveBeenCalledTimes(2);
+    expect(db.patch).toHaveBeenNthCalledWith(1, updateA, {
+      scheduledDate: "2026-04-16",
+      status: "scheduled",
+      position: 5,
+      updatedAt: expect.any(Number),
+    });
+    expect(db.patch).toHaveBeenNthCalledWith(2, updateB, {
+      scheduledDate: "2026-04-17",
+      status: "scheduled",
+      position: 0,
+      updatedAt: expect.any(Number),
+    });
+  });
+
   it("addTask schedules deadline tasks on their deadline by default", async () => {
     const db = {
       query: vi.fn().mockReturnValue({

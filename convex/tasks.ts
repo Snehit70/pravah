@@ -194,6 +194,53 @@ export const unscheduleTask = mutation({
   },
 });
 
+export const backfillDeadlineTasksToDeadlineDate = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const allTasks = await ctx.db.query("tasks").collect();
+    const positionByDate = new Map<string, number>();
+
+    for (const task of allTasks) {
+      if (task.status !== "scheduled" || !task.scheduledDate) continue;
+      const currentMax = positionByDate.get(task.scheduledDate) ?? -1;
+      positionByDate.set(task.scheduledDate, Math.max(currentMax, task.position));
+    }
+
+    const candidates = allTasks
+      .filter(
+        (task) =>
+          task.type === "deadline" &&
+          !!task.deadline &&
+          task.status !== "completed" &&
+          task.status !== "cancelled" &&
+          (task.scheduledDate !== task.deadline || task.status !== "scheduled")
+      )
+      .sort((a, b) => a.createdAt - b.createdAt);
+
+    const updatedTaskIds: Id<"tasks">[] = [];
+    const now = Date.now();
+
+    for (const task of candidates) {
+      const targetDate = task.deadline!;
+      const nextPosition = (positionByDate.get(targetDate) ?? -1) + 1;
+      positionByDate.set(targetDate, nextPosition);
+
+      await ctx.db.patch(task._id, {
+        scheduledDate: targetDate,
+        status: "scheduled",
+        position: nextPosition,
+        updatedAt: now,
+      });
+      updatedTaskIds.push(task._id);
+    }
+
+    return {
+      updatedCount: updatedTaskIds.length,
+      updatedTaskIds,
+    };
+  },
+});
+
 export const updateTask = mutation({
   args: {
     taskId: v.id("tasks"),
