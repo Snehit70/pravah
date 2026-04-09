@@ -4,28 +4,12 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-
-type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [key: string]: JsonValue };
-
-type ToolArguments = Record<string, JsonValue>;
-
-function toToolArguments(value: unknown): ToolArguments {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-  return value as ToolArguments;
-}
-
-function readStringArg(args: ToolArguments, key: string): string | undefined {
-  const value = args[key];
-  return typeof value === "string" ? value : undefined;
-}
+import {
+  callConvexApi,
+  readStringArg,
+  toToolArguments,
+  type ToolArguments,
+} from "./src/lib/mcpBridgeUtils";
 
 const env = (
   globalThis as typeof globalThis & {
@@ -37,29 +21,13 @@ const CONVEX_URL = env?.CONVEX_URL;
 const CONVEX_HTTP_API_KEY = env?.CONVEX_HTTP_API_KEY;
 
 async function callConvexAPI(endpoint: string, method: string, body?: ToolArguments) {
-  if (!CONVEX_URL) {
-    throw new Error("CONVEX_URL is not configured");
-  }
-
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (CONVEX_HTTP_API_KEY) {
-    headers["x-api-key"] = CONVEX_HTTP_API_KEY;
-  }
-
-  const response = await fetch(`${CONVEX_URL}${endpoint}`, {
+  return callConvexApi({
+    convexUrl: CONVEX_URL,
+    apiKey: CONVEX_HTTP_API_KEY,
+    endpoint,
     method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
+    body,
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Convex API ${method} ${endpoint} failed (${response.status}): ${errorText}`
-    );
-  }
-
-  return response.json();
 }
 
 const server = new Server(
