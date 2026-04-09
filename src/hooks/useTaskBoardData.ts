@@ -2,10 +2,10 @@ import { useMemo } from "react";
 import type { Task } from "../types";
 
 export function useTaskBoardData(tasks: Task[] | undefined) {
-  const inboxTasks = useMemo(
-    () => tasks?.filter((t) => t.status === "inbox") ?? [],
-    [tasks]
-  );
+  const inboxTasks = useMemo(() => {
+    const inbox = tasks?.filter((t) => t.status === "inbox") ?? [];
+    return inbox.sort((a, b) => a.position - b.position);
+  }, [tasks]);
 
   const tasksByDate = useMemo(() => {
     const grouped: Record<string, Task[]> = {};
