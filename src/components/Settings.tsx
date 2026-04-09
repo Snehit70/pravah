@@ -303,7 +303,7 @@ export function Settings({ onClose }: SettingsProps) {
     setGmailEnabled(false);
   };
 
-  const handleSync = async () => {
+  const handleSync = async (fullResync = false) => {
     const tokens = getGoogleTokens();
     if (!tokens || tokens.expired) {
       showError("Google authentication expired. Please reconnect.");
@@ -318,7 +318,10 @@ export function Settings({ onClose }: SettingsProps) {
           status: "connected",
           syncEnabled: true,
         });
-        await importGoogleCalendar({ accessToken: tokens.accessToken });
+        await importGoogleCalendar({
+          accessToken: tokens.accessToken,
+          fullResync,
+        });
       }
       if (gmailEnabled) {
         const messages = await fetchGmailMessages(tokens.accessToken);
@@ -570,18 +573,28 @@ export function Settings({ onClose }: SettingsProps) {
                             exit={{ opacity: 0, y: -10 }}
                             transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
                           >
-                            <Button
-                              onClick={handleSync}
-                              disabled={syncing}
-                              variant="secondary"
-                              className="w-full flex items-center justify-center gap-2"
-                            >
-                              <RefreshCw
-                                size={16}
-                                className={syncing ? "animate-spin" : ""}
-                              />
-                              {syncing ? "Syncing..." : "Sync Now"}
-                            </Button>
+                            <div className="grid grid-cols-2 gap-2">
+                              <Button
+                                onClick={() => void handleSync(false)}
+                                disabled={syncing}
+                                variant="secondary"
+                                className="w-full flex items-center justify-center gap-2"
+                              >
+                                <RefreshCw
+                                  size={16}
+                                  className={syncing ? "animate-spin" : ""}
+                                />
+                                {syncing ? "Syncing..." : "Sync Now"}
+                              </Button>
+                              <Button
+                                onClick={() => void handleSync(true)}
+                                disabled={syncing}
+                                variant="ghost"
+                                className="w-full flex items-center justify-center gap-2 text-amber-300 hover:text-amber-200"
+                              >
+                                Full Resync
+                              </Button>
+                            </div>
                           </motion.div>
                         )}
                       </AnimatePresence>
