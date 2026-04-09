@@ -1,4 +1,8 @@
-import type { GoogleCalendarEvent, GoogleGmailMessage } from "./types";
+import type {
+  GoogleCalendarEvent,
+  GoogleCalendarListEntry,
+  GoogleGmailMessage,
+} from "./types";
 
 interface GoogleListResponse<T> {
   messages?: T[];
@@ -153,6 +157,51 @@ export async function fetchCalendarEvents(
   
   const data = await response.json();
   return data.items || [];
+}
+
+export async function fetchGoogleCalendars(
+  accessToken: string
+): Promise<GoogleCalendarListEntry[]> {
+  const calendars: GoogleCalendarListEntry[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const params = new URLSearchParams({
+      minAccessRole: "reader",
+      showDeleted: "false",
+      showHidden: "false",
+      maxResults: "250",
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+
+    const response = await fetch(
+      `https://www.googleapis.com/calendar/v3/users/me/calendarList?${params}`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch calendar list: ${response.statusText}`);
+    }
+
+    const data = (await response.json()) as {
+      items?: Array<{ id?: string; summary?: string; primary?: boolean }>;
+      nextPageToken?: string;
+    };
+    for (const item of data.items ?? []) {
+      if (!item.id) continue;
+      calendars.push({
+        id: item.id,
+        summary: item.summary?.trim() || item.id,
+        primary: Boolean(item.primary),
+      });
+    }
+
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+
+  return calendars;
 }
 
 export async function createCalendarEvent(

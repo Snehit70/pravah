@@ -97,6 +97,8 @@ export const googleCalendarImportSchema = z.object({
   accessToken: z.string().min(1, "Access token is required"),
   tokenExpiresAt: z.number().int().positive().optional(),
   calendarId: z.string().optional(),
+  calendarIds: z.array(z.string().min(1)).max(100).optional(),
+  fullResync: z.boolean().optional(),
   timeMin: z.string().optional(),
   timeMax: z.string().optional(),
 });

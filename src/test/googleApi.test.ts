@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearGoogleTokens,
   fetchGoogleAccountEmail,
+  fetchGoogleCalendars,
   fetchGmailMessages,
   getGoogleAuthErrorMessage,
   getGoogleTokens,
@@ -94,6 +95,31 @@ describe("google api helpers", () => {
     } as Response);
 
     await expect(fetchGoogleAccountEmail("access")).resolves.toBe("user@example.com");
+  });
+
+  it("fetches calendar list entries across pages", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          items: [{ id: "primary", summary: "Primary", primary: true }],
+          nextPageToken: "next-token",
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          items: [{ id: "team@example.com", summary: "Team" }],
+        }),
+      } as Response);
+
+    const calendars = await fetchGoogleCalendars("access");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(calendars).toEqual([
+      { id: "primary", summary: "Primary", primary: true },
+      { id: "team@example.com", summary: "Team", primary: false },
+    ]);
   });
 
   it("formats oauth error messages safely", () => {

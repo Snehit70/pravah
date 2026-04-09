@@ -530,6 +530,8 @@ http.route({
       accessToken: data.accessToken,
       tokenExpiresAt: data.tokenExpiresAt,
       calendarId: data.calendarId,
+      calendarIds: data.calendarIds,
+      fullResync: data.fullResync,
       timeMin: data.timeMin,
       timeMax: data.timeMax,
     });

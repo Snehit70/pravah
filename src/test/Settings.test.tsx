@@ -80,6 +80,10 @@ vi.mock("../lib/google/api", () => ({
   getGoogleTokens: () => ({ accessToken: "token", expiresIn: 3600, expired: false }),
   saveGoogleTokens: vi.fn(),
   clearGoogleTokens: vi.fn(),
+  fetchGoogleCalendars: vi.fn(async () => [
+    { id: "primary", summary: "Primary", primary: true },
+    { id: "team@example.com", summary: "Team", primary: false },
+  ]),
   fetchGoogleAccountEmail: vi.fn(),
   getGoogleAuthErrorMessage: vi.fn((error: unknown, fallback: string) => {
     if (typeof error === "string") return error;
@@ -161,6 +165,43 @@ describe("Settings", () => {
         status: "connected",
         syncEnabled: false,
         accountEmail: "user@example.com",
+      });
+    });
+  });
+
+  it("passes selected calendar IDs and fullResync flag when syncing", async () => {
+    render(<Settings onClose={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Team")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Full Resync" }));
+
+    await waitFor(() => {
+      expect(importGoogleCalendarMock).toHaveBeenCalledWith({
+        accessToken: "token",
+        calendarIds: ["primary", "team@example.com"],
+        fullResync: true,
+      });
+    });
+  });
+
+  it("preserves stored calendar selection during hydration", async () => {
+    localStorage.setItem("pravah_google_calendar_selection", JSON.stringify(["team@example.com"]));
+    render(<Settings onClose={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Team")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Full Resync" }));
+
+    await waitFor(() => {
+      expect(importGoogleCalendarMock).toHaveBeenCalledWith({
+        accessToken: "token",
+        calendarIds: ["team@example.com"],
+        fullResync: true,
       });
     });
   });

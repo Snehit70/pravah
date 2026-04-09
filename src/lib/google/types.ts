@@ -9,6 +9,12 @@ export interface GoogleCalendarEvent {
   htmlLink?: string;
 }
 
+export interface GoogleCalendarListEntry {
+  id: string;
+  summary: string;
+  primary?: boolean;
+}
+
 export interface GoogleGmailMessage {
   id: string;
   threadId: string;

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   bulkRescheduleSchema,
   createTaskSchema,
+  googleCalendarImportSchema,
   googleTokenExchangeSchema,
   requireApiKeyAuth,
   reviewQueueListSchema,
@@ -92,6 +93,17 @@ describe("httpContracts", () => {
       });
 
       expect(result.success).toBe(false);
+    });
+
+    it("accepts calendar import options for multi-calendar and full resync", () => {
+      const parsed = googleCalendarImportSchema.parse({
+        accessToken: "token",
+        calendarIds: ["primary", "team@example.com"],
+        fullResync: true,
+      });
+
+      expect(parsed.calendarIds).toEqual(["primary", "team@example.com"]);
+      expect(parsed.fullResync).toBe(true);
     });
   });
 });
