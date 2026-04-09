@@ -6,6 +6,7 @@ import {
   getGoogleAuthErrorMessage,
   getGoogleTokens,
   parseGoogleTokens,
+  resolveConvexHttpUrl,
   saveGoogleTokens,
 } from "../lib/google/api";
 
@@ -90,5 +91,25 @@ describe("google api helpers", () => {
       "PKCE missing"
     );
     expect(getGoogleAuthErrorMessage("oops", "fallback")).toBe("fallback");
+  });
+
+  it("resolves convex http url from explicit env or cloud fallback", () => {
+    expect(
+      resolveConvexHttpUrl({
+        VITE_CONVEX_HTTP_URL: "https://abc.convex.site/",
+      })
+    ).toBe("https://abc.convex.site");
+
+    expect(
+      resolveConvexHttpUrl({
+        VITE_CONVEX_SITE_URL: "https://xyz.convex.site",
+      })
+    ).toBe("https://xyz.convex.site");
+
+    expect(
+      resolveConvexHttpUrl({
+        VITE_CONVEX_URL: "https://befitting-swan-125.eu-west-1.convex.cloud",
+      })
+    ).toBe("https://befitting-swan-125.eu-west-1.convex.site");
   });
 });

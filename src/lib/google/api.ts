@@ -21,6 +21,27 @@ export function getGoogleAuthErrorMessage(error: unknown, fallback: string): str
   return fallback;
 }
 
+export function resolveConvexHttpUrl(
+  env: Record<string, string | boolean | undefined>
+): string | null {
+  const explicit =
+    (env.VITE_CONVEX_HTTP_URL as string | undefined) ??
+    (env.VITE_CONVEX_SITE_URL as string | undefined);
+  if (explicit) {
+    return explicit.replace(/\/+$/, "");
+  }
+
+  const convexUrl = env.VITE_CONVEX_URL as string | undefined;
+  if (!convexUrl) {
+    return null;
+  }
+  const normalized = convexUrl.replace(/\/+$/, "");
+  if (normalized.includes(".convex.cloud")) {
+    return normalized.replace(".convex.cloud", ".convex.site");
+  }
+  return normalized;
+}
+
 function base64UrlEncode(bytes: Uint8Array): string {
   const binary = String.fromCharCode(...bytes);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
@@ -69,12 +90,14 @@ export async function exchangeGoogleAuthCode(code: string): Promise<{ accessToke
     throw new Error("Missing PKCE verifier. Please retry Google sign-in.");
   }
 
-  const convexUrl = import.meta.env.VITE_CONVEX_URL;
-  if (!convexUrl) {
-    throw new Error("Convex URL not configured");
+  const convexHttpUrl = resolveConvexHttpUrl(import.meta.env);
+  if (!convexHttpUrl) {
+    throw new Error(
+      "Convex HTTP URL not configured (set VITE_CONVEX_HTTP_URL or VITE_CONVEX_SITE_URL)."
+    );
   }
 
-  const response = await fetch(`${convexUrl}/google/token`, {
+  const response = await fetch(`${convexHttpUrl}/google/token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
