@@ -12,6 +12,27 @@ interface QuickAddProps {
   onClose: () => void;
 }
 
+function toLocalDateString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getTomorrowDateString(): string {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return toLocalDateString(tomorrow);
+}
+
+function getNextMondayDateString(): string {
+  const nextMonday = new Date();
+  const day = nextMonday.getDay();
+  const delta = ((8 - day) % 7) || 7;
+  nextMonday.setDate(nextMonday.getDate() + delta);
+  return toLocalDateString(nextMonday);
+}
+
 const overlayVariants = {
   hidden: { opacity: 0 },
   visible: { opacity: 1 },
@@ -45,6 +66,11 @@ export function QuickAdd({ onClose }: QuickAddProps) {
   const addTask = useMutation(api.tasks.addTask);
   const { showError, showSuccess } = useToast();
   const minDate = getLocalDateString();
+  const deadlinePresets = [
+    { label: "Today", value: minDate },
+    { label: "Tomorrow", value: getTomorrowDateString() },
+    { label: "Next Monday", value: getNextMondayDateString() },
+  ];
 
   useEffect(() => {
     isSubmittingRef.current = isSubmitting;
@@ -245,7 +271,12 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setType("deadline")}
+                  onClick={() => {
+                    setType("deadline");
+                    if (!deadline) {
+                      setDeadline(getTomorrowDateString());
+                    }
+                  }}
                   disabled={isSubmitting}
                   className={cn(
                     "px-3 py-1.5 rounded-lg",
@@ -262,29 +293,56 @@ export function QuickAdd({ onClose }: QuickAddProps) {
 
               <AnimatePresence>
                 {type === "deadline" && (
-                  <motion.input
+                  <motion.div
                     initial={{ opacity: 0, width: 0 }}
                     animate={{ opacity: 1, width: "auto" }}
                     exit={{ opacity: 0, width: 0 }}
                     transition={TRANSITION_FAST}
-                    type="date"
-                    value={deadline}
-                    onChange={(e) => {
-                      setDeadline(e.target.value);
-                      if (deadlineError && e.target.value) setDeadlineError("");
-                    }}
-                    min={minDate}
-                    disabled={isSubmitting}
-                    aria-invalid={Boolean(deadlineError)}
-                    aria-describedby={deadlineError ? deadlineErrorId : undefined}
-                    className={cn(
-                      "px-3 py-1.5 text-sm rounded-xl",
-                      "bg-zinc-800/80 text-zinc-100",
-                      "border border-zinc-700/50",
-                      "disabled:opacity-50 disabled:cursor-not-allowed",
-                      "focus:border-amber-500/50 focus:outline-none"
-                    )}
-                  />
+                    className="flex items-center gap-2"
+                  >
+                    <input
+                      type="date"
+                      value={deadline}
+                      onChange={(e) => {
+                        setDeadline(e.target.value);
+                        if (deadlineError && e.target.value) setDeadlineError("");
+                      }}
+                      min={minDate}
+                      disabled={isSubmitting}
+                      aria-invalid={Boolean(deadlineError)}
+                      aria-describedby={deadlineError ? deadlineErrorId : undefined}
+                      className={cn(
+                        "px-3 py-1.5 text-sm rounded-xl",
+                        "bg-zinc-800/80 text-zinc-100",
+                        "border border-zinc-700/50",
+                        "disabled:opacity-50 disabled:cursor-not-allowed",
+                        "focus:border-amber-500/50 focus:outline-none"
+                      )}
+                    />
+                    <div className="hidden md:flex items-center gap-1">
+                      {deadlinePresets.map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          disabled={isSubmitting}
+                          onClick={() => {
+                            setDeadline(preset.value);
+                            setDeadlineError("");
+                          }}
+                          className={cn(
+                            "px-2 py-1 rounded-lg text-[11px]",
+                            "transition-colors duration-150",
+                            deadline === preset.value
+                              ? "bg-amber-500/20 text-amber-300"
+                              : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60",
+                            "disabled:opacity-50 disabled:cursor-not-allowed"
+                          )}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
                 )}
               </AnimatePresence>
 
