@@ -40,6 +40,7 @@ export function Settings({ onClose }: SettingsProps) {
   });
   const [calendarEnabled, setCalendarEnabled] = useState(false);
   const [gmailEnabled, setGmailEnabled] = useState(false);
+  const [hydratedToggleState, setHydratedToggleState] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [activeReviewActionId, setActiveReviewActionId] = useState<string | null>(null);
   const upsertIntegration = useMutation(api.sync.upsertIntegration);
@@ -47,6 +48,12 @@ export function Settings({ onClose }: SettingsProps) {
   const approveReviewItem = useMutation(api.sync.approveReviewItem);
   const rejectReviewItem = useMutation(api.sync.rejectReviewItem);
   const importGoogleCalendar = useAction(api.syncActions.importGoogleCalendarAction);
+  const calendarIntegrationStatus = useQuery(api.sync.getIntegrationStatus, {
+    provider: "google_calendar",
+  });
+  const gmailIntegrationStatus = useQuery(api.sync.getIntegrationStatus, {
+    provider: "gmail",
+  });
   const shouldLoadReviewQueue = googleConnected && gmailEnabled;
   const pendingReviewItems = useQuery(
     api.sync.listReviewQueue,
@@ -138,6 +145,50 @@ export function Settings({ onClose }: SettingsProps) {
     };
   }, [showError, showSuccess]);
 
+  useEffect(() => {
+    if (hydratedToggleState) return;
+    if (!calendarIntegrationStatus || !gmailIntegrationStatus) return;
+
+    setCalendarEnabled(Boolean(calendarIntegrationStatus.integration?.syncEnabled));
+    setGmailEnabled(Boolean(gmailIntegrationStatus.integration?.syncEnabled));
+    setHydratedToggleState(true);
+  }, [hydratedToggleState, calendarIntegrationStatus, gmailIntegrationStatus]);
+
+  const persistIntegrationToggle = async (
+    provider: "google_calendar" | "gmail",
+    syncEnabled: boolean
+  ) => {
+    await upsertIntegration({
+      provider,
+      status: googleConnected ? "connected" : "disconnected",
+      syncEnabled,
+    });
+  };
+
+  const handleCalendarToggle = async () => {
+    const next = !calendarEnabled;
+    setCalendarEnabled(next);
+    try {
+      await persistIntegrationToggle("google_calendar", next);
+    } catch (error) {
+      console.error("Failed to persist calendar toggle", error);
+      setCalendarEnabled(!next);
+      showError("Failed to save Google Calendar toggle.");
+    }
+  };
+
+  const handleGmailToggle = async () => {
+    const next = !gmailEnabled;
+    setGmailEnabled(next);
+    try {
+      await persistIntegrationToggle("gmail", next);
+    } catch (error) {
+      console.error("Failed to persist Gmail toggle", error);
+      setGmailEnabled(!next);
+      showError("Failed to save Gmail toggle.");
+    }
+  };
+
   const handleGoogleConnect = async () => {
     try {
       const oauthUrl = await getGoogleOAuthUrl();
@@ -150,11 +201,18 @@ export function Settings({ onClose }: SettingsProps) {
   const handleGoogleDisconnect = async () => {
     clearGoogleTokens();
     try {
-      await upsertIntegration({
-        provider: "google_calendar",
-        status: "disconnected",
-        syncEnabled: false,
-      });
+      await Promise.all([
+        upsertIntegration({
+          provider: "google_calendar",
+          status: "disconnected",
+          syncEnabled: false,
+        }),
+        upsertIntegration({
+          provider: "gmail",
+          status: "disconnected",
+          syncEnabled: false,
+        }),
+      ]);
     } catch (error) {
       console.error("Failed to persist Google disconnect state", error);
       showError("Disconnected locally, but failed to update server state.");
@@ -372,7 +430,7 @@ export function Settings({ onClose }: SettingsProps) {
                             </div>
                           </div>
                           <button
-                            onClick={() => setCalendarEnabled(!calendarEnabled)}
+                            onClick={handleCalendarToggle}
                             className={cn(
                               "w-11 h-6 rounded-full transition-colors duration-150",
                               calendarEnabled ? "bg-amber-500" : "bg-zinc-700"
@@ -399,7 +457,7 @@ export function Settings({ onClose }: SettingsProps) {
                             </div>
                           </div>
                           <button
-                            onClick={() => setGmailEnabled(!gmailEnabled)}
+                            onClick={handleGmailToggle}
                             className={cn(
                               "w-11 h-6 rounded-full transition-colors duration-150",
                               gmailEnabled ? "bg-amber-500" : "bg-zinc-700"
