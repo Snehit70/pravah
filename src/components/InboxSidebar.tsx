@@ -123,9 +123,6 @@ function InboxSidebarComponent({ tasks, onTaskClick, onOpenQuickAdd }: InboxSide
         /* Collapsed state */
         <div className="flex flex-col h-full">
           <div className="flex flex-col items-center pt-4 gap-3">
-            <div className="p-2 text-zinc-500">
-              <Inbox size={16} />
-            </div>
             {tasks.length > 0 && (
               <motion.span
                 initial={{ scale: 0 }}
