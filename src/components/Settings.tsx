@@ -46,10 +46,17 @@ export function Settings({ onClose }: SettingsProps) {
   const approveReviewItem = useMutation(api.sync.approveReviewItem);
   const rejectReviewItem = useMutation(api.sync.rejectReviewItem);
   const importGoogleCalendar = useAction(api.syncActions.importGoogleCalendarAction);
-  const pendingReviewItems = useQuery(api.sync.listReviewQueue, {
-    status: "pending",
-    limit: 25,
-  });
+  const shouldLoadReviewQueue = googleConnected && gmailEnabled;
+  const pendingReviewItems = useQuery(
+    api.sync.listReviewQueue,
+    shouldLoadReviewQueue
+      ? ({
+          status: "pending",
+          limit: 25,
+        } as const)
+      : "skip"
+  );
+  const safePendingReviewItems = shouldLoadReviewQueue ? (pendingReviewItems ?? []) : [];
   const { showError, showSuccess } = useToast();
 
   useEffect(() => {
@@ -421,17 +428,17 @@ export function Settings({ onClose }: SettingsProps) {
                             Review Queue
                           </p>
                           <span className="text-xs text-zinc-400">
-                            {(pendingReviewItems ?? []).length} pending
+                            {safePendingReviewItems.length} pending
                           </span>
                         </div>
 
-                        {(pendingReviewItems ?? []).length === 0 ? (
+                        {safePendingReviewItems.length === 0 ? (
                           <p className="text-xs text-zinc-600">
                             No pending approvals
                           </p>
                         ) : (
                           <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                            {(pendingReviewItems ?? []).map((item) => (
+                            {safePendingReviewItems.map((item) => (
                               <div
                                 key={item._id}
                                 className="rounded-lg border border-zinc-700/60 bg-zinc-800/60 p-2.5"
