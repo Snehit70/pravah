@@ -58,7 +58,12 @@ export function QuickAdd({ onClose }: QuickAddProps) {
 
   useEffect(() => {
     restoreFocusRef.current = document.activeElement as HTMLElement;
+    return () => {
+      restoreFocusRef.current?.focus();
+    };
+  }, []);
 
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !isSubmittingRef.current) onClose();
 
@@ -86,10 +91,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
     };
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      restoreFocusRef.current?.focus();
-    };
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -338,7 +340,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
             )}
 
             {submitError && (
-              <p id={submitErrorId} className="text-xs text-red-400 mt-2">
+              <p id={submitErrorId} role="alert" className="text-xs text-red-400 mt-2">
                 {submitError}
               </p>
             )}
