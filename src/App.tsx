@@ -88,7 +88,6 @@ export function App() {
           <Timeline
             tasksByDate={tasksByDate}
             onTaskClick={openTaskPopup}
-            onOpenSettings={openSettings}
             onOpenQuickAdd={openQuickAdd}
           />
         </main>

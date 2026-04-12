@@ -10,7 +10,6 @@ import { Button } from "./Button";
 interface TimelineProps {
   tasksByDate: Record<string, Task[]>;
   onTaskClick: (task: Task) => void;
-  onOpenSettings?: () => void;
   onOpenQuickAdd?: () => void;
 }
 
@@ -95,7 +94,6 @@ function FlowIllustration() {
 export function Timeline({
   tasksByDate,
   onTaskClick,
-  onOpenSettings,
   onOpenQuickAdd,
 }: TimelineProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
