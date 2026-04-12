@@ -2,7 +2,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { useSortable, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { memo } from "react";
+import { memo, useState } from "react";
 import type { Task } from "../types";
 import { cn, getLocalDateString, formatDay, daysBetween, DUE_SOON_DAYS } from "../lib/utils";
 
@@ -77,6 +77,8 @@ interface DayColumnProps {
 function DayColumnComponent({ date, tasks, onTaskClick }: DayColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: date });
   const shouldReduceMotion = useReducedMotion();
+  const [openExpanded, setOpenExpanded] = useState(false);
+  const [deadlineExpanded, setDeadlineExpanded] = useState(false);
 
   const today = getLocalDateString();
   const { dayName, dayNum, monthShort } = formatDay(date);
@@ -88,11 +90,12 @@ function DayColumnComponent({ date, tasks, onTaskClick }: DayColumnProps) {
   const deadlineTasks = tasks.filter((t) => t.type === "deadline");
   const hasIncomplete = isPast && tasks.some((t) => t.status === "scheduled");
 
-  // Preview mode: show 1 task, collapse the rest
   const previewOpen = openTasks.slice(0, 1);
-  const hiddenOpenCount = openTasks.length - previewOpen.length;
   const previewDeadline = deadlineTasks.slice(0, 1);
-  const hiddenDeadlineCount = deadlineTasks.length - previewDeadline.length;
+  const visibleOpenTasks = openExpanded ? openTasks : previewOpen;
+  const visibleDeadlineTasks = deadlineExpanded ? deadlineTasks : previewDeadline;
+  const hiddenOpenCount = openTasks.length - visibleOpenTasks.length;
+  const hiddenDeadlineCount = deadlineTasks.length - visibleDeadlineTasks.length;
 
   return (
     <div
@@ -197,11 +200,11 @@ function DayColumnComponent({ date, tasks, onTaskClick }: DayColumnProps) {
       {/* Open tasks (above the line) */}
       <div className="flex flex-col gap-1 min-h-[60px] relative z-10">
         <SortableContext
-          items={openTasks.map((t) => t._id)}
+          items={visibleOpenTasks.map((t) => t._id)}
           strategy={verticalListSortingStrategy}
         >
           <AnimatePresence mode="popLayout">
-            {previewOpen.map((task) => (
+            {visibleOpenTasks.map((task) => (
               <TaskPreview
                 key={task._id}
                 task={task}
@@ -211,17 +214,19 @@ function DayColumnComponent({ date, tasks, onTaskClick }: DayColumnProps) {
             ))}
           </AnimatePresence>
         </SortableContext>
-        {hiddenOpenCount > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
+        {(hiddenOpenCount > 0 || openExpanded) && (
+          <motion.button
+            type="button"
+            onClick={() => setOpenExpanded((value) => !value)}
+            initial={shouldReduceMotion ? undefined : { opacity: 0, y: 4 }}
+            animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
             className={cn(
               "text-[11px] font-medium px-2 py-1",
-              "text-zinc-600 cursor-default select-none"
+              "text-zinc-500 hover:text-zinc-300 rounded-md text-left transition-colors duration-150"
             )}
           >
-            +{hiddenOpenCount} more
-          </motion.div>
+            {openExpanded ? "Show less" : `+${hiddenOpenCount} more`}
+          </motion.button>
         )}
       </div>
 
@@ -275,11 +280,11 @@ function DayColumnComponent({ date, tasks, onTaskClick }: DayColumnProps) {
       {/* Deadline tasks (below the line) */}
       <div className="flex flex-col gap-1 min-h-[60px] relative z-10">
         <SortableContext
-          items={deadlineTasks.map((t) => t._id)}
+          items={visibleDeadlineTasks.map((t) => t._id)}
           strategy={verticalListSortingStrategy}
         >
           <AnimatePresence mode="popLayout">
-            {previewDeadline.map((task) => (
+            {visibleDeadlineTasks.map((task) => (
               <TaskPreview
                 key={task._id}
                 task={task}
@@ -289,17 +294,19 @@ function DayColumnComponent({ date, tasks, onTaskClick }: DayColumnProps) {
             ))}
           </AnimatePresence>
         </SortableContext>
-        {hiddenDeadlineCount > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
+        {(hiddenDeadlineCount > 0 || deadlineExpanded) && (
+          <motion.button
+            type="button"
+            onClick={() => setDeadlineExpanded((value) => !value)}
+            initial={shouldReduceMotion ? undefined : { opacity: 0, y: 4 }}
+            animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
             className={cn(
               "text-[11px] font-medium px-2 py-1",
-              "text-zinc-600 cursor-default select-none"
+              "text-zinc-500 hover:text-zinc-300 rounded-md text-left transition-colors duration-150"
             )}
           >
-            +{hiddenDeadlineCount} more
-          </motion.div>
+            {deadlineExpanded ? "Show less" : `+${hiddenDeadlineCount} more`}
+          </motion.button>
         )}
       </div>
     </div>

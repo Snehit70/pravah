@@ -5,32 +5,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { api } from "../../convex/_generated/api";
 import { TRANSITION_FAST, TRANSITION_OVERSHOOT } from "../lib/motion";
 import { cn, getLocalDateString } from "../lib/utils";
+import { getNextMondayDateString, getTomorrowDateString } from "../lib/quickAddDates";
 import { Button } from "./Button";
 import { useToast } from "./useToast";
 
 interface QuickAddProps {
   onClose: () => void;
-}
-
-function toLocalDateString(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function getTomorrowDateString(): string {
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  return toLocalDateString(tomorrow);
-}
-
-function getNextMondayDateString(): string {
-  const nextMonday = new Date();
-  const day = nextMonday.getDay();
-  const delta = ((8 - day) % 7) || 7;
-  nextMonday.setDate(nextMonday.getDate() + delta);
-  return toLocalDateString(nextMonday);
 }
 
 const overlayVariants = {
@@ -387,6 +367,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
               <Button
                 type="submit"
                 disabled={!title.trim() || isSubmitting}
+                aria-describedby={submitError ? submitErrorId : undefined}
                 variant="primary"
                 size="sm"
                 className="w-full sm:w-auto sm:min-w-28 justify-center"

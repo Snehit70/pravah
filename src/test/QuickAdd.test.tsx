@@ -2,20 +2,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QuickAdd } from "../components/QuickAdd";
+import { getTomorrowDateString } from "../lib/quickAddDates";
 import { getLocalDateString } from "../lib/utils";
-
-function toLocalDateString(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function getTomorrowDateString() {
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  return toLocalDateString(tomorrow);
-}
 
 const addTaskMock = vi.fn();
 const showErrorMock = vi.fn();
