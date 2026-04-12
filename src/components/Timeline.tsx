@@ -182,6 +182,12 @@ export function Timeline({
           </span>
         </div>
 
+        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
+          <span className="text-sm font-medium text-zinc-400 tracking-wide" style={{ fontFamily: "'Newsreader', Georgia, serif" }}>
+            {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+          </span>
+        </div>
+
         <div />
       </motion.header>
 
@@ -189,7 +195,7 @@ export function Timeline({
       <div
         ref={scrollRef}
         className={cn(
-          "flex-1 overflow-x-auto overflow-y-hidden relative",
+          "flex-1 overflow-x-auto overflow-y-hidden relative flex items-center",
           isPanning && "cursor-grabbing select-none"
         )}
         onMouseDown={handleMouseDown}
