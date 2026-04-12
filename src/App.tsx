@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -35,7 +35,10 @@ const Settings = lazy(() =>
 );
 
 export function App() {
-  const [activePage, setActivePage] = useState<AppPage>("timeline");
+  const [activePage, setActivePage] = useState<AppPage>(() => {
+    const saved = window.sessionStorage.getItem("pravah_active_page");
+    return saved === "goals" ? "goals" : "timeline";
+  });
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const {
     selectedTask,
@@ -73,6 +76,10 @@ export function App() {
     reorderTasks,
     setDraggedTask,
   });
+
+  useEffect(() => {
+    window.sessionStorage.setItem("pravah_active_page", activePage);
+  }, [activePage]);
 
   if (tasks === undefined) {
     return <LoadingSkeleton />;

@@ -36,6 +36,7 @@ export function TopNavbar({ activePage, onNavigate, centerContent }: TopNavbarPr
           <button
             type="button"
             onClick={() => onNavigate("timeline")}
+            aria-current={activePage === "timeline" ? "page" : undefined}
             className={cn(
               "px-2.5 py-1 rounded-md text-xs transition-colors",
               activePage === "timeline"
@@ -48,6 +49,7 @@ export function TopNavbar({ activePage, onNavigate, centerContent }: TopNavbarPr
           <button
             type="button"
             onClick={() => onNavigate("goals")}
+            aria-current={activePage === "goals" ? "page" : undefined}
             className={cn(
               "px-2.5 py-1 rounded-md text-xs transition-colors",
               activePage === "goals"

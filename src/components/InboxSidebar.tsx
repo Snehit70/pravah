@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Inbox, ChevronLeft, ChevronRight, Settings as SettingsIcon } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
@@ -98,6 +98,14 @@ function InboxSidebarComponent({
   onOpenSettings,
 }: InboxSidebarProps) {
   const [collapsed, setCollapsed] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setCollapsed(window.innerWidth < 768);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   return (
     <motion.aside

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Reorder } from "framer-motion";
-import { Target, Plus, GripVertical } from "lucide-react";
+import { Target, Plus, GripVertical, Trash2 } from "lucide-react";
 import { TopNavbar, type AppPage } from "./TopNavbar";
 import { cn } from "../lib/utils";
 
@@ -54,6 +54,10 @@ export function LongTermGoalsPage({ activePage, onNavigate }: LongTermGoalsPageP
       },
     ]);
     setDraft("");
+  };
+
+  const removeGoal = (goalId: string) => {
+    setGoals((prev) => prev.filter((goal) => goal.id !== goalId));
   };
 
   return (
@@ -112,17 +116,34 @@ export function LongTermGoalsPage({ activePage, onNavigate }: LongTermGoalsPageP
                   <Reorder.Item
                     key={goal.id}
                     value={goal}
+                    whileDrag={{ scale: 1.01 }}
                     className={cn(
-                      "flex items-center gap-2 rounded-xl border border-white/10 bg-zinc-900/70",
+                      "group flex items-center gap-2 rounded-xl border border-white/10 bg-zinc-900/70",
                       "px-3 py-2.5 cursor-grab active:cursor-grabbing"
                     )}
                   >
                     <GripVertical size={14} className="text-zinc-500 flex-shrink-0" />
-                    <span className="text-sm text-zinc-200">{goal.text}</span>
+                    <span className="min-w-0 flex-1 text-sm text-zinc-200 break-words">{goal.text}</span>
+                    <button
+                      type="button"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={() => removeGoal(goal.id)}
+                      aria-label={`Delete goal: ${goal.text}`}
+                      className={cn(
+                        "flex-shrink-0 rounded-lg p-1.5",
+                        "text-zinc-500 hover:text-red-300 hover:bg-zinc-800",
+                        "opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                      )}
+                    >
+                      <Trash2 size={13} />
+                    </button>
                   </Reorder.Item>
                 ))}
               </Reorder.Group>
             )}
+            <p className="mt-4 text-xs text-zinc-500">
+              Goals are saved locally in this browser.
+            </p>
           </div>
         </div>
       </div>
