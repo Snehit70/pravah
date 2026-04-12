@@ -59,7 +59,7 @@ export function Modal({
         transition={TRANSITION_FAST}
         className={cn(
           "fixed inset-0 z-50 flex",
-          "bg-black/60 backdrop-blur-sm",
+          "bg-black/55 backdrop-blur-[2px]",
           position === "center" ? "items-center justify-center" : "items-start justify-center pt-24"
         )}
         onClick={handleBackdropClick}
@@ -76,9 +76,9 @@ export function Modal({
           aria-modal="true"
           aria-label={title}
           className={cn(
-            "bg-zinc-900 rounded-2xl",
-            "border border-zinc-800/80",
-            "shadow-2xl shadow-black/50",
+            "bg-[#252525] rounded-2xl",
+            "border border-white/10",
+            "shadow-xl shadow-black/40",
             "w-full max-w-md p-6 mx-4",
             "md:mx-0",
             className
@@ -92,8 +92,8 @@ export function Modal({
                 aria-label="Close"
                 className={cn(
                   "p-1.5 rounded-lg",
-                  "text-zinc-500 hover:text-zinc-300",
-                  "hover:bg-zinc-800/60",
+                  "text-zinc-400 hover:text-zinc-100",
+                  "hover:bg-zinc-800",
                   "transition-colors duration-150"
                 )}
               >

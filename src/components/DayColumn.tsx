@@ -29,7 +29,7 @@ function TaskPreview({ task, today, onClick }: { task: Task; today: string; onCl
       ? "#F87171"
       : isDueSoon
         ? "#FBBF24"
-        : "#E8A945";
+        : "#0075de";
 
   return (
     <motion.div
@@ -45,7 +45,7 @@ function TaskPreview({ task, today, onClick }: { task: Task; today: string; onCl
       onKeyDown={(e) => e.key === "Enter" && onClick()}
       className={cn(
         "w-full flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer",
-        "hover:bg-zinc-800/50 transition-colors duration-150"
+        "hover:bg-zinc-800 transition-colors duration-150"
       )}
     >
       <span
@@ -56,7 +56,7 @@ function TaskPreview({ task, today, onClick }: { task: Task; today: string; onCl
         className={cn(
           "text-[12px] font-medium truncate leading-tight",
           isCompleted
-            ? "line-through text-zinc-600"
+            ? "line-through text-zinc-500"
             : isOverdue
               ? "text-red-400"
               : "text-zinc-300"
@@ -102,32 +102,23 @@ function DayColumnComponent({ date, tasks, onTaskClick }: DayColumnProps) {
       ref={setNodeRef}
       className={cn(
         "flex-shrink-0 w-44 min-h-[360px] px-3 py-4 rounded-2xl relative",
+        "bg-[#252525] border border-white/10",
         "transition-all duration-300",
         // Drop zone highlight
-        isOver && "bg-amber-500/10 ring-2 ring-amber-500/40",
+        isOver && "bg-blue-500/15 ring-1 ring-blue-400/50",
         // Incomplete tasks warning
         hasIncomplete && !isOver && "ring-1 ring-red-500/40",
       )}
       style={isToday ? {
-        background: 'radial-gradient(ellipse at top, rgba(232, 169, 69, 0.15) 0%, transparent 70%)',
+        background: "linear-gradient(180deg, rgba(35,131,226,0.16) 0%, rgba(35,131,226,0.04) 28%, #252525 72%)",
       } : undefined}
     >
-      {/* Ambient glow for today */}
-      {isToday && (
-        <div
-          className="absolute inset-0 rounded-2xl pointer-events-none"
-          style={{
-            boxShadow: 'inset 0 0 60px rgba(232, 169, 69, 0.08)',
-          }}
-        />
-      )}
-
       {/* Day header */}
       <div className={cn("text-center mb-5 relative z-10", isPast && !isToday && "opacity-40")}>
         <p
           className={cn(
             "text-[10px] uppercase tracking-[0.15em] font-semibold mb-1",
-            isToday ? "text-amber-400" : isWeekend ? "text-zinc-600" : "text-zinc-500",
+            isToday ? "text-blue-300" : isWeekend ? "text-zinc-500" : "text-zinc-400",
           )}
         >
           {dayName}
@@ -145,34 +136,14 @@ function DayColumnComponent({ date, tasks, onTaskClick }: DayColumnProps) {
                 : undefined
             }
           >
-            {isToday && (
-              <>
-                {/* Outer glow ring */}
-                <motion.div
-                  className="absolute inset-0 rounded-full bg-amber-500"
-                  animate={
-                    shouldReduceMotion ? { opacity: 0.15 } : { scale: [1, 1.3], opacity: [0.3, 0] }
-                  }
-                  transition={
-                    shouldReduceMotion
-                      ? undefined
-                      : { duration: 2, repeat: Infinity, ease: "easeOut" }
-                  }
-                />
-                {/* Main circle */}
-                <div
-                  className="absolute inset-0 rounded-full bg-amber-500"
-                  style={{ boxShadow: '0 0 20px rgba(232, 169, 69, 0.5), 0 0 40px rgba(232, 169, 69, 0.2)' }}
-                />
-              </>
-            )}
+            {isToday && <div className="absolute inset-0 rounded-full bg-blue-500" />}
             <span
               className={cn(
                 "relative z-10 text-2xl font-semibold tabular-nums",
                 isToday
-                  ? "text-zinc-900"
+                  ? "text-white"
                   : isPast
-                    ? "text-zinc-600"
+                    ? "text-zinc-500"
                     : "text-zinc-200",
               )}
               style={!isToday ? undefined : { fontFamily: "'Newsreader', Georgia, serif", fontWeight: 500 }}
@@ -191,7 +162,7 @@ function DayColumnComponent({ date, tasks, onTaskClick }: DayColumnProps) {
         </div>
         {/* Show month label on 1st of month */}
         {dayNum === 1 && (
-          <p className="text-[9px] text-zinc-600 mt-1 uppercase tracking-[0.15em] font-medium">
+          <p className="text-[9px] text-zinc-400 mt-1 uppercase tracking-[0.15em] font-medium">
             {monthShort}
           </p>
         )}
@@ -222,7 +193,7 @@ function DayColumnComponent({ date, tasks, onTaskClick }: DayColumnProps) {
             animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
             className={cn(
               "text-[11px] font-medium px-2 py-1",
-              "text-zinc-500 hover:text-zinc-300 rounded-md text-left transition-colors duration-150"
+              "text-zinc-400 hover:text-zinc-200 rounded-md text-left transition-colors duration-150"
             )}
           >
             {openExpanded ? "Show less" : `+${hiddenOpenCount} more`}
@@ -235,7 +206,7 @@ function DayColumnComponent({ date, tasks, onTaskClick }: DayColumnProps) {
         <div
           className={cn(
             "flex-1 h-[2px] rounded-full",
-            isToday ? "bg-gradient-to-r from-transparent via-amber-500/60 to-amber-500/60" : "bg-zinc-800",
+            isToday ? "bg-gradient-to-r from-zinc-700 via-blue-400/70 to-blue-400/70" : "bg-zinc-700",
           )}
         />
         <motion.div
@@ -243,36 +214,22 @@ function DayColumnComponent({ date, tasks, onTaskClick }: DayColumnProps) {
             "relative mx-2 flex-shrink-0",
           )}
         >
-          {/* Outer pulse for today */}
-          {isToday && (
-            <motion.div
-              className="absolute inset-0 w-4 h-4 -m-1 rounded-full bg-amber-500"
-              animate={
-                shouldReduceMotion ? { opacity: 0.25 } : { scale: [1, 2], opacity: [0.4, 0] }
-              }
-              transition={
-                shouldReduceMotion
-                  ? undefined
-                  : { duration: 1.5, repeat: Infinity, ease: "easeOut" }
-              }
-            />
-          )}
           {/* Main dot */}
           <div
             className={cn(
               "w-2.5 h-2.5 rounded-full",
               isToday
-                ? "bg-amber-500 shadow-[0_0_10px_rgba(232,169,69,0.8)]"
+                ? "bg-blue-500"
                 : isPast
-                  ? "bg-zinc-700"
-                  : "bg-zinc-600",
+                  ? "bg-zinc-600"
+                  : "bg-zinc-500",
             )}
           />
         </motion.div>
         <div
           className={cn(
             "flex-1 h-[2px] rounded-full",
-            isToday ? "bg-gradient-to-l from-transparent via-amber-500/60 to-amber-500/60" : "bg-zinc-800",
+            isToday ? "bg-gradient-to-l from-zinc-700 via-blue-400/70 to-blue-400/70" : "bg-zinc-700",
           )}
         />
       </div>
@@ -302,7 +259,7 @@ function DayColumnComponent({ date, tasks, onTaskClick }: DayColumnProps) {
             animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
             className={cn(
               "text-[11px] font-medium px-2 py-1",
-              "text-zinc-500 hover:text-zinc-300 rounded-md text-left transition-colors duration-150"
+              "text-zinc-400 hover:text-zinc-200 rounded-md text-left transition-colors duration-150"
             )}
           >
             {deadlineExpanded ? "Show less" : `+${hiddenDeadlineCount} more`}

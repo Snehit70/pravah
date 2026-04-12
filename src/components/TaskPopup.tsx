@@ -138,21 +138,21 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
         )}
 
         {/* Metadata */}
-        <div className="flex items-center gap-3 text-[11px] text-zinc-500">
+        <div className="flex items-center gap-3 text-[11px] text-zinc-400">
           <span
             className={cn(
               "px-2 py-0.5 rounded-full",
               task.type === "deadline"
-                ? "bg-yellow-500/15 text-yellow-400"
-                : "bg-amber-500/15 text-amber-400"
+                ? "bg-yellow-500/15 text-yellow-300"
+                : "bg-blue-500/15 text-blue-300"
             )}
           >
             {task.type === "deadline" ? "Deadline" : "Open"} task
           </span>
-          <span className="text-zinc-500">{task.status}</span>
+          <span className="text-zinc-400">{task.status}</span>
           {task.source && task.source !== "manual" && (
             <>
-              <span className="text-zinc-500">via {task.source}</span>
+              <span className="text-zinc-400">via {task.source}</span>
             </>
           )}
         </div>
@@ -160,7 +160,7 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
         {/* Actions */}
         <div className={cn(
           "flex items-center gap-2 pt-4",
-          "border-t border-zinc-800/60"
+          "border-t border-white/10"
         )}>
           {!confirmingDelete ? (
             <>
@@ -197,7 +197,7 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
               <Button
                 onClick={() => setConfirmingDelete(true)}
                 variant="ghost"
-                className="flex items-center gap-1.5 text-zinc-500 hover:text-red-400"
+                className="flex items-center gap-1.5 text-zinc-400 hover:text-red-300"
               >
                 <Trash2 size={14} />
                 Delete

@@ -21,28 +21,28 @@ export function Button({
     "relative rounded-xl font-medium",
     "transition-all duration-200",
     "disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none",
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
   );
 
   const variants = {
     primary: cn(
-      "bg-amber-500 text-zinc-900",
-      "hover:bg-amber-400",
-      "shadow-md hover:shadow-lg hover:shadow-amber-500/20"
+      "bg-blue-500 text-white",
+      "hover:bg-blue-400",
+      "shadow-sm hover:shadow-md"
     ),
     secondary: cn(
-      "bg-zinc-800 text-zinc-300",
-      "hover:bg-zinc-700 hover:text-zinc-100",
-      "border border-zinc-700/50"
+      "bg-zinc-800 text-zinc-100",
+      "hover:bg-zinc-700 hover:text-zinc-50",
+      "border border-white/10"
     ),
     danger: cn(
-      "bg-red-500/15 text-red-400",
+      "bg-red-500/15 text-red-300",
       "hover:bg-red-500/25",
-      "border border-red-500/30"
+      "border border-red-400/25"
     ),
     ghost: cn(
       "bg-transparent text-zinc-400",
-      "hover:bg-zinc-800/60 hover:text-zinc-200"
+      "hover:bg-zinc-800 hover:text-zinc-100"
     ),
   };
 

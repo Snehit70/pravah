@@ -15,7 +15,7 @@ export function Input({ label, error, className, ...props }: InputProps) {
       {label && (
         <label
           htmlFor={inputId}
-          className="block text-[11px] text-zinc-500 uppercase tracking-[0.08em] font-medium mb-1.5"
+          className="block text-[11px] text-zinc-400 uppercase tracking-[0.08em] font-medium mb-1.5"
         >
           {label}
         </label>
@@ -23,13 +23,13 @@ export function Input({ label, error, className, ...props }: InputProps) {
       <input
         id={inputId}
         className={cn(
-          "w-full bg-zinc-800/80 rounded-xl p-3 text-zinc-100",
-          "border border-zinc-700/50",
-          "placeholder:text-zinc-600",
+          "w-full bg-zinc-900 rounded-xl p-3 text-zinc-100",
+          "border border-white/10",
+          "placeholder:text-zinc-500",
           "transition-all duration-150",
-          "focus:border-amber-500/50 focus:outline-none focus:shadow-[0_0_0_3px_rgba(232,169,69,0.15)]",
-          "hover:border-zinc-600",
-          error && "border-red-500/50 focus:border-red-500/50 focus:shadow-[0_0_0_3px_rgba(248,113,113,0.2)]",
+          "focus:border-blue-500/60 focus:outline-none focus:shadow-[0_0_0_3px_rgba(35,131,226,0.2)]",
+          "hover:border-white/20",
+          error && "border-red-400/50 focus:border-red-400 focus:shadow-[0_0_0_3px_rgba(248,113,113,0.2)]",
           className
         )}
         {...props}
@@ -55,7 +55,7 @@ export function Textarea({ label, error, className, ...props }: TextareaProps) {
       {label && (
         <label
           htmlFor={textareaId}
-          className="block text-[11px] text-zinc-500 uppercase tracking-[0.08em] font-medium mb-1.5"
+          className="block text-[11px] text-zinc-400 uppercase tracking-[0.08em] font-medium mb-1.5"
         >
           {label}
         </label>
@@ -63,13 +63,13 @@ export function Textarea({ label, error, className, ...props }: TextareaProps) {
       <textarea
         id={textareaId}
         className={cn(
-          "w-full bg-zinc-800/80 rounded-xl p-3 text-zinc-100 resize-none",
-          "border border-zinc-700/50",
-          "placeholder:text-zinc-600",
+          "w-full bg-zinc-900 rounded-xl p-3 text-zinc-100 resize-none",
+          "border border-white/10",
+          "placeholder:text-zinc-500",
           "transition-all duration-150",
-          "focus:border-amber-500/50 focus:outline-none focus:shadow-[0_0_0_3px_rgba(232,169,69,0.15)]",
-          "hover:border-zinc-600",
-          error && "border-red-500/50 focus:border-red-500/50 focus:shadow-[0_0_0_3px_rgba(248,113,113,0.2)]",
+          "focus:border-blue-500/60 focus:outline-none focus:shadow-[0_0_0_3px_rgba(35,131,226,0.2)]",
+          "hover:border-white/20",
+          error && "border-red-400/50 focus:border-red-400 focus:shadow-[0_0_0_3px_rgba(248,113,113,0.2)]",
           className
         )}
         {...props}
