@@ -1,10 +1,72 @@
 import { useDroppable } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { useSortable, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { memo } from "react";
-import { TaskCard } from "./TaskCard";
+import { memo, useState } from "react";
 import type { Task } from "../types";
-import { cn, getLocalDateString, formatDay } from "../lib/utils";
+import { cn, getLocalDateString, formatDay, daysBetween, DUE_SOON_DAYS } from "../lib/utils";
+
+// A lightweight, chrome-free task preview — just a status dot + truncated title
+// Uses useSortable so DnD kit properly handles click vs drag distinction
+function TaskPreview({ task, today, onClick }: { task: Task; today: string; onClick: () => void }) {
+  const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({
+    id: task._id,
+  });
+
+  const isCompleted = task.status === "completed";
+  const isOverdue =
+    task.type === "deadline" && !!task.deadline && task.deadline < today && !isCompleted;
+  const isDueSoon =
+    task.type === "deadline" &&
+    !!task.deadline &&
+    !isOverdue &&
+    !isCompleted &&
+    daysBetween(today, task.deadline) <= DUE_SOON_DAYS;
+
+  const dotColor = isCompleted
+    ? "#34D399"
+    : isOverdue
+      ? "#F87171"
+      : isDueSoon
+        ? "#FBBF24"
+        : "#E8A945";
+
+  return (
+    <motion.div
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: isDragging ? 0.4 : 1, y: 0 }}
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === "Enter" && onClick()}
+      className={cn(
+        "w-full flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer",
+        "hover:bg-zinc-800/50 transition-colors duration-150"
+      )}
+    >
+      <span
+        className="flex-shrink-0 w-1.5 h-1.5 rounded-full"
+        style={{ background: dotColor }}
+      />
+      <span
+        className={cn(
+          "text-[12px] font-medium truncate leading-tight",
+          isCompleted
+            ? "line-through text-zinc-600"
+            : isOverdue
+              ? "text-red-400"
+              : "text-zinc-300"
+        )}
+      >
+        {task.title}
+      </span>
+    </motion.div>
+  );
+}
 
 interface DayColumnProps {
   date: string;
@@ -15,6 +77,8 @@ interface DayColumnProps {
 function DayColumnComponent({ date, tasks, onTaskClick }: DayColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: date });
   const shouldReduceMotion = useReducedMotion();
+  const [openExpanded, setOpenExpanded] = useState(false);
+  const [deadlineExpanded, setDeadlineExpanded] = useState(false);
 
   const today = getLocalDateString();
   const { dayName, dayNum, monthShort } = formatDay(date);
@@ -25,6 +89,13 @@ function DayColumnComponent({ date, tasks, onTaskClick }: DayColumnProps) {
   const openTasks = tasks.filter((t) => t.type === "open");
   const deadlineTasks = tasks.filter((t) => t.type === "deadline");
   const hasIncomplete = isPast && tasks.some((t) => t.status === "scheduled");
+
+  const previewOpen = openTasks.slice(0, 1);
+  const previewDeadline = deadlineTasks.slice(0, 1);
+  const visibleOpenTasks = openExpanded ? openTasks : previewOpen;
+  const visibleDeadlineTasks = deadlineExpanded ? deadlineTasks : previewDeadline;
+  const hiddenOpenCount = openTasks.length - visibleOpenTasks.length;
+  const hiddenDeadlineCount = deadlineTasks.length - visibleDeadlineTasks.length;
 
   return (
     <div
@@ -127,21 +198,36 @@ function DayColumnComponent({ date, tasks, onTaskClick }: DayColumnProps) {
       </div>
 
       {/* Open tasks (above the line) */}
-      <div className="flex flex-col gap-2 min-h-[60px] relative z-10">
+      <div className="flex flex-col gap-1 min-h-[60px] relative z-10">
         <SortableContext
-          items={openTasks.map((t) => t._id)}
+          items={visibleOpenTasks.map((t) => t._id)}
           strategy={verticalListSortingStrategy}
         >
           <AnimatePresence mode="popLayout">
-            {openTasks.map((task) => (
-              <TaskCard
+            {visibleOpenTasks.map((task) => (
+              <TaskPreview
                 key={task._id}
                 task={task}
+                today={today}
                 onClick={() => onTaskClick(task)}
               />
             ))}
           </AnimatePresence>
         </SortableContext>
+        {(hiddenOpenCount > 0 || openExpanded) && (
+          <motion.button
+            type="button"
+            onClick={() => setOpenExpanded((value) => !value)}
+            initial={shouldReduceMotion ? undefined : { opacity: 0, y: 4 }}
+            animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
+            className={cn(
+              "text-[11px] font-medium px-2 py-1",
+              "text-zinc-500 hover:text-zinc-300 rounded-md text-left transition-colors duration-150"
+            )}
+          >
+            {openExpanded ? "Show less" : `+${hiddenOpenCount} more`}
+          </motion.button>
+        )}
       </div>
 
       {/* Flow line divider - the visual thread of time */}
@@ -192,21 +278,36 @@ function DayColumnComponent({ date, tasks, onTaskClick }: DayColumnProps) {
       </div>
 
       {/* Deadline tasks (below the line) */}
-      <div className="flex flex-col gap-2 min-h-[60px] relative z-10">
+      <div className="flex flex-col gap-1 min-h-[60px] relative z-10">
         <SortableContext
-          items={deadlineTasks.map((t) => t._id)}
+          items={visibleDeadlineTasks.map((t) => t._id)}
           strategy={verticalListSortingStrategy}
         >
           <AnimatePresence mode="popLayout">
-            {deadlineTasks.map((task) => (
-              <TaskCard
+            {visibleDeadlineTasks.map((task) => (
+              <TaskPreview
                 key={task._id}
                 task={task}
+                today={today}
                 onClick={() => onTaskClick(task)}
               />
             ))}
           </AnimatePresence>
         </SortableContext>
+        {(hiddenDeadlineCount > 0 || deadlineExpanded) && (
+          <motion.button
+            type="button"
+            onClick={() => setDeadlineExpanded((value) => !value)}
+            initial={shouldReduceMotion ? undefined : { opacity: 0, y: 4 }}
+            animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
+            className={cn(
+              "text-[11px] font-medium px-2 py-1",
+              "text-zinc-500 hover:text-zinc-300 rounded-md text-left transition-colors duration-150"
+            )}
+          >
+            {deadlineExpanded ? "Show less" : `+${hiddenDeadlineCount} more`}
+          </motion.button>
+        )}
       </div>
     </div>
   );

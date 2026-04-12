@@ -117,6 +117,8 @@ describe("accessibility regressions", () => {
     });
 
     const region = screen.getByRole("status");
-    expect(region).toHaveTextContent("Task completed!");
+    await waitFor(() => {
+      expect(region).toHaveTextContent("Task completed!");
+    });
   });
 });

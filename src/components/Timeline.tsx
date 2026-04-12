@@ -1,6 +1,6 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { Settings as SettingsIcon, Plus, Command } from "lucide-react";
+import { Plus, Command } from "lucide-react";
 import { DayColumn } from "./DayColumn";
 import { TRANSITION_SLOW, withDelay } from "../lib/motion";
 import type { Task } from "../types";
@@ -10,7 +10,6 @@ import { Button } from "./Button";
 interface TimelineProps {
   tasksByDate: Record<string, Task[]>;
   onTaskClick: (task: Task) => void;
-  onOpenSettings?: () => void;
   onOpenQuickAdd?: () => void;
 }
 
@@ -95,7 +94,6 @@ function FlowIllustration() {
 export function Timeline({
   tasksByDate,
   onTaskClick,
-  onOpenSettings,
   onOpenQuickAdd,
 }: TimelineProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -182,46 +180,20 @@ export function Timeline({
           </span>
         </div>
 
-        <div className="flex items-center gap-1">
-          {onOpenQuickAdd && (
-            <button
-              onClick={onOpenQuickAdd}
-              className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm",
-                "text-zinc-500 hover:text-zinc-200",
-                "hover:bg-zinc-800/60",
-                "transition-all duration-200",
-              )}
-            >
-              <Plus size={15} />
-              <span className="hidden sm:flex items-center gap-1 text-xs text-zinc-600">
-                <Command size={10} />N
-              </span>
-            </button>
-          )}
-
-          {onOpenSettings && (
-            <button
-              onClick={onOpenSettings}
-              aria-label="Settings"
-              className={cn(
-                "p-2 rounded-xl",
-                "text-zinc-500 hover:text-zinc-200",
-                "hover:bg-zinc-800/60",
-                "transition-all duration-200",
-              )}
-            >
-              <SettingsIcon size={16} />
-            </button>
-          )}
+        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
+          <span className="text-sm font-medium text-zinc-400 tracking-wide" style={{ fontFamily: "'Newsreader', Georgia, serif" }}>
+            {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+          </span>
         </div>
+
+        <div />
       </motion.header>
 
       {/* Timeline scroll area */}
       <div
         ref={scrollRef}
         className={cn(
-          "flex-1 overflow-x-auto overflow-y-hidden relative",
+          "flex-1 overflow-x-auto overflow-y-hidden relative flex items-center",
           isPanning && "cursor-grabbing select-none"
         )}
         onMouseDown={handleMouseDown}
