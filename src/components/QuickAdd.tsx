@@ -144,8 +144,8 @@ export function QuickAdd({ onClose }: QuickAddProps) {
         variants={overlayVariants}
         transition={TRANSITION_FAST}
         className={cn(
-          "fixed inset-0 z-50 flex items-end sm:items-start justify-center sm:pt-24",
-          "bg-black/60 backdrop-blur-sm"
+          "fixed inset-0 z-50 grid place-items-center",
+          "bg-black/55 backdrop-blur-[2px]"
         )}
         onClick={handleBackdropClick}
       >
@@ -161,13 +161,14 @@ export function QuickAdd({ onClose }: QuickAddProps) {
           aria-labelledby={quickAddTitleId}
           aria-describedby={quickAddDescriptionId}
           className={cn(
-            "w-full max-w-xl p-4 sm:p-5 mx-0 sm:mx-4 md:mx-0",
-            "bg-zinc-900 rounded-t-2xl sm:rounded-2xl",
-            "border border-zinc-800/80",
-            "shadow-2xl shadow-black/50"
+            "w-full max-w-xl p-4 sm:p-5 mx-4",
+            "mt-[10vh] sm:mt-[8vh]",
+            "bg-[#252525] rounded-2xl",
+            "border border-white/10",
+            "shadow-xl shadow-black/40"
           )}
         >
-          <h2 id={quickAddTitleId} className="sr-only">Quick Add Task</h2>
+          <h2 id={quickAddTitleId} className="sr-only">New Task</h2>
           <p id={quickAddDescriptionId} className="sr-only">
             Create a new open task or deadline task.
           </p>
@@ -197,7 +198,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                 aria-describedby={titleError ? titleErrorId : undefined}
                 className={cn(
                   "min-w-0 flex-1 bg-transparent text-lg text-zinc-100",
-                  "placeholder-zinc-600 outline-none"
+                  "placeholder-zinc-500 outline-none"
                 )}
                 autoFocus
               />
@@ -205,11 +206,11 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                 type="button"
                 onClick={onClose}
                 disabled={isSubmitting}
-                aria-label="Close quick add"
+                aria-label="Close new task dialog"
                 className={cn(
                   "p-2 rounded-lg",
-                  "text-zinc-500 hover:text-zinc-300",
-                  "hover:bg-zinc-800/60",
+                  "text-zinc-400 hover:text-zinc-100",
+                  "hover:bg-zinc-800",
                   "disabled:opacity-50 disabled:cursor-not-allowed",
                   "transition-colors duration-150"
                 )}
@@ -228,7 +229,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
               )}>
                 <div className={cn(
                 "flex gap-1 p-1 rounded-xl",
-                "bg-zinc-800/80"
+                "bg-zinc-800"
                 )}>
                   <button
                     type="button"
@@ -242,8 +243,8 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                       "transition-all duration-150",
                       "disabled:opacity-50 disabled:cursor-not-allowed",
                       type === "open"
-                        ? "bg-amber-500/20 text-amber-400 shadow-sm"
-                        : "text-zinc-500 hover:text-zinc-400"
+                        ? "bg-blue-500/20 text-blue-300 shadow-sm"
+                        : "text-zinc-400 hover:text-zinc-200"
                     )}
                   >
                     Open
@@ -262,8 +263,8 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                       "transition-all duration-150",
                       "disabled:opacity-50 disabled:cursor-not-allowed",
                       type === "deadline"
-                        ? "bg-yellow-500/20 text-yellow-400 shadow-sm"
-                        : "text-zinc-500 hover:text-zinc-400"
+                        ? "bg-orange-500/20 text-orange-300 shadow-sm"
+                        : "text-zinc-400 hover:text-zinc-200"
                     )}
                   >
                     Deadline
@@ -281,7 +282,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                     className="space-y-3"
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                      <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
+                      <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-400">
                         Due
                       </span>
                       <input
@@ -297,10 +298,10 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                         aria-describedby={deadlineError ? deadlineErrorId : undefined}
                         className={cn(
                           "w-full sm:w-auto min-w-0 px-3 py-2 text-sm rounded-xl",
-                          "bg-zinc-800/80 text-zinc-100",
-                          "border border-zinc-700/50",
+                          "bg-zinc-900 text-zinc-100",
+                          "border border-white/10",
                           "disabled:opacity-50 disabled:cursor-not-allowed",
-                          "focus:border-amber-500/50 focus:outline-none"
+                          "focus:border-blue-500/60 focus:outline-none"
                         )}
                       />
                     </div>
@@ -319,8 +320,8 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                             "px-2.5 py-1.5 rounded-full text-[11px]",
                             "transition-colors duration-150",
                             deadline === preset.value
-                              ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                              : "text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 border border-zinc-700/40",
+                              ? "bg-blue-500/20 text-blue-300 border border-blue-400/30"
+                              : "text-zinc-400 hover:text-zinc-200 bg-zinc-900 border border-white/10",
                             "disabled:opacity-50 disabled:cursor-not-allowed"
                           )}
                         >
@@ -346,21 +347,21 @@ export function QuickAdd({ onClose }: QuickAddProps) {
             )}
 
             <div className={cn(
-              "mt-4 pt-4 border-t border-zinc-800/60",
+              "mt-4 pt-4 border-t border-white/10",
               "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
             )}>
-              <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-600">
+              <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-400">
                 <span className="flex items-center gap-1.5">
                   <kbd className={cn(
                     "px-1.5 py-0.5 rounded-lg font-mono",
-                    "bg-zinc-800/80 text-zinc-400 border border-zinc-700/50"
+                    "bg-zinc-800 text-zinc-300 border border-white/10"
                   )}>Esc</kbd>
                   <span>close</span>
                 </span>
                 <span className="flex items-center gap-1.5">
                   <kbd className={cn(
                     "px-1.5 py-0.5 rounded-lg font-mono",
-                    "bg-zinc-800/80 text-zinc-400 border border-zinc-700/50"
+                    "bg-zinc-800 text-zinc-300 border border-white/10"
                   )}>Ctrl/⌘ + Enter</kbd>
                   <span>submit</span>
                 </span>

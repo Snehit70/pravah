@@ -44,7 +44,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={{ showToast, showError, showSuccess }}>
       {children}
       <div
-        className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-md"
+        className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-md"
         role="status"
         aria-live="polite"
         aria-atomic="true"
@@ -63,13 +63,13 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
   const icons = {
     success: <CheckCircle size={18} className="text-emerald-400" />,
     error: <AlertCircle size={18} className="text-red-400" />,
-    info: <Info size={18} className="text-amber-400" />,
+    info: <Info size={18} className="text-blue-400" />,
   };
 
   const borderColors = {
     success: "#34D399",
     error: "#F87171",
-    info: "#E8A945",
+    info: "#0075de",
   };
 
   return (
@@ -82,8 +82,8 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
       className={cn(
         "flex items-center gap-3 p-4 rounded-xl",
         "bg-zinc-900/95 backdrop-blur-md",
-        "border border-zinc-800/80",
-        "shadow-xl shadow-black/30"
+        "border border-white/10",
+        "shadow-xl shadow-black/35"
       )}
       style={{
         borderLeftWidth: 3,
@@ -97,8 +97,8 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
         aria-label="Dismiss notification"
         className={cn(
           "p-1 rounded-lg",
-          "text-zinc-500 hover:text-zinc-300",
-          "hover:bg-zinc-800/60",
+          "text-zinc-400 hover:text-zinc-100",
+          "hover:bg-zinc-800",
           "transition-colors duration-150"
         )}
       >

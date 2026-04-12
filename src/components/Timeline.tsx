@@ -6,11 +6,14 @@ import { TRANSITION_SLOW, withDelay } from "../lib/motion";
 import type { Task } from "../types";
 import { cn, generateDateRange } from "../lib/utils";
 import { Button } from "./Button";
+import { TopNavbar, type AppPage } from "./TopNavbar";
 
 interface TimelineProps {
   tasksByDate: Record<string, Task[]>;
   onTaskClick: (task: Task) => void;
   onOpenQuickAdd?: () => void;
+  activePage: AppPage;
+  onNavigate: (page: AppPage) => void;
 }
 
 // Flow illustration SVG component for empty state
@@ -42,9 +45,9 @@ function FlowIllustration() {
       {/* Gradient definition */}
       <defs>
         <linearGradient id="flowGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#71717A" stopOpacity="0.3" />
-          <stop offset="50%" stopColor="#E8A945" stopOpacity="0.8" />
-          <stop offset="100%" stopColor="#71717A" stopOpacity="0.3" />
+          <stop offset="0%" stopColor="#a39e98" stopOpacity="0.35" />
+          <stop offset="50%" stopColor="#0075de" stopOpacity="0.8" />
+          <stop offset="100%" stopColor="#a39e98" stopOpacity="0.35" />
         </linearGradient>
       </defs>
       {/* Nodes along the flow */}
@@ -52,7 +55,7 @@ function FlowIllustration() {
         cx="40"
         cy="28"
         r="4"
-        fill="#52525B"
+        fill="#a39e98"
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 0.6 }}
         transition={{ delay: 0.6, duration: 0.4 }}
@@ -61,7 +64,7 @@ function FlowIllustration() {
         cx="120"
         cy="40"
         r="8"
-        fill="#E8A945"
+        fill="#0075de"
         initial={{ scale: 0 }}
         animate={{ scale: [0, 1.3, 1] }}
         transition={{ delay: 1, duration: 0.6 }}
@@ -71,7 +74,7 @@ function FlowIllustration() {
         cx="120"
         cy="40"
         r="8"
-        fill="#E8A945"
+        fill="#0075de"
         initial={shouldReduceMotion ? { opacity: 0.25 } : { scale: 1, opacity: 0.5 }}
         animate={shouldReduceMotion ? { opacity: 0.25 } : { scale: 2, opacity: 0 }}
         transition={
@@ -82,7 +85,7 @@ function FlowIllustration() {
         cx="200"
         cy="28"
         r="4"
-        fill="#52525B"
+        fill="#a39e98"
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 0.6 }}
         transition={{ delay: 1.4, duration: 0.4 }}
@@ -95,6 +98,8 @@ export function Timeline({
   tasksByDate,
   onTaskClick,
   onOpenQuickAdd,
+  activePage,
+  onNavigate,
 }: TimelineProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const todayRef = useRef<HTMLDivElement>(null);
@@ -151,49 +156,21 @@ export function Timeline({
   }, []);
 
   return (
-    <div className="radial-bloom-surface h-full flex flex-col">
-      {/* Header */}
-      <motion.header
-        initial={{ opacity: 0, y: -8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={TRANSITION_SLOW}
-        className={cn(
-          "flex items-center justify-between px-6 h-14",
-          "border-b border-zinc-800/40",
-          "bg-zinc-950/50 backdrop-blur-xl",
-          "sticky top-0 z-50"
-        )}
-      >
-        <div className="flex items-center gap-3">
-          <h1
-            className="text-lg font-semibold tracking-tight text-zinc-100"
-            style={{ fontFamily: "'Newsreader', Georgia, serif" }}
-          >
-            Pravah
-          </h1>
-          <span className={cn(
-            "text-[9px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider",
-            "bg-amber-500/15 text-amber-400",
-            "border border-amber-500/20"
-          )}>
-            beta
-          </span>
-        </div>
-
-        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
-          <span className="text-sm font-medium text-zinc-400 tracking-wide" style={{ fontFamily: "'Newsreader', Georgia, serif" }}>
-            {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-          </span>
-        </div>
-
-        <div />
-      </motion.header>
+    <div className="h-full flex flex-col bg-[#191919]">
+      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={TRANSITION_SLOW}>
+        <TopNavbar
+          activePage={activePage}
+          onNavigate={onNavigate}
+          centerContent={new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+        />
+      </motion.div>
 
       {/* Timeline scroll area */}
       <div
         ref={scrollRef}
         className={cn(
           "flex-1 overflow-x-auto overflow-y-hidden relative flex items-center",
+          "bg-[#191919]",
           isPanning && "cursor-grabbing select-none"
         )}
         onMouseDown={handleMouseDown}
@@ -218,7 +195,7 @@ export function Timeline({
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.6 }}
-                className="text-2xl font-medium text-zinc-200 mb-3"
+                className="text-2xl font-medium text-zinc-100 mb-3"
                 style={{ fontFamily: "'Newsreader', Georgia, serif" }}
               >
                 Your timeline is clear
@@ -227,7 +204,7 @@ export function Timeline({
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.7 }}
-                className="text-sm text-zinc-500 mb-8"
+                className="text-sm text-zinc-400 mb-8"
               >
                 Add a task to start flowing through your day
               </motion.p>
@@ -246,10 +223,10 @@ export function Timeline({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 1.1 }}
-                className="flex items-center justify-center gap-2 text-xs text-zinc-600 mt-6"
+                className="flex items-center justify-center gap-2 text-xs text-zinc-400 mt-6"
               >
                 <span>Press</span>
-                <kbd className="px-2 py-1 bg-zinc-800/80 rounded-lg font-mono text-zinc-400 border border-zinc-700/50">
+                <kbd className="px-2 py-1 bg-zinc-800 rounded-lg font-mono text-zinc-300 border border-white/10">
                   <Command size={10} className="inline -mt-px mr-0.5" />N
                 </kbd>
                 <span>to quickly add a task</span>
@@ -284,8 +261,8 @@ export function Timeline({
       </div>
 
       {/* Footer hint */}
-      <div className="px-6 py-2 border-t border-zinc-800/40 bg-zinc-950/50">
-        <p className="text-[11px] text-zinc-600 text-center">
+      <div className="px-6 py-2 border-t border-white/10 bg-[#202020]">
+        <p className="text-[11px] text-zinc-400 text-center">
           Drag tasks to reorder or move between days &bull; Right-click + drag to pan
         </p>
       </div>

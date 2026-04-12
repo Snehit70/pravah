@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -17,10 +17,12 @@ import { TaskCard } from "./components/TaskCard";
 import { InboxSidebar } from "./components/InboxSidebar";
 import { LoadingSkeleton } from "./components/LoadingSkeleton";
 import { GoogleCallback } from "./components/GoogleCallback";
+import { LongTermGoalsPage } from "./components/LongTermGoalsPage";
 import { useTaskBoardData } from "./hooks/useTaskBoardData";
 import { useTaskDragHandlers } from "./hooks/useTaskDragHandlers";
 import { useAppKeyboardShortcuts } from "./hooks/useAppKeyboardShortcuts";
 import { useAppOverlays } from "./hooks/useAppOverlays";
+import type { AppPage } from "./components/TopNavbar";
 
 const TaskPopup = lazy(() =>
   import("./components/TaskPopup").then((module) => ({ default: module.TaskPopup }))
@@ -33,6 +35,10 @@ const Settings = lazy(() =>
 );
 
 export function App() {
+  const [activePage, setActivePage] = useState<AppPage>(() => {
+    const saved = window.sessionStorage.getItem("pravah_active_page");
+    return saved === "goals" ? "goals" : "timeline";
+  });
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const {
     selectedTask,
@@ -71,49 +77,57 @@ export function App() {
     setDraggedTask,
   });
 
+  useEffect(() => {
+    window.sessionStorage.setItem("pravah_active_page", activePage);
+  }, [activePage]);
+
   if (tasks === undefined) {
     return <LoadingSkeleton />;
   }
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCorners}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-    >
+    <>
       <GoogleCallback />
-      <div className="radial-dots-surface flex h-screen">
-        <main className="flex-1 overflow-hidden radial-bloom-surface">
-          <Timeline
-            tasksByDate={tasksByDate}
-            onTaskClick={openTaskPopup}
-            onOpenQuickAdd={openQuickAdd}
-          />
-        </main>
-        <div className="radial-bloom-surface h-full">
-          <InboxSidebar
-            tasks={inboxTasks}
-            onTaskClick={openTaskPopup}
-            onOpenQuickAdd={openQuickAdd}
-            onOpenSettings={openSettings}
-          />
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="radial-dots-surface flex h-screen">
+          <main className="flex-1 overflow-hidden radial-bloom-surface">
+            {activePage === "timeline" ? (
+              <Timeline
+                tasksByDate={tasksByDate}
+                onTaskClick={openTaskPopup}
+                onOpenQuickAdd={openQuickAdd}
+                activePage={activePage}
+                onNavigate={setActivePage}
+              />
+            ) : (
+              <LongTermGoalsPage activePage={activePage} onNavigate={setActivePage} />
+            )}
+          </main>
+          <div className="radial-bloom-surface h-full">
+            <InboxSidebar
+              tasks={inboxTasks}
+              onTaskClick={openTaskPopup}
+              onOpenQuickAdd={openQuickAdd}
+              onOpenSettings={openSettings}
+            />
+          </div>
         </div>
-      </div>
 
-      <DragOverlay dropAnimation={null}>
-        {draggedTask && <TaskCard task={draggedTask} isDragOverlay />}
-      </DragOverlay>
+        <DragOverlay dropAnimation={null}>
+          {activePage === "timeline" && draggedTask && <TaskCard task={draggedTask} isDragOverlay />}
+        </DragOverlay>
+      </DndContext>
 
       <Suspense fallback={null}>
-        {selectedTask && (
-          <TaskPopup task={selectedTask} onClose={closeTaskPopup} />
-        )}
-
+        {selectedTask && <TaskPopup task={selectedTask} onClose={closeTaskPopup} />}
         {showQuickAdd && <QuickAdd onClose={closeQuickAdd} />}
-
         {showSettings && <Settings onClose={closeSettings} />}
       </Suspense>
-    </DndContext>
+    </>
   );
 }

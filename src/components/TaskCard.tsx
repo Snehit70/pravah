@@ -47,7 +47,7 @@ function TaskCardComponent({ task, onClick, isDragOverlay }: TaskCardProps) {
     if (isCompleted) return "#34D399"; // emerald
     if (isOverdue) return "#F87171"; // red
     if (isDueSoon) return "#FBBF24"; // amber/warning
-    return "#E8A945"; // primary amber
+    return "#0075de";
   };
 
   const getAccentGlow = () => {
@@ -77,10 +77,8 @@ function TaskCardComponent({ task, onClick, isDragOverlay }: TaskCardProps) {
       className={cn(
         "group relative rounded-xl cursor-grab active:cursor-grabbing",
         "transition-shadow duration-200 select-none overflow-hidden",
-        // Base styles
-        "bg-zinc-800/90 backdrop-blur-sm",
-        // Hover state
-        "hover:bg-zinc-750",
+        "bg-[#252525]",
+        "hover:bg-[#2c2c2c]",
         // Completed state
         isCompleted && "opacity-50 hover:opacity-60",
         // Drag overlay state
@@ -90,7 +88,7 @@ function TaskCardComponent({ task, onClick, isDragOverlay }: TaskCardProps) {
         ...style,
         boxShadow: isDragOverlay
           ? `0 20px 40px rgba(0,0,0,0.4), 0 0 0 1px ${getAccentColor()}40`
-          : `0 2px 8px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.03)`,
+          : `0 1px 2px rgba(0,0,0,0.04), 0 6px 18px rgba(0,0,0,0.06)`,
       }}
     >
       {/* Left accent bar */}
@@ -130,12 +128,12 @@ function TaskCardComponent({ task, onClick, isDragOverlay }: TaskCardProps) {
 
         <div className="flex-1 min-w-0">
           <p
-            className={cn(
-              "text-[13px] leading-snug font-medium",
-              isCompleted
-                ? "line-through text-zinc-500"
-                : "text-zinc-100",
-            )}
+          className={cn(
+            "text-[13px] leading-snug font-medium",
+            isCompleted
+              ? "line-through text-zinc-500"
+              : "text-zinc-100",
+          )}
           >
             {task.title}
           </p>
@@ -148,7 +146,7 @@ function TaskCardComponent({ task, onClick, isDragOverlay }: TaskCardProps) {
                   ? "#F87171"
                   : isDueSoon
                     ? "#FBBF24"
-                    : "#71717A"
+                    : "#a1a1aa"
               }}
             >
               {formatDeadline(task.deadline, today)}
@@ -156,7 +154,7 @@ function TaskCardComponent({ task, onClick, isDragOverlay }: TaskCardProps) {
           )}
 
           {task.estimatedMinutes && !isCompleted && (
-            <p className="text-[11px] mt-0.5 text-zinc-500">
+            <p className="text-[11px] mt-0.5 text-zinc-400">
               {task.estimatedMinutes}m
             </p>
           )}

@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Inbox, ChevronLeft, ChevronRight, Settings as SettingsIcon } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
@@ -29,10 +29,10 @@ function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void
     transition,
   };
 
-  const accentColor = task.type === "deadline" ? "#FBBF24" : "#E8A945";
+  const accentColor = task.type === "deadline" ? "#dd5b00" : "#0075de";
   const accentGlow = task.type === "deadline"
-    ? "rgba(251, 191, 36, 0.2)"
-    : "rgba(232, 169, 69, 0.2)";
+    ? "rgba(221, 91, 0, 0.18)"
+    : "rgba(0, 117, 222, 0.18)";
 
   return (
     <motion.div
@@ -53,12 +53,12 @@ function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void
       }}
       className={cn(
         "group relative rounded-xl cursor-grab active:cursor-grabbing",
-        "bg-zinc-800/80 backdrop-blur-sm overflow-hidden",
+        "bg-[#252525] overflow-hidden border border-white/10",
         "transition-shadow duration-200",
       )}
       style={{
         ...style,
-        boxShadow: `0 2px 8px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.03)`,
+        boxShadow: "0 2px 10px rgba(0,0,0,0.25)",
       }}
     >
       {/* Left accent bar */}
@@ -73,7 +73,7 @@ function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void
       <div className="px-3 py-2.5 pl-4">
         <p className="text-[13px] text-zinc-100 font-medium truncate">{task.title}</p>
         {task.type === "deadline" && (
-          <p className="text-[11px] text-amber-400/70 mt-0.5 font-medium">Deadline task</p>
+          <p className="text-[11px] text-orange-300 mt-0.5 font-medium">Deadline task</p>
         )}
       </div>
 
@@ -81,7 +81,7 @@ function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void
       <div
         className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
         style={{
-          boxShadow: `inset 0 0 20px ${accentGlow}`,
+          boxShadow: `inset 0 0 16px ${accentGlow}`,
         }}
       />
     </motion.div>
@@ -99,6 +99,14 @@ function InboxSidebarComponent({
 }: InboxSidebarProps) {
   const [collapsed, setCollapsed] = useState(window.innerWidth < 768);
 
+  useEffect(() => {
+    const handleResize = () => {
+      setCollapsed(window.innerWidth < 768);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   return (
     <motion.aside
       initial={false}
@@ -106,8 +114,8 @@ function InboxSidebarComponent({
       transition={TRANSITION_PANEL}
       className={cn(
         "relative flex flex-col overflow-hidden flex-shrink-0 h-full",
-        "bg-zinc-950/40 backdrop-blur-xl",
-        "border-l border-zinc-800/50"
+        "bg-[#202020] backdrop-blur-xl",
+        "border-l border-white/10"
       )}
     >
       {/* Collapse toggle */}
@@ -116,8 +124,8 @@ function InboxSidebarComponent({
         aria-label={collapsed ? "Expand inbox" : "Collapse inbox"}
         className={cn(
           "absolute top-3 z-10 p-1.5 rounded-lg",
-          "text-zinc-500 hover:text-zinc-300",
-          "hover:bg-zinc-800/60",
+          "text-zinc-400 hover:text-zinc-100",
+          "hover:bg-zinc-800",
           "transition-all duration-200",
           collapsed ? "right-1.5" : "right-2",
         )}
@@ -135,7 +143,7 @@ function InboxSidebarComponent({
                 animate={{ scale: 1 }}
                 className={cn(
                   "text-[10px] font-semibold rounded-full w-5 h-5 flex items-center justify-center",
-                  "bg-amber-500/20 text-amber-400"
+                  "bg-blue-500/20 text-blue-300"
                 )}
               >
                 {tasks.length}
@@ -143,18 +151,18 @@ function InboxSidebarComponent({
             )}
           </div>
 
-          <div className="mt-auto p-2 border-t border-zinc-800/60 space-y-2">
+          <div className="mt-auto p-2 border-t border-white/10 space-y-2">
             <button
               onClick={() => {
                 setCollapsed(false);
                 onOpenQuickAdd?.();
               }}
-              aria-label="Quick add task"
+              aria-label="Create new task"
               className={cn(
                 "w-full p-2 rounded-xl flex items-center justify-center",
-                "bg-amber-500/15 hover:bg-amber-500/20",
-                "text-amber-300 hover:text-amber-200",
-                "border border-amber-500/30 hover:border-amber-400/40",
+                "bg-blue-500/15 hover:bg-blue-500/25",
+                "text-blue-300 hover:text-blue-200",
+                "border border-blue-400/25 hover:border-blue-300/40",
                 "transition-all duration-200",
               )}
             >
@@ -165,9 +173,9 @@ function InboxSidebarComponent({
               aria-label="Open settings"
               className={cn(
                 "w-full p-2 rounded-xl flex items-center justify-center",
-                "bg-zinc-800/60 hover:bg-zinc-700/60",
-                "text-zinc-400 hover:text-zinc-200",
-                "border border-zinc-700/40 hover:border-zinc-600/60",
+                "bg-zinc-900 hover:bg-zinc-800",
+                "text-zinc-300 hover:text-zinc-100",
+                "border border-white/10 hover:border-white/20",
                 "transition-all duration-200",
               )}
             >
@@ -178,12 +186,12 @@ function InboxSidebarComponent({
       ) : (
         <>
           {/* Header */}
-          <div className="p-4 pb-3 pr-10 border-b border-zinc-800/60">
-            <div className="flex min-w-0 items-center gap-2 text-zinc-400">
+          <div className="p-4 pb-3 pr-10 border-b border-white/10">
+            <div className="flex min-w-0 items-center gap-2 text-zinc-300">
               <Inbox size={15} />
               <span className="min-w-0 text-sm font-medium truncate">Inbox</span>
               {tasks.length > 0 && (
-                <span className="shrink-0 text-[11px] text-amber-400/80 font-semibold tabular-nums bg-amber-500/10 px-1.5 py-0.5 rounded-full">
+                <span className="shrink-0 text-[11px] text-blue-300 font-semibold tabular-nums bg-blue-500/20 px-1.5 py-0.5 rounded-full">
                   {tasks.length}
                 </span>
               )}
@@ -209,39 +217,39 @@ function InboxSidebarComponent({
                 transition={{ delay: 0.2 }}
                 className="text-center py-12"
               >
-                <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-zinc-800/50 flex items-center justify-center">
-                  <Inbox size={20} className="text-zinc-600" />
+                <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-zinc-800 flex items-center justify-center">
+                  <Inbox size={20} className="text-zinc-400" />
                 </div>
-                <p className="text-sm text-zinc-500 font-medium">No tasks in inbox</p>
-                <p className="text-xs text-zinc-600 mt-1">
+                <p className="text-sm text-zinc-300 font-medium">No tasks in inbox</p>
+                <p className="text-xs text-zinc-400 mt-1">
                   Add tasks here to sort them later
                 </p>
               </motion.div>
             )}
           </div>
 
-          <div className="p-3 pt-2 border-t border-zinc-800/60 grid grid-cols-[1fr_auto] gap-2">
+          <div className="p-3 pt-2 border-t border-white/10 grid grid-cols-[1fr_auto] gap-2">
             <button
               onClick={onOpenQuickAdd}
               className={cn(
                 "w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm",
-                "bg-amber-500/15 hover:bg-amber-500/20",
-                "text-amber-300 hover:text-amber-200",
-                "border border-amber-500/30 hover:border-amber-400/40",
+                "bg-blue-500/15 hover:bg-blue-500/25",
+                "text-blue-300 hover:text-blue-200",
+                "border border-blue-400/25 hover:border-blue-300/40",
                 "transition-all duration-200",
               )}
             >
               <Plus size={15} />
-              Quick Add
+              New Task
             </button>
             <button
               onClick={onOpenSettings}
               aria-label="Open settings"
               className={cn(
                 "px-3 rounded-xl flex items-center justify-center",
-                "bg-zinc-800/60 hover:bg-zinc-700/60",
-                "text-zinc-400 hover:text-zinc-200",
-                "border border-zinc-700/40 hover:border-zinc-600/60",
+                "bg-zinc-900 hover:bg-zinc-800",
+                "text-zinc-300 hover:text-zinc-100",
+                "border border-white/10 hover:border-white/20",
                 "transition-all duration-200",
               )}
             >
