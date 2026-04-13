@@ -278,17 +278,18 @@ function MobileApp() {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       await mutation();
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch {
+    } catch (error) {
       setOptimisticTasks(null);
-      if (retryLabel) {
+      const canRetry = retryLabel && isLikelyOfflineError(error);
+      if (canRetry) {
         enqueueRetry({
-          label: retryLabel,
+          label: retryLabel!,
           run: mutation,
         });
       }
       showToast({
         kind: "error",
-        message: retryLabel ? `${errorMessage} Queued for retry.` : errorMessage,
+        message: canRetry ? `${errorMessage} Queued for retry.` : errorMessage,
       });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
