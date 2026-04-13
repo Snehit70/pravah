@@ -1,23 +1,96 @@
-import { query, mutation } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { requireTokenIdentifier } from "./authHelpers";
+
+type TaskCtx = QueryCtx | MutationCtx;
+
+async function getOwnedTask(
+  ctx: TaskCtx,
+  taskId: Id<"tasks">,
+  tokenIdentifier: string
+) {
+  const task = await ctx.db.get(taskId);
+  if (!task || task.ownerTokenIdentifier !== tokenIdentifier) {
+    throw new Error("Task not found");
+  }
+  return task;
+}
+
+async function getNextPositionForStatus(
+  ctx: TaskCtx,
+  tokenIdentifier: string,
+  status: "inbox" | "scheduled",
+  scheduledDate?: string
+) {
+  if (status === "scheduled" && scheduledDate) {
+    const latestTask = await ctx.db
+      .query("tasks")
+      .withIndex("by_owner_status_date_position", (q) =>
+        q.eq("ownerTokenIdentifier", tokenIdentifier)
+          .eq("status", "scheduled")
+          .eq("scheduledDate", scheduledDate)
+      )
+      .order("desc")
+      .first();
+    return (latestTask?.position ?? -1) + 1;
+  }
+
+  const latestTask = await ctx.db
+    .query("tasks")
+    .withIndex("by_owner_status_position", (q) =>
+      q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "inbox")
+    )
+    .order("desc")
+    .first();
+
+  return (latestTask?.position ?? -1) + 1;
+}
 
 export const listTasks = query({
   args: {
     date: v.optional(v.string()),
-    status: v.optional(v.string()),
+    status: v.optional(
+      v.union(
+        v.literal("inbox"),
+        v.literal("scheduled"),
+        v.literal("completed"),
+        v.literal("cancelled")
+      )
+    ),
   },
   handler: async (ctx, args) => {
-    let q = ctx.db.query("tasks");
-    
-    if (args.date) {
-      q = q.filter((q) => q.eq(q.field("scheduledDate"), args.date));
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+
+    if (args.date && args.status) {
+      return await ctx.db
+        .query("tasks")
+        .withIndex("by_owner_status_date", (q) =>
+          q.eq("ownerTokenIdentifier", tokenIdentifier)
+            .eq("status", args.status!)
+            .eq("scheduledDate", args.date!)
+        )
+        .collect();
     }
+
     if (args.status) {
-      q = q.filter((q) => q.eq(q.field("status"), args.status));
+      return await ctx.db
+        .query("tasks")
+        .withIndex("by_owner_status", (q) =>
+          q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", args.status!)
+        )
+        .collect();
     }
-    
-    return await q.collect();
+
+    const tasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_owner", (q) => q.eq("ownerTokenIdentifier", tokenIdentifier))
+      .collect();
+
+    return args.date
+      ? tasks.filter((task) => task.scheduledDate === args.date)
+      : tasks;
   },
 });
 
@@ -40,25 +113,17 @@ export const addTask = mutation({
     tags: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
     const scheduledDate =
       args.scheduledDate ??
       (args.type === "deadline" ? args.deadline : undefined);
 
-    let q = ctx.db.query("tasks");
-
-    if (scheduledDate) {
-      q = q.filter((q) => 
-        q.and(
-          q.eq(q.field("scheduledDate"), scheduledDate),
-          q.eq(q.field("status"), "scheduled")
-        )
-      );
-    } else {
-      q = q.filter((q) => q.eq(q.field("status"), "inbox"));
-    }
-
-    const tasks = await q.collect();
-    const maxPosition = tasks.reduce((max, t) => Math.max(max, t.position), -1);
+    const position = await getNextPositionForStatus(
+      ctx,
+      tokenIdentifier,
+      scheduledDate ? "scheduled" : "inbox",
+      scheduledDate
+    );
 
     return await ctx.db.insert("tasks", {
       title: args.title,
@@ -66,12 +131,13 @@ export const addTask = mutation({
       type: args.type,
       scheduledDate,
       deadline: args.deadline,
-      position: maxPosition + 1,
+      position,
       status: scheduledDate ? "scheduled" : "inbox",
       source: args.source || "manual",
       estimatedMinutes: args.estimatedMinutes,
       tags: args.tags,
-      createdBy: "user",
+      createdBy: tokenIdentifier,
+      ownerTokenIdentifier: tokenIdentifier,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
@@ -85,27 +151,16 @@ export const moveTask = mutation({
     position: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const task = await ctx.db.get(args.taskId);
-    if (!task) throw new Error("Task not found");
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
 
-    if (task.type === "deadline" && task.deadline) {
-      if (args.targetDate > task.deadline) {
-        throw new Error("Cannot move task past its deadline");
-      }
+    if (task.type === "deadline" && task.deadline && args.targetDate > task.deadline) {
+      throw new Error("Cannot move task past its deadline");
     }
 
-    const tasksOnDay = await ctx.db
-      .query("tasks")
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("scheduledDate"), args.targetDate),
-          q.eq(q.field("status"), "scheduled")
-        )
-      )
-      .collect();
-
     const newPosition =
-      args.position ?? Math.max(...tasksOnDay.map((t) => t.position), -1) + 1;
+      args.position ??
+      (await getNextPositionForStatus(ctx, tokenIdentifier, "scheduled", args.targetDate));
 
     await ctx.db.patch(args.taskId, {
       scheduledDate: args.targetDate,
@@ -122,14 +177,15 @@ export const reorderTasks = mutation({
     taskIds: v.array(v.id("tasks")),
   },
   handler: async (ctx, args) => {
-    for (const taskId of args.taskIds) {
-      const task = await ctx.db.get(taskId);
-      if (!task) continue;
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+
+    for (const [position, taskId] of args.taskIds.entries()) {
+      const task = await getOwnedTask(ctx, taskId, tokenIdentifier);
       if (task.scheduledDate !== args.date) {
         throw new Error(`Task ${taskId} does not belong to date ${args.date}`);
       }
       await ctx.db.patch(taskId, {
-        position: args.taskIds.indexOf(taskId),
+        position,
         updatedAt: Date.now(),
       });
     }
@@ -139,6 +195,8 @@ export const reorderTasks = mutation({
 export const completeTask = mutation({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    await getOwnedTask(ctx, args.taskId, tokenIdentifier);
     await ctx.db.patch(args.taskId, {
       status: "completed",
       updatedAt: Date.now(),
@@ -149,22 +207,18 @@ export const completeTask = mutation({
 export const reopenTask = mutation({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
-    const task = await ctx.db.get(args.taskId);
-    if (!task) throw new Error("Task not found");
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
     if (task.status !== "completed") {
       throw new Error("Task is not completed");
     }
 
-    const inboxTasks = await ctx.db
-      .query("tasks")
-      .filter((q) => q.eq(q.field("status"), "inbox"))
-      .collect();
-    const maxPosition = inboxTasks.reduce((max, t) => Math.max(max, t.position), -1);
+    const position = await getNextPositionForStatus(ctx, tokenIdentifier, "inbox");
 
     await ctx.db.patch(args.taskId, {
       status: "inbox",
       scheduledDate: undefined,
-      position: maxPosition + 1,
+      position,
       updatedAt: Date.now(),
     });
   },
@@ -173,22 +227,18 @@ export const reopenTask = mutation({
 export const unscheduleTask = mutation({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
-    const task = await ctx.db.get(args.taskId);
-    if (!task) throw new Error("Task not found");
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
     if (task.status !== "scheduled") {
       throw new Error("Task is not scheduled");
     }
 
-    const inboxTasks = await ctx.db
-      .query("tasks")
-      .filter((q) => q.eq(q.field("status"), "inbox"))
-      .collect();
-    const maxPosition = inboxTasks.reduce((max, t) => Math.max(max, t.position), -1);
+    const position = await getNextPositionForStatus(ctx, tokenIdentifier, "inbox");
 
     await ctx.db.patch(args.taskId, {
       status: "inbox",
       scheduledDate: undefined,
-      position: maxPosition + 1,
+      position,
       updatedAt: Date.now(),
     });
   },
@@ -197,7 +247,11 @@ export const unscheduleTask = mutation({
 export const backfillDeadlineTasksToDeadlineDate = mutation({
   args: {},
   handler: async (ctx) => {
-    const allTasks = await ctx.db.query("tasks").collect();
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    const allTasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_owner", (q) => q.eq("ownerTokenIdentifier", tokenIdentifier))
+      .collect();
     const positionByDate = new Map<string, number>();
 
     for (const task of allTasks) {
@@ -251,7 +305,9 @@ export const updateTask = mutation({
     tags: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
     const { taskId, ...updates } = args;
+    await getOwnedTask(ctx, taskId, tokenIdentifier);
     await ctx.db.patch(taskId, {
       ...updates,
       updatedAt: Date.now(),
@@ -262,6 +318,8 @@ export const updateTask = mutation({
 export const deleteTask = mutation({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    await getOwnedTask(ctx, args.taskId, tokenIdentifier);
     await ctx.db.delete(args.taskId);
   },
 });
@@ -272,22 +330,18 @@ export const bulkReschedule = mutation({
     targetDate: v.string(),
   },
   handler: async (ctx, args) => {
-    const tasksOnDay = await ctx.db
-      .query("tasks")
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("scheduledDate"), args.targetDate),
-          q.eq(q.field("status"), "scheduled")
-        )
-      )
-      .collect();
-
-    let nextPosition = Math.max(...tasksOnDay.map((t) => t.position), -1) + 1;
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    let nextPosition = await getNextPositionForStatus(
+      ctx,
+      tokenIdentifier,
+      "scheduled",
+      args.targetDate
+    );
     const skippedTaskIds: Id<"tasks">[] = [];
 
     for (const taskId of args.taskIds) {
       const task = await ctx.db.get(taskId);
-      if (!task) {
+      if (!task || task.ownerTokenIdentifier !== tokenIdentifier) {
         skippedTaskIds.push(taskId);
         continue;
       }
@@ -322,20 +376,18 @@ export const getTimeline = query({
     endDate: v.string(),
   },
   handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
     const tasks = await ctx.db
       .query("tasks")
-      .filter((q) =>
-        q.and(
-          q.gte(q.field("scheduledDate"), args.startDate),
-          q.lte(q.field("scheduledDate"), args.endDate),
-          q.eq(q.field("status"), "scheduled")
-        )
+      .withIndex("by_owner_status", (q) =>
+        q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "scheduled")
       )
       .collect();
 
     const grouped: Record<string, typeof tasks> = {};
     for (const task of tasks) {
-      const date = task.scheduledDate!;
+      const date = task.scheduledDate;
+      if (!date || date < args.startDate || date > args.endDate) continue;
       if (!grouped[date]) grouped[date] = [];
       grouped[date].push(task);
     }

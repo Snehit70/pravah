@@ -2,6 +2,12 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  users: defineTable({
+    name: v.optional(v.string()),
+    email: v.optional(v.string()),
+    image: v.optional(v.string()),
+    tokenIdentifier: v.string(),
+  }).index("by_token", ["tokenIdentifier"]),
   tasks: defineTable({
     title: v.string(),
     description: v.optional(v.string()),
@@ -26,14 +32,20 @@ export default defineSchema({
     estimatedMinutes: v.optional(v.number()),
     tags: v.optional(v.array(v.string())),
     createdBy: v.string(),
+    ownerTokenIdentifier: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index("by_owner", ["ownerTokenIdentifier"])
     .index("by_status", ["status"])
     .index("by_scheduled_date", ["scheduledDate"])
     .index("by_status_and_date", ["status", "scheduledDate"])
     .index("by_status_position", ["status", "position"])
-    .index("by_status_date_position", ["status", "scheduledDate", "position"]),
+    .index("by_status_date_position", ["status", "scheduledDate", "position"])
+    .index("by_owner_status", ["ownerTokenIdentifier", "status"])
+    .index("by_owner_status_date", ["ownerTokenIdentifier", "status", "scheduledDate"])
+    .index("by_owner_status_date_position", ["ownerTokenIdentifier", "status", "scheduledDate", "position"])
+    .index("by_owner_status_position", ["ownerTokenIdentifier", "status", "position"]),
   integrations: defineTable({
     provider: v.union(v.literal("google_calendar"), v.literal("gmail")),
     status: v.union(
@@ -46,14 +58,20 @@ export default defineSchema({
     tokenExpiresAt: v.optional(v.number()),
     lastSyncedAt: v.optional(v.number()),
     lastError: v.optional(v.string()),
+    ownerTokenIdentifier: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_provider", ["provider"]),
+  })
+    .index("by_provider", ["provider"])
+    .index("by_owner_provider", ["ownerTokenIdentifier", "provider"]),
   syncCursors: defineTable({
     provider: v.union(v.literal("google_calendar"), v.literal("gmail")),
     cursor: v.string(),
+    ownerTokenIdentifier: v.optional(v.string()),
     updatedAt: v.number(),
-  }).index("by_provider", ["provider"]),
+  })
+    .index("by_provider", ["provider"])
+    .index("by_owner_provider", ["ownerTokenIdentifier", "provider"]),
   externalTaskMappings: defineTable({
     provider: v.union(v.literal("google_calendar"), v.literal("gmail")),
     externalId: v.string(),
@@ -61,10 +79,12 @@ export default defineSchema({
     externalUpdatedAt: v.optional(v.string()),
     contentHash: v.optional(v.string()),
     isDeleted: v.boolean(),
+    ownerTokenIdentifier: v.optional(v.string()),
     lastSyncedAt: v.number(),
   })
     .index("by_provider_external_id", ["provider", "externalId"])
-    .index("by_task_id", ["taskId"]),
+    .index("by_task_id", ["taskId"])
+    .index("by_owner_provider_external_id", ["ownerTokenIdentifier", "provider", "externalId"]),
   reviewQueue: defineTable({
     provider: v.union(v.literal("gmail"), v.literal("google_calendar")),
     sourceType: v.union(v.literal("gmail_candidate")),
@@ -78,12 +98,15 @@ export default defineSchema({
     status: v.union(v.literal("pending"), v.literal("approved"), v.literal("rejected")),
     rejectionReason: v.optional(v.string()),
     payloadJson: v.optional(v.string()),
+    ownerTokenIdentifier: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
     reviewedAt: v.optional(v.number()),
   })
     .index("by_status", ["status"])
-    .index("by_provider_external_id", ["provider", "externalId"]),
+    .index("by_provider_external_id", ["provider", "externalId"])
+    .index("by_owner_status", ["ownerTokenIdentifier", "status"])
+    .index("by_owner_provider_external_id", ["ownerTokenIdentifier", "provider", "externalId"]),
   syncRuns: defineTable({
     provider: v.union(v.literal("google_calendar"), v.literal("gmail")),
     direction: v.union(v.literal("import")),
@@ -94,7 +117,10 @@ export default defineSchema({
     updatedCount: v.number(),
     skippedCount: v.number(),
     errorMessage: v.optional(v.string()),
+    ownerTokenIdentifier: v.optional(v.string()),
   })
     .index("by_provider_started_at", ["provider", "startedAt"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_owner_provider_started_at", ["ownerTokenIdentifier", "provider", "startedAt"])
+    .index("by_owner_status", ["ownerTokenIdentifier", "status"]),
 });

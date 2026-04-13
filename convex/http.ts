@@ -1,6 +1,7 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { api } from "./_generated/api";
+import { authComponent, createAuth } from "./auth";
 import {
   bulkRescheduleSchema,
   completeTaskSchema,
@@ -22,6 +23,8 @@ import {
 } from "./httpContracts";
 
 const http = httpRouter();
+
+authComponent.registerRoutes(http, createAuth, { cors: true });
 
 function requireAuth(request: Request): Response | null {
   const env = (
@@ -66,7 +69,14 @@ http.route({
 
     const url = new URL(request.url);
     const date = url.searchParams.get("date") || undefined;
-    const status = url.searchParams.get("status") || undefined;
+    const rawStatus = url.searchParams.get("status") || undefined;
+    const status =
+      rawStatus === "inbox" ||
+      rawStatus === "scheduled" ||
+      rawStatus === "completed" ||
+      rawStatus === "cancelled"
+        ? rawStatus
+        : undefined;
 
     const tasks = await ctx.runQuery(api.tasks.listTasks, { date, status });
     

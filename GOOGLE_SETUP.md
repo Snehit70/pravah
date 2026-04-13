@@ -1,71 +1,67 @@
-# Google Integration Setup Guide
+# Google Setup
 
-## Prerequisites
+Pravah uses Google in two separate ways:
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select existing project
+1. Google OAuth login for signing into the app
+2. Google Calendar/Gmail connection for syncing data
+
+Both should use the same Google OAuth client, and that client must be a `Web application`.
+
+## Create The Correct OAuth Client
+
+1. Open Google Cloud Console
+2. Go to `APIs & Services` -> `Credentials`
+3. Click `Create Credentials` -> `OAuth client ID`
+4. Choose `Web application`
+5. Copy the new client ID and client secret
+
+Do not use a `Desktop` client.
+
+## Configure Redirects
+
+For local development add:
+
+- Authorized JavaScript origin: `http://localhost:5173`
+- Authorized redirect URI: `https://befitting-swan-125.eu-west-1.convex.site/api/auth/callback/google`
+- Authorized redirect URI: `http://localhost:5173/google-callback`
+
+For production add:
+
+- Authorized JavaScript origin: `https://your-app-domain`
+- Authorized redirect URI: `https://befitting-swan-125.eu-west-1.convex.site/api/auth/callback/google`
+- Authorized redirect URI: `https://your-app-domain/google-callback`
 
 ## Enable APIs
 
-1. Go to **APIs & Services** > **Library**
-2. Search and enable:
-   - **Google Calendar API**
-   - **Gmail API**
+Enable these Google APIs in the same project:
 
-## Create OAuth Credentials
+- Google Calendar API
+- Gmail API
 
-1. Go to **APIs & Services** > **Credentials**
-2. Click **Create Credentials** > **OAuth client ID**
-3. Configure OAuth consent screen:
-   - User Type: **External**
-   - Fill in required fields (app name, email)
-4. Application type: **Web application**
-5. Add authorized redirect URI: `http://localhost:5173/google-callback`
-6. Copy **Client ID** and **Client Secret**
+## Frontend Environment
 
-## Create Service Account (for server-side)
-
-1. Go to **Credentials** > **Create Credentials** > **Service Account**
-2. Name: `pravah-integration`
-3. Role: **Project > Viewer**
-4. Create key (JSON) - download and keep secure
-
-## Environment Variables
-
-Add to `.env.local`:
+In `.env.local`:
 
 ```env
-# Google OAuth (client-side)
-VITE_GOOGLE_CLIENT_ID=your-client-id
-
-# Google Service Account (server-side)
-GOOGLE_SERVICE_ACCOUNT_EMAIL=your-service-account@project.iam.gserviceaccount.com
-GOOGLE_PRIVATE_KEY=your-private-key
-GOOGLE_PROJECT_ID=your-project-id
+VITE_GOOGLE_CLIENT_ID=your-google-web-client-id
 ```
 
-## Quick Setup (For Testing)
+## Convex Environment
 
-If you just want to test without full OAuth:
+Set these in Convex:
 
-1. Use the Gmail/Google Calendar APIs with API keys
-2. Or use the Google APIs Explorer for manual testing
-
-## Code Structure
-
-```
-src/
-├── lib/
-│   ├── google/
-│   │   ├── calendar.ts    - Calendar API client
-│   │   ├── gmail.ts       - Gmail API client
-│   │   ├── auth.ts        - OAuth handling
-│   │   └── types.ts       - Type definitions
+```env
+BETTER_AUTH_SECRET=your-random-secret
+SITE_URL=http://localhost:5173
+GOOGLE_OAUTH_CLIENT_ID=your-google-web-client-id
+GOOGLE_OAUTH_CLIENT_SECRET=your-google-web-client-secret
 ```
 
-## Security Notes
+When you deploy, change `SITE_URL` to your production domain.
 
-- Never commit credentials to git
-- Store private keys in environment variables
-- Use OAuth 2.0 for user data
-- Service account for server-side operations only
+## Important Distinction
+
+- Better Auth login callback: `/api/auth/callback/google`
+- Google sync callback: `/google-callback`
+
+If one works and the other fails, it usually means only one redirect URI was added in Google Cloud.

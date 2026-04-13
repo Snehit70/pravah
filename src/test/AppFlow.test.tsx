@@ -46,6 +46,10 @@ vi.mock("@dnd-kit/utilities", () => ({
 }));
 
 vi.mock("convex/react", () => ({
+  AuthLoading: ({ children }: { children: ReactNode }) => <>{children}</>,
+  Authenticated: ({ children }: { children: ReactNode }) => <>{children}</>,
+  Unauthenticated: () => null,
+  useConvexAuth: () => ({ isAuthenticated: true, isLoading: false }),
   useQuery: (...args: unknown[]) => useQueryMock(...args),
   useMutation: (...args: unknown[]) => useMutationMock(...args),
 }));
@@ -94,6 +98,10 @@ vi.mock("../components/Settings", () => ({
       <button onClick={onClose}>Close Settings</button>
     </div>
   ),
+}));
+
+vi.mock("../hooks/useBootstrapUser", () => ({
+  useBootstrapUser: () => true,
 }));
 
 import { App } from "../App";

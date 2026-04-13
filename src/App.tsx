@@ -9,7 +9,14 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { useQuery, useMutation } from "convex/react";
+import {
+  Authenticated,
+  AuthLoading,
+  Unauthenticated,
+  useConvexAuth,
+  useMutation,
+  useQuery,
+} from "convex/react";
 import { api } from "../convex/_generated/api";
 import type { Task } from "./types";
 import { Timeline } from "./components/Timeline";
@@ -23,6 +30,8 @@ import { useTaskDragHandlers } from "./hooks/useTaskDragHandlers";
 import { useAppKeyboardShortcuts } from "./hooks/useAppKeyboardShortcuts";
 import { useAppOverlays } from "./hooks/useAppOverlays";
 import type { AppPage } from "./components/TopNavbar";
+import { AuthScreen } from "./components/AuthScreen";
+import { useBootstrapUser } from "./hooks/useBootstrapUser";
 
 const TaskPopup = lazy(() =>
   import("./components/TaskPopup").then((module) => ({ default: module.TaskPopup }))
@@ -35,6 +44,22 @@ const Settings = lazy(() =>
 );
 
 export function App() {
+  return (
+    <>
+      <AuthLoading>
+        <LoadingSkeleton />
+      </AuthLoading>
+      <Unauthenticated>
+        <AuthScreen />
+      </Unauthenticated>
+      <Authenticated>
+        <AuthenticatedApp />
+      </Authenticated>
+    </>
+  );
+}
+
+function AuthenticatedApp() {
   const [activePage, setActivePage] = useState<AppPage>(() => {
     const saved = window.sessionStorage.getItem("pravah_active_page");
     return saved === "goals" ? "goals" : "timeline";
@@ -51,6 +76,8 @@ export function App() {
     openSettings,
     closeSettings,
   } = useAppOverlays();
+  const { isAuthenticated } = useConvexAuth();
+  const bootstrapReady = useBootstrapUser(isAuthenticated);
 
   const tasks = useQuery(api.tasks.listTasks, {});
   const moveTask = useMutation(api.tasks.moveTask);
@@ -81,7 +108,7 @@ export function App() {
     window.sessionStorage.setItem("pravah_active_page", activePage);
   }, [activePage]);
 
-  if (tasks === undefined) {
+  if (!bootstrapReady || tasks === undefined) {
     return <LoadingSkeleton />;
   }
 
