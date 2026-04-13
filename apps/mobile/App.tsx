@@ -21,7 +21,7 @@ import { useConvex, useMutation, useQuery } from "convex/react";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { api } from "../../convex/_generated/api";
 import * as Haptics from "expo-haptics";
-import { authClient } from "./src/lib/auth-client";
+import { authClient, authStorageReady } from "./src/lib/auth-client";
 import { ConvexClientProvider } from "./src/lib/convex";
 import { addDays, dateLabel, toIsoDate } from "./src/lib/dates";
 
@@ -77,6 +77,7 @@ function MobileApp() {
   const [composerMode, setComposerMode] = useState<ComposerMode>("inbox");
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isAuthHydrated, setIsAuthHydrated] = useState(false);
   const [pendingMutations, setPendingMutations] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [optimisticTasks, setOptimisticTasks] = useState<MobileTask[] | null>(null);
@@ -122,6 +123,18 @@ function MobileApp() {
   const showToast = (nextToast: ToastState) => {
     setToast(nextToast);
   };
+
+  useEffect(() => {
+    let mounted = true;
+    authStorageReady.finally(() => {
+      if (mounted) {
+        setIsAuthHydrated(true);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!toast) return;
@@ -474,7 +487,7 @@ function MobileApp() {
     });
   };
 
-  if (sessionLoading) {
+  if (!isAuthHydrated || sessionLoading) {
     return (
       <SafeAreaView style={styles.authContainer}>
         <StatusBar style="light" />
