@@ -271,13 +271,14 @@ function MobileApp() {
     mutation: () => Promise<void>;
     errorMessage: string;
     retryLabel?: string;
-  }) => {
+  }): Promise<boolean> => {
     setPendingMutations((count) => count + 1);
     setOptimisticTasks((current) => optimistic(current ?? serverTasks));
     try {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       await mutation();
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      return true;
     } catch (error) {
       setOptimisticTasks(null);
       const canRetry = retryLabel && isLikelyOfflineError(error);
@@ -292,6 +293,7 @@ function MobileApp() {
         message: canRetry ? `${errorMessage} Queued for retry.` : errorMessage,
       });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return false;
     } finally {
       setPendingMutations((count) => Math.max(0, count - 1));
     }
@@ -382,7 +384,7 @@ function MobileApp() {
     };
 
     try {
-      await runOptimisticMutation({
+      const didSave = await runOptimisticMutation({
         optimistic: (currentTasks) =>
           currentTasks.map((task) =>
             task._id === editingTaskId
@@ -399,7 +401,9 @@ function MobileApp() {
         errorMessage: "Could not save task details.",
         retryLabel: `Update "${title}"`,
       });
-      closeTaskSheet();
+      if (didSave) {
+        closeTaskSheet();
+      }
     } finally {
       setIsEditSaving(false);
     }
