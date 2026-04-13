@@ -17,7 +17,7 @@
     "mcp": "bun run mcp-server.ts",
     "mobile:env": "bun scripts/sync-mobile-env.mjs",
     "mobile:start": "bun run mobile:env && bun run --cwd apps/mobile start",
-    "mobile:android": "bun run mobile:env && bun run --cwd apps/mobile android",
+    "mobile:android": "bun run mobile:env && bun scripts/run-mobile-android.mjs",
     "mobile:android:dev": "bun run mobile:env && bun run --cwd apps/mobile start -- --dev-client",
     "mobile:ios": "bun run mobile:env && bun run --cwd apps/mobile ios",
     "mobile:web": "bun run mobile:env && bun run --cwd apps/mobile web"

@@ -40,6 +40,8 @@ bun run mobile:android
 bun run mobile:android:dev
 ```
 
+If Android SDK/JDK env is not set globally, `mobile:android` auto-detects common SDK paths and uses JDK 21 when available.
+
 You can also run:
 
 - `bun run mobile:android`
