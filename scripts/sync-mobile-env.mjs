@@ -36,13 +36,17 @@ try {
 const convexUrl = env.get("VITE_CONVEX_URL") ?? "";
 const convexSiteUrl = env.get("VITE_CONVEX_SITE_URL") ?? convexUrl.replace(".convex.cloud", ".convex.site");
 const googleWebClientId = env.get("VITE_GOOGLE_CLIENT_ID") ?? "";
+const existingAndroidClientId = existingTarget.get("EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID") ?? "";
+const existingIosClientId = existingTarget.get("EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID") ?? "";
+const googleAndroidClientId = existingAndroidClientId || googleWebClientId;
+const googleIosClientId = existingIosClientId || googleWebClientId;
 
 const output = [
   `EXPO_PUBLIC_CONVEX_URL=${convexUrl}`,
   `EXPO_PUBLIC_CONVEX_SITE_URL=${convexSiteUrl}`,
   `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=${googleWebClientId}`,
-  `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=${existingTarget.get("EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID") ?? ""}`,
-  `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=${existingTarget.get("EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID") ?? ""}`,
+  `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=${googleAndroidClientId}`,
+  `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=${googleIosClientId}`,
   "",
 ].join("\n");
 
