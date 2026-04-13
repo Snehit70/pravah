@@ -306,8 +306,68 @@ export const updateTask = mutation({
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    const { taskId, ...updates } = args;
-    await getOwnedTask(ctx, taskId, tokenIdentifier);
+    const { taskId } = args;
+    const task = await getOwnedTask(ctx, taskId, tokenIdentifier);
+
+    const updates: Partial<{
+      title: string;
+      description: string | undefined;
+      deadline: string | undefined;
+      estimatedMinutes: number | undefined;
+      tags: string[] | undefined;
+      type: "open" | "deadline";
+      scheduledDate: string | undefined;
+      status: "inbox" | "scheduled" | "completed" | "cancelled";
+      position: number;
+      updatedAt: number;
+    }> = {};
+
+    if (Object.prototype.hasOwnProperty.call(args, "title")) {
+      updates.title = args.title;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, "description")) {
+      updates.description = args.description;
+    }
+    const deadlineProvided = Object.prototype.hasOwnProperty.call(args, "deadline");
+    if (deadlineProvided) {
+      updates.deadline = args.deadline;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, "estimatedMinutes")) {
+      updates.estimatedMinutes = args.estimatedMinutes;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, "tags")) {
+      updates.tags = args.tags;
+    }
+
+    const nextDeadline = args.deadline;
+    if (nextDeadline) {
+      updates.type = "deadline";
+
+      if (task.status !== "completed" && task.status !== "cancelled") {
+        const staysInSameSlot =
+          task.status === "scheduled" && task.scheduledDate === nextDeadline;
+        updates.status = "scheduled";
+        updates.scheduledDate = nextDeadline;
+        updates.position = staysInSameSlot
+          ? task.position
+          : await getNextPositionForStatus(ctx, tokenIdentifier, "scheduled", nextDeadline);
+      }
+    } else if (deadlineProvided) {
+      updates.type = "open";
+
+      const wasAutoScheduledByDeadline =
+        task.status === "scheduled" &&
+        task.type === "deadline" &&
+        !!task.deadline &&
+        task.scheduledDate === task.deadline;
+
+      if (wasAutoScheduledByDeadline) {
+        updates.status = "inbox";
+        updates.scheduledDate = undefined;
+        updates.position = await getNextPositionForStatus(ctx, tokenIdentifier, "inbox");
+      }
+    }
+
     await ctx.db.patch(taskId, {
       ...updates,
       updatedAt: Date.now(),
