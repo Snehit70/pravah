@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -11,7 +14,11 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:ui": "vitest --ui",
-    "mcp": "bun run mcp-server.ts"
+    "mcp": "bun run mcp-server.ts",
+    "mobile:start": "bun run --cwd apps/mobile start",
+    "mobile:android": "bun run --cwd apps/mobile android",
+    "mobile:ios": "bun run --cwd apps/mobile ios",
+    "mobile:web": "bun run --cwd apps/mobile web"
   },
   "dependencies": {
     "@convex-dev/better-auth": "^0.11.4",

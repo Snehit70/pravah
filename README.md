@@ -2,6 +2,11 @@
 
 Pravah is a React + Vite task-planning app backed by Convex, with Google OAuth for app login and optional Google Calendar/Gmail integration.
 
+## Monorepo Layout
+
+- `.`: web app (React + Vite + Convex)
+- `apps/mobile`: Expo React Native app
+
 ## Local Development
 
 1. Install dependencies:
@@ -22,6 +27,28 @@ bunx convex dev
 bun run dev
 ```
 
+4. Start the mobile app (Expo):
+
+```bash
+bun run mobile:start
+```
+
+You can also run:
+
+- `bun run mobile:android`
+- `bun run mobile:ios`
+- `bun run mobile:web`
+
+### Mobile Environment (`apps/mobile/.env`)
+
+```env
+EXPO_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
+EXPO_PUBLIC_CONVEX_SITE_URL=https://your-deployment.convex.site
+EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=your-google-web-client-id
+EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=your-google-android-client-id
+EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=your-google-ios-client-id
+```
+
 ## Required Environment
 
 Frontend `.env.local`:
@@ -40,6 +67,7 @@ BETTER_AUTH_SECRET=generate-a-random-secret
 SITE_URL=http://localhost:5173
 GOOGLE_OAUTH_CLIENT_ID=your-google-web-client-id
 GOOGLE_OAUTH_CLIENT_SECRET=your-google-web-client-secret
+MOBILE_APP_SCHEME=pravah://
 ```
 
 ## Google OAuth Setup
