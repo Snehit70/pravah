@@ -60,6 +60,15 @@ const backfillDeadlineTasksHandler = (
   >
 )._handler;
 
+function createAuthedCtx(db: unknown) {
+  return {
+    db,
+    auth: {
+      getUserIdentity: vi.fn().mockResolvedValue({ tokenIdentifier: "user-1" }),
+    },
+  };
+}
+
 describe("convex/tasks handlers", () => {
   it("backfills existing deadline tasks onto their deadline date", async () => {
     const updateA = makeId("deadline-a");
@@ -69,58 +78,60 @@ describe("convex/tasks handlers", () => {
 
     const db = {
       query: vi.fn().mockReturnValue({
-        collect: vi.fn().mockResolvedValue([
-          {
-            _id: updateA,
-            type: "deadline",
-            deadline: "2026-04-16",
-            scheduledDate: "2026-04-11",
-            status: "scheduled",
-            position: 0,
-            createdAt: 1,
-          },
-          {
-            _id: updateB,
-            type: "deadline",
-            deadline: "2026-04-17",
-            scheduledDate: undefined,
-            status: "inbox",
-            position: 2,
-            createdAt: 2,
-          },
-          {
-            _id: unchanged,
-            type: "deadline",
-            deadline: "2026-04-18",
-            scheduledDate: "2026-04-18",
-            status: "scheduled",
-            position: 3,
-            createdAt: 3,
-          },
-          {
-            _id: completed,
-            type: "deadline",
-            deadline: "2026-04-19",
-            scheduledDate: "2026-04-10",
-            status: "completed",
-            position: 1,
-            createdAt: 4,
-          },
-          {
-            _id: makeId("open-task"),
-            type: "open",
-            deadline: undefined,
-            scheduledDate: "2026-04-16",
-            status: "scheduled",
-            position: 4,
-            createdAt: 5,
-          },
-        ]),
+        withIndex: vi.fn().mockReturnValue({
+          collect: vi.fn().mockResolvedValue([
+            {
+              _id: updateA,
+              type: "deadline",
+              deadline: "2026-04-16",
+              scheduledDate: "2026-04-11",
+              status: "scheduled",
+              position: 0,
+              createdAt: 1,
+            },
+            {
+              _id: updateB,
+              type: "deadline",
+              deadline: "2026-04-17",
+              scheduledDate: undefined,
+              status: "inbox",
+              position: 2,
+              createdAt: 2,
+            },
+            {
+              _id: unchanged,
+              type: "deadline",
+              deadline: "2026-04-18",
+              scheduledDate: "2026-04-18",
+              status: "scheduled",
+              position: 3,
+              createdAt: 3,
+            },
+            {
+              _id: completed,
+              type: "deadline",
+              deadline: "2026-04-19",
+              scheduledDate: "2026-04-10",
+              status: "completed",
+              position: 1,
+              createdAt: 4,
+            },
+            {
+              _id: makeId("open-task"),
+              type: "open",
+              deadline: undefined,
+              scheduledDate: "2026-04-16",
+              status: "scheduled",
+              position: 4,
+              createdAt: 5,
+            },
+          ]),
+        }),
       }),
       patch: vi.fn().mockResolvedValue(undefined),
     };
 
-    const ctx = { db };
+    const ctx = createAuthedCtx(db);
 
     const result = await backfillDeadlineTasksHandler(ctx, {});
 
@@ -146,13 +157,16 @@ describe("convex/tasks handlers", () => {
   it("addTask schedules deadline tasks on their deadline by default", async () => {
     const db = {
       query: vi.fn().mockReturnValue({
-        filter: vi.fn().mockReturnThis(),
-        collect: vi.fn().mockResolvedValue([{ position: 0 }, { position: 2 }]),
+        withIndex: vi.fn().mockReturnValue({
+          order: vi.fn().mockReturnValue({
+            first: vi.fn().mockResolvedValue({ position: 2 }),
+          }),
+        }),
       }),
       insert: vi.fn().mockResolvedValue(makeId("task-new")),
     };
 
-    const ctx = { db };
+    const ctx = createAuthedCtx(db);
 
     await addTaskHandler(ctx, {
       title: "Ship report",
@@ -170,11 +184,12 @@ describe("convex/tasks handlers", () => {
       status: "scheduled",
       source: "manual",
       estimatedMinutes: undefined,
-      tags: undefined,
-      createdBy: "user",
-      createdAt: expect.any(Number),
-      updatedAt: expect.any(Number),
-    });
+        tags: undefined,
+        createdBy: "user-1",
+        ownerTokenIdentifier: "user-1",
+        createdAt: expect.any(Number),
+        updatedAt: expect.any(Number),
+      });
   });
 
   it("moveTask rejects moves past deadline", async () => {
@@ -183,12 +198,13 @@ describe("convex/tasks handlers", () => {
         _id: makeId("task-1"),
         type: "deadline",
         deadline: "2026-04-10",
+        ownerTokenIdentifier: "user-1",
       }),
       query: vi.fn(),
       patch: vi.fn(),
     };
 
-    const ctx = { db };
+    const ctx = createAuthedCtx(db);
 
     await expect(
       moveTaskHandler(ctx, {
@@ -206,18 +222,19 @@ describe("convex/tasks handlers", () => {
         _id: makeId("task-2"),
         type: "open",
         status: "inbox",
+        ownerTokenIdentifier: "user-1",
       }),
       query: vi.fn().mockReturnValue({
-        filter: vi.fn().mockReturnThis(),
-        collect: vi.fn().mockResolvedValue([
-          { position: 1 },
-          { position: 4 },
-        ]),
+        withIndex: vi.fn().mockReturnValue({
+          order: vi.fn().mockReturnValue({
+            first: vi.fn().mockResolvedValue({ position: 4 }),
+          }),
+        }),
       }),
       patch: vi.fn().mockResolvedValue(undefined),
     };
 
-    const ctx = { db };
+    const ctx = createAuthedCtx(db);
 
     await moveTaskHandler(ctx, {
       taskId: makeId("task-2"),
@@ -237,11 +254,12 @@ describe("convex/tasks handlers", () => {
       get: vi.fn().mockResolvedValue({
         _id: makeId("task-3"),
         scheduledDate: "2026-04-09",
+        ownerTokenIdentifier: "user-1",
       }),
       patch: vi.fn(),
     };
 
-    const ctx = { db };
+    const ctx = createAuthedCtx(db);
 
     await expect(
       reorderTasksHandler(ctx, {
@@ -258,8 +276,11 @@ describe("convex/tasks handlers", () => {
 
     const db = {
       query: vi.fn().mockReturnValue({
-        filter: vi.fn().mockReturnThis(),
-        collect: vi.fn().mockResolvedValue([{ position: 2 }]),
+        withIndex: vi.fn().mockReturnValue({
+          order: vi.fn().mockReturnValue({
+            first: vi.fn().mockResolvedValue({ position: 2 }),
+          }),
+        }),
       }),
       get: vi.fn().mockImplementation(async (id: Id<"tasks">) => {
         if (id === taskA) {
@@ -267,6 +288,7 @@ describe("convex/tasks handlers", () => {
             _id: taskA,
             status: "inbox",
             type: "open",
+            ownerTokenIdentifier: "user-1",
           };
         }
         if (id === taskB) {
@@ -274,6 +296,7 @@ describe("convex/tasks handlers", () => {
             _id: taskB,
             status: "completed",
             type: "open",
+            ownerTokenIdentifier: "user-1",
           };
         }
         if (id === taskC) {
@@ -282,6 +305,7 @@ describe("convex/tasks handlers", () => {
             status: "scheduled",
             type: "deadline",
             deadline: "2026-04-08",
+            ownerTokenIdentifier: "user-1",
           };
         }
         return null;
@@ -289,7 +313,7 @@ describe("convex/tasks handlers", () => {
       patch: vi.fn().mockResolvedValue(undefined),
     };
 
-    const ctx = { db };
+    const ctx = createAuthedCtx(db);
 
     const result = await bulkRescheduleHandler(ctx, {
       taskIds: [taskA, taskB, taskC],

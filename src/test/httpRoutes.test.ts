@@ -23,12 +23,16 @@ vi.mock("convex/server", () => ({
 }));
 
 vi.mock("../../convex/_generated/server", () => ({
+  query: <T>(definition: T) => definition,
   httpAction: (
     handler: (ctx: MockCtx, request: Request) => Promise<Response>
   ) => handler,
 }));
 
 vi.mock("../../convex/_generated/api", () => ({
+  components: {
+    betterAuth: "betterAuth",
+  },
   api: {
     tasks: {
       listTasks: "tasks.listTasks",
@@ -41,6 +45,13 @@ vi.mock("../../convex/_generated/api", () => ({
   },
 }));
 
+vi.mock("../../convex/auth", () => ({
+  authComponent: {
+    registerRoutes: () => undefined,
+  },
+  createAuth: () => ({}),
+}));
+
 import "../../convex/http";
 import { api } from "../../convex/_generated/api";
 
@@ -50,7 +61,7 @@ const env = (
   }
 ).process?.env;
 const originalApiKey = env?.CONVEX_HTTP_API_KEY;
-const originalGoogleClientId = env?.VITE_GOOGLE_CLIENT_ID;
+const originalGoogleClientId = env?.GOOGLE_OAUTH_CLIENT_ID;
 
 function getHandler(path: string, method: string) {
   const route = routeRegistry.find((entry) => entry.path === path && entry.method === method);
@@ -71,6 +82,7 @@ function createCtx(): MockCtx {
 beforeAll(() => {
   if (env) {
     env.CONVEX_HTTP_API_KEY = "secret";
+    env.GOOGLE_OAUTH_CLIENT_ID = "client-id";
   }
 });
 
@@ -78,14 +90,14 @@ beforeEach(() => {
   vi.restoreAllMocks();
   if (env) {
     env.CONVEX_HTTP_API_KEY = "secret";
-    env.VITE_GOOGLE_CLIENT_ID = "client-id";
+    env.GOOGLE_OAUTH_CLIENT_ID = "client-id";
   }
 });
 
 afterAll(() => {
   if (env) {
     env.CONVEX_HTTP_API_KEY = originalApiKey;
-    env.VITE_GOOGLE_CLIENT_ID = originalGoogleClientId;
+    env.GOOGLE_OAUTH_CLIENT_ID = originalGoogleClientId;
   }
 });
 
@@ -108,14 +120,14 @@ describe("http route handlers", () => {
 
     const response = await handler(
       ctx,
-      new Request("https://example.com/tasks?date=2026-04-09&status=open", {
+      new Request("https://example.com/tasks?date=2026-04-09&status=scheduled", {
         headers: { "x-api-key": "secret" },
       })
     );
 
     expect(ctx.runQuery).toHaveBeenCalledWith(api.tasks.listTasks, {
       date: "2026-04-09",
-      status: "open",
+      status: "scheduled",
     });
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual([{ _id: "task1", title: "A" }]);
@@ -204,7 +216,7 @@ describe("http route handlers", () => {
 
   it("does not require API key for POST /google/token", async () => {
     if (env) {
-      env.VITE_GOOGLE_CLIENT_ID = "";
+      env.GOOGLE_OAUTH_CLIENT_ID = "";
     }
     const handler = getHandler("/google/token", "POST");
     const ctx = createCtx();
