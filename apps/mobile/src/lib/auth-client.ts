@@ -5,10 +5,15 @@ import {
 import { createAuthClient } from "better-auth/react";
 import * as SecureStore from "expo-secure-store";
 
-const authBaseUrl = process.env.EXPO_PUBLIC_CONVEX_SITE_URL;
+function toSiteUrl(convexUrl?: string): string | undefined {
+  if (!convexUrl) return undefined;
+  return convexUrl.replace(".convex.cloud", ".convex.site");
+}
+
+const authBaseUrl = process.env.EXPO_PUBLIC_CONVEX_SITE_URL ?? toSiteUrl(process.env.EXPO_PUBLIC_CONVEX_URL);
 
 if (!authBaseUrl) {
-  throw new Error("Missing EXPO_PUBLIC_CONVEX_SITE_URL in mobile environment");
+  throw new Error("Missing Convex site URL. Set EXPO_PUBLIC_CONVEX_SITE_URL or EXPO_PUBLIC_CONVEX_URL.");
 }
 
 const COOKIE_STORAGE_KEY = "better-auth_cookie";

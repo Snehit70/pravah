@@ -39,7 +39,15 @@ You can also run:
 - `bun run mobile:ios`
 - `bun run mobile:web`
 
-### Mobile Environment (`apps/mobile/.env`)
+### Mobile Environment (`apps/mobile/.env.local`)
+
+Generate mobile env from root `.env.local`:
+
+```bash
+bun run mobile:env
+```
+
+`mobile:start`, `mobile:android`, `mobile:ios`, and `mobile:web` run this automatically.
 
 ```env
 EXPO_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
