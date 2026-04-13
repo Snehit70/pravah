@@ -1,4 +1,4 @@
-import * as Google from "expo-auth-session/providers/google";
+import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -93,20 +93,15 @@ function MobileApp() {
   const [editDescription, setEditDescription] = useState("");
   const [editDeadline, setEditDeadline] = useState("");
   const [isEditSaving, setIsEditSaving] = useState(false);
+  const [isSigningIn, setIsSigningIn] = useState(false);
 
   const sessionResult = authClient.useSession();
   const session = sessionResult.data;
   const sessionLoading = sessionResult.isPending;
 
   const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
-  const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || googleWebClientId;
-  const googleAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || googleWebClientId;
-
-  const [googleRequest, , promptGoogle] = Google.useIdTokenAuthRequest({
-    webClientId: googleWebClientId,
-    iosClientId: googleIosClientId,
-    androidClientId: googleAndroidClientId,
-  });
+  const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
+  const canGoogleSignIn = Boolean(googleWebClientId);
 
   const queryTasks = useQuery(api.tasks.listTasks, session ? {} : "skip");
   const serverTasks = useMemo<MobileTask[]>(() => {
@@ -151,6 +146,13 @@ function MobileApp() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    GoogleSignin.configure({
+      webClientId: googleWebClientId,
+      iosClientId: googleIosClientId,
+    });
+  }, [googleWebClientId, googleIosClientId]);
 
   useEffect(() => {
     if (!toast) return;
@@ -336,18 +338,30 @@ function MobileApp() {
   };
 
   const handleGoogleSignIn = async () => {
-    if (!googleRequest) return;
-    const result = await promptGoogle();
-    if (result.type !== "success") return;
+    if (!googleWebClientId || isSigningIn) return;
+    setIsSigningIn(true);
+    try {
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const result = await GoogleSignin.signIn();
+      if (result.type !== "success") return;
 
-    const idToken = result.params.id_token;
-    if (!idToken) return;
+      const idToken = result.data.idToken;
+      if (!idToken) {
+        showToast({ kind: "error", message: "Google sign-in did not return an ID token." });
+        return;
+      }
 
-    await authClient.signIn.social({
-      provider: "google",
-      idToken: { token: idToken },
-      callbackURL: "/",
-    });
+      await authClient.signIn.social({
+        provider: "google",
+        idToken: { token: idToken },
+        callbackURL: "/",
+      });
+    } catch {
+      showToast({ kind: "error", message: "Google sign-in failed. Check OAuth client setup." });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsSigningIn(false);
+    }
   };
 
   const addTask = async () => {
@@ -548,15 +562,18 @@ function MobileApp() {
           <Text style={styles.authSubtitle}>Use the same account as your web app to keep tasks in sync.</Text>
           <Pressable
             onPress={handleGoogleSignIn}
-            disabled={!googleRequest}
+            disabled={!canGoogleSignIn || isSigningIn}
             style={({ pressed }) => [
               styles.googleButton,
-              !googleRequest ? styles.disabledButton : null,
+              !canGoogleSignIn || isSigningIn ? styles.disabledButton : null,
               pressed ? styles.pressed : null,
             ]}
           >
-            <Text style={styles.googleButtonText}>Sign in with Google</Text>
+            <Text style={styles.googleButtonText}>{isSigningIn ? "Signing in..." : "Sign in with Google"}</Text>
           </Pressable>
+          {!canGoogleSignIn ? (
+            <Text style={styles.authSubtitle}>Set EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in mobile env.</Text>
+          ) : null}
         </View>
       </SafeAreaView>
     );

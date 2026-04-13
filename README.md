@@ -33,9 +33,17 @@ bun run dev
 bun run mobile:start
 ```
 
+For native dev build (recommended for Google sign-in modal):
+
+```bash
+bun run mobile:android
+bun run mobile:android:dev
+```
+
 You can also run:
 
 - `bun run mobile:android`
+- `bun run mobile:android:dev`
 - `bun run mobile:ios`
 - `bun run mobile:web`
 

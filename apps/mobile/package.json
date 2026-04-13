@@ -4,17 +4,18 @@
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
+    "android": "expo run:android",
     "ios": "expo start --ios",
     "web": "expo start --web"
   },
   "dependencies": {
     "@convex-dev/better-auth": "^0.11.4",
+    "@react-native-google-signin/google-signin": "^16.1.2",
     "better-auth": "1.5.3",
     "convex": "^1.34.1",
     "expo": "~54.0.33",
-    "expo-auth-session": "~7.0.8",
     "expo-crypto": "~15.0.7",
+    "expo-dev-client": "^55.0.27",
     "expo-haptics": "~15.0.8",
     "expo-secure-store": "~15.0.7",
     "expo-status-bar": "~3.0.9",
