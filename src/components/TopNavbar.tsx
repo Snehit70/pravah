@@ -7,9 +7,10 @@ interface TopNavbarProps {
   activePage: AppPage;
   onNavigate: (page: AppPage) => void;
   centerContent?: ReactNode;
+  rightContent?: ReactNode;
 }
 
-export function TopNavbar({ activePage, onNavigate, centerContent }: TopNavbarProps) {
+export function TopNavbar({ activePage, onNavigate, centerContent, rightContent }: TopNavbarProps) {
   return (
     <header
       className={cn(
@@ -65,6 +66,8 @@ export function TopNavbar({ activePage, onNavigate, centerContent }: TopNavbarPr
       <div className="text-sm font-medium text-zinc-400 tracking-wide" style={{ fontFamily: "'Newsreader', Georgia, serif" }}>
         {centerContent}
       </div>
+
+      <div className="flex min-w-[8rem] justify-end">{rightContent}</div>
     </header>
   );
 }

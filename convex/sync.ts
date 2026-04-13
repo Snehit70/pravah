@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
+import { requireTokenIdentifier } from "./authHelpers";
 
 const providerValidator = v.union(v.literal("google_calendar"), v.literal("gmail"));
 
@@ -18,18 +19,26 @@ function computeContentHash(input: {
   ].join("|");
 }
 
-async function getNextPosition(ctx: MutationCtx, scheduledDate?: string) {
+async function getNextPosition(
+  ctx: MutationCtx,
+  tokenIdentifier: string,
+  scheduledDate?: string
+) {
   const latestTask = scheduledDate
     ? await ctx.db
         .query("tasks")
-        .withIndex("by_status_date_position", (q) =>
-          q.eq("status", "scheduled").eq("scheduledDate", scheduledDate)
+        .withIndex("by_owner_status_date_position", (q) =>
+          q.eq("ownerTokenIdentifier", tokenIdentifier)
+            .eq("status", "scheduled")
+            .eq("scheduledDate", scheduledDate)
         )
         .order("desc")
         .first()
     : await ctx.db
         .query("tasks")
-        .withIndex("by_status_position", (q) => q.eq("status", "inbox"))
+        .withIndex("by_owner_status_position", (q) =>
+          q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "inbox")
+        )
         .order("desc")
         .first();
 
@@ -39,21 +48,28 @@ async function getNextPosition(ctx: MutationCtx, scheduledDate?: string) {
 export const getIntegrationStatus = query({
   args: { provider: providerValidator },
   handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
     const integration = await ctx.db
       .query("integrations")
-      .withIndex("by_provider", (q) => q.eq("provider", args.provider))
+      .withIndex("by_owner_provider", (q) =>
+        q.eq("ownerTokenIdentifier", tokenIdentifier).eq("provider", args.provider)
+      )
       .first();
 
     const lastRun = await ctx.db
       .query("syncRuns")
-      .withIndex("by_provider_started_at", (q) => q.eq("provider", args.provider))
+      .withIndex("by_owner_provider_started_at", (q) =>
+        q.eq("ownerTokenIdentifier", tokenIdentifier).eq("provider", args.provider)
+      )
       .order("desc")
       .first();
 
     const pendingReviewItems = (
       await ctx.db
         .query("reviewQueue")
-        .withIndex("by_status", (q) => q.eq("status", "pending"))
+        .withIndex("by_owner_status", (q) =>
+          q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "pending")
+        )
         .collect()
     );
     const pendingReviewCount = pendingReviewItems.filter(
@@ -78,9 +94,12 @@ export const upsertIntegration = mutation({
     lastError: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
     const existing = await ctx.db
       .query("integrations")
-      .withIndex("by_provider", (q) => q.eq("provider", args.provider))
+      .withIndex("by_owner_provider", (q) =>
+        q.eq("ownerTokenIdentifier", tokenIdentifier).eq("provider", args.provider)
+      )
       .first();
 
     const now = Date.now();
@@ -95,6 +114,7 @@ export const upsertIntegration = mutation({
 
     return await ctx.db.insert("integrations", {
       ...args,
+      ownerTokenIdentifier: tokenIdentifier,
       createdAt: now,
       updatedAt: now,
     });
@@ -107,7 +127,9 @@ export const startSyncRun = mutation({
     direction: v.union(v.literal("import")),
   },
   handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
     return await ctx.db.insert("syncRuns", {
+      ownerTokenIdentifier: tokenIdentifier,
       provider: args.provider,
       direction: args.direction,
       status: "running",
@@ -129,6 +151,11 @@ export const completeSyncRun = mutation({
     errorMessage: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    const run = await ctx.db.get(args.runId);
+    if (!run || run.ownerTokenIdentifier !== tokenIdentifier) {
+      throw new Error("Sync run not found");
+    }
     await ctx.db.patch(args.runId, {
       status: args.status,
       importedCount: args.importedCount,
@@ -146,9 +173,12 @@ export const updateSyncCursor = mutation({
     cursor: v.string(),
   },
   handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
     const existing = await ctx.db
       .query("syncCursors")
-      .withIndex("by_provider", (q) => q.eq("provider", args.provider))
+      .withIndex("by_owner_provider", (q) =>
+        q.eq("ownerTokenIdentifier", tokenIdentifier).eq("provider", args.provider)
+      )
       .first();
     const now = Date.now();
 
@@ -160,6 +190,7 @@ export const updateSyncCursor = mutation({
     return await ctx.db.insert("syncCursors", {
       provider: args.provider,
       cursor: args.cursor,
+      ownerTokenIdentifier: tokenIdentifier,
       updatedAt: now,
     });
   },
@@ -176,10 +207,13 @@ export const enqueueGmailCandidate = mutation({
     payloadJson: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
     const existingPending = await ctx.db
       .query("reviewQueue")
-      .withIndex("by_provider_external_id", (q) =>
-        q.eq("provider", "gmail").eq("externalId", args.externalId)
+      .withIndex("by_owner_provider_external_id", (q) =>
+        q.eq("ownerTokenIdentifier", tokenIdentifier)
+          .eq("provider", "gmail")
+          .eq("externalId", args.externalId)
       )
       .filter((q) => q.eq(q.field("status"), "pending"))
       .first();
@@ -193,6 +227,7 @@ export const enqueueGmailCandidate = mutation({
 
     const now = Date.now();
     const reviewId = await ctx.db.insert("reviewQueue", {
+      ownerTokenIdentifier: tokenIdentifier,
       provider: "gmail",
       sourceType: "gmail_candidate",
       externalId: args.externalId,
@@ -217,16 +252,23 @@ export const listReviewQueue = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
     const limit = args.limit ?? 100;
     if (args.status) {
       return await ctx.db
         .query("reviewQueue")
-        .withIndex("by_status", (q) => q.eq("status", args.status!))
+        .withIndex("by_owner_status", (q) =>
+          q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", args.status!)
+        )
         .order("desc")
         .take(limit);
     }
 
-    return await ctx.db.query("reviewQueue").order("desc").take(limit);
+    return await ctx.db
+      .query("reviewQueue")
+      .filter((q) => q.eq(q.field("ownerTokenIdentifier"), tokenIdentifier))
+      .order("desc")
+      .take(limit);
   },
 });
 
@@ -236,8 +278,9 @@ export const approveReviewItem = mutation({
     scheduledDate: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
     const reviewItem = await ctx.db.get(args.reviewId);
-    if (!reviewItem) {
+    if (!reviewItem || reviewItem.ownerTokenIdentifier !== tokenIdentifier) {
       throw new Error("Review item not found");
     }
     if (reviewItem.status !== "pending") {
@@ -245,7 +288,7 @@ export const approveReviewItem = mutation({
     }
 
     const effectiveScheduledDate = args.scheduledDate ?? reviewItem.scheduledDate;
-    const position = await getNextPosition(ctx, effectiveScheduledDate);
+    const position = await getNextPosition(ctx, tokenIdentifier, effectiveScheduledDate);
 
     const now = Date.now();
     const taskId = await ctx.db.insert("tasks", {
@@ -259,7 +302,8 @@ export const approveReviewItem = mutation({
       source: reviewItem.provider === "gmail" ? "gmail" : "gcal",
       estimatedMinutes: reviewItem.estimatedMinutes,
       tags: reviewItem.tags,
-      createdBy: "user",
+      createdBy: tokenIdentifier,
+      ownerTokenIdentifier: tokenIdentifier,
       createdAt: now,
       updatedAt: now,
     });
@@ -280,8 +324,9 @@ export const rejectReviewItem = mutation({
     reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
     const reviewItem = await ctx.db.get(args.reviewId);
-    if (!reviewItem) {
+    if (!reviewItem || reviewItem.ownerTokenIdentifier !== tokenIdentifier) {
       throw new Error("Review item not found");
     }
     if (reviewItem.status !== "pending") {
@@ -314,6 +359,7 @@ export const importGoogleCalendarEvents = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
     const now = Date.now();
     let importedCount = 0;
     let updatedCount = 0;
@@ -328,8 +374,10 @@ export const importGoogleCalendarEvents = mutation({
 
       const mapping = await ctx.db
         .query("externalTaskMappings")
-        .withIndex("by_provider_external_id", (q) =>
-          q.eq("provider", "google_calendar").eq("externalId", event.externalId)
+        .withIndex("by_owner_provider_external_id", (q) =>
+          q.eq("ownerTokenIdentifier", tokenIdentifier)
+            .eq("provider", "google_calendar")
+            .eq("externalId", event.externalId)
         )
         .first();
 
@@ -378,7 +426,7 @@ export const importGoogleCalendarEvents = mutation({
             skippedCount += 1;
           }
         } else {
-          const position = await getNextPosition(ctx, event.scheduledDate);
+          const position = await getNextPosition(ctx, tokenIdentifier, event.scheduledDate);
           const newTaskId = await ctx.db.insert("tasks", {
             title: event.title,
             description: event.description,
@@ -388,7 +436,8 @@ export const importGoogleCalendarEvents = mutation({
             position,
             status: event.scheduledDate ? "scheduled" : "inbox",
             source: "gcal",
-            createdBy: "user",
+            createdBy: tokenIdentifier,
+            ownerTokenIdentifier: tokenIdentifier,
             createdAt: now,
             updatedAt: now,
           });
@@ -408,7 +457,7 @@ export const importGoogleCalendarEvents = mutation({
       const positionKey = event.scheduledDate ?? "__inbox__";
       const nextPosition =
         positionCache.get(positionKey) ??
-        (await getNextPosition(ctx, event.scheduledDate));
+        (await getNextPosition(ctx, tokenIdentifier, event.scheduledDate));
       positionCache.set(positionKey, nextPosition + 1);
 
       const taskId = await ctx.db.insert("tasks", {
@@ -420,12 +469,14 @@ export const importGoogleCalendarEvents = mutation({
         position: nextPosition,
         status: event.scheduledDate ? "scheduled" : "inbox",
         source: "gcal",
-        createdBy: "user",
+        createdBy: tokenIdentifier,
+        ownerTokenIdentifier: tokenIdentifier,
         createdAt: now,
         updatedAt: now,
       });
 
       await ctx.db.insert("externalTaskMappings", {
+        ownerTokenIdentifier: tokenIdentifier,
         provider: "google_calendar",
         externalId: event.externalId,
         taskId,
@@ -449,9 +500,12 @@ export const importGoogleCalendarEvents = mutation({
 export const getCursor = query({
   args: { provider: providerValidator },
   handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
     return await ctx.db
       .query("syncCursors")
-      .withIndex("by_provider", (q) => q.eq("provider", args.provider))
+      .withIndex("by_owner_provider", (q) =>
+        q.eq("ownerTokenIdentifier", tokenIdentifier).eq("provider", args.provider)
+      )
       .first();
   },
 });

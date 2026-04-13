@@ -1,73 +1,80 @@
-# React + TypeScript + Vite
+# Pravah
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Pravah is a React + Vite task-planning app backed by Convex, with Google OAuth for app login and optional Google Calendar/Gmail integration.
 
-Currently, two official plugins are available:
+## Local Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Install dependencies:
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+bun install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+2. Start Convex dev:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+bunx convex dev
 ```
+
+3. Start the frontend:
+
+```bash
+bun run dev
+```
+
+## Required Environment
+
+Frontend `.env.local`:
+
+```env
+CONVEX_DEPLOYMENT=your-deployment
+VITE_CONVEX_URL=https://your-deployment.convex.cloud
+VITE_CONVEX_SITE_URL=https://your-deployment.convex.site
+VITE_GOOGLE_CLIENT_ID=your-google-web-client-id
+```
+
+Convex environment variables:
+
+```env
+BETTER_AUTH_SECRET=generate-a-random-secret
+SITE_URL=http://localhost:5173
+GOOGLE_OAUTH_CLIENT_ID=your-google-web-client-id
+GOOGLE_OAUTH_CLIENT_SECRET=your-google-web-client-secret
+```
+
+## Google OAuth Setup
+
+Use a Google OAuth client of type `Web application`, not `Desktop`.
+
+For local development, configure:
+
+- Authorized JavaScript origin: `http://localhost:5173`
+- Authorized redirect URI: `https://your-deployment.convex.site/api/auth/callback/google`
+- Authorized redirect URI: `http://localhost:5173/google-callback`
+
+The redirect URIs serve different purposes:
+
+- `/api/auth/callback/google` is for app login via Better Auth
+- `/google-callback` is for the separate Google Calendar/Gmail connect flow
+
+## Deploy Checklist
+
+1. Set `SITE_URL` in Convex to your real app domain.
+2. Add your production app origin to the Google OAuth client.
+3. Add your production Convex callback URI:
+
+```text
+https://your-deployment.convex.site/api/auth/callback/google
+```
+
+4. Add your production frontend callback URI if you use Google Calendar/Gmail connect:
+
+```text
+https://your-app-domain/google-callback
+```
+
+## Security Notes
+
+- Never expose `GOOGLE_OAUTH_CLIENT_SECRET` in frontend `VITE_` variables.
+- Keep Google client secrets only in Convex env.
+- `.env.local` is for local development only.

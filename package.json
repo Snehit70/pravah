@@ -14,12 +14,14 @@
     "mcp": "bun run mcp-server.ts"
   },
   "dependencies": {
+    "@convex-dev/better-auth": "^0.11.4",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@modelcontextprotocol/server": "^2.0.0-alpha.2",
     "@tailwindcss/vite": "^4.2.2",
+    "better-auth": "1.5.3",
     "clsx": "^2.1.1",
     "convex": "^1.34.1",
     "framer-motion": "^12.38.0",
