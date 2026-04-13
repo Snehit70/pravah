@@ -34,14 +34,6 @@ export const claimLegacyData = mutation({
   handler: async (ctx) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
 
-    const hasOwnedTasks = await ctx.db
-      .query("tasks")
-      .withIndex("by_owner", (q) => q.eq("ownerTokenIdentifier", tokenIdentifier))
-      .first();
-    if (hasOwnedTasks) {
-      return { claimed: false };
-    }
-
     const legacyTasks = await ctx.db
       .query("tasks")
       .filter((q) => q.eq(q.field("ownerTokenIdentifier"), undefined))

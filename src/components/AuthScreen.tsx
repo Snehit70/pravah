@@ -20,12 +20,10 @@ export function AuthScreen() {
       if (result.error) {
         throw new Error(result.error.message ?? "Could not sign you in with Google.");
       }
+      // Successful sign-in redirects away from this screen.
     } catch (err) {
       const message = err instanceof Error ? err.message : "Authentication failed.";
       setError(message);
-      setBusy(false);
-    } finally {
-      // Successful sign-in redirects away from this screen.
       setBusy(false);
     }
   };
