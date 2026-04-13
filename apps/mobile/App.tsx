@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Animated,
   Easing,
+  KeyboardAvoidingView,
   LayoutAnimation,
   Modal,
   Platform,
@@ -23,7 +24,7 @@ import { api } from "../../convex/_generated/api";
 import * as Haptics from "expo-haptics";
 import { authClient, authStorageReady } from "./src/lib/auth-client";
 import { ConvexClientProvider } from "./src/lib/convex";
-import { addDays, dateLabel, toIsoDate } from "./src/lib/dates";
+import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
 
 type ActiveTab = "inbox" | "timeline" | "completed";
 type ComposerMode = "inbox" | "today";
@@ -63,11 +64,16 @@ function isLikelyOfflineError(error: unknown): boolean {
   );
 }
 
-function MobileApp() {
-  if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
-    UIManager.setLayoutAnimationEnabledExperimental(true);
+function normalizeDeadlineInput(raw: string): { value?: string; error?: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) return { value: undefined };
+  if (!isIsoDate(trimmed)) {
+    return { error: "Use YYYY-MM-DD for deadline." };
   }
+  return { value: trimmed };
+}
 
+function MobileApp() {
   const convex = useConvex();
   const pulse = useState(() => new Animated.Value(1))[0];
   const [draftTitle, setDraftTitle] = useState("");
@@ -125,6 +131,12 @@ function MobileApp() {
   };
 
   useEffect(() => {
+    if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
+
+  useEffect(() => {
     let mounted = true;
     authStorageReady.finally(() => {
       if (mounted) {
@@ -151,7 +163,7 @@ function MobileApp() {
   }, [pendingMutations, serverTasks]);
 
   useEffect(() => {
-    Animated.loop(
+    const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, {
           toValue: 1.05,
@@ -166,7 +178,11 @@ function MobileApp() {
           useNativeDriver: true,
         }),
       ])
-    ).start();
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+    };
   }, [pulse]);
 
   const today = toIsoDate(new Date());
@@ -333,13 +349,22 @@ function MobileApp() {
   const addTask = async () => {
     const title = draftTitle.trim();
     if (!title || isSaving) return;
+    const deadlineInput = normalizeDeadlineInput(draftDeadline);
+    if (deadlineInput.error) {
+      showToast({ kind: "error", message: deadlineInput.error });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+
+    const deadline = deadlineInput.value;
+
     setIsSaving(true);
     try {
       await addTaskMutation({
         title,
         description: draftDescription.trim() || undefined,
-        deadline: draftDeadline.trim() || undefined,
-        type: draftDeadline.trim() ? "deadline" : "open",
+        deadline,
+        type: deadline ? "deadline" : "open",
         scheduledDate: composerMode === "today" ? today : undefined,
       });
       setDraftTitle("");
@@ -351,8 +376,8 @@ function MobileApp() {
         await addTaskMutation({
           title,
           description: draftDescription.trim() || undefined,
-          deadline: draftDeadline.trim() || undefined,
-          type: draftDeadline.trim() ? "deadline" : "open",
+          deadline,
+          type: deadline ? "deadline" : "open",
           scheduledDate: composerMode === "today" ? today : undefined,
         });
       };
@@ -372,8 +397,16 @@ function MobileApp() {
     if (!editingTaskId || !editTitle.trim() || isEditSaving) return;
     setIsEditSaving(true);
     const title = editTitle.trim();
+    const deadlineInput = normalizeDeadlineInput(editDeadline);
+    if (deadlineInput.error) {
+      showToast({ kind: "error", message: deadlineInput.error });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setIsEditSaving(false);
+      return;
+    }
+
     const description = editDescription.trim() || undefined;
-    const deadline = editDeadline.trim() || undefined;
+    const deadline = deadlineInput.value;
     const mutation = async () => {
       await updateTaskMutation({
         taskId: editingTaskId,
@@ -787,7 +820,11 @@ function MobileApp() {
       </ScrollView>
 
       <Modal transparent visible={!!editingTaskId} animationType="slide" onRequestClose={closeTaskSheet}>
-        <View style={styles.sheetBackdrop}>
+        <KeyboardAvoidingView
+          style={styles.sheetBackdrop}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
+        >
           <View style={styles.sheetCard}>
             <Text style={styles.sheetTitle}>Task details</Text>
             <TextInput
@@ -828,7 +865,7 @@ function MobileApp() {
               </Pressable>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <StatusBar style="light" />
