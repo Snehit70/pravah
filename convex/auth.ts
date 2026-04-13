@@ -19,11 +19,12 @@ export const authComponent = createClient<DataModel>(components.betterAuth);
 export function createAuth(ctx: GenericCtx<DataModel>) {
   const env = readEnv();
   const siteUrl = env?.SITE_URL ?? env?.VITE_SITE_URL ?? "http://localhost:5173";
+  const mobileScheme = env?.MOBILE_APP_SCHEME ?? "pravah://";
   const googleClientId = env?.GOOGLE_OAUTH_CLIENT_ID;
   const googleClientSecret = env?.GOOGLE_OAUTH_CLIENT_SECRET;
 
   return betterAuth({
-    trustedOrigins: [siteUrl],
+    trustedOrigins: [siteUrl, mobileScheme],
     database: authComponent.adapter(ctx),
     socialProviders:
       googleClientId && googleClientSecret
