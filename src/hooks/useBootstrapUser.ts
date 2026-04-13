@@ -9,7 +9,6 @@ export function useBootstrapUser(enabled: boolean) {
 
   useEffect(() => {
     if (!enabled) {
-      setReady(false);
       return;
     }
 
