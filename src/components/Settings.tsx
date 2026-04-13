@@ -1,25 +1,32 @@
 import { useState, useEffect } from "react";
-import { X, Calendar, Mail, CheckCircle, XCircle, RefreshCw, ExternalLink } from "lucide-react";
+import {
+  X,
+  Calendar,
+  Mail,
+  CheckCircle,
+  XCircle,
+  RefreshCw,
+  ExternalLink,
+  LogOut,
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import {
   getGoogleTokens,
-  saveGoogleTokens,
   clearGoogleTokens,
   fetchGoogleAccountEmail,
   fetchGoogleCalendars,
   getGoogleAuthErrorMessage,
   getGoogleOAuthUrl,
-  parseGoogleTokens,
-  exchangeGoogleAuthCode,
   fetchGmailMessages,
 } from "../lib/google/api";
 import type { GoogleCalendarListEntry } from "../lib/google/types";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
 import { useToast } from "./useToast";
+import { authClient } from "../lib/auth-client";
 
 interface SettingsProps {
   onClose: () => void;
@@ -59,6 +66,7 @@ const modalVariants = {
 const CALENDAR_SELECTION_STORAGE_KEY = "pravah_google_calendar_selection";
 
 export function Settings({ onClose }: SettingsProps) {
+  const [signingOut, setSigningOut] = useState(false);
   const [googleConnected, setGoogleConnected] = useState(() => {
     const storedTokens = getGoogleTokens();
     return !!storedTokens && !storedTokens.expired;
@@ -98,6 +106,7 @@ export function Settings({ onClose }: SettingsProps) {
       : "skip"
   );
   const safePendingReviewItems = shouldLoadReviewQueue ? (pendingReviewItems ?? []) : [];
+  const currentUser = useQuery(api.auth.getCurrentUser, {});
   const googleAccountEmail = calendarIntegrationStatus?.integration?.accountEmail;
   const { showError, showSuccess } = useToast();
 
@@ -119,78 +128,6 @@ export function Settings({ onClose }: SettingsProps) {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const handleOAuthCallback = async () => {
-      const url = new URL(window.location.href);
-      const code = url.searchParams.get("code");
-      const error = url.searchParams.get("error");
-
-      if (error) {
-        showError("Google sign-in was cancelled or failed.");
-        return;
-      }
-
-      if (!code) {
-        return;
-      }
-
-      try {
-        const tokens = await exchangeGoogleAuthCode(code);
-        saveGoogleTokens(tokens.accessToken, tokens.expiresIn);
-        let accountEmail: string | undefined;
-        try {
-          accountEmail = await fetchGoogleAccountEmail(tokens.accessToken);
-        } catch (profileError) {
-          console.warn("Unable to load Google account email", profileError);
-        }
-        await upsertIntegration({
-          provider: "google_calendar",
-          status: "connected",
-          syncEnabled: calendarEnabled,
-          accountEmail,
-          tokenExpiresAt: Date.now() + tokens.expiresIn * 1000,
-        });
-
-        if (!cancelled) {
-          setGoogleConnected(true);
-          showSuccess("Google connected successfully!");
-        }
-      } catch (err) {
-        console.error("Google OAuth callback failed", err);
-        if (!cancelled) {
-          showError(getGoogleAuthErrorMessage(err, "Failed to complete Google sign-in."));
-        }
-      } finally {
-        url.searchParams.delete("code");
-        url.searchParams.delete("scope");
-        url.searchParams.delete("authuser");
-        url.searchParams.delete("prompt");
-        url.searchParams.delete("error");
-        window.history.replaceState({}, "", url.toString());
-      }
-    };
-
-    const hash = window.location.hash;
-    if (hash.startsWith("#")) {
-      const parsedTokens = parseGoogleTokens(hash);
-      if (parsedTokens) {
-        saveGoogleTokens(parsedTokens.accessToken, parsedTokens.expiresIn);
-        window.location.hash = "";
-        window.setTimeout(() => {
-          setGoogleConnected(true);
-        }, 0);
-      }
-    }
-
-    void handleOAuthCallback();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [showError, showSuccess, upsertIntegration, calendarEnabled]);
 
   useEffect(() => {
     if (hydratedToggleState) return;
@@ -337,7 +274,9 @@ export function Settings({ onClose }: SettingsProps) {
       const oauthUrl = await getGoogleOAuthUrl();
       window.location.href = oauthUrl;
     } catch (error) {
-      showError(getGoogleAuthErrorMessage(error, "Failed to start Google sign-in."));
+      showError(
+        getGoogleAuthErrorMessage(error, "Failed to start Google sync permission flow.")
+      );
     }
   };
 
@@ -365,6 +304,20 @@ export function Settings({ onClose }: SettingsProps) {
     setGoogleConnected(false);
     setCalendarEnabled(false);
     setGmailEnabled(false);
+  };
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    try {
+      await authClient.signOut();
+      onClose();
+      showSuccess("Signed out successfully");
+    } catch (error) {
+      console.error("Sign out failed", error);
+      showError("Failed to sign out. Please try again.");
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   const handleSync = async (fullResync = false) => {
@@ -516,6 +469,43 @@ export function Settings({ onClose }: SettingsProps) {
 
           <div className="space-y-6">
             <section>
+              <h3
+                className={cn(
+                  "text-[11px] font-medium uppercase tracking-[0.08em] mb-3",
+                  "text-zinc-500"
+                )}
+              >
+                Account
+              </h3>
+
+              <div
+                className={cn(
+                  "rounded-xl p-4 space-y-4",
+                  "bg-zinc-800/60",
+                  "border border-zinc-700/50"
+                )}
+              >
+                <div>
+                  <p className="text-zinc-100 font-medium">
+                    {currentUser?.email ?? currentUser?.name ?? "Signed in"}
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    This is your only app login. Google sync permissions are managed below.
+                  </p>
+                </div>
+                <Button
+                  onClick={() => void handleSignOut()}
+                  variant="ghost"
+                  className="w-full justify-center gap-2 text-red-400 hover:text-red-300"
+                  disabled={signingOut}
+                >
+                  <LogOut size={14} />
+                  {signingOut ? "Signing out..." : "Sign out"}
+                </Button>
+              </div>
+            </section>
+
+            <section>
               <h3 className={cn(
                 "text-[11px] font-medium uppercase tracking-[0.08em] mb-3",
                 "text-zinc-500 flex items-center gap-2"
@@ -544,9 +534,11 @@ export function Settings({ onClose }: SettingsProps) {
                       )}
                     </div>
                     <div>
-                      <p className="text-zinc-100 font-medium">Google Account</p>
+                      <p className="text-zinc-100 font-medium">Google Sync Permissions</p>
                       <p className="text-xs text-zinc-500">
-                        {googleConnected ? (googleAccountEmail ?? "Connected") : "Not connected"}
+                        {googleConnected
+                          ? `Granted${googleAccountEmail ? ` for ${googleAccountEmail}` : ""}`
+                          : "Not granted"}
                       </p>
                     </div>
                   </div>
@@ -558,7 +550,7 @@ export function Settings({ onClose }: SettingsProps) {
                       size="sm"
                       className="text-red-400 hover:text-red-400"
                     >
-                      Disconnect
+                      Revoke
                     </Button>
                   ) : (
                     <Button
@@ -567,7 +559,7 @@ export function Settings({ onClose }: SettingsProps) {
                       size="sm"
                       className="flex items-center gap-2"
                     >
-                      Connect
+                      Grant Access
                       <ExternalLink size={14} />
                     </Button>
                   )}

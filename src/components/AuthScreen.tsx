@@ -47,15 +47,15 @@ export function AuthScreen() {
             Keep Pravah behind a real sign-in before you ship it.
           </h1>
           <p className="mt-5 max-w-xl text-base leading-7 text-slate-300">
-            Google OAuth now gates the app, and each account only sees its own tasks
-            and sync metadata.
+            Sign in once with Google to access Pravah. Calendar and Gmail sync can be
+            granted later as permissions from Settings, without creating a second account.
           </p>
         </section>
 
         <section className="rounded-[2rem] border border-white/10 bg-slate-950/85 p-6 shadow-2xl shadow-blue-950/40 backdrop-blur-xl lg:p-8">
           <p className="mb-2 text-sm font-medium text-slate-200">Sign in with Google</p>
           <p className="mb-6 text-sm leading-6 text-slate-400">
-            Use the same Google account you want to connect for calendar and Gmail sync.
+            This is your app login.
           </p>
 
           {error ? (

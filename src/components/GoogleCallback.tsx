@@ -29,7 +29,7 @@ export function GoogleCallback() {
 
     const handleCallback = async () => {
       if (error) {
-        showError("Google sign-in was cancelled or failed.");
+        showError("Google sync permission step was cancelled or failed.");
         cleanupUrl();
         return;
       }
@@ -50,10 +50,12 @@ export function GoogleCallback() {
           accountEmail,
           tokenExpiresAt: Date.now() + tokens.expiresIn * 1000,
         });
-        showSuccess("Google connected successfully!");
+        showSuccess("Google sync permissions granted.");
       } catch (err) {
         console.error("Google OAuth callback failed", err);
-        showError(getGoogleAuthErrorMessage(err, "Failed to complete Google sign-in."));
+        showError(
+          getGoogleAuthErrorMessage(err, "Failed to complete Google sync permission step.")
+        );
       } finally {
         cleanupUrl();
       }
