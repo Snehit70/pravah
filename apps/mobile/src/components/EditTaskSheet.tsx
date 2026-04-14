@@ -1,6 +1,10 @@
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import BottomSheet, { BottomSheetBackdrop, BottomSheetView } from "@gorhom/bottom-sheet";
+import BottomSheet, {
+  BottomSheetBackdrop,
+  BottomSheetView,
+  type BottomSheetBackdropProps,
+} from "@gorhom/bottom-sheet";
 import * as Haptics from "expo-haptics";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "./TaskCard";
@@ -76,7 +80,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     }, [taskId, title, description, deadline, saving, onSave, isValidDeadline]);
 
     const renderBackdrop = useCallback(
-      (props: any) => (
+      (props: BottomSheetBackdropProps) => (
         <BottomSheetBackdrop
           {...props}
           disappearsOnIndex={-1}

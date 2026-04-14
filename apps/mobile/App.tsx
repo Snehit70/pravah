@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import Animated, { FadeIn, LinearTransition } from "react-native-reanimated";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { api } from "../../convex/_generated/api";
@@ -41,6 +41,8 @@ type RetryQueueItem = {
   attempts: number;
   run: () => Promise<void>;
 };
+
+type SuccessHaptic = "notification" | "light" | "medium";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -141,10 +143,6 @@ function MobileApp() {
     () => tasks.filter((t) => t.status === "completed").sort((a, b) => b.updatedAt - a.updatedAt),
     [tasks]
   );
-  const todayCount = useMemo(
-    () => tasks.filter((t) => t.status === "scheduled" && t.scheduledDate === today).length,
-    [tasks, today]
-  );
   const timelineCount = scheduledTasks.length;
 
   const timelineSections = useMemo(() => {
@@ -195,6 +193,17 @@ function MobileApp() {
 
   const showToast = useCallback((next: ToastState) => setToast(next), []);
 
+  const triggerSuccessHaptic = useCallback((kind: SuccessHaptic) => {
+    if (kind === "notification") {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      return;
+    }
+
+    void Haptics.impactAsync(
+      kind === "medium" ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light
+    );
+  }, []);
+
   const enqueueRetry = useCallback(
     (item: Omit<RetryQueueItem, "id" | "attempts">) => {
       setRetryQueue((cur) => [...cur, { id: `${Date.now()}-${cur.length}`, attempts: 0, ...item }]);
@@ -229,17 +238,19 @@ function MobileApp() {
       mutation,
       errorMessage,
       retryLabel,
+      successHaptic = "notification",
     }: {
       optimistic: (current: MobileTask[]) => MobileTask[];
       mutation: () => Promise<void>;
       errorMessage: string;
       retryLabel?: string;
+      successHaptic?: SuccessHaptic;
     }): Promise<boolean> => {
       setPendingMutations((c) => c + 1);
       setOptimisticTasks((cur) => optimistic(cur ?? serverTasks));
       try {
         await mutation();
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        triggerSuccessHaptic(successHaptic);
         return true;
       } catch (error) {
         setOptimisticTasks(null);
@@ -255,7 +266,7 @@ function MobileApp() {
         setPendingMutations((c) => Math.max(0, c - 1));
       }
     },
-    [serverTasks, enqueueRetry, showToast]
+    [serverTasks, enqueueRetry, showToast, triggerSuccessHaptic]
   );
 
   // ── Task actions ────────────────────────────────────────────────────
@@ -283,6 +294,7 @@ function MobileApp() {
         mutation: async () => { await moveTaskMutation({ taskId, targetDate: today }); },
         errorMessage: "Could not move task to today.",
         retryLabel: "Retry move to today",
+        successHaptic: "light",
       });
     },
     [runOptimisticMutation, moveTaskMutation, today]
@@ -300,6 +312,7 @@ function MobileApp() {
         mutation: async () => { await unscheduleTaskMutation({ taskId }); },
         errorMessage: "Could not move task back to inbox.",
         retryLabel: "Retry move to inbox",
+        successHaptic: "light",
       });
     },
     [runOptimisticMutation, unscheduleTaskMutation]
@@ -317,6 +330,7 @@ function MobileApp() {
         mutation: async () => { await reopenTaskMutation({ taskId }); },
         errorMessage: "Could not reopen task.",
         retryLabel: "Retry reopen",
+        successHaptic: "light",
       });
     },
     [runOptimisticMutation, reopenTaskMutation]
@@ -380,6 +394,7 @@ function MobileApp() {
         },
         errorMessage: "Could not save task details.",
         retryLabel: `Update "${data.title}"`,
+        successHaptic: "medium",
       });
     },
     [runOptimisticMutation, updateTaskMutation]
@@ -441,6 +456,7 @@ function MobileApp() {
           text: "Sign out",
           style: "destructive",
           onPress: () => {
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             void authClient.signOut();
           },
         },
@@ -510,12 +526,11 @@ function MobileApp() {
           <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>No scheduled tasks</Text>
             <Text style={styles.emptyText}>
-              Move tasks from Inbox to Today to build your timeline.
+              No tasks on your timeline yet. Move one from Inbox to Today.
             </Text>
           </Animated.View>
         );
       }
-      let flatIndex = 0;
       return timelineSections.map(([dateKey, items]) => (
         <View key={dateKey}>
           <Text style={styles.sectionDate}>
@@ -525,7 +540,6 @@ function MobileApp() {
             <TaskCard
               key={task._id}
               task={task}
-              index={flatIndex++}
               dateLabel={dateLabel(dateKey, today, tomorrow, weekEnd)}
               onDone={markDone}
               onSendToInbox={sendToInbox}
@@ -542,16 +556,15 @@ function MobileApp() {
           <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>Nothing completed yet</Text>
             <Text style={styles.emptyText}>
-              Mark tasks done to build momentum and see progress here.
+              Mark one task done to build momentum.
             </Text>
           </Animated.View>
         );
       }
-      return completedTasks.map((task, i) => (
+      return completedTasks.map((task) => (
         <TaskCard
           key={task._id}
           task={task}
-          index={i}
           onDone={markDone}
           onReopen={reopenToInbox}
           onEdit={handleEditTask}
@@ -562,19 +575,18 @@ function MobileApp() {
     // Inbox
     if (!inboxTasks.length) {
       return (
-        <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>Inbox zero</Text>
-          <Text style={styles.emptyText}>
-            Tap the + button to capture a new task.
-          </Text>
-        </Animated.View>
-      );
+          <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>Inbox zero</Text>
+            <Text style={styles.emptyText}>
+              You are all caught up. Tap + to capture the next task.
+            </Text>
+          </Animated.View>
+        );
     }
-    return inboxTasks.map((task, i) => (
+    return inboxTasks.map((task) => (
       <TaskCard
         key={task._id}
         task={task}
-        index={i}
         onDone={markDone}
         onMoveToday={moveToToday}
         onEdit={handleEditTask}

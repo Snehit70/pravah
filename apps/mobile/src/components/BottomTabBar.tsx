@@ -74,7 +74,7 @@ function TabItemInner({ tabKey, label, count, isActive, onPress }: TabItemProps)
   return (
     <Pressable
       onPress={() => onPress(tabKey)}
-      style={styles.tabItem}
+      style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}
       hitSlop={{ top: 8, bottom: 8 }}
     >
       <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
@@ -139,5 +139,8 @@ const styles = StyleSheet.create({
   },
   activeDotHidden: {
     opacity: 0,
+  },
+  pressed: {
+    opacity: 0.82,
   },
 });

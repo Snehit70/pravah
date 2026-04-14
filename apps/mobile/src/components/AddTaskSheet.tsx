@@ -1,6 +1,10 @@
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import BottomSheet, { BottomSheetBackdrop, BottomSheetView } from "@gorhom/bottom-sheet";
+import BottomSheet, {
+  BottomSheetBackdrop,
+  BottomSheetView,
+  type BottomSheetBackdropProps,
+} from "@gorhom/bottom-sheet";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { colors, radii, spacing, typography } from "../theme/tokens";
@@ -81,7 +85,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     }, [title, description, deadline, mode, saving, onAdd, isValidDeadline]);
 
     const renderBackdrop = useCallback(
-      (props: any) => (
+      (props: BottomSheetBackdropProps) => (
         <BottomSheetBackdrop
           {...props}
           disappearsOnIndex={-1}
@@ -132,7 +136,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           <View style={styles.chipRow}>
             <Pressable
               onPress={() => setMode("inbox")}
-              style={[styles.chip, mode === "inbox" && styles.chipActive]}
+              style={({ pressed }) => [styles.chip, mode === "inbox" && styles.chipActive, pressed && styles.pressed]}
             >
               <Text style={[styles.chipText, mode === "inbox" && styles.chipTextActive]}>
                 Inbox
@@ -140,7 +144,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
             </Pressable>
             <Pressable
               onPress={() => setMode("today")}
-              style={[styles.chip, mode === "today" && styles.chipActive]}
+              style={({ pressed }) => [styles.chip, mode === "today" && styles.chipActive, pressed && styles.pressed]}
             >
               <Text style={[styles.chipText, mode === "today" && styles.chipTextActive]}>
                 Today
@@ -151,7 +155,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
 
             <Pressable
               onPress={() => setShowDetails(!showDetails)}
-              style={styles.detailsToggle}
+              style={({ pressed }) => [styles.detailsToggle, pressed && styles.pressed]}
             >
               <Text style={styles.detailsToggleText}>
                 {showDetails ? "Less" : "More"}

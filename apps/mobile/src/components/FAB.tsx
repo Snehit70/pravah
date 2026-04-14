@@ -1,7 +1,7 @@
 import { memo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
-import { colors, radii } from "../theme/tokens";
+import { colors } from "../theme/tokens";
 
 type FABProps = {
   onPress: () => void;

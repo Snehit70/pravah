@@ -16,7 +16,6 @@ export type MobileTask = {
 
 type TaskCardProps = {
   task: MobileTask;
-  index: number;
   dateLabel?: string;
   onDone: (id: Id<"tasks">) => void;
   onMoveToday?: (id: Id<"tasks">) => void;
@@ -27,7 +26,6 @@ type TaskCardProps = {
 
 function TaskCardInner({
   task,
-  index: _index,
   dateLabel: dateLabelText,
   onDone,
   onMoveToday,
@@ -57,7 +55,7 @@ function TaskCardInner({
     <View style={styles.wrapper}>
       <View style={[styles.card, isCompleted && styles.completedCard]}>
         {!isCompleted ? (
-          <Pressable onPress={handleDone} style={styles.checkbox} hitSlop={8}>
+          <Pressable onPress={handleDone} style={({ pressed }) => [styles.checkbox, pressed && styles.pressed]} hitSlop={8}>
             <View style={styles.checkboxInner} />
           </Pressable>
         ) : (
@@ -97,25 +95,25 @@ function TaskCardInner({
 
           <View style={styles.actionsRow}>
             {canEdit ? (
-              <Pressable onPress={handleEdit} style={styles.ghostButton}>
+              <Pressable onPress={handleEdit} style={({ pressed }) => [styles.ghostButton, pressed && styles.pressed]}>
                 <Text style={styles.ghostButtonText}>Edit</Text>
               </Pressable>
             ) : null}
             {isCompleted ? (
-              <Pressable onPress={handleReopen} style={styles.ghostButton}>
+              <Pressable onPress={handleReopen} style={({ pressed }) => [styles.ghostButton, pressed && styles.pressed]}>
                 <Text style={styles.ghostButtonText}>Reopen</Text>
               </Pressable>
             ) : task.status === "inbox" ? (
-              <Pressable onPress={handleMoveToday} style={styles.ghostButton}>
+              <Pressable onPress={handleMoveToday} style={({ pressed }) => [styles.ghostButton, pressed && styles.pressed]}>
                 <Text style={styles.ghostButtonText}>Today</Text>
               </Pressable>
             ) : (
-              <Pressable onPress={handleSendToInbox} style={styles.ghostButton}>
+              <Pressable onPress={handleSendToInbox} style={({ pressed }) => [styles.ghostButton, pressed && styles.pressed]}>
                 <Text style={styles.ghostButtonText}>Inbox</Text>
               </Pressable>
             )}
             {!isCompleted ? (
-              <Pressable onPress={handleDone} style={styles.primaryButton}>
+              <Pressable onPress={handleDone} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
                 <Text style={styles.primaryButtonText}>Done</Text>
               </Pressable>
             ) : null}
@@ -250,5 +248,8 @@ const styles = StyleSheet.create({
     color: colors.primaryDark,
     ...typography.caption,
     fontWeight: "800",
+  },
+  pressed: {
+    opacity: 0.82,
   },
 });
