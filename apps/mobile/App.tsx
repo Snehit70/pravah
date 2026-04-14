@@ -1,23 +1,17 @@
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Animated,
-  Easing,
-  KeyboardAvoidingView,
-  LayoutAnimation,
-  Modal,
   Platform,
   Pressable,
   RefreshControl,
   SafeAreaView,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
-  UIManager,
   View,
 } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import Animated, { FadeIn, LinearTransition } from "react-native-reanimated";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { api } from "../../convex/_generated/api";
@@ -25,9 +19,16 @@ import * as Haptics from "expo-haptics";
 import { authClient, authStorageReady } from "./src/lib/auth-client";
 import { ConvexClientProvider } from "./src/lib/convex";
 import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 
-type ActiveTab = "inbox" | "timeline" | "completed";
-type ComposerMode = "inbox" | "today";
+import { colors, radii, spacing, typography } from "./src/theme/tokens";
+import { TaskCard, type MobileTask } from "./src/components/TaskCard";
+import { BottomTabBar, type TabKey } from "./src/components/BottomTabBar";
+import { FAB } from "./src/components/FAB";
+import { AddTaskSheet, type AddTaskSheetRef } from "./src/components/AddTaskSheet";
+import { EditTaskSheet, type EditTaskSheetRef } from "./src/components/EditTaskSheet";
+
+// ── Types ──────────────────────────────────────────────────────────────
 
 type ToastState = {
   kind: "error" | "info";
@@ -41,16 +42,7 @@ type RetryQueueItem = {
   run: () => Promise<void>;
 };
 
-type MobileTask = {
-  _id: Id<"tasks">;
-  title: string;
-  description?: string;
-  deadline?: string;
-  status: "inbox" | "scheduled" | "completed" | "cancelled";
-  scheduledDate?: string;
-  position: number;
-  updatedAt: number;
-};
+// ── Helpers ────────────────────────────────────────────────────────────
 
 function isLikelyOfflineError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -73,27 +65,24 @@ function normalizeDeadlineInput(raw: string): { value?: string; error?: string }
   return { value: trimmed };
 }
 
+// ── Main App ───────────────────────────────────────────────────────────
+
 function MobileApp() {
   const convex = useConvex();
-  const pulse = useState(() => new Animated.Value(1))[0];
-  const [draftTitle, setDraftTitle] = useState("");
-  const [draftDescription, setDraftDescription] = useState("");
-  const [draftDeadline, setDraftDeadline] = useState("");
-  const [activeTab, setActiveTab] = useState<ActiveTab>("inbox");
-  const [composerMode, setComposerMode] = useState<ComposerMode>("inbox");
-  const [isSaving, setIsSaving] = useState(false);
+  const insets = useSafeAreaInsets();
+  const addTaskSheetRef = useRef<AddTaskSheetRef>(null);
+  const editTaskSheetRef = useRef<EditTaskSheetRef>(null);
+
+  const [activeTab, setActiveTab] = useState<TabKey>("inbox");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isAuthHydrated, setIsAuthHydrated] = useState(false);
   const [pendingMutations, setPendingMutations] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [optimisticTasks, setOptimisticTasks] = useState<MobileTask[] | null>(null);
   const [retryQueue, setRetryQueue] = useState<RetryQueueItem[]>([]);
-  const [editingTaskId, setEditingTaskId] = useState<Id<"tasks"> | null>(null);
-  const [editTitle, setEditTitle] = useState("");
-  const [editDescription, setEditDescription] = useState("");
-  const [editDeadline, setEditDeadline] = useState("");
-  const [isEditSaving, setIsEditSaving] = useState(false);
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [isAddSheetOpen, setIsAddSheetOpen] = useState(false);
+  const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
 
   const sessionResult = authClient.useSession();
   const session = sessionResult.data;
@@ -103,18 +92,22 @@ function MobileApp() {
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
   const canGoogleSignIn = Boolean(googleWebClientId);
 
+  // ── Data ────────────────────────────────────────────────────────────
+
   const queryTasks = useQuery(api.tasks.listTasks, session ? {} : "skip");
   const serverTasks = useMemo<MobileTask[]>(() => {
-    return (queryTasks as Doc<"tasks">[] | undefined)?.map((task) => ({
-      _id: task._id,
-      title: task.title,
-      description: task.description,
-      deadline: task.deadline,
-      status: task.status,
-      scheduledDate: task.scheduledDate,
-      position: task.position,
-      updatedAt: task.updatedAt,
-    })) ?? [];
+    return (
+      (queryTasks as Doc<"tasks">[] | undefined)?.map((task) => ({
+        _id: task._id,
+        title: task.title,
+        description: task.description,
+        deadline: task.deadline,
+        status: task.status,
+        scheduledDate: task.scheduledDate,
+        position: task.position,
+        updatedAt: task.updatedAt,
+      })) ?? []
+    );
   }, [queryTasks]);
   const tasks = useMemo(() => optimisticTasks ?? serverTasks, [optimisticTasks, serverTasks]);
 
@@ -125,22 +118,55 @@ function MobileApp() {
   const unscheduleTaskMutation = useMutation(api.tasks.unscheduleTask);
   const reopenTaskMutation = useMutation(api.tasks.reopenTask);
 
-  const showToast = (nextToast: ToastState) => {
-    setToast(nextToast);
-  };
+  // ── Dates ───────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
-      UIManager.setLayoutAnimationEnabledExperimental(true);
+  const today = toIsoDate(new Date());
+  const tomorrow = toIsoDate(addDays(new Date(), 1));
+  const weekEnd = toIsoDate(addDays(new Date(), 7));
+
+  // ── Derived data ────────────────────────────────────────────────────
+
+  const inboxTasks = useMemo(
+    () => tasks.filter((t) => t.status === "inbox").sort((a, b) => a.position - b.position),
+    [tasks]
+  );
+  const scheduledTasks = useMemo(
+    () =>
+      tasks
+        .filter((t) => t.status === "scheduled")
+        .sort((a, b) => (a.scheduledDate ?? "").localeCompare(b.scheduledDate ?? "") || a.position - b.position),
+    [tasks]
+  );
+  const completedTasks = useMemo(
+    () => tasks.filter((t) => t.status === "completed").sort((a, b) => b.updatedAt - a.updatedAt),
+    [tasks]
+  );
+  const todayCount = useMemo(
+    () => tasks.filter((t) => t.status === "scheduled" && t.scheduledDate === today).length,
+    [tasks, today]
+  );
+
+  const timelineSections = useMemo(() => {
+    const grouped = new Map<string, MobileTask[]>();
+    for (const task of scheduledTasks) {
+      const key = task.scheduledDate ?? "unscheduled";
+      const existing = grouped.get(key) ?? [];
+      existing.push(task);
+      grouped.set(key, existing);
     }
-  }, []);
+    return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [scheduledTasks]);
+
+  const tabBarBottomPadding = Math.max(insets.bottom, spacing.md);
+  const tabBarHeight = 62 + tabBarBottomPadding;
+  const fabBottom = tabBarHeight + spacing.xxl;
+
+  // ── Effects ─────────────────────────────────────────────────────────
 
   useEffect(() => {
     let mounted = true;
     authStorageReady.finally(() => {
-      if (mounted) {
-        setIsAuthHydrated(true);
-      }
+      if (mounted) setIsAuthHydrated(true);
     });
     return () => {
       mounted = false;
@@ -156,186 +182,209 @@ function MobileApp() {
 
   useEffect(() => {
     if (!toast) return;
-    const timeout = setTimeout(() => {
-      setToast(null);
-    }, 3200);
+    const timeout = setTimeout(() => setToast(null), 3200);
     return () => clearTimeout(timeout);
   }, [toast]);
 
   useEffect(() => {
-    if (pendingMutations === 0) {
-      setOptimisticTasks(null);
-    }
+    if (pendingMutations === 0) setOptimisticTasks(null);
   }, [pendingMutations, serverTasks]);
 
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1.05,
-          duration: 1200,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 1200,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    loop.start();
-    return () => {
-      loop.stop();
-    };
-  }, [pulse]);
+  // ── Toast / retry ───────────────────────────────────────────────────
 
-  const today = toIsoDate(new Date());
-  const tomorrow = toIsoDate(addDays(new Date(), 1));
-  const weekEnd = toIsoDate(addDays(new Date(), 7));
+  const showToast = useCallback((next: ToastState) => setToast(next), []);
 
-  const inboxTasks = useMemo(
-    () => tasks.filter((task) => task.status === "inbox").sort((a, b) => a.position - b.position),
-    [tasks]
-  );
-  const scheduledTasks = useMemo(
-    () =>
-      tasks
-        .filter((task) => task.status === "scheduled")
-        .sort((a, b) => (a.scheduledDate ?? "").localeCompare(b.scheduledDate ?? "") || a.position - b.position),
-    [tasks]
-  );
-  const completedTasks = useMemo(
-    () => tasks.filter((task) => task.status === "completed").sort((a, b) => b.updatedAt - a.updatedAt),
-    [tasks]
+  const enqueueRetry = useCallback(
+    (item: Omit<RetryQueueItem, "id" | "attempts">) => {
+      setRetryQueue((cur) => [...cur, { id: `${Date.now()}-${cur.length}`, attempts: 0, ...item }]);
+    },
+    []
   );
 
-  const todayCount = useMemo(
-    () => tasks.filter((task) => task.status === "scheduled" && task.scheduledDate === today).length,
-    [tasks, today]
-  );
-
-  const timelineSections = useMemo(() => {
-    const grouped = new Map<string, typeof scheduledTasks>();
-    for (const task of scheduledTasks) {
-      const key = task.scheduledDate ?? "unscheduled";
-      const existing = grouped.get(key) ?? [];
-      existing.push(task);
-      grouped.set(key, existing);
-    }
-    return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [scheduledTasks]);
-
-  const headerSubtitle =
-    activeTab === "timeline"
-      ? "See what is scheduled next"
-      : activeTab === "completed"
-        ? "Closed loops from this week"
-        : "Capture first, organize later";
-
-  const enqueueRetry = (item: Omit<RetryQueueItem, "id" | "attempts">) => {
-    setRetryQueue((current) => [
-      ...current,
-      { id: `${Date.now()}-${current.length}`, attempts: 0, ...item },
-    ]);
-  };
-
-  const retryQueuedMutations = async () => {
+  const retryQueuedMutations = useCallback(async () => {
     if (!retryQueue.length) return;
-    const queueSnapshot = [...retryQueue];
+    const snapshot = [...retryQueue];
     setRetryQueue([]);
     let failed = 0;
-    for (const queued of queueSnapshot) {
+    for (const queued of snapshot) {
       try {
         await queued.run();
       } catch {
         failed += 1;
-        setRetryQueue((current) => [
-          ...current,
-          {
-            ...queued,
-            attempts: queued.attempts + 1,
-          },
-        ]);
+        setRetryQueue((cur) => [...cur, { ...queued, attempts: queued.attempts + 1 }]);
       }
     }
     if (failed === 0) {
       showToast({ kind: "info", message: "Retry complete" });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
-  };
+  }, [retryQueue, showToast]);
 
-  const openTaskSheet = (task: MobileTask) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setEditingTaskId(task._id);
-    setEditTitle(task.title);
-    setEditDescription(task.description ?? "");
-    setEditDeadline(task.deadline ?? "");
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
+  // ── Optimistic mutation runner ──────────────────────────────────────
 
-  const closeTaskSheet = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setEditingTaskId(null);
-    setEditTitle("");
-    setEditDescription("");
-    setEditDeadline("");
-  };
-
-  const runOptimisticMutation = async ({
-    optimistic,
-    mutation,
-    errorMessage,
-    retryLabel,
-  }: {
-    optimistic: (currentTasks: MobileTask[]) => MobileTask[];
-    mutation: () => Promise<void>;
-    errorMessage: string;
-    retryLabel?: string;
-  }): Promise<boolean> => {
-    setPendingMutations((count) => count + 1);
-    setOptimisticTasks((current) => optimistic(current ?? serverTasks));
-    try {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      await mutation();
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      return true;
-    } catch (error) {
-      setOptimisticTasks(null);
-      const canRetry = retryLabel && isLikelyOfflineError(error);
-      if (canRetry) {
-        enqueueRetry({
-          label: retryLabel!,
-          run: mutation,
+  const runOptimisticMutation = useCallback(
+    async ({
+      optimistic,
+      mutation,
+      errorMessage,
+      retryLabel,
+    }: {
+      optimistic: (current: MobileTask[]) => MobileTask[];
+      mutation: () => Promise<void>;
+      errorMessage: string;
+      retryLabel?: string;
+    }): Promise<boolean> => {
+      setPendingMutations((c) => c + 1);
+      setOptimisticTasks((cur) => optimistic(cur ?? serverTasks));
+      try {
+        await mutation();
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        return true;
+      } catch (error) {
+        setOptimisticTasks(null);
+        const canRetry = retryLabel && isLikelyOfflineError(error);
+        if (canRetry) enqueueRetry({ label: retryLabel!, run: mutation });
+        showToast({
+          kind: "error",
+          message: canRetry ? `${errorMessage} Queued for retry.` : errorMessage,
         });
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        return false;
+      } finally {
+        setPendingMutations((c) => Math.max(0, c - 1));
       }
-      showToast({
-        kind: "error",
-        message: canRetry ? `${errorMessage} Queued for retry.` : errorMessage,
-      });
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      return false;
-    } finally {
-      setPendingMutations((count) => Math.max(0, count - 1));
-    }
-  };
+    },
+    [serverTasks, enqueueRetry, showToast]
+  );
 
-  const handleRefresh = async () => {
-    if (!session || isRefreshing) return;
-    setIsRefreshing(true);
-    try {
-      await convex.query(api.tasks.listTasks, {});
-      showToast({ kind: "info", message: "Workspace refreshed" });
-      if (retryQueue.length) {
-        await retryQueuedMutations();
+  // ── Task actions ────────────────────────────────────────────────────
+
+  const markDone = useCallback(
+    (taskId: Id<"tasks">) => {
+      void runOptimisticMutation({
+        optimistic: (cur) =>
+          cur.map((t) => (t._id === taskId ? { ...t, status: "completed" as const, updatedAt: Date.now() } : t)),
+        mutation: async () => { await completeTaskMutation({ taskId }); },
+        errorMessage: "Could not mark task as done.",
+        retryLabel: "Retry done",
+      });
+    },
+    [runOptimisticMutation, completeTaskMutation]
+  );
+
+  const moveToToday = useCallback(
+    (taskId: Id<"tasks">) => {
+      void runOptimisticMutation({
+        optimistic: (cur) =>
+          cur.map((t) =>
+            t._id === taskId ? { ...t, status: "scheduled" as const, scheduledDate: today, updatedAt: Date.now() } : t
+          ),
+        mutation: async () => { await moveTaskMutation({ taskId, targetDate: today }); },
+        errorMessage: "Could not move task to today.",
+        retryLabel: "Retry move to today",
+      });
+    },
+    [runOptimisticMutation, moveTaskMutation, today]
+  );
+
+  const sendToInbox = useCallback(
+    (taskId: Id<"tasks">) => {
+      void runOptimisticMutation({
+        optimistic: (cur) =>
+          cur.map((t) =>
+            t._id === taskId
+              ? { ...t, status: "inbox" as const, scheduledDate: undefined, updatedAt: Date.now() }
+              : t
+          ),
+        mutation: async () => { await unscheduleTaskMutation({ taskId }); },
+        errorMessage: "Could not move task back to inbox.",
+        retryLabel: "Retry move to inbox",
+      });
+    },
+    [runOptimisticMutation, unscheduleTaskMutation]
+  );
+
+  const reopenToInbox = useCallback(
+    (taskId: Id<"tasks">) => {
+      void runOptimisticMutation({
+        optimistic: (cur) =>
+          cur.map((t) =>
+            t._id === taskId
+              ? { ...t, status: "inbox" as const, scheduledDate: undefined, updatedAt: Date.now() }
+              : t
+          ),
+        mutation: async () => { await reopenTaskMutation({ taskId }); },
+        errorMessage: "Could not reopen task.",
+        retryLabel: "Retry reopen",
+      });
+    },
+    [runOptimisticMutation, reopenTaskMutation]
+  );
+
+  // ── Add task handler (from sheet) ───────────────────────────────────
+
+  const handleAddTask = useCallback(
+    async (data: { title: string; description?: string; deadline?: string; mode: "inbox" | "today" }) => {
+      try {
+        await addTaskMutation({
+          title: data.title,
+          description: data.description,
+          deadline: data.deadline,
+          type: data.deadline ? "deadline" : "open",
+          scheduledDate: data.mode === "today" ? today : undefined,
+        });
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        return true;
+      } catch (error) {
+        const mutation = async () => {
+          await addTaskMutation({
+            title: data.title,
+            description: data.description,
+            deadline: data.deadline,
+            type: data.deadline ? "deadline" : "open",
+            scheduledDate: data.mode === "today" ? today : undefined,
+          });
+        };
+        if (isLikelyOfflineError(error)) {
+          enqueueRetry({ label: `Add "${data.title}"`, run: mutation });
+          showToast({ kind: "error", message: "Offline. Task queued for retry." });
+        } else {
+          showToast({ kind: "error", message: "Could not add task. Please try again." });
+        }
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        return false;
       }
-    } catch {
-      showToast({ kind: "error", message: "Could not refresh tasks. Check connection and retry." });
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
+    },
+    [addTaskMutation, today, enqueueRetry, showToast]
+  );
+
+  // ── Save task edits (from edit sheet) ───────────────────────────────
+
+  const handleSaveEdits = useCallback(
+    async (data: { taskId: Id<"tasks">; title: string; description?: string; deadline?: string }) => {
+      return runOptimisticMutation({
+        optimistic: (cur) =>
+          cur.map((t) =>
+            t._id === data.taskId
+              ? { ...t, title: data.title, description: data.description, deadline: data.deadline, updatedAt: Date.now() }
+              : t
+          ),
+        mutation: async () => {
+          await updateTaskMutation({
+            taskId: data.taskId,
+            title: data.title,
+            description: data.description,
+            deadline: data.deadline,
+          });
+        },
+        errorMessage: "Could not save task details.",
+        retryLabel: `Update "${data.title}"`,
+      });
+    },
+    [runOptimisticMutation, updateTaskMutation]
+  );
+
+  // ── Auth ────────────────────────────────────────────────────────────
 
   const handleGoogleSignIn = async () => {
     if (!googleWebClientId || isSigningIn) return;
@@ -344,13 +393,11 @@ function MobileApp() {
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
       const result = await GoogleSignin.signIn();
       if (result.type !== "success") return;
-
       const idToken = result.data.idToken;
       if (!idToken) {
         showToast({ kind: "error", message: "Google sign-in did not return an ID token." });
         return;
       }
-
       await authClient.signIn.social({
         provider: "google",
         idToken: { token: idToken },
@@ -364,190 +411,34 @@ function MobileApp() {
     }
   };
 
-  const addTask = async () => {
-    const title = draftTitle.trim();
-    if (!title || isSaving) return;
-    const deadlineInput = normalizeDeadlineInput(draftDeadline);
-    if (deadlineInput.error) {
-      showToast({ kind: "error", message: deadlineInput.error });
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      return;
-    }
-
-    const deadline = deadlineInput.value;
-
-    setIsSaving(true);
+  const handleRefresh = async () => {
+    if (!session || isRefreshing) return;
+    setIsRefreshing(true);
     try {
-      await addTaskMutation({
-        title,
-        description: draftDescription.trim() || undefined,
-        deadline,
-        type: deadline ? "deadline" : "open",
-        scheduledDate: composerMode === "today" ? today : undefined,
-      });
-      setDraftTitle("");
-      setDraftDescription("");
-      setDraftDeadline("");
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    } catch (error) {
-      const mutation = async () => {
-        await addTaskMutation({
-          title,
-          description: draftDescription.trim() || undefined,
-          deadline,
-          type: deadline ? "deadline" : "open",
-          scheduledDate: composerMode === "today" ? today : undefined,
-        });
-      };
-      if (isLikelyOfflineError(error)) {
-        enqueueRetry({ label: `Add "${title}"`, run: mutation });
-        showToast({ kind: "error", message: "Offline. Task queued for retry." });
-      } else {
-        showToast({ kind: "error", message: "Could not add task. Please try again." });
-      }
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      await convex.query(api.tasks.listTasks, {});
+      showToast({ kind: "info", message: "Workspace refreshed" });
+      if (retryQueue.length) await retryQueuedMutations();
+    } catch {
+      showToast({ kind: "error", message: "Could not refresh tasks. Check connection and retry." });
     } finally {
-      setIsSaving(false);
+      setIsRefreshing(false);
     }
   };
 
-  const saveTaskEdits = async () => {
-    if (!editingTaskId || !editTitle.trim() || isEditSaving) return;
-    setIsEditSaving(true);
-    const title = editTitle.trim();
-    const deadlineInput = normalizeDeadlineInput(editDeadline);
-    if (deadlineInput.error) {
-      showToast({ kind: "error", message: deadlineInput.error });
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setIsEditSaving(false);
-      return;
-    }
+  const handleEditTask = useCallback(
+    (task: MobileTask) => editTaskSheetRef.current?.open(task),
+    []
+  );
 
-    const description = editDescription.trim() || undefined;
-    const deadline = deadlineInput.value;
-    const mutation = async () => {
-      await updateTaskMutation({
-        taskId: editingTaskId,
-        title,
-        description,
-        deadline,
-      });
-    };
-
-    try {
-      const didSave = await runOptimisticMutation({
-        optimistic: (currentTasks) =>
-          currentTasks.map((task) =>
-            task._id === editingTaskId
-              ? {
-                  ...task,
-                  title,
-                  description,
-                  deadline,
-                  updatedAt: Date.now(),
-                }
-              : task
-          ),
-        mutation,
-        errorMessage: "Could not save task details.",
-        retryLabel: `Update "${title}"`,
-      });
-      if (didSave) {
-        closeTaskSheet();
-      }
-    } finally {
-      setIsEditSaving(false);
-    }
-  };
-
-  const markDone = async (taskId: Id<"tasks">) => {
-    await runOptimisticMutation({
-      optimistic: (currentTasks) =>
-        currentTasks.map((task) =>
-          task._id === taskId
-            ? {
-                ...task,
-                status: "completed",
-                updatedAt: Date.now(),
-              }
-            : task
-        ),
-      mutation: async () => {
-        await completeTaskMutation({ taskId });
-      },
-      errorMessage: "Could not mark task as done.",
-      retryLabel: "Retry done",
-    });
-  };
-
-  const moveToToday = async (taskId: Id<"tasks">) => {
-    await runOptimisticMutation({
-      optimistic: (currentTasks) =>
-        currentTasks.map((task) =>
-          task._id === taskId
-            ? {
-                ...task,
-                status: "scheduled",
-                scheduledDate: today,
-                updatedAt: Date.now(),
-              }
-            : task
-        ),
-      mutation: async () => {
-        await moveTaskMutation({ taskId, targetDate: today });
-      },
-      errorMessage: "Could not move task to today.",
-      retryLabel: "Retry move to today",
-    });
-  };
-
-  const sendToInbox = async (taskId: Id<"tasks">) => {
-    await runOptimisticMutation({
-      optimistic: (currentTasks) =>
-        currentTasks.map((task) =>
-          task._id === taskId
-            ? {
-                ...task,
-                status: "inbox",
-                scheduledDate: undefined,
-                updatedAt: Date.now(),
-              }
-            : task
-        ),
-      mutation: async () => {
-        await unscheduleTaskMutation({ taskId });
-      },
-      errorMessage: "Could not move task back to inbox.",
-      retryLabel: "Retry move to inbox",
-    });
-  };
-
-  const reopenToInbox = async (taskId: Id<"tasks">) => {
-    await runOptimisticMutation({
-      optimistic: (currentTasks) =>
-        currentTasks.map((task) =>
-          task._id === taskId
-            ? {
-                ...task,
-                status: "inbox",
-                scheduledDate: undefined,
-                updatedAt: Date.now(),
-              }
-            : task
-        ),
-      mutation: async () => {
-        await reopenTaskMutation({ taskId });
-      },
-      errorMessage: "Could not reopen task.",
-      retryLabel: "Retry reopen",
-    });
-  };
+  // ── Loading / Auth screens ──────────────────────────────────────────
 
   if (!isAuthHydrated || sessionLoading) {
     return (
       <SafeAreaView style={styles.authContainer}>
         <StatusBar style="light" />
-        <Text style={styles.authTitle}>Loading your workspace...</Text>
+        <Animated.Text entering={FadeIn.duration(600)} style={styles.loadingText}>
+          Loading your workspace...
+        </Animated.Text>
       </SafeAreaView>
     );
   }
@@ -556,749 +447,447 @@ function MobileApp() {
     return (
       <SafeAreaView style={styles.authContainer}>
         <StatusBar style="light" />
-        <View style={styles.authCard}>
-          <Text style={styles.kicker}>Pravah Mobile</Text>
-          <Text style={styles.authTitle}>Continue with Google</Text>
-          <Text style={styles.authSubtitle}>Use the same account as your web app to keep tasks in sync.</Text>
+        <Animated.View entering={FadeIn.duration(400)} style={styles.authCard}>
+          <Text style={styles.kicker}>Pravah</Text>
+          <Text style={styles.authTitle}>Welcome back</Text>
+          <Text style={styles.authSubtitle}>
+            Sign in with Google to sync your tasks across devices.
+          </Text>
           <Pressable
             onPress={handleGoogleSignIn}
             disabled={!canGoogleSignIn || isSigningIn}
             style={({ pressed }) => [
               styles.googleButton,
-              !canGoogleSignIn || isSigningIn ? styles.disabledButton : null,
-              pressed ? styles.pressed : null,
+              (!canGoogleSignIn || isSigningIn) && styles.disabledButton,
+              pressed && styles.pressed,
             ]}
           >
-            <Text style={styles.googleButtonText}>{isSigningIn ? "Signing in..." : "Sign in with Google"}</Text>
+            <Text style={styles.googleButtonText}>
+              {isSigningIn ? "Signing in..." : "Continue with Google"}
+            </Text>
           </Pressable>
           {!canGoogleSignIn ? (
-            <Text style={styles.authSubtitle}>Set EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in mobile env.</Text>
+            <Text style={styles.authHint}>Set EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in mobile env.</Text>
           ) : null}
-        </View>
+        </Animated.View>
       </SafeAreaView>
     );
   }
 
-  const visibleCount =
+  // ── Header subtitle ─────────────────────────────────────────────────
+
+  const headerSubtitle =
     activeTab === "timeline"
-      ? scheduledTasks.length
+      ? `${todayCount} task${todayCount === 1 ? "" : "s"} scheduled`
       : activeTab === "completed"
-        ? completedTasks.length
-        : inboxTasks.length;
+        ? "Closed loops"
+        : `${inboxTasks.length} task${inboxTasks.length === 1 ? "" : "s"} to triage`;
+
+  // ── Render task list ────────────────────────────────────────────────
+
+  const renderTaskList = () => {
+    if (activeTab === "timeline") {
+      if (!timelineSections.length) {
+        return (
+          <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>No scheduled tasks</Text>
+            <Text style={styles.emptyText}>
+              Swipe inbox tasks left or tap to schedule them for today.
+            </Text>
+          </Animated.View>
+        );
+      }
+      let flatIndex = 0;
+      return timelineSections.map(([dateKey, items]) => (
+        <View key={dateKey}>
+          <Text style={styles.sectionDate}>
+            {dateLabel(dateKey, today, tomorrow, weekEnd)}
+          </Text>
+          {items.map((task) => (
+            <TaskCard
+              key={task._id}
+              task={task}
+              index={flatIndex++}
+              dateLabel={dateLabel(dateKey, today, tomorrow, weekEnd)}
+              onDone={markDone}
+              onSendToInbox={sendToInbox}
+              onEdit={handleEditTask}
+            />
+          ))}
+        </View>
+      ));
+    }
+
+    if (activeTab === "completed") {
+      if (!completedTasks.length) {
+        return (
+          <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>Nothing completed yet</Text>
+            <Text style={styles.emptyText}>
+              Mark tasks done to build momentum and see progress here.
+            </Text>
+          </Animated.View>
+        );
+      }
+      return completedTasks.map((task, i) => (
+        <TaskCard
+          key={task._id}
+          task={task}
+          index={i}
+          onDone={markDone}
+          onReopen={reopenToInbox}
+          onEdit={handleEditTask}
+        />
+      ));
+    }
+
+    // Inbox
+    if (!inboxTasks.length) {
+      return (
+        <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
+          <Text style={styles.emptyTitle}>Inbox zero</Text>
+          <Text style={styles.emptyText}>
+            Tap the + button to capture a new task.
+          </Text>
+        </Animated.View>
+      );
+    }
+    return inboxTasks.map((task, i) => (
+      <TaskCard
+        key={task._id}
+        task={task}
+        index={i}
+        onDone={markDone}
+        onMoveToday={moveToToday}
+        onEdit={handleEditTask}
+      />
+    ));
+  };
+
+  // ── Main layout ─────────────────────────────────────────────────────
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.backgroundGlowTop} />
-      <View style={styles.backgroundGlowBottom} />
+      <StatusBar style="light" />
 
-      <View style={styles.header}>
-        <Text style={styles.kicker}>Pravah Mobile</Text>
-        <Text style={styles.title}>Flow through your day</Text>
-        <Text style={styles.subtitle}>{headerSubtitle}</Text>
+      {/* Background glows */}
+      <View style={styles.glowTop} />
+      <View style={styles.glowBottom} />
+
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
+        <View style={styles.headerTop}>
+          <View>
+            <Text style={styles.kicker}>Pravah</Text>
+            <Text style={styles.headerTitle}>
+              {activeTab === "timeline"
+                ? "Timeline"
+                : activeTab === "completed"
+                  ? "Completed"
+                  : "Inbox"}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => void authClient.signOut()}
+            style={({ pressed }) => [styles.profileButton, pressed && styles.pressed]}
+            hitSlop={8}
+          >
+            <Text style={styles.profileButtonText}>Sign out</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>
       </View>
 
+      {/* Toast */}
       {toast ? (
-        <View style={[styles.toast, toast.kind === "error" ? styles.toastError : styles.toastInfo]}>
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          style={[styles.toast, toast.kind === "error" ? styles.toastError : styles.toastInfo]}
+        >
           <Text style={styles.toastText}>{toast.message}</Text>
-        </View>
+        </Animated.View>
       ) : null}
 
-      <View style={styles.metricsRow}>
-        <View style={styles.metricCard}>
-          <Text style={styles.metricValue}>{inboxTasks.length}</Text>
-          <Text style={styles.metricLabel}>Inbox</Text>
-        </View>
-        <View style={styles.metricCard}>
-          <Text style={styles.metricValue}>{todayCount}</Text>
-          <Text style={styles.metricLabel}>Today</Text>
-        </View>
-        <View style={styles.metricCard}>
-          <Text style={styles.metricValue}>{completedTasks.length}</Text>
-          <Text style={styles.metricLabel}>Done</Text>
-        </View>
-      </View>
-
-      <View style={styles.tabRow}>
-        {(["inbox", "timeline", "completed"] as const).map((tab) => (
-          <Pressable
-            key={tab}
-            onPress={() => setActiveTab(tab)}
-            style={({ pressed }) => [styles.tab, activeTab === tab ? styles.tabActive : null, pressed ? styles.pressed : null]}
-          >
-            <Text style={[styles.tabText, activeTab === tab ? styles.tabTextActive : null]}>
-              {tab === "completed" ? "Done" : tab[0].toUpperCase() + tab.slice(1)}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      <View style={styles.inputRow}>
-        <TextInput
-          value={draftTitle}
-          onChangeText={setDraftTitle}
-          placeholder="Capture a task"
-          placeholderTextColor="#6d7e9a"
-          style={styles.input}
-          returnKeyType="done"
-          onSubmitEditing={() => {
-            void addTask();
-          }}
-        />
-        <Animated.View style={[styles.pulseWrap, { transform: [{ scale: pulse }] }]}> 
+      {/* Retry banner */}
+      {retryQueue.length > 0 ? (
         <Pressable
-          onPress={() => {
-            void addTask();
-          }}
-          disabled={isSaving}
-          style={({ pressed }) => [
-            styles.addButton,
-            isSaving ? styles.disabledButton : null,
-            pressed ? styles.pressed : null,
-          ]}
+          onPress={() => void retryQueuedMutations()}
+          style={({ pressed }) => [styles.retryBanner, pressed && styles.pressed]}
         >
-          <Text style={styles.addButtonText}>{isSaving ? "Saving" : "Add"}</Text>
-        </Pressable>
-        </Animated.View>
-      </View>
-
-      <View style={styles.metaInputRow}>
-        <TextInput
-          value={draftDescription}
-          onChangeText={setDraftDescription}
-          placeholder="Notes (optional)"
-          placeholderTextColor="#6d7e9a"
-          style={[styles.input, styles.metaInput]}
-        />
-        <TextInput
-          value={draftDeadline}
-          onChangeText={setDraftDeadline}
-          placeholder="Deadline YYYY-MM-DD"
-          placeholderTextColor="#6d7e9a"
-          style={[styles.input, styles.metaInput]}
-        />
-      </View>
-
-      <View style={styles.composerModeRow}>
-        <Pressable
-          onPress={() => setComposerMode("inbox")}
-          style={({ pressed }) => [styles.modeChip, composerMode === "inbox" ? styles.modeChipActive : null, pressed ? styles.pressed : null]}
-        >
-          <Text style={[styles.modeChipText, composerMode === "inbox" ? styles.modeChipTextActive : null]}>
-            Add to Inbox
+          <Text style={styles.retryBannerText}>
+            Retry {retryQueue.length} queued change(s)
           </Text>
         </Pressable>
-        <Pressable
-          onPress={() => setComposerMode("today")}
-          style={({ pressed }) => [styles.modeChip, composerMode === "today" ? styles.modeChipActive : null, pressed ? styles.pressed : null]}
-        >
-          <Text style={[styles.modeChipText, composerMode === "today" ? styles.modeChipTextActive : null]}>
-            Add to Today
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => {
-            void authClient.signOut();
-          }}
-          style={({ pressed }) => [styles.modeChip, pressed ? styles.pressed : null]}
-        >
-          <Text style={styles.modeChipText}>Sign out</Text>
-        </Pressable>
-      </View>
+      ) : null}
 
-      <ScrollView
-        contentContainerStyle={styles.listWrap}
+      {/* Sync indicator */}
+      {pendingMutations > 0 ? (
+        <Text style={styles.syncText}>Syncing changes...</Text>
+      ) : null}
+
+      {/* Task list */}
+      <Animated.ScrollView
+        style={styles.list}
+        contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + 84 }]}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
-            onRefresh={() => {
-              void handleRefresh();
-            }}
-            tintColor="#7dd3fc"
-            colors={["#7dd3fc"]}
-            progressBackgroundColor="#0d1a2f"
+            onRefresh={() => void handleRefresh()}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+            progressBackgroundColor={colors.bgCard}
           />
         }
       >
-        <Text style={styles.sectionTitle}>
-          {activeTab === "timeline" ? "Timeline" : activeTab === "completed" ? "Completed" : "Inbox"} ({visibleCount})
-        </Text>
-        {retryQueue.length > 0 ? (
-          <Pressable
-            onPress={() => {
-              void retryQueuedMutations();
-            }}
-            style={({ pressed }) => [styles.retryBanner, pressed ? styles.pressed : null]}
-          >
-            <Text style={styles.retryBannerText}>Retry {retryQueue.length} queued change(s)</Text>
-          </Pressable>
-        ) : null}
-        {pendingMutations > 0 ? <Text style={styles.syncText}>Syncing changes...</Text> : null}
+        {renderTaskList()}
+      </Animated.ScrollView>
 
-        {activeTab === "timeline" ? (
-          timelineSections.length ? (
-            timelineSections.map(([dateKey, items]) => (
-              <View key={dateKey}>
-                <Text style={styles.bucketLabel}>{dateLabel(dateKey, today, tomorrow, weekEnd)}</Text>
-                {items.map((task) => (
-                  <View key={task._id} style={styles.taskCard}>
-                    <View style={styles.taskTextWrap}>
-                      <Text style={styles.taskTitle}>{task.title}</Text>
-                      <Text style={styles.taskMeta}>{dateLabel(dateKey, today, tomorrow, weekEnd)}</Text>
-                      {task.description ? <Text style={styles.taskDetail}>{task.description}</Text> : null}
-                    </View>
-                    <View style={styles.actionRow}>
-                      <Pressable
-                        onPress={() => openTaskSheet(task)}
-                        style={({ pressed }) => [styles.ghostButton, pressed ? styles.pressed : null]}
-                      >
-                        <Text style={styles.ghostButtonText}>Edit</Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => {
-                          void sendToInbox(task._id);
-                        }}
-                        style={({ pressed }) => [styles.ghostButton, pressed ? styles.pressed : null]}
-                      >
-                        <Text style={styles.ghostButtonText}>Inbox</Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => {
-                          void markDone(task._id);
-                        }}
-                        style={({ pressed }) => [styles.doneButton, pressed ? styles.pressed : null]}
-                      >
-                        <Text style={styles.doneButtonText}>Done</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            ))
-          ) : (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>No scheduled tasks yet. Promote inbox items to Today.</Text>
-            </View>
-          )
-        ) : activeTab === "completed" ? (
-          completedTasks.length ? (
-            completedTasks.map((task) => (
-              <View key={task._id} style={[styles.taskCard, styles.completedCard]}>
-                <Text style={[styles.taskTitle, styles.completedTitle]}>{task.title}</Text>
-                <Pressable
-                  onPress={() => {
-                    void reopenToInbox(task._id);
-                  }}
-                  style={({ pressed }) => [styles.reopenButton, pressed ? styles.pressed : null]}
-                >
-                  <Text style={styles.reopenButtonText}>Reopen</Text>
-                </Pressable>
-              </View>
-            ))
-          ) : (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>Nothing completed yet. Mark tasks done to build momentum.</Text>
-            </View>
-          )
-        ) : inboxTasks.length ? (
-          inboxTasks.map((task) => (
-            <View key={task._id} style={styles.taskCard}>
-              <View style={styles.taskTextWrap}>
-                <Text style={styles.taskTitle}>{task.title}</Text>
-                {task.description ? <Text style={styles.taskDetail}>{task.description}</Text> : null}
-                {task.deadline ? <Text style={styles.taskMeta}>Due {task.deadline}</Text> : null}
-              </View>
-              <View style={styles.actionRow}>
-                <Pressable
-                  onPress={() => openTaskSheet(task)}
-                  style={({ pressed }) => [styles.ghostButton, pressed ? styles.pressed : null]}
-                >
-                  <Text style={styles.ghostButtonText}>Edit</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => {
-                    void moveToToday(task._id);
-                  }}
-                  style={({ pressed }) => [styles.ghostButton, pressed ? styles.pressed : null]}
-                >
-                  <Text style={styles.ghostButtonText}>Today</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => {
-                    void markDone(task._id);
-                  }}
-                  style={({ pressed }) => [styles.doneButton, pressed ? styles.pressed : null]}
-                >
-                  <Text style={styles.doneButtonText}>Done</Text>
-                </Pressable>
-              </View>
-            </View>
-          ))
-        ) : (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>Your inbox is clear. Add a task or route one from timeline.</Text>
-          </View>
-        )}
-      </ScrollView>
+      {/* FAB */}
+      {!isAddSheetOpen && !isEditSheetOpen ? (
+        <FAB bottom={fabBottom} onPress={() => addTaskSheetRef.current?.open()} />
+      ) : null}
 
-      <Modal transparent visible={!!editingTaskId} animationType="slide" onRequestClose={closeTaskSheet}>
-        <KeyboardAvoidingView
-          style={styles.sheetBackdrop}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
-        >
-          <View style={styles.sheetCard}>
-            <Text style={styles.sheetTitle}>Task details</Text>
-            <TextInput
-              value={editTitle}
-              onChangeText={setEditTitle}
-              placeholder="Task title"
-              placeholderTextColor="#6d7e9a"
-              style={styles.sheetInput}
-            />
-            <TextInput
-              value={editDescription}
-              onChangeText={setEditDescription}
-              placeholder="Notes"
-              placeholderTextColor="#6d7e9a"
-              style={[styles.sheetInput, styles.sheetTextarea]}
-              multiline
-            />
-            <TextInput
-              value={editDeadline}
-              onChangeText={setEditDeadline}
-              placeholder="Deadline YYYY-MM-DD"
-              placeholderTextColor="#6d7e9a"
-              style={styles.sheetInput}
-            />
+      {/* Bottom tab bar */}
+      <BottomTabBar
+        active={activeTab}
+        onChange={setActiveTab}
+        inboxCount={inboxTasks.length}
+        todayCount={todayCount}
+        doneCount={completedTasks.length}
+        bottomInset={tabBarBottomPadding}
+      />
 
-            <View style={styles.sheetActions}>
-              <Pressable onPress={closeTaskSheet} style={({ pressed }) => [styles.sheetGhostButton, pressed ? styles.pressed : null]}>
-                <Text style={styles.sheetGhostButtonText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  void saveTaskEdits();
-                }}
-                disabled={isEditSaving}
-                style={({ pressed }) => [styles.sheetPrimaryButton, isEditSaving ? styles.disabledButton : null, pressed ? styles.pressed : null]}
-              >
-                <Text style={styles.sheetPrimaryButtonText}>{isEditSaving ? "Saving" : "Save"}</Text>
-              </Pressable>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      <StatusBar style="light" />
+      {/* Bottom sheets */}
+      <AddTaskSheet
+        ref={addTaskSheetRef}
+        onAdd={handleAddTask}
+        isValidDeadline={normalizeDeadlineInput}
+        onSheetChange={setIsAddSheetOpen}
+      />
+      <EditTaskSheet
+        ref={editTaskSheetRef}
+        onSave={handleSaveEdits}
+        isValidDeadline={normalizeDeadlineInput}
+        onSheetChange={setIsEditSheetOpen}
+      />
     </SafeAreaView>
   );
 }
 
+// ── Root ────────────────────────────────────────────────────────────────
+
 export default function App() {
   return (
-    <ConvexClientProvider>
-      <MobileApp />
-    </ConvexClientProvider>
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <ConvexClientProvider>
+          <MobileApp />
+        </ConvexClientProvider>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }
 
+// ── Styles ──────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
+  // Auth
   authContainer: {
     flex: 1,
-    backgroundColor: "#09111f",
-    paddingHorizontal: 20,
+    backgroundColor: colors.bg,
+    paddingHorizontal: spacing.xl,
     justifyContent: "center",
   },
+  loadingText: {
+    color: colors.textPrimary,
+    ...typography.h2,
+    textAlign: "center",
+  },
   authCard: {
-    borderRadius: 20,
+    borderRadius: radii.xl,
     borderWidth: 1,
-    borderColor: "#1f3655",
-    backgroundColor: "#0d1a2f",
-    padding: 20,
-    gap: 12,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+    padding: spacing.xl,
+    gap: spacing.md,
   },
   authTitle: {
-    color: "#f1f5f9",
-    fontSize: 24,
-    fontWeight: "700",
+    color: colors.textPrimary,
+    ...typography.h1,
   },
   authSubtitle: {
-    color: "#9fb3cc",
+    color: colors.textSecondary,
     fontSize: 14,
     lineHeight: 20,
   },
+  authHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
   googleButton: {
-    borderRadius: 12,
-    backgroundColor: "#f1f5f9",
-    paddingVertical: 12,
+    borderRadius: radii.md,
+    backgroundColor: colors.textPrimary,
+    paddingVertical: 14,
     alignItems: "center",
+    marginTop: spacing.sm,
+  },
+  googleButtonText: {
+    color: colors.bg,
+    fontWeight: "700",
+    fontSize: 15,
   },
   disabledButton: {
     opacity: 0.6,
   },
-  googleButtonText: {
-    color: "#0b1323",
-    fontWeight: "700",
-  },
+
+  // Main layout
   container: {
     flex: 1,
-    backgroundColor: "#09111f",
-    paddingHorizontal: 16,
+    backgroundColor: colors.bg,
   },
-  backgroundGlowTop: {
+  glowTop: {
     position: "absolute",
     top: -120,
     right: -80,
     width: 260,
     height: 260,
     borderRadius: 130,
-    backgroundColor: "#0ea5e91e",
+    backgroundColor: colors.glowCyan,
   },
-  backgroundGlowBottom: {
+  glowBottom: {
     position: "absolute",
     bottom: -140,
     left: -80,
     width: 300,
     height: 300,
     borderRadius: 150,
-    backgroundColor: "#34d39914",
+    backgroundColor: colors.glowGreen,
   },
+
+  // Header
   header: {
-    paddingTop: 12,
-    paddingBottom: 6,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  headerTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
   },
   kicker: {
-    color: "#7dd3fc",
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.7,
+    color: colors.accent,
+    ...typography.kicker,
   },
-  title: {
-    color: "#f1f5f9",
-    fontSize: 30,
-    fontWeight: "700",
-    marginTop: 4,
+  headerTitle: {
+    color: colors.textPrimary,
+    ...typography.h1,
+    marginTop: 2,
   },
-  subtitle: {
-    color: "#9fb3cc",
+  headerSubtitle: {
+    color: colors.textSecondary,
     fontSize: 14,
     marginTop: 4,
   },
-  toast: {
-    borderRadius: 12,
+  profileButton: {
+    borderRadius: radii.sm,
     borderWidth: 1,
+    borderColor: colors.border,
     paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginTop: 4,
+  },
+  profileButtonText: {
+    color: colors.textSecondary,
+    ...typography.caption,
+    fontWeight: "700",
+  },
+
+  // Toast
+  toast: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
     paddingVertical: 9,
-    marginTop: 8,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
   },
   toastError: {
-    backgroundColor: "#3a1221",
-    borderColor: "#7f1d1d",
+    backgroundColor: colors.errorBg,
+    borderColor: colors.errorBorder,
   },
   toastInfo: {
-    backgroundColor: "#102846",
-    borderColor: "#1e3a8a",
+    backgroundColor: colors.infoBg,
+    borderColor: colors.infoBorder,
   },
   toastText: {
-    color: "#dbeafe",
-    fontSize: 12,
-    fontWeight: "600",
+    color: colors.infoText,
+    ...typography.caption,
   },
-  metricsRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 10,
-  },
-  metricCard: {
-    flex: 1,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#1f3655",
-    backgroundColor: "#0d1a2f",
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  metricValue: {
-    color: "#f8fafc",
-    fontWeight: "700",
-    fontSize: 19,
-  },
-  metricLabel: {
-    color: "#8fa8c4",
-    fontSize: 12,
-    marginTop: 3,
-  },
-  tabRow: {
-    flexDirection: "row",
-    backgroundColor: "#101d33",
-    borderRadius: 12,
-    padding: 4,
-    marginTop: 12,
-  },
-  tab: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 10,
-    paddingVertical: 10,
-  },
-  tabActive: {
-    backgroundColor: "#1f4ca6",
-  },
-  tabText: {
-    color: "#86a1c1",
-    fontWeight: "600",
-  },
-  tabTextActive: {
-    color: "#f1f5f9",
-  },
-  inputRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 12,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: "#101d33",
-    color: "#e8f0f8",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === "ios" ? 12 : 10,
-    borderWidth: 1,
-    borderColor: "#1f3655",
-  },
-  addButton: {
-    backgroundColor: "#22c55e",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  pulseWrap: {
-    borderRadius: 12,
-  },
-  addButtonText: {
-    color: "#052e16",
-    fontWeight: "700",
-  },
-  metaInputRow: {
-    gap: 8,
-    marginTop: 8,
-  },
-  metaInput: {
-    fontSize: 13,
-  },
-  composerModeRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 8,
-  },
-  modeChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#20406a",
-    backgroundColor: "#0d1a2f",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  modeChipActive: {
-    backgroundColor: "#113468",
-    borderColor: "#2e74c0",
-  },
-  modeChipText: {
-    color: "#9ab4cf",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  modeChipTextActive: {
-    color: "#dbeafe",
-  },
-  listWrap: {
-    paddingTop: 14,
-    paddingBottom: 30,
-  },
-  sectionTitle: {
-    color: "#b4c8de",
-    fontSize: 13,
-    fontWeight: "700",
-    marginBottom: 10,
-  },
-  syncText: {
-    color: "#7dd3fc",
-    fontSize: 12,
-    marginBottom: 10,
-  },
+
+  // Retry / sync
   retryBanner: {
-    borderRadius: 12,
+    borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: "#14532d",
+    borderColor: colors.primaryBgHover,
     backgroundColor: "#0f2d1f",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 10,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
   },
   retryBannerText: {
-    color: "#bbf7d0",
-    fontWeight: "700",
-    fontSize: 12,
+    color: colors.primaryText,
+    ...typography.label,
   },
-  bucketLabel: {
-    color: "#7dd3fc",
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    marginBottom: 8,
-    marginTop: 8,
-    letterSpacing: 0.5,
+  syncText: {
+    color: colors.accent,
+    ...typography.caption,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
   },
-  taskCard: {
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "#1f3655",
-    backgroundColor: "#0e1a2d",
-    marginBottom: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  taskTextWrap: {
-    flexShrink: 1,
+
+  // List
+  list: {
     flex: 1,
   },
-  actionRow: {
-    flexDirection: "row",
-    gap: 8,
+  listContent: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: 160,
   },
-  taskTitle: {
-    color: "#f1f5f9",
-    fontSize: 15,
-    fontWeight: "600",
+  sectionDate: {
+    color: colors.accent,
+    ...typography.label,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
   },
-  taskMeta: {
-    color: "#7dd3fc",
-    marginTop: 3,
-    fontSize: 12,
-  },
-  taskDetail: {
-    color: "#94a3b8",
-    marginTop: 4,
-    fontSize: 12,
-  },
-  ghostButton: {
-    backgroundColor: "#102646",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  ghostButtonText: {
-    color: "#bfdbfe",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  doneButton: {
-    backgroundColor: "#133b2a",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  doneButtonText: {
-    color: "#bbf7d0",
-    fontSize: 12,
-    fontWeight: "700",
-  },
+
+  // Empty states
   emptyCard: {
-    borderRadius: 14,
-    padding: 16,
+    borderRadius: radii.lg,
+    padding: spacing.xl,
     borderWidth: 1,
-    borderColor: "#1f3655",
-    backgroundColor: "#0d1a2f",
-    marginBottom: 12,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+    gap: spacing.sm,
+    alignItems: "center",
+  },
+  emptyTitle: {
+    color: colors.textPrimary,
+    ...typography.h3,
   },
   emptyText: {
-    color: "#92a9c4",
+    color: colors.textSecondary,
+    fontSize: 14,
     lineHeight: 20,
+    textAlign: "center",
   },
-  completedCard: {
-    backgroundColor: "#101b2b",
-    borderColor: "#2c3a4f",
-  },
-  completedTitle: {
-    color: "#8ca2bc",
-    textDecorationLine: "line-through",
-  },
-  reopenButton: {
-    backgroundColor: "#1f3655",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  reopenButtonText: {
-    color: "#dbeafe",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  sheetBackdrop: {
-    flex: 1,
-    backgroundColor: "#020617cc",
-    justifyContent: "flex-end",
-    padding: 14,
-  },
-  sheetCard: {
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#1f3655",
-    backgroundColor: "#0d1a2f",
-    padding: 14,
-    gap: 10,
-  },
-  sheetTitle: {
-    color: "#f8fafc",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  sheetInput: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#1f3655",
-    backgroundColor: "#101d33",
-    color: "#e2e8f0",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  sheetTextarea: {
-    minHeight: 80,
-    textAlignVertical: "top",
-  },
-  sheetActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 8,
-    marginTop: 4,
-  },
-  sheetGhostButton: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#2c3a4f",
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  sheetGhostButtonText: {
-    color: "#cbd5e1",
-    fontWeight: "700",
-  },
-  sheetPrimaryButton: {
-    borderRadius: 10,
-    backgroundColor: "#22c55e",
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  sheetPrimaryButtonText: {
-    color: "#052e16",
-    fontWeight: "800",
-  },
+
+  // Shared
   pressed: {
     opacity: 0.8,
   },
