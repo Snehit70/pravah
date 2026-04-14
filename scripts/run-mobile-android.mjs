@@ -22,11 +22,14 @@ function pickJavaHome() {
   if (process.env.JAVA_HOME) return process.env.JAVA_HOME;
 
   const candidates = [
-    "/usr/lib/jvm/java-21-openjdk",
     "/usr/lib/jvm/jdk-17.0.12-oracle-x64",
+    "/usr/lib/jvm/java-21-openjdk",
   ];
 
-  return candidates.find((candidate) => existsSync(candidate));
+  // Prefer JDKs that actually have a compiler (javac), not JRE-only installs
+  return candidates.find((candidate) =>
+    existsSync(path.join(candidate, "bin", "javac"))
+  );
 }
 
 const androidSdk = pickAndroidSdk();
