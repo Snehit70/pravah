@@ -16,6 +16,7 @@ import { useConvex, useMutation, useQuery } from "convex/react";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { api } from "../../convex/_generated/api";
 import * as Haptics from "expo-haptics";
+import * as SecureStore from "expo-secure-store";
 import { authClient, authStorageReady } from "./src/lib/auth-client";
 import { ConvexClientProvider } from "./src/lib/convex";
 import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
@@ -39,10 +40,45 @@ type RetryQueueItem = {
   id: string;
   label: string;
   attempts: number;
-  run: () => Promise<void>;
+  payload: RetryPayload;
 };
 
+type RetryPayload =
+  | {
+      type: "addTask";
+      title: string;
+      description?: string;
+      deadline?: string;
+      scheduledDate?: string;
+    }
+  | {
+      type: "updateTask";
+      taskId: Id<"tasks">;
+      title: string;
+      description?: string;
+      deadline?: string;
+    }
+  | {
+      type: "completeTask";
+      taskId: Id<"tasks">;
+    }
+  | {
+      type: "moveTask";
+      taskId: Id<"tasks">;
+      targetDate: string;
+    }
+  | {
+      type: "unscheduleTask";
+      taskId: Id<"tasks">;
+    }
+  | {
+      type: "reopenTask";
+      taskId: Id<"tasks">;
+    };
+
 type SuccessHaptic = "notification" | "light" | "medium";
+
+const RETRY_QUEUE_STORAGE_KEY = "pravah_mobile_retry_queue_v1";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -204,12 +240,92 @@ function MobileApp() {
     );
   }, []);
 
+  const runRetryPayload = useCallback(
+    async (payload: RetryPayload) => {
+      switch (payload.type) {
+        case "addTask": {
+          await addTaskMutation({
+            title: payload.title,
+            description: payload.description,
+            deadline: payload.deadline,
+            type: payload.deadline ? "deadline" : "open",
+            scheduledDate: payload.scheduledDate,
+          });
+          return;
+        }
+        case "updateTask": {
+          await updateTaskMutation({
+            taskId: payload.taskId,
+            title: payload.title,
+            description: payload.description,
+            deadline: payload.deadline,
+          });
+          return;
+        }
+        case "completeTask": {
+          await completeTaskMutation({ taskId: payload.taskId });
+          return;
+        }
+        case "moveTask": {
+          await moveTaskMutation({ taskId: payload.taskId, targetDate: payload.targetDate });
+          return;
+        }
+        case "unscheduleTask": {
+          await unscheduleTaskMutation({ taskId: payload.taskId });
+          return;
+        }
+        case "reopenTask": {
+          await reopenTaskMutation({ taskId: payload.taskId });
+          return;
+        }
+      }
+    },
+    [
+      addTaskMutation,
+      updateTaskMutation,
+      completeTaskMutation,
+      moveTaskMutation,
+      unscheduleTaskMutation,
+      reopenTaskMutation,
+    ]
+  );
+
   const enqueueRetry = useCallback(
     (item: Omit<RetryQueueItem, "id" | "attempts">) => {
       setRetryQueue((cur) => [...cur, { id: `${Date.now()}-${cur.length}`, attempts: 0, ...item }]);
     },
     []
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    void SecureStore.getItemAsync(RETRY_QUEUE_STORAGE_KEY).then((raw) => {
+      if (cancelled || !raw) return;
+      try {
+        const parsed = JSON.parse(raw) as RetryQueueItem[];
+        if (!Array.isArray(parsed)) return;
+        setRetryQueue(
+          parsed.filter(
+            (item) =>
+              typeof item?.id === "string" &&
+              typeof item?.label === "string" &&
+              typeof item?.attempts === "number" &&
+              item?.payload !== undefined
+          )
+        );
+      } catch {
+        void SecureStore.deleteItemAsync(RETRY_QUEUE_STORAGE_KEY);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    void SecureStore.setItemAsync(RETRY_QUEUE_STORAGE_KEY, JSON.stringify(retryQueue));
+  }, [retryQueue]);
 
   const retryQueuedMutations = useCallback(async () => {
     if (!retryQueue.length) return;
@@ -218,7 +334,7 @@ function MobileApp() {
     let failed = 0;
     for (const queued of snapshot) {
       try {
-        await queued.run();
+        await runRetryPayload(queued.payload);
       } catch {
         failed += 1;
         setRetryQueue((cur) => [...cur, { ...queued, attempts: queued.attempts + 1 }]);
@@ -228,7 +344,7 @@ function MobileApp() {
       showToast({ kind: "info", message: "Retry complete" });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
-  }, [retryQueue, showToast]);
+  }, [retryQueue, runRetryPayload, showToast]);
 
   // ── Optimistic mutation runner ──────────────────────────────────────
 
@@ -238,12 +354,14 @@ function MobileApp() {
       mutation,
       errorMessage,
       retryLabel,
+      retryPayload,
       successHaptic = "notification",
     }: {
       optimistic: (current: MobileTask[]) => MobileTask[];
       mutation: () => Promise<void>;
       errorMessage: string;
       retryLabel?: string;
+      retryPayload?: RetryPayload;
       successHaptic?: SuccessHaptic;
     }): Promise<boolean> => {
       setPendingMutations((c) => c + 1);
@@ -254,8 +372,8 @@ function MobileApp() {
         return true;
       } catch (error) {
         setOptimisticTasks(null);
-        const canRetry = retryLabel && isLikelyOfflineError(error);
-        if (canRetry) enqueueRetry({ label: retryLabel!, run: mutation });
+        const canRetry = retryLabel && retryPayload && isLikelyOfflineError(error);
+        if (canRetry) enqueueRetry({ label: retryLabel!, payload: retryPayload! });
         showToast({
           kind: "error",
           message: canRetry ? `${errorMessage} Queued for retry.` : errorMessage,
@@ -279,6 +397,7 @@ function MobileApp() {
         mutation: async () => { await completeTaskMutation({ taskId }); },
         errorMessage: "Could not mark task as done.",
         retryLabel: "Retry done",
+        retryPayload: { type: "completeTask", taskId },
       });
     },
     [runOptimisticMutation, completeTaskMutation]
@@ -294,6 +413,7 @@ function MobileApp() {
         mutation: async () => { await moveTaskMutation({ taskId, targetDate: today }); },
         errorMessage: "Could not move task to today.",
         retryLabel: "Retry move to today",
+        retryPayload: { type: "moveTask", taskId, targetDate: today },
         successHaptic: "light",
       });
     },
@@ -312,6 +432,7 @@ function MobileApp() {
         mutation: async () => { await unscheduleTaskMutation({ taskId }); },
         errorMessage: "Could not move task back to inbox.",
         retryLabel: "Retry move to inbox",
+        retryPayload: { type: "unscheduleTask", taskId },
         successHaptic: "light",
       });
     },
@@ -330,6 +451,7 @@ function MobileApp() {
         mutation: async () => { await reopenTaskMutation({ taskId }); },
         errorMessage: "Could not reopen task.",
         retryLabel: "Retry reopen",
+        retryPayload: { type: "reopenTask", taskId },
         successHaptic: "light",
       });
     },
@@ -351,17 +473,17 @@ function MobileApp() {
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         return true;
       } catch (error) {
-        const mutation = async () => {
-          await addTaskMutation({
-            title: data.title,
-            description: data.description,
-            deadline: data.deadline,
-            type: data.deadline ? "deadline" : "open",
-            scheduledDate: data.mode === "today" ? today : undefined,
-          });
-        };
         if (isLikelyOfflineError(error)) {
-          enqueueRetry({ label: `Add "${data.title}"`, run: mutation });
+          enqueueRetry({
+            label: `Add "${data.title}"`,
+            payload: {
+              type: "addTask",
+              title: data.title,
+              description: data.description,
+              deadline: data.deadline,
+              scheduledDate: data.mode === "today" ? today : undefined,
+            },
+          });
           showToast({ kind: "error", message: "Offline. Task queued for retry." });
         } else {
           showToast({ kind: "error", message: "Could not add task. Please try again." });
@@ -394,6 +516,13 @@ function MobileApp() {
         },
         errorMessage: "Could not save task details.",
         retryLabel: `Update "${data.title}"`,
+        retryPayload: {
+          type: "updateTask",
+          taskId: data.taskId,
+          title: data.title,
+          description: data.description,
+          deadline: data.deadline,
+        },
         successHaptic: "medium",
       });
     },
