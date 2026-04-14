@@ -9,14 +9,14 @@ type BottomTabBarProps = {
   active: TabKey;
   onChange: (tab: TabKey) => void;
   inboxCount: number;
-  todayCount: number;
+  timelineCount: number;
   doneCount: number;
   bottomInset?: number;
 };
 
-const tabs: { key: TabKey; label: string; countKey: "inbox" | "today" | "done" }[] = [
+const tabs: { key: TabKey; label: string; countKey: "inbox" | "timeline" | "done" }[] = [
   { key: "inbox", label: "Inbox", countKey: "inbox" },
-  { key: "timeline", label: "Today", countKey: "today" },
+  { key: "timeline", label: "Timeline", countKey: "timeline" },
   { key: "completed", label: "Done", countKey: "done" },
 ];
 
@@ -24,11 +24,11 @@ function BottomTabBarInner({
   active,
   onChange,
   inboxCount,
-  todayCount,
+  timelineCount,
   doneCount,
   bottomInset = spacing.md,
 }: BottomTabBarProps) {
-  const counts = { inbox: inboxCount, today: todayCount, done: doneCount };
+  const counts = { inbox: inboxCount, timeline: timelineCount, done: doneCount };
 
   const handlePress = useCallback(
     (tab: TabKey) => {

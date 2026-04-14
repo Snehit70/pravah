@@ -15,11 +15,12 @@ describe("mobile dates helpers", () => {
     expect(toIsoDate(shifted)).toBe("2026-04-17");
   });
 
-  it("labels today, tomorrow, this week, and later dates", () => {
+  it("labels overdue, today, tomorrow, this week, and later dates", () => {
     const today = "2026-04-14";
     const tomorrow = "2026-04-15";
     const weekEnd = "2026-04-21";
 
+    expect(dateLabel("2026-04-13", today, tomorrow, weekEnd)).toBe("Overdue");
     expect(dateLabel("2026-04-14", today, tomorrow, weekEnd)).toBe("Today");
     expect(dateLabel("2026-04-15", today, tomorrow, weekEnd)).toBe("Tomorrow");
     expect(dateLabel("2026-04-20", today, tomorrow, weekEnd)).toBe("This week");

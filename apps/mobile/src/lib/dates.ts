@@ -14,7 +14,8 @@ export function addDays(base: Date, days: number): Date {
 export function dateLabel(date: string, today: string, tomorrow: string, weekEnd: string): string {
   if (date === today) return "Today";
   if (date === tomorrow) return "Tomorrow";
-  if (date <= weekEnd) return "This week";
+  if (date > today && date <= weekEnd) return "This week";
+  if (date < today) return "Overdue";
   return date;
 }
 

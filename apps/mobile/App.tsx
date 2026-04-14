@@ -145,6 +145,7 @@ function MobileApp() {
     () => tasks.filter((t) => t.status === "scheduled" && t.scheduledDate === today).length,
     [tasks, today]
   );
+  const timelineCount = scheduledTasks.length;
 
   const timelineSections = useMemo(() => {
     const grouped = new Map<string, MobileTask[]>();
@@ -478,7 +479,7 @@ function MobileApp() {
 
   const headerSubtitle =
     activeTab === "timeline"
-      ? `${todayCount} task${todayCount === 1 ? "" : "s"} scheduled`
+      ? `${timelineCount} task${timelineCount === 1 ? "" : "s"} scheduled`
       : activeTab === "completed"
         ? "Closed loops"
         : `${inboxTasks.length} task${inboxTasks.length === 1 ? "" : "s"} to triage`;
@@ -492,7 +493,7 @@ function MobileApp() {
           <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>No scheduled tasks</Text>
             <Text style={styles.emptyText}>
-              Swipe inbox tasks left or tap to schedule them for today.
+              Move tasks from Inbox to Today to build your timeline.
             </Text>
           </Animated.View>
         );
@@ -653,7 +654,7 @@ function MobileApp() {
         active={activeTab}
         onChange={setActiveTab}
         inboxCount={inboxTasks.length}
-        todayCount={todayCount}
+        timelineCount={timelineCount}
         doneCount={completedTasks.length}
         bottomInset={tabBarBottomPadding}
       />
