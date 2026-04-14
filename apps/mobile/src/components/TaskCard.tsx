@@ -62,7 +62,7 @@ function TaskCardInner({
           </Pressable>
         ) : (
           <View style={[styles.checkbox, styles.checkboxDone]}>
-            <Text style={styles.checkIcon}>v</Text>
+            <Text style={styles.checkIcon}>✓</Text>
           </View>
         )}
 
@@ -92,6 +92,8 @@ function TaskCardInner({
               {task.description}
             </Text>
           ) : null}
+
+          {isCompleted ? <Text style={styles.completedHint}>Read-only. Reopen to edit.</Text> : null}
 
           <View style={styles.actionsRow}>
             {canEdit ? (
@@ -167,8 +169,9 @@ const styles = StyleSheet.create({
   },
   checkIcon: {
     color: colors.primaryDark,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "800",
+    lineHeight: 14,
   },
   textArea: {
     flex: 1,
@@ -213,6 +216,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     marginTop: 2,
+  },
+  completedHint: {
+    color: colors.textMuted,
+    ...typography.caption,
+    marginTop: 4,
   },
   actionsRow: {
     flexDirection: "row",

@@ -633,7 +633,7 @@ function MobileApp() {
           style={({ pressed }) => [styles.retryBanner, pressed && styles.pressed]}
         >
           <Text style={styles.retryBannerText}>
-            Retry {retryQueue.length} queued change(s)
+            {retryQueue.length} change{retryQueue.length === 1 ? "" : "s"} pending sync. Tap to retry now.
           </Text>
         </Pressable>
       ) : null}
