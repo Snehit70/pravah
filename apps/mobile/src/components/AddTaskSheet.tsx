@@ -179,6 +179,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                 placeholderTextColor={colors.textMuted}
                 style={styles.input}
               />
+              <Text style={styles.helperText}>Use YYYY-MM-DD, for example 2026-04-20.</Text>
             </Animated.View>
           ) : null}
 
@@ -289,6 +290,10 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: colors.error,
+    ...typography.caption,
+  },
+  helperText: {
+    color: colors.textMuted,
     ...typography.caption,
   },
   addButton: {

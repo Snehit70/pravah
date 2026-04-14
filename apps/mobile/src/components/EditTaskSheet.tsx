@@ -136,6 +136,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             placeholderTextColor={colors.textMuted}
             style={styles.input}
           />
+          <Text style={styles.helperText}>Use YYYY-MM-DD, for example 2026-04-20.</Text>
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
@@ -203,6 +204,10 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: colors.error,
+    ...typography.caption,
+  },
+  helperText: {
+    color: colors.textMuted,
     ...typography.caption,
   },
   actions: {

@@ -36,6 +36,7 @@ function TaskCardInner({
   onEdit,
 }: TaskCardProps) {
   const isCompleted = task.status === "completed";
+  const canEdit = !isCompleted;
 
   const handleDone = useCallback(() => onDone(task._id), [onDone, task._id]);
   const handleMoveToday = useCallback(
@@ -65,7 +66,7 @@ function TaskCardInner({
           </View>
         )}
 
-        <Pressable onPress={handleEdit} style={styles.textArea}>
+        <Pressable onPress={canEdit ? handleEdit : undefined} style={styles.textArea} disabled={!canEdit}>
           <Text
             style={[styles.title, isCompleted && styles.completedTitle]}
             numberOfLines={2}
@@ -93,9 +94,11 @@ function TaskCardInner({
           ) : null}
 
           <View style={styles.actionsRow}>
-            <Pressable onPress={handleEdit} style={styles.ghostButton}>
-              <Text style={styles.ghostButtonText}>Edit</Text>
-            </Pressable>
+            {canEdit ? (
+              <Pressable onPress={handleEdit} style={styles.ghostButton}>
+                <Text style={styles.ghostButtonText}>Edit</Text>
+              </Pressable>
+            ) : null}
             {isCompleted ? (
               <Pressable onPress={handleReopen} style={styles.ghostButton}>
                 <Text style={styles.ghostButtonText}>Reopen</Text>

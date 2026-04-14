@@ -2,7 +2,7 @@ import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Platform,
+  Alert,
   Pressable,
   RefreshControl,
   SafeAreaView,
@@ -431,6 +431,23 @@ function MobileApp() {
     []
   );
 
+  const confirmSignOut = useCallback(() => {
+    Alert.alert(
+      "Sign out?",
+      "You can sign in again anytime with Google.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign out",
+          style: "destructive",
+          onPress: () => {
+            void authClient.signOut();
+          },
+        },
+      ]
+    );
+  }, []);
+
   // ── Loading / Auth screens ──────────────────────────────────────────
 
   if (!isAuthHydrated || sessionLoading) {
@@ -589,7 +606,7 @@ function MobileApp() {
             </Text>
           </View>
           <Pressable
-            onPress={() => void authClient.signOut()}
+            onPress={confirmSignOut}
             style={({ pressed }) => [styles.profileButton, pressed && styles.pressed]}
             hitSlop={8}
           >
