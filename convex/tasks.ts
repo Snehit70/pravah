@@ -467,15 +467,19 @@ export const getTimeline = query({
     const tokenIdentifier = await requireTokenIdentifier(ctx);
     const tasks = await ctx.db
       .query("tasks")
-      .withIndex("by_owner_status", (q) =>
-        q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "scheduled")
+      .withIndex("by_owner_status_date_position", (q) =>
+        q
+          .eq("ownerTokenIdentifier", tokenIdentifier)
+          .eq("status", "scheduled")
+          .gte("scheduledDate", args.startDate)
+          .lte("scheduledDate", args.endDate)
       )
       .collect();
 
     const grouped: Record<string, typeof tasks> = {};
     for (const task of tasks) {
       const date = task.scheduledDate;
-      if (!date || date < args.startDate || date > args.endDate) continue;
+      if (!date) continue;
       if (!grouped[date]) grouped[date] = [];
       grouped[date].push(task);
     }
@@ -485,5 +489,39 @@ export const getTimeline = query({
     }
 
     return grouped;
+  },
+});
+
+export const getTaskCounts = query({
+  args: {},
+  handler: async (ctx) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+
+    const [inbox, scheduled, completed] = await Promise.all([
+      ctx.db
+        .query("tasks")
+        .withIndex("by_owner_status", (q) =>
+          q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "inbox")
+        )
+        .collect(),
+      ctx.db
+        .query("tasks")
+        .withIndex("by_owner_status", (q) =>
+          q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "scheduled")
+        )
+        .collect(),
+      ctx.db
+        .query("tasks")
+        .withIndex("by_owner_status", (q) =>
+          q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "completed")
+        )
+        .collect(),
+    ]);
+
+    return {
+      inboxCount: inbox.length,
+      timelineCount: scheduled.length,
+      completedCount: completed.length,
+    };
   },
 });
