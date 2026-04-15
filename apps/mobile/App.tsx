@@ -3,6 +3,7 @@ import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   SectionList,
@@ -139,8 +140,13 @@ function MobileApp() {
   const sessionLoading = sessionResult.isPending;
 
   const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+  const googleAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || undefined;
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
-  const canGoogleSignIn = Boolean(googleWebClientId);
+  const googleClientId =
+    Platform.OS === "android"
+      ? googleAndroidClientId ?? googleWebClientId
+      : googleWebClientId;
+  const canGoogleSignIn = Boolean(googleClientId);
 
   // ── Data ────────────────────────────────────────────────────────────
 
@@ -252,10 +258,10 @@ function MobileApp() {
 
   useEffect(() => {
     GoogleSignin.configure({
-      webClientId: googleWebClientId,
+      webClientId: googleClientId,
       iosClientId: googleIosClientId,
     });
-  }, [googleWebClientId, googleIosClientId]);
+  }, [googleClientId, googleIosClientId]);
 
   useEffect(() => {
     if (!toast) return;
@@ -665,7 +671,7 @@ function MobileApp() {
   // ── Auth ────────────────────────────────────────────────────────────
 
   const handleGoogleSignIn = async () => {
-    if (!googleWebClientId || isSigningIn) return;
+    if (!googleClientId || isSigningIn) return;
     const actionId = createActionId("auth");
     const startedAt = Date.now();
     mobileLogger.info("google_signin_started", { actionId });
@@ -685,10 +691,32 @@ function MobileApp() {
         callbackURL: "/",
       });
       mobileLogger.info("google_signin_succeeded", { actionId, elapsedMs: Date.now() - startedAt });
-    } catch {
+    } catch (error) {
+      const errorCode =
+        typeof error === "object" && error !== null && "code" in error
+          ? (error as { code?: unknown }).code
+          : undefined;
+      const errorName =
+        typeof error === "object" && error !== null && "name" in error
+          ? (error as { name?: unknown }).name
+          : undefined;
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : typeof error === "string"
+            ? error
+            : "unknown";
+
       showToast({ kind: "error", message: "Google sign-in failed. Check OAuth client setup." });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      mobileLogger.error("google_signin_failed", { actionId, elapsedMs: Date.now() - startedAt });
+      mobileLogger.error("google_signin_failed", {
+        actionId,
+        elapsedMs: Date.now() - startedAt,
+        errorType: classifyError(error),
+        errorCode,
+        errorName,
+        errorMessage,
+      });
     } finally {
       setIsSigningIn(false);
     }
