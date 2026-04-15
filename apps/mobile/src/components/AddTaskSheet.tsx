@@ -1,5 +1,5 @@
-import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { Keyboard, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetTextInput,
@@ -9,6 +9,7 @@ import BottomSheet, {
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type ComposerMode = "inbox" | "today";
 
@@ -31,6 +32,7 @@ type AddTaskSheetProps = {
 export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
   function AddTaskSheet({ onAdd, isValidDeadline, onSheetChange }, ref) {
     const bottomSheetRef = useRef<BottomSheet>(null);
+    const insets = useSafeAreaInsets();
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [deadline, setDeadline] = useState("");
@@ -38,10 +40,35 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [saving, setSaving] = useState(false);
     const [showDetails, setShowDetails] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [focusNonce, setFocusNonce] = useState(0);
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+    useEffect(() => {
+      const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+      const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+      const showSubscription = Keyboard.addListener(showEvent, (event) => {
+        setKeyboardHeight(Math.max(0, event.endCoordinates.height));
+      });
+      const hideSubscription = Keyboard.addListener(hideEvent, () => {
+        setKeyboardHeight(0);
+      });
+
+      return () => {
+        showSubscription.remove();
+        hideSubscription.remove();
+      };
+    }, []);
+
+    const sheetBottomInset =
+      keyboardHeight > 0
+        ? Math.max(spacing.sm, keyboardHeight - insets.bottom + spacing.sm)
+        : Math.max(insets.bottom, spacing.lg);
 
     useImperativeHandle(ref, () => ({
       open: () => {
         bottomSheetRef.current?.expand();
+        setFocusNonce((v) => v + 1);
       },
       close: () => {
         bottomSheetRef.current?.close();
@@ -102,6 +129,9 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         ref={bottomSheetRef}
         index={-1}
         snapPoints={showDetails ? ["68%"] : ["48%"]}
+        detached
+        bottomInset={sheetBottomInset}
+        style={styles.sheetContainer}
         enablePanDownToClose
         enableDynamicSizing={false}
         backgroundStyle={styles.sheetBg}
@@ -121,6 +151,8 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           <Text style={styles.sheetTitle}>New task</Text>
 
           <BottomSheetTextInput
+            key={`title-input-${focusNonce}`}
+            autoFocus
             value={title}
             onChangeText={(text) => {
               setTitle(text);
@@ -219,6 +251,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderBottomWidth: 0,
+  },
+  sheetContainer: {
+    marginHorizontal: spacing.md,
   },
   indicator: {
     backgroundColor: colors.textMuted,
