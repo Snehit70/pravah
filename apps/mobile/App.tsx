@@ -119,6 +119,8 @@ function MobileApp() {
   const addTaskSheetRef = useRef<AddTaskSheetRef>(null);
   const editTaskSheetRef = useRef<EditTaskSheetRef>(null);
   const appStartMsRef = useRef<number>(Date.now());
+  const lastListStateLogMsRef = useRef<number>(0);
+  const lastRetryPersistLogMsRef = useRef<number>(0);
 
   const [activeTab, setActiveTab] = useState<TabKey>("inbox");
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -273,6 +275,10 @@ function MobileApp() {
   }, [session]);
 
   useEffect(() => {
+    if (!__DEV__) return;
+    const now = Date.now();
+    if (now - lastListStateLogMsRef.current < 1500) return;
+    lastListStateLogMsRef.current = now;
     mobileLogger.debug("list_state", {
       activeTab,
       inboxCount,
@@ -392,6 +398,10 @@ function MobileApp() {
 
   useEffect(() => {
     void SecureStore.setItemAsync(RETRY_QUEUE_STORAGE_KEY, JSON.stringify(retryQueue));
+    if (!__DEV__) return;
+    const now = Date.now();
+    if (now - lastRetryPersistLogMsRef.current < 2000) return;
+    lastRetryPersistLogMsRef.current = now;
     mobileLogger.debug("retry_queue_persisted", { queueSize: retryQueue.length });
   }, [retryQueue]);
 
