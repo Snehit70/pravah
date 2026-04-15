@@ -5,8 +5,10 @@ import type { Task } from "../types";
 import {
   canScheduleTaskOnDate,
   getReorderedTaskIdsForDay,
+  isInboxDropId,
   isDateDropId,
 } from "../lib/taskRules";
+import { getLocalDateString } from "../lib/utils";
 
 type MoveTaskMutation = (args: {
   taskId: Id<"tasks">;
@@ -23,6 +25,10 @@ type ReorderInboxTasksMutation = (args: {
   taskIds: Id<"tasks">[];
 }) => Promise<unknown>;
 
+type UnscheduleTaskMutation = (args: {
+  taskId: Id<"tasks">;
+}) => Promise<unknown>;
+
 interface UseTaskDragHandlersOptions {
   tasks: Task[] | undefined;
   tasksByDate: Record<string, Task[]>;
@@ -30,16 +36,23 @@ interface UseTaskDragHandlersOptions {
   moveTask: MoveTaskMutation;
   reorderTasks: ReorderTasksMutation;
   reorderInboxTasks: ReorderInboxTasksMutation;
+  unscheduleTask: UnscheduleTaskMutation;
   setDraggedTask: (task: Task | null) => void;
 }
 
 export function resolveDropTargetDate(
   sourceTask: Task,
   overId: string,
-  tasks: Task[] | undefined
+  tasks: Task[] | undefined,
+  currentDate: string
 ): string | null {
   if (isDateDropId(overId)) {
-    return canScheduleTaskOnDate(sourceTask, overId) ? overId : null;
+    return canScheduleTaskOnDate(sourceTask, overId, {
+      allowOverdueCarryForward: true,
+      currentDate,
+    })
+      ? overId
+      : null;
   }
 
   const overTask = tasks?.find((t) => t._id === overId);
@@ -51,7 +64,10 @@ export function resolveDropTargetDate(
     return null;
   }
 
-  return canScheduleTaskOnDate(sourceTask, overTask.scheduledDate)
+  return canScheduleTaskOnDate(sourceTask, overTask.scheduledDate, {
+    allowOverdueCarryForward: true,
+    currentDate,
+  })
     ? overTask.scheduledDate
     : null;
 }
@@ -63,6 +79,7 @@ export function useTaskDragHandlers({
   moveTask,
   reorderTasks,
   reorderInboxTasks,
+  unscheduleTask,
   setDraggedTask,
 }: UseTaskDragHandlersOptions) {
   const handleDragStart = useCallback(
@@ -85,9 +102,19 @@ export function useTaskDragHandlers({
       const sourceTask = tasks?.find((t) => t._id === activeId);
       if (!sourceTask) return;
 
-      const targetDate = resolveDropTargetDate(sourceTask, overId, tasks);
+      const currentDate = getLocalDateString();
+      const targetDate = resolveDropTargetDate(sourceTask, overId, tasks, currentDate);
       if (targetDate) {
         await moveTask({ taskId: activeId, targetDate });
+        return;
+      }
+
+      const overTask = tasks?.find((t) => t._id === overId);
+      if (
+        sourceTask.status === "scheduled" &&
+        (isInboxDropId(overId) || overTask?.status === "inbox")
+      ) {
+        await unscheduleTask({ taskId: activeId });
         return;
       }
 
@@ -116,7 +143,16 @@ export function useTaskDragHandlers({
         taskIds: reorderedTaskIds,
       });
     },
-    [tasks, tasksByDate, inboxTasks, moveTask, reorderTasks, reorderInboxTasks, setDraggedTask]
+    [
+      tasks,
+      tasksByDate,
+      inboxTasks,
+      moveTask,
+      reorderTasks,
+      reorderInboxTasks,
+      unscheduleTask,
+      setDraggedTask,
+    ]
   );
 
   return {

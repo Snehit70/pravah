@@ -6,6 +6,10 @@ import { requireTokenIdentifier } from "./authHelpers";
 
 type TaskCtx = QueryCtx | MutationCtx;
 
+function getTodayDateString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 async function getOwnedTask(
   ctx: TaskCtx,
   taskId: Id<"tasks">,
@@ -155,7 +159,11 @@ export const moveTask = mutation({
     const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
 
     if (task.type === "deadline" && task.deadline && args.targetDate > task.deadline) {
-      throw new Error("Cannot move task past its deadline");
+      const today = getTodayDateString();
+      const canCarryForwardOverdueDeadline = task.deadline < today;
+      if (!canCarryForwardOverdueDeadline) {
+        throw new Error("Cannot move task past its deadline");
+      }
     }
 
     const newPosition =

@@ -39,6 +39,31 @@ describe("taskRules", () => {
     expect(canScheduleTaskOnDate(deadlineTask, "2026-04-11")).toBe(false);
   });
 
+  it("allows carry-forward only for overdue deadlines", () => {
+    const overdueTask = makeTask({
+      type: "deadline",
+      deadline: "2026-04-10",
+    });
+    const upcomingTask = makeTask({
+      type: "deadline",
+      deadline: "2026-04-20",
+    });
+
+    expect(
+      canScheduleTaskOnDate(overdueTask, "2026-04-12", {
+        allowOverdueCarryForward: true,
+        currentDate: "2026-04-15",
+      })
+    ).toBe(true);
+
+    expect(
+      canScheduleTaskOnDate(upcomingTask, "2026-04-22", {
+        allowOverdueCarryForward: true,
+        currentDate: "2026-04-15",
+      })
+    ).toBe(false);
+  });
+
   it("always allows open tasks to be scheduled", () => {
     const openTask = makeTask({ type: "open" });
     expect(canScheduleTaskOnDate(openTask, "2026-12-31")).toBe(true);
@@ -64,4 +89,3 @@ describe("taskRules", () => {
     expect(getReorderedTaskIdsForDay([single], single._id, single._id)).toBeNull();
   });
 });
-

@@ -26,7 +26,7 @@ describe("resolveDropTargetDate", () => {
       scheduledDate: "2026-04-09",
     });
 
-    expect(resolveDropTargetDate(source, "2026-04-10", [source])).toBe("2026-04-10");
+    expect(resolveDropTargetDate(source, "2026-04-10", [source], "2026-04-09")).toBe("2026-04-10");
   });
 
   it("blocks date drop target when deadline would be violated", () => {
@@ -37,7 +37,7 @@ describe("resolveDropTargetDate", () => {
       scheduledDate: "2026-04-09",
     });
 
-    expect(resolveDropTargetDate(source, "2026-04-11", [source])).toBeNull();
+    expect(resolveDropTargetDate(source, "2026-04-11", [source], "2026-04-09")).toBeNull();
   });
 
   it("uses target task date for cross-day card-to-card drops", () => {
@@ -50,7 +50,7 @@ describe("resolveDropTargetDate", () => {
       scheduledDate: "2026-04-10",
     });
 
-    expect(resolveDropTargetDate(source, target._id, [source, target])).toBe("2026-04-10");
+    expect(resolveDropTargetDate(source, target._id, [source, target], "2026-04-09")).toBe("2026-04-10");
   });
 
   it("returns null for same-day card drops so reorder can run", () => {
@@ -63,7 +63,7 @@ describe("resolveDropTargetDate", () => {
       scheduledDate: "2026-04-09",
     });
 
-    expect(resolveDropTargetDate(source, target._id, [source, target])).toBeNull();
+    expect(resolveDropTargetDate(source, target._id, [source, target], "2026-04-09")).toBeNull();
   });
 
   it("returns null when dropping on unknown ids", () => {
@@ -72,6 +72,17 @@ describe("resolveDropTargetDate", () => {
       scheduledDate: "2026-04-09",
     });
 
-    expect(resolveDropTargetDate(source, "unknown", [source])).toBeNull();
+    expect(resolveDropTargetDate(source, "unknown", [source], "2026-04-09")).toBeNull();
+  });
+
+  it("allows carry-forward when deadline task is already overdue", () => {
+    const source = makeTask({
+      _id: "source" as Id<"tasks">,
+      type: "deadline",
+      deadline: "2026-04-10",
+      scheduledDate: "2026-04-09",
+    });
+
+    expect(resolveDropTargetDate(source, "2026-04-12", [source], "2026-04-15")).toBe("2026-04-12");
   });
 });
