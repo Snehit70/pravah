@@ -1,0 +1,5 @@
+apps/mobile/android/
+apps/mobile/.expo/
+apps/mobile/node_modules/
+*.apk
+*.aab
