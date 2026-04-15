@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Modal,
   Pressable,
-  RefreshControl,
   SafeAreaView,
+  SectionList,
+  type SectionListRenderItemInfo,
   StyleSheet,
   Text,
   View,
@@ -41,6 +42,12 @@ type RetryQueueItem = {
   label: string;
   attempts: number;
   payload: RetryPayload;
+};
+
+type TaskSection = {
+  key: string;
+  dateKey?: string;
+  data: MobileTask[];
 };
 
 type RetryPayload =
@@ -586,6 +593,81 @@ function MobileApp() {
     void authClient.signOut();
   }, []);
 
+  const listSections = useMemo<TaskSection[]>(() => {
+    if (activeTab === "timeline") {
+      return timelineSections.map(([dateKey, data]) => ({ key: dateKey, dateKey, data }));
+    }
+    if (activeTab === "completed") {
+      return completedTasks.length ? [{ key: "completed", data: completedTasks }] : [];
+    }
+    return inboxTasks.length ? [{ key: "inbox", data: inboxTasks }] : [];
+  }, [activeTab, timelineSections, completedTasks, inboxTasks]);
+
+  const renderTaskItem = useCallback(
+    ({ item, section }: SectionListRenderItemInfo<MobileTask, TaskSection>) => {
+      if (activeTab === "timeline") {
+        const sectionDate = section.dateKey ?? today;
+        return (
+          <TaskCard
+            task={item}
+            dateLabel={dateLabel(sectionDate, today, tomorrow, weekEnd)}
+            onDone={markDone}
+            onSendToInbox={sendToInbox}
+            onEdit={handleEditTask}
+          />
+        );
+      }
+
+      if (activeTab === "completed") {
+        return (
+          <TaskCard
+            task={item}
+            onDone={markDone}
+            onReopen={reopenToInbox}
+            onEdit={handleEditTask}
+          />
+        );
+      }
+
+      return (
+        <TaskCard
+          task={item}
+          onDone={markDone}
+          onMoveToday={moveToToday}
+          onEdit={handleEditTask}
+        />
+      );
+    },
+    [activeTab, today, tomorrow, weekEnd, markDone, sendToInbox, handleEditTask, reopenToInbox, moveToToday]
+  );
+
+  const renderSectionHeader = useCallback(
+    ({ section }: { section: TaskSection }) => {
+      if (activeTab !== "timeline" || !section.dateKey) return null;
+      return <Text style={styles.sectionDate}>{dateLabel(section.dateKey, today, tomorrow, weekEnd)}</Text>;
+    },
+    [activeTab, today, tomorrow, weekEnd]
+  );
+
+  const emptyState = useMemo(() => {
+    if (activeTab === "timeline") {
+      return {
+        title: "No scheduled tasks",
+        body: "No tasks on your timeline yet. Move one from Inbox to Today.",
+      };
+    }
+    if (activeTab === "completed") {
+      return {
+        title: "Nothing completed yet",
+        body: "Mark one task done to build momentum.",
+      };
+    }
+    return {
+      title: "Inbox zero",
+      body: "You are all caught up. Tap + to capture the next task.",
+    };
+  }, [activeTab]);
+
   // ── Loading / Auth screens ──────────────────────────────────────────
 
   if (!isAuthHydrated || sessionLoading) {
@@ -638,83 +720,6 @@ function MobileApp() {
       : activeTab === "completed"
         ? "Closed loops"
         : `${inboxTasks.length} task${inboxTasks.length === 1 ? "" : "s"} to triage`;
-
-  // ── Render task list ────────────────────────────────────────────────
-
-  const renderTaskList = () => {
-    if (activeTab === "timeline") {
-      if (!timelineSections.length) {
-        return (
-          <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No scheduled tasks</Text>
-            <Text style={styles.emptyText}>
-              No tasks on your timeline yet. Move one from Inbox to Today.
-            </Text>
-          </Animated.View>
-        );
-      }
-      return timelineSections.map(([dateKey, items]) => (
-        <View key={dateKey}>
-          <Text style={styles.sectionDate}>
-            {dateLabel(dateKey, today, tomorrow, weekEnd)}
-          </Text>
-          {items.map((task) => (
-            <TaskCard
-              key={task._id}
-              task={task}
-              dateLabel={dateLabel(dateKey, today, tomorrow, weekEnd)}
-              onDone={markDone}
-              onSendToInbox={sendToInbox}
-              onEdit={handleEditTask}
-            />
-          ))}
-        </View>
-      ));
-    }
-
-    if (activeTab === "completed") {
-      if (!completedTasks.length) {
-        return (
-          <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>Nothing completed yet</Text>
-            <Text style={styles.emptyText}>
-              Mark one task done to build momentum.
-            </Text>
-          </Animated.View>
-        );
-      }
-      return completedTasks.map((task) => (
-        <TaskCard
-          key={task._id}
-          task={task}
-          onDone={markDone}
-          onReopen={reopenToInbox}
-          onEdit={handleEditTask}
-        />
-      ));
-    }
-
-    // Inbox
-    if (!inboxTasks.length) {
-      return (
-          <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>Inbox zero</Text>
-            <Text style={styles.emptyText}>
-              You are all caught up. Tap + to capture the next task.
-            </Text>
-          </Animated.View>
-        );
-    }
-    return inboxTasks.map((task) => (
-      <TaskCard
-        key={task._id}
-        task={task}
-        onDone={markDone}
-        onMoveToday={moveToToday}
-        onEdit={handleEditTask}
-      />
-    ));
-  };
 
   // ── Main layout ─────────────────────────────────────────────────────
 
@@ -778,22 +783,29 @@ function MobileApp() {
       ) : null}
 
       {/* Task list */}
-      <Animated.ScrollView
+      <SectionList
         style={styles.list}
         contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + 84 }]}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={() => void handleRefresh()}
-            tintColor={colors.accent}
-            colors={[colors.accent]}
-            progressBackgroundColor={colors.bgCard}
-          />
+        sections={listSections}
+        keyExtractor={(item) => item._id}
+        renderItem={renderTaskItem}
+        renderSectionHeader={renderSectionHeader}
+        stickySectionHeadersEnabled={false}
+        refreshing={isRefreshing}
+        onRefresh={() => void handleRefresh()}
+        initialNumToRender={10}
+        maxToRenderPerBatch={12}
+        windowSize={8}
+        removeClippedSubviews
+        ListEmptyComponent={
+          <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>{emptyState.title}</Text>
+            <Text style={styles.emptyText}>{emptyState.body}</Text>
+          </Animated.View>
         }
       >
-        {renderTaskList()}
-      </Animated.ScrollView>
+      </SectionList>
 
       {/* FAB */}
       {!isAddSheetOpen && !isEditSheetOpen ? (
