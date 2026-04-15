@@ -2,7 +2,7 @@ import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
+  Modal,
   Pressable,
   RefreshControl,
   SafeAreaView,
@@ -121,6 +121,7 @@ function MobileApp() {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isAddSheetOpen, setIsAddSheetOpen] = useState(false);
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
+  const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
 
   const sessionResult = authClient.useSession();
   const session = sessionResult.data;
@@ -576,21 +577,13 @@ function MobileApp() {
   );
 
   const confirmSignOut = useCallback(() => {
-    Alert.alert(
-      "Sign out?",
-      "You can sign in again anytime with Google.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Sign out",
-          style: "destructive",
-          onPress: () => {
-            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            void authClient.signOut();
-          },
-        },
-      ]
-    );
+    setIsSignOutModalOpen(true);
+  }, []);
+
+  const handleSignOut = useCallback(() => {
+    setIsSignOutModalOpen(false);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    void authClient.signOut();
   }, []);
 
   // ── Loading / Auth screens ──────────────────────────────────────────
@@ -830,6 +823,35 @@ function MobileApp() {
         isValidDeadline={normalizeDeadlineInput}
         onSheetChange={setIsEditSheetOpen}
       />
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={isSignOutModalOpen}
+        onRequestClose={() => setIsSignOutModalOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsSignOutModalOpen(false)} />
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Sign out?</Text>
+            <Text style={styles.modalSubtitle}>You can sign in again anytime with Google.</Text>
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={() => setIsSignOutModalOpen(false)}
+                style={({ pressed }) => [styles.modalCancelButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleSignOut}
+                style={({ pressed }) => [styles.modalSignOutButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.modalSignOutText}>Sign out</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1044,6 +1066,60 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     textAlign: "center",
+  },
+
+  // Modal
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: colors.backdrop,
+    justifyContent: "center",
+    paddingHorizontal: spacing.lg,
+  },
+  modalCard: {
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  modalTitle: {
+    color: colors.textPrimary,
+    ...typography.h2,
+  },
+  modalSubtitle: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  modalActions: {
+    marginTop: spacing.md,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: spacing.sm,
+  },
+  modalCancelButton: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  modalCancelText: {
+    color: colors.textSecondary,
+    fontWeight: "700",
+  },
+  modalSignOutButton: {
+    borderRadius: radii.md,
+    backgroundColor: colors.errorBg,
+    borderWidth: 1,
+    borderColor: colors.errorBorder,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  modalSignOutText: {
+    color: colors.infoText,
+    fontWeight: "800",
   },
 
   // Shared
