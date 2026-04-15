@@ -1,7 +1,8 @@
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import BottomSheet, {
   BottomSheetBackdrop,
+  BottomSheetTextInput,
   BottomSheetView,
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
@@ -101,8 +102,9 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         backgroundStyle={styles.sheetBg}
         handleIndicatorStyle={styles.indicator}
         backdropComponent={renderBackdrop}
-        keyboardBehavior="interactive"
+        keyboardBehavior="extend"
         keyboardBlurBehavior="restore"
+        android_keyboardInputMode="adjustResize"
         onChange={(index) => {
           onSheetChange?.(index >= 0);
         }}
@@ -110,7 +112,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         <BottomSheetView style={styles.content}>
           <Text style={styles.sheetTitle}>Edit task</Text>
 
-          <TextInput
+          <BottomSheetTextInput
             value={title}
             onChangeText={(text) => {
               setTitle(text);
@@ -121,7 +123,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             style={styles.input}
           />
 
-          <TextInput
+          <BottomSheetTextInput
             value={description}
             onChangeText={setDescription}
             placeholder="Notes"
@@ -130,7 +132,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             multiline
           />
 
-          <TextInput
+          <BottomSheetTextInput
             value={deadline}
             onChangeText={(text) => {
               setDeadline(text);
