@@ -1,75 +1,21 @@
 # Pravah
 
-Pravah is a React + Vite task-planning app backed by Convex, with Google OAuth for app login and optional Google Calendar/Gmail integration.
+Pravah is a horizontal timeline task manager with:
 
-## Monorepo Layout
+- a React web app (`src/`)
+- a Convex backend (`convex/`)
+- an MCP server for agent integration (`mcp-server.ts`)
+- an Expo mobile app (`apps/mobile/`)
 
-- `.`: web app (React + Vite + Convex)
-- `apps/mobile`: Expo React Native app
+## Quick Start
 
-## Local Development
-
-1. Install dependencies:
+1. Install dependencies
 
 ```bash
 bun install
 ```
 
-2. Start Convex dev:
-
-```bash
-bunx convex dev
-```
-
-3. Start the frontend:
-
-```bash
-bun run dev
-```
-
-4. Start the mobile app (Expo):
-
-```bash
-bun run mobile:start
-```
-
-For native dev build (recommended for Google sign-in modal):
-
-```bash
-bun run mobile:android
-bun run mobile:android:dev
-```
-
-If Android SDK/JDK env is not set globally, `mobile:android` auto-detects common SDK paths and uses JDK 21 when available.
-
-You can also run:
-
-- `bun run mobile:android`
-- `bun run mobile:android:dev`
-- `bun run mobile:ios`
-- `bun run mobile:web`
-
-### Mobile Environment (`apps/mobile/.env.local`)
-
-Generate mobile env from root `.env.local`:
-
-```bash
-bun run mobile:env
-```
-
-`mobile:start`, `mobile:android`, `mobile:ios`, and `mobile:web` run this automatically.
-
-```env
-EXPO_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
-EXPO_PUBLIC_CONVEX_SITE_URL=https://your-deployment.convex.site
-EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=your-google-web-client-id
-EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=your-google-android-client-id
-EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=your-google-ios-client-id
-```
-
-## Required Environment
-
-Frontend `.env.local`:
+2. Configure environment variables in root `.env.local`
 
 ```env
 CONVEX_DEPLOYMENT=your-deployment
@@ -78,7 +24,51 @@ VITE_CONVEX_SITE_URL=https://your-deployment.convex.site
 VITE_GOOGLE_CLIENT_ID=your-google-web-client-id
 ```
 
-Convex environment variables:
+3. Start Convex dev backend
+
+```bash
+bunx convex dev
+```
+
+4. Start the web app
+
+```bash
+bun run dev
+```
+
+## Common Commands
+
+- `bun run dev` - start web app
+- `bun run build` - type-check and build web app
+- `bun run lint` - run ESLint
+- `bun run test:run` - run Vitest suite
+- `bun run mcp` - run MCP server over stdio
+- `bun run mobile:start` - start Expo mobile app
+- `bun run mobile:android` - Android native run (auto syncs env)
+- `bun run mobile:ios` - iOS native run (auto syncs env)
+- `bun run mobile:web` - Expo web run
+
+## Project Structure
+
+- `src/` - React web client and UI logic
+- `convex/` - Convex schema, queries, mutations, actions, and HTTP routes
+- `apps/mobile/` - Expo React Native app
+- `scripts/` - local tooling (`mobile:env`, Android runtime helpers)
+- `mcp-server.ts` - MCP bridge exposing task/sync tools
+- `docs/` - maintained technical documentation
+
+## Environment
+
+### Root `.env.local` (web + shared)
+
+```env
+CONVEX_DEPLOYMENT=your-deployment
+VITE_CONVEX_URL=https://your-deployment.convex.cloud
+VITE_CONVEX_SITE_URL=https://your-deployment.convex.site
+VITE_GOOGLE_CLIENT_ID=your-google-web-client-id
+```
+
+### Convex deployment env
 
 ```env
 BETTER_AUTH_SECRET=generate-a-random-secret
@@ -86,41 +76,29 @@ SITE_URL=http://localhost:5173
 GOOGLE_OAUTH_CLIENT_ID=your-google-web-client-id
 GOOGLE_OAUTH_CLIENT_SECRET=your-google-web-client-secret
 MOBILE_APP_SCHEME=pravah://
+CONVEX_HTTP_API_KEY=your-http-api-key
 ```
 
-## Google OAuth Setup
+### Mobile env sync
 
-Use a Google OAuth client of type `Web application`, not `Desktop`.
+Generate `apps/mobile/.env.local` from root env:
 
-For local development, configure:
-
-- Authorized JavaScript origin: `http://localhost:5173`
-- Authorized redirect URI: `https://your-deployment.convex.site/api/auth/callback/google`
-- Authorized redirect URI: `http://localhost:5173/google-callback`
-
-The redirect URIs serve different purposes:
-
-- `/api/auth/callback/google` is for app login via Better Auth
-- `/google-callback` is for the separate Google Calendar/Gmail connect flow
-
-## Deploy Checklist
-
-1. Set `SITE_URL` in Convex to your real app domain.
-2. Add your production app origin to the Google OAuth client.
-3. Add your production Convex callback URI:
-
-```text
-https://your-deployment.convex.site/api/auth/callback/google
+```bash
+bun run mobile:env
 ```
 
-4. Add your production frontend callback URI if you use Google Calendar/Gmail connect:
+`mobile:start`, `mobile:android`, `mobile:ios`, and `mobile:web` run this automatically.
 
-```text
-https://your-app-domain/google-callback
-```
+## Documentation Map
+
+- `docs/development.md` - local setup, environment, and workflows
+- `docs/api.md` - HTTP routes and MCP tools
+- `docs/google-oauth.md` - Google OAuth setup and troubleshooting
+- `docs/architecture.md` - system architecture and module map
+- `docs/codebase-review-2026-04-15.md` - current code health review and improvements
 
 ## Security Notes
 
-- Never expose `GOOGLE_OAUTH_CLIENT_SECRET` in frontend `VITE_` variables.
-- Keep Google client secrets only in Convex env.
-- `.env.local` is for local development only.
+- Never expose `GOOGLE_OAUTH_CLIENT_SECRET` via `VITE_` variables.
+- Keep secrets only in deployment/server env.
+- Do not commit `.env.local` or real credentials.
