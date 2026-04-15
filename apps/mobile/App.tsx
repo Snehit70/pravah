@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Modal,
   Pressable,
+  RefreshControl,
   SectionList,
   type SectionListRenderItemInfo,
   StyleSheet,
@@ -935,8 +936,15 @@ function MobileApp() {
         renderItem={renderTaskItem}
         renderSectionHeader={renderSectionHeader}
         stickySectionHeadersEnabled={false}
-        refreshing={isRefreshing}
-        onRefresh={() => void handleRefresh()}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => void handleRefresh()}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+            progressBackgroundColor={colors.bgCard}
+          />
+        }
         initialNumToRender={10}
         maxToRenderPerBatch={12}
         windowSize={8}
