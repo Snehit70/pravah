@@ -81,7 +81,9 @@ function AuthenticatedApp() {
 
   const tasks = useQuery(api.tasks.listTasks, {});
   const moveTask = useMutation(api.tasks.moveTask);
+  const unscheduleTask = useMutation(api.tasks.unscheduleTask);
   const reorderTasks = useMutation(api.tasks.reorderTasks);
+  const reorderInboxTasks = useMutation(api.tasks.reorderInboxTasks);
 
   useAppKeyboardShortcuts({
     openQuickAdd,
@@ -99,8 +101,11 @@ function AuthenticatedApp() {
   const { handleDragStart, handleDragEnd } = useTaskDragHandlers({
     tasks,
     tasksByDate,
+    inboxTasks,
     moveTask,
     reorderTasks,
+    reorderInboxTasks,
+    unscheduleTask,
     setDraggedTask,
   });
 

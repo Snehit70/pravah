@@ -1,11 +1,13 @@
 import { memo, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Inbox, ChevronLeft, ChevronRight, Settings as SettingsIcon } from "lucide-react";
-import { useSortable } from "@dnd-kit/sortable";
+import { useDroppable } from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { TRANSITION_FAST, TRANSITION_PANEL } from "../lib/motion";
 import type { Task } from "../types";
 import { cn } from "../lib/utils";
+import { INBOX_DROP_ID } from "../lib/taskRules";
 
 interface InboxSidebarProps {
   tasks: Task[];
@@ -98,6 +100,7 @@ function InboxSidebarComponent({
   onOpenSettings,
 }: InboxSidebarProps) {
   const [collapsed, setCollapsed] = useState(window.innerWidth < 768);
+  const { setNodeRef, isOver } = useDroppable({ id: INBOX_DROP_ID });
 
   useEffect(() => {
     const handleResize = () => {
@@ -109,13 +112,15 @@ function InboxSidebarComponent({
 
   return (
     <motion.aside
+      ref={setNodeRef}
       initial={false}
       animate={{ width: collapsed ? 56 : 260 }}
       transition={TRANSITION_PANEL}
       className={cn(
         "relative flex flex-col overflow-hidden flex-shrink-0 h-full",
         "bg-[#202020] backdrop-blur-xl",
-        "border-l border-white/10"
+        "border-l border-white/10",
+        isOver && "ring-1 ring-blue-400/50 bg-blue-500/10"
       )}
     >
       {/* Collapse toggle */}
@@ -200,15 +205,20 @@ function InboxSidebarComponent({
 
           {/* Task list */}
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            <AnimatePresence mode="popLayout">
-              {tasks.map((task) => (
-                <InboxTask
-                  key={task._id}
-                  task={task}
-                  onClick={() => onTaskClick(task)}
-                />
-              ))}
-            </AnimatePresence>
+            <SortableContext
+              items={tasks.map((task) => task._id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <AnimatePresence mode="popLayout">
+                {tasks.map((task) => (
+                  <InboxTask
+                    key={task._id}
+                    task={task}
+                    onClick={() => onTaskClick(task)}
+                  />
+                ))}
+              </AnimatePresence>
+            </SortableContext>
 
             {tasks.length === 0 && (
               <motion.div

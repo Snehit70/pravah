@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "Pravah Mobile",
+    "slug": "pravah-mobile",
+    "scheme": "pravah",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "plugins": [
+      "expo-dev-client"
+    ],
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#09111f"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.pravah.mobile"
+    },
+    "android": {
+      "package": "com.pravah.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#09111f"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "0bafd3f9-d42e-426a-8662-08828e4e9f00"
+      }
+    }
+  }
+}

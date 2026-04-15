@@ -6,6 +6,10 @@ import { requireTokenIdentifier } from "./authHelpers";
 
 type TaskCtx = QueryCtx | MutationCtx;
 
+function getTodayDateString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 async function getOwnedTask(
   ctx: TaskCtx,
   taskId: Id<"tasks">,
@@ -155,7 +159,11 @@ export const moveTask = mutation({
     const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
 
     if (task.type === "deadline" && task.deadline && args.targetDate > task.deadline) {
-      throw new Error("Cannot move task past its deadline");
+      const today = getTodayDateString();
+      const canCarryForwardOverdueDeadline = task.deadline < today;
+      if (!canCarryForwardOverdueDeadline) {
+        throw new Error("Cannot move task past its deadline");
+      }
     }
 
     const newPosition =
@@ -183,6 +191,26 @@ export const reorderTasks = mutation({
       const task = await getOwnedTask(ctx, taskId, tokenIdentifier);
       if (task.scheduledDate !== args.date) {
         throw new Error(`Task ${taskId} does not belong to date ${args.date}`);
+      }
+      await ctx.db.patch(taskId, {
+        position,
+        updatedAt: Date.now(),
+      });
+    }
+  },
+});
+
+export const reorderInboxTasks = mutation({
+  args: {
+    taskIds: v.array(v.id("tasks")),
+  },
+  handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+
+    for (const [position, taskId] of args.taskIds.entries()) {
+      const task = await getOwnedTask(ctx, taskId, tokenIdentifier);
+      if (task.status !== "inbox" || task.scheduledDate) {
+        throw new Error(`Task ${taskId} does not belong to inbox`);
       }
       await ctx.db.patch(taskId, {
         position,
@@ -306,8 +334,68 @@ export const updateTask = mutation({
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    const { taskId, ...updates } = args;
-    await getOwnedTask(ctx, taskId, tokenIdentifier);
+    const { taskId } = args;
+    const task = await getOwnedTask(ctx, taskId, tokenIdentifier);
+
+    const updates: Partial<{
+      title: string;
+      description: string | undefined;
+      deadline: string | undefined;
+      estimatedMinutes: number | undefined;
+      tags: string[] | undefined;
+      type: "open" | "deadline";
+      scheduledDate: string | undefined;
+      status: "inbox" | "scheduled" | "completed" | "cancelled";
+      position: number;
+      updatedAt: number;
+    }> = {};
+
+    if (Object.prototype.hasOwnProperty.call(args, "title")) {
+      updates.title = args.title;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, "description")) {
+      updates.description = args.description;
+    }
+    const deadlineProvided = Object.prototype.hasOwnProperty.call(args, "deadline");
+    if (deadlineProvided) {
+      updates.deadline = args.deadline;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, "estimatedMinutes")) {
+      updates.estimatedMinutes = args.estimatedMinutes;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, "tags")) {
+      updates.tags = args.tags;
+    }
+
+    const nextDeadline = args.deadline;
+    if (nextDeadline) {
+      updates.type = "deadline";
+
+      if (task.status !== "completed" && task.status !== "cancelled") {
+        const staysInSameSlot =
+          task.status === "scheduled" && task.scheduledDate === nextDeadline;
+        updates.status = "scheduled";
+        updates.scheduledDate = nextDeadline;
+        updates.position = staysInSameSlot
+          ? task.position
+          : await getNextPositionForStatus(ctx, tokenIdentifier, "scheduled", nextDeadline);
+      }
+    } else if (deadlineProvided) {
+      updates.type = "open";
+
+      const wasAutoScheduledByDeadline =
+        task.status === "scheduled" &&
+        task.type === "deadline" &&
+        !!task.deadline &&
+        task.scheduledDate === task.deadline;
+
+      if (wasAutoScheduledByDeadline) {
+        updates.status = "inbox";
+        updates.scheduledDate = undefined;
+        updates.position = await getNextPositionForStatus(ctx, tokenIdentifier, "inbox");
+      }
+    }
+
     await ctx.db.patch(taskId, {
       ...updates,
       updatedAt: Date.now(),
@@ -379,15 +467,19 @@ export const getTimeline = query({
     const tokenIdentifier = await requireTokenIdentifier(ctx);
     const tasks = await ctx.db
       .query("tasks")
-      .withIndex("by_owner_status", (q) =>
-        q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "scheduled")
+      .withIndex("by_owner_status_date_position", (q) =>
+        q
+          .eq("ownerTokenIdentifier", tokenIdentifier)
+          .eq("status", "scheduled")
+          .gte("scheduledDate", args.startDate)
+          .lte("scheduledDate", args.endDate)
       )
       .collect();
 
     const grouped: Record<string, typeof tasks> = {};
     for (const task of tasks) {
       const date = task.scheduledDate;
-      if (!date || date < args.startDate || date > args.endDate) continue;
+      if (!date) continue;
       if (!grouped[date]) grouped[date] = [];
       grouped[date].push(task);
     }
@@ -397,5 +489,39 @@ export const getTimeline = query({
     }
 
     return grouped;
+  },
+});
+
+export const getTaskCounts = query({
+  args: {},
+  handler: async (ctx) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+
+    const [inbox, scheduled, completed] = await Promise.all([
+      ctx.db
+        .query("tasks")
+        .withIndex("by_owner_status", (q) =>
+          q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "inbox")
+        )
+        .collect(),
+      ctx.db
+        .query("tasks")
+        .withIndex("by_owner_status", (q) =>
+          q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "scheduled")
+        )
+        .collect(),
+      ctx.db
+        .query("tasks")
+        .withIndex("by_owner_status", (q) =>
+          q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "completed")
+        )
+        .collect(),
+    ]);
+
+    return {
+      inboxCount: inbox.length,
+      timelineCount: scheduled.length,
+      completedCount: completed.length,
+    };
   },
 });

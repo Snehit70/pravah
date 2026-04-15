@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -11,7 +14,13 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:ui": "vitest --ui",
-    "mcp": "bun run mcp-server.ts"
+    "mcp": "bun run mcp-server.ts",
+    "mobile:env": "bun scripts/sync-mobile-env.mjs",
+    "mobile:start": "bun run mobile:env && bun run --cwd apps/mobile start",
+    "mobile:android": "bun run mobile:env && bun scripts/run-mobile-android.mjs",
+    "mobile:android:dev": "bun run mobile:env && bun run --cwd apps/mobile start -- --dev-client",
+    "mobile:ios": "bun run mobile:env && bun run --cwd apps/mobile ios",
+    "mobile:web": "bun run mobile:env && bun run --cwd apps/mobile web"
   },
   "dependencies": {
     "@convex-dev/better-auth": "^0.11.4",
@@ -26,8 +35,8 @@
     "convex": "^1.34.1",
     "framer-motion": "^12.38.0",
     "lucide-react": "^1.7.0",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.2",
     "zod": "^4.3.6"
