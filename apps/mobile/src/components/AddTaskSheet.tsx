@@ -1,5 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Keyboard, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetTextInput,
@@ -12,6 +13,20 @@ import { colors, radii, spacing, typography } from "../theme/tokens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type ComposerMode = "inbox" | "today";
+
+function formatLocalDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function parseIsoDate(value?: string): Date {
+  if (!value) return new Date();
+  const [y, m, d] = value.split("-").map((v) => Number(v));
+  if (!y || !m || !d) return new Date();
+  return new Date(y, m - 1, d);
+}
 
 export type AddTaskSheetRef = {
   open: () => void;
@@ -42,6 +57,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [error, setError] = useState<string | null>(null);
     const [focusNonce, setFocusNonce] = useState(0);
     const [keyboardHeight, setKeyboardHeight] = useState(0);
+    const [showDatePicker, setShowDatePicker] = useState(false);
 
     useEffect(() => {
       const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
@@ -80,6 +96,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setDescription("");
       setDeadline("");
       setShowDetails(false);
+      setShowDatePicker(false);
       setError(null);
     };
 
@@ -116,6 +133,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       (props: BottomSheetBackdropProps) => (
         <BottomSheetBackdrop
           {...props}
+          pressBehavior="close"
           disappearsOnIndex={-1}
           appearsOnIndex={0}
           opacity={0.6}
@@ -141,12 +159,14 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         keyboardBlurBehavior="restore"
         android_keyboardInputMode="adjustResize"
         onClose={() => {
+          Keyboard.dismiss();
           onSheetChange?.(false);
           reset();
         }}
         onChange={(index) => {
           onSheetChange?.(index >= 0);
           if (index === -1) {
+            Keyboard.dismiss();
             reset();
           }
         }}
@@ -210,17 +230,46 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                 style={[styles.input, styles.notesInput]}
                 multiline
               />
-              <BottomSheetTextInput
-                value={deadline}
-                onChangeText={(text) => {
-                  setDeadline(text);
-                  setError(null);
-                }}
-                placeholder="Deadline YYYY-MM-DD"
-                placeholderTextColor={colors.textMuted}
-                style={styles.input}
-              />
-              <Text style={styles.helperText}>Use YYYY-MM-DD, for example 2026-04-20.</Text>
+              <View style={styles.deadlineRow}>
+                <Pressable
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setShowDatePicker(true);
+                  }}
+                  style={({ pressed }) => [styles.deadlineField, pressed && styles.pressed]}
+                >
+                  <Text style={deadline ? styles.deadlineValue : styles.deadlinePlaceholder}>
+                    {deadline || "Pick deadline"}
+                  </Text>
+                </Pressable>
+                {deadline ? (
+                  <Pressable
+                    onPress={() => {
+                      setDeadline("");
+                      setError(null);
+                    }}
+                    style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.clearButtonText}>Clear</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              {showDatePicker ? (
+                <DateTimePicker
+                  value={parseIsoDate(deadline)}
+                  mode="date"
+                  display={Platform.OS === "ios" ? "spinner" : "default"}
+                  onChange={(_event, selectedDate) => {
+                    if (Platform.OS === "android") {
+                      setShowDatePicker(false);
+                    }
+                    if (selectedDate) {
+                      setDeadline(formatLocalDate(selectedDate));
+                      setError(null);
+                    }
+                  }}
+                />
+              ) : null}
             </Animated.View>
           ) : null}
 
@@ -317,6 +366,41 @@ const styles = StyleSheet.create({
   },
   detailsSection: {
     gap: spacing.sm,
+  },
+  deadlineRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  deadlineField: {
+    flex: 1,
+    backgroundColor: colors.bgInput,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  deadlinePlaceholder: {
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  deadlineValue: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  clearButton: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  clearButtonText: {
+    color: colors.textSecondary,
+    ...typography.caption,
+    fontWeight: "700",
   },
   input: {
     backgroundColor: colors.bgInput,

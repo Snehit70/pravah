@@ -1,5 +1,6 @@
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Keyboard, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetTextInput,
@@ -10,6 +11,20 @@ import * as Haptics from "expo-haptics";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "./TaskCard";
 import type { Id } from "../../../../convex/_generated/dataModel";
+
+function formatLocalDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function parseIsoDate(value?: string): Date {
+  if (!value) return new Date();
+  const [y, m, d] = value.split("-").map((v) => Number(v));
+  if (!y || !m || !d) return new Date();
+  return new Date(y, m - 1, d);
+}
 
 export type EditTaskSheetRef = {
   open: (task: MobileTask) => void;
@@ -37,6 +52,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const [deadline, setDeadline] = useState("");
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [showDatePicker, setShowDatePicker] = useState(false);
 
     useImperativeHandle(ref, () => ({
       open: (task: MobileTask) => {
@@ -45,6 +61,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         setDescription(task.description ?? "");
         setDeadline(task.deadline ?? "");
         setError(null);
+        setShowDatePicker(false);
         bottomSheetRef.current?.expand();
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       },
@@ -84,6 +101,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       (props: BottomSheetBackdropProps) => (
         <BottomSheetBackdrop
           {...props}
+          pressBehavior="close"
           disappearsOnIndex={-1}
           appearsOnIndex={0}
           opacity={0.6}
@@ -106,9 +124,15 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         keyboardBlurBehavior="restore"
         android_keyboardInputMode="adjustResize"
         onClose={() => {
+          Keyboard.dismiss();
           onSheetChange?.(false);
+          setShowDatePicker(false);
         }}
         onChange={(index) => {
+          if (index === -1) {
+            Keyboard.dismiss();
+            setShowDatePicker(false);
+          }
           onSheetChange?.(index >= 0);
         }}
       >
@@ -135,17 +159,46 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             multiline
           />
 
-          <BottomSheetTextInput
-            value={deadline}
-            onChangeText={(text) => {
-              setDeadline(text);
-              setError(null);
-            }}
-            placeholder="Deadline YYYY-MM-DD"
-            placeholderTextColor={colors.textMuted}
-            style={styles.input}
-          />
-          <Text style={styles.helperText}>Use YYYY-MM-DD, for example 2026-04-20.</Text>
+          <View style={styles.deadlineRow}>
+            <Pressable
+              onPress={() => {
+                Keyboard.dismiss();
+                setShowDatePicker(true);
+              }}
+              style={({ pressed }) => [styles.deadlineField, pressed && styles.pressed]}
+            >
+              <Text style={deadline ? styles.deadlineValue : styles.deadlinePlaceholder}>
+                {deadline || "Pick deadline"}
+              </Text>
+            </Pressable>
+            {deadline ? (
+              <Pressable
+                onPress={() => {
+                  setDeadline("");
+                  setError(null);
+                }}
+                style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.clearButtonText}>Clear</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          {showDatePicker ? (
+            <DateTimePicker
+              value={parseIsoDate(deadline)}
+              mode="date"
+              display={Platform.OS === "ios" ? "spinner" : "default"}
+              onChange={(_event, selectedDate) => {
+                if (Platform.OS === "android") {
+                  setShowDatePicker(false);
+                }
+                if (selectedDate) {
+                  setDeadline(formatLocalDate(selectedDate));
+                  setError(null);
+                }
+              }}
+            />
+          ) : null}
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
@@ -210,6 +263,41 @@ const styles = StyleSheet.create({
   notesInput: {
     minHeight: 80,
     textAlignVertical: "top",
+  },
+  deadlineRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  deadlineField: {
+    flex: 1,
+    backgroundColor: colors.bgInput,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  deadlinePlaceholder: {
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  deadlineValue: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  clearButton: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  clearButtonText: {
+    color: colors.textSecondary,
+    ...typography.caption,
+    fontWeight: "700",
   },
   errorText: {
     color: colors.error,
