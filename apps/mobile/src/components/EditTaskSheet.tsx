@@ -105,6 +105,9 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         keyboardBehavior="extend"
         keyboardBlurBehavior="restore"
         android_keyboardInputMode="adjustResize"
+        onClose={() => {
+          onSheetChange?.(false);
+        }}
         onChange={(index) => {
           onSheetChange?.(index >= 0);
         }}

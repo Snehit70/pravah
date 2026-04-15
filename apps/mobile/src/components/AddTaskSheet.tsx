@@ -140,6 +140,10 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         keyboardBehavior="extend"
         keyboardBlurBehavior="restore"
         android_keyboardInputMode="adjustResize"
+        onClose={() => {
+          onSheetChange?.(false);
+          reset();
+        }}
         onChange={(index) => {
           onSheetChange?.(index >= 0);
           if (index === -1) {
