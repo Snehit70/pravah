@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Modal,
   Pressable,
-  SafeAreaView,
   SectionList,
   type SectionListRenderItemInfo,
   StyleSheet,
@@ -22,7 +21,7 @@ import { authClient, authStorageReady } from "./src/lib/auth-client";
 import { ConvexClientProvider } from "./src/lib/convex";
 import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
-import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors, radii, spacing, typography } from "./src/theme/tokens";
 import { TaskCard, type MobileTask } from "./src/components/TaskCard";
