@@ -5,6 +5,7 @@ import {
   backfillDeadlineTasksToDeadlineDate,
   bulkReschedule,
   moveTask,
+  reorderInboxTasks,
   reorderTasks,
 } from "../../convex/tasks";
 
@@ -26,6 +27,13 @@ const moveTaskHandler = (
 const reorderTasksHandler = (
   reorderTasks as unknown as InternalHandler<
     { date: string; taskIds: Id<"tasks">[] },
+    void
+  >
+)._handler;
+
+const reorderInboxTasksHandler = (
+  reorderInboxTasks as unknown as InternalHandler<
+    { taskIds: Id<"tasks">[] },
     void
   >
 )._handler;
@@ -267,6 +275,26 @@ describe("convex/tasks handlers", () => {
         taskIds: [makeId("task-3")],
       })
     ).rejects.toThrow("does not belong to date 2026-04-10");
+  });
+
+  it("reorderInboxTasks rejects ids that are not inbox tasks", async () => {
+    const db = {
+      get: vi.fn().mockResolvedValue({
+        _id: makeId("task-4"),
+        status: "scheduled",
+        scheduledDate: "2026-04-10",
+        ownerTokenIdentifier: "user-1",
+      }),
+      patch: vi.fn(),
+    };
+
+    const ctx = createAuthedCtx(db);
+
+    await expect(
+      reorderInboxTasksHandler(ctx, {
+        taskIds: [makeId("task-4")],
+      })
+    ).rejects.toThrow("does not belong to inbox");
   });
 
   it("bulkReschedule moves only valid tasks and reports skipped ids", async () => {

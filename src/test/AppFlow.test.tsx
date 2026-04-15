@@ -60,6 +60,7 @@ vi.mock("../../convex/_generated/api", () => ({
       listTasks: "tasks.listTasks",
       moveTask: "tasks.moveTask",
       reorderTasks: "tasks.reorderTasks",
+      reorderInboxTasks: "tasks.reorderInboxTasks",
       addTask: "tasks.addTask",
     },
     sync: {

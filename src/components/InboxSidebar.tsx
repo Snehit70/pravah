@@ -1,7 +1,7 @@
 import { memo, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Inbox, ChevronLeft, ChevronRight, Settings as SettingsIcon } from "lucide-react";
-import { useSortable } from "@dnd-kit/sortable";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { TRANSITION_FAST, TRANSITION_PANEL } from "../lib/motion";
 import type { Task } from "../types";
@@ -200,15 +200,20 @@ function InboxSidebarComponent({
 
           {/* Task list */}
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            <AnimatePresence mode="popLayout">
-              {tasks.map((task) => (
-                <InboxTask
-                  key={task._id}
-                  task={task}
-                  onClick={() => onTaskClick(task)}
-                />
-              ))}
-            </AnimatePresence>
+            <SortableContext
+              items={tasks.map((task) => task._id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <AnimatePresence mode="popLayout">
+                {tasks.map((task) => (
+                  <InboxTask
+                    key={task._id}
+                    task={task}
+                    onClick={() => onTaskClick(task)}
+                  />
+                ))}
+              </AnimatePresence>
+            </SortableContext>
 
             {tasks.length === 0 && (
               <motion.div

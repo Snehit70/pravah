@@ -19,11 +19,17 @@ type ReorderTasksMutation = (args: {
   taskIds: Id<"tasks">[];
 }) => Promise<unknown>;
 
+type ReorderInboxTasksMutation = (args: {
+  taskIds: Id<"tasks">[];
+}) => Promise<unknown>;
+
 interface UseTaskDragHandlersOptions {
   tasks: Task[] | undefined;
   tasksByDate: Record<string, Task[]>;
+  inboxTasks: Task[];
   moveTask: MoveTaskMutation;
   reorderTasks: ReorderTasksMutation;
+  reorderInboxTasks: ReorderInboxTasksMutation;
   setDraggedTask: (task: Task | null) => void;
 }
 
@@ -53,8 +59,10 @@ export function resolveDropTargetDate(
 export function useTaskDragHandlers({
   tasks,
   tasksByDate,
+  inboxTasks,
   moveTask,
   reorderTasks,
+  reorderInboxTasks,
   setDraggedTask,
 }: UseTaskDragHandlersOptions) {
   const handleDragStart = useCallback(
@@ -83,6 +91,16 @@ export function useTaskDragHandlers({
         return;
       }
 
+      if (sourceTask.status === "inbox") {
+        const reorderedInboxTaskIds = getReorderedTaskIdsForDay(inboxTasks, activeId, overId);
+        if (!reorderedInboxTaskIds) {
+          return;
+        }
+
+        await reorderInboxTasks({ taskIds: reorderedInboxTaskIds });
+        return;
+      }
+
       if (!sourceTask.scheduledDate) {
         return;
       }
@@ -98,7 +116,7 @@ export function useTaskDragHandlers({
         taskIds: reorderedTaskIds,
       });
     },
-    [tasks, tasksByDate, moveTask, reorderTasks, setDraggedTask]
+    [tasks, tasksByDate, inboxTasks, moveTask, reorderTasks, reorderInboxTasks, setDraggedTask]
   );
 
   return {

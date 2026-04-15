@@ -192,6 +192,26 @@ export const reorderTasks = mutation({
   },
 });
 
+export const reorderInboxTasks = mutation({
+  args: {
+    taskIds: v.array(v.id("tasks")),
+  },
+  handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+
+    for (const [position, taskId] of args.taskIds.entries()) {
+      const task = await getOwnedTask(ctx, taskId, tokenIdentifier);
+      if (task.status !== "inbox" || task.scheduledDate) {
+        throw new Error(`Task ${taskId} does not belong to inbox`);
+      }
+      await ctx.db.patch(taskId, {
+        position,
+        updatedAt: Date.now(),
+      });
+    }
+  },
+});
+
 export const completeTask = mutation({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
