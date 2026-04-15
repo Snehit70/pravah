@@ -21,6 +21,7 @@ import * as SecureStore from "expo-secure-store";
 import { authClient, authStorageReady } from "./src/lib/auth-client";
 import { ConvexClientProvider } from "./src/lib/convex";
 import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
+import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors, radii, spacing, typography } from "./src/theme/tokens";
@@ -117,6 +118,7 @@ function MobileApp() {
   const insets = useSafeAreaInsets();
   const addTaskSheetRef = useRef<AddTaskSheetRef>(null);
   const editTaskSheetRef = useRef<EditTaskSheetRef>(null);
+  const appStartMsRef = useRef<number>(Date.now());
 
   const [activeTab, setActiveTab] = useState<TabKey>("inbox");
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -209,7 +211,12 @@ function MobileApp() {
   useEffect(() => {
     let mounted = true;
     authStorageReady.finally(() => {
-      if (mounted) setIsAuthHydrated(true);
+      if (mounted) {
+        setIsAuthHydrated(true);
+        mobileLogger.info("auth_storage_hydrated", {
+          elapsedMs: Date.now() - appStartMsRef.current,
+        });
+      }
     });
     return () => {
       mounted = false;
@@ -232,6 +239,24 @@ function MobileApp() {
   useEffect(() => {
     if (pendingMutations === 0) setOptimisticTasks(null);
   }, [pendingMutations, serverTasks]);
+
+  useEffect(() => {
+    if (!session) return;
+    mobileLogger.info("session_ready", {
+      elapsedMs: Date.now() - appStartMsRef.current,
+    });
+  }, [session]);
+
+  useEffect(() => {
+    mobileLogger.debug("list_state", {
+      activeTab,
+      inboxCount: inboxTasks.length,
+      timelineCount,
+      completedCount: completedTasks.length,
+      pendingMutations,
+      retryQueueCount: retryQueue.length,
+    });
+  }, [activeTab, inboxTasks.length, timelineCount, completedTasks.length, pendingMutations, retryQueue.length]);
 
   // ── Toast / retry ───────────────────────────────────────────────────
 
@@ -300,7 +325,15 @@ function MobileApp() {
 
   const enqueueRetry = useCallback(
     (item: Omit<RetryQueueItem, "id" | "attempts">) => {
-      setRetryQueue((cur) => [...cur, { id: `${Date.now()}-${cur.length}`, attempts: 0, ...item }]);
+      setRetryQueue((cur) => {
+        const next = [...cur, { id: `${Date.now()}-${cur.length}`, attempts: 0, ...item }];
+        mobileLogger.warn("retry_enqueued", {
+          label: item.label,
+          nextQueueSize: next.length,
+          payloadType: item.payload.type,
+        });
+        return next;
+      });
     },
     []
   );
@@ -312,17 +345,18 @@ function MobileApp() {
       try {
         const parsed = JSON.parse(raw) as RetryQueueItem[];
         if (!Array.isArray(parsed)) return;
-        setRetryQueue(
-          parsed.filter(
-            (item) =>
-              typeof item?.id === "string" &&
-              typeof item?.label === "string" &&
-              typeof item?.attempts === "number" &&
-              item?.payload !== undefined
-          )
+        const hydrated = parsed.filter(
+          (item) =>
+            typeof item?.id === "string" &&
+            typeof item?.label === "string" &&
+            typeof item?.attempts === "number" &&
+            item?.payload !== undefined
         );
+        setRetryQueue(hydrated);
+        mobileLogger.info("retry_queue_hydrated", { hydratedCount: hydrated.length });
       } catch {
         void SecureStore.deleteItemAsync(RETRY_QUEUE_STORAGE_KEY);
+        mobileLogger.warn("retry_queue_corrupt_reset");
       }
     });
 
@@ -333,10 +367,14 @@ function MobileApp() {
 
   useEffect(() => {
     void SecureStore.setItemAsync(RETRY_QUEUE_STORAGE_KEY, JSON.stringify(retryQueue));
+    mobileLogger.debug("retry_queue_persisted", { queueSize: retryQueue.length });
   }, [retryQueue]);
 
   const retryQueuedMutations = useCallback(async () => {
     if (!retryQueue.length) return;
+    const actionId = createActionId("retry");
+    const startedAt = Date.now();
+    mobileLogger.info("retry_run_started", { actionId, queueSize: retryQueue.length });
     const snapshot = [...retryQueue];
     setRetryQueue([]);
     let failed = 0;
@@ -345,6 +383,12 @@ function MobileApp() {
         await runRetryPayload(queued.payload);
       } catch {
         failed += 1;
+        mobileLogger.warn("retry_item_failed", {
+          actionId,
+          label: queued.label,
+          payloadType: queued.payload.type,
+          attempts: queued.attempts + 1,
+        });
         setRetryQueue((cur) => [...cur, { ...queued, attempts: queued.attempts + 1 }]);
       }
     }
@@ -352,6 +396,13 @@ function MobileApp() {
       showToast({ kind: "info", message: "Retry complete" });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
+    mobileLogger.info("retry_run_finished", {
+      actionId,
+      elapsedMs: Date.now() - startedAt,
+      attempted: snapshot.length,
+      failed,
+      succeeded: snapshot.length - failed,
+    });
   }, [retryQueue, runRetryPayload, showToast]);
 
   // ── Optimistic mutation runner ──────────────────────────────────────
@@ -361,6 +412,7 @@ function MobileApp() {
       optimistic,
       mutation,
       errorMessage,
+      actionName,
       retryLabel,
       retryPayload,
       successHaptic = "notification",
@@ -368,20 +420,39 @@ function MobileApp() {
       optimistic: (current: MobileTask[]) => MobileTask[];
       mutation: () => Promise<void>;
       errorMessage: string;
+      actionName: string;
       retryLabel?: string;
       retryPayload?: RetryPayload;
       successHaptic?: SuccessHaptic;
     }): Promise<boolean> => {
+      const actionId = createActionId("mutation");
+      const startedAt = Date.now();
+      mobileLogger.info("mutation_started", {
+        actionId,
+        actionName,
+      });
       setPendingMutations((c) => c + 1);
       setOptimisticTasks((cur) => optimistic(cur ?? serverTasks));
       try {
         await mutation();
         triggerSuccessHaptic(successHaptic);
+        mobileLogger.info("mutation_succeeded", {
+          actionId,
+          actionName,
+          elapsedMs: Date.now() - startedAt,
+        });
         return true;
       } catch (error) {
         setOptimisticTasks(null);
         const canRetry = retryLabel && retryPayload && isLikelyOfflineError(error);
         if (canRetry) enqueueRetry({ label: retryLabel!, payload: retryPayload! });
+        mobileLogger.error("mutation_failed", {
+          actionId,
+          actionName,
+          elapsedMs: Date.now() - startedAt,
+          errorType: classifyError(error),
+          retriable: Boolean(canRetry),
+        });
         showToast({
           kind: "error",
           message: canRetry ? `${errorMessage} Queued for retry.` : errorMessage,
@@ -400,6 +471,7 @@ function MobileApp() {
   const markDone = useCallback(
     (taskId: Id<"tasks">) => {
       void runOptimisticMutation({
+        actionName: "complete_task",
         optimistic: (cur) =>
           cur.map((t) => (t._id === taskId ? { ...t, status: "completed" as const, updatedAt: Date.now() } : t)),
         mutation: async () => { await completeTaskMutation({ taskId }); },
@@ -414,6 +486,7 @@ function MobileApp() {
   const moveToToday = useCallback(
     (taskId: Id<"tasks">) => {
       void runOptimisticMutation({
+        actionName: "move_task_today",
         optimistic: (cur) =>
           cur.map((t) =>
             t._id === taskId ? { ...t, status: "scheduled" as const, scheduledDate: today, updatedAt: Date.now() } : t
@@ -431,6 +504,7 @@ function MobileApp() {
   const sendToInbox = useCallback(
     (taskId: Id<"tasks">) => {
       void runOptimisticMutation({
+        actionName: "move_task_inbox",
         optimistic: (cur) =>
           cur.map((t) =>
             t._id === taskId
@@ -450,6 +524,7 @@ function MobileApp() {
   const reopenToInbox = useCallback(
     (taskId: Id<"tasks">) => {
       void runOptimisticMutation({
+        actionName: "reopen_task",
         optimistic: (cur) =>
           cur.map((t) =>
             t._id === taskId
@@ -470,6 +545,13 @@ function MobileApp() {
 
   const handleAddTask = useCallback(
     async (data: { title: string; description?: string; deadline?: string; mode: "inbox" | "today" }) => {
+      const actionId = createActionId("add");
+      const startedAt = Date.now();
+      mobileLogger.info("add_task_started", {
+        actionId,
+        mode: data.mode,
+        hasDeadline: Boolean(data.deadline),
+      });
       try {
         await addTaskMutation({
           title: data.title,
@@ -479,6 +561,7 @@ function MobileApp() {
           scheduledDate: data.mode === "today" ? today : undefined,
         });
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        mobileLogger.info("add_task_succeeded", { actionId, elapsedMs: Date.now() - startedAt });
         return true;
       } catch (error) {
         if (isLikelyOfflineError(error)) {
@@ -496,6 +579,12 @@ function MobileApp() {
         } else {
           showToast({ kind: "error", message: "Could not add task. Please try again." });
         }
+        mobileLogger.error("add_task_failed", {
+          actionId,
+          elapsedMs: Date.now() - startedAt,
+          errorType: classifyError(error),
+          queuedForRetry: isLikelyOfflineError(error),
+        });
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         return false;
       }
@@ -508,6 +597,7 @@ function MobileApp() {
   const handleSaveEdits = useCallback(
     async (data: { taskId: Id<"tasks">; title: string; description?: string; deadline?: string }) => {
       return runOptimisticMutation({
+        actionName: "update_task",
         optimistic: (cur) =>
           cur.map((t) =>
             t._id === data.taskId
@@ -541,6 +631,9 @@ function MobileApp() {
 
   const handleGoogleSignIn = async () => {
     if (!googleWebClientId || isSigningIn) return;
+    const actionId = createActionId("auth");
+    const startedAt = Date.now();
+    mobileLogger.info("google_signin_started", { actionId });
     setIsSigningIn(true);
     try {
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
@@ -556,9 +649,11 @@ function MobileApp() {
         idToken: { token: idToken },
         callbackURL: "/",
       });
+      mobileLogger.info("google_signin_succeeded", { actionId, elapsedMs: Date.now() - startedAt });
     } catch {
       showToast({ kind: "error", message: "Google sign-in failed. Check OAuth client setup." });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      mobileLogger.error("google_signin_failed", { actionId, elapsedMs: Date.now() - startedAt });
     } finally {
       setIsSigningIn(false);
     }
@@ -566,13 +661,18 @@ function MobileApp() {
 
   const handleRefresh = async () => {
     if (!session || isRefreshing) return;
+    const actionId = createActionId("refresh");
+    const startedAt = Date.now();
+    mobileLogger.info("refresh_started", { actionId, retryQueueCount: retryQueue.length });
     setIsRefreshing(true);
     try {
       await convex.query(api.tasks.listTasks, {});
       showToast({ kind: "info", message: "Workspace refreshed" });
       if (retryQueue.length) await retryQueuedMutations();
+      mobileLogger.info("refresh_succeeded", { actionId, elapsedMs: Date.now() - startedAt });
     } catch {
       showToast({ kind: "error", message: "Could not refresh tasks. Check connection and retry." });
+      mobileLogger.error("refresh_failed", { actionId, elapsedMs: Date.now() - startedAt });
     } finally {
       setIsRefreshing(false);
     }
@@ -584,10 +684,12 @@ function MobileApp() {
   );
 
   const confirmSignOut = useCallback(() => {
+    mobileLogger.info("signout_prompt_opened");
     setIsSignOutModalOpen(true);
   }, []);
 
   const handleSignOut = useCallback(() => {
+    mobileLogger.info("signout_confirmed");
     setIsSignOutModalOpen(false);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     void authClient.signOut();
