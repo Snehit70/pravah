@@ -142,10 +142,30 @@ function MobileApp() {
 
   // ── Data ────────────────────────────────────────────────────────────
 
-  const queryTasks = useQuery(api.tasks.listTasks, session ? {} : "skip");
+  const inboxQuery = useQuery(
+    api.tasks.listTasks,
+    session && activeTab === "inbox" ? { status: "inbox" } : "skip"
+  );
+  const scheduledQuery = useQuery(
+    api.tasks.listTasks,
+    session && activeTab === "timeline" ? { status: "scheduled" } : "skip"
+  );
+  const completedQuery = useQuery(
+    api.tasks.listTasks,
+    session && activeTab === "completed" ? { status: "completed" } : "skip"
+  );
+  const countsQuery = useQuery(api.tasks.getTaskCounts, session ? {} : "skip");
+
+  const activeQueryTasks =
+    activeTab === "inbox"
+      ? inboxQuery
+      : activeTab === "timeline"
+        ? scheduledQuery
+        : completedQuery;
+
   const serverTasks = useMemo<MobileTask[]>(() => {
     return (
-      (queryTasks as Doc<"tasks">[] | undefined)?.map((task) => ({
+      (activeQueryTasks as Doc<"tasks">[] | undefined)?.map((task) => ({
         _id: task._id,
         title: task.title,
         description: task.description,
@@ -156,7 +176,7 @@ function MobileApp() {
         updatedAt: task.updatedAt,
       })) ?? []
     );
-  }, [queryTasks]);
+  }, [activeQueryTasks]);
   const tasks = useMemo(() => optimisticTasks ?? serverTasks, [optimisticTasks, serverTasks]);
 
   const addTaskMutation = useMutation(api.tasks.addTask);
@@ -174,22 +194,27 @@ function MobileApp() {
 
   // ── Derived data ────────────────────────────────────────────────────
 
-  const inboxTasks = useMemo(
-    () => tasks.filter((t) => t.status === "inbox").sort((a, b) => a.position - b.position),
-    [tasks]
-  );
-  const scheduledTasks = useMemo(
-    () =>
-      tasks
-        .filter((t) => t.status === "scheduled")
-        .sort((a, b) => (a.scheduledDate ?? "").localeCompare(b.scheduledDate ?? "") || a.position - b.position),
-    [tasks]
-  );
-  const completedTasks = useMemo(
-    () => tasks.filter((t) => t.status === "completed").sort((a, b) => b.updatedAt - a.updatedAt),
-    [tasks]
-  );
-  const timelineCount = scheduledTasks.length;
+  const inboxTasks = useMemo(() => {
+    if (activeTab !== "inbox") return [];
+    return [...tasks].sort((a, b) => a.position - b.position);
+  }, [activeTab, tasks]);
+
+  const scheduledTasks = useMemo(() => {
+    if (activeTab !== "timeline") return [];
+    return [...tasks].sort(
+      (a, b) => (a.scheduledDate ?? "").localeCompare(b.scheduledDate ?? "") || a.position - b.position
+    );
+  }, [activeTab, tasks]);
+
+  const completedTasks = useMemo(() => {
+    if (activeTab !== "completed") return [];
+    return [...tasks].sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [activeTab, tasks]);
+
+  const inboxCount = countsQuery?.inboxCount ?? (activeTab === "inbox" ? inboxTasks.length : 0);
+  const timelineCount = countsQuery?.timelineCount ?? (activeTab === "timeline" ? scheduledTasks.length : 0);
+  const completedCount =
+    countsQuery?.completedCount ?? (activeTab === "completed" ? completedTasks.length : 0);
 
   const timelineSections = useMemo(() => {
     const grouped = new Map<string, MobileTask[]>();
@@ -250,13 +275,13 @@ function MobileApp() {
   useEffect(() => {
     mobileLogger.debug("list_state", {
       activeTab,
-      inboxCount: inboxTasks.length,
+      inboxCount,
       timelineCount,
-      completedCount: completedTasks.length,
+      completedCount,
       pendingMutations,
       retryQueueCount: retryQueue.length,
     });
-  }, [activeTab, inboxTasks.length, timelineCount, completedTasks.length, pendingMutations, retryQueue.length]);
+  }, [activeTab, inboxCount, timelineCount, completedCount, pendingMutations, retryQueue.length]);
 
   // ── Toast / retry ───────────────────────────────────────────────────
 
@@ -666,7 +691,14 @@ function MobileApp() {
     mobileLogger.info("refresh_started", { actionId, retryQueueCount: retryQueue.length });
     setIsRefreshing(true);
     try {
-      await convex.query(api.tasks.listTasks, {});
+      await convex.query(api.tasks.getTaskCounts, {});
+      if (activeTab === "inbox") {
+        await convex.query(api.tasks.listTasks, { status: "inbox" });
+      } else if (activeTab === "timeline") {
+        await convex.query(api.tasks.listTasks, { status: "scheduled" });
+      } else {
+        await convex.query(api.tasks.listTasks, { status: "completed" });
+      }
       showToast({ kind: "info", message: "Workspace refreshed" });
       if (retryQueue.length) await retryQueuedMutations();
       mobileLogger.info("refresh_succeeded", { actionId, elapsedMs: Date.now() - startedAt });
@@ -821,7 +853,7 @@ function MobileApp() {
       ? `${timelineCount} task${timelineCount === 1 ? "" : "s"} scheduled`
       : activeTab === "completed"
         ? "Closed loops"
-        : `${inboxTasks.length} task${inboxTasks.length === 1 ? "" : "s"} to triage`;
+        : `${inboxCount} task${inboxCount === 1 ? "" : "s"} to triage`;
 
   // ── Main layout ─────────────────────────────────────────────────────
 
@@ -918,9 +950,9 @@ function MobileApp() {
       <BottomTabBar
         active={activeTab}
         onChange={setActiveTab}
-        inboxCount={inboxTasks.length}
+        inboxCount={inboxCount}
         timelineCount={timelineCount}
-        doneCount={completedTasks.length}
+        doneCount={completedCount}
         bottomInset={tabBarBottomPadding}
       />
 
