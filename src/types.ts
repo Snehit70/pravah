@@ -12,6 +12,7 @@ export interface Task {
   source?: "manual" | "ai-agent" | "gmail" | "gcal";
   estimatedMinutes?: number;
   tags?: string[];
+  priority?: "p1" | "p2" | "p3";
   createdBy: string;
   createdAt: number;
   updatedAt: number;

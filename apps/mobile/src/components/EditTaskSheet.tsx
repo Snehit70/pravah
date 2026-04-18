@@ -11,6 +11,7 @@ import * as Haptics from "expo-haptics";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "./TaskCard";
 import type { Id } from "../../../../convex/_generated/dataModel";
+type TaskPriority = "p1" | "p2" | "p3" | undefined;
 
 function formatLocalDate(date: Date): string {
   const y = date.getFullYear();
@@ -37,6 +38,7 @@ type EditTaskSheetProps = {
     title: string;
     description?: string;
     deadline?: string;
+    priority?: TaskPriority;
   }) => Promise<boolean>;
   isValidDeadline: (raw: string) => { value?: string; error?: string };
   onSheetChange?: (isOpen: boolean) => void;
@@ -50,6 +52,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [deadline, setDeadline] = useState("");
+    const [priority, setPriority] = useState<TaskPriority>(undefined);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [showDatePicker, setShowDatePicker] = useState(false);
@@ -60,6 +63,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         setTitle(task.title);
         setDescription(task.description ?? "");
         setDeadline(task.deadline ?? "");
+        setPriority(task.priority);
         setError(null);
         setShowDatePicker(false);
         bottomSheetRef.current?.expand();
@@ -88,6 +92,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         title: title.trim(),
         description: description.trim() || undefined,
         deadline: deadlineResult.value,
+        priority,
       });
 
       setSaving(false);
@@ -95,7 +100,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       if (success) {
         bottomSheetRef.current?.close();
       }
-    }, [taskId, title, description, deadline, saving, onSave, isValidDeadline]);
+    }, [taskId, title, description, deadline, priority, saving, onSave, isValidDeadline]);
 
     const renderBackdrop = useCallback(
       (props: BottomSheetBackdropProps) => (
@@ -200,6 +205,60 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             />
           ) : null}
 
+          <View style={styles.priorityRow}>
+            <Text style={styles.priorityLabel}>Priority</Text>
+            <View style={styles.priorityChips}>
+              <Pressable
+                onPress={() => setPriority(undefined)}
+                style={({ pressed }) => [
+                  styles.priorityChip,
+                  priority === undefined && styles.priorityChipActive,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={[styles.priorityChipText, priority === undefined && styles.priorityChipTextActive]}>
+                  None
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setPriority("p1")}
+                style={({ pressed }) => [
+                  styles.priorityChip,
+                  priority === "p1" && styles.priorityChipActive,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={[styles.priorityChipText, priority === "p1" && styles.priorityChipTextActive]}>
+                  P1
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setPriority("p2")}
+                style={({ pressed }) => [
+                  styles.priorityChip,
+                  priority === "p2" && styles.priorityChipActive,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={[styles.priorityChipText, priority === "p2" && styles.priorityChipTextActive]}>
+                  P2
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setPriority("p3")}
+                style={({ pressed }) => [
+                  styles.priorityChip,
+                  priority === "p3" && styles.priorityChipActive,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={[styles.priorityChipText, priority === "p3" && styles.priorityChipTextActive]}>
+                  P3
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
           <View style={styles.actions}>
@@ -263,6 +322,38 @@ const styles = StyleSheet.create({
   notesInput: {
     minHeight: 80,
     textAlignVertical: "top",
+  },
+  priorityRow: {
+    gap: spacing.xs,
+  },
+  priorityLabel: {
+    color: colors.textSecondary,
+    ...typography.caption,
+  },
+  priorityChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  priorityChip: {
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: colors.bgInput,
+  },
+  priorityChipActive: {
+    borderColor: colors.chipActiveBorder,
+    backgroundColor: colors.chipActive,
+  },
+  priorityChipText: {
+    color: colors.textSecondary,
+    ...typography.caption,
+    fontWeight: "700",
+  },
+  priorityChipTextActive: {
+    color: colors.accent,
   },
   deadlineRow: {
     flexDirection: "row",

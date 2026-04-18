@@ -8,6 +8,7 @@ export type MobileTask = {
   title: string;
   description?: string;
   deadline?: string;
+  priority?: "p1" | "p2" | "p3";
   status: "inbox" | "scheduled" | "completed" | "cancelled";
   scheduledDate?: string;
   position: number;
@@ -22,6 +23,7 @@ type TaskCardProps = {
   onSendToInbox?: (id: Id<"tasks">) => void;
   onReopen?: (id: Id<"tasks">) => void;
   onEdit: (task: MobileTask) => void;
+  onDragHandlePress?: () => void;
 };
 
 function TaskCardInner({
@@ -32,6 +34,7 @@ function TaskCardInner({
   onSendToInbox,
   onReopen,
   onEdit,
+  onDragHandlePress,
 }: TaskCardProps) {
   const isCompleted = task.status === "completed";
   const canEdit = !isCompleted;
@@ -83,6 +86,11 @@ function TaskCardInner({
                 <Text style={styles.deadlineBadgeText}>Due {task.deadline}</Text>
               </View>
             ) : null}
+            {task.priority && !isCompleted ? (
+              <View style={styles.priorityBadge}>
+                <Text style={styles.priorityBadgeText}>{task.priority.toUpperCase()}</Text>
+              </View>
+            ) : null}
           </View>
 
           {task.description && !isCompleted ? (
@@ -115,6 +123,15 @@ function TaskCardInner({
             {!isCompleted ? (
               <Pressable onPress={handleDone} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
                 <Text style={styles.primaryButtonText}>Done</Text>
+              </Pressable>
+            ) : null}
+            {onDragHandlePress && !isCompleted ? (
+              <Pressable
+                onLongPress={onDragHandlePress}
+                delayLongPress={120}
+                style={({ pressed }) => [styles.ghostButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.ghostButtonText}>Drag</Text>
               </Pressable>
             ) : null}
           </View>
@@ -207,6 +224,16 @@ const styles = StyleSheet.create({
   },
   deadlineBadgeText: {
     color: "#fca5a5",
+    ...typography.caption,
+  },
+  priorityBadge: {
+    backgroundColor: colors.ghostBg,
+    borderRadius: radii.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  priorityBadgeText: {
+    color: colors.ghostText,
     ...typography.caption,
   },
   description: {

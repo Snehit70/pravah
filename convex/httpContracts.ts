@@ -12,6 +12,7 @@ export const createTaskSchema = z.object({
   source: z.enum(["manual", "ai-agent", "gmail", "gcal"]).default("ai-agent"),
   estimatedMinutes: z.number().int().positive("Estimated minutes must be positive").optional(),
   tags: z.array(z.string().max(50)).max(20, "Too many tags").optional(),
+  priority: z.enum(["p1", "p2", "p3"]).optional(),
 });
 
 export const updateTaskSchema = z.object({
@@ -24,6 +25,7 @@ export const updateTaskSchema = z.object({
   deadline: z.string().regex(dateRegex, "Invalid date format (YYYY-MM-DD)").optional(),
   estimatedMinutes: z.number().int().positive("Estimated minutes must be positive").optional(),
   tags: z.array(z.string().max(50)).max(20, "Too many tags").optional(),
+  priority: z.enum(["p1", "p2", "p3"]).optional(),
 });
 
 export const moveTaskSchema = z.object({

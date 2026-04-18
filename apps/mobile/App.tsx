@@ -69,6 +69,7 @@ type RetryPayload =
       description?: string;
       deadline?: string;
       scheduledDate?: string;
+      priority?: "p1" | "p2" | "p3";
     }
   | {
       type: "updateTask";
@@ -76,6 +77,7 @@ type RetryPayload =
       title: string;
       description?: string;
       deadline?: string;
+      priority?: "p1" | "p2" | "p3";
     }
   | {
       type: "completeTask";
@@ -121,6 +123,13 @@ function normalizeDeadlineInput(raw: string): { value?: string; error?: string }
     return { error: "Use YYYY-MM-DD for deadline." };
   }
   return { value: trimmed };
+}
+
+function getPriorityRank(priority?: "p1" | "p2" | "p3"): number {
+  if (priority === "p1") return 0;
+  if (priority === "p2") return 1;
+  if (priority === "p3") return 2;
+  return 3;
 }
 
 // ── Main App ───────────────────────────────────────────────────────────
@@ -199,6 +208,7 @@ function MobileApp() {
         title: task.title,
         description: task.description,
         deadline: task.deadline,
+        priority: task.priority,
         status: task.status,
         scheduledDate: task.scheduledDate,
         position: task.position,
@@ -227,13 +237,16 @@ function MobileApp() {
 
   const inboxTasks = useMemo(() => {
     if (activeTab !== "inbox") return [];
-    return [...tasks].sort((a, b) => a.position - b.position);
+    return [...tasks].sort((a, b) => getPriorityRank(a.priority) - getPriorityRank(b.priority) || a.position - b.position);
   }, [activeTab, tasks]);
 
   const scheduledTasks = useMemo(() => {
     if (activeTab !== "timeline") return [];
     return [...tasks].sort(
-      (a, b) => (a.scheduledDate ?? "").localeCompare(b.scheduledDate ?? "") || a.position - b.position
+      (a, b) =>
+        (a.scheduledDate ?? "").localeCompare(b.scheduledDate ?? "") ||
+        getPriorityRank(a.priority) - getPriorityRank(b.priority) ||
+        a.position - b.position
     );
   }, [activeTab, tasks]);
 
@@ -366,6 +379,7 @@ function MobileApp() {
             deadline: payload.deadline,
             type: payload.deadline ? "deadline" : "open",
             scheduledDate: payload.scheduledDate,
+            priority: payload.priority,
           });
           return;
         }
@@ -375,6 +389,7 @@ function MobileApp() {
             title: payload.title,
             description: payload.description,
             deadline: payload.deadline,
+            priority: payload.priority,
           });
           return;
         }
@@ -631,7 +646,13 @@ function MobileApp() {
   // ── Add task handler (from sheet) ───────────────────────────────────
 
   const handleAddTask = useCallback(
-    async (data: { title: string; description?: string; deadline?: string; mode: "inbox" | "today" }) => {
+    async (data: {
+      title: string;
+      description?: string;
+      deadline?: string;
+      mode: "inbox" | "today";
+      priority?: "p1" | "p2" | "p3";
+    }) => {
       const actionId = createActionId("add");
       const startedAt = Date.now();
       mobileLogger.info("add_task_started", {
@@ -646,6 +667,7 @@ function MobileApp() {
           deadline: data.deadline,
           type: data.deadline ? "deadline" : "open",
           scheduledDate: data.mode === "today" ? today : undefined,
+          priority: data.priority,
         });
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         mobileLogger.info("add_task_succeeded", { actionId, elapsedMs: Date.now() - startedAt });
@@ -660,6 +682,7 @@ function MobileApp() {
               description: data.description,
               deadline: data.deadline,
               scheduledDate: data.mode === "today" ? today : undefined,
+              priority: data.priority,
             },
           });
           showToast({ kind: "error", message: "Offline. Task queued for retry." });
@@ -682,13 +705,26 @@ function MobileApp() {
   // ── Save task edits (from edit sheet) ───────────────────────────────
 
   const handleSaveEdits = useCallback(
-    async (data: { taskId: Id<"tasks">; title: string; description?: string; deadline?: string }) => {
+    async (data: {
+      taskId: Id<"tasks">;
+      title: string;
+      description?: string;
+      deadline?: string;
+      priority?: "p1" | "p2" | "p3";
+    }) => {
       return runOptimisticMutation({
         actionName: "update_task",
         optimistic: (cur) =>
           cur.map((t) =>
             t._id === data.taskId
-              ? { ...t, title: data.title, description: data.description, deadline: data.deadline, updatedAt: Date.now() }
+              ? {
+                  ...t,
+                  title: data.title,
+                  description: data.description,
+                  deadline: data.deadline,
+                  priority: data.priority,
+                  updatedAt: Date.now(),
+                }
               : t
           ),
         mutation: async () => {
@@ -697,6 +733,7 @@ function MobileApp() {
             title: data.title,
             description: data.description,
             deadline: data.deadline,
+            priority: data.priority,
           });
         },
         errorMessage: "Could not save task details.",
@@ -707,6 +744,7 @@ function MobileApp() {
           title: data.title,
           description: data.description,
           deadline: data.deadline,
+          priority: data.priority,
         },
         successHaptic: "medium",
       });

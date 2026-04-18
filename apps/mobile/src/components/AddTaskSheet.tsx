@@ -13,6 +13,7 @@ import { colors, radii, spacing, typography } from "../theme/tokens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type ComposerMode = "inbox" | "today";
+type TaskPriority = "p1" | "p2" | "p3" | undefined;
 
 function formatLocalDate(date: Date): string {
   const y = date.getFullYear();
@@ -39,6 +40,7 @@ type AddTaskSheetProps = {
     description?: string;
     deadline?: string;
     mode: ComposerMode;
+    priority?: TaskPriority;
   }) => Promise<boolean>;
   isValidDeadline: (raw: string) => { value?: string; error?: string };
   onSheetChange?: (isOpen: boolean) => void;
@@ -52,6 +54,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [description, setDescription] = useState("");
     const [deadline, setDeadline] = useState("");
     const [mode, setMode] = useState<ComposerMode>("inbox");
+    const [priority, setPriority] = useState<TaskPriority>(undefined);
     const [saving, setSaving] = useState(false);
     const [showDetails, setShowDetails] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -95,6 +98,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setTitle("");
       setDescription("");
       setDeadline("");
+      setPriority(undefined);
       setShowDetails(false);
       setShowDatePicker(false);
       setError(null);
@@ -119,6 +123,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         description: description.trim() || undefined,
         deadline: deadlineResult.value,
         mode,
+        priority,
       });
 
       setSaving(false);
@@ -127,7 +132,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         reset();
         bottomSheetRef.current?.close();
       }
-    }, [title, description, deadline, mode, saving, onAdd, isValidDeadline]);
+    }, [title, description, deadline, mode, priority, saving, onAdd, isValidDeadline]);
 
     const renderBackdrop = useCallback(
       (props: BottomSheetBackdropProps) => (
@@ -270,6 +275,79 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                   }}
                 />
               ) : null}
+              <View style={styles.priorityRow}>
+                <Text style={styles.priorityLabel}>Priority</Text>
+                <View style={styles.priorityChips}>
+                  <Pressable
+                    onPress={() => setPriority(undefined)}
+                    style={({ pressed }) => [
+                      styles.priorityChip,
+                      priority === undefined && styles.priorityChipActive,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.priorityChipText,
+                        priority === undefined && styles.priorityChipTextActive,
+                      ]}
+                    >
+                      None
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setPriority("p1")}
+                    style={({ pressed }) => [
+                      styles.priorityChip,
+                      priority === "p1" && styles.priorityChipActive,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.priorityChipText,
+                        priority === "p1" && styles.priorityChipTextActive,
+                      ]}
+                    >
+                      P1
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setPriority("p2")}
+                    style={({ pressed }) => [
+                      styles.priorityChip,
+                      priority === "p2" && styles.priorityChipActive,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.priorityChipText,
+                        priority === "p2" && styles.priorityChipTextActive,
+                      ]}
+                    >
+                      P2
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setPriority("p3")}
+                    style={({ pressed }) => [
+                      styles.priorityChip,
+                      priority === "p3" && styles.priorityChipActive,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.priorityChipText,
+                        priority === "p3" && styles.priorityChipTextActive,
+                      ]}
+                    >
+                      P3
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
             </Animated.View>
           ) : null}
 
@@ -415,6 +493,38 @@ const styles = StyleSheet.create({
   notesInput: {
     minHeight: 60,
     textAlignVertical: "top",
+  },
+  priorityRow: {
+    gap: spacing.xs,
+  },
+  priorityLabel: {
+    color: colors.textSecondary,
+    ...typography.caption,
+  },
+  priorityChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  priorityChip: {
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: colors.bgInput,
+  },
+  priorityChipActive: {
+    borderColor: colors.chipActiveBorder,
+    backgroundColor: colors.chipActive,
+  },
+  priorityChipText: {
+    color: colors.textSecondary,
+    ...typography.caption,
+    fontWeight: "700",
+  },
+  priorityChipTextActive: {
+    color: colors.accent,
   },
   errorText: {
     color: colors.error,

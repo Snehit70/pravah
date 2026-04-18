@@ -115,6 +115,7 @@ export const addTask = mutation({
     ),
     estimatedMinutes: v.optional(v.number()),
     tags: v.optional(v.array(v.string())),
+    priority: v.optional(v.union(v.literal("p1"), v.literal("p2"), v.literal("p3"))),
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
@@ -140,6 +141,7 @@ export const addTask = mutation({
       source: args.source || "manual",
       estimatedMinutes: args.estimatedMinutes,
       tags: args.tags,
+      priority: args.priority,
       createdBy: tokenIdentifier,
       ownerTokenIdentifier: tokenIdentifier,
       createdAt: Date.now(),
@@ -331,6 +333,7 @@ export const updateTask = mutation({
     deadline: v.optional(v.string()),
     estimatedMinutes: v.optional(v.number()),
     tags: v.optional(v.array(v.string())),
+    priority: v.optional(v.union(v.literal("p1"), v.literal("p2"), v.literal("p3"))),
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
@@ -343,6 +346,7 @@ export const updateTask = mutation({
       deadline: string | undefined;
       estimatedMinutes: number | undefined;
       tags: string[] | undefined;
+      priority: "p1" | "p2" | "p3" | undefined;
       type: "open" | "deadline";
       scheduledDate: string | undefined;
       status: "inbox" | "scheduled" | "completed" | "cancelled";
@@ -365,6 +369,9 @@ export const updateTask = mutation({
     }
     if (Object.prototype.hasOwnProperty.call(args, "tags")) {
       updates.tags = args.tags;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, "priority")) {
+      updates.priority = args.priority;
     }
 
     const nextDeadline = args.deadline;
