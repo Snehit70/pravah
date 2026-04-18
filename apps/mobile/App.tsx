@@ -2,18 +2,19 @@ import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  FlatList,
   Modal,
   Pressable,
   RefreshControl,
-  SectionList,
+  ScrollView,
   Switch,
-  type SectionListRenderItemInfo,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, { FadeIn } from "react-native-reanimated";
+import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { api } from "../../convex/_generated/api";
@@ -54,12 +55,6 @@ type RetryQueueItem = {
   label: string;
   attempts: number;
   payload: RetryPayload;
-};
-
-type TaskSection = {
-  key: string;
-  dateKey?: string;
-  data: MobileTask[];
 };
 
 type RetryPayload =
@@ -224,6 +219,8 @@ function MobileApp() {
   const moveTaskMutation = useMutation(api.tasks.moveTask);
   const unscheduleTaskMutation = useMutation(api.tasks.unscheduleTask);
   const reopenTaskMutation = useMutation(api.tasks.reopenTask);
+  const reorderInboxTasksMutation = useMutation(api.tasks.reorderInboxTasks);
+  const reorderTasksMutation = useMutation(api.tasks.reorderTasks);
   const upsertIntegrationMutation = useMutation(api.sync.upsertIntegration);
   const importGoogleCalendarAction = useAction(api.syncActions.importGoogleCalendarAction);
 
@@ -1002,60 +999,99 @@ function MobileApp() {
     }
   }, [isNotificationsBusy, notificationPermissionState, showToast]);
 
-  const listSections = useMemo<TaskSection[]>(() => {
-    if (activeTab === "timeline") {
-      return timelineSections.map(([dateKey, data]) => ({ key: dateKey, dateKey, data }));
-    }
-    if (activeTab === "completed") {
-      return completedTasks.length ? [{ key: "completed", data: completedTasks }] : [];
-    }
-    return inboxTasks.length ? [{ key: "inbox", data: inboxTasks }] : [];
-  }, [activeTab, timelineSections, completedTasks, inboxTasks]);
-
-  const renderTaskItem = useCallback(
-    ({ item, section }: SectionListRenderItemInfo<MobileTask, TaskSection>) => {
-      if (activeTab === "timeline") {
-        const sectionDate = section.dateKey ?? today;
-        return (
-          <TaskCard
-            task={item}
-            dateLabel={dateLabel(sectionDate, today, tomorrow, weekEnd)}
-            onDone={markDone}
-            onSendToInbox={sendToInbox}
-            onEdit={handleEditTask}
-          />
-        );
-      }
-
-      if (activeTab === "completed") {
-        return (
-          <TaskCard
-            task={item}
-            onDone={markDone}
-            onReopen={reopenToInbox}
-            onEdit={handleEditTask}
-          />
-        );
-      }
-
-      return (
-        <TaskCard
-          task={item}
-          onDone={markDone}
-          onMoveToday={moveToToday}
-          onEdit={handleEditTask}
-        />
+  const handleInboxDragEnd = useCallback(
+    async ({ data }: { data: MobileTask[] }) => {
+      const taskIds = data.map((task) => task._id);
+      const positionMap = new Map(taskIds.map((taskId, index) => [taskId, index]));
+      const now = Date.now();
+      setOptimisticTasks((current) =>
+        (current ?? serverTasks).map((task) =>
+          task.status === "inbox" && positionMap.has(task._id)
+            ? {
+                ...task,
+                position: positionMap.get(task._id) ?? task.position,
+                updatedAt: now,
+              }
+            : task
+        )
       );
+      try {
+        await reorderInboxTasksMutation({ taskIds });
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } catch {
+        setOptimisticTasks(null);
+        showToast({ kind: "error", message: "Could not save inbox order." });
+      }
     },
-    [activeTab, today, tomorrow, weekEnd, markDone, sendToInbox, handleEditTask, reopenToInbox, moveToToday]
+    [reorderInboxTasksMutation, serverTasks, showToast]
   );
 
-  const renderSectionHeader = useCallback(
-    ({ section }: { section: TaskSection }) => {
-      if (activeTab !== "timeline" || !section.dateKey) return null;
-      return <Text style={styles.sectionDate}>{dateLabel(section.dateKey, today, tomorrow, weekEnd)}</Text>;
+  const handleTimelineDragEnd = useCallback(
+    async (dateKey: string, data: MobileTask[]) => {
+      const taskIds = data.map((task) => task._id);
+      const positionMap = new Map(taskIds.map((taskId, index) => [taskId, index]));
+      const now = Date.now();
+      setOptimisticTasks((current) =>
+        (current ?? serverTasks).map((task) =>
+          task.status === "scheduled" && task.scheduledDate === dateKey && positionMap.has(task._id)
+            ? {
+                ...task,
+                position: positionMap.get(task._id) ?? task.position,
+                updatedAt: now,
+              }
+            : task
+        )
+      );
+
+      try {
+        await reorderTasksMutation({ date: dateKey, taskIds });
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } catch {
+        setOptimisticTasks(null);
+        showToast({ kind: "error", message: "Could not save timeline order." });
+      }
     },
-    [activeTab, today, tomorrow, weekEnd]
+    [reorderTasksMutation, serverTasks, showToast]
+  );
+
+  const renderInboxTaskItem = useCallback(
+    ({ item, drag }: RenderItemParams<MobileTask>) => (
+      <TaskCard
+        task={item}
+        onDone={markDone}
+        onMoveToday={moveToToday}
+        onEdit={handleEditTask}
+        onDragHandlePress={drag}
+      />
+    ),
+    [markDone, moveToToday, handleEditTask]
+  );
+
+  const renderTimelineTaskItem = useCallback(
+    (dateKey: string) =>
+      ({ item, drag }: RenderItemParams<MobileTask>) => (
+        <TaskCard
+          task={item}
+          dateLabel={dateLabel(dateKey, today, tomorrow, weekEnd)}
+          onDone={markDone}
+          onSendToInbox={sendToInbox}
+          onEdit={handleEditTask}
+          onDragHandlePress={drag}
+        />
+      ),
+    [today, tomorrow, weekEnd, markDone, sendToInbox, handleEditTask]
+  );
+
+  const renderCompletedTaskItem = useCallback(
+    ({ item }: { item: MobileTask }) => (
+      <TaskCard
+        task={item}
+        onDone={markDone}
+        onReopen={reopenToInbox}
+        onEdit={handleEditTask}
+      />
+    ),
+    [markDone, reopenToInbox, handleEditTask]
   );
 
   const emptyState = useMemo(() => {
@@ -1198,36 +1234,98 @@ function MobileApp() {
       ) : null}
 
       {/* Task list */}
-      <SectionList
-        style={styles.list}
-        contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + 84 }]}
-        showsVerticalScrollIndicator={false}
-        sections={listSections}
-        keyExtractor={(item) => item._id}
-        renderItem={renderTaskItem}
-        renderSectionHeader={renderSectionHeader}
-        stickySectionHeadersEnabled={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={() => void handleRefresh()}
-            tintColor={colors.accent}
-            colors={[colors.accent]}
-            progressBackgroundColor={colors.bgCard}
-          />
-        }
-        initialNumToRender={10}
-        maxToRenderPerBatch={12}
-        windowSize={8}
-        removeClippedSubviews
-        ListEmptyComponent={
-          <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>{emptyState.title}</Text>
-            <Text style={styles.emptyText}>{emptyState.body}</Text>
-          </Animated.View>
-        }
-      >
-      </SectionList>
+      {activeTab === "inbox" ? (
+        <DraggableFlatList
+          style={styles.list}
+          contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + 84 }]}
+          data={inboxTasks}
+          keyExtractor={(item) => item._id}
+          renderItem={renderInboxTaskItem}
+          onDragEnd={(params) => void handleInboxDragEnd(params)}
+          activationDistance={10}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => void handleRefresh()}
+              tintColor={colors.accent}
+              colors={[colors.accent]}
+              progressBackgroundColor={colors.bgCard}
+            />
+          }
+          ListEmptyComponent={
+            <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>{emptyState.title}</Text>
+              <Text style={styles.emptyText}>{emptyState.body}</Text>
+            </Animated.View>
+          }
+        />
+      ) : null}
+
+      {activeTab === "timeline" ? (
+        <ScrollView
+          style={styles.list}
+          contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + 84 }]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => void handleRefresh()}
+              tintColor={colors.accent}
+              colors={[colors.accent]}
+              progressBackgroundColor={colors.bgCard}
+            />
+          }
+        >
+          {timelineSections.length ? (
+            timelineSections.map(([dateKey, tasksForDate]) => (
+              <View key={dateKey}>
+                <Text style={styles.sectionDate}>{dateLabel(dateKey, today, tomorrow, weekEnd)}</Text>
+                <DraggableFlatList
+                  data={tasksForDate}
+                  keyExtractor={(item) => item._id}
+                  renderItem={renderTimelineTaskItem(dateKey)}
+                  onDragEnd={({ data }) => void handleTimelineDragEnd(dateKey, data)}
+                  activationDistance={10}
+                  scrollEnabled={false}
+                  containerStyle={styles.timelineSectionList}
+                />
+              </View>
+            ))
+          ) : (
+            <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>{emptyState.title}</Text>
+              <Text style={styles.emptyText}>{emptyState.body}</Text>
+            </Animated.View>
+          )}
+        </ScrollView>
+      ) : null}
+
+      {activeTab === "completed" ? (
+        <FlatList
+          style={styles.list}
+          contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + 84 }]}
+          data={completedTasks}
+          keyExtractor={(item) => item._id}
+          renderItem={renderCompletedTaskItem}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => void handleRefresh()}
+              tintColor={colors.accent}
+              colors={[colors.accent]}
+              progressBackgroundColor={colors.bgCard}
+            />
+          }
+          ListEmptyComponent={
+            <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>{emptyState.title}</Text>
+              <Text style={styles.emptyText}>{emptyState.body}</Text>
+            </Animated.View>
+          }
+        />
+      ) : null}
 
       {/* FAB */}
       {!isAddSheetOpen && !isEditSheetOpen ? (
@@ -1564,6 +1662,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: 160,
+  },
+  timelineSectionList: {
+    marginBottom: spacing.sm,
   },
   sectionDate: {
     color: colors.accent,
