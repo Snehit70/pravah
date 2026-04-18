@@ -127,6 +127,16 @@ function getPriorityRank(priority?: "p1" | "p2" | "p3"): number {
   return 3;
 }
 
+function hasPriorityBoundaryViolation(original: MobileTask[], reordered: MobileTask[]): boolean {
+  if (original.length !== reordered.length) return true;
+  for (let index = 0; index < original.length; index += 1) {
+    if (getPriorityRank(original[index]?.priority) !== getPriorityRank(reordered[index]?.priority)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // ── Main App ───────────────────────────────────────────────────────────
 
 function MobileApp() {
@@ -1001,6 +1011,10 @@ function MobileApp() {
 
   const handleInboxDragEnd = useCallback(
     async ({ data }: { data: MobileTask[] }) => {
+      if (hasPriorityBoundaryViolation(inboxTasks, data)) {
+        showToast({ kind: "error", message: "Drag only within the same priority group." });
+        return;
+      }
       const taskIds = data.map((task) => task._id);
       const positionMap = new Map(taskIds.map((taskId, index) => [taskId, index]));
       const now = Date.now();
@@ -1023,11 +1037,15 @@ function MobileApp() {
         showToast({ kind: "error", message: "Could not save inbox order." });
       }
     },
-    [reorderInboxTasksMutation, serverTasks, showToast]
+    [inboxTasks, reorderInboxTasksMutation, serverTasks, showToast]
   );
 
   const handleTimelineDragEnd = useCallback(
-    async (dateKey: string, data: MobileTask[]) => {
+    async (dateKey: string, original: MobileTask[], data: MobileTask[]) => {
+      if (hasPriorityBoundaryViolation(original, data)) {
+        showToast({ kind: "error", message: "Drag only within the same priority group." });
+        return;
+      }
       const taskIds = data.map((task) => task._id);
       const positionMap = new Map(taskIds.map((taskId, index) => [taskId, index]));
       const now = Date.now();
@@ -1285,7 +1303,7 @@ function MobileApp() {
                   data={tasksForDate}
                   keyExtractor={(item) => item._id}
                   renderItem={renderTimelineTaskItem(dateKey)}
-                  onDragEnd={({ data }) => void handleTimelineDragEnd(dateKey, data)}
+                  onDragEnd={({ data }) => void handleTimelineDragEnd(dateKey, tasksForDate, data)}
                   activationDistance={10}
                   scrollEnabled={false}
                   containerStyle={styles.timelineSectionList}
