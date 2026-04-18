@@ -9,7 +9,8 @@
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "plugins": [
-      "expo-dev-client"
+      "expo-dev-client",
+      "expo-notifications"
     ],
     "splash": {
       "image": "./assets/splash-icon.png",

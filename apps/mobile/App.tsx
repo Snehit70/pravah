@@ -6,6 +6,7 @@ import {
   Pressable,
   RefreshControl,
   SectionList,
+  Switch,
   type SectionListRenderItemInfo,
   StyleSheet,
   Text,
@@ -13,7 +14,7 @@ import {
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { useConvex, useMutation, useQuery } from "convex/react";
+import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { api } from "../../convex/_generated/api";
 import * as Haptics from "expo-haptics";
@@ -22,6 +23,16 @@ import { authClient, authStorageReady } from "./src/lib/auth-client";
 import { ConvexClientProvider } from "./src/lib/convex";
 import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
+import {
+  disableDailyReminderAsync,
+  getNotificationPermissionStateAsync,
+  initializeNotificationsAsync,
+  isDailyReminderEnabledAsync,
+  requestNotificationPermissionAsync,
+  scheduleDailyReminderAsync,
+  scheduleTestNotificationAsync,
+  type NotificationPermissionState,
+} from "./src/lib/notifications";
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors, radii, spacing, typography } from "./src/theme/tokens";
@@ -85,6 +96,7 @@ type RetryPayload =
     };
 
 type SuccessHaptic = "notification" | "light" | "medium";
+type IntegrationProvider = "google_calendar" | "gmail";
 
 const RETRY_QUEUE_STORAGE_KEY = "pravah_mobile_retry_queue_v1";
 
@@ -132,7 +144,14 @@ function MobileApp() {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isAddSheetOpen, setIsAddSheetOpen] = useState(false);
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
-  const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isCalendarSyncing, setIsCalendarSyncing] = useState(false);
+  const [isGoogleToggleSaving, setIsGoogleToggleSaving] = useState(false);
+  const [isGmailToggleSaving, setIsGmailToggleSaving] = useState(false);
+  const [notificationPermissionState, setNotificationPermissionState] =
+    useState<NotificationPermissionState>("undetermined");
+  const [isNotificationsBusy, setIsNotificationsBusy] = useState(false);
+  const [isDailyReminderEnabled, setIsDailyReminderEnabled] = useState(false);
 
   const sessionResult = authClient.useSession();
   const session = sessionResult.data;
@@ -157,6 +176,14 @@ function MobileApp() {
     session && activeTab === "completed" ? { status: "completed" } : "skip"
   );
   const countsQuery = useQuery(api.tasks.getTaskCounts, session ? {} : "skip");
+  const calendarIntegrationStatus = useQuery(
+    api.sync.getIntegrationStatus,
+    session ? { provider: "google_calendar" } : "skip"
+  );
+  const gmailIntegrationStatus = useQuery(
+    api.sync.getIntegrationStatus,
+    session ? { provider: "gmail" } : "skip"
+  );
 
   const activeQueryTasks =
     activeTab === "inbox"
@@ -187,6 +214,8 @@ function MobileApp() {
   const moveTaskMutation = useMutation(api.tasks.moveTask);
   const unscheduleTaskMutation = useMutation(api.tasks.unscheduleTask);
   const reopenTaskMutation = useMutation(api.tasks.reopenTask);
+  const upsertIntegrationMutation = useMutation(api.sync.upsertIntegration);
+  const importGoogleCalendarAction = useAction(api.syncActions.importGoogleCalendarAction);
 
   // ── Dates ───────────────────────────────────────────────────────────
 
@@ -228,6 +257,11 @@ function MobileApp() {
     }
     return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [scheduledTasks]);
+  const googleSyncEnabled = Boolean(calendarIntegrationStatus?.integration?.syncEnabled);
+  const gmailSyncEnabled = Boolean(gmailIntegrationStatus?.integration?.syncEnabled);
+  const pendingGmailReviewCount = gmailIntegrationStatus?.pendingReviewCount ?? 0;
+  const calendarSyncStatus = calendarIntegrationStatus?.integration?.status ?? "disconnected";
+  const gmailSyncStatus = gmailIntegrationStatus?.integration?.status ?? "disconnected";
 
   const tabBarBottomPadding = Math.max(insets.bottom, spacing.md);
   const tabBarHeight = 62 + tabBarBottomPadding;
@@ -256,6 +290,24 @@ function MobileApp() {
       iosClientId: googleIosClientId,
     });
   }, [googleWebClientId, googleIosClientId]);
+
+  useEffect(() => {
+    let mounted = true;
+    void (async () => {
+      await initializeNotificationsAsync();
+      const [permission, dailyEnabled] = await Promise.all([
+        getNotificationPermissionStateAsync(),
+        isDailyReminderEnabledAsync(),
+      ]);
+      if (!mounted) return;
+      setNotificationPermissionState(permission);
+      setIsDailyReminderEnabled(dailyEnabled);
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!toast) return;
@@ -747,17 +799,170 @@ function MobileApp() {
     []
   );
 
-  const confirmSignOut = useCallback(() => {
-    mobileLogger.info("signout_prompt_opened");
-    setIsSignOutModalOpen(true);
+  const openSettingsModal = useCallback(() => {
+    mobileLogger.info("settings_modal_opened");
+    setIsSettingsModalOpen(true);
   }, []);
 
   const handleSignOut = useCallback(() => {
     mobileLogger.info("signout_confirmed");
-    setIsSignOutModalOpen(false);
+    setIsSettingsModalOpen(false);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     void authClient.signOut();
   }, []);
+
+  const persistIntegrationToggle = useCallback(
+    async (provider: IntegrationProvider, syncEnabled: boolean) => {
+      const prev =
+        provider === "google_calendar" ? calendarIntegrationStatus?.integration : gmailIntegrationStatus?.integration;
+      await upsertIntegrationMutation({
+        provider,
+        status: prev?.status ?? "connected",
+        syncEnabled,
+        accountEmail: prev?.accountEmail,
+      });
+    },
+    [calendarIntegrationStatus?.integration, gmailIntegrationStatus?.integration, upsertIntegrationMutation]
+  );
+
+  const toggleGoogleCalendarSync = useCallback(async () => {
+    if (isGoogleToggleSaving) return;
+    setIsGoogleToggleSaving(true);
+    const next = !googleSyncEnabled;
+    try {
+      await persistIntegrationToggle("google_calendar", next);
+      showToast({
+        kind: "info",
+        message: next ? "Google Calendar sync enabled." : "Google Calendar sync paused.",
+      });
+    } catch {
+      showToast({ kind: "error", message: "Could not update Google Calendar sync." });
+    } finally {
+      setIsGoogleToggleSaving(false);
+    }
+  }, [googleSyncEnabled, isGoogleToggleSaving, persistIntegrationToggle, showToast]);
+
+  const toggleGmailSync = useCallback(async () => {
+    if (isGmailToggleSaving) return;
+    setIsGmailToggleSaving(true);
+    const next = !gmailSyncEnabled;
+    try {
+      await persistIntegrationToggle("gmail", next);
+      showToast({
+        kind: "info",
+        message: next ? "Gmail sync enabled." : "Gmail sync paused.",
+      });
+    } catch {
+      showToast({ kind: "error", message: "Could not update Gmail sync." });
+    } finally {
+      setIsGmailToggleSaving(false);
+    }
+  }, [gmailSyncEnabled, isGmailToggleSaving, persistIntegrationToggle, showToast]);
+
+  const runGoogleCalendarSync = useCallback(async () => {
+    if (isCalendarSyncing) return;
+    setIsCalendarSyncing(true);
+    try {
+      const tokens = await GoogleSignin.getTokens();
+      if (!tokens.accessToken) {
+        showToast({ kind: "error", message: "Could not get Google token. Please sign in again." });
+        return;
+      }
+      await importGoogleCalendarAction({ accessToken: tokens.accessToken });
+      showToast({ kind: "info", message: "Google Calendar sync complete." });
+      await convex.query(api.sync.getIntegrationStatus, { provider: "google_calendar" });
+    } catch {
+      showToast({ kind: "error", message: "Google Calendar sync failed. Try again." });
+    } finally {
+      setIsCalendarSyncing(false);
+    }
+  }, [convex, importGoogleCalendarAction, isCalendarSyncing, showToast]);
+
+  const syncBothNow = useCallback(async () => {
+    try {
+      await Promise.all([
+        persistIntegrationToggle("google_calendar", true),
+        persistIntegrationToggle("gmail", true),
+      ]);
+      showToast({ kind: "info", message: "Both integrations enabled." });
+      await runGoogleCalendarSync();
+    } catch {
+      showToast({ kind: "error", message: "Could not enable both integrations." });
+    }
+  }, [persistIntegrationToggle, runGoogleCalendarSync, showToast]);
+
+  const requestNotificationsAccess = useCallback(async () => {
+    if (isNotificationsBusy) return;
+    setIsNotificationsBusy(true);
+    try {
+      const permission = await requestNotificationPermissionAsync();
+      setNotificationPermissionState(permission);
+      if (permission === "granted") {
+        showToast({ kind: "info", message: "Notifications enabled." });
+      } else {
+        showToast({ kind: "error", message: "Notification permission not granted." });
+      }
+    } catch {
+      showToast({ kind: "error", message: "Could not update notification permission." });
+    } finally {
+      setIsNotificationsBusy(false);
+    }
+  }, [isNotificationsBusy, showToast]);
+
+  const toggleDailyReminder = useCallback(async () => {
+    if (isNotificationsBusy) return;
+    setIsNotificationsBusy(true);
+    try {
+      let permission = notificationPermissionState;
+      if (permission !== "granted") {
+        permission = await requestNotificationPermissionAsync();
+        setNotificationPermissionState(permission);
+      }
+
+      if (permission !== "granted") {
+        showToast({ kind: "error", message: "Enable notifications to use reminders." });
+        return;
+      }
+
+      const next = !isDailyReminderEnabled;
+      if (next) {
+        await scheduleDailyReminderAsync();
+        setIsDailyReminderEnabled(true);
+        showToast({ kind: "info", message: "Daily reminder set for 9:00 AM." });
+      } else {
+        await disableDailyReminderAsync();
+        setIsDailyReminderEnabled(false);
+        showToast({ kind: "info", message: "Daily reminder disabled." });
+      }
+    } catch {
+      showToast({ kind: "error", message: "Could not update daily reminder." });
+    } finally {
+      setIsNotificationsBusy(false);
+    }
+  }, [isDailyReminderEnabled, isNotificationsBusy, notificationPermissionState, showToast]);
+
+  const sendTestNotification = useCallback(async () => {
+    if (isNotificationsBusy) return;
+    setIsNotificationsBusy(true);
+    try {
+      let permission = notificationPermissionState;
+      if (permission !== "granted") {
+        permission = await requestNotificationPermissionAsync();
+        setNotificationPermissionState(permission);
+      }
+      if (permission !== "granted") {
+        showToast({ kind: "error", message: "Enable notifications to send a test alert." });
+        return;
+      }
+
+      await scheduleTestNotificationAsync();
+      showToast({ kind: "info", message: "Test notification sent." });
+    } catch {
+      showToast({ kind: "error", message: "Could not send test notification." });
+    } finally {
+      setIsNotificationsBusy(false);
+    }
+  }, [isNotificationsBusy, notificationPermissionState, showToast]);
 
   const listSections = useMemo<TaskSection[]>(() => {
     if (activeTab === "timeline") {
@@ -911,11 +1116,17 @@ function MobileApp() {
             </Text>
           </View>
           <Pressable
-            onPress={confirmSignOut}
-            style={({ pressed }) => [styles.profileButton, pressed && styles.pressed]}
-            hitSlop={8}
+            onPress={openSettingsModal}
+            style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Open settings"
           >
-            <Text style={styles.profileButtonText}>Sign out</Text>
+            <View style={styles.settingsIcon}>
+              <View style={styles.settingsDot} />
+              <View style={styles.settingsDot} />
+              <View style={styles.settingsDot} />
+            </View>
           </Pressable>
         </View>
         <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>
@@ -1012,20 +1223,105 @@ function MobileApp() {
       <Modal
         animationType="fade"
         transparent
-        visible={isSignOutModalOpen}
-        onRequestClose={() => setIsSignOutModalOpen(false)}
+        visible={isSettingsModalOpen}
+        onRequestClose={() => setIsSettingsModalOpen(false)}
       >
         <View style={styles.modalBackdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsSignOutModalOpen(false)} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsSettingsModalOpen(false)} />
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Sign out?</Text>
-            <Text style={styles.modalSubtitle}>You can sign in again anytime with Google.</Text>
+            <Text style={styles.modalTitle}>Settings</Text>
+            <Text style={styles.modalSubtitle}>Manage integrations and account actions.</Text>
+
+            <View style={styles.integrationCard}>
+              <View style={styles.integrationHeader}>
+                <Text style={styles.integrationTitle}>Google Calendar</Text>
+                <Text style={styles.integrationStatus}>{calendarSyncStatus}</Text>
+              </View>
+              <View style={styles.integrationRow}>
+                <Text style={styles.integrationLabel}>Enable sync</Text>
+                <Switch
+                  value={googleSyncEnabled}
+                  onValueChange={() => void toggleGoogleCalendarSync()}
+                  disabled={isGoogleToggleSaving}
+                  trackColor={{ false: colors.border, true: colors.tabActive }}
+                  thumbColor={colors.textPrimary}
+                />
+              </View>
+              <Pressable
+                onPress={() => void runGoogleCalendarSync()}
+                disabled={isCalendarSyncing}
+                style={({ pressed }) => [
+                  styles.syncButton,
+                  isCalendarSyncing && styles.disabledButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.syncButtonText}>{isCalendarSyncing ? "Syncing..." : "Sync now"}</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.integrationCard}>
+              <View style={styles.integrationHeader}>
+                <Text style={styles.integrationTitle}>Gmail</Text>
+                <Text style={styles.integrationStatus}>{gmailSyncStatus}</Text>
+              </View>
+              <View style={styles.integrationRow}>
+                <Text style={styles.integrationLabel}>Enable sync</Text>
+                <Switch
+                  value={gmailSyncEnabled}
+                  onValueChange={() => void toggleGmailSync()}
+                  disabled={isGmailToggleSaving}
+                  trackColor={{ false: colors.border, true: colors.tabActive }}
+                  thumbColor={colors.textPrimary}
+                />
+              </View>
+              <Text style={styles.pendingText}>Pending review items: {pendingGmailReviewCount}</Text>
+            </View>
+
+            <View style={styles.integrationCard}>
+              <View style={styles.integrationHeader}>
+                <Text style={styles.integrationTitle}>Notifications</Text>
+                <Text style={styles.integrationStatus}>{notificationPermissionState}</Text>
+              </View>
+              <Pressable
+                onPress={() => void requestNotificationsAccess()}
+                disabled={isNotificationsBusy}
+                style={({ pressed }) => [styles.modalCancelButton, isNotificationsBusy && styles.disabledButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.modalCancelText}>Enable notifications</Text>
+              </Pressable>
+              <View style={styles.integrationRow}>
+                <Text style={styles.integrationLabel}>Daily reminder (9:00 AM)</Text>
+                <Switch
+                  value={isDailyReminderEnabled}
+                  onValueChange={() => void toggleDailyReminder()}
+                  disabled={isNotificationsBusy}
+                  trackColor={{ false: colors.border, true: colors.tabActive }}
+                  thumbColor={colors.textPrimary}
+                />
+              </View>
+              <Pressable
+                onPress={() => void sendTestNotification()}
+                disabled={isNotificationsBusy}
+                style={({ pressed }) => [styles.syncButton, isNotificationsBusy && styles.disabledButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.syncButtonText}>Send test notification</Text>
+              </Pressable>
+            </View>
+
+            <Pressable
+              onPress={() => void syncBothNow()}
+              style={({ pressed }) => [styles.modalCancelButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.modalCancelText}>Sync both</Text>
+            </Pressable>
+
             <View style={styles.modalActions}>
               <Pressable
-                onPress={() => setIsSignOutModalOpen(false)}
+                onPress={() => setIsSettingsModalOpen(false)}
                 style={({ pressed }) => [styles.modalCancelButton, pressed && styles.pressed]}
               >
-                <Text style={styles.modalCancelText}>Cancel</Text>
+                <Text style={styles.modalCancelText}>Close</Text>
               </Pressable>
               <Pressable
                 onPress={handleSignOut}
@@ -1156,18 +1452,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 4,
   },
-  profileButton: {
+  settingsButton: {
     borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    width: 38,
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: 4,
   },
-  profileButtonText: {
-    color: colors.textSecondary,
-    ...typography.caption,
-    fontWeight: "700",
+  settingsIcon: {
+    gap: 4,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  settingsDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.textSecondary,
   },
 
   // Toast
@@ -1282,6 +1586,58 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "flex-end",
     gap: spacing.sm,
+  },
+  integrationCard: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgInput,
+    padding: spacing.md,
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  integrationHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  integrationTitle: {
+    color: colors.textPrimary,
+    ...typography.body,
+  },
+  integrationStatus: {
+    color: colors.textMuted,
+    ...typography.caption,
+    textTransform: "capitalize",
+  },
+  integrationRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  integrationLabel: {
+    color: colors.textSecondary,
+    ...typography.bodySmall,
+  },
+  syncButton: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.primaryBgHover,
+    backgroundColor: colors.primaryBg,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  syncButtonText: {
+    color: colors.primaryText,
+    ...typography.bodySmall,
+    fontWeight: "700",
+  },
+  pendingText: {
+    color: colors.textMuted,
+    ...typography.caption,
   },
   modalCancelButton: {
     borderRadius: radii.md,
