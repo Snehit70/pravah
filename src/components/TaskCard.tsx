@@ -153,6 +153,14 @@ function TaskCardComponent({ task, onClick, isDragOverlay }: TaskCardProps) {
             </p>
           )}
 
+          {task.priority && !isCompleted && (
+            <div className="mt-1 inline-flex rounded-full border border-white/15 bg-zinc-900 px-2 py-0.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-300">
+                {task.priority.toUpperCase()}
+              </span>
+            </div>
+          )}
+
           {task.estimatedMinutes && !isCompleted && (
             <p className="text-[11px] mt-0.5 text-zinc-400">
               {task.estimatedMinutes}m

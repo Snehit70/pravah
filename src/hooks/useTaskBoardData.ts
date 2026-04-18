@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 import type { Task } from "../types";
+import { getPriorityRank } from "../lib/taskRules";
 
 export function deriveTaskBoardData(tasks: Task[] | undefined) {
   const inboxTasks = (tasks?.filter((t) => t.status === "inbox") ?? []).sort(
-    (a, b) => a.position - b.position
+    (a, b) => getPriorityRank(a.priority) - getPriorityRank(b.priority) || a.position - b.position
   );
 
   const grouped: Record<string, Task[]> = {};
@@ -16,7 +17,9 @@ export function deriveTaskBoardData(tasks: Task[] | undefined) {
   }
 
   for (const date of Object.keys(grouped)) {
-    grouped[date].sort((a, b) => a.position - b.position);
+    grouped[date].sort(
+      (a, b) => getPriorityRank(a.priority) - getPriorityRank(b.priority) || a.position - b.position
+    );
   }
 
   return {

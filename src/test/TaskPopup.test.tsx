@@ -87,6 +87,7 @@ describe("TaskPopup", () => {
         title: "Updated title",
         description: undefined,
         deadline: undefined,
+        priority: undefined,
       });
     });
 

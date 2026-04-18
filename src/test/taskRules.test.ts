@@ -3,7 +3,9 @@ import type { Id } from "../../convex/_generated/dataModel";
 import type { Task } from "../types";
 import {
   canScheduleTaskOnDate,
+  getPriorityRank,
   getReorderedTaskIdsForDay,
+  hasPriorityBoundaryViolation,
   isDateDropId,
 } from "../lib/taskRules";
 
@@ -87,5 +89,21 @@ describe("taskRules", () => {
     const single = makeTask({ _id: "x" as Id<"tasks"> });
     expect(getReorderedTaskIdsForDay([single], single._id, "missing")).toBeNull();
     expect(getReorderedTaskIdsForDay([single], single._id, single._id)).toBeNull();
+  });
+
+  it("ranks priorities consistently with unprioritized tasks last", () => {
+    expect(getPriorityRank("p1")).toBe(0);
+    expect(getPriorityRank("p2")).toBe(1);
+    expect(getPriorityRank("p3")).toBe(2);
+    expect(getPriorityRank(undefined)).toBe(3);
+  });
+
+  it("detects cross-priority drag boundary violations", () => {
+    const p1 = makeTask({ _id: "a" as Id<"tasks">, priority: "p1" });
+    const p2 = makeTask({ _id: "b" as Id<"tasks">, priority: "p2" });
+    const none = makeTask({ _id: "c" as Id<"tasks">, priority: undefined });
+
+    expect(hasPriorityBoundaryViolation([p1, p2, none], [p1, p2, none])).toBe(false);
+    expect(hasPriorityBoundaryViolation([p1, p2, none], [p2, p1, none])).toBe(true);
   });
 });

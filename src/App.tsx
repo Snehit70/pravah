@@ -32,6 +32,7 @@ import { useAppOverlays } from "./hooks/useAppOverlays";
 import type { AppPage } from "./components/TopNavbar";
 import { AuthScreen } from "./components/AuthScreen";
 import { useBootstrapUser } from "./hooks/useBootstrapUser";
+import { useToast } from "./components/useToast";
 
 const TaskPopup = lazy(() =>
   import("./components/TaskPopup").then((module) => ({ default: module.TaskPopup }))
@@ -78,6 +79,7 @@ function AuthenticatedApp() {
   } = useAppOverlays();
   const { isAuthenticated } = useConvexAuth();
   const bootstrapReady = useBootstrapUser(isAuthenticated);
+  const { showError } = useToast();
 
   const tasks = useQuery(api.tasks.listTasks, {});
   const moveTask = useMutation(api.tasks.moveTask);
@@ -107,6 +109,7 @@ function AuthenticatedApp() {
     reorderInboxTasks,
     unscheduleTask,
     setDraggedTask,
+    onInvalidReorder: showError,
   });
 
   useEffect(() => {

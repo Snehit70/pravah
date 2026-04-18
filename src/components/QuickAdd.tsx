@@ -28,6 +28,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
   const [title, setTitle] = useState("");
   const [type, setType] = useState<"open" | "deadline">("open");
   const [deadline, setDeadline] = useState("");
+  const [priority, setPriority] = useState<"p1" | "p2" | "p3" | undefined>(undefined);
   const [titleError, setTitleError] = useState("");
   const [deadlineError, setDeadlineError] = useState("");
   const [submitError, setSubmitError] = useState("");
@@ -118,6 +119,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
         title: title.trim(),
         type,
         deadline: type === "deadline" ? deadline : undefined,
+        priority,
       });
 
       showSuccess("Task added!");
@@ -332,6 +334,36 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                   </motion.div>
                 )}
               </AnimatePresence>
+
+              <div className="space-y-2 pt-1">
+                <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-400">
+                  Priority
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: "None", value: undefined },
+                    { label: "P1", value: "p1" as const },
+                    { label: "P2", value: "p2" as const },
+                    { label: "P3", value: "p3" as const },
+                  ].map((option) => (
+                    <button
+                      key={option.label}
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => setPriority(option.value)}
+                      className={cn(
+                        "px-2.5 py-1.5 rounded-full text-[11px] border transition-colors duration-150",
+                        priority === option.value
+                          ? "bg-blue-500/20 text-blue-300 border-blue-400/30"
+                          : "text-zinc-400 hover:text-zinc-200 bg-zinc-900 border-white/10",
+                        "disabled:opacity-50 disabled:cursor-not-allowed"
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             {deadlineError && (

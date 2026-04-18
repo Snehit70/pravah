@@ -41,6 +41,7 @@ describe("QuickAdd", () => {
         title: "Write tests",
         type: "open",
         deadline: undefined,
+        priority: undefined,
       });
     });
 
@@ -69,6 +70,7 @@ describe("QuickAdd", () => {
         title: "Submit PR",
         type: "deadline",
         deadline: "2026-04-12",
+        priority: undefined,
       });
     });
 

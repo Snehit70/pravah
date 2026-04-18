@@ -18,6 +18,7 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? "");
   const [deadline, setDeadline] = useState(task.deadline ?? "");
+  const [priority, setPriority] = useState<"p1" | "p2" | "p3" | undefined>(task.priority);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [titleError, setTitleError] = useState("");
 
@@ -42,6 +43,7 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
         title: title.trim(),
         description: description || undefined,
         deadline: deadline || undefined,
+        priority,
       });
       showSuccess("Task updated successfully");
       onClose();
@@ -136,6 +138,34 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
             min={minDate}
           />
         )}
+
+        <div>
+          <p className="block text-[11px] text-zinc-400 uppercase tracking-[0.08em] font-medium mb-1.5">
+            Priority
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { label: "None", value: undefined },
+              { label: "P1", value: "p1" as const },
+              { label: "P2", value: "p2" as const },
+              { label: "P3", value: "p3" as const },
+            ].map((option) => (
+              <button
+                key={option.label}
+                type="button"
+                onClick={() => setPriority(option.value)}
+                className={cn(
+                  "px-2.5 py-1.5 rounded-full text-[11px] border transition-colors duration-150",
+                  priority === option.value
+                    ? "bg-blue-500/20 text-blue-300 border-blue-400/30"
+                    : "text-zinc-400 hover:text-zinc-200 bg-zinc-900 border-white/10"
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Metadata */}
         <div className="flex items-center gap-3 text-[11px] text-zinc-400">
