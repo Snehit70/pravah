@@ -159,6 +159,7 @@ function MobileApp() {
   const [isAddSheetOpen, setIsAddSheetOpen] = useState(false);
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isDataBootstrapReady, setIsDataBootstrapReady] = useState(false);
   const [isCalendarSyncing, setIsCalendarSyncing] = useState(false);
   const [isGoogleToggleSaving, setIsGoogleToggleSaving] = useState(false);
   const [isGmailToggleSaving, setIsGmailToggleSaving] = useState(false);
@@ -231,6 +232,8 @@ function MobileApp() {
   const reopenTaskMutation = useMutation(api.tasks.reopenTask);
   const reorderInboxTasksMutation = useMutation(api.tasks.reorderInboxTasks);
   const reorderTasksMutation = useMutation(api.tasks.reorderTasks);
+  const storeUserMutation = useMutation(api.users.store);
+  const claimLegacyDataMutation = useMutation(api.users.claimLegacyData);
   const upsertIntegrationMutation = useMutation(api.sync.upsertIntegration);
   const importGoogleCalendarAction = useAction(api.syncActions.importGoogleCalendarAction);
 
@@ -282,6 +285,7 @@ function MobileApp() {
   const pendingGmailReviewCount = gmailIntegrationStatus?.pendingReviewCount ?? 0;
   const calendarSyncStatus = calendarIntegrationStatus?.integration?.status ?? "disconnected";
   const gmailSyncStatus = gmailIntegrationStatus?.integration?.status ?? "disconnected";
+  const showToast = useCallback((next: ToastState) => setToast(next), []);
 
   const tabBarBottomPadding = Math.max(insets.bottom, spacing.md);
   const tabBarHeight = 62 + tabBarBottomPadding;
@@ -347,6 +351,39 @@ function MobileApp() {
   }, [session]);
 
   useEffect(() => {
+    if (!session) {
+      setIsDataBootstrapReady(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsDataBootstrapReady(false);
+
+    void (async () => {
+      try {
+        await storeUserMutation({});
+        await claimLegacyDataMutation({});
+      } catch (error) {
+        mobileLogger.warn("data_bootstrap_failed", {
+          errorType: classifyError(error),
+        });
+        showToast({
+          kind: "error",
+          message: "Could not run legacy data migration automatically.",
+        });
+      } finally {
+        if (!cancelled) {
+          setIsDataBootstrapReady(true);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session, storeUserMutation, claimLegacyDataMutation, showToast]);
+
+  useEffect(() => {
     if (!__DEV__) return;
     const now = Date.now();
     if (now - lastListStateLogMsRef.current < 1500) return;
@@ -362,8 +399,6 @@ function MobileApp() {
   }, [activeTab, inboxCount, timelineCount, completedCount, pendingMutations, retryQueue.length]);
 
   // ── Toast / retry ───────────────────────────────────────────────────
-
-  const showToast = useCallback((next: ToastState) => setToast(next), []);
 
   const triggerSuccessHaptic = useCallback((kind: SuccessHaptic) => {
     if (kind === "notification") {
@@ -1133,7 +1168,7 @@ function MobileApp() {
 
   // ── Loading / Auth screens ──────────────────────────────────────────
 
-  if (!isAuthHydrated || sessionLoading) {
+  if (!isAuthHydrated || sessionLoading || (session && !isDataBootstrapReady)) {
     return (
       <SafeAreaView style={styles.authContainer}>
         <StatusBar style="light" />
