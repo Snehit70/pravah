@@ -3,7 +3,6 @@ import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Modal,
-  Platform,
   Pressable,
   RefreshControl,
   SectionList,
@@ -140,13 +139,8 @@ function MobileApp() {
   const sessionLoading = sessionResult.isPending;
 
   const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
-  const googleAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || undefined;
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
-  const googleClientId =
-    Platform.OS === "android"
-      ? googleAndroidClientId ?? googleWebClientId
-      : googleWebClientId;
-  const canGoogleSignIn = Boolean(googleClientId);
+  const canGoogleSignIn = Boolean(googleWebClientId);
 
   // ── Data ────────────────────────────────────────────────────────────
 
@@ -258,10 +252,10 @@ function MobileApp() {
 
   useEffect(() => {
     GoogleSignin.configure({
-      webClientId: googleClientId,
+      webClientId: googleWebClientId,
       iosClientId: googleIosClientId,
     });
-  }, [googleClientId, googleIosClientId]);
+  }, [googleWebClientId, googleIosClientId]);
 
   useEffect(() => {
     if (!toast) return;
@@ -671,7 +665,7 @@ function MobileApp() {
   // ── Auth ────────────────────────────────────────────────────────────
 
   const handleGoogleSignIn = async () => {
-    if (!googleClientId || isSigningIn) return;
+    if (!googleWebClientId || isSigningIn) return;
     const actionId = createActionId("auth");
     const startedAt = Date.now();
     mobileLogger.info("google_signin_started", { actionId });
