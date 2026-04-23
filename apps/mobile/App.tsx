@@ -1235,12 +1235,16 @@ function MobileApp() {
     return (
       <SafeAreaView style={styles.authContainer}>
         <StatusBar style="light" />
-        <Animated.View entering={FadeIn.duration(400)} style={styles.authCard}>
-          <Text style={styles.kicker}>Pravah</Text>
-          <Text style={styles.authTitle}>Welcome back</Text>
-          <Text style={styles.authSubtitle}>
-            Sign in with Google to sync your tasks across devices.
-          </Text>
+        <View pointerEvents="none" style={styles.halo} />
+        <Animated.View entering={FadeIn.duration(400)} style={styles.authShell}>
+          <View style={styles.authLockup}>
+            <Text style={styles.wordmark}>Pravah</Text>
+            <Text style={styles.authTitle}>A calmer way to keep your day in view.</Text>
+            <Text style={styles.authSubtitle}>
+              Sign in with Google to keep your inbox, timeline, and completed ledger in sync.
+            </Text>
+          </View>
+          <View style={styles.authDivider} />
           <Pressable
             onPress={handleGoogleSignIn}
             disabled={!canGoogleSignIn || isSigningIn}
@@ -1715,38 +1719,40 @@ const styles = StyleSheet.create({
     ...typography.h2,
     textAlign: "center",
   },
-  authCard: {
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bgCard,
-    padding: spacing.xl,
-    gap: spacing.md,
+  authShell: {
+    gap: spacing.lg,
+  },
+  authLockup: {
+    gap: spacing.sm,
   },
   authTitle: {
     color: colors.textPrimary,
-    ...typography.h1,
+    ...typography.headline,
   },
   authSubtitle: {
     color: colors.textSecondary,
-    fontSize: 14,
-    lineHeight: 20,
+    ...typography.bodyLg,
+    maxWidth: 320,
+  },
+  authDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.borderSubtle,
+    width: "100%",
   },
   authHint: {
     color: colors.textMuted,
-    fontSize: 12,
+    ...typography.micro,
+    marginTop: spacing.xs,
   },
   googleButton: {
-    borderRadius: radii.md,
-    backgroundColor: colors.textPrimary,
+    borderRadius: radii.full,
+    backgroundColor: colors.accent,
     paddingVertical: 14,
     alignItems: "center",
-    marginTop: spacing.sm,
   },
   googleButtonText: {
     color: colors.bg,
-    fontWeight: "700",
-    fontSize: 15,
+    ...typography.title,
   },
   disabledButton: {
     opacity: 0.6,
