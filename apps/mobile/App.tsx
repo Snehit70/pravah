@@ -816,7 +816,10 @@ function MobileApp() {
     try {
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
       const result = await GoogleSignin.signIn();
-      if (result.type !== "success") return;
+      if (result.type !== "success") {
+        mobileLogger.info("google_signin_cancelled", { actionId });
+        return;
+      }
       const idToken = result.data.idToken;
       if (!idToken) {
         showToast({ kind: "error", message: "Google sign-in did not return an ID token." });
