@@ -1,14 +1,12 @@
 /** @vitest-environment happy-dom */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { ReactElement } from "react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import type { Id } from "../../convex/_generated/dataModel";
 import type { Task } from "../types";
 import { QuickAdd } from "../components/QuickAdd";
 import { TaskPopup } from "../components/TaskPopup";
-import { ToastProvider } from "../components/Toast";
+import { renderWithProviders } from "./renderWithProviders";
 
-const useMutationMock = vi.fn();
 const addTaskMock = vi.fn();
 const updateTaskMock = vi.fn();
 const completeTaskMock = vi.fn();
@@ -16,13 +14,35 @@ const reopenTaskMock = vi.fn();
 const unscheduleTaskMock = vi.fn();
 const deleteTaskMock = vi.fn();
 
+const mutationMocks: Record<string, ReturnType<typeof vi.fn>> = {
+  "tasks.addTask": addTaskMock,
+  "tasks.updateTask": updateTaskMock,
+  "tasks.completeTask": completeTaskMock,
+  "tasks.reopenTask": reopenTaskMock,
+  "tasks.unscheduleTask": unscheduleTaskMock,
+  "tasks.deleteTask": deleteTaskMock,
+};
+
 vi.mock("convex/react", () => ({
-  useMutation: (...args: unknown[]) => useMutationMock(...args),
+  useMutation: (ref: string) => {
+    const mock = mutationMocks[ref];
+    if (!mock) throw new Error(`Unexpected useMutation target: ${ref}`);
+    return mock;
+  },
 }));
 
-function renderWithToasts(ui: ReactElement) {
-  return render(<ToastProvider>{ui}</ToastProvider>);
-}
+vi.mock("../../convex/_generated/api", () => ({
+  api: {
+    tasks: {
+      addTask: "tasks.addTask",
+      updateTask: "tasks.updateTask",
+      completeTask: "tasks.completeTask",
+      reopenTask: "tasks.reopenTask",
+      unscheduleTask: "tasks.unscheduleTask",
+      deleteTask: "tasks.deleteTask",
+    },
+  },
+}));
 
 function makeTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -40,7 +60,6 @@ function makeTask(overrides: Partial<Task> = {}): Task {
 
 describe("accessibility regressions", () => {
   beforeEach(() => {
-    useMutationMock.mockReset();
     addTaskMock.mockReset();
     updateTaskMock.mockReset();
     completeTaskMock.mockReset();
@@ -58,9 +77,8 @@ describe("accessibility regressions", () => {
 
   it("focuses quick-add title input on open and supports Escape close", () => {
     const onClose = vi.fn();
-    useMutationMock.mockImplementation(() => addTaskMock);
 
-    renderWithToasts(<QuickAdd onClose={onClose} />);
+    renderWithProviders(<QuickAdd onClose={onClose} />);
 
     const titleInput = screen.getByPlaceholderText("What needs to be done?");
     expect(document.activeElement).toBe(titleInput);
@@ -71,9 +89,8 @@ describe("accessibility regressions", () => {
 
   it("announces quick-add success in aria-live region", async () => {
     const onClose = vi.fn();
-    useMutationMock.mockImplementation(() => addTaskMock);
 
-    renderWithToasts(<QuickAdd onClose={onClose} />);
+    renderWithProviders(<QuickAdd onClose={onClose} />);
 
     fireEvent.change(screen.getByPlaceholderText("What needs to be done?"), {
       target: { value: "  Announced task  " },
@@ -96,18 +113,7 @@ describe("accessibility regressions", () => {
   it("announces task completion from popup mutations", async () => {
     const onClose = vi.fn();
 
-    let callIndex = 0;
-    useMutationMock.mockImplementation(() => {
-      callIndex += 1;
-      const slot = ((callIndex - 1) % 5) + 1;
-      if (slot === 1) return updateTaskMock;
-      if (slot === 2) return completeTaskMock;
-      if (slot === 3) return reopenTaskMock;
-      if (slot === 4) return unscheduleTaskMock;
-      return deleteTaskMock;
-    });
-
-    renderWithToasts(<TaskPopup task={makeTask()} onClose={onClose} />);
+    renderWithProviders(<TaskPopup task={makeTask()} onClose={onClose} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Complete" }));
 

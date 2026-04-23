@@ -21,7 +21,12 @@ const pendingReviewItem = {
   payloadJson: JSON.stringify({ from: "pm@example.com", threadId: "thread-1" }),
 };
 
-let mutationIndex = 0;
+const mutationMocks: Record<string, ReturnType<typeof vi.fn>> = {
+  "sync.upsertIntegration": upsertIntegrationMock,
+  "sync.enqueueGmailCandidate": enqueueGmailCandidateMock,
+  "sync.approveReviewItem": approveReviewItemMock,
+  "sync.rejectReviewItem": rejectReviewItemMock,
+};
 
 vi.mock("framer-motion", () => ({
   AnimatePresence: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -36,16 +41,10 @@ vi.mock("framer-motion", () => ({
 }));
 
 vi.mock("convex/react", () => ({
-  useMutation: () => {
-    const mutationFns = [
-      upsertIntegrationMock,
-      enqueueGmailCandidateMock,
-      approveReviewItemMock,
-      rejectReviewItemMock,
-    ];
-    const selected = mutationFns[mutationIndex % mutationFns.length];
-    mutationIndex += 1;
-    return selected;
+  useMutation: (ref: string) => {
+    const mock = mutationMocks[ref];
+    if (!mock) throw new Error(`Unexpected useMutation target: ${ref}`);
+    return mock;
   },
   useAction: () => importGoogleCalendarMock,
   useQuery: (_query: unknown, args: unknown) => {
@@ -73,6 +72,25 @@ vi.mock("convex/react", () => ({
     }
 
     return undefined;
+  },
+}));
+
+vi.mock("../../convex/_generated/api", () => ({
+  api: {
+    sync: {
+      upsertIntegration: "sync.upsertIntegration",
+      enqueueGmailCandidate: "sync.enqueueGmailCandidate",
+      approveReviewItem: "sync.approveReviewItem",
+      rejectReviewItem: "sync.rejectReviewItem",
+      getIntegrationStatus: "sync.getIntegrationStatus",
+      listReviewQueue: "sync.listReviewQueue",
+    },
+    syncActions: {
+      importGoogleCalendarAction: "syncActions.importGoogleCalendarAction",
+    },
+    auth: {
+      getCurrentUser: "auth.getCurrentUser",
+    },
   },
 }));
 
@@ -104,7 +122,6 @@ vi.mock("../components/useToast", () => ({
 
 describe("Settings", () => {
   beforeEach(() => {
-    mutationIndex = 0;
     upsertIntegrationMock.mockReset();
     upsertIntegrationMock.mockResolvedValue(undefined);
     enqueueGmailCandidateMock.mockReset();
