@@ -38,15 +38,44 @@ function requireAuth(request: Request): Response | null {
   });
 }
 
+const DEFAULT_ALLOWED_ORIGINS = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+];
+
+function getAllowedOrigins(): readonly string[] {
+  const env = (
+    globalThis as typeof globalThis & {
+      process?: { env?: Record<string, string | undefined> };
+    }
+  ).process?.env;
+
+  const extras = (env?.ALLOWED_CORS_ORIGINS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  const siteUrl = env?.SITE_URL?.trim();
+  if (siteUrl) {
+    return Array.from(new Set([siteUrl, ...extras]));
+  }
+
+  return Array.from(new Set([...DEFAULT_ALLOWED_ORIGINS, ...extras]));
+}
+
 function getGoogleCorsHeaders(request: Request): HeadersInit {
-  const origin = request.headers.get("origin") ?? "*";
-  return {
-    "Access-Control-Allow-Origin": origin,
+  const origin = request.headers.get("origin");
+  const allowed = getAllowedOrigins();
+  const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
   };
+  if (origin && allowed.includes(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+  return headers;
 }
 
 function googleJsonResponse(request: Request, payload: unknown, status = 200): Response {
