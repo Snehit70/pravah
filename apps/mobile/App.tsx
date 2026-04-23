@@ -158,6 +158,14 @@ function getStatusTone(status: string): "success" | "warning" | "error" | "muted
   return "muted";
 }
 
+function statusTextColor(status: string): string {
+  const tone = getStatusTone(status);
+  if (tone === "success") return "#6c9c7a";
+  if (tone === "warning") return "#c77b3a";
+  if (tone === "error") return "#c76a52";
+  return "#6c6559";
+}
+
 // ── Main App ───────────────────────────────────────────────────────────
 
 function MobileApp() {
@@ -1435,188 +1443,174 @@ function MobileApp() {
         onSheetChange={setIsEditSheetOpen}
       />
 
+      {/* Settings — presented as a near-full-height bottom sheet rather than a
+          centered card. No nested integration cards; sections are grouped by
+          a mono kicker and separated by hairlines. Status reads as inline
+          tinted mono, actions are copper text links. */}
       <Modal
-        animationType="fade"
+        animationType="slide"
         transparent
         visible={isSettingsModalOpen}
         onRequestClose={() => setIsSettingsModalOpen(false)}
       >
-        <View style={styles.modalBackdrop}>
+        <View style={styles.settingsBackdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsSettingsModalOpen(false)} />
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <View style={styles.modalHeaderCopy}>
-                <Text style={styles.modalEyebrow}>Workspace</Text>
-                <Text style={styles.modalTitle}>Settings</Text>
-                <Text style={styles.modalSubtitle}>Google sync, reminders, and account controls.</Text>
-              </View>
-              <Pressable
-                onPress={() => setIsSettingsModalOpen(false)}
-                style={({ pressed }) => [styles.modalCloseButton, pressed && styles.pressed]}
-              >
-                <Text style={styles.modalCloseText}>Close</Text>
-              </Pressable>
-            </View>
+          <View style={styles.settingsSheet}>
+            <View style={styles.settingsHandle} />
 
             <ScrollView
-              style={styles.modalScroll}
-              contentContainerStyle={styles.modalScrollContent}
+              style={styles.settingsScroll}
+              contentContainerStyle={styles.settingsScrollContent}
               showsVerticalScrollIndicator={false}
             >
-              <View style={styles.integrationCard}>
-                <View style={styles.integrationHeader}>
-                  <View style={styles.integrationTitleWrap}>
-                    <Text style={styles.integrationTitle}>Google Calendar</Text>
-                    <Text style={styles.integrationHint}>Pull events and deadlines into Pravah.</Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      getStatusTone(calendarSyncStatus) === "success" && styles.statusBadgeSuccess,
-                      getStatusTone(calendarSyncStatus) === "warning" && styles.statusBadgeWarning,
-                      getStatusTone(calendarSyncStatus) === "error" && styles.statusBadgeError,
-                    ]}
-                  >
-                    <Text style={styles.statusBadgeText}>{formatStatusLabel(calendarSyncStatus)}</Text>
-                  </View>
+              <View style={styles.settingsHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.settingsKicker}>Workspace</Text>
+                  <Text style={styles.settingsHeadline}>Settings</Text>
                 </View>
-                <View style={styles.integrationRow}>
-                  <View style={styles.integrationCopy}>
-                    <Text style={styles.integrationLabel}>Enable sync</Text>
-                    <Text style={styles.integrationHelp}>Keep your task timeline aligned with Google Calendar.</Text>
+                <Pressable
+                  onPress={() => setIsSettingsModalOpen(false)}
+                  hitSlop={10}
+                  style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+                >
+                  <Text style={styles.settingsCloseLink}>Close</Text>
+                </Pressable>
+              </View>
+
+              {/* ── Sync ───────────────────────────────────────────── */}
+              <Text style={styles.sectionHeader}>Sync</Text>
+
+              <View style={styles.settingBlock}>
+                <View style={styles.settingRow}>
+                  <View style={styles.settingCopy}>
+                    <Text style={styles.settingLabel}>Google Calendar</Text>
+                    <Text style={styles.settingHelp}>Pull events and deadlines into Pravah.</Text>
+                    <Text style={[styles.settingStatus, { color: statusTextColor(calendarSyncStatus) }]}>
+                      {formatStatusLabel(calendarSyncStatus)}
+                    </Text>
                   </View>
                   <Switch
                     value={googleSyncEnabled}
                     onValueChange={() => void toggleGoogleCalendarSync()}
                     disabled={isGoogleToggleSaving}
-                    trackColor={{ false: colors.border, true: colors.tabActive }}
-                    thumbColor={colors.textPrimary}
+                    trackColor={{ false: colors.border, true: colors.accentSoft }}
+                    thumbColor={googleSyncEnabled ? colors.accent : colors.textMuted}
                   />
                 </View>
                 <Pressable
                   onPress={() => void runGoogleCalendarSync()}
                   disabled={isCalendarSyncing}
-                  style={({ pressed }) => [
-                    styles.primaryActionButton,
-                    isCalendarSyncing && styles.disabledButton,
-                    pressed && styles.pressed,
-                  ]}
+                  hitSlop={6}
+                  style={({ pressed }) => [pressed && { opacity: 0.6 }]}
                 >
-                  <Text style={styles.primaryActionText}>{isCalendarSyncing ? "Syncing..." : "Sync now"}</Text>
+                  <Text style={[styles.inlineActionText, isCalendarSyncing && styles.inlineActionDisabled]}>
+                    {isCalendarSyncing ? "Syncing…" : "Sync now"}
+                  </Text>
                 </Pressable>
               </View>
 
-              <View style={styles.integrationCard}>
-                <View style={styles.integrationHeader}>
-                  <View style={styles.integrationTitleWrap}>
-                    <Text style={styles.integrationTitle}>Gmail</Text>
-                    <Text style={styles.integrationHint}>Surface pending email follow-ups for review.</Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      getStatusTone(gmailSyncStatus) === "success" && styles.statusBadgeSuccess,
-                      getStatusTone(gmailSyncStatus) === "warning" && styles.statusBadgeWarning,
-                      getStatusTone(gmailSyncStatus) === "error" && styles.statusBadgeError,
-                    ]}
-                  >
-                    <Text style={styles.statusBadgeText}>{formatStatusLabel(gmailSyncStatus)}</Text>
-                  </View>
-                </View>
-                <View style={styles.integrationRow}>
-                  <View style={styles.integrationCopy}>
-                    <Text style={styles.integrationLabel}>Enable sync</Text>
-                    <Text style={styles.integrationHelp}>Review email-based tasks before they enter your workspace.</Text>
+              <View style={styles.hairline} />
+
+              <View style={styles.settingBlock}>
+                <View style={styles.settingRow}>
+                  <View style={styles.settingCopy}>
+                    <Text style={styles.settingLabel}>Gmail</Text>
+                    <Text style={styles.settingHelp}>Surface pending email follow-ups for review.</Text>
+                    <Text style={[styles.settingStatus, { color: statusTextColor(gmailSyncStatus) }]}>
+                      {formatStatusLabel(gmailSyncStatus)}
+                    </Text>
                   </View>
                   <Switch
                     value={gmailSyncEnabled}
                     onValueChange={() => void toggleGmailSync()}
                     disabled={isGmailToggleSaving}
-                    trackColor={{ false: colors.border, true: colors.tabActive }}
-                    thumbColor={colors.textPrimary}
+                    trackColor={{ false: colors.border, true: colors.accentSoft }}
+                    thumbColor={gmailSyncEnabled ? colors.accent : colors.textMuted}
                   />
                 </View>
-                <View style={styles.metricPill}>
-                  <Text style={styles.metricPillText}>Pending review items: {pendingGmailReviewCount}</Text>
-                </View>
-              </View>
-
-              <View style={styles.integrationCard}>
-                <View style={styles.integrationHeader}>
-                  <View style={styles.integrationTitleWrap}>
-                    <Text style={styles.integrationTitle}>Notifications</Text>
-                    <Text style={styles.integrationHint}>Daily reminders and test alerts for mobile follow-through.</Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      getStatusTone(notificationPermissionState) === "success" && styles.statusBadgeSuccess,
-                      getStatusTone(notificationPermissionState) === "warning" && styles.statusBadgeWarning,
-                      getStatusTone(notificationPermissionState) === "error" && styles.statusBadgeError,
-                    ]}
-                  >
-                    <Text style={styles.statusBadgeText}>{formatStatusLabel(notificationPermissionState)}</Text>
-                  </View>
-                </View>
-                <Pressable
-                  onPress={() => void requestNotificationsAccess()}
-                  disabled={isNotificationsBusy || notificationsEnabled}
-                  style={({ pressed }) => [
-                    styles.secondaryActionButton,
-                    (isNotificationsBusy || notificationsEnabled) && styles.disabledButton,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text style={styles.secondaryActionText}>
-                    {notificationsEnabled ? "Permission granted" : "Enable notifications"}
-                  </Text>
-                </Pressable>
-                <View style={styles.integrationRow}>
-                  <View style={styles.integrationCopy}>
-                    <Text style={styles.integrationLabel}>Daily reminder</Text>
-                    <Text style={styles.integrationHelp}>Send one reminder at 9:00 AM every day.</Text>
-                  </View>
-                  <Switch
-                    value={isDailyReminderEnabled}
-                    onValueChange={() => void toggleDailyReminder()}
-                    disabled={isNotificationsBusy}
-                    trackColor={{ false: colors.border, true: colors.tabActive }}
-                    thumbColor={colors.textPrimary}
-                  />
-                </View>
-                <Pressable
-                  onPress={() => void sendTestNotification()}
-                  disabled={isNotificationsBusy}
-                  style={({ pressed }) => [
-                    styles.primaryActionButton,
-                    isNotificationsBusy && styles.disabledButton,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text style={styles.primaryActionText}>Send test notification</Text>
-                </Pressable>
+                <Text style={styles.settingMeta}>
+                  Pending review · {pendingGmailReviewCount}
+                </Text>
               </View>
 
               <Pressable
                 onPress={() => void syncBothNow()}
                 disabled={syncSettingsBusy}
-                style={({ pressed }) => [
-                  styles.syncAllButton,
-                  syncSettingsBusy && styles.disabledButton,
-                  pressed && styles.pressed,
-                ]}
+                hitSlop={6}
+                style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
               >
-                <Text style={styles.syncAllButtonText}>Enable and sync both</Text>
+                <Text style={[styles.inlineActionText, syncSettingsBusy && styles.inlineActionDisabled]}>
+                  Enable and sync both
+                </Text>
               </Pressable>
 
-              <View style={styles.accountCard}>
-                <Text style={styles.accountTitle}>Account</Text>
-                <Text style={styles.accountCopy}>Sign out if you want to switch Google accounts on this device.</Text>
+              {/* ── Alerts ─────────────────────────────────────────── */}
+              <Text style={styles.sectionHeader}>Alerts</Text>
+
+              <View style={styles.settingBlock}>
+                <Text style={styles.settingLabel}>Notifications</Text>
+                <Text style={styles.settingHelp}>
+                  Daily reminders and test alerts for mobile follow-through.
+                </Text>
+                <Text style={[styles.settingStatus, { color: statusTextColor(notificationPermissionState) }]}>
+                  {formatStatusLabel(notificationPermissionState)}
+                </Text>
+
+                {!notificationsEnabled ? (
+                  <Pressable
+                    onPress={() => void requestNotificationsAccess()}
+                    disabled={isNotificationsBusy}
+                    hitSlop={6}
+                    style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+                  >
+                    <Text style={[styles.inlineActionText, isNotificationsBusy && styles.inlineActionDisabled]}>
+                      Enable notifications
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+
+              <View style={styles.hairline} />
+
+              <View style={styles.settingBlock}>
+                <View style={styles.settingRow}>
+                  <View style={styles.settingCopy}>
+                    <Text style={styles.settingLabel}>Daily reminder</Text>
+                    <Text style={styles.settingHelp}>Send one reminder at 9:00 AM every day.</Text>
+                  </View>
+                  <Switch
+                    value={isDailyReminderEnabled}
+                    onValueChange={() => void toggleDailyReminder()}
+                    disabled={isNotificationsBusy}
+                    trackColor={{ false: colors.border, true: colors.accentSoft }}
+                    thumbColor={isDailyReminderEnabled ? colors.accent : colors.textMuted}
+                  />
+                </View>
+                <Pressable
+                  onPress={() => void sendTestNotification()}
+                  disabled={isNotificationsBusy}
+                  hitSlop={6}
+                  style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+                >
+                  <Text style={[styles.inlineActionText, isNotificationsBusy && styles.inlineActionDisabled]}>
+                    Send a test
+                  </Text>
+                </Pressable>
+              </View>
+
+              {/* ── Account ────────────────────────────────────────── */}
+              <Text style={styles.sectionHeader}>Account</Text>
+
+              <View style={styles.settingBlock}>
+                <Text style={styles.settingHelp}>
+                  Sign out if you want to switch Google accounts on this device.
+                </Text>
                 <Pressable
                   onPress={handleSignOut}
-                  style={({ pressed }) => [styles.modalSignOutButton, pressed && styles.pressed]}
+                  hitSlop={6}
+                  style={({ pressed }) => [pressed && { opacity: 0.6 }]}
                 >
-                  <Text style={styles.modalSignOutText}>Sign out</Text>
+                  <Text style={styles.signOutLink}>Sign out</Text>
                 </Pressable>
               </View>
             </ScrollView>
@@ -1935,250 +1929,128 @@ const styles = StyleSheet.create({
     ...typography.micro,
   },
 
-  // Modal
-  modalBackdrop: {
+  // Settings sheet — presented as a near-full-height bottom panel, one
+  // earned enclosure (it is a modal), and inside it everything is flat:
+  // section headers in mono, rows separated by hairlines, actions as copper
+  // text links, sign-out as a rust link. No nested cards.
+  settingsBackdrop: {
     flex: 1,
     backgroundColor: colors.backdrop,
-    justifyContent: "center",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xl,
-  },
-  modalCard: {
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bgCard,
-    padding: spacing.lg,
-    maxHeight: "88%",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.35,
-    shadowRadius: 24,
-    elevation: 20,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: spacing.md,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  modalHeaderCopy: {
-    flex: 1,
-    gap: 4,
-  },
-  modalEyebrow: {
-    color: colors.accent,
-    ...typography.kicker,
-  },
-  modalCloseButton: {
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    backgroundColor: colors.bgInput,
-  },
-  modalCloseText: {
-    color: colors.textSecondary,
-    ...typography.caption,
-    fontWeight: "700",
-  },
-  modalScroll: {
-    marginTop: spacing.md,
-  },
-  modalScrollContent: {
-    gap: spacing.md,
-    paddingBottom: spacing.xs,
-  },
-  modalTitle: {
-    color: colors.textPrimary,
-    ...typography.h2,
-  },
-  modalSubtitle: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  modalActions: {
-    marginTop: spacing.md,
-    flexDirection: "row",
     justifyContent: "flex-end",
-    gap: spacing.sm,
   },
-  integrationCard: {
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bgInput,
-    padding: spacing.md,
+  settingsSheet: {
+    backgroundColor: colors.bgCard,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    paddingTop: spacing.sm,
+    maxHeight: "90%",
+    minHeight: "60%",
+  },
+  settingsHandle: {
+    alignSelf: "center",
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  settingsScroll: {
+    flexGrow: 0,
+  },
+  settingsScrollContent: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xxl,
     gap: spacing.md,
   },
-  integrationHeader: {
+  settingsHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: spacing.sm,
+    justifyContent: "space-between",
+    gap: spacing.md,
+    marginBottom: spacing.md,
   },
-  integrationTitleWrap: {
+  settingsKicker: {
+    ...typography.micro,
+    color: colors.textMuted,
+  },
+  settingsHeadline: {
+    ...typography.headline,
+    color: colors.textPrimary,
+    marginTop: 2,
+  },
+  settingsCloseLink: {
+    ...typography.micro,
+    color: colors.accent,
+    paddingTop: spacing.sm,
+  },
+
+  // Section header — mono kicker in muted ink, spaced above the first row.
+  sectionHeader: {
+    ...typography.micro,
+    color: colors.textMuted,
+    marginTop: spacing.lg,
+    marginBottom: spacing.xs,
+  },
+
+  // Setting block — a vertical stack of label/help/status plus any inline
+  // action. Separated from the next block by a single hairline.
+  settingBlock: {
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+  },
+  settingRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: spacing.lg,
+  },
+  settingCopy: {
     flex: 1,
     gap: 4,
   },
-  integrationTitle: {
+  settingLabel: {
+    ...typography.title,
     color: colors.textPrimary,
-    ...typography.body,
   },
-  integrationHint: {
-    color: colors.textMuted,
-    ...typography.caption,
-  },
-  integrationRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: spacing.sm,
-  },
-  integrationCopy: {
-    flex: 1,
-    gap: 4,
-    paddingRight: spacing.sm,
-  },
-  integrationLabel: {
+  settingHelp: {
+    ...typography.bodyMd,
     color: colors.textSecondary,
-    ...typography.bodySmall,
   },
-  integrationHelp: {
+  settingStatus: {
+    ...typography.micro,
+    marginTop: 2,
+  },
+  settingMeta: {
+    ...typography.micro,
     color: colors.textMuted,
-    ...typography.caption,
-    lineHeight: 17,
-  },
-  statusBadge: {
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.ghostBg,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  statusBadgeSuccess: {
-    backgroundColor: colors.primaryBg,
-    borderColor: colors.primaryBgHover,
-  },
-  statusBadgeWarning: {
-    backgroundColor: "#3b2b11",
-    borderColor: "#7c5a12",
-  },
-  statusBadgeError: {
-    backgroundColor: colors.errorBg,
-    borderColor: colors.errorBorder,
-  },
-  statusBadgeText: {
-    color: colors.textPrimary,
-    ...typography.caption,
-    fontWeight: "700",
-  },
-  primaryActionButton: {
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.primaryBgHover,
-    backgroundColor: colors.primaryBg,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  primaryActionText: {
-    color: colors.primaryText,
-    ...typography.bodySmall,
-    fontWeight: "700",
-  },
-  secondaryActionButton: {
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.ghostBg,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  secondaryActionText: {
-    color: colors.ghostText,
-    ...typography.bodySmall,
-    fontWeight: "700",
-  },
-  pendingText: {
-    color: colors.textMuted,
-    ...typography.caption,
-  },
-  metricPill: {
-    alignSelf: "flex-start",
-    borderRadius: radii.full,
-    backgroundColor: colors.ghostBg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  metricPillText: {
-    color: colors.textSecondary,
-    ...typography.caption,
-    fontWeight: "700",
-  },
-  syncAllButton: {
-    borderRadius: radii.lg,
-    backgroundColor: colors.textPrimary,
-    paddingVertical: 13,
-    alignItems: "center",
-    justifyContent: "center",
     marginTop: spacing.xs,
   },
-  syncAllButtonText: {
-    color: colors.bg,
-    ...typography.bodySmall,
-    fontWeight: "800",
+
+  // Inline action — copper mono text link, the only affordance style in the
+  // whole sheet. Disabled state just drops opacity.
+  inlineActionText: {
+    ...typography.micro,
+    color: colors.accent,
+    marginTop: spacing.sm,
   },
-  accountCard: {
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bgInput,
-    padding: spacing.md,
-    gap: spacing.sm,
+  inlineActionDisabled: {
+    opacity: 0.4,
   },
-  accountTitle: {
-    color: colors.textPrimary,
-    ...typography.body,
+  sectionFootAction: {
+    paddingVertical: spacing.xs,
   },
-  accountCopy: {
-    color: colors.textMuted,
-    ...typography.caption,
-    lineHeight: 18,
+
+  // Sign-out uses the rust accent so destructive intent reads clearly
+  // without giving up the flat text-link language.
+  signOutLink: {
+    ...typography.micro,
+    color: colors.error,
+    marginTop: spacing.sm,
   },
-  modalCancelButton: {
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  modalCancelText: {
-    color: colors.textSecondary,
-    fontWeight: "700",
-  },
-  modalSignOutButton: {
-    borderRadius: radii.md,
-    backgroundColor: colors.errorBg,
-    borderWidth: 1,
-    borderColor: colors.errorBorder,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  modalSignOutText: {
-    color: colors.infoText,
-    fontWeight: "800",
+
+  hairline: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.borderSubtle,
   },
 
   // Shared
