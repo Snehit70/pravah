@@ -39,7 +39,7 @@ import {
 } from "./src/lib/notifications";
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { colors, radii, spacing, typography } from "./src/theme/tokens";
+import { colors, fonts, radii, spacing, typography } from "./src/theme/tokens";
 import { TaskCard, type MobileTask } from "./src/components/TaskCard";
 import { BottomTabBar, type TabKey } from "./src/components/BottomTabBar";
 import { FAB } from "./src/components/FAB";
@@ -1231,14 +1231,21 @@ function MobileApp() {
     );
   }
 
-  // ── Header subtitle ─────────────────────────────────────────────────
+  // ── Header copy ─────────────────────────────────────────────────────
+  // Subtitle format is uppercase mono with a leading-zero count to read like
+  // a log line, never a count badge. Completed tab has no count to avoid
+  // making "graveyard size" feel like a metric.
 
+  const headerViewName =
+    activeTab === "timeline" ? "Timeline" : activeTab === "completed" ? "Completed" : "Inbox";
+
+  const padCount = (n: number) => (n < 10 ? `0${n}` : `${n}`);
   const headerSubtitle =
     activeTab === "timeline"
-      ? `${timelineCount} task${timelineCount === 1 ? "" : "s"} scheduled`
+      ? `${padCount(timelineCount)} scheduled`
       : activeTab === "completed"
         ? "Closed loops"
-        : `${inboxCount} task${inboxCount === 1 ? "" : "s"} to triage`;
+        : `${padCount(inboxCount)} to triage`;
 
   // ── Main layout ─────────────────────────────────────────────────────
 
@@ -1249,33 +1256,23 @@ function MobileApp() {
       {/* Single warm halo top-right — replaces the two saturated blur circles. */}
       <View pointerEvents="none" style={styles.halo} />
 
-      {/* Header */}
+      {/* Header — wordmark + view title (Fraunces) with mono subtitle. The
+          Settings affordance is a hairline-underlined text link, not a button
+          box: nothing is enclosed unless enclosure is earned. */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
         <View style={styles.headerTop}>
-          <View>
-            <Text style={styles.kicker}>Pravah</Text>
-            <Text style={styles.headerTitle}>
-              {activeTab === "timeline"
-                ? "Timeline"
-                : activeTab === "completed"
-                  ? "Completed"
-                  : "Inbox"}
-            </Text>
-          </View>
+          <Text style={styles.wordmark}>Pravah</Text>
           <Pressable
             onPress={openSettingsModal}
-            style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
-            hitSlop={10}
+            style={({ pressed }) => [styles.settingsLinkWrap, pressed && styles.pressed]}
+            hitSlop={12}
             accessibilityRole="button"
             accessibilityLabel="Open settings"
           >
-            <View style={styles.settingsIcon}>
-              <View style={styles.settingsDot} />
-              <View style={styles.settingsDot} />
-              <View style={styles.settingsDot} />
-            </View>
+            <Text style={styles.settingsLink}>Settings</Text>
           </Pressable>
         </View>
+        <Text style={styles.headerTitle}>{headerViewName}</Text>
         <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>
       </View>
 
@@ -1772,51 +1769,60 @@ const styles = StyleSheet.create({
     backgroundColor: colors.haloCopper,
   },
 
-  // Header
+  // Header — typography-first, no enclosing card. The trailing 24px gap
+  // (paddingBottom) is the only thing separating the header from the list,
+  // doing the work of a divider line without drawing one.
   header: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingBottom: spacing.xxl,
   },
   headerTop: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "baseline",
+    marginBottom: spacing.lg,
   },
+  // Lowercase wordmark in Fraunces — the brand voice, not a brand badge.
+  // Slightly lowered baseline relative to the Settings link via a small
+  // negative letterSpacing nudge handled in tokens.
+  wordmark: {
+    color: colors.textPrimary,
+    fontFamily: fonts.serif,
+    fontSize: 20,
+    letterSpacing: -0.3,
+  },
+  // View name lives on its own line below the lockup so it can breathe.
+  // Sentence case, not uppercase \u2014 sentence case + serif is what gives the
+  // app its editorial register.
+  headerTitle: {
+    color: colors.textPrimary,
+    ...typography.display,
+    marginTop: spacing.xs,
+  },
+  // Mono uppercase log-line. Reads as metadata, never as a count badge.
+  headerSubtitle: {
+    color: colors.textMuted,
+    ...typography.micro,
+    marginTop: spacing.xs,
+  },
+  // Settings is a hairline-underlined word, not a button shape.
+  settingsLinkWrap: {
+    paddingVertical: spacing.xs,
+  },
+  settingsLink: {
+    color: colors.textSecondary,
+    fontFamily: fonts.sansSemibold,
+    fontSize: 12,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    textDecorationLine: "underline",
+    textDecorationColor: colors.borderSubtle,
+  },
+  // Auth screen still uses the original kicker token; keep it.
   kicker: {
     color: colors.accent,
     ...typography.kicker,
-  },
-  headerTitle: {
-    color: colors.textPrimary,
-    ...typography.h1,
-    marginTop: 2,
-  },
-  headerSubtitle: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    marginTop: 4,
-  },
-  settingsButton: {
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    width: 38,
-    height: 34,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 4,
-  },
-  settingsIcon: {
-    gap: 4,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  settingsDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.textSecondary,
   },
 
   // Toast
