@@ -15,7 +15,7 @@ import {
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, { FadeIn } from "react-native-reanimated";
 import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
-import { useAction, useConvex, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { api } from "../../convex/_generated/api";
 import * as Haptics from "expo-haptics";
@@ -158,7 +158,6 @@ function getStatusTone(status: string): "success" | "warning" | "error" | "muted
 // ── Main App ───────────────────────────────────────────────────────────
 
 function MobileApp() {
-  const convex = useConvex();
   const insets = useSafeAreaInsets();
   const addTaskSheetRef = useRef<AddTaskSheetRef>(null);
   const editTaskSheetRef = useRef<EditTaskSheetRef>(null);
@@ -867,19 +866,17 @@ function MobileApp() {
     mobileLogger.info("refresh_started", { actionId, retryQueueCount: retryQueue.length });
     setIsRefreshing(true);
     try {
-      await convex.query(api.tasks.getTaskCounts, {});
-      if (activeTab === "inbox") {
-        await convex.query(api.tasks.listTasks, { status: "inbox" });
-      } else if (activeTab === "timeline") {
-        await convex.query(api.tasks.listTasks, { status: "scheduled" });
+      // Convex subscriptions are already live; no manual re-fetch is needed.
+      // Pull-to-refresh flushes the offline retry queue so any pending changes
+      // are sent as soon as the user is back online.
+      if (retryQueue.length) {
+        await retryQueuedMutations();
       } else {
-        await convex.query(api.tasks.listTasks, { status: "completed" });
+        showToast({ kind: "info", message: "Up to date" });
       }
-      showToast({ kind: "info", message: "Workspace refreshed" });
-      if (retryQueue.length) await retryQueuedMutations();
       mobileLogger.info("refresh_succeeded", { actionId, elapsedMs: Date.now() - startedAt });
     } catch {
-      showToast({ kind: "error", message: "Could not refresh tasks. Check connection and retry." });
+      showToast({ kind: "error", message: "Could not sync pending changes. Check connection." });
       mobileLogger.error("refresh_failed", { actionId, elapsedMs: Date.now() - startedAt });
     } finally {
       setIsRefreshing(false);
@@ -966,14 +963,15 @@ function MobileApp() {
         return;
       }
       await importGoogleCalendarAction({ accessToken: tokens.accessToken });
+      // The calendarIntegrationStatus query is reactive — it updates
+      // automatically once the action mutates the integration record.
       showToast({ kind: "info", message: "Google Calendar sync complete." });
-      await convex.query(api.sync.getIntegrationStatus, { provider: "google_calendar" });
     } catch {
       showToast({ kind: "error", message: "Google Calendar sync failed. Try again." });
     } finally {
       setIsCalendarSyncing(false);
     }
-  }, [convex, importGoogleCalendarAction, isCalendarSyncing, showToast]);
+  }, [importGoogleCalendarAction, isCalendarSyncing, showToast]);
 
   const syncBothNow = useCallback(async () => {
     try {
