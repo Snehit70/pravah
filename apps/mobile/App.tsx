@@ -312,6 +312,10 @@ function MobileApp() {
     GoogleSignin.configure({
       webClientId: googleWebClientId,
       iosClientId: googleIosClientId,
+      // Calendar sync needs the calendar scope; offlineAccess requests a
+      // server auth code so the backend can obtain a refresh token.
+      scopes: ["https://www.googleapis.com/auth/calendar.readonly"],
+      offlineAccess: true,
     });
   }, [googleWebClientId, googleIosClientId]);
 
