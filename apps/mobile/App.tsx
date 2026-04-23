@@ -620,8 +620,9 @@ function MobileApp() {
     (taskId: Id<"tasks">) => {
       void runOptimisticMutation({
         actionName: "complete_task",
-        optimistic: (cur) =>
-          cur.map((t) => (t._id === taskId ? { ...t, status: "completed" as const, updatedAt: Date.now() } : t)),
+        // Remove from the current tab list immediately; the server will
+        // add it to the completed tab once Convex reactivity fires.
+        optimistic: (cur) => cur.filter((t) => t._id !== taskId),
         mutation: async () => { await completeTaskMutation({ taskId }); },
         errorMessage: "Could not mark task as done.",
         retryLabel: "Retry done",
@@ -635,10 +636,9 @@ function MobileApp() {
     (taskId: Id<"tasks">) => {
       void runOptimisticMutation({
         actionName: "move_task_today",
-        optimistic: (cur) =>
-          cur.map((t) =>
-            t._id === taskId ? { ...t, status: "scheduled" as const, scheduledDate: today, updatedAt: Date.now() } : t
-          ),
+        // Remove from inbox immediately; it appears in Timeline once the
+        // server update arrives via Convex reactivity.
+        optimistic: (cur) => cur.filter((t) => t._id !== taskId),
         mutation: async () => { await moveTaskMutation({ taskId, targetDate: today }); },
         errorMessage: "Could not move task to today.",
         retryLabel: "Retry move to today",
@@ -653,12 +653,9 @@ function MobileApp() {
     (taskId: Id<"tasks">) => {
       void runOptimisticMutation({
         actionName: "move_task_inbox",
-        optimistic: (cur) =>
-          cur.map((t) =>
-            t._id === taskId
-              ? { ...t, status: "inbox" as const, scheduledDate: undefined, updatedAt: Date.now() }
-              : t
-          ),
+        // Remove from timeline immediately; it appears in Inbox once the
+        // server update arrives via Convex reactivity.
+        optimistic: (cur) => cur.filter((t) => t._id !== taskId),
         mutation: async () => { await unscheduleTaskMutation({ taskId }); },
         errorMessage: "Could not move task back to inbox.",
         retryLabel: "Retry move to inbox",
@@ -673,12 +670,9 @@ function MobileApp() {
     (taskId: Id<"tasks">) => {
       void runOptimisticMutation({
         actionName: "reopen_task",
-        optimistic: (cur) =>
-          cur.map((t) =>
-            t._id === taskId
-              ? { ...t, status: "inbox" as const, scheduledDate: undefined, updatedAt: Date.now() }
-              : t
-          ),
+        // Remove from completed immediately; it appears in Inbox once the
+        // server update arrives via Convex reactivity.
+        optimistic: (cur) => cur.filter((t) => t._id !== taskId),
         mutation: async () => { await reopenTaskMutation({ taskId }); },
         errorMessage: "Could not reopen task.",
         retryLabel: "Retry reopen",
