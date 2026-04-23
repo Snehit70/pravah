@@ -1246,9 +1246,8 @@ function MobileApp() {
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
 
-      {/* Background glows */}
-      <View style={styles.glowTop} />
-      <View style={styles.glowBottom} />
+      {/* Single warm halo top-right — replaces the two saturated blur circles. */}
+      <View pointerEvents="none" style={styles.halo} />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
@@ -1758,23 +1757,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  glowTop: {
+  // Single warm copper halo, top-right behind the safe area. No second
+  // accent, no shadow on the container — restraint is the point. The size
+  // (~360 px) and softness come from the low-alpha fill (haloCopper is
+  // already 15%); RN can't actually feather a View edge, so we keep the
+  // circle large enough that the hard edge falls well off-screen.
+  halo: {
     position: "absolute",
-    top: -120,
-    right: -80,
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: colors.glowCyan,
-  },
-  glowBottom: {
-    position: "absolute",
-    bottom: -140,
-    left: -80,
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: colors.glowGreen,
+    top: -180,
+    right: -120,
+    width: 360,
+    height: 360,
+    borderRadius: 180,
+    backgroundColor: colors.haloCopper,
   },
 
   // Header
