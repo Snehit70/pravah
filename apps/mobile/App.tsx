@@ -1168,24 +1168,47 @@ function MobileApp() {
     [markDone, reopenToInbox, handleEditTask]
   );
 
+  // Editorial empty states. Headlines are short observations rendered in
+  // Fraunces; only the inbox case offers a text-link action because it's the
+  // only view where capturing is the next obvious move. The block is flat \u2014
+  // no card, no border \u2014 so it reads like a printed page, not a placeholder.
   const emptyState = useMemo(() => {
     if (activeTab === "timeline") {
       return {
-        title: "No scheduled tasks",
-        body: "No tasks on your timeline yet. Move one from Inbox to Today.",
+        title: "An open day.",
+        body: "Move a task from the inbox to fill it.",
+        cta: null as null | string,
       };
     }
     if (activeTab === "completed") {
       return {
-        title: "Nothing completed yet",
-        body: "Mark one task done to build momentum.",
+        title: "A quiet ledger \u2014 for now.",
+        body: "Closed loops will gather here.",
+        cta: null as null | string,
       };
     }
     return {
-      title: "Inbox zero",
-      body: "You are all caught up. Tap + to capture the next task.",
+      title: "Nothing to carry forward.",
+      body: "When something comes up, capture it.",
+      cta: "Capture a task",
     };
   }, [activeTab]);
+
+  const emptyBlock = (
+    <Animated.View entering={FadeIn.duration(400)} style={styles.emptyWrap}>
+      <Text style={styles.emptyTitle}>{emptyState.title}</Text>
+      <Text style={styles.emptyText}>{emptyState.body}</Text>
+      {emptyState.cta ? (
+        <Pressable
+          onPress={() => addTaskSheetRef.current?.open()}
+          hitSlop={12}
+          style={({ pressed }) => [styles.emptyCtaWrap, pressed && { opacity: 0.6 }]}
+        >
+          <Text style={styles.emptyCta}>{emptyState.cta}</Text>
+        </Pressable>
+      ) : null}
+    </Animated.View>
+  );
 
   // ── Loading / Auth screens ──────────────────────────────────────────
 
@@ -1323,12 +1346,7 @@ function MobileApp() {
               progressBackgroundColor={colors.bgCard}
             />
           }
-          ListEmptyComponent={
-            <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>{emptyState.title}</Text>
-              <Text style={styles.emptyText}>{emptyState.body}</Text>
-            </Animated.View>
-          }
+          ListEmptyComponent={emptyBlock}
         />
       ) : null}
 
@@ -1363,10 +1381,7 @@ function MobileApp() {
               </View>
             ))
           ) : (
-            <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>{emptyState.title}</Text>
-              <Text style={styles.emptyText}>{emptyState.body}</Text>
-            </Animated.View>
+            emptyBlock
           )}
         </ScrollView>
       ) : null}
@@ -1388,12 +1403,7 @@ function MobileApp() {
               progressBackgroundColor={colors.bgCard}
             />
           }
-          ListEmptyComponent={
-            <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>{emptyState.title}</Text>
-              <Text style={styles.emptyText}>{emptyState.body}</Text>
-            </Animated.View>
-          }
+          ListEmptyComponent={emptyBlock}
         />
       ) : null}
 
@@ -1887,25 +1897,33 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
 
-  // Empty states
-  emptyCard: {
-    borderRadius: radii.lg,
-    padding: spacing.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bgCard,
+  // Empty states — flat editorial block, no enclosure. Fraunces headline sets
+  // the tone; body is Manrope; the inbox CTA is a mono "link" in copper so it
+  // reads as tappable without borrowing button chrome.
+  emptyWrap: {
+    paddingTop: spacing.section * 2,
+    paddingHorizontal: spacing.xxl,
     gap: spacing.sm,
     alignItems: "center",
   },
   emptyTitle: {
     color: colors.textPrimary,
-    ...typography.h3,
+    ...typography.headline,
+    textAlign: "center",
   },
   emptyText: {
     color: colors.textSecondary,
-    fontSize: 14,
-    lineHeight: 20,
+    ...typography.bodyMd,
     textAlign: "center",
+  },
+  emptyCtaWrap: {
+    marginTop: spacing.lg,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+  },
+  emptyCta: {
+    color: colors.accent,
+    ...typography.micro,
   },
 
   // Modal
