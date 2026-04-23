@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { Keyboard, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import BottomSheet, {
@@ -27,6 +27,28 @@ function parseIsoDate(value?: string): Date {
   const [y, m, d] = value.split("-").map((v) => Number(v));
   if (!y || !m || !d) return new Date();
   return new Date(y, m - 1, d);
+}
+
+// Single-tap cycle order per design spec: none → P1 → P2 → P3 → none.
+function nextPriority(current: TaskPriority): TaskPriority {
+  if (current === undefined) return "p1";
+  if (current === "p1") return "p2";
+  if (current === "p2") return "p3";
+  return undefined;
+}
+
+function priorityDotColor(p: TaskPriority): string {
+  if (p === "p1") return colors.priorityP1;
+  if (p === "p2") return colors.priorityP2;
+  if (p === "p3") return colors.priorityP3;
+  return colors.borderSubtle;
+}
+
+function priorityLabel(p: TaskPriority): string {
+  if (p === "p1") return "P1";
+  if (p === "p2") return "P2";
+  if (p === "p3") return "P3";
+  return "—";
 }
 
 export type AddTaskSheetRef = {
@@ -147,11 +169,13 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       []
     );
 
+    const canSubmit = useMemo(() => Boolean(title.trim()) && !saving, [title, saving]);
+
     return (
       <BottomSheet
         ref={bottomSheetRef}
         index={-1}
-        snapPoints={showDetails ? ["68%"] : ["48%"]}
+        snapPoints={showDetails ? ["72%"] : ["52%"]}
         detached
         bottomInset={sheetBottomInset}
         style={styles.sheetContainer}
@@ -177,6 +201,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         }}
       >
         <BottomSheetView style={styles.content}>
+          <Text style={styles.sheetKicker}>Capture</Text>
           <Text style={styles.sheetTitle}>New task</Text>
 
           <BottomSheetTextInput
@@ -194,71 +219,99 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
             onSubmitEditing={() => void handleAdd()}
           />
 
-          {/* Quick date chips */}
-          <View style={styles.chipRow}>
+          {/* Mode — segmented control as two mono labels with an underline
+              under the active segment. Mirrors the bottom-tab language. */}
+          <View style={styles.modeRow}>
             <Pressable
               onPress={() => setMode("inbox")}
-              style={({ pressed }) => [styles.chip, mode === "inbox" && styles.chipActive, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.modeItem, pressed && { opacity: 0.6 }]}
+              hitSlop={6}
             >
-              <Text style={[styles.chipText, mode === "inbox" && styles.chipTextActive]}>
-                Inbox
-              </Text>
+              <Text style={[styles.modeText, mode === "inbox" && styles.modeTextActive]}>Inbox</Text>
+              <View style={[styles.modeRule, mode === "inbox" && styles.modeRuleActive]} />
             </Pressable>
             <Pressable
               onPress={() => setMode("today")}
-              style={({ pressed }) => [styles.chip, mode === "today" && styles.chipActive, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.modeItem, pressed && { opacity: 0.6 }]}
+              hitSlop={6}
             >
-              <Text style={[styles.chipText, mode === "today" && styles.chipTextActive]}>
-                Today
-              </Text>
+              <Text style={[styles.modeText, mode === "today" && styles.modeTextActive]}>Today</Text>
+              <View style={[styles.modeRule, mode === "today" && styles.modeRuleActive]} />
             </Pressable>
 
             <View style={{ flex: 1 }} />
 
             <Pressable
               onPress={() => setShowDetails(!showDetails)}
-              style={({ pressed }) => [styles.detailsToggle, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.detailsToggle, pressed && { opacity: 0.6 }]}
+              hitSlop={8}
             >
-              <Text style={styles.detailsToggleText}>
-                {showDetails ? "Less" : "More"}
-              </Text>
+              <Text style={styles.detailsToggleText}>{showDetails ? "Less" : "More"}</Text>
             </Pressable>
           </View>
 
           {showDetails ? (
-            <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={styles.detailsSection}>
+            <Animated.View
+              entering={FadeIn.duration(200)}
+              exiting={FadeOut.duration(150)}
+              style={styles.detailsSection}
+            >
               <BottomSheetTextInput
                 value={description}
                 onChangeText={setDescription}
                 placeholder="Notes (optional)"
                 placeholderTextColor={colors.textMuted}
-                style={[styles.input, styles.notesInput]}
+                style={styles.notesInput}
                 multiline
               />
-              <View style={styles.deadlineRow}>
+
+              {/* Due + priority live on one quiet row — two labeled fields
+                  with no pills, borders, or chips. */}
+              <View style={styles.metaRow}>
                 <Pressable
                   onPress={() => {
                     Keyboard.dismiss();
                     setShowDatePicker(true);
                   }}
-                  style={({ pressed }) => [styles.deadlineField, pressed && styles.pressed]}
+                  style={({ pressed }) => [styles.metaField, pressed && { opacity: 0.6 }]}
                 >
-                  <Text style={deadline ? styles.deadlineValue : styles.deadlinePlaceholder}>
-                    {deadline || "Pick deadline"}
+                  <Text style={styles.metaLabel}>Due</Text>
+                  <Text style={deadline ? styles.metaValue : styles.metaPlaceholder}>
+                    {deadline || "—"}
                   </Text>
                 </Pressable>
+
                 {deadline ? (
                   <Pressable
                     onPress={() => {
                       setDeadline("");
                       setError(null);
                     }}
-                    style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]}
+                    style={({ pressed }) => [styles.clearAction, pressed && { opacity: 0.6 }]}
+                    hitSlop={8}
                   >
-                    <Text style={styles.clearButtonText}>Clear</Text>
+                    <Text style={styles.clearActionText}>Clear</Text>
                   </Pressable>
                 ) : null}
+
+                <Pressable
+                  onPress={() => {
+                    setPriority(nextPriority(priority));
+                    void Haptics.selectionAsync();
+                  }}
+                  style={({ pressed }) => [styles.metaField, pressed && { opacity: 0.6 }]}
+                  hitSlop={6}
+                >
+                  <Text style={styles.metaLabel}>Priority</Text>
+                  <View style={styles.priorityValue}>
+                    <View style={[styles.priorityDot, { backgroundColor: priorityDotColor(priority) }]} />
+                    <Text style={priority ? styles.metaValue : styles.metaPlaceholder}>
+                      {priorityLabel(priority)}
+                    </Text>
+                  </View>
+                </Pressable>
               </View>
+
               {showDatePicker ? (
                 <DateTimePicker
                   value={parseIsoDate(deadline)}
@@ -275,98 +328,21 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                   }}
                 />
               ) : null}
-              <View style={styles.priorityRow}>
-                <Text style={styles.priorityLabel}>Priority</Text>
-                <View style={styles.priorityChips}>
-                  <Pressable
-                    onPress={() => setPriority(undefined)}
-                    style={({ pressed }) => [
-                      styles.priorityChip,
-                      priority === undefined && styles.priorityChipActive,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.priorityChipText,
-                        priority === undefined && styles.priorityChipTextActive,
-                      ]}
-                    >
-                      None
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setPriority("p1")}
-                    style={({ pressed }) => [
-                      styles.priorityChip,
-                      priority === "p1" && styles.priorityChipActive,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.priorityChipText,
-                        priority === "p1" && styles.priorityChipTextActive,
-                      ]}
-                    >
-                      P1
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setPriority("p2")}
-                    style={({ pressed }) => [
-                      styles.priorityChip,
-                      priority === "p2" && styles.priorityChipActive,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.priorityChipText,
-                        priority === "p2" && styles.priorityChipTextActive,
-                      ]}
-                    >
-                      P2
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setPriority("p3")}
-                    style={({ pressed }) => [
-                      styles.priorityChip,
-                      priority === "p3" && styles.priorityChipActive,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.priorityChipText,
-                        priority === "p3" && styles.priorityChipTextActive,
-                      ]}
-                    >
-                      P3
-                    </Text>
-                  </Pressable>
-                </View>
-              </View>
             </Animated.View>
           ) : null}
 
-          {error ? (
-            <Text style={styles.errorText}>{error}</Text>
-          ) : null}
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
           <Pressable
             onPress={() => void handleAdd()}
-            disabled={saving || !title.trim()}
+            disabled={!canSubmit}
             style={({ pressed }) => [
-              styles.addButton,
-              (!title.trim() || saving) && styles.addButtonDisabled,
-              pressed && styles.pressed,
+              styles.primaryButton,
+              !canSubmit && styles.primaryButtonDisabled,
+              pressed && { opacity: 0.85 },
             ]}
           >
-            <Text style={styles.addButtonText}>
-              {saving ? "Adding..." : "Add task"}
-            </Text>
+            <Text style={styles.primaryButtonText}>{saving ? "Adding…" : "Add task"}</Text>
           </Pressable>
         </BottomSheetView>
       </BottomSheet>
@@ -375,180 +351,159 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
 );
 
 const styles = StyleSheet.create({
+  // Sheet surface — one enclosure (earned, because it's a modal). No side
+  // borders or extra radius beyond the standard bottom-sheet top corners.
   sheetBg: {
     backgroundColor: colors.bgCard,
     borderTopLeftRadius: radii.xl,
     borderTopRightRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderBottomWidth: 0,
   },
   sheetContainer: {
     marginHorizontal: spacing.md,
   },
   indicator: {
-    backgroundColor: colors.textMuted,
+    backgroundColor: colors.border,
     width: 36,
+    height: 4,
   },
   content: {
-    padding: spacing.lg,
-    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xl,
+    gap: spacing.lg,
+  },
+
+  // Header
+  sheetKicker: {
+    ...typography.micro,
+    color: colors.textMuted,
   },
   sheetTitle: {
+    ...typography.headline,
     color: colors.textPrimary,
-    ...typography.h3,
+    marginTop: -spacing.sm,
   },
+
+  // Title input — bottom rule only, no bordered box.
   titleInput: {
-    backgroundColor: colors.bgInput,
     color: colors.textPrimary,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    fontSize: 16,
+    ...typography.bodyLg,
+    fontSize: 17,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
-  chipRow: {
+
+  // Mode segmented control
+  modeRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    alignItems: "flex-end",
+    gap: spacing.lg,
+  },
+  modeItem: {
+    paddingBottom: 4,
     alignItems: "center",
   },
-  chip: {
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: colors.chipBorder,
-    backgroundColor: colors.bgCard,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+  modeText: {
+    ...typography.title,
+    color: colors.textMuted,
   },
-  chipActive: {
-    backgroundColor: colors.chipActive,
-    borderColor: colors.chipActiveBorder,
+  modeTextActive: {
+    color: colors.textPrimary,
   },
-  chipText: {
-    color: colors.textSecondary,
-    ...typography.caption,
-    fontWeight: "700",
+  modeRule: {
+    marginTop: 6,
+    height: 2,
+    width: 22,
+    borderRadius: 1,
+    backgroundColor: "transparent",
   },
-  chipTextActive: {
-    color: colors.infoText,
+  modeRuleActive: {
+    backgroundColor: colors.accent,
   },
   detailsToggle: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingBottom: 8,
   },
   detailsToggleText: {
+    ...typography.micro,
     color: colors.accent,
-    ...typography.caption,
-    fontWeight: "700",
   },
+
+  // Details
   detailsSection: {
-    gap: spacing.sm,
-  },
-  deadlineRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  deadlineField: {
-    flex: 1,
-    backgroundColor: colors.bgInput,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  deadlinePlaceholder: {
-    color: colors.textMuted,
-    fontSize: 13,
-  },
-  deadlineValue: {
-    color: colors.textPrimary,
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  clearButton: {
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  clearButtonText: {
-    color: colors.textSecondary,
-    ...typography.caption,
-    fontWeight: "700",
-  },
-  input: {
-    backgroundColor: colors.bgInput,
-    color: colors.textPrimary,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 13,
+    gap: spacing.md,
   },
   notesInput: {
-    minHeight: 60,
+    color: colors.textPrimary,
+    ...typography.bodyMd,
+    minHeight: 64,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
     textAlignVertical: "top",
   },
-  priorityRow: {
+
+  // Meta row: Due + Priority as two labeled fields
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: spacing.xl,
+  },
+  metaField: {
+    gap: 4,
+  },
+  metaLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
+  },
+  metaValue: {
+    ...typography.numeric,
+    color: colors.textPrimary,
+  },
+  metaPlaceholder: {
+    ...typography.numeric,
+    color: colors.textMuted,
+  },
+  priorityValue: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing.xs,
   },
-  priorityLabel: {
+  priorityDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  clearAction: {
+    paddingBottom: 2,
+  },
+  clearActionText: {
+    ...typography.micro,
     color: colors.textSecondary,
-    ...typography.caption,
   },
-  priorityChips: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-  },
-  priorityChip: {
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: colors.bgInput,
-  },
-  priorityChipActive: {
-    borderColor: colors.chipActiveBorder,
-    backgroundColor: colors.chipActive,
-  },
-  priorityChipText: {
-    color: colors.textSecondary,
-    ...typography.caption,
-    fontWeight: "700",
-  },
-  priorityChipTextActive: {
-    color: colors.accent,
-  },
+
+  // Error
   errorText: {
+    ...typography.bodyMd,
     color: colors.error,
-    ...typography.caption,
   },
-  helperText: {
-    color: colors.textMuted,
-    ...typography.caption,
-  },
-  addButton: {
-    backgroundColor: colors.primary,
-    borderRadius: radii.md,
+
+  // Primary action — copper pill, ink text. Matches the FAB language so
+  // "commit to the task" reads with the same weight as "capture one".
+  primaryButton: {
+    backgroundColor: colors.accent,
+    borderRadius: radii.full,
     paddingVertical: 14,
     alignItems: "center",
+    marginTop: spacing.sm,
   },
-  addButtonDisabled: {
-    opacity: 0.5,
+  primaryButtonDisabled: {
+    opacity: 0.4,
   },
-  addButtonText: {
-    color: colors.primaryDark,
-    fontWeight: "800",
-    fontSize: 15,
-  },
-  pressed: {
-    opacity: 0.85,
+  primaryButtonText: {
+    ...typography.title,
+    color: colors.bg,
   },
 });
