@@ -1,10 +1,11 @@
 /** @vitest-environment happy-dom */
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import type { Task } from "../types";
 import type { Id } from "../../convex/_generated/dataModel";
 import { getLocalDateString } from "../lib/utils";
+import { renderWithProviders } from "./renderWithProviders";
 
 const useQueryMock = vi.fn();
 const useMutationMock = vi.fn();
@@ -142,7 +143,7 @@ describe("App task flow integration", () => {
       }),
     ]);
 
-    render(<App />);
+    renderWithProviders(<App />);
 
     expect(screen.getByText("Inbox Task")).toBeInTheDocument();
     expect(screen.getByText("Scheduled Task")).toBeInTheDocument();
@@ -151,7 +152,7 @@ describe("App task flow integration", () => {
   it("opens and closes quick add via keyboard shortcut", async () => {
     useQueryMock.mockReturnValue([]);
 
-    render(<App />);
+    renderWithProviders(<App />);
 
     fireEvent.keyDown(window, { key: "n", metaKey: true });
 
@@ -177,7 +178,7 @@ describe("App task flow integration", () => {
       }),
     ]);
 
-    render(<App />);
+    renderWithProviders(<App />);
 
     fireEvent.click(screen.getByText("Click Me"));
 
