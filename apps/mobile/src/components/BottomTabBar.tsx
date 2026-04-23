@@ -1,34 +1,73 @@
-import { memo, useCallback } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import * as Haptics from "expo-haptics";
-import { colors, radii, spacing, typography } from "../theme/tokens";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
+import { colors, fonts, spacing } from "../theme/tokens";
 
 export type TabKey = "inbox" | "timeline" | "completed";
 
 type BottomTabBarProps = {
   active: TabKey;
   onChange: (tab: TabKey) => void;
-  inboxCount: number;
-  timelineCount: number;
-  doneCount: number;
   bottomInset?: number;
 };
 
-const tabs: { key: TabKey; label: string; countKey: "inbox" | "timeline" | "done" }[] = [
-  { key: "inbox", label: "Inbox", countKey: "inbox" },
-  { key: "timeline", label: "Timeline", countKey: "timeline" },
-  { key: "completed", label: "Done", countKey: "done" },
+const tabs: { key: TabKey; label: string }[] = [
+  { key: "inbox", label: "Inbox" },
+  { key: "timeline", label: "Timeline" },
+  { key: "completed", label: "Done" },
 ];
 
-function BottomTabBarInner({
-  active,
-  onChange,
-  inboxCount,
-  timelineCount,
-  doneCount,
-  bottomInset = spacing.md,
-}: BottomTabBarProps) {
-  const counts = { inbox: inboxCount, timeline: timelineCount, done: doneCount };
+type TabLayout = { x: number; width: number };
+
+function BottomTabBarInner({ active, onChange, bottomInset = spacing.md }: BottomTabBarProps) {
+  // Per-tab layout populated by onLayout. The underline can only animate to a
+  // tab once that tab has reported its position; in practice this happens on
+  // the first frame so the underline is in the right place on mount.
+  const [layouts, setLayouts] = useState<Partial<Record<TabKey, TabLayout>>>({});
+  const indicatorX = useSharedValue(0);
+  const indicatorW = useSharedValue(0);
+  // Mark whether the indicator has ever been positioned so we skip the
+  // animation on the very first paint (no slide-in from x=0).
+  const hasPositioned = useRef(false);
+
+  useEffect(() => {
+    const layout = layouts[active];
+    if (!layout) return;
+    if (!hasPositioned.current) {
+      indicatorX.value = layout.x;
+      indicatorW.value = layout.width;
+      hasPositioned.current = true;
+      return;
+    }
+    indicatorX.value = withTiming(layout.x, {
+      duration: 220,
+      easing: Easing.bezier(0.22, 1, 0.36, 1),
+    });
+    indicatorW.value = withTiming(layout.width, {
+      duration: 220,
+      easing: Easing.bezier(0.22, 1, 0.36, 1),
+    });
+  }, [active, layouts, indicatorX, indicatorW]);
+
+  const indicatorStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: indicatorX.value }],
+    width: indicatorW.value,
+  }));
+
+  const handleLayout = useCallback((key: TabKey, e: LayoutChangeEvent) => {
+    const { x, width } = e.nativeEvent.layout;
+    setLayouts((prev) => {
+      const existing = prev[key];
+      if (existing && existing.x === x && existing.width === width) return prev;
+      return { ...prev, [key]: { x, width } };
+    });
+  }, []);
 
   const handlePress = useCallback(
     (tab: TabKey) => {
@@ -43,104 +82,72 @@ function BottomTabBarInner({
   return (
     <View style={[styles.container, { paddingBottom: bottomInset }]}>
       <View style={styles.bar}>
-        {tabs.map((tab) => {
-          const isActive = active === tab.key;
-          const count = counts[tab.countKey];
-          return (
-            <TabItem
-              key={tab.key}
-              tabKey={tab.key}
-              label={tab.label}
-              count={count}
-              isActive={isActive}
-              onPress={handlePress}
-            />
-          );
-        })}
+        {tabs.map((tab) => (
+          <Pressable
+            key={tab.key}
+            onPress={() => handlePress(tab.key)}
+            onLayout={(e) => handleLayout(tab.key, e)}
+            style={({ pressed }) => [styles.tabItem, pressed && styles.tabItemPressed]}
+            hitSlop={{ top: 8, bottom: 8 }}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active === tab.key }}
+            accessibilityLabel={tab.label}
+          >
+            <Text style={[styles.tabLabel, active === tab.key && styles.tabLabelActive]}>
+              {tab.label}
+            </Text>
+          </Pressable>
+        ))}
+        {/* Animated copper underline. Sits absolutely positioned at the
+            bottom of the bar and slides between tabs via Reanimated. */}
+        <Animated.View style={[styles.indicator, indicatorStyle]} />
       </View>
     </View>
   );
 }
 
-type TabItemProps = {
-  tabKey: TabKey;
-  label: string;
-  count: number;
-  isActive: boolean;
-  onPress: (key: TabKey) => void;
-};
-
-function TabItemInner({ tabKey, label, count, isActive, onPress }: TabItemProps) {
-  return (
-    <Pressable
-      onPress={() => onPress(tabKey)}
-      style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}
-      hitSlop={{ top: 8, bottom: 8 }}
-    >
-      <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
-        {label}
-      </Text>
-      {count > 0 ? (
-        <Text style={[styles.tabCount, isActive && styles.tabCountActive]}>
-          {count}
-        </Text>
-      ) : null}
-      <View style={[styles.activeDot, !isActive && styles.activeDotHidden]} />
-    </Pressable>
-  );
-}
-
-const TabItem = memo(TabItemInner);
-
 export const BottomTabBar = memo(BottomTabBarInner);
 
 const styles = StyleSheet.create({
+  // Container draws a single hairline divider on top \u2014 no enclosing pill.
   container: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
     paddingTop: spacing.sm,
     backgroundColor: colors.bg,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
   },
+  // The bar uses position: relative so the absolute indicator anchors to it.
   bar: {
     flexDirection: "row",
-    backgroundColor: colors.bgInput,
-    borderRadius: radii.xl,
-    padding: spacing.xs,
+    position: "relative",
   },
   tabItem: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 12,
-    gap: 4,
+    paddingVertical: spacing.md,
+  },
+  tabItemPressed: {
+    opacity: 0.6,
   },
   tabLabel: {
     color: colors.textMuted,
-    ...typography.bodySmall,
+    fontFamily: fonts.sansSemibold,
+    fontSize: 13,
+    letterSpacing: 0.4,
   },
   tabLabelActive: {
     color: colors.textPrimary,
-    fontWeight: "700",
   },
-  tabCount: {
-    color: colors.textMuted,
-    ...typography.caption,
-  },
-  tabCountActive: {
-    color: colors.accent,
-  },
-  activeDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+  // 2px copper underline. Anchored to the bottom of the bar and animated
+  // between tabs by translateX + width. Width is set dynamically via the
+  // animated style; height stays at 2.
+  indicator: {
+    position: "absolute",
+    left: 0,
+    bottom: 0,
+    height: 2,
     backgroundColor: colors.accent,
-  },
-  activeDotHidden: {
-    opacity: 0,
-  },
-  pressed: {
-    opacity: 0.82,
   },
 });

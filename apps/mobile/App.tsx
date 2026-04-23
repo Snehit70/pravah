@@ -1402,13 +1402,10 @@ function MobileApp() {
         <FAB bottom={fabBottom} onPress={() => addTaskSheetRef.current?.open()} />
       ) : null}
 
-      {/* Bottom tab bar */}
+      {/* Bottom tab bar \u2014 no counts; the header subtitle carries those. */}
       <BottomTabBar
         active={activeTab}
         onChange={setActiveTab}
-        inboxCount={inboxCount}
-        timelineCount={timelineCount}
-        doneCount={completedCount}
         bottomInset={tabBarBottomPadding}
       />
 
