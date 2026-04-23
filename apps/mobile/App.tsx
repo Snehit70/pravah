@@ -893,15 +893,20 @@ function MobileApp() {
     setIsSettingsModalOpen(false);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     void authClient.signOut();
+    // Clear the native Google account so the next sign-in prompts account
+    // selection rather than silently reusing the cached account.
+    void GoogleSignin.signOut().catch(() => undefined);
   }, []);
 
   const persistIntegrationToggle = useCallback(
     async (provider: IntegrationProvider, syncEnabled: boolean) => {
       const prev =
         provider === "google_calendar" ? calendarIntegrationStatus?.integration : gmailIntegrationStatus?.integration;
+      // Preserve the existing status if one exists; new records start as
+      // "disconnected" until a real OAuth flow marks them "connected".
       await upsertIntegrationMutation({
         provider,
-        status: prev?.status ?? "connected",
+        status: prev?.status ?? "disconnected",
         syncEnabled,
         accountEmail: prev?.accountEmail,
       });
