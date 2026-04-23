@@ -1299,7 +1299,7 @@ function MobileApp() {
         <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>
       </View>
 
-      {/* Toast */}
+      {/* Toast — left rule + line of copy, no filled pill. */}
       {toast ? (
         <Animated.View
           entering={FadeIn.duration(200)}
@@ -1309,21 +1309,23 @@ function MobileApp() {
         </Animated.View>
       ) : null}
 
-      {/* Retry banner */}
+      {/* Retry banner — same left-rule pattern, tap target marked by a mono
+          action word in copper rather than button chrome. */}
       {retryQueue.length > 0 ? (
         <Pressable
           onPress={() => void retryQueuedMutations()}
-          style={({ pressed }) => [styles.retryBanner, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.retryBanner, pressed && { opacity: 0.6 }]}
         >
           <Text style={styles.retryBannerText}>
-            {retryQueue.length} change{retryQueue.length === 1 ? "" : "s"} pending sync. Tap to retry now.
+            {retryQueue.length} change{retryQueue.length === 1 ? "" : "s"} pending sync
           </Text>
+          <Text style={styles.retryBannerAction}>Retry</Text>
         </Pressable>
       ) : null}
 
-      {/* Sync indicator */}
+      {/* Sync indicator — a mono log line, not a badge. */}
       {pendingMutations > 0 ? (
-        <Text style={styles.syncText}>Syncing changes...</Text>
+        <Text style={styles.syncText}>Syncing</Text>
       ) : null}
 
       {/* Task list */}
@@ -1832,48 +1834,55 @@ const styles = StyleSheet.create({
     ...typography.kicker,
   },
 
-  // Toast
+  // Toast — unenclosed: a thin 2px rule on the left + a line of copy. Error
+  // tone uses the rust accent, info uses copper. No border, no radius, no fill.
   toast: {
-    borderRadius: radii.md,
-    borderWidth: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 9,
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
+    paddingLeft: spacing.md,
+    paddingVertical: spacing.xs,
+    borderLeftWidth: 2,
   },
   toastError: {
-    backgroundColor: colors.errorBg,
-    borderColor: colors.errorBorder,
+    borderLeftColor: colors.error,
   },
   toastInfo: {
-    backgroundColor: colors.infoBg,
-    borderColor: colors.infoBorder,
+    borderLeftColor: colors.accent,
   },
   toastText: {
-    color: colors.infoText,
-    ...typography.caption,
+    color: colors.textPrimary,
+    ...typography.bodyMd,
   },
 
-  // Retry / sync
+  // Retry banner + sync indicator — same left-rule language as the toast so
+  // the system-status surfaces share one visual idiom.
   retryBanner: {
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.primaryBgHover,
-    backgroundColor: "#0f2d1f",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
+    paddingLeft: spacing.md,
+    paddingVertical: spacing.xs,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.accent,
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: spacing.md,
   },
   retryBannerText: {
-    color: colors.primaryText,
-    ...typography.label,
+    color: colors.textPrimary,
+    ...typography.bodyMd,
+    flex: 1,
+  },
+  retryBannerAction: {
+    color: colors.accent,
+    ...typography.micro,
   },
   syncText: {
-    color: colors.accent,
-    ...typography.caption,
+    color: colors.textMuted,
+    ...typography.micro,
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
+    paddingLeft: spacing.md,
   },
 
   // List
