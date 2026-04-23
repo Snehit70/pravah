@@ -96,6 +96,10 @@ type SuccessHaptic = "notification" | "light" | "medium";
 type IntegrationProvider = "google_calendar" | "gmail";
 
 const RETRY_QUEUE_STORAGE_KEY = "pravah_mobile_retry_queue_v1";
+// SecureStore has low KB limits per value. Cap how many items we persist so a
+// large description can't overflow the keychain slot silently.
+const MAX_RETRY_QUEUE_PERSIST = 20;
+const MAX_RETRY_ATTEMPTS = 5;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -510,12 +514,18 @@ function MobileApp() {
   }, []);
 
   useEffect(() => {
-    void SecureStore.setItemAsync(RETRY_QUEUE_STORAGE_KEY, JSON.stringify(retryQueue));
+    // Keep only the most recent items to stay within SecureStore's per-value
+    // size limits. Older unsynced items are dropped; the banner still shows
+    // the in-memory count so the user knows to retry manually.
+    const toStore = retryQueue.slice(-MAX_RETRY_QUEUE_PERSIST);
+    void SecureStore.setItemAsync(RETRY_QUEUE_STORAGE_KEY, JSON.stringify(toStore)).catch((err) => {
+      mobileLogger.warn("retry_queue_persist_failed", { errorType: classifyError(err) });
+    });
     if (!__DEV__) return;
     const now = Date.now();
     if (now - lastRetryPersistLogMsRef.current < 2000) return;
     lastRetryPersistLogMsRef.current = now;
-    mobileLogger.debug("retry_queue_persisted", { queueSize: retryQueue.length });
+    mobileLogger.debug("retry_queue_persisted", { queueSize: retryQueue.length, stored: toStore.length });
   }, [retryQueue]);
 
   const retryQueuedMutations = useCallback(async () => {
@@ -531,13 +541,17 @@ function MobileApp() {
         await runRetryPayload(queued.payload);
       } catch {
         failed += 1;
+        const nextAttempts = queued.attempts + 1;
         mobileLogger.warn("retry_item_failed", {
           actionId,
           label: queued.label,
           payloadType: queued.payload.type,
-          attempts: queued.attempts + 1,
+          attempts: nextAttempts,
+          dropped: nextAttempts >= MAX_RETRY_ATTEMPTS,
         });
-        setRetryQueue((cur) => [...cur, { ...queued, attempts: queued.attempts + 1 }]);
+        if (nextAttempts < MAX_RETRY_ATTEMPTS) {
+          setRetryQueue((cur) => [...cur, { ...queued, attempts: nextAttempts }]);
+        }
       }
     }
     if (failed === 0) {
