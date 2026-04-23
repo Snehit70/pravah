@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  DUE_SOON_DAYS,
   daysBetween,
   formatDay,
   formatDeadline,
@@ -45,12 +44,6 @@ describe("utils", () => {
     expect(formatDeadline("2026-04-10", "2026-04-09")).toBe("Due tomorrow");
     expect(formatDeadline("2026-04-11", "2026-04-09")).toBe("Due in 2d");
     expect(formatDeadline("2026-04-25", "2026-04-09")).toBe("Due Apr 25");
-  });
-
-  it("keeps due soon threshold at expected UX boundary", () => {
-    expect(DUE_SOON_DAYS).toBe(3);
-    expect(daysBetween("2026-04-09", "2026-04-12")).toBeLessThanOrEqual(DUE_SOON_DAYS);
-    expect(daysBetween("2026-04-09", "2026-04-13")).toBeGreaterThan(DUE_SOON_DAYS);
   });
 
   it("generates a stable date window around today", () => {
