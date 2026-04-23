@@ -21,7 +21,7 @@ import { api } from "../../convex/_generated/api";
 import * as Haptics from "expo-haptics";
 import * as SecureStore from "expo-secure-store";
 import { authClient, authStorageReady } from "./src/lib/auth-client";
-import { useFonts as useFraunces, Fraunces_300Light, Fraunces_500Medium } from "@expo-google-fonts/fraunces";
+import { useFonts as useFraunces, Fraunces_300Light } from "@expo-google-fonts/fraunces";
 import { Manrope_500Medium, Manrope_600SemiBold, Manrope_700Bold } from "@expo-google-fonts/manrope";
 import { JetBrainsMono_500Medium } from "@expo-google-fonts/jetbrains-mono";
 import { ConvexClientProvider } from "./src/lib/convex";
@@ -1666,7 +1666,6 @@ function StorageGate({ children }: { children: ReactNode }) {
 function FontGate({ children }: { children: ReactNode }) {
   const [fontsLoaded] = useFraunces({
     Fraunces_300Light,
-    Fraunces_500Medium,
     Manrope_500Medium,
     Manrope_600SemiBold,
     Manrope_700Bold,
@@ -1716,7 +1715,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     color: colors.textPrimary,
-    ...typography.h2,
+    ...typography.title,
     textAlign: "center",
   },
   authShell: {
@@ -1828,12 +1827,6 @@ const styles = StyleSheet.create({
     textDecorationLine: "underline",
     textDecorationColor: colors.borderSubtle,
   },
-  // Auth screen still uses the original kicker token; keep it.
-  kicker: {
-    color: colors.accent,
-    ...typography.kicker,
-  },
-
   // Toast — unenclosed: a thin 2px rule on the left + a line of copy. Error
   // tone uses the rust accent, info uses copper. No border, no radius, no fill.
   toast: {
@@ -1899,9 +1892,7 @@ const styles = StyleSheet.create({
   },
   sectionDate: {
     color: colors.accent,
-    ...typography.label,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    ...typography.micro,
     marginTop: spacing.md,
     marginBottom: spacing.sm,
   },

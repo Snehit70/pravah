@@ -9,7 +9,6 @@
 export const fonts = {
   // Editorial serif — wordmark, view titles, empty-state headlines
   serif: "Fraunces_300Light",
-  serifMedium: "Fraunces_500Medium",
 
   // Humanist sans — body, UI labels, task titles
   sans: "Manrope_500Medium",
@@ -27,16 +26,15 @@ export const fonts = {
  * avoid #000 / #fff so the surface always reads as printed paper, never as a
  * raw OLED black.
  *
- * Legacy keys (chipBorder, ghostBg, glowCyan, etc.) are kept as transitional
- * aliases that point at the new palette so step-2 doesn't break components I
- * haven't rewritten yet. They get deleted in step 13.
+ * Transitional aliases were kept through the middle of the redesign so the
+ * untouched components could keep compiling. Step 13 removes the aliases the
+ * finished mobile UI no longer uses.
  */
 export const colors = {
   // Backgrounds — warm near-black to warm near-newsprint
   bg: "#0f0e0d", // ink — global app background, never #000
   bgCard: "#171513", // only when enclosure is justified (modal sheet, input)
   bgInput: "#1a1816", // text input fill
-  bgElevated: "#171513", // alias of bgCard for transitional code paths
 
   // Borders — warm grey, not blue
   border: "#2a2622",
@@ -45,14 +43,12 @@ export const colors = {
   // Text — warm off-white through warm mid-grey
   textPrimary: "#ece6db", // newsprint white
   textSecondary: "#b0a89a", // warm ash
-  textTertiary: "#9c9486", // alias close to secondary for transitional code
   textMuted: "#6c6559",
   textCompleted: "#817a6e", // reads "checked off", not "disabled"
 
   // Brand / accent — single copper, used for urgency and the active underline
   accent: "#c77b3a",
   accentSoft: "#c77b3a26", // ~15% — sparse halo / hover wash (8-digit hex incl. alpha)
-  accentDim: "#c77b3a14", // ~8%  — softer wash; legacy alias kept for transitional use
 
   // Priority semantics — derived from the accent + neutrals
   priorityP1: "#c77b3a", // urgent = accent
@@ -63,32 +59,11 @@ export const colors = {
   primary: "#6c9c7a",
   primaryDark: "#0e1f15",
   primaryInk: "#0e1f15", // text/ink rendered on top of primary
-  primaryBg: "#1f2a22", // muted backdrop for completed-state surfaces
-  primaryBgHover: "#243027",
-  primaryText: "#cfe2d4",
 
   // Destructive / error — rust, not fire-engine
   error: "#c76a52",
-  errorBg: "#2a1612",
-  errorBorder: "#5b261c",
-
-  // Info — used for the toast info tone; warm rather than blue
-  infoBg: "#1d1916",
-  infoBorder: "#2a2622",
-  infoText: "#ece6db",
-
-  // Interactive transitional aliases — point at the new neutrals so any
-  // remaining "chip"-style component doesn't visually break before step 10.
-  tabActive: "#c77b3a", // active tab marker is the copper accent
-  chipActive: "#1f1c19",
-  chipActiveBorder: "#2a2622",
-  chipBorder: "#211f1c",
-  ghostBg: "#1a1816",
-  ghostText: "#b0a89a",
 
   // Glow — single warm halo (replaces the two saturated blur circles)
-  glowCyan: "#c77b3a14", // legacy alias → soft copper wash
-  glowGreen: "#c77b3a14", // legacy alias → soft copper wash
   haloCopper: "#c77b3a26", // canonical halo color used by the new background
 
   // Overlay — modal scrim, slightly warm
@@ -125,10 +100,7 @@ export const spacing = {
  * required (not `fontWeight`) because Google fonts only render the weight
  * variant that's actually loaded under that family name.
  *
- * The legacy keys (`kicker`, `h1`–`h3`, `body`, `bodySmall`, `caption`,
- * `label`) are kept so existing components keep compiling. The new editorial
- * roles (`display`, `headline`, `title`, `bodyLg`, `bodyMd`, `micro`,
- * `numeric`) drive the rebuilt header / rows / sheets in steps 4–12.
+ * The finished redesign now uses only the editorial roles below.
  */
 export const typography = {
   // ── New editorial scale ───────────────────────────────────────────────
@@ -179,48 +151,5 @@ export const typography = {
     fontFamily: fonts.mono,
     fontSize: 13,
     lineHeight: 14,
-  },
-
-  // ── Legacy aliases (kept until step 13) ──────────────────────────────
-  // These keep components that haven't been rewritten yet visually consistent
-  // with the new system. They map onto the closest editorial role above.
-  kicker: {
-    fontFamily: fonts.mono,
-    fontSize: 11,
-    letterSpacing: 0.6,
-    textTransform: "uppercase" as const,
-  },
-  h1: {
-    fontFamily: fonts.serif,
-    fontSize: 30,
-    letterSpacing: -0.8,
-  },
-  h2: {
-    fontFamily: fonts.sansSemibold,
-    fontSize: 19,
-    letterSpacing: -0.3,
-  },
-  h3: {
-    fontFamily: fonts.sansSemibold,
-    fontSize: 16,
-    letterSpacing: -0.2,
-  },
-  body: {
-    fontFamily: fonts.sans,
-    fontSize: 15,
-    letterSpacing: -0.1,
-  },
-  bodySmall: {
-    fontFamily: fonts.sans,
-    fontSize: 13,
-  },
-  caption: {
-    fontFamily: fonts.sans,
-    fontSize: 12,
-  },
-  label: {
-    fontFamily: fonts.mono,
-    fontSize: 11,
-    letterSpacing: 0.4,
   },
 } as const;
