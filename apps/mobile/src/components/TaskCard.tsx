@@ -1,6 +1,10 @@
-import { memo, useCallback } from "react";
+import { memo, useCallback, useRef } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { colors, radii, spacing, typography } from "../theme/tokens";
+import ReanimatedSwipeable, {
+  type SwipeableMethods,
+} from "react-native-gesture-handler/ReanimatedSwipeable";
+import Animated, { interpolate, useAnimatedStyle, type SharedValue } from "react-native-reanimated";
+import { colors, fonts, spacing, typography } from "../theme/tokens";
 import type { Id } from "../../../../convex/_generated/dataModel";
 
 export type MobileTask = {
@@ -17,14 +21,58 @@ export type MobileTask = {
 
 type TaskCardProps = {
   task: MobileTask;
+  /** Pretty label for the row's scheduled date (e.g. "TODAY", "TOMORROW", "APR 30"). */
   dateLabel?: string;
   onDone: (id: Id<"tasks">) => void;
+  /** Inbox → Today swipe action. */
   onMoveToday?: (id: Id<"tasks">) => void;
+  /** Timeline → Inbox swipe action. */
   onSendToInbox?: (id: Id<"tasks">) => void;
+  /** Completed → Reopen swipe action. */
   onReopen?: (id: Id<"tasks">) => void;
   onEdit: (task: MobileTask) => void;
+  /** Provided by DraggableFlatList; called from long-press to initiate drag. */
   onDragHandlePress?: () => void;
 };
+
+/**
+ * Reanimated swipe-action panel. The pan progress comes from
+ * ReanimatedSwipeable's drag SharedValue, which we map to opacity + a slight
+ * scale so the action label fades in as the row slides. The swipeable
+ * threshold is 80px (set on the parent), which is what triggers the action.
+ */
+function SwipeActionLabel({
+  drag,
+  side,
+  label,
+  background,
+  textColor,
+}: {
+  drag: SharedValue<number>;
+  side: "left" | "right";
+  label: string;
+  background: string;
+  textColor: string;
+}) {
+  const animatedStyle = useAnimatedStyle(() => {
+    // drag is positive when swiping right (left action revealed), negative
+    // when swiping left (right action revealed). Normalize to 0..1 over the
+    // first 80px of pan so the label is fully visible by the action threshold.
+    const progress =
+      side === "left"
+        ? interpolate(drag.value, [0, 80], [0, 1], "clamp")
+        : interpolate(-drag.value, [0, 80], [0, 1], "clamp");
+    return { opacity: progress };
+  });
+
+  return (
+    <View style={[styles.swipeAction, { backgroundColor: background }, side === "right" && styles.swipeActionRight]}>
+      <Animated.Text style={[styles.swipeActionLabel, { color: textColor }, animatedStyle]}>
+        {label}
+      </Animated.Text>
+    </View>
+  );
+}
 
 function TaskCardInner({
   task,
@@ -37,246 +85,284 @@ function TaskCardInner({
   onDragHandlePress,
 }: TaskCardProps) {
   const isCompleted = task.status === "completed";
-  const canEdit = !isCompleted;
+  const swipeRef = useRef<SwipeableMethods>(null);
 
   const handleDone = useCallback(() => onDone(task._id), [onDone, task._id]);
-  const handleMoveToday = useCallback(
-    () => onMoveToday?.(task._id),
-    [onMoveToday, task._id]
-  );
-  const handleSendToInbox = useCallback(
-    () => onSendToInbox?.(task._id),
-    [onSendToInbox, task._id]
-  );
-  const handleReopen = useCallback(
-    () => onReopen?.(task._id),
-    [onReopen, task._id]
-  );
+  const handleMoveToday = useCallback(() => onMoveToday?.(task._id), [onMoveToday, task._id]);
+  const handleSendToInbox = useCallback(() => onSendToInbox?.(task._id), [onSendToInbox, task._id]);
+  const handleReopen = useCallback(() => onReopen?.(task._id), [onReopen, task._id]);
   const handleEdit = useCallback(() => onEdit(task), [onEdit, task]);
 
+  // Right-side action (revealed by swiping LEFT) — always "Done" for active
+  // tasks, "Reopen" for completed ones.
+  const onRightActionTrigger = isCompleted ? handleReopen : handleDone;
+  const rightActionLabel = isCompleted ? "Reopen" : "Done";
+
+  // Left-side action (revealed by swiping RIGHT) — Today for inbox, Inbox for
+  // timeline, nothing for completed (only the right-side reopen exists).
+  const leftAction = isCompleted
+    ? null
+    : task.status === "inbox"
+      ? { label: "Today", trigger: handleMoveToday }
+      : { label: "Inbox", trigger: handleSendToInbox };
+
+  const renderRightActions = useCallback(
+    (_progress: SharedValue<number>, drag: SharedValue<number>) => (
+      <SwipeActionLabel
+        drag={drag}
+        side="right"
+        label={rightActionLabel}
+        background={isCompleted ? colors.bgInput : colors.primary}
+        textColor={isCompleted ? colors.textPrimary : colors.primaryInk}
+      />
+    ),
+    [isCompleted, rightActionLabel]
+  );
+
+  const renderLeftActions = useCallback(
+    (_progress: SharedValue<number>, drag: SharedValue<number>) =>
+      leftAction ? (
+        <SwipeActionLabel
+          drag={drag}
+          side="left"
+          label={leftAction.label}
+          background={colors.bgInput}
+          textColor={colors.textPrimary}
+        />
+      ) : null,
+    [leftAction]
+  );
+
+  const handleSwipeableOpen = useCallback(
+    (direction: "left" | "right") => {
+      // Trigger the action then close the swipeable so the row resets even
+      // if the parent's optimistic mutation hasn't filtered it out yet.
+      if (direction === "right" && leftAction) {
+        leftAction.trigger();
+      } else if (direction === "left") {
+        onRightActionTrigger?.();
+      }
+      swipeRef.current?.close();
+    },
+    [leftAction, onRightActionTrigger]
+  );
+
+  // Priority rail color. The rail is the only enclosing element on the row
+  // and is the primary at-a-glance signal for urgency.
+  const railColor =
+    task.priority === "p1"
+      ? colors.priorityP1
+      : task.priority === "p2"
+        ? colors.borderSubtle
+        : "transparent";
+
+  // Stacked metadata column on the right. Each line is its own micro entry so
+  // the column reads like a small log table rather than a row of pills.
+  const metaLines: { key: string; text: string; tone?: "muted" | "error" | "accent" }[] = [];
+  if (dateLabelText && !isCompleted) {
+    metaLines.push({ key: "date", text: dateLabelText.toUpperCase(), tone: "muted" });
+  }
+  if (task.deadline && !isCompleted) {
+    metaLines.push({ key: "due", text: `Due ${task.deadline}`, tone: "muted" });
+  }
+  if (task.priority && !isCompleted) {
+    metaLines.push({
+      key: "prio",
+      text: task.priority.toUpperCase(),
+      tone: task.priority === "p1" ? "accent" : "muted",
+    });
+  }
+
+  // Title can wrap to 2 lines when there's no description; otherwise it stays
+  // single-line so the description gets to read as one full line below it.
+  const hasDescription = Boolean(task.description) && !isCompleted;
+  const titleLines = hasDescription ? 1 : 2;
+
   return (
-    <View style={styles.wrapper}>
-      <View style={[styles.card, isCompleted && styles.completedCard]}>
-        {!isCompleted ? (
-          <Pressable onPress={handleDone} style={({ pressed }) => [styles.checkbox, pressed && styles.pressed]} hitSlop={8}>
-            <View style={styles.checkboxInner} />
-          </Pressable>
+    <ReanimatedSwipeable
+      ref={swipeRef}
+      friction={2}
+      // The action triggers automatically once the row is dragged past this
+      // threshold, matching iOS Mail / Things-3 behavior. Below the threshold
+      // the row just snaps back.
+      leftThreshold={80}
+      rightThreshold={80}
+      overshootLeft={false}
+      overshootRight={false}
+      // The right-side action is always available (Done for active tasks,
+      // Reopen for completed). The left-side action is conditional on tab.
+      renderRightActions={renderRightActions}
+      renderLeftActions={leftAction ? renderLeftActions : undefined}
+      onSwipeableOpen={handleSwipeableOpen}
+      containerStyle={styles.swipeContainer}
+    >
+      <Pressable
+        onPress={handleEdit}
+        // Long-press initiates the parent DraggableFlatList drag. The
+        // delayLongPress matches DraggableFlatList's default activation timer.
+        onLongPress={onDragHandlePress}
+        delayLongPress={250}
+        style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      >
+        {/* Priority rail — the only enclosing shape on the row. */}
+        <View style={[styles.rail, { backgroundColor: railColor }]} />
+
+        {/* Checkbox — 20px circle. Tapping completes the task; for completed
+            rows it's filled and inert (the swipe-right reopen action handles
+            that case). */}
+        {isCompleted ? (
+          <View style={[styles.checkbox, styles.checkboxDone]} />
         ) : (
-          <View style={[styles.checkbox, styles.checkboxDone]}>
-            <Text style={styles.checkIcon}>✓</Text>
-          </View>
+          <Pressable
+            onPress={handleDone}
+            hitSlop={10}
+            style={({ pressed }) => [styles.checkbox, pressed && styles.checkboxPressed]}
+            accessibilityRole="checkbox"
+            accessibilityLabel={`Complete ${task.title}`}
+          />
         )}
 
-        <Pressable onPress={canEdit ? handleEdit : undefined} style={styles.textArea} disabled={!canEdit}>
+        {/* Body — title + description. Both single-line by default. */}
+        <View style={styles.body}>
           <Text
-            style={[styles.title, isCompleted && styles.completedTitle]}
-            numberOfLines={2}
+            style={[styles.title, isCompleted && styles.titleCompleted]}
+            numberOfLines={titleLines}
+            ellipsizeMode="tail"
           >
             {task.title}
           </Text>
-
-          <View style={styles.metaRow}>
-            {dateLabelText && !isCompleted ? (
-              <View style={styles.dateBadge}>
-                <Text style={styles.dateBadgeText}>{dateLabelText}</Text>
-              </View>
-            ) : null}
-            {task.deadline && !isCompleted ? (
-              <View style={styles.deadlineBadge}>
-                <Text style={styles.deadlineBadgeText}>Due {task.deadline}</Text>
-              </View>
-            ) : null}
-            {task.priority && !isCompleted ? (
-              <View style={styles.priorityBadge}>
-                <Text style={styles.priorityBadgeText}>{task.priority.toUpperCase()}</Text>
-              </View>
-            ) : null}
-          </View>
-
-          {task.description && !isCompleted ? (
-            <Text style={styles.description} numberOfLines={2}>
+          {hasDescription ? (
+            <Text style={styles.description} numberOfLines={1} ellipsizeMode="tail">
               {task.description}
             </Text>
           ) : null}
+        </View>
 
-          {isCompleted ? <Text style={styles.completedHint}>Read-only. Reopen to edit.</Text> : null}
-
-          <View style={styles.actionsRow}>
-            {canEdit ? (
-              <Pressable onPress={handleEdit} style={({ pressed }) => [styles.ghostButton, pressed && styles.pressed]}>
-                <Text style={styles.ghostButtonText}>Edit</Text>
-              </Pressable>
-            ) : null}
-            {isCompleted ? (
-              <Pressable onPress={handleReopen} style={({ pressed }) => [styles.ghostButton, pressed && styles.pressed]}>
-                <Text style={styles.ghostButtonText}>Reopen</Text>
-              </Pressable>
-            ) : task.status === "inbox" ? (
-              <Pressable onPress={handleMoveToday} style={({ pressed }) => [styles.ghostButton, pressed && styles.pressed]}>
-                <Text style={styles.ghostButtonText}>Today</Text>
-              </Pressable>
-            ) : (
-              <Pressable onPress={handleSendToInbox} style={({ pressed }) => [styles.ghostButton, pressed && styles.pressed]}>
-                <Text style={styles.ghostButtonText}>Inbox</Text>
-              </Pressable>
-            )}
-            {!isCompleted ? (
-              <Pressable onPress={handleDone} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
-                <Text style={styles.primaryButtonText}>Done</Text>
-              </Pressable>
-            ) : null}
-            {onDragHandlePress && !isCompleted ? (
-              <Pressable
-                onLongPress={onDragHandlePress}
-                delayLongPress={120}
-                style={({ pressed }) => [styles.ghostButton, pressed && styles.pressed]}
+        {/* Metadata column — right-aligned mono micro stack. Renders nothing
+            when there's no date / deadline / priority so the row stays clean. */}
+        {metaLines.length ? (
+          <View style={styles.metaCol}>
+            {metaLines.map((line) => (
+              <Text
+                key={line.key}
+                style={[
+                  styles.metaText,
+                  line.tone === "accent" && styles.metaTextAccent,
+                  line.tone === "error" && styles.metaTextError,
+                ]}
+                numberOfLines={1}
               >
-                <Text style={styles.ghostButtonText}>Drag</Text>
-              </Pressable>
-            ) : null}
+                {line.text}
+              </Text>
+            ))}
           </View>
-        </Pressable>
-      </View>
-    </View>
+        ) : null}
+      </Pressable>
+    </ReanimatedSwipeable>
   );
 }
 
 export const TaskCard = memo(TaskCardInner);
 
 const styles = StyleSheet.create({
-  wrapper: {
-    marginBottom: spacing.sm,
+  // Wraps the swipeable so each row sits flush against its neighbors and the
+  // hairline divider sits exactly at the row boundary.
+  swipeContainer: {
+    backgroundColor: colors.bg,
   },
-  card: {
+  // The row itself — flat, no border, no card background, no radius. The
+  // hairline divider is drawn as the row's bottom border, inset 16px on the
+  // left so the priority rail visually crosses it.
+  row: {
     flexDirection: "row",
     alignItems: "flex-start",
-    padding: spacing.md,
-    paddingVertical: 14,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bgElevated,
-    gap: spacing.md,
+    paddingRight: spacing.lg,
+    paddingVertical: spacing.rowY,
+    backgroundColor: colors.bg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
+    // Inset the divider on the left so it visually crosses through the rail.
+    marginLeft: 0,
   },
-  completedCard: {
-    backgroundColor: "#101b2b",
-    borderColor: colors.borderSubtle,
+  rowPressed: {
+    backgroundColor: colors.bgInput,
   },
+  // Priority rail — 2px wide, full row height. p1 = copper, p2 = subtle,
+  // p3 = transparent. Sits flush at row x=0 so it reads as the row's edge.
+  rail: {
+    width: 2,
+    alignSelf: "stretch",
+    marginRight: spacing.md,
+  },
+  // Checkbox — 20px ring. Empty in default state (no inner dot), filled in
+  // completed state. Strikethrough on the title carries the rest of the
+  // signal so the checkbox doesn't need a glyph.
   checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 2,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.textMuted,
+    marginTop: 1,
+    marginRight: spacing.md,
   },
-  checkboxInner: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "transparent",
+  checkboxPressed: {
+    borderColor: colors.textSecondary,
   },
   checkboxDone: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  checkIcon: {
-    color: colors.primaryDark,
-    fontSize: 13,
-    fontWeight: "800",
-    lineHeight: 14,
-  },
-  textArea: {
+  body: {
     flex: 1,
-    gap: 4,
+    minWidth: 0,
   },
   title: {
     color: colors.textPrimary,
-    ...typography.body,
+    ...typography.title,
   },
-  completedTitle: {
+  titleCompleted: {
     color: colors.textCompleted,
     textDecorationLine: "line-through",
   },
-  metaRow: {
-    flexDirection: "row",
-    gap: 6,
-    flexWrap: "wrap",
-    marginTop: 2,
-  },
-  dateBadge: {
-    backgroundColor: colors.chipActive,
-    borderRadius: radii.sm,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  dateBadgeText: {
-    color: colors.accent,
-    ...typography.caption,
-  },
-  deadlineBadge: {
-    backgroundColor: colors.errorBg,
-    borderRadius: radii.sm,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  deadlineBadgeText: {
-    color: "#fca5a5",
-    ...typography.caption,
-  },
-  priorityBadge: {
-    backgroundColor: colors.ghostBg,
-    borderRadius: radii.sm,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  priorityBadgeText: {
-    color: colors.ghostText,
-    ...typography.caption,
-  },
   description: {
-    color: colors.textTertiary,
-    fontSize: 13,
-    lineHeight: 18,
+    color: colors.textSecondary,
+    ...typography.bodyMd,
     marginTop: 2,
   },
-  completedHint: {
+  // Right-aligned metadata column. Stays narrow so the title gets the
+  // horizontal real estate. Each micro line stacks tightly.
+  metaCol: {
+    marginLeft: spacing.md,
+    alignItems: "flex-end",
+    minWidth: 60,
+    gap: 2,
+  },
+  metaText: {
     color: colors.textMuted,
-    ...typography.caption,
-    marginTop: 4,
+    ...typography.micro,
   },
-  actionsRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-    flexWrap: "wrap",
+  metaTextAccent: {
+    color: colors.accent,
   },
-  ghostButton: {
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+  metaTextError: {
+    color: colors.error,
   },
-  ghostButtonText: {
-    color: colors.textSecondary,
-    ...typography.caption,
-    fontWeight: "700",
+  // Swipe action panels — flat color, single label. The label is rendered
+  // via SwipeActionLabel above so it can fade in proportional to drag.
+  swipeAction: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "flex-start",
+    paddingHorizontal: spacing.xl,
   },
-  primaryButton: {
-    borderRadius: radii.sm,
-    backgroundColor: colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+  swipeActionRight: {
+    alignItems: "flex-end",
   },
-  primaryButtonText: {
-    color: colors.primaryDark,
-    ...typography.caption,
-    fontWeight: "800",
-  },
-  pressed: {
-    opacity: 0.82,
+  swipeActionLabel: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
   },
 });
