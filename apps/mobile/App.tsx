@@ -1,6 +1,6 @@
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   FlatList,
   Modal,
@@ -164,7 +164,6 @@ function MobileApp() {
 
   const [activeTab, setActiveTab] = useState<TabKey>("inbox");
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isAuthHydrated, setIsAuthHydrated] = useState(false);
   const [pendingMutations, setPendingMutations] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [optimisticTasks, setOptimisticTasks] = useState<MobileTask[] | null>(null);
@@ -308,21 +307,6 @@ function MobileApp() {
   const fabBottom = tabBarHeight + spacing.xxl;
 
   // ── Effects ─────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    let mounted = true;
-    authStorageReady.finally(() => {
-      if (mounted) {
-        setIsAuthHydrated(true);
-        mobileLogger.info("auth_storage_hydrated", {
-          elapsedMs: Date.now() - appStartMsRef.current,
-        });
-      }
-    });
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
   useEffect(() => {
     GoogleSignin.configure({
@@ -1184,7 +1168,7 @@ function MobileApp() {
 
   // ── Loading / Auth screens ──────────────────────────────────────────
 
-  if (!isAuthHydrated || sessionLoading || (session && !isDataBootstrapReady)) {
+  if (sessionLoading || (session && !isDataBootstrapReady)) {
     return (
       <SafeAreaView style={styles.authContainer}>
         <StatusBar style="light" />
@@ -1617,15 +1601,49 @@ function MobileApp() {
   );
 }
 
+// ── Storage gate ────────────────────────────────────────────────────────
+// Delays mounting ConvexClientProvider (and thus authClient.useSession) until
+// the SecureStore cache is populated, so the session cookie is present on the
+// very first /get-session fetch and cold-start auto-sign-in works.
+
+function StorageGate({ children }: { children: ReactNode }) {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    authStorageReady.finally(() => {
+      if (mounted) setReady(true);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  if (!ready) {
+    return (
+      <SafeAreaView style={styles.authContainer}>
+        <StatusBar style="light" />
+        <Animated.Text entering={FadeIn.duration(600)} style={styles.loadingText}>
+          Loading your workspace...
+        </Animated.Text>
+      </SafeAreaView>
+    );
+  }
+
+  return <>{children}</>;
+}
+
 // ── Root ────────────────────────────────────────────────────────────────
 
 export default function App() {
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <ConvexClientProvider>
-          <MobileApp />
-        </ConvexClientProvider>
+        <StorageGate>
+          <ConvexClientProvider>
+            <MobileApp />
+          </ConvexClientProvider>
+        </StorageGate>
       </GestureHandlerRootView>
     </SafeAreaProvider>
   );
