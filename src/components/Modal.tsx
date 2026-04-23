@@ -43,67 +43,67 @@ export function Modal({
   className,
   position = "center",
 }: ModalProps) {
-  if (!isOpen) return null;
-
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) onClose();
   };
 
   return (
     <AnimatePresence>
-      <motion.div
-        initial="hidden"
-        animate="visible"
-        exit="hidden"
-        variants={overlayVariants}
-        transition={TRANSITION_FAST}
-        className={cn(
-          "fixed inset-0 z-50 flex",
-          "bg-black/55 backdrop-blur-[2px]",
-          position === "center" ? "items-center justify-center" : "items-start justify-center pt-24"
-        )}
-        onClick={handleBackdropClick}
-      >
+      {isOpen && (
         <motion.div
-          custom={position}
           initial="hidden"
           animate="visible"
-          exit="exit"
-          variants={modalVariants}
-          transition={TRANSITION_OVERSHOOT}
-          onClick={(e) => e.stopPropagation()}
-          role="dialog"
-          aria-modal="true"
-          aria-label={title}
+          exit="hidden"
+          variants={overlayVariants}
+          transition={TRANSITION_FAST}
           className={cn(
-            "bg-[#252525] rounded-2xl",
-            "border border-white/10",
-            "shadow-xl shadow-black/40",
-            "w-full max-w-md p-6 mx-4",
-            "md:mx-0",
-            className
+            "fixed inset-0 z-50 flex",
+            "bg-black/55 backdrop-blur-[2px]",
+            position === "center" ? "items-center justify-center" : "items-start justify-center pt-24"
           )}
+          onClick={handleBackdropClick}
         >
-          {title && (
-            <div className="flex justify-between items-center mb-5">
-              <h2 className="text-base font-medium text-zinc-100">{title}</h2>
-              <button
-                onClick={onClose}
-                aria-label="Close"
-                className={cn(
-                  "p-1.5 rounded-lg",
-                  "text-zinc-400 hover:text-zinc-100",
-                  "hover:bg-zinc-800",
-                  "transition-colors duration-150"
-                )}
-              >
-                <X size={18} />
-              </button>
-            </div>
-          )}
-          {children}
+          <motion.div
+            custom={position}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            variants={modalVariants}
+            transition={TRANSITION_OVERSHOOT}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={title}
+            className={cn(
+              "bg-[#252525] rounded-2xl",
+              "border border-white/10",
+              "shadow-xl shadow-black/40",
+              "w-full max-w-md p-6 mx-4",
+              "md:mx-0",
+              className
+            )}
+          >
+            {title && (
+              <div className="flex justify-between items-center mb-5">
+                <h2 className="text-base font-medium text-zinc-100">{title}</h2>
+                <button
+                  onClick={onClose}
+                  aria-label="Close"
+                  className={cn(
+                    "p-1.5 rounded-lg",
+                    "text-zinc-400 hover:text-zinc-100",
+                    "hover:bg-zinc-800",
+                    "transition-colors duration-150"
+                  )}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            )}
+            {children}
+          </motion.div>
         </motion.div>
-      </motion.div>
+      )}
     </AnimatePresence>
   );
 }
