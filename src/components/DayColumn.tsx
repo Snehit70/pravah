@@ -42,7 +42,14 @@ function TaskPreview({ task, today, onClick }: { task: Task; today: string; onCl
       onClick={onClick}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => e.key === "Enter" && onClick()}
+      aria-haspopup="dialog"
+      aria-label={task.title}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       className={cn(
         "w-full flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer",
         "hover:bg-zinc-800 transition-colors duration-150"
