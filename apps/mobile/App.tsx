@@ -21,6 +21,9 @@ import { api } from "../../convex/_generated/api";
 import * as Haptics from "expo-haptics";
 import * as SecureStore from "expo-secure-store";
 import { authClient, authStorageReady } from "./src/lib/auth-client";
+import { useFonts as useFraunces, Fraunces_300Light, Fraunces_500Medium } from "@expo-google-fonts/fraunces";
+import { Manrope_500Medium, Manrope_600SemiBold, Manrope_700Bold } from "@expo-google-fonts/manrope";
+import { JetBrainsMono_500Medium } from "@expo-google-fonts/jetbrains-mono";
 import { ConvexClientProvider } from "./src/lib/convex";
 import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
@@ -1651,17 +1654,48 @@ function StorageGate({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+// ── Font gate ───────────────────────────────────────────────────────────
+// Block the visible UI until the editorial type system (Fraunces / Manrope /
+// JetBrains Mono) is loaded so the first paint isn't a flash of system font.
+// The gate runs in parallel with StorageGate; the slowest one decides the
+// boot time, but neither blocks data fetching once mounted below.
+
+function FontGate({ children }: { children: ReactNode }) {
+  const [fontsLoaded] = useFraunces({
+    Fraunces_300Light,
+    Fraunces_500Medium,
+    Manrope_500Medium,
+    Manrope_600SemiBold,
+    Manrope_700Bold,
+    JetBrainsMono_500Medium,
+  });
+
+  if (!fontsLoaded) {
+    // Render the same chrome as StorageGate so the boot sequence is one
+    // continuous loading state from the user's POV, no layout jank.
+    return (
+      <SafeAreaView style={styles.authContainer}>
+        <StatusBar style="light" />
+      </SafeAreaView>
+    );
+  }
+
+  return <>{children}</>;
+}
+
 // ── Root ────────────────────────────────────────────────────────────────
 
 export default function App() {
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <StorageGate>
-          <ConvexClientProvider>
-            <MobileApp />
-          </ConvexClientProvider>
-        </StorageGate>
+        <FontGate>
+          <StorageGate>
+            <ConvexClientProvider>
+              <MobileApp />
+            </ConvexClientProvider>
+          </StorageGate>
+        </FontGate>
       </GestureHandlerRootView>
     </SafeAreaProvider>
   );

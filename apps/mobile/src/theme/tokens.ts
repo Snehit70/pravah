@@ -1,5 +1,25 @@
 /** Design tokens for Pravah Mobile */
 
+/**
+ * Font family names. These match the postScriptName-style identifiers exposed
+ * by @expo-google-fonts/* — they only resolve at runtime once `useFonts` has
+ * loaded the matching font asset. Until then RN falls back to the system font,
+ * so we gate the UI on font loading in App.tsx to avoid the FOUT.
+ */
+export const fonts = {
+  // Editorial serif — wordmark, view titles, empty-state headlines
+  serif: "Fraunces_300Light",
+  serifMedium: "Fraunces_500Medium",
+
+  // Humanist sans — body, UI labels, task titles
+  sans: "Manrope_500Medium",
+  sansSemibold: "Manrope_600SemiBold",
+  sansBold: "Manrope_700Bold",
+
+  // Mono — counts, dates, uppercase metadata, code-like accents
+  mono: "JetBrainsMono_500Medium",
+} as const;
+
 export const colors = {
   // Backgrounds
   bg: "#09111f",
@@ -74,37 +94,37 @@ export const spacing = {
 
 export const typography = {
   kicker: {
+    fontFamily: fonts.mono,
     fontSize: 12,
-    fontWeight: "700" as const,
     textTransform: "uppercase" as const,
     letterSpacing: 0.7,
   },
   h1: {
+    fontFamily: fonts.sansBold,
     fontSize: 28,
-    fontWeight: "700" as const,
   },
   h2: {
+    fontFamily: fonts.sansBold,
     fontSize: 20,
-    fontWeight: "700" as const,
   },
   h3: {
+    fontFamily: fonts.sansBold,
     fontSize: 16,
-    fontWeight: "700" as const,
   },
   body: {
+    fontFamily: fonts.sansSemibold,
     fontSize: 15,
-    fontWeight: "600" as const,
   },
   bodySmall: {
+    fontFamily: fonts.sansSemibold,
     fontSize: 13,
-    fontWeight: "600" as const,
   },
   caption: {
+    fontFamily: fonts.sansSemibold,
     fontSize: 12,
-    fontWeight: "600" as const,
   },
   label: {
+    fontFamily: fonts.sansBold,
     fontSize: 12,
-    fontWeight: "700" as const,
   },
 } as const;
