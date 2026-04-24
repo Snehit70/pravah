@@ -1,6 +1,5 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { Keyboard, Platform, Pressable, StyleSheet, Text, View } from "react-native";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetTextInput,
@@ -12,43 +11,9 @@ import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "./TaskCard";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
-type TaskPriority = "p1" | "p2" | "p3" | undefined;
-
-function formatLocalDate(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function parseIsoDate(value?: string): Date {
-  if (!value) return new Date();
-  const [y, m, d] = value.split("-").map((v) => Number(v));
-  if (!y || !m || !d) return new Date();
-  return new Date(y, m - 1, d);
-}
-
-function nextPriority(current: TaskPriority): TaskPriority {
-  if (current === undefined) return "p1";
-  if (current === "p1") return "p2";
-  if (current === "p2") return "p3";
-  return undefined;
-}
-
-function priorityDotColor(p: TaskPriority): string {
-  if (p === "p1") return colors.priorityP1;
-  if (p === "p2") return colors.priorityP2;
-  if (p === "p3") return colors.priorityP3;
-  return colors.borderSubtle;
-}
-
-function priorityLabel(p: TaskPriority): string {
-  if (p === "p1") return "P1";
-  if (p === "p2") return "P2";
-  if (p === "p3") return "P3";
-  return "—";
-}
+import { TaskMetaFields } from "./TaskMetaFields";
+import { useKeyboardInset } from "../hooks/useKeyboardInset";
+import { type TaskPriority } from "../lib/task-form";
 
 export type EditTaskSheetRef = {
   open: (task: MobileTask) => void;
@@ -79,30 +44,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const [priority, setPriority] = useState<TaskPriority>(undefined);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [showDatePicker, setShowDatePicker] = useState(false);
-    const [keyboardHeight, setKeyboardHeight] = useState(0);
-
-    useEffect(() => {
-      const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-      const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-
-      const showSubscription = Keyboard.addListener(showEvent, (event) => {
-        setKeyboardHeight(Math.max(0, event.endCoordinates.height));
-      });
-      const hideSubscription = Keyboard.addListener(hideEvent, () => {
-        setKeyboardHeight(0);
-      });
-
-      return () => {
-        showSubscription.remove();
-        hideSubscription.remove();
-      };
-    }, []);
-
-    const sheetBottomInset =
-      keyboardHeight > 0
-        ? Math.max(spacing.sm, keyboardHeight - insets.bottom + spacing.sm)
-        : Math.max(insets.bottom, spacing.lg);
+    const sheetBottomInset = useKeyboardInset(insets.bottom);
 
     useImperativeHandle(ref, () => ({
       open: (task: MobileTask) => {
@@ -112,7 +54,6 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         setDeadline(task.deadline ?? "");
         setPriority(task.priority);
         setError(null);
-        setShowDatePicker(false);
         bottomSheetRef.current?.expand();
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       },
@@ -183,12 +124,12 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         onClose={() => {
           Keyboard.dismiss();
           onSheetChange?.(false);
-          setShowDatePicker(false);
+          setTaskId(null);
         }}
         onChange={(index) => {
           if (index === -1) {
             Keyboard.dismiss();
-            setShowDatePicker(false);
+            setTaskId(null);
           }
           onSheetChange?.(index >= 0);
         }}
@@ -217,67 +158,14 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             multiline
           />
 
-          <View style={styles.metaRow}>
-            <Pressable
-              onPress={() => {
-                Keyboard.dismiss();
-                setShowDatePicker(true);
-              }}
-              style={({ pressed }) => [styles.metaField, pressed && { opacity: 0.6 }]}
-            >
-              <Text style={styles.metaLabel}>Due</Text>
-              <Text style={deadline ? styles.metaValue : styles.metaPlaceholder}>
-                {deadline || "—"}
-              </Text>
-            </Pressable>
-
-            {deadline ? (
-              <Pressable
-                onPress={() => {
-                  setDeadline("");
-                  setError(null);
-                }}
-                style={({ pressed }) => [styles.clearAction, pressed && { opacity: 0.6 }]}
-                hitSlop={8}
-              >
-                <Text style={styles.clearActionText}>Clear</Text>
-              </Pressable>
-            ) : null}
-
-            <Pressable
-              onPress={() => {
-                setPriority(nextPriority(priority));
-                void Haptics.selectionAsync();
-              }}
-              style={({ pressed }) => [styles.metaField, pressed && { opacity: 0.6 }]}
-              hitSlop={6}
-            >
-              <Text style={styles.metaLabel}>Priority</Text>
-              <View style={styles.priorityValue}>
-                <View style={[styles.priorityDot, { backgroundColor: priorityDotColor(priority) }]} />
-                <Text style={priority ? styles.metaValue : styles.metaPlaceholder}>
-                  {priorityLabel(priority)}
-                </Text>
-              </View>
-            </Pressable>
-          </View>
-
-          {showDatePicker ? (
-            <DateTimePicker
-              value={parseIsoDate(deadline)}
-              mode="date"
-              display={Platform.OS === "ios" ? "spinner" : "default"}
-              onChange={(_event, selectedDate) => {
-                if (Platform.OS === "android") {
-                  setShowDatePicker(false);
-                }
-                if (selectedDate) {
-                  setDeadline(formatLocalDate(selectedDate));
-                  setError(null);
-                }
-              }}
-            />
-          ) : null}
+          <TaskMetaFields
+            key={taskId ?? "edit-task-meta-fields-closed"}
+            deadline={deadline}
+            priority={priority}
+            onDeadlineChange={setDeadline}
+            onPriorityChange={setPriority}
+            onClearError={() => setError(null)}
+          />
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
@@ -356,43 +244,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     textAlignVertical: "top",
-  },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: spacing.xl,
-  },
-  metaField: {
-    gap: 4,
-  },
-  metaLabel: {
-    ...typography.micro,
-    color: colors.textMuted,
-  },
-  metaValue: {
-    ...typography.numeric,
-    color: colors.textPrimary,
-  },
-  metaPlaceholder: {
-    ...typography.numeric,
-    color: colors.textMuted,
-  },
-  priorityValue: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-  },
-  priorityDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  clearAction: {
-    paddingBottom: 2,
-  },
-  clearActionText: {
-    ...typography.micro,
-    color: colors.textSecondary,
   },
   errorText: {
     ...typography.bodyMd,
