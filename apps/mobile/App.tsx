@@ -43,6 +43,7 @@ import { RootErrorBoundary } from "./src/components/RootErrorBoundary";
 import { SettingsSheet } from "./src/components/SettingsSheet";
 import { TaskTabContent } from "./src/components/TaskTabContent";
 import { useRetryQueue, type RetryPayload } from "./src/hooks/useRetryQueue";
+import { useGoogleAuth } from "./src/hooks/useGoogleAuth";
 import {
   patchTaskInOptimisticView,
   removeTaskFromOptimisticView,
@@ -102,7 +103,6 @@ function MobileApp() {
   const [pendingMutations, setPendingMutations] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [optimisticTasks, setOptimisticTasks] = useState<MobileTask[] | null>(null);
-  const [isSigningIn, setIsSigningIn] = useState(false);
   const [isAddSheetOpen, setIsAddSheetOpen] = useState(false);
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -121,7 +121,6 @@ function MobileApp() {
 
   const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
-  const canGoogleSignIn = Boolean(googleWebClientId);
 
   // ── Dates ───────────────────────────────────────────────────────────
 
@@ -248,18 +247,21 @@ function MobileApp() {
   const tabBarHeight = 62 + tabBarBottomPadding;
   const fabBottom = tabBarHeight + spacing.xxl;
 
-  // ── Effects ─────────────────────────────────────────────────────────
+  // ── Auth ────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    GoogleSignin.configure({
-      webClientId: googleWebClientId,
-      iosClientId: googleIosClientId,
-      // Calendar sync needs the calendar scope; offlineAccess requests a
-      // server auth code so the backend can obtain a refresh token.
-      scopes: ["https://www.googleapis.com/auth/calendar.readonly"],
-      offlineAccess: true,
-    });
-  }, [googleWebClientId, googleIosClientId]);
+  const {
+    isSigningIn,
+    canGoogleSignIn,
+    handleGoogleSignIn,
+    handleSignOut: googleSignOut,
+  } = useGoogleAuth({ googleWebClientId, googleIosClientId, showToast });
+
+  const handleSignOut = useCallback(() => {
+    setIsSettingsModalOpen(false);
+    googleSignOut();
+  }, [googleSignOut]);
+
+  // ── Effects ─────────────────────────────────────────────────────────
 
   useEffect(() => {
     let mounted = true;
@@ -668,63 +670,6 @@ function MobileApp() {
     [runOptimisticMutation, updateTaskMutation]
   );
 
-  // ── Auth ────────────────────────────────────────────────────────────
-
-  const handleGoogleSignIn = async () => {
-    if (!googleWebClientId || isSigningIn) return;
-    const actionId = createActionId("auth");
-    const startedAt = Date.now();
-    mobileLogger.info("google_signin_started", { actionId });
-    setIsSigningIn(true);
-    try {
-      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-      const result = await GoogleSignin.signIn();
-      if (result.type !== "success") {
-        mobileLogger.info("google_signin_cancelled", { actionId });
-        return;
-      }
-      const idToken = result.data.idToken;
-      if (!idToken) {
-        showToast({ kind: "error", message: "Google sign-in did not return an ID token." });
-        return;
-      }
-      await authClient.signIn.social({
-        provider: "google",
-        idToken: { token: idToken },
-        callbackURL: "/",
-      });
-      mobileLogger.info("google_signin_succeeded", { actionId, elapsedMs: Date.now() - startedAt });
-    } catch (error) {
-      const errorCode =
-        typeof error === "object" && error !== null && "code" in error
-          ? (error as { code?: unknown }).code
-          : undefined;
-      const errorName =
-        typeof error === "object" && error !== null && "name" in error
-          ? (error as { name?: unknown }).name
-          : undefined;
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : typeof error === "string"
-            ? error
-            : "unknown";
-
-      showToast({ kind: "error", message: "Google sign-in failed. Check OAuth client setup." });
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      mobileLogger.error("google_signin_failed", {
-        actionId,
-        elapsedMs: Date.now() - startedAt,
-        errorType: classifyError(error),
-        errorCode,
-        errorName,
-        errorMessage,
-      });
-    } finally {
-      setIsSigningIn(false);
-    }
-  };
-
   const handleRefresh = async () => {
     if (!session || isRefreshing) return;
     const actionId = createActionId("refresh");
@@ -757,16 +702,6 @@ function MobileApp() {
   const openSettingsModal = useCallback(() => {
     mobileLogger.info("settings_modal_opened");
     setIsSettingsModalOpen(true);
-  }, []);
-
-  const handleSignOut = useCallback(() => {
-    mobileLogger.info("signout_confirmed");
-    setIsSettingsModalOpen(false);
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    void authClient.signOut();
-    // Clear the native Google account so the next sign-in prompts account
-    // selection rather than silently reusing the cached account.
-    void GoogleSignin.signOut().catch(() => undefined);
   }, []);
 
   const persistIntegrationToggle = useCallback(
