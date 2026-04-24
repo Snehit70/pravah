@@ -3,6 +3,7 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
 const DAILY_REMINDER_NOTIFICATION_ID_KEY = "pravah_daily_reminder_notification_id_v1";
+const DAILY_REMINDER_CHANNEL_ID = "daily-reminders";
 const DEFAULT_DAILY_REMINDER_HOUR = 9;
 const DEFAULT_DAILY_REMINDER_MINUTE = 0;
 
@@ -25,6 +26,15 @@ export async function initializeNotificationsAsync(): Promise<void> {
     importance: Notifications.AndroidImportance.DEFAULT,
     vibrationPattern: [0, 250, 250, 250],
     lightColor: "#7dd3fc",
+  });
+
+  await Notifications.setNotificationChannelAsync(DAILY_REMINDER_CHANNEL_ID, {
+    name: "Daily reminders",
+    description: "Daily planning reminder notifications",
+    importance: Notifications.AndroidImportance.DEFAULT,
+    vibrationPattern: [0, 200, 150, 200],
+    lightColor: "#c88445",
+    sound: "default",
   });
 }
 
@@ -60,11 +70,13 @@ export async function scheduleDailyReminderAsync({
     content: {
       title: "Pravah planner",
       body: "Quick check-in: plan your timeline for today.",
+      sound: "default",
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DAILY,
       hour,
       minute,
+      channelId: DAILY_REMINDER_CHANNEL_ID,
     },
   });
 
