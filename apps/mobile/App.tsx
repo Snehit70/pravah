@@ -2,24 +2,18 @@ import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  FlatList,
-  Modal,
   Pressable,
-  RefreshControl,
-  ScrollView,
-  Switch,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, { FadeIn } from "react-native-reanimated";
-import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
+import { type RenderItemParams } from "react-native-draggable-flatlist";
 import { useAction, useMutation, useQuery } from "convex/react";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { api } from "../../convex/_generated/api";
 import * as Haptics from "expo-haptics";
-import * as SecureStore from "expo-secure-store";
 import { authClient, authStorageReady } from "./src/lib/auth-client";
 import { useFonts as useFraunces, Fraunces_300Light } from "@expo-google-fonts/fraunces";
 import { Manrope_500Medium, Manrope_600SemiBold, Manrope_700Bold } from "@expo-google-fonts/manrope";
@@ -45,6 +39,9 @@ import { BottomTabBar, type TabKey } from "./src/components/BottomTabBar";
 import { FAB } from "./src/components/FAB";
 import { AddTaskSheet, type AddTaskSheetRef } from "./src/components/AddTaskSheet";
 import { EditTaskSheet, type EditTaskSheetRef } from "./src/components/EditTaskSheet";
+import { SettingsSheet } from "./src/components/SettingsSheet";
+import { TaskTabContent } from "./src/components/TaskTabContent";
+import { useRetryQueue, type RetryPayload } from "./src/hooks/useRetryQueue";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -53,56 +50,8 @@ type ToastState = {
   message: string;
 };
 
-type RetryQueueItem = {
-  id: string;
-  label: string;
-  attempts: number;
-  payload: RetryPayload;
-};
-
-type RetryPayload =
-  | {
-      type: "addTask";
-      title: string;
-      description?: string;
-      deadline?: string;
-      scheduledDate?: string;
-      priority?: "p1" | "p2" | "p3";
-    }
-  | {
-      type: "updateTask";
-      taskId: Id<"tasks">;
-      title: string;
-      description?: string;
-      deadline?: string;
-      priority?: "p1" | "p2" | "p3";
-    }
-  | {
-      type: "completeTask";
-      taskId: Id<"tasks">;
-    }
-  | {
-      type: "moveTask";
-      taskId: Id<"tasks">;
-      targetDate: string;
-    }
-  | {
-      type: "unscheduleTask";
-      taskId: Id<"tasks">;
-    }
-  | {
-      type: "reopenTask";
-      taskId: Id<"tasks">;
-    };
-
 type SuccessHaptic = "notification" | "light" | "medium";
 type IntegrationProvider = "google_calendar" | "gmail";
-
-const RETRY_QUEUE_STORAGE_KEY = "pravah_mobile_retry_queue_v1";
-// SecureStore has low KB limits per value. Cap how many items we persist so a
-// large description can't overflow the keychain slot silently.
-const MAX_RETRY_QUEUE_PERSIST = 20;
-const MAX_RETRY_ATTEMPTS = 5;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -144,28 +93,6 @@ function hasPriorityBoundaryViolation(original: MobileTask[], reordered: MobileT
   return false;
 }
 
-function formatStatusLabel(value: string): string {
-  return value
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function getStatusTone(status: string): "success" | "warning" | "error" | "muted" {
-  if (status === "connected" || status === "granted") return "success";
-  if (status === "error" || status === "denied") return "error";
-  if (status === "undetermined") return "warning";
-  return "muted";
-}
-
-function statusTextColor(status: string): string {
-  const tone = getStatusTone(status);
-  if (tone === "success") return "#6c9c7a";
-  if (tone === "warning") return "#c77b3a";
-  if (tone === "error") return "#c76a52";
-  return "#6c6559";
-}
-
 // ── Main App ───────────────────────────────────────────────────────────
 
 function MobileApp() {
@@ -174,7 +101,6 @@ function MobileApp() {
   const editTaskSheetRef = useRef<EditTaskSheetRef>(null);
   const appStartMsRef = useRef<number>(Date.now());
   const lastListStateLogMsRef = useRef<number>(0);
-  const lastRetryPersistLogMsRef = useRef<number>(0);
   const busyTaskIdsRef = useRef<Set<string>>(new Set());
 
   const [activeTab, setActiveTab] = useState<TabKey>("inbox");
@@ -182,7 +108,6 @@ function MobileApp() {
   const [pendingMutations, setPendingMutations] = useState(0);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [optimisticTasks, setOptimisticTasks] = useState<MobileTask[] | null>(null);
-  const [retryQueue, setRetryQueue] = useState<RetryQueueItem[]>([]);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isAddSheetOpen, setIsAddSheetOpen] = useState(false);
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
@@ -272,7 +197,6 @@ function MobileApp() {
   const moveTaskMutation = useMutation(api.tasks.moveTask);
   const unscheduleTaskMutation = useMutation(api.tasks.unscheduleTask);
   const reopenTaskMutation = useMutation(api.tasks.reopenTask);
-  const reorderInboxTasksMutation = useMutation(api.tasks.reorderInboxTasks);
   const reorderTasksMutation = useMutation(api.tasks.reorderTasks);
   const storeUserMutation = useMutation(api.users.store);
   const claimLegacyDataMutation = useMutation(api.users.claimLegacyData);
@@ -411,21 +335,6 @@ function MobileApp() {
     };
   }, [session, storeUserMutation, claimLegacyDataMutation, showToast]);
 
-  useEffect(() => {
-    if (!__DEV__) return;
-    const now = Date.now();
-    if (now - lastListStateLogMsRef.current < 1500) return;
-    lastListStateLogMsRef.current = now;
-    mobileLogger.debug("list_state", {
-      activeTab,
-      inboxCount,
-      timelineCount,
-      completedCount,
-      pendingMutations,
-      retryQueueCount: retryQueue.length,
-    });
-  }, [activeTab, inboxCount, timelineCount, completedCount, pendingMutations, retryQueue.length]);
-
   // ── Toast / retry ───────────────────────────────────────────────────
 
   const triggerSuccessHaptic = useCallback((kind: SuccessHaptic) => {
@@ -491,101 +400,25 @@ function MobileApp() {
     ]
   );
 
-  const enqueueRetry = useCallback(
-    (item: Omit<RetryQueueItem, "id" | "attempts">) => {
-      setRetryQueue((cur) => {
-        const next = [...cur, { id: `${Date.now()}-${cur.length}`, attempts: 0, ...item }];
-        mobileLogger.warn("retry_enqueued", {
-          label: item.label,
-          nextQueueSize: next.length,
-          payloadType: item.payload.type,
-        });
-        return next;
-      });
-    },
-    []
-  );
+  const { retryQueue, enqueueRetry, retryQueuedMutations } = useRetryQueue({
+    runRetryPayload,
+    onRetryComplete: (message) => showToast({ kind: "info", message }),
+  });
 
   useEffect(() => {
-    let cancelled = false;
-    void SecureStore.getItemAsync(RETRY_QUEUE_STORAGE_KEY).then((raw) => {
-      if (cancelled || !raw) return;
-      try {
-        const parsed = JSON.parse(raw) as RetryQueueItem[];
-        if (!Array.isArray(parsed)) return;
-        const hydrated = parsed.filter(
-          (item) =>
-            typeof item?.id === "string" &&
-            typeof item?.label === "string" &&
-            typeof item?.attempts === "number" &&
-            item?.payload !== undefined
-        );
-        setRetryQueue(hydrated);
-        mobileLogger.info("retry_queue_hydrated", { hydratedCount: hydrated.length });
-      } catch {
-        void SecureStore.deleteItemAsync(RETRY_QUEUE_STORAGE_KEY);
-        mobileLogger.warn("retry_queue_corrupt_reset");
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    // Keep only the most recent items to stay within SecureStore's per-value
-    // size limits. Older unsynced items are dropped; the banner still shows
-    // the in-memory count so the user knows to retry manually.
-    const toStore = retryQueue.slice(-MAX_RETRY_QUEUE_PERSIST);
-    void SecureStore.setItemAsync(RETRY_QUEUE_STORAGE_KEY, JSON.stringify(toStore)).catch((err) => {
-      mobileLogger.warn("retry_queue_persist_failed", { errorType: classifyError(err) });
-    });
     if (!__DEV__) return;
     const now = Date.now();
-    if (now - lastRetryPersistLogMsRef.current < 2000) return;
-    lastRetryPersistLogMsRef.current = now;
-    mobileLogger.debug("retry_queue_persisted", { queueSize: retryQueue.length, stored: toStore.length });
-  }, [retryQueue]);
-
-  const retryQueuedMutations = useCallback(async () => {
-    if (!retryQueue.length) return;
-    const actionId = createActionId("retry");
-    const startedAt = Date.now();
-    mobileLogger.info("retry_run_started", { actionId, queueSize: retryQueue.length });
-    const snapshot = [...retryQueue];
-    setRetryQueue([]);
-    let failed = 0;
-    for (const queued of snapshot) {
-      try {
-        await runRetryPayload(queued.payload);
-      } catch {
-        failed += 1;
-        const nextAttempts = queued.attempts + 1;
-        mobileLogger.warn("retry_item_failed", {
-          actionId,
-          label: queued.label,
-          payloadType: queued.payload.type,
-          attempts: nextAttempts,
-          dropped: nextAttempts >= MAX_RETRY_ATTEMPTS,
-        });
-        if (nextAttempts < MAX_RETRY_ATTEMPTS) {
-          setRetryQueue((cur) => [...cur, { ...queued, attempts: nextAttempts }]);
-        }
-      }
-    }
-    if (failed === 0) {
-      showToast({ kind: "info", message: "Retry complete" });
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-    mobileLogger.info("retry_run_finished", {
-      actionId,
-      elapsedMs: Date.now() - startedAt,
-      attempted: snapshot.length,
-      failed,
-      succeeded: snapshot.length - failed,
+    if (now - lastListStateLogMsRef.current < 1500) return;
+    lastListStateLogMsRef.current = now;
+    mobileLogger.debug("list_state", {
+      activeTab,
+      inboxCount,
+      timelineCount,
+      completedCount,
+      pendingMutations,
+      retryQueueCount: retryQueue.length,
     });
-  }, [retryQueue, runRetryPayload, showToast]);
+  }, [activeTab, inboxCount, timelineCount, completedCount, pendingMutations, retryQueue.length]);
 
   // ── Optimistic mutation runner ──────────────────────────────────────
 
@@ -1093,37 +926,6 @@ function MobileApp() {
     }
   }, [isNotificationsBusy, notificationPermissionState, showToast]);
 
-  const handleInboxDragEnd = useCallback(
-    async ({ data }: { data: MobileTask[] }) => {
-      if (hasPriorityBoundaryViolation(inboxTasks, data)) {
-        showToast({ kind: "error", message: "Drag only within the same priority group." });
-        return;
-      }
-      const taskIds = data.map((task) => task._id);
-      const positionMap = new Map(taskIds.map((taskId, index) => [taskId, index]));
-      const now = Date.now();
-      setOptimisticTasks((current) =>
-        (current ?? serverTasks).map((task) =>
-          task.status === "inbox" && positionMap.has(task._id)
-            ? {
-                ...task,
-                position: positionMap.get(task._id) ?? task.position,
-                updatedAt: now,
-              }
-            : task
-        )
-      );
-      try {
-        await reorderInboxTasksMutation({ taskIds });
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      } catch {
-        setOptimisticTasks(null);
-        showToast({ kind: "error", message: "Could not save inbox order." });
-      }
-    },
-    [inboxTasks, reorderInboxTasksMutation, serverTasks, showToast]
-  );
-
   const handleTimelineDragEnd = useCallback(
     async (dateKey: string, original: MobileTask[], data: MobileTask[]) => {
       if (hasPriorityBoundaryViolation(original, data)) {
@@ -1157,13 +959,12 @@ function MobileApp() {
   );
 
   const renderInboxTaskItem = useCallback(
-    ({ item, drag }: RenderItemParams<MobileTask>) => (
+    ({ item }: { item: MobileTask }) => (
       <TaskCard
         task={item}
         onDone={markDone}
         onMoveToday={moveToToday}
         onEdit={handleEditTask}
-        onDragHandlePress={drag}
       />
     ),
     [markDone, moveToToday, handleEditTask]
@@ -1366,88 +1167,25 @@ function MobileApp() {
         <Text style={styles.syncText}>Syncing</Text>
       ) : null}
 
-      {/* Task list */}
-      {activeTab === "inbox" ? (
-        <DraggableFlatList
-          style={styles.list}
-          contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + 84 }]}
-          data={inboxTasks}
-          keyExtractor={(item) => item._id}
-          renderItem={renderInboxTaskItem}
-          onDragEnd={(params) => void handleInboxDragEnd(params)}
-          activationDistance={10}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={() => void handleRefresh()}
-              tintColor={colors.accent}
-              colors={[colors.accent]}
-              progressBackgroundColor={colors.bgCard}
-            />
-          }
-          ListEmptyComponent={isActiveListLoading ? loadingBlock : emptyBlock}
-        />
-      ) : null}
-
-      {activeTab === "timeline" ? (
-        <ScrollView
-          style={styles.list}
-          contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + 84 }]}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={() => void handleRefresh()}
-              tintColor={colors.accent}
-              colors={[colors.accent]}
-              progressBackgroundColor={colors.bgCard}
-            />
-          }
-        >
-          {isActiveListLoading ? (
-            loadingBlock
-          ) : timelineSections.length ? (
-            timelineSections.map(([dateKey, tasksForDate]) => (
-              <View key={dateKey}>
-                <Text style={styles.sectionDate}>{dateLabel(dateKey, today, tomorrow, weekEnd)}</Text>
-                <DraggableFlatList
-                  data={tasksForDate}
-                  keyExtractor={(item) => item._id}
-                  renderItem={renderTimelineTaskItem(dateKey)}
-                  onDragEnd={({ data }) => void handleTimelineDragEnd(dateKey, tasksForDate, data)}
-                  activationDistance={10}
-                  scrollEnabled={false}
-                  containerStyle={styles.timelineSectionList}
-                />
-              </View>
-            ))
-          ) : (
-            emptyBlock
-          )}
-        </ScrollView>
-      ) : null}
-
-      {activeTab === "completed" ? (
-        <FlatList
-          style={styles.list}
-          contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + 84 }]}
-          data={completedTasks}
-          keyExtractor={(item) => item._id}
-          renderItem={renderCompletedTaskItem}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={() => void handleRefresh()}
-              tintColor={colors.accent}
-              colors={[colors.accent]}
-              progressBackgroundColor={colors.bgCard}
-            />
-          }
-          ListEmptyComponent={isActiveListLoading ? loadingBlock : emptyBlock}
-        />
-      ) : null}
+      <TaskTabContent
+        activeTab={activeTab}
+        inboxTasks={inboxTasks}
+        timelineSections={timelineSections}
+        completedTasks={completedTasks}
+        today={today}
+        tomorrow={tomorrow}
+        weekEnd={weekEnd}
+        isRefreshing={isRefreshing}
+        isActiveListLoading={isActiveListLoading}
+        tabBarHeight={tabBarHeight}
+        emptyBlock={emptyBlock}
+        loadingBlock={loadingBlock}
+        onRefresh={handleRefresh}
+        onTimelineDragEnd={handleTimelineDragEnd}
+        renderInboxTaskItem={renderInboxTaskItem}
+        renderTimelineTaskItem={renderTimelineTaskItem}
+        renderCompletedTaskItem={renderCompletedTaskItem}
+      />
 
       {/* FAB */}
       {!isAddSheetOpen && !isEditSheetOpen ? (
@@ -1475,183 +1213,32 @@ function MobileApp() {
         onSheetChange={setIsEditSheetOpen}
       />
 
-      {/* Settings — presented as a near-full-height bottom sheet rather than a
-          centered card. No nested integration cards; sections are grouped by
-          a mono kicker and separated by hairlines. Status reads as inline
-          tinted mono, actions are copper text links. */}
-      <Modal
-        animationType="slide"
-        transparent
+      <SettingsSheet
         visible={isSettingsModalOpen}
-        onRequestClose={() => setIsSettingsModalOpen(false)}
-      >
-        <View style={styles.settingsBackdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsSettingsModalOpen(false)} />
-          <View style={styles.settingsSheet}>
-            <View style={styles.settingsHandle} />
-
-            <ScrollView
-              style={styles.settingsScroll}
-              contentContainerStyle={styles.settingsScrollContent}
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.settingsHeader}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.settingsKicker}>Workspace</Text>
-                  <Text style={styles.settingsHeadline}>Settings</Text>
-                </View>
-                <Pressable
-                  onPress={() => setIsSettingsModalOpen(false)}
-                  hitSlop={10}
-                  style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={styles.settingsCloseLink}>Close</Text>
-                </Pressable>
-              </View>
-
-              {/* ── Sync ───────────────────────────────────────────── */}
-              <Text style={styles.sectionHeader}>Sync</Text>
-
-              <View style={styles.settingBlock}>
-                <View style={styles.settingRow}>
-                  <View style={styles.settingCopy}>
-                    <Text style={styles.settingLabel}>Google Calendar</Text>
-                    <Text style={styles.settingHelp}>Pull events and deadlines into Pravah.</Text>
-                    <Text style={[styles.settingStatus, { color: statusTextColor(calendarSyncStatus) }]}>
-                      {formatStatusLabel(calendarSyncStatus)}
-                    </Text>
-                  </View>
-                  <Switch
-                    value={googleSyncEnabled}
-                    onValueChange={() => void toggleGoogleCalendarSync()}
-                    disabled={isGoogleToggleSaving}
-                    trackColor={{ false: colors.border, true: colors.accentSoft }}
-                    thumbColor={googleSyncEnabled ? colors.accent : colors.textMuted}
-                  />
-                </View>
-                <Pressable
-                  onPress={() => void runGoogleCalendarSync()}
-                  disabled={isCalendarSyncing}
-                  hitSlop={6}
-                  style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={[styles.inlineActionText, isCalendarSyncing && styles.inlineActionDisabled]}>
-                    {isCalendarSyncing ? "Syncing…" : "Sync now"}
-                  </Text>
-                </Pressable>
-              </View>
-
-              <View style={styles.hairline} />
-
-              <View style={styles.settingBlock}>
-                <View style={styles.settingRow}>
-                  <View style={styles.settingCopy}>
-                    <Text style={styles.settingLabel}>Gmail</Text>
-                    <Text style={styles.settingHelp}>Surface pending email follow-ups for review.</Text>
-                    <Text style={[styles.settingStatus, { color: statusTextColor(gmailSyncStatus) }]}>
-                      {formatStatusLabel(gmailSyncStatus)}
-                    </Text>
-                  </View>
-                  <Switch
-                    value={gmailSyncEnabled}
-                    onValueChange={() => void toggleGmailSync()}
-                    disabled={isGmailToggleSaving || !canToggleGmailSync}
-                    trackColor={{ false: colors.border, true: colors.accentSoft }}
-                    thumbColor={gmailSyncEnabled ? colors.accent : colors.textMuted}
-                  />
-                </View>
-                <Text style={styles.settingMeta}>
-                  Pending review · {pendingGmailReviewCount}
-                </Text>
-                {!canToggleGmailSync ? (
-                  <Text style={styles.settingMeta}>Connect Gmail on web before enabling mobile sync.</Text>
-                ) : null}
-              </View>
-
-              <Pressable
-                onPress={() => void enableAndSyncGoogleCalendar()}
-                disabled={syncSettingsBusy}
-                hitSlop={6}
-                style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
-              >
-                <Text style={[styles.inlineActionText, syncSettingsBusy && styles.inlineActionDisabled]}>
-                  Enable and sync Google Calendar
-                </Text>
-              </Pressable>
-
-              {/* ── Alerts ─────────────────────────────────────────── */}
-              <Text style={styles.sectionHeader}>Alerts</Text>
-
-              <View style={styles.settingBlock}>
-                <Text style={styles.settingLabel}>Notifications</Text>
-                <Text style={styles.settingHelp}>
-                  Daily reminders and test alerts for mobile follow-through.
-                </Text>
-                <Text style={[styles.settingStatus, { color: statusTextColor(notificationPermissionState) }]}>
-                  {formatStatusLabel(notificationPermissionState)}
-                </Text>
-
-                {!notificationsEnabled ? (
-                  <Pressable
-                    onPress={() => void requestNotificationsAccess()}
-                    disabled={isNotificationsBusy}
-                    hitSlop={6}
-                    style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-                  >
-                    <Text style={[styles.inlineActionText, isNotificationsBusy && styles.inlineActionDisabled]}>
-                      Enable notifications
-                    </Text>
-                  </Pressable>
-                ) : null}
-              </View>
-
-              <View style={styles.hairline} />
-
-              <View style={styles.settingBlock}>
-                <View style={styles.settingRow}>
-                  <View style={styles.settingCopy}>
-                    <Text style={styles.settingLabel}>Daily reminder</Text>
-                    <Text style={styles.settingHelp}>Send one reminder at 9:00 AM every day.</Text>
-                  </View>
-                  <Switch
-                    value={isDailyReminderEnabled}
-                    onValueChange={() => void toggleDailyReminder()}
-                    disabled={isNotificationsBusy}
-                    trackColor={{ false: colors.border, true: colors.accentSoft }}
-                    thumbColor={isDailyReminderEnabled ? colors.accent : colors.textMuted}
-                  />
-                </View>
-                <Pressable
-                  onPress={() => void sendTestNotification()}
-                  disabled={isNotificationsBusy}
-                  hitSlop={6}
-                  style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={[styles.inlineActionText, isNotificationsBusy && styles.inlineActionDisabled]}>
-                    Send a test
-                  </Text>
-                </Pressable>
-              </View>
-
-              {/* ── Account ────────────────────────────────────────── */}
-              <Text style={styles.sectionHeader}>Account</Text>
-
-              <View style={styles.settingBlock}>
-                <Text style={styles.settingHelp}>
-                  Sign out if you want to switch Google accounts on this device.
-                </Text>
-                <Pressable
-                  onPress={handleSignOut}
-                  hitSlop={6}
-                  style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={styles.signOutLink}>Sign out</Text>
-                </Pressable>
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+        calendarSyncEnabled={googleSyncEnabled}
+        gmailSyncEnabled={gmailSyncEnabled}
+        calendarSyncStatus={calendarSyncStatus}
+        gmailSyncStatus={gmailSyncStatus}
+        canToggleGmailSync={canToggleGmailSync}
+        pendingGmailReviewCount={pendingGmailReviewCount}
+        notificationPermissionState={notificationPermissionState}
+        notificationsEnabled={notificationsEnabled}
+        isDailyReminderEnabled={isDailyReminderEnabled}
+        isCalendarSyncing={isCalendarSyncing}
+        isGoogleToggleSaving={isGoogleToggleSaving}
+        isGmailToggleSaving={isGmailToggleSaving}
+        isNotificationsBusy={isNotificationsBusy}
+        syncSettingsBusy={syncSettingsBusy}
+        onClose={() => setIsSettingsModalOpen(false)}
+        onGoogleCalendarToggle={() => void toggleGoogleCalendarSync()}
+        onGoogleCalendarSync={() => void runGoogleCalendarSync()}
+        onEnableAndSyncGoogleCalendar={() => void enableAndSyncGoogleCalendar()}
+        onGmailToggle={() => void toggleGmailSync()}
+        onRequestNotificationsAccess={() => void requestNotificationsAccess()}
+        onToggleDailyReminder={() => void toggleDailyReminder()}
+        onSendTestNotification={() => void sendTestNotification()}
+        onSignOut={handleSignOut}
+      />
     </SafeAreaView>
   );
 }
@@ -1909,25 +1496,6 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.md,
   },
 
-  // List
-  list: {
-    flex: 1,
-  },
-  listContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: 160,
-  },
-  timelineSectionList: {
-    marginBottom: spacing.sm,
-  },
-  sectionDate: {
-    color: colors.accent,
-    ...typography.micro,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-
   // Empty states — flat editorial block, no enclosure. Fraunces headline sets
   // the tone; body is Manrope; the inbox CTA is a mono "link" in copper so it
   // reads as tappable without borrowing button chrome.
@@ -1955,130 +1523,6 @@ const styles = StyleSheet.create({
   emptyCta: {
     color: colors.accent,
     ...typography.micro,
-  },
-
-  // Settings sheet — presented as a near-full-height bottom panel, one
-  // earned enclosure (it is a modal), and inside it everything is flat:
-  // section headers in mono, rows separated by hairlines, actions as copper
-  // text links, sign-out as a rust link. No nested cards.
-  settingsBackdrop: {
-    flex: 1,
-    backgroundColor: colors.backdrop,
-    justifyContent: "flex-end",
-  },
-  settingsSheet: {
-    backgroundColor: colors.bgCard,
-    borderTopLeftRadius: radii.xl,
-    borderTopRightRadius: radii.xl,
-    paddingTop: spacing.sm,
-    maxHeight: "90%",
-    minHeight: "60%",
-  },
-  settingsHandle: {
-    alignSelf: "center",
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.border,
-    marginBottom: spacing.md,
-  },
-  settingsScroll: {
-    flexGrow: 0,
-  },
-  settingsScrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xxl,
-    gap: spacing.md,
-  },
-  settingsHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: spacing.md,
-    marginBottom: spacing.md,
-  },
-  settingsKicker: {
-    ...typography.micro,
-    color: colors.textMuted,
-  },
-  settingsHeadline: {
-    ...typography.headline,
-    color: colors.textPrimary,
-    marginTop: 2,
-  },
-  settingsCloseLink: {
-    ...typography.micro,
-    color: colors.accent,
-    paddingTop: spacing.sm,
-  },
-
-  // Section header — mono kicker in muted ink, spaced above the first row.
-  sectionHeader: {
-    ...typography.micro,
-    color: colors.textMuted,
-    marginTop: spacing.lg,
-    marginBottom: spacing.xs,
-  },
-
-  // Setting block — a vertical stack of label/help/status plus any inline
-  // action. Separated from the next block by a single hairline.
-  settingBlock: {
-    gap: spacing.xs,
-    paddingVertical: spacing.sm,
-  },
-  settingRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: spacing.lg,
-  },
-  settingCopy: {
-    flex: 1,
-    gap: 4,
-  },
-  settingLabel: {
-    ...typography.title,
-    color: colors.textPrimary,
-  },
-  settingHelp: {
-    ...typography.bodyMd,
-    color: colors.textSecondary,
-  },
-  settingStatus: {
-    ...typography.micro,
-    marginTop: 2,
-  },
-  settingMeta: {
-    ...typography.micro,
-    color: colors.textMuted,
-    marginTop: spacing.xs,
-  },
-
-  // Inline action — copper mono text link, the only affordance style in the
-  // whole sheet. Disabled state just drops opacity.
-  inlineActionText: {
-    ...typography.micro,
-    color: colors.accent,
-    marginTop: spacing.sm,
-  },
-  inlineActionDisabled: {
-    opacity: 0.4,
-  },
-  sectionFootAction: {
-    paddingVertical: spacing.xs,
-  },
-
-  // Sign-out uses the rust accent so destructive intent reads clearly
-  // without giving up the flat text-link language.
-  signOutLink: {
-    ...typography.micro,
-    color: colors.error,
-    marginTop: spacing.sm,
-  },
-
-  hairline: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.borderSubtle,
   },
 
   // Shared
