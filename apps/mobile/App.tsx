@@ -233,6 +233,7 @@ function MobileApp() {
       : activeTab === "timeline"
         ? scheduledQuery
         : completedQuery;
+  const isActiveListLoading = activeQueryTasks === undefined;
 
   const serverTasks = useMemo<MobileTask[]>(() => {
     return (
@@ -1217,6 +1218,12 @@ function MobileApp() {
       ) : null}
     </Animated.View>
   );
+  const loadingBlock = (
+    <Animated.View entering={FadeIn.duration(300)} style={styles.emptyWrap}>
+      <Text style={styles.emptyTitle}>Gathering the ledger.</Text>
+      <Text style={styles.emptyText}>Your tasks are still syncing into view.</Text>
+    </Animated.View>
+  );
 
   // ── Loading / Auth screens ──────────────────────────────────────────
 
@@ -1360,7 +1367,7 @@ function MobileApp() {
               progressBackgroundColor={colors.bgCard}
             />
           }
-          ListEmptyComponent={emptyBlock}
+          ListEmptyComponent={isActiveListLoading ? loadingBlock : emptyBlock}
         />
       ) : null}
 
@@ -1379,7 +1386,9 @@ function MobileApp() {
             />
           }
         >
-          {timelineSections.length ? (
+          {isActiveListLoading ? (
+            loadingBlock
+          ) : timelineSections.length ? (
             timelineSections.map(([dateKey, tasksForDate]) => (
               <View key={dateKey}>
                 <Text style={styles.sectionDate}>{dateLabel(dateKey, today, tomorrow, weekEnd)}</Text>
@@ -1417,7 +1426,7 @@ function MobileApp() {
               progressBackgroundColor={colors.bgCard}
             />
           }
-          ListEmptyComponent={emptyBlock}
+          ListEmptyComponent={isActiveListLoading ? loadingBlock : emptyBlock}
         />
       ) : null}
 
