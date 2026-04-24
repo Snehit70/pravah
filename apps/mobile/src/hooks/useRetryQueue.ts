@@ -58,6 +58,7 @@ export function useRetryQueue({
   onRetryComplete: (message: string) => void;
 }) {
   const [retryQueue, setRetryQueue] = useState<RetryQueueItem[]>([]);
+  const [isHydrated, setIsHydrated] = useState(false);
   const lastRetryPersistLogMsRef = useRef<number>(0);
 
   const enqueueRetry = useCallback((item: Omit<RetryQueueItem, "id" | "attempts">) => {
@@ -75,7 +76,11 @@ export function useRetryQueue({
   useEffect(() => {
     let cancelled = false;
     void retryQueueStorage.getItem(RETRY_QUEUE_STORAGE_KEY).then((raw) => {
-      if (cancelled || !raw) return;
+      if (cancelled) return;
+      if (!raw) {
+        setIsHydrated(true);
+        return;
+      }
       try {
         const hydrated = hydrateRetryQueue(raw);
         setRetryQueue(hydrated);
@@ -83,6 +88,8 @@ export function useRetryQueue({
       } catch {
         void retryQueueStorage.removeItem(RETRY_QUEUE_STORAGE_KEY);
         mobileLogger.warn("retry_queue_corrupt_reset");
+      } finally {
+        if (!cancelled) setIsHydrated(true);
       }
     });
 
@@ -92,6 +99,7 @@ export function useRetryQueue({
   }, []);
 
   useEffect(() => {
+    if (!isHydrated) return;
     // Persist on AsyncStorage first because the retry queue is non-secret
     // operational state, not credential material.
     const toStore = prepareRetryQueueForPersist(retryQueue);
@@ -104,7 +112,7 @@ export function useRetryQueue({
     if (now - lastRetryPersistLogMsRef.current < 2000) return;
     lastRetryPersistLogMsRef.current = now;
     mobileLogger.debug("retry_queue_persisted", { queueSize: retryQueue.length, stored: toStore.length });
-  }, [retryQueue]);
+  }, [isHydrated, retryQueue]);
 
   const retryQueuedMutations = useCallback(async () => {
     if (!retryQueue.length) return;

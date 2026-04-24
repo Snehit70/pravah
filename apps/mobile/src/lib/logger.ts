@@ -1,4 +1,5 @@
 type LogLevel = "debug" | "info" | "warn" | "error";
+export type ErrorKind = "network" | "auth" | "validation" | "unexpected" | "unknown";
 
 type LogContext = Record<string, unknown>;
 
@@ -34,23 +35,57 @@ export function createActionId(prefix = "act"): string {
   return `${prefix}-${Date.now()}-${actionCounter}`;
 }
 
-export function classifyError(error: unknown): string {
-  if (!(error instanceof Error)) return "unknown";
+export function classifyError(error: unknown): ErrorKind {
+  if (error == null) return "unknown";
 
-  const msg = error.message.toLowerCase();
+  const message =
+    typeof error === "object" && error !== null && "message" in error
+      ? String((error as { message?: unknown }).message ?? "")
+      : "";
+  const name =
+    typeof error === "object" && error !== null && "name" in error
+      ? String((error as { name?: unknown }).name ?? "")
+      : "";
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? String((error as { code?: unknown }).code ?? "")
+      : "";
+  const status =
+    typeof error === "object" && error !== null && "status" in error
+      ? Number((error as { status?: unknown }).status)
+      : NaN;
+
+  const haystack = `${name} ${message} ${code}`.toLowerCase();
+
   if (
-    msg.includes("network") ||
-    msg.includes("fetch") ||
-    msg.includes("offline") ||
-    msg.includes("timeout") ||
-    msg.includes("internet")
+    haystack.includes("network") ||
+    haystack.includes("fetch") ||
+    haystack.includes("offline") ||
+    haystack.includes("timeout") ||
+    haystack.includes("internet") ||
+    haystack.includes("econn") ||
+    haystack.includes("err_network") ||
+    haystack.includes("failed to fetch")
   ) {
     return "network";
   }
-  if (msg.includes("unauthorized") || msg.includes("forbidden") || msg.includes("token")) {
+
+  if (
+    status === 401 ||
+    status === 403 ||
+    haystack.includes("unauthorized") ||
+    haystack.includes("forbidden") ||
+    haystack.includes("token")
+  ) {
     return "auth";
   }
-  if (msg.includes("validation") || msg.includes("invalid")) {
+
+  if (
+    status === 400 ||
+    status === 422 ||
+    haystack.includes("validation") ||
+    haystack.includes("invalid")
+  ) {
     return "validation";
   }
 

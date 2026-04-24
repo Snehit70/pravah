@@ -260,7 +260,7 @@ function MobileApp() {
 
   useEffect(() => {
     if (pendingMutations === 0) setOptimisticTasks(null);
-  }, [pendingMutations, serverTasks]);
+  }, [pendingMutations]);
 
   useEffect(() => {
     if (!session) return;

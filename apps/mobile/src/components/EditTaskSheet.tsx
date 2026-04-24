@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetTextInput,
@@ -127,6 +127,21 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     );
 
     const canSave = useMemo(() => Boolean(title.trim()) && !saving, [title, saving]);
+    const requestClose = useCallback(() => {
+      if (!hasUnsavedChanges) {
+        bottomSheetRef.current?.close();
+        return;
+      }
+
+      Alert.alert("Discard changes?", "You have unsaved edits in this task.", [
+        { text: "Keep editing", style: "cancel" },
+        {
+          text: "Discard",
+          style: "destructive",
+          onPress: () => bottomSheetRef.current?.close(),
+        },
+      ]);
+    }, [hasUnsavedChanges]);
 
     return (
       <BottomSheet
@@ -196,7 +211,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
 
           <View style={styles.actions}>
             <Pressable
-              onPress={() => bottomSheetRef.current?.close()}
+              onPress={requestClose}
               style={({ pressed }) => [styles.cancelButton, pressed && { opacity: 0.6 }]}
               hitSlop={8}
             >
