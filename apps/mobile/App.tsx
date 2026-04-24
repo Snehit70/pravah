@@ -449,7 +449,14 @@ function MobileApp() {
         actionName,
       });
       setPendingMutations((c) => c + 1);
-      setOptimisticTasks((cur) => optimistic(cur ?? serverTasks));
+      // Capture the state before this mutation's optimistic update so we can
+      // restore exactly it on failure — preserving any other in-flight mutations
+      // rather than wiping all optimistic state with a null.
+      let stateBeforeOptimistic: MobileTask[] | null = null;
+      setOptimisticTasks((cur) => {
+        stateBeforeOptimistic = cur;
+        return optimistic(cur ?? serverTasks);
+      });
       try {
         await mutation();
         triggerSuccessHaptic(successHaptic);
@@ -460,7 +467,9 @@ function MobileApp() {
         });
         return true;
       } catch (error) {
-        setOptimisticTasks(null);
+        // Restore to the pre-mutation snapshot, not null, so sibling in-flight
+        // mutations' optimistic state is preserved.
+        setOptimisticTasks(stateBeforeOptimistic);
         const canRetry = retryLabel && retryPayload && classifyError(error) === "network";
         if (canRetry) enqueueRetry({ label: retryLabel!, payload: retryPayload! });
         mobileLogger.error("mutation_failed", {
