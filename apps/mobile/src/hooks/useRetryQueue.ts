@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as Haptics from "expo-haptics";
-import * as SecureStore from "expo-secure-store";
 import { classifyError, createActionId, mobileLogger } from "../lib/logger";
+import { retryQueueStorage } from "../lib/retry-queue-storage";
 import type { Id } from "../../../../convex/_generated/dataModel";
 
 const RETRY_QUEUE_STORAGE_KEY = "pravah_mobile_retry_queue_v1";
@@ -74,7 +74,7 @@ export function useRetryQueue({
 
   useEffect(() => {
     let cancelled = false;
-    void SecureStore.getItemAsync(RETRY_QUEUE_STORAGE_KEY).then((raw) => {
+    void retryQueueStorage.getItem(RETRY_QUEUE_STORAGE_KEY).then((raw) => {
       if (cancelled || !raw) return;
       try {
         const parsed = JSON.parse(raw) as RetryQueueItem[];
@@ -89,7 +89,7 @@ export function useRetryQueue({
         setRetryQueue(hydrated);
         mobileLogger.info("retry_queue_hydrated", { hydratedCount: hydrated.length });
       } catch {
-        void SecureStore.deleteItemAsync(RETRY_QUEUE_STORAGE_KEY);
+        void retryQueueStorage.removeItem(RETRY_QUEUE_STORAGE_KEY);
         mobileLogger.warn("retry_queue_corrupt_reset");
       }
     });
@@ -100,8 +100,10 @@ export function useRetryQueue({
   }, []);
 
   useEffect(() => {
+    // Persist on AsyncStorage first because the retry queue is non-secret
+    // operational state, not credential material.
     const toStore = retryQueue.slice(-MAX_RETRY_QUEUE_PERSIST);
-    void SecureStore.setItemAsync(RETRY_QUEUE_STORAGE_KEY, JSON.stringify(toStore)).catch((error) => {
+    void retryQueueStorage.setItem(RETRY_QUEUE_STORAGE_KEY, JSON.stringify(toStore)).catch((error) => {
       mobileLogger.warn("retry_queue_persist_failed", { errorType: classifyError(error) });
     });
 
