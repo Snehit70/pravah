@@ -52,8 +52,8 @@ function getAllowedOrigins(): readonly string[] {
 
   const extras = (env?.ALLOWED_CORS_ORIGINS ?? "")
     .split(",")
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0);
+    .map((value: string) => value.trim())
+    .filter((value: string) => value.length > 0);
 
   const siteUrl = env?.SITE_URL?.trim();
   if (siteUrl) {
