@@ -43,6 +43,11 @@ import { RootErrorBoundary } from "./src/components/RootErrorBoundary";
 import { SettingsSheet } from "./src/components/SettingsSheet";
 import { TaskTabContent } from "./src/components/TaskTabContent";
 import { useRetryQueue, type RetryPayload } from "./src/hooks/useRetryQueue";
+import {
+  patchTaskInOptimisticView,
+  removeTaskFromOptimisticView,
+  reorderScopedTasksInOptimisticView,
+} from "./src/lib/task-optimistic";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -497,9 +502,7 @@ function MobileApp() {
     (taskId: Id<"tasks">) => {
       void runOptimisticMutation({
         actionName: "complete_task",
-        // Remove from the current tab list immediately; the server will
-        // add it to the completed tab once Convex reactivity fires.
-        optimistic: (cur) => cur.filter((t) => t._id !== taskId),
+        optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
         mutation: async () => { await completeTaskMutation({ taskId }); },
         errorMessage: "Could not mark task as done.",
         retryLabel: "Retry done",
@@ -514,9 +517,7 @@ function MobileApp() {
     (taskId: Id<"tasks">) => {
       void runOptimisticMutation({
         actionName: "move_task_today",
-        // Remove from inbox immediately; it appears in Timeline once the
-        // server update arrives via Convex reactivity.
-        optimistic: (cur) => cur.filter((t) => t._id !== taskId),
+        optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
         mutation: async () => { await moveTaskMutation({ taskId, targetDate: today }); },
         errorMessage: "Could not move task to today.",
         retryLabel: "Retry move to today",
@@ -532,9 +533,7 @@ function MobileApp() {
     (taskId: Id<"tasks">) => {
       void runOptimisticMutation({
         actionName: "move_task_inbox",
-        // Remove from timeline immediately; it appears in Inbox once the
-        // server update arrives via Convex reactivity.
-        optimistic: (cur) => cur.filter((t) => t._id !== taskId),
+        optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
         mutation: async () => { await unscheduleTaskMutation({ taskId }); },
         errorMessage: "Could not move task back to inbox.",
         retryLabel: "Retry move to inbox",
@@ -550,9 +549,7 @@ function MobileApp() {
     (taskId: Id<"tasks">) => {
       void runOptimisticMutation({
         actionName: "reopen_task",
-        // Remove from completed immediately; it appears in Inbox once the
-        // server update arrives via Convex reactivity.
-        optimistic: (cur) => cur.filter((t) => t._id !== taskId),
+        optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
         mutation: async () => { await reopenTaskMutation({ taskId }); },
         errorMessage: "Could not reopen task.",
         retryLabel: "Retry reopen",
@@ -636,17 +633,16 @@ function MobileApp() {
       return runOptimisticMutation({
         actionName: "update_task",
         optimistic: (cur) =>
-          cur.map((t) =>
-            t._id === data.taskId
-              ? {
-                  ...t,
-                  title: data.title,
-                  description: data.description,
-                  deadline: data.deadline,
-                  priority: data.priority,
-                  updatedAt: Date.now(),
-                }
-              : t
+          patchTaskInOptimisticView(
+            cur,
+            data.taskId,
+            {
+              title: data.title,
+              description: data.description,
+              deadline: data.deadline,
+              priority: data.priority,
+            },
+            Date.now()
           ),
         mutation: async () => {
           await updateTaskMutation({
@@ -934,17 +930,13 @@ function MobileApp() {
         return;
       }
       const taskIds = data.map((task) => task._id);
-      const positionMap = new Map(taskIds.map((taskId, index) => [taskId, index]));
       const now = Date.now();
       setOptimisticTasks((current) =>
-        (current ?? serverTasks).map((task) =>
-          task.status === "scheduled" && task.scheduledDate === dateKey && positionMap.has(task._id)
-            ? {
-                ...task,
-                position: positionMap.get(task._id) ?? task.position,
-                updatedAt: now,
-              }
-            : task
+        reorderScopedTasksInOptimisticView(
+          current ?? serverTasks,
+          taskIds,
+          (task) => task.status === "scheduled" && task.scheduledDate === dateKey,
+          now
         )
       );
 
