@@ -111,6 +111,12 @@ export const BottomTabBar = memo(BottomTabBarInner);
 const styles = StyleSheet.create({
   // Container draws a single hairline divider on top \u2014 no enclosing pill.
   container: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 40,
+    elevation: 40,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     backgroundColor: colors.bg,

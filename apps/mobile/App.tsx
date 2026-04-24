@@ -175,6 +175,7 @@ function MobileApp() {
   const appStartMsRef = useRef<number>(Date.now());
   const lastListStateLogMsRef = useRef<number>(0);
   const lastRetryPersistLogMsRef = useRef<number>(0);
+  const busyTaskIdsRef = useRef<Set<string>>(new Set());
 
   const [activeTab, setActiveTab] = useState<TabKey>("inbox");
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -203,15 +204,21 @@ function MobileApp() {
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
   const canGoogleSignIn = Boolean(googleWebClientId);
 
+  // ── Dates ───────────────────────────────────────────────────────────
+
+  const today = toIsoDate(new Date());
+  const tomorrow = toIsoDate(addDays(new Date(), 1));
+  const weekEnd = toIsoDate(addDays(new Date(), 6));
+
   // ── Data ────────────────────────────────────────────────────────────
 
   const inboxQuery = useQuery(
     api.tasks.listTasks,
     session && activeTab === "inbox" ? { status: "inbox" } : "skip"
   );
-  const scheduledQuery = useQuery(
-    api.tasks.listTasks,
-    session && activeTab === "timeline" ? { status: "scheduled" } : "skip"
+  const timelineQuery = useQuery(
+    api.tasks.getTimeline,
+    session && activeTab === "timeline" ? { startDate: today, endDate: weekEnd } : "skip"
   );
   const completedQuery = useQuery(
     api.tasks.listTasks,
@@ -231,12 +238,20 @@ function MobileApp() {
     activeTab === "inbox"
       ? inboxQuery
       : activeTab === "timeline"
-        ? scheduledQuery
+        ? timelineQuery
         : completedQuery;
+  const isActiveListLoading = activeQueryTasks === undefined;
 
   const serverTasks = useMemo<MobileTask[]>(() => {
+    const activeDocs =
+      activeTab === "timeline"
+        ? Object.values(timelineQuery ?? {}).flat()
+        : activeTab === "inbox"
+          ? inboxQuery
+          : completedQuery;
+
     return (
-      (activeQueryTasks as Doc<"tasks">[] | undefined)?.map((task) => ({
+      (activeDocs as Doc<"tasks">[] | undefined)?.map((task) => ({
         _id: task._id,
         title: task.title,
         description: task.description,
@@ -248,7 +263,7 @@ function MobileApp() {
         updatedAt: task.updatedAt,
       })) ?? []
     );
-  }, [activeQueryTasks]);
+  }, [activeTab, completedQuery, inboxQuery, timelineQuery]);
   const tasks = useMemo(() => optimisticTasks ?? serverTasks, [optimisticTasks, serverTasks]);
 
   const addTaskMutation = useMutation(api.tasks.addTask);
@@ -263,12 +278,6 @@ function MobileApp() {
   const claimLegacyDataMutation = useMutation(api.users.claimLegacyData);
   const upsertIntegrationMutation = useMutation(api.sync.upsertIntegration);
   const importGoogleCalendarAction = useAction(api.syncActions.importGoogleCalendarAction);
-
-  // ── Dates ───────────────────────────────────────────────────────────
-
-  const today = toIsoDate(new Date());
-  const tomorrow = toIsoDate(addDays(new Date(), 1));
-  const weekEnd = toIsoDate(addDays(new Date(), 7));
 
   // ── Derived data ────────────────────────────────────────────────────
 
@@ -293,7 +302,7 @@ function MobileApp() {
   }, [activeTab, tasks]);
 
   const inboxCount = countsQuery?.inboxCount ?? (activeTab === "inbox" ? inboxTasks.length : 0);
-  const timelineCount = countsQuery?.timelineCount ?? (activeTab === "timeline" ? scheduledTasks.length : 0);
+  const timelineCount = activeTab === "timeline" ? scheduledTasks.length : (countsQuery?.timelineCount ?? 0);
   const completedCount =
     countsQuery?.completedCount ?? (activeTab === "completed" ? completedTasks.length : 0);
 
@@ -312,6 +321,7 @@ function MobileApp() {
   const pendingGmailReviewCount = gmailIntegrationStatus?.pendingReviewCount ?? 0;
   const calendarSyncStatus = calendarIntegrationStatus?.integration?.status ?? "disconnected";
   const gmailSyncStatus = gmailIntegrationStatus?.integration?.status ?? "disconnected";
+  const canToggleGmailSync = gmailSyncStatus === "connected" || gmailSyncEnabled;
   const showToast = useCallback((next: ToastState) => setToast(next), []);
   const notificationsEnabled = notificationPermissionState === "granted";
   const syncSettingsBusy = isCalendarSyncing || isGoogleToggleSaving || isGmailToggleSaving;
@@ -437,7 +447,7 @@ function MobileApp() {
             title: payload.title,
             description: payload.description,
             deadline: payload.deadline,
-            type: payload.deadline ? "deadline" : "open",
+            type: payload.deadline && payload.scheduledDate ? "deadline" : "open",
             scheduledDate: payload.scheduledDate,
             priority: payload.priority,
           });
@@ -588,6 +598,7 @@ function MobileApp() {
       retryLabel,
       retryPayload,
       successHaptic = "notification",
+      taskId,
     }: {
       optimistic: (current: MobileTask[]) => MobileTask[];
       mutation: () => Promise<void>;
@@ -596,7 +607,14 @@ function MobileApp() {
       retryLabel?: string;
       retryPayload?: RetryPayload;
       successHaptic?: SuccessHaptic;
+      taskId?: Id<"tasks">;
     }): Promise<boolean> => {
+      if (taskId && busyTaskIdsRef.current.has(taskId)) {
+        mobileLogger.warn("mutation_ignored_busy_task", { actionName, taskId });
+        return false;
+      }
+      if (taskId) busyTaskIdsRef.current.add(taskId);
+
       const actionId = createActionId("mutation");
       const startedAt = Date.now();
       mobileLogger.info("mutation_started", {
@@ -632,6 +650,7 @@ function MobileApp() {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         return false;
       } finally {
+        if (taskId) busyTaskIdsRef.current.delete(taskId);
         setPendingMutations((c) => Math.max(0, c - 1));
       }
     },
@@ -651,6 +670,7 @@ function MobileApp() {
         errorMessage: "Could not mark task as done.",
         retryLabel: "Retry done",
         retryPayload: { type: "completeTask", taskId },
+        taskId,
       });
     },
     [runOptimisticMutation, completeTaskMutation]
@@ -668,6 +688,7 @@ function MobileApp() {
         retryLabel: "Retry move to today",
         retryPayload: { type: "moveTask", taskId, targetDate: today },
         successHaptic: "light",
+        taskId,
       });
     },
     [runOptimisticMutation, moveTaskMutation, today]
@@ -685,6 +706,7 @@ function MobileApp() {
         retryLabel: "Retry move to inbox",
         retryPayload: { type: "unscheduleTask", taskId },
         successHaptic: "light",
+        taskId,
       });
     },
     [runOptimisticMutation, unscheduleTaskMutation]
@@ -702,6 +724,7 @@ function MobileApp() {
         retryLabel: "Retry reopen",
         retryPayload: { type: "reopenTask", taskId },
         successHaptic: "light",
+        taskId,
       });
     },
     [runOptimisticMutation, reopenTaskMutation]
@@ -729,7 +752,7 @@ function MobileApp() {
           title: data.title,
           description: data.description,
           deadline: data.deadline,
-          type: data.deadline ? "deadline" : "open",
+          type: data.deadline && data.mode === "today" ? "deadline" : "open",
           scheduledDate: data.mode === "today" ? today : undefined,
           priority: data.priority,
         });
@@ -811,6 +834,7 @@ function MobileApp() {
           priority: data.priority,
         },
         successHaptic: "medium",
+        taskId: data.taskId,
       });
     },
     [runOptimisticMutation, updateTaskMutation]
@@ -987,16 +1011,12 @@ function MobileApp() {
     }
   }, [importGoogleCalendarAction, isCalendarSyncing, showToast]);
 
-  const syncBothNow = useCallback(async () => {
+  const enableAndSyncGoogleCalendar = useCallback(async () => {
     try {
-      await Promise.all([
-        persistIntegrationToggle("google_calendar", true),
-        persistIntegrationToggle("gmail", true),
-      ]);
-      showToast({ kind: "info", message: "Both integrations enabled." });
+      await persistIntegrationToggle("google_calendar", true);
       await runGoogleCalendarSync();
     } catch {
-      showToast({ kind: "error", message: "Could not enable both integrations." });
+      showToast({ kind: "error", message: "Could not enable Google Calendar sync." });
     }
   }, [persistIntegrationToggle, runGoogleCalendarSync, showToast]);
 
@@ -1217,6 +1237,12 @@ function MobileApp() {
       ) : null}
     </Animated.View>
   );
+  const loadingBlock = (
+    <Animated.View entering={FadeIn.duration(300)} style={styles.emptyWrap}>
+      <Text style={styles.emptyTitle}>Gathering the ledger.</Text>
+      <Text style={styles.emptyText}>Your tasks are still syncing into view.</Text>
+    </Animated.View>
+  );
 
   // ── Loading / Auth screens ──────────────────────────────────────────
 
@@ -1277,7 +1303,7 @@ function MobileApp() {
   const padCount = (n: number) => (n < 10 ? `0${n}` : `${n}`);
   const headerSubtitle =
     activeTab === "timeline"
-      ? `${padCount(timelineCount)} scheduled`
+      ? `${padCount(timelineCount)} next 7 days`
       : activeTab === "completed"
         ? "Closed loops"
         : `${padCount(inboxCount)} to triage`;
@@ -1360,7 +1386,7 @@ function MobileApp() {
               progressBackgroundColor={colors.bgCard}
             />
           }
-          ListEmptyComponent={emptyBlock}
+          ListEmptyComponent={isActiveListLoading ? loadingBlock : emptyBlock}
         />
       ) : null}
 
@@ -1379,7 +1405,9 @@ function MobileApp() {
             />
           }
         >
-          {timelineSections.length ? (
+          {isActiveListLoading ? (
+            loadingBlock
+          ) : timelineSections.length ? (
             timelineSections.map(([dateKey, tasksForDate]) => (
               <View key={dateKey}>
                 <Text style={styles.sectionDate}>{dateLabel(dateKey, today, tomorrow, weekEnd)}</Text>
@@ -1417,7 +1445,7 @@ function MobileApp() {
               progressBackgroundColor={colors.bgCard}
             />
           }
-          ListEmptyComponent={emptyBlock}
+          ListEmptyComponent={isActiveListLoading ? loadingBlock : emptyBlock}
         />
       ) : null}
 
@@ -1527,7 +1555,7 @@ function MobileApp() {
                   <Switch
                     value={gmailSyncEnabled}
                     onValueChange={() => void toggleGmailSync()}
-                    disabled={isGmailToggleSaving}
+                    disabled={isGmailToggleSaving || !canToggleGmailSync}
                     trackColor={{ false: colors.border, true: colors.accentSoft }}
                     thumbColor={gmailSyncEnabled ? colors.accent : colors.textMuted}
                   />
@@ -1535,16 +1563,19 @@ function MobileApp() {
                 <Text style={styles.settingMeta}>
                   Pending review · {pendingGmailReviewCount}
                 </Text>
+                {!canToggleGmailSync ? (
+                  <Text style={styles.settingMeta}>Connect Gmail on web before enabling mobile sync.</Text>
+                ) : null}
               </View>
 
               <Pressable
-                onPress={() => void syncBothNow()}
+                onPress={() => void enableAndSyncGoogleCalendar()}
                 disabled={syncSettingsBusy}
                 hitSlop={6}
                 style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
               >
                 <Text style={[styles.inlineActionText, syncSettingsBusy && styles.inlineActionDisabled]}>
-                  Enable and sync both
+                  Enable and sync Google Calendar
                 </Text>
               </Pressable>
 

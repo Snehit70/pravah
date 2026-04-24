@@ -342,7 +342,9 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               pressed && { opacity: 0.85 },
             ]}
           >
-            <Text style={styles.primaryButtonText}>{saving ? "Adding…" : "Add task"}</Text>
+            <Text style={[styles.primaryButtonText, !canSubmit && styles.primaryButtonTextDisabled]}>
+              {saving ? "Adding…" : "Add task"}
+            </Text>
           </Pressable>
         </BottomSheetView>
       </BottomSheet>
@@ -500,10 +502,13 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   primaryButtonDisabled: {
-    opacity: 0.4,
+    backgroundColor: colors.border,
   },
   primaryButtonText: {
     ...typography.title,
     color: colors.bg,
+  },
+  primaryButtonTextDisabled: {
+    color: colors.textMuted,
   },
 });

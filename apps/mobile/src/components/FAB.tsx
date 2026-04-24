@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useRef } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import Animated, {
@@ -27,20 +27,20 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
  *      from layered scale + alpha, plus a shadow underneath.
  */
 function FABInner({ onPress, bottom = 92 }: FABProps) {
-  const scale = useSharedValue(1);
+  const scaleRef = useRef(useSharedValue(1));
 
   const pressableStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
+    transform: [{ scale: scaleRef.current.value }],
   }));
 
   const handlePressIn = () => {
     // Spring down to 0.96 \u2014 just enough to feel responsive without making
     // the pill jump. damping high so it doesn't overshoot.
-    scale.value = withSpring(0.96, { damping: 18, stiffness: 320 });
+    scaleRef.current.value = withSpring(0.96, { damping: 18, stiffness: 320 });
   };
 
   const handlePressOut = () => {
-    scale.value = withSpring(1, { damping: 18, stiffness: 320 });
+    scaleRef.current.value = withSpring(1, { damping: 18, stiffness: 320 });
   };
 
   const handlePress = () => {

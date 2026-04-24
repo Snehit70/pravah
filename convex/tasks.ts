@@ -375,10 +375,21 @@ export const updateTask = mutation({
     }
 
     const nextDeadline = args.deadline;
-    if (nextDeadline) {
-      updates.type = "deadline";
+    const shouldPreserveInboxOpenTask =
+      task.status === "inbox" &&
+      task.type === "open" &&
+      !task.scheduledDate;
 
-      if (task.status !== "completed" && task.status !== "cancelled") {
+    if (nextDeadline) {
+      if (shouldPreserveInboxOpenTask) {
+        updates.type = "open";
+        updates.status = "inbox";
+        updates.scheduledDate = undefined;
+      } else {
+        updates.type = "deadline";
+      }
+
+      if (!shouldPreserveInboxOpenTask && task.status !== "completed" && task.status !== "cancelled") {
         const staysInSameSlot =
           task.status === "scheduled" && task.scheduledDate === nextDeadline;
         updates.status = "scheduled";

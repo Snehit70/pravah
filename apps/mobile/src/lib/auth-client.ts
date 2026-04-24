@@ -35,6 +35,10 @@ const authStorage = {
     authStorageCache.set(key, value);
     void SecureStore.setItemAsync(key, value);
   },
+  removeItem: (key: string): void => {
+    authStorageCache.delete(key);
+    void SecureStore.deleteItemAsync(key);
+  },
 };
 
 export const authClient = createAuthClient({

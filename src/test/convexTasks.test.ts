@@ -7,6 +7,7 @@ import {
   moveTask,
   reorderInboxTasks,
   reorderTasks,
+  updateTask,
 } from "../../convex/tasks";
 
 function makeId(value: string) {
@@ -58,6 +59,21 @@ const addTaskHandler = (
       tags?: string[];
     },
     Id<"tasks">
+  >
+)._handler;
+
+const updateTaskHandler = (
+  updateTask as unknown as InternalHandler<
+    {
+      taskId: Id<"tasks">;
+      title?: string;
+      description?: string;
+      deadline?: string;
+      estimatedMinutes?: number;
+      tags?: string[];
+      priority?: "p1" | "p2" | "p3";
+    },
+    void
   >
 )._handler;
 
@@ -297,6 +313,79 @@ describe("convex/tasks handlers", () => {
       scheduledDate: "2026-04-12",
       position: 5,
       status: "scheduled",
+      updatedAt: expect.any(Number),
+    });
+  });
+
+  it("updateTask keeps inbox open tasks in inbox when they gain or keep a deadline", async () => {
+    const taskId = makeId("task-inbox-deadline");
+    const db = {
+      get: vi.fn().mockResolvedValue({
+        _id: taskId,
+        status: "inbox",
+        type: "open",
+        deadline: "2026-04-12",
+        scheduledDate: undefined,
+        ownerTokenIdentifier: "user-1",
+      }),
+      query: vi.fn(),
+      patch: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const ctx = createAuthedCtx(db);
+
+    await updateTaskHandler(ctx, {
+      taskId,
+      title: "Updated title",
+      deadline: "2026-04-12",
+    });
+
+    expect(db.query).not.toHaveBeenCalled();
+    expect(db.patch).toHaveBeenCalledWith(taskId, {
+      title: "Updated title",
+      deadline: "2026-04-12",
+      type: "open",
+      status: "inbox",
+      scheduledDate: undefined,
+      updatedAt: expect.any(Number),
+    });
+  });
+
+  it("updateTask still auto-schedules deadline tasks when they are deadline-based", async () => {
+    const taskId = makeId("task-scheduled-deadline");
+    const db = {
+      get: vi.fn().mockResolvedValue({
+        _id: taskId,
+        status: "scheduled",
+        type: "deadline",
+        deadline: "2026-04-12",
+        scheduledDate: "2026-04-12",
+        position: 2,
+        ownerTokenIdentifier: "user-1",
+      }),
+      query: vi.fn().mockReturnValue({
+        withIndex: vi.fn().mockReturnValue({
+          order: vi.fn().mockReturnValue({
+            first: vi.fn().mockResolvedValue({ position: 4 }),
+          }),
+        }),
+      }),
+      patch: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const ctx = createAuthedCtx(db);
+
+    await updateTaskHandler(ctx, {
+      taskId,
+      deadline: "2026-04-15",
+    });
+
+    expect(db.patch).toHaveBeenCalledWith(taskId, {
+      deadline: "2026-04-15",
+      type: "deadline",
+      status: "scheduled",
+      scheduledDate: "2026-04-15",
+      position: 5,
       updatedAt: expect.any(Number),
     });
   });
