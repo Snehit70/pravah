@@ -410,17 +410,16 @@ http.route({
     if (authError) return authError;
 
     const url = new URL(request.url);
-    const startDate = url.searchParams.get("startDate");
     const endDate = url.searchParams.get("endDate");
 
-    if (!startDate || !endDate) {
-      return new Response(JSON.stringify({ error: "startDate and endDate are required" }), {
+    if (!endDate) {
+      return new Response(JSON.stringify({ error: "endDate is required" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    const timeline = await ctx.runQuery(api.tasks.getTimeline, { startDate, endDate });
+    const timeline = await ctx.runQuery(api.tasks.getTimeline, { endDate });
     
     return new Response(JSON.stringify(timeline), {
       headers: { "Content-Type": "application/json" },

@@ -1,4 +1,3 @@
-import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
@@ -10,8 +9,8 @@ import {
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { type RenderItemParams } from "react-native-draggable-flatlist";
-import { useAction, useMutation, useQuery } from "convex/react";
-import type { Doc, Id } from "../../convex/_generated/dataModel";
+import { useMutation, useQuery } from "convex/react";
+import type { Doc } from "../../convex/_generated/dataModel";
 import { api } from "../../convex/_generated/api";
 import * as Haptics from "expo-haptics";
 import { authClient, authStorageReady } from "./src/lib/auth-client";
@@ -38,11 +37,6 @@ import { useTaskMutations } from "./src/hooks/useTaskMutations";
 import { useGoogleAuth } from "./src/hooks/useGoogleAuth";
 import { useNotificationsSettings } from "./src/hooks/useNotificationsSettings";
 import { useIntegrationsSettings } from "./src/hooks/useIntegrationsSettings";
-import {
-  patchTaskInOptimisticView,
-  removeTaskFromOptimisticView,
-  reorderScopedTasksInOptimisticView,
-} from "./src/lib/task-optimistic";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -50,9 +44,6 @@ type ToastState = {
   kind: "error" | "info";
   message: string;
 };
-
-type SuccessHaptic = "notification" | "light" | "medium";
-type IntegrationProvider = "google_calendar" | "gmail";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -90,7 +81,6 @@ function MobileApp() {
   const editTaskSheetRef = useRef<EditTaskSheetRef>(null);
   const appStartMsRef = useRef<number>(Date.now());
   const lastListStateLogMsRef = useRef<number>(0);
-  const busyTaskIdsRef = useRef<Set<string>>(new Set());
 
   const [activeTab, setActiveTab] = useState<TabKey>("inbox");
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -112,7 +102,6 @@ function MobileApp() {
   // ── Dates ───────────────────────────────────────────────────────────
 
   const today = toIsoDate(new Date());
-  const yesterday = toIsoDate(addDays(new Date(), -1));
   const tomorrow = toIsoDate(addDays(new Date(), 1));
   const weekEnd = toIsoDate(addDays(new Date(), 6));
 
@@ -124,7 +113,7 @@ function MobileApp() {
   );
   const timelineQuery = useQuery(
     api.tasks.getTimeline,
-    session && activeTab === "timeline" ? { startDate: yesterday, endDate: weekEnd } : "skip"
+    session && activeTab === "timeline" ? { endDate: weekEnd } : "skip"
   );
   const completedQuery = useQuery(
     api.tasks.listTasks,
@@ -170,11 +159,8 @@ function MobileApp() {
   const moveTaskMutation = useMutation(api.tasks.moveTask);
   const unscheduleTaskMutation = useMutation(api.tasks.unscheduleTask);
   const reopenTaskMutation = useMutation(api.tasks.reopenTask);
-  const reorderTasksMutation = useMutation(api.tasks.reorderTasks);
   const storeUserMutation = useMutation(api.users.store);
   const claimLegacyDataMutation = useMutation(api.users.claimLegacyData);
-  const upsertIntegrationMutation = useMutation(api.sync.upsertIntegration);
-  const importGoogleCalendarAction = useAction(api.syncActions.importGoogleCalendarAction);
 
   // ── Derived data ────────────────────────────────────────────────────
 
@@ -257,7 +243,7 @@ function MobileApp() {
     toggleGmailSync,
     runGoogleCalendarSync,
     enableAndSyncGoogleCalendar,
-  } = useIntegrationsSettings({ session, showToast });
+  } = useIntegrationsSettings({ isAuthenticated: Boolean(session), showToast });
 
   const handleSignOut = useCallback(() => {
     setIsSettingsModalOpen(false);
@@ -317,17 +303,6 @@ function MobileApp() {
   }, [session, storeUserMutation, claimLegacyDataMutation, showToast]);
 
   // ── Toast / retry ───────────────────────────────────────────────────
-
-  const triggerSuccessHaptic = useCallback((kind: SuccessHaptic) => {
-    if (kind === "notification") {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      return;
-    }
-
-    void Haptics.impactAsync(
-      kind === "medium" ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light
-    );
-  }, []);
 
   const runRetryPayload = useCallback(
     async (payload: RetryPayload) => {
@@ -401,149 +376,23 @@ function MobileApp() {
     });
   }, [activeTab, inboxCount, timelineCount, completedCount, pendingMutations, retryQueue.length]);
 
-  // ── Optimistic mutation runner ──────────────────────────────────────
-
-  const runOptimisticMutation = useCallback(
-    async ({
-      optimistic,
-      mutation,
-      errorMessage,
-      actionName,
-      retryLabel,
-      retryPayload,
-      successHaptic = "notification",
-      taskId,
-    }: {
-      optimistic: (current: MobileTask[]) => MobileTask[];
-      mutation: () => Promise<void>;
-      errorMessage: string;
-      actionName: string;
-      retryLabel?: string;
-      retryPayload?: RetryPayload;
-      successHaptic?: SuccessHaptic;
-      taskId?: Id<"tasks">;
-    }): Promise<boolean> => {
-      if (taskId && busyTaskIdsRef.current.has(taskId)) {
-        mobileLogger.warn("mutation_ignored_busy_task", { actionName, taskId });
-        return false;
-      }
-      if (taskId) busyTaskIdsRef.current.add(taskId);
-
-      const actionId = createActionId("mutation");
-      const startedAt = Date.now();
-      mobileLogger.info("mutation_started", {
-        actionId,
-        actionName,
-      });
-      setPendingMutations((c) => c + 1);
-      // Capture the state before this mutation's optimistic update so we can
-      // restore exactly it on failure — preserving any other in-flight mutations
-      // rather than wiping all optimistic state with a null.
-      let stateBeforeOptimistic: MobileTask[] | null = null;
-      setOptimisticTasks((cur) => {
-        stateBeforeOptimistic = cur;
-        return optimistic(cur ?? serverTasks);
-      });
-      try {
-        await mutation();
-        triggerSuccessHaptic(successHaptic);
-        mobileLogger.info("mutation_succeeded", {
-          actionId,
-          actionName,
-          elapsedMs: Date.now() - startedAt,
-        });
-        return true;
-      } catch (error) {
-        // Restore to the pre-mutation snapshot, not null, so sibling in-flight
-        // mutations' optimistic state is preserved.
-        setOptimisticTasks(stateBeforeOptimistic);
-        const canRetry = retryLabel && retryPayload && classifyError(error) === "network";
-        if (canRetry) enqueueRetry({ label: retryLabel!, payload: retryPayload! });
-        mobileLogger.error("mutation_failed", {
-          actionId,
-          actionName,
-          elapsedMs: Date.now() - startedAt,
-          errorType: classifyError(error),
-          retriable: Boolean(canRetry),
-        });
-        showToast({
-          kind: "error",
-          message: canRetry ? `${errorMessage} Queued for retry.` : errorMessage,
-        });
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        return false;
-      } finally {
-        if (taskId) busyTaskIdsRef.current.delete(taskId);
-        setPendingMutations((c) => Math.max(0, c - 1));
-      }
-    },
-    [serverTasks, enqueueRetry, showToast, triggerSuccessHaptic]
-  );
-
-  // ── Task actions ────────────────────────────────────────────────────
-
-  const markDone = useCallback(
-    (taskId: Id<"tasks">) => {
-      void runOptimisticMutation({
-        actionName: "complete_task",
-        optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
-        mutation: async () => { await completeTaskMutation({ taskId }); },
-        errorMessage: "Could not mark task as done.",
-        retryLabel: "Retry done",
-        retryPayload: { type: "completeTask", taskId },
-        taskId,
-      });
-    },
-    [runOptimisticMutation, completeTaskMutation]
-  );
-
-  const moveToToday = useCallback(
-    (taskId: Id<"tasks">) => {
-      void runOptimisticMutation({
-        actionName: "move_task_today",
-        optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
-        mutation: async () => { await moveTaskMutation({ taskId, targetDate: today }); },
-        errorMessage: "Could not move task to today.",
-        retryLabel: "Retry move to today",
-        retryPayload: { type: "moveTask", taskId, targetDate: today },
-        successHaptic: "light",
-        taskId,
-      });
-    },
-    [runOptimisticMutation, moveTaskMutation, today]
-  );
-
-  const sendToInbox = useCallback(
-    (taskId: Id<"tasks">) => {
-      void runOptimisticMutation({
-        actionName: "move_task_inbox",
-        optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
-        mutation: async () => { await unscheduleTaskMutation({ taskId }); },
-        errorMessage: "Could not move task back to inbox.",
-        retryLabel: "Retry move to inbox",
-        retryPayload: { type: "unscheduleTask", taskId },
-        successHaptic: "light",
-        taskId,
-      });
-    },
-    [runOptimisticMutation, unscheduleTaskMutation]
-  );
-
-  const reopenToInbox = useCallback(
-    (taskId: Id<"tasks">) => {
-      void runOptimisticMutation({
-        actionName: "reopen_task",
-        optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
-        mutation: async () => { await reopenTaskMutation({ taskId }); },
-        errorMessage: "Could not reopen task.",
-        retryLabel: "Retry reopen",
-        retryPayload: { type: "reopenTask", taskId },
-        successHaptic: "light",
-        taskId,
-      });
-    },
-    [runOptimisticMutation, reopenTaskMutation]
-  );
+  const {
+    markDone,
+    moveToToday,
+    sendToInbox,
+    reopenToInbox,
+    handleSaveEdits,
+    handleTimelineDragEnd,
+    shiftTimelineTask,
+  } = useTaskMutations({
+    serverTasks,
+    setOptimisticTasks,
+    setPendingMutations,
+    enqueueRetry,
+    showToast,
+    today,
+    hasPriorityBoundaryViolation,
+  });
 
   // ── Add task handler (from sheet) ───────────────────────────────────
 
@@ -605,56 +454,6 @@ function MobileApp() {
     [addTaskMutation, today, enqueueRetry, showToast]
   );
 
-  // ── Save task edits (from edit sheet) ───────────────────────────────
-
-  const handleSaveEdits = useCallback(
-    async (data: {
-      taskId: Id<"tasks">;
-      title: string;
-      description?: string;
-      deadline?: string;
-      priority?: "p1" | "p2" | "p3";
-    }) => {
-      return runOptimisticMutation({
-        actionName: "update_task",
-        optimistic: (cur) =>
-          patchTaskInOptimisticView(
-            cur,
-            data.taskId,
-            {
-              title: data.title,
-              description: data.description,
-              deadline: data.deadline,
-              priority: data.priority,
-            },
-            Date.now()
-          ),
-        mutation: async () => {
-          await updateTaskMutation({
-            taskId: data.taskId,
-            title: data.title,
-            description: data.description,
-            deadline: data.deadline,
-            priority: data.priority,
-          });
-        },
-        errorMessage: "Could not save task details.",
-        retryLabel: `Update "${data.title}"`,
-        retryPayload: {
-          type: "updateTask",
-          taskId: data.taskId,
-          title: data.title,
-          description: data.description,
-          deadline: data.deadline,
-          priority: data.priority,
-        },
-        successHaptic: "medium",
-        taskId: data.taskId,
-      });
-    },
-    [runOptimisticMutation, updateTaskMutation]
-  );
-
   const handleRefresh = async () => {
     if (!session || isRefreshing) return;
     const actionId = createActionId("refresh");
@@ -689,34 +488,6 @@ function MobileApp() {
     setIsSettingsModalOpen(true);
   }, []);
 
-  const handleTimelineDragEnd = useCallback(
-    async (dateKey: string, original: MobileTask[], data: MobileTask[]) => {
-      if (hasPriorityBoundaryViolation(original, data)) {
-        showToast({ kind: "error", message: "Drag only within the same priority group." });
-        return;
-      }
-      const taskIds = data.map((task) => task._id);
-      const now = Date.now();
-      setOptimisticTasks((current) =>
-        reorderScopedTasksInOptimisticView(
-          current ?? serverTasks,
-          taskIds,
-          (task) => task.status === "scheduled" && task.scheduledDate === dateKey,
-          now
-        )
-      );
-
-      try {
-        await reorderTasksMutation({ date: dateKey, taskIds });
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      } catch {
-        setOptimisticTasks(null);
-        showToast({ kind: "error", message: "Could not save timeline order." });
-      }
-    },
-    [reorderTasksMutation, serverTasks, showToast]
-  );
-
   const renderInboxTaskItem = useCallback(
     ({ item }: { item: MobileTask }) => (
       <TaskCard
@@ -737,11 +508,12 @@ function MobileApp() {
           dateLabel={dateLabel(dateKey, today, tomorrow, weekEnd)}
           onDone={markDone}
           onSendToInbox={sendToInbox}
+          onReorder={(taskId, direction) => shiftTimelineTask(taskId, dateKey, direction)}
           onEdit={handleEditTask}
           onDragHandlePress={drag}
         />
       ),
-    [today, tomorrow, weekEnd, markDone, sendToInbox, handleEditTask]
+    [today, tomorrow, weekEnd, markDone, sendToInbox, shiftTimelineTask, handleEditTask]
   );
 
   const renderCompletedTaskItem = useCallback(
@@ -865,7 +637,7 @@ function MobileApp() {
   const padCount = (n: number) => (n < 10 ? `0${n}` : `${n}`);
   const headerSubtitle =
     activeTab === "timeline"
-      ? `${padCount(timelineCount)} next 7 days`
+      ? `${padCount(timelineCount)} through this week`
       : activeTab === "completed"
         ? "Closed loops"
         : `${padCount(inboxCount)} to triage`;

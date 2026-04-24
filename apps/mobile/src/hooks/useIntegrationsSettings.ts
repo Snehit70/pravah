@@ -7,7 +7,7 @@ type ShowToast = (next: { kind: "error" | "info"; message: string }) => void;
 type IntegrationProvider = "google_calendar" | "gmail";
 
 type UseIntegrationsSettingsOptions = {
-  session: unknown;
+  isAuthenticated: boolean;
   showToast: ShowToast;
 };
 
@@ -29,7 +29,7 @@ type UseIntegrationsSettingsReturn = {
 };
 
 export function useIntegrationsSettings({
-  session,
+  isAuthenticated,
   showToast,
 }: UseIntegrationsSettingsOptions): UseIntegrationsSettingsReturn {
   const [isCalendarSyncing, setIsCalendarSyncing] = useState(false);
@@ -38,11 +38,11 @@ export function useIntegrationsSettings({
 
   const calendarIntegrationStatus = useQuery(
     api.sync.getIntegrationStatus,
-    session ? { provider: "google_calendar" } : "skip"
+    isAuthenticated ? { provider: "google_calendar" } : "skip"
   );
   const gmailIntegrationStatus = useQuery(
     api.sync.getIntegrationStatus,
-    session ? { provider: "gmail" } : "skip"
+    isAuthenticated ? { provider: "gmail" } : "skip"
   );
 
   const upsertIntegrationMutation = useMutation(api.sync.upsertIntegration);

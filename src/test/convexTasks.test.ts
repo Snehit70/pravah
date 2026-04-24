@@ -4,9 +4,11 @@ import {
   addTask,
   backfillDeadlineTasksToDeadlineDate,
   bulkReschedule,
+  getTimeline,
   moveTask,
   reorderInboxTasks,
   reorderTasks,
+  shiftScheduledTaskPosition,
   updateTask,
 } from "../../convex/tasks";
 
@@ -43,6 +45,20 @@ const bulkRescheduleHandler = (
   bulkReschedule as unknown as InternalHandler<
     { taskIds: Id<"tasks">[]; targetDate: string },
     { movedCount: number; skippedTaskIds: Id<"tasks">[] }
+  >
+)._handler;
+
+const getTimelineHandler = (
+  getTimeline as unknown as InternalHandler<
+    { endDate: string },
+    Record<string, Array<{ _id: Id<"tasks">; scheduledDate?: string; position: number }>>
+  >
+)._handler;
+
+const shiftScheduledTaskPositionHandler = (
+  shiftScheduledTaskPosition as unknown as InternalHandler<
+    { taskId: Id<"tasks">; direction: "up" | "down" },
+    void
   >
 )._handler;
 
@@ -317,6 +333,62 @@ describe("convex/tasks handlers", () => {
     });
   });
 
+  it("getTimeline includes all overdue scheduled tasks through the requested end date", async () => {
+    const db = {
+      query: vi.fn().mockReturnValue({
+        withIndex: vi.fn().mockReturnValue({
+          collect: vi.fn().mockResolvedValue([
+            {
+              _id: makeId("task-overdue-old"),
+              scheduledDate: "2026-04-01",
+              position: 1,
+            },
+            {
+              _id: makeId("task-this-week"),
+              scheduledDate: "2026-04-24",
+              position: 0,
+            },
+            {
+              _id: makeId("task-overdue-newer"),
+              scheduledDate: "2026-04-20",
+              position: 0,
+            },
+          ]),
+        }),
+      }),
+    };
+
+    const ctx = createAuthedCtx(db);
+
+    const result = await getTimelineHandler(ctx, {
+      endDate: "2026-04-30",
+    });
+
+    expect(result).toEqual({
+      "2026-04-01": [
+        {
+          _id: makeId("task-overdue-old"),
+          scheduledDate: "2026-04-01",
+          position: 1,
+        },
+      ],
+      "2026-04-20": [
+        {
+          _id: makeId("task-overdue-newer"),
+          scheduledDate: "2026-04-20",
+          position: 0,
+        },
+      ],
+      "2026-04-24": [
+        {
+          _id: makeId("task-this-week"),
+          scheduledDate: "2026-04-24",
+          position: 0,
+        },
+      ],
+    });
+  });
+
   it("updateTask keeps inbox open tasks in inbox when they gain or keep a deadline", async () => {
     const taskId = makeId("task-inbox-deadline");
     const db = {
@@ -408,6 +480,90 @@ describe("convex/tasks handlers", () => {
         taskIds: [makeId("task-3")],
       })
     ).rejects.toThrow("does not belong to date 2026-04-10");
+  });
+
+  it("shiftScheduledTaskPosition swaps with the adjacent scheduled task", async () => {
+    const taskId = makeId("task-1");
+    const adjacentTaskId = makeId("task-2");
+    const db = {
+      get: vi.fn().mockResolvedValue({
+        _id: taskId,
+        status: "scheduled",
+        scheduledDate: "2026-04-24",
+        position: 0,
+        ownerTokenIdentifier: "user-1",
+      }),
+      query: vi.fn().mockReturnValue({
+        withIndex: vi.fn().mockReturnValue({
+          collect: vi.fn().mockResolvedValue([
+            {
+              _id: taskId,
+              status: "scheduled",
+              scheduledDate: "2026-04-24",
+              position: 0,
+            },
+            {
+              _id: adjacentTaskId,
+              status: "scheduled",
+              scheduledDate: "2026-04-24",
+              position: 1,
+            },
+          ]),
+        }),
+      }),
+      patch: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const ctx = createAuthedCtx(db);
+
+    await shiftScheduledTaskPositionHandler(ctx, {
+      taskId,
+      direction: "down",
+    });
+
+    expect(db.patch).toHaveBeenNthCalledWith(1, taskId, {
+      position: 1,
+      updatedAt: expect.any(Number),
+    });
+    expect(db.patch).toHaveBeenNthCalledWith(2, adjacentTaskId, {
+      position: 0,
+      updatedAt: expect.any(Number),
+    });
+  });
+
+  it("shiftScheduledTaskPosition no-ops when the task is already at the boundary", async () => {
+    const taskId = makeId("task-top");
+    const db = {
+      get: vi.fn().mockResolvedValue({
+        _id: taskId,
+        status: "scheduled",
+        scheduledDate: "2026-04-24",
+        position: 0,
+        ownerTokenIdentifier: "user-1",
+      }),
+      query: vi.fn().mockReturnValue({
+        withIndex: vi.fn().mockReturnValue({
+          collect: vi.fn().mockResolvedValue([
+            {
+              _id: taskId,
+              status: "scheduled",
+              scheduledDate: "2026-04-24",
+              position: 0,
+            },
+          ]),
+        }),
+      }),
+      patch: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const ctx = createAuthedCtx(db);
+
+    await shiftScheduledTaskPositionHandler(ctx, {
+      taskId,
+      direction: "up",
+    });
+
+    expect(db.patch).not.toHaveBeenCalled();
   });
 
   it("reorderInboxTasks rejects ids that are not inbox tasks", async () => {

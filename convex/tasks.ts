@@ -202,6 +202,56 @@ export const reorderTasks = mutation({
   },
 });
 
+export const shiftScheduledTaskPosition = mutation({
+  args: {
+    taskId: v.id("tasks"),
+    direction: v.union(v.literal("up"), v.literal("down")),
+  },
+  handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
+
+    if (task.status !== "scheduled" || !task.scheduledDate) {
+      throw new Error("Task is not scheduled");
+    }
+
+    const tasksForDate = await ctx.db
+      .query("tasks")
+      .withIndex("by_owner_status_date_position", (q) =>
+        q
+          .eq("ownerTokenIdentifier", tokenIdentifier)
+          .eq("status", "scheduled")
+          .eq("scheduledDate", task.scheduledDate)
+      )
+      .collect();
+
+    tasksForDate.sort((a, b) => a.position - b.position);
+
+    const currentIndex = tasksForDate.findIndex((candidate) => candidate._id === task._id);
+    if (currentIndex === -1) {
+      throw new Error("Task is not in its scheduled lane");
+    }
+
+    const targetIndex = args.direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= tasksForDate.length) {
+      return;
+    }
+
+    const currentTask = tasksForDate[currentIndex];
+    const targetTask = tasksForDate[targetIndex];
+    const now = Date.now();
+
+    await ctx.db.patch(currentTask._id, {
+      position: targetTask.position,
+      updatedAt: now,
+    });
+    await ctx.db.patch(targetTask._id, {
+      position: currentTask.position,
+      updatedAt: now,
+    });
+  },
+});
+
 export const reorderInboxTasks = mutation({
   args: {
     taskIds: v.array(v.id("tasks")),
@@ -478,7 +528,6 @@ export const bulkReschedule = mutation({
 
 export const getTimeline = query({
   args: {
-    startDate: v.string(),
     endDate: v.string(),
   },
   handler: async (ctx, args) => {
@@ -489,7 +538,6 @@ export const getTimeline = query({
         q
           .eq("ownerTokenIdentifier", tokenIdentifier)
           .eq("status", "scheduled")
-          .gte("scheduledDate", args.startDate)
           .lte("scheduledDate", args.endDate)
       )
       .collect();

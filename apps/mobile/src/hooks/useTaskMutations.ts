@@ -1,14 +1,15 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, type Dispatch, type SetStateAction } from "react";
 import * as Haptics from "expo-haptics";
 import { useMutation } from "convex/react";
-import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
+import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
 import { classifyError, createActionId, mobileLogger } from "../lib/logger";
 import type { MobileTask } from "../components/TaskCard";
 import {
   patchTaskInOptimisticView,
   removeTaskFromOptimisticView,
   reorderScopedTasksInOptimisticView,
+  shiftTaskWithinScopedOptimisticView,
 } from "../lib/task-optimistic";
 import type { RetryPayload } from "./useRetryQueue";
 
@@ -16,10 +17,12 @@ type ToastState = { kind: "error" | "info"; message: string };
 
 type UseTaskMutationsOptions = {
   serverTasks: MobileTask[];
-  setOptimisticTasks: React.Dispatch<React.SetStateAction<MobileTask[] | null>>;
-  retryQueue: RetryPayload[];
+  setOptimisticTasks: Dispatch<SetStateAction<MobileTask[] | null>>;
+  setPendingMutations: Dispatch<SetStateAction<number>>;
   enqueueRetry: (item: { label: string; payload: RetryPayload }) => void;
   showToast: (next: ToastState) => void;
+  today: string;
+  hasPriorityBoundaryViolation: (original: MobileTask[], reordered: MobileTask[]) => boolean;
 };
 
 type SuccessHaptic = "notification" | "light" | "medium";
@@ -27,8 +30,11 @@ type SuccessHaptic = "notification" | "light" | "medium";
 export function useTaskMutations({
   serverTasks,
   setOptimisticTasks,
+  setPendingMutations,
   enqueueRetry,
   showToast,
+  today,
+  hasPriorityBoundaryViolation,
 }: UseTaskMutationsOptions) {
   const busyTaskIdsRef = useRef<Set<string>>(new Set());
 
@@ -59,6 +65,7 @@ export function useTaskMutations({
   const reopenTaskMutation = useMutation(api.tasks.reopenTask);
   const updateTaskMutation = useMutation(api.tasks.updateTask);
   const reorderTasksMutation = useMutation(api.tasks.reorderTasks);
+  const shiftScheduledTaskPositionMutation = useMutation(api.tasks.shiftScheduledTaskPosition);
 
   const runOptimisticMutation = useCallback(
     async ({
@@ -89,6 +96,7 @@ export function useTaskMutations({
       const actionId = createActionId("mutation");
       const startedAt = Date.now();
       mobileLogger.info("mutation_started", { actionId, actionName });
+      setPendingMutations((count) => count + 1);
 
       const stateRef: { current: MobileTask[] | null } = { current: null };
       setOptimisticTasks((cur) => {
@@ -120,9 +128,10 @@ export function useTaskMutations({
         return false;
       } finally {
         if (taskId) busyTaskIdsRef.current.delete(taskId);
+        setPendingMutations((count) => Math.max(0, count - 1));
       }
     },
-    [serverTasks, enqueueRetry, showToastWithHaptic, triggerSuccessHaptic]
+    [serverTasks, enqueueRetry, setOptimisticTasks, setPendingMutations, showToastWithHaptic, triggerSuccessHaptic]
   );
 
   const markDone = useCallback(
@@ -143,7 +152,7 @@ export function useTaskMutations({
   );
 
   const moveToToday = useCallback(
-    (taskId: Id<"tasks">, today: string) => {
+    (taskId: Id<"tasks">) => {
       void runOptimisticMutation({
         actionName: "move_task_today",
         optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
@@ -157,7 +166,7 @@ export function useTaskMutations({
         taskId,
       });
     },
-    [runOptimisticMutation, moveTaskMutation]
+    [runOptimisticMutation, moveTaskMutation, today]
   );
 
   const sendToInbox = useCallback(
@@ -212,7 +221,7 @@ export function useTaskMutations({
             description: data.description,
             deadline: data.deadline,
             priority: data.priority,
-          }),
+          }, Date.now()),
         mutation: async () => {
           await updateTaskMutation({
             taskId: data.taskId,
@@ -241,21 +250,61 @@ export function useTaskMutations({
 
   const handleTimelineDragEnd = useCallback(
     async (dateKey: string, original: MobileTask[], data: MobileTask[]) => {
+      if (hasPriorityBoundaryViolation(original, data)) {
+        showToast({ kind: "error", message: "Drag only within the same priority group." });
+        return;
+      }
+
       const taskIds = data.map((task) => task._id);
       const now = Date.now();
+      const stateRef: { current: MobileTask[] | null } = { current: null };
+      setPendingMutations((count) => count + 1);
       setOptimisticTasks((current) =>
-        reorderScopedTasksInOptimisticView(current ?? serverTasks, taskIds, (task) => task.status === "scheduled" && task.scheduledDate === dateKey, now)
+        {
+          stateRef.current = current;
+          return reorderScopedTasksInOptimisticView(
+            current ?? serverTasks,
+            taskIds,
+            (task) => task.status === "scheduled" && task.scheduledDate === dateKey,
+            now
+          );
+        }
       );
 
       try {
         await reorderTasksMutation({ date: dateKey, taskIds });
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       } catch {
-        setOptimisticTasks(null);
+        setOptimisticTasks(stateRef.current);
         showToast({ kind: "error", message: "Could not save timeline order." });
+      } finally {
+        setPendingMutations((count) => Math.max(0, count - 1));
       }
     },
-    [reorderTasksMutation, serverTasks, showToast]
+    [hasPriorityBoundaryViolation, reorderTasksMutation, serverTasks, setOptimisticTasks, setPendingMutations, showToast]
+  );
+
+  const shiftTimelineTask = useCallback(
+    (taskId: Id<"tasks">, scheduledDate: string, direction: "up" | "down") => {
+      void runOptimisticMutation({
+        actionName: direction === "up" ? "shift_task_up" : "shift_task_down",
+        optimistic: (cur) =>
+          shiftTaskWithinScopedOptimisticView(
+            cur,
+            taskId,
+            (task) => task.status === "scheduled" && task.scheduledDate === scheduledDate,
+            direction,
+            Date.now()
+          ),
+        mutation: async () => {
+          await shiftScheduledTaskPositionMutation({ taskId, direction });
+        },
+        errorMessage: `Could not move task ${direction}.`,
+        successHaptic: "light",
+        taskId,
+      });
+    },
+    [runOptimisticMutation, shiftScheduledTaskPositionMutation]
   );
 
   return {
@@ -265,5 +314,6 @@ export function useTaskMutations({
     reopenToInbox,
     handleSaveEdits,
     handleTimelineDragEnd,
+    shiftTimelineTask,
   };
 }

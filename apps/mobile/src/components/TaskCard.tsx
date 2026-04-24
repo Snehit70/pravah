@@ -37,6 +37,8 @@ type TaskCardProps = {
   onSendToInbox?: (id: Id<"tasks">) => void;
   /** Completed → Reopen swipe action. */
   onReopen?: (id: Id<"tasks">) => void;
+  /** Timeline accessibility reorder action. */
+  onReorder?: (id: Id<"tasks">, direction: "up" | "down") => void;
   onEdit: (task: MobileTask) => void;
   /** Provided by DraggableFlatList; called from long-press to initiate drag. */
   onDragHandlePress?: () => void;
@@ -88,6 +90,7 @@ function TaskCardInner({
   onMoveToday,
   onSendToInbox,
   onReopen,
+  onReorder,
   onEdit,
   onDragHandlePress,
 }: TaskCardProps) {
@@ -106,6 +109,8 @@ function TaskCardInner({
   const handleMoveToday = useCallback(() => onMoveToday?.(task._id), [onMoveToday, task._id]);
   const handleSendToInbox = useCallback(() => onSendToInbox?.(task._id), [onSendToInbox, task._id]);
   const handleReopen = useCallback(() => onReopen?.(task._id), [onReopen, task._id]);
+  const handleMoveUp = useCallback(() => onReorder?.(task._id, "up"), [onReorder, task._id]);
+  const handleMoveDown = useCallback(() => onReorder?.(task._id, "down"), [onReorder, task._id]);
   const handleEdit = useCallback(() => onEdit(task), [onEdit, task]);
   const handleAccessibilityAction = useCallback(
     (event: AccessibilityActionEvent) => {
@@ -125,9 +130,15 @@ function TaskCardInner({
         case "reopen":
           handleReopen();
           break;
+        case "increment":
+          handleMoveDown();
+          break;
+        case "decrement":
+          handleMoveUp();
+          break;
       }
     },
-    [handleDone, handleEdit, handleMoveToday, handleReopen, handleSendToInbox]
+    [handleDone, handleEdit, handleMoveDown, handleMoveToday, handleMoveUp, handleReopen, handleSendToInbox]
   );
 
   // Right-side action (revealed by swiping LEFT) — always "Done" for active
@@ -216,14 +227,16 @@ function TaskCardInner({
     ? "Double tap to edit. Use actions to reopen this task."
     : isInboxTask
       ? "Double tap to edit. Use actions to mark done or move to today."
-      : "Double tap to edit. Use actions to mark done or move to inbox.";
+      : onReorder
+        ? "Double tap to edit. Use actions to mark done, move to inbox, or reorder this task."
+        : "Double tap to edit. Use actions to mark done or move to inbox.";
   const accessibilityActions = [
     { name: "activate", label: "Edit task" },
     isCompleted ? { name: "reopen", label: "Reopen task" } : { name: "complete", label: "Mark done" },
     !isCompleted && isInboxTask ? { name: "move_today", label: "Move to today" } : null,
     !isCompleted && !isInboxTask ? { name: "move_to_inbox", label: "Move to inbox" } : null,
-    task.status === "scheduled" ? { name: "increment", label: "Move down" } : null,
-    task.status === "scheduled" ? { name: "decrement", label: "Move up" } : null,
+    task.status === "scheduled" && onReorder ? { name: "increment", label: "Move down" } : null,
+    task.status === "scheduled" && onReorder ? { name: "decrement", label: "Move up" } : null,
   ].filter(Boolean) as Array<{ name: string; label: string }>;
 
   return (
