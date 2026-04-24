@@ -445,7 +445,7 @@ function MobileApp() {
             title: payload.title,
             description: payload.description,
             deadline: payload.deadline,
-            type: payload.deadline ? "deadline" : "open",
+            type: payload.deadline && payload.scheduledDate ? "deadline" : "open",
             scheduledDate: payload.scheduledDate,
             priority: payload.priority,
           });
@@ -737,7 +737,7 @@ function MobileApp() {
           title: data.title,
           description: data.description,
           deadline: data.deadline,
-          type: data.deadline ? "deadline" : "open",
+          type: data.deadline && data.mode === "today" ? "deadline" : "open",
           scheduledDate: data.mode === "today" ? today : undefined,
           priority: data.priority,
         });
