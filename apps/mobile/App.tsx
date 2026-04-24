@@ -1013,6 +1013,8 @@ function MobileApp() {
         <Pressable
           onPress={() => addTaskSheetRef.current?.open()}
           hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel={emptyState.cta}
           style={({ pressed }) => [styles.emptyCtaWrap, pressed && { opacity: 0.6 }]}
         >
           <Text style={styles.emptyCta}>{emptyState.cta}</Text>
