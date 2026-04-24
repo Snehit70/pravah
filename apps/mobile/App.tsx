@@ -21,16 +21,7 @@ import { JetBrainsMono_500Medium } from "@expo-google-fonts/jetbrains-mono";
 import { ConvexClientProvider } from "./src/lib/convex";
 import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
-import {
-  disableDailyReminderAsync,
-  getNotificationPermissionStateAsync,
-  initializeNotificationsAsync,
-  isDailyReminderEnabledAsync,
-  requestNotificationPermissionAsync,
-  scheduleDailyReminderAsync,
-  scheduleTestNotificationAsync,
-  type NotificationPermissionState,
-} from "./src/lib/notifications";
+
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors, fonts, radii, spacing, typography } from "./src/theme/tokens";
@@ -44,6 +35,7 @@ import { SettingsSheet } from "./src/components/SettingsSheet";
 import { TaskTabContent } from "./src/components/TaskTabContent";
 import { useRetryQueue, type RetryPayload } from "./src/hooks/useRetryQueue";
 import { useGoogleAuth } from "./src/hooks/useGoogleAuth";
+import { useNotificationsSettings } from "./src/hooks/useNotificationsSettings";
 import {
   patchTaskInOptimisticView,
   removeTaskFromOptimisticView,
@@ -110,10 +102,6 @@ function MobileApp() {
   const [isCalendarSyncing, setIsCalendarSyncing] = useState(false);
   const [isGoogleToggleSaving, setIsGoogleToggleSaving] = useState(false);
   const [isGmailToggleSaving, setIsGmailToggleSaving] = useState(false);
-  const [notificationPermissionState, setNotificationPermissionState] =
-    useState<NotificationPermissionState>("undetermined");
-  const [isNotificationsBusy, setIsNotificationsBusy] = useState(false);
-  const [isDailyReminderEnabled, setIsDailyReminderEnabled] = useState(false);
 
   const sessionResult = authClient.useSession();
   const session = sessionResult.data;
@@ -240,7 +228,6 @@ function MobileApp() {
   const gmailSyncStatus = gmailIntegrationStatus?.integration?.status ?? "disconnected";
   const canToggleGmailSync = gmailSyncStatus === "connected" || gmailSyncEnabled;
   const showToast = useCallback((next: ToastState) => setToast(next), []);
-  const notificationsEnabled = notificationPermissionState === "granted";
   const syncSettingsBusy = isCalendarSyncing || isGoogleToggleSaving || isGmailToggleSaving;
 
   const tabBarBottomPadding = Math.max(insets.bottom, spacing.md);
@@ -256,30 +243,24 @@ function MobileApp() {
     handleSignOut: googleSignOut,
   } = useGoogleAuth({ googleWebClientId, googleIosClientId, showToast });
 
+  // ── Notifications ────────────────────────────────────────────────────
+
+  const {
+    notificationPermissionState,
+    isDailyReminderEnabled,
+    isNotificationsBusy,
+    notificationsEnabled,
+    requestNotificationsAccess,
+    toggleDailyReminder,
+    sendTestNotification,
+  } = useNotificationsSettings(showToast);
+
   const handleSignOut = useCallback(() => {
     setIsSettingsModalOpen(false);
     googleSignOut();
   }, [googleSignOut]);
 
   // ── Effects ─────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    let mounted = true;
-    void (async () => {
-      await initializeNotificationsAsync();
-      const [permission, dailyEnabled] = await Promise.all([
-        getNotificationPermissionStateAsync(),
-        isDailyReminderEnabledAsync(),
-      ]);
-      if (!mounted) return;
-      setNotificationPermissionState(permission);
-      setIsDailyReminderEnabled(dailyEnabled);
-    })();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (!toast) return;
@@ -782,79 +763,6 @@ function MobileApp() {
       showToast({ kind: "error", message: "Could not enable Google Calendar sync." });
     }
   }, [persistIntegrationToggle, runGoogleCalendarSync, showToast]);
-
-  const requestNotificationsAccess = useCallback(async () => {
-    if (isNotificationsBusy) return;
-    setIsNotificationsBusy(true);
-    try {
-      const permission = await requestNotificationPermissionAsync();
-      setNotificationPermissionState(permission);
-      if (permission === "granted") {
-        showToast({ kind: "info", message: "Notifications enabled." });
-      } else {
-        showToast({ kind: "error", message: "Notification permission not granted." });
-      }
-    } catch {
-      showToast({ kind: "error", message: "Could not update notification permission." });
-    } finally {
-      setIsNotificationsBusy(false);
-    }
-  }, [isNotificationsBusy, showToast]);
-
-  const toggleDailyReminder = useCallback(async () => {
-    if (isNotificationsBusy) return;
-    setIsNotificationsBusy(true);
-    try {
-      let permission = notificationPermissionState;
-      if (permission !== "granted") {
-        permission = await requestNotificationPermissionAsync();
-        setNotificationPermissionState(permission);
-      }
-
-      if (permission !== "granted") {
-        showToast({ kind: "error", message: "Enable notifications to use reminders." });
-        return;
-      }
-
-      const next = !isDailyReminderEnabled;
-      if (next) {
-        await scheduleDailyReminderAsync();
-        setIsDailyReminderEnabled(true);
-        showToast({ kind: "info", message: "Daily reminder set for 9:00 AM." });
-      } else {
-        await disableDailyReminderAsync();
-        setIsDailyReminderEnabled(false);
-        showToast({ kind: "info", message: "Daily reminder disabled." });
-      }
-    } catch {
-      showToast({ kind: "error", message: "Could not update daily reminder." });
-    } finally {
-      setIsNotificationsBusy(false);
-    }
-  }, [isDailyReminderEnabled, isNotificationsBusy, notificationPermissionState, showToast]);
-
-  const sendTestNotification = useCallback(async () => {
-    if (isNotificationsBusy) return;
-    setIsNotificationsBusy(true);
-    try {
-      let permission = notificationPermissionState;
-      if (permission !== "granted") {
-        permission = await requestNotificationPermissionAsync();
-        setNotificationPermissionState(permission);
-      }
-      if (permission !== "granted") {
-        showToast({ kind: "error", message: "Enable notifications to send a test alert." });
-        return;
-      }
-
-      await scheduleTestNotificationAsync();
-      showToast({ kind: "info", message: "Test notification sent." });
-    } catch {
-      showToast({ kind: "error", message: "Could not send test notification." });
-    } finally {
-      setIsNotificationsBusy(false);
-    }
-  }, [isNotificationsBusy, notificationPermissionState, showToast]);
 
   const handleTimelineDragEnd = useCallback(
     async (dateKey: string, original: MobileTask[], data: MobileTask[]) => {
