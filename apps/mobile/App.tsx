@@ -34,6 +34,7 @@ import { RootErrorBoundary } from "./src/components/RootErrorBoundary";
 import { SettingsSheet } from "./src/components/SettingsSheet";
 import { TaskTabContent } from "./src/components/TaskTabContent";
 import { useRetryQueue, type RetryPayload } from "./src/hooks/useRetryQueue";
+import { useTaskMutations } from "./src/hooks/useTaskMutations";
 import { useGoogleAuth } from "./src/hooks/useGoogleAuth";
 import { useNotificationsSettings } from "./src/hooks/useNotificationsSettings";
 import { useIntegrationsSettings } from "./src/hooks/useIntegrationsSettings";
