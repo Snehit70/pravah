@@ -39,6 +39,7 @@ import { BottomTabBar, type TabKey } from "./src/components/BottomTabBar";
 import { FAB } from "./src/components/FAB";
 import { AddTaskSheet, type AddTaskSheetRef } from "./src/components/AddTaskSheet";
 import { EditTaskSheet, type EditTaskSheetRef } from "./src/components/EditTaskSheet";
+import { RootErrorBoundary } from "./src/components/RootErrorBoundary";
 import { SettingsSheet } from "./src/components/SettingsSheet";
 import { TaskTabContent } from "./src/components/TaskTabContent";
 import { useRetryQueue, type RetryPayload } from "./src/hooks/useRetryQueue";
@@ -1312,7 +1313,9 @@ export default function App() {
         <FontGate>
           <StorageGate>
             <ConvexClientProvider>
-              <MobileApp />
+              <RootErrorBoundary>
+                <MobileApp />
+              </RootErrorBoundary>
             </ConvexClientProvider>
           </StorageGate>
         </FontGate>
