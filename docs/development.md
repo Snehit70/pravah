@@ -110,6 +110,9 @@ GOOGLE_OAUTH_CLIENT_ID=your-google-web-client-id
 GOOGLE_OAUTH_CLIENT_SECRET=your-google-web-client-secret
 MOBILE_APP_SCHEME=pravah://
 CONVEX_HTTP_API_KEY=your-http-api-key
+# Optional: additional comma-separated origins allowed to call /google/token
+# (SITE_URL is always allowed; use this for staging/preview deployments).
+ALLOWED_CORS_ORIGINS=https://staging.example.com,https://preview.example.com
 ```
 
 ## Useful Paths

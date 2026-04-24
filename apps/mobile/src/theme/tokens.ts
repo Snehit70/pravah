@@ -1,65 +1,84 @@
 /** Design tokens for Pravah Mobile */
 
-export const colors = {
-  // Backgrounds
-  bg: "#09111f",
-  bgCard: "#0d1a2f",
-  bgInput: "#101d33",
-  bgElevated: "#0e1a2d",
+/**
+ * Font family names. These match the postScriptName-style identifiers exposed
+ * by @expo-google-fonts/* — they only resolve at runtime once `useFonts` has
+ * loaded the matching font asset. Until then RN falls back to the system font,
+ * so we gate the UI on font loading in App.tsx to avoid the FOUT.
+ */
+export const fonts = {
+  // Editorial serif — wordmark, view titles, empty-state headlines
+  serif: "Fraunces_300Light",
 
-  // Borders
-  border: "#1f3655",
-  borderSubtle: "#2c3a4f",
+  // Humanist sans — body, UI labels, task titles
+  sans: "Manrope_500Medium",
+  sansSemibold: "Manrope_600SemiBold",
+  sansBold: "Manrope_700Bold",
 
-  // Text
-  textPrimary: "#f1f5f9",
-  textSecondary: "#9fb3cc",
-  textTertiary: "#8fa8c4",
-  textMuted: "#6d7e9a",
-  textCompleted: "#8ca2bc",
-
-  // Brand / Accent
-  accent: "#7dd3fc",
-  accentDim: "#0ea5e91e",
-
-  // Actions
-  primary: "#22c55e",
-  primaryDark: "#052e16",
-  primaryBg: "#133b2a",
-  primaryBgHover: "#14532d",
-  primaryText: "#bbf7d0",
-
-  // Destructive / Error
-  error: "#ef4444",
-  errorBg: "#3a1221",
-  errorBorder: "#7f1d1d",
-
-  // Info
-  infoBg: "#102846",
-  infoBorder: "#1e3a8a",
-  infoText: "#dbeafe",
-
-  // Interactive
-  tabActive: "#1f4ca6",
-  chipActive: "#113468",
-  chipActiveBorder: "#2e74c0",
-  chipBorder: "#20406a",
-  ghostBg: "#102646",
-  ghostText: "#bfdbfe",
-
-  // Glow
-  glowCyan: "#0ea5e91e",
-  glowGreen: "#34d39914",
-
-  // Overlay
-  backdrop: "#020617cc",
+  // Mono — counts, dates, uppercase metadata, code-like accents
+  mono: "JetBrainsMono_500Medium",
 } as const;
 
+/**
+ * Warm graphite palette. The thesis is "a calm list, not a dashboard": a single
+ * copper accent does all the urgency work, green is demoted to "completed only",
+ * and every neutral is warm (yellowed) rather than blue. Hex values intentionally
+ * avoid #000 / #fff so the surface always reads as printed paper, never as a
+ * raw OLED black.
+ *
+ * Transitional aliases were kept through the middle of the redesign so the
+ * untouched components could keep compiling. Step 13 removes the aliases the
+ * finished mobile UI no longer uses.
+ */
+export const colors = {
+  // Backgrounds — warm near-black to warm near-newsprint
+  bg: "#0f0e0d", // ink — global app background, never #000
+  bgCard: "#171513", // only when enclosure is justified (modal sheet, input)
+  bgInput: "#1a1816", // text input fill
+
+  // Borders — warm grey, not blue
+  border: "#2a2622",
+  borderSubtle: "#211f1c", // hairline dividers; almost invisible
+
+  // Text — warm off-white through warm mid-grey
+  textPrimary: "#ece6db", // newsprint white
+  textSecondary: "#b0a89a", // warm ash
+  textMuted: "#6c6559",
+  textCompleted: "#817a6e", // reads "checked off", not "disabled"
+
+  // Brand / accent — single copper, used for urgency and the active underline
+  accent: "#c77b3a",
+  accentSoft: "#c77b3a26", // ~15% — sparse halo / hover wash (8-digit hex incl. alpha)
+
+  // Priority semantics — derived from the accent + neutrals
+  priorityP1: "#c77b3a", // urgent = accent
+  priorityP2: "#b0a89a", // normal = warm ash
+  priorityP3: "#6c6559", // low   = warm mid-grey
+
+  // Completion green — mossy, lived-in, never fire-engine
+  primary: "#6c9c7a",
+  primaryDark: "#0e1f15",
+  primaryInk: "#0e1f15", // text/ink rendered on top of primary
+
+  // Destructive / error — rust, not fire-engine
+  error: "#c76a52",
+
+  // Glow — single warm halo (replaces the two saturated blur circles)
+  haloCopper: "#c77b3a26", // canonical halo color used by the new background
+
+  // Overlay — modal scrim, slightly warm
+  backdrop: "#0a0908d9",
+} as const;
+
+/**
+ * Smaller radii. The redesign reads as printed/editorial; rounded chunky cards
+ * are out. The pill FAB uses `full` directly.
+ */
 export const radii = {
-  sm: 10,
-  md: 12,
-  lg: 14,
-  xl: 18,
+  sm: 6,
+  md: 8,
+  lg: 12,
+  xl: 16,
   full: 999,
 } as const;
 
@@ -70,41 +89,67 @@ export const spacing = {
   lg: 16,
   xl: 20,
   xxl: 24,
+  /** Vertical gap between major sections (header → list, settings sections). */
+  section: 32,
+  /** Vertical padding for a single task row. */
+  rowY: 14,
 } as const;
 
+/**
+ * Typography scale. Each entry is a complete RN text style — `fontFamily` is
+ * required (not `fontWeight`) because Google fonts only render the weight
+ * variant that's actually loaded under that family name.
+ *
+ * The finished redesign now uses only the editorial roles below.
+ */
 export const typography = {
-  kicker: {
-    fontSize: 12,
-    fontWeight: "700" as const,
-    textTransform: "uppercase" as const,
-    letterSpacing: 0.7,
+  // ── New editorial scale ───────────────────────────────────────────────
+  /** Fraunces 300, view-title scale. Used for "Inbox", "Timeline", etc. */
+  display: {
+    fontFamily: fonts.serif,
+    fontSize: 34,
+    lineHeight: 40,
+    letterSpacing: -1,
   },
-  h1: {
-    fontSize: 28,
-    fontWeight: "700" as const,
+  /** Fraunces 300, empty-state and modal-title scale. */
+  headline: {
+    fontFamily: fonts.serif,
+    fontSize: 22,
+    lineHeight: 28,
+    letterSpacing: -0.4,
   },
-  h2: {
-    fontSize: 20,
-    fontWeight: "700" as const,
+  /** Manrope 600, task title and primary UI heading. */
+  title: {
+    fontFamily: fonts.sansSemibold,
+    fontSize: 17,
+    lineHeight: 22,
+    letterSpacing: -0.2,
   },
-  h3: {
-    fontSize: 16,
-    fontWeight: "700" as const,
-  },
-  body: {
+  /** Manrope 500, body copy. */
+  bodyLg: {
+    fontFamily: fonts.sans,
     fontSize: 15,
-    fontWeight: "600" as const,
+    lineHeight: 22,
+    letterSpacing: -0.1,
   },
-  bodySmall: {
+  /** Manrope 500, secondary body / one-liner descriptions. */
+  bodyMd: {
+    fontFamily: fonts.sans,
     fontSize: 13,
-    fontWeight: "600" as const,
+    lineHeight: 18,
   },
-  caption: {
-    fontSize: 12,
-    fontWeight: "600" as const,
+  /** JetBrains Mono 500, uppercase metadata: "TODAY", "DUE 04-30", "P1". */
+  micro: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0.6,
+    textTransform: "uppercase" as const,
   },
-  label: {
-    fontSize: 12,
-    fontWeight: "700" as const,
+  /** JetBrains Mono 500, numeric metadata that does not want uppercase. */
+  numeric: {
+    fontFamily: fonts.mono,
+    fontSize: 13,
+    lineHeight: 14,
   },
 } as const;

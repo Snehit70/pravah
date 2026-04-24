@@ -281,9 +281,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     switch (name) {
       case "list_tasks": {
-        const status = readStringArg(args, "status") ?? "";
-        const date = readStringArg(args, "date") ?? "";
-        const tasks = await callConvexAPI(`/tasks?status=${status}&date=${date}`, "GET");
+        const status = readStringArg(args, "status");
+        const date = readStringArg(args, "date");
+        const query = new URLSearchParams();
+        if (status) query.set("status", status);
+        if (date) query.set("date", date);
+        const qs = query.toString();
+        const tasks = await callConvexAPI(`/tasks${qs ? `?${qs}` : ""}`, "GET");
         return { content: [{ type: "text", text: JSON.stringify(tasks, null, 2) }] };
       }
       case "add_task": {
@@ -327,7 +331,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "get_timeline": {
         const startDate = readStringArg(args, "startDate") ?? "";
         const endDate = readStringArg(args, "endDate") ?? "";
-        const timeline = await callConvexAPI(`/timeline?startDate=${startDate}&endDate=${endDate}`, "GET");
+        const query = new URLSearchParams({ startDate, endDate });
+        const timeline = await callConvexAPI(`/timeline?${query.toString()}`, "GET");
         return { content: [{ type: "text", text: JSON.stringify(timeline, null, 2) }] };
       }
       case "get_inbox": {
@@ -336,7 +341,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       case "get_sync_status": {
         const provider = readStringArg(args, "provider") ?? "google_calendar";
-        const status = await callConvexAPI(`/sync/status?provider=${provider}`, "GET");
+        const query = new URLSearchParams({ provider });
+        const status = await callConvexAPI(`/sync/status?${query.toString()}`, "GET");
         return { content: [{ type: "text", text: JSON.stringify(status, null, 2) }] };
       }
       case "import_google_calendar": {
@@ -344,9 +350,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: JSON.stringify(imported, null, 2) }] };
       }
       case "list_review_queue": {
-        const status = readStringArg(args, "status") ?? "";
-        const limit = typeof args.limit === "number" ? args.limit : "";
-        const queue = await callConvexAPI(`/review-queue?status=${status}&limit=${limit}`, "GET");
+        const status = readStringArg(args, "status");
+        const limit = typeof args.limit === "number" ? args.limit : undefined;
+        const query = new URLSearchParams();
+        if (status) query.set("status", status);
+        if (limit !== undefined) query.set("limit", String(limit));
+        const qs = query.toString();
+        const queue = await callConvexAPI(`/review-queue${qs ? `?${qs}` : ""}`, "GET");
         return { content: [{ type: "text", text: JSON.stringify(queue, null, 2) }] };
       }
       case "approve_review_item": {

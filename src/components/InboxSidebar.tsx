@@ -99,15 +99,16 @@ function InboxSidebarComponent({
   onOpenQuickAdd,
   onOpenSettings,
 }: InboxSidebarProps) {
-  const [collapsed, setCollapsed] = useState(window.innerWidth < 768);
+  const [collapsed, setCollapsed] = useState(() =>
+    window.matchMedia("(max-width: 767.98px)").matches
+  );
   const { setNodeRef, isOver } = useDroppable({ id: INBOX_DROP_ID });
 
   useEffect(() => {
-    const handleResize = () => {
-      setCollapsed(window.innerWidth < 768);
-    };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    const mql = window.matchMedia("(max-width: 767.98px)");
+    const onChange = (event: MediaQueryListEvent) => setCollapsed(event.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
   }, []);
 
   return (

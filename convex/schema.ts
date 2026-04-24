@@ -31,6 +31,7 @@ export default defineSchema({
     ),
     estimatedMinutes: v.optional(v.number()),
     tags: v.optional(v.array(v.string())),
+    priority: v.optional(v.union(v.literal("p1"), v.literal("p2"), v.literal("p3"))),
     createdBy: v.string(),
     ownerTokenIdentifier: v.optional(v.string()),
     createdAt: v.number(),

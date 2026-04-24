@@ -12,6 +12,7 @@ export const createTaskSchema = z.object({
   source: z.enum(["manual", "ai-agent", "gmail", "gcal"]).default("ai-agent"),
   estimatedMinutes: z.number().int().positive("Estimated minutes must be positive").optional(),
   tags: z.array(z.string().max(50)).max(20, "Too many tags").optional(),
+  priority: z.enum(["p1", "p2", "p3"]).optional(),
 });
 
 export const updateTaskSchema = z.object({
@@ -24,6 +25,7 @@ export const updateTaskSchema = z.object({
   deadline: z.string().regex(dateRegex, "Invalid date format (YYYY-MM-DD)").optional(),
   estimatedMinutes: z.number().int().positive("Estimated minutes must be positive").optional(),
   tags: z.array(z.string().max(50)).max(20, "Too many tags").optional(),
+  priority: z.enum(["p1", "p2", "p3"]).optional(),
 });
 
 export const moveTaskSchema = z.object({
@@ -108,6 +110,15 @@ interface RequireAuthInput {
   envKey: string | undefined;
 }
 
+function constantTimeEquals(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 export function requireApiKeyAuth({ request, envKey }: RequireAuthInput): Response | null {
   if (!envKey) {
     return new Response(
@@ -120,7 +131,7 @@ export function requireApiKeyAuth({ request, envKey }: RequireAuthInput): Respon
   }
 
   const key = request.headers.get("x-api-key");
-  if (key !== envKey) {
+  if (!key || !constantTimeEquals(key, envKey)) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },

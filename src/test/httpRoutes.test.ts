@@ -242,4 +242,70 @@ describe("http route handlers", () => {
         "Google OAuth not configured (set GOOGLE_OAUTH_CLIENT_ID on Convex deployment).",
     });
   });
+
+  describe("/google/token CORS", () => {
+    const originalSiteUrl = env?.SITE_URL;
+    const originalAllowed = env?.ALLOWED_CORS_ORIGINS;
+
+    afterAll(() => {
+      if (env) {
+        env.SITE_URL = originalSiteUrl;
+        env.ALLOWED_CORS_ORIGINS = originalAllowed;
+      }
+    });
+
+    beforeEach(() => {
+      if (env) {
+        env.SITE_URL = "https://app.example.com";
+        delete env.ALLOWED_CORS_ORIGINS;
+      }
+    });
+
+    it("echoes allow-origin only for SITE_URL origin on preflight", async () => {
+      const handler = getHandler("/google/token", "OPTIONS");
+      const ctx = createCtx();
+      const response = await handler(
+        ctx,
+        new Request("https://example.com/google/token", {
+          method: "OPTIONS",
+          headers: { origin: "https://app.example.com" },
+        })
+      );
+      expect(response.status).toBe(204);
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+        "https://app.example.com"
+      );
+    });
+
+    it("omits allow-origin for disallowed origins", async () => {
+      const handler = getHandler("/google/token", "OPTIONS");
+      const ctx = createCtx();
+      const response = await handler(
+        ctx,
+        new Request("https://example.com/google/token", {
+          method: "OPTIONS",
+          headers: { origin: "https://evil.example.com" },
+        })
+      );
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    });
+
+    it("honours ALLOWED_CORS_ORIGINS extras", async () => {
+      if (env) {
+        env.ALLOWED_CORS_ORIGINS = "https://staging.example.com";
+      }
+      const handler = getHandler("/google/token", "OPTIONS");
+      const ctx = createCtx();
+      const response = await handler(
+        ctx,
+        new Request("https://example.com/google/token", {
+          method: "OPTIONS",
+          headers: { origin: "https://staging.example.com" },
+        })
+      );
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+        "https://staging.example.com"
+      );
+    });
+  });
 });

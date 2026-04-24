@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { Keyboard, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import BottomSheet, {
@@ -11,6 +11,8 @@ import * as Haptics from "expo-haptics";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "./TaskCard";
 import type { Id } from "../../../../convex/_generated/dataModel";
+
+type TaskPriority = "p1" | "p2" | "p3" | undefined;
 
 function formatLocalDate(date: Date): string {
   const y = date.getFullYear();
@@ -26,6 +28,27 @@ function parseIsoDate(value?: string): Date {
   return new Date(y, m - 1, d);
 }
 
+function nextPriority(current: TaskPriority): TaskPriority {
+  if (current === undefined) return "p1";
+  if (current === "p1") return "p2";
+  if (current === "p2") return "p3";
+  return undefined;
+}
+
+function priorityDotColor(p: TaskPriority): string {
+  if (p === "p1") return colors.priorityP1;
+  if (p === "p2") return colors.priorityP2;
+  if (p === "p3") return colors.priorityP3;
+  return colors.borderSubtle;
+}
+
+function priorityLabel(p: TaskPriority): string {
+  if (p === "p1") return "P1";
+  if (p === "p2") return "P2";
+  if (p === "p3") return "P3";
+  return "—";
+}
+
 export type EditTaskSheetRef = {
   open: (task: MobileTask) => void;
   close: () => void;
@@ -37,6 +60,7 @@ type EditTaskSheetProps = {
     title: string;
     description?: string;
     deadline?: string;
+    priority?: TaskPriority;
   }) => Promise<boolean>;
   isValidDeadline: (raw: string) => { value?: string; error?: string };
   onSheetChange?: (isOpen: boolean) => void;
@@ -50,6 +74,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [deadline, setDeadline] = useState("");
+    const [priority, setPriority] = useState<TaskPriority>(undefined);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [showDatePicker, setShowDatePicker] = useState(false);
@@ -60,6 +85,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         setTitle(task.title);
         setDescription(task.description ?? "");
         setDeadline(task.deadline ?? "");
+        setPriority(task.priority);
         setError(null);
         setShowDatePicker(false);
         bottomSheetRef.current?.expand();
@@ -88,6 +114,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         title: title.trim(),
         description: description.trim() || undefined,
         deadline: deadlineResult.value,
+        priority,
       });
 
       setSaving(false);
@@ -95,7 +122,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       if (success) {
         bottomSheetRef.current?.close();
       }
-    }, [taskId, title, description, deadline, saving, onSave, isValidDeadline]);
+    }, [taskId, title, description, deadline, priority, saving, onSave, isValidDeadline]);
 
     const renderBackdrop = useCallback(
       (props: BottomSheetBackdropProps) => (
@@ -110,11 +137,13 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       []
     );
 
+    const canSave = useMemo(() => Boolean(title.trim()) && !saving, [title, saving]);
+
     return (
       <BottomSheet
         ref={bottomSheetRef}
         index={-1}
-        snapPoints={["55%"]}
+        snapPoints={["62%"]}
         enablePanDownToClose
         enableDynamicSizing={false}
         backgroundStyle={styles.sheetBg}
@@ -137,6 +166,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         }}
       >
         <BottomSheetView style={styles.content}>
+          <Text style={styles.sheetKicker}>Edit</Text>
           <Text style={styles.sheetTitle}>Edit task</Text>
 
           <BottomSheetTextInput
@@ -147,7 +177,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             }}
             placeholder="Task title"
             placeholderTextColor={colors.textMuted}
-            style={styles.input}
+            style={styles.titleInput}
           />
 
           <BottomSheetTextInput
@@ -155,34 +185,55 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             onChangeText={setDescription}
             placeholder="Notes"
             placeholderTextColor={colors.textMuted}
-            style={[styles.input, styles.notesInput]}
+            style={styles.notesInput}
             multiline
           />
 
-          <View style={styles.deadlineRow}>
+          <View style={styles.metaRow}>
             <Pressable
               onPress={() => {
                 Keyboard.dismiss();
                 setShowDatePicker(true);
               }}
-              style={({ pressed }) => [styles.deadlineField, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.metaField, pressed && { opacity: 0.6 }]}
             >
-              <Text style={deadline ? styles.deadlineValue : styles.deadlinePlaceholder}>
-                {deadline || "Pick deadline"}
+              <Text style={styles.metaLabel}>Due</Text>
+              <Text style={deadline ? styles.metaValue : styles.metaPlaceholder}>
+                {deadline || "—"}
               </Text>
             </Pressable>
+
             {deadline ? (
               <Pressable
                 onPress={() => {
                   setDeadline("");
                   setError(null);
                 }}
-                style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]}
+                style={({ pressed }) => [styles.clearAction, pressed && { opacity: 0.6 }]}
+                hitSlop={8}
               >
-                <Text style={styles.clearButtonText}>Clear</Text>
+                <Text style={styles.clearActionText}>Clear</Text>
               </Pressable>
             ) : null}
+
+            <Pressable
+              onPress={() => {
+                setPriority(nextPriority(priority));
+                void Haptics.selectionAsync();
+              }}
+              style={({ pressed }) => [styles.metaField, pressed && { opacity: 0.6 }]}
+              hitSlop={6}
+            >
+              <Text style={styles.metaLabel}>Priority</Text>
+              <View style={styles.priorityValue}>
+                <View style={[styles.priorityDot, { backgroundColor: priorityDotColor(priority) }]} />
+                <Text style={priority ? styles.metaValue : styles.metaPlaceholder}>
+                  {priorityLabel(priority)}
+                </Text>
+              </View>
+            </Pressable>
           </View>
+
           {showDatePicker ? (
             <DateTimePicker
               value={parseIsoDate(deadline)}
@@ -205,22 +256,21 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           <View style={styles.actions}>
             <Pressable
               onPress={() => bottomSheetRef.current?.close()}
-              style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.cancelButton, pressed && { opacity: 0.6 }]}
+              hitSlop={8}
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </Pressable>
             <Pressable
               onPress={() => void handleSave()}
-              disabled={saving || !title.trim()}
+              disabled={!canSave}
               style={({ pressed }) => [
-                styles.saveButton,
-                (saving || !title.trim()) && styles.saveButtonDisabled,
-                pressed && styles.pressed,
+                styles.primaryButton,
+                !canSave && styles.primaryButtonDisabled,
+                pressed && { opacity: 0.85 },
               ]}
             >
-              <Text style={styles.saveButtonText}>
-                {saving ? "Saving..." : "Save"}
-              </Text>
+              <Text style={styles.primaryButtonText}>{saving ? "Saving…" : "Save"}</Text>
             </Pressable>
           </View>
         </BottomSheetView>
@@ -234,110 +284,114 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgCard,
     borderTopLeftRadius: radii.xl,
     borderTopRightRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderBottomWidth: 0,
   },
   indicator: {
-    backgroundColor: colors.textMuted,
+    backgroundColor: colors.border,
     width: 36,
+    height: 4,
   },
   content: {
-    padding: spacing.lg,
-    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xl,
+    gap: spacing.lg,
+  },
+  sheetKicker: {
+    ...typography.micro,
+    color: colors.textMuted,
   },
   sheetTitle: {
+    ...typography.headline,
     color: colors.textPrimary,
-    ...typography.h3,
+    marginTop: -spacing.sm,
   },
-  input: {
-    backgroundColor: colors.bgInput,
+  titleInput: {
     color: colors.textPrimary,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14,
+    ...typography.bodyLg,
+    fontSize: 17,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
   notesInput: {
+    color: colors.textPrimary,
+    ...typography.bodyMd,
     minHeight: 80,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
     textAlignVertical: "top",
   },
-  deadlineRow: {
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: spacing.xl,
+  },
+  metaField: {
+    gap: 4,
+  },
+  metaLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
+  },
+  metaValue: {
+    ...typography.numeric,
+    color: colors.textPrimary,
+  },
+  metaPlaceholder: {
+    ...typography.numeric,
+    color: colors.textMuted,
+  },
+  priorityValue: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
-  deadlineField: {
-    flex: 1,
-    backgroundColor: colors.bgInput,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+  priorityDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
   },
-  deadlinePlaceholder: {
-    color: colors.textMuted,
-    fontSize: 13,
+  clearAction: {
+    paddingBottom: 2,
   },
-  deadlineValue: {
-    color: colors.textPrimary,
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  clearButton: {
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  clearButtonText: {
+  clearActionText: {
+    ...typography.micro,
     color: colors.textSecondary,
-    ...typography.caption,
-    fontWeight: "700",
   },
   errorText: {
+    ...typography.bodyMd,
     color: colors.error,
-    ...typography.caption,
-  },
-  helperText: {
-    color: colors.textMuted,
-    ...typography.caption,
   },
   actions: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    alignItems: "center",
+    gap: spacing.lg,
+    marginTop: spacing.sm,
   },
   cancelButton: {
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    paddingHorizontal: 16,
-    paddingVertical: 11,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
   },
   cancelButtonText: {
+    ...typography.title,
     color: colors.textSecondary,
-    fontWeight: "700",
   },
-  saveButton: {
-    borderRadius: radii.md,
-    backgroundColor: colors.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 11,
+  primaryButton: {
+    backgroundColor: colors.accent,
+    borderRadius: radii.full,
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    alignItems: "center",
   },
-  saveButtonDisabled: {
-    opacity: 0.5,
+  primaryButtonDisabled: {
+    opacity: 0.4,
   },
-  saveButtonText: {
-    color: colors.primaryDark,
-    fontWeight: "800",
-  },
-  pressed: {
-    opacity: 0.85,
+  primaryButtonText: {
+    ...typography.title,
+    color: colors.bg,
   },
 });

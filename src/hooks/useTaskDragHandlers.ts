@@ -5,6 +5,7 @@ import type { Task } from "../types";
 import {
   canScheduleTaskOnDate,
   getReorderedTaskIdsForDay,
+  hasPriorityBoundaryViolation,
   isInboxDropId,
   isDateDropId,
 } from "../lib/taskRules";
@@ -38,6 +39,7 @@ interface UseTaskDragHandlersOptions {
   reorderInboxTasks: ReorderInboxTasksMutation;
   unscheduleTask: UnscheduleTaskMutation;
   setDraggedTask: (task: Task | null) => void;
+  onInvalidReorder?: (message: string) => void;
 }
 
 export function resolveDropTargetDate(
@@ -81,6 +83,7 @@ export function useTaskDragHandlers({
   reorderInboxTasks,
   unscheduleTask,
   setDraggedTask,
+  onInvalidReorder,
 }: UseTaskDragHandlersOptions) {
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
@@ -124,6 +127,14 @@ export function useTaskDragHandlers({
           return;
         }
 
+        const reorderedInboxTasks = reorderedInboxTaskIds
+          .map((taskId) => inboxTasks.find((task) => task._id === taskId))
+          .filter((task): task is Task => Boolean(task));
+        if (hasPriorityBoundaryViolation(inboxTasks, reorderedInboxTasks)) {
+          onInvalidReorder?.("Drag only within the same priority group.");
+          return;
+        }
+
         await reorderInboxTasks({ taskIds: reorderedInboxTaskIds });
         return;
       }
@@ -135,6 +146,14 @@ export function useTaskDragHandlers({
       const dayTasks = tasksByDate[sourceTask.scheduledDate] ?? [];
       const reorderedTaskIds = getReorderedTaskIdsForDay(dayTasks, activeId, overId);
       if (!reorderedTaskIds) {
+        return;
+      }
+
+      const reorderedDayTasks = reorderedTaskIds
+        .map((taskId) => dayTasks.find((task) => task._id === taskId))
+        .filter((task): task is Task => Boolean(task));
+      if (hasPriorityBoundaryViolation(dayTasks, reorderedDayTasks)) {
+        onInvalidReorder?.("Drag only within the same priority group.");
         return;
       }
 
@@ -152,6 +171,7 @@ export function useTaskDragHandlers({
       reorderInboxTasks,
       unscheduleTask,
       setDraggedTask,
+      onInvalidReorder,
     ]
   );
 

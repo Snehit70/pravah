@@ -12,13 +12,34 @@ const unscheduleTaskMock = vi.fn();
 const deleteTaskMock = vi.fn();
 const showErrorMock = vi.fn();
 const showSuccessMock = vi.fn();
-const useMutationMock = vi.fn();
 
-vi.mock("convex/react", () => {
-  return {
-    useMutation: (...args: unknown[]) => useMutationMock(...args),
-  };
-});
+const mutationMocks: Record<string, ReturnType<typeof vi.fn>> = {
+  "tasks.updateTask": updateTaskMock,
+  "tasks.completeTask": completeTaskMock,
+  "tasks.reopenTask": reopenTaskMock,
+  "tasks.unscheduleTask": unscheduleTaskMock,
+  "tasks.deleteTask": deleteTaskMock,
+};
+
+vi.mock("convex/react", () => ({
+  useMutation: (ref: string) => {
+    const mock = mutationMocks[ref];
+    if (!mock) throw new Error(`Unexpected useMutation target: ${ref}`);
+    return mock;
+  },
+}));
+
+vi.mock("../../convex/_generated/api", () => ({
+  api: {
+    tasks: {
+      updateTask: "tasks.updateTask",
+      completeTask: "tasks.completeTask",
+      reopenTask: "tasks.reopenTask",
+      unscheduleTask: "tasks.unscheduleTask",
+      deleteTask: "tasks.deleteTask",
+    },
+  },
+}));
 
 vi.mock("../components/useToast", () => ({
   useToast: () => ({
@@ -52,19 +73,6 @@ describe("TaskPopup", () => {
     showSuccessMock.mockReset();
     updateTaskMock.mockResolvedValue(undefined);
     deleteTaskMock.mockResolvedValue(undefined);
-
-    let callIndex = 0;
-    useMutationMock.mockReset();
-    useMutationMock.mockImplementation(() => {
-      callIndex += 1;
-      const slot = ((callIndex - 1) % 5) + 1;
-      if (slot === 1) return updateTaskMock;
-      if (slot === 2) return completeTaskMock;
-      if (slot === 3) return reopenTaskMock;
-      if (slot === 4) return unscheduleTaskMock;
-      if (slot === 5) return deleteTaskMock;
-      return vi.fn();
-    });
   });
 
   it("validates required title and saves trimmed values", async () => {
@@ -87,6 +95,7 @@ describe("TaskPopup", () => {
         title: "Updated title",
         description: undefined,
         deadline: undefined,
+        priority: undefined,
       });
     });
 
