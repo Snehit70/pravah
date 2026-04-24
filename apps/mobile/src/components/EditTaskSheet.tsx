@@ -44,6 +44,12 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const [priority, setPriority] = useState<TaskPriority>(undefined);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [initialDraft, setInitialDraft] = useState<{
+      title: string;
+      description: string;
+      deadline: string;
+      priority: TaskPriority;
+    } | null>(null);
     const sheetBottomInset = useKeyboardInset(insets.bottom);
 
     useImperativeHandle(ref, () => ({
@@ -53,6 +59,12 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         setDescription(task.description ?? "");
         setDeadline(task.deadline ?? "");
         setPriority(task.priority);
+        setInitialDraft({
+          title: task.title,
+          description: task.description ?? "",
+          deadline: task.deadline ?? "",
+          priority: task.priority,
+        });
         setError(null);
         bottomSheetRef.current?.expand();
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -90,17 +102,28 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       }
     }, [taskId, title, description, deadline, priority, saving, onSave, isValidDeadline]);
 
+    const hasUnsavedChanges = useMemo(() => {
+      const initial = initialDraft;
+      if (!initial || !taskId) return false;
+      return (
+        title !== initial.title ||
+        description !== initial.description ||
+        deadline !== initial.deadline ||
+        priority !== initial.priority
+      );
+    }, [deadline, description, initialDraft, priority, taskId, title]);
+
     const renderBackdrop = useCallback(
       (props: BottomSheetBackdropProps) => (
         <BottomSheetBackdrop
           {...props}
-          pressBehavior="close"
+          pressBehavior={hasUnsavedChanges ? "none" : "close"}
           disappearsOnIndex={-1}
           appearsOnIndex={0}
           opacity={0.6}
         />
       ),
-      []
+      [hasUnsavedChanges]
     );
 
     const canSave = useMemo(() => Boolean(title.trim()) && !saving, [title, saving]);
@@ -113,7 +136,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         detached
         bottomInset={sheetBottomInset}
         style={styles.sheetContainer}
-        enablePanDownToClose
+        enablePanDownToClose={!hasUnsavedChanges}
         enableDynamicSizing={false}
         backgroundStyle={styles.sheetBg}
         handleIndicatorStyle={styles.indicator}
@@ -125,11 +148,13 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           Keyboard.dismiss();
           onSheetChange?.(false);
           setTaskId(null);
+          setInitialDraft(null);
         }}
         onChange={(index) => {
           if (index === -1) {
             Keyboard.dismiss();
             setTaskId(null);
+            setInitialDraft(null);
           }
           onSheetChange?.(index >= 0);
         }}

@@ -47,6 +47,13 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [error, setError] = useState<string | null>(null);
     const [focusNonce, setFocusNonce] = useState(0);
     const sheetBottomInset = useKeyboardInset(insets.bottom);
+    const hasDraftChanges = Boolean(
+      title.trim() ||
+        description.trim() ||
+        deadline.trim() ||
+        priority ||
+        mode !== "inbox"
+    );
 
     useImperativeHandle(ref, () => ({
       open: () => {
@@ -101,13 +108,13 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       (props: BottomSheetBackdropProps) => (
         <BottomSheetBackdrop
           {...props}
-          pressBehavior="close"
+          pressBehavior={hasDraftChanges ? "none" : "close"}
           disappearsOnIndex={-1}
           appearsOnIndex={0}
           opacity={0.6}
         />
       ),
-      []
+      [hasDraftChanges]
     );
 
     const canSubmit = useMemo(() => Boolean(title.trim()) && !saving, [title, saving]);
@@ -120,7 +127,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         detached
         bottomInset={sheetBottomInset}
         style={styles.sheetContainer}
-        enablePanDownToClose
+        enablePanDownToClose={!hasDraftChanges}
         enableDynamicSizing={false}
         backgroundStyle={styles.sheetBg}
         handleIndicatorStyle={styles.indicator}

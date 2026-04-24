@@ -110,12 +110,16 @@ export function useIntegrationsSettings({
     if (isCalendarSyncing) return;
     setIsCalendarSyncing(true);
     try {
-      const tokens = await GoogleSignin.getTokens();
-      if (!tokens.accessToken) {
+      let accessToken = (await GoogleSignin.getTokens()).accessToken;
+      if (!accessToken) {
+        await GoogleSignin.signInSilently();
+        accessToken = (await GoogleSignin.getTokens()).accessToken;
+      }
+      if (!accessToken) {
         showToast({ kind: "error", message: "Could not get Google token. Please sign in again." });
         return;
       }
-      await importGoogleCalendarAction({ accessToken: tokens.accessToken });
+      await importGoogleCalendarAction({ accessToken });
       showToast({ kind: "info", message: "Google Calendar sync complete." });
     } catch {
       showToast({ kind: "error", message: "Google Calendar sync failed. Try again." });
