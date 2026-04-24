@@ -208,7 +208,7 @@ function MobileApp() {
 
   const today = toIsoDate(new Date());
   const tomorrow = toIsoDate(addDays(new Date(), 1));
-  const weekEnd = toIsoDate(addDays(new Date(), 7));
+  const weekEnd = toIsoDate(addDays(new Date(), 6));
 
   // ── Data ────────────────────────────────────────────────────────────
 
