@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { Keyboard, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import BottomSheet, {
@@ -11,6 +11,7 @@ import * as Haptics from "expo-haptics";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "./TaskCard";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type TaskPriority = "p1" | "p2" | "p3" | undefined;
 
@@ -69,6 +70,7 @@ type EditTaskSheetProps = {
 export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
   function EditTaskSheet({ onSave, isValidDeadline, onSheetChange }, ref) {
     const bottomSheetRef = useRef<BottomSheet>(null);
+    const insets = useSafeAreaInsets();
 
     const [taskId, setTaskId] = useState<Id<"tasks"> | null>(null);
     const [title, setTitle] = useState("");
@@ -78,6 +80,29 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [showDatePicker, setShowDatePicker] = useState(false);
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+    useEffect(() => {
+      const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+      const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+      const showSubscription = Keyboard.addListener(showEvent, (event) => {
+        setKeyboardHeight(Math.max(0, event.endCoordinates.height));
+      });
+      const hideSubscription = Keyboard.addListener(hideEvent, () => {
+        setKeyboardHeight(0);
+      });
+
+      return () => {
+        showSubscription.remove();
+        hideSubscription.remove();
+      };
+    }, []);
+
+    const sheetBottomInset =
+      keyboardHeight > 0
+        ? Math.max(spacing.sm, keyboardHeight - insets.bottom + spacing.sm)
+        : Math.max(insets.bottom, spacing.lg);
 
     useImperativeHandle(ref, () => ({
       open: (task: MobileTask) => {
@@ -144,6 +169,9 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         ref={bottomSheetRef}
         index={-1}
         snapPoints={["62%"]}
+        detached
+        bottomInset={sheetBottomInset}
+        style={styles.sheetContainer}
         enablePanDownToClose
         enableDynamicSizing={false}
         backgroundStyle={styles.sheetBg}
@@ -270,7 +298,9 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                 pressed && { opacity: 0.85 },
               ]}
             >
-              <Text style={styles.primaryButtonText}>{saving ? "Saving…" : "Save"}</Text>
+              <Text style={[styles.primaryButtonText, !canSave && styles.primaryButtonTextDisabled]}>
+                {saving ? "Saving…" : "Save"}
+              </Text>
             </Pressable>
           </View>
         </BottomSheetView>
@@ -284,6 +314,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgCard,
     borderTopLeftRadius: radii.xl,
     borderTopRightRadius: radii.xl,
+  },
+  sheetContainer: {
+    marginHorizontal: spacing.md,
   },
   indicator: {
     backgroundColor: colors.border,
@@ -388,10 +421,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   primaryButtonDisabled: {
-    opacity: 0.4,
+    backgroundColor: colors.border,
   },
   primaryButtonText: {
     ...typography.title,
     color: colors.bg,
+  },
+  primaryButtonTextDisabled: {
+    color: colors.textMuted,
   },
 });
