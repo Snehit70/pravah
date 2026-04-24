@@ -112,6 +112,7 @@ function MobileApp() {
   // ── Dates ───────────────────────────────────────────────────────────
 
   const today = toIsoDate(new Date());
+  const yesterday = toIsoDate(addDays(new Date(), -1));
   const tomorrow = toIsoDate(addDays(new Date(), 1));
   const weekEnd = toIsoDate(addDays(new Date(), 6));
 
@@ -123,7 +124,7 @@ function MobileApp() {
   );
   const timelineQuery = useQuery(
     api.tasks.getTimeline,
-    session && activeTab === "timeline" ? { startDate: today, endDate: weekEnd } : "skip"
+    session && activeTab === "timeline" ? { startDate: yesterday, endDate: weekEnd } : "skip"
   );
   const completedQuery = useQuery(
     api.tasks.listTasks,

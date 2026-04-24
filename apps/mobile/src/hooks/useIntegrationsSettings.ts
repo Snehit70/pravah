@@ -2,10 +2,8 @@ import { useCallback, useState } from "react";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
-import type { Id } from "../../../../convex/_generated/dataModel";
 
-type ToastState = { kind: "error" | "info"; message: string };
-type ShowToast = (next: ToastState) => void;
+type ShowToast = (next: { kind: "error" | "info"; message: string }) => void;
 type IntegrationProvider = "google_calendar" | "gmail";
 
 type UseIntegrationsSettingsOptions = {
