@@ -1,5 +1,12 @@
 import { memo, useCallback, useRef } from "react";
-import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type AccessibilityActionEvent,
+  type GestureResponderEvent,
+} from "react-native";
 import ReanimatedSwipeable, {
   type SwipeableMethods,
 } from "react-native-gesture-handler/ReanimatedSwipeable";
@@ -100,6 +107,28 @@ function TaskCardInner({
   const handleSendToInbox = useCallback(() => onSendToInbox?.(task._id), [onSendToInbox, task._id]);
   const handleReopen = useCallback(() => onReopen?.(task._id), [onReopen, task._id]);
   const handleEdit = useCallback(() => onEdit(task), [onEdit, task]);
+  const handleAccessibilityAction = useCallback(
+    (event: AccessibilityActionEvent) => {
+      switch (event.nativeEvent.actionName) {
+        case "activate":
+          handleEdit();
+          break;
+        case "complete":
+          handleDone();
+          break;
+        case "move_today":
+          handleMoveToday();
+          break;
+        case "move_to_inbox":
+          handleSendToInbox();
+          break;
+        case "reopen":
+          handleReopen();
+          break;
+      }
+    },
+    [handleDone, handleEdit, handleMoveToday, handleReopen, handleSendToInbox]
+  );
 
   // Right-side action (revealed by swiping LEFT) — always "Done" for active
   // tasks, "Reopen" for completed ones.
@@ -183,6 +212,17 @@ function TaskCardInner({
   // single-line so the description gets to read as one full line below it.
   const hasDescription = Boolean(task.description) && !isCompleted;
   const titleLines = hasDescription ? 1 : 2;
+  const accessibilityHint = isCompleted
+    ? "Double tap to edit. Use actions to reopen this task."
+    : isInboxTask
+      ? "Double tap to edit. Use actions to mark done or move to today."
+      : "Double tap to edit. Use actions to mark done or move to inbox.";
+  const accessibilityActions = [
+    { name: "activate", label: "Edit task" },
+    isCompleted ? { name: "reopen", label: "Reopen task" } : { name: "complete", label: "Mark done" },
+    !isCompleted && isInboxTask ? { name: "move_today", label: "Move to today" } : null,
+    !isCompleted && !isInboxTask ? { name: "move_to_inbox", label: "Move to inbox" } : null,
+  ].filter(Boolean) as Array<{ name: string; label: string }>;
 
   return (
     <ReanimatedSwipeable
@@ -209,6 +249,11 @@ function TaskCardInner({
         onLongPress={onDragHandlePress}
         delayLongPress={250}
         style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+        accessibilityRole="button"
+        accessibilityLabel={task.title}
+        accessibilityHint={accessibilityHint}
+        accessibilityActions={accessibilityActions}
+        onAccessibilityAction={handleAccessibilityAction}
       >
         {/* Priority rail — the only enclosing shape on the row. */}
         <View style={[styles.rail, { backgroundColor: railColor }]} />
@@ -217,7 +262,13 @@ function TaskCardInner({
             rows it's filled and inert (the swipe-right reopen action handles
             that case). */}
         {isCompleted ? (
-          <View style={[styles.checkbox, styles.checkboxDone]} />
+          <View
+            style={[styles.checkbox, styles.checkboxDone]}
+            accessible
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: true }}
+            accessibilityLabel={`${task.title} completed`}
+          />
         ) : (
           <Pressable
             onPress={handleCheckboxPress}
@@ -225,6 +276,7 @@ function TaskCardInner({
             style={({ pressed }) => [styles.checkbox, pressed && styles.checkboxPressed]}
             accessibilityRole="checkbox"
             accessibilityLabel={`Complete ${task.title}`}
+            accessibilityState={{ checked: false }}
           />
         )}
 

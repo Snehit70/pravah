@@ -94,7 +94,13 @@ export function SettingsSheet({
                 <Text style={styles.settingsKicker}>Workspace</Text>
                 <Text style={styles.settingsHeadline}>Settings</Text>
               </View>
-              <Pressable onPress={onClose} hitSlop={10} style={({ pressed }) => [pressed && { opacity: 0.6 }]}>
+              <Pressable
+                onPress={onClose}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Close settings"
+                style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+              >
                 <Text style={styles.settingsCloseLink}>Close</Text>
               </Pressable>
             </View>
@@ -122,6 +128,8 @@ export function SettingsSheet({
                 onPress={onGoogleCalendarSync}
                 disabled={isCalendarSyncing}
                 hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel="Sync Google Calendar now"
                 style={({ pressed }) => [pressed && { opacity: 0.6 }]}
               >
                 <Text style={[styles.inlineActionText, isCalendarSyncing && styles.inlineActionDisabled]}>
@@ -159,6 +167,8 @@ export function SettingsSheet({
               onPress={onEnableAndSyncGoogleCalendar}
               disabled={syncSettingsBusy}
               hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel="Enable and sync Google Calendar"
               style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
             >
               <Text style={[styles.inlineActionText, syncSettingsBusy && styles.inlineActionDisabled]}>
@@ -180,6 +190,8 @@ export function SettingsSheet({
                   onPress={onRequestNotificationsAccess}
                   disabled={isNotificationsBusy}
                   hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel="Enable notifications"
                   style={({ pressed }) => [pressed && { opacity: 0.6 }]}
                 >
                   <Text style={[styles.inlineActionText, isNotificationsBusy && styles.inlineActionDisabled]}>
@@ -209,6 +221,8 @@ export function SettingsSheet({
                 onPress={onSendTestNotification}
                 disabled={isNotificationsBusy}
                 hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel="Send a test notification"
                 style={({ pressed }) => [pressed && { opacity: 0.6 }]}
               >
                 <Text style={[styles.inlineActionText, isNotificationsBusy && styles.inlineActionDisabled]}>
@@ -221,7 +235,13 @@ export function SettingsSheet({
 
             <View style={styles.settingBlock}>
               <Text style={styles.settingHelp}>Sign out if you want to switch Google accounts on this device.</Text>
-              <Pressable onPress={onSignOut} hitSlop={6} style={({ pressed }) => [pressed && { opacity: 0.6 }]}>
+              <Pressable
+                onPress={onSignOut}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel="Sign out"
+                style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+              >
                 <Text style={styles.signOutLink}>Sign out</Text>
               </Pressable>
             </View>
