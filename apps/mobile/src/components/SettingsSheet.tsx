@@ -18,10 +18,10 @@ function getStatusTone(status: string): "success" | "warning" | "error" | "muted
 
 function statusTextColor(status: string): string {
   const tone = getStatusTone(status);
-  if (tone === "success") return "#6c9c7a";
-  if (tone === "warning") return "#c77b3a";
-  if (tone === "error") return "#c76a52";
-  return "#6c6559";
+  if (tone === "success") return colors.primary;
+  if (tone === "warning") return colors.accent;
+  if (tone === "error") return colors.error;
+  return colors.textMuted;
 }
 
 type SettingsSheetProps = {
