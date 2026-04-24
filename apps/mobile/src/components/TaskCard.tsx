@@ -1,5 +1,5 @@
 import { memo, useCallback, useRef } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
 import ReanimatedSwipeable, {
   type SwipeableMethods,
 } from "react-native-gesture-handler/ReanimatedSwipeable";
@@ -88,6 +88,13 @@ function TaskCardInner({
   const swipeRef = useRef<SwipeableMethods>(null);
 
   const handleDone = useCallback(() => onDone(task._id), [onDone, task._id]);
+  const handleCheckboxPress = useCallback(
+    (event: GestureResponderEvent) => {
+      event.stopPropagation();
+      handleDone();
+    },
+    [handleDone]
+  );
   const handleMoveToday = useCallback(() => onMoveToday?.(task._id), [onMoveToday, task._id]);
   const handleSendToInbox = useCallback(() => onSendToInbox?.(task._id), [onSendToInbox, task._id]);
   const handleReopen = useCallback(() => onReopen?.(task._id), [onReopen, task._id]);
@@ -214,7 +221,7 @@ function TaskCardInner({
           <View style={[styles.checkbox, styles.checkboxDone]} />
         ) : (
           <Pressable
-            onPress={handleDone}
+            onPress={handleCheckboxPress}
             hitSlop={10}
             style={({ pressed }) => [styles.checkbox, pressed && styles.checkboxPressed]}
             accessibilityRole="checkbox"
