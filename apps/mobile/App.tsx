@@ -320,6 +320,7 @@ function MobileApp() {
   const pendingGmailReviewCount = gmailIntegrationStatus?.pendingReviewCount ?? 0;
   const calendarSyncStatus = calendarIntegrationStatus?.integration?.status ?? "disconnected";
   const gmailSyncStatus = gmailIntegrationStatus?.integration?.status ?? "disconnected";
+  const canToggleGmailSync = gmailSyncStatus === "connected" || gmailSyncEnabled;
   const showToast = useCallback((next: ToastState) => setToast(next), []);
   const notificationsEnabled = notificationPermissionState === "granted";
   const syncSettingsBusy = isCalendarSyncing || isGoogleToggleSaving || isGmailToggleSaving;
@@ -995,16 +996,12 @@ function MobileApp() {
     }
   }, [importGoogleCalendarAction, isCalendarSyncing, showToast]);
 
-  const syncBothNow = useCallback(async () => {
+  const enableAndSyncGoogleCalendar = useCallback(async () => {
     try {
-      await Promise.all([
-        persistIntegrationToggle("google_calendar", true),
-        persistIntegrationToggle("gmail", true),
-      ]);
-      showToast({ kind: "info", message: "Both integrations enabled." });
+      await persistIntegrationToggle("google_calendar", true);
       await runGoogleCalendarSync();
     } catch {
-      showToast({ kind: "error", message: "Could not enable both integrations." });
+      showToast({ kind: "error", message: "Could not enable Google Calendar sync." });
     }
   }, [persistIntegrationToggle, runGoogleCalendarSync, showToast]);
 
@@ -1543,7 +1540,7 @@ function MobileApp() {
                   <Switch
                     value={gmailSyncEnabled}
                     onValueChange={() => void toggleGmailSync()}
-                    disabled={isGmailToggleSaving}
+                    disabled={isGmailToggleSaving || !canToggleGmailSync}
                     trackColor={{ false: colors.border, true: colors.accentSoft }}
                     thumbColor={gmailSyncEnabled ? colors.accent : colors.textMuted}
                   />
@@ -1551,16 +1548,19 @@ function MobileApp() {
                 <Text style={styles.settingMeta}>
                   Pending review · {pendingGmailReviewCount}
                 </Text>
+                {!canToggleGmailSync ? (
+                  <Text style={styles.settingMeta}>Connect Gmail on web before enabling mobile sync.</Text>
+                ) : null}
               </View>
 
               <Pressable
-                onPress={() => void syncBothNow()}
+                onPress={() => void enableAndSyncGoogleCalendar()}
                 disabled={syncSettingsBusy}
                 hitSlop={6}
                 style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
               >
                 <Text style={[styles.inlineActionText, syncSettingsBusy && styles.inlineActionDisabled]}>
-                  Enable and sync both
+                  Enable and sync Google Calendar
                 </Text>
               </Pressable>
 
