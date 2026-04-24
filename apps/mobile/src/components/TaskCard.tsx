@@ -222,6 +222,8 @@ function TaskCardInner({
     isCompleted ? { name: "reopen", label: "Reopen task" } : { name: "complete", label: "Mark done" },
     !isCompleted && isInboxTask ? { name: "move_today", label: "Move to today" } : null,
     !isCompleted && !isInboxTask ? { name: "move_to_inbox", label: "Move to inbox" } : null,
+    task.status === "scheduled" ? { name: "increment", label: "Move down" } : null,
+    task.status === "scheduled" ? { name: "decrement", label: "Move up" } : null,
   ].filter(Boolean) as Array<{ name: string; label: string }>;
 
   return (
