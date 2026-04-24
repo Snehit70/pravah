@@ -36,6 +36,7 @@ import { TaskTabContent } from "./src/components/TaskTabContent";
 import { useRetryQueue, type RetryPayload } from "./src/hooks/useRetryQueue";
 import { useGoogleAuth } from "./src/hooks/useGoogleAuth";
 import { useNotificationsSettings } from "./src/hooks/useNotificationsSettings";
+import { useIntegrationsSettings } from "./src/hooks/useIntegrationsSettings";
 import {
   patchTaskInOptimisticView,
   removeTaskFromOptimisticView,
@@ -99,9 +100,6 @@ function MobileApp() {
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isDataBootstrapReady, setIsDataBootstrapReady] = useState(false);
-  const [isCalendarSyncing, setIsCalendarSyncing] = useState(false);
-  const [isGoogleToggleSaving, setIsGoogleToggleSaving] = useState(false);
-  const [isGmailToggleSaving, setIsGmailToggleSaving] = useState(false);
 
   const sessionResult = authClient.useSession();
   const session = sessionResult.data;
@@ -131,14 +129,6 @@ function MobileApp() {
     session && activeTab === "completed" ? { status: "completed" } : "skip"
   );
   const countsQuery = useQuery(api.tasks.getTaskCounts, session ? {} : "skip");
-  const calendarIntegrationStatus = useQuery(
-    api.sync.getIntegrationStatus,
-    session ? { provider: "google_calendar" } : "skip"
-  );
-  const gmailIntegrationStatus = useQuery(
-    api.sync.getIntegrationStatus,
-    session ? { provider: "gmail" } : "skip"
-  );
 
   const activeQueryTasks =
     activeTab === "inbox"
@@ -221,14 +211,7 @@ function MobileApp() {
     }
     return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [scheduledTasks]);
-  const googleSyncEnabled = Boolean(calendarIntegrationStatus?.integration?.syncEnabled);
-  const gmailSyncEnabled = Boolean(gmailIntegrationStatus?.integration?.syncEnabled);
-  const pendingGmailReviewCount = gmailIntegrationStatus?.pendingReviewCount ?? 0;
-  const calendarSyncStatus = calendarIntegrationStatus?.integration?.status ?? "disconnected";
-  const gmailSyncStatus = gmailIntegrationStatus?.integration?.status ?? "disconnected";
-  const canToggleGmailSync = gmailSyncStatus === "connected" || gmailSyncEnabled;
   const showToast = useCallback((next: ToastState) => setToast(next), []);
-  const syncSettingsBusy = isCalendarSyncing || isGoogleToggleSaving || isGmailToggleSaving;
 
   const tabBarBottomPadding = Math.max(insets.bottom, spacing.md);
   const tabBarHeight = 62 + tabBarBottomPadding;
@@ -254,6 +237,25 @@ function MobileApp() {
     toggleDailyReminder,
     sendTestNotification,
   } = useNotificationsSettings(showToast);
+
+  // ── Integrations ────────────────────────────────────────────────────
+
+  const {
+    isCalendarSyncing,
+    isGoogleToggleSaving,
+    isGmailToggleSaving,
+    googleSyncEnabled,
+    gmailSyncEnabled,
+    calendarSyncStatus,
+    gmailSyncStatus,
+    canToggleGmailSync,
+    pendingGmailReviewCount,
+    syncSettingsBusy,
+    toggleGoogleCalendarSync,
+    toggleGmailSync,
+    runGoogleCalendarSync,
+    enableAndSyncGoogleCalendar,
+  } = useIntegrationsSettings({ session, showToast });
 
   const handleSignOut = useCallback(() => {
     setIsSettingsModalOpen(false);
@@ -684,85 +686,6 @@ function MobileApp() {
     mobileLogger.info("settings_modal_opened");
     setIsSettingsModalOpen(true);
   }, []);
-
-  const persistIntegrationToggle = useCallback(
-    async (provider: IntegrationProvider, syncEnabled: boolean) => {
-      const prev =
-        provider === "google_calendar" ? calendarIntegrationStatus?.integration : gmailIntegrationStatus?.integration;
-      // Preserve the existing status if one exists; new records start as
-      // "disconnected" until a real OAuth flow marks them "connected".
-      await upsertIntegrationMutation({
-        provider,
-        status: prev?.status ?? "disconnected",
-        syncEnabled,
-        accountEmail: prev?.accountEmail,
-      });
-    },
-    [calendarIntegrationStatus?.integration, gmailIntegrationStatus?.integration, upsertIntegrationMutation]
-  );
-
-  const toggleGoogleCalendarSync = useCallback(async () => {
-    if (isGoogleToggleSaving) return;
-    setIsGoogleToggleSaving(true);
-    const next = !googleSyncEnabled;
-    try {
-      await persistIntegrationToggle("google_calendar", next);
-      showToast({
-        kind: "info",
-        message: next ? "Google Calendar sync enabled." : "Google Calendar sync paused.",
-      });
-    } catch {
-      showToast({ kind: "error", message: "Could not update Google Calendar sync." });
-    } finally {
-      setIsGoogleToggleSaving(false);
-    }
-  }, [googleSyncEnabled, isGoogleToggleSaving, persistIntegrationToggle, showToast]);
-
-  const toggleGmailSync = useCallback(async () => {
-    if (isGmailToggleSaving) return;
-    setIsGmailToggleSaving(true);
-    const next = !gmailSyncEnabled;
-    try {
-      await persistIntegrationToggle("gmail", next);
-      showToast({
-        kind: "info",
-        message: next ? "Gmail sync enabled." : "Gmail sync paused.",
-      });
-    } catch {
-      showToast({ kind: "error", message: "Could not update Gmail sync." });
-    } finally {
-      setIsGmailToggleSaving(false);
-    }
-  }, [gmailSyncEnabled, isGmailToggleSaving, persistIntegrationToggle, showToast]);
-
-  const runGoogleCalendarSync = useCallback(async () => {
-    if (isCalendarSyncing) return;
-    setIsCalendarSyncing(true);
-    try {
-      const tokens = await GoogleSignin.getTokens();
-      if (!tokens.accessToken) {
-        showToast({ kind: "error", message: "Could not get Google token. Please sign in again." });
-        return;
-      }
-      await importGoogleCalendarAction({ accessToken: tokens.accessToken });
-      // The calendarIntegrationStatus query is reactive — it updates
-      // automatically once the action mutates the integration record.
-      showToast({ kind: "info", message: "Google Calendar sync complete." });
-    } catch {
-      showToast({ kind: "error", message: "Google Calendar sync failed. Try again." });
-    } finally {
-      setIsCalendarSyncing(false);
-    }
-  }, [importGoogleCalendarAction, isCalendarSyncing, showToast]);
-
-  const enableAndSyncGoogleCalendar = useCallback(async () => {
-    try {
-      await persistIntegrationToggle("google_calendar", true);
-      await runGoogleCalendarSync();
-    } catch {
-      showToast({ kind: "error", message: "Could not enable Google Calendar sync." });
-    }
-  }, [persistIntegrationToggle, runGoogleCalendarSync, showToast]);
 
   const handleTimelineDragEnd = useCallback(
     async (dateKey: string, original: MobileTask[], data: MobileTask[]) => {
