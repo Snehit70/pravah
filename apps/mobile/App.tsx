@@ -61,18 +61,6 @@ type IntegrationProvider = "google_calendar" | "gmail";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-function isLikelyOfflineError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const message = error.message.toLowerCase();
-  return (
-    message.includes("network") ||
-    message.includes("fetch") ||
-    message.includes("offline") ||
-    message.includes("timeout") ||
-    message.includes("internet")
-  );
-}
-
 function normalizeDeadlineInput(raw: string): { value?: string; error?: string } {
   const trimmed = raw.trim();
   if (!trimmed) return { value: undefined };
@@ -473,7 +461,7 @@ function MobileApp() {
         return true;
       } catch (error) {
         setOptimisticTasks(null);
-        const canRetry = retryLabel && retryPayload && isLikelyOfflineError(error);
+        const canRetry = retryLabel && retryPayload && classifyError(error) === "network";
         if (canRetry) enqueueRetry({ label: retryLabel!, payload: retryPayload! });
         mobileLogger.error("mutation_failed", {
           actionId,
@@ -591,7 +579,8 @@ function MobileApp() {
         mobileLogger.info("add_task_succeeded", { actionId, elapsedMs: Date.now() - startedAt });
         return true;
       } catch (error) {
-        if (isLikelyOfflineError(error)) {
+        const isOffline = classifyError(error) === "network";
+        if (isOffline) {
           enqueueRetry({
             label: `Add "${data.title}"`,
             payload: {
@@ -611,7 +600,7 @@ function MobileApp() {
           actionId,
           elapsedMs: Date.now() - startedAt,
           errorType: classifyError(error),
-          queuedForRetry: isLikelyOfflineError(error),
+          queuedForRetry: isOffline,
         });
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         return false;
