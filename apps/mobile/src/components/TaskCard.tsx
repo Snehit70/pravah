@@ -85,6 +85,7 @@ function TaskCardInner({
   onDragHandlePress,
 }: TaskCardProps) {
   const isCompleted = task.status === "completed";
+  const isInboxTask = task.status === "inbox";
   const swipeRef = useRef<SwipeableMethods>(null);
 
   const handleDone = useCallback(() => onDone(task._id), [onDone, task._id]);
@@ -107,12 +108,6 @@ function TaskCardInner({
 
   // Left-side action (revealed by swiping RIGHT) — Today for inbox, Inbox for
   // timeline, nothing for completed (only the right-side reopen exists).
-  const leftAction = isCompleted
-    ? null
-    : task.status === "inbox"
-      ? { label: "Today", trigger: handleMoveToday }
-      : { label: "Inbox", trigger: handleSendToInbox };
-
   const renderRightActions = useCallback(
     (_progress: SharedValue<number>, drag: SharedValue<number>) => (
       <SwipeActionLabel
@@ -128,30 +123,34 @@ function TaskCardInner({
 
   const renderLeftActions = useCallback(
     (_progress: SharedValue<number>, drag: SharedValue<number>) =>
-      leftAction ? (
+      !isCompleted ? (
         <SwipeActionLabel
           drag={drag}
           side="left"
-          label={leftAction.label}
+          label={isInboxTask ? "Today" : "Inbox"}
           background={colors.bgInput}
           textColor={colors.textPrimary}
         />
       ) : null,
-    [leftAction]
+    [isCompleted, isInboxTask]
   );
 
   const handleSwipeableOpen = useCallback(
     (direction: "left" | "right") => {
       // Trigger the action then close the swipeable so the row resets even
       // if the parent's optimistic mutation hasn't filtered it out yet.
-      if (direction === "right" && leftAction) {
-        leftAction.trigger();
+      if (direction === "right" && !isCompleted) {
+        if (isInboxTask) {
+          handleMoveToday();
+        } else {
+          handleSendToInbox();
+        }
       } else if (direction === "left") {
         onRightActionTrigger?.();
       }
       swipeRef.current?.close();
     },
-    [leftAction, onRightActionTrigger]
+    [handleMoveToday, handleSendToInbox, isCompleted, isInboxTask, onRightActionTrigger]
   );
 
   // Priority rail color. The rail is the only enclosing element on the row
@@ -199,7 +198,7 @@ function TaskCardInner({
       // The right-side action is always available (Done for active tasks,
       // Reopen for completed). The left-side action is conditional on tab.
       renderRightActions={renderRightActions}
-      renderLeftActions={leftAction ? renderLeftActions : undefined}
+      renderLeftActions={!isCompleted ? renderLeftActions : undefined}
       onSwipeableOpen={handleSwipeableOpen}
       containerStyle={styles.swipeContainer}
     >
