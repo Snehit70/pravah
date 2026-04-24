@@ -203,15 +203,21 @@ function MobileApp() {
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
   const canGoogleSignIn = Boolean(googleWebClientId);
 
+  // ── Dates ───────────────────────────────────────────────────────────
+
+  const today = toIsoDate(new Date());
+  const tomorrow = toIsoDate(addDays(new Date(), 1));
+  const weekEnd = toIsoDate(addDays(new Date(), 7));
+
   // ── Data ────────────────────────────────────────────────────────────
 
   const inboxQuery = useQuery(
     api.tasks.listTasks,
     session && activeTab === "inbox" ? { status: "inbox" } : "skip"
   );
-  const scheduledQuery = useQuery(
-    api.tasks.listTasks,
-    session && activeTab === "timeline" ? { status: "scheduled" } : "skip"
+  const timelineQuery = useQuery(
+    api.tasks.getTimeline,
+    session && activeTab === "timeline" ? { startDate: today, endDate: weekEnd } : "skip"
   );
   const completedQuery = useQuery(
     api.tasks.listTasks,
@@ -231,13 +237,20 @@ function MobileApp() {
     activeTab === "inbox"
       ? inboxQuery
       : activeTab === "timeline"
-        ? scheduledQuery
+        ? timelineQuery
         : completedQuery;
   const isActiveListLoading = activeQueryTasks === undefined;
 
   const serverTasks = useMemo<MobileTask[]>(() => {
+    const activeDocs =
+      activeTab === "timeline"
+        ? Object.values(timelineQuery ?? {}).flat()
+        : activeTab === "inbox"
+          ? inboxQuery
+          : completedQuery;
+
     return (
-      (activeQueryTasks as Doc<"tasks">[] | undefined)?.map((task) => ({
+      (activeDocs as Doc<"tasks">[] | undefined)?.map((task) => ({
         _id: task._id,
         title: task.title,
         description: task.description,
@@ -249,7 +262,7 @@ function MobileApp() {
         updatedAt: task.updatedAt,
       })) ?? []
     );
-  }, [activeQueryTasks]);
+  }, [activeTab, completedQuery, inboxQuery, timelineQuery]);
   const tasks = useMemo(() => optimisticTasks ?? serverTasks, [optimisticTasks, serverTasks]);
 
   const addTaskMutation = useMutation(api.tasks.addTask);
@@ -264,12 +277,6 @@ function MobileApp() {
   const claimLegacyDataMutation = useMutation(api.users.claimLegacyData);
   const upsertIntegrationMutation = useMutation(api.sync.upsertIntegration);
   const importGoogleCalendarAction = useAction(api.syncActions.importGoogleCalendarAction);
-
-  // ── Dates ───────────────────────────────────────────────────────────
-
-  const today = toIsoDate(new Date());
-  const tomorrow = toIsoDate(addDays(new Date(), 1));
-  const weekEnd = toIsoDate(addDays(new Date(), 7));
 
   // ── Derived data ────────────────────────────────────────────────────
 
@@ -294,7 +301,7 @@ function MobileApp() {
   }, [activeTab, tasks]);
 
   const inboxCount = countsQuery?.inboxCount ?? (activeTab === "inbox" ? inboxTasks.length : 0);
-  const timelineCount = countsQuery?.timelineCount ?? (activeTab === "timeline" ? scheduledTasks.length : 0);
+  const timelineCount = activeTab === "timeline" ? scheduledTasks.length : (countsQuery?.timelineCount ?? 0);
   const completedCount =
     countsQuery?.completedCount ?? (activeTab === "completed" ? completedTasks.length : 0);
 
@@ -1284,7 +1291,7 @@ function MobileApp() {
   const padCount = (n: number) => (n < 10 ? `0${n}` : `${n}`);
   const headerSubtitle =
     activeTab === "timeline"
-      ? `${padCount(timelineCount)} scheduled`
+      ? `${padCount(timelineCount)} next 7 days`
       : activeTab === "completed"
         ? "Closed loops"
         : `${padCount(inboxCount)} to triage`;
