@@ -175,6 +175,7 @@ function MobileApp() {
   const appStartMsRef = useRef<number>(Date.now());
   const lastListStateLogMsRef = useRef<number>(0);
   const lastRetryPersistLogMsRef = useRef<number>(0);
+  const busyTaskIdsRef = useRef<Set<string>>(new Set());
 
   const [activeTab, setActiveTab] = useState<TabKey>("inbox");
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -597,6 +598,7 @@ function MobileApp() {
       retryLabel,
       retryPayload,
       successHaptic = "notification",
+      taskId,
     }: {
       optimistic: (current: MobileTask[]) => MobileTask[];
       mutation: () => Promise<void>;
@@ -605,7 +607,14 @@ function MobileApp() {
       retryLabel?: string;
       retryPayload?: RetryPayload;
       successHaptic?: SuccessHaptic;
+      taskId?: Id<"tasks">;
     }): Promise<boolean> => {
+      if (taskId && busyTaskIdsRef.current.has(taskId)) {
+        mobileLogger.warn("mutation_ignored_busy_task", { actionName, taskId });
+        return false;
+      }
+      if (taskId) busyTaskIdsRef.current.add(taskId);
+
       const actionId = createActionId("mutation");
       const startedAt = Date.now();
       mobileLogger.info("mutation_started", {
@@ -641,6 +650,7 @@ function MobileApp() {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         return false;
       } finally {
+        if (taskId) busyTaskIdsRef.current.delete(taskId);
         setPendingMutations((c) => Math.max(0, c - 1));
       }
     },
@@ -660,6 +670,7 @@ function MobileApp() {
         errorMessage: "Could not mark task as done.",
         retryLabel: "Retry done",
         retryPayload: { type: "completeTask", taskId },
+        taskId,
       });
     },
     [runOptimisticMutation, completeTaskMutation]
@@ -677,6 +688,7 @@ function MobileApp() {
         retryLabel: "Retry move to today",
         retryPayload: { type: "moveTask", taskId, targetDate: today },
         successHaptic: "light",
+        taskId,
       });
     },
     [runOptimisticMutation, moveTaskMutation, today]
@@ -694,6 +706,7 @@ function MobileApp() {
         retryLabel: "Retry move to inbox",
         retryPayload: { type: "unscheduleTask", taskId },
         successHaptic: "light",
+        taskId,
       });
     },
     [runOptimisticMutation, unscheduleTaskMutation]
@@ -711,6 +724,7 @@ function MobileApp() {
         retryLabel: "Retry reopen",
         retryPayload: { type: "reopenTask", taskId },
         successHaptic: "light",
+        taskId,
       });
     },
     [runOptimisticMutation, reopenTaskMutation]
@@ -820,6 +834,7 @@ function MobileApp() {
           priority: data.priority,
         },
         successHaptic: "medium",
+        taskId: data.taskId,
       });
     },
     [runOptimisticMutation, updateTaskMutation]
