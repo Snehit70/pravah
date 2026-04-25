@@ -286,13 +286,34 @@ export function useTaskMutations({
 
   const shiftTimelineTask = useCallback(
     (taskId: Id<"tasks">, scheduledDate: string, direction: "up" | "down") => {
+      // Enforce the same priority-boundary constraint that drag reorder uses.
+      // Find the scoped list, locate this task and its neighbor, and reject the
+      // move if they belong to different priority groups.
+      const scopePredicate = (task: MobileTask) =>
+        task.status === "scheduled" && task.scheduledDate === scheduledDate;
+      const scoped = (serverTasks)
+        .filter(scopePredicate)
+        .slice()
+        .sort((a, b) => a.position - b.position);
+      const idx = scoped.findIndex((t) => t._id === taskId);
+      const neighborIdx = direction === "up" ? idx - 1 : idx + 1;
+      if (idx !== -1 && neighborIdx >= 0 && neighborIdx < scoped.length) {
+        const current = scoped[idx];
+        const neighbor = scoped[neighborIdx];
+        if ((current.priority ?? undefined) !== (neighbor.priority ?? undefined)) {
+          showToast({ kind: "error", message: "Reorder only within the same priority group." });
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          return;
+        }
+      }
+
       void runOptimisticMutation({
         actionName: direction === "up" ? "shift_task_up" : "shift_task_down",
         optimistic: (cur) =>
           shiftTaskWithinScopedOptimisticView(
             cur,
             taskId,
-            (task) => task.status === "scheduled" && task.scheduledDate === scheduledDate,
+            scopePredicate,
             direction,
             Date.now()
           ),
@@ -304,7 +325,7 @@ export function useTaskMutations({
         taskId,
       });
     },
-    [runOptimisticMutation, shiftScheduledTaskPositionMutation]
+    [runOptimisticMutation, shiftScheduledTaskPositionMutation, serverTasks, showToast]
   );
 
   return {
