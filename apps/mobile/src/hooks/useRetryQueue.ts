@@ -91,6 +91,17 @@ export function useRetryQueue({
       } finally {
         if (!cancelled) setIsHydrated(true);
       }
+    }).catch((error) => {
+      // If the storage read itself rejects (transient keychain / AsyncStorage
+      // error), we must still flip hydration complete. Otherwise persistence
+      // is permanently blocked for this session because the effect that
+      // persists on queue changes is gated behind `isHydrated`.
+      if (!cancelled) {
+        mobileLogger.warn("retry_queue_hydration_read_failed", {
+          errorType: classifyError(error),
+        });
+        setIsHydrated(true);
+      }
     });
 
     return () => {
