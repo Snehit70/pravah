@@ -32,10 +32,47 @@ async function resolveBackend(): Promise<StorageBackend> {
   return _backend;
 }
 
+// ── One-time migration from SecureStore ───────────────────────────────────
+//
+// Older app versions persisted the retry queue in SecureStore. When the
+// backend probe selects AsyncStorage, a first-read migration checks whether
+// SecureStore still holds data for the key. If AsyncStorage is empty and
+// SecureStore has a value, the data is copied across and the SecureStore
+// entry is deleted. This runs at most once per session per key.
+
+const _migratedKeys = new Set<string>();
+
+async function migrateFromSecureStoreIfNeeded(key: string): Promise<void> {
+  if (_backend !== "async" || _migratedKeys.has(key)) return;
+  _migratedKeys.add(key);
+
+  try {
+    const existing = await AsyncStorage.getItem(key);
+    if (existing) return; // AsyncStorage already has data — nothing to migrate.
+
+    const legacy = await SecureStore.getItemAsync(key);
+    if (!legacy) return; // No legacy data in SecureStore either.
+
+    await AsyncStorage.setItem(key, legacy);
+    await SecureStore.deleteItemAsync(key);
+    mobileLogger.info("retry_queue_migrated_from_secure_store", { key });
+  } catch (error) {
+    // Migration is best-effort; a failure here means the user loses the
+    // queued retries but is not blocked from using the app.
+    mobileLogger.warn("retry_queue_migration_failed", {
+      key,
+      errorType: classifyError(error),
+    });
+  }
+}
+
 export const retryQueueStorage = {
   async getItem(key: string): Promise<string | null> {
     const backend = await resolveBackend();
-    if (backend === "async") return AsyncStorage.getItem(key);
+    if (backend === "async") {
+      await migrateFromSecureStoreIfNeeded(key);
+      return AsyncStorage.getItem(key);
+    }
     return SecureStore.getItemAsync(key);
   },
   async setItem(key: string, value: string): Promise<void> {
