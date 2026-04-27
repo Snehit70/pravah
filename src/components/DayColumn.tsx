@@ -6,6 +6,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import type { Task } from "../types";
 import { getLocalDateString, daysBetween, DUE_SOON_DAYS } from "../lib/utils";
 import { TIMELINE_COL_WIDTH } from "../lib/timelineLayout";
+import { tx, T_FAST, EASE_OUT_EXPO } from "../lib/motion";
 
 interface GridDayColumnProps {
   date: string;
@@ -53,7 +54,7 @@ function GridTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
   useEffect(() => {
     if (!wasCompletedRef.current && isCompleted) {
       setJustCompleted(true);
-      const t = window.setTimeout(() => setJustCompleted(false), 600);
+      const t = window.setTimeout(() => setJustCompleted(false), 520);
       wasCompletedRef.current = isCompleted;
       return () => window.clearTimeout(t);
     }
@@ -66,6 +67,7 @@ function GridTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
       {...attributes}
       {...listeners}
       style={{
+        position: "relative",
         display: "flex",
         alignItems: "center",
         gap: 8,
@@ -85,20 +87,58 @@ function GridTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
         opacity: isDragging ? 0.4 : 1,
         transform: CSS.Transform.toString(transform) + (hover && !isCompleted ? " translateY(-1px)" : ""),
         boxShadow: hover ? "0 2px 8px rgba(0,0,0,.3)" : "none",
-        transition: "background .12s, border-color .12s, box-shadow .12s",
-        animation: justCompleted ? "taskComplete .6s cubic-bezier(0.34, 1.56, 0.64, 1)" : undefined,
+        transition: tx(["background-color", "border-color", "box-shadow", "transform"], "instant"),
+        animation: justCompleted ? `taskCompleteRow 520ms ${`cubic-bezier(${EASE_OUT_EXPO.join(",")})`} forwards` : undefined,
+        willChange: hover ? "transform" : undefined,
       }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       onClick={(e) => {
         e.stopPropagation();
-        onClick();
+        const target = e.currentTarget as HTMLElement;
+        type DocVT = Document & { startViewTransition?: (cb: () => void) => unknown };
+        const doc = document as DocVT;
+        if (typeof doc.startViewTransition === "function") {
+          // Clear hover-driven transform/shadow before the browser snapshots
+          // this element. Otherwise the snapshot captures translateY(-1px)
+          // and the morph appears to jump on enter.
+          setHover(false);
+          target.style.viewTransitionName = "task-morph";
+          const transition = doc.startViewTransition(() => {
+            onClick();
+          }) as { finished?: Promise<void> } | undefined;
+          const clear = () => {
+            target.style.viewTransitionName = "";
+          };
+          if (transition?.finished) {
+            transition.finished.then(clear, clear);
+          } else {
+            window.setTimeout(clear, 600);
+          }
+        } else {
+          onClick();
+        }
       }}
       initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: isDragging ? 0.4 : 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: isDragging ? 0.4 : 1, y: 0, transition: T_FAST }}
+      exit={{ opacity: 0, scale: 0.96, transition: T_FAST }}
       layout
     >
+      {/* Completion sweep — a 1px accent line scans across the row once. */}
+      {justCompleted && (
+        <span
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: "auto 0 0 0",
+            height: 1,
+            background: "oklch(0.78 0.18 150)",
+            boxShadow: "0 0 8px oklch(0.78 0.18 150 / 0.55)",
+            animation: `taskCompleteSweep 520ms cubic-bezier(${EASE_OUT_EXPO.join(",")}) forwards`,
+            pointerEvents: "none",
+          }}
+        />
+      )}
       <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {task.title}
       </span>
@@ -149,6 +189,7 @@ function GridDayColumnComponent({
       ref={setNodeRef}
       onDragOver={(e) => e.preventDefault()}
       style={{
+        position: "relative",
         width: TIMELINE_COL_WIDTH,
         flexShrink: 0,
         borderRight: "1px solid rgba(255,255,255,.07)",
@@ -158,17 +199,45 @@ function GridDayColumnComponent({
         gap: 5,
         minHeight: isDeadlineLane ? 140 : 240,
         background: isOver
-          ? "oklch(0.72 0.16 260 / 0.2)"
+          ? "oklch(0.72 0.16 260 / 0.18)"
           : isToday
           ? "oklch(0.72 0.16 260 / 0.06)"
           : isWeekend
           ? "rgba(0,0,0,.15)"
           : "transparent",
-        outline: isOver ? "1px dashed oklch(0.78 0.14 260 / 0.5)" : "none",
-        outlineOffset: -1,
-        transition: "background .15s, outline-color .15s",
+        transition: tx("background-color", "fast"),
       }}
     >
+      {/* Drop-zone affordance: top + bottom accent strokes scan in via clip-path
+          when this column is the active drop target. No outline-color fade. */}
+      {isOver && (
+        <>
+          <span
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: "0 0 auto 0",
+              height: 1,
+              background: "oklch(0.78 0.14 260)",
+              boxShadow: "0 0 12px oklch(0.78 0.14 260 / 0.55)",
+              animation: `dropZoneIn 220ms cubic-bezier(${EASE_OUT_EXPO.join(",")}) forwards`,
+              pointerEvents: "none",
+            }}
+          />
+          <span
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: "auto 0 0 0",
+              height: 1,
+              background: "oklch(0.78 0.14 260)",
+              boxShadow: "0 0 12px oklch(0.78 0.14 260 / 0.55)",
+              animation: `dropZoneIn 220ms cubic-bezier(${EASE_OUT_EXPO.join(",")}) forwards`,
+              pointerEvents: "none",
+            }}
+          />
+        </>
+      )}
       <SortableContext items={tasks.map(t => t._id)} strategy={verticalListSortingStrategy}>
         <AnimatePresence mode="popLayout">
           {tasks.map((task) => (

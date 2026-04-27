@@ -5,6 +5,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import type { Task } from "../types";
 import { INBOX_DROP_ID } from "../lib/taskRules";
+import { tx } from "../lib/motion";
 
 interface InboxSidebarProps {
   tasks: Task[];
@@ -71,7 +72,7 @@ function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void
         cursor: "grab",
         position: "relative",
         opacity: isDragging ? 0.4 : 1,
-        transition: "background .15s, border-color .15s, opacity .15s",
+        transition: tx(["background-color", "border-color", "opacity"], "instant"),
         userSelect: "none",
       }}
       initial={{ opacity: 0, x: 10 }}
@@ -82,7 +83,29 @@ function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void
       onMouseLeave={() => setHover(false)}
       onClick={(e) => {
         e.stopPropagation();
-        onClick();
+        const target = e.currentTarget as HTMLElement;
+        type DocVT = Document & { startViewTransition?: (cb: () => void) => unknown };
+        const doc = document as DocVT;
+        if (typeof doc.startViewTransition === "function") {
+          // Clear hover state so the snapshot doesn't capture the lifted
+          // pointer affordance. Modal owns the enter animation; we just
+          // tag the source element for the FLIP.
+          setHover(false);
+          target.style.viewTransitionName = "task-morph";
+          const transition = doc.startViewTransition(() => {
+            onClick();
+          }) as { finished?: Promise<void> } | undefined;
+          const clear = () => {
+            target.style.viewTransitionName = "";
+          };
+          if (transition?.finished) {
+            transition.finished.then(clear, clear);
+          } else {
+            window.setTimeout(clear, 600);
+          }
+        } else {
+          onClick();
+        }
       }}
     >
       {/* Left bar */}
@@ -164,7 +187,7 @@ function InboxSidebarComponent({
         borderLeft: "1px solid rgba(255,255,255,.07)",
         outline: isOver ? "1px dashed oklch(0.78 0.14 260 / 0.5)" : "none",
         outlineOffset: -2,
-        transition: "background .15s",
+        transition: tx("background-color", "fast"),
       }}
     >
       {/* Header */}
@@ -228,7 +251,7 @@ function InboxSidebarComponent({
             color: "#ededef",
             fontSize: 12,
             outline: "none",
-            transition: "border-color .15s, background .15s",
+            transition: tx(["border-color", "background-color"], "instant"),
           }}
           onFocus={(e) => {
             e.target.style.borderColor = "oklch(0.78 0.14 260 / 0.4)";
