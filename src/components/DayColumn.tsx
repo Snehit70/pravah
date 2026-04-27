@@ -5,8 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { memo, useEffect, useRef, useState } from "react";
 import type { Task } from "../types";
 import { getLocalDateString, daysBetween, DUE_SOON_DAYS } from "../lib/utils";
-
-const COL_W = 136;
+import { TIMELINE_COL_WIDTH } from "../lib/timelineLayout";
 
 interface GridDayColumnProps {
   date: string;
@@ -149,7 +148,7 @@ function GridDayColumnComponent({
       ref={setNodeRef}
       onDragOver={(e) => e.preventDefault()}
       style={{
-        width: COL_W,
+        width: TIMELINE_COL_WIDTH,
         flexShrink: 0,
         borderRight: "1px solid rgba(255,255,255,.07)",
         padding: "8px 6px",

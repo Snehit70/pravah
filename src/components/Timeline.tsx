@@ -2,10 +2,10 @@ import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import { GridDayColumn } from "./DayColumn";
 import type { Task } from "../types";
 import { generateDateRange, getLocalDateString } from "../lib/utils";
+import { TIMELINE_COL_WIDTH } from "../lib/timelineLayout";
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const DAY_NAMES = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
-const COL_W = 136;
 
 interface TimelineProps {
   tasksByDate: Record<string, Task[]>;
@@ -168,8 +168,8 @@ export function Timeline({
       if (e.metaKey || e.ctrlKey) return;
       const el = scrollerRef.current;
       if (!el) return;
-      if (e.key === "ArrowRight") { e.preventDefault(); el.scrollBy({ left: COL_W * 3, behavior: "smooth" }); }
-      else if (e.key === "ArrowLeft") { e.preventDefault(); el.scrollBy({ left: -COL_W * 3, behavior: "smooth" }); }
+      if (e.key === "ArrowRight") { e.preventDefault(); el.scrollBy({ left: TIMELINE_COL_WIDTH * 3, behavior: "smooth" }); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); el.scrollBy({ left: -TIMELINE_COL_WIDTH * 3, behavior: "smooth" }); }
       else if (e.key === "t" || e.key === "T") { e.preventDefault(); scrollToToday(true); }
     };
     window.addEventListener("keydown", onKey);
@@ -277,7 +277,7 @@ export function Timeline({
           onContextMenu={(e) => e.preventDefault()}
           style={{ overscrollBehaviorX: "contain" }}
         >
-          <div style={{ display: "inline-block", minWidth: `${dates.length * COL_W}px` }}>
+          <div style={{ display: "inline-block", minWidth: `${dates.length * TIMELINE_COL_WIDTH}px` }}>
             {/* Sticky header row */}
             <div
               className="flex"
@@ -379,7 +379,7 @@ function DayHeader({ date, today }: { date: string; today: string }) {
     <div
       data-today={isToday ? "1" : "0"}
       style={{
-        width: COL_W,
+        width: TIMELINE_COL_WIDTH,
         flexShrink: 0,
         padding: "10px 12px",
         borderRight: "1px solid rgba(255,255,255,.07)",

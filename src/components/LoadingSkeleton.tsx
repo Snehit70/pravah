@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { TIMELINE_COL_WIDTH } from "../lib/timelineLayout";
 
 const DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 const TASK_WIDTHS = [82, 104, 64, 116, 92, 74, 108];
@@ -88,7 +89,8 @@ function DayColumnSkeleton({ index, day }: { index: number; day: string }) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.035, duration: 0.28 }}
-      className="w-[136px] shrink-0 border-r border-white/[0.07]"
+      className="shrink-0 border-r border-white/[0.07]"
+      style={{ width: TIMELINE_COL_WIDTH }}
     >
       <div className="flex h-[58px] flex-col justify-center border-b border-white/[0.07] px-3">
         <span className="font-mono text-[10px] tracking-[0.12em] text-zinc-600">{day}</span>
