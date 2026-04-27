@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   DndContext,
   DragOverlay,
@@ -118,21 +119,38 @@ function AuthenticatedApp() {
     window.sessionStorage.setItem("pravah_active_page", activePage);
   }, [activePage]);
 
+  // Cross-route morph using the View Transitions API. Falls through to a
+  // plain state set in browsers that don't support it (Firefox today).
+  const navigate = useCallback((next: AppPage) => {
+    if (next === activePage) return;
+    type DocVT = Document & {
+      startViewTransition?: (cb: () => void) => unknown;
+    };
+    const doc = document as DocVT;
+    if (typeof doc.startViewTransition === "function") {
+      doc.startViewTransition(() => {
+        flushSync(() => setActivePage(next));
+      });
+    } else {
+      setActivePage(next);
+    }
+  }, [activePage]);
+
   if (!bootstrapReady || tasks === undefined) {
     return <LoadingSkeleton />;
   }
 
   const fade = kairoActive
-    ? { filter: "blur(6px) saturate(.8)", opacity: 0.35, pointerEvents: "none" as const }
-    : {};
+    ? { opacity: 0.38, pointerEvents: "none" as const }
+    : { opacity: 1 };
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
       <GoogleCallback />
-      <div style={{ transition: "filter .4s ease, opacity .4s ease", ...fade }}>
+      <div style={{ transition: "opacity var(--dur-slow) var(--ease-out-expo)", ...fade }}>
         <TopNavbar
           activePage={activePage}
-          onNavigate={setActivePage}
+          onNavigate={navigate}
           onOpenSettings={openSettings}
         />
       </div>
@@ -144,7 +162,7 @@ function AuthenticatedApp() {
       >
         <div
           className="flex flex-1 overflow-hidden"
-          style={{ transition: "filter .4s ease, opacity .4s ease", ...fade }}
+          style={{ transition: "opacity var(--dur-slow) var(--ease-out-expo)", ...fade }}
         >
           <main className="flex-1 overflow-hidden">
             {activePage === "timeline" ? (
@@ -165,22 +183,28 @@ function AuthenticatedApp() {
         </div>
 
         <DragOverlay
-          dropAnimation={{ duration: 180, easing: "cubic-bezier(0.22, 1, 0.36, 1)" }}
+          dropAnimation={{ duration: 240, easing: "cubic-bezier(0.16, 1, 0.3, 1)" }}
         >
           {draggedTask && (
             <div
               style={{
-                padding: "5px 8px",
-                background: "rgba(255,255,255,.08)",
-                border: "1px solid rgba(255,255,255,.2)",
-                borderLeft: "2px solid oklch(0.78 0.14 260)",
-                borderRadius: 4,
-                fontSize: 11,
+                padding: "8px 12px",
+                background: "rgba(20, 20, 24, 0.92)",
+                backdropFilter: "blur(6px)",
+                WebkitBackdropFilter: "blur(6px)",
+                border: "1px solid oklch(0.78 0.14 260 / 0.45)",
+                borderLeft: "3px solid oklch(0.78 0.14 260)",
+                borderRadius: 5,
+                fontSize: 12,
                 color: "#ededef",
-                rotate: "2deg",
-                scale: "1.05",
-                boxShadow: "0 20px 40px rgba(0,0,0,.4)",
+                transform: "rotate(0.6deg) scale(1.03)",
+                boxShadow:
+                  "0 24px 60px rgba(0,0,0,0.55), 0 8px 18px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.04), 0 0 28px oklch(0.78 0.14 260 / 0.28)",
                 fontFamily: "var(--font-sans)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                maxWidth: 320,
               }}
             >
               {draggedTask.title}

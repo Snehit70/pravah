@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { api } from "../../convex/_generated/api";
+import { T_BASE, T_FAST, tx } from "../lib/motion";
 import { getLocalDateString } from "../lib/utils";
 import { getTomorrowDateString } from "../lib/quickAddDates";
 import { useToast } from "./useToast";
@@ -43,7 +44,7 @@ function Pill({
         color: active ? ACCENT : "#c2c2c8",
         cursor: "pointer",
         fontFamily: "var(--font-sans)",
-        transition: "background .15s, border-color .15s, color .15s",
+        transition: tx(["background-color", "border-color", "color"], "instant"),
       }}
     >
       {dot && dotColor && (
@@ -132,7 +133,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.15 }}
+        transition={T_FAST}
         onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         style={{
           position: "fixed",
@@ -150,7 +151,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 10 }}
-          transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          transition={T_BASE}
           onClick={(e) => e.stopPropagation()}
           style={{
             width: 600,
@@ -349,7 +350,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                 cursor: title.trim() ? "pointer" : "not-allowed",
                 letterSpacing: 0.2,
                 fontFamily: "var(--font-sans)",
-                transition: "background .15s, color .15s",
+                transition: tx(["background-color", "color"], "instant"),
               }}
             >
               {isSubmitting ? "Adding…" : "Add task"}

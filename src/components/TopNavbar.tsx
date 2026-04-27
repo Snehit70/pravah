@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { tx } from "../lib/motion";
 import { cn } from "../lib/utils";
 
 export type AppPage = "timeline" | "goals";
@@ -138,7 +139,7 @@ export function TopNavbar({
             onClick={onOpenSettings}
             aria-label="Settings"
             title="Settings"
-            className="flex items-center justify-center rounded-[6px] transition-colors"
+            className="flex items-center justify-center rounded-[6px]"
             style={{
               width: 30,
               height: 30,
@@ -146,6 +147,7 @@ export function TopNavbar({
               border: "1px solid rgba(255,255,255,.07)",
               color: "#6b6b72",
               cursor: "pointer",
+              transition: tx(["color", "background-color", "border-color"], "instant"),
             }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#ededef"; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#6b6b72"; }}
@@ -183,7 +185,7 @@ function NavTab({
         background: active ? "oklch(0.72 0.16 260 / 0.2)" : "transparent",
         color: active ? "oklch(0.78 0.14 260)" : "#6b6b72",
         letterSpacing: 0.2,
-        transition: "background .15s, color .15s",
+        transition: tx(["background-color", "color"], "instant"),
       }}
       onMouseEnter={(e) => {
         if (!active) (e.currentTarget as HTMLButtonElement).style.color = "#ededef";

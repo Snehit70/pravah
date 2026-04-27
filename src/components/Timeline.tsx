@@ -3,6 +3,7 @@ import { GridDayColumn } from "./DayColumn";
 import type { Task } from "../types";
 import { generateDateRange, getLocalDateString } from "../lib/utils";
 import { TIMELINE_COL_WIDTH } from "../lib/timelineLayout";
+import { tx } from "../lib/motion";
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const DAY_NAMES = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
@@ -73,6 +74,16 @@ export function Timeline({
   const mcpColor = mcpConnected ? "oklch(0.78 0.18 150)" : "oklch(0.72 0.2 25)";
 
   const dates = useMemo(() => generateDateRange(14, 28), []);
+
+  // Timeline hero entrance plays once per session. Re-mounts (route changes,
+  // settings open/close) don't replay it.
+  const [playEntrance] = useState(() => {
+    if (typeof window === "undefined") return false;
+    if (window.sessionStorage.getItem("pravah_timeline_entered") === "1") return false;
+    window.sessionStorage.setItem("pravah_timeline_entered", "1");
+    return true;
+  });
+  const todayIndex = dates.indexOf(today);
 
   const scrollAnimRef = useRef(0);
   const scrollToToday = useCallback((smooth = true) => {
@@ -213,7 +224,7 @@ export function Timeline({
                 borderRadius: 4,
                 padding: "4px 8px",
                 cursor: "pointer",
-                transition: "color .15s, border-color .15s",
+                transition: tx(["color", "border-color"], "instant"),
               }}
               onMouseEnter={(e) => {
                 (e.currentTarget as HTMLButtonElement).style.color = "#ededef";
@@ -289,8 +300,13 @@ export function Timeline({
                 borderBottom: "1px solid rgba(255,255,255,.07)",
               }}
             >
-              {dates.map((date) => (
-                <DayHeader key={date} date={date} today={today} />
+              {dates.map((date, i) => (
+                <DayHeader
+                  key={date}
+                  date={date}
+                  today={today}
+                  entranceDelayMs={playEntrance ? Math.max(0, (i - Math.max(0, todayIndex - 4)) * 22) : null}
+                />
               ))}
             </div>
 
@@ -365,7 +381,15 @@ export function Timeline({
   );
 }
 
-function DayHeader({ date, today }: { date: string; today: string }) {
+function DayHeader({
+  date,
+  today,
+  entranceDelayMs,
+}: {
+  date: string;
+  today: string;
+  entranceDelayMs: number | null;
+}) {
   const d = new Date(date + "T12:00:00");
   const isToday = date === today;
   const isPast = date < today;
@@ -375,6 +399,13 @@ function DayHeader({ date, today }: { date: string; today: string }) {
   const dayNum = d.getDate();
   const month = MONTHS[d.getMonth()];
 
+  const entranceStyle =
+    entranceDelayMs !== null
+      ? {
+          animation: `columnRise 360ms cubic-bezier(0.16,1,0.3,1) ${entranceDelayMs}ms both`,
+          willChange: "transform, opacity" as const,
+        }
+      : {};
   return (
     <div
       data-today={isToday ? "1" : "0"}
@@ -391,6 +422,7 @@ function DayHeader({ date, today }: { date: string; today: string }) {
           ? "rgba(255,255,255,.012)"
           : "transparent",
         height: 58,
+        ...entranceStyle,
       }}
     >
       <div
@@ -427,6 +459,12 @@ function DayHeader({ date, today }: { date: string; today: string }) {
               right: 0,
               height: 2,
               background: "oklch(0.78 0.14 260)",
+              boxShadow: "0 0 18px oklch(0.78 0.14 260 / 0.45)",
+              transformOrigin: "center",
+              animation:
+                entranceDelayMs !== null
+                  ? `todayAccentReveal 520ms cubic-bezier(0.16,1,0.3,1) ${entranceDelayMs + 220}ms both`
+                  : undefined,
             }}
           />
           <div
