@@ -36,11 +36,11 @@ function FABInner({ onPress, bottom = 92 }: FABProps) {
   const handlePressIn = () => {
     // Spring down to 0.96 — just enough to feel responsive without making
     // the pill jump. damping high so it doesn't overshoot.
-    scale.value = withSpring(0.96, { damping: 18, stiffness: 320 });
+    scale.set(withSpring(0.96, { damping: 18, stiffness: 320 }));
   };
 
   const handlePressOut = () => {
-    scale.value = withSpring(1, { damping: 18, stiffness: 320 });
+    scale.set(withSpring(1, { damping: 18, stiffness: 320 }));
   };
 
   const handlePress = () => {
