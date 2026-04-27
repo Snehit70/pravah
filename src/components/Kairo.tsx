@@ -185,6 +185,38 @@ function useTypingPlaceholder(enabled: boolean): string {
   return text;
 }
 
+function KairoPlaceholderOverlay({ text }: { text: string }) {
+  return (
+    <div
+      aria-hidden
+      style={{
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        pointerEvents: "none",
+        color: "#8f8f96",
+        fontFamily: "var(--font-sans)",
+        fontSize: 15,
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+      }}
+    >
+      <span>{text}</span>
+      <span
+        style={{
+          width: 1,
+          height: 17,
+          marginLeft: 3,
+          background: "oklch(0.78 0.14 260 / 0.82)",
+          boxShadow: "0 0 10px oklch(0.78 0.14 260 / 0.35)",
+          animation: "kairoCaretBlink 1.05s steps(1, end) infinite",
+        }}
+      />
+    </div>
+  );
+}
+
 function readAssistantText(content: unknown): string {
   if (typeof content === "string") {
     return content;
@@ -516,27 +548,31 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
             }}
           >
             {!open && <KairoMark size={30} />}
-            <input
-              ref={inputRef}
-              value={val}
-              onChange={(e) => setVal(e.target.value)}
-              onFocus={() => setOpen(true)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") sendMessage(val.trim());
-                if (e.key === "Escape") setOpen(false);
-              }}
-              placeholder={open ? "Tell Kairo what to do..." : animatedPlaceholder || "Ask Kairo..."}
-              style={{
-                flex: 1,
-                background: "transparent",
-                border: "none",
-                outline: "none",
-                fontSize: open ? 14.5 : 15,
-                color: "#ededef",
-                fontFamily: "var(--font-sans)",
-                padding: "7px 0",
-              }}
-            />
+            <div style={{ position: "relative", flex: 1 }}>
+              {!open && val.length === 0 && <KairoPlaceholderOverlay text={animatedPlaceholder} />}
+              <input
+                ref={inputRef}
+                value={val}
+                onChange={(e) => setVal(e.target.value)}
+                onFocus={() => setOpen(true)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") sendMessage(val.trim());
+                  if (e.key === "Escape") setOpen(false);
+                }}
+                placeholder={open ? "Tell Kairo what to do..." : ""}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  outline: "none",
+                  width: "100%",
+                  fontSize: open ? 14.5 : 15,
+                  color: open ? "#ededef" : "transparent",
+                  caretColor: "#ededef",
+                  fontFamily: "var(--font-sans)",
+                  padding: "7px 0",
+                }}
+              />
+            </div>
             {open ? (
               <button
                 onClick={() => sendMessage(val.trim())}

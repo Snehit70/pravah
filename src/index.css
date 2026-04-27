@@ -224,6 +224,11 @@ textarea {
   100% { transform: scale(1); opacity: 0.55; }
 }
 
+@keyframes kairoCaretBlink {
+  0%, 48% { opacity: 1; }
+  49%, 100% { opacity: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root {
     --duration-fast: 0ms;
