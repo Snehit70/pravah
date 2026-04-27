@@ -98,30 +98,39 @@ export function Modal({
               // duplicates.
               willChange: browserOwnsEnter ? undefined : "transform, opacity",
               viewTransitionName,
+              // Timeline panel chrome: vertical gradient, accent-tinted
+              // border, layered shadow with an accent glow. Inline because
+              // oklch() doesn't compose cleanly into Tailwind utilities.
+              background: "linear-gradient(180deg, #111115 0%, #0c0c0f 100%)",
+              border: "1px solid oklch(0.78 0.14 260 / 0.18)",
+              boxShadow:
+                "0 32px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.03), 0 0 70px oklch(0.78 0.14 260 / 0.14)",
             } as React.CSSProperties}
             className={cn(
-              "bg-[#252525] rounded-2xl",
-              "border border-white/10",
-              "shadow-xl shadow-black/40",
-              "w-full max-w-md p-6 mx-4",
-              "md:mx-0",
+              "rounded-[8px]",
+              "w-full max-w-md p-5 mx-4 md:mx-0",
               className
             )}
           >
             {title && (
-              <div className="flex justify-between items-center mb-5">
-                <h2 className="text-base font-medium text-zinc-100">{title}</h2>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-[13px] font-medium text-zinc-100 tracking-[0.01em]">
+                  {title}
+                </h2>
                 <button
                   onClick={onClose}
                   aria-label="Close"
                   className={cn(
-                    "p-1.5 rounded-lg",
-                    "text-zinc-400 hover:text-zinc-100",
-                    "hover:bg-zinc-800"
+                    "p-1 rounded-[4px]",
+                    "text-zinc-500 hover:text-zinc-100",
+                    "hover:bg-white/[0.05]"
                   )}
-                  style={{ transition: "color var(--dur-instant) var(--ease-out-expo), background-color var(--dur-instant) var(--ease-out-expo)" }}
+                  style={{
+                    transition:
+                      "color var(--dur-instant) var(--ease-out-expo), background-color var(--dur-instant) var(--ease-out-expo)",
+                  }}
                 >
-                  <X size={18} />
+                  <X size={16} />
                 </button>
               </div>
             )}
