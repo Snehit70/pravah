@@ -75,11 +75,10 @@
   --z-modal: 400;
   --z-toast: 500;
 
-  --duration-fast: 120ms;
-  --duration-normal: 250ms;
-  --duration-slow: 400ms;
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Motion tokens are owned by src/lib/motion.ts and injected at runtime
+     as --dur-instant / --dur-fast / --dur-base / --dur-slow / --dur-deliberate
+     and --ease-out-expo / --ease-out-quart / --ease-in-out-quart.
+     Do not declare durations or easings in this file. */
 
   font-family: var(--font-sans);
   line-height: 1.5;
@@ -138,7 +137,7 @@ body::before {
 ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.1);
   border-radius: 99px;
-  transition: background var(--duration-fast);
+  transition: background var(--dur-instant) var(--ease-out-expo);
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -218,10 +217,72 @@ textarea {
   100% { transform: translateX(0); }
 }
 
-@keyframes taskComplete {
-  0% { transform: scale(1); }
-  40% { transform: scale(1.04); }
-  100% { transform: scale(1); opacity: 0.55; }
+@keyframes taskCompleteRow {
+  0%   { opacity: 1; }
+  100% { opacity: 0.55; }
+}
+
+/* A 1px accent bar sweeps left→right across the row using clip-path,
+   then settles. Driven by transform/clip-path, no layout. */
+@keyframes taskCompleteSweep {
+  0%   { clip-path: inset(0 100% 0 0); opacity: 0; }
+  20%  { opacity: 1; }
+  60%  { clip-path: inset(0 0 0 0); opacity: 1; }
+  100% { clip-path: inset(0 0 0 100%); opacity: 0; }
+}
+
+/* Hero one-shot accent for "today" column on first paint. Underline grows
+   from center outward then fades to its resting state. */
+@keyframes todayAccentReveal {
+  0%   { transform: scaleX(0); opacity: 0; }
+  40%  { opacity: 1; }
+  100% { transform: scaleX(1); opacity: 1; }
+}
+
+/* Timeline first-paint: column drops in from above-left, settles. */
+@keyframes columnRise {
+  0%   { opacity: 0; transform: translate3d(-6px, 4px, 0); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+/* Drop-zone affordance: accent stroke scans inward from both sides. */
+@keyframes dropZoneIn {
+  0%   { clip-path: inset(0 50% 0 50%); opacity: 0; }
+  100% { clip-path: inset(0 0 0 0); opacity: 1; }
+}
+
+/* View Transitions API — route morph between Timeline and Goals.
+   Older Firefox falls back to no animation, which is fine. */
+@supports (view-transition-name: foo) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 360ms;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  ::view-transition-old(root) {
+    animation-name: routeFadeOut;
+  }
+  ::view-transition-new(root) {
+    animation-name: routeFadeIn;
+  }
+}
+
+@keyframes routeFadeOut {
+  to { opacity: 0; transform: scale(0.992); }
+}
+@keyframes routeFadeIn {
+  from { opacity: 0; transform: scale(1.008); }
+}
+
+/* Task card → popup shared-element morph. Both source row and modal panel
+   carry view-transition-name: task-morph; the browser handles the FLIP. */
+@supports (view-transition-name: foo) {
+  ::view-transition-old(task-morph),
+  ::view-transition-new(task-morph) {
+    animation-duration: 360ms;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    mix-blend-mode: normal;
+  }
 }
 
 @keyframes kairoCaretBlink {
@@ -240,18 +301,30 @@ textarea {
   100% { background-position: -120% 50%; opacity: 0.42; }
 }
 
+/* Reduced-motion policy: collapse vestibular-triggering motion (transform,
+   translate, scale, rotate, filter, backdrop-filter, view-transitions) but
+   keep simple opacity/color transitions so the UI doesn't snap-cut. WCAG
+   2.3.3 specifically allows non-essential opacity fades under reduced motion. */
 @media (prefers-reduced-motion: reduce) {
-  :root {
-    --duration-fast: 0ms;
-    --duration-normal: 50ms;
-    --duration-slow: 100ms;
-  }
-
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: var(--duration-normal) !important;
+  }
+
+  /* Kill transitions that move geometry. Leave the rest at their authored
+     timing so opacity / color / background fades keep working. */
+  *,
+  *::before,
+  *::after {
+    transition-property: background-color, color, border-color, opacity, box-shadow !important;
+  }
+
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: 1ms !important;
   }
 }
