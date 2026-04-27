@@ -2,7 +2,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { AnimatePresence, motion } from "framer-motion";
-import { memo, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { Task } from "../types";
 import { getLocalDateString, daysBetween, DUE_SOON_DAYS } from "../lib/utils";
 
@@ -49,6 +49,18 @@ function GridTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
 
   const isAgentAdded = task.source === "ai-agent";
 
+  const wasCompletedRef = useRef(isCompleted);
+  const [justCompleted, setJustCompleted] = useState(false);
+  useEffect(() => {
+    if (!wasCompletedRef.current && isCompleted) {
+      setJustCompleted(true);
+      const t = window.setTimeout(() => setJustCompleted(false), 600);
+      wasCompletedRef.current = isCompleted;
+      return () => window.clearTimeout(t);
+    }
+    wasCompletedRef.current = isCompleted;
+  }, [isCompleted]);
+
   return (
     <motion.div
       ref={setNodeRef}
@@ -76,6 +88,7 @@ function GridTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
         transform: CSS.Transform.toString(transform) + (hover && !isCompleted ? " translateY(-1px)" : ""),
         boxShadow: hover ? "0 2px 8px rgba(0,0,0,.3)" : "none",
         transition: "background .12s, border-color .12s, box-shadow .12s",
+        animation: justCompleted ? "taskComplete .6s cubic-bezier(0.34, 1.56, 0.64, 1)" : undefined,
       }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}

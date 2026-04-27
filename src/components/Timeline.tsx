@@ -81,13 +81,30 @@ export function Timeline({
 
   const dates = useMemo(() => generateDateRange(14, 28), []);
 
+  const scrollAnimRef = useRef(0);
   const scrollToToday = useCallback((smooth = true) => {
     const el = scrollerRef.current;
     if (!el) return;
     const todayEl = el.querySelector<HTMLElement>("[data-today='1']");
     if (!todayEl) return;
-    const left = todayEl.offsetLeft - el.clientWidth / 2 + todayEl.clientWidth / 2;
-    el.scrollTo({ left: Math.max(0, left), behavior: smooth ? "smooth" : "instant" });
+    const target = Math.max(0, todayEl.offsetLeft - el.clientWidth / 2 + todayEl.clientWidth / 2);
+    if (!smooth) {
+      el.scrollLeft = target;
+      return;
+    }
+    cancelAnimationFrame(scrollAnimRef.current);
+    const start = el.scrollLeft;
+    const distance = target - start;
+    if (Math.abs(distance) < 1) return;
+    const duration = Math.min(700, 220 + Math.abs(distance) * 0.35);
+    const t0 = performance.now();
+    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - t0) / duration);
+      el.scrollLeft = start + distance * easeOutCubic(t);
+      if (t < 1) scrollAnimRef.current = requestAnimationFrame(tick);
+    };
+    scrollAnimRef.current = requestAnimationFrame(tick);
   }, []);
 
   useEffect(() => {
