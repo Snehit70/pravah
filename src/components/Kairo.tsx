@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { getLocalDateString } from "../lib/utils";
@@ -35,7 +36,9 @@ Guidelines:
 - Give one clear recommendation before listing alternatives
 - Acknowledge what's already done before suggesting more work
 - Flag honestly when a day looks overloaded ("Tuesday already has 4 tasks")
-- Keep responses short — 2-4 sentences for simple questions, a short paragraph max for analysis
+- Format answers as compact Markdown that this UI can render: short paragraphs, **bold** labels, \`inline code\` for dates/times/model names, and bullet lists only when there are 2-5 concrete items
+- For schedule analysis, use this shape: one sentence summary, then bullets starting with **Now**, **Risk**, or **Next**
+- Keep responses short — 2-4 sentences for simple questions, 3-5 bullets max for analysis
 - Never make up tasks or details not present in the context`;
 
 interface Message {
@@ -268,6 +271,154 @@ function KairoPlaceholderOverlay({ text, phase }: { text: string; phase: TypingP
   );
 }
 
+function KairoThinking() {
+  return (
+    <div
+      style={{
+        alignSelf: "flex-start",
+        width: "min(420px, 82%)",
+        padding: "12px 14px",
+        background: "linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.022))",
+        border: "1px solid rgba(255,255,255,.08)",
+        borderLeft: `3px solid ${ACCENT}`,
+        borderRadius: 4,
+        display: "grid",
+        gap: 9,
+      }}
+    >
+      <div
+        style={{
+          width: 130,
+          height: 12,
+          background: "linear-gradient(90deg, #6f6f77 0%, #ededf2 42%, #6f6f77 78%)",
+          backgroundSize: "220% 100%",
+          WebkitBackgroundClip: "text",
+          backgroundClip: "text",
+          color: "transparent",
+          animation: "kairoShine 1.2s ease-in-out infinite",
+          fontFamily: "var(--font-mono)",
+          fontSize: 11,
+          letterSpacing: 1,
+          textTransform: "uppercase",
+        }}
+      >
+        thinking
+      </div>
+      <div style={{ display: "grid", gap: 6 }}>
+        {[0.92, 0.74, 0.48].map((width, index) => (
+          <span
+            key={index}
+            style={{
+              width: `${width * 100}%`,
+              height: 8,
+              background: "linear-gradient(90deg, rgba(255,255,255,.055), rgba(255,255,255,.15), rgba(255,255,255,.055))",
+              backgroundSize: "220% 100%",
+              animation: `kairoSkeletonSweep 1.4s ease-in-out ${index * 0.08}s infinite`,
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function useRevealText(text: string, enabled: boolean): string {
+  const [visibleText, setVisibleText] = useState(enabled ? "" : text);
+
+  useEffect(() => {
+    if (!enabled) {
+      setVisibleText(text);
+      return;
+    }
+
+    let index = 0;
+    setVisibleText("");
+    const tick = () => {
+      index = Math.min(text.length, index + Math.max(1, Math.round(text.length / 90)));
+      setVisibleText(text.slice(0, index));
+      if (index < text.length) {
+        window.setTimeout(tick, 12 + Math.random() * 18);
+      }
+    };
+
+    const timer = window.setTimeout(tick, 70);
+    return () => window.clearTimeout(timer);
+  }, [enabled, text]);
+
+  return visibleText;
+}
+
+function renderInlineMarkdown(text: string) {
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
+  return parts.map((part, index) => {
+    if (part.startsWith("`") && part.endsWith("`")) {
+      return (
+        <code key={index} style={{ padding: "1px 4px", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 3, color: "#d9d9df", fontFamily: "var(--font-mono)", fontSize: "0.92em" }}>
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={index} style={{ color: "#f4f4f6", fontWeight: 700 }}>{part.slice(2, -2)}</strong>;
+    }
+
+    return part;
+  });
+}
+
+function KairoMarkdown({ text }: { text: string }) {
+  const lines = text.split("\n");
+  const blocks: ReactNode[] = [];
+  let listItems: string[] = [];
+  let listType: "bullet" | "number" | null = null;
+
+  const flushList = () => {
+    if (!listItems.length) return;
+    const Tag = listType === "number" ? "ol" : "ul";
+    blocks.push(
+      <Tag key={`list-${blocks.length}`} style={{ margin: "7px 0 0", paddingLeft: 18, display: "grid", gap: 5 }}>
+        {listItems.map((item, index) => (
+          <li key={index}>{renderInlineMarkdown(item)}</li>
+        ))}
+      </Tag>
+    );
+    listItems = [];
+    listType = null;
+  };
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushList();
+      return;
+    }
+
+    const bullet = trimmed.match(/^[-*]\s+(.+)$/);
+    const numbered = trimmed.match(/^\d+[.)]\s+(.+)$/);
+
+    if (bullet || numbered) {
+      const nextType = bullet ? "bullet" : "number";
+      if (listType && listType !== nextType) flushList();
+      listType = nextType;
+      listItems.push((bullet?.[1] ?? numbered?.[1] ?? "").trim());
+      return;
+    }
+
+    flushList();
+
+    if (trimmed.startsWith("### ")) {
+      blocks.push(<div key={`h-${blocks.length}`} style={{ marginTop: blocks.length ? 8 : 0, color: "#f3f3f5", fontWeight: 700, fontSize: 13 }}>{renderInlineMarkdown(trimmed.slice(4))}</div>);
+      return;
+    }
+
+    blocks.push(<p key={`p-${blocks.length}`} style={{ margin: blocks.length ? "7px 0 0" : 0 }}>{renderInlineMarkdown(trimmed)}</p>);
+  });
+
+  flushList();
+  return <>{blocks}</>;
+}
+
 function readAssistantText(content: unknown): string {
   if (typeof content === "string") {
     return content;
@@ -498,7 +649,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
           left: "50%",
           bottom: open ? "50%" : 38,
           transform: open ? "translate(-50%, 50%)" : "translate(-50%, 0)",
-          width: open ? 780 : 460,
+          width: open ? 780 : 462,
           maxWidth: "calc(100vw - 48px)",
           zIndex: 50,
           transition: "width .45s cubic-bezier(.22,1,.36,1), bottom .45s cubic-bezier(.22,1,.36,1)",
@@ -513,10 +664,10 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
             border: open
               ? "1px solid oklch(0.78 0.14 260 / 0.32)"
               : "1px solid rgba(255,255,255,.13)",
-            borderRadius: open ? 8 : 22,
+            borderRadius: open ? 8 : 7,
             boxShadow: open
               ? `0 46px 90px rgba(0,0,0,.58), 0 0 0 1px rgba(255,255,255,.04), 0 0 90px oklch(0.78 0.14 260 / 0.22)`
-              : "0 20px 50px rgba(0,0,0,.5)",
+              : `0 20px 50px rgba(0,0,0,.5), 0 0 0 1px ${ACCENT_GLOW}`,
             overflow: "hidden",
             transition: "box-shadow .3s ease",
           }}
@@ -636,15 +787,9 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
                 style={{ position: "relative", maxHeight: 430, overflowY: "auto", padding: "18px 22px 16px 24px", display: "flex", flexDirection: "column", gap: 14 }}
               >
                 {msgs.map((m, i) => (
-                  <KairoMsg key={i} m={m} />
+                  <KairoMsg key={i} m={m} animate={m.from === "kairo" && i === msgs.length - 1 && !thinking} />
                 ))}
-                {thinking && (
-                  <div style={{ alignSelf: "flex-start", padding: "10px 14px", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 4, fontSize: 13, color: "#6b6b72", display: "flex", gap: 5, alignItems: "center" }}>
-                    <PulsingDot color={ACCENT} size={6} />
-                    <PulsingDot color={ACCENT} size={6} />
-                    <PulsingDot color={ACCENT} size={6} />
-                  </div>
-                )}
+                {thinking && <KairoThinking />}
               </div>
 
               {/* Starter chips */}
@@ -696,6 +841,18 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
             }}
           >
             {!open && <KairoMark size={30} />}
+            {!open && (
+              <span
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  inset: "10px auto 10px 0",
+                  width: 3,
+                  background: `linear-gradient(180deg, ${ACCENT}, transparent)`,
+                  boxShadow: `0 0 18px ${ACCENT_GLOW}`,
+                }}
+              />
+            )}
             <div style={{ position: "relative", flex: 1 }}>
               {!open && val.length === 0 && (
                 <KairoPlaceholderOverlay
@@ -764,7 +921,9 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
   );
 }
 
-function KairoMsg({ m }: { m: Message }) {
+function KairoMsg({ m, animate = false }: { m: Message; animate?: boolean }) {
+  const visibleText = useRevealText(m.text, animate);
+
   if (m.from === "me") {
     return (
       <div style={{ alignSelf: "flex-end", maxWidth: "78%" }}>
@@ -778,7 +937,23 @@ function KairoMsg({ m }: { m: Message }) {
     <div style={{ alignSelf: "flex-start", maxWidth: "84%", display: "grid", gridTemplateColumns: "24px minmax(0, 1fr)", gap: 10, alignItems: "flex-start" }}>
       <KairoMark size={24} />
       <div style={{ padding: "12px 14px", background: "linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.025))", color: "#ededef", border: "1px solid rgba(255,255,255,.08)", borderLeft: "3px solid rgba(255,255,255,.16)", borderRadius: 4, fontSize: 13, lineHeight: 1.6, boxShadow: "inset 0 1px 0 rgba(255,255,255,.04)" }}>
-        <div>{m.text}</div>
+        <div>
+          <KairoMarkdown text={visibleText} />
+          {animate && visibleText.length < m.text.length && (
+            <span
+              aria-hidden
+              style={{
+                display: "inline-block",
+                width: 7,
+                height: 14,
+                marginLeft: 3,
+                transform: "translateY(2px)",
+                background: ACCENT,
+                animation: "kairoCaretBlink 1s steps(1, end) infinite",
+              }}
+            />
+          )}
+        </div>
         {m.tasks && m.tasks.length > 0 && (
           <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
             {m.tasks.map((t, i) => (

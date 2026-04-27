@@ -229,6 +229,17 @@ textarea {
   49%, 100% { opacity: 0; }
 }
 
+@keyframes kairoShine {
+  0% { background-position: 120% 50%; }
+  100% { background-position: -120% 50%; }
+}
+
+@keyframes kairoSkeletonSweep {
+  0% { background-position: 120% 50%; opacity: 0.42; }
+  50% { opacity: 0.88; }
+  100% { background-position: -120% 50%; opacity: 0.42; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root {
     --duration-fast: 0ms;
