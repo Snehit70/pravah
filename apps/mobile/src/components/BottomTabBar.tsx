@@ -81,7 +81,7 @@ function BottomTabBarInner({ active, onChange, bottomInset = spacing.md }: Botto
 
   return (
     <View style={[styles.container, { paddingBottom: bottomInset }]}>
-      <View style={styles.bar}>
+      <View style={styles.bar} accessibilityRole="tablist">
         {tabs.map((tab) => (
           <Pressable
             key={tab.key}

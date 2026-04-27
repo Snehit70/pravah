@@ -1,6 +1,5 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { Keyboard, Platform, Pressable, StyleSheet, Text, View } from "react-native";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetTextInput,
@@ -11,45 +10,11 @@ import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { TaskMetaFields } from "./TaskMetaFields";
+import { useKeyboardInset } from "../hooks/useKeyboardInset";
+import { type TaskPriority } from "../lib/task-form";
 
 type ComposerMode = "inbox" | "today";
-type TaskPriority = "p1" | "p2" | "p3" | undefined;
-
-function formatLocalDate(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function parseIsoDate(value?: string): Date {
-  if (!value) return new Date();
-  const [y, m, d] = value.split("-").map((v) => Number(v));
-  if (!y || !m || !d) return new Date();
-  return new Date(y, m - 1, d);
-}
-
-// Single-tap cycle order per design spec: none → P1 → P2 → P3 → none.
-function nextPriority(current: TaskPriority): TaskPriority {
-  if (current === undefined) return "p1";
-  if (current === "p1") return "p2";
-  if (current === "p2") return "p3";
-  return undefined;
-}
-
-function priorityDotColor(p: TaskPriority): string {
-  if (p === "p1") return colors.priorityP1;
-  if (p === "p2") return colors.priorityP2;
-  if (p === "p3") return colors.priorityP3;
-  return colors.borderSubtle;
-}
-
-function priorityLabel(p: TaskPriority): string {
-  if (p === "p1") return "P1";
-  if (p === "p2") return "P2";
-  if (p === "p3") return "P3";
-  return "—";
-}
 
 export type AddTaskSheetRef = {
   open: () => void;
@@ -81,30 +46,14 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [showDetails, setShowDetails] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [focusNonce, setFocusNonce] = useState(0);
-    const [keyboardHeight, setKeyboardHeight] = useState(0);
-    const [showDatePicker, setShowDatePicker] = useState(false);
-
-    useEffect(() => {
-      const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-      const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-
-      const showSubscription = Keyboard.addListener(showEvent, (event) => {
-        setKeyboardHeight(Math.max(0, event.endCoordinates.height));
-      });
-      const hideSubscription = Keyboard.addListener(hideEvent, () => {
-        setKeyboardHeight(0);
-      });
-
-      return () => {
-        showSubscription.remove();
-        hideSubscription.remove();
-      };
-    }, []);
-
-    const sheetBottomInset =
-      keyboardHeight > 0
-        ? Math.max(spacing.sm, keyboardHeight - insets.bottom + spacing.sm)
-        : Math.max(insets.bottom, spacing.lg);
+    const sheetBottomInset = useKeyboardInset(insets.bottom);
+    const hasDraftChanges = Boolean(
+      title.trim() ||
+        description.trim() ||
+        deadline.trim() ||
+        priority ||
+        mode !== "inbox"
+    );
 
     useImperativeHandle(ref, () => ({
       open: () => {
@@ -122,7 +71,6 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setDeadline("");
       setPriority(undefined);
       setShowDetails(false);
-      setShowDatePicker(false);
       setError(null);
     };
 
@@ -160,13 +108,13 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       (props: BottomSheetBackdropProps) => (
         <BottomSheetBackdrop
           {...props}
-          pressBehavior="close"
+          pressBehavior={hasDraftChanges ? "none" : "close"}
           disappearsOnIndex={-1}
           appearsOnIndex={0}
           opacity={0.6}
         />
       ),
-      []
+      [hasDraftChanges]
     );
 
     const canSubmit = useMemo(() => Boolean(title.trim()) && !saving, [title, saving]);
@@ -179,7 +127,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         detached
         bottomInset={sheetBottomInset}
         style={styles.sheetContainer}
-        enablePanDownToClose
+        enablePanDownToClose={!hasDraftChanges}
         enableDynamicSizing={false}
         backgroundStyle={styles.sheetBg}
         handleIndicatorStyle={styles.indicator}
@@ -267,85 +215,44 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
 
               {/* Due + priority live on one quiet row — two labeled fields
                   with no pills, borders, or chips. */}
-              <View style={styles.metaRow}>
-                <Pressable
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    setShowDatePicker(true);
-                  }}
-                  style={({ pressed }) => [styles.metaField, pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={styles.metaLabel}>Due</Text>
-                  <Text style={deadline ? styles.metaValue : styles.metaPlaceholder}>
-                    {deadline || "—"}
-                  </Text>
-                </Pressable>
-
-                {deadline ? (
-                  <Pressable
-                    onPress={() => {
-                      setDeadline("");
-                      setError(null);
-                    }}
-                    style={({ pressed }) => [styles.clearAction, pressed && { opacity: 0.6 }]}
-                    hitSlop={8}
-                  >
-                    <Text style={styles.clearActionText}>Clear</Text>
-                  </Pressable>
-                ) : null}
-
-                <Pressable
-                  onPress={() => {
-                    setPriority(nextPriority(priority));
-                    void Haptics.selectionAsync();
-                  }}
-                  style={({ pressed }) => [styles.metaField, pressed && { opacity: 0.6 }]}
-                  hitSlop={6}
-                >
-                  <Text style={styles.metaLabel}>Priority</Text>
-                  <View style={styles.priorityValue}>
-                    <View style={[styles.priorityDot, { backgroundColor: priorityDotColor(priority) }]} />
-                    <Text style={priority ? styles.metaValue : styles.metaPlaceholder}>
-                      {priorityLabel(priority)}
-                    </Text>
-                  </View>
-                </Pressable>
-              </View>
-
-              {showDatePicker ? (
-                <DateTimePicker
-                  value={parseIsoDate(deadline)}
-                  mode="date"
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  onChange={(_event, selectedDate) => {
-                    if (Platform.OS === "android") {
-                      setShowDatePicker(false);
-                    }
-                    if (selectedDate) {
-                      setDeadline(formatLocalDate(selectedDate));
-                      setError(null);
-                    }
-                  }}
-                />
-              ) : null}
+              <TaskMetaFields
+                key="add-task-meta-fields"
+                deadline={deadline}
+                priority={priority}
+                onDeadlineChange={setDeadline}
+                onPriorityChange={setPriority}
+                onClearError={() => setError(null)}
+              />
             </Animated.View>
           ) : null}
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-          <Pressable
-            onPress={() => void handleAdd()}
-            disabled={!canSubmit}
-            style={({ pressed }) => [
-              styles.primaryButton,
-              !canSubmit && styles.primaryButtonDisabled,
-              pressed && { opacity: 0.85 },
-            ]}
-          >
-            <Text style={[styles.primaryButtonText, !canSubmit && styles.primaryButtonTextDisabled]}>
-              {saving ? "Adding…" : "Add task"}
-            </Text>
-          </Pressable>
+          {hasDraftChanges ? (
+            <Pressable
+              onPress={() => {
+                reset();
+                bottomSheetRef.current?.close();
+              }}
+              style={({ pressed }) => [styles.discardButton, pressed && { opacity: 0.85 }]}
+            >
+              <Text style={styles.discardButtonText}>Discard</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              onPress={() => void handleAdd()}
+              disabled={!canSubmit}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                !canSubmit && styles.primaryButtonDisabled,
+                pressed && { opacity: 0.85 },
+              ]}
+            >
+              <Text style={[styles.primaryButtonText, !canSubmit && styles.primaryButtonTextDisabled]}>
+                {saving ? "Adding…" : "Add task"}
+              </Text>
+            </Pressable>
+          )}
         </BottomSheetView>
       </BottomSheet>
     );
@@ -447,45 +354,6 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
   },
 
-  // Meta row: Due + Priority as two labeled fields
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: spacing.xl,
-  },
-  metaField: {
-    gap: 4,
-  },
-  metaLabel: {
-    ...typography.micro,
-    color: colors.textMuted,
-  },
-  metaValue: {
-    ...typography.numeric,
-    color: colors.textPrimary,
-  },
-  metaPlaceholder: {
-    ...typography.numeric,
-    color: colors.textMuted,
-  },
-  priorityValue: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-  },
-  priorityDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  clearAction: {
-    paddingBottom: 2,
-  },
-  clearActionText: {
-    ...typography.micro,
-    color: colors.textSecondary,
-  },
-
   // Error
   errorText: {
     ...typography.bodyMd,
@@ -510,5 +378,14 @@ const styles = StyleSheet.create({
   },
   primaryButtonTextDisabled: {
     color: colors.textMuted,
+  },
+  discardButton: {
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: spacing.sm,
+  },
+  discardButtonText: {
+    ...typography.title,
+    color: colors.error,
   },
 });
