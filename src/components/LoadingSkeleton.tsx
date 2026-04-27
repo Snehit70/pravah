@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 
 const DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 const TASK_WIDTHS = [82, 104, 64, 116, 92, 74, 108];
+const INBOX_ITEM_WIDTHS = [128, 92, 144, 106, 76, 156, 118, 136, 98, 148, 84, 124, 110, 140];
 
 function SkeletonLine({
   width,
@@ -162,7 +163,7 @@ function InboxSkeleton() {
       </div>
 
       <div className="flex flex-1 flex-col gap-[5px] overflow-hidden p-[10px]">
-        {[0, 1, 2, 3, 4].map((item) => (
+        {INBOX_ITEM_WIDTHS.map((titleWidth, item) => (
           <motion.div
             key={item}
             initial={{ opacity: 0, x: 10 }}
@@ -183,7 +184,7 @@ function InboxSkeleton() {
                     : "oklch(0.72 0.16 30 / 0.7)",
               }}
             />
-            <SkeletonLine width={[128, 92, 144, 106, 76][item]} tone="bright" />
+            <SkeletonLine width={titleWidth} tone="bright" />
             <div className="mt-[7px] flex gap-2">
               <SkeletonLine width={42} />
               <SkeletonLine width={24} />
