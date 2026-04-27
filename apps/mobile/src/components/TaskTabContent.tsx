@@ -20,8 +20,9 @@ type TaskTabContentProps = {
   emptyBlock: JSX.Element;
   loadingBlock: JSX.Element;
   onRefresh: () => Promise<void>;
+  onInboxDragEnd: (original: MobileTask[], data: MobileTask[]) => Promise<void>;
   onTimelineDragEnd: (dateKey: string, original: MobileTask[], data: MobileTask[]) => Promise<void>;
-  renderInboxTaskItem: ({ item }: { item: MobileTask }) => JSX.Element;
+  renderInboxTaskItem: (params: RenderItemParams<MobileTask>) => JSX.Element;
   renderTimelineTaskItem: (dateKey: string) => (params: RenderItemParams<MobileTask>) => JSX.Element;
   renderCompletedTaskItem: ({ item }: { item: MobileTask }) => JSX.Element;
 };
@@ -40,6 +41,7 @@ export function TaskTabContent({
   emptyBlock,
   loadingBlock,
   onRefresh,
+  onInboxDragEnd,
   onTimelineDragEnd,
   renderInboxTaskItem,
   renderTimelineTaskItem,
@@ -57,7 +59,7 @@ export function TaskTabContent({
 
   if (activeTab === "inbox") {
     return (
-      <FlatList
+      <DraggableFlatList
         style={{ flex: 1 }}
         contentContainerStyle={{
           paddingHorizontal: spacing.lg,
@@ -67,6 +69,8 @@ export function TaskTabContent({
         data={inboxTasks}
         keyExtractor={(item) => item._id}
         renderItem={renderInboxTaskItem}
+        onDragEnd={({ data }) => void onInboxDragEnd(inboxTasks, data)}
+        activationDistance={10}
         showsVerticalScrollIndicator={false}
         refreshControl={refreshControl}
         ListEmptyComponent={isActiveListLoading ? loadingBlock : emptyBlock}

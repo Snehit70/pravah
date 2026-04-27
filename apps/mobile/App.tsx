@@ -382,6 +382,7 @@ function MobileApp() {
     sendToInbox,
     reopenToInbox,
     handleSaveEdits,
+    handleInboxDragEnd,
     handleTimelineDragEnd,
     shiftTimelineTask,
   } = useTaskMutations({
@@ -489,12 +490,13 @@ function MobileApp() {
   }, []);
 
   const renderInboxTaskItem = useCallback(
-    ({ item }: { item: MobileTask }) => (
+    ({ item, drag }: RenderItemParams<MobileTask>) => (
       <TaskCard
         task={item}
         onDone={markDone}
         onMoveToday={moveToToday}
         onEdit={handleEditTask}
+        onDragHandlePress={drag}
       />
     ),
     [markDone, moveToToday, handleEditTask]
@@ -714,6 +716,7 @@ function MobileApp() {
         emptyBlock={emptyBlock}
         loadingBlock={loadingBlock}
         onRefresh={handleRefresh}
+        onInboxDragEnd={handleInboxDragEnd}
         onTimelineDragEnd={handleTimelineDragEnd}
         renderInboxTaskItem={renderInboxTaskItem}
         renderTimelineTaskItem={renderTimelineTaskItem}

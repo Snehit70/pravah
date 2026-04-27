@@ -65,6 +65,7 @@ export function useTaskMutations({
   const reopenTaskMutation = useMutation(api.tasks.reopenTask);
   const updateTaskMutation = useMutation(api.tasks.updateTask);
   const reorderTasksMutation = useMutation(api.tasks.reorderTasks);
+  const reorderInboxTasksMutation = useMutation(api.tasks.reorderInboxTasks);
   const shiftScheduledTaskPositionMutation = useMutation(api.tasks.shiftScheduledTaskPosition);
 
   const runOptimisticMutation = useCallback(
@@ -284,24 +285,48 @@ export function useTaskMutations({
     [hasPriorityBoundaryViolation, reorderTasksMutation, serverTasks, setOptimisticTasks, setPendingMutations, showToast]
   );
 
+  const handleInboxDragEnd = useCallback(
+    async (_original: MobileTask[], data: MobileTask[]) => {
+      const taskIds = data.map((task) => task._id);
+      const now = Date.now();
+      const stateRef: { current: MobileTask[] | null } = { current: null };
+      setPendingMutations((count) => count + 1);
+      setOptimisticTasks((current) => {
+        stateRef.current = current;
+        return reorderScopedTasksInOptimisticView(
+          current ?? serverTasks,
+          taskIds,
+          (task) => task.status === "inbox" && !task.scheduledDate,
+          now
+        );
+      });
+
+      try {
+        await reorderInboxTasksMutation({ taskIds });
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } catch {
+        setOptimisticTasks(stateRef.current);
+        showToast({ kind: "error", message: "Could not save inbox order." });
+      } finally {
+        setPendingMutations((count) => Math.max(0, count - 1));
+      }
+    },
+    [reorderInboxTasksMutation, serverTasks, setOptimisticTasks, setPendingMutations, showToast]
+  );
+
   const shiftTimelineTask = useCallback(
     (taskId: Id<"tasks">, scheduledDate: string, direction: "up" | "down") => {
-      // Enforce the same priority-boundary constraint that drag reorder uses.
-      // Find the scoped list, locate this task and its neighbor, and reject the
-      // move if they belong to different priority groups.
       const scopePredicate = (task: MobileTask) =>
         task.status === "scheduled" && task.scheduledDate === scheduledDate;
-      const scoped = (serverTasks)
-        .filter(scopePredicate)
-        .slice()
-        .sort((a, b) => a.position - b.position);
+      const scoped = serverTasks.filter(scopePredicate).slice().sort((a, b) => a.position - b.position);
       const idx = scoped.findIndex((t) => t._id === taskId);
       const neighborIdx = direction === "up" ? idx - 1 : idx + 1;
       if (idx !== -1 && neighborIdx >= 0 && neighborIdx < scoped.length) {
-        const current = scoped[idx];
-        const neighbor = scoped[neighborIdx];
-        if ((current.priority ?? undefined) !== (neighbor.priority ?? undefined)) {
-          showToast({ kind: "error", message: "Reorder only within the same priority group." });
+        const reordered = scoped.slice();
+        const [moved] = reordered.splice(idx, 1);
+        reordered.splice(neighborIdx, 0, moved);
+        if (hasPriorityBoundaryViolation(scoped, reordered)) {
+          showToast({ kind: "error", message: "Drag only within the same priority group." });
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
           return;
         }
@@ -325,7 +350,7 @@ export function useTaskMutations({
         taskId,
       });
     },
-    [runOptimisticMutation, shiftScheduledTaskPositionMutation, serverTasks, showToast]
+    [runOptimisticMutation, shiftScheduledTaskPositionMutation, serverTasks, hasPriorityBoundaryViolation, showToast]
   );
 
   return {
@@ -334,6 +359,7 @@ export function useTaskMutations({
     sendToInbox,
     reopenToInbox,
     handleSaveEdits,
+    handleInboxDragEnd,
     handleTimelineDragEnd,
     shiftTimelineTask,
   };
