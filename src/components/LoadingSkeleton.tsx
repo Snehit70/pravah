@@ -133,55 +133,69 @@ function DayColumnSkeleton({ index, day }: { index: number; day: string }) {
 function InboxSkeleton() {
   return (
     <aside
-      className="hidden w-[300px] shrink-0 flex-col border-l lg:flex"
+      className="hidden h-full w-[300px] shrink-0 flex-col border-l lg:flex"
       style={{ background: "#101013", borderColor: "rgba(255,255,255,.07)" }}
     >
-      <div className="flex items-start gap-2 border-b border-white/[0.07] px-[14px] py-3">
-        <div>
+      <div
+        className="flex items-start gap-2 px-[14px] py-3"
+        style={{ borderBottom: "1px solid rgba(255,255,255,.07)" }}
+      >
+        <div className="flex flex-col gap-0.5">
           <div className="flex items-center gap-2">
             <span className="text-[13px] font-medium text-zinc-100">Inbox</span>
             <span className="rounded-full bg-[oklch(0.72_0.16_260_/_0.2)] px-2 py-0.5 font-mono text-[10px] text-[oklch(0.78_0.14_260)]">
               ...
             </span>
           </div>
-          <div className="mt-1">
-            <SkeletonLine width={88} />
-          </div>
         </div>
         <div className="flex-1" />
-        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-[oklch(0.78_0.18_150)]" />
+        <div className="mt-1 flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.78_0.18_150)]" />
+          <span className="font-mono text-[9px] tracking-[0.06em] text-zinc-500">MCP</span>
+        </div>
       </div>
 
-      <div className="border-b border-white/[0.07] px-2.5 py-2">
-        <div className="h-[31px] rounded-[4px] border border-white/[0.09] bg-black/25" />
+      <div className="px-2.5 py-2" style={{ borderBottom: "1px solid rgba(255,255,255,.07)" }}>
+        <div className="flex h-[31px] items-center rounded-[4px] border border-white/[0.09] bg-black/25 px-[10px] shadow-[inset_0_1px_0_rgba(0,0,0,.3)]">
+          <span className="text-xs text-zinc-600">Search inbox...</span>
+        </div>
       </div>
 
-      <div className="flex flex-1 flex-col gap-[5px] p-[10px]">
+      <div className="flex flex-1 flex-col gap-[5px] overflow-hidden p-[10px]">
         {[0, 1, 2, 3, 4].map((item) => (
           <motion.div
             key={item}
             initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.1 + item * 0.04, duration: 0.24 }}
-            className="rounded-[4px] border border-white/[0.07] bg-white/[0.025] px-3 py-2.5"
+            className="relative min-h-[51px] rounded-[4px] border border-white/[0.07] bg-white/[0.025] px-[10px] py-[7px] pl-[14px]"
             style={{
-              borderLeft:
-                item % 2 === 0
-                  ? "2px solid oklch(0.78 0.14 260 / 0.7)"
-                  : "2px solid oklch(0.72 0.16 30 / 0.7)",
+              fontSize: 12,
             }}
           >
+            <span
+              className="absolute left-[6px] top-1/2 w-1 -translate-y-1/2 rounded-[2px]"
+              style={{
+                height: "60%",
+                background:
+                  item % 2 === 0
+                    ? "oklch(0.78 0.14 260 / 0.7)"
+                    : "oklch(0.72 0.16 30 / 0.7)",
+              }}
+            />
             <SkeletonLine width={[128, 92, 144, 106, 76][item]} tone="bright" />
-            <div className="mt-2 flex gap-2">
-              <SkeletonLine width={34} />
-              <SkeletonLine width={28} />
+            <div className="mt-[7px] flex gap-2">
+              <SkeletonLine width={42} />
+              <SkeletonLine width={24} />
             </div>
           </motion.div>
         ))}
       </div>
 
-      <div className="border-t border-white/[0.07] p-[10px]">
-        <div className="h-9 rounded-[4px] border border-[oklch(0.78_0.14_260_/_0.35)] bg-[oklch(0.72_0.16_260_/_0.16)]" />
+      <div style={{ padding: 10, borderTop: "1px solid rgba(255,255,255,.07)" }}>
+        <div className="flex h-[37px] items-center justify-center rounded-[4px] border border-[oklch(0.78_0.14_260_/_0.4)] bg-[oklch(0.72_0.16_260_/_0.2)]">
+          <SkeletonLine width={82} tone="bright" />
+        </div>
       </div>
     </aside>
   );
@@ -223,13 +237,27 @@ export function LoadingSkeleton() {
             </div>
           </aside>
 
-          <main className="min-w-0 flex-1 overflow-hidden">
-            <div className="h-full overflow-hidden">
+          <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="min-h-0 flex-1 overflow-hidden">
               <div className="flex min-w-max">
                 {DAYS.map((day, index) => (
                   <DayColumnSkeleton key={day} index={index} day={day} />
                 ))}
               </div>
+            </div>
+
+            <div
+              className="flex h-7 shrink-0 items-center gap-4 border-t px-4 font-mono text-[11px] tracking-[0.03em] text-zinc-500"
+              style={{ background: "#101013", borderColor: "rgba(255,255,255,.07)" }}
+            >
+              <span className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.78_0.18_150)]" />
+                mcp · connecting
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.78_0.15_60)]" />
+                convex · syncing
+              </span>
             </div>
           </main>
         </div>
