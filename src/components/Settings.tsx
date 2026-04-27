@@ -12,6 +12,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { T_BASE, T_FAST } from "../lib/motion";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -479,7 +480,7 @@ export function Settings({ onClose }: SettingsProps) {
         animate="visible"
         exit="hidden"
         variants={overlayVariants}
-        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+        transition={T_FAST}
         className={cn(
           "fixed inset-0 z-50 flex items-start justify-center pt-24",
           "bg-black/60 backdrop-blur-sm"
@@ -491,7 +492,7 @@ export function Settings({ onClose }: SettingsProps) {
           animate="visible"
           exit="exit"
           variants={modalVariants}
-          transition={{ duration: 0.25, ease: [0.34, 1.56, 0.64, 1] }}
+          transition={T_BASE}
           className={cn(
             "w-full max-w-2xl p-6 mx-4 md:mx-0 max-h-[82vh] overflow-y-auto overflow-x-hidden",
             "backdrop-blur-xl rounded-[4px]",
@@ -519,10 +520,13 @@ export function Settings({ onClose }: SettingsProps) {
               className={cn(
                 "p-2 rounded-[3px]",
                 "text-zinc-500 hover:text-zinc-300",
-                "hover:bg-white/5",
-                "transition-colors duration-150"
+                "hover:bg-white/5"
               )}
-              style={{ border: "1px solid rgba(255,255,255,.07)" }}
+              style={{
+                border: "1px solid rgba(255,255,255,.07)",
+                transition:
+                  "color var(--dur-instant) var(--ease-out-expo), background-color var(--dur-instant) var(--ease-out-expo), border-color var(--dur-instant) var(--ease-out-expo)",
+              }}
             >
               <X size={18} />
             </button>
@@ -808,7 +812,7 @@ export function Settings({ onClose }: SettingsProps) {
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                      transition={T_FAST}
                       className="space-y-4 overflow-hidden"
                     >
                       <div className="border-t border-zinc-700/50 pt-4">
@@ -824,14 +828,18 @@ export function Settings({ onClose }: SettingsProps) {
                           </div>
                           <button
                             onClick={handleCalendarToggle}
-                            className={cn(
-                              "w-11 h-6 rounded-full transition-colors duration-150",
-                              calendarEnabled ? "bg-amber-500" : "bg-zinc-700"
-                            )}
+                            className="w-11 h-6 rounded-full"
+                            style={{
+                              backgroundColor: calendarEnabled
+                                ? "oklch(0.78 0.14 260)"
+                                : "rgba(255,255,255,0.08)",
+                              transition:
+                                "background-color var(--dur-fast) var(--ease-out-expo)",
+                            }}
                           >
                             <motion.div
                               animate={{ x: calendarEnabled ? 22 : 4 }}
-                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                              transition={T_FAST}
                               className="w-4 h-4 bg-white rounded-full shadow-sm"
                             />
                           </button>
@@ -887,14 +895,18 @@ export function Settings({ onClose }: SettingsProps) {
                           </div>
                           <button
                             onClick={handleGmailToggle}
-                            className={cn(
-                              "w-11 h-6 rounded-full transition-colors duration-150",
-                              gmailEnabled ? "bg-amber-500" : "bg-zinc-700"
-                            )}
+                            className="w-11 h-6 rounded-full"
+                            style={{
+                              backgroundColor: gmailEnabled
+                                ? "oklch(0.78 0.14 260)"
+                                : "rgba(255,255,255,0.08)",
+                              transition:
+                                "background-color var(--dur-fast) var(--ease-out-expo)",
+                            }}
                           >
                             <motion.div
                               animate={{ x: gmailEnabled ? 22 : 4 }}
-                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                              transition={T_FAST}
                               className="w-4 h-4 bg-white rounded-full shadow-sm"
                             />
                           </button>
@@ -907,7 +919,7 @@ export function Settings({ onClose }: SettingsProps) {
                             initial={{ opacity: 0, y: -10 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -10 }}
-                            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                            transition={T_FAST}
                           >
                             <div className="grid grid-cols-2 gap-2">
                               <Button

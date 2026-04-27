@@ -105,11 +105,12 @@ function TaskCardComponent({ task, onClick, isDragOverlay }: TaskCardProps) {
         <div
           className={cn(
             "mt-0.5 flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center",
-            "transition-colors duration-150",
           )}
           style={{
             backgroundColor: `${getAccentColor()}20`,
             color: getAccentColor(),
+            transition:
+              "background-color var(--dur-instant) var(--ease-out-expo), color var(--dur-instant) var(--ease-out-expo)",
           }}
         >
           {isCompleted ? (
