@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Geist", "Inter", system-ui, -apple-system, sans-serif;
-  --font-display: "Geist", system-ui, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, monospace;
+  --font-sans: "Geist Variable", "Geist", "Inter", system-ui, -apple-system, sans-serif;
+  --font-display: "Geist Variable", "Geist", system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, monospace;
 }
 
 :root {
