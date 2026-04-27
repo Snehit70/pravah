@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { T_FAST, T_SLOW, T_EXIT_FAST, tx } from "../lib/motion";
 import { getLocalDateString } from "../lib/utils";
 import type { Task } from "../types";
 import {
@@ -251,7 +253,7 @@ function KairoPlaceholderOverlay({ text, phase }: { text: string; phase: TypingP
         letterSpacing: "-0.01em",
         whiteSpace: "nowrap",
         overflow: "hidden",
-        transition: "color .18s ease, opacity .18s ease",
+        transition: tx(["color", "opacity"], "fast"),
         opacity: phase === "gap" && !text ? 0.76 : 1,
       }}
     >
@@ -628,31 +630,48 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          pointerEvents: "none",
-          background: open ? "rgba(0,0,0,.55)" : "rgba(0,0,0,0)",
-          backdropFilter: open ? "blur(12px)" : "blur(0px)",
-          WebkitBackdropFilter: open ? "blur(12px)" : "blur(0px)",
-          transition: "background .4s ease, backdrop-filter .4s ease",
-          zIndex: 40,
-        }}
-      />
+      {/* Backdrop — opacity-only animation. The blurred layer mounts only while
+          open (or closing) to avoid paying for backdrop-filter when idle. */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            key="kairo-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1, transition: T_FAST }}
+            exit={{ opacity: 0, transition: T_EXIT_FAST }}
+            style={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+              background: "rgba(0,0,0,.55)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              zIndex: 40,
+              willChange: "opacity",
+            }}
+          />
+        )}
+      </AnimatePresence>
 
-      {/* Panel */}
-      <div
+      {/* Panel — explicit width/y animation. We avoid `layout` here because it
+          fought the inline transform: translateX(-50%) and FLIP-scaled the
+          inner gradient overlays during open/close. The static style keeps
+          horizontal centering; Framer animates only width and vertical
+          position. */}
+      <motion.div
+        animate={{
+          width: open ? 780 : 462,
+          bottom: open ? "50%" : 38,
+          y: open ? "50%" : 0,
+        }}
+        transition={T_SLOW}
         style={{
           position: "absolute",
           left: "50%",
-          bottom: open ? "50%" : 38,
-          transform: open ? "translate(-50%, 50%)" : "translate(-50%, 0)",
-          width: open ? 780 : 462,
+          x: "-50%",
           maxWidth: "calc(100vw - 48px)",
           zIndex: 50,
-          transition: "width .45s cubic-bezier(.22,1,.36,1), bottom .45s cubic-bezier(.22,1,.36,1)",
+          willChange: "width, transform",
         }}
       >
         <div
@@ -669,7 +688,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
               ? `0 46px 90px rgba(0,0,0,.58), 0 0 0 1px rgba(255,255,255,.04), 0 0 90px oklch(0.78 0.14 260 / 0.22)`
               : `0 20px 50px rgba(0,0,0,.5), 0 0 0 1px ${ACCENT_GLOW}`,
             overflow: "hidden",
-            transition: "box-shadow .3s ease",
+            transition: tx(["box-shadow", "border-color", "background-color"], "slow"),
           }}
         >
           {open && (
@@ -808,7 +827,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
                         color: "#c2c2c8",
                         cursor: "pointer",
                         fontFamily: "var(--font-sans)",
-                        transition: "background .15s, border-color .15s",
+                        transition: tx(["background-color", "border-color"], "instant"),
                       }}
                       onMouseEnter={(e) => {
                         (e.currentTarget as HTMLButtonElement).style.borderColor = "oklch(0.78 0.14 260 / 0.55)";
@@ -906,7 +925,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
                   border: "none",
                   borderRadius: 4,
                   cursor: val.trim() ? "pointer" : "not-allowed",
-                  transition: "background .15s, color .15s",
+                  transition: tx(["background-color", "color"], "instant"),
                 }}
               >
                 SEND
@@ -916,7 +935,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
             )}
           </div>
         </div>
-      </div>
+      </motion.div>
     </>
   );
 }
