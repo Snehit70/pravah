@@ -140,15 +140,35 @@ const PLACEHOLDER_PROMPTS = [
   "Rescue my schedule",
 ];
 
-function useTypingPlaceholder(enabled: boolean): string {
+type TypingPhase = "typing" | "holding" | "deleting" | "gap";
+
+function pickNextPromptIndex(current: number): number {
+  return (current + 1 + Math.floor(Math.random() * (PLACEHOLDER_PROMPTS.length - 1))) % PLACEHOLDER_PROMPTS.length;
+}
+
+function getTypingDelay(prompt: string, index: number): number {
+  const char = prompt[index - 1] ?? "";
+  const base = 46 + Math.random() * 32;
+
+  if (char === " ") return base + 22;
+  if (char === "," || char === "?" || char === "-") return base + 90;
+
+  return base;
+}
+
+function useTypingPlaceholder(enabled: boolean): { text: string; phase: TypingPhase } {
   const [text, setText] = useState("");
+  const [phase, setPhase] = useState<TypingPhase>("gap");
   const promptIndexRef = useRef(Math.floor(Math.random() * PLACEHOLDER_PROMPTS.length));
   const charIndexRef = useRef(0);
-  const deletingRef = useRef(false);
+  const phaseRef = useRef<TypingPhase>("typing");
 
   useEffect(() => {
     if (!enabled) {
       setText("");
+      setPhase("gap");
+      charIndexRef.current = 0;
+      phaseRef.current = "typing";
       return;
     }
 
@@ -156,36 +176,63 @@ function useTypingPlaceholder(enabled: boolean): string {
 
     const tick = () => {
       const prompt = PLACEHOLDER_PROMPTS[promptIndexRef.current];
-      const deleting = deletingRef.current;
-      const nextIndex = deleting ? charIndexRef.current - 1 : charIndexRef.current + 1;
+      const currentPhase = phaseRef.current;
 
-      charIndexRef.current = Math.max(0, Math.min(prompt.length, nextIndex));
-      setText(prompt.slice(0, charIndexRef.current));
+      if (currentPhase === "typing") {
+        charIndexRef.current = Math.min(prompt.length, charIndexRef.current + 1);
+        setText(prompt.slice(0, charIndexRef.current));
+        setPhase("typing");
 
-      if (!deleting && charIndexRef.current === prompt.length) {
-        deletingRef.current = true;
-        timer = window.setTimeout(tick, 1300);
+        if (charIndexRef.current === prompt.length) {
+          phaseRef.current = "holding";
+          setPhase("holding");
+          timer = window.setTimeout(tick, 1550);
+          return;
+        }
+
+        timer = window.setTimeout(tick, getTypingDelay(prompt, charIndexRef.current));
         return;
       }
 
-      if (deleting && charIndexRef.current === 0) {
-        deletingRef.current = false;
-        promptIndexRef.current = (promptIndexRef.current + 1 + Math.floor(Math.random() * (PLACEHOLDER_PROMPTS.length - 1))) % PLACEHOLDER_PROMPTS.length;
-        timer = window.setTimeout(tick, 360);
+      if (currentPhase === "holding") {
+        phaseRef.current = "deleting";
+        setPhase("deleting");
+        timer = window.setTimeout(tick, 90);
         return;
       }
 
-      timer = window.setTimeout(tick, deleting ? 34 : 58 + Math.random() * 34);
+      if (currentPhase === "deleting") {
+        charIndexRef.current = Math.max(0, charIndexRef.current - 1);
+        setText(prompt.slice(0, charIndexRef.current));
+        setPhase("deleting");
+
+        if (charIndexRef.current === 0) {
+          phaseRef.current = "gap";
+          setPhase("gap");
+          promptIndexRef.current = pickNextPromptIndex(promptIndexRef.current);
+          timer = window.setTimeout(tick, 260);
+          return;
+        }
+
+        timer = window.setTimeout(tick, 24 + Math.random() * 18);
+        return;
+      }
+
+      phaseRef.current = "typing";
+      setPhase("typing");
+      timer = window.setTimeout(tick, 110);
     };
 
-    timer = window.setTimeout(tick, 240);
+    timer = window.setTimeout(tick, 140);
     return () => window.clearTimeout(timer);
   }, [enabled]);
 
-  return text;
+  return { text, phase };
 }
 
-function KairoPlaceholderOverlay({ text }: { text: string }) {
+function KairoPlaceholderOverlay({ text, phase }: { text: string; phase: TypingPhase }) {
+  const isWaiting = phase === "holding" || phase === "gap";
+
   return (
     <div
       aria-hidden
@@ -198,8 +245,11 @@ function KairoPlaceholderOverlay({ text }: { text: string }) {
         color: "#8f8f96",
         fontFamily: "var(--font-sans)",
         fontSize: 15,
+        letterSpacing: "-0.01em",
         whiteSpace: "nowrap",
         overflow: "hidden",
+        transition: "color .18s ease, opacity .18s ease",
+        opacity: phase === "gap" && !text ? 0.76 : 1,
       }}
     >
       <span>{text}</span>
@@ -210,7 +260,8 @@ function KairoPlaceholderOverlay({ text }: { text: string }) {
           marginLeft: 3,
           background: "oklch(0.78 0.14 260 / 0.82)",
           boxShadow: "0 0 10px oklch(0.78 0.14 260 / 0.35)",
-          animation: "kairoCaretBlink 1.05s steps(1, end) infinite",
+          opacity: isWaiting ? undefined : 1,
+          animation: isWaiting ? "kairoCaretBlink 1.05s steps(1, end) infinite" : "none",
         }}
       />
     </div>
@@ -549,7 +600,12 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
           >
             {!open && <KairoMark size={30} />}
             <div style={{ position: "relative", flex: 1 }}>
-              {!open && val.length === 0 && <KairoPlaceholderOverlay text={animatedPlaceholder} />}
+              {!open && val.length === 0 && (
+                <KairoPlaceholderOverlay
+                  text={animatedPlaceholder.text}
+                  phase={animatedPlaceholder.phase}
+                />
+              )}
               <input
                 ref={inputRef}
                 value={val}
