@@ -129,6 +129,62 @@ const STARTER_PROMPTS = [
   "What looks heavy this week?",
 ];
 
+const PLACEHOLDER_PROMPTS = [
+  "Plan tomorrow's exam sprint",
+  "Balance my week",
+  "Find the overloaded day",
+  "Clear my inbox",
+  "Move the scary deadlines",
+  "Make a two-hour study block",
+  "What should I do next?",
+  "Rescue my schedule",
+];
+
+function useTypingPlaceholder(enabled: boolean): string {
+  const [text, setText] = useState("");
+  const promptIndexRef = useRef(Math.floor(Math.random() * PLACEHOLDER_PROMPTS.length));
+  const charIndexRef = useRef(0);
+  const deletingRef = useRef(false);
+
+  useEffect(() => {
+    if (!enabled) {
+      setText("");
+      return;
+    }
+
+    let timer = 0;
+
+    const tick = () => {
+      const prompt = PLACEHOLDER_PROMPTS[promptIndexRef.current];
+      const deleting = deletingRef.current;
+      const nextIndex = deleting ? charIndexRef.current - 1 : charIndexRef.current + 1;
+
+      charIndexRef.current = Math.max(0, Math.min(prompt.length, nextIndex));
+      setText(prompt.slice(0, charIndexRef.current));
+
+      if (!deleting && charIndexRef.current === prompt.length) {
+        deletingRef.current = true;
+        timer = window.setTimeout(tick, 1300);
+        return;
+      }
+
+      if (deleting && charIndexRef.current === 0) {
+        deletingRef.current = false;
+        promptIndexRef.current = (promptIndexRef.current + 1 + Math.floor(Math.random() * (PLACEHOLDER_PROMPTS.length - 1))) % PLACEHOLDER_PROMPTS.length;
+        timer = window.setTimeout(tick, 360);
+        return;
+      }
+
+      timer = window.setTimeout(tick, deleting ? 34 : 58 + Math.random() * 34);
+    };
+
+    timer = window.setTimeout(tick, 240);
+    return () => window.clearTimeout(timer);
+  }, [enabled]);
+
+  return text;
+}
+
 function readAssistantText(content: unknown): string {
   if (typeof content === "string") {
     return content;
@@ -164,6 +220,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
   ]);
   const [thinking, setThinking] = useState(false);
   const [config, setConfig] = useState(() => getKairoConfig());
+  const animatedPlaceholder = useTypingPlaceholder(!open && val.length === 0);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -468,7 +525,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
                 if (e.key === "Enter") sendMessage(val.trim());
                 if (e.key === "Escape") setOpen(false);
               }}
-              placeholder={open ? "Tell Kairo what to do…" : "Ask Kairo…  ⌘J"}
+              placeholder={open ? "Tell Kairo what to do..." : animatedPlaceholder || "Ask Kairo..."}
               style={{
                 flex: 1,
                 background: "transparent",
