@@ -312,9 +312,10 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
         style={{
           position: "absolute",
           left: "50%",
-          bottom: open ? "50%" : 36,
+          bottom: open ? "50%" : 38,
           transform: open ? "translate(-50%, 50%)" : "translate(-50%, 0)",
-          width: open ? 720 : 380,
+          width: open ? 780 : 460,
+          maxWidth: "calc(100vw - 48px)",
           zIndex: 50,
           transition: "width .45s cubic-bezier(.22,1,.36,1), bottom .45s cubic-bezier(.22,1,.36,1)",
         }}
@@ -323,7 +324,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
           style={{
             background: "#101013",
             border: "1px solid rgba(255,255,255,.13)",
-            borderRadius: 20,
+            borderRadius: open ? 22 : 24,
             boxShadow: open
               ? `0 40px 80px rgba(0,0,0,.55), 0 0 0 1px oklch(0.78 0.14 260 / 0.35), 0 0 80px oklch(0.78 0.14 260 / 0.3)`
               : "0 20px 50px rgba(0,0,0,.5)",
@@ -334,7 +335,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
           {/* Header when open */}
           {open && (
             <>
-              <div style={{ padding: "14px 20px 0", display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ padding: "16px 22px 0", display: "flex", alignItems: "center", gap: 11 }}>
                 <KairoMark size={28} />
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: -0.2 }}>Kairo</div>
@@ -397,7 +398,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
               {/* Messages */}
               <div
                 ref={scrollRef}
-                style={{ maxHeight: 380, overflowY: "auto", padding: "14px 20px", display: "flex", flexDirection: "column", gap: 14 }}
+                style={{ maxHeight: 430, overflowY: "auto", padding: "16px 22px", display: "flex", flexDirection: "column", gap: 14 }}
               >
                 {msgs.map((m, i) => (
                   <KairoMsg key={i} m={m} />
@@ -413,7 +414,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
 
               {/* Starter chips */}
               {msgs.length === 1 && !thinking && (
-                <div style={{ padding: "0 20px 12px", display: "flex", flexWrap: "wrap", gap: 6 }}>
+                <div style={{ padding: "0 22px 14px", display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {STARTER_PROMPTS.map(p => (
                     <button
                       key={p}
@@ -451,12 +452,13 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 10,
-              padding: "10px 14px",
+              gap: 12,
+              minHeight: open ? 62 : 56,
+              padding: open ? "12px 16px" : "13px 18px",
               borderTop: open ? "1px solid rgba(255,255,255,.07)" : "none",
             }}
           >
-            {!open && <KairoMark size={26} />}
+            {!open && <KairoMark size={30} />}
             <input
               ref={inputRef}
               value={val}
@@ -472,10 +474,10 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
                 background: "transparent",
                 border: "none",
                 outline: "none",
-                fontSize: 14,
+                fontSize: open ? 14.5 : 15,
                 color: "#ededef",
                 fontFamily: "var(--font-sans)",
-                padding: "6px 0",
+                padding: "7px 0",
               }}
             />
             {open ? (
