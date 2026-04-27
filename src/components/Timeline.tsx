@@ -173,7 +173,7 @@ export function Timeline({
   const doneTodayCount = todayTasks.filter(t => t.status === "completed").length;
 
   return (
-    <div className="h-full flex flex-col" style={{ background: "#0a0a0b" }}>
+    <div className="h-full flex flex-col" style={{ background: "transparent" }}>
       <TopNavbar
         activePage={activePage}
         onNavigate={onNavigate}
