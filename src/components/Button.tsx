@@ -18,7 +18,7 @@ export function Button({
   ...props
 }: ButtonProps) {
   const baseStyles = cn(
-    "relative rounded-xl font-medium",
+    "relative inline-flex items-center justify-center rounded-xl font-medium",
     "transition-all duration-200",
     "disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none",
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"

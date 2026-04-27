@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation } from "convex/react";
-import { AnimatePresence, motion } from "framer-motion";
 import { api } from "../../convex/_generated/api";
 import { getLocalDateString } from "../lib/utils";
 import type { Task } from "../types";
+import {
+  KAIRO_CONFIG_EVENT,
+  getKairoConfig,
+  isKairoConfigured,
+  resolveChatCompletionsUrl,
+} from "../lib/kairoConfig";
 
 const ACCENT = "oklch(0.78 0.14 260)";
 const ACCENT_SOFT = "oklch(0.72 0.16 260 / 0.2)";
 const ACCENT_GLOW = "oklch(0.78 0.14 260 / 0.35)";
-const STORAGE_KEY = "pravah:anthropic-key";
 
 const SYSTEM_PROMPT = `You are Kairo, an intelligent work orchestration assistant embedded in Pravah — a timeline-first task management tool. Your role is to help the user manage their schedule, think through priorities, and keep their week intentional.
 
@@ -44,6 +48,7 @@ interface KairoProps {
   onActiveChange?: (active: boolean) => void;
   tasks: Task[];
   inboxTasks: Task[];
+  onOpenSettings?: () => void;
 }
 
 function buildContext(tasks: Task[], inboxTasks: Task[]): string {
@@ -124,15 +129,41 @@ const STARTER_PROMPTS = [
   "What looks heavy this week?",
 ];
 
-export function Kairo({ onActiveChange, tasks, inboxTasks }: KairoProps) {
+function readAssistantText(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (
+          part &&
+          typeof part === "object" &&
+          "type" in part &&
+          "text" in part &&
+          (part as { type?: string }).type === "text"
+        ) {
+          return String((part as { text: unknown }).text ?? "");
+        }
+        return "";
+      })
+      .join("")
+      .trim();
+  }
+
+  return "";
+}
+
+export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: KairoProps) {
   const [open, setOpen] = useState(false);
   const [val, setVal] = useState("");
   const [msgs, setMsgs] = useState<Message[]>([
     { from: "kairo", text: "Hey, I'm Kairo. I can help you plan your week, prioritize tasks, or analyze your schedule. What do you need?" },
   ]);
   const [thinking, setThinking] = useState(false);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem(STORAGE_KEY) ?? "");
-  const [showKeyInput, setShowKeyInput] = useState(false);
+  const [config, setConfig] = useState(() => getKairoConfig());
 
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -152,6 +183,12 @@ export function Kairo({ onActiveChange, tasks, inboxTasks }: KairoProps) {
   }, []);
 
   useEffect(() => {
+    const syncConfig = () => setConfig(getKairoConfig());
+    window.addEventListener(KAIRO_CONFIG_EVENT, syncConfig);
+    return () => window.removeEventListener(KAIRO_CONFIG_EVENT, syncConfig);
+  }, []);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "j") {
         e.preventDefault();
@@ -164,20 +201,20 @@ export function Kairo({ onActiveChange, tasks, inboxTasks }: KairoProps) {
 
   const sendMessage = async (text: string) => {
     if (!text.trim()) return;
-    const key = apiKey.trim();
+    const nextConfig = getKairoConfig();
+    setConfig(nextConfig);
 
     setMsgs(m => [...m, { from: "me", text }]);
     setVal("");
     setThinking(true);
 
-    if (!key) {
+    if (!isKairoConfigured(nextConfig)) {
       await new Promise(r => setTimeout(r, 400));
       setMsgs(m => [...m, {
         from: "kairo",
-        text: "I need an Anthropic API key to respond. Click the key icon to add yours — it stays in your browser and is never sent anywhere except directly to Anthropic.",
+        text: "I need your API key, endpoint URL, and model before I can respond. Add them in Settings and I’ll use that provider directly from your browser.",
       }]);
       setThinking(false);
-      setShowKeyInput(true);
       return;
     }
 
@@ -189,19 +226,20 @@ export function Kairo({ onActiveChange, tasks, inboxTasks }: KairoProps) {
         .slice(1)
         .map(m => ({ role: m.from === "me" ? "user" : "assistant", content: m.text }));
 
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch(resolveChatCompletionsUrl(nextConfig.baseUrl), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": key,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
+          Authorization: `Bearer ${nextConfig.apiKey}`,
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-6",
+          model: nextConfig.model,
           max_tokens: 1024,
-          system: systemPrompt,
-          messages: [...history, { role: "user", content: text }],
+          messages: [
+            { role: "system", content: systemPrompt },
+            ...history,
+            { role: "user", content: text },
+          ],
         }),
       });
 
@@ -215,8 +253,10 @@ export function Kairo({ onActiveChange, tasks, inboxTasks }: KairoProps) {
         return;
       }
 
-      const data = await res.json() as { content: Array<{ type: string; text: string }> };
-      const rawText = data.content.find(c => c.type === "text")?.text ?? "";
+      const data = await res.json() as {
+        choices?: Array<{ message?: { content?: unknown } }>;
+      };
+      const rawText = readAssistantText(data.choices?.[0]?.message?.content);
 
       // Parse <add-task> blocks
       const taskBlocks: Array<{ title: string; scheduledDate: string | null; type: "open" | "deadline" }> = [];
@@ -245,16 +285,10 @@ export function Kairo({ onActiveChange, tasks, inboxTasks }: KairoProps) {
 
       setMsgs(m => [...m, { from: "kairo", text: cleanText, tasks: taskBlocks.length ? taskBlocks : undefined }]);
     } catch (err) {
-      setMsgs(m => [...m, { from: "kairo", text: "Something went wrong reaching the Anthropic API. Check your key and connection." }]);
+      setMsgs(m => [...m, { from: "kairo", text: "Something went wrong reaching your configured AI endpoint. Check the key, URL, model, and server compatibility." }]);
     } finally {
       setThinking(false);
     }
-  };
-
-  const handleSaveKey = (key: string) => {
-    setApiKey(key);
-    localStorage.setItem(STORAGE_KEY, key);
-    setShowKeyInput(false);
   };
 
   return (
@@ -305,17 +339,17 @@ export function Kairo({ onActiveChange, tasks, inboxTasks }: KairoProps) {
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: -0.2 }}>Kairo</div>
                   <div style={{ fontSize: 10.5, color: "#6b6b72", fontFamily: "var(--font-mono)", letterSpacing: 1, display: "flex", alignItems: "center", gap: 5 }}>
-                    <PulsingDot color="oklch(0.78 0.18 150)" size={5} />
-                    ONLINE · claude-sonnet-4-6
+                    <PulsingDot color={isKairoConfigured(config) ? "oklch(0.78 0.18 150)" : "oklch(0.72 0.2 25)"} size={5} />
+                    {isKairoConfigured(config) ? `READY · ${config.model}` : "UNCONFIGURED"}
                   </div>
                 </div>
                 <div style={{ flex: 1 }} />
                 <button
-                  title="Set API key"
-                  onClick={() => setShowKeyInput(v => !v)}
-                  style={{ width: 24, height: 24, borderRadius: 6, background: "transparent", border: "1px solid rgba(255,255,255,.07)", color: apiKey ? "oklch(0.78 0.18 150)" : "#6b6b72", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}
+                  title="Open settings"
+                  onClick={onOpenSettings}
+                  style={{ width: 24, height: 24, borderRadius: 6, background: "transparent", border: "1px solid rgba(255,255,255,.07)", color: isKairoConfigured(config) ? "#c2c2c8" : ACCENT, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}
                 >
-                  🔑
+                  ⚙
                 </button>
                 <button
                   onClick={() => setOpen(false)}
@@ -326,19 +360,39 @@ export function Kairo({ onActiveChange, tasks, inboxTasks }: KairoProps) {
                 </button>
               </div>
 
-              {/* API key input (inline) */}
-              <AnimatePresence>
-                {showKeyInput && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    style={{ overflow: "hidden" }}
+              {!isKairoConfigured(config) && (
+                <div
+                  style={{
+                    margin: "12px 20px 0",
+                    padding: "10px 12px",
+                    background: "rgba(255,255,255,.03)",
+                    border: "1px solid rgba(255,255,255,.07)",
+                    borderRadius: 8,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ flex: 1, fontSize: 12, color: "#c2c2c8", lineHeight: 1.5 }}>
+                    Add your API key, endpoint URL, and model in Settings before using Kairo.
+                  </div>
+                  <button
+                    onClick={onOpenSettings}
+                    style={{
+                      padding: "6px 10px",
+                      background: ACCENT_SOFT,
+                      border: "1px solid oklch(0.78 0.14 260 / 0.35)",
+                      borderRadius: 6,
+                      color: ACCENT,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
                   >
-                    <ApiKeyInput current={apiKey} onSave={handleSaveKey} onCancel={() => setShowKeyInput(false)} />
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                    OPEN
+                  </button>
+                </div>
+              )}
 
               {/* Messages */}
               <div
@@ -478,53 +532,6 @@ function KairoMsg({ m }: { m: Message }) {
             <div style={{ fontSize: 11, color: "#6b6b72", marginTop: 2 }}>Added to your timeline</div>
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-function ApiKeyInput({ current, onSave, onCancel }: { current: string; onSave: (key: string) => void; onCancel: () => void }) {
-  const [val, setVal] = useState(current);
-
-  return (
-    <div style={{ padding: "12px 20px", borderTop: "1px solid rgba(255,255,255,.07)", display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ fontSize: 11, color: "#6b6b72", fontFamily: "var(--font-mono)", letterSpacing: 0.5 }}>
-        ANTHROPIC API KEY — stored locally in your browser only
-      </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <input
-          value={val}
-          onChange={(e) => setVal(e.target.value)}
-          placeholder="sk-ant-api03-…"
-          type="password"
-          autoFocus
-          style={{
-            flex: 1,
-            background: "rgba(255,255,255,.04)",
-            border: "1px solid rgba(255,255,255,.13)",
-            borderRadius: 6,
-            padding: "7px 10px",
-            color: "#ededef",
-            fontSize: 12,
-            fontFamily: "var(--font-mono)",
-            outline: "none",
-          }}
-          onFocus={(e) => (e.target.style.borderColor = "oklch(0.78 0.14 260 / 0.5)")}
-          onBlur={(e) => (e.target.style.borderColor = "rgba(255,255,255,.13)")}
-          onKeyDown={(e) => { if (e.key === "Enter") onSave(val); if (e.key === "Escape") onCancel(); }}
-        />
-        <button
-          onClick={() => onSave(val)}
-          style={{ padding: "7px 12px", background: ACCENT, border: "none", borderRadius: 6, color: "#0a0a0b", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "var(--font-sans)" }}
-        >
-          Save
-        </button>
-        <button
-          onClick={onCancel}
-          style={{ padding: "7px 10px", background: "transparent", border: "1px solid rgba(255,255,255,.07)", borderRadius: 6, color: "#6b6b72", fontSize: 11, cursor: "pointer" }}
-        >
-          ✕
-        </button>
       </div>
     </div>
   );

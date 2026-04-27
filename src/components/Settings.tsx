@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import {
+  Bot,
   X,
   Calendar,
   Mail,
@@ -27,6 +28,7 @@ import { cn } from "../lib/utils";
 import { Button } from "./Button";
 import { useToast } from "./useToast";
 import { authClient } from "../lib/auth-client";
+import { clearKairoConfig, getKairoConfig, saveKairoConfig } from "../lib/kairoConfig";
 
 interface SettingsProps {
   onClose: () => void;
@@ -67,6 +69,7 @@ const CALENDAR_SELECTION_STORAGE_KEY = "pravah_google_calendar_selection";
 
 export function Settings({ onClose }: SettingsProps) {
   const [signingOut, setSigningOut] = useState(false);
+  const [kairoConfig, setKairoConfig] = useState(() => getKairoConfig());
   const [googleConnected, setGoogleConnected] = useState(() => {
     const storedTokens = getGoogleTokens();
     return !!storedTokens && !storedTokens.expired;
@@ -320,6 +323,26 @@ export function Settings({ onClose }: SettingsProps) {
     }
   };
 
+  const handleSaveKairoConfig = () => {
+    if (!kairoConfig.apiKey.trim() || !kairoConfig.baseUrl.trim() || !kairoConfig.model.trim()) {
+      showError("Fill in the API key, endpoint URL, and model for Kairo.");
+      return;
+    }
+
+    saveKairoConfig(kairoConfig);
+    showSuccess("Kairo settings saved.");
+  };
+
+  const handleClearKairoConfig = () => {
+    clearKairoConfig();
+    setKairoConfig({
+      apiKey: "",
+      baseUrl: "",
+      model: "",
+    });
+    showSuccess("Kairo settings cleared.");
+  };
+
   const handleSync = async (fullResync = false) => {
     const tokens = getGoogleTokens();
     if (!tokens || tokens.expired) {
@@ -445,29 +468,143 @@ export function Settings({ onClose }: SettingsProps) {
           variants={modalVariants}
           transition={{ duration: 0.25, ease: [0.34, 1.56, 0.64, 1] }}
           className={cn(
-            "w-full max-w-lg p-6 mx-4 md:mx-0 max-h-[80vh] overflow-y-auto",
-            "bg-zinc-900/95 backdrop-blur-xl rounded-2xl",
-            "border border-zinc-700/50",
+            "w-full max-w-2xl p-6 mx-4 md:mx-0 max-h-[82vh] overflow-y-auto overflow-x-hidden",
+            "backdrop-blur-xl rounded-xl",
+            "border",
             "shadow-2xl shadow-black/60"
           )}
+          style={{
+            background: "#101013",
+            borderColor: "rgba(255,255,255,.13)",
+          }}
         >
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-zinc-100">Settings</h2>
+            <div>
+              <h2 className="text-xl font-semibold text-zinc-100">Settings</h2>
+              <p
+                className="mt-1 text-[11px] uppercase tracking-[0.14em]"
+                style={{ color: "#6b6b72", fontFamily: "var(--font-mono)" }}
+              >
+                Personal Workspace Controls
+              </p>
+            </div>
             <button
               onClick={onClose}
               aria-label="Close settings"
               className={cn(
-                "p-2 rounded-lg",
+                "p-2 rounded-[6px]",
                 "text-zinc-500 hover:text-zinc-300",
-                "hover:bg-zinc-800/60",
+                "hover:bg-white/5",
                 "transition-colors duration-150"
               )}
+              style={{ border: "1px solid rgba(255,255,255,.07)" }}
             >
               <X size={18} />
             </button>
           </div>
 
-          <div className="space-y-6">
+          <div className="space-y-5">
+            <section>
+              <h3
+                className={cn(
+                  "text-[11px] font-medium uppercase tracking-[0.08em] mb-3",
+                  "text-zinc-500 flex items-center gap-2"
+                )}
+              >
+                <Bot size={14} />
+                Agent
+              </h3>
+
+              <div
+                className={cn(
+                  "rounded-lg p-4 space-y-4 border",
+                  "bg-white/[0.03]"
+                )}
+                style={{ borderColor: "rgba(255,255,255,.07)" }}
+              >
+                <p className="text-sm text-zinc-300 leading-6">
+                  Kairo uses this exact provider config from your browser. Nothing is prefilled.
+                </p>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="block md:col-span-2">
+                    <span className="mb-1.5 block text-[11px] uppercase tracking-[0.12em] text-zinc-500">
+                      API Key
+                    </span>
+                    <input
+                      type="password"
+                      value={kairoConfig.apiKey}
+                      autoComplete="off"
+                      spellCheck={false}
+                      onChange={(e) =>
+                        setKairoConfig((prev) => ({ ...prev, apiKey: e.target.value }))
+                      }
+                      placeholder="Paste your provider key"
+                      className="w-full rounded-[6px] border bg-black/20 px-3 py-2.5 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-[oklch(0.78_0.14_260_/_0.45)]"
+                      style={{ borderColor: "rgba(255,255,255,.09)" }}
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-[11px] uppercase tracking-[0.12em] text-zinc-500">
+                      Endpoint URL
+                    </span>
+                    <input
+                      value={kairoConfig.baseUrl}
+                      autoComplete="off"
+                      spellCheck={false}
+                      onChange={(e) =>
+                        setKairoConfig((prev) => ({ ...prev, baseUrl: e.target.value }))
+                      }
+                      placeholder="https://your-server/v1"
+                      className="w-full rounded-[6px] border bg-black/20 px-3 py-2.5 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-[oklch(0.78_0.14_260_/_0.45)]"
+                      style={{ borderColor: "rgba(255,255,255,.09)" }}
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-[11px] uppercase tracking-[0.12em] text-zinc-500">
+                      Model
+                    </span>
+                    <input
+                      value={kairoConfig.model}
+                      autoComplete="off"
+                      spellCheck={false}
+                      onChange={(e) =>
+                        setKairoConfig((prev) => ({ ...prev, model: e.target.value }))
+                      }
+                      placeholder="Enter the exact model id"
+                      className="w-full rounded-[6px] border bg-black/20 px-3 py-2.5 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-[oklch(0.78_0.14_260_/_0.45)]"
+                      style={{ borderColor: "rgba(255,255,255,.09)" }}
+                    />
+                  </label>
+                </div>
+
+                <p className="text-xs text-zinc-500 leading-5">
+                  Endpoint URLs should expose an OpenAI-compatible chat completions route. You can
+                  point this at a hosted provider or your own local server.
+                </p>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={handleSaveKairoConfig}
+                    size="sm"
+                    className="rounded-[6px] !bg-[oklch(0.78_0.14_260)] !text-[#0a0a0b] hover:!bg-[oklch(0.82_0.13_260)]"
+                  >
+                    Save Agent Settings
+                  </Button>
+                  <Button
+                    onClick={handleClearKairoConfig}
+                    variant="ghost"
+                    size="sm"
+                    className="rounded-[6px] border border-white/10 hover:bg-white/5"
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </div>
+            </section>
+
             <section>
               <h3
                 className={cn(
@@ -480,10 +617,10 @@ export function Settings({ onClose }: SettingsProps) {
 
               <div
                 className={cn(
-                  "rounded-xl p-4 space-y-4",
-                  "bg-zinc-800/60",
-                  "border border-zinc-700/50"
+                  "rounded-lg p-4 space-y-4 border",
+                  "bg-white/[0.03]"
                 )}
+                style={{ borderColor: "rgba(255,255,255,.07)" }}
               >
                 <div>
                   <p className="text-zinc-100 font-medium">
@@ -496,10 +633,10 @@ export function Settings({ onClose }: SettingsProps) {
                 <Button
                   onClick={() => void handleSignOut()}
                   variant="ghost"
-                  className="w-full justify-center gap-2 text-red-400 hover:text-red-300"
+                  className="w-full items-center justify-center gap-2 rounded-[6px] border border-red-400/15 text-red-400 hover:bg-red-500/10 hover:text-red-300"
                   disabled={signingOut}
                 >
-                  <LogOut size={14} />
+                  <LogOut size={14} className="shrink-0 text-current" />
                   {signingOut ? "Signing out..." : "Sign out"}
                 </Button>
               </div>
@@ -515,16 +652,15 @@ export function Settings({ onClose }: SettingsProps) {
               </h3>
 
               <div className={cn(
-                "rounded-xl p-4 space-y-4",
-                "bg-zinc-800/60",
-                "border border-zinc-700/50"
-              )}>
+                "rounded-lg p-4 space-y-4 border",
+                "bg-white/[0.03]"
+              )} style={{ borderColor: "rgba(255,255,255,.07)" }}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div
                       className={cn(
-                        "p-2 rounded-xl",
-                        googleConnected ? "bg-emerald-500/15" : "bg-zinc-800/80"
+                        "grid h-9 w-9 place-items-center rounded-[6px]",
+                        googleConnected ? "bg-emerald-500/15" : "bg-white/[0.04]"
                       )}
                     >
                       {googleConnected ? (
@@ -548,7 +684,7 @@ export function Settings({ onClose }: SettingsProps) {
                       onClick={handleGoogleDisconnect}
                       variant="ghost"
                       size="sm"
-                      className="text-red-400 hover:text-red-400"
+                      className="rounded-[6px] border border-red-400/15 text-red-400 hover:bg-red-500/10 hover:text-red-300"
                     >
                       Revoke
                     </Button>
@@ -557,7 +693,7 @@ export function Settings({ onClose }: SettingsProps) {
                       onClick={handleGoogleConnect}
                       variant="primary"
                       size="sm"
-                      className="flex items-center gap-2"
+                      className="flex items-center gap-2 rounded-[6px] !bg-[oklch(0.78_0.14_260)] !text-[#0a0a0b] hover:!bg-[oklch(0.82_0.13_260)]"
                     >
                       Grant Access
                       <ExternalLink size={14} />
@@ -679,7 +815,7 @@ export function Settings({ onClose }: SettingsProps) {
                                   syncing || (calendarEnabled && selectedCalendarIds.length === 0)
                                 }
                                 variant="secondary"
-                                className="w-full flex items-center justify-center gap-2"
+                                className="w-full rounded-[6px] flex items-center justify-center gap-2 border-white/10 bg-white/[0.04] hover:bg-white/[0.08]"
                               >
                                 <RefreshCw
                                   size={16}
@@ -693,7 +829,7 @@ export function Settings({ onClose }: SettingsProps) {
                                   syncing || (calendarEnabled && selectedCalendarIds.length === 0)
                                 }
                                 variant="ghost"
-                                className="w-full flex items-center justify-center gap-2 text-amber-300 hover:text-amber-200"
+                                className="w-full rounded-[6px] flex items-center justify-center gap-2 border border-white/10 text-amber-300 hover:bg-white/5 hover:text-amber-200"
                               >
                                 Full Resync
                               </Button>
