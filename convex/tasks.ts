@@ -10,6 +10,13 @@ function getTodayDateString() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function getPriorityRank(priority?: string): number {
+  if (priority === "p1") return 0;
+  if (priority === "p2") return 1;
+  if (priority === "p3") return 2;
+  return 3;
+}
+
 async function getOwnedTask(
   ctx: TaskCtx,
   taskId: Id<"tasks">,
@@ -225,7 +232,7 @@ export const shiftScheduledTaskPosition = mutation({
       )
       .collect();
 
-    tasksForDate.sort((a, b) => a.position - b.position);
+    tasksForDate.sort((a, b) => getPriorityRank(a.priority) - getPriorityRank(b.priority) || a.position - b.position);
 
     const currentIndex = tasksForDate.findIndex((candidate) => candidate._id === task._id);
     if (currentIndex === -1) {

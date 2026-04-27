@@ -1,6 +1,13 @@
 import type { MobileTask } from "../components/TaskCard";
 import type { Id } from "../../../../convex/_generated/dataModel";
 
+function getPriorityRank(priority?: string): number {
+  if (priority === "p1") return 0;
+  if (priority === "p2") return 1;
+  if (priority === "p3") return 2;
+  return 3;
+}
+
 export function removeTaskFromOptimisticView(tasks: MobileTask[], taskId: Id<"tasks">): MobileTask[] {
   return tasks.filter((task) => task._id !== taskId);
 }
@@ -51,7 +58,7 @@ export function shiftTaskWithinScopedOptimisticView(
   const scopedTasks = tasks
     .filter(predicate)
     .slice()
-    .sort((a, b) => a.position - b.position);
+    .sort((a, b) => getPriorityRank(a.priority) - getPriorityRank(b.priority) || a.position - b.position);
   const currentIndex = scopedTasks.findIndex((task) => task._id === taskId);
   if (currentIndex === -1) return tasks;
 
