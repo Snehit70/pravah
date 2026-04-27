@@ -1,5 +1,4 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
-import { TopNavbar, type AppPage } from "./TopNavbar";
 import { GridDayColumn } from "./DayColumn";
 import type { Task } from "../types";
 import { generateDateRange, getLocalDateString } from "../lib/utils";
@@ -12,9 +11,6 @@ interface TimelineProps {
   tasksByDate: Record<string, Task[]>;
   onTaskClick: (task: Task) => void;
   onOpenQuickAdd?: () => void;
-  activePage: AppPage;
-  onNavigate: (page: AppPage) => void;
-  onOpenSettings?: () => void;
   mcpConnected?: boolean;
 }
 
@@ -47,9 +43,6 @@ export function Timeline({
   tasksByDate,
   onTaskClick,
   onOpenQuickAdd,
-  activePage,
-  onNavigate,
-  onOpenSettings,
   mcpConnected = true,
 }: TimelineProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -191,12 +184,6 @@ export function Timeline({
 
   return (
     <div className="h-full flex flex-col" style={{ background: "transparent" }}>
-      <TopNavbar
-        activePage={activePage}
-        onNavigate={onNavigate}
-        onOpenSettings={onOpenSettings}
-      />
-
       <div className="flex flex-1 overflow-hidden">
         {/* Left rail */}
         <div
@@ -479,4 +466,3 @@ function LaneLabel({ name, count, color }: { name: string; count: number; color:
     </div>
   );
 }
-

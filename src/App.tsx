@@ -33,6 +33,7 @@ import type { AppPage } from "./components/TopNavbar";
 import { AuthScreen } from "./components/AuthScreen";
 import { useBootstrapUser } from "./hooks/useBootstrapUser";
 import { useToast } from "./components/useToast";
+import { TopNavbar } from "./components/TopNavbar";
 
 const TaskPopup = lazy(() =>
   import("./components/TaskPopup").then((module) => ({ default: module.TaskPopup }))
@@ -128,6 +129,13 @@ function AuthenticatedApp() {
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
       <GoogleCallback />
+      <div style={{ transition: "filter .4s ease, opacity .4s ease", ...fade }}>
+        <TopNavbar
+          activePage={activePage}
+          onNavigate={setActivePage}
+          onOpenSettings={openSettings}
+        />
+      </div>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
@@ -144,19 +152,15 @@ function AuthenticatedApp() {
                 tasksByDate={tasksByDate}
                 onTaskClick={openTaskPopup}
                 onOpenQuickAdd={openQuickAdd}
-                activePage={activePage}
-                onNavigate={setActivePage}
-                onOpenSettings={openSettings}
               />
             ) : (
-              <LongTermGoalsPage activePage={activePage} onNavigate={setActivePage} />
+              <LongTermGoalsPage />
             )}
           </main>
           <InboxSidebar
             tasks={inboxTasks}
             onTaskClick={openTaskPopup}
             onOpenQuickAdd={openQuickAdd}
-            onOpenSettings={openSettings}
           />
         </div>
 
@@ -190,6 +194,7 @@ function AuthenticatedApp() {
         onActiveChange={setKairoActive}
         tasks={tasks ?? []}
         inboxTasks={inboxTasks}
+        onOpenSettings={openSettings}
       />
 
       <Suspense fallback={null}>
