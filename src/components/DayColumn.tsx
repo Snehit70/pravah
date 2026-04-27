@@ -19,7 +19,7 @@ interface GridDayColumnProps {
 }
 
 function GridTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
-  const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({
+  const { setNodeRef, attributes, listeners, transform, isDragging } = useSortable({
     id: task._id,
   });
   const [hover, setHover] = useState(false);
@@ -67,8 +67,6 @@ function GridTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
       {...attributes}
       {...listeners}
       style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
         display: "flex",
         alignItems: "center",
         gap: 6,
@@ -137,8 +135,8 @@ function GridDayColumnComponent({
   tasks,
   onTaskClick,
   today,
-  hoverDate,
-  onHoverDate,
+  hoverDate: _hoverDate,
+  onHoverDate: _onHoverDate,
   isDeadlineLane = false,
 }: GridDayColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: date });

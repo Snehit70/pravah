@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { api } from "../../convex/_generated/api";
-import { cn, getLocalDateString } from "../lib/utils";
+import { getLocalDateString } from "../lib/utils";
 import { getTomorrowDateString } from "../lib/quickAddDates";
 import { useToast } from "./useToast";
 

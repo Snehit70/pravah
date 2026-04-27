@@ -4,14 +4,12 @@ import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Task } from "../types";
-import { cn } from "../lib/utils";
 import { INBOX_DROP_ID } from "../lib/taskRules";
 
 interface InboxSidebarProps {
   tasks: Task[];
   onTaskClick: (task: Task) => void;
   onOpenQuickAdd?: () => void;
-  onOpenSettings?: () => void;
 }
 
 function PulsingDot({ color, size = 6 }: { color: string; size?: number }) {
@@ -47,7 +45,7 @@ function formatTaskAge(createdAt: number): string {
 }
 
 function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void }) {
-  const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({
+  const { setNodeRef, attributes, listeners, transform, isDragging } = useSortable({
     id: task._id,
   });
   const [hover, setHover] = useState(false);
@@ -64,7 +62,6 @@ function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void
       {...listeners}
       style={{
         transform: CSS.Transform.toString(transform),
-        transition,
         padding: "7px 10px 7px 14px",
         background: hover ? "rgba(255,255,255,.04)" : "rgba(255,255,255,.025)",
         border: `1px solid ${hover ? "rgba(255,255,255,.13)" : "rgba(255,255,255,.07)"}`,
