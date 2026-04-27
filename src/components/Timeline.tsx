@@ -385,17 +385,31 @@ function DayHeader({ date, today }: { date: string; today: string }) {
         {String(dayNum).padStart(2, "0")}
       </div>
       {isToday && (
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 2,
-            background: "oklch(0.78 0.14 260)",
-            boxShadow: "0 0 12px oklch(0.78 0.14 260)",
-          }}
-        />
+        <>
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 2,
+              background: "oklch(0.78 0.14 260)",
+            }}
+          />
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              top: 2,
+              left: 0,
+              right: 0,
+              height: 32,
+              background:
+                "linear-gradient(to bottom, oklch(0.78 0.14 260 / 0.18), transparent)",
+              pointerEvents: "none",
+            }}
+          />
+        </>
       )}
     </div>
   );

@@ -149,7 +149,7 @@ function GridDayColumnComponent({
         background: isOver
           ? "oklch(0.72 0.16 260 / 0.2)"
           : isToday
-          ? "rgba(255,255,255,.012)"
+          ? "oklch(0.72 0.16 260 / 0.06)"
           : isWeekend
           ? "rgba(0,0,0,.15)"
           : "transparent",
