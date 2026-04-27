@@ -68,6 +68,7 @@ describe("useTaskMutations", () => {
     const reopenTaskMutation = vi.fn().mockResolvedValue(undefined);
     const updateTaskMutation = vi.fn().mockResolvedValue(undefined);
     const reorderTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const reorderInboxTasksMutation = vi.fn().mockResolvedValue(undefined);
     const shiftScheduledTaskPositionMutation = vi.fn().mockResolvedValue(undefined);
 
     const mutationOrder = [
@@ -77,6 +78,7 @@ describe("useTaskMutations", () => {
       reopenTaskMutation,
       updateTaskMutation,
       reorderTasksMutation,
+      reorderInboxTasksMutation,
       shiftScheduledTaskPositionMutation,
     ];
     let mutationIndex = 0;
@@ -133,6 +135,7 @@ describe("useTaskMutations", () => {
     const reopenTaskMutation = vi.fn().mockResolvedValue(undefined);
     const updateTaskMutation = vi.fn().mockResolvedValue(undefined);
     const reorderTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const reorderInboxTasksMutation = vi.fn().mockResolvedValue(undefined);
     const shiftScheduledTaskPositionMutation = vi.fn().mockRejectedValue(new Error("network"));
 
     const mutationOrder = [
@@ -142,6 +145,7 @@ describe("useTaskMutations", () => {
       reopenTaskMutation,
       updateTaskMutation,
       reorderTasksMutation,
+      reorderInboxTasksMutation,
       shiftScheduledTaskPositionMutation,
     ];
     let mutationIndex = 0;

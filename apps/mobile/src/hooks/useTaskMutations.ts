@@ -286,7 +286,12 @@ export function useTaskMutations({
   );
 
   const handleInboxDragEnd = useCallback(
-    async (_original: MobileTask[], data: MobileTask[]) => {
+    async (original: MobileTask[], data: MobileTask[]) => {
+      if (hasPriorityBoundaryViolation(original, data)) {
+        showToast({ kind: "error", message: "Drag only within the same priority group." });
+        return;
+      }
+
       const taskIds = data.map((task) => task._id);
       const now = Date.now();
       const stateRef: { current: MobileTask[] | null } = { current: null };
@@ -311,7 +316,14 @@ export function useTaskMutations({
         setPendingMutations((count) => Math.max(0, count - 1));
       }
     },
-    [reorderInboxTasksMutation, serverTasks, setOptimisticTasks, setPendingMutations, showToast]
+    [
+      hasPriorityBoundaryViolation,
+      reorderInboxTasksMutation,
+      serverTasks,
+      setOptimisticTasks,
+      setPendingMutations,
+      showToast,
+    ]
   );
 
   const shiftTimelineTask = useCallback(

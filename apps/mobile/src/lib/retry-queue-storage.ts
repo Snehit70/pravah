@@ -44,17 +44,23 @@ const _migratedKeys = new Set<string>();
 
 async function migrateFromSecureStoreIfNeeded(key: string): Promise<void> {
   if (_backend !== "async" || _migratedKeys.has(key)) return;
-  _migratedKeys.add(key);
 
   try {
     const existing = await AsyncStorage.getItem(key);
-    if (existing) return; // AsyncStorage already has data — nothing to migrate.
+    if (existing) {
+      _migratedKeys.add(key);
+      return; // AsyncStorage already has data — nothing to migrate.
+    }
 
     const legacy = await SecureStore.getItemAsync(key);
-    if (!legacy) return; // No legacy data in SecureStore either.
+    if (!legacy) {
+      _migratedKeys.add(key);
+      return; // No legacy data in SecureStore either.
+    }
 
     await AsyncStorage.setItem(key, legacy);
     await SecureStore.deleteItemAsync(key);
+    _migratedKeys.add(key);
     mobileLogger.info("retry_queue_migrated_from_secure_store", { key });
   } catch (error) {
     // Migration is best-effort; a failure here means the user loses the
