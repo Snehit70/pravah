@@ -1,6 +1,13 @@
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { X } from "lucide-react";
-import { T_BASE, T_EXIT_BASE, T_EXIT_FAST, T_FAST } from "../lib/motion";
+import {
+  T_BASE,
+  T_EXIT_BASE,
+  T_EXIT_FAST,
+  T_FAST,
+  useExitMotion,
+  useMotion,
+} from "../lib/motion";
 import { cn } from "../lib/utils";
 
 interface ModalProps {
@@ -28,10 +35,10 @@ export function Modal({
   viewTransitionName,
 }: ModalProps) {
   const reduce = useReducedMotion();
-  const enter = reduce ? { duration: 0 } : T_FAST;
-  const exitFast = reduce ? { duration: 0 } : T_EXIT_FAST;
-  const panelEnter = reduce ? { duration: 0 } : T_BASE;
-  const panelExit = reduce ? { duration: 0 } : T_EXIT_BASE;
+  const enter = useMotion(T_FAST);
+  const exitFast = useExitMotion(T_EXIT_FAST);
+  const panelEnter = useMotion(T_BASE);
+  const panelExit = useExitMotion(T_EXIT_BASE);
 
   // When a view-transition name is given AND the browser supports it, the
   // browser drives the enter morph. Skip Framer's enter so the two don't

@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { TIMELINE_COL_WIDTH } from "../lib/timelineLayout";
+import { EASE_IN_OUT_QUART, EASE_OUT_EXPO } from "../lib/motion";
 
 const DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 const TASK_WIDTHS = [116, 148, 92, 164, 132, 106, 152];
@@ -29,7 +30,7 @@ function SkeletonLine({
             "linear-gradient(90deg, transparent, rgba(255,255,255,.16), transparent)",
         }}
         animate={{ x: ["-120%", "240%"] }}
-        transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+        transition={{ duration: 1.6, repeat: Infinity, ease: EASE_IN_OUT_QUART }}
       />
     </div>
   );
@@ -88,7 +89,7 @@ function DayColumnSkeleton({ index, day }: { index: number; day: string }) {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.035, duration: 0.28 }}
+      transition={{ delay: index * 0.022, duration: 0.32, ease: EASE_OUT_EXPO }}
       className="shrink-0 border-r border-white/[0.07]"
       style={{ width: TIMELINE_COL_WIDTH }}
     >
@@ -170,7 +171,7 @@ function InboxSkeleton() {
             key={item}
             initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.1 + item * 0.04, duration: 0.24 }}
+            transition={{ delay: 0.08 + item * 0.028, duration: 0.28, ease: EASE_OUT_EXPO }}
             className="relative min-h-[51px] rounded-[4px] border border-white/[0.07] bg-white/[0.025] px-[10px] py-[7px] pl-[14px]"
             style={{
               fontSize: 12,
