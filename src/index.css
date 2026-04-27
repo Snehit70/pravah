@@ -222,21 +222,24 @@ textarea {
   100% { opacity: 0.55; }
 }
 
-/* A 1px accent bar sweeps left→right across the row using clip-path,
-   then settles. Driven by transform/clip-path, no layout. */
+/* A 1px accent bar sweeps left→right across the row using clip-path.
+   Two phases driven entirely by clip-path so the leading and trailing edges
+   stay crisp; opacity only handles the very-final fadeout. */
 @keyframes taskCompleteSweep {
-  0%   { clip-path: inset(0 100% 0 0); opacity: 0; }
-  20%  { opacity: 1; }
-  60%  { clip-path: inset(0 0 0 0); opacity: 1; }
-  100% { clip-path: inset(0 0 0 100%); opacity: 0; }
+  0%   { clip-path: inset(0 100% 0 0); opacity: 1; }   /* hidden, leading edge at left */
+  50%  { clip-path: inset(0 0 0 0);    opacity: 1; }   /* fully revealed */
+  90%  { clip-path: inset(0 0 0 100%); opacity: 1; }   /* trailing edge exits at right */
+  100% { clip-path: inset(0 0 0 100%); opacity: 0; }   /* clean fade-out */
 }
 
 /* Hero one-shot accent for "today" column on first paint. Underline grows
-   from center outward then fades to its resting state. */
+   from center outward, briefly overshoots, then settles at full width.
+   Element must set transform-origin: center for the scale to read correctly. */
 @keyframes todayAccentReveal {
-  0%   { transform: scaleX(0); opacity: 0; }
-  40%  { opacity: 1; }
-  100% { transform: scaleX(1); opacity: 1; }
+  0%   { transform: scaleX(0);    opacity: 0; }
+  20%  { opacity: 1; }
+  70%  { transform: scaleX(1.08); opacity: 1; }
+  100% { transform: scaleX(1);    opacity: 1; }
 }
 
 /* Timeline first-paint: column drops in from above-left, settles. */
