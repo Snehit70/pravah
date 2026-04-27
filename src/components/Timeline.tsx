@@ -18,16 +18,29 @@ interface TimelineProps {
   mcpConnected?: boolean;
 }
 
-function PulsingDot({ color, size = 7 }: { color: string; size?: number }) {
+function PulsingDot({ color, size = 7, pulseKey }: { color: string; size?: number; pulseKey?: number | string }) {
   return (
     <span style={{ display: "inline-block", position: "relative", width: size, height: size, flexShrink: 0 }}>
       <span style={{ position: "absolute", inset: 0, borderRadius: 99, background: color }} />
-      <span style={{
-        position: "absolute", inset: 0, borderRadius: 99, background: color,
-        animation: "pravahPulse 2s ease-out infinite", opacity: 0.5,
-      }} />
+      <span
+        key={pulseKey}
+        style={{
+          position: "absolute", inset: 0, borderRadius: 99, background: color,
+          animation: "pravahPulse 2s ease-out infinite", opacity: 0.5,
+        }}
+      />
     </span>
   );
+}
+
+function formatAge(ms: number): string {
+  if (ms < 2000) return "now";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  return `${h}h ago`;
 }
 
 export function Timeline({
@@ -42,6 +55,29 @@ export function Timeline({
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [hoverDate, setHoverDate] = useState<string | null>(null);
   const today = getLocalDateString();
+
+  const [lastSyncedAt, setLastSyncedAt] = useState(() => Date.now());
+  const [syncTick, setSyncTick] = useState(0);
+  const [, setNowTick] = useState(0);
+
+  useEffect(() => {
+    setLastSyncedAt(Date.now());
+    setSyncTick((n) => n + 1);
+  }, [tasksByDate]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick((n) => n + 1), 5000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const syncAge = Date.now() - lastSyncedAt;
+  const convexColor =
+    syncAge < 30_000
+      ? "oklch(0.78 0.18 150)"
+      : syncAge < 120_000
+      ? "oklch(0.78 0.15 60)"
+      : "oklch(0.72 0.2 25)";
+  const mcpColor = mcpConnected ? "oklch(0.78 0.18 150)" : "oklch(0.72 0.2 25)";
 
   const dates = useMemo(() => generateDateRange(14, 28), []);
 
@@ -319,10 +355,13 @@ export function Timeline({
         }}
       >
         <span className="flex items-center gap-1.5">
-          <PulsingDot color="oklch(0.78 0.18 150)" size={6} />
-          mcp · connected
+          <PulsingDot color={mcpColor} size={6} />
+          mcp · {mcpConnected ? "connected" : "offline"}
         </span>
-        <span>convex · synced</span>
+        <span className="flex items-center gap-1.5">
+          <PulsingDot color={convexColor} size={6} pulseKey={syncTick} />
+          convex · {formatAge(syncAge)}
+        </span>
         <div className="flex-1" />
         <span style={{ color: "#45454a" }}>
           <kbd>N</kbd> new · <kbd>⌘J</kbd> kairo · <kbd>←→</kbd> pan · <kbd>T</kbd> today
