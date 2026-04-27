@@ -1,13 +1,17 @@
+export type KairoProviderFormat = "openai" | "anthropic";
+
 export interface KairoConfig {
   apiKey: string;
   baseUrl: string;
   model: string;
+  providerFormat: KairoProviderFormat;
 }
 
 const STORAGE_KEYS = {
   apiKey: "pravah:kairo-api-key",
   baseUrl: "pravah:kairo-base-url",
   model: "pravah:kairo-model",
+  providerFormat: "pravah:kairo-provider-format",
 } as const;
 
 export const KAIRO_CONFIG_EVENT = "pravah:kairo-config-updated";
@@ -32,11 +36,17 @@ function dispatchConfigUpdated() {
   window.dispatchEvent(new Event(KAIRO_CONFIG_EVENT));
 }
 
+function readProviderFormat(): KairoProviderFormat {
+  const value = readStorageValue(STORAGE_KEYS.providerFormat);
+  return value === "anthropic" ? "anthropic" : "openai";
+}
+
 export function getKairoConfig(): KairoConfig {
   return {
     apiKey: readStorageValue(STORAGE_KEYS.apiKey),
     baseUrl: readStorageValue(STORAGE_KEYS.baseUrl),
     model: readStorageValue(STORAGE_KEYS.model),
+    providerFormat: readProviderFormat(),
   };
 }
 
@@ -44,6 +54,7 @@ export function saveKairoConfig(config: KairoConfig) {
   writeStorageValue(STORAGE_KEYS.apiKey, config.apiKey);
   writeStorageValue(STORAGE_KEYS.baseUrl, config.baseUrl);
   writeStorageValue(STORAGE_KEYS.model, config.model);
+  writeStorageValue(STORAGE_KEYS.providerFormat, config.providerFormat);
   dispatchConfigUpdated();
 }
 
@@ -52,9 +63,14 @@ export function clearKairoConfig() {
   window.localStorage.removeItem(STORAGE_KEYS.apiKey);
   window.localStorage.removeItem(STORAGE_KEYS.baseUrl);
   window.localStorage.removeItem(STORAGE_KEYS.model);
+  window.localStorage.removeItem(STORAGE_KEYS.providerFormat);
   dispatchConfigUpdated();
 }
 
 export function isKairoConfigured(config: KairoConfig): boolean {
-  return Boolean(config.apiKey && config.baseUrl && config.model);
+  return Boolean(config.apiKey && config.baseUrl && config.model && config.providerFormat);
+}
+
+export function getKairoProviderLabel(providerFormat: KairoProviderFormat): string {
+  return providerFormat === "anthropic" ? "Anthropic" : "OpenAI";
 }

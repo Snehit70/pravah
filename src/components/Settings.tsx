@@ -28,7 +28,8 @@ import { cn } from "../lib/utils";
 import { Button } from "./Button";
 import { useToast } from "./useToast";
 import { authClient } from "../lib/auth-client";
-import { clearKairoConfig, getKairoConfig, saveKairoConfig } from "../lib/kairoConfig";
+import { clearKairoConfig, getKairoProviderLabel, getKairoConfig, saveKairoConfig } from "../lib/kairoConfig";
+import type { KairoProviderFormat } from "../lib/kairoConfig";
 
 interface SettingsProps {
   onClose: () => void;
@@ -325,7 +326,7 @@ export function Settings({ onClose }: SettingsProps) {
 
   const handleSaveKairoConfig = () => {
     if (!kairoConfig.apiKey.trim() || !kairoConfig.baseUrl.trim() || !kairoConfig.model.trim()) {
-      showError("Fill in the API key, endpoint URL, and model for Kairo.");
+      showError("Fill in the provider format, API key, endpoint URL, and model for Kairo.");
       return;
     }
 
@@ -339,6 +340,7 @@ export function Settings({ onClose }: SettingsProps) {
       apiKey: "",
       baseUrl: "",
       model: "",
+      providerFormat: "openai",
     });
     showSuccess("Kairo settings cleared.");
   };
@@ -523,10 +525,37 @@ export function Settings({ onClose }: SettingsProps) {
                 style={{ borderColor: "rgba(255,255,255,.07)" }}
               >
                 <p className="text-sm text-zinc-300 leading-6">
-                  Kairo uses this exact provider config from your browser. Nothing is prefilled.
+                  Kairo uses this exact {getKairoProviderLabel(kairoConfig.providerFormat)} config from your browser.
+                  Nothing is prefilled or rewritten.
                 </p>
 
                 <div className="grid gap-3 md:grid-cols-2">
+                  <div className="md:col-span-2">
+                    <span className="mb-1.5 block text-[11px] uppercase tracking-[0.12em] text-zinc-500">
+                      Provider Format
+                    </span>
+                    <div className="grid grid-cols-2 gap-1 rounded-[6px] border border-white/[0.07] bg-black/20 p-1">
+                      {([
+                        ["openai", "OpenAI Compatible"],
+                        ["anthropic", "Anthropic Compatible"],
+                      ] as Array<[KairoProviderFormat, string]>).map(([format, label]) => (
+                        <button
+                          key={format}
+                          type="button"
+                          onClick={() => setKairoConfig((prev) => ({ ...prev, providerFormat: format }))}
+                          className={cn(
+                            "rounded-[4px] px-3 py-2 text-xs font-medium transition-colors",
+                            kairoConfig.providerFormat === format
+                              ? "bg-[oklch(0.72_0.16_260_/_0.22)] text-[oklch(0.78_0.14_260)]"
+                              : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-300"
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <label className="block md:col-span-2">
                     <span className="mb-1.5 block text-[11px] uppercase tracking-[0.12em] text-zinc-500">
                       API Key
@@ -556,7 +585,11 @@ export function Settings({ onClose }: SettingsProps) {
                       onChange={(e) =>
                         setKairoConfig((prev) => ({ ...prev, baseUrl: e.target.value }))
                       }
-                      placeholder="https://your-server/v1/chat/completions"
+                      placeholder={
+                        kairoConfig.providerFormat === "anthropic"
+                          ? "http://localhost:42424/v1/messages"
+                          : "https://your-server/v1/chat/completions"
+                      }
                       className="w-full rounded-[6px] border bg-black/20 px-3 py-2.5 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-[oklch(0.78_0.14_260_/_0.45)]"
                       style={{ borderColor: "rgba(255,255,255,.09)" }}
                     />
@@ -581,7 +614,10 @@ export function Settings({ onClose }: SettingsProps) {
                 </div>
 
                 <p className="text-xs text-zinc-500 leading-5">
-                  Enter the full request URL Kairo should call. Nothing is appended automatically.
+                  {kairoConfig.providerFormat === "anthropic"
+                    ? "Anthropic mode sends /v1/messages-style JSON with a top-level system prompt."
+                    : "OpenAI mode sends /v1/chat/completions-style JSON with a system message."}
+                  {" "}The endpoint URL is always used exactly as entered.
                 </p>
 
                 <div className="flex flex-wrap gap-2">

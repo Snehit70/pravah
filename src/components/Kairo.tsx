@@ -5,6 +5,7 @@ import { getLocalDateString } from "../lib/utils";
 import type { Task } from "../types";
 import {
   KAIRO_CONFIG_EVENT,
+  getKairoProviderLabel,
   getKairoConfig,
   isKairoConfigured,
 } from "../lib/kairoConfig";
@@ -294,6 +295,40 @@ function readAssistantText(content: unknown): string {
   return "";
 }
 
+function buildOpenAIRequestBody(config: ReturnType<typeof getKairoConfig>, systemPrompt: string, history: Array<{ role: string; content: string }>, text: string) {
+  return {
+    model: config.model,
+    max_tokens: 1024,
+    messages: [
+      { role: "system", content: systemPrompt },
+      ...history,
+      { role: "user", content: text },
+    ],
+  };
+}
+
+function buildAnthropicRequestBody(config: ReturnType<typeof getKairoConfig>, systemPrompt: string, history: Array<{ role: string; content: string }>, text: string) {
+  return {
+    model: config.model,
+    max_tokens: 1024,
+    system: systemPrompt,
+    messages: [
+      ...history.filter((message) => message.role === "user" || message.role === "assistant"),
+      { role: "user", content: text },
+    ],
+  };
+}
+
+function readKairoResponseText(data: unknown, providerFormat: ReturnType<typeof getKairoConfig>["providerFormat"]): string {
+  if (!data || typeof data !== "object") return "";
+
+  if (providerFormat === "anthropic" && "content" in data) {
+    return readAssistantText((data as { content?: unknown }).content);
+  }
+
+  return readAssistantText((data as { choices?: Array<{ message?: { content?: unknown } }> }).choices?.[0]?.message?.content);
+}
+
 export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: KairoProps) {
   const [open, setOpen] = useState(false);
   const [val, setVal] = useState("");
@@ -351,7 +386,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
       await new Promise(r => setTimeout(r, 400));
       setMsgs(m => [...m, {
         from: "kairo",
-        text: "I need your API key, endpoint URL, and model before I can respond. Add them in Settings and I’ll use that provider directly from your browser.",
+        text: "I need your provider format, API key, endpoint URL, and model before I can respond. Add them in Settings and I’ll use that config directly from your browser.",
       }]);
       setThinking(false);
       return;
@@ -365,21 +400,23 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
         .slice(1)
         .map(m => ({ role: m.from === "me" ? "user" : "assistant", content: m.text }));
 
+      const requestBody = nextConfig.providerFormat === "anthropic"
+        ? buildAnthropicRequestBody(nextConfig, systemPrompt, history, text)
+        : buildOpenAIRequestBody(nextConfig, systemPrompt, history, text);
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${nextConfig.apiKey}`,
+      };
+
+      if (nextConfig.providerFormat === "anthropic") {
+        headers["anthropic-version"] = "2023-06-01";
+      }
+
       const res = await fetch(nextConfig.baseUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${nextConfig.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: nextConfig.model,
-          max_tokens: 1024,
-          messages: [
-            { role: "system", content: systemPrompt },
-            ...history,
-            { role: "user", content: text },
-          ],
-        }),
+        headers,
+        body: JSON.stringify(requestBody),
       });
 
       if (!res.ok) {
@@ -392,10 +429,8 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
         return;
       }
 
-      const data = await res.json() as {
-        choices?: Array<{ message?: { content?: unknown } }>;
-      };
-      const rawText = readAssistantText(data.choices?.[0]?.message?.content);
+      const data = await res.json();
+      const rawText = readKairoResponseText(data, nextConfig.providerFormat);
 
       // Parse <add-task> blocks
       const taskBlocks: Array<{ title: string; scheduledDate: string | null; type: "open" | "deadline" }> = [];
@@ -424,7 +459,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
 
       setMsgs(m => [...m, { from: "kairo", text: cleanText, tasks: taskBlocks.length ? taskBlocks : undefined }]);
     } catch (err) {
-      setMsgs(m => [...m, { from: "kairo", text: "Something went wrong reaching your configured AI endpoint. Check the key, URL, model, and server compatibility." }]);
+      setMsgs(m => [...m, { from: "kairo", text: "Something went wrong reaching your configured AI endpoint. Check the format toggle, key, URL, model, and server compatibility." }]);
     } finally {
       setThinking(false);
     }
@@ -480,7 +515,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
                   <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: -0.2 }}>Kairo</div>
                   <div style={{ fontSize: 10.5, color: "#6b6b72", fontFamily: "var(--font-mono)", letterSpacing: 1, display: "flex", alignItems: "center", gap: 5 }}>
                     <PulsingDot color={isKairoConfigured(config) ? "oklch(0.78 0.18 150)" : "oklch(0.72 0.2 25)"} size={5} />
-                    {isKairoConfigured(config) ? `READY · ${config.model}` : "UNCONFIGURED"}
+                    {isKairoConfigured(config) ? `READY · ${getKairoProviderLabel(config.providerFormat)} · ${config.model}` : "UNCONFIGURED"}
                   </div>
                 </div>
                 <div style={{ flex: 1 }} />
@@ -514,7 +549,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
                   }}
                 >
                   <div style={{ flex: 1, fontSize: 12, color: "#c2c2c8", lineHeight: 1.5 }}>
-                    Add your API key, endpoint URL, and model in Settings before using Kairo.
+                    Add your provider format, API key, endpoint URL, and model in Settings before using Kairo.
                   </div>
                   <button
                     onClick={onOpenSettings}
