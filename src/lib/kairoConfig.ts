@@ -42,7 +42,7 @@ export function getKairoConfig(): KairoConfig {
 
 export function saveKairoConfig(config: KairoConfig) {
   writeStorageValue(STORAGE_KEYS.apiKey, config.apiKey);
-  writeStorageValue(STORAGE_KEYS.baseUrl, config.baseUrl.replace(/\/+$/, ""));
+  writeStorageValue(STORAGE_KEYS.baseUrl, config.baseUrl);
   writeStorageValue(STORAGE_KEYS.model, config.model);
   dispatchConfigUpdated();
 }
@@ -57,12 +57,4 @@ export function clearKairoConfig() {
 
 export function isKairoConfigured(config: KairoConfig): boolean {
   return Boolean(config.apiKey && config.baseUrl && config.model);
-}
-
-export function resolveChatCompletionsUrl(baseUrl: string): string {
-  const trimmed = baseUrl.trim().replace(/\/+$/, "");
-  if (trimmed.endsWith("/chat/completions")) {
-    return trimmed;
-  }
-  return `${trimmed}/chat/completions`;
 }

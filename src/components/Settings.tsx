@@ -556,7 +556,7 @@ export function Settings({ onClose }: SettingsProps) {
                       onChange={(e) =>
                         setKairoConfig((prev) => ({ ...prev, baseUrl: e.target.value }))
                       }
-                      placeholder="https://your-server/v1"
+                      placeholder="https://your-server/v1/chat/completions"
                       className="w-full rounded-[6px] border bg-black/20 px-3 py-2.5 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-[oklch(0.78_0.14_260_/_0.45)]"
                       style={{ borderColor: "rgba(255,255,255,.09)" }}
                     />
@@ -581,8 +581,7 @@ export function Settings({ onClose }: SettingsProps) {
                 </div>
 
                 <p className="text-xs text-zinc-500 leading-5">
-                  Endpoint URLs should expose an OpenAI-compatible chat completions route. You can
-                  point this at a hosted provider or your own local server.
+                  Enter the full request URL Kairo should call. Nothing is appended automatically.
                 </p>
 
                 <div className="flex flex-wrap gap-2">

@@ -7,7 +7,6 @@ import {
   KAIRO_CONFIG_EVENT,
   getKairoConfig,
   isKairoConfigured,
-  resolveChatCompletionsUrl,
 } from "../lib/kairoConfig";
 
 const ACCENT = "oklch(0.78 0.14 260)";
@@ -366,7 +365,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
         .slice(1)
         .map(m => ({ role: m.from === "me" ? "user" : "assistant", content: m.text }));
 
-      const res = await fetch(resolveChatCompletionsUrl(nextConfig.baseUrl), {
+      const res = await fetch(nextConfig.baseUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
