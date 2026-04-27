@@ -40,10 +40,7 @@ export function AuthScreen() {
 
       <div className="relative z-10 flex min-h-screen flex-col px-6 py-6 sm:px-10 lg:px-16">
         <header className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="h-2 w-2 rounded-full bg-[oklch(0.78_0.14_260)] shadow-[0_0_18px_oklch(0.78_0.14_260_/_0.55)]" />
-            <span className="text-sm font-semibold tracking-[0.28em] text-zinc-200">PRAVAH</span>
-          </div>
+          <span className="text-sm font-semibold tracking-[0.28em] text-zinc-200">PRAVAH</span>
           <span className="tabular hidden text-[11px] uppercase tracking-[0.16em] text-zinc-500 sm:inline">
             Private Workspace
           </span>
@@ -76,17 +73,17 @@ export function AuthScreen() {
 
                 <button
                   type="button"
-                  className="group flex h-12 w-full items-center justify-center gap-2 rounded-[6px] border border-white/15 bg-white text-sm font-semibold text-[#090a0f] shadow-[0_18px_48px_rgba(0,0,0,0.35)] transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="group flex h-12 w-full items-center justify-center gap-2 rounded-[6px] border border-white/15 bg-white text-sm font-semibold !text-[#090a0f] shadow-[0_18px_48px_rgba(0,0,0,0.35)] transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={busy}
                   onClick={handleGoogleSignIn}
                 >
                   {busy ? (
-                    <span className="inline-flex items-center gap-2">
+                    <span className="inline-flex items-center gap-2 text-[#090a0f]">
                       <LoaderCircle className="h-4 w-4 animate-spin" />
                       Redirecting...
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-2">
+                    <span className="inline-flex items-center gap-2 text-[#090a0f]">
                       <LogIn className="h-4 w-4" />
                       Continue with Google
                     </span>
