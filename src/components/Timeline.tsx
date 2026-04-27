@@ -244,30 +244,20 @@ export function Timeline({
             <div className="tabular">{allScheduled.length} scheduled</div>
           </div>
 
-          {/* Add task shortcut */}
+          {/* Add task hint */}
           {onOpenQuickAdd && (
-            <div className="px-3">
-              <button
-                onClick={onOpenQuickAdd}
-                style={{
-                  width: "100%",
-                  padding: "7px 12px",
-                  borderRadius: 6,
-                  border: "1px solid oklch(0.78 0.14 260 / 0.4)",
-                  background: "oklch(0.72 0.16 260 / 0.2)",
-                  color: "oklch(0.78 0.14 260)",
-                  fontSize: 11.5,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                  fontFamily: "var(--font-sans)",
-                }}
-              >
-                <span style={{ fontSize: 14, lineHeight: 1 }}>+</span> New task
-              </button>
+            <div
+              className="tabular px-3"
+              style={{
+                marginTop: "auto",
+                paddingBottom: 12,
+                fontSize: 10,
+                fontFamily: "var(--font-mono)",
+                color: "#45454a",
+                letterSpacing: 0.6,
+              }}
+            >
+              press <kbd>N</kbd> to add a task
             </div>
           )}
         </div>
