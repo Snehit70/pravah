@@ -49,8 +49,8 @@
   --space-10: 40px;
   --space-12: 48px;
 
-  --font-size-xs: 10.5px;
-  --font-size-sm: 11.5px;
+  --font-size-xs: 11px;
+  --font-size-sm: 12.5px;
   --font-size-base: 13px;
   --font-size-md: 15px;
   --font-size-lg: 20px;
@@ -145,8 +145,13 @@ body {
   color: #ffffff;
 }
 
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
 kbd {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 4px;

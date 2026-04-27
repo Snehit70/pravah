@@ -133,6 +133,7 @@ function InboxSidebarComponent({
       >
         <span style={{ fontSize: 13, fontWeight: 500, color: "#ededef" }}>Inbox</span>
         <span
+          className="tabular"
           style={{
             fontSize: 11,
             padding: "1px 7px",

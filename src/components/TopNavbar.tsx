@@ -91,7 +91,7 @@ export function TopNavbar({
         <BrandMark size={22} />
         <span
           className="font-semibold"
-          style={{ fontSize: 15, letterSpacing: -0.3, color: "#ededef" }}
+          style={{ fontSize: 16, letterSpacing: -0.4, color: "#ededef" }}
         >
           Pravah
         </span>
@@ -117,11 +117,12 @@ export function TopNavbar({
 
       {/* Date display */}
       <div
+        className="tabular"
         style={{
           fontFamily: "var(--font-mono)",
           fontSize: 12,
           color: "#c2c2c8",
-          letterSpacing: 1,
+          letterSpacing: 0.6,
         }}
       >
         {monthName} {year} · WK {weekNum}

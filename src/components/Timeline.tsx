@@ -164,8 +164,8 @@ export function Timeline({
             <button
               onClick={() => scrollToToday(true)}
               style={{
-                fontSize: 10.5,
-                letterSpacing: 1.5,
+                fontSize: 11,
+                letterSpacing: 0.7,
                 color: "#6b6b72",
                 fontFamily: "var(--font-mono)",
                 background: "transparent",
@@ -202,10 +202,10 @@ export function Timeline({
               background: "rgba(255,255,255,.02)",
             }}
           >
-            <div style={{ color: "#ededef", marginBottom: 4, fontSize: 11 }}>
+            <div className="tabular" style={{ color: "#ededef", marginBottom: 4, fontSize: 11 }}>
               {doneTodayCount}/{todayTasks.length} done today
             </div>
-            <div>{allScheduled.length} scheduled</div>
+            <div className="tabular">{allScheduled.length} scheduled</div>
           </div>
 
           {/* Add task shortcut */}
@@ -306,14 +306,14 @@ export function Timeline({
 
       {/* Status bar */}
       <div
-        className="flex items-center gap-4 shrink-0"
+        className="flex items-center gap-4 shrink-0 tabular"
         style={{
           height: 28,
           padding: "0 16px",
           borderTop: "1px solid rgba(255,255,255,.07)",
           background: "#101013",
           fontFamily: "var(--font-mono)",
-          fontSize: 10.5,
+          fontSize: 11,
           color: "#6b6b72",
           letterSpacing: 0.3,
         }}
@@ -362,9 +362,9 @@ function DayHeader({ date, today }: { date: string; today: string }) {
     >
       <div
         style={{
-          fontSize: 9,
+          fontSize: 9.5,
           color: isToday ? "oklch(0.78 0.14 260)" : "#6b6b72",
-          letterSpacing: 1.5,
+          letterSpacing: 0.8,
           display: "flex",
           justifyContent: "space-between",
         }}
@@ -373,6 +373,7 @@ function DayHeader({ date, today }: { date: string; today: string }) {
         {isMonthStart && <span style={{ color: "#c2c2c8" }}>{month.toUpperCase()}</span>}
       </div>
       <div
+        className="tabular"
         style={{
           fontSize: 20,
           color: isToday ? "oklch(0.78 0.14 260)" : isPast ? "#6b6b72" : "#ededef",
@@ -407,14 +408,14 @@ function LaneLabel({ name, count, color }: { name: string; count: number; color:
       style={{
         borderBottom: "1px solid rgba(255,255,255,.07)",
         fontSize: 11,
-        letterSpacing: 1.5,
+        letterSpacing: 0.7,
         fontFamily: "var(--font-mono)",
         minHeight: 36,
       }}
     >
       <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
       <span style={{ color: "#ededef" }}>{name}</span>
-      <span style={{ color: "#6b6b72", fontSize: 10 }}>{count}</span>
+      <span className="tabular" style={{ color: "#6b6b72", fontSize: 10 }}>{count}</span>
     </div>
   );
 }
