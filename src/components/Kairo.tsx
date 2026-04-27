@@ -351,7 +351,10 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
   }, [msgs, thinking]);
 
   useEffect(() => {
-    const onOpen = () => setOpen(true);
+    const onOpen = () => {
+      setConfig(getKairoConfig());
+      setOpen(true);
+    };
     window.addEventListener("pravah:open-kairo", onOpen);
     return () => window.removeEventListener("pravah:open-kairo", onOpen);
   }, []);
@@ -359,7 +362,14 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
   useEffect(() => {
     const syncConfig = () => setConfig(getKairoConfig());
     window.addEventListener(KAIRO_CONFIG_EVENT, syncConfig);
-    return () => window.removeEventListener(KAIRO_CONFIG_EVENT, syncConfig);
+    window.addEventListener("focus", syncConfig);
+    window.addEventListener("storage", syncConfig);
+    syncConfig();
+    return () => {
+      window.removeEventListener(KAIRO_CONFIG_EVENT, syncConfig);
+      window.removeEventListener("focus", syncConfig);
+      window.removeEventListener("storage", syncConfig);
+    };
   }, []);
 
   useEffect(() => {
@@ -642,6 +652,15 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
               )}
               <input
                 ref={inputRef}
+                type="search"
+                name="pravah-kairo-command"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="sentences"
+                data-1p-ignore="true"
+                data-lpignore="true"
+                data-form-type="other"
+                spellCheck={false}
                 value={val}
                 onChange={(e) => setVal(e.target.value)}
                 onFocus={() => setOpen(true)}
