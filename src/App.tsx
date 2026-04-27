@@ -20,11 +20,11 @@ import {
 import { api } from "../convex/_generated/api";
 import type { Task } from "./types";
 import { Timeline } from "./components/Timeline";
-import { TaskCard } from "./components/TaskCard";
 import { InboxSidebar } from "./components/InboxSidebar";
 import { LoadingSkeleton } from "./components/LoadingSkeleton";
 import { GoogleCallback } from "./components/GoogleCallback";
 import { LongTermGoalsPage } from "./components/LongTermGoalsPage";
+import { Kairo } from "./components/Kairo";
 import { useTaskBoardData } from "./hooks/useTaskBoardData";
 import { useTaskDragHandlers } from "./hooks/useTaskDragHandlers";
 import { useAppKeyboardShortcuts } from "./hooks/useAppKeyboardShortcuts";
@@ -66,6 +66,7 @@ function AuthenticatedApp() {
     return saved === "goals" ? "goals" : "timeline";
   });
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
+  const [kairoActive, setKairoActive] = useState(false);
   const {
     selectedTask,
     showQuickAdd,
@@ -120,8 +121,12 @@ function AuthenticatedApp() {
     return <LoadingSkeleton />;
   }
 
+  const fade = kairoActive
+    ? { filter: "blur(6px) saturate(.8)", opacity: 0.35, pointerEvents: "none" as const }
+    : {};
+
   return (
-    <>
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
       <GoogleCallback />
       <DndContext
         sensors={sensors}
@@ -129,8 +134,11 @@ function AuthenticatedApp() {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="radial-dots-surface flex h-screen">
-          <main className="flex-1 overflow-hidden radial-bloom-surface">
+        <div
+          className="flex flex-1 overflow-hidden"
+          style={{ transition: "filter .4s ease, opacity .4s ease", ...fade }}
+        >
+          <main className="flex-1 overflow-hidden">
             {activePage === "timeline" ? (
               <Timeline
                 tasksByDate={tasksByDate}
@@ -138,31 +146,55 @@ function AuthenticatedApp() {
                 onOpenQuickAdd={openQuickAdd}
                 activePage={activePage}
                 onNavigate={setActivePage}
+                onOpenSettings={openSettings}
               />
             ) : (
               <LongTermGoalsPage activePage={activePage} onNavigate={setActivePage} />
             )}
           </main>
-          <div className="radial-bloom-surface h-full">
-            <InboxSidebar
-              tasks={inboxTasks}
-              onTaskClick={openTaskPopup}
-              onOpenQuickAdd={openQuickAdd}
-              onOpenSettings={openSettings}
-            />
-          </div>
+          <InboxSidebar
+            tasks={inboxTasks}
+            onTaskClick={openTaskPopup}
+            onOpenQuickAdd={openQuickAdd}
+            onOpenSettings={openSettings}
+          />
         </div>
 
         <DragOverlay dropAnimation={null}>
-          {activePage === "timeline" && draggedTask && <TaskCard task={draggedTask} isDragOverlay />}
+          {draggedTask && (
+            <div
+              style={{
+                padding: "5px 8px",
+                background: "rgba(255,255,255,.08)",
+                border: "1px solid rgba(255,255,255,.2)",
+                borderLeft: "2px solid oklch(0.78 0.14 260)",
+                borderRadius: 4,
+                fontSize: 11,
+                color: "#ededef",
+                rotate: "2deg",
+                scale: "1.05",
+                boxShadow: "0 20px 40px rgba(0,0,0,.4)",
+                fontFamily: "var(--font-sans)",
+              }}
+            >
+              {draggedTask.title}
+            </div>
+          )}
         </DragOverlay>
       </DndContext>
+
+      {/* Kairo — positioned relative to the full app */}
+      <Kairo
+        onActiveChange={setKairoActive}
+        tasks={tasks ?? []}
+        inboxTasks={inboxTasks}
+      />
 
       <Suspense fallback={null}>
         {selectedTask && <TaskPopup task={selectedTask} onClose={closeTaskPopup} />}
         {showQuickAdd && <QuickAdd onClose={closeQuickAdd} />}
         {showSettings && <Settings onClose={closeSettings} />}
       </Suspense>
-    </>
+    </div>
   );
 }
