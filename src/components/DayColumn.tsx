@@ -68,13 +68,14 @@ function GridTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 6,
-        padding: "5px 8px",
+        gap: 8,
+        minHeight: 34,
+        padding: "8px 10px",
         background: hover ? "rgba(255,255,255,.055)" : "rgba(255,255,255,.025)",
         border: `1px solid ${hover ? "rgba(255,255,255,.13)" : "rgba(255,255,255,.07)"}`,
-        borderLeft: `2px solid ${leftBarColor}`,
-        borderRadius: 4,
-        fontSize: 11,
+        borderLeft: `3px solid ${leftBarColor}`,
+        borderRadius: 5,
+        fontSize: 12,
         fontFamily: "var(--font-sans)",
         fontWeight: task.type === "deadline" ? 500 : 400,
         color: isCompleted ? "#6b6b72" : "#ededef",
@@ -104,7 +105,7 @@ function GridTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
       {task.priority && !hover && !isCompleted && (
         <span
           style={{
-            fontSize: 8.5,
+            fontSize: 9,
             fontFamily: "var(--font-mono)",
             color: task.priority === "p1" ? "oklch(0.78 0.18 25)" : "#6b6b72",
             letterSpacing: 1,
@@ -117,13 +118,13 @@ function GridTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
       {isAgentAdded && !hover && (
         <span
           title="Added by Kairo"
-          style={{ fontSize: 9, color: "oklch(0.78 0.14 260)", fontFamily: "var(--font-mono)", letterSpacing: 1, opacity: 0.7 }}
+          style={{ fontSize: 10, color: "oklch(0.78 0.14 260)", fontFamily: "var(--font-mono)", letterSpacing: 1, opacity: 0.7 }}
         >
           ✦
         </span>
       )}
       {isOverdue && !hover && (
-        <span style={{ fontSize: 9, color: "oklch(0.72 0.2 25)", fontFamily: "var(--font-mono)" }}>!</span>
+        <span style={{ fontSize: 10, color: "oklch(0.72 0.2 25)", fontFamily: "var(--font-mono)" }}>!</span>
       )}
     </motion.div>
   );
@@ -151,10 +152,10 @@ function GridDayColumnComponent({
         width: TIMELINE_COL_WIDTH,
         flexShrink: 0,
         borderRight: "1px solid rgba(255,255,255,.07)",
-        padding: "8px 6px",
+        padding: "9px 8px",
         display: "flex",
         flexDirection: "column",
-        gap: 3,
+        gap: 5,
         minHeight: isDeadlineLane ? 140 : 240,
         background: isOver
           ? "oklch(0.72 0.16 260 / 0.2)"

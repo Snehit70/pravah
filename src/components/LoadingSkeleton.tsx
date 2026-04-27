@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { TIMELINE_COL_WIDTH } from "../lib/timelineLayout";
 
 const DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
-const TASK_WIDTHS = [82, 104, 64, 116, 92, 74, 108];
+const TASK_WIDTHS = [116, 148, 92, 164, 132, 106, 152];
 const INBOX_ITEM_WIDTHS = [128, 92, 144, 106, 76, 156, 118, 136, 98, 148, 84, 124, 110, 140];
 
 function SkeletonLine({
@@ -99,20 +99,20 @@ function DayColumnSkeleton({ index, day }: { index: number; day: string }) {
 
       <div className="min-h-[240px] border-b border-white/[0.07] p-2">
         <div
-          className="mb-2 rounded-[4px] border border-white/[0.07] bg-white/[0.025] px-2 py-2"
-          style={{ borderLeft: "2px solid oklch(0.78 0.14 260 / 0.7)" }}
+          className="mb-2 rounded-[5px] border border-white/[0.07] bg-white/[0.025] px-2.5 py-2.5"
+          style={{ borderLeft: "3px solid oklch(0.78 0.14 260 / 0.7)", minHeight: 34 }}
         >
           <SkeletonLine width={TASK_WIDTHS[index % TASK_WIDTHS.length]} tone="bright" />
-          <div className="mt-2">
+          <div className="mt-2.5">
             <SkeletonLine width={48} />
           </div>
         </div>
         {index % 3 === 0 ? (
           <div
-            className="rounded-[4px] border border-white/[0.07] bg-white/[0.018] px-2 py-2"
-            style={{ borderLeft: "2px solid oklch(0.78 0.14 260 / 0.45)" }}
+            className="rounded-[5px] border border-white/[0.07] bg-white/[0.018] px-2.5 py-2.5"
+            style={{ borderLeft: "3px solid oklch(0.78 0.14 260 / 0.45)", minHeight: 34 }}
           >
-            <SkeletonLine width={72} />
+            <SkeletonLine width={104} />
           </div>
         ) : null}
       </div>
@@ -120,10 +120,10 @@ function DayColumnSkeleton({ index, day }: { index: number; day: string }) {
       <div className="min-h-[220px] p-2">
         {index % 2 === 0 ? (
           <div
-            className="rounded-[4px] border border-white/[0.07] bg-white/[0.025] px-2 py-2"
-            style={{ borderLeft: "2px solid oklch(0.72 0.16 30 / 0.8)" }}
+            className="rounded-[5px] border border-white/[0.07] bg-white/[0.025] px-2.5 py-2.5"
+            style={{ borderLeft: "3px solid oklch(0.72 0.16 30 / 0.8)", minHeight: 34 }}
           >
-            <SkeletonLine width={index === 4 ? 94 : 66} tone="bright" />
+            <SkeletonLine width={index === 4 ? 136 : 96} tone="bright" />
           </div>
         ) : (
           <div className="h-14 rounded-[4px] border border-dashed border-white/[0.04]" />
