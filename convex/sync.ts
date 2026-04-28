@@ -415,12 +415,21 @@ export const importGoogleCalendarEvents = mutation({
         if (mappedTask) {
           const isContentChanged = mapping.contentHash !== contentHash || mapping.isDeleted;
           if (isContentChanged) {
+            const nextStatus = event.scheduledDate ? "scheduled" : "inbox";
+            const laneChanged =
+              mappedTask.status !== nextStatus ||
+              mappedTask.scheduledDate !== event.scheduledDate;
+            const nextPosition = laneChanged
+              ? await getNextPosition(ctx, tokenIdentifier, event.scheduledDate)
+              : mappedTask.position;
+
             await ctx.db.patch(mapping.taskId, {
               title: event.title,
               description: event.description,
               scheduledDate: event.scheduledDate,
               deadline: event.deadline,
-              status: event.scheduledDate ? "scheduled" : "inbox",
+              status: nextStatus,
+              position: nextPosition,
               source: "gcal",
               updatedAt: now,
             });
