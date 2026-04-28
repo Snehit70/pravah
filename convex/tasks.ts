@@ -138,17 +138,21 @@ export const listBoardTasks = query({
  * pulling all tasks into the board query.
  */
 export const listTodayCompletedTasks = query({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    // Client passes its local date string (YYYY-MM-DD) so results are
+    // consistent with task dates written by the frontend, even when the
+    // Convex server clock is in a different timezone or crosses midnight.
+    clientDate: v.string(),
+  },
+  handler: async (ctx, { clientDate }) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    const today = getTodayDateString();
     return await ctx.db
       .query("tasks")
       .withIndex("by_owner_status_date", (q) =>
         q
           .eq("ownerTokenIdentifier", tokenIdentifier)
           .eq("status", "completed")
-          .eq("scheduledDate", today)
+          .eq("scheduledDate", clientDate)
       )
       .collect();
   },

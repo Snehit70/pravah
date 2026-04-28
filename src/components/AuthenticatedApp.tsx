@@ -27,6 +27,7 @@ import type { AppPage } from "./TopNavbar";
 import { useBootstrapUser } from "../hooks/useBootstrapUser";
 import { useToast } from "./useToast";
 import { TopNavbar } from "./TopNavbar";
+import { getLocalDateString } from "../lib/utils";
 
 const TaskPopup = lazy(() =>
   import("./TaskPopup").then((module) => ({ default: module.TaskPopup }))
@@ -61,7 +62,9 @@ export function AuthenticatedApp() {
   const { showError } = useToast();
 
   const boardTasks = useQuery(api.tasks.listBoardTasks, {});
-  const todayCompletedTasks = useQuery(api.tasks.listTodayCompletedTasks, {});
+  const todayCompletedTasks = useQuery(api.tasks.listTodayCompletedTasks, {
+    clientDate: getLocalDateString(),
+  });
   const kairoTasks = useQuery(api.tasks.listTasks, kairoActive ? {} : "skip");
   const moveTask = useMutation(api.tasks.moveTask);
   const unscheduleTask = useMutation(api.tasks.unscheduleTask);

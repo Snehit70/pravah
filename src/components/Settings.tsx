@@ -306,8 +306,10 @@ export function Settings({ onClose }: SettingsProps) {
 
   const handleGoogleDisconnect = async () => {
     const tokens = getGoogleTokens();
+    // Fire-and-forget: revocation is best-effort. Local disconnect must never
+    // be blocked by a slow or unreachable oauth2.googleapis.com endpoint.
     if (tokens && !tokens.expired) {
-      await revokeGoogleToken(tokens.accessToken);
+      void revokeGoogleToken(tokens.accessToken);
     }
     clearGoogleTokens();
     try {
