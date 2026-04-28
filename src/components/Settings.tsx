@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from "react";
-import type { CSSProperties } from "react";
 import {
   Bot,
   X,
@@ -608,7 +607,7 @@ export function Settings({ onClose }: SettingsProps) {
                       API Key
                     </span>
                     <input
-                      type="text"
+                      type="password"
                       name="pravah-kairo-provider-token"
                       value={kairoConfig.apiKey}
                       autoComplete="new-password"
@@ -623,10 +622,7 @@ export function Settings({ onClose }: SettingsProps) {
                       }
                       placeholder="Paste your provider key"
                       className="w-full rounded-[3px] border bg-black/20 px-3 py-2.5 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-[oklch(0.78_0.14_260_/_0.45)]"
-                      style={{
-                        borderColor: "rgba(255,255,255,.09)",
-                        WebkitTextSecurity: "disc",
-                      } as CSSProperties}
+                      style={{ borderColor: "rgba(255,255,255,.09)" }}
                     />
                   </label>
 
