@@ -1,7 +1,7 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { useDroppable } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { useDndMonitor, useDroppable } from "@dnd-kit/core";
+import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Task } from "../types";
 import { INBOX_DROP_ID } from "../lib/taskRules";
@@ -13,17 +13,6 @@ interface InboxSidebarProps {
   onOpenQuickAdd?: () => void;
 }
 
-function PulsingDot({ color, size = 6 }: { color: string; size?: number }) {
-  return (
-    <span style={{ display: "inline-block", position: "relative", width: size, height: size, flexShrink: 0 }}>
-      <span style={{ position: "absolute", inset: 0, borderRadius: 99, background: color }} />
-      <span style={{
-        position: "absolute", inset: 0, borderRadius: 99, background: color,
-        animation: "pravahPulse 2s ease-out infinite", opacity: 0.5,
-      }} />
-    </span>
-  );
-}
 
 const SOURCE_LABEL: Record<NonNullable<Task["source"]>, string> = {
   "manual": "MANUAL",
@@ -46,7 +35,7 @@ function formatTaskAge(createdAt: number): string {
 }
 
 function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void }) {
-  const { setNodeRef, attributes, listeners, transform, isDragging } = useSortable({
+  const { setNodeRef, attributes, listeners, transform, transition: dndTransition, isDragging } = useSortable({
     id: task._id,
   });
   const [hover, setHover] = useState(false);
@@ -57,28 +46,36 @@ function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void
   const age = formatTaskAge(task.createdAt);
 
   return (
-    <motion.div
+    // Outer div owns the dnd-kit transform (shift-to-make-room) so framer-motion
+    // never touches the CSS transform property and can't fight with dnd-kit.
+    <div
       ref={setNodeRef}
-      {...attributes}
-      {...listeners}
       style={{
         transform: CSS.Transform.toString(transform),
-        padding: "7px 10px 7px 14px",
-        background: hover ? "rgba(255,255,255,.04)" : "rgba(255,255,255,.025)",
-        border: `1px solid ${hover ? "rgba(255,255,255,.13)" : "rgba(255,255,255,.07)"}`,
-        borderRadius: 4,
-        fontSize: 12,
-        color: "#ededef",
-        cursor: "grab",
-        position: "relative",
-        opacity: isDragging ? 0.4 : 1,
-        transition: tx(["background-color", "border-color", "opacity"], "instant"),
-        userSelect: "none",
+        // dndTransition is null for the dragged item (follows cursor instantly)
+        // and "transform 200ms ease" for every other item (smooth live shift).
+        transition: dndTransition ?? undefined,
       }}
-      initial={{ opacity: 0, x: 10 }}
-      animate={{ opacity: isDragging ? 0.4 : 1, x: 0 }}
-      exit={{ opacity: 0, x: -10, scale: 0.95 }}
-      layout
+    >
+      <motion.div
+        {...attributes}
+        {...listeners}
+        style={{
+          padding: "7px 10px 7px 14px",
+          background: hover ? "rgba(255,255,255,.04)" : "rgba(255,255,255,.025)",
+          border: `1px solid ${hover ? "rgba(255,255,255,.13)" : "rgba(255,255,255,.07)"}`,
+          borderRadius: 4,
+          fontSize: 12,
+          color: "#ededef",
+          cursor: isDragging ? "grabbing" : "grab",
+          position: "relative",
+          transition: tx(["background-color", "border-color", "opacity"], "instant"),
+          userSelect: "none",
+        }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: isDragging ? 0.3 : 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.12 }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       onClick={(e) => {
@@ -155,7 +152,8 @@ function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void
           {age && <span style={{ color: "#45454a" }}>{age}</span>}
         </div>
       )}
-    </motion.div>
+      </motion.div>
+    </div>
   );
 }
 
@@ -170,9 +168,58 @@ function InboxSidebarComponent({
   const { setNodeRef, isOver } = useDroppable({ id: INBOX_DROP_ID });
   const [query, setQuery] = useState("");
 
-  const filtered = query
-    ? tasks.filter(t => t.title.toLowerCase().includes(query.toLowerCase()))
+  // Optimistic local order: set immediately on drop so the DOM already shows
+  // the new order when dnd-kit clears its transforms, preventing the snap-back
+  // "two animations" artifact. Cleared once server confirms the new order.
+  const [localOrder, setLocalOrder] = useState<string[] | null>(null);
+  const taskIds = tasks.map(t => t._id as string);
+  const prevTaskIdsRef = useRef(taskIds);
+
+  // When server sends back a new task list (e.g. after mutation confirms or a
+  // task is added/removed), sync localOrder — but only if the set of IDs
+  // changed (new/removed tasks), not just a reorder we already applied.
+  useEffect(() => {
+    const prev = prevTaskIdsRef.current;
+    prevTaskIdsRef.current = taskIds;
+    const prevSet = new Set(prev);
+    const nextSet = new Set(taskIds);
+    const setsMatch = prev.length === taskIds.length && taskIds.every(id => prevSet.has(id));
+    if (!setsMatch) {
+      // A task was added or removed — reset optimistic state so new list shows
+      setLocalOrder(null);
+    } else if (localOrder) {
+      // Same set of tasks, check if server order now matches our optimistic order
+      const serverMatchesOptimistic = localOrder.every((id, i) => taskIds[i] === id);
+      if (serverMatchesOptimistic) setLocalOrder(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskIds.join(",")]);
+
+  useDndMonitor({
+    onDragEnd({ active, over }) {
+      if (!over || active.id === over.id) return;
+      const activeId = active.id as string;
+      const overId = over.id as string;
+      // Only apply optimistic reorder for inbox items
+      const base = localOrder ?? tasks.map(t => t._id as string);
+      const oldIndex = base.indexOf(activeId);
+      const newIndex = base.indexOf(overId);
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
+      setLocalOrder(arrayMove(base, oldIndex, newIndex));
+    },
+    onDragCancel() {
+      setLocalOrder(null);
+    },
+  });
+
+  // Reorder the task objects to match localOrder when set
+  const orderedTasks = localOrder
+    ? (localOrder.map(id => tasks.find(t => t._id === id)).filter(Boolean) as typeof tasks)
     : tasks;
+
+  const filtered = query
+    ? orderedTasks.filter(t => t.title.toLowerCase().includes(query.toLowerCase()))
+    : orderedTasks;
   const kairoCount = tasks.filter(t => t.source === "ai-agent").length;
 
   return (
@@ -227,12 +274,6 @@ function InboxSidebarComponent({
           )}
         </div>
         <div className="flex-1" />
-        <div className="flex items-center gap-1.5 mt-1">
-          <PulsingDot color="oklch(0.78 0.18 150)" size={6} />
-          <span style={{ fontSize: 9, color: "#6b6b72", fontFamily: "var(--font-mono)", letterSpacing: 0.6 }}>
-            MCP
-          </span>
-        </div>
       </div>
 
       {/* Search */}
@@ -273,7 +314,7 @@ function InboxSidebarComponent({
           items={filtered.map(t => t._id)}
           strategy={verticalListSortingStrategy}
         >
-          <AnimatePresence mode="popLayout">
+          <AnimatePresence>
             {filtered.map((task) => (
               <InboxTask
                 key={task._id}
