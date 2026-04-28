@@ -172,6 +172,10 @@ function InboxSidebarComponent({
   // the new order when dnd-kit clears its transforms, preventing the snap-back
   // "two animations" artifact. Cleared once server confirms the new order.
   const [localOrder, setLocalOrder] = useState<string[] | null>(null);
+  // Fallback: if the mutation fails the server order never changes, so the
+  // reconciliation effect below never fires.  A 6 s timeout guarantees we
+  // revert to server state even without a confirmation signal.
+  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const taskIds = tasks.map(t => t._id as string);
   const prevTaskIdsRef = useRef(taskIds);
 
@@ -186,10 +190,14 @@ function InboxSidebarComponent({
     if (!setsMatch) {
       // A task was added or removed — reset optimistic state so new list shows
       setLocalOrder(null);
+      if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
     } else if (localOrder) {
       // Same set of tasks, check if server order now matches our optimistic order
       const serverMatchesOptimistic = localOrder.every((id, i) => taskIds[i] === id);
-      if (serverMatchesOptimistic) setLocalOrder(null);
+      if (serverMatchesOptimistic) {
+        setLocalOrder(null);
+        if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskIds.join(",")]);
@@ -205,9 +213,14 @@ function InboxSidebarComponent({
       const newIndex = base.indexOf(overId);
       if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
       setLocalOrder(arrayMove(base, oldIndex, newIndex));
+      // If the mutation fails the server order won't change, so the
+      // reconciliation effect never fires.  Revert after 6 s as a fallback.
+      if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+      fallbackTimerRef.current = setTimeout(() => setLocalOrder(null), 6000);
     },
     onDragCancel() {
       setLocalOrder(null);
+      if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
     },
   });
 
