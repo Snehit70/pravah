@@ -5,7 +5,6 @@ import { api } from "../../convex/_generated/api";
 export function useBootstrapUser(enabled: boolean) {
   const [ready, setReady] = useState(false);
   const storeUser = useMutation(api.users.store);
-  const claimLegacyData = useMutation(api.users.claimLegacyData);
 
   useEffect(() => {
     if (!enabled) {
@@ -15,10 +14,14 @@ export function useBootstrapUser(enabled: boolean) {
     let cancelled = false;
 
     const bootstrap = async () => {
-      await storeUser({});
-      await claimLegacyData({});
-      if (!cancelled) {
-        setReady(true);
+      try {
+        await storeUser({});
+      } catch (error) {
+        console.error("Failed to bootstrap user", error);
+      } finally {
+        if (!cancelled) {
+          setReady(true);
+        }
       }
     };
 
@@ -27,7 +30,7 @@ export function useBootstrapUser(enabled: boolean) {
     return () => {
       cancelled = true;
     };
-  }, [claimLegacyData, enabled, storeUser]);
+  }, [enabled, storeUser]);
 
   return ready;
 }

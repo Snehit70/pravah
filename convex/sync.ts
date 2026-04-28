@@ -288,6 +288,9 @@ export const approveReviewItem = mutation({
     }
 
     const effectiveScheduledDate = args.scheduledDate ?? reviewItem.scheduledDate;
+    if (reviewItem.deadline && effectiveScheduledDate && effectiveScheduledDate > reviewItem.deadline) {
+      throw new Error("Cannot schedule task past its deadline");
+    }
     const position = await getNextPosition(ctx, tokenIdentifier, effectiveScheduledDate);
 
     const now = Date.now();
