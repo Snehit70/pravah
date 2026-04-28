@@ -208,19 +208,18 @@ export const enqueueGmailCandidate = mutation({
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    const existingPending = await ctx.db
+    const existingItem = await ctx.db
       .query("reviewQueue")
       .withIndex("by_owner_provider_external_id", (q) =>
         q.eq("ownerTokenIdentifier", tokenIdentifier)
           .eq("provider", "gmail")
           .eq("externalId", args.externalId)
       )
-      .filter((q) => q.eq(q.field("status"), "pending"))
       .first();
 
-    if (existingPending) {
+    if (existingItem) {
       return {
-        reviewId: existingPending._id,
+        reviewId: existingItem._id,
         deduplicated: true,
       };
     }

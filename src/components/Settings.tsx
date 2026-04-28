@@ -885,7 +885,7 @@ export function Settings({ onClose }: SettingsProps) {
                             <div>
                               <p className="text-zinc-100 text-sm">Gmail</p>
                               <p className="text-xs text-zinc-500">
-                                Extract tasks from starred emails
+                                Extract tasks from unread emails
                               </p>
                             </div>
                           </div>
