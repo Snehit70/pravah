@@ -569,11 +569,13 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
 
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${nextConfig.apiKey}`,
       };
 
       if (nextConfig.providerFormat === "anthropic") {
+        headers["x-api-key"] = nextConfig.apiKey;
         headers["anthropic-version"] = "2023-06-01";
+      } else {
+        headers["Authorization"] = `Bearer ${nextConfig.apiKey}`;
       }
 
       const res = await fetch(nextConfig.baseUrl, {
