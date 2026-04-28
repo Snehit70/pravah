@@ -98,6 +98,13 @@ export function useTaskDragHandlers({
   setDraggedTask,
   onInvalidReorder,
 }: UseTaskDragHandlersOptions) {
+  const getMutationErrorMessage = (error: unknown): string => {
+    if (error instanceof Error && error.message.trim().length > 0) {
+      return error.message;
+    }
+    return "Failed to update task order. Please try again.";
+  };
+
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
       const task = tasks?.find((t) => t._id === event.active.id);
@@ -118,72 +125,76 @@ export function useTaskDragHandlers({
       const sourceTask = tasks?.find((t) => t._id === activeId);
       if (!sourceTask) return;
 
-      const currentDate = getLocalDateString();
-      const targetDate = resolveDropTargetDate(sourceTask, overId, tasks, currentDate);
-      if (targetDate) {
-        await moveTask({ taskId: activeId, targetDate });
-        return;
-      }
-
-      const overTask = tasks?.find((t) => t._id === overId);
-      if (
-        sourceTask.status === "scheduled" &&
-        (isInboxDropId(overId) || overTask?.status === "inbox")
-      ) {
-        await unscheduleTask({ taskId: activeId });
-        return;
-      }
-
-      if (sourceTask.status === "inbox") {
-        const reorderedInboxTaskIds = getReorderedTaskIdsForDay(inboxTasks, activeId, overId);
-        if (!reorderedInboxTaskIds) {
+      try {
+        const currentDate = getLocalDateString();
+        const targetDate = resolveDropTargetDate(sourceTask, overId, tasks, currentDate);
+        if (targetDate) {
+          await moveTask({ taskId: activeId, targetDate });
           return;
         }
 
-        const reorderedInboxTasks = reorderedInboxTaskIds
-          .map((taskId) => inboxTasks.find((task) => task._id === taskId))
+        const overTask = tasks?.find((t) => t._id === overId);
+        if (
+          sourceTask.status === "scheduled" &&
+          (isInboxDropId(overId) || overTask?.status === "inbox")
+        ) {
+          await unscheduleTask({ taskId: activeId });
+          return;
+        }
+
+        if (sourceTask.status === "inbox") {
+          const reorderedInboxTaskIds = getReorderedTaskIdsForDay(inboxTasks, activeId, overId);
+          if (!reorderedInboxTaskIds) {
+            return;
+          }
+
+          const reorderedInboxTasks = reorderedInboxTaskIds
+            .map((taskId) => inboxTasks.find((task) => task._id === taskId))
+            .filter((task): task is Task => Boolean(task));
+          if (hasPriorityBoundaryViolation(inboxTasks, reorderedInboxTasks)) {
+            onInvalidReorder?.("Drag only within the same priority group.");
+            return;
+          }
+
+          await reorderInboxTasks({ taskIds: reorderedInboxTaskIds });
+          return;
+        }
+
+        if (!sourceTask.scheduledDate) {
+          return;
+        }
+
+        // Guard: cross-lane drops (open ↔ deadline on the same day) are no-ops.
+        // overTask may sit in the deadline lane while sourceTask is open (or vice
+        // versa).  Without this check the mixed tasksByDate list gets reordered
+        // unexpectedly when the user drags across lanes.
+        if (overTask && overTask.scheduledDate === sourceTask.scheduledDate) {
+          const srcIsDeadline = sourceTask.type === "deadline";
+          const dstIsDeadline = overTask.type === "deadline";
+          if (srcIsDeadline !== dstIsDeadline) return;
+        }
+
+        const dayTasks = tasksByDate[sourceTask.scheduledDate] ?? [];
+        const reorderedTaskIds = getReorderedTaskIdsForDay(dayTasks, activeId, overId);
+        if (!reorderedTaskIds) {
+          return;
+        }
+
+        const reorderedDayTasks = reorderedTaskIds
+          .map((taskId) => dayTasks.find((task) => task._id === taskId))
           .filter((task): task is Task => Boolean(task));
-        if (hasPriorityBoundaryViolation(inboxTasks, reorderedInboxTasks)) {
+        if (hasPriorityBoundaryViolation(dayTasks, reorderedDayTasks)) {
           onInvalidReorder?.("Drag only within the same priority group.");
           return;
         }
 
-        await reorderInboxTasks({ taskIds: reorderedInboxTaskIds });
-        return;
+        await reorderTasks({
+          date: sourceTask.scheduledDate,
+          taskIds: reorderedTaskIds,
+        });
+      } catch (error) {
+        onInvalidReorder?.(getMutationErrorMessage(error));
       }
-
-      if (!sourceTask.scheduledDate) {
-        return;
-      }
-
-      // Guard: cross-lane drops (open ↔ deadline on the same day) are no-ops.
-      // overTask may sit in the deadline lane while sourceTask is open (or vice
-      // versa).  Without this check the mixed tasksByDate list gets reordered
-      // unexpectedly when the user drags across lanes.
-      if (overTask && overTask.scheduledDate === sourceTask.scheduledDate) {
-        const srcIsDeadline = sourceTask.type === "deadline";
-        const dstIsDeadline = overTask.type === "deadline";
-        if (srcIsDeadline !== dstIsDeadline) return;
-      }
-
-      const dayTasks = tasksByDate[sourceTask.scheduledDate] ?? [];
-      const reorderedTaskIds = getReorderedTaskIdsForDay(dayTasks, activeId, overId);
-      if (!reorderedTaskIds) {
-        return;
-      }
-
-      const reorderedDayTasks = reorderedTaskIds
-        .map((taskId) => dayTasks.find((task) => task._id === taskId))
-        .filter((task): task is Task => Boolean(task));
-      if (hasPriorityBoundaryViolation(dayTasks, reorderedDayTasks)) {
-        onInvalidReorder?.("Drag only within the same priority group.");
-        return;
-      }
-
-      await reorderTasks({
-        date: sourceTask.scheduledDate,
-        taskIds: reorderedTaskIds,
-      });
     },
     [
       tasks,
