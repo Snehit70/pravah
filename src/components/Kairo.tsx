@@ -639,15 +639,17 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
             initial={{ opacity: 0 }}
             animate={{ opacity: 1, transition: T_FAST }}
             exit={{ opacity: 0, transition: T_EXIT_FAST }}
+            onClick={() => setOpen(false)}
             style={{
               position: "absolute",
               inset: 0,
-              pointerEvents: "none",
+              pointerEvents: "auto",
               background: "rgba(0,0,0,.55)",
               backdropFilter: "blur(12px)",
               WebkitBackdropFilter: "blur(12px)",
               zIndex: 40,
               willChange: "opacity",
+              cursor: "default",
             }}
           />
         )}
