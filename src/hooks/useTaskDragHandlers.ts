@@ -56,6 +56,12 @@ export function resolveDropTargetDate(
     : null;
 
   if (dateFromId && isDateDropId(dateFromId)) {
+    // Same-day drop onto a deadline-lane container: the source is already on
+    // this date, so treat it as a no-op instead of triggering moveTask.
+    const isDeadlineLaneDrop = overId.startsWith("deadline:");
+    if (isDeadlineLaneDrop && dateFromId === sourceTask.scheduledDate) {
+      return null;
+    }
     return canScheduleTaskOnDate(sourceTask, dateFromId, {
       allowOverdueCarryForward: true,
       currentDate,
