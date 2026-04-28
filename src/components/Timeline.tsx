@@ -1,4 +1,5 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
+import { useConvexConnectionState } from "convex/react";
 import { GridDayColumn } from "./DayColumn";
 import type { Task } from "../types";
 import { generateDateRange, getLocalDateString } from "../lib/utils";
@@ -64,13 +65,11 @@ export function Timeline({
     return () => window.clearInterval(id);
   }, []);
 
+  const convexConnection = useConvexConnectionState();
   const syncAge = Date.now() - lastSyncedAt;
-  const convexColor =
-    syncAge < 30_000
-      ? "oklch(0.78 0.18 150)"
-      : syncAge < 120_000
-      ? "oklch(0.78 0.15 60)"
-      : "oklch(0.72 0.2 25)";
+  const convexColor = convexConnection.isWebSocketConnected
+    ? "oklch(0.78 0.18 150)"
+    : "oklch(0.72 0.2 25)";
   const mcpColor = mcpConnected ? "oklch(0.78 0.18 150)" : "oklch(0.72 0.2 25)";
 
   const dates = useMemo(() => generateDateRange(14, 28), []);
