@@ -1,11 +1,12 @@
 # Pravah
 
-Pravah is a horizontal timeline task manager with:
+Pravah is a timeline-first task manager built around a horizontal week view. Tasks live either on the timeline (scheduled to a date) or in the inbox (unscheduled). Kairo, an AI copilot docked at the bottom, can reason about your schedule and add tasks on your behalf.
 
-- a React web app (`src/`)
-- a Convex backend (`convex/`)
-- an MCP server for agent integration (`mcp-server.ts`)
-- an Expo mobile app (`apps/mobile/`)
+Stack:
+- **Web** — Vite + React (`src/`), Geist fonts, Framer Motion, dnd-kit
+- **Backend** — Convex (`convex/`) with Better Auth
+- **Mobile** — Expo React Native (`apps/mobile/`)
+- **MCP bridge** — `mcp-server.ts` exposes task tools over stdio
 
 ## Quick Start
 
@@ -15,7 +16,7 @@ Pravah is a horizontal timeline task manager with:
 bun install
 ```
 
-2. Configure environment variables in root `.env.local`
+2. Configure root `.env.local`
 
 ```env
 CONVEX_DEPLOYMENT=your-deployment
@@ -24,7 +25,7 @@ VITE_CONVEX_SITE_URL=https://your-deployment.convex.site
 VITE_GOOGLE_CLIENT_ID=your-google-web-client-id
 ```
 
-3. Start Convex dev backend
+3. Start Convex backend
 
 ```bash
 bunx convex dev
@@ -38,28 +39,44 @@ bun run dev
 
 ## Common Commands
 
-- `bun run dev` - start web app
-- `bun run build` - type-check and build web app
-- `bun run lint` - run ESLint
-- `bun run test:run` - run Vitest suite
-- `bun run mcp` - run MCP server over stdio
-- `bun run mobile:start` - start Expo mobile app
-- `bun run mobile:android` - Android native run (auto syncs env)
-- `bun run mobile:ios` - iOS native run (auto syncs env)
-- `bun run mobile:web` - Expo web run
+| Command | Description |
+|---|---|
+| `bun run dev` | Start web dev server |
+| `bun run build` | Type-check + production build |
+| `bun run lint` | ESLint |
+| `bun run test:run` | Vitest suite |
+| `bun run mcp` | MCP server over stdio |
+| `bun run mobile:start` | Start Expo |
+| `bun run mobile:android` | Android native build (auto-syncs env) |
+| `bun run mobile:ios` | iOS native build |
+| `bun run mobile:web` | Expo web |
 
 ## Project Structure
 
-- `src/` - React web client and UI logic
-- `convex/` - Convex schema, queries, mutations, actions, and HTTP routes
-- `apps/mobile/` - Expo React Native app
-- `scripts/` - local tooling (`mobile:env`, Android runtime helpers)
-- `mcp-server.ts` - MCP bridge exposing task/sync tools
-- `docs/` - maintained technical documentation
+```
+src/                  React web client
+  components/         Timeline, InboxSidebar, Kairo, QuickAdd, TaskPopup, ...
+  hooks/              Drag handlers, keyboard shortcuts, overlay state
+  lib/                Motion tokens, date utils, Kairo config
+convex/               Backend: schema, queries, mutations, HTTP routes
+apps/mobile/          Expo React Native app
+docs/                 Technical documentation
+mcp-server.ts         MCP bridge
+```
+
+## Kairo AI Copilot
+
+Kairo sits in the bottom dock (`⌘J` to open). It uses your own API key — configure it in Settings with:
+- **Provider format**: OpenAI-compatible or Anthropic
+- **API key**: sent directly from your browser, never stored server-side
+- **Endpoint URL**: e.g. `https://api.openai.com/v1/chat/completions` or `https://api.anthropic.com/v1/messages`
+- **Model**: e.g. `gpt-4o`, `claude-sonnet-4-6`
+
+Click outside the panel or press `⌘J` to close.
 
 ## Environment
 
-### Root `.env.local` (web + shared)
+### Root `.env.local`
 
 ```env
 CONVEX_DEPLOYMENT=your-deployment
@@ -81,24 +98,27 @@ CONVEX_HTTP_API_KEY=your-http-api-key
 
 ### Mobile env sync
 
-Generate `apps/mobile/.env.local` from root env:
-
 ```bash
-bun run mobile:env
+bun run mobile:env   # generates apps/mobile/.env.local from root env
 ```
 
 `mobile:start`, `mobile:android`, `mobile:ios`, and `mobile:web` run this automatically.
 
-## Documentation Map
+## CI
 
-- `docs/development.md` - local setup, environment, and workflows
-- `docs/api.md` - HTTP routes and MCP tools
-- `docs/google-oauth.md` - Google OAuth setup and troubleshooting
-- `docs/architecture.md` - system architecture and module map
-- `docs/codebase-review-2026-04-15.md` - current code health review and improvements
+GitHub Actions runs on pull requests and pushes to `main`:
+- **Lint** — ESLint
+- **Build** — Vite production build + TypeScript check
+
+## Documentation
+
+- `docs/architecture.md` — system architecture and module map
+- `docs/development.md` — local setup, environment, and workflows
+- `docs/api.md` — HTTP routes and MCP tools
+- `docs/google-oauth.md` — Google OAuth setup and troubleshooting
 
 ## Security Notes
 
 - Never expose `GOOGLE_OAUTH_CLIENT_SECRET` via `VITE_` variables.
-- Keep secrets only in deployment/server env.
+- Keep secrets in deployment/server env only.
 - Do not commit `.env.local` or real credentials.

@@ -4,73 +4,103 @@
 
 Pravah is a Bun-based monorepo with a React web client, Convex backend, MCP bridge, and Expo mobile app.
 
-## Components
+## Repository Layout
 
-- `src/` (web)
-  - React app shell, timeline UI, inbox, settings, auth views
-  - DnD via `@dnd-kit`
-  - state from Convex queries/mutations
-- `convex/` (backend)
-  - schema + indexes
-  - auth setup (Better Auth + Convex plugin)
-  - task and sync domain logic
-  - HTTP API router
-- `mcp-server.ts`
-  - stdio MCP server
-  - maps MCP tools to Convex HTTP endpoints
-- `apps/mobile/`
-  - Expo client using shared Convex backend and Better Auth
+```
+src/                        React web client
+  App.tsx                   Root — auth shell, DnD context, overlay orchestration
+  components/
+    Timeline.tsx            Horizontal week grid, status bar
+    DayColumn.tsx           Per-day sortable task column
+    InboxSidebar.tsx        Right panel — inbox list with optimistic drag reorder
+    Kairo.tsx               AI copilot dock (bottom-centre)
+    QuickAdd.tsx            New-task modal (N shortcut)
+    TaskPopup.tsx           Edit task modal
+    TopNavbar.tsx           Header navigation
+    Settings.tsx            Settings sheet
+  hooks/
+    useTaskBoardData.ts     Derives tasksByDate and inboxTasks from flat query
+    useTaskDragHandlers.ts  DnD start/end logic, mutation calls
+    useAppKeyboardShortcuts.ts  Global hotkeys
+    useAppOverlays.ts       Open/close state for all overlays
+  lib/
+    motion.ts               Single-source motion tokens (DUR, EASE, tx())
+    kairoConfig.ts          Kairo provider/key/model config (localStorage)
+    taskRules.ts            Drag validation, priority boundaries
+    utils.ts                Date helpers, cn()
+convex/                     Backend
+  schema.ts                 Table definitions and indexes
+  tasks.ts                  Task queries and mutations
+  syncActions.ts            Google Calendar sync action
+  sync.ts                   Upsert and cursor helpers
+  http.ts                   HTTP route router
+  auth.ts                   Better Auth integration
+apps/mobile/                Expo React Native client
+mcp-server.ts               MCP stdio bridge
+```
+
+## Web UI Design System
+
+- **Fonts**: Geist Sans + Geist Mono (self-hosted via fontsource)
+- **Colour**: dark purple base (`#101013`), accent `oklch(0.78 0.14 260)`, deadline `oklch(0.72 0.16 30)`
+- **Motion**: all timings and curves defined in `src/lib/motion.ts`; components use `tx()` for CSS transitions and `T_FAST`/`T_SLOW` Framer Motion presets
+- **Drag and drop**: `@dnd-kit/core` + `@dnd-kit/sortable`; DnD context spans the full app shell; InboxSidebar holds a `useDndMonitor` listener for optimistic reorder
 
 ## Auth Model
 
-- Auth is handled by Better Auth integrated with Convex.
-- Ownership is enforced using `ownerTokenIdentifier` on domain records.
-- Convex functions call `requireTokenIdentifier` before data operations.
+- Better Auth + Convex plugin handles sessions.
+- Ownership is enforced via `ownerTokenIdentifier` on all domain records.
+- Convex functions call `requireTokenIdentifier` before any data operation.
 
-## Data Model (high level)
+## Data Model
 
-- `tasks`
-- `integrations`
-- `syncCursors`
-- `externalTaskMappings`
-- `reviewQueue`
-- `syncRuns`
-- `users`
+| Table | Purpose |
+|---|---|
+| `tasks` | All tasks — inbox and scheduled |
+| `integrations` | Per-user Google sync config |
+| `syncCursors` | Resume cursors for Calendar sync |
+| `externalTaskMappings` | Calendar event → task mapping |
+| `reviewQueue` | Gmail candidate items pending review |
+| `syncRuns` | Sync execution history |
+| `users` | Bootstrapped user records |
 
-See `convex/schema.ts` for canonical definitions and indexes.
+See `convex/schema.ts` for canonical field definitions and indexes.
 
-## Task Flow
+## Task Lifecycle
 
-1. User creates/schedules tasks from web/mobile.
-2. Tasks are stored in Convex with status and timeline position.
-3. Timeline and inbox views query filtered task sets.
-4. Drag/drop updates ordering and schedule through mutations.
+1. User creates a task via QuickAdd (`N`) or Kairo.
+2. Tasks start as `inbox` (no `scheduledDate`) or `scheduled` (with date).
+3. Drag from inbox → timeline column calls `moveTask`.
+4. Drag within timeline or inbox calls `reorderTasks` / `reorderInboxTasks`.
+5. Completing a task sets `status: "completed"`.
 
-## Sync Flow (Google Calendar)
+## Kairo Copilot
 
-1. Frontend obtains OAuth code via PKCE and calls `/google/token`.
-2. Access token is used to trigger `/sync/google-calendar/import`.
-3. `syncActions.importGoogleCalendarAction` fetches events, handles cursoring/retries.
+- Docked at the bottom centre; `⌘J` toggles open/closed. Clicking the backdrop closes it.
+- Config (provider format, API key, endpoint URL, model) lives in `localStorage` via `src/lib/kairoConfig.ts`.
+- Requests are made **browser-side** directly to the configured endpoint — the key never leaves the client.
+- Supports OpenAI-compatible endpoints (`Authorization: Bearer`) and Anthropic (`x-api-key` + `anthropic-version`).
+- Can emit `<add-task>` blocks that the UI parses and persists via Convex mutation.
+
+## Inbox Drag Reorder — Optimistic Flow
+
+Because dnd-kit clears all transforms synchronously when drag ends, and the Convex query reflects the server order (pre-mutation), a naive implementation shows a snap-back followed by a re-settle. The fix:
+
+1. `InboxSidebarComponent` calls `useDndMonitor({ onDragEnd })`.
+2. On drop, `arrayMove` is applied to `localOrder` immediately — before the Convex round-trip.
+3. The displayed list is derived from `localOrder` (when set) so the DOM is already correct when dnd-kit resets transforms.
+4. `localOrder` is cleared once the server order matches or a task is added/removed.
+
+## Google Calendar Sync Flow
+
+1. Frontend obtains OAuth code via PKCE → calls `/google/token`.
+2. Access token triggers `/sync/google-calendar/import`.
+3. `syncActions.importGoogleCalendarAction` fetches events with cursor/retry.
 4. `sync.importGoogleCalendarEvents` upserts mappings + tasks.
-5. Integration status and sync runs are updated for visibility.
+5. Integration status and sync run records are updated.
 
-## Review Queue Flow (Gmail candidates)
+## CI
 
-1. Candidate items are sent to `/gmail/candidates`.
-2. Items are stored in `reviewQueue` as `pending`.
-3. User approves/rejects via review queue routes.
-4. Approved items become real tasks.
-
-## Testing
-
-- Vitest configured in `vite.config.ts`.
-- Tests include:
-  - route/contract validation
-  - task rules and drag handlers
-  - UI behavior tests
-  - sync action tests
-
-## Operational Notes
-
-- API key auth for most Convex HTTP routes via `CONVEX_HTTP_API_KEY`.
-- Google token exchange endpoint intentionally skips API key to support browser OAuth callback flow.
+GitHub Actions (`.github/workflows/ci.yml`) runs on PRs and pushes to `main`:
+- **Lint** (`bun run lint`)
+- **Build** (`bun run build`)
