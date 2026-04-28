@@ -84,7 +84,8 @@ function AuthenticatedApp() {
   const bootstrapReady = useBootstrapUser(isAuthenticated);
   const { showError } = useToast();
 
-  const tasks = useQuery(api.tasks.listTasks, {});
+  const boardTasks = useQuery(api.tasks.listBoardTasks, {});
+  const kairoTasks = useQuery(api.tasks.listTasks, kairoActive ? {} : "skip");
   const moveTask = useMutation(api.tasks.moveTask);
   const unscheduleTask = useMutation(api.tasks.unscheduleTask);
   const reorderTasks = useMutation(api.tasks.reorderTasks);
@@ -101,10 +102,10 @@ function AuthenticatedApp() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const { inboxTasks, tasksByDate } = useTaskBoardData(tasks);
+  const { inboxTasks, tasksByDate } = useTaskBoardData(boardTasks);
 
   const { handleDragStart, handleDragEnd } = useTaskDragHandlers({
-    tasks,
+    tasks: boardTasks,
     tasksByDate,
     inboxTasks,
     moveTask,
@@ -136,7 +137,7 @@ function AuthenticatedApp() {
     }
   }, [activePage]);
 
-  if (!bootstrapReady || tasks === undefined) {
+  if (!bootstrapReady || boardTasks === undefined) {
     return <LoadingSkeleton />;
   }
 
@@ -166,12 +167,12 @@ function AuthenticatedApp() {
         >
           <main className="flex-1 overflow-hidden">
             {activePage === "timeline" ? (
-              <Timeline
-                tasksByDate={tasksByDate}
-                allTasks={tasks ?? []}
-                onTaskClick={openTaskPopup}
-                onOpenQuickAdd={openQuickAdd}
-              />
+                <Timeline
+                  tasksByDate={tasksByDate}
+                  allTasks={boardTasks}
+                  onTaskClick={openTaskPopup}
+                  onOpenQuickAdd={openQuickAdd}
+                />
             ) : (
               <LongTermGoalsPage />
             )}
@@ -217,7 +218,7 @@ function AuthenticatedApp() {
       {/* Kairo — positioned relative to the full app */}
       <Kairo
         onActiveChange={setKairoActive}
-        tasks={tasks ?? []}
+        tasks={kairoTasks ?? boardTasks}
         inboxTasks={inboxTasks}
         onOpenSettings={openSettings}
       />

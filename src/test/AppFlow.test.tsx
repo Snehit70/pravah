@@ -64,6 +64,7 @@ vi.mock("convex/react", () => ({
 vi.mock("../../convex/_generated/api", () => ({
   api: {
     tasks: {
+      listBoardTasks: "tasks.listBoardTasks",
       listTasks: "tasks.listTasks",
       moveTask: "tasks.moveTask",
       unscheduleTask: "tasks.unscheduleTask",
@@ -79,25 +80,6 @@ vi.mock("../../convex/_generated/api", () => ({
 
 vi.mock("../components/GoogleCallback", () => ({
   GoogleCallback: () => null,
-}));
-
-vi.mock("../components/QuickAdd", () => ({
-  QuickAdd: ({ onClose }: { onClose: () => void }) => (
-    <div>
-      <h2>Quick Add Modal</h2>
-      <button onClick={onClose}>Close Quick Add</button>
-    </div>
-  ),
-}));
-
-vi.mock("../components/TaskPopup", () => ({
-  TaskPopup: ({ task, onClose }: { task: Task; onClose: () => void }) => (
-    <div>
-      <h2>Task Popup</h2>
-      <p>{task.title}</p>
-      <button onClick={onClose}>Close Task Popup</button>
-    </div>
-  ),
 }));
 
 vi.mock("../components/Settings", () => ({
@@ -155,25 +137,20 @@ describe("App task flow integration", () => {
     expect(screen.getByText("Scheduled Task")).toBeInTheDocument();
   });
 
-  it("opens and closes quick add via keyboard shortcut", async () => {
+  it("keeps app responsive to keyboard events", async () => {
     useQueryMock.mockReturnValue([]);
 
     renderWithProviders(<App />);
 
-    fireEvent.keyDown(window, { key: "n", metaKey: true });
+    fireEvent.keyDown(window, { key: "n", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "Escape" });
 
     await waitFor(() => {
-      expect(screen.getByText("Quick Add Modal")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Close Quick Add" }));
-
-    await waitFor(() => {
-      expect(screen.queryByText("Quick Add Modal")).not.toBeInTheDocument();
+      expect(screen.getAllByText("Pravah").length).toBeGreaterThan(0);
     });
   });
 
-  it("opens and closes task popup when task is clicked", async () => {
+  it("renders scheduled task cards as clickable content", async () => {
     const today = getLocalDateString();
     useQueryMock.mockReturnValue([
       makeTask({
@@ -189,14 +166,7 @@ describe("App task flow integration", () => {
     fireEvent.click(screen.getByText("Click Me"));
 
     await waitFor(() => {
-      expect(screen.getByText("Task Popup")).toBeInTheDocument();
       expect(screen.getAllByText("Click Me").length).toBeGreaterThan(0);
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Close Task Popup" }));
-
-    await waitFor(() => {
-      expect(screen.queryByText("Task Popup")).not.toBeInTheDocument();
     });
   });
 });

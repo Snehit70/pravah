@@ -109,6 +109,29 @@ export const listTasks = query({
   },
 });
 
+export const listBoardTasks = query({
+  args: {},
+  handler: async (ctx) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+
+    const inboxTasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_owner_status_position", (q) =>
+        q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "inbox")
+      )
+      .collect();
+
+    const scheduledTasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_owner_status", (q) =>
+        q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "scheduled")
+      )
+      .collect();
+
+    return [...inboxTasks, ...scheduledTasks];
+  },
+});
+
 export const addTask = mutation({
   args: {
     title: v.string(),
