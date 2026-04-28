@@ -132,6 +132,28 @@ export const listBoardTasks = query({
   },
 });
 
+/**
+ * Returns completed tasks whose scheduledDate matches today (local time on
+ * the server). Used by the "done today" counter in the Timeline header without
+ * pulling all tasks into the board query.
+ */
+export const listTodayCompletedTasks = query({
+  args: {},
+  handler: async (ctx) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    const today = getTodayDateString();
+    return await ctx.db
+      .query("tasks")
+      .withIndex("by_owner_status_date", (q) =>
+        q
+          .eq("ownerTokenIdentifier", tokenIdentifier)
+          .eq("status", "completed")
+          .eq("scheduledDate", today)
+      )
+      .collect();
+  },
+});
+
 export const addTask = mutation({
   args: {
     title: v.string(),

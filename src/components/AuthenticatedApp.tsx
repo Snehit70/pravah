@@ -61,6 +61,7 @@ export function AuthenticatedApp() {
   const { showError } = useToast();
 
   const boardTasks = useQuery(api.tasks.listBoardTasks, {});
+  const todayCompletedTasks = useQuery(api.tasks.listTodayCompletedTasks, {});
   const kairoTasks = useQuery(api.tasks.listTasks, kairoActive ? {} : "skip");
   const moveTask = useMutation(api.tasks.moveTask);
   const unscheduleTask = useMutation(api.tasks.unscheduleTask);
@@ -114,6 +115,11 @@ export function AuthenticatedApp() {
     [activePage]
   );
 
+  const allTasksForStats = [
+    ...(boardTasks ?? []),
+    ...(todayCompletedTasks ?? []),
+  ];
+
   if (!bootstrapReady || boardTasks === undefined) {
     return <LoadingSkeleton />;
   }
@@ -146,7 +152,7 @@ export function AuthenticatedApp() {
             {activePage === "timeline" ? (
               <Timeline
                 tasksByDate={tasksByDate}
-                allTasks={boardTasks}
+                allTasks={allTasksForStats}
                 onTaskClick={openTaskPopup}
                 onOpenQuickAdd={openQuickAdd}
               />

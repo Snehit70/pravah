@@ -65,6 +65,7 @@ vi.mock("../../convex/_generated/api", () => ({
   api: {
     tasks: {
       listBoardTasks: "tasks.listBoardTasks",
+      listTodayCompletedTasks: "tasks.listTodayCompletedTasks",
       listTasks: "tasks.listTasks",
       moveTask: "tasks.moveTask",
       unscheduleTask: "tasks.unscheduleTask",
