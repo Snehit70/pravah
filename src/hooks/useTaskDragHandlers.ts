@@ -150,6 +150,16 @@ export function useTaskDragHandlers({
         return;
       }
 
+      // Guard: cross-lane drops (open ↔ deadline on the same day) are no-ops.
+      // overTask may sit in the deadline lane while sourceTask is open (or vice
+      // versa).  Without this check the mixed tasksByDate list gets reordered
+      // unexpectedly when the user drags across lanes.
+      if (overTask && overTask.scheduledDate === sourceTask.scheduledDate) {
+        const srcIsDeadline = sourceTask.type === "deadline";
+        const dstIsDeadline = overTask.type === "deadline";
+        if (srcIsDeadline !== dstIsDeadline) return;
+      }
+
       const dayTasks = tasksByDate[sourceTask.scheduledDate] ?? [];
       const reorderedTaskIds = getReorderedTaskIdsForDay(dayTasks, activeId, overId);
       if (!reorderedTaskIds) {
