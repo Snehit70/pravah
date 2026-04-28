@@ -375,3 +375,18 @@ export function clearGoogleTokens(): void {
   localStorage.removeItem("pravah_google_token");
   localStorage.removeItem("pravah_google_token_expiry");
 }
+
+/**
+ * Revokes a Google OAuth access token via Google's revocation endpoint.
+ * Non-fatal: logs on failure but does not throw — local disconnect proceeds regardless.
+ */
+export async function revokeGoogleToken(accessToken: string): Promise<void> {
+  try {
+    await fetch(
+      `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(accessToken)}`,
+      { method: "POST" }
+    );
+  } catch (error) {
+    console.warn("Failed to revoke Google token server-side:", error);
+  }
+}

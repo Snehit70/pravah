@@ -18,6 +18,7 @@ import type { Id } from "../../convex/_generated/dataModel";
 import {
   getGoogleTokens,
   clearGoogleTokens,
+  revokeGoogleToken,
   fetchGoogleAccountEmail,
   fetchGoogleCalendars,
   getGoogleAuthErrorMessage,
@@ -304,6 +305,10 @@ export function Settings({ onClose }: SettingsProps) {
   };
 
   const handleGoogleDisconnect = async () => {
+    const tokens = getGoogleTokens();
+    if (tokens && !tokens.expired) {
+      await revokeGoogleToken(tokens.accessToken);
+    }
     clearGoogleTokens();
     try {
       await Promise.all([
