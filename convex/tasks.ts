@@ -7,7 +7,11 @@ import { requireTokenIdentifier } from "./authHelpers";
 type TaskCtx = QueryCtx | MutationCtx;
 
 function getTodayDateString() {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function getPriorityRank(priority?: string): number {
@@ -102,6 +106,55 @@ export const listTasks = query({
     return args.date
       ? tasks.filter((task) => task.scheduledDate === args.date)
       : tasks;
+  },
+});
+
+export const listBoardTasks = query({
+  args: {},
+  handler: async (ctx) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+
+    const inboxTasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_owner_status_position", (q) =>
+        q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "inbox")
+      )
+      .collect();
+
+    const scheduledTasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_owner_status", (q) =>
+        q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "scheduled")
+      )
+      .collect();
+
+    return [...inboxTasks, ...scheduledTasks];
+  },
+});
+
+/**
+ * Returns completed tasks whose scheduledDate matches today (local time on
+ * the server). Used by the "done today" counter in the Timeline header without
+ * pulling all tasks into the board query.
+ */
+export const listTodayCompletedTasks = query({
+  args: {
+    // Client passes its local date string (YYYY-MM-DD) so results are
+    // consistent with task dates written by the frontend, even when the
+    // Convex server clock is in a different timezone or crosses midnight.
+    clientDate: v.string(),
+  },
+  handler: async (ctx, { clientDate }) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    return await ctx.db
+      .query("tasks")
+      .withIndex("by_owner_status_date", (q) =>
+        q
+          .eq("ownerTokenIdentifier", tokenIdentifier)
+          .eq("status", "completed")
+          .eq("scheduledDate", clientDate)
+      )
+      .collect();
   },
 });
 

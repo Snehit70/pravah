@@ -109,15 +109,28 @@ export function QuickAdd({ onClose }: QuickAddProps) {
 
   const handleSubmit = async () => {
     if (!title.trim() || isSubmitting) return;
+    const deadline = getDeadline();
+    const scheduledDate = getScheduledDate();
+
+    if (type === "deadline" && !deadline) {
+      showError("Deadline tasks need a due date");
+      return;
+    }
+
+    if (type === "deadline" && deadline && scheduledDate && scheduledDate > deadline) {
+      showError("Scheduled date cannot be after deadline");
+      return;
+    }
+
     try {
       setIsSubmitting(true);
       await addTask({
         title: title.trim(),
         description: description.trim() || undefined,
         type,
-        deadline: getDeadline(),
+        deadline,
         priority,
-        scheduledDate: getScheduledDate(),
+        scheduledDate,
       });
       onClose();
     } catch {

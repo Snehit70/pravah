@@ -18,6 +18,7 @@ import type { Id } from "../../convex/_generated/dataModel";
 import {
   getGoogleTokens,
   clearGoogleTokens,
+  revokeGoogleToken,
   fetchGoogleAccountEmail,
   fetchGoogleCalendars,
   getGoogleAuthErrorMessage,
@@ -304,6 +305,12 @@ export function Settings({ onClose }: SettingsProps) {
   };
 
   const handleGoogleDisconnect = async () => {
+    const tokens = getGoogleTokens();
+    // Fire-and-forget: revocation is best-effort. Local disconnect must never
+    // be blocked by a slow or unreachable oauth2.googleapis.com endpoint.
+    if (tokens && !tokens.expired) {
+      void revokeGoogleToken(tokens.accessToken);
+    }
     clearGoogleTokens();
     try {
       await Promise.all([
@@ -885,7 +892,7 @@ export function Settings({ onClose }: SettingsProps) {
                             <div>
                               <p className="text-zinc-100 text-sm">Gmail</p>
                               <p className="text-xs text-zinc-500">
-                                Extract tasks from starred emails
+                                Extract tasks from unread emails
                               </p>
                             </div>
                           </div>

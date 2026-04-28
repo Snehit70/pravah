@@ -208,19 +208,18 @@ export const enqueueGmailCandidate = mutation({
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    const existingPending = await ctx.db
+    const existingItem = await ctx.db
       .query("reviewQueue")
       .withIndex("by_owner_provider_external_id", (q) =>
         q.eq("ownerTokenIdentifier", tokenIdentifier)
           .eq("provider", "gmail")
           .eq("externalId", args.externalId)
       )
-      .filter((q) => q.eq(q.field("status"), "pending"))
       .first();
 
-    if (existingPending) {
+    if (existingItem) {
       return {
-        reviewId: existingPending._id,
+        reviewId: existingItem._id,
         deduplicated: true,
       };
     }
@@ -288,6 +287,9 @@ export const approveReviewItem = mutation({
     }
 
     const effectiveScheduledDate = args.scheduledDate ?? reviewItem.scheduledDate;
+    if (reviewItem.deadline && effectiveScheduledDate && effectiveScheduledDate > reviewItem.deadline) {
+      throw new Error("Cannot schedule task past its deadline");
+    }
     const position = await getNextPosition(ctx, tokenIdentifier, effectiveScheduledDate);
 
     const now = Date.now();
@@ -412,12 +414,21 @@ export const importGoogleCalendarEvents = mutation({
         if (mappedTask) {
           const isContentChanged = mapping.contentHash !== contentHash || mapping.isDeleted;
           if (isContentChanged) {
+            const nextStatus = event.scheduledDate ? "scheduled" : "inbox";
+            const laneChanged =
+              mappedTask.status !== nextStatus ||
+              mappedTask.scheduledDate !== event.scheduledDate;
+            const nextPosition = laneChanged
+              ? await getNextPosition(ctx, tokenIdentifier, event.scheduledDate)
+              : mappedTask.position;
+
             await ctx.db.patch(mapping.taskId, {
               title: event.title,
               description: event.description,
               scheduledDate: event.scheduledDate,
               deadline: event.deadline,
-              status: event.scheduledDate ? "scheduled" : "inbox",
+              status: nextStatus,
+              position: nextPosition,
               source: "gcal",
               updatedAt: now,
             });

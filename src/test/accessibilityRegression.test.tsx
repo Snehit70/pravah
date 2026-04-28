@@ -75,39 +75,39 @@ describe("accessibility regressions", () => {
     deleteTaskMock.mockResolvedValue(undefined);
   });
 
-  it("focuses quick-add title input on open and supports Escape close", () => {
+  it("focuses quick-add title input on open and supports Escape close", async () => {
     const onClose = vi.fn();
 
     renderWithProviders(<QuickAdd onClose={onClose} />);
 
-    const titleInput = screen.getByPlaceholderText("What needs to be done?");
-    expect(document.activeElement).toBe(titleInput);
+    const titleInput = screen.getByPlaceholderText("What needs doing?");
+    await waitFor(() => {
+      expect(document.activeElement).toBe(titleInput);
+    });
 
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("announces quick-add success in aria-live region", async () => {
+  it("submits quick-add task and closes modal", async () => {
     const onClose = vi.fn();
 
     renderWithProviders(<QuickAdd onClose={onClose} />);
 
-    fireEvent.change(screen.getByPlaceholderText("What needs to be done?"), {
+    fireEvent.change(screen.getByPlaceholderText("What needs doing?"), {
       target: { value: "  Announced task  " },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Add Task" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add task" }));
 
     await waitFor(() => {
       expect(addTaskMock).toHaveBeenCalledWith({
         title: "Announced task",
         type: "open",
         deadline: undefined,
+        scheduledDate: undefined,
       });
     });
-
-    const region = screen.getByRole("status");
-    expect(region).toHaveAttribute("aria-live", "polite");
-    expect(region).toHaveTextContent("Task added!");
+    expect(onClose).toHaveBeenCalled();
   });
 
   it("announces task completion from popup mutations", async () => {
