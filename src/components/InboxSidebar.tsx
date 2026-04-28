@@ -310,7 +310,7 @@ function InboxSidebarComponent({
         style={{ padding: "10px", display: "flex", flexDirection: "column", gap: 5 }}
       >
         <SortableContext
-          items={filtered.map(t => t._id)}
+          items={query ? [] : filtered.map(t => t._id)}
           strategy={verticalListSortingStrategy}
         >
           <AnimatePresence>

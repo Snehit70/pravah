@@ -621,6 +621,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
           title: t.title,
           type: t.type,
           scheduledDate: t.scheduledDate ?? undefined,
+          deadline: t.type === "deadline" ? (t.scheduledDate ?? undefined) : undefined,
           source: "ai-agent",
         });
       }
