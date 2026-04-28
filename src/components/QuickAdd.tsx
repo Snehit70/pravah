@@ -87,7 +87,12 @@ export function QuickAdd({ onClose }: QuickAddProps) {
     if (type !== "deadline") return undefined;
     if (when === "today") return today;
     if (when === "tomorrow") return tomorrow;
-    return today;
+    if (when === "nextweek") {
+      const d = new Date();
+      d.setDate(d.getDate() + 7);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    }
+    return undefined;
   };
 
   const getScheduledDate = (): string | undefined => {
