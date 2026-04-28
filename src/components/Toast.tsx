@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, AlertCircle, CheckCircle, Info } from "lucide-react";
+import { T_BASE, T_EXIT_BASE, useExitMotion, useMotion } from "../lib/motion";
 import { cn } from "../lib/utils";
 import { ToastContext, type ToastType } from "./useToast";
 
@@ -10,11 +11,6 @@ interface Toast {
   type: ToastType;
 }
 
-const toastVariants = {
-  hidden: { opacity: 0, y: 20, scale: 0.95 },
-  visible: { opacity: 1, y: 0, scale: 1 },
-  exit: { opacity: 0, x: 100, scale: 0.95 },
-};
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -72,13 +68,14 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
     info: "#0075de",
   };
 
+  const enter = useMotion(T_BASE);
+  const exit = useExitMotion(T_EXIT_BASE);
+
   return (
     <motion.div
-      initial="hidden"
-      animate="visible"
-      exit="exit"
-      variants={toastVariants}
-      transition={{ duration: 0.25, ease: [0.34, 1.56, 0.64, 1] }}
+      initial={{ opacity: 0, x: 18, scale: 0.98 }}
+      animate={{ opacity: 1, x: 0, scale: 1, transition: enter }}
+      exit={{ opacity: 0, x: 24, scale: 0.985, transition: exit }}
       className={cn(
         "flex items-center gap-3 p-4 rounded-xl",
         "bg-zinc-900/95 backdrop-blur-md",
@@ -88,6 +85,7 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
       style={{
         borderLeftWidth: 3,
         borderLeftColor: borderColors[toast.type],
+        willChange: "transform, opacity",
       }}
     >
       {icons[toast.type]}
@@ -98,9 +96,9 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
         className={cn(
           "p-1 rounded-lg",
           "text-zinc-400 hover:text-zinc-100",
-          "hover:bg-zinc-800",
-          "transition-colors duration-150"
+          "hover:bg-zinc-800"
         )}
+        style={{ transition: "color var(--dur-instant) var(--ease-out-expo), background-color var(--dur-instant) var(--ease-out-expo)" }}
       >
         <X size={14} />
       </button>

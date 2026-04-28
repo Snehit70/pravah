@@ -1,92 +1,159 @@
-import { memo, useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Inbox, ChevronLeft, ChevronRight, Settings as SettingsIcon } from "lucide-react";
-import { useDroppable } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { memo, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { useDndMonitor, useDroppable } from "@dnd-kit/core";
+import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { TRANSITION_FAST, TRANSITION_PANEL } from "../lib/motion";
 import type { Task } from "../types";
-import { cn } from "../lib/utils";
 import { INBOX_DROP_ID } from "../lib/taskRules";
+import { tx } from "../lib/motion";
 
 interface InboxSidebarProps {
   tasks: Task[];
   onTaskClick: (task: Task) => void;
   onOpenQuickAdd?: () => void;
-  onOpenSettings?: () => void;
+}
+
+
+const SOURCE_LABEL: Record<NonNullable<Task["source"]>, string> = {
+  "manual": "MANUAL",
+  "ai-agent": "KAIRO",
+  "gmail": "GMAIL",
+  "gcal": "GCAL",
+};
+
+function formatTaskAge(createdAt: number): string {
+  const ms = Date.now() - createdAt;
+  const m = Math.floor(ms / 60_000);
+  if (m < 1) return "now";
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d}d`;
+  const mo = Math.floor(d / 30);
+  return `${mo}mo`;
 }
 
 function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: task._id });
+  const { setNodeRef, attributes, listeners, transform, transition: dndTransition, isDragging } = useSortable({
+    id: task._id,
+  });
+  const [hover, setHover] = useState(false);
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  const accentColor = task.type === "deadline" ? "#dd5b00" : "#0075de";
-  const accentGlow = task.type === "deadline"
-    ? "rgba(221, 91, 0, 0.18)"
-    : "rgba(0, 117, 222, 0.18)";
+  const barColor = task.type === "deadline" ? "oklch(0.72 0.16 30)" : "oklch(0.78 0.14 260)";
+  const isAgentAdded = task.source === "ai-agent";
+  const sourceLabel = task.source ? SOURCE_LABEL[task.source] : null;
+  const age = formatTaskAge(task.createdAt);
 
   return (
-    <motion.div
+    // Outer div owns the dnd-kit transform (shift-to-make-room) so framer-motion
+    // never touches the CSS transform property and can't fight with dnd-kit.
+    <div
       ref={setNodeRef}
-      {...attributes}
-      {...listeners}
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      layout
-      initial={{ opacity: 0, x: -10 }}
-      animate={{ opacity: isDragging ? 0.4 : 1, x: 0 }}
-      exit={{ opacity: 0, x: -10, scale: 0.95 }}
-      whileHover={{
-        y: -2,
-        transition: TRANSITION_FAST
-      }}
-      className={cn(
-        "group relative rounded-xl cursor-grab active:cursor-grabbing",
-        "bg-[#252525] overflow-hidden border border-white/10",
-        "transition-shadow duration-200",
-      )}
       style={{
-        ...style,
-        boxShadow: "0 2px 10px rgba(0,0,0,0.25)",
+        transform: CSS.Transform.toString(transform),
+        // dndTransition is null for the dragged item (follows cursor instantly)
+        // and "transform 200ms ease" for every other item (smooth live shift).
+        transition: dndTransition ?? undefined,
       }}
     >
-      {/* Left accent bar */}
-      <div
-        className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl"
+      <motion.div
+        {...attributes}
+        {...listeners}
         style={{
-          backgroundColor: accentColor,
-          boxShadow: `0 0 8px ${accentGlow}`,
+          padding: "7px 10px 7px 14px",
+          background: hover ? "rgba(255,255,255,.04)" : "rgba(255,255,255,.025)",
+          border: `1px solid ${hover ? "rgba(255,255,255,.13)" : "rgba(255,255,255,.07)"}`,
+          borderRadius: 4,
+          fontSize: 12,
+          color: "#ededef",
+          cursor: isDragging ? "grabbing" : "grab",
+          position: "relative",
+          transition: tx(["background-color", "border-color", "opacity"], "instant"),
+          userSelect: "none",
+        }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: isDragging ? 0.3 : 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.12 }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onClick={(e) => {
+        e.stopPropagation();
+        const target = e.currentTarget as HTMLElement;
+        type DocVT = Document & { startViewTransition?: (cb: () => void) => unknown };
+        const doc = document as DocVT;
+        if (typeof doc.startViewTransition === "function") {
+          // Clear hover state so the snapshot doesn't capture the lifted
+          // pointer affordance. Modal owns the enter animation; we just
+          // tag the source element for the FLIP.
+          setHover(false);
+          target.style.viewTransitionName = "task-morph";
+          const transition = doc.startViewTransition(() => {
+            onClick();
+          }) as { finished?: Promise<void> } | undefined;
+          const clear = () => {
+            target.style.viewTransitionName = "";
+          };
+          if (transition?.finished) {
+            transition.finished.then(clear, clear);
+          } else {
+            window.setTimeout(clear, 600);
+          }
+        } else {
+          onClick();
+        }
+      }}
+    >
+      {/* Left bar */}
+      <span
+        style={{
+          position: "absolute",
+          left: 6,
+          top: "50%",
+          transform: "translateY(-50%)",
+          width: 4,
+          height: "60%",
+          background: barColor,
+          borderRadius: 2,
         }}
       />
-
-      <div className="px-3 py-2.5 pl-4">
-        <p className="text-[13px] text-zinc-100 font-medium truncate">{task.title}</p>
-        {task.type === "deadline" && (
-          <p className="text-[11px] text-orange-300 mt-0.5 font-medium">Deadline task</p>
+      <div className="flex items-center gap-1.5">
+        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {task.title}
+        </span>
+        {isAgentAdded && (
+          <span
+            title="Added by Kairo"
+            style={{ fontSize: 9, color: "oklch(0.78 0.14 260)", fontFamily: "var(--font-mono)", letterSpacing: 0.6 }}
+          >
+            ✦
+          </span>
         )}
       </div>
-
-      {/* Hover glow */}
-      <div
-        className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
-        style={{
-          boxShadow: `inset 0 0 16px ${accentGlow}`,
-        }}
-      />
-    </motion.div>
+      {(sourceLabel || age) && (
+        <div
+          className="tabular"
+          style={{
+            marginTop: 3,
+            fontFamily: "var(--font-mono)",
+            fontSize: 9,
+            letterSpacing: 0.6,
+            color: "#6b6b72",
+            display: "flex",
+            gap: 8,
+          }}
+        >
+          {sourceLabel && (
+            <span style={{ color: isAgentAdded ? "oklch(0.78 0.14 260 / 0.85)" : "#6b6b72" }}>
+              {sourceLabel}
+            </span>
+          )}
+          {age && <span style={{ color: "#45454a" }}>{age}</span>}
+        </div>
+      )}
+      </motion.div>
+    </div>
   );
 }
 
@@ -97,179 +164,214 @@ function InboxSidebarComponent({
   tasks,
   onTaskClick,
   onOpenQuickAdd,
-  onOpenSettings,
 }: InboxSidebarProps) {
-  const [collapsed, setCollapsed] = useState(() =>
-    window.matchMedia("(max-width: 767.98px)").matches
-  );
   const { setNodeRef, isOver } = useDroppable({ id: INBOX_DROP_ID });
+  const [query, setQuery] = useState("");
 
+  // Optimistic local order: set immediately on drop so the DOM already shows
+  // the new order when dnd-kit clears its transforms, preventing the snap-back
+  // "two animations" artifact. Cleared once server confirms the new order.
+  const [localOrder, setLocalOrder] = useState<string[] | null>(null);
+  // Fallback: if the mutation fails the server order never changes, so the
+  // reconciliation effect below never fires.  A 6 s timeout guarantees we
+  // revert to server state even without a confirmation signal.
+  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const taskIds = tasks.map(t => t._id as string);
+  const prevTaskIdsRef = useRef(taskIds);
+
+  // When server sends back a new task list (e.g. after mutation confirms or a
+  // task is added/removed), sync localOrder — but only if the set of IDs
+  // changed (new/removed tasks), not just a reorder we already applied.
   useEffect(() => {
-    const mql = window.matchMedia("(max-width: 767.98px)");
-    const onChange = (event: MediaQueryListEvent) => setCollapsed(event.matches);
-    mql.addEventListener("change", onChange);
-    return () => mql.removeEventListener("change", onChange);
-  }, []);
+    const prev = prevTaskIdsRef.current;
+    prevTaskIdsRef.current = taskIds;
+    const prevSet = new Set(prev);
+    const setsMatch = prev.length === taskIds.length && taskIds.every(id => prevSet.has(id));
+    if (!setsMatch) {
+      // A task was added or removed — reset optimistic state so new list shows
+      setLocalOrder(null);
+      if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+    } else if (localOrder) {
+      // Same set of tasks, check if server order now matches our optimistic order
+      const serverMatchesOptimistic = localOrder.every((id, i) => taskIds[i] === id);
+      if (serverMatchesOptimistic) {
+        setLocalOrder(null);
+        if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskIds.join(",")]);
+
+  useDndMonitor({
+    onDragEnd({ active, over }) {
+      if (!over || active.id === over.id) return;
+      const activeId = active.id as string;
+      const overId = over.id as string;
+      // Only apply optimistic reorder for inbox items
+      const base = localOrder ?? tasks.map(t => t._id as string);
+      const oldIndex = base.indexOf(activeId);
+      const newIndex = base.indexOf(overId);
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
+      setLocalOrder(arrayMove(base, oldIndex, newIndex));
+      // If the mutation fails the server order won't change, so the
+      // reconciliation effect never fires.  Revert after 6 s as a fallback.
+      if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+      fallbackTimerRef.current = setTimeout(() => setLocalOrder(null), 6000);
+    },
+    onDragCancel() {
+      setLocalOrder(null);
+      if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+    },
+  });
+
+  // Reorder the task objects to match localOrder when set
+  const orderedTasks = localOrder
+    ? (localOrder.map(id => tasks.find(t => t._id === id)).filter(Boolean) as typeof tasks)
+    : tasks;
+
+  const filtered = query
+    ? orderedTasks.filter(t => t.title.toLowerCase().includes(query.toLowerCase()))
+    : orderedTasks;
+  const kairoCount = tasks.filter(t => t.source === "ai-agent").length;
 
   return (
-    <motion.aside
+    <div
       ref={setNodeRef}
-      initial={false}
-      animate={{ width: collapsed ? 56 : 260 }}
-      transition={TRANSITION_PANEL}
-      className={cn(
-        "relative flex flex-col overflow-hidden flex-shrink-0 h-full",
-        "bg-[#202020] backdrop-blur-xl",
-        "border-l border-white/10",
-        isOver && "ring-1 ring-blue-400/50 bg-blue-500/10"
-      )}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        width: 300,
+        background: isOver ? "oklch(0.72 0.16 260 / 0.1)" : "#101013",
+        borderLeft: "1px solid rgba(255,255,255,.07)",
+        outline: isOver ? "1px dashed oklch(0.78 0.14 260 / 0.5)" : "none",
+        outlineOffset: -2,
+        transition: tx("background-color", "fast"),
+      }}
     >
-      {/* Collapse toggle */}
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        aria-label={collapsed ? "Expand inbox" : "Collapse inbox"}
-        className={cn(
-          "absolute top-3 z-10 p-1.5 rounded-lg",
-          "text-zinc-400 hover:text-zinc-100",
-          "hover:bg-zinc-800",
-          "transition-all duration-200",
-          collapsed ? "right-1.5" : "right-2",
-        )}
+      {/* Header */}
+      <div
+        className="flex items-start gap-2 px-[14px] py-3"
+        style={{ borderBottom: "1px solid rgba(255,255,255,.07)" }}
       >
-        {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-      </button>
-
-      {collapsed ? (
-        /* Collapsed state */
-        <div className="flex flex-col h-full">
-          <div className="flex flex-col items-center pt-4 gap-3">
-            {tasks.length > 0 && (
-              <motion.span
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                className={cn(
-                  "text-[10px] font-semibold rounded-full w-5 h-5 flex items-center justify-center",
-                  "bg-blue-500/20 text-blue-300"
-                )}
-              >
-                {tasks.length}
-              </motion.span>
-            )}
-          </div>
-
-          <div className="mt-auto p-2 border-t border-white/10 space-y-2">
-            <button
-              onClick={() => {
-                setCollapsed(false);
-                onOpenQuickAdd?.();
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center gap-2">
+            <span style={{ fontSize: 13, fontWeight: 500, color: "#ededef" }}>Inbox</span>
+            <span
+              className="tabular"
+              style={{
+                fontSize: 11,
+                padding: "1px 7px",
+                borderRadius: 99,
+                background: "oklch(0.72 0.16 260 / 0.2)",
+                color: "oklch(0.78 0.14 260)",
+                fontFamily: "var(--font-mono)",
               }}
-              aria-label="Create new task"
-              className={cn(
-                "w-full p-2 rounded-xl flex items-center justify-center",
-                "bg-blue-500/15 hover:bg-blue-500/25",
-                "text-blue-300 hover:text-blue-200",
-                "border border-blue-400/25 hover:border-blue-300/40",
-                "transition-all duration-200",
-              )}
             >
-              <Plus size={14} className="mx-auto" />
-            </button>
-            <button
-              onClick={onOpenSettings}
-              aria-label="Open settings"
-              className={cn(
-                "w-full p-2 rounded-xl flex items-center justify-center",
-                "bg-zinc-900 hover:bg-zinc-800",
-                "text-zinc-300 hover:text-zinc-100",
-                "border border-white/10 hover:border-white/20",
-                "transition-all duration-200",
-              )}
-            >
-              <SettingsIcon size={14} className="mx-auto" />
-            </button>
+              {tasks.length}
+            </span>
           </div>
+          {kairoCount > 0 && (
+            <span
+              className="tabular"
+              style={{
+                fontSize: 9,
+                fontFamily: "var(--font-mono)",
+                color: "#6b6b72",
+                letterSpacing: 0.6,
+              }}
+            >
+              {kairoCount} from kairo
+            </span>
+          )}
         </div>
-      ) : (
-        <>
-          {/* Header */}
-          <div className="p-4 pb-3 pr-10 border-b border-white/10">
-            <div className="flex min-w-0 items-center gap-2 text-zinc-300">
-              <Inbox size={15} />
-              <span className="min-w-0 text-sm font-medium truncate">Inbox</span>
-              {tasks.length > 0 && (
-                <span className="shrink-0 text-[11px] text-blue-300 font-semibold tabular-nums bg-blue-500/20 px-1.5 py-0.5 rounded-full">
-                  {tasks.length}
-                </span>
-              )}
-            </div>
-          </div>
+        <div className="flex-1" />
+      </div>
 
-          {/* Task list */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            <SortableContext
-              items={tasks.map((task) => task._id)}
-              strategy={verticalListSortingStrategy}
-            >
-              <AnimatePresence mode="popLayout">
-                {tasks.map((task) => (
-                  <InboxTask
-                    key={task._id}
-                    task={task}
-                    onClick={() => onTaskClick(task)}
-                  />
-                ))}
-              </AnimatePresence>
-            </SortableContext>
+      {/* Search */}
+      <div className="px-2.5 py-2" style={{ borderBottom: "1px solid rgba(255,255,255,.07)" }}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search inbox…"
+          style={{
+            width: "100%",
+            background: "rgba(0,0,0,.25)",
+            border: "1px solid rgba(255,255,255,.09)",
+            boxShadow: "inset 0 1px 0 rgba(0,0,0,.3)",
+            borderRadius: 4,
+            padding: "6px 10px",
+            color: "#ededef",
+            fontSize: 12,
+            outline: "none",
+            transition: tx(["border-color", "background-color"], "instant"),
+          }}
+          onFocus={(e) => {
+            e.target.style.borderColor = "oklch(0.78 0.14 260 / 0.4)";
+            e.target.style.background = "rgba(0,0,0,.35)";
+          }}
+          onBlur={(e) => {
+            e.target.style.borderColor = "rgba(255,255,255,.09)";
+            e.target.style.background = "rgba(0,0,0,.25)";
+          }}
+        />
+      </div>
 
-            {tasks.length === 0 && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.2 }}
-                className="text-center py-12"
-              >
-                <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-zinc-800 flex items-center justify-center">
-                  <Inbox size={20} className="text-zinc-400" />
-                </div>
-                <p className="text-sm text-zinc-300 font-medium">No tasks in inbox</p>
-                <p className="text-xs text-zinc-400 mt-1">
-                  Add tasks here to sort them later
-                </p>
-              </motion.div>
-            )}
+      {/* Task list */}
+      <div
+        className="flex-1 overflow-y-auto"
+        style={{ padding: "10px", display: "flex", flexDirection: "column", gap: 5 }}
+      >
+        <SortableContext
+          items={query ? [] : filtered.map(t => t._id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <AnimatePresence>
+            {filtered.map((task) => (
+              <InboxTask
+                key={task._id}
+                task={task}
+                onClick={() => onTaskClick(task)}
+              />
+            ))}
+          </AnimatePresence>
+        </SortableContext>
+        {filtered.length === 0 && (
+          <div
+            style={{ textAlign: "center", padding: "40px 10px", fontSize: 12, color: "#6b6b72" }}
+          >
+            {query ? "No matches." : "Inbox is clear."}
           </div>
+        )}
+      </div>
 
-          <div className="p-3 pt-2 border-t border-white/10 grid grid-cols-[1fr_auto] gap-2">
-            <button
-              onClick={onOpenQuickAdd}
-              className={cn(
-                "w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm",
-                "bg-blue-500/15 hover:bg-blue-500/25",
-                "text-blue-300 hover:text-blue-200",
-                "border border-blue-400/25 hover:border-blue-300/40",
-                "transition-all duration-200",
-              )}
-            >
-              <Plus size={15} />
-              New Task
-            </button>
-            <button
-              onClick={onOpenSettings}
-              aria-label="Open settings"
-              className={cn(
-                "px-3 rounded-xl flex items-center justify-center",
-                "bg-zinc-900 hover:bg-zinc-800",
-                "text-zinc-300 hover:text-zinc-100",
-                "border border-white/10 hover:border-white/20",
-                "transition-all duration-200",
-              )}
-            >
-              <SettingsIcon size={15} />
-            </button>
-          </div>
-        </>
-      )}
-    </motion.aside>
+      {/* Footer */}
+      <div style={{ padding: 10, borderTop: "1px solid rgba(255,255,255,.07)" }}>
+        {onOpenQuickAdd && (
+          <button
+            onClick={onOpenQuickAdd}
+            style={{
+              width: "100%",
+              padding: "8px 12px",
+              borderRadius: 4,
+              border: "1px solid oklch(0.78 0.14 260 / 0.4)",
+              background: "oklch(0.72 0.16 260 / 0.2)",
+              color: "oklch(0.78 0.14 260)",
+              fontSize: 12,
+              fontWeight: 500,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              fontFamily: "var(--font-sans)",
+            }}
+          >
+            <span style={{ fontSize: 14, lineHeight: 1 }}>+</span> New task
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

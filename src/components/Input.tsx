@@ -6,7 +6,19 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   error?: string;
 }
 
-export function Input({ label, error, className, ...props }: InputProps) {
+const FIELD_BASE = cn(
+  "w-full rounded-[5px] px-3 py-2 text-[13px] text-zinc-100",
+  "border bg-white/[0.025] border-white/[0.08]",
+  "placeholder:text-zinc-600",
+  "focus:outline-none",
+  "hover:border-white/[0.14]"
+);
+
+// Inline because oklch() focus shadow doesn't compose into Tailwind shorthand.
+const FIELD_TRANSITION =
+  "border-color var(--dur-instant) var(--ease-out-expo), background-color var(--dur-instant) var(--ease-out-expo), box-shadow var(--dur-instant) var(--ease-out-expo)";
+
+export function Input({ label, error, className, style, ...props }: InputProps) {
   const generatedId = useId();
   const inputId = props.id ?? generatedId;
 
@@ -15,7 +27,7 @@ export function Input({ label, error, className, ...props }: InputProps) {
       {label && (
         <label
           htmlFor={inputId}
-          className="block text-[11px] text-zinc-400 uppercase tracking-[0.08em] font-medium mb-1.5"
+          className="block text-[10px] text-zinc-500 uppercase tracking-[0.12em] font-medium mb-1.5"
         >
           {label}
         </label>
@@ -23,19 +35,34 @@ export function Input({ label, error, className, ...props }: InputProps) {
       <input
         id={inputId}
         className={cn(
-          "w-full bg-zinc-900 rounded-xl p-3 text-zinc-100",
-          "border border-white/10",
-          "placeholder:text-zinc-500",
-          "transition-all duration-150",
-          "focus:border-blue-500/60 focus:outline-none focus:shadow-[0_0_0_3px_rgba(35,131,226,0.2)]",
-          "hover:border-white/20",
-          error && "border-red-400/50 focus:border-red-400 focus:shadow-[0_0_0_3px_rgba(248,113,113,0.2)]",
+          FIELD_BASE,
+          error && "border-red-400/50",
           className
         )}
+        style={{
+          transition: FIELD_TRANSITION,
+          ...style,
+        }}
+        onFocus={(e) => {
+          if (!error) {
+            e.currentTarget.style.borderColor = "oklch(0.78 0.14 260 / 0.55)";
+            e.currentTarget.style.boxShadow =
+              "0 0 0 3px oklch(0.78 0.14 260 / 0.18)";
+          } else {
+            e.currentTarget.style.boxShadow =
+              "0 0 0 3px rgba(248,113,113,0.18)";
+          }
+          props.onFocus?.(e);
+        }}
+        onBlur={(e) => {
+          e.currentTarget.style.borderColor = "";
+          e.currentTarget.style.boxShadow = "";
+          props.onBlur?.(e);
+        }}
         {...props}
       />
       {error && (
-        <p className="text-xs text-red-400 mt-1.5">{error}</p>
+        <p className="text-[11px] text-red-400 mt-1.5">{error}</p>
       )}
     </div>
   );
@@ -46,7 +73,7 @@ interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement
   error?: string;
 }
 
-export function Textarea({ label, error, className, ...props }: TextareaProps) {
+export function Textarea({ label, error, className, style, ...props }: TextareaProps) {
   const generatedId = useId();
   const textareaId = props.id ?? generatedId;
 
@@ -55,7 +82,7 @@ export function Textarea({ label, error, className, ...props }: TextareaProps) {
       {label && (
         <label
           htmlFor={textareaId}
-          className="block text-[11px] text-zinc-400 uppercase tracking-[0.08em] font-medium mb-1.5"
+          className="block text-[10px] text-zinc-500 uppercase tracking-[0.12em] font-medium mb-1.5"
         >
           {label}
         </label>
@@ -63,19 +90,35 @@ export function Textarea({ label, error, className, ...props }: TextareaProps) {
       <textarea
         id={textareaId}
         className={cn(
-          "w-full bg-zinc-900 rounded-xl p-3 text-zinc-100 resize-none",
-          "border border-white/10",
-          "placeholder:text-zinc-500",
-          "transition-all duration-150",
-          "focus:border-blue-500/60 focus:outline-none focus:shadow-[0_0_0_3px_rgba(35,131,226,0.2)]",
-          "hover:border-white/20",
-          error && "border-red-400/50 focus:border-red-400 focus:shadow-[0_0_0_3px_rgba(248,113,113,0.2)]",
+          FIELD_BASE,
+          "resize-none",
+          error && "border-red-400/50",
           className
         )}
+        style={{
+          transition: FIELD_TRANSITION,
+          ...style,
+        }}
+        onFocus={(e) => {
+          if (!error) {
+            e.currentTarget.style.borderColor = "oklch(0.78 0.14 260 / 0.55)";
+            e.currentTarget.style.boxShadow =
+              "0 0 0 3px oklch(0.78 0.14 260 / 0.18)";
+          } else {
+            e.currentTarget.style.boxShadow =
+              "0 0 0 3px rgba(248,113,113,0.18)";
+          }
+          props.onFocus?.(e);
+        }}
+        onBlur={(e) => {
+          e.currentTarget.style.borderColor = "";
+          e.currentTarget.style.boxShadow = "";
+          props.onBlur?.(e);
+        }}
         {...props}
       />
       {error && (
-        <p className="text-xs text-red-400 mt-1.5">{error}</p>
+        <p className="text-[11px] text-red-400 mt-1.5">{error}</p>
       )}
     </div>
   );

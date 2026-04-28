@@ -105,7 +105,7 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
   const isScheduled = task.status === "scheduled";
 
   return (
-    <Modal isOpen={true} onClose={onClose} title="Edit Task">
+    <Modal isOpen={true} onClose={onClose} title="Edit Task" viewTransitionName="task-morph">
       <div className="space-y-4">
         {/* Title */}
         <Input
@@ -140,57 +140,74 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
         )}
 
         <div>
-          <p className="block text-[11px] text-zinc-400 uppercase tracking-[0.08em] font-medium mb-1.5">
+          <p className="block text-[10px] text-zinc-500 uppercase tracking-[0.12em] font-medium mb-2">
             Priority
           </p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {[
               { label: "None", value: undefined },
               { label: "P1", value: "p1" as const },
               { label: "P2", value: "p2" as const },
               { label: "P3", value: "p3" as const },
-            ].map((option) => (
-              <button
-                key={option.label}
-                type="button"
-                onClick={() => setPriority(option.value)}
-                className={cn(
-                  "px-2.5 py-1.5 rounded-full text-[11px] border transition-colors duration-150",
-                  priority === option.value
-                    ? "bg-blue-500/20 text-blue-300 border-blue-400/30"
-                    : "text-zinc-400 hover:text-zinc-200 bg-zinc-900 border-white/10"
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
+            ].map((option) => {
+              const active = priority === option.value;
+              return (
+                <button
+                  key={option.label}
+                  type="button"
+                  onClick={() => setPriority(option.value)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-[4px] text-[11px] border",
+                    active
+                      ? "text-zinc-950"
+                      : "text-zinc-400 hover:text-zinc-100"
+                  )}
+                  style={{
+                    background: active
+                      ? "oklch(0.78 0.14 260)"
+                      : "rgba(255,255,255,0.025)",
+                    borderColor: active
+                      ? "oklch(0.78 0.14 260)"
+                      : "rgba(255,255,255,0.08)",
+                    transition:
+                      "background-color var(--dur-instant) var(--ease-out-expo), color var(--dur-instant) var(--ease-out-expo), border-color var(--dur-instant) var(--ease-out-expo)",
+                  }}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
         {/* Metadata */}
-        <div className="flex items-center gap-3 text-[11px] text-zinc-400">
+        <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.1em] text-zinc-500">
           <span
-            className={cn(
-              "px-2 py-0.5 rounded-full",
-              task.type === "deadline"
-                ? "bg-yellow-500/15 text-yellow-300"
-                : "bg-blue-500/15 text-blue-300"
-            )}
+            className="px-1.5 py-0.5 rounded-[3px]"
+            style={{
+              background:
+                task.type === "deadline"
+                  ? "oklch(0.78 0.16 80 / 0.12)"
+                  : "oklch(0.78 0.14 260 / 0.14)",
+              color:
+                task.type === "deadline"
+                  ? "oklch(0.85 0.14 80)"
+                  : "oklch(0.85 0.12 260)",
+              letterSpacing: "0.08em",
+            }}
           >
-            {task.type === "deadline" ? "Deadline" : "Open"} task
+            {task.type === "deadline" ? "Deadline" : "Open"}
           </span>
-          <span className="text-zinc-400">{task.status}</span>
+          <span>{task.status}</span>
           {task.source && task.source !== "manual" && (
-            <>
-              <span className="text-zinc-400">via {task.source}</span>
-            </>
+            <span>· {task.source}</span>
           )}
         </div>
 
         {/* Actions */}
         <div className={cn(
-          "flex items-center gap-2 pt-4",
-          "border-t border-white/10"
+          "flex items-center gap-2 pt-4 mt-1",
+          "border-t border-white/[0.06]"
         )}>
           {!confirmingDelete ? (
             <>

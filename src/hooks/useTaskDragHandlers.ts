@@ -48,12 +48,25 @@ export function resolveDropTargetDate(
   tasks: Task[] | undefined,
   currentDate: string
 ): string | null {
-  if (isDateDropId(overId)) {
-    return canScheduleTaskOnDate(sourceTask, overId, {
+  // Support both plain date IDs ("YYYY-MM-DD") and deadline-lane IDs ("deadline:YYYY-MM-DD")
+  const dateFromId = isDateDropId(overId)
+    ? overId
+    : overId.startsWith("deadline:")
+    ? overId.slice("deadline:".length)
+    : null;
+
+  if (dateFromId && isDateDropId(dateFromId)) {
+    // Same-day drop onto a deadline-lane container: the source is already on
+    // this date, so treat it as a no-op instead of triggering moveTask.
+    const isDeadlineLaneDrop = overId.startsWith("deadline:");
+    if (isDeadlineLaneDrop && dateFromId === sourceTask.scheduledDate) {
+      return null;
+    }
+    return canScheduleTaskOnDate(sourceTask, dateFromId, {
       allowOverdueCarryForward: true,
       currentDate,
     })
-      ? overId
+      ? dateFromId
       : null;
   }
 
@@ -141,6 +154,16 @@ export function useTaskDragHandlers({
 
       if (!sourceTask.scheduledDate) {
         return;
+      }
+
+      // Guard: cross-lane drops (open ↔ deadline on the same day) are no-ops.
+      // overTask may sit in the deadline lane while sourceTask is open (or vice
+      // versa).  Without this check the mixed tasksByDate list gets reordered
+      // unexpectedly when the user drags across lanes.
+      if (overTask && overTask.scheduledDate === sourceTask.scheduledDate) {
+        const srcIsDeadline = sourceTask.type === "deadline";
+        const dstIsDeadline = overTask.type === "deadline";
+        if (srcIsDeadline !== dstIsDeadline) return;
       }
 
       const dayTasks = tasksByDate[sourceTask.scheduledDate] ?? [];

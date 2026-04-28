@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
+  Bot,
   X,
   Calendar,
   Mail,
@@ -10,6 +11,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { T_BASE, T_FAST } from "../lib/motion";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -27,6 +29,8 @@ import { cn } from "../lib/utils";
 import { Button } from "./Button";
 import { useToast } from "./useToast";
 import { authClient } from "../lib/auth-client";
+import { clearKairoConfig, getKairoProviderLabel, getKairoConfig, saveKairoConfig } from "../lib/kairoConfig";
+import type { KairoProviderFormat } from "../lib/kairoConfig";
 
 interface SettingsProps {
   onClose: () => void;
@@ -65,8 +69,22 @@ const modalVariants = {
 
 const CALENDAR_SELECTION_STORAGE_KEY = "pravah_google_calendar_selection";
 
+function getKairoConfigSignature(config: ReturnType<typeof getKairoConfig>) {
+  return [
+    config.providerFormat,
+    config.apiKey.trim(),
+    config.baseUrl.trim(),
+    config.model.trim(),
+  ].join("\n");
+}
+
 export function Settings({ onClose }: SettingsProps) {
   const [signingOut, setSigningOut] = useState(false);
+  const [kairoConfig, setKairoConfig] = useState(() => getKairoConfig());
+  const [savedKairoSignature, setSavedKairoSignature] = useState(() =>
+    getKairoConfigSignature(getKairoConfig())
+  );
+  const [savedKairoAt, setSavedKairoAt] = useState<Date | null>(null);
   const [googleConnected, setGoogleConnected] = useState(() => {
     const storedTokens = getGoogleTokens();
     return !!storedTokens && !storedTokens.expired;
@@ -109,6 +127,11 @@ export function Settings({ onClose }: SettingsProps) {
   const currentUser = useQuery(api.auth.getCurrentUser, {});
   const googleAccountEmail = calendarIntegrationStatus?.integration?.accountEmail;
   const { showError, showSuccess } = useToast();
+  const kairoConfigSignature = useMemo(() => getKairoConfigSignature(kairoConfig), [kairoConfig]);
+  const isKairoDirty = kairoConfigSignature !== savedKairoSignature;
+  const hasSavedKairoConfig = Boolean(
+    kairoConfig.apiKey.trim() && kairoConfig.baseUrl.trim() && kairoConfig.model.trim()
+  );
 
   const getSyncErrorMessage = (error: unknown): string => {
     const raw = getGoogleAuthErrorMessage(error, "Failed to sync with Google. Please try again.");
@@ -320,6 +343,31 @@ export function Settings({ onClose }: SettingsProps) {
     }
   };
 
+  const handleSaveKairoConfig = () => {
+    if (!kairoConfig.apiKey.trim() || !kairoConfig.baseUrl.trim() || !kairoConfig.model.trim()) {
+      showError("Fill in the provider format, API key, endpoint URL, and model for Kairo.");
+      return;
+    }
+
+    saveKairoConfig(kairoConfig);
+    setSavedKairoSignature(getKairoConfigSignature(kairoConfig));
+    setSavedKairoAt(new Date());
+    showSuccess("Kairo settings saved.");
+  };
+
+  const handleClearKairoConfig = () => {
+    clearKairoConfig();
+    setKairoConfig({
+      apiKey: "",
+      baseUrl: "",
+      model: "",
+      providerFormat: "openai",
+    });
+    setSavedKairoSignature(getKairoConfigSignature(getKairoConfig()));
+    setSavedKairoAt(new Date());
+    showSuccess("Kairo settings cleared.");
+  };
+
   const handleSync = async (fullResync = false) => {
     const tokens = getGoogleTokens();
     if (!tokens || tokens.expired) {
@@ -431,7 +479,7 @@ export function Settings({ onClose }: SettingsProps) {
         animate="visible"
         exit="hidden"
         variants={overlayVariants}
-        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+        transition={T_FAST}
         className={cn(
           "fixed inset-0 z-50 flex items-start justify-center pt-24",
           "bg-black/60 backdrop-blur-sm"
@@ -443,31 +491,221 @@ export function Settings({ onClose }: SettingsProps) {
           animate="visible"
           exit="exit"
           variants={modalVariants}
-          transition={{ duration: 0.25, ease: [0.34, 1.56, 0.64, 1] }}
+          transition={T_BASE}
           className={cn(
-            "w-full max-w-lg p-6 mx-4 md:mx-0 max-h-[80vh] overflow-y-auto",
-            "bg-zinc-900/95 backdrop-blur-xl rounded-2xl",
-            "border border-zinc-700/50",
+            "w-full max-w-2xl p-6 mx-4 md:mx-0 max-h-[82vh] overflow-y-auto overflow-x-hidden",
+            "backdrop-blur-xl rounded-[4px]",
+            "border",
             "shadow-2xl shadow-black/60"
           )}
+          style={{
+            background: "#101013",
+            borderColor: "rgba(255,255,255,.13)",
+          }}
         >
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-zinc-100">Settings</h2>
+            <div>
+              <h2 className="text-xl font-semibold text-zinc-100">Settings</h2>
+              <p
+                className="mt-1 text-[11px] uppercase tracking-[0.14em]"
+                style={{ color: "#6b6b72", fontFamily: "var(--font-mono)" }}
+              >
+                Personal Workspace Controls
+              </p>
+            </div>
             <button
               onClick={onClose}
               aria-label="Close settings"
               className={cn(
-                "p-2 rounded-lg",
+                "p-2 rounded-[3px]",
                 "text-zinc-500 hover:text-zinc-300",
-                "hover:bg-zinc-800/60",
-                "transition-colors duration-150"
+                "hover:bg-white/5"
               )}
+              style={{
+                border: "1px solid rgba(255,255,255,.07)",
+                transition:
+                  "color var(--dur-instant) var(--ease-out-expo), background-color var(--dur-instant) var(--ease-out-expo), border-color var(--dur-instant) var(--ease-out-expo)",
+              }}
             >
               <X size={18} />
             </button>
           </div>
 
-          <div className="space-y-6">
+          <div className="space-y-5">
+            <section>
+              <h3
+                className={cn(
+                  "text-[11px] font-medium uppercase tracking-[0.08em] mb-3",
+                  "text-zinc-500 flex items-center gap-2"
+                )}
+              >
+                <Bot size={14} />
+                Agent
+              </h3>
+
+              <div
+                className={cn(
+                  "rounded-[4px] p-4 space-y-4 border",
+                  "bg-white/[0.03]"
+                )}
+                style={{ borderColor: "rgba(255,255,255,.07)" }}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <p className="max-w-[34rem] text-sm text-zinc-300 leading-6">
+                    Kairo uses this exact {getKairoProviderLabel(kairoConfig.providerFormat)} config from your browser.
+                    Nothing is prefilled or rewritten.
+                  </p>
+                  <div
+                    className={cn(
+                      "border px-2.5 py-1 text-[10px] uppercase tracking-[0.13em]",
+                      isKairoDirty
+                        ? "border-amber-400/25 bg-amber-500/10 text-amber-200"
+                        : hasSavedKairoConfig
+                          ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-300"
+                          : "border-white/[0.08] bg-black/20 text-zinc-500"
+                    )}
+                  >
+                    {isKairoDirty
+                      ? "Unsaved"
+                      : hasSavedKairoConfig
+                        ? savedKairoAt
+                          ? "Saved now"
+                          : "Saved"
+                        : "Not saved"}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="md:col-span-2">
+                    <span className="mb-1.5 block text-[11px] uppercase tracking-[0.12em] text-zinc-500">
+                      Provider Format
+                    </span>
+                    <div className="grid grid-cols-2 gap-1 rounded-[3px] border border-white/[0.07] bg-black/20 p-1">
+                      {([
+                        ["openai", "OpenAI Compatible"],
+                        ["anthropic", "Anthropic Compatible"],
+                      ] as Array<[KairoProviderFormat, string]>).map(([format, label]) => (
+                        <button
+                          key={format}
+                          type="button"
+                          onClick={() => setKairoConfig((prev) => ({ ...prev, providerFormat: format }))}
+                          className={cn(
+                            "rounded-[2px] px-3 py-2 text-xs font-medium transition-colors",
+                            kairoConfig.providerFormat === format
+                              ? "bg-[oklch(0.72_0.16_260_/_0.22)] text-[oklch(0.78_0.14_260)]"
+                              : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-300"
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <label className="block md:col-span-2">
+                    <span className="mb-1.5 block text-[11px] uppercase tracking-[0.12em] text-zinc-500">
+                      API Key
+                    </span>
+                    <input
+                      type="password"
+                      name="pravah-kairo-provider-token"
+                      value={kairoConfig.apiKey}
+                      autoComplete="new-password"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      data-1p-ignore="true"
+                      data-lpignore="true"
+                      data-form-type="other"
+                      spellCheck={false}
+                      onChange={(e) =>
+                        setKairoConfig((prev) => ({ ...prev, apiKey: e.target.value }))
+                      }
+                      placeholder="Paste your provider key"
+                      className="w-full rounded-[3px] border bg-black/20 px-3 py-2.5 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-[oklch(0.78_0.14_260_/_0.45)]"
+                      style={{ borderColor: "rgba(255,255,255,.09)" }}
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-[11px] uppercase tracking-[0.12em] text-zinc-500">
+                      Endpoint URL
+                    </span>
+                    <input
+                      type="url"
+                      name="pravah-kairo-endpoint-url"
+                      value={kairoConfig.baseUrl}
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      data-1p-ignore="true"
+                      data-lpignore="true"
+                      data-form-type="other"
+                      spellCheck={false}
+                      onChange={(e) =>
+                        setKairoConfig((prev) => ({ ...prev, baseUrl: e.target.value }))
+                      }
+                      placeholder={
+                        kairoConfig.providerFormat === "anthropic"
+                          ? "http://localhost:42424/v1/messages"
+                          : "https://your-server/v1/chat/completions"
+                      }
+                      className="w-full rounded-[3px] border bg-black/20 px-3 py-2.5 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-[oklch(0.78_0.14_260_/_0.45)]"
+                      style={{ borderColor: "rgba(255,255,255,.09)" }}
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1.5 block text-[11px] uppercase tracking-[0.12em] text-zinc-500">
+                      Model
+                    </span>
+                    <input
+                      type="text"
+                      name="pravah-kairo-model-id"
+                      value={kairoConfig.model}
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      data-1p-ignore="true"
+                      data-lpignore="true"
+                      data-form-type="other"
+                      spellCheck={false}
+                      onChange={(e) =>
+                        setKairoConfig((prev) => ({ ...prev, model: e.target.value }))
+                      }
+                      placeholder="Enter the exact model id"
+                      className="w-full rounded-[3px] border bg-black/20 px-3 py-2.5 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-[oklch(0.78_0.14_260_/_0.45)]"
+                      style={{ borderColor: "rgba(255,255,255,.09)" }}
+                    />
+                  </label>
+                </div>
+
+                <p className="text-xs text-zinc-500 leading-5">
+                  {kairoConfig.providerFormat === "anthropic"
+                    ? "Anthropic mode sends /v1/messages-style JSON with a top-level system prompt."
+                    : "OpenAI mode sends /v1/chat/completions-style JSON with a system message."}
+                  {" "}The endpoint URL is always used exactly as entered.
+                </p>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={handleSaveKairoConfig}
+                    size="sm"
+                    className="rounded-[3px] !bg-[oklch(0.78_0.14_260)] !text-[#0a0a0b] hover:!bg-[oklch(0.82_0.13_260)]"
+                  >
+                    {isKairoDirty || !hasSavedKairoConfig ? "Save Agent Settings" : "Settings Current"}
+                  </Button>
+                  <Button
+                    onClick={handleClearKairoConfig}
+                    variant="ghost"
+                    size="sm"
+                    className="rounded-[3px] border border-white/10 hover:bg-white/5"
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </div>
+            </section>
+
             <section>
               <h3
                 className={cn(
@@ -480,10 +718,10 @@ export function Settings({ onClose }: SettingsProps) {
 
               <div
                 className={cn(
-                  "rounded-xl p-4 space-y-4",
-                  "bg-zinc-800/60",
-                  "border border-zinc-700/50"
+                  "rounded-[4px] p-4 space-y-4 border",
+                  "bg-white/[0.03]"
                 )}
+                style={{ borderColor: "rgba(255,255,255,.07)" }}
               >
                 <div>
                   <p className="text-zinc-100 font-medium">
@@ -496,10 +734,10 @@ export function Settings({ onClose }: SettingsProps) {
                 <Button
                   onClick={() => void handleSignOut()}
                   variant="ghost"
-                  className="w-full justify-center gap-2 text-red-400 hover:text-red-300"
+                  className="w-full items-center justify-center gap-2 rounded-[3px] border border-red-400/15 text-red-400 hover:bg-red-500/10 hover:text-red-300"
                   disabled={signingOut}
                 >
-                  <LogOut size={14} />
+                  <LogOut size={14} className="shrink-0 text-current" />
                   {signingOut ? "Signing out..." : "Sign out"}
                 </Button>
               </div>
@@ -515,16 +753,15 @@ export function Settings({ onClose }: SettingsProps) {
               </h3>
 
               <div className={cn(
-                "rounded-xl p-4 space-y-4",
-                "bg-zinc-800/60",
-                "border border-zinc-700/50"
-              )}>
+                "rounded-[4px] p-4 space-y-4 border",
+                "bg-white/[0.03]"
+              )} style={{ borderColor: "rgba(255,255,255,.07)" }}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div
                       className={cn(
-                        "p-2 rounded-xl",
-                        googleConnected ? "bg-emerald-500/15" : "bg-zinc-800/80"
+                        "grid h-9 w-9 place-items-center rounded-[3px]",
+                        googleConnected ? "bg-emerald-500/15" : "bg-white/[0.04]"
                       )}
                     >
                       {googleConnected ? (
@@ -548,7 +785,7 @@ export function Settings({ onClose }: SettingsProps) {
                       onClick={handleGoogleDisconnect}
                       variant="ghost"
                       size="sm"
-                      className="text-red-400 hover:text-red-400"
+                      className="rounded-[3px] border border-red-400/15 text-red-400 hover:bg-red-500/10 hover:text-red-300"
                     >
                       Revoke
                     </Button>
@@ -557,7 +794,7 @@ export function Settings({ onClose }: SettingsProps) {
                       onClick={handleGoogleConnect}
                       variant="primary"
                       size="sm"
-                      className="flex items-center gap-2"
+                      className="flex items-center gap-2 rounded-[3px] !bg-[oklch(0.78_0.14_260)] !text-[#0a0a0b] hover:!bg-[oklch(0.82_0.13_260)]"
                     >
                       Grant Access
                       <ExternalLink size={14} />
@@ -571,7 +808,7 @@ export function Settings({ onClose }: SettingsProps) {
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                      transition={T_FAST}
                       className="space-y-4 overflow-hidden"
                     >
                       <div className="border-t border-zinc-700/50 pt-4">
@@ -587,14 +824,18 @@ export function Settings({ onClose }: SettingsProps) {
                           </div>
                           <button
                             onClick={handleCalendarToggle}
-                            className={cn(
-                              "w-11 h-6 rounded-full transition-colors duration-150",
-                              calendarEnabled ? "bg-amber-500" : "bg-zinc-700"
-                            )}
+                            className="w-11 h-6 rounded-full"
+                            style={{
+                              backgroundColor: calendarEnabled
+                                ? "oklch(0.78 0.14 260)"
+                                : "rgba(255,255,255,0.08)",
+                              transition:
+                                "background-color var(--dur-fast) var(--ease-out-expo)",
+                            }}
                           >
                             <motion.div
                               animate={{ x: calendarEnabled ? 22 : 4 }}
-                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                              transition={T_FAST}
                               className="w-4 h-4 bg-white rounded-full shadow-sm"
                             />
                           </button>
@@ -650,14 +891,18 @@ export function Settings({ onClose }: SettingsProps) {
                           </div>
                           <button
                             onClick={handleGmailToggle}
-                            className={cn(
-                              "w-11 h-6 rounded-full transition-colors duration-150",
-                              gmailEnabled ? "bg-amber-500" : "bg-zinc-700"
-                            )}
+                            className="w-11 h-6 rounded-full"
+                            style={{
+                              backgroundColor: gmailEnabled
+                                ? "oklch(0.78 0.14 260)"
+                                : "rgba(255,255,255,0.08)",
+                              transition:
+                                "background-color var(--dur-fast) var(--ease-out-expo)",
+                            }}
                           >
                             <motion.div
                               animate={{ x: gmailEnabled ? 22 : 4 }}
-                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                              transition={T_FAST}
                               className="w-4 h-4 bg-white rounded-full shadow-sm"
                             />
                           </button>
@@ -670,7 +915,7 @@ export function Settings({ onClose }: SettingsProps) {
                             initial={{ opacity: 0, y: -10 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -10 }}
-                            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                            transition={T_FAST}
                           >
                             <div className="grid grid-cols-2 gap-2">
                               <Button
@@ -679,7 +924,7 @@ export function Settings({ onClose }: SettingsProps) {
                                   syncing || (calendarEnabled && selectedCalendarIds.length === 0)
                                 }
                                 variant="secondary"
-                                className="w-full flex items-center justify-center gap-2"
+                                className="w-full rounded-[3px] flex items-center justify-center gap-2 border-white/10 bg-white/[0.04] hover:bg-white/[0.08]"
                               >
                                 <RefreshCw
                                   size={16}
@@ -693,7 +938,7 @@ export function Settings({ onClose }: SettingsProps) {
                                   syncing || (calendarEnabled && selectedCalendarIds.length === 0)
                                 }
                                 variant="ghost"
-                                className="w-full flex items-center justify-center gap-2 text-amber-300 hover:text-amber-200"
+                                className="w-full rounded-[3px] flex items-center justify-center gap-2 border border-white/10 text-amber-300 hover:bg-white/5 hover:text-amber-200"
                               >
                                 Full Resync
                               </Button>
@@ -731,7 +976,7 @@ export function Settings({ onClose }: SettingsProps) {
                               return (
                                 <div
                                   key={item._id}
-                                  className="rounded-lg border border-zinc-700/60 bg-zinc-800/60 p-2.5"
+                                  className="rounded-[4px] border border-zinc-700/60 bg-zinc-800/60 p-2.5"
                                 >
                                   <p className="text-sm text-zinc-100 leading-snug">{item.title}</p>
                                   {item.description && (
@@ -784,7 +1029,7 @@ export function Settings({ onClose }: SettingsProps) {
                                         }))
                                       }
                                       className={cn(
-                                        "w-full px-2 py-1.5 text-xs rounded-lg",
+                                        "w-full px-2 py-1.5 text-xs rounded-[3px]",
                                         "bg-zinc-900/70 text-zinc-100",
                                         "border border-zinc-700/60",
                                         "focus:outline-none focus:border-amber-500/60"

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { LoaderCircle, LogIn } from "lucide-react";
 import { authClient } from "../lib/auth-client";
-import { Button } from "./Button";
 
 export function AuthScreen() {
   const [busy, setBusy] = useState(false);
@@ -29,60 +28,72 @@ export function AuthScreen() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_top,#153764_0%,#0f172a_40%,#060816_100%)] px-6 py-12">
-      <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(35,131,226,0.18),transparent_35%,rgba(255,255,255,0.02)_70%,transparent)]" />
-      <div className="absolute left-1/2 top-1/2 h-[32rem] w-[32rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-400/10 blur-3xl" />
+    <main className="relative min-h-screen overflow-hidden bg-[#05070d] text-zinc-100">
+      <img
+        src="/images/auth-hero.png"
+        alt=""
+        aria-hidden="true"
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(5,7,13,0.26)_0%,rgba(5,7,13,0.56)_48%,rgba(5,7,13,0.94)_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_68%_46%,rgba(167,139,250,0.12),transparent_34%),linear-gradient(180deg,rgba(5,7,13,0.08),rgba(5,7,13,0.86))]" />
 
-      <div className="relative z-10 grid w-full max-w-5xl gap-10 lg:grid-cols-[1.15fr_0.85fr]">
-        <section className="flex flex-col justify-center rounded-[2rem] border border-white/10 bg-white/6 p-8 backdrop-blur-xl lg:p-12">
-          <p className="mb-4 text-sm font-semibold uppercase tracking-[0.28em] text-blue-200/80">
-            Private planning workspace
-          </p>
-          <h1
-            className="max-w-xl text-4xl font-semibold tracking-tight text-white lg:text-6xl"
-            style={{ fontFamily: "'Newsreader', Georgia, serif" }}
-          >
-            Keep Pravah behind a real sign-in before you ship it.
-          </h1>
-          <p className="mt-5 max-w-xl text-base leading-7 text-slate-300">
-            Sign in once with Google to access Pravah. Calendar and Gmail sync can be
-            granted later as permissions from Settings, without creating a second account.
-          </p>
-        </section>
+      <div className="relative z-10 flex min-h-screen flex-col px-6 py-6 sm:px-10 lg:px-16">
+        <header className="flex items-center justify-between">
+          <span className="text-sm font-semibold tracking-[0.28em] text-zinc-200">PRAVAH</span>
+          <span className="tabular hidden text-[11px] uppercase tracking-[0.16em] text-zinc-500 sm:inline">
+            Private Workspace
+          </span>
+        </header>
 
-        <section className="rounded-[2rem] border border-white/10 bg-slate-950/85 p-6 shadow-2xl shadow-blue-950/40 backdrop-blur-xl lg:p-8">
-          <p className="mb-2 text-sm font-medium text-slate-200">Sign in with Google</p>
-          <p className="mb-6 text-sm leading-6 text-slate-400">
-            This is your app login.
-          </p>
+        <section className="flex flex-1 items-end pb-10 pt-16 lg:items-center lg:pb-0">
+          <div className="w-full max-w-6xl">
+            <p className="mb-5 max-w-sm text-[11px] font-medium uppercase tracking-[0.22em] text-zinc-400">
+              Timeline-first planning
+            </p>
+            <h1 className="max-w-3xl text-5xl font-semibold leading-[0.92] tracking-tight text-white sm:text-6xl lg:text-7xl">
+              Enter the workspace before the week enters you.
+            </h1>
+            <div className="mt-8 flex max-w-4xl flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+              <p className="max-w-xl text-base leading-7 text-zinc-300">
+                Sign in once with Google. Calendar and Gmail permissions stay separate,
+                and can be granted later from Settings.
+              </p>
 
-          {error ? (
-            <div className="mb-4 rounded-2xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-              {error}
+              <div className="w-full max-w-sm lg:ml-8">
+                <p className="mb-3 text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                  Secure app login
+                </p>
+
+                {error ? (
+                  <div className="mb-3 rounded-[6px] border border-red-400/25 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                    {error}
+                  </div>
+                ) : null}
+
+                <button
+                  type="button"
+                  className="group flex h-12 w-full items-center justify-center gap-2 rounded-[6px] border border-white/15 bg-white text-sm font-semibold !text-[#090a0f] shadow-[0_18px_48px_rgba(0,0,0,0.35)] transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={busy}
+                  onClick={handleGoogleSignIn}
+                >
+                  {busy ? (
+                    <span className="inline-flex items-center gap-2 text-[#090a0f]">
+                      <LoaderCircle className="h-4 w-4 animate-spin" />
+                      Redirecting...
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-2 text-[#090a0f]">
+                      <LogIn className="h-4 w-4" />
+                      Continue with Google
+                    </span>
+                  )}
+                </button>
+              </div>
             </div>
-          ) : null}
-
-          <Button
-            type="button"
-            size="lg"
-            className="w-full justify-center bg-white text-slate-950 hover:bg-slate-100"
-            disabled={busy}
-            onClick={handleGoogleSignIn}
-          >
-            {busy ? (
-              <span className="inline-flex items-center gap-2">
-                <LoaderCircle className="h-4 w-4 animate-spin" />
-                Redirecting...
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-2">
-                <LogIn className="h-4 w-4" />
-                Continue with Google
-              </span>
-            )}
-          </Button>
+          </div>
         </section>
       </div>
-    </div>
+    </main>
   );
 }

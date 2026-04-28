@@ -1,271 +1,513 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
-import { motion, useReducedMotion } from "framer-motion";
-import { Plus, Command } from "lucide-react";
-import { DayColumn } from "./DayColumn";
-import { TRANSITION_SLOW, withDelay } from "../lib/motion";
+import { useConvexConnectionState } from "convex/react";
+import { GridDayColumn } from "./DayColumn";
 import type { Task } from "../types";
-import { cn, generateDateRange } from "../lib/utils";
-import { Button } from "./Button";
-import { TopNavbar, type AppPage } from "./TopNavbar";
+import { generateDateRange, getLocalDateString } from "../lib/utils";
+import { TIMELINE_COL_WIDTH } from "../lib/timelineLayout";
+import { tx } from "../lib/motion";
+
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const DAY_NAMES = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
 
 interface TimelineProps {
   tasksByDate: Record<string, Task[]>;
+  allTasks?: Task[];
   onTaskClick: (task: Task) => void;
   onOpenQuickAdd?: () => void;
-  activePage: AppPage;
-  onNavigate: (page: AppPage) => void;
+  mcpConnected?: boolean;
 }
 
-// Flow illustration SVG component for empty state
-function FlowIllustration() {
-  const shouldReduceMotion = useReducedMotion();
-
+function PulsingDot({ color, size = 7, pulseKey }: { color: string; size?: number; pulseKey?: number | string }) {
   return (
-    <motion.svg
-      width="240"
-      height="80"
-      viewBox="0 0 240 80"
-      fill="none"
-      className="mx-auto"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.8 }}
-    >
-      {/* Flow line */}
-      <motion.path
-        d="M20 40 Q 60 15, 120 40 T 220 40"
-        stroke="url(#flowGradient)"
-        strokeWidth="2"
-        strokeLinecap="round"
-        fill="none"
-        initial={shouldReduceMotion ? undefined : { pathLength: 0 }}
-        animate={shouldReduceMotion ? undefined : { pathLength: 1 }}
-        transition={shouldReduceMotion ? undefined : { duration: 2, ease: "easeOut" }}
+    <span style={{ display: "inline-block", position: "relative", width: size, height: size, flexShrink: 0 }}>
+      <span style={{ position: "absolute", inset: 0, borderRadius: 99, background: color }} />
+      <span
+        key={pulseKey}
+        style={{
+          position: "absolute", inset: 0, borderRadius: 99, background: color,
+          animation: "pravahPulse 2s ease-out infinite", opacity: 0.5,
+        }}
       />
-      {/* Gradient definition */}
-      <defs>
-        <linearGradient id="flowGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#a39e98" stopOpacity="0.35" />
-          <stop offset="50%" stopColor="#0075de" stopOpacity="0.8" />
-          <stop offset="100%" stopColor="#a39e98" stopOpacity="0.35" />
-        </linearGradient>
-      </defs>
-      {/* Nodes along the flow */}
-      <motion.circle
-        cx="40"
-        cy="28"
-        r="4"
-        fill="#a39e98"
-        initial={{ scale: 0, opacity: 0 }}
-        animate={{ scale: 1, opacity: 0.6 }}
-        transition={{ delay: 0.6, duration: 0.4 }}
-      />
-      <motion.circle
-        cx="120"
-        cy="40"
-        r="8"
-        fill="#0075de"
-        initial={{ scale: 0 }}
-        animate={{ scale: [0, 1.3, 1] }}
-        transition={{ delay: 1, duration: 0.6 }}
-      />
-      {/* Glow for center node */}
-      <motion.circle
-        cx="120"
-        cy="40"
-        r="8"
-        fill="#0075de"
-        initial={shouldReduceMotion ? { opacity: 0.25 } : { scale: 1, opacity: 0.5 }}
-        animate={shouldReduceMotion ? { opacity: 0.25 } : { scale: 2, opacity: 0 }}
-        transition={
-          shouldReduceMotion ? undefined : { delay: 1.2, duration: 1.5, repeat: Infinity }
-        }
-      />
-      <motion.circle
-        cx="200"
-        cy="28"
-        r="4"
-        fill="#a39e98"
-        initial={{ scale: 0, opacity: 0 }}
-        animate={{ scale: 1, opacity: 0.6 }}
-        transition={{ delay: 1.4, duration: 0.4 }}
-      />
-    </motion.svg>
+    </span>
   );
+}
+
+function formatAge(ms: number): string {
+  if (ms < 2000) return "now";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  return `${h}h ago`;
 }
 
 export function Timeline({
   tasksByDate,
+  allTasks,
   onTaskClick,
   onOpenQuickAdd,
-  activePage,
-  onNavigate,
+  mcpConnected = true,
 }: TimelineProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const todayRef = useRef<HTMLDivElement>(null);
-  const [isPanning, setIsPanning] = useState(false);
-  const [startX, setStartX] = useState(0);
-  const [scrollLeft, setScrollLeft] = useState(0);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [hoverDate, setHoverDate] = useState<string | null>(null);
+  const today = getLocalDateString();
 
-  const dates = useMemo(() => generateDateRange(7, 14), []);
-  const hasAnyTasks = Object.keys(tasksByDate).length > 0;
+  const [lastSyncedAt, setLastSyncedAt] = useState(() => Date.now());
+  const [syncTick, setSyncTick] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
 
-  // Scroll to today on mount
   useEffect(() => {
-    if (todayRef.current && scrollRef.current) {
-      const container = scrollRef.current;
-      const todayEl = todayRef.current;
-      const scrollPos =
-        todayEl.offsetLeft - container.clientWidth / 2 + todayEl.clientWidth / 2;
-      container.scrollTo({ left: Math.max(0, scrollPos), behavior: "instant" });
-    }
-  }, [dates]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLastSyncedAt(Date.now());
+    setSyncTick((n) => n + 1);
+  }, [tasksByDate]);
 
-  const todayStr = dates.find((d) => {
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-    return d === today;
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 5000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const convexConnection = useConvexConnectionState();
+  const syncAge = now - lastSyncedAt;
+  const convexColor = convexConnection.isWebSocketConnected
+    ? "oklch(0.78 0.18 150)"
+    : "oklch(0.72 0.2 25)";
+  const mcpColor = mcpConnected ? "oklch(0.78 0.18 150)" : "oklch(0.72 0.2 25)";
+
+  const dates = useMemo(() => generateDateRange(14, 28), []);
+
+  // Timeline hero entrance plays once per session. Re-mounts (route changes,
+  // settings open/close) don't replay it.
+  const [playEntrance] = useState(() => {
+    if (typeof window === "undefined") return false;
+    if (window.sessionStorage.getItem("pravah_timeline_entered") === "1") return false;
+    window.sessionStorage.setItem("pravah_timeline_entered", "1");
+    return true;
   });
+  const todayIndex = dates.indexOf(today);
 
-  // Pan/drag to scroll functionality
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 2) return; // Right-click only
-    e.preventDefault();
-    setIsPanning(true);
-    setStartX(e.pageX - (scrollRef.current?.offsetLeft ?? 0));
-    setScrollLeft(scrollRef.current?.scrollLeft ?? 0);
-  }, []);
-
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!isPanning) return;
-    e.preventDefault();
-    const x = e.pageX - (scrollRef.current?.offsetLeft ?? 0);
-    const walk = (x - startX) * 1.5;
-    if (scrollRef.current) {
-      scrollRef.current.scrollLeft = scrollLeft - walk;
+  const scrollAnimRef = useRef(0);
+  const scrollToToday = useCallback((smooth = true) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const todayEl = el.querySelector<HTMLElement>("[data-today='1']");
+    if (!todayEl) return;
+    const target = Math.max(0, todayEl.offsetLeft - el.clientWidth / 2 + todayEl.clientWidth / 2);
+    if (!smooth) {
+      el.scrollLeft = target;
+      return;
     }
-  }, [isPanning, startX, scrollLeft]);
-
-  const handleMouseUp = useCallback(() => {
-    setIsPanning(false);
+    cancelAnimationFrame(scrollAnimRef.current);
+    const start = el.scrollLeft;
+    const distance = target - start;
+    if (Math.abs(distance) < 1) return;
+    const duration = Math.min(700, 220 + Math.abs(distance) * 0.35);
+    const t0 = performance.now();
+    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - t0) / duration);
+      el.scrollLeft = start + distance * easeOutCubic(t);
+      if (t < 1) scrollAnimRef.current = requestAnimationFrame(tick);
+    };
+    scrollAnimRef.current = requestAnimationFrame(tick);
   }, []);
 
-  // Prevent context menu on right-click
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+  useEffect(() => {
+    scrollToToday(false);
+  }, [scrollToToday]);
+
+  // Right-click drag to pan
+  const panState = useRef({ panning: false, startX: 0, startScroll: 0, velocity: 0, lastX: 0, lastT: 0, raf: 0 });
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 2) return;
+    const ps = panState.current;
+    ps.panning = true;
+    ps.startX = e.pageX;
+    ps.startScroll = scrollerRef.current?.scrollLeft ?? 0;
+    ps.lastX = e.pageX;
+    ps.lastT = performance.now();
+    ps.velocity = 0;
+    cancelAnimationFrame(ps.raf);
+    if (scrollerRef.current) scrollerRef.current.style.cursor = "grabbing";
+  };
+  const handleMouseMove = (e: React.MouseEvent) => {
+    const ps = panState.current;
+    if (!ps.panning) return;
     e.preventDefault();
+    const now = performance.now();
+    const dt = now - ps.lastT;
+    if (dt > 0) ps.velocity = (e.pageX - ps.lastX) / dt;
+    ps.lastX = e.pageX;
+    ps.lastT = now;
+    if (scrollerRef.current) {
+      scrollerRef.current.scrollLeft = ps.startScroll - (e.pageX - ps.startX) * 1.4;
+    }
+  };
+  const handleMouseUp = () => {
+    const ps = panState.current;
+    if (!ps.panning) return;
+    ps.panning = false;
+    if (scrollerRef.current) scrollerRef.current.style.cursor = "auto";
+    let v = -ps.velocity * 18;
+    const friction = 0.93;
+    const tick = () => {
+      if (Math.abs(v) < 0.4 || !scrollerRef.current) return;
+      scrollerRef.current.scrollLeft += v;
+      v *= friction;
+      ps.raf = requestAnimationFrame(tick);
+    };
+    ps.raf = requestAnimationFrame(tick);
+  };
+
+  // Wheel → horizontal scroll
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      // Only hijack vertical wheel for horizontal pan when the inner columns
+      // have no vertical overflow, or the user is holding Shift.
+      const hasVerticalScroll = el.scrollHeight > el.clientHeight;
+      if (hasVerticalScroll && !e.shiftKey) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
   }, []);
+
+  // Keyboard
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+      if (e.metaKey || e.ctrlKey) return;
+      const el = scrollerRef.current;
+      if (!el) return;
+      if (e.key === "ArrowRight") { e.preventDefault(); el.scrollBy({ left: TIMELINE_COL_WIDTH * 3, behavior: "smooth" }); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); el.scrollBy({ left: -TIMELINE_COL_WIDTH * 3, behavior: "smooth" }); }
+      else if (e.key === "t" || e.key === "T") { e.preventDefault(); scrollToToday(true); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [scrollToToday]);
+
+  const allScheduled = Object.values(tasksByDate).flat();
+  const openCount = allScheduled.filter(t => t.type === "open" && t.status !== "completed").length;
+  const deadlineCount = allScheduled.filter(t => t.type === "deadline" && t.status !== "completed").length;
+  const allTodayTasks = (allTasks ?? []).filter(t => t.scheduledDate === today);
+  const doneTodayCount = allTodayTasks.filter(t => t.status === "completed").length;
+  const todayTotalCount = allTodayTasks.length;
 
   return (
-    <div className="h-full flex flex-col bg-[#191919]">
-      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={TRANSITION_SLOW}>
-        <TopNavbar
-          activePage={activePage}
-          onNavigate={onNavigate}
-          centerContent={new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-        />
-      </motion.div>
-
-      {/* Timeline scroll area */}
-      <div
-        ref={scrollRef}
-        className={cn(
-          "flex-1 overflow-x-auto overflow-y-hidden relative flex items-center",
-          "bg-[#191919]",
-          isPanning && "cursor-grabbing select-none"
-        )}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onContextMenu={handleContextMenu}
-      >
-        {/* Empty state */}
-        {!hasAnyTasks && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={withDelay({ duration: 0.5 }, 0.3)}
-            className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none"
-          >
-            <div className="text-center max-w-md px-6">
-              <div className="mb-8">
-                <FlowIllustration />
-              </div>
-              <motion.h2
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.6 }}
-                className="text-2xl font-medium text-zinc-100 mb-3"
-                style={{ fontFamily: "'Newsreader', Georgia, serif" }}
-              >
-                Your timeline is clear
-              </motion.h2>
-              <motion.p
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.7 }}
-                className="text-sm text-zinc-400 mb-8"
-              >
-                Add a task to start flowing through your day
-              </motion.p>
-              <motion.div
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.8 }}
-                className="pointer-events-auto"
-              >
-                <Button onClick={onOpenQuickAdd} variant="primary" size="md">
-                  <Plus size={16} className="mr-2" />
-                  Add Task
-                </Button>
-              </motion.div>
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 1.1 }}
-                className="flex items-center justify-center gap-2 text-xs text-zinc-400 mt-6"
-              >
-                <span>Press</span>
-                <kbd className="px-2 py-1 bg-zinc-800 rounded-lg font-mono text-zinc-300 border border-white/10">
-                  <Command size={10} className="inline -mt-px mr-0.5" />N
-                </kbd>
-                <span>to quickly add a task</span>
-              </motion.div>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Timeline days */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={withDelay({ duration: 0.5 }, 0.15)}
-          className="flex px-4 py-4 min-w-max gap-1"
+    <div className="h-full flex flex-col" style={{ background: "transparent" }}>
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left rail */}
+        <div
+          className="flex flex-col shrink-0 overflow-hidden"
+          style={{
+            width: 180,
+            borderRight: "1px solid rgba(255,255,255,.07)",
+            background: "#101013",
+            fontFamily: "var(--font-mono)",
+            fontSize: 10.5,
+          }}
         >
-          {dates.map((date, index) => (
-            <motion.div
-              key={date}
-              ref={date === todayStr ? todayRef : undefined}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.03, duration: 0.4 }}
+          {/* TODAY button cell aligns with the header row */}
+          <div
+            className="flex items-center px-4"
+            style={{ height: 58, borderBottom: "1px solid rgba(255,255,255,.07)" }}
+          >
+            <button
+              onClick={() => scrollToToday(true)}
+              style={{
+                fontSize: 11,
+                letterSpacing: 0.7,
+                color: "#6b6b72",
+                fontFamily: "var(--font-mono)",
+                background: "transparent",
+                border: "1px solid rgba(255,255,255,.07)",
+                borderRadius: 4,
+                padding: "4px 8px",
+                cursor: "pointer",
+                transition: tx(["color", "border-color"], "instant"),
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.color = "#ededef";
+                (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,.13)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.color = "#6b6b72";
+                (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,.07)";
+              }}
             >
-              <DayColumn
-                date={date}
-                tasks={tasksByDate[date] ?? []}
-                onTaskClick={onTaskClick}
-              />
-            </motion.div>
-          ))}
-        </motion.div>
+              TODAY
+            </button>
+          </div>
+
+          <LaneLabel name="OPEN" count={openCount} color="oklch(0.78 0.14 260)" />
+          <LaneLabel name="DEADLINE" count={deadlineCount} color="oklch(0.72 0.16 30)" />
+
+          {/* Stats */}
+          <div
+            className="mx-3 my-3.5 p-3"
+            style={{
+              border: "1px solid rgba(255,255,255,.07)",
+              borderRadius: 6,
+              lineHeight: 1.7,
+              color: "#6b6b72",
+              background: "rgba(255,255,255,.02)",
+            }}
+          >
+            <div className="tabular" style={{ color: "#ededef", marginBottom: 4, fontSize: 11 }}>
+              {doneTodayCount}/{todayTotalCount} done today
+            </div>
+            <div className="tabular">{allScheduled.length} scheduled</div>
+          </div>
+
+          {/* Add task hint */}
+          {onOpenQuickAdd && (
+            <div
+              className="tabular px-3"
+              style={{
+                marginTop: "auto",
+                paddingBottom: 12,
+                fontSize: 10,
+                fontFamily: "var(--font-mono)",
+                color: "#45454a",
+                letterSpacing: 0.6,
+              }}
+            >
+              press <kbd>N</kbd> to add a task
+            </div>
+          )}
+        </div>
+
+        {/* Scrollable grid */}
+        <div
+          ref={scrollerRef}
+          className="flex-1 overflow-x-auto overflow-y-auto relative"
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onContextMenu={(e) => e.preventDefault()}
+          style={{ overscrollBehaviorX: "contain" }}
+        >
+          <div style={{ display: "inline-block", minWidth: `${dates.length * TIMELINE_COL_WIDTH}px` }}>
+            {/* Sticky header row */}
+            <div
+              className="flex"
+              style={{
+                position: "sticky",
+                top: 0,
+                zIndex: 3,
+                background: "#0a0a0b",
+                borderBottom: "1px solid rgba(255,255,255,.07)",
+              }}
+            >
+              {dates.map((date, i) => (
+                <DayHeader
+                  key={date}
+                  date={date}
+                  today={today}
+                  entranceDelayMs={playEntrance ? Math.max(0, (i - Math.max(0, todayIndex - 4)) * 22) : null}
+                />
+              ))}
+            </div>
+
+            {/* OPEN lane row */}
+            <div
+              className="flex"
+              style={{ borderBottom: "1px solid rgba(255,255,255,.07)", minHeight: 240 }}
+            >
+              {dates.map((date) => (
+                <GridDayColumn
+                  key={date}
+                  date={date}
+                  tasks={(tasksByDate[date] ?? []).filter(t => t.type === "open")}
+                  onTaskClick={onTaskClick}
+                  today={today}
+                  hoverDate={hoverDate}
+                  onHoverDate={setHoverDate}
+                />
+              ))}
+            </div>
+
+            {/* DEADLINE lane row */}
+            <div
+              className="flex"
+              style={{ minHeight: 180 }}
+            >
+              {dates.map((date) => (
+                <GridDayColumn
+                  key={date}
+                  date={date}
+                  tasks={(tasksByDate[date] ?? []).filter(t => t.type === "deadline")}
+                  onTaskClick={onTaskClick}
+                  today={today}
+                  hoverDate={hoverDate}
+                  onHoverDate={setHoverDate}
+                  isDeadlineLane
+                />
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Footer hint */}
-      <div className="px-6 py-2 border-t border-white/10 bg-[#202020]">
-        <p className="text-[11px] text-zinc-400 text-center">
-          Drag tasks to reorder or move between days &bull; Right-click + drag to pan
-        </p>
+      {/* Status bar */}
+      <div
+        className="flex items-center gap-4 shrink-0 tabular"
+        style={{
+          height: 28,
+          padding: "0 16px",
+          borderTop: "1px solid rgba(255,255,255,.07)",
+          background: "#101013",
+          fontFamily: "var(--font-mono)",
+          fontSize: 11,
+          color: "#6b6b72",
+          letterSpacing: 0.3,
+        }}
+      >
+        <span className="flex items-center gap-1.5">
+          <PulsingDot color={mcpColor} size={6} />
+          mcp · {mcpConnected ? "connected" : "offline"}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <PulsingDot color={convexColor} size={6} pulseKey={syncTick} />
+          convex · {formatAge(syncAge)}
+        </span>
+        <div className="flex-1" />
+        <span style={{ color: "#45454a" }}>
+          <kbd>N</kbd> new · <kbd>⌘J</kbd> kairo · <kbd>←→</kbd> pan · <kbd>T</kbd> today
+        </span>
       </div>
+    </div>
+  );
+}
+
+function DayHeader({
+  date,
+  today,
+  entranceDelayMs,
+}: {
+  date: string;
+  today: string;
+  entranceDelayMs: number | null;
+}) {
+  const d = new Date(date + "T12:00:00");
+  const isToday = date === today;
+  const isPast = date < today;
+  const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+  const isMonthStart = d.getDate() === 1;
+  const dow = DAY_NAMES[d.getDay()];
+  const dayNum = d.getDate();
+  const month = MONTHS[d.getMonth()];
+
+  const entranceStyle =
+    entranceDelayMs !== null
+      ? {
+          animation: `columnRise 360ms cubic-bezier(0.16,1,0.3,1) ${entranceDelayMs}ms both`,
+          willChange: "transform, opacity" as const,
+        }
+      : {};
+  return (
+    <div
+      data-today={isToday ? "1" : "0"}
+      style={{
+        width: TIMELINE_COL_WIDTH,
+        flexShrink: 0,
+        padding: "10px 12px",
+        borderRight: "1px solid rgba(255,255,255,.07)",
+        fontFamily: "var(--font-mono)",
+        position: "relative",
+        background: isToday
+          ? "oklch(0.72 0.16 260 / 0.2)"
+          : isWeekend
+          ? "rgba(255,255,255,.012)"
+          : "transparent",
+        height: 58,
+        ...entranceStyle,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 9.5,
+          color: isToday ? "oklch(0.78 0.14 260)" : "#6b6b72",
+          letterSpacing: 0.8,
+          display: "flex",
+          justifyContent: "space-between",
+        }}
+      >
+        <span>{dow}</span>
+        {isMonthStart && <span style={{ color: "#c2c2c8" }}>{month.toUpperCase()}</span>}
+      </div>
+      <div
+        className="tabular"
+        style={{
+          fontSize: 20,
+          color: isToday ? "oklch(0.78 0.14 260)" : isPast ? "#6b6b72" : "#ededef",
+          fontWeight: 500,
+          marginTop: 2,
+          letterSpacing: -0.5,
+        }}
+      >
+        {String(dayNum).padStart(2, "0")}
+      </div>
+      {isToday && (
+        <>
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 2,
+              background: "oklch(0.78 0.14 260)",
+              boxShadow: "0 0 18px oklch(0.78 0.14 260 / 0.45)",
+              transformOrigin: "center",
+              animation:
+                entranceDelayMs !== null
+                  ? `todayAccentReveal 520ms cubic-bezier(0.16,1,0.3,1) ${entranceDelayMs + 220}ms both`
+                  : undefined,
+            }}
+          />
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              top: 2,
+              left: 0,
+              right: 0,
+              height: 32,
+              background:
+                "linear-gradient(to bottom, oklch(0.78 0.14 260 / 0.18), transparent)",
+              pointerEvents: "none",
+            }}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+function LaneLabel({ name, count, color }: { name: string; count: number; color: string }) {
+  return (
+    <div
+      className="flex items-center gap-2 px-[14px] py-[10px]"
+      style={{
+        borderBottom: "1px solid rgba(255,255,255,.07)",
+        fontSize: 11,
+        letterSpacing: 0.7,
+        fontFamily: "var(--font-mono)",
+        minHeight: 36,
+      }}
+    >
+      <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
+      <span style={{ color: "#ededef" }}>{name}</span>
+      <span className="tabular" style={{ color: "#6b6b72", fontSize: 10 }}>{count}</span>
     </div>
   );
 }

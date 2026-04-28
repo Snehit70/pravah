@@ -1,416 +1,367 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation } from "convex/react";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { api } from "../../convex/_generated/api";
-import { TRANSITION_FAST, TRANSITION_OVERSHOOT } from "../lib/motion";
-import { cn, getLocalDateString } from "../lib/utils";
-import { getNextMondayDateString, getTomorrowDateString } from "../lib/quickAddDates";
-import { Button } from "./Button";
+import { T_BASE, T_FAST, tx } from "../lib/motion";
+import { getLocalDateString } from "../lib/utils";
+import { getTomorrowDateString } from "../lib/quickAddDates";
 import { useToast } from "./useToast";
 
 interface QuickAddProps {
   onClose: () => void;
 }
 
-const overlayVariants = {
-  hidden: { opacity: 0 },
-  visible: { opacity: 1 },
-};
+const ACCENT = "oklch(0.78 0.14 260)";
+const ACCENT_SOFT = "oklch(0.72 0.16 260 / 0.2)";
+const DEADLINE_COLOR = "oklch(0.72 0.16 30)";
 
-const modalVariants = {
-  hidden: { opacity: 0, scale: 0.95, y: -10 },
-  visible: { opacity: 1, scale: 1, y: 0 },
-  exit: { opacity: 0, scale: 0.98, y: -10 },
-};
+function Pill({
+  label,
+  active,
+  onClick,
+  dot,
+  dotColor,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  dot?: boolean;
+  dotColor?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "5px 10px",
+        background: active ? ACCENT_SOFT : "rgba(255,255,255,.03)",
+        border: `1px solid ${active ? "oklch(0.78 0.14 260 / 0.55)" : "rgba(255,255,255,.07)"}`,
+        borderRadius: 5,
+        fontSize: 11.5,
+        color: active ? ACCENT : "#c2c2c8",
+        cursor: "pointer",
+        fontFamily: "var(--font-sans)",
+        transition: tx(["background-color", "border-color", "color"], "instant"),
+      }}
+    >
+      {dot && dotColor && (
+        <span style={{ width: 7, height: 7, borderRadius: 99, background: dotColor, flexShrink: 0 }} />
+      )}
+      {label}
+    </button>
+  );
+}
 
 export function QuickAdd({ onClose }: QuickAddProps) {
   const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [showDesc, setShowDesc] = useState(false);
   const [type, setType] = useState<"open" | "deadline">("open");
-  const [deadline, setDeadline] = useState("");
+  const [when, setWhen] = useState<"inbox" | "today" | "tomorrow" | "nextweek">("inbox");
   const [priority, setPriority] = useState<"p1" | "p2" | "p3" | undefined>(undefined);
-  const [titleError, setTitleError] = useState("");
-  const [deadlineError, setDeadlineError] = useState("");
-  const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const isSubmittingRef = useRef(false);
-  const modalRef = useRef<HTMLDivElement>(null);
-  const formRef = useRef<HTMLFormElement>(null);
-  const restoreFocusRef = useRef<HTMLElement | null>(null);
-  const titleInputId = useId();
-  const titleErrorId = useId();
-  const deadlineErrorId = useId();
-  const submitErrorId = useId();
-  const quickAddTitleId = useId();
-  const quickAddDescriptionId = useId();
+  const titleRef = useRef<HTMLInputElement>(null);
+  const descRef = useRef<HTMLTextAreaElement>(null);
 
   const addTask = useMutation(api.tasks.addTask);
-  const { showError, showSuccess } = useToast();
-  const minDate = getLocalDateString();
-  const deadlinePresets = [
-    { label: "Today", value: minDate },
-    { label: "Tomorrow", value: getTomorrowDateString() },
-    { label: "Next Monday", value: getNextMondayDateString() },
-  ];
+  const { showError } = useToast();
+  const today = getLocalDateString();
+  const tomorrow = getTomorrowDateString();
 
   useEffect(() => {
-    isSubmittingRef.current = isSubmitting;
-  }, [isSubmitting]);
-
-  useEffect(() => {
-    restoreFocusRef.current = document.activeElement as HTMLElement;
-    return () => {
-      restoreFocusRef.current?.focus();
-    };
+    setTimeout(() => titleRef.current?.focus(), 50);
   }, []);
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !isSubmittingRef.current) onClose();
-
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "enter") {
-        e.preventDefault();
-        formRef.current?.requestSubmit();
-      }
-
-      if (e.key === "Tab" && modalRef.current) {
-        const focusable = modalRef.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        );
-        if (focusable.length === 0) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-
-        if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        } else if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        }
-      }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
     };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isSubmitting) return;
-
-    if (!title.trim()) {
-      setTitleError("Title is required");
-      return;
+  const getDeadline = (): string | undefined => {
+    if (type !== "deadline") return undefined;
+    if (when === "today") return today;
+    if (when === "tomorrow") return tomorrow;
+    if (when === "nextweek") {
+      const d = new Date();
+      d.setDate(d.getDate() + 7);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     }
+    return undefined;
+  };
 
-    if (type === "deadline" && !deadline) {
-      setDeadlineError("Deadline date is required");
-      return;
+  const getScheduledDate = (): string | undefined => {
+    if (when === "inbox") return undefined;
+    if (when === "today") return today;
+    if (when === "tomorrow") return tomorrow;
+    if (when === "nextweek") {
+      const d = new Date();
+      d.setDate(d.getDate() + 7);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     }
+    return undefined;
+  };
 
-    setTitleError("");
-    setDeadlineError("");
-    setSubmitError("");
-
+  const handleSubmit = async () => {
+    if (!title.trim() || isSubmitting) return;
     try {
       setIsSubmitting(true);
       await addTask({
         title: title.trim(),
+        description: description.trim() || undefined,
         type,
-        deadline: type === "deadline" ? deadline : undefined,
+        deadline: getDeadline(),
         priority,
+        scheduledDate: getScheduledDate(),
       });
-
-      showSuccess("Task added!");
-      setTitle("");
       onClose();
     } catch {
       showError("Failed to add task");
-      setSubmitError("Could not add task. Please check your connection and try again.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleBackdropClick = (e: React.MouseEvent) => {
-    if (!isSubmitting && e.target === e.currentTarget) onClose();
+  const PRIORITY_COLORS: Record<string, string> = {
+    p1: "oklch(0.7 0.2 25)",
+    p2: "oklch(0.78 0.15 60)",
+    p3: "oklch(0.75 0.1 230)",
   };
 
   return (
     <AnimatePresence>
       <motion.div
-        initial="hidden"
-        animate="visible"
-        exit="hidden"
-        variants={overlayVariants}
-        transition={TRANSITION_FAST}
-        className={cn(
-          "fixed inset-0 z-50 grid place-items-center",
-          "bg-black/55 backdrop-blur-[2px]"
-        )}
-        onClick={handleBackdropClick}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={T_FAST}
+        onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 62,
+          background: "rgba(0,0,0,.55)",
+          backdropFilter: "blur(8px)",
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "center",
+          paddingTop: 120,
+        }}
       >
         <motion.div
-          ref={modalRef}
-          initial="hidden"
-          animate="visible"
-          exit="exit"
-          variants={modalVariants}
-          transition={TRANSITION_OVERSHOOT}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby={quickAddTitleId}
-          aria-describedby={quickAddDescriptionId}
-          className={cn(
-            "w-full max-w-xl p-4 sm:p-5 mx-4",
-            "mt-[10vh] sm:mt-[8vh]",
-            "bg-[#252525] rounded-2xl",
-            "border border-white/10",
-            "shadow-xl shadow-black/40"
-          )}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 10 }}
+          transition={T_BASE}
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            width: 600,
+            background: "#101013",
+            border: "1px solid rgba(255,255,255,.13)",
+            borderRadius: 12,
+            padding: "20px 22px",
+            boxShadow: "0 40px 80px rgba(0,0,0,.6)",
+          }}
         >
-          <h2 id={quickAddTitleId} className="sr-only">New Task</h2>
-          <p id={quickAddDescriptionId} className="sr-only">
-            Create a new open task or deadline task.
-          </p>
-          <form
-            ref={formRef}
-            onSubmit={handleSubmit}
+          {/* Header row */}
+          <div className="flex items-center gap-2 mb-1.5">
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: 5,
+                background: type === "deadline" ? DEADLINE_COLOR : ACCENT,
+                boxShadow: `0 0 8px ${type === "deadline" ? DEADLINE_COLOR : ACCENT}`,
+              }}
+            />
+            <span
+              style={{
+                fontSize: 10,
+                letterSpacing: 1.8,
+                color: "#6b6b72",
+                fontFamily: "var(--font-mono)",
+                textTransform: "uppercase",
+              }}
+            >
+              New {type === "deadline" ? "deadline" : "task"}
+            </span>
+            <div className="flex-1" />
+            <button
+              onClick={onClose}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#6b6b72",
+                fontSize: 16,
+                cursor: "pointer",
+                padding: 4,
+              }}
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Title */}
+          <input
+            ref={titleRef}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") {
-                const input = e.target as HTMLInputElement;
-                if (input.type === "date") {
-                  e.preventDefault();
-                }
+              if (e.key === "Enter" && !e.shiftKey && !showDesc) {
+                e.preventDefault();
+                handleSubmit();
               }
             }}
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => {
-                  setTitle(e.target.value);
-                  if (titleError && e.target.value.trim()) setTitleError("");
-                }}
-                placeholder="What needs to be done?"
-                id={titleInputId}
-                aria-invalid={Boolean(titleError)}
-                aria-describedby={titleError ? titleErrorId : undefined}
-                className={cn(
-                  "min-w-0 flex-1 bg-transparent text-lg text-zinc-100",
-                  "placeholder-zinc-500 outline-none"
-                )}
-                autoFocus
+            placeholder="What needs doing?"
+            style={{
+              width: "100%",
+              background: "transparent",
+              border: "none",
+              outline: "none",
+              fontSize: 19,
+              color: "#ededef",
+              fontFamily: "var(--font-sans)",
+              padding: "4px 0",
+              fontWeight: 500,
+              letterSpacing: -0.2,
+            }}
+          />
+
+          {/* Description toggle or textarea */}
+          {showDesc ? (
+            <textarea
+              ref={descRef}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Add a description… (optional)"
+              rows={3}
+              style={{
+                width: "100%",
+                background: "transparent",
+                border: "none",
+                outline: "none",
+                fontSize: 13,
+                color: "#c2c2c8",
+                fontFamily: "var(--font-sans)",
+                padding: "6px 0",
+                resize: "none",
+                lineHeight: 1.5,
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => { setShowDesc(true); setTimeout(() => descRef.current?.focus(), 20); }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "4px 0",
+                background: "transparent",
+                border: "none",
+                color: "#6b6b72",
+                fontSize: 11.5,
+                cursor: "pointer",
+                fontFamily: "var(--font-sans)",
+              }}
+            >
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+                <path d="M3 5h10M3 8h10M3 11h6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              </svg>
+              Add description
+            </button>
+          )}
+
+          <div style={{ height: 1, background: "rgba(255,255,255,.07)", margin: "14px 0 12px" }} />
+
+          {/* Type + When */}
+          <div className="flex gap-1.5 flex-wrap">
+            <Pill label="Open" active={type === "open"} onClick={() => setType("open")} dot dotColor={ACCENT} />
+            <Pill label="Deadline" active={type === "deadline"} onClick={() => setType("deadline")} dot dotColor={DEADLINE_COLOR} />
+            <span style={{ width: 1, background: "rgba(255,255,255,.07)", margin: "0 4px" }} />
+            <Pill label="Inbox" active={when === "inbox"} onClick={() => setWhen("inbox")} />
+            <Pill label="Today" active={when === "today"} onClick={() => setWhen("today")} />
+            <Pill label="Tomorrow" active={when === "tomorrow"} onClick={() => setWhen("tomorrow")} />
+            <Pill label="+1w" active={when === "nextweek"} onClick={() => setWhen("nextweek")} />
+          </div>
+
+          {/* Priority */}
+          <div className="flex gap-1.5 mt-2.5 flex-wrap items-center">
+            <span
+              style={{
+                fontSize: 9.5,
+                letterSpacing: 1.8,
+                color: "#6b6b72",
+                fontFamily: "var(--font-mono)",
+                padding: "4px 4px 4px 0",
+              }}
+            >
+              PRIORITY
+            </span>
+            <Pill label="None" active={priority === undefined} onClick={() => setPriority(undefined)} />
+            {(["p1", "p2", "p3"] as const).map((p) => (
+              <Pill
+                key={p}
+                label={p.toUpperCase()}
+                active={priority === p}
+                onClick={() => setPriority(p)}
+                dot
+                dotColor={PRIORITY_COLORS[p]}
               />
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={isSubmitting}
-                aria-label="Close new task dialog"
-                className={cn(
-                  "p-2 rounded-lg",
-                  "text-zinc-400 hover:text-zinc-100",
-                  "hover:bg-zinc-800",
-                  "disabled:opacity-50 disabled:cursor-not-allowed",
-                  "transition-colors duration-150"
-                )}
-              >
-                <X size={18} />
-              </button>
-            </div>
+            ))}
+          </div>
 
-            {titleError && (
-              <p id={titleErrorId} className="text-xs text-red-400 -mt-2 mb-2">{titleError}</p>
-            )}
-
-            <div className="space-y-3">
-              <div className={cn(
-                "flex flex-wrap items-center gap-2",
-              )}>
-                <div className={cn(
-                "flex gap-1 p-1 rounded-xl",
-                "bg-zinc-800"
-                )}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setType("open");
-                      setDeadlineError("");
-                    }}
-                    disabled={isSubmitting}
-                    className={cn(
-                      "px-3 py-1.5 rounded-lg",
-                      "transition-all duration-150",
-                      "disabled:opacity-50 disabled:cursor-not-allowed",
-                      type === "open"
-                        ? "bg-blue-500/20 text-blue-300 shadow-sm"
-                        : "text-zinc-400 hover:text-zinc-200"
-                    )}
-                  >
-                    Open
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setType("deadline");
-                      if (!deadline) {
-                        setDeadline(getTomorrowDateString());
-                      }
-                    }}
-                    disabled={isSubmitting}
-                    className={cn(
-                      "px-3 py-1.5 rounded-lg",
-                      "transition-all duration-150",
-                      "disabled:opacity-50 disabled:cursor-not-allowed",
-                      type === "deadline"
-                        ? "bg-orange-500/20 text-orange-300 shadow-sm"
-                        : "text-zinc-400 hover:text-zinc-200"
-                    )}
-                  >
-                    Deadline
-                  </button>
-                </div>
-              </div>
-
-              <AnimatePresence initial={false}>
-                {type === "deadline" && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -6 }}
-                    transition={TRANSITION_FAST}
-                    className="space-y-3"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                      <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-400">
-                        Due
-                      </span>
-                      <input
-                        type="date"
-                        value={deadline}
-                        onChange={(e) => {
-                          setDeadline(e.target.value);
-                          if (deadlineError && e.target.value) setDeadlineError("");
-                        }}
-                        min={minDate}
-                        disabled={isSubmitting}
-                        aria-invalid={Boolean(deadlineError)}
-                        aria-describedby={deadlineError ? deadlineErrorId : undefined}
-                        className={cn(
-                          "w-full sm:w-auto min-w-0 px-3 py-2 text-sm rounded-xl",
-                          "bg-zinc-900 text-zinc-100",
-                          "border border-white/10",
-                          "disabled:opacity-50 disabled:cursor-not-allowed",
-                          "focus:border-blue-500/60 focus:outline-none"
-                        )}
-                      />
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      {deadlinePresets.map((preset) => (
-                        <button
-                          key={preset.label}
-                          type="button"
-                          disabled={isSubmitting}
-                          onClick={() => {
-                            setDeadline(preset.value);
-                            setDeadlineError("");
-                          }}
-                          className={cn(
-                            "px-2.5 py-1.5 rounded-full text-[11px]",
-                            "transition-colors duration-150",
-                            deadline === preset.value
-                              ? "bg-blue-500/20 text-blue-300 border border-blue-400/30"
-                              : "text-zinc-400 hover:text-zinc-200 bg-zinc-900 border border-white/10",
-                            "disabled:opacity-50 disabled:cursor-not-allowed"
-                          )}
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <div className="space-y-2 pt-1">
-                <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-400">
-                  Priority
-                </span>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { label: "None", value: undefined },
-                    { label: "P1", value: "p1" as const },
-                    { label: "P2", value: "p2" as const },
-                    { label: "P3", value: "p3" as const },
-                  ].map((option) => (
-                    <button
-                      key={option.label}
-                      type="button"
-                      disabled={isSubmitting}
-                      onClick={() => setPriority(option.value)}
-                      className={cn(
-                        "px-2.5 py-1.5 rounded-full text-[11px] border transition-colors duration-150",
-                        priority === option.value
-                          ? "bg-blue-500/20 text-blue-300 border-blue-400/30"
-                          : "text-zinc-400 hover:text-zinc-200 bg-zinc-900 border-white/10",
-                        "disabled:opacity-50 disabled:cursor-not-allowed"
-                      )}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {deadlineError && (
-              <p id={deadlineErrorId} className="text-xs text-red-400 mt-2">
-                {deadlineError}
-              </p>
-            )}
-
-            {submitError && (
-              <p id={submitErrorId} role="alert" className="text-xs text-red-400 mt-2">
-                {submitError}
-              </p>
-            )}
-
-            <div className={cn(
-              "mt-4 pt-4 border-t border-white/10",
-              "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
-            )}>
-              <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-400">
-                <span className="flex items-center gap-1.5">
-                  <kbd className={cn(
-                    "px-1.5 py-0.5 rounded-lg font-mono",
-                    "bg-zinc-800 text-zinc-300 border border-white/10"
-                  )}>Esc</kbd>
-                  <span>close</span>
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <kbd className={cn(
-                    "px-1.5 py-0.5 rounded-lg font-mono",
-                    "bg-zinc-800 text-zinc-300 border border-white/10"
-                  )}>Ctrl/⌘ + Enter</kbd>
-                  <span>submit</span>
-                </span>
-              </div>
-
-              <Button
-                type="submit"
-                disabled={!title.trim() || isSubmitting}
-                aria-describedby={submitError ? submitErrorId : undefined}
-                variant="primary"
-                size="sm"
-                className="w-full sm:w-auto sm:min-w-28 justify-center"
-              >
-                {isSubmitting ? "Adding..." : "Add Task"}
-              </Button>
-            </div>
-          </form>
+          {/* Footer */}
+          <div
+            className="flex items-center mt-4 pt-3.5 gap-2.5"
+            style={{ borderTop: "1px solid rgba(255,255,255,.07)" }}
+          >
+            <span style={{ fontSize: 11, color: "#6b6b72", fontFamily: "var(--font-mono)", letterSpacing: 0.5 }}>
+              <kbd>↵</kbd> add · <kbd>esc</kbd> cancel
+            </span>
+            <div className="flex-1" />
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                padding: "7px 14px",
+                background: "transparent",
+                border: "1px solid rgba(255,255,255,.07)",
+                borderRadius: 4,
+                color: "#ededef",
+                fontSize: 12,
+                cursor: "pointer",
+                fontFamily: "var(--font-sans)",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!title.trim() || isSubmitting}
+              style={{
+                padding: "7px 18px",
+                background: title.trim() ? ACCENT : "rgba(255,255,255,.07)",
+                border: "none",
+                borderRadius: 4,
+                color: title.trim() ? "#0a0a0b" : "#6b6b72",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: title.trim() ? "pointer" : "not-allowed",
+                letterSpacing: 0.2,
+                fontFamily: "var(--font-sans)",
+                transition: tx(["background-color", "color"], "instant"),
+              }}
+            >
+              {isSubmitting ? "Adding…" : "Add task"}
+            </button>
+          </div>
         </motion.div>
       </motion.div>
     </AnimatePresence>
