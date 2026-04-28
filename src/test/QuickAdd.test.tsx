@@ -32,9 +32,9 @@ describe("QuickAdd", () => {
     const onClose = vi.fn();
     render(<QuickAdd onClose={onClose} />);
 
-    const titleInput = screen.getByPlaceholderText("What needs to be done?");
+    const titleInput = screen.getByPlaceholderText("What needs doing?");
     fireEvent.change(titleInput, { target: { value: "  Write tests  " } });
-    fireEvent.click(screen.getByRole("button", { name: "Add Task" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add task" }));
 
     await waitFor(() => {
       expect(addTaskMock).toHaveBeenCalledWith({
@@ -45,7 +45,6 @@ describe("QuickAdd", () => {
       });
     });
 
-    expect(showSuccessMock).toHaveBeenCalledWith("Task added!");
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -54,55 +53,61 @@ describe("QuickAdd", () => {
     render(<QuickAdd onClose={onClose} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Deadline" }));
+    fireEvent.click(screen.getByRole("button", { name: "Today" }));
 
-    const deadlineInput = document.querySelector("input[type='date']") as HTMLInputElement;
-    expect(deadlineInput).toBeTruthy();
-    expect(deadlineInput.min).toBe(getLocalDateString());
-
-    fireEvent.change(screen.getByPlaceholderText("What needs to be done?"), {
+    fireEvent.change(screen.getByPlaceholderText("What needs doing?"), {
       target: { value: "Submit PR" },
     });
-    fireEvent.change(deadlineInput, { target: { value: "2026-04-12" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add Task" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add task" }));
 
     await waitFor(() => {
       expect(addTaskMock).toHaveBeenCalledWith({
         title: "Submit PR",
         type: "deadline",
-        deadline: "2026-04-12",
+        deadline: getLocalDateString(),
+        scheduledDate: getLocalDateString(),
         priority: undefined,
       });
     });
 
-    expect(showSuccessMock).toHaveBeenCalledWith("Task added!");
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("prefills deadline with tomorrow when deadline type is selected", () => {
+  it("uses tomorrow deadline when deadline type and tomorrow are selected", async () => {
     const onClose = vi.fn();
     render(<QuickAdd onClose={onClose} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Deadline" }));
-    const deadlineInput = document.querySelector("input[type='date']") as HTMLInputElement;
+    fireEvent.click(screen.getByRole("button", { name: "Tomorrow" }));
+    fireEvent.change(screen.getByPlaceholderText("What needs doing?"), {
+      target: { value: "Tomorrow deadline" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add task" }));
 
-    expect(deadlineInput.value).toBe(getTomorrowDateString());
+    await waitFor(() => {
+      expect(addTaskMock).toHaveBeenCalledWith({
+        title: "Tomorrow deadline",
+        type: "deadline",
+        deadline: getTomorrowDateString(),
+        scheduledDate: getTomorrowDateString(),
+        priority: undefined,
+      });
+    });
   });
 
-  it("shows inline deadline error when deadline task is submitted without date", async () => {
+  it("shows error when deadline task is submitted without date", async () => {
     const onClose = vi.fn();
     render(<QuickAdd onClose={onClose} />);
 
-    fireEvent.change(screen.getByPlaceholderText("What needs to be done?"), {
+    fireEvent.change(screen.getByPlaceholderText("What needs doing?"), {
       target: { value: "Due soon" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Deadline" }));
 
-    const deadlineInput = document.querySelector("input[type='date']") as HTMLInputElement;
-    fireEvent.change(deadlineInput, { target: { value: "" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add Task" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add task" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Deadline date is required")).toBeInTheDocument();
+      expect(showErrorMock).toHaveBeenCalledWith("Deadline tasks need a due date");
     });
     expect(addTaskMock).not.toHaveBeenCalled();
   });

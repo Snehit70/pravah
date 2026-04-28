@@ -22,6 +22,7 @@ vi.mock("@dnd-kit/core", () => ({
   }),
   useSensor: () => ({}),
   useSensors: (...sensors: unknown[]) => sensors,
+  useDndMonitor: () => undefined,
 }));
 
 vi.mock("@dnd-kit/sortable", () => ({
@@ -51,6 +52,11 @@ vi.mock("convex/react", () => ({
   Authenticated: ({ children }: { children: ReactNode }) => <>{children}</>,
   Unauthenticated: () => null,
   useConvexAuth: () => ({ isAuthenticated: true, isLoading: false }),
+  useConvexConnectionState: () => ({
+    isWebSocketConnected: true,
+    hasInflightRequests: false,
+    connectionCount: 1,
+  }),
   useQuery: (...args: unknown[]) => useQueryMock(...args),
   useMutation: (...args: unknown[]) => useMutationMock(...args),
 }));
