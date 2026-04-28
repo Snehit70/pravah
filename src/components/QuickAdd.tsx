@@ -39,7 +39,7 @@ function Pill({
         padding: "5px 10px",
         background: active ? ACCENT_SOFT : "rgba(255,255,255,.03)",
         border: `1px solid ${active ? "oklch(0.78 0.14 260 / 0.55)" : "rgba(255,255,255,.07)"}`,
-        borderRadius: 99,
+        borderRadius: 5,
         fontSize: 11.5,
         color: active ? ACCENT : "#c2c2c8",
         cursor: "pointer",
@@ -168,7 +168,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
               style={{
                 width: 7,
                 height: 7,
-                borderRadius: 99,
+                borderRadius: 5,
                 background: type === "deadline" ? DEADLINE_COLOR : ACCENT,
                 boxShadow: `0 0 8px ${type === "deadline" ? DEADLINE_COLOR : ACCENT}`,
               }}
