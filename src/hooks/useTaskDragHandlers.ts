@@ -48,12 +48,19 @@ export function resolveDropTargetDate(
   tasks: Task[] | undefined,
   currentDate: string
 ): string | null {
-  if (isDateDropId(overId)) {
-    return canScheduleTaskOnDate(sourceTask, overId, {
+  // Support both plain date IDs ("YYYY-MM-DD") and deadline-lane IDs ("deadline:YYYY-MM-DD")
+  const dateFromId = isDateDropId(overId)
+    ? overId
+    : overId.startsWith("deadline:")
+    ? overId.slice("deadline:".length)
+    : null;
+
+  if (dateFromId && isDateDropId(dateFromId)) {
+    return canScheduleTaskOnDate(sourceTask, dateFromId, {
       allowOverdueCarryForward: true,
       currentDate,
     })
-      ? overId
+      ? dateFromId
       : null;
   }
 

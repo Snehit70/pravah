@@ -196,10 +196,9 @@ export function Timeline({
   const allScheduled = Object.values(tasksByDate).flat();
   const openCount = allScheduled.filter(t => t.type === "open" && t.status !== "completed").length;
   const deadlineCount = allScheduled.filter(t => t.type === "deadline" && t.status !== "completed").length;
-  const todayTasks = tasksByDate[today] ?? [];
-  const doneTodayCount = (allTasks ?? []).filter(
-    t => t.status === "completed" && t.scheduledDate === today
-  ).length;
+  const allTodayTasks = (allTasks ?? []).filter(t => t.scheduledDate === today);
+  const doneTodayCount = allTodayTasks.filter(t => t.status === "completed").length;
+  const todayTotalCount = allTodayTasks.length;
 
   return (
     <div className="h-full flex flex-col" style={{ background: "transparent" }}>
@@ -262,7 +261,7 @@ export function Timeline({
             }}
           >
             <div className="tabular" style={{ color: "#ededef", marginBottom: 4, fontSize: 11 }}>
-              {doneTodayCount}/{todayTasks.length} done today
+              {doneTodayCount}/{todayTotalCount} done today
             </div>
             <div className="tabular">{allScheduled.length} scheduled</div>
           </div>
