@@ -182,7 +182,6 @@ function InboxSidebarComponent({
     const prev = prevTaskIdsRef.current;
     prevTaskIdsRef.current = taskIds;
     const prevSet = new Set(prev);
-    const nextSet = new Set(taskIds);
     const setsMatch = prev.length === taskIds.length && taskIds.every(id => prevSet.has(id));
     if (!setsMatch) {
       // A task was added or removed — reset optimistic state so new list shows

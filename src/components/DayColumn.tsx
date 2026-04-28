@@ -53,6 +53,7 @@ function GridTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
   const [justCompleted, setJustCompleted] = useState(false);
   useEffect(() => {
     if (!wasCompletedRef.current && isCompleted) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setJustCompleted(true);
       const t = window.setTimeout(() => setJustCompleted(false), 520);
       wasCompletedRef.current = isCompleted;
@@ -177,8 +178,6 @@ function GridDayColumnComponent({
   tasks,
   onTaskClick,
   today,
-  hoverDate: _hoverDate,
-  onHoverDate: _onHoverDate,
   isDeadlineLane = false,
 }: GridDayColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: date });

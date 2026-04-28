@@ -164,6 +164,7 @@ function getTypingDelay(prompt: string, index: number): number {
 function useTypingPlaceholder(enabled: boolean): { text: string; phase: TypingPhase } {
   const [text, setText] = useState("");
   const [phase, setPhase] = useState<TypingPhase>("gap");
+  // eslint-disable-next-line react-hooks/purity
   const promptIndexRef = useRef(Math.floor(Math.random() * PLACEHOLDER_PROMPTS.length));
   const charIndexRef = useRef(0);
   const phaseRef = useRef<TypingPhase>("typing");
@@ -329,6 +330,7 @@ function useRevealText(text: string, enabled: boolean): string {
 
   useEffect(() => {
     if (!enabled) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setVisibleText(text);
       return;
     }
@@ -623,7 +625,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
       }
 
       setMsgs(m => [...m, { from: "kairo", text: cleanText, tasks: taskBlocks.length ? taskBlocks : undefined }]);
-    } catch (err) {
+    } catch {
       setMsgs(m => [...m, { from: "kairo", text: "Something went wrong reaching your configured AI endpoint. Check the format toggle, key, URL, model, and server compatibility." }]);
     } finally {
       setThinking(false);
