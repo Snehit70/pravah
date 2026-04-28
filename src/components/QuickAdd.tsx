@@ -113,6 +113,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
       setIsSubmitting(true);
       await addTask({
         title: title.trim(),
+        description: description.trim() || undefined,
         type,
         deadline: getDeadline(),
         priority,
