@@ -168,6 +168,7 @@ function AuthenticatedApp() {
             {activePage === "timeline" ? (
               <Timeline
                 tasksByDate={tasksByDate}
+                allTasks={tasks ?? []}
                 onTaskClick={openTaskPopup}
                 onOpenQuickAdd={openQuickAdd}
               />

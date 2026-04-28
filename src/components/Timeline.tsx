@@ -11,6 +11,7 @@ const DAY_NAMES = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
 
 interface TimelineProps {
   tasksByDate: Record<string, Task[]>;
+  allTasks?: Task[];
   onTaskClick: (task: Task) => void;
   onOpenQuickAdd?: () => void;
   mcpConnected?: boolean;
@@ -43,6 +44,7 @@ function formatAge(ms: number): string {
 
 export function Timeline({
   tasksByDate,
+  allTasks,
   onTaskClick,
   onOpenQuickAdd,
   mcpConnected = true,
@@ -53,20 +55,21 @@ export function Timeline({
 
   const [lastSyncedAt, setLastSyncedAt] = useState(() => Date.now());
   const [syncTick, setSyncTick] = useState(0);
-  const [, setNowTick] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLastSyncedAt(Date.now());
     setSyncTick((n) => n + 1);
   }, [tasksByDate]);
 
   useEffect(() => {
-    const id = window.setInterval(() => setNowTick((n) => n + 1), 5000);
+    const id = window.setInterval(() => setNow(Date.now()), 5000);
     return () => window.clearInterval(id);
   }, []);
 
   const convexConnection = useConvexConnectionState();
-  const syncAge = Date.now() - lastSyncedAt;
+  const syncAge = now - lastSyncedAt;
   const convexColor = convexConnection.isWebSocketConnected
     ? "oklch(0.78 0.18 150)"
     : "oklch(0.72 0.2 25)";
@@ -163,6 +166,10 @@ export function Timeline({
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      // Only hijack vertical wheel for horizontal pan when the inner columns
+      // have no vertical overflow, or the user is holding Shift.
+      const hasVerticalScroll = el.scrollHeight > el.clientHeight;
+      if (hasVerticalScroll && !e.shiftKey) return;
       e.preventDefault();
       el.scrollLeft += e.deltaY;
     };
@@ -190,7 +197,9 @@ export function Timeline({
   const openCount = allScheduled.filter(t => t.type === "open" && t.status !== "completed").length;
   const deadlineCount = allScheduled.filter(t => t.type === "deadline" && t.status !== "completed").length;
   const todayTasks = tasksByDate[today] ?? [];
-  const doneTodayCount = todayTasks.filter(t => t.status === "completed").length;
+  const doneTodayCount = (allTasks ?? []).filter(
+    t => t.status === "completed" && t.scheduledDate === today
+  ).length;
 
   return (
     <div className="h-full flex flex-col" style={{ background: "transparent" }}>

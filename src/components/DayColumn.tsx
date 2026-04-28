@@ -180,7 +180,8 @@ function GridDayColumnComponent({
   today,
   isDeadlineLane = false,
 }: GridDayColumnProps) {
-  const { setNodeRef, isOver } = useDroppable({ id: date });
+  const droppableId = isDeadlineLane ? `deadline:${date}` : date;
+  const { setNodeRef, isOver } = useDroppable({ id: droppableId });
   const isToday = date === today;
   const d = new Date(date + "T12:00:00");
   const isWeekend = d.getDay() === 0 || d.getDay() === 6;

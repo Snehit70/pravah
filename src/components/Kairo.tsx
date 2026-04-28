@@ -539,7 +539,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
   }, []);
 
   const sendMessage = async (text: string) => {
-    if (!text.trim()) return;
+    if (!text.trim() || thinking) return;
     const nextConfig = getKairoConfig();
     setConfig(nextConfig);
 
@@ -621,6 +621,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
           title: t.title,
           type: t.type,
           scheduledDate: t.scheduledDate ?? undefined,
+          source: "ai-agent",
         });
       }
 
