@@ -234,6 +234,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
             type: t.type,
             scheduledDate: t.scheduledDate ?? undefined,
             deadline: t.type === "deadline" ? t.scheduledDate ?? undefined : undefined,
+            source: "ai-agent",
           });
         }
 

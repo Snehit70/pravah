@@ -213,7 +213,7 @@ function MobileApp() {
   const timelineCount = activeTab === "timeline" ? scheduledTasks.length : (countsQuery?.timelineCount ?? 0);
   const completedCount =
     countsQuery?.completedCount ?? (activeTab === "completed" ? completedTasks.length : 0);
-  const kairoTasks = optimisticTasks ?? allWorkspaceTasks;
+  const kairoTasks = allWorkspaceTasks;
   const kairoInboxTasks = useMemo(
     () => kairoTasks.filter((task) => task.status === "inbox"),
     [kairoTasks]
