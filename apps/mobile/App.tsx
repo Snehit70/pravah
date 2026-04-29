@@ -525,18 +525,17 @@ function MobileApp() {
   );
 
   const renderTimelineTaskItem = useCallback(
-    (dateKey: string) =>
-      ({ item, drag }: RenderItemParams<MobileTask>) => (
-        <TaskCard
-          task={item}
-          dateLabel={dateLabel(dateKey, today, tomorrow, weekEnd)}
-          onDone={markDone}
-          onSendToInbox={sendToInbox}
-          onReorder={(taskId, direction) => shiftTimelineTask(taskId, dateKey, direction)}
-          onEdit={handleEditTask}
-          onDragHandlePress={drag}
-        />
-      ),
+    (dateKey: string, { item, drag }: RenderItemParams<MobileTask>) => (
+      <TaskCard
+        task={item}
+        dateLabel={dateLabel(dateKey, today, tomorrow, weekEnd)}
+        onDone={markDone}
+        onSendToInbox={sendToInbox}
+        onReorder={(taskId, direction) => shiftTimelineTask(taskId, dateKey, direction)}
+        onEdit={handleEditTask}
+        onDragHandlePress={drag}
+      />
+    ),
     [today, tomorrow, weekEnd, markDone, sendToInbox, shiftTimelineTask, handleEditTask]
   );
 
@@ -723,6 +722,7 @@ function MobileApp() {
         onRefresh={handleRefresh}
         onInboxDragEnd={handleInboxDragEnd}
         onTimelineDragEnd={handleTimelineDragEnd}
+        onTimelineDragInvalid={() => showToast({ kind: "error", message: "Drag within the same day only." })}
         renderInboxTaskItem={renderInboxTaskItem}
         renderTimelineTaskItem={renderTimelineTaskItem}
         renderCompletedTaskItem={renderCompletedTaskItem}
