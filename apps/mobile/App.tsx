@@ -28,14 +28,16 @@ import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
 
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { colors, fonts, radii, spacing, typography } from "./src/theme/tokens";
+import { colors, fonts, spacing, typography } from "./src/theme/tokens";
 import { TaskCard, type MobileTask } from "./src/components/TaskCard";
 import { BottomTabBar, type TabKey } from "./src/components/BottomTabBar";
 import { GridBackground } from "./src/components/GridBackground";
 import { Kairo, type KairoSheetRef } from "./src/components/Kairo";
+import { BootScreen } from "./src/components/BootScreen";
 import { FAB } from "./src/components/FAB";
 import { AddTaskSheet, type AddTaskSheetRef } from "./src/components/AddTaskSheet";
 import { EditTaskSheet, type EditTaskSheetRef } from "./src/components/EditTaskSheet";
+import { MobileAuthScreen } from "./src/components/MobileAuthScreen";
 import { RootErrorBoundary } from "./src/components/RootErrorBoundary";
 import { SettingsSheet } from "./src/components/SettingsSheet";
 import { TaskTabContent } from "./src/components/TaskTabContent";
@@ -99,6 +101,7 @@ function MobileApp() {
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isKairoActive, setIsKairoActive] = useState(false);
+  const [hasOpenedKairo, setHasOpenedKairo] = useState(false);
   const chromeDim = useSharedValue(1);
   useEffect(() => {
     chromeDim.value = withTiming(isKairoActive ? 0.38 : 1, { duration: 280 });
@@ -501,6 +504,13 @@ function MobileApp() {
     setIsSettingsModalOpen(true);
   }, []);
 
+  const openKairo = useCallback(() => {
+    setHasOpenedKairo(true);
+    requestAnimationFrame(() => {
+      kairoRef.current?.open();
+    });
+  }, []);
+
   const renderInboxTaskItem = useCallback(
     ({ item, drag }: RenderItemParams<MobileTask>) => (
       <TaskCard
@@ -595,48 +605,16 @@ function MobileApp() {
   // ── Loading / Auth screens ──────────────────────────────────────────
 
   if (sessionLoading || (session && !isDataBootstrapReady)) {
-    return (
-      <SafeAreaView style={styles.authContainer}>
-        <StatusBar style="light" />
-        <Animated.Text entering={FadeIn.duration(600)} style={styles.loadingText}>
-          Loading your workspace...
-        </Animated.Text>
-      </SafeAreaView>
-    );
+    return <BootScreen />;
   }
 
   if (!session) {
     return (
-      <SafeAreaView style={styles.authContainer}>
-        <StatusBar style="light" />
-        <GridBackground />
-        <Animated.View entering={FadeIn.duration(400)} style={styles.authShell}>
-          <View style={styles.authLockup}>
-            <Text style={styles.wordmark}>Pravah</Text>
-            <Text style={styles.authTitle}>A calmer way to keep your day in view.</Text>
-            <Text style={styles.authSubtitle}>
-              Sign in with Google to keep your inbox, timeline, and completed ledger in sync.
-            </Text>
-          </View>
-          <View style={styles.authDivider} />
-          <Pressable
-            onPress={handleGoogleSignIn}
-            disabled={!canGoogleSignIn || isSigningIn}
-            style={({ pressed }) => [
-              styles.googleButton,
-              (!canGoogleSignIn || isSigningIn) && styles.disabledButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.googleButtonText}>
-              {isSigningIn ? "Signing in..." : "Continue with Google"}
-            </Text>
-          </Pressable>
-          {!canGoogleSignIn ? (
-            <Text style={styles.authHint}>Set EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in mobile env.</Text>
-          ) : null}
-        </Animated.View>
-      </SafeAreaView>
+      <MobileAuthScreen
+        canGoogleSignIn={canGoogleSignIn}
+        isSigningIn={isSigningIn}
+        onGoogleSignIn={() => void handleGoogleSignIn()}
+      />
     );
   }
 
@@ -677,7 +655,7 @@ function MobileApp() {
           <Text style={styles.wordmark}>Pravah</Text>
           <View style={styles.headerLinks}>
             <Pressable
-              onPress={() => kairoRef.current?.open()}
+              onPress={openKairo}
               style={({ pressed }) => [styles.settingsLinkWrap, pressed && styles.pressed]}
               hitSlop={12}
               accessibilityRole="button"
@@ -781,40 +759,44 @@ function MobileApp() {
       {/* Kairo lives at the root so its overlay sits above tabs and FAB. The
           parent dims the rest of the chrome via isKairoActive when the sheet
           is open, matching web's 0.38-opacity fade behind the active panel. */}
-      <Kairo
-        ref={kairoRef}
-        tasks={tasks}
-        inboxTasks={inboxTasks}
-        onActiveChange={setIsKairoActive}
-        onOpenSettings={openSettingsModal}
-      />
+      {hasOpenedKairo ? (
+        <Kairo
+          ref={kairoRef}
+          tasks={tasks}
+          inboxTasks={inboxTasks}
+          onActiveChange={setIsKairoActive}
+          onOpenSettings={openSettingsModal}
+        />
+      ) : null}
 
-      <SettingsSheet
-        visible={isSettingsModalOpen}
-        calendarSyncEnabled={googleSyncEnabled}
-        gmailSyncEnabled={gmailSyncEnabled}
-        calendarSyncStatus={calendarSyncStatus}
-        gmailSyncStatus={gmailSyncStatus}
-        canToggleGmailSync={canToggleGmailSync}
-        pendingGmailReviewCount={pendingGmailReviewCount}
-        notificationPermissionState={notificationPermissionState}
-        notificationsEnabled={notificationsEnabled}
-        isDailyReminderEnabled={isDailyReminderEnabled}
-        isCalendarSyncing={isCalendarSyncing}
-        isGoogleToggleSaving={isGoogleToggleSaving}
-        isGmailToggleSaving={isGmailToggleSaving}
-        isNotificationsBusy={isNotificationsBusy}
-        syncSettingsBusy={syncSettingsBusy}
-        onClose={() => setIsSettingsModalOpen(false)}
-        onGoogleCalendarToggle={() => void toggleGoogleCalendarSync()}
-        onGoogleCalendarSync={() => void runGoogleCalendarSync()}
-        onEnableAndSyncGoogleCalendar={() => void enableAndSyncGoogleCalendar()}
-        onGmailToggle={() => void toggleGmailSync()}
-        onRequestNotificationsAccess={() => void requestNotificationsAccess()}
-        onToggleDailyReminder={() => void toggleDailyReminder()}
-        onSendTestNotification={() => void sendTestNotification()}
-        onSignOut={handleSignOut}
-      />
+      {isSettingsModalOpen ? (
+        <SettingsSheet
+          visible={isSettingsModalOpen}
+          calendarSyncEnabled={googleSyncEnabled}
+          gmailSyncEnabled={gmailSyncEnabled}
+          calendarSyncStatus={calendarSyncStatus}
+          gmailSyncStatus={gmailSyncStatus}
+          canToggleGmailSync={canToggleGmailSync}
+          pendingGmailReviewCount={pendingGmailReviewCount}
+          notificationPermissionState={notificationPermissionState}
+          notificationsEnabled={notificationsEnabled}
+          isDailyReminderEnabled={isDailyReminderEnabled}
+          isCalendarSyncing={isCalendarSyncing}
+          isGoogleToggleSaving={isGoogleToggleSaving}
+          isGmailToggleSaving={isGmailToggleSaving}
+          isNotificationsBusy={isNotificationsBusy}
+          syncSettingsBusy={syncSettingsBusy}
+          onClose={() => setIsSettingsModalOpen(false)}
+          onGoogleCalendarToggle={() => void toggleGoogleCalendarSync()}
+          onGoogleCalendarSync={() => void runGoogleCalendarSync()}
+          onEnableAndSyncGoogleCalendar={() => void enableAndSyncGoogleCalendar()}
+          onGmailToggle={() => void toggleGmailSync()}
+          onRequestNotificationsAccess={() => void requestNotificationsAccess()}
+          onToggleDailyReminder={() => void toggleDailyReminder()}
+          onSendTestNotification={() => void sendTestNotification()}
+          onSignOut={handleSignOut}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -838,14 +820,7 @@ function StorageGate({ children }: { children: ReactNode }) {
   }, []);
 
   if (!ready) {
-    return (
-      <SafeAreaView style={styles.authContainer}>
-        <StatusBar style="light" />
-        <Animated.Text entering={FadeIn.duration(600)} style={styles.loadingText}>
-          Loading your workspace...
-        </Animated.Text>
-      </SafeAreaView>
-    );
+    return <BootScreen detail="Restoring your secure session cache." />;
   }
 
   return <>{children}</>;
@@ -867,13 +842,7 @@ function FontGate({ children }: { children: ReactNode }) {
   });
 
   if (!fontsLoaded) {
-    // Render the same chrome as StorageGate so the boot sequence is one
-    // continuous loading state from the user's POV, no layout jank.
-    return (
-      <SafeAreaView style={styles.authContainer}>
-        <StatusBar style="light" />
-      </SafeAreaView>
-    );
+    return <BootScreen detail="Loading Pravah's interface." />;
   }
 
   return <>{children}</>;
@@ -902,57 +871,6 @@ export default function App() {
 // ── Styles ──────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  // Auth
-  authContainer: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    paddingHorizontal: spacing.xl,
-    justifyContent: "center",
-  },
-  loadingText: {
-    color: colors.textPrimary,
-    ...typography.title,
-    textAlign: "center",
-  },
-  authShell: {
-    gap: spacing.lg,
-  },
-  authLockup: {
-    gap: spacing.sm,
-  },
-  authTitle: {
-    color: colors.textPrimary,
-    ...typography.headline,
-  },
-  authSubtitle: {
-    color: colors.textSecondary,
-    ...typography.bodyLg,
-    maxWidth: 320,
-  },
-  authDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.borderSubtle,
-    width: "100%",
-  },
-  authHint: {
-    color: colors.textMuted,
-    ...typography.micro,
-    marginTop: spacing.xs,
-  },
-  googleButton: {
-    borderRadius: radii.full,
-    backgroundColor: colors.accent,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  googleButtonText: {
-    color: colors.bg,
-    ...typography.title,
-  },
-  disabledButton: {
-    opacity: 0.6,
-  },
-
   // Main layout
   container: {
     flex: 1,
