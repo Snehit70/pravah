@@ -2,6 +2,7 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaView, StyleSheet, Text } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { colors, spacing, typography } from "../theme/tokens";
+import { BrandMark } from "./BrandMark";
 import { GridBackground } from "./GridBackground";
 
 type BootScreenProps = {
@@ -18,6 +19,7 @@ export function BootScreen({
       <StatusBar style="light" />
       <GridBackground />
       <Animated.View entering={FadeIn.duration(400)} style={styles.content}>
+        <BrandMark size={34} />
         <Text style={styles.title}>{title}</Text>
         {detail ? <Text style={styles.detail}>{detail}</Text> : null}
       </Animated.View>

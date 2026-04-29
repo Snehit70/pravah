@@ -2,6 +2,7 @@ import { StatusBar } from "expo-status-bar";
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { colors, spacing, typography } from "../theme/tokens";
+import { BrandMark } from "./BrandMark";
 import { GridBackground } from "./GridBackground";
 
 type MobileAuthScreenProps = {
@@ -21,7 +22,10 @@ export function MobileAuthScreen({
       <GridBackground />
       <Animated.View entering={FadeIn.duration(400)} style={styles.shell}>
         <View style={styles.lockup}>
-          <Text style={styles.wordmark}>Pravah</Text>
+          <View style={styles.brandRow}>
+            <BrandMark size={26} />
+            <Text style={styles.wordmark}>Pravah</Text>
+          </View>
           <Text style={styles.title}>A calmer way to keep your day in view.</Text>
           <Text style={styles.subtitle}>
             Sign in with Google to keep your inbox, timeline, and completed ledger in sync.
@@ -62,9 +66,14 @@ const styles = StyleSheet.create({
   lockup: {
     gap: spacing.sm,
   },
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
   wordmark: {
-    color: colors.textSecondary,
-    ...typography.micro,
+    color: colors.textPrimary,
+    ...typography.title,
   },
   title: {
     color: colors.textPrimary,

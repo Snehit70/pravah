@@ -1,4 +1,4 @@
-/** Design tokens for Pravah Mobile.
+/** Design tokens for Pravah.
  *
  * Mirrors the web app's design system at src/index.css so the two surfaces
  * read as one product. Mobile is denser-paint than dense-desktop, so the

@@ -34,6 +34,7 @@ import { BottomTabBar, type TabKey } from "./src/components/BottomTabBar";
 import { GridBackground } from "./src/components/GridBackground";
 import { Kairo, type KairoSheetRef } from "./src/components/Kairo";
 import { BootScreen } from "./src/components/BootScreen";
+import { BrandMark } from "./src/components/BrandMark";
 import { FAB } from "./src/components/FAB";
 import { AddTaskSheet, type AddTaskSheetRef } from "./src/components/AddTaskSheet";
 import { EditTaskSheet, type EditTaskSheetRef } from "./src/components/EditTaskSheet";
@@ -651,7 +652,10 @@ function MobileApp() {
           box: nothing is enclosed unless enclosure is earned. */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
         <View style={styles.headerTop}>
-          <Text style={styles.wordmark}>Pravah</Text>
+          <View style={styles.brandLockup}>
+            <BrandMark size={24} />
+            <Text style={styles.wordmark}>Pravah</Text>
+          </View>
           <View style={styles.headerLinks}>
             <Pressable
               onPress={openKairo}
@@ -898,9 +902,14 @@ const styles = StyleSheet.create({
   // negative letterSpacing nudge handled in tokens.
   wordmark: {
     color: colors.textPrimary,
-    fontFamily: fonts.serif,
-    fontSize: 20,
+    fontFamily: fonts.sansSemibold,
+    fontSize: 18,
     letterSpacing: -0.3,
+  },
+  brandLockup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
   },
   // View name lives on its own line below the lockup so it can breathe.
   // Sentence case, not uppercase \u2014 sentence case + serif is what gives the
