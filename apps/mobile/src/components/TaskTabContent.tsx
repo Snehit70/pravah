@@ -1,10 +1,11 @@
 import type { JSX } from "react";
-import { FlatList, RefreshControl, ScrollView, Text, View } from "react-native";
+import { FlatList, RefreshControl, ScrollView, View } from "react-native";
 import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
 import { dateLabel } from "../lib/dates";
-import { colors, spacing, typography } from "../theme/tokens";
+import { colors, spacing } from "../theme/tokens";
 import type { MobileTask } from "./TaskCard";
 import type { TabKey } from "./BottomTabBar";
+import { TimelineSectionHeader } from "./TimelineSectionHeader";
 
 type TaskTabContentProps = {
   activeTab: TabKey;
@@ -95,16 +96,10 @@ export function TaskTabContent({
         ) : timelineSections.length ? (
           timelineSections.map(([dateKey, tasksForDate]) => (
             <View key={dateKey}>
-              <Text
-                style={{
-                  color: colors.accent,
-                  ...typography.micro,
-                  marginTop: spacing.md,
-                  marginBottom: spacing.sm,
-                }}
-              >
-                {dateLabel(dateKey, today, tomorrow, weekEnd)}
-              </Text>
+              <TimelineSectionHeader
+                label={dateLabel(dateKey, today, tomorrow, weekEnd)}
+                isToday={dateKey === today}
+              />
               <DraggableFlatList
                 data={tasksForDate}
                 keyExtractor={(item) => item._id}

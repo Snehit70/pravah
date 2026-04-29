@@ -1,5 +1,6 @@
-import { memo, useCallback, useRef } from "react";
+import { memo, useCallback, useEffect, useRef } from "react";
 import {
+  AccessibilityInfo,
   Pressable,
   StyleSheet,
   Text,
@@ -10,8 +11,15 @@ import {
 import ReanimatedSwipeable, {
   type SwipeableMethods,
 } from "react-native-gesture-handler/ReanimatedSwipeable";
-import Animated, { interpolate, useAnimatedStyle, type SharedValue } from "react-native-reanimated";
-import { colors, fonts, spacing, typography } from "../theme/tokens";
+import Animated, {
+  Easing,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  type SharedValue,
+} from "react-native-reanimated";
+import { colors, fonts, motion, radii, shadow, spacing, typography } from "../theme/tokens";
 import type { Id } from "../../../../convex/_generated/dataModel";
 
 export type MobileTask = {
@@ -97,6 +105,45 @@ function TaskCardInner({
   const isCompleted = task.status === "completed";
   const isInboxTask = task.status === "inbox";
   const swipeRef = useRef<SwipeableMethods>(null);
+
+  // Web parity (src/index.css:228-233): when a task flips to completed, a 1px
+  // accent bar sweeps left→right across the row, then the row eases to
+  // 55% opacity. RN can't run clip-path so we drive the sweep with two
+  // SharedValues: progress (the leading edge moves 0→1, the trailing edge
+  // chases) plus opacity for the final fadeout.
+  const sweepProgress = useSharedValue(0);
+  const sweepOpacity = useSharedValue(0);
+  const prevStatus = useRef(task.status);
+  useEffect(() => {
+    if (prevStatus.current !== "completed" && task.status === "completed") {
+      void AccessibilityInfo.isReduceMotionEnabled().then((reduceMotion) => {
+        if (reduceMotion) return;
+        sweepOpacity.value = 1;
+        sweepProgress.value = 0;
+        sweepProgress.value = withTiming(
+          1,
+          {
+            duration: motion.duration.deliberate,
+            easing: Easing.bezier(...motion.easing.outQuart),
+          },
+          (finished) => {
+            if (finished) sweepOpacity.value = withTiming(0, { duration: motion.duration.fast });
+          }
+        );
+      });
+    }
+    prevStatus.current = task.status;
+  }, [task.status, sweepOpacity, sweepProgress]);
+  // Bar leading edge tracks progress; trailing edge follows ~50% behind so the
+  // visible accent stripe is a moving slice rather than a full fill. Width is
+  // expressed as % of the row, translated via flex on a wrapper View.
+  const sweepStyle = useAnimatedStyle(() => {
+    const left = interpolate(sweepProgress.value, [0, 1], [-30, 100], "clamp");
+    return {
+      opacity: sweepOpacity.value,
+      transform: [{ translateX: `${left}%` }],
+    };
+  });
 
   const handleDone = useCallback(() => onDone(task._id), [onDone, task._id]);
   const handleCheckboxPress = useCallback(
@@ -193,14 +240,19 @@ function TaskCardInner({
     [handleMoveToday, handleSendToInbox, isCompleted, isInboxTask, onRightActionTrigger]
   );
 
-  // Priority rail color. The rail is the only enclosing element on the row
-  // and is the primary at-a-glance signal for urgency.
-  const railColor =
-    task.priority === "p1"
-      ? colors.priorityP1
-      : task.priority === "p2"
-        ? colors.borderSubtle
-        : "transparent";
+  // Web parity (src/components/TaskCard.tsx:46-58): the left accent rail color
+  // shows status, not priority. Completed = success, overdue = error, due-soon
+  // = warning, otherwise indigo accent. Mobile follows the same rule so cards
+  // read identically across surfaces.
+  const today = new Date().toISOString().slice(0, 10);
+  const isOverdue = !!task.deadline && task.deadline < today && !isCompleted;
+  const railColor = isCompleted
+    ? colors.success
+    : isOverdue
+      ? colors.error
+      : task.priority === "p1"
+        ? colors.priorityP1
+        : colors.accent;
 
   // Stacked metadata column on the right. Each line is its own micro entry so
   // the column reads like a small log table rather than a row of pills.
@@ -273,6 +325,10 @@ function TaskCardInner({
         {/* Priority rail — the only enclosing shape on the row. */}
         <View style={[styles.rail, { backgroundColor: railColor }]} />
 
+        {/* Completion sweep — 1px accent stripe that scans across the card
+            on the inbox→completed transition. Pointer-events none. */}
+        <Animated.View pointerEvents="none" style={[styles.sweep, sweepStyle]} />
+
         {/* Checkbox — 20px circle. Tapping completes the task; for completed
             rows it's filled and inert (the swipe-right reopen action handles
             that case). */}
@@ -338,34 +394,53 @@ function TaskCardInner({
 export const TaskCard = memo(TaskCardInner);
 
 const styles = StyleSheet.create({
-  // Wraps the swipeable so each row sits flush against its neighbors and the
-  // hairline divider sits exactly at the row boundary.
+  // Each row is its own card. Margin between rows replaces the old hairline
+  // divider — visual separation comes from the card edges + grid background
+  // showing through the gap.
   swipeContainer: {
-    backgroundColor: colors.bg,
+    backgroundColor: "transparent",
+    marginHorizontal: spacing.lg,
+    marginVertical: spacing.xs,
+    borderRadius: radii.xl,
+    overflow: "hidden",
   },
-  // The row itself — flat, no border, no card background, no radius. The
-  // hairline divider is drawn as the row's bottom border, inset 16px on the
-  // left so the priority rail visually crosses it.
+  // Web parity (src/components/TaskCard.tsx:77-93): translucent card fill on
+  // top of the grid, hairline border, soft layered shadow.
   row: {
     flexDirection: "row",
     alignItems: "flex-start",
+    paddingLeft: spacing.md,
     paddingRight: spacing.lg,
-    paddingVertical: spacing.rowY,
-    backgroundColor: colors.bg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderSubtle,
-    // Inset the divider on the left so it visually crosses through the rail.
-    marginLeft: 0,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.bgCard,
+    borderRadius: radii.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    ...shadow.sm,
   },
   rowPressed: {
-    backgroundColor: colors.bgInput,
+    backgroundColor: colors.bgFloating,
   },
-  // Priority rail — 2px wide, full row height. p1 = copper, p2 = subtle,
-  // p3 = transparent. Sits flush at row x=0 so it reads as the row's edge.
+  // Web parity (src/components/TaskCard.tsx:94-101): a 4px left accent rail
+  // anchored to the card edge, color reflecting status. Done as an absolutely
+  // positioned strip so it always touches the rounded corner cleanly.
   rail: {
-    width: 2,
-    alignSelf: "stretch",
-    marginRight: spacing.md,
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    borderTopLeftRadius: radii.xl,
+    borderBottomLeftRadius: radii.xl,
+  },
+  // Sweep stripe — 30% wide, full row height, accent fill. Position:absolute
+  // + translateX % drives the scan motion via Reanimated.
+  sweep: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: "30%",
+    backgroundColor: colors.accentSoft,
   },
   // Checkbox — 20px ring. Empty in default state (no inner dot), filled in
   // completed state. Strikethrough on the title carries the rest of the

@@ -263,7 +263,7 @@ const styles = StyleSheet.create({
   // Sheet surface — one enclosure (earned, because it's a modal). No side
   // borders or extra radius beyond the standard bottom-sheet top corners.
   sheetBg: {
-    backgroundColor: colors.bgCard,
+    backgroundColor: colors.bgFloating,
     borderTopLeftRadius: radii.xl,
     borderTopRightRadius: radii.xl,
   },

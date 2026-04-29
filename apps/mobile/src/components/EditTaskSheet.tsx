@@ -239,7 +239,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
 
 const styles = StyleSheet.create({
   sheetBg: {
-    backgroundColor: colors.bgCard,
+    backgroundColor: colors.bgFloating,
     borderTopLeftRadius: radii.xl,
     borderTopRightRadius: radii.xl,
   },

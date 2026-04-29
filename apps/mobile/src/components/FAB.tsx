@@ -6,7 +6,7 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from "react-native-reanimated";
-import { colors, fonts, radii } from "../theme/tokens";
+import { colors, fonts, radii, shadow } from "../theme/tokens";
 
 type FABProps = {
   onPress: () => void;
@@ -50,10 +50,6 @@ function FABInner({ onPress, bottom = 92 }: FABProps) {
 
   return (
     <View style={[styles.container, { bottom }]} pointerEvents="box-none">
-      {/* Two halo layers \u2014 the wider one is dimmer, the inner one a bit brighter.
-          Both are non-interactive so taps fall through to the pill. */}
-      <View style={[styles.halo, styles.haloOuter]} pointerEvents="none" />
-      <View style={[styles.halo, styles.haloInner]} pointerEvents="none" />
       <AnimatedPressable
         onPress={handlePress}
         onPressIn={handlePressIn}
@@ -62,6 +58,9 @@ function FABInner({ onPress, bottom = 92 }: FABProps) {
         accessibilityRole="button"
         accessibilityLabel="Capture a new task"
       >
+        {/* 1px top inner highlight \u2014 fakes web Button primary's
+            box-shadow inset 0 1px 0 0 rgba(255,255,255,0.08). */}
+        <View pointerEvents="none" style={styles.innerHighlight} />
         <Text style={styles.plus}>+</Text>
         <Text style={styles.label}>Capture</Text>
       </AnimatedPressable>
@@ -84,28 +83,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  // Two stacked halo layers create the soft-edge feel. The outer layer is
-  // larger and dimmer; the inner is closer and brighter. Both inherit the
-  // pill's pill shape via radii.full so the halo follows the silhouette.
-  halo: {
-    position: "absolute",
-    borderRadius: radii.full,
-    backgroundColor: colors.accentSoft,
-  },
-  haloOuter: {
-    top: -16,
-    left: -16,
-    right: -16,
-    bottom: -16,
-    opacity: 0.5,
-  },
-  haloInner: {
-    top: -8,
-    left: -8,
-    right: -8,
-    bottom: -8,
-    opacity: 0.8,
-  },
   pill: {
     flexDirection: "row",
     alignItems: "center",
@@ -113,26 +90,31 @@ const styles = StyleSheet.create({
     height: PILL_HEIGHT,
     paddingHorizontal: 20,
     borderRadius: radii.full,
-    backgroundColor: colors.textPrimary,
-    // Real shadow \u2014 not the broken green rectangle we had before. The shadow
-    // sits below the pill so it reads as elevated above the list.
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.4,
-    shadowRadius: 24,
-    elevation: 14,
+    backgroundColor: colors.accent,
+    ...shadow.glow,
     gap: 6,
+    overflow: "hidden",
+  },
+  // Top hairline highlight \u2014 gives the pill the same "lit from above" lift
+  // as the web Button primary's inset 1px shadow.
+  innerHighlight: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.08)",
   },
   plus: {
-    color: colors.bg,
+    color: colors.textInverse,
     fontFamily: fonts.sansBold,
     fontSize: 17,
     lineHeight: 18,
   },
   label: {
-    color: colors.bg,
+    color: colors.textInverse,
     fontFamily: fonts.sansSemibold,
     fontSize: 14,
-    letterSpacing: 0.6,
+    letterSpacing: 0.4,
   },
 });
