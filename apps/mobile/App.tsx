@@ -7,16 +7,21 @@ import {
   View,
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import Animated, { FadeIn } from "react-native-reanimated";
+import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { type RenderItemParams } from "react-native-draggable-flatlist";
 import { useMutation, useQuery } from "convex/react";
 import type { Doc } from "../../convex/_generated/dataModel";
 import { api } from "../../convex/_generated/api";
 import * as Haptics from "expo-haptics";
 import { authClient, authStorageReady } from "./src/lib/auth-client";
-import { useFonts as useFraunces, Fraunces_300Light } from "@expo-google-fonts/fraunces";
-import { Manrope_500Medium, Manrope_600SemiBold, Manrope_700Bold } from "@expo-google-fonts/manrope";
-import { JetBrainsMono_500Medium } from "@expo-google-fonts/jetbrains-mono";
+import {
+  useFonts as useGeistFonts,
+  Geist_400Regular,
+  Geist_500Medium,
+  Geist_600SemiBold,
+  Geist_700Bold,
+} from "@expo-google-fonts/geist";
+import { GeistMono_500Medium } from "@expo-google-fonts/geist-mono";
 import { ConvexClientProvider } from "./src/lib/convex";
 import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
@@ -26,6 +31,8 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-
 import { colors, fonts, radii, spacing, typography } from "./src/theme/tokens";
 import { TaskCard, type MobileTask } from "./src/components/TaskCard";
 import { BottomTabBar, type TabKey } from "./src/components/BottomTabBar";
+import { GridBackground } from "./src/components/GridBackground";
+import { Kairo, type KairoSheetRef } from "./src/components/Kairo";
 import { FAB } from "./src/components/FAB";
 import { AddTaskSheet, type AddTaskSheetRef } from "./src/components/AddTaskSheet";
 import { EditTaskSheet, type EditTaskSheetRef } from "./src/components/EditTaskSheet";
@@ -79,6 +86,7 @@ function MobileApp() {
   const insets = useSafeAreaInsets();
   const addTaskSheetRef = useRef<AddTaskSheetRef>(null);
   const editTaskSheetRef = useRef<EditTaskSheetRef>(null);
+  const kairoRef = useRef<KairoSheetRef>(null);
   const appStartMsRef = useRef<number>(Date.now());
   const lastListStateLogMsRef = useRef<number>(0);
 
@@ -90,6 +98,12 @@ function MobileApp() {
   const [isAddSheetOpen, setIsAddSheetOpen] = useState(false);
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isKairoActive, setIsKairoActive] = useState(false);
+  const chromeDim = useSharedValue(1);
+  useEffect(() => {
+    chromeDim.value = withTiming(isKairoActive ? 0.38 : 1, { duration: 280 });
+  }, [chromeDim, isKairoActive]);
+  const chromeAnimStyle = useAnimatedStyle(() => ({ opacity: chromeDim.value }));
   const [isDataBootstrapReady, setIsDataBootstrapReady] = useState(false);
 
   const sessionResult = authClient.useSession();
@@ -597,7 +611,7 @@ function MobileApp() {
     return (
       <SafeAreaView style={styles.authContainer}>
         <StatusBar style="light" />
-        <View pointerEvents="none" style={styles.halo} />
+        <GridBackground />
         <Animated.View entering={FadeIn.duration(400)} style={styles.authShell}>
           <View style={styles.authLockup}>
             <Text style={styles.wordmark}>Pravah</Text>
@@ -650,24 +664,39 @@ function MobileApp() {
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
 
-      {/* Single warm halo top-right — replaces the two saturated blur circles. */}
-      <View pointerEvents="none" style={styles.halo} />
+      {/* Web-parity grid vignette behind everything. */}
+      <GridBackground />
 
+      <Animated.View
+        style={[styles.chrome, chromeAnimStyle]}
+        pointerEvents={isKairoActive ? "none" : "auto"}
+      >
       {/* Header — wordmark + view title (Fraunces) with mono subtitle. The
           Settings affordance is a hairline-underlined text link, not a button
           box: nothing is enclosed unless enclosure is earned. */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
         <View style={styles.headerTop}>
           <Text style={styles.wordmark}>Pravah</Text>
-          <Pressable
-            onPress={openSettingsModal}
-            style={({ pressed }) => [styles.settingsLinkWrap, pressed && styles.pressed]}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel="Open settings"
-          >
-            <Text style={styles.settingsLink}>Settings</Text>
-          </Pressable>
+          <View style={styles.headerLinks}>
+            <Pressable
+              onPress={() => kairoRef.current?.open()}
+              style={({ pressed }) => [styles.settingsLinkWrap, pressed && styles.pressed]}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Open Kairo assistant"
+            >
+              <Text style={styles.kairoLink}>Kairo</Text>
+            </Pressable>
+            <Pressable
+              onPress={openSettingsModal}
+              style={({ pressed }) => [styles.settingsLinkWrap, pressed && styles.pressed]}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Open settings"
+            >
+              <Text style={styles.settingsLink}>Settings</Text>
+            </Pressable>
+          </View>
         </View>
         <Text style={styles.headerTitle}>{headerViewName}</Text>
         <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>
@@ -735,6 +764,8 @@ function MobileApp() {
         bottomInset={tabBarBottomPadding}
       />
 
+      </Animated.View>
+
       {/* Bottom sheets */}
       <AddTaskSheet
         ref={addTaskSheetRef}
@@ -747,6 +778,17 @@ function MobileApp() {
         onSave={handleSaveEdits}
         isValidDeadline={normalizeDeadlineInput}
         onSheetChange={setIsEditSheetOpen}
+      />
+
+      {/* Kairo lives at the root so its overlay sits above tabs and FAB. The
+          parent dims the rest of the chrome via isKairoActive when the sheet
+          is open, matching web's 0.38-opacity fade behind the active panel. */}
+      <Kairo
+        ref={kairoRef}
+        tasks={tasks}
+        inboxTasks={inboxTasks}
+        onActiveChange={setIsKairoActive}
+        onOpenSettings={openSettingsModal}
       />
 
       <SettingsSheet
@@ -818,12 +860,12 @@ function StorageGate({ children }: { children: ReactNode }) {
 // boot time, but neither blocks data fetching once mounted below.
 
 function FontGate({ children }: { children: ReactNode }) {
-  const [fontsLoaded] = useFraunces({
-    Fraunces_300Light,
-    Manrope_500Medium,
-    Manrope_600SemiBold,
-    Manrope_700Bold,
-    JetBrainsMono_500Medium,
+  const [fontsLoaded] = useGeistFonts({
+    Geist_400Regular,
+    Geist_500Medium,
+    Geist_600SemiBold,
+    Geist_700Bold,
+    GeistMono_500Medium,
   });
 
   if (!fontsLoaded) {
@@ -918,21 +960,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  // Single warm copper halo, top-right behind the safe area. No second
-  // accent, no shadow on the container — restraint is the point. The size
-  // (~360 px) and softness come from the low-alpha fill (haloCopper is
-  // already 15%); RN can't actually feather a View edge, so we keep the
-  // circle large enough that the hard edge falls well off-screen.
-  halo: {
-    position: "absolute",
-    top: -180,
-    right: -120,
-    width: 360,
-    height: 360,
-    borderRadius: 180,
-    backgroundColor: colors.haloCopper,
+  chrome: {
+    flex: 1,
   },
-
   // Header — typography-first, no enclosing card. The trailing 24px gap
   // (paddingBottom) is the only thing separating the header from the list,
   // doing the work of a divider line without drawing one.
@@ -970,6 +1000,13 @@ const styles = StyleSheet.create({
     ...typography.micro,
     marginTop: spacing.xs,
   },
+  // Header links sit in a row so additional affordances (Kairo, Settings)
+  // line up with the same visual weight rather than competing for spot.
+  headerLinks: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: spacing.lg,
+  },
   // Settings is a hairline-underlined word, not a button shape.
   settingsLinkWrap: {
     paddingVertical: spacing.xs,
@@ -982,6 +1019,15 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     textDecorationLine: "underline",
     textDecorationColor: colors.borderSubtle,
+  },
+  // Kairo entry point: same micro-link dialect as Settings but tinted in the
+  // accent so it reads as the AI affordance without needing iconography.
+  kairoLink: {
+    color: colors.accent,
+    fontFamily: fonts.sansSemibold,
+    fontSize: 12,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
   },
   // Toast — unenclosed: a thin 2px rule on the left + a line of copy. Error
   // tone uses the rust accent, info uses copper. No border, no radius, no fill.
