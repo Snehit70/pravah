@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pravah Architecture Diagram</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: #020617;
+      min-height: 100vh;
+      padding: 2rem;
+      color: white;
+    }
+    .container { max-width: 1240px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot { width: 12px; height: 12px; background: #22d3ee; border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto; }
+    svg { width: 100%; min-width: 1040px; display: block; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 2rem; }
+    .card { background: rgba(15, 23, 42, 0.5); border-radius: 0.75rem; border: 1px solid #1e293b; padding: 1.25rem; }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .card-dot.cyan { background: #22d3ee; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+    .card-dot.amber { background: #fbbf24; }
+    .card-dot.rose { background: #fb7185; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.375rem; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>Pravah Architecture</h1>
+      </div>
+      <p class="subtitle">Timeline-first task manager: React web, Expo mobile, Convex backend, Google sync, Kairo AI copilot, and MCP bridge.</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1080 820" role="img" aria-label="Pravah system architecture diagram">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <marker id="arrowhead-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee" />
+          </marker>
+          <marker id="arrowhead-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#34d399" />
+          </marker>
+          <marker id="arrowhead-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa" />
+          </marker>
+          <marker id="arrowhead-rose" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#fb7185" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5" />
+          </pattern>
+        </defs>
+
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- Arrows behind components -->
+        <line x1="130" y1="170" x2="205" y2="170" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)" />
+        <text x="167" y="160" fill="#94a3b8" font-size="9" text-anchor="middle">HTTPS</text>
+        <line x1="130" y1="305" x2="205" y2="305" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)" />
+        <text x="167" y="295" fill="#94a3b8" font-size="9" text-anchor="middle">Convex client</text>
+        <line x1="380" y1="170" x2="455" y2="235" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)" />
+        <line x1="380" y1="305" x2="455" y2="260" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead-cyan)" />
+        <text x="418" y="222" fill="#94a3b8" font-size="9" text-anchor="middle">queries / mutations</text>
+        <line x1="630" y1="250" x2="705" y2="250" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead-violet)" />
+        <text x="667" y="240" fill="#94a3b8" font-size="9" text-anchor="middle">tables + indexes</text>
+        <path d="M 575 210 C 575 135, 735 135, 735 95" fill="none" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead-rose)" />
+        <text x="640" y="136" fill="#fb7185" font-size="8" text-anchor="middle">Better Auth sessions</text>
+        <path d="M 575 290 C 575 375, 720 375, 720 450" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)" />
+        <text x="650" y="374" fill="#94a3b8" font-size="9" text-anchor="middle">HTTP routes / actions</text>
+        <line x1="810" y1="450" x2="890" y2="450" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead-rose)" />
+        <text x="850" y="440" fill="#fb7185" font-size="8" text-anchor="middle">OAuth PKCE</text>
+        <line x1="810" y1="500" x2="890" y2="500" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)" />
+        <text x="850" y="518" fill="#94a3b8" font-size="8" text-anchor="middle">import events</text>
+        <path d="M 280 335 C 280 520, 465 520, 465 610" fill="none" stroke="#fb923c" stroke-width="1.5" stroke-dasharray="4,4" marker-end="url(#arrowhead)" />
+        <text x="355" y="520" fill="#fb923c" font-size="8" text-anchor="middle">offline retry queue</text>
+        <path d="M 280 200 C 280 430, 170 430, 170 610" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)" />
+        <text x="208" y="430" fill="#94a3b8" font-size="8" text-anchor="middle">add-task block</text>
+        <line x1="270" y1="610" x2="420" y2="610" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)" />
+        <text x="345" y="600" fill="#94a3b8" font-size="9" text-anchor="middle">persist task</text>
+        <line x1="130" y1="610" x2="70" y2="610" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)" />
+        <text x="100" y="600" fill="#94a3b8" font-size="8" text-anchor="middle">direct API</text>
+        <line x1="100" y1="680" x2="420" y2="650" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)" />
+        <text x="245" y="688" fill="#94a3b8" font-size="8" text-anchor="middle">stdio tools → Convex mutations</text>
+
+        <!-- User entry points -->
+        <rect x="30" y="135" width="100" height="70" rx="6" fill="#0f172a" />
+        <rect x="30" y="135" width="100" height="70" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5" />
+        <text x="80" y="162" fill="white" font-size="11" font-weight="600" text-anchor="middle">Web Users</text>
+        <text x="80" y="179" fill="#94a3b8" font-size="9" text-anchor="middle">Browser</text>
+        <text x="80" y="193" fill="#94a3b8" font-size="8" text-anchor="middle">timeline UI</text>
+
+        <rect x="30" y="270" width="100" height="70" rx="6" fill="#0f172a" />
+        <rect x="30" y="270" width="100" height="70" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5" />
+        <text x="80" y="296" fill="white" font-size="11" font-weight="600" text-anchor="middle">Mobile Users</text>
+        <text x="80" y="313" fill="#94a3b8" font-size="9" text-anchor="middle">iOS / Android</text>
+        <text x="80" y="327" fill="#94a3b8" font-size="8" text-anchor="middle">Expo app</text>
+
+        <!-- Client boundary -->
+        <rect x="175" y="70" width="235" height="315" rx="12" fill="rgba(8, 51, 68, 0.08)" stroke="#22d3ee" stroke-width="1" stroke-dasharray="8,4" />
+        <text x="190" y="90" fill="#22d3ee" font-size="10" font-weight="600">Client Layer</text>
+
+        <rect x="205" y="125" width="175" height="90" rx="6" fill="#0f172a" />
+        <rect x="205" y="125" width="175" height="90" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5" />
+        <text x="292" y="151" fill="white" font-size="12" font-weight="600" text-anchor="middle">React Web</text>
+        <text x="292" y="169" fill="#94a3b8" font-size="9" text-anchor="middle">Vite + React 19</text>
+        <text x="292" y="184" fill="#94a3b8" font-size="8" text-anchor="middle">Timeline, Inbox, DnD</text>
+        <text x="292" y="199" fill="#22d3ee" font-size="8" text-anchor="middle">src/</text>
+
+        <rect x="205" y="260" width="175" height="90" rx="6" fill="#0f172a" />
+        <rect x="205" y="260" width="175" height="90" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5" />
+        <text x="292" y="286" fill="white" font-size="12" font-weight="600" text-anchor="middle">Expo Mobile</text>
+        <text x="292" y="304" fill="#94a3b8" font-size="9" text-anchor="middle">React Native</text>
+        <text x="292" y="319" fill="#94a3b8" font-size="8" text-anchor="middle">SecureStore auth cache</text>
+        <text x="292" y="334" fill="#22d3ee" font-size="8" text-anchor="middle">apps/mobile/</text>
+
+        <!-- Convex boundary -->
+        <rect x="440" y="70" width="420" height="315" rx="12" fill="rgba(120, 53, 15, 0.06)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="8,4" />
+        <text x="455" y="90" fill="#fbbf24" font-size="10" font-weight="600">Convex Deployment</text>
+
+        <rect x="455" y="205" width="175" height="90" rx="6" fill="#0f172a" />
+        <rect x="455" y="205" width="175" height="90" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5" />
+        <text x="542" y="231" fill="white" font-size="12" font-weight="600" text-anchor="middle">Convex Functions</text>
+        <text x="542" y="249" fill="#94a3b8" font-size="9" text-anchor="middle">queries + mutations</text>
+        <text x="542" y="264" fill="#94a3b8" font-size="8" text-anchor="middle">tasks, users, sync</text>
+        <text x="542" y="279" fill="#34d399" font-size="8" text-anchor="middle">convex/*.ts</text>
+
+        <rect x="705" y="205" width="125" height="90" rx="6" fill="#0f172a" />
+        <rect x="705" y="205" width="125" height="90" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5" />
+        <text x="767" y="229" fill="white" font-size="11" font-weight="600" text-anchor="middle">Convex DB</text>
+        <text x="767" y="247" fill="#94a3b8" font-size="8" text-anchor="middle">tasks, users</text>
+        <text x="767" y="261" fill="#94a3b8" font-size="8" text-anchor="middle">integrations</text>
+        <text x="767" y="275" fill="#94a3b8" font-size="8" text-anchor="middle">syncRuns, mappings</text>
+
+        <rect x="675" y="70" width="145" height="70" rx="6" fill="#0f172a" />
+        <rect x="675" y="70" width="145" height="70" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5" />
+        <text x="747" y="96" fill="white" font-size="11" font-weight="600" text-anchor="middle">Better Auth</text>
+        <text x="747" y="113" fill="#94a3b8" font-size="9" text-anchor="middle">Convex plugin</text>
+        <text x="747" y="127" fill="#fb7185" font-size="8" text-anchor="middle">ownerTokenIdentifier</text>
+
+        <!-- Integrations boundary -->
+        <rect x="675" y="420" width="365" height="150" rx="12" fill="rgba(120, 53, 15, 0.05)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="8,4" />
+        <text x="690" y="440" fill="#fbbf24" font-size="10" font-weight="600">External Integrations</text>
+
+        <rect x="705" y="455" width="105" height="80" rx="6" fill="#0f172a" />
+        <rect x="705" y="455" width="105" height="80" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5" />
+        <text x="757" y="481" fill="white" font-size="10" font-weight="600" text-anchor="middle">Sync Actions</text>
+        <text x="757" y="498" fill="#94a3b8" font-size="8" text-anchor="middle">Calendar import</text>
+        <text x="757" y="512" fill="#94a3b8" font-size="8" text-anchor="middle">cursors + retry</text>
+
+        <rect x="890" y="425" width="125" height="55" rx="6" fill="#0f172a" />
+        <rect x="890" y="425" width="125" height="55" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5" />
+        <text x="952" y="449" fill="white" font-size="10" font-weight="600" text-anchor="middle">Google OAuth</text>
+        <text x="952" y="464" fill="#94a3b8" font-size="8" text-anchor="middle">code + token</text>
+
+        <rect x="890" y="490" width="125" height="55" rx="6" fill="#0f172a" />
+        <rect x="890" y="490" width="125" height="55" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5" />
+        <text x="952" y="514" fill="white" font-size="10" font-weight="600" text-anchor="middle">Google APIs</text>
+        <text x="952" y="529" fill="#94a3b8" font-size="8" text-anchor="middle">Calendar / Gmail</text>
+
+        <!-- AI and MCP layer -->
+        <rect x="30" y="575" width="580" height="130" rx="12" fill="rgba(6, 78, 59, 0.06)" stroke="#34d399" stroke-width="1" stroke-dasharray="8,4" />
+        <text x="45" y="595" fill="#34d399" font-size="10" font-weight="600">Automation + AI Layer</text>
+
+        <rect x="130" y="575" width="140" height="70" rx="6" fill="#0f172a" />
+        <rect x="130" y="575" width="140" height="70" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5" />
+        <text x="200" y="602" fill="white" font-size="11" font-weight="600" text-anchor="middle">Kairo Copilot</text>
+        <text x="200" y="619" fill="#94a3b8" font-size="8" text-anchor="middle">bottom dock, ⌘J</text>
+        <text x="200" y="633" fill="#94a3b8" font-size="8" text-anchor="middle">localStorage config</text>
+
+        <rect x="-5" y="575" width="105" height="70" rx="6" fill="#0f172a" />
+        <rect x="-5" y="575" width="105" height="70" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5" />
+        <text x="47" y="602" fill="white" font-size="10" font-weight="600" text-anchor="middle">LLM APIs</text>
+        <text x="47" y="619" fill="#94a3b8" font-size="8" text-anchor="middle">OpenAI-compatible</text>
+        <text x="47" y="633" fill="#94a3b8" font-size="8" text-anchor="middle">or Anthropic</text>
+
+        <rect x="420" y="575" width="145" height="90" rx="6" fill="#0f172a" />
+        <rect x="420" y="575" width="145" height="90" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5" />
+        <text x="492" y="602" fill="white" font-size="11" font-weight="600" text-anchor="middle">MCP Bridge</text>
+        <text x="492" y="620" fill="#94a3b8" font-size="8" text-anchor="middle">mcp-server.ts</text>
+        <text x="492" y="634" fill="#94a3b8" font-size="8" text-anchor="middle">stdio task tools</text>
+        <text x="492" y="648" fill="#34d399" font-size="8" text-anchor="middle">bun run mcp</text>
+
+        <!-- Legend below lowest boundary -->
+        <text x="690" y="640" fill="white" font-size="10" font-weight="600">Legend</text>
+        <rect x="690" y="654" width="16" height="10" rx="2" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1" />
+        <text x="714" y="662" fill="#94a3b8" font-size="8">Frontend / client</text>
+        <rect x="690" y="672" width="16" height="10" rx="2" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1" />
+        <text x="714" y="680" fill="#94a3b8" font-size="8">Backend / automation</text>
+        <rect x="690" y="690" width="16" height="10" rx="2" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1" />
+        <text x="714" y="698" fill="#94a3b8" font-size="8">Database</text>
+        <rect x="690" y="708" width="16" height="10" rx="2" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1" />
+        <text x="714" y="716" fill="#94a3b8" font-size="8">Auth / security</text>
+        <rect x="690" y="726" width="16" height="10" rx="2" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1" />
+        <text x="714" y="734" fill="#94a3b8" font-size="8">External system</text>
+        <line x1="690" y1="750" x2="706" y2="750" stroke="#fb7185" stroke-width="1" stroke-dasharray="3,3" />
+        <text x="714" y="753" fill="#94a3b8" font-size="8">Auth / sensitive flow</text>
+      </svg>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-header"><div class="card-dot cyan"></div><h3>Client Surface</h3></div>
+        <ul>
+          <li>• Web app: Vite + React 19 in <code>src/</code></li>
+          <li>• Mobile app: Expo React Native in <code>apps/mobile/</code></li>
+          <li>• Timeline, inbox, drag reorder, QuickAdd, settings</li>
+          <li>• Kairo client config stays local to the device</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-dot emerald"></div><h3>Backend + Data</h3></div>
+        <ul>
+          <li>• Convex queries, mutations, actions, and HTTP routes</li>
+          <li>• Better Auth sessions enforce per-user ownership</li>
+          <li>• Core tables: tasks, users, integrations, sync state</li>
+          <li>• MCP stdio bridge exposes task tools to agents</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-dot rose"></div><h3>Integrations + Trust</h3></div>
+        <ul>
+          <li>• Google OAuth PKCE exchanges through Convex HTTP routes</li>
+          <li>• Calendar sync imports events into Pravah tasks</li>
+          <li>• Gmail candidates flow through a review queue</li>
+          <li>• User LLM API keys are called browser-side, not stored server-side</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="footer">Pravah • Generated architecture diagram from README, docs/architecture.md, package manifests, and Convex schema</p>
+  </div>
+</body>
+</html>
