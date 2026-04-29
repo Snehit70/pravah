@@ -20,6 +20,7 @@ import Animated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { colors, fonts, motion, radii, shadow, spacing, typography } from "../theme/tokens";
+import { getLocalDateString } from "../lib/dates";
 import type { Id } from "../../../../convex/_generated/dataModel";
 
 export type MobileTask = {
@@ -244,7 +245,7 @@ function TaskCardInner({
   // shows status, not priority. Completed = success, overdue = error, due-soon
   // = warning, otherwise indigo accent. Mobile follows the same rule so cards
   // read identically across surfaces.
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getLocalDateString();
   const isOverdue = !!task.deadline && task.deadline < today && !isCompleted;
   const railColor = isCompleted
     ? colors.success

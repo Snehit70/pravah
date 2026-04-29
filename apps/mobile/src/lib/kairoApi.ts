@@ -1,4 +1,5 @@
 import type { KairoConfig, KairoProviderFormat } from "./kairoConfig";
+import { getLocalDateString } from "./dates";
 
 /**
  * Pure request/response helpers ported verbatim from src/components/Kairo.tsx
@@ -51,7 +52,7 @@ export type KairoTaskInput = {
 };
 
 export function buildKairoContext(allTasks: KairoTaskInput[], inboxTasks: KairoTaskInput[]): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getLocalDateString();
   const scheduled = allTasks.filter((t) => t.status === "scheduled");
   const completed = allTasks.filter((t) => t.status === "completed");
 
