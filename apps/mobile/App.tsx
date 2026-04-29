@@ -174,7 +174,6 @@ function MobileApp() {
   const unscheduleTaskMutation = useMutation(api.tasks.unscheduleTask);
   const reopenTaskMutation = useMutation(api.tasks.reopenTask);
   const storeUserMutation = useMutation(api.users.store);
-  const claimLegacyDataMutation = useMutation(api.users.claimLegacyData);
 
   // ── Derived data ────────────────────────────────────────────────────
 
@@ -295,14 +294,13 @@ function MobileApp() {
     void (async () => {
       try {
         await storeUserMutation({});
-        await claimLegacyDataMutation({});
       } catch (error) {
         mobileLogger.warn("data_bootstrap_failed", {
           errorType: classifyError(error),
         });
         showToast({
           kind: "error",
-          message: "Could not run legacy data migration automatically.",
+          message: "Could not finish loading your workspace.",
         });
       } finally {
         if (!cancelled) {
@@ -314,7 +312,7 @@ function MobileApp() {
     return () => {
       cancelled = true;
     };
-  }, [session, storeUserMutation, claimLegacyDataMutation, showToast]);
+  }, [session, storeUserMutation, showToast]);
 
   // ── Toast / retry ───────────────────────────────────────────────────
 
