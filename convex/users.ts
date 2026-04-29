@@ -34,6 +34,16 @@ export const claimLegacyData = mutation({
   handler: async (ctx) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
 
+    const users = await ctx.db.query("users").collect();
+    const hasOtherUsers = users.some((user) => user.tokenIdentifier !== tokenIdentifier);
+
+    if (hasOtherUsers) {
+      return {
+        claimed: false,
+        skipped: true,
+      };
+    }
+
     const legacyTasks = await ctx.db
       .query("tasks")
       .filter((q) => q.eq(q.field("ownerTokenIdentifier"), undefined))
@@ -79,6 +89,7 @@ export const claimLegacyData = mutation({
           legacyReviewItems.length +
           legacyRuns.length >
         0,
+      skipped: false,
     };
   },
 });

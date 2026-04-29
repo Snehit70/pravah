@@ -178,6 +178,7 @@ function MobileApp() {
   const unscheduleTaskMutation = useMutation(api.tasks.unscheduleTask);
   const reopenTaskMutation = useMutation(api.tasks.reopenTask);
   const storeUserMutation = useMutation(api.users.store);
+  const claimLegacyDataMutation = useMutation(api.users.claimLegacyData);
 
   // ── Derived data ────────────────────────────────────────────────────
 
@@ -298,6 +299,7 @@ function MobileApp() {
     void (async () => {
       try {
         await storeUserMutation({});
+        await claimLegacyDataMutation({});
       } catch (error) {
         mobileLogger.warn("data_bootstrap_failed", {
           errorType: classifyError(error),
@@ -316,7 +318,7 @@ function MobileApp() {
     return () => {
       cancelled = true;
     };
-  }, [session, storeUserMutation, showToast]);
+  }, [session, storeUserMutation, claimLegacyDataMutation, showToast]);
 
   // ── Toast / retry ───────────────────────────────────────────────────
 

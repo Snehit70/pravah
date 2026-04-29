@@ -19,6 +19,16 @@ const EMPTY: KairoConfig = {
   providerFormat: "anthropic",
 };
 
+function getProviderDraft(providerFormat: KairoProviderFormat, apiKey: string): KairoConfig {
+  const defaults = KAIRO_DEFAULTS[providerFormat];
+  return {
+    apiKey,
+    providerFormat,
+    baseUrl: defaults.baseUrl,
+    model: defaults.model,
+  };
+}
+
 export function KairoSettingsSection() {
   const [draft, setDraft] = useState<KairoConfig>(EMPTY);
   const [loaded, setLoaded] = useState(false);
@@ -38,15 +48,7 @@ export function KairoSettingsSection() {
   }, []);
 
   const setProvider = (p: KairoProviderFormat) => {
-    setDraft((d) => {
-      const defaults = KAIRO_DEFAULTS[p];
-      return {
-        ...d,
-        providerFormat: p,
-        baseUrl: d.baseUrl || defaults.baseUrl,
-        model: d.model || defaults.model,
-      };
-    });
+    setDraft((d) => getProviderDraft(p, d.apiKey));
   };
 
   const handleSave = async () => {
@@ -57,7 +59,7 @@ export function KairoSettingsSection() {
 
   const handleClear = async () => {
     await clearKairoConfig();
-    setDraft(EMPTY);
+    setDraft(getProviderDraft("anthropic", ""));
     setSavedNotice("Cleared.");
     setTimeout(() => setSavedNotice(null), 1800);
   };
