@@ -139,10 +139,27 @@ export function TaskTabContent({
           });
         }}
         onDragEnd={({ data: newRows }) => {
-          // Group the reordered rows back into per-date buckets and call
-          // onTimelineDragEnd for each date whose task order changed.
-          // We compare against sectionSnapshots (pre-drag) so the handler
-          // can validate priority boundaries and detect cross-day moves.
+          // Cross-day guard: walk the post-drop row list in order, tracking
+          // which section we are in by the last header seen. If any task row's
+          // embedded dateKey does not match that section, the user dragged it
+          // across a day boundary — reject the whole drop so the list snaps back
+          // and no mutation fires.
+          let currentSectionDateKey: string | null = null;
+          for (const row of newRows) {
+            if (row.kind === "header") {
+              currentSectionDateKey = row.dateKey;
+              continue;
+            }
+            if (currentSectionDateKey !== null && row.dateKey !== currentSectionDateKey) {
+              // Cross-day drag detected — abort. DraggableFlatList will re-render
+              // from the unchanged `timelineRows` prop, snapping back to the
+              // pre-drag order without any server call.
+              return;
+            }
+          }
+
+          // Same-day reorder: group task rows by date using the pre-drag section
+          // snapshots so the handler can check priority boundaries correctly.
           const byDate = new Map<string, MobileTask[]>();
           for (const row of newRows) {
             if (row.kind !== "task") continue;
