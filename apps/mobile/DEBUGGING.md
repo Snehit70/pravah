@@ -1,4 +1,4 @@
-# Pravah Mobile Debugging
+# Pravah Debugging
 
 ## Log Prefix
 

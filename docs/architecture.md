@@ -49,8 +49,10 @@ mcp-server.ts               MCP stdio bridge
 ## Auth Model
 
 - Better Auth + Convex plugin handles sessions.
+- Pravah is currently a single-user system; it does not support shared or collaborative multi-user workspaces.
 - Ownership is enforced via `ownerTokenIdentifier` on all domain records.
 - Convex functions call `requireTokenIdentifier` before any data operation.
+- Legacy ownerless records are intentionally claimed by the current signed-in user during bootstrap because they originate from older single-user app versions.
 
 ## Data Model
 

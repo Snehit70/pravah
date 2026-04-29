@@ -34,6 +34,10 @@ export const claimLegacyData = mutation({
   handler: async (ctx) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
 
+    // Pravah is currently a single-user product. This migration intentionally
+    // claims any legacy ownerless records for the authenticated user so older
+    // local/dev data becomes visible again after ownerTokenIdentifier was added.
+
     const legacyTasks = await ctx.db
       .query("tasks")
       .filter((q) => q.eq(q.field("ownerTokenIdentifier"), undefined))

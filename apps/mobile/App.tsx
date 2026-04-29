@@ -7,28 +7,38 @@ import {
   View,
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import Animated, { FadeIn } from "react-native-reanimated";
+import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { type RenderItemParams } from "react-native-draggable-flatlist";
 import { useMutation, useQuery } from "convex/react";
 import type { Doc } from "../../convex/_generated/dataModel";
 import { api } from "../../convex/_generated/api";
 import * as Haptics from "expo-haptics";
 import { authClient, authStorageReady } from "./src/lib/auth-client";
-import { useFonts as useFraunces, Fraunces_300Light } from "@expo-google-fonts/fraunces";
-import { Manrope_500Medium, Manrope_600SemiBold, Manrope_700Bold } from "@expo-google-fonts/manrope";
-import { JetBrainsMono_500Medium } from "@expo-google-fonts/jetbrains-mono";
+import {
+  useFonts as useGeistFonts,
+  Geist_400Regular,
+  Geist_500Medium,
+  Geist_600SemiBold,
+  Geist_700Bold,
+} from "@expo-google-fonts/geist";
+import { GeistMono_500Medium } from "@expo-google-fonts/geist-mono";
 import { ConvexClientProvider } from "./src/lib/convex";
 import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
 
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { colors, fonts, radii, spacing, typography } from "./src/theme/tokens";
+import { colors, fonts, spacing, typography } from "./src/theme/tokens";
 import { TaskCard, type MobileTask } from "./src/components/TaskCard";
 import { BottomTabBar, type TabKey } from "./src/components/BottomTabBar";
+import { GridBackground } from "./src/components/GridBackground";
+import { Kairo, type KairoSheetRef } from "./src/components/Kairo";
+import { BootScreen } from "./src/components/BootScreen";
+import { BrandMark } from "./src/components/BrandMark";
 import { FAB } from "./src/components/FAB";
 import { AddTaskSheet, type AddTaskSheetRef } from "./src/components/AddTaskSheet";
 import { EditTaskSheet, type EditTaskSheetRef } from "./src/components/EditTaskSheet";
+import { MobileAuthScreen } from "./src/components/MobileAuthScreen";
 import { RootErrorBoundary } from "./src/components/RootErrorBoundary";
 import { SettingsSheet } from "./src/components/SettingsSheet";
 import { TaskTabContent } from "./src/components/TaskTabContent";
@@ -79,6 +89,7 @@ function MobileApp() {
   const insets = useSafeAreaInsets();
   const addTaskSheetRef = useRef<AddTaskSheetRef>(null);
   const editTaskSheetRef = useRef<EditTaskSheetRef>(null);
+  const kairoRef = useRef<KairoSheetRef>(null);
   const appStartMsRef = useRef<number>(Date.now());
   const lastListStateLogMsRef = useRef<number>(0);
 
@@ -90,6 +101,12 @@ function MobileApp() {
   const [isAddSheetOpen, setIsAddSheetOpen] = useState(false);
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isKairoActive, setIsKairoActive] = useState(false);
+  const chromeDim = useSharedValue(1);
+  useEffect(() => {
+    chromeDim.value = withTiming(isKairoActive ? 0.38 : 1, { duration: 280 });
+  }, [chromeDim, isKairoActive]);
+  const chromeAnimStyle = useAnimatedStyle(() => ({ opacity: chromeDim.value }));
   const [isDataBootstrapReady, setIsDataBootstrapReady] = useState(false);
 
   const sessionResult = authClient.useSession();
@@ -119,6 +136,7 @@ function MobileApp() {
     api.tasks.listTasks,
     session && activeTab === "completed" ? { status: "completed" } : "skip"
   );
+  const allTasksQuery = useQuery(api.tasks.listTasks, session ? {} : "skip");
   const countsQuery = useQuery(api.tasks.getTaskCounts, session ? {} : "skip");
 
   const activeQueryTasks =
@@ -129,6 +147,21 @@ function MobileApp() {
         : completedQuery;
   const isActiveListLoading = activeQueryTasks === undefined;
 
+  const mapTaskDoc = useCallback(
+    (task: Doc<"tasks">): MobileTask => ({
+      _id: task._id,
+      title: task.title,
+      description: task.description,
+      deadline: task.deadline,
+      priority: task.priority,
+      status: task.status,
+      scheduledDate: task.scheduledDate,
+      position: task.position,
+      updatedAt: task.updatedAt,
+    }),
+    []
+  );
+
   const serverTasks = useMemo<MobileTask[]>(() => {
     const activeDocs =
       activeTab === "timeline"
@@ -137,21 +170,13 @@ function MobileApp() {
           ? inboxQuery
           : completedQuery;
 
-    return (
-      (activeDocs as Doc<"tasks">[] | undefined)?.map((task) => ({
-        _id: task._id,
-        title: task.title,
-        description: task.description,
-        deadline: task.deadline,
-        priority: task.priority,
-        status: task.status,
-        scheduledDate: task.scheduledDate,
-        position: task.position,
-        updatedAt: task.updatedAt,
-      })) ?? []
-    );
-  }, [activeTab, completedQuery, inboxQuery, timelineQuery]);
+    return ((activeDocs as Doc<"tasks">[] | undefined)?.map(mapTaskDoc) ?? []);
+  }, [activeTab, completedQuery, inboxQuery, mapTaskDoc, timelineQuery]);
   const tasks = useMemo(() => optimisticTasks ?? serverTasks, [optimisticTasks, serverTasks]);
+  const allWorkspaceTasks = useMemo(
+    () => ((allTasksQuery as Doc<"tasks">[] | undefined)?.map(mapTaskDoc) ?? []),
+    [allTasksQuery, mapTaskDoc]
+  );
 
   const addTaskMutation = useMutation(api.tasks.addTask);
   const updateTaskMutation = useMutation(api.tasks.updateTask);
@@ -188,6 +213,11 @@ function MobileApp() {
   const timelineCount = activeTab === "timeline" ? scheduledTasks.length : (countsQuery?.timelineCount ?? 0);
   const completedCount =
     countsQuery?.completedCount ?? (activeTab === "completed" ? completedTasks.length : 0);
+  const kairoTasks = allWorkspaceTasks;
+  const kairoInboxTasks = useMemo(
+    () => kairoTasks.filter((task) => task.status === "inbox"),
+    [kairoTasks]
+  );
 
   const timelineSections = useMemo(() => {
     const grouped = new Map<string, MobileTask[]>();
@@ -288,7 +318,7 @@ function MobileApp() {
         });
         showToast({
           kind: "error",
-          message: "Could not run legacy data migration automatically.",
+          message: "Could not finish loading your workspace.",
         });
       } finally {
         if (!cancelled) {
@@ -489,6 +519,11 @@ function MobileApp() {
     setIsSettingsModalOpen(true);
   }, []);
 
+  const openKairo = useCallback(() => {
+    mobileLogger.info("kairo_opened");
+    kairoRef.current?.open();
+  }, []);
+
   const renderInboxTaskItem = useCallback(
     ({ item, drag }: RenderItemParams<MobileTask>) => (
       <TaskCard
@@ -503,18 +538,17 @@ function MobileApp() {
   );
 
   const renderTimelineTaskItem = useCallback(
-    (dateKey: string) =>
-      ({ item, drag }: RenderItemParams<MobileTask>) => (
-        <TaskCard
-          task={item}
-          dateLabel={dateLabel(dateKey, today, tomorrow, weekEnd)}
-          onDone={markDone}
-          onSendToInbox={sendToInbox}
-          onReorder={(taskId, direction) => shiftTimelineTask(taskId, dateKey, direction)}
-          onEdit={handleEditTask}
-          onDragHandlePress={drag}
-        />
-      ),
+    (dateKey: string, { item, drag }: RenderItemParams<MobileTask>) => (
+      <TaskCard
+        task={item}
+        dateLabel={dateLabel(dateKey, today, tomorrow, weekEnd)}
+        onDone={markDone}
+        onSendToInbox={sendToInbox}
+        onReorder={(taskId, direction) => shiftTimelineTask(taskId, dateKey, direction)}
+        onEdit={handleEditTask}
+        onDragHandlePress={drag}
+      />
+    ),
     [today, tomorrow, weekEnd, markDone, sendToInbox, shiftTimelineTask, handleEditTask]
   );
 
@@ -583,48 +617,16 @@ function MobileApp() {
   // ── Loading / Auth screens ──────────────────────────────────────────
 
   if (sessionLoading || (session && !isDataBootstrapReady)) {
-    return (
-      <SafeAreaView style={styles.authContainer}>
-        <StatusBar style="light" />
-        <Animated.Text entering={FadeIn.duration(600)} style={styles.loadingText}>
-          Loading your workspace...
-        </Animated.Text>
-      </SafeAreaView>
-    );
+    return <BootScreen />;
   }
 
   if (!session) {
     return (
-      <SafeAreaView style={styles.authContainer}>
-        <StatusBar style="light" />
-        <View pointerEvents="none" style={styles.halo} />
-        <Animated.View entering={FadeIn.duration(400)} style={styles.authShell}>
-          <View style={styles.authLockup}>
-            <Text style={styles.wordmark}>Pravah</Text>
-            <Text style={styles.authTitle}>A calmer way to keep your day in view.</Text>
-            <Text style={styles.authSubtitle}>
-              Sign in with Google to keep your inbox, timeline, and completed ledger in sync.
-            </Text>
-          </View>
-          <View style={styles.authDivider} />
-          <Pressable
-            onPress={handleGoogleSignIn}
-            disabled={!canGoogleSignIn || isSigningIn}
-            style={({ pressed }) => [
-              styles.googleButton,
-              (!canGoogleSignIn || isSigningIn) && styles.disabledButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.googleButtonText}>
-              {isSigningIn ? "Signing in..." : "Continue with Google"}
-            </Text>
-          </Pressable>
-          {!canGoogleSignIn ? (
-            <Text style={styles.authHint}>Set EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in mobile env.</Text>
-          ) : null}
-        </Animated.View>
-      </SafeAreaView>
+      <MobileAuthScreen
+        canGoogleSignIn={canGoogleSignIn}
+        isSigningIn={isSigningIn}
+        onGoogleSignIn={() => void handleGoogleSignIn()}
+      />
     );
   }
 
@@ -650,24 +652,42 @@ function MobileApp() {
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
 
-      {/* Single warm halo top-right — replaces the two saturated blur circles. */}
-      <View pointerEvents="none" style={styles.halo} />
+      {/* Web-parity grid vignette behind everything. */}
+      <GridBackground />
 
+      <Animated.View
+        style={[styles.chrome, chromeAnimStyle]}
+        pointerEvents={isKairoActive ? "none" : "auto"}
+      >
       {/* Header — wordmark + view title (Fraunces) with mono subtitle. The
           Settings affordance is a hairline-underlined text link, not a button
           box: nothing is enclosed unless enclosure is earned. */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
         <View style={styles.headerTop}>
-          <Text style={styles.wordmark}>Pravah</Text>
-          <Pressable
-            onPress={openSettingsModal}
-            style={({ pressed }) => [styles.settingsLinkWrap, pressed && styles.pressed]}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel="Open settings"
-          >
-            <Text style={styles.settingsLink}>Settings</Text>
-          </Pressable>
+          <View style={styles.brandLockup}>
+            <BrandMark size={24} />
+            <Text style={styles.wordmark}>Pravah</Text>
+          </View>
+          <View style={styles.headerLinks}>
+            <Pressable
+              onPress={openKairo}
+              style={({ pressed }) => [styles.settingsLinkWrap, pressed && styles.pressed]}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Open Kairo assistant"
+            >
+              <Text style={styles.kairoLink}>Kairo</Text>
+            </Pressable>
+            <Pressable
+              onPress={openSettingsModal}
+              style={({ pressed }) => [styles.settingsLinkWrap, pressed && styles.pressed]}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Open settings"
+            >
+              <Text style={styles.settingsLink}>Settings</Text>
+            </Pressable>
+          </View>
         </View>
         <Text style={styles.headerTitle}>{headerViewName}</Text>
         <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>
@@ -735,6 +755,8 @@ function MobileApp() {
         bottomInset={tabBarBottomPadding}
       />
 
+      </Animated.View>
+
       {/* Bottom sheets */}
       <AddTaskSheet
         ref={addTaskSheetRef}
@@ -747,6 +769,17 @@ function MobileApp() {
         onSave={handleSaveEdits}
         isValidDeadline={normalizeDeadlineInput}
         onSheetChange={setIsEditSheetOpen}
+      />
+
+      {/* Kairo lives at the root so its overlay sits above tabs and FAB. The
+          parent dims the rest of the chrome via isKairoActive when the sheet
+          is open, matching web's 0.38-opacity fade behind the active panel. */}
+      <Kairo
+        ref={kairoRef}
+        tasks={kairoTasks}
+        inboxTasks={kairoInboxTasks}
+        onActiveChange={setIsKairoActive}
+        onOpenSettings={openSettingsModal}
       />
 
       <SettingsSheet
@@ -798,14 +831,7 @@ function StorageGate({ children }: { children: ReactNode }) {
   }, []);
 
   if (!ready) {
-    return (
-      <SafeAreaView style={styles.authContainer}>
-        <StatusBar style="light" />
-        <Animated.Text entering={FadeIn.duration(600)} style={styles.loadingText}>
-          Loading your workspace...
-        </Animated.Text>
-      </SafeAreaView>
-    );
+    return <BootScreen detail="Restoring your secure session cache." />;
   }
 
   return <>{children}</>;
@@ -818,22 +844,16 @@ function StorageGate({ children }: { children: ReactNode }) {
 // boot time, but neither blocks data fetching once mounted below.
 
 function FontGate({ children }: { children: ReactNode }) {
-  const [fontsLoaded] = useFraunces({
-    Fraunces_300Light,
-    Manrope_500Medium,
-    Manrope_600SemiBold,
-    Manrope_700Bold,
-    JetBrainsMono_500Medium,
+  const [fontsLoaded] = useGeistFonts({
+    Geist_400Regular,
+    Geist_500Medium,
+    Geist_600SemiBold,
+    Geist_700Bold,
+    GeistMono_500Medium,
   });
 
   if (!fontsLoaded) {
-    // Render the same chrome as StorageGate so the boot sequence is one
-    // continuous loading state from the user's POV, no layout jank.
-    return (
-      <SafeAreaView style={styles.authContainer}>
-        <StatusBar style="light" />
-      </SafeAreaView>
-    );
+    return <BootScreen detail="Loading Pravah's interface." />;
   }
 
   return <>{children}</>;
@@ -862,77 +882,14 @@ export default function App() {
 // ── Styles ──────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  // Auth
-  authContainer: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    paddingHorizontal: spacing.xl,
-    justifyContent: "center",
-  },
-  loadingText: {
-    color: colors.textPrimary,
-    ...typography.title,
-    textAlign: "center",
-  },
-  authShell: {
-    gap: spacing.lg,
-  },
-  authLockup: {
-    gap: spacing.sm,
-  },
-  authTitle: {
-    color: colors.textPrimary,
-    ...typography.headline,
-  },
-  authSubtitle: {
-    color: colors.textSecondary,
-    ...typography.bodyLg,
-    maxWidth: 320,
-  },
-  authDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.borderSubtle,
-    width: "100%",
-  },
-  authHint: {
-    color: colors.textMuted,
-    ...typography.micro,
-    marginTop: spacing.xs,
-  },
-  googleButton: {
-    borderRadius: radii.full,
-    backgroundColor: colors.accent,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  googleButtonText: {
-    color: colors.bg,
-    ...typography.title,
-  },
-  disabledButton: {
-    opacity: 0.6,
-  },
-
   // Main layout
   container: {
     flex: 1,
     backgroundColor: colors.bg,
   },
-  // Single warm copper halo, top-right behind the safe area. No second
-  // accent, no shadow on the container — restraint is the point. The size
-  // (~360 px) and softness come from the low-alpha fill (haloCopper is
-  // already 15%); RN can't actually feather a View edge, so we keep the
-  // circle large enough that the hard edge falls well off-screen.
-  halo: {
-    position: "absolute",
-    top: -180,
-    right: -120,
-    width: 360,
-    height: 360,
-    borderRadius: 180,
-    backgroundColor: colors.haloCopper,
+  chrome: {
+    flex: 1,
   },
-
   // Header — typography-first, no enclosing card. The trailing 24px gap
   // (paddingBottom) is the only thing separating the header from the list,
   // doing the work of a divider line without drawing one.
@@ -952,9 +909,14 @@ const styles = StyleSheet.create({
   // negative letterSpacing nudge handled in tokens.
   wordmark: {
     color: colors.textPrimary,
-    fontFamily: fonts.serif,
-    fontSize: 20,
+    fontFamily: fonts.sansSemibold,
+    fontSize: 18,
     letterSpacing: -0.3,
+  },
+  brandLockup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
   },
   // View name lives on its own line below the lockup so it can breathe.
   // Sentence case, not uppercase \u2014 sentence case + serif is what gives the
@@ -970,6 +932,13 @@ const styles = StyleSheet.create({
     ...typography.micro,
     marginTop: spacing.xs,
   },
+  // Header links sit in a row so additional affordances (Kairo, Settings)
+  // line up with the same visual weight rather than competing for spot.
+  headerLinks: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: spacing.lg,
+  },
   // Settings is a hairline-underlined word, not a button shape.
   settingsLinkWrap: {
     paddingVertical: spacing.xs,
@@ -982,6 +951,15 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     textDecorationLine: "underline",
     textDecorationColor: colors.borderSubtle,
+  },
+  // Kairo entry point: same micro-link dialect as Settings but tinted in the
+  // accent so it reads as the AI affordance without needing iconography.
+  kairoLink: {
+    color: colors.accent,
+    fontFamily: fonts.sansSemibold,
+    fontSize: 12,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
   },
   // Toast — unenclosed: a thin 2px rule on the left + a line of copy. Error
   // tone uses the rust accent, info uses copper. No border, no radius, no fill.

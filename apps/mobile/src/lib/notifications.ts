@@ -68,7 +68,7 @@ export async function scheduleDailyReminderAsync({
 
   const identifier = await Notifications.scheduleNotificationAsync({
     content: {
-      title: "Pravah planner",
+      title: "Pravah",
       body: "Quick check-in: plan your timeline for today.",
       sound: "default",
     },
@@ -94,7 +94,7 @@ export async function disableDailyReminderAsync(): Promise<void> {
 export async function scheduleTestNotificationAsync(): Promise<void> {
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: "Pravah test reminder",
+      title: "Pravah",
       body: "Notifications are working on this device.",
     },
     trigger: null,

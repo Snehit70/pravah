@@ -5,6 +5,10 @@ export function toIsoDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+export function getLocalDateString(date: Date = new Date()): string {
+  return toIsoDate(date);
+}
+
 export function addDays(base: Date, days: number): Date {
   const next = new Date(base);
   next.setDate(next.getDate() + days);

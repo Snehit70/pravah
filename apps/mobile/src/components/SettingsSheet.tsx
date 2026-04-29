@@ -1,6 +1,13 @@
-import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { useCallback, useEffect, useRef } from "react";
+import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import BottomSheet, {
+  BottomSheetBackdrop,
+  BottomSheetScrollView,
+  type BottomSheetBackdropProps,
+} from "@gorhom/bottom-sheet";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { NotificationPermissionState } from "../lib/notifications";
+import { KairoSettingsSection } from "./KairoSettingsSection";
 
 function formatStatusLabel(value: string): string {
   return value
@@ -77,18 +84,49 @@ export function SettingsSheet({
   onSendTestNotification,
   onSignOut,
 }: SettingsSheetProps) {
-  return (
-    <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
-      <View style={styles.settingsBackdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={styles.settingsSheet}>
-          <View style={styles.settingsHandle} />
+  const bottomSheetRef = useRef<BottomSheet>(null);
 
-          <ScrollView
-            style={styles.settingsScroll}
-            contentContainerStyle={styles.settingsScrollContent}
-            showsVerticalScrollIndicator={false}
-          >
+  useEffect(() => {
+    if (visible) {
+      bottomSheetRef.current?.expand();
+    } else {
+      bottomSheetRef.current?.close();
+    }
+  }, [visible]);
+
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        pressBehavior="close"
+        disappearsOnIndex={-1}
+        appearsOnIndex={0}
+        opacity={0.6}
+      />
+    ),
+    []
+  );
+
+  return (
+    <BottomSheet
+      ref={bottomSheetRef}
+      index={-1}
+      snapPoints={["88%"]}
+      enablePanDownToClose
+      enableDynamicSizing={false}
+      backgroundStyle={styles.settingsSheet}
+      handleIndicatorStyle={styles.settingsHandle}
+      backdropComponent={renderBackdrop}
+      onChange={(index) => {
+        if (index === -1 && visible) {
+          onClose();
+        }
+      }}
+    >
+      <BottomSheetScrollView
+        contentContainerStyle={styles.settingsScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
             <View style={styles.settingsHeader}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.settingsKicker}>Workspace</Text>
@@ -231,6 +269,9 @@ export function SettingsSheet({
               </Pressable>
             </View>
 
+            <Text style={styles.sectionHeader}>Kairo</Text>
+            <KairoSettingsSection />
+
             <Text style={styles.sectionHeader}>Account</Text>
 
             <View style={styles.settingBlock}>
@@ -245,37 +286,22 @@ export function SettingsSheet({
                 <Text style={styles.signOutLink}>Sign out</Text>
               </Pressable>
             </View>
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
+      </BottomSheetScrollView>
+    </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  settingsBackdrop: {
-    flex: 1,
-    backgroundColor: colors.backdrop,
-    justifyContent: "flex-end",
-  },
   settingsSheet: {
-    backgroundColor: colors.bgCard,
+    backgroundColor: colors.bgFloating,
     borderTopLeftRadius: radii.xl,
     borderTopRightRadius: radii.xl,
-    paddingTop: spacing.sm,
-    maxHeight: "90%",
-    minHeight: "60%",
   },
   settingsHandle: {
-    alignSelf: "center",
     width: 36,
     height: 4,
     borderRadius: 2,
     backgroundColor: colors.border,
-    marginBottom: spacing.md,
-  },
-  settingsScroll: {
-    flexGrow: 0,
   },
   settingsScrollContent: {
     paddingHorizontal: spacing.lg,
