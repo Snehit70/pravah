@@ -136,6 +136,7 @@ function MobileApp() {
     api.tasks.listTasks,
     session && activeTab === "completed" ? { status: "completed" } : "skip"
   );
+  const allTasksQuery = useQuery(api.tasks.listTasks, session ? {} : "skip");
   const countsQuery = useQuery(api.tasks.getTaskCounts, session ? {} : "skip");
 
   const activeQueryTasks =
@@ -146,6 +147,21 @@ function MobileApp() {
         : completedQuery;
   const isActiveListLoading = activeQueryTasks === undefined;
 
+  const mapTaskDoc = useCallback(
+    (task: Doc<"tasks">): MobileTask => ({
+      _id: task._id,
+      title: task.title,
+      description: task.description,
+      deadline: task.deadline,
+      priority: task.priority,
+      status: task.status,
+      scheduledDate: task.scheduledDate,
+      position: task.position,
+      updatedAt: task.updatedAt,
+    }),
+    []
+  );
+
   const serverTasks = useMemo<MobileTask[]>(() => {
     const activeDocs =
       activeTab === "timeline"
@@ -154,21 +170,13 @@ function MobileApp() {
           ? inboxQuery
           : completedQuery;
 
-    return (
-      (activeDocs as Doc<"tasks">[] | undefined)?.map((task) => ({
-        _id: task._id,
-        title: task.title,
-        description: task.description,
-        deadline: task.deadline,
-        priority: task.priority,
-        status: task.status,
-        scheduledDate: task.scheduledDate,
-        position: task.position,
-        updatedAt: task.updatedAt,
-      })) ?? []
-    );
-  }, [activeTab, completedQuery, inboxQuery, timelineQuery]);
+    return ((activeDocs as Doc<"tasks">[] | undefined)?.map(mapTaskDoc) ?? []);
+  }, [activeTab, completedQuery, inboxQuery, mapTaskDoc, timelineQuery]);
   const tasks = useMemo(() => optimisticTasks ?? serverTasks, [optimisticTasks, serverTasks]);
+  const allWorkspaceTasks = useMemo(
+    () => ((allTasksQuery as Doc<"tasks">[] | undefined)?.map(mapTaskDoc) ?? []),
+    [allTasksQuery, mapTaskDoc]
+  );
 
   const addTaskMutation = useMutation(api.tasks.addTask);
   const updateTaskMutation = useMutation(api.tasks.updateTask);
@@ -205,6 +213,11 @@ function MobileApp() {
   const timelineCount = activeTab === "timeline" ? scheduledTasks.length : (countsQuery?.timelineCount ?? 0);
   const completedCount =
     countsQuery?.completedCount ?? (activeTab === "completed" ? completedTasks.length : 0);
+  const kairoTasks = optimisticTasks ?? allWorkspaceTasks;
+  const kairoInboxTasks = useMemo(
+    () => kairoTasks.filter((task) => task.status === "inbox"),
+    [kairoTasks]
+  );
 
   const timelineSections = useMemo(() => {
     const grouped = new Map<string, MobileTask[]>();
@@ -759,8 +772,8 @@ function MobileApp() {
           is open, matching web's 0.38-opacity fade behind the active panel. */}
       <Kairo
         ref={kairoRef}
-        tasks={tasks}
-        inboxTasks={inboxTasks}
+        tasks={kairoTasks}
+        inboxTasks={kairoInboxTasks}
         onActiveChange={setIsKairoActive}
         onOpenSettings={openSettingsModal}
       />
