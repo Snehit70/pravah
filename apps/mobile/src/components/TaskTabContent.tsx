@@ -1,6 +1,6 @@
 import { useMemo, type JSX } from "react";
-import { FlatList, RefreshControl } from "react-native";
-import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
+import { FlatList, RefreshControl, SectionList } from "react-native";
+import type { RenderItemParams } from "react-native-draggable-flatlist";
 import { dateLabel } from "../lib/dates";
 import { colors, spacing } from "../theme/tokens";
 import type { MobileTask } from "./TaskCard";
@@ -21,29 +21,10 @@ type TaskTabContentProps = {
   emptyBlock: JSX.Element;
   loadingBlock: JSX.Element;
   onRefresh: () => Promise<void>;
-  onInboxDragEnd: (original: MobileTask[], data: MobileTask[]) => Promise<void>;
-  onTimelineDragEnd: (dateKey: string, original: MobileTask[], data: MobileTask[]) => Promise<void>;
-  onTimelineDragInvalid: () => void;
   renderInboxTaskItem: (params: RenderItemParams<MobileTask>) => JSX.Element;
   renderTimelineTaskItem: (dateKey: string, params: RenderItemParams<MobileTask>) => JSX.Element;
   renderCompletedTaskItem: ({ item }: { item: MobileTask }) => JSX.Element;
 };
-
-type TimelineHeaderRow = {
-  key: string;
-  kind: "header";
-  dateKey: string;
-  label: string;
-};
-
-type TimelineTaskRow = {
-  key: string;
-  kind: "task";
-  dateKey: string;
-  task: MobileTask;
-};
-
-type TimelineRow = TimelineHeaderRow | TimelineTaskRow;
 
 export function TaskTabContent({
   activeTab,
@@ -59,13 +40,14 @@ export function TaskTabContent({
   emptyBlock,
   loadingBlock,
   onRefresh,
-  onInboxDragEnd,
-  onTimelineDragEnd,
-  onTimelineDragInvalid,
   renderInboxTaskItem,
   renderTimelineTaskItem,
   renderCompletedTaskItem,
 }: TaskTabContentProps) {
+  const emptyDragParams = useMemo(
+    () => ({ drag: () => undefined, isActive: false, getIndex: () => undefined }),
+    []
+  );
   const refreshControl = (
     <RefreshControl
       refreshing={isRefreshing}
@@ -76,39 +58,17 @@ export function TaskTabContent({
     />
   );
 
-  const timelineRows = useMemo<TimelineRow[]>(
-    () =>
-      timelineSections.flatMap(([dateKey, tasksForDate]) => [
-        {
-          key: `header-${dateKey}`,
-          kind: "header" as const,
-          dateKey,
-          label: dateLabel(dateKey, today, tomorrow, weekEnd),
-        },
-        ...tasksForDate.map((task) => ({
-          key: task._id,
-          kind: "task" as const,
-          dateKey,
-          task,
-        })),
-      ]),
-    [timelineSections, today, tomorrow, weekEnd]
-  );
-
   if (activeTab === "inbox") {
     return (
-      <DraggableFlatList
+      <FlatList
         style={{ flex: 1 }}
         contentContainerStyle={{
-          paddingHorizontal: spacing.lg,
           paddingTop: spacing.md,
           paddingBottom: tabBarHeight + 84,
         }}
         data={inboxTasks}
         keyExtractor={(item) => item._id}
-        renderItem={renderInboxTaskItem}
-        onDragEnd={({ data }) => void onInboxDragEnd(inboxTasks, data)}
-        activationDistance={10}
+        renderItem={({ item }) => renderInboxTaskItem({ item, ...emptyDragParams })}
         showsVerticalScrollIndicator={false}
         refreshControl={refreshControl}
         ListEmptyComponent={isActiveListLoading ? loadingBlock : emptyBlock}
@@ -118,56 +78,27 @@ export function TaskTabContent({
 
   if (activeTab === "timeline") {
     return (
-      <DraggableFlatList
+      <SectionList
         style={{ flex: 1 }}
         contentContainerStyle={{
-          paddingHorizontal: spacing.lg,
           paddingTop: spacing.md,
           paddingBottom: tabBarHeight + 84,
         }}
-        data={timelineRows}
-        keyExtractor={(item) => item.key}
-        renderItem={({ item, drag, isActive }) =>
-          item.kind === "header" ? (
-            <TimelineSectionHeader label={item.label} isToday={item.dateKey === today} />
-          ) : (
-            renderTimelineTaskItem(item.dateKey, {
-              item: item.task,
-              drag,
-              isActive,
-              getIndex: () => undefined,
-            })
-          )
+        sections={timelineSections.map(([dateKey, tasksForDate]) => ({
+          title: dateLabel(dateKey, today, tomorrow, weekEnd),
+          dateKey,
+          data: tasksForDate,
+        }))}
+        keyExtractor={(item) => item._id}
+        renderItem={({ item, section }) =>
+          renderTimelineTaskItem(section.dateKey, {
+            item,
+            ...emptyDragParams,
+          })
         }
-        onDragEnd={({ from, to, data }) => {
-          const fromRow = timelineRows[from];
-          const toRow = data[to];
-
-          if (!fromRow || fromRow.kind !== "task" || !toRow || toRow.kind !== "task") {
-            onTimelineDragInvalid();
-            return;
-          }
-
-          if (fromRow.dateKey !== toRow.dateKey) {
-            onTimelineDragInvalid();
-            return;
-          }
-
-          const original = timelineRows
-            .filter(
-              (row): row is TimelineTaskRow => row.kind === "task" && row.dateKey === fromRow.dateKey
-            )
-            .map((row) => row.task);
-          const reordered = data
-            .filter(
-              (row): row is TimelineTaskRow => row.kind === "task" && row.dateKey === fromRow.dateKey
-            )
-            .map((row) => row.task);
-
-          void onTimelineDragEnd(fromRow.dateKey, original, reordered);
-        }}
-        activationDistance={10}
-        dragItemOverflow
+        renderSectionHeader={({ section }) => (
+          <TimelineSectionHeader label={section.title} isToday={section.dateKey === today} />
+        )}
         refreshControl={refreshControl}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={isActiveListLoading ? loadingBlock : emptyBlock}
@@ -179,7 +110,6 @@ export function TaskTabContent({
     <FlatList
       style={{ flex: 1 }}
       contentContainerStyle={{
-        paddingHorizontal: spacing.lg,
         paddingTop: spacing.md,
         paddingBottom: tabBarHeight + 84,
       }}

@@ -102,7 +102,6 @@ function MobileApp() {
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isKairoActive, setIsKairoActive] = useState(false);
-  const [hasOpenedKairo, setHasOpenedKairo] = useState(false);
   const chromeDim = useSharedValue(1);
   useEffect(() => {
     chromeDim.value = withTiming(isKairoActive ? 0.38 : 1, { duration: 280 });
@@ -400,8 +399,6 @@ function MobileApp() {
     sendToInbox,
     reopenToInbox,
     handleSaveEdits,
-    handleInboxDragEnd,
-    handleTimelineDragEnd,
     shiftTimelineTask,
   } = useTaskMutations({
     serverTasks,
@@ -508,10 +505,8 @@ function MobileApp() {
   }, []);
 
   const openKairo = useCallback(() => {
-    setHasOpenedKairo(true);
-    requestAnimationFrame(() => {
-      kairoRef.current?.open();
-    });
+    mobileLogger.info("kairo_opened");
+    kairoRef.current?.open();
   }, []);
 
   const renderInboxTaskItem = useCallback(
@@ -726,9 +721,6 @@ function MobileApp() {
         emptyBlock={emptyBlock}
         loadingBlock={loadingBlock}
         onRefresh={handleRefresh}
-        onInboxDragEnd={handleInboxDragEnd}
-        onTimelineDragEnd={handleTimelineDragEnd}
-        onTimelineDragInvalid={() => showToast({ kind: "error", message: "Drag within the same day only." })}
         renderInboxTaskItem={renderInboxTaskItem}
         renderTimelineTaskItem={renderTimelineTaskItem}
         renderCompletedTaskItem={renderCompletedTaskItem}
@@ -765,44 +757,40 @@ function MobileApp() {
       {/* Kairo lives at the root so its overlay sits above tabs and FAB. The
           parent dims the rest of the chrome via isKairoActive when the sheet
           is open, matching web's 0.38-opacity fade behind the active panel. */}
-      {hasOpenedKairo ? (
-        <Kairo
-          ref={kairoRef}
-          tasks={tasks}
-          inboxTasks={inboxTasks}
-          onActiveChange={setIsKairoActive}
-          onOpenSettings={openSettingsModal}
-        />
-      ) : null}
+      <Kairo
+        ref={kairoRef}
+        tasks={tasks}
+        inboxTasks={inboxTasks}
+        onActiveChange={setIsKairoActive}
+        onOpenSettings={openSettingsModal}
+      />
 
-      {isSettingsModalOpen ? (
-        <SettingsSheet
-          visible={isSettingsModalOpen}
-          calendarSyncEnabled={googleSyncEnabled}
-          gmailSyncEnabled={gmailSyncEnabled}
-          calendarSyncStatus={calendarSyncStatus}
-          gmailSyncStatus={gmailSyncStatus}
-          canToggleGmailSync={canToggleGmailSync}
-          pendingGmailReviewCount={pendingGmailReviewCount}
-          notificationPermissionState={notificationPermissionState}
-          notificationsEnabled={notificationsEnabled}
-          isDailyReminderEnabled={isDailyReminderEnabled}
-          isCalendarSyncing={isCalendarSyncing}
-          isGoogleToggleSaving={isGoogleToggleSaving}
-          isGmailToggleSaving={isGmailToggleSaving}
-          isNotificationsBusy={isNotificationsBusy}
-          syncSettingsBusy={syncSettingsBusy}
-          onClose={() => setIsSettingsModalOpen(false)}
-          onGoogleCalendarToggle={() => void toggleGoogleCalendarSync()}
-          onGoogleCalendarSync={() => void runGoogleCalendarSync()}
-          onEnableAndSyncGoogleCalendar={() => void enableAndSyncGoogleCalendar()}
-          onGmailToggle={() => void toggleGmailSync()}
-          onRequestNotificationsAccess={() => void requestNotificationsAccess()}
-          onToggleDailyReminder={() => void toggleDailyReminder()}
-          onSendTestNotification={() => void sendTestNotification()}
-          onSignOut={handleSignOut}
-        />
-      ) : null}
+      <SettingsSheet
+        visible={isSettingsModalOpen}
+        calendarSyncEnabled={googleSyncEnabled}
+        gmailSyncEnabled={gmailSyncEnabled}
+        calendarSyncStatus={calendarSyncStatus}
+        gmailSyncStatus={gmailSyncStatus}
+        canToggleGmailSync={canToggleGmailSync}
+        pendingGmailReviewCount={pendingGmailReviewCount}
+        notificationPermissionState={notificationPermissionState}
+        notificationsEnabled={notificationsEnabled}
+        isDailyReminderEnabled={isDailyReminderEnabled}
+        isCalendarSyncing={isCalendarSyncing}
+        isGoogleToggleSaving={isGoogleToggleSaving}
+        isGmailToggleSaving={isGmailToggleSaving}
+        isNotificationsBusy={isNotificationsBusy}
+        syncSettingsBusy={syncSettingsBusy}
+        onClose={() => setIsSettingsModalOpen(false)}
+        onGoogleCalendarToggle={() => void toggleGoogleCalendarSync()}
+        onGoogleCalendarSync={() => void runGoogleCalendarSync()}
+        onEnableAndSyncGoogleCalendar={() => void enableAndSyncGoogleCalendar()}
+        onGmailToggle={() => void toggleGmailSync()}
+        onRequestNotificationsAccess={() => void requestNotificationsAccess()}
+        onToggleDailyReminder={() => void toggleDailyReminder()}
+        onSendTestNotification={() => void sendTestNotification()}
+        onSignOut={handleSignOut}
+      />
     </SafeAreaView>
   );
 }

@@ -53,6 +53,8 @@ type TaskCardProps = {
   onDragHandlePress?: () => void;
 };
 
+const TASK_CARD_RADIUS = radii.lg;
+
 /**
  * Reanimated swipe-action panel. The pan progress comes from
  * ReanimatedSwipeable's drag SharedValue, which we map to opacity + a slight
@@ -402,7 +404,7 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     marginHorizontal: spacing.lg,
     marginVertical: spacing.xs,
-    borderRadius: radii.xl,
+    borderRadius: TASK_CARD_RADIUS,
     overflow: "hidden",
   },
   // Web parity (src/components/TaskCard.tsx:77-93): translucent card fill on
@@ -414,7 +416,7 @@ const styles = StyleSheet.create({
     paddingRight: spacing.lg,
     paddingVertical: spacing.md,
     backgroundColor: colors.bgCard,
-    borderRadius: radii.xl,
+    borderRadius: TASK_CARD_RADIUS,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     ...shadow.sm,
@@ -431,8 +433,8 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: 4,
-    borderTopLeftRadius: radii.xl,
-    borderBottomLeftRadius: radii.xl,
+    borderTopLeftRadius: TASK_CARD_RADIUS,
+    borderBottomLeftRadius: TASK_CARD_RADIUS,
   },
   // Sweep stripe — 30% wide, full row height, accent fill. Position:absolute
   // + translateX % drives the scan motion via Reanimated.
