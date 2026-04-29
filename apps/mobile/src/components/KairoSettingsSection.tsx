@@ -52,6 +52,7 @@ export function KairoSettingsSection() {
   };
 
   const handleSave = async () => {
+    if (!loaded) return;
     await saveKairoConfig(draft);
     setSavedNotice("Saved.");
     setTimeout(() => setSavedNotice(null), 1800);
@@ -138,7 +139,8 @@ export function KairoSettingsSection() {
           hitSlop={6}
           accessibilityRole="button"
           accessibilityLabel="Save Kairo configuration"
-          style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+          disabled={!loaded}
+          style={({ pressed }) => [pressed && { opacity: 0.6 }, !loaded && { opacity: 0.35 }]}
         >
           <Text style={styles.saveText}>Save</Text>
         </Pressable>

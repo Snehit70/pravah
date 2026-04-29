@@ -412,6 +412,8 @@ function MobileApp() {
     sendToInbox,
     reopenToInbox,
     handleSaveEdits,
+    handleInboxDragEnd,
+    handleTimelineDragEnd,
     shiftTimelineTask,
   } = useTaskMutations({
     serverTasks,
@@ -734,6 +736,8 @@ function MobileApp() {
         emptyBlock={emptyBlock}
         loadingBlock={loadingBlock}
         onRefresh={handleRefresh}
+        onInboxDragEnd={handleInboxDragEnd}
+        onTimelineDragEnd={handleTimelineDragEnd}
         renderInboxTaskItem={renderInboxTaskItem}
         renderTimelineTaskItem={renderTimelineTaskItem}
         renderCompletedTaskItem={renderCompletedTaskItem}
