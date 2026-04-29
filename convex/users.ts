@@ -34,15 +34,9 @@ export const claimLegacyData = mutation({
   handler: async (ctx) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
 
-    const users = await ctx.db.query("users").collect();
-    const hasOtherUsers = users.some((user) => user.tokenIdentifier !== tokenIdentifier);
-
-    if (hasOtherUsers) {
-      return {
-        claimed: false,
-        skipped: true,
-      };
-    }
+    // Pravah is currently a single-user product. This migration intentionally
+    // claims any legacy ownerless records for the authenticated user so older
+    // local/dev data becomes visible again after ownerTokenIdentifier was added.
 
     const legacyTasks = await ctx.db
       .query("tasks")
@@ -89,7 +83,6 @@ export const claimLegacyData = mutation({
           legacyReviewItems.length +
           legacyRuns.length >
         0,
-      skipped: false,
     };
   },
 });

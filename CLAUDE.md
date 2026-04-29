@@ -11,6 +11,12 @@
 - `convex/` — Convex backend (queries, mutations, actions, schema)
 - `src/` — Web app (Vite + React)
 
+## Product assumptions
+
+- Pravah is currently a single-user system, not a collaborative multi-user workspace.
+- `ownerTokenIdentifier` is still used across Convex records for auth scoping, sync ownership, and legacy-data migration safety.
+- When reviewing or changing ownership logic, prefer solutions that preserve the single-user product assumption unless the task explicitly introduces multi-user support.
+
 ## Mobile specifics
 
 - All Convex types are imported from `../../convex/_generated/` (relative to `apps/mobile/`). The `apps/mobile/convex/` directory is intentionally empty — do not put files there.
