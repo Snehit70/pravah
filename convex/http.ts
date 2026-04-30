@@ -2,6 +2,7 @@ import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { api } from "./_generated/api";
 import { authComponent, createAuth } from "./auth";
+import { getAllowedWebOrigins } from "./origins";
 import {
   bulkRescheduleSchema,
   completeTaskSchema,
@@ -38,34 +39,9 @@ function requireAuth(request: Request): Response | null {
   });
 }
 
-const DEFAULT_ALLOWED_ORIGINS = [
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
-];
-
-function getAllowedOrigins(): readonly string[] {
-  const env = (
-    globalThis as typeof globalThis & {
-      process?: { env?: Record<string, string | undefined> };
-    }
-  ).process?.env;
-
-  const extras = (env?.ALLOWED_CORS_ORIGINS ?? "")
-    .split(",")
-    .map((value: string) => value.trim())
-    .filter((value: string) => value.length > 0);
-
-  const siteUrl = env?.SITE_URL?.trim();
-  if (siteUrl) {
-    return Array.from(new Set([siteUrl, ...extras]));
-  }
-
-  return Array.from(new Set([...DEFAULT_ALLOWED_ORIGINS, ...extras]));
-}
-
 function getGoogleCorsHeaders(request: Request): HeadersInit {
   const origin = request.headers.get("origin");
-  const allowed = getAllowedOrigins();
+  const allowed = getAllowedWebOrigins();
   const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",

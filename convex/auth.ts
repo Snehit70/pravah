@@ -5,6 +5,7 @@ import { query } from "./_generated/server";
 import { components } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import authConfig from "./auth.config";
+import { getAuthTrustedOrigins, getPrimarySiteUrl } from "./origins";
 
 function readEnv() {
   return (
@@ -18,18 +19,12 @@ export const authComponent = createClient<DataModel>(components.betterAuth);
 
 export function createAuth(ctx: GenericCtx<DataModel>) {
   const env = readEnv();
-  const siteUrl = env?.SITE_URL ?? env?.VITE_SITE_URL ?? "http://localhost:5173";
-  const mobileScheme = env?.MOBILE_APP_SCHEME ?? "pravah://";
+  const siteUrl = getPrimarySiteUrl();
   const googleClientId = env?.GOOGLE_OAUTH_CLIENT_ID;
   const googleClientSecret = env?.GOOGLE_OAUTH_CLIENT_SECRET;
 
   return betterAuth({
-    trustedOrigins: [
-      siteUrl,
-      mobileScheme,
-      "http://localhost:5173",
-      "http://127.0.0.1:5173",
-    ],
+    trustedOrigins: getAuthTrustedOrigins(),
     database: authComponent.adapter(ctx),
     socialProviders:
       googleClientId && googleClientSecret

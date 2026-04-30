@@ -102,6 +102,9 @@ GOOGLE_OAUTH_CLIENT_ID=your-google-web-client-id
 GOOGLE_OAUTH_CLIENT_SECRET=your-google-web-client-secret
 MOBILE_APP_SCHEME=pravah://
 CONVEX_HTTP_API_KEY=your-http-api-key
+# Optional: additional comma-separated web origins trusted for Better Auth
+# session routes and `/google/token` preflights (use for staging/preview deploys).
+ALLOWED_CORS_ORIGINS=https://staging.example.com,https://preview.example.com
 ```
 
 ### Mobile env sync
