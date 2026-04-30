@@ -13,6 +13,7 @@ import type * as authHelpers from "../authHelpers.js";
 import type * as http from "../http.js";
 import type * as httpContracts from "../httpContracts.js";
 import type * as index from "../index.js";
+import type * as origins from "../origins.js";
 import type * as sync from "../sync.js";
 import type * as syncActions from "../syncActions.js";
 import type * as tasks from "../tasks.js";
@@ -30,6 +31,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   httpContracts: typeof httpContracts;
   index: typeof index;
+  origins: typeof origins;
   sync: typeof sync;
   syncActions: typeof syncActions;
   tasks: typeof tasks;
