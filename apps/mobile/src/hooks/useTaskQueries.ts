@@ -25,9 +25,11 @@ function getPriorityRank(priority?: "p1" | "p2" | "p3"): number {
 type UseTaskQueriesOptions = {
   /** Pass null/undefined when the session is not yet available — all queries skip. */
   isAuthenticated: boolean;
+  /** Fetch all tasks only when features (e.g. Kairo) need full context. */
+  includeAllTasks?: boolean;
 };
 
-export function useTaskQueries({ isAuthenticated }: UseTaskQueriesOptions) {
+export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseTaskQueriesOptions) {
   const { today, tomorrow, weekEnd } = buildTimelineWindow(new Date());
 
   const inboxQuery = useQuery(
@@ -48,7 +50,7 @@ export function useTaskQueries({ isAuthenticated }: UseTaskQueriesOptions) {
 
   const allTasksQuery = useQuery(
     api.tasks.listTasks,
-    isAuthenticated ? {} : "skip"
+    isAuthenticated && includeAllTasks ? {} : "skip"
   );
 
   const countsQuery = useQuery(

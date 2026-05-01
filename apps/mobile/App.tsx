@@ -138,7 +138,10 @@ function MobileApp() {
     isInboxLoading,
     isTimelineLoading,
     isCompletedLoading,
-  } = useTaskQueries({ isAuthenticated: Boolean(session) });
+  } = useTaskQueries({
+    isAuthenticated: Boolean(session),
+    includeAllTasks: isKairoActive,
+  });
 
   // Mutations still operate on the currently visible list. This keeps
   // optimistic updates scoped to what the user sees while query subscriptions
