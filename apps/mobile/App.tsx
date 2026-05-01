@@ -39,6 +39,7 @@ import { AddTaskSheet, type AddTaskSheetRef } from "./src/components/AddTaskShee
 import { EditTaskSheet, type EditTaskSheetRef } from "./src/components/EditTaskSheet";
 import { MobileAuthScreen } from "./src/components/MobileAuthScreen";
 import { RootErrorBoundary } from "./src/components/RootErrorBoundary";
+import { ScreenErrorBoundary } from "./src/components/ScreenErrorBoundary";
 import { SettingsSheet } from "./src/components/SettingsSheet";
 import { InboxScreen } from "./src/screens/InboxScreen";
 import { TimelineScreen } from "./src/screens/TimelineScreen";
@@ -577,42 +578,48 @@ function MobileApp() {
       ) : null}
 
       {activeTab === "inbox" ? (
-        <InboxScreen
-          tasks={visibleTasks}
-          isLoading={isActiveListLoading}
-          isRefreshing={isRefreshing}
-          tabBarHeight={tabBarHeight}
-          onRefresh={handleRefresh}
-          onDragEnd={handleInboxDragEnd}
-          onCapture={() => addTaskSheetRef.current?.open()}
-          renderItem={renderInboxTaskItem}
-        />
+        <ScreenErrorBoundary screenName="Inbox">
+          <InboxScreen
+            tasks={visibleTasks}
+            isLoading={isActiveListLoading}
+            isRefreshing={isRefreshing}
+            tabBarHeight={tabBarHeight}
+            onRefresh={handleRefresh}
+            onDragEnd={handleInboxDragEnd}
+            onCapture={() => addTaskSheetRef.current?.open()}
+            renderItem={renderInboxTaskItem}
+          />
+        </ScreenErrorBoundary>
       ) : null}
 
       {activeTab === "timeline" ? (
-        <TimelineScreen
-          sections={timelineSections}
-          today={today}
-          tomorrow={tomorrow}
-          weekEnd={weekEnd}
-          isLoading={isActiveListLoading}
-          isRefreshing={isRefreshing}
-          tabBarHeight={tabBarHeight}
-          onRefresh={handleRefresh}
-          onDragEnd={handleTimelineDragEnd}
-          renderItem={renderTimelineTaskItem}
-        />
+        <ScreenErrorBoundary screenName="Timeline">
+          <TimelineScreen
+            sections={timelineSections}
+            today={today}
+            tomorrow={tomorrow}
+            weekEnd={weekEnd}
+            isLoading={isActiveListLoading}
+            isRefreshing={isRefreshing}
+            tabBarHeight={tabBarHeight}
+            onRefresh={handleRefresh}
+            onDragEnd={handleTimelineDragEnd}
+            renderItem={renderTimelineTaskItem}
+          />
+        </ScreenErrorBoundary>
       ) : null}
 
       {activeTab === "completed" ? (
-        <CompletedScreen
-          tasks={visibleTasks}
-          isLoading={isActiveListLoading}
-          isRefreshing={isRefreshing}
-          tabBarHeight={tabBarHeight}
-          onRefresh={handleRefresh}
-          renderItem={renderCompletedTaskItem}
-        />
+        <ScreenErrorBoundary screenName="Completed">
+          <CompletedScreen
+            tasks={visibleTasks}
+            isLoading={isActiveListLoading}
+            isRefreshing={isRefreshing}
+            tabBarHeight={tabBarHeight}
+            onRefresh={handleRefresh}
+            renderItem={renderCompletedTaskItem}
+          />
+        </ScreenErrorBoundary>
       ) : null}
 
       {/* FAB */}
