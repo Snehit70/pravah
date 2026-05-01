@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View, TouchableOpacity } from "react-native";
 import {
   KAIRO_DEFAULTS,
   clearKairoConfig,
@@ -33,6 +33,7 @@ export function KairoSettingsSection() {
   const [draft, setDraft] = useState<KairoConfig>(EMPTY);
   const [loaded, setLoaded] = useState(false);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  const [apiKeyVisible, setApiKeyVisible] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,17 +102,30 @@ export function KairoSettingsSection() {
         })}
       </View>
 
-      <TextInput
-        value={draft.apiKey}
-        onChangeText={(v) => setDraft((d) => ({ ...d, apiKey: v }))}
-        placeholder="API key"
-        placeholderTextColor={colors.textMuted}
-        autoCapitalize="none"
-        autoCorrect={false}
-        secureTextEntry
-        editable={loaded}
-        style={styles.input}
-      />
+      {/* API key row: input + show/hide toggle so the user can verify what
+          is stored. The key sits in expo-secure-store (device keychain). */}
+      <View style={styles.apiKeyRow}>
+        <TextInput
+          value={draft.apiKey}
+          onChangeText={(v) => setDraft((d) => ({ ...d, apiKey: v }))}
+          placeholder="API key"
+          placeholderTextColor={colors.textMuted}
+          autoCapitalize="none"
+          autoCorrect={false}
+          secureTextEntry={!apiKeyVisible}
+          editable={loaded}
+          style={[styles.input, styles.apiKeyInput]}
+        />
+        <TouchableOpacity
+          onPress={() => setApiKeyVisible((v) => !v)}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={apiKeyVisible ? "Hide API key" : "Show API key"}
+          style={styles.apiKeyToggle}
+        >
+          <Text style={styles.apiKeyToggleText}>{apiKeyVisible ? "Hide" : "Show"}</Text>
+        </TouchableOpacity>
+      </View>
       <TextInput
         value={draft.baseUrl}
         onChangeText={(v) => setDraft((d) => ({ ...d, baseUrl: v }))}
@@ -207,6 +221,22 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     color: colors.textPrimary,
     ...typography.bodyMd,
+  },
+  apiKeyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  apiKeyInput: {
+    flex: 1,
+  },
+  apiKeyToggle: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+  },
+  apiKeyToggleText: {
+    ...typography.micro,
+    color: colors.accent,
   },
   actions: {
     flexDirection: "row",
