@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View, TouchableOpacity } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import {
   KAIRO_DEFAULTS,
   clearKairoConfig,
@@ -10,6 +12,7 @@ import {
   type KairoConfig,
   type KairoProviderFormat,
 } from "../lib/kairoConfig";
+import { KairoSettingsSkeleton } from "./LoadingSkeleton";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 
 const EMPTY: KairoConfig = {
@@ -34,6 +37,7 @@ export function KairoSettingsSection() {
   const [loaded, setLoaded] = useState(false);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,19 +72,21 @@ export function KairoSettingsSection() {
 
   const placeholders = KAIRO_DEFAULTS[draft.providerFormat];
   const status = isKairoConfigured(draft) ? "Configured" : "Not configured";
+  const hasCustomEndpoint = useMemo(
+    () => draft.baseUrl !== placeholders.baseUrl || draft.model !== placeholders.model,
+    [draft.baseUrl, draft.model, placeholders.baseUrl, placeholders.model]
+  );
+
+  useEffect(() => {
+    if (hasCustomEndpoint) {
+      setShowAdvanced(true);
+    }
+  }, [hasCustomEndpoint]);
 
   // Show a minimal loading state while SecureStore resolves on cold start.
   // Previously all inputs rendered as disabled/empty which looked broken.
   if (!loaded) {
-    return (
-      <View style={styles.block}>
-        <Text style={styles.label}>Kairo assistant</Text>
-        <Text style={styles.help}>
-          Bring your own API key. Stored in the device keychain — never sent to Pravah.
-        </Text>
-        <Text style={[styles.status, { color: colors.textMuted }]}>Loading…</Text>
-      </View>
-    );
+    return <KairoSettingsSkeleton />;
   }
 
   return (
@@ -119,7 +125,7 @@ export function KairoSettingsSection() {
       {/* API key row: input + show/hide toggle so the user can verify what
           is stored. The key sits in expo-secure-store (device keychain). */}
       <View style={styles.apiKeyRow}>
-        <TextInput
+        <BottomSheetTextInput
           value={draft.apiKey}
           onChangeText={(v) => setDraft((d) => ({ ...d, apiKey: v }))}
           placeholder="API key"
@@ -130,36 +136,62 @@ export function KairoSettingsSection() {
           editable={loaded}
           style={[styles.input, styles.apiKeyInput]}
         />
-        <TouchableOpacity
+        <Pressable
           onPress={() => setApiKeyVisible((v) => !v)}
           hitSlop={8}
           accessibilityRole="button"
           accessibilityLabel={apiKeyVisible ? "Hide API key" : "Show API key"}
-          style={styles.apiKeyToggle}
+          style={({ pressed }) => [styles.apiKeyToggle, pressed && { opacity: 0.7 }]}
         >
           <Text style={styles.apiKeyToggleText}>{apiKeyVisible ? "Hide" : "Show"}</Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
-      <TextInput
-        value={draft.baseUrl}
-        onChangeText={(v) => setDraft((d) => ({ ...d, baseUrl: v }))}
-        placeholder={placeholders.baseUrl}
-        placeholderTextColor={colors.textMuted}
-        autoCapitalize="none"
-        autoCorrect={false}
-        editable={loaded}
-        style={styles.input}
-      />
-      <TextInput
-        value={draft.model}
-        onChangeText={(v) => setDraft((d) => ({ ...d, model: v }))}
-        placeholder={placeholders.model}
-        placeholderTextColor={colors.textMuted}
-        autoCapitalize="none"
-        autoCorrect={false}
-        editable={loaded}
-        style={styles.input}
-      />
+
+      <View style={styles.metaRow}>
+        <Text style={styles.metaText}>
+          {draft.providerFormat === "anthropic" ? "Anthropic format" : "OpenAI-compatible format"}
+        </Text>
+        <Pressable
+          onPress={() => setShowAdvanced((v) => !v)}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={showAdvanced ? "Hide advanced Kairo settings" : "Show advanced Kairo settings"}
+          style={({ pressed }) => [styles.advancedToggle, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={styles.advancedToggleText}>{showAdvanced ? "Hide advanced" : "Advanced"}</Text>
+        </Pressable>
+      </View>
+
+      {showAdvanced ? (
+        <Animated.View
+          entering={FadeIn.duration(180)}
+          exiting={FadeOut.duration(120)}
+          style={styles.advancedWrap}
+        >
+          <Text style={styles.advancedLabel}>Endpoint URL</Text>
+          <BottomSheetTextInput
+            value={draft.baseUrl}
+            onChangeText={(v) => setDraft((d) => ({ ...d, baseUrl: v }))}
+            placeholder={placeholders.baseUrl}
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={loaded}
+            style={styles.input}
+          />
+          <Text style={styles.advancedLabel}>Model</Text>
+          <BottomSheetTextInput
+            value={draft.model}
+            onChangeText={(v) => setDraft((d) => ({ ...d, model: v }))}
+            placeholder={placeholders.model}
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={loaded}
+            style={styles.input}
+          />
+        </Animated.View>
+      ) : null}
 
       <View style={styles.actions}>
         <Pressable
@@ -251,6 +283,32 @@ const styles = StyleSheet.create({
   apiKeyToggleText: {
     ...typography.micro,
     color: colors.accent,
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  metaText: {
+    flex: 1,
+    color: colors.textMuted,
+    ...typography.micro,
+  },
+  advancedToggle: {
+    paddingVertical: spacing.xs,
+  },
+  advancedToggleText: {
+    color: colors.accent,
+    ...typography.micro,
+  },
+  advancedWrap: {
+    gap: spacing.sm,
+    paddingTop: spacing.xs,
+  },
+  advancedLabel: {
+    color: colors.textMuted,
+    ...typography.micro,
   },
   actions: {
     flexDirection: "row",

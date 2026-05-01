@@ -127,6 +127,9 @@ GitHub Actions runs on pull requests and pushes to `main`:
 - `docs/development.md` — local setup, environment, and workflows
 - `docs/api.md` — HTTP routes and MCP tools
 - `docs/google-oauth.md` — Google OAuth setup and troubleshooting
+- `apps/mobile/docs/README.md` — mobile documentation index
+- `apps/mobile/docs/architecture.md` — detailed mobile architecture and state/query ownership
+- `apps/mobile/docs/ux-orchestration.md` — mobile loading, keyboard, settings, and motion behavior
 
 ## Security Notes
 

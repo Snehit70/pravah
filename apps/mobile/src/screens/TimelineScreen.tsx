@@ -14,6 +14,7 @@ import DraggableFlatList, {
 import { colors, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
 import { TimelineSectionHeader } from "../components/TimelineSectionHeader";
+import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { dateLabel } from "../lib/dates";
 
 type TimelineRow =
@@ -69,12 +70,7 @@ export function TimelineScreen({
     </Animated.View>
   );
 
-  const loadingBlock = (
-    <Animated.View entering={FadeIn.duration(300)} style={styles.emptyWrap}>
-      <Text style={styles.emptyTitle}>Gathering the ledger.</Text>
-      <Text style={styles.emptyText}>Your tasks are still syncing into view.</Text>
-    </Animated.View>
-  );
+  const loadingBlock = <TaskListSkeleton variant="timeline" />;
 
   return (
     <DraggableFlatList<TimelineRow>

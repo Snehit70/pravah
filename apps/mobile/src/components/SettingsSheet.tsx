@@ -5,6 +5,8 @@ import BottomSheet, {
   BottomSheetScrollView,
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
+import Animated, { FadeInDown } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { NotificationPermissionState } from "../lib/notifications";
 import { KairoSettingsSection } from "./KairoSettingsSection";
@@ -85,6 +87,7 @@ export function SettingsSheet({
   onSignOut,
 }: SettingsSheetProps) {
   const bottomSheetRef = useRef<BottomSheet>(null);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (visible) {
@@ -111,12 +114,15 @@ export function SettingsSheet({
     <BottomSheet
       ref={bottomSheetRef}
       index={-1}
-      snapPoints={["88%"]}
+      snapPoints={["92%"]}
       enablePanDownToClose
       enableDynamicSizing={false}
       backgroundStyle={styles.settingsSheet}
       handleIndicatorStyle={styles.settingsHandle}
       backdropComponent={renderBackdrop}
+      keyboardBehavior="extend"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
       onChange={(index) => {
         if (index === -1 && visible) {
           onClose();
@@ -124,8 +130,9 @@ export function SettingsSheet({
       }}
     >
       <BottomSheetScrollView
-        contentContainerStyle={styles.settingsScrollContent}
+        contentContainerStyle={[styles.settingsScrollContent, { paddingBottom: insets.bottom + spacing.section }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
             <View style={styles.settingsHeader}>
               <View style={{ flex: 1 }}>
@@ -143,9 +150,26 @@ export function SettingsSheet({
               </Pressable>
             </View>
 
+            <View style={styles.sectionJumpRow}>
+              {(["Assistant", "Sync", "Alerts", "Account"] as const).map((label) => (
+                <View key={label} style={styles.sectionJumpChip}>
+                  <Text style={styles.sectionJumpText}>{label}</Text>
+                </View>
+              ))}
+            </View>
+
+            <Text style={styles.sectionHeader}>Assistant</Text>
+            <Animated.View entering={FadeInDown.duration(220)} style={[styles.settingBlock, styles.sectionCard]}>
+              <Text style={styles.settingLabel}>Kairo</Text>
+              <Text style={styles.settingHelp}>
+                Configure the provider, API key, endpoint, and model used for mobile AI assistance.
+              </Text>
+              <KairoSettingsSection />
+            </Animated.View>
+
             <Text style={styles.sectionHeader}>Sync</Text>
 
-            <View style={styles.settingBlock}>
+            <Animated.View entering={FadeInDown.duration(260)} style={[styles.settingBlock, styles.sectionCard]}>
               <View style={styles.settingRow}>
                 <View style={styles.settingCopy}>
                   <Text style={styles.settingLabel}>Google Calendar</Text>
@@ -174,11 +198,9 @@ export function SettingsSheet({
                   {isCalendarSyncing ? "Syncing…" : "Sync now"}
                 </Text>
               </Pressable>
-            </View>
+            </Animated.View>
 
-            <View style={styles.hairline} />
-
-            <View style={styles.settingBlock}>
+            <Animated.View entering={FadeInDown.duration(280)} style={[styles.settingBlock, styles.sectionCard]}>
               <View style={styles.settingRow}>
                 <View style={styles.settingCopy}>
                   <Text style={styles.settingLabel}>Gmail</Text>
@@ -199,7 +221,7 @@ export function SettingsSheet({
               {!canToggleGmailSync ? (
                 <Text style={styles.settingMeta}>Connect Gmail on web before enabling mobile sync.</Text>
               ) : null}
-            </View>
+            </Animated.View>
 
             <Pressable
               onPress={onEnableAndSyncGoogleCalendar}
@@ -216,7 +238,7 @@ export function SettingsSheet({
 
             <Text style={styles.sectionHeader}>Alerts</Text>
 
-            <View style={styles.settingBlock}>
+            <Animated.View entering={FadeInDown.duration(300)} style={[styles.settingBlock, styles.sectionCard]}>
               <Text style={styles.settingLabel}>Notifications</Text>
               <Text style={styles.settingHelp}>Daily reminders and test alerts for mobile follow-through.</Text>
               <Text style={[styles.settingStatus, { color: statusTextColor(notificationPermissionState) }]}>
@@ -237,11 +259,9 @@ export function SettingsSheet({
                   </Text>
                 </Pressable>
               ) : null}
-            </View>
+            </Animated.View>
 
-            <View style={styles.hairline} />
-
-            <View style={styles.settingBlock}>
+            <Animated.View entering={FadeInDown.duration(320)} style={[styles.settingBlock, styles.sectionCard]}>
               <View style={styles.settingRow}>
                 <View style={styles.settingCopy}>
                   <Text style={styles.settingLabel}>Daily reminder</Text>
@@ -267,14 +287,11 @@ export function SettingsSheet({
                   Send a test
                 </Text>
               </Pressable>
-            </View>
-
-            <Text style={styles.sectionHeader}>Kairo</Text>
-            <KairoSettingsSection />
+            </Animated.View>
 
             <Text style={styles.sectionHeader}>Account</Text>
 
-            <View style={styles.settingBlock}>
+            <Animated.View entering={FadeInDown.duration(340)} style={[styles.settingBlock, styles.sectionCard, styles.accountCard]}>
               <Text style={styles.settingHelp}>Sign out if you want to switch Google accounts on this device.</Text>
               <Pressable
                 onPress={onSignOut}
@@ -285,7 +302,7 @@ export function SettingsSheet({
               >
                 <Text style={styles.signOutLink}>Sign out</Text>
               </Pressable>
-            </View>
+            </Animated.View>
       </BottomSheetScrollView>
     </BottomSheet>
   );
@@ -315,6 +332,24 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     marginBottom: spacing.md,
   },
+  sectionJumpRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  sectionJumpChip: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.full,
+    backgroundColor: colors.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  sectionJumpText: {
+    ...typography.micro,
+    color: colors.textMuted,
+  },
   settingsKicker: {
     ...typography.micro,
     color: colors.textMuted,
@@ -336,6 +371,16 @@ const styles = StyleSheet.create({
   },
   settingBlock: {
     gap: spacing.sm,
+  },
+  sectionCard: {
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgCardGlass,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  accountCard: {
+    marginBottom: spacing.md,
   },
   settingRow: {
     flexDirection: "row",
@@ -362,11 +407,6 @@ const styles = StyleSheet.create({
   settingMeta: {
     color: colors.textMuted,
     ...typography.micro,
-  },
-  hairline: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.borderSubtle,
-    marginVertical: spacing.xs,
   },
   inlineActionText: {
     color: colors.accent,

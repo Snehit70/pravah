@@ -15,6 +15,7 @@ import DraggableFlatList, {
 import { RefreshControl } from "react-native";
 import { colors, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
+import { TaskListSkeleton } from "../components/LoadingSkeleton";
 
 type InboxScreenProps = {
   tasks: MobileTask[];
@@ -56,12 +57,7 @@ export function InboxScreen({
     </Animated.View>
   );
 
-  const loadingBlock = (
-    <Animated.View entering={FadeIn.duration(300)} style={styles.emptyWrap}>
-      <Text style={styles.emptyTitle}>Gathering the ledger.</Text>
-      <Text style={styles.emptyText}>Your tasks are still syncing into view.</Text>
-    </Animated.View>
-  );
+  const loadingBlock = <TaskListSkeleton variant="inbox" />;
 
   return (
     <DraggableFlatList

@@ -10,6 +10,7 @@ import Animated, { FadeIn } from "react-native-reanimated";
 import { FlatList, RefreshControl, Text } from "react-native";
 import { colors, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
+import { TaskListSkeleton } from "../components/LoadingSkeleton";
 
 type CompletedScreenProps = {
   tasks: MobileTask[];
@@ -35,12 +36,7 @@ export function CompletedScreen({
     </Animated.View>
   );
 
-  const loadingBlock = (
-    <Animated.View entering={FadeIn.duration(300)} style={styles.emptyWrap}>
-      <Text style={styles.emptyTitle}>Gathering the ledger.</Text>
-      <Text style={styles.emptyText}>Your tasks are still syncing into view.</Text>
-    </Animated.View>
-  );
+  const loadingBlock = <TaskListSkeleton variant="completed" />;
 
   return (
     <FlatList

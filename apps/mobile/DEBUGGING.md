@@ -32,3 +32,10 @@ adb -s 57e38b78 shell dumpsys dropbox --print data_app_anr | rg -n "com.pravah.m
 - Approx timestamp (`HH:MM`).
 - Expected vs actual behavior.
 - A matching `[PRAVAH_MOBILE]` action id if available.
+
+## High-Value Mobile QA Checks
+
+- Open Settings -> Kairo and verify the API key field stays visible above the keyboard.
+- With the keyboard open, scroll to base URL and model and confirm they remain reachable.
+- Switch between Inbox / Timeline / Completed and confirm no tab briefly renders blank.
+- Force a dev-time error in one tab and confirm only that tab falls back, not the whole app.
