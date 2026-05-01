@@ -135,7 +135,9 @@ function MobileApp() {
   );
   const timelineQuery = useQuery(
     api.tasks.getTimeline,
-    session ? { endDate: weekEnd } : "skip"
+    // Pass today as the lower bound so we never pull historical scheduled
+    // tasks — only tasks from today through the end of the week window.
+    session ? { startDate: today, endDate: weekEnd } : "skip"
   );
   const completedQuery = useQuery(
     api.tasks.listTasks,

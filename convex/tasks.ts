@@ -588,18 +588,25 @@ export const bulkReschedule = mutation({
 
 export const getTimeline = query({
   args: {
+    // Client passes its local today string so tasks from previous days are
+    // excluded. Defaults to no lower bound if omitted (backward compat).
+    startDate: v.optional(v.string()),
     endDate: v.string(),
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
     const tasks = await ctx.db
       .query("tasks")
-      .withIndex("by_owner_status_date_position", (q) =>
-        q
+      .withIndex("by_owner_status_date_position", (q) => {
+        const base = q
           .eq("ownerTokenIdentifier", tokenIdentifier)
-          .eq("status", "scheduled")
-          .lte("scheduledDate", args.endDate)
-      )
+          .eq("status", "scheduled");
+        // Apply the lower bound only when startDate is provided so callers
+        // that omit it still get the old behaviour.
+        return args.startDate
+          ? base.gte("scheduledDate", args.startDate).lte("scheduledDate", args.endDate)
+          : base.lte("scheduledDate", args.endDate);
+      })
       .collect();
 
     const grouped: Record<string, typeof tasks> = {};
