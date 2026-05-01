@@ -69,6 +69,20 @@ export function KairoSettingsSection() {
   const placeholders = KAIRO_DEFAULTS[draft.providerFormat];
   const status = isKairoConfigured(draft) ? "Configured" : "Not configured";
 
+  // Show a minimal loading state while SecureStore resolves on cold start.
+  // Previously all inputs rendered as disabled/empty which looked broken.
+  if (!loaded) {
+    return (
+      <View style={styles.block}>
+        <Text style={styles.label}>Kairo assistant</Text>
+        <Text style={styles.help}>
+          Bring your own API key. Stored in the device keychain — never sent to Pravah.
+        </Text>
+        <Text style={[styles.status, { color: colors.textMuted }]}>Loading…</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.block}>
       <Text style={styles.label}>Kairo assistant</Text>
