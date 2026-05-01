@@ -9,8 +9,7 @@ import {
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { type RenderItemParams } from "react-native-draggable-flatlist";
-import { useMutation, useQuery } from "convex/react";
-import type { Doc } from "../../convex/_generated/dataModel";
+import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import * as Haptics from "expo-haptics";
 import { authClient, authStorageReady } from "./src/lib/auth-client";
@@ -23,7 +22,7 @@ import {
 } from "@expo-google-fonts/geist";
 import { GeistMono_500Medium } from "@expo-google-fonts/geist-mono";
 import { ConvexClientProvider } from "./src/lib/convex";
-import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
+import { dateLabel, isIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
 
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -41,9 +40,12 @@ import { EditTaskSheet, type EditTaskSheetRef } from "./src/components/EditTaskS
 import { MobileAuthScreen } from "./src/components/MobileAuthScreen";
 import { RootErrorBoundary } from "./src/components/RootErrorBoundary";
 import { SettingsSheet } from "./src/components/SettingsSheet";
-import { TaskTabContent } from "./src/components/TaskTabContent";
+import { InboxScreen } from "./src/screens/InboxScreen";
+import { TimelineScreen } from "./src/screens/TimelineScreen";
+import { CompletedScreen } from "./src/screens/CompletedScreen";
 import { useRetryQueue, type RetryPayload } from "./src/hooks/useRetryQueue";
 import { useTaskMutations } from "./src/hooks/useTaskMutations";
+import { useTaskQueries } from "./src/hooks/useTaskQueries";
 import { useGoogleAuth } from "./src/hooks/useGoogleAuth";
 import { useNotificationsSettings } from "./src/hooks/useNotificationsSettings";
 import { useIntegrationsSettings } from "./src/hooks/useIntegrationsSettings";
@@ -116,73 +118,38 @@ function MobileApp() {
   const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
 
-  // ── Dates ───────────────────────────────────────────────────────────
-
-  const today = toIsoDate(new Date());
-  const tomorrow = toIsoDate(addDays(new Date(), 1));
-  const weekEnd = toIsoDate(addDays(new Date(), 6));
-
   // ── Data ────────────────────────────────────────────────────────────
 
-  // All three queries stay subscribed whenever we have a session — regardless
-  // of which tab is active. Skipping on tab-switch caused the inbox to return
-  // undefined when switching back, showing a blank list until the re-fetch
-  // completed. Convex subscriptions are cheap to hold open; the data is already
-  // cached on the client after the first load.
-  const inboxQuery = useQuery(
-    api.tasks.listTasks,
-    session ? { status: "inbox" } : "skip"
-  );
-  const timelineQuery = useQuery(
-    api.tasks.getTimeline,
-    // Pass today as the lower bound so we never pull historical scheduled
-    // tasks — only tasks from today through the end of the week window.
-    session ? { startDate: today, endDate: weekEnd } : "skip"
-  );
-  const completedQuery = useQuery(
-    api.tasks.listTasks,
-    session ? { status: "completed" } : "skip"
-  );
-  const allTasksQuery = useQuery(api.tasks.listTasks, session ? {} : "skip");
-  const countsQuery = useQuery(api.tasks.getTaskCounts, session ? {} : "skip");
+  const {
+    today,
+    tomorrow,
+    weekEnd,
+    inboxTasks,
+    scheduledTasks,
+    completedTasks,
+    allWorkspaceTasks,
+    timelineSections,
+    inboxCount,
+    timelineCount,
+    completedCount,
+    isInboxLoading,
+    isTimelineLoading,
+    isCompletedLoading,
+  } = useTaskQueries({ isAuthenticated: Boolean(session) });
 
-  const activeQueryTasks =
-    activeTab === "inbox"
-      ? inboxQuery
-      : activeTab === "timeline"
-        ? timelineQuery
-        : completedQuery;
-  const isActiveListLoading = activeQueryTasks === undefined;
+  // Mutations still operate on the currently visible list. This keeps
+  // optimistic updates scoped to what the user sees while query subscriptions
+  // stay always-on in useTaskQueries.
+  const activeServerTasks =
+    activeTab === "timeline"
+      ? scheduledTasks
+      : activeTab === "inbox"
+        ? inboxTasks
+        : completedTasks;
 
-  const mapTaskDoc = useCallback(
-    (task: Doc<"tasks">): MobileTask => ({
-      _id: task._id,
-      title: task.title,
-      description: task.description,
-      deadline: task.deadline,
-      priority: task.priority,
-      status: task.status,
-      scheduledDate: task.scheduledDate,
-      position: task.position,
-      updatedAt: task.updatedAt,
-    }),
-    []
-  );
-
-  const serverTasks = useMemo<MobileTask[]>(() => {
-    const activeDocs =
-      activeTab === "timeline"
-        ? Object.values(timelineQuery ?? {}).flat()
-        : activeTab === "inbox"
-          ? inboxQuery
-          : completedQuery;
-
-    return ((activeDocs as Doc<"tasks">[] | undefined)?.map(mapTaskDoc) ?? []);
-  }, [activeTab, completedQuery, inboxQuery, mapTaskDoc, timelineQuery]);
-  const tasks = useMemo(() => optimisticTasks ?? serverTasks, [optimisticTasks, serverTasks]);
-  const allWorkspaceTasks = useMemo(
-    () => ((allTasksQuery as Doc<"tasks">[] | undefined)?.map(mapTaskDoc) ?? []),
-    [allTasksQuery, mapTaskDoc]
+  const tasks = useMemo(
+    () => optimisticTasks ?? activeServerTasks,
+    [optimisticTasks, activeServerTasks]
   );
 
   const addTaskMutation = useMutation(api.tasks.addTask);
@@ -196,46 +163,25 @@ function MobileApp() {
 
   // ── Derived data ────────────────────────────────────────────────────
 
-  const inboxTasks = useMemo(() => {
-    if (activeTab !== "inbox") return [];
-    return [...tasks].sort((a, b) => getPriorityRank(a.priority) - getPriorityRank(b.priority) || a.position - b.position);
-  }, [activeTab, tasks]);
+  const visibleTasks =
+    activeTab === "timeline"
+      ? (tasks as MobileTask[])
+      : activeTab === "inbox"
+        ? (tasks as MobileTask[])
+        : (tasks as MobileTask[]);
 
-  const scheduledTasks = useMemo(() => {
-    if (activeTab !== "timeline") return [];
-    return [...tasks].sort(
-      (a, b) =>
-        (a.scheduledDate ?? "").localeCompare(b.scheduledDate ?? "") ||
-        getPriorityRank(a.priority) - getPriorityRank(b.priority) ||
-        a.position - b.position
-    );
-  }, [activeTab, tasks]);
+  const isActiveListLoading =
+    activeTab === "timeline"
+      ? isTimelineLoading
+      : activeTab === "inbox"
+        ? isInboxLoading
+        : isCompletedLoading;
 
-  const completedTasks = useMemo(() => {
-    if (activeTab !== "completed") return [];
-    return [...tasks].sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [activeTab, tasks]);
-
-  const inboxCount = countsQuery?.inboxCount ?? (activeTab === "inbox" ? inboxTasks.length : 0);
-  const timelineCount = activeTab === "timeline" ? scheduledTasks.length : (countsQuery?.timelineCount ?? 0);
-  const completedCount =
-    countsQuery?.completedCount ?? (activeTab === "completed" ? completedTasks.length : 0);
   const kairoTasks = allWorkspaceTasks;
   const kairoInboxTasks = useMemo(
     () => kairoTasks.filter((task) => task.status === "inbox"),
     [kairoTasks]
   );
-
-  const timelineSections = useMemo(() => {
-    const grouped = new Map<string, MobileTask[]>();
-    for (const task of scheduledTasks) {
-      const key = task.scheduledDate ?? "unscheduled";
-      const existing = grouped.get(key) ?? [];
-      existing.push(task);
-      grouped.set(key, existing);
-    }
-    return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [scheduledTasks]);
   const showToast = useCallback((next: ToastState) => setToast(next), []);
 
   const tabBarBottomPadding = Math.max(insets.bottom, spacing.md);
@@ -423,7 +369,7 @@ function MobileApp() {
     handleTimelineDragEnd,
     shiftTimelineTask,
   } = useTaskMutations({
-    serverTasks,
+    serverTasks: activeServerTasks,
     setOptimisticTasks,
     setPendingMutations,
     enqueueRetry,
@@ -729,26 +675,44 @@ function MobileApp() {
         <Text style={styles.syncText}>Syncing</Text>
       ) : null}
 
-      <TaskTabContent
-        activeTab={activeTab}
-        inboxTasks={inboxTasks}
-        timelineSections={timelineSections}
-        completedTasks={completedTasks}
-        today={today}
-        tomorrow={tomorrow}
-        weekEnd={weekEnd}
-        isRefreshing={isRefreshing}
-        isActiveListLoading={isActiveListLoading}
-        tabBarHeight={tabBarHeight}
-        emptyBlock={emptyBlock}
-        loadingBlock={loadingBlock}
-        onRefresh={handleRefresh}
-        onInboxDragEnd={handleInboxDragEnd}
-        onTimelineDragEnd={handleTimelineDragEnd}
-        renderInboxTaskItem={renderInboxTaskItem}
-        renderTimelineTaskItem={renderTimelineTaskItem}
-        renderCompletedTaskItem={renderCompletedTaskItem}
-      />
+      {activeTab === "inbox" ? (
+        <InboxScreen
+          tasks={visibleTasks}
+          isLoading={isActiveListLoading}
+          isRefreshing={isRefreshing}
+          tabBarHeight={tabBarHeight}
+          onRefresh={handleRefresh}
+          onDragEnd={handleInboxDragEnd}
+          onCapture={() => addTaskSheetRef.current?.open()}
+          renderItem={renderInboxTaskItem}
+        />
+      ) : null}
+
+      {activeTab === "timeline" ? (
+        <TimelineScreen
+          sections={timelineSections}
+          today={today}
+          tomorrow={tomorrow}
+          weekEnd={weekEnd}
+          isLoading={isActiveListLoading}
+          isRefreshing={isRefreshing}
+          tabBarHeight={tabBarHeight}
+          onRefresh={handleRefresh}
+          onDragEnd={handleTimelineDragEnd}
+          renderItem={renderTimelineTaskItem}
+        />
+      ) : null}
+
+      {activeTab === "completed" ? (
+        <CompletedScreen
+          tasks={visibleTasks}
+          isLoading={isActiveListLoading}
+          isRefreshing={isRefreshing}
+          tabBarHeight={tabBarHeight}
+          onRefresh={handleRefresh}
+          renderItem={renderCompletedTaskItem}
+        />
+      ) : null}
 
       {/* FAB */}
       {!isAddSheetOpen && !isEditSheetOpen ? (
