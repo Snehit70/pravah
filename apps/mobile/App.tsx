@@ -12,7 +12,7 @@ import { type RenderItemParams } from "react-native-draggable-flatlist";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import * as Haptics from "expo-haptics";
-import { authClient, authStorageReady } from "./src/lib/auth-client";
+import { authStorageReady } from "./src/lib/auth-client";
 import {
   useFonts as useGeistFonts,
   Geist_400Regular,
@@ -46,16 +46,10 @@ import { CompletedScreen } from "./src/screens/CompletedScreen";
 import { useRetryQueue, type RetryPayload } from "./src/hooks/useRetryQueue";
 import { useTaskMutations } from "./src/hooks/useTaskMutations";
 import { useTaskQueries } from "./src/hooks/useTaskQueries";
+import { useWorkspaceState } from "./src/hooks/useWorkspaceState";
 import { useGoogleAuth } from "./src/hooks/useGoogleAuth";
 import { useNotificationsSettings } from "./src/hooks/useNotificationsSettings";
 import { useIntegrationsSettings } from "./src/hooks/useIntegrationsSettings";
-
-// ── Types ──────────────────────────────────────────────────────────────
-
-type ToastState = {
-  kind: "error" | "info";
-  message: string;
-};
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -92,28 +86,37 @@ function MobileApp() {
   const addTaskSheetRef = useRef<AddTaskSheetRef>(null);
   const editTaskSheetRef = useRef<EditTaskSheetRef>(null);
   const kairoRef = useRef<KairoSheetRef>(null);
-  const appStartMsRef = useRef<number>(Date.now());
   const lastListStateLogMsRef = useRef<number>(0);
 
-  const [activeTab, setActiveTab] = useState<TabKey>("inbox");
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [pendingMutations, setPendingMutations] = useState(0);
-  const [toast, setToast] = useState<ToastState | null>(null);
-  const [optimisticTasks, setOptimisticTasks] = useState<MobileTask[] | null>(null);
-  const [isAddSheetOpen, setIsAddSheetOpen] = useState(false);
-  const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [isKairoActive, setIsKairoActive] = useState(false);
+  const {
+    session,
+    sessionLoading,
+    activeTab,
+    setActiveTab,
+    isRefreshing,
+    setIsRefreshing,
+    pendingMutations,
+    setPendingMutations,
+    toast,
+    showToast,
+    optimisticTasks,
+    setOptimisticTasks,
+    isAddSheetOpen,
+    setIsAddSheetOpen,
+    isEditSheetOpen,
+    setIsEditSheetOpen,
+    isSettingsModalOpen,
+    setIsSettingsModalOpen,
+    isKairoActive,
+    setIsKairoActive,
+    isDataBootstrapReady,
+  } = useWorkspaceState();
+
   const chromeDim = useSharedValue(1);
   useEffect(() => {
     chromeDim.value = withTiming(isKairoActive ? 0.38 : 1, { duration: 280 });
   }, [chromeDim, isKairoActive]);
   const chromeAnimStyle = useAnimatedStyle(() => ({ opacity: chromeDim.value }));
-  const [isDataBootstrapReady, setIsDataBootstrapReady] = useState(false);
-
-  const sessionResult = authClient.useSession();
-  const session = sessionResult.data;
-  const sessionLoading = sessionResult.isPending;
 
   const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
@@ -158,9 +161,6 @@ function MobileApp() {
   const moveTaskMutation = useMutation(api.tasks.moveTask);
   const unscheduleTaskMutation = useMutation(api.tasks.unscheduleTask);
   const reopenTaskMutation = useMutation(api.tasks.reopenTask);
-  const storeUserMutation = useMutation(api.users.store);
-  const claimLegacyDataMutation = useMutation(api.users.claimLegacyData);
-
   // ── Derived data ────────────────────────────────────────────────────
 
   const visibleTasks =
@@ -182,8 +182,6 @@ function MobileApp() {
     () => kairoTasks.filter((task) => task.status === "inbox"),
     [kairoTasks]
   );
-  const showToast = useCallback((next: ToastState) => setToast(next), []);
-
   const tabBarBottomPadding = Math.max(insets.bottom, spacing.md);
   const tabBarHeight = 62 + tabBarBottomPadding;
   const fabBottom = tabBarHeight + spacing.xxl;
@@ -234,56 +232,6 @@ function MobileApp() {
   }, [googleSignOut]);
 
   // ── Effects ─────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (!toast) return;
-    const timeout = setTimeout(() => setToast(null), 3200);
-    return () => clearTimeout(timeout);
-  }, [toast]);
-
-  useEffect(() => {
-    if (pendingMutations === 0) setOptimisticTasks(null);
-  }, [pendingMutations]);
-
-  useEffect(() => {
-    if (!session) return;
-    mobileLogger.info("session_ready", {
-      elapsedMs: Date.now() - appStartMsRef.current,
-    });
-  }, [session]);
-
-  useEffect(() => {
-    if (!session) {
-      setIsDataBootstrapReady(false);
-      return;
-    }
-
-    let cancelled = false;
-    setIsDataBootstrapReady(false);
-
-    void (async () => {
-      try {
-        await storeUserMutation({});
-        await claimLegacyDataMutation({});
-      } catch (error) {
-        mobileLogger.warn("data_bootstrap_failed", {
-          errorType: classifyError(error),
-        });
-        showToast({
-          kind: "error",
-          message: "Could not finish loading your workspace.",
-        });
-      } finally {
-        if (!cancelled) {
-          setIsDataBootstrapReady(true);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [session, storeUserMutation, claimLegacyDataMutation, showToast]);
 
   // ── Toast / retry ───────────────────────────────────────────────────
 
@@ -515,56 +463,6 @@ function MobileApp() {
       />
     ),
     [markDone, reopenToInbox, handleEditTask]
-  );
-
-  // Editorial empty states. Headlines are short observations rendered in
-  // Fraunces; only the inbox case offers a text-link action because it's the
-  // only view where capturing is the next obvious move. The block is flat \u2014
-  // no card, no border \u2014 so it reads like a printed page, not a placeholder.
-  const emptyState = useMemo(() => {
-    if (activeTab === "timeline") {
-      return {
-        title: "An open day.",
-        body: "Move a task from the inbox to fill it.",
-        cta: null as null | string,
-      };
-    }
-    if (activeTab === "completed") {
-      return {
-        title: "A quiet ledger \u2014 for now.",
-        body: "Closed loops will gather here.",
-        cta: null as null | string,
-      };
-    }
-    return {
-      title: "Nothing to carry forward.",
-      body: "When something comes up, capture it.",
-      cta: "Capture a task",
-    };
-  }, [activeTab]);
-
-  const emptyBlock = (
-    <Animated.View entering={FadeIn.duration(400)} style={styles.emptyWrap}>
-      <Text style={styles.emptyTitle}>{emptyState.title}</Text>
-      <Text style={styles.emptyText}>{emptyState.body}</Text>
-      {emptyState.cta ? (
-        <Pressable
-          onPress={() => addTaskSheetRef.current?.open()}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel={emptyState.cta}
-          style={({ pressed }) => [styles.emptyCtaWrap, pressed && { opacity: 0.6 }]}
-        >
-          <Text style={styles.emptyCta}>{emptyState.cta}</Text>
-        </Pressable>
-      ) : null}
-    </Animated.View>
-  );
-  const loadingBlock = (
-    <Animated.View entering={FadeIn.duration(300)} style={styles.emptyWrap}>
-      <Text style={styles.emptyTitle}>Gathering the ledger.</Text>
-      <Text style={styles.emptyText}>Your tasks are still syncing into view.</Text>
-    </Animated.View>
   );
 
   // ── Loading / Auth screens ──────────────────────────────────────────
@@ -981,35 +879,6 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
     paddingLeft: spacing.md,
-  },
-
-  // Empty states — flat editorial block, no enclosure. Fraunces headline sets
-  // the tone; body is Manrope; the inbox CTA is a mono "link" in copper so it
-  // reads as tappable without borrowing button chrome.
-  emptyWrap: {
-    paddingTop: spacing.section * 2,
-    paddingHorizontal: spacing.xxl,
-    gap: spacing.sm,
-    alignItems: "center",
-  },
-  emptyTitle: {
-    color: colors.textPrimary,
-    ...typography.headline,
-    textAlign: "center",
-  },
-  emptyText: {
-    color: colors.textSecondary,
-    ...typography.bodyMd,
-    textAlign: "center",
-  },
-  emptyCtaWrap: {
-    marginTop: spacing.lg,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-  },
-  emptyCta: {
-    color: colors.accent,
-    ...typography.micro,
   },
 
   // Shared
