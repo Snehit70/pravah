@@ -124,17 +124,22 @@ function MobileApp() {
 
   // ── Data ────────────────────────────────────────────────────────────
 
+  // All three queries stay subscribed whenever we have a session — regardless
+  // of which tab is active. Skipping on tab-switch caused the inbox to return
+  // undefined when switching back, showing a blank list until the re-fetch
+  // completed. Convex subscriptions are cheap to hold open; the data is already
+  // cached on the client after the first load.
   const inboxQuery = useQuery(
     api.tasks.listTasks,
-    session && activeTab === "inbox" ? { status: "inbox" } : "skip"
+    session ? { status: "inbox" } : "skip"
   );
   const timelineQuery = useQuery(
     api.tasks.getTimeline,
-    session && activeTab === "timeline" ? { endDate: weekEnd } : "skip"
+    session ? { endDate: weekEnd } : "skip"
   );
   const completedQuery = useQuery(
     api.tasks.listTasks,
-    session && activeTab === "completed" ? { status: "completed" } : "skip"
+    session ? { status: "completed" } : "skip"
   );
   const allTasksQuery = useQuery(api.tasks.listTasks, session ? {} : "skip");
   const countsQuery = useQuery(api.tasks.getTaskCounts, session ? {} : "skip");
