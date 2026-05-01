@@ -28,9 +28,7 @@ type UseTaskQueriesOptions = {
 };
 
 export function useTaskQueries({ isAuthenticated }: UseTaskQueriesOptions) {
-  const today = toIsoDate(new Date());
-  const tomorrow = toIsoDate(addDays(new Date(), 1));
-  const weekEnd = toIsoDate(addDays(new Date(), 6));
+  const { today, tomorrow, weekEnd } = buildTimelineWindow(new Date());
 
   const inboxQuery = useQuery(
     api.tasks.listTasks,
@@ -148,5 +146,17 @@ export function useTaskQueries({ isAuthenticated }: UseTaskQueriesOptions) {
     isInboxLoading,
     isTimelineLoading,
     isCompletedLoading,
+  };
+}
+
+export function buildTimelineWindow(baseDate: Date): {
+  today: string;
+  tomorrow: string;
+  weekEnd: string;
+} {
+  return {
+    today: toIsoDate(baseDate),
+    tomorrow: toIsoDate(addDays(baseDate, 1)),
+    weekEnd: toIsoDate(addDays(baseDate, 6)),
   };
 }
