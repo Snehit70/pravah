@@ -192,6 +192,63 @@ Rules for new motion:
 - if a surface plays a repeating animation, it must check `useReducedMotion` and provide a static equivalent
 - prefer dropping competing per-card entrance animations entirely over making them all conditional — the settings sheet now uses no per-card `FadeInDown` so the section reveal feels like one quiet surface instead of four overlapping ones
 
+## Android Ergonomics
+
+These rules exist because Android has a smaller default touch target tolerance than
+iOS and no system-level equivalent of `UILargeContentViewer`. Without an explicit
+policy, small interactive elements accumulate across the codebase until they are
+consistently unreachable on mid-range Android devices.
+
+### Touch target policy
+
+**Minimum `hitSlop`: 12** on every `Pressable`.
+
+Use the literal number `12`, not a token, because this is a physical constraint not
+a design decision. A `hitSlop` value below 12 must be treated as a bug.
+
+Current enforced sites:
+
+- `KairoSettingsSection.tsx` — API key show/hide toggle, Advanced toggle, Save, Clear
+- `SettingsSheet.tsx` — Close button, section-jump chips, all inline action links
+
+When adding a new `Pressable` to any screen or component:
+
+1. If the visual target is at least 44×44 pts, `hitSlop` is optional.
+2. Otherwise set `hitSlop={12}` unconditionally.
+
+Do not use a `hitSlop` object (`{ top, bottom, left, right }`) unless the target
+has a genuine directional constraint. The scalar form is correct and sufficient for
+all current surfaces.
+
+### Keyboard dismiss policy
+
+The software keyboard must be dismissed **before** calling `onClose()` on any
+bottom sheet that contains text inputs.
+
+Rule:
+
+```ts
+// correct
+Keyboard.dismiss();
+onClose();
+
+// incorrect — keyboard may linger over next surface on Android
+onClose();
+```
+
+Where to apply this:
+
+- `SettingsSheet.tsx` `onChange` handler (pan-down close)
+- `SettingsSheet.tsx` explicit Close button `onPress`
+- Any future bottom sheet that renders `BottomSheetTextInput`
+
+Why: on Android, dismissing a bottom sheet without first calling `Keyboard.dismiss()`
+can leave the keyboard open over the next focused surface, compressing the layout
+until the user taps elsewhere.
+
+`AddTaskSheet` and `EditTaskSheet` already followed this pattern before this policy
+was written. `SettingsSheet` was the only outlier.
+
 ## Error UX
 
 ### Root-level fallback
