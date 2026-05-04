@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Keyboard,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -194,6 +195,7 @@ export function SettingsSheet({
       android_keyboardInputMode="adjustResize"
       onChange={(index) => {
         if (index === -1 && visible) {
+          Keyboard.dismiss();
           onClose();
         }
       }}
@@ -211,8 +213,8 @@ export function SettingsSheet({
             <Text style={styles.settingsHeadline}>Settings</Text>
           </View>
           <Pressable
-            onPress={onClose}
-            hitSlop={10}
+              onPress={() => { Keyboard.dismiss(); onClose(); }}
+              hitSlop={12}
             accessibilityRole="button"
             accessibilityLabel="Close settings"
             style={({ pressed }) => [pressed && { opacity: 0.6 }]}
@@ -228,7 +230,7 @@ export function SettingsSheet({
               <Pressable
                 key={key}
                 onPress={() => jumpToSection(key)}
-                hitSlop={6}
+                hitSlop={12}
                 accessibilityRole="button"
                 accessibilityLabel={`Jump to ${label} settings`}
                 style={({ pressed }) => [
@@ -281,7 +283,7 @@ export function SettingsSheet({
             <Pressable
               onPress={onGoogleCalendarSync}
               disabled={isCalendarSyncing}
-              hitSlop={6}
+              hitSlop={12}
               accessibilityRole="button"
               accessibilityLabel="Sync Google Calendar now"
               style={({ pressed }) => [pressed && { opacity: 0.6 }]}
@@ -318,7 +320,7 @@ export function SettingsSheet({
           <Pressable
             onPress={onEnableAndSyncGoogleCalendar}
             disabled={syncSettingsBusy}
-            hitSlop={6}
+            hitSlop={12}
             accessibilityRole="button"
             accessibilityLabel="Enable and sync Google Calendar"
             style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
@@ -343,7 +345,7 @@ export function SettingsSheet({
               <Pressable
                 onPress={onRequestNotificationsAccess}
                 disabled={isNotificationsBusy}
-                hitSlop={6}
+                hitSlop={12}
                 accessibilityRole="button"
                 accessibilityLabel="Enable notifications"
                 style={({ pressed }) => [pressed && { opacity: 0.6 }]}
@@ -372,7 +374,7 @@ export function SettingsSheet({
             <Pressable
               onPress={onSendTestNotification}
               disabled={isNotificationsBusy}
-              hitSlop={6}
+              hitSlop={12}
               accessibilityRole="button"
               accessibilityLabel="Send a test notification"
               style={({ pressed }) => [pressed && { opacity: 0.6 }]}
@@ -391,7 +393,7 @@ export function SettingsSheet({
             <Text style={styles.settingHelp}>Sign out if you want to switch Google accounts on this device.</Text>
             <Pressable
               onPress={onSignOut}
-              hitSlop={6}
+              hitSlop={12}
               accessibilityRole="button"
               accessibilityLabel="Sign out"
               style={({ pressed }) => [pressed && { opacity: 0.6 }]}

@@ -145,7 +145,7 @@ export function KairoSettingsSection() {
         />
         <Pressable
           onPress={() => setApiKeyVisible((v) => !v)}
-          hitSlop={8}
+          hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel={apiKeyVisible ? "Hide API key" : "Show API key"}
           style={({ pressed }) => [styles.apiKeyToggle, pressed && { opacity: 0.7 }]}
@@ -160,7 +160,7 @@ export function KairoSettingsSection() {
         </Text>
         <Pressable
           onPress={() => setShowAdvanced((v) => !v)}
-          hitSlop={8}
+          hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel={showAdvanced ? "Hide advanced Kairo settings" : "Show advanced Kairo settings"}
           style={({ pressed }) => [styles.advancedToggle, pressed && { opacity: 0.7 }]}
@@ -203,7 +203,7 @@ export function KairoSettingsSection() {
       <View style={styles.actions}>
         <Pressable
           onPress={() => void handleSave()}
-          hitSlop={6}
+          hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel="Save Kairo configuration"
           disabled={!loaded || saveState === "saving"}
@@ -229,7 +229,7 @@ export function KairoSettingsSection() {
         </Pressable>
         <Pressable
           onPress={() => void handleClear()}
-          hitSlop={6}
+          hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel="Clear Kairo configuration"
           disabled={saveState === "saving"}
