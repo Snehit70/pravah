@@ -30,7 +30,7 @@ type UseTaskQueriesOptions = {
 };
 
 export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseTaskQueriesOptions) {
-  const { today, tomorrow, weekEnd, overdueStart } = buildTimelineWindow(new Date());
+  const { today, tomorrow, weekEnd } = buildTimelineWindow(new Date());
 
   const inboxQuery = useQuery(
     api.tasks.listTasks,
@@ -39,11 +39,10 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
 
   const timelineQuery = useQuery(
     api.tasks.getTimeline,
-    // overdueStart (today − 14 days) keeps overdue scheduled tasks visible so
-    // users can still complete or reschedule them from mobile. Using `today`
-    // as the lower bound caused a regression where tasks scheduled before today
-    // disappeared from all three tabs.
-    isAuthenticated ? { startDate: overdueStart, endDate: weekEnd } : "skip"
+    // No startDate lower bound — all incomplete scheduled tasks should be visible
+    // regardless of how overdue they are, so users can complete or reschedule them.
+    // The endDate upper bound (weekEnd) prevents fetching tasks months into the future.
+    isAuthenticated ? { endDate: weekEnd } : "skip"
   );
 
   const completedQuery = useQuery(
@@ -160,24 +159,14 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
   };
 }
 
-// How many days back to look for overdue scheduled tasks. 14 days catches
-// real-world overdue items without pulling years of history.
-const OVERDUE_LOOKBACK_DAYS = 14;
-
 export function buildTimelineWindow(baseDate: Date): {
   today: string;
   tomorrow: string;
   weekEnd: string;
-  overdueStart: string;
 } {
   return {
     today: toIsoDate(baseDate),
     tomorrow: toIsoDate(addDays(baseDate, 1)),
     weekEnd: toIsoDate(addDays(baseDate, 6)),
-    // Overdue tasks scheduled before today are also included in the timeline
-    // window so they remain visible (and actionable) until the user completes
-    // or reschedules them. Without this lower bound they would vanish from all
-    // three tabs, making it impossible to close the loop from the mobile UI.
-    overdueStart: toIsoDate(addDays(baseDate, -OVERDUE_LOOKBACK_DAYS)),
   };
 }
