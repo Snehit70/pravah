@@ -36,6 +36,7 @@ convex/                     Backend
   http.ts                   HTTP route router
   auth.ts                   Better Auth integration
 apps/mobile/                Expo React Native client
+  docs/                     Mobile-specific architecture and UX docs
 mcp-server.ts               MCP stdio bridge
 ```
 
@@ -106,3 +107,12 @@ Because dnd-kit clears all transforms synchronously when drag ends, and the Conv
 GitHub Actions (`.github/workflows/ci.yml`) runs on PRs and pushes to `main`:
 - **Lint** (`bun run lint`)
 - **Build** (`bun run build`)
+
+## Mobile Docs
+
+The repo-level architecture file intentionally stays broad. For the current,
+implementation-level mobile structure, see:
+
+- `apps/mobile/docs/README.md`
+- `apps/mobile/docs/architecture.md`
+- `apps/mobile/docs/ux-orchestration.md`

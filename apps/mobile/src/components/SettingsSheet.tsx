@@ -1,10 +1,24 @@
-import { useCallback, useEffect, useRef } from "react";
-import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Keyboard,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from "react-native";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useReducedMotion } from "../hooks/useReducedMotion";
+import { selectActiveSection } from "../lib/settingsSections";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { NotificationPermissionState } from "../lib/notifications";
 import { KairoSettingsSection } from "./KairoSettingsSection";
@@ -30,6 +44,15 @@ function statusTextColor(status: string): string {
   if (tone === "error") return colors.error;
   return colors.textMuted;
 }
+
+type SectionKey = "assistant" | "sync" | "alerts" | "account";
+
+const SECTIONS: ReadonlyArray<{ key: SectionKey; label: string }> = [
+  { key: "assistant", label: "Assistant" },
+  { key: "sync", label: "Sync" },
+  { key: "alerts", label: "Alerts" },
+  { key: "account", label: "Account" },
+];
 
 type SettingsSheetProps = {
   visible: boolean;
@@ -85,6 +108,27 @@ export function SettingsSheet({
   onSignOut,
 }: SettingsSheetProps) {
   const bottomSheetRef = useRef<BottomSheet>(null);
+  // BottomSheetScrollView forwards its ref to an RN ScrollView. Typing it as
+  // ScrollView lets us call scrollTo() without resorting to `any`.
+  const scrollRef = useRef<ScrollView>(null);
+  const sectionOffsets = useRef<Record<SectionKey, number>>({
+    assistant: 0,
+    sync: 0,
+    alerts: 0,
+    account: 0,
+  });
+  const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
+  const [activeSection, setActiveSection] = useState<SectionKey>("assistant");
+
+  // Sync the chip highlight back to "assistant" whenever the sheet opens.
+  // Done during render (not inside an effect) to avoid the cascading-render
+  // lint rule — React re-renders immediately without an intermediate paint.
+  const [prevVisible, setPrevVisible] = useState(visible);
+  if (prevVisible !== visible) {
+    setPrevVisible(visible);
+    if (visible) setActiveSection("assistant");
+  }
 
   useEffect(() => {
     if (visible) {
@@ -107,185 +151,265 @@ export function SettingsSheet({
     []
   );
 
+  const handleSectionLayout = useCallback(
+    (key: SectionKey) => (event: LayoutChangeEvent) => {
+      sectionOffsets.current[key] = event.nativeEvent.layout.y;
+    },
+    []
+  );
+
+  const jumpToSection = useCallback(
+    (key: SectionKey) => {
+      const offset = sectionOffsets.current[key] ?? 0;
+      // Bias up by a small amount so the section header sits below the chip
+      // row instead of being pinned to the very top of the scroll view.
+      const target = Math.max(0, offset - spacing.sm);
+      scrollRef.current?.scrollTo({ y: target, animated: !reducedMotion });
+      setActiveSection(key);
+    },
+    [reducedMotion]
+  );
+
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const y = event.nativeEvent.contentOffset.y;
+      const ordered = SECTIONS.map((s) => ({
+        key: s.key,
+        offset: sectionOffsets.current[s.key] ?? 0,
+      }));
+      // spacing.lg matches the bias used by `jumpToSection` plus a little
+      // headroom — a section is "active" once its header sits comfortably
+      // under the chip row rather than the instant its top edge appears.
+      const next = selectActiveSection(y, ordered, spacing.lg);
+      if (next && next !== activeSection) {
+        setActiveSection(next);
+      }
+    },
+    [activeSection],
+  );
+
   return (
     <BottomSheet
       ref={bottomSheetRef}
       index={-1}
-      snapPoints={["88%"]}
+      snapPoints={["92%"]}
       enablePanDownToClose
       enableDynamicSizing={false}
       backgroundStyle={styles.settingsSheet}
       handleIndicatorStyle={styles.settingsHandle}
       backdropComponent={renderBackdrop}
+      keyboardBehavior="extend"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
       onChange={(index) => {
         if (index === -1 && visible) {
+          Keyboard.dismiss();
           onClose();
         }
       }}
     >
       <BottomSheetScrollView
-        contentContainerStyle={styles.settingsScrollContent}
+        ref={scrollRef}
+        contentContainerStyle={[styles.settingsScrollContent, { paddingBottom: insets.bottom + spacing.section }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        onScroll={handleScroll}
       >
-            <View style={styles.settingsHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.settingsKicker}>Workspace</Text>
-                <Text style={styles.settingsHeadline}>Settings</Text>
-              </View>
-              <Pressable
-                onPress={onClose}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel="Close settings"
-                style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-              >
-                <Text style={styles.settingsCloseLink}>Close</Text>
-              </Pressable>
-            </View>
+        <View style={styles.settingsHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.settingsKicker}>Workspace</Text>
+            <Text style={styles.settingsHeadline}>Settings</Text>
+          </View>
+          <Pressable
+              onPress={() => { Keyboard.dismiss(); onClose(); }}
+              hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Close settings"
+            style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+          >
+            <Text style={styles.settingsCloseLink}>Close</Text>
+          </Pressable>
+        </View>
 
-            <Text style={styles.sectionHeader}>Sync</Text>
-
-            <View style={styles.settingBlock}>
-              <View style={styles.settingRow}>
-                <View style={styles.settingCopy}>
-                  <Text style={styles.settingLabel}>Google Calendar</Text>
-                  <Text style={styles.settingHelp}>Pull events and deadlines into Pravah.</Text>
-                  <Text style={[styles.settingStatus, { color: statusTextColor(calendarSyncStatus) }]}>
-                    {formatStatusLabel(calendarSyncStatus)}
-                  </Text>
-                </View>
-                <Switch
-                  value={calendarSyncEnabled}
-                  onValueChange={onGoogleCalendarToggle}
-                  disabled={isGoogleToggleSaving}
-                  trackColor={{ false: colors.border, true: colors.accentSoft }}
-                  thumbColor={calendarSyncEnabled ? colors.accent : colors.textMuted}
-                />
-              </View>
+        <View style={styles.sectionJumpRow}>
+          {SECTIONS.map(({ key, label }) => {
+            const active = activeSection === key;
+            return (
               <Pressable
-                onPress={onGoogleCalendarSync}
-                disabled={isCalendarSyncing}
-                hitSlop={6}
+                key={key}
+                onPress={() => jumpToSection(key)}
+                hitSlop={12}
                 accessibilityRole="button"
-                accessibilityLabel="Sync Google Calendar now"
-                style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+                accessibilityLabel={`Jump to ${label} settings`}
+                style={({ pressed }) => [
+                  styles.sectionJumpChip,
+                  active && styles.sectionJumpChipActive,
+                  pressed && { opacity: 0.7 },
+                ]}
               >
-                <Text style={[styles.inlineActionText, isCalendarSyncing && styles.inlineActionDisabled]}>
-                  {isCalendarSyncing ? "Syncing…" : "Sync now"}
+                <Text
+                  style={[styles.sectionJumpText, active && styles.sectionJumpTextActive]}
+                >
+                  {label}
                 </Text>
               </Pressable>
-            </View>
+            );
+          })}
+        </View>
 
-            <View style={styles.hairline} />
+        <View onLayout={handleSectionLayout("assistant")}>
+          <Text style={styles.sectionHeader}>Assistant</Text>
+          <View style={[styles.settingBlock, styles.sectionCard]}>
+            <Text style={styles.settingLabel}>Kairo</Text>
+            <Text style={styles.settingHelp}>
+              Configure the provider, API key, endpoint, and model used for mobile AI assistance.
+            </Text>
+            <KairoSettingsSection />
+          </View>
+        </View>
 
-            <View style={styles.settingBlock}>
-              <View style={styles.settingRow}>
-                <View style={styles.settingCopy}>
-                  <Text style={styles.settingLabel}>Gmail</Text>
-                  <Text style={styles.settingHelp}>Surface pending email follow-ups for review.</Text>
-                  <Text style={[styles.settingStatus, { color: statusTextColor(gmailSyncStatus) }]}>
-                    {formatStatusLabel(gmailSyncStatus)}
-                  </Text>
-                </View>
-                <Switch
-                  value={gmailSyncEnabled}
-                  onValueChange={onGmailToggle}
-                  disabled={isGmailToggleSaving || !canToggleGmailSync}
-                  trackColor={{ false: colors.border, true: colors.accentSoft }}
-                  thumbColor={gmailSyncEnabled ? colors.accent : colors.textMuted}
-                />
+        <View onLayout={handleSectionLayout("sync")}>
+          <Text style={styles.sectionHeader}>Sync</Text>
+
+          <View style={[styles.settingBlock, styles.sectionCard]}>
+            <View style={styles.settingRow}>
+              <View style={styles.settingCopy}>
+                <Text style={styles.settingLabel}>Google Calendar</Text>
+                <Text style={styles.settingHelp}>Pull events and deadlines into Pravah.</Text>
+                <Text style={[styles.settingStatus, { color: statusTextColor(calendarSyncStatus) }]}>
+                  {formatStatusLabel(calendarSyncStatus)}
+                </Text>
               </View>
-              <Text style={styles.settingMeta}>Pending review · {pendingGmailReviewCount}</Text>
-              {!canToggleGmailSync ? (
-                <Text style={styles.settingMeta}>Connect Gmail on web before enabling mobile sync.</Text>
-              ) : null}
+              <Switch
+                value={calendarSyncEnabled}
+                onValueChange={onGoogleCalendarToggle}
+                disabled={isGoogleToggleSaving}
+                trackColor={{ false: colors.border, true: colors.accentSoft }}
+                thumbColor={calendarSyncEnabled ? colors.accent : colors.textMuted}
+              />
             </View>
-
             <Pressable
-              onPress={onEnableAndSyncGoogleCalendar}
-              disabled={syncSettingsBusy}
-              hitSlop={6}
+              onPress={onGoogleCalendarSync}
+              disabled={isCalendarSyncing}
+              hitSlop={12}
               accessibilityRole="button"
-              accessibilityLabel="Enable and sync Google Calendar"
-              style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
+              accessibilityLabel="Sync Google Calendar now"
+              style={({ pressed }) => [pressed && { opacity: 0.6 }]}
             >
-              <Text style={[styles.inlineActionText, syncSettingsBusy && styles.inlineActionDisabled]}>
-                Enable and sync Google Calendar
+              <Text style={[styles.inlineActionText, isCalendarSyncing && styles.inlineActionDisabled]}>
+                {isCalendarSyncing ? "Syncing…" : "Sync now"}
               </Text>
             </Pressable>
+          </View>
 
-            <Text style={styles.sectionHeader}>Alerts</Text>
-
-            <View style={styles.settingBlock}>
-              <Text style={styles.settingLabel}>Notifications</Text>
-              <Text style={styles.settingHelp}>Daily reminders and test alerts for mobile follow-through.</Text>
-              <Text style={[styles.settingStatus, { color: statusTextColor(notificationPermissionState) }]}>
-                {formatStatusLabel(notificationPermissionState)}
-              </Text>
-
-              {!notificationsEnabled ? (
-                <Pressable
-                  onPress={onRequestNotificationsAccess}
-                  disabled={isNotificationsBusy}
-                  hitSlop={6}
-                  accessibilityRole="button"
-                  accessibilityLabel="Enable notifications"
-                  style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={[styles.inlineActionText, isNotificationsBusy && styles.inlineActionDisabled]}>
-                    Enable notifications
-                  </Text>
-                </Pressable>
-              ) : null}
-            </View>
-
-            <View style={styles.hairline} />
-
-            <View style={styles.settingBlock}>
-              <View style={styles.settingRow}>
-                <View style={styles.settingCopy}>
-                  <Text style={styles.settingLabel}>Daily reminder</Text>
-                  <Text style={styles.settingHelp}>Send one reminder at 9:00 AM every day.</Text>
-                </View>
-                <Switch
-                  value={isDailyReminderEnabled}
-                  onValueChange={onToggleDailyReminder}
-                  disabled={isNotificationsBusy}
-                  trackColor={{ false: colors.border, true: colors.accentSoft }}
-                  thumbColor={isDailyReminderEnabled ? colors.accent : colors.textMuted}
-                />
+          <View style={[styles.settingBlock, styles.sectionCard]}>
+            <View style={styles.settingRow}>
+              <View style={styles.settingCopy}>
+                <Text style={styles.settingLabel}>Gmail</Text>
+                <Text style={styles.settingHelp}>Surface pending email follow-ups for review.</Text>
+                <Text style={[styles.settingStatus, { color: statusTextColor(gmailSyncStatus) }]}>
+                  {formatStatusLabel(gmailSyncStatus)}
+                </Text>
               </View>
+              <Switch
+                value={gmailSyncEnabled}
+                onValueChange={onGmailToggle}
+                disabled={isGmailToggleSaving || !canToggleGmailSync}
+                trackColor={{ false: colors.border, true: colors.accentSoft }}
+                thumbColor={gmailSyncEnabled ? colors.accent : colors.textMuted}
+              />
+            </View>
+            <Text style={styles.settingMeta}>Pending review · {pendingGmailReviewCount}</Text>
+            {!canToggleGmailSync ? (
+              <Text style={styles.settingMeta}>Connect Gmail on web before enabling mobile sync.</Text>
+            ) : null}
+          </View>
+
+          <Pressable
+            onPress={onEnableAndSyncGoogleCalendar}
+            disabled={syncSettingsBusy}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Enable and sync Google Calendar"
+            style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
+          >
+            <Text style={[styles.inlineActionText, syncSettingsBusy && styles.inlineActionDisabled]}>
+              Enable and sync Google Calendar
+            </Text>
+          </Pressable>
+        </View>
+
+        <View onLayout={handleSectionLayout("alerts")}>
+          <Text style={styles.sectionHeader}>Alerts</Text>
+
+          <View style={[styles.settingBlock, styles.sectionCard]}>
+            <Text style={styles.settingLabel}>Notifications</Text>
+            <Text style={styles.settingHelp}>Daily reminders and test alerts for mobile follow-through.</Text>
+            <Text style={[styles.settingStatus, { color: statusTextColor(notificationPermissionState) }]}>
+              {formatStatusLabel(notificationPermissionState)}
+            </Text>
+
+            {!notificationsEnabled ? (
               <Pressable
-                onPress={onSendTestNotification}
+                onPress={onRequestNotificationsAccess}
                 disabled={isNotificationsBusy}
-                hitSlop={6}
+                hitSlop={12}
                 accessibilityRole="button"
-                accessibilityLabel="Send a test notification"
+                accessibilityLabel="Enable notifications"
                 style={({ pressed }) => [pressed && { opacity: 0.6 }]}
               >
                 <Text style={[styles.inlineActionText, isNotificationsBusy && styles.inlineActionDisabled]}>
-                  Send a test
+                  Enable notifications
                 </Text>
               </Pressable>
+            ) : null}
+          </View>
+
+          <View style={[styles.settingBlock, styles.sectionCard]}>
+            <View style={styles.settingRow}>
+              <View style={styles.settingCopy}>
+                <Text style={styles.settingLabel}>Daily reminder</Text>
+                <Text style={styles.settingHelp}>Send one reminder at 9:00 AM every day.</Text>
+              </View>
+              <Switch
+                value={isDailyReminderEnabled}
+                onValueChange={onToggleDailyReminder}
+                disabled={isNotificationsBusy}
+                trackColor={{ false: colors.border, true: colors.accentSoft }}
+                thumbColor={isDailyReminderEnabled ? colors.accent : colors.textMuted}
+              />
             </View>
+            <Pressable
+              onPress={onSendTestNotification}
+              disabled={isNotificationsBusy}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Send a test notification"
+              style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+            >
+              <Text style={[styles.inlineActionText, isNotificationsBusy && styles.inlineActionDisabled]}>
+                Send a test
+              </Text>
+            </Pressable>
+          </View>
+        </View>
 
-            <Text style={styles.sectionHeader}>Kairo</Text>
-            <KairoSettingsSection />
+        <View onLayout={handleSectionLayout("account")}>
+          <Text style={styles.sectionHeader}>Account</Text>
 
-            <Text style={styles.sectionHeader}>Account</Text>
-
-            <View style={styles.settingBlock}>
-              <Text style={styles.settingHelp}>Sign out if you want to switch Google accounts on this device.</Text>
-              <Pressable
-                onPress={onSignOut}
-                hitSlop={6}
-                accessibilityRole="button"
-                accessibilityLabel="Sign out"
-                style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-              >
-                <Text style={styles.signOutLink}>Sign out</Text>
-              </Pressable>
-            </View>
+          <View style={[styles.settingBlock, styles.sectionCard, styles.accountCard]}>
+            <Text style={styles.settingHelp}>Sign out if you want to switch Google accounts on this device.</Text>
+            <Pressable
+              onPress={onSignOut}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Sign out"
+              style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+            >
+              <Text style={styles.signOutLink}>Sign out</Text>
+            </Pressable>
+          </View>
+        </View>
       </BottomSheetScrollView>
     </BottomSheet>
   );
@@ -315,6 +439,31 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     marginBottom: spacing.md,
   },
+  sectionJumpRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  sectionJumpChip: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.full,
+    backgroundColor: colors.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  sectionJumpChipActive: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accent,
+  },
+  sectionJumpText: {
+    ...typography.micro,
+    color: colors.textMuted,
+  },
+  sectionJumpTextActive: {
+    color: colors.accent,
+  },
   settingsKicker: {
     ...typography.micro,
     color: colors.textMuted,
@@ -333,9 +482,21 @@ const styles = StyleSheet.create({
     ...typography.micro,
     color: colors.textMuted,
     marginTop: spacing.lg,
+    marginBottom: spacing.sm,
   },
   settingBlock: {
     gap: spacing.sm,
+  },
+  sectionCard: {
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgCardGlass,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    marginBottom: spacing.sm,
+  },
+  accountCard: {
+    marginBottom: spacing.md,
   },
   settingRow: {
     flexDirection: "row",
@@ -362,11 +523,6 @@ const styles = StyleSheet.create({
   settingMeta: {
     color: colors.textMuted,
     ...typography.micro,
-  },
-  hairline: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.borderSubtle,
-    marginVertical: spacing.xs,
   },
   inlineActionText: {
     color: colors.accent,

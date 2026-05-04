@@ -91,6 +91,19 @@ export function getKairoProviderLabel(p: KairoProviderFormat): string {
   return p === "anthropic" ? "Anthropic" : "OpenAI";
 }
 
+/**
+ * True when the user has saved an endpoint URL or model that diverges from
+ * the provider defaults. Empty fields are treated as "use defaults" and do
+ * not count as customization, so a fresh install does not auto-open the
+ * advanced section.
+ */
+export function hasCustomKairoEndpoint(c: KairoConfig): boolean {
+  const defaults = KAIRO_DEFAULTS[c.providerFormat];
+  const customUrl = Boolean(c.baseUrl) && c.baseUrl !== defaults.baseUrl;
+  const customModel = Boolean(c.model) && c.model !== defaults.model;
+  return customUrl || customModel;
+}
+
 /** Sensible defaults shown as placeholders in the Settings inputs so the
  *  user can paste the typical values without remembering them. */
 export const KAIRO_DEFAULTS = {

@@ -58,6 +58,9 @@ type KairoProps = {
   tasks: KairoTaskInput[];
   /** Inbox tasks specifically (sometimes a separate query in the parent). */
   inboxTasks: KairoTaskInput[];
+  /** True when the full-corpus query has resolved. Prevents sending messages
+   *  with an empty or partial workspace snapshot on cold start. */
+  isAllTasksReady: boolean;
   /** Notify the parent when the sheet opens/closes so it can dim the rest of
    *  the app, matching web's 0.38-opacity fade behind the active Kairo. */
   onActiveChange?: (active: boolean) => void;
@@ -88,7 +91,7 @@ const GREETING: KairoMessage = {
  * expo-secure-store via `lib/kairoConfig.ts`, never sent to our servers.
  */
 export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
-  { tasks, inboxTasks, onActiveChange, onOpenSettings },
+  { tasks, inboxTasks, isAllTasksReady, onActiveChange, onOpenSettings },
   ref
 ) {
   const sheetRef = useRef<BottomSheet>(null);
@@ -97,6 +100,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   const [msgs, setMsgs] = useState<KairoMessage[]>([GREETING]);
   const [thinking, setThinking] = useState(false);
   const [config, setConfig] = useState<KairoConfig | null>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   const addTaskMutation = useMutation(api.tasks.addTask);
@@ -159,6 +163,24 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || thinking) return;
+
+      // Guard against sending with an empty or partial workspace snapshot.
+      // The full-corpus query is cold-started when Kairo opens, so a user who
+      // sends a message immediately after opening would get responses based on
+      // zero context. Defer the prompt and replay it once the query resolves.
+      if (!isAllTasksReady) {
+        setDeferredPrompt(trimmed);
+        setMsgs((prev) => [
+          ...prev,
+          { from: "me", text: trimmed },
+          {
+            from: "kairo",
+            text: "Loading your workspace… one moment.",
+          },
+        ]);
+        setVal("");
+        return;
+      }
 
       const nextConfig = config ?? (await getKairoConfig());
       setConfig(nextConfig);
@@ -253,8 +275,18 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         setThinking(false);
       }
     },
-    [addTaskMutation, config, inboxTasks, msgs, tasks, thinking]
+    [addTaskMutation, config, inboxTasks, isAllTasksReady, msgs, tasks, thinking]
   );
+
+  // Retry deferred prompt once the workspace loads. When a user sends a message
+  // immediately after opening Kairo, the full-corpus query is still cold-starting.
+  // We defer the prompt and show "Loading your workspace…" until isAllTasksReady
+  // becomes true, then automatically replay the original prompt.
+  useEffect(() => {
+    if (!isAllTasksReady || !deferredPrompt) return;
+    setDeferredPrompt(null);
+    void sendMessage(deferredPrompt);
+  }, [isAllTasksReady, deferredPrompt, sendMessage]);
 
   return (
     <BottomSheet
