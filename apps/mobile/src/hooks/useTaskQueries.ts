@@ -127,8 +127,12 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
 
   const inboxCount =
     countsQuery?.inboxCount ?? inboxTasks.length;
-  const timelineCount =
-    countsQuery?.timelineCount ?? scheduledTasks.length;
+  // Timeline count must reflect the bounded window (overdueStart..weekEnd), not
+  // the total count of all scheduled tasks ever. Using countsQuery.timelineCount
+  // here would show a larger number than the rows actually rendered, misleading
+  // users about progress ("… through this week" subtitle with a count that
+  // includes tasks months out).
+  const timelineCount = scheduledTasks.length;
   const completedCount =
     countsQuery?.completedCount ?? completedTasks.length;
 
