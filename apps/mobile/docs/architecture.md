@@ -51,10 +51,13 @@ apps/mobile/
 │   │   ├── kairoApi.ts
 │   │   ├── kairoConfig.ts
 │   │   ├── logger.ts
+│   │   ├── settingsSections.ts
 │   │   └── task-optimistic.ts
 │   └── test/
 │       ├── kairoConfig.test.ts
 │       ├── mobileStateUtils.test.ts
+│       ├── screenErrorBoundary.test.tsx
+│       ├── settingsSections.test.ts
 │       ├── useRetryQueue.test.ts
 │       ├── useTaskMutations.test.ts
 │       ├── useTaskQueries.test.ts
@@ -242,7 +245,7 @@ Reasoning:
 
 ### Section jump chips
 
-The chip row at the top of the settings sheet (`Assistant`, `Sync`, `Alerts`, `Account`) is a navigation control, not a label set.
+The chip row at the top of the settings sheet (`Assistant`, `Sync`, `Alerts`, `Account`) is both a navigation control and a passive position indicator.
 
 Implementation rules:
 
@@ -250,6 +253,16 @@ Implementation rules:
 - offsets are captured per-section via `onLayout` on a wrapping `View`, not by ref-measuring children — measurement timing on Android is unreliable inside bottom sheets
 - the active chip is highlighted with the accent fill so the user can tell which section they jumped to
 - scroll animation is gated on `useReducedMotion`; reduced motion jumps without animating
+- the scroll view's `onScroll` handler also updates the active chip during manual scrolling, using `selectActiveSection` from `src/lib/settingsSections.ts` — the chip stays in sync with whatever section the user has scrolled into view, not just what they last tapped
+
+### Section activation rule
+
+`selectActiveSection(scrollY, offsets, bias)` is the pure helper that decides which chip should look active for a given scroll position:
+
+- offsets must be ordered top-to-bottom (the order is naturally produced by per-section `onLayout` capture)
+- a section is "active" when its captured offset is `<= scrollY + bias`; the last such section wins
+- `bias` shifts the probe line downward so a section feels active once its header is comfortably under the chip row, not the instant its top edge appears
+- the helper is unit-tested in `src/test/settingsSections.test.ts`
 
 ### Advanced auto-open rule
 
@@ -302,6 +315,8 @@ Current mobile test coverage includes:
 - timeline date-window derivation
 - Kairo advanced auto-open decision (`hasCustomKairoEndpoint`)
 - `useTaskQueries` full-corpus gating (skip vs subscribe based on `isAuthenticated` and `includeAllTasks`)
+- settings chip activation logic (`selectActiveSection`)
+- `ScreenErrorBoundary` render / fallback / retry behavior
 
 The intended regression pattern is:
 

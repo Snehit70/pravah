@@ -117,11 +117,12 @@ The `Advanced` section auto-opens only when the persisted config has an endpoint
 
 ### Section jump chips
 
-The chip row at the top of the sheet jumps the scroll view to the matching section header. This is a control surface, not a status label set.
+The chip row at the top of the sheet is both a jump control and a passive position indicator. Tapping a chip scrolls to the matching section header; manually scrolling also updates which chip is highlighted.
 
 - chips are pressable and use captured `onLayout` offsets to scroll, so behavior stays reliable on Android bottom sheets
 - the active chip is filled with the accent color so the user can tell where they are
 - scrolling honors `useReducedMotion` — reduced motion jumps without animating
+- the active chip tracks manual scroll position via a lightweight `onScroll` handler that compares `contentOffset.y` against the captured offsets — no per-frame animations, just a single state update when the user crosses a section boundary
 
 ### Save / clear feedback
 

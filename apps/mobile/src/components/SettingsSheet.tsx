@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View, type LayoutChangeEvent } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from "react-native";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
@@ -7,6 +17,7 @@ import BottomSheet, {
 } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useReducedMotion } from "../hooks/useReducedMotion";
+import { selectActiveSection } from "../lib/settingsSections";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { NotificationPermissionState } from "../lib/notifications";
 import { KairoSettingsSection } from "./KairoSettingsSection";
@@ -150,6 +161,24 @@ export function SettingsSheet({
     [reducedMotion]
   );
 
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const y = event.nativeEvent.contentOffset.y;
+      const ordered = SECTIONS.map((s) => ({
+        key: s.key,
+        offset: sectionOffsets.current[s.key] ?? 0,
+      }));
+      // spacing.lg matches the bias used by `jumpToSection` plus a little
+      // headroom — a section is "active" once its header sits comfortably
+      // under the chip row rather than the instant its top edge appears.
+      const next = selectActiveSection(y, ordered, spacing.lg);
+      if (next && next !== activeSection) {
+        setActiveSection(next);
+      }
+    },
+    [activeSection],
+  );
+
   return (
     <BottomSheet
       ref={bottomSheetRef}
@@ -174,6 +203,7 @@ export function SettingsSheet({
         contentContainerStyle={[styles.settingsScrollContent, { paddingBottom: insets.bottom + spacing.section }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        onScroll={handleScroll}
       >
         <View style={styles.settingsHeader}>
           <View style={{ flex: 1 }}>
