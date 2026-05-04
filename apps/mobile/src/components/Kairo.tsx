@@ -58,6 +58,9 @@ type KairoProps = {
   tasks: KairoTaskInput[];
   /** Inbox tasks specifically (sometimes a separate query in the parent). */
   inboxTasks: KairoTaskInput[];
+  /** True when the full-corpus query has resolved. Prevents sending messages
+   *  with an empty or partial workspace snapshot on cold start. */
+  isAllTasksReady: boolean;
   /** Notify the parent when the sheet opens/closes so it can dim the rest of
    *  the app, matching web's 0.38-opacity fade behind the active Kairo. */
   onActiveChange?: (active: boolean) => void;
@@ -88,7 +91,7 @@ const GREETING: KairoMessage = {
  * expo-secure-store via `lib/kairoConfig.ts`, never sent to our servers.
  */
 export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
-  { tasks, inboxTasks, onActiveChange, onOpenSettings },
+  { tasks, inboxTasks, isAllTasksReady, onActiveChange, onOpenSettings },
   ref
 ) {
   const sheetRef = useRef<BottomSheet>(null);
@@ -159,6 +162,23 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || thinking) return;
+
+      // Guard against sending with an empty or partial workspace snapshot.
+      // The full-corpus query is cold-started when Kairo opens, so a user who
+      // sends a message immediately after opening would get responses based on
+      // zero context. Wait for the query to resolve before building context.
+      if (!isAllTasksReady) {
+        setMsgs((prev) => [
+          ...prev,
+          { from: "me", text: trimmed },
+          {
+            from: "kairo",
+            text: "Loading your workspace… one moment.",
+          },
+        ]);
+        setVal("");
+        return;
+      }
 
       const nextConfig = config ?? (await getKairoConfig());
       setConfig(nextConfig);
@@ -253,7 +273,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         setThinking(false);
       }
     },
-    [addTaskMutation, config, inboxTasks, msgs, tasks, thinking]
+    [addTaskMutation, config, inboxTasks, isAllTasksReady, msgs, tasks, thinking]
   );
 
   return (

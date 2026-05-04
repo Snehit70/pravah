@@ -139,6 +139,7 @@ function MobileApp() {
     isInboxLoading,
     isTimelineLoading,
     isCompletedLoading,
+    isAllTasksReady,
   } = useTaskQueries({
     isAuthenticated: Boolean(session),
     includeAllTasks: isKairoActive,
@@ -657,6 +658,7 @@ function MobileApp() {
         ref={kairoRef}
         tasks={kairoTasks}
         inboxTasks={kairoInboxTasks}
+        isAllTasksReady={isAllTasksReady}
         onActiveChange={setIsKairoActive}
         onOpenSettings={openSettingsModal}
       />

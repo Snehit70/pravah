@@ -135,6 +135,7 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
   const isInboxLoading = inboxQuery === undefined;
   const isTimelineLoading = timelineQuery === undefined;
   const isCompletedLoading = completedQuery === undefined;
+  const isAllTasksReady = allTasksQuery !== undefined;
 
   return {
     today,
@@ -151,6 +152,7 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
     isInboxLoading,
     isTimelineLoading,
     isCompletedLoading,
+    isAllTasksReady,
   };
 }
 
