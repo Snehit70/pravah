@@ -121,10 +121,18 @@ export function SettingsSheet({
   const reducedMotion = useReducedMotion();
   const [activeSection, setActiveSection] = useState<SectionKey>("assistant");
 
+  // Sync the chip highlight back to "assistant" whenever the sheet opens.
+  // Done during render (not inside an effect) to avoid the cascading-render
+  // lint rule — React re-renders immediately without an intermediate paint.
+  const [prevVisible, setPrevVisible] = useState(visible);
+  if (prevVisible !== visible) {
+    setPrevVisible(visible);
+    if (visible) setActiveSection("assistant");
+  }
+
   useEffect(() => {
     if (visible) {
       bottomSheetRef.current?.expand();
-      setActiveSection("assistant");
     } else {
       bottomSheetRef.current?.close();
     }

@@ -8,23 +8,23 @@ import { describe, expect, it, vi } from "vitest";
 // is inspectable as plain HTML in happy-dom.
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
-  const View = ({ children, style: _style, ...rest }: AnyProps) =>
-    React.createElement("div", rest, children);
-  const Text = ({ children, style: _style, ...rest }: AnyProps) =>
-    React.createElement("span", rest, children);
-  const Pressable = ({
-    children,
-    onPress,
-    style: _style,
-    ...rest
-  }: AnyProps & { onPress?: () => void }) => {
+  const View = ({ children, ...rest }: AnyProps) => {
+    const { style: _, ...safe } = rest;
+    return React.createElement("div", safe, children);
+  };
+  const Text = ({ children, ...rest }: AnyProps) => {
+    const { style: _, ...safe } = rest;
+    return React.createElement("span", safe, children);
+  };
+  const Pressable = ({ children, ...rest }: AnyProps & { onPress?: () => void }) => {
+    const { onPress, style: _, ...safe } = rest;
     const resolved =
       typeof children === "function"
         ? (children as (s: { pressed: boolean }) => React.ReactNode)({ pressed: false })
         : children;
     return React.createElement(
       "button",
-      { ...rest, onClick: onPress, type: "button" },
+      { ...safe, onClick: onPress, type: "button" },
       resolved,
     );
   };

@@ -29,7 +29,7 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-
 
 import { colors, fonts, spacing, typography } from "./src/theme/tokens";
 import { TaskCard, type MobileTask } from "./src/components/TaskCard";
-import { BottomTabBar, type TabKey } from "./src/components/BottomTabBar";
+import { BottomTabBar } from "./src/components/BottomTabBar";
 import { GridBackground } from "./src/components/GridBackground";
 import { Kairo, type KairoSheetRef } from "./src/components/Kairo";
 import { BootScreen } from "./src/components/BootScreen";
@@ -233,7 +233,7 @@ function MobileApp() {
   const handleSignOut = useCallback(() => {
     setIsSettingsModalOpen(false);
     googleSignOut();
-  }, [googleSignOut]);
+  }, [googleSignOut, setIsSettingsModalOpen]);
 
   // ── Effects ─────────────────────────────────────────────────────────
 
@@ -422,7 +422,7 @@ function MobileApp() {
   const openSettingsModal = useCallback(() => {
     mobileLogger.info("settings_modal_opened");
     setIsSettingsModalOpen(true);
-  }, []);
+  }, [setIsSettingsModalOpen]);
 
   const openKairo = useCallback(() => {
     mobileLogger.info("kairo_opened");

@@ -15,39 +15,37 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // ─── react-native mock ────────────────────────────────────────────────────────
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
-  const View = ({ children, style: _s, ...rest }: AnyProps) =>
-    React.createElement("div", rest, children);
-  const Text = ({ children, style: _s, ...rest }: AnyProps) =>
-    React.createElement("span", rest, children);
-  const Pressable = ({
-    children,
-    onPress,
-    style: _s,
-    hitSlop: _h,
-    disabled,
-    accessibilityLabel,
-    accessibilityRole: _role,
-    ...rest
-  }: AnyProps & {
-    onPress?: () => void;
-    hitSlop?: unknown;
-    disabled?: boolean;
-    accessibilityLabel?: string;
-    accessibilityRole?: string;
-  }) => {
+  const View = ({ children, ...rest }: AnyProps) => {
+    const { style: _, ...safe } = rest;
+    return React.createElement("div", safe, children);
+  };
+  const Text = ({ children, ...rest }: AnyProps) => {
+    const { style: _, ...safe } = rest;
+    return React.createElement("span", safe, children);
+  };
+  const Pressable = ({ children, ...rest }: AnyProps) => {
+    const {
+      onPress,
+      style: _,
+      hitSlop: __,
+      disabled,
+      accessibilityLabel,
+      accessibilityRole: ___,
+      ...safe
+    } = rest as {
+      onPress?: () => void;
+      hitSlop?: unknown;
+      disabled?: boolean;
+      accessibilityLabel?: string;
+      accessibilityRole?: string;
+    } & AnyProps;
     const resolved =
       typeof children === "function"
         ? (children as (s: { pressed: boolean }) => React.ReactNode)({ pressed: false })
         : children;
     return React.createElement(
       "button",
-      {
-        ...rest,
-        onClick: onPress,
-        type: "button",
-        disabled: disabled ?? false,
-        "aria-label": accessibilityLabel,
-      },
+      { ...safe, onClick: onPress, type: "button", disabled: disabled ?? false, "aria-label": accessibilityLabel },
       resolved,
     );
   };
@@ -119,9 +117,9 @@ vi.mock("../components/LoadingSkeleton", () => ({
 // ─── expo-secure-store mock ───────────────────────────────────────────────────
 // We use mutable module-level spies so individual tests can override behaviour.
 vi.mock("expo-secure-store", () => ({
-  getItemAsync: vi.fn(async (_key: string): Promise<string | null> => null),
-  setItemAsync: vi.fn(async (_key: string, _value: string): Promise<void> => undefined),
-  deleteItemAsync: vi.fn(async (_key: string): Promise<void> => undefined),
+  getItemAsync: vi.fn(async () => null as string | null),
+  setItemAsync: vi.fn(async () => undefined as void),
+  deleteItemAsync: vi.fn(async () => undefined as void),
 }));
 
 // Import the mocked module *after* vi.mock so we get the spy references.
