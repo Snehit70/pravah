@@ -135,6 +135,8 @@ function MobileApp() {
     timelineSections,
     inboxCount,
     timelineCount,
+    overdueCount,
+    thisWeekCount,
     completedCount,
     isInboxLoading,
     isTimelineLoading,
@@ -493,9 +495,13 @@ function MobileApp() {
     activeTab === "timeline" ? "Timeline" : activeTab === "completed" ? "Completed" : "Inbox";
 
   const padCount = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+  const timelineSubtitle =
+    overdueCount > 0
+      ? `${padCount(overdueCount)} overdue · ${padCount(thisWeekCount)} this week`
+      : `${padCount(thisWeekCount)} through this week`;
   const headerSubtitle =
     activeTab === "timeline"
-      ? `${padCount(timelineCount)} through this week`
+      ? timelineSubtitle
       : activeTab === "completed"
         ? "Closed loops"
         : `${padCount(inboxCount)} to triage`;
