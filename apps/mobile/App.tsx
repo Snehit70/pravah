@@ -318,8 +318,6 @@ function MobileApp() {
     sendToInbox,
     reopenToInbox,
     handleSaveEdits,
-    handleInboxDragEnd,
-    handleTimelineDragEnd,
     shiftTimelineTask,
   } = useTaskMutations({
     serverTasks: activeServerTasks,
@@ -586,7 +584,6 @@ function MobileApp() {
             isRefreshing={isRefreshing}
             tabBarHeight={tabBarHeight}
             onRefresh={handleRefresh}
-            onDragEnd={handleInboxDragEnd}
             onCapture={() => addTaskSheetRef.current?.open()}
             renderItem={renderInboxTaskItem}
           />
@@ -604,7 +601,6 @@ function MobileApp() {
             isRefreshing={isRefreshing}
             tabBarHeight={tabBarHeight}
             onRefresh={handleRefresh}
-            onDragEnd={handleTimelineDragEnd}
             renderItem={renderTimelineTaskItem}
           />
         </ScreenErrorBoundary>

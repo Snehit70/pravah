@@ -226,10 +226,10 @@ the file timeline alone.
    (or whatever the row's complete affordance is). **Checkpoint:** the
    row leaves Inbox/Timeline and appears in Done.
 
-8. **Reorder flow** (Inbox & Timeline). Long-press a task row until it
-   lifts, drag up or down, release. **Checkpoint:** the new order
-   persists after a tab-switch round-trip and survives a force-stop +
-   relaunch.
+8. **Reorder flow** (Inbox & Timeline). _Currently disabled._ Drag-to-
+   reorder is off while the underlying list library catches up to
+   Reanimated 4. Long-press should not lift a row; if it does, the
+   workaround has been removed and step 8 needs to be re-enabled here.
 
 9. **Settings.** Tap `SETTINGS`. The full-screen modal opens with the
    four jump chips (Assistant / Sync / Alerts / Account) and the
