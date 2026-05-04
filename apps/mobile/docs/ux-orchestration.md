@@ -113,6 +113,20 @@ The Kairo form itself is also intentionally tiered:
 
 This keeps the common mobile path short while still preserving full provider configurability.
 
+The `Advanced` section auto-opens only when the persisted config has an endpoint URL or model that diverges from the active provider's defaults. Empty fields are treated as "use defaults" and do not auto-open the section. The decision is taken once when the config loads from secure storage, not on every keystroke.
+
+### Section jump chips
+
+The chip row at the top of the sheet jumps the scroll view to the matching section header. This is a control surface, not a status label set.
+
+- chips are pressable and use captured `onLayout` offsets to scroll, so behavior stays reliable on Android bottom sheets
+- the active chip is filled with the accent color so the user can tell where they are
+- scrolling honors `useReducedMotion` — reduced motion jumps without animating
+
+### Save / clear feedback
+
+Save in Kairo settings is a filled accent chip rather than a text link, and it briefly transitions to a green `Saved` state after a successful write before returning to `Save`. Clear behaves the same way with `Cleared`. The state never blocks the UI longer than ~1.8 seconds, and there is no separate noticeable banner.
+
 ### Keyboard rules
 
 The settings sheet must remain usable on Android when the keyboard is open.
@@ -160,6 +174,22 @@ Preferred animated properties:
 - transform
 
 Avoid making layout correctness depend on animation timing.
+
+### Reduced motion
+
+The mobile app subscribes to the OS `reduce motion` setting via `useReducedMotion()` in `src/hooks/useReducedMotion.ts`.
+
+Surfaces that already honor it:
+
+- skeleton pulse: collapses to a single static dim state, no looping opacity, no translate
+- settings section-jump scroll: jumps without scroll animation
+- Kairo advanced section reveal: skips fade entering/exiting
+
+Rules for new motion:
+
+- never gate correctness on animation completion
+- if a surface plays a repeating animation, it must check `useReducedMotion` and provide a static equivalent
+- prefer dropping competing per-card entrance animations entirely over making them all conditional — the settings sheet now uses no per-card `FadeInDown` so the section reveal feels like one quiet surface instead of four overlapping ones
 
 ## Error UX
 

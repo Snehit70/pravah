@@ -35,6 +35,7 @@ apps/mobile/
 │   │   ├── useGoogleAuth.ts
 │   │   ├── useIntegrationsSettings.ts
 │   │   ├── useNotificationsSettings.ts
+│   │   ├── useReducedMotion.ts
 │   │   ├── useRetryQueue.ts
 │   │   ├── useTaskMutations.ts
 │   │   ├── useTaskQueries.ts
@@ -52,10 +53,12 @@ apps/mobile/
 │   │   ├── logger.ts
 │   │   └── task-optimistic.ts
 │   └── test/
+│       ├── kairoConfig.test.ts
 │       ├── mobileStateUtils.test.ts
 │       ├── useRetryQueue.test.ts
 │       ├── useTaskMutations.test.ts
-│       └── useTaskQueries.test.ts
+│       ├── useTaskQueries.test.ts
+│       └── useTaskQueriesGating.test.ts
 └── docs/
     ├── README.md
     ├── architecture.md
@@ -237,6 +240,27 @@ Reasoning:
 - Account is low-frequency and belongs at the end.
 - The Kairo section keeps provider and API key visible by default, while endpoint URL and model live behind an `Advanced` toggle so the default editing path stays short on mobile.
 
+### Section jump chips
+
+The chip row at the top of the settings sheet (`Assistant`, `Sync`, `Alerts`, `Account`) is a navigation control, not a label set.
+
+Implementation rules:
+
+- each chip is a `Pressable` that scrolls the bottom-sheet `BottomSheetScrollView` to the matching section's stored `onLayout` y-offset
+- offsets are captured per-section via `onLayout` on a wrapping `View`, not by ref-measuring children — measurement timing on Android is unreliable inside bottom sheets
+- the active chip is highlighted with the accent fill so the user can tell which section they jumped to
+- scroll animation is gated on `useReducedMotion`; reduced motion jumps without animating
+
+### Advanced auto-open rule
+
+`hasCustomKairoEndpoint(config)` decides whether the Kairo `Advanced` section should be open on initial load:
+
+- it returns `true` only when the saved endpoint URL or model diverges from the active provider's defaults
+- empty strings are treated as "use defaults" and do not count as custom
+- the decision runs once on cold load against the persisted config, not on every keystroke, so editing a field never triggers the section to spring open
+
+This helper is unit-tested in `src/test/kairoConfig.test.ts`.
+
 ## Input Rules for Bottom Sheets
 
 When an input lives inside `@gorhom/bottom-sheet`, prefer `BottomSheetTextInput` over plain RN `TextInput`.
@@ -276,6 +300,8 @@ Current mobile test coverage includes:
 - optimistic task list transforms
 - task mutation hook behavior
 - timeline date-window derivation
+- Kairo advanced auto-open decision (`hasCustomKairoEndpoint`)
+- `useTaskQueries` full-corpus gating (skip vs subscribe based on `isAuthenticated` and `includeAllTasks`)
 
 The intended regression pattern is:
 

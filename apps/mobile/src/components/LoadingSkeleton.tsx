@@ -8,13 +8,20 @@ import Animated, {
   withSequence,
   withTiming,
 } from "react-native-reanimated";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 import { colors, motion, radii, spacing } from "../theme/tokens";
 
 function SkeletonPulse({ children }: { children: React.ReactNode }) {
+  const reducedMotion = useReducedMotion();
   const opacity = useSharedValue(0.55);
-  const translateY = useSharedValue(0);
 
   useEffect(() => {
+    if (reducedMotion) {
+      // Hold a static, slightly dimmed state. No translate, no pulse — the
+      // structural skeleton itself is enough signal that data is loading.
+      opacity.value = withTiming(0.7, { duration: motion.duration.fast });
+      return;
+    }
     opacity.value = withRepeat(
       withSequence(
         withTiming(0.82, {
@@ -29,25 +36,10 @@ function SkeletonPulse({ children }: { children: React.ReactNode }) {
       -1,
       true
     );
-    translateY.value = withRepeat(
-      withSequence(
-        withTiming(-2, {
-          duration: motion.duration.deliberate,
-          easing: Easing.bezier(...motion.easing.outQuart),
-        }),
-        withTiming(0, {
-          duration: motion.duration.deliberate,
-          easing: Easing.bezier(...motion.easing.inOutQuart),
-        })
-      ),
-      -1,
-      true
-    );
-  }, [opacity, translateY]);
+  }, [opacity, reducedMotion]);
 
   const style = useAnimatedStyle(() => ({
     opacity: opacity.value,
-    transform: [{ translateY: translateY.value }],
   }));
 
   return <Animated.View style={style}>{children}</Animated.View>;

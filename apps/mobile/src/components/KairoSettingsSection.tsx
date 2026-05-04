@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
@@ -7,11 +7,13 @@ import {
   clearKairoConfig,
   getKairoConfig,
   getKairoProviderLabel,
+  hasCustomKairoEndpoint,
   isKairoConfigured,
   saveKairoConfig,
   type KairoConfig,
   type KairoProviderFormat,
 } from "../lib/kairoConfig";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 import { KairoSettingsSkeleton } from "./LoadingSkeleton";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 
@@ -32,18 +34,25 @@ function getProviderDraft(providerFormat: KairoProviderFormat, apiKey: string): 
   };
 }
 
+type SaveState = "idle" | "saving" | "saved" | "cleared";
+
 export function KairoSettingsSection() {
   const [draft, setDraft] = useState<KairoConfig>(EMPTY);
   const [loaded, setLoaded] = useState(false);
-  const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     let cancelled = false;
     void getKairoConfig().then((c) => {
       if (!cancelled) {
         setDraft(c);
+        // Decide initial advanced visibility once, off the persisted config
+        // — not every keystroke. This avoids the section springing open the
+        // moment a user clears the URL field.
+        setShowAdvanced(hasCustomKairoEndpoint(c));
         setLoaded(true);
       }
     });
@@ -56,32 +65,30 @@ export function KairoSettingsSection() {
     setDraft((d) => getProviderDraft(p, d.apiKey));
   };
 
+  const flashState = (next: "saved" | "cleared") => {
+    setSaveState(next);
+    setTimeout(() => {
+      setSaveState((current) => (current === next ? "idle" : current));
+    }, 1800);
+  };
+
   const handleSave = async () => {
-    if (!loaded) return;
+    if (!loaded || saveState === "saving") return;
+    setSaveState("saving");
     await saveKairoConfig(draft);
-    setSavedNotice("Saved.");
-    setTimeout(() => setSavedNotice(null), 1800);
+    flashState("saved");
   };
 
   const handleClear = async () => {
+    if (saveState === "saving") return;
+    setSaveState("saving");
     await clearKairoConfig();
     setDraft(getProviderDraft("anthropic", ""));
-    setSavedNotice("Cleared.");
-    setTimeout(() => setSavedNotice(null), 1800);
+    flashState("cleared");
   };
 
   const placeholders = KAIRO_DEFAULTS[draft.providerFormat];
   const status = isKairoConfigured(draft) ? "Configured" : "Not configured";
-  const hasCustomEndpoint = useMemo(
-    () => draft.baseUrl !== placeholders.baseUrl || draft.model !== placeholders.model,
-    [draft.baseUrl, draft.model, placeholders.baseUrl, placeholders.model]
-  );
-
-  useEffect(() => {
-    if (hasCustomEndpoint) {
-      setShowAdvanced(true);
-    }
-  }, [hasCustomEndpoint]);
 
   // Show a minimal loading state while SecureStore resolves on cold start.
   // Previously all inputs rendered as disabled/empty which looked broken.
@@ -164,8 +171,8 @@ export function KairoSettingsSection() {
 
       {showAdvanced ? (
         <Animated.View
-          entering={FadeIn.duration(180)}
-          exiting={FadeOut.duration(120)}
+          entering={reducedMotion ? undefined : FadeIn.duration(180)}
+          exiting={reducedMotion ? undefined : FadeOut.duration(120)}
           style={styles.advancedWrap}
         >
           <Text style={styles.advancedLabel}>Endpoint URL</Text>
@@ -199,21 +206,39 @@ export function KairoSettingsSection() {
           hitSlop={6}
           accessibilityRole="button"
           accessibilityLabel="Save Kairo configuration"
-          disabled={!loaded}
-          style={({ pressed }) => [pressed && { opacity: 0.6 }, !loaded && { opacity: 0.35 }]}
+          disabled={!loaded || saveState === "saving"}
+          style={({ pressed }) => [
+            styles.saveButton,
+            saveState === "saved" && styles.saveButtonSaved,
+            pressed && { opacity: 0.7 },
+            (!loaded || saveState === "saving") && { opacity: 0.5 },
+          ]}
         >
-          <Text style={styles.saveText}>Save</Text>
+          <Text
+            style={[
+              styles.saveButtonText,
+              saveState === "saved" && styles.saveButtonTextSaved,
+            ]}
+          >
+            {saveState === "saving"
+              ? "Saving…"
+              : saveState === "saved"
+                ? "Saved"
+                : "Save"}
+          </Text>
         </Pressable>
         <Pressable
           onPress={() => void handleClear()}
           hitSlop={6}
           accessibilityRole="button"
           accessibilityLabel="Clear Kairo configuration"
+          disabled={saveState === "saving"}
           style={({ pressed }) => [pressed && { opacity: 0.6 }]}
         >
-          <Text style={styles.clearText}>Clear</Text>
+          <Text style={styles.clearText}>
+            {saveState === "cleared" ? "Cleared" : "Clear"}
+          </Text>
         </Pressable>
-        {savedNotice ? <Text style={styles.notice}>{savedNotice}</Text> : null}
       </View>
     </View>
   );
@@ -316,16 +341,27 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
     marginTop: spacing.xs,
   },
-  saveText: {
+  saveButton: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: colors.accentSoft,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.accent,
+  },
+  saveButtonSaved: {
+    backgroundColor: colors.successMuted,
+    borderColor: colors.success,
+  },
+  saveButtonText: {
     ...typography.micro,
     color: colors.accent,
+  },
+  saveButtonTextSaved: {
+    color: colors.success,
   },
   clearText: {
     ...typography.micro,
     color: colors.textMuted,
-  },
-  notice: {
-    ...typography.micro,
-    color: colors.textSecondary,
   },
 });
