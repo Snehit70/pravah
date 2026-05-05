@@ -120,6 +120,20 @@ bun run mobile:env   # generates apps/mobile/.env.local from root env
 GitHub Actions runs on pull requests and pushes to `main`:
 - **Lint** — ESLint
 - **Build** — Vite production build + TypeScript check
+- **Release Please** — automated version bump + release PR/tag flow for web and mobile (on `main`)
+
+### Release flow (web + mobile)
+
+Versioning and GitHub Releases are managed by `release-please`:
+
+- On every push to `main`, it scans Conventional Commits since the last release tag.
+- If releasable changes exist, it opens/updates a single release PR that bumps root (`web`) and `apps/mobile` package versions.
+- When that release PR merges, it creates component tags and GitHub Releases.
+
+Tag format:
+
+- `web-vX.Y.Z`
+- `mobile-vX.Y.Z`
 
 ## Documentation
 
