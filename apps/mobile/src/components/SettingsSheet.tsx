@@ -14,6 +14,7 @@ import {
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
+  BottomSheetView,
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -208,13 +209,7 @@ export function SettingsSheet({
         }
       }}
     >
-      <BottomSheetScrollView
-        ref={scrollRef}
-        contentContainerStyle={[styles.settingsScrollContent, { paddingBottom: insets.bottom + spacing.section }]}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        onScroll={handleScroll}
-      >
+      <BottomSheetView style={styles.pinnedHeader}>
         <View style={styles.settingsHeader}>
           <View style={{ flex: 1 }}>
             <Text style={styles.settingsKicker}>Workspace</Text>
@@ -256,7 +251,15 @@ export function SettingsSheet({
             );
           })}
         </View>
+      </BottomSheetView>
 
+      <BottomSheetScrollView
+        ref={scrollRef}
+        contentContainerStyle={[styles.settingsScrollContent, { paddingBottom: insets.bottom + spacing.section }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        onScroll={handleScroll}
+      >
         <View onLayout={handleSectionLayout("assistant")}>
           <Text style={styles.sectionHeader}>Assistant</Text>
           <View style={[styles.settingBlock, styles.sectionCard]}>
@@ -432,6 +435,13 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
     gap: spacing.md,
   },
+  pinnedHeader: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+    backgroundColor: colors.bgFloating,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
+  },
   settingsHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -443,7 +453,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm,
-    marginBottom: spacing.sm,
   },
   sectionJumpChip: {
     paddingVertical: spacing.xs,
