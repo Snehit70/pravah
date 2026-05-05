@@ -120,10 +120,12 @@ adb shell input keyevent 111  # ESC (closes IME on most ROMs)
 adb shell input keyevent 187  # APP_SWITCH
 ```
 
-**Back-button caveat.** Pressing `BACK` more than once in a row from
-inside a sheet or modal will most likely send the user to the launcher.
-Always re-screenshot after each back press; never chain two back presses
-without inspecting state in between.
+**Back-button behavior.** A single `BACK` from any open sheet
+(Capture / Edit / Settings / Kairo) closes that sheet and returns you
+to the workspace — it does **not** background the app. A second `BACK`
+from the workspace itself backgrounds the app as expected. If you ever
+see one `BACK` press take you straight to the launcher, that is a
+regression in the root `BackHandler` (see `App.tsx`).
 
 To dismiss the keyboard without losing screen state, prefer
 `adb shell input keyevent 111` (ESC). If the keyboard re-opens by
@@ -216,7 +218,9 @@ the file timeline alone.
    bottom; the title `TextInput` focuses and the keyboard opens.
    Type a title, tap `Add task`. **Checkpoint:** the sheet closes,
    the new task appears in Inbox at the top, and the inbox count
-   increments by 1.
+   increments by 1. The primary `Add task` button must remain visible
+   while typing — a `Discard` link appears beneath it once a draft
+   exists, but it must not replace `Add task`.
 
 6. **Edit flow.** Tap an existing task row. The Edit sheet opens with
    the task pre-filled. Make a trivial change, save. **Checkpoint:**

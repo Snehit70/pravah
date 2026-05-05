@@ -157,7 +157,7 @@ Motion should explain state, not compete with it.
 - sheet open/close
 - dimming background when Kairo is active
 - subtle skeleton pulse
-- list item feedback when dragging or completing
+- list item feedback when completing (drag is currently disabled)
 
 ### Bad motion
 
@@ -248,6 +248,32 @@ until the user taps elsewhere.
 
 `AddTaskSheet` and `EditTaskSheet` already followed this pattern before this policy
 was written. `SettingsSheet` was the only outlier.
+
+### Hardware back button
+
+Android's hardware/gesture BACK is intercepted at the app root
+(`MobileApp` in `App.tsx`). When any overlay is open it closes the topmost
+one and consumes the event; only when no overlay is open does it return
+`false` and let the OS exit the app.
+
+Priority order (closes the first match):
+
+1. Kairo sheet (`isKairoActive`)
+2. Settings sheet (`isSettingsModalOpen`)
+3. Edit task sheet (`isEditSheetOpen`)
+4. Add task sheet (`isAddSheetOpen`)
+
+Without this, BACK from an open Capture sheet would dismiss the sheet's
+gesture layer *and* pop the activity in one press, sending the user to
+the launcher.
+
+### Capture sheet primary action
+
+`AddTaskSheet` always renders the primary "Add task" button — it is
+disabled while the title is empty, never hidden. The "Discard" link
+appears as a secondary action *below* the primary button when there are
+draft changes. Earlier the two swapped places, which caused Add to
+disappear the moment the user typed a single character.
 
 ## Error UX
 

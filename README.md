@@ -129,7 +129,9 @@ GitHub Actions runs on pull requests and pushes to `main`:
 - `docs/google-oauth.md` — Google OAuth setup and troubleshooting
 - `apps/mobile/docs/README.md` — mobile documentation index
 - `apps/mobile/docs/architecture.md` — detailed mobile architecture and state/query ownership
-- `apps/mobile/docs/ux-orchestration.md` — mobile loading, keyboard, settings, and motion behavior
+- `apps/mobile/docs/ux-orchestration.md` — mobile loading, keyboard, settings, motion, and Android back behavior
+- `apps/mobile/MOBILE_TESTING.md` — ADB-driven QA walk for the mobile app
+- `apps/mobile/DEBUGGING.md` — log prefixes, ADB commands, and known dependency pins
 
 ## Security Notes
 
