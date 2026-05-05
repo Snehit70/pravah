@@ -304,7 +304,7 @@ describe("AddTaskSheet", () => {
     expect(addBtn.parentElement).toHaveProperty("disabled", true);
   });
 
-  it("shows discard button when there are draft changes", () => {
+  it("shows discard alongside add when there are draft changes", () => {
     render(
       <AddTaskSheet
         ref={ref}
@@ -321,8 +321,9 @@ describe("AddTaskSheet", () => {
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
     fireEvent.change(titleInput, { target: { value: "Draft" } });
 
-    // Once there are draft changes, should show "Discard" button
+    // Add must remain visible so the user can submit; Discard is added
+    // as a secondary affordance once a draft exists.
+    expect(screen.getByText("Add task")).toBeTruthy();
     expect(screen.getByText("Discard")).toBeTruthy();
-    expect(screen.queryByText("Add task")).toBeNull();
   });
 });

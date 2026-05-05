@@ -140,9 +140,18 @@ It handles:
 - send back to inbox
 - reopen completed task
 - save edits
-- inbox reorder
-- timeline reorder
+- inbox reorder *(currently disabled in the UI — see "List rendering" below)*
+- timeline reorder *(currently disabled in the UI — see "List rendering" below)*
 - within-day timeline shift actions
+
+### List rendering
+
+Inbox and Timeline render with plain `FlatList`. Drag-to-reorder via
+`react-native-draggable-flatlist` is wired through the mutation layer but
+disabled in the UI: the library is not compatible with
+`react-native-reanimated@4` and rendered the lists as silently blank
+(headers visible, list area empty). Re-enable only after the drag library
+catches up to Reanimated 4 — see `apps/mobile/DEBUGGING.md`.
 
 It does not own the session, Kairo settings, or notification settings.
 

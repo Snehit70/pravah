@@ -46,11 +46,39 @@ vi.mock("react-native", () => {
     );
   };
   const RefreshControl = () => React.createElement("div", { "data-testid": "refresh-control" });
+  const FlatList = ({
+    data,
+    renderItem,
+    keyExtractor,
+    ListEmptyComponent,
+  }: {
+    data: unknown[];
+    renderItem: (params: { item: unknown; index: number }) => React.ReactNode;
+    keyExtractor: (item: unknown) => string;
+    ListEmptyComponent?: React.ReactNode;
+    [key: string]: unknown;
+  }) => {
+    if (data.length === 0 && ListEmptyComponent) {
+      return React.createElement("div", { "data-testid": "flat-list" }, ListEmptyComponent);
+    }
+    return React.createElement(
+      "div",
+      { "data-testid": "flat-list" },
+      data.map((item, index) =>
+        React.createElement(
+          "div",
+          { key: keyExtractor(item), "data-testid": `task-item-${index}` },
+          renderItem({ item, index })
+        )
+      )
+    );
+  };
   return {
     View,
     Text,
     Pressable,
     RefreshControl,
+    FlatList,
   };
 });
 
@@ -61,37 +89,6 @@ vi.mock("react-native-reanimated", () => ({
       React.createElement("div", {}, children),
   },
   FadeIn: { duration: () => undefined },
-}));
-
-// ─── react-native-draggable-flatlist mock ─────────────────────────────────────
-vi.mock("react-native-draggable-flatlist", () => ({
-  default: ({
-    data,
-    renderItem,
-    keyExtractor,
-    ListEmptyComponent,
-  }: {
-    data: unknown[];
-    renderItem: (params: { item: unknown; drag: () => void; isActive: boolean; getIndex: () => number }) => React.ReactNode;
-    keyExtractor: (item: unknown) => string;
-    ListEmptyComponent?: React.ReactNode;
-    [key: string]: unknown;
-  }) => {
-    if (data.length === 0 && ListEmptyComponent) {
-      return React.createElement("div", { "data-testid": "draggable-flatlist" }, ListEmptyComponent);
-    }
-    return React.createElement(
-      "div",
-      { "data-testid": "draggable-flatlist" },
-      data.map((item, index) =>
-        React.createElement(
-          "div",
-          { key: keyExtractor(item), "data-testid": `task-item-${index}` },
-          renderItem({ item, drag: vi.fn(), isActive: false, getIndex: () => index })
-        )
-      )
-    );
-  },
 }));
 
 // ─── theme tokens mock ────────────────────────────────────────────────────────
@@ -145,7 +142,6 @@ describe("InboxScreen", () => {
     React.createElement("div", { "data-testid": `task-${params.item._id}` }, params.item.title)
   );
   const mockOnRefresh = vi.fn(async () => undefined);
-  const mockOnDragEnd = vi.fn();
   const mockOnCapture = vi.fn();
 
   beforeEach(() => {
@@ -164,7 +160,6 @@ describe("InboxScreen", () => {
         isRefreshing={false}
         tabBarHeight={60}
         onRefresh={mockOnRefresh}
-        onDragEnd={mockOnDragEnd}
         onCapture={mockOnCapture}
         renderItem={mockRenderItem}
       />
@@ -182,7 +177,6 @@ describe("InboxScreen", () => {
         isRefreshing={false}
         tabBarHeight={60}
         onRefresh={mockOnRefresh}
-        onDragEnd={mockOnDragEnd}
         onCapture={mockOnCapture}
         renderItem={mockRenderItem}
       />
@@ -201,7 +195,6 @@ describe("InboxScreen", () => {
         isRefreshing={false}
         tabBarHeight={60}
         onRefresh={mockOnRefresh}
-        onDragEnd={mockOnDragEnd}
         onCapture={mockOnCapture}
         renderItem={mockRenderItem}
       />
@@ -222,7 +215,6 @@ describe("InboxScreen", () => {
         isRefreshing={false}
         tabBarHeight={60}
         onRefresh={mockOnRefresh}
-        onDragEnd={mockOnDragEnd}
         onCapture={mockOnCapture}
         renderItem={mockRenderItem}
       />
@@ -242,7 +234,6 @@ describe("InboxScreen", () => {
         isRefreshing={false}
         tabBarHeight={60}
         onRefresh={mockOnRefresh}
-        onDragEnd={mockOnDragEnd}
         onCapture={mockOnCapture}
         renderItem={mockRenderItem}
       />

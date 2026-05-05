@@ -22,3 +22,12 @@
 - All Convex types are imported from `../../convex/_generated/` (relative to `apps/mobile/`). The `apps/mobile/convex/` directory is intentionally empty — do not put files there.
 - Env vars are prefixed `EXPO_PUBLIC_`.
 - `better-auth` session storage uses a synchronous in-memory cache backed by `expo-secure-store` (`src/lib/auth-client.ts`). Auth-dependent code must wait for `authStorageReady` to resolve before making session calls.
+
+## Release and versioning policy
+
+- GitHub release automation is managed by `release-please` via `.github/workflows/release-please.yml`.
+- Agents should follow Conventional Commits (`feat:`, `fix:`, `chore:`, etc.) so semver bumps are generated correctly.
+- Version sources are:
+  - web: root `package.json`
+  - mobile: `apps/mobile/package.json`
+- Mobile Expo version must stay in sync with mobile package version. This is automated through `release-please-config.json` by updating `apps/mobile/app.json` at `$.expo.version` during release PR generation.

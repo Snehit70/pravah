@@ -49,7 +49,9 @@ type TaskCardProps = {
   /** Timeline accessibility reorder action. */
   onReorder?: (id: Id<"tasks">, direction: "up" | "down") => void;
   onEdit: (task: MobileTask) => void;
-  /** Provided by DraggableFlatList; called from long-press to initiate drag. */
+  /** Hook for the parent list to start a drag from a long-press. Currently
+   *  unused — drag-to-reorder is disabled while RNDFL is incompatible with
+   *  Reanimated 4. The prop is kept so the wiring stays in place. */
   onDragHandlePress?: () => void;
 };
 
@@ -314,8 +316,8 @@ function TaskCardInner({
     >
       <Pressable
         onPress={handleEdit}
-        // Long-press initiates the parent DraggableFlatList drag. The
-        // delayLongPress matches DraggableFlatList's default activation timer.
+        // Long-press is wired up for future drag-to-reorder; currently a no-op
+        // while the parent list is plain FlatList.
         onLongPress={onDragHandlePress}
         delayLongPress={250}
         style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}

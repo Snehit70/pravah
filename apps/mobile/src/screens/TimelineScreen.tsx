@@ -1,16 +1,15 @@
 /**
  * TimelineScreen
  *
- * Renders the timeline tab: date-grouped draggable sections. Cross-day drag
- * is blocked here; same-day reorder is delegated to the parent via onDragEnd.
+ * Renders the timeline tab: date-grouped sections. Drag-to-reorder is
+ * currently disabled — see InboxScreen for the same constraint
+ * (RNDFL@4 / Reanimated@4 incompatibility).
  */
 
 import type { JSX } from "react";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { Text, View, RefreshControl } from "react-native";
-import DraggableFlatList, {
-  type RenderItemParams,
-} from "react-native-draggable-flatlist";
+import { FlatList, RefreshControl, Text, View } from "react-native";
+import type { RenderItemParams } from "react-native-draggable-flatlist";
 import { colors, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
 import { TimelineSectionHeader } from "../components/TimelineSectionHeader";
@@ -30,9 +29,10 @@ type TimelineScreenProps = {
   isRefreshing: boolean;
   tabBarHeight: number;
   onRefresh: () => Promise<void>;
-  onDragEnd: (dateKey: string, original: MobileTask[], reordered: MobileTask[]) => void;
   renderItem: (dateKey: string, params: RenderItemParams<MobileTask>) => JSX.Element;
 };
+
+const noopDrag = () => {};
 
 export function TimelineScreen({
   sections,
@@ -43,15 +43,12 @@ export function TimelineScreen({
   isRefreshing,
   tabBarHeight,
   onRefresh,
-  onDragEnd,
   renderItem,
 }: TimelineScreenProps) {
   // Build flat mixed-row array: headers interleaved between day groups.
   const rows: TimelineRow[] = [];
-  const sectionSnapshots = new Map<string, MobileTask[]>();
 
   for (const [dateKey, tasks] of sections) {
-    sectionSnapshots.set(dateKey, tasks);
     rows.push({
       kind: "header",
       dateKey,
@@ -73,7 +70,7 @@ export function TimelineScreen({
   const loadingBlock = <TaskListSkeleton variant="timeline" />;
 
   return (
-    <DraggableFlatList<TimelineRow>
+    <FlatList<TimelineRow>
       style={{ flex: 1 }}
       contentContainerStyle={{
         paddingTop: spacing.md,
@@ -83,7 +80,7 @@ export function TimelineScreen({
       keyExtractor={(row) =>
         row.kind === "header" ? `header-${row.dateKey}` : row.task._id
       }
-      renderItem={({ item: row, drag, isActive, getIndex }) => {
+      renderItem={({ item: row, index }) => {
         if (row.kind === "header") {
           return (
             <View pointerEvents="box-none">
@@ -93,40 +90,10 @@ export function TimelineScreen({
         }
         return renderItem(row.dateKey, {
           item: row.task,
-          drag,
-          isActive,
-          getIndex,
+          drag: noopDrag,
+          isActive: false,
+          getIndex: () => index,
         });
-      }}
-      onDragEnd={({ data: newRows }) => {
-        // Cross-day guard: if any task row's dateKey doesn't match the last
-        // header seen, the user dragged across a day boundary — abort.
-        let currentSectionDateKey: string | null = null;
-        for (const row of newRows) {
-          if (row.kind === "header") {
-            currentSectionDateKey = row.dateKey;
-            continue;
-          }
-          if (
-            currentSectionDateKey !== null &&
-            row.dateKey !== currentSectionDateKey
-          ) {
-            return;
-          }
-        }
-
-        // Same-day reorder: fire per-date handler with pre-drag snapshots.
-        const byDate = new Map<string, MobileTask[]>();
-        for (const row of newRows) {
-          if (row.kind !== "task") continue;
-          const bucket = byDate.get(row.dateKey) ?? [];
-          bucket.push(row.task);
-          byDate.set(row.dateKey, bucket);
-        }
-        for (const [dateKey, reordered] of byDate.entries()) {
-          const original = sectionSnapshots.get(dateKey) ?? reordered;
-          onDragEnd(dateKey, original, reordered);
-        }
       }}
       showsVerticalScrollIndicator={false}
       refreshControl={
@@ -139,7 +106,6 @@ export function TimelineScreen({
         />
       }
       ListEmptyComponent={isLoading ? loadingBlock : emptyBlock}
-      activationDistance={8}
     />
   );
 }

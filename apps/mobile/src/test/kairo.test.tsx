@@ -72,7 +72,6 @@ vi.mock("react-native", () => {
 // ─── @gorhom/bottom-sheet mock ────────────────────────────────────────────────
 const mockExpand = vi.fn();
 const mockClose = vi.fn();
-const mockOnChange = vi.fn();
 
 vi.mock("@gorhom/bottom-sheet", () => {
   const BottomSheet = React.forwardRef(

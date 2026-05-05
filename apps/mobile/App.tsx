@@ -1,6 +1,7 @@
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  BackHandler,
   Pressable,
   StyleSheet,
   Text,
@@ -135,6 +136,8 @@ function MobileApp() {
     timelineSections,
     inboxCount,
     timelineCount,
+    overdueCount,
+    thisWeekCount,
     completedCount,
     isInboxLoading,
     isTimelineLoading,
@@ -318,8 +321,6 @@ function MobileApp() {
     sendToInbox,
     reopenToInbox,
     handleSaveEdits,
-    handleInboxDragEnd,
-    handleTimelineDragEnd,
     shiftTimelineTask,
   } = useTaskMutations({
     serverTasks: activeServerTasks,
@@ -430,6 +431,44 @@ function MobileApp() {
     kairoRef.current?.open();
   }, []);
 
+  // Android hardware back: close the topmost overlay (sheet/modal) instead
+  // of letting the OS exit the app. Without this, BACK from an open Capture
+  // sheet would dismiss the sheet *and* pop the activity, sending the user
+  // straight to the launcher.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (isSettingsModalOpen) {
+        setIsSettingsModalOpen(false);
+        return true;
+      }
+      if (isKairoActive) {
+        kairoRef.current?.close();
+        return true;
+      }
+      if (isEditSheetOpen) {
+        editTaskSheetRef.current?.close();
+        return true;
+      }
+      if (isAddSheetOpen) {
+        const addSheet = addTaskSheetRef.current;
+        if (addSheet?.hasDraftChanges()) {
+          addSheet.dismissKeyboard();
+          return true;
+        }
+        addSheet?.close();
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [
+    isAddSheetOpen,
+    isEditSheetOpen,
+    isSettingsModalOpen,
+    isKairoActive,
+    setIsSettingsModalOpen,
+  ]);
+
   const renderInboxTaskItem = useCallback(
     ({ item, drag }: RenderItemParams<MobileTask>) => (
       <TaskCard
@@ -495,9 +534,13 @@ function MobileApp() {
     activeTab === "timeline" ? "Timeline" : activeTab === "completed" ? "Completed" : "Inbox";
 
   const padCount = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+  const timelineSubtitle =
+    overdueCount > 0
+      ? `${padCount(overdueCount)} overdue · ${padCount(thisWeekCount)} this week`
+      : `${padCount(thisWeekCount)} through this week`;
   const headerSubtitle =
     activeTab === "timeline"
-      ? `${padCount(timelineCount)} through this week`
+      ? timelineSubtitle
       : activeTab === "completed"
         ? "Closed loops"
         : `${padCount(inboxCount)} to triage`;
@@ -586,7 +629,6 @@ function MobileApp() {
             isRefreshing={isRefreshing}
             tabBarHeight={tabBarHeight}
             onRefresh={handleRefresh}
-            onDragEnd={handleInboxDragEnd}
             onCapture={() => addTaskSheetRef.current?.open()}
             renderItem={renderInboxTaskItem}
           />
@@ -604,7 +646,6 @@ function MobileApp() {
             isRefreshing={isRefreshing}
             tabBarHeight={tabBarHeight}
             onRefresh={handleRefresh}
-            onDragEnd={handleTimelineDragEnd}
             renderItem={renderTimelineTaskItem}
           />
         </ScreenErrorBoundary>

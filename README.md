@@ -120,6 +120,20 @@ bun run mobile:env   # generates apps/mobile/.env.local from root env
 GitHub Actions runs on pull requests and pushes to `main`:
 - **Lint** — ESLint
 - **Build** — Vite production build + TypeScript check
+- **Release Please** — automated version bump + release PR/tag flow for web and mobile (on `main`)
+
+### Release flow (web + mobile)
+
+Versioning and GitHub Releases are managed by `release-please`:
+
+- On every push to `main`, it scans Conventional Commits since the last release tag.
+- If releasable changes exist, it opens/updates a single release PR that bumps root (`web`) and `apps/mobile` package versions.
+- When that release PR merges, it creates component tags and GitHub Releases.
+
+Tag format:
+
+- `web-vX.Y.Z`
+- `mobile-vX.Y.Z`
 
 ## Documentation
 
@@ -129,7 +143,9 @@ GitHub Actions runs on pull requests and pushes to `main`:
 - `docs/google-oauth.md` — Google OAuth setup and troubleshooting
 - `apps/mobile/docs/README.md` — mobile documentation index
 - `apps/mobile/docs/architecture.md` — detailed mobile architecture and state/query ownership
-- `apps/mobile/docs/ux-orchestration.md` — mobile loading, keyboard, settings, and motion behavior
+- `apps/mobile/docs/ux-orchestration.md` — mobile loading, keyboard, settings, motion, and Android back behavior
+- `apps/mobile/MOBILE_TESTING.md` — ADB-driven QA walk for the mobile app
+- `apps/mobile/DEBUGGING.md` — log prefixes, ADB commands, and known dependency pins
 
 ## Security Notes
 

@@ -126,11 +126,23 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
 
   const inboxCount =
     countsQuery?.inboxCount ?? inboxTasks.length;
-  // Timeline count must reflect the bounded window (overdueStart..weekEnd), not
-  // the total count of all scheduled tasks ever. Using countsQuery.timelineCount
-  // here would show a larger number than the rows actually rendered, misleading
-  // users about progress ("… through this week" subtitle with a count that
-  // includes tasks months out).
+
+  // Split timeline counts so the header can honestly distinguish
+  // "still owed" (overdue) from "ahead of you" (this week). A single
+  // combined count under the "through this week" label hides large
+  // overdue backlogs and reads as misleading progress.
+  const { overdueCount, thisWeekCount } = useMemo(() => {
+    let overdue = 0;
+    let thisWeek = 0;
+    for (const task of scheduledTasks) {
+      const date = task.scheduledDate;
+      if (!date) continue;
+      if (date < today) overdue += 1;
+      else thisWeek += 1;
+    }
+    return { overdueCount: overdue, thisWeekCount: thisWeek };
+  }, [scheduledTasks, today]);
+
   const timelineCount = scheduledTasks.length;
   const completedCount =
     countsQuery?.completedCount ?? completedTasks.length;
@@ -151,6 +163,8 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
     timelineSections,
     inboxCount,
     timelineCount,
+    overdueCount,
+    thisWeekCount,
     completedCount,
     isInboxLoading,
     isTimelineLoading,

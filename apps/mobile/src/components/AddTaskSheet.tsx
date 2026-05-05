@@ -19,6 +19,8 @@ type ComposerMode = "inbox" | "today";
 export type AddTaskSheetRef = {
   open: () => void;
   close: () => void;
+  hasDraftChanges: () => boolean;
+  dismissKeyboard: () => void;
 };
 
 type AddTaskSheetProps = {
@@ -36,6 +38,10 @@ type AddTaskSheetProps = {
 export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
   function AddTaskSheet({ onAdd, isValidDeadline, onSheetChange }, ref) {
     const bottomSheetRef = useRef<BottomSheet>(null);
+    // BottomSheetTextInput's ref type comes from gesture-handler and isn't
+    // assignable from a vanilla RN TextInput ref. We only need .focus(),
+    // so type the ref as that minimal shape.
+    const titleInputRef = useRef<{ focus: () => void } | null>(null);
     const insets = useSafeAreaInsets();
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
@@ -45,7 +51,6 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [saving, setSaving] = useState(false);
     const [showDetails, setShowDetails] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [focusNonce, setFocusNonce] = useState(0);
     const sheetBottomInset = useKeyboardInset(insets.bottom);
     const hasDraftChanges = Boolean(
       title.trim() ||
@@ -58,10 +63,16 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     useImperativeHandle(ref, () => ({
       open: () => {
         bottomSheetRef.current?.expand();
-        setFocusNonce((v) => v + 1);
+        // Focus is requested by onChange once the sheet is actually open;
+        // calling focus() here would fire before the sheet mounts and pop
+        // the keyboard over an invisible composer.
       },
       close: () => {
         bottomSheetRef.current?.close();
+      },
+      hasDraftChanges: () => hasDraftChanges,
+      dismissKeyboard: () => {
+        Keyboard.dismiss();
       },
     }));
 
@@ -141,8 +152,15 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           reset();
         }}
         onChange={(index) => {
-          onSheetChange?.(index >= 0);
-          if (index === -1) {
+          const isOpen = index >= 0;
+          onSheetChange?.(isOpen);
+          if (isOpen) {
+            // Focus only once the sheet has settled at a snap point. Doing
+            // this in onChange (instead of via TextInput's autoFocus) avoids
+            // popping the keyboard at cold-launch when Android restores the
+            // sheet's previous mount but not its visible state.
+            titleInputRef.current?.focus();
+          } else {
             Keyboard.dismiss();
             reset();
           }
@@ -153,8 +171,8 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           <Text style={styles.sheetTitle}>New task</Text>
 
           <BottomSheetTextInput
-            key={`title-input-${focusNonce}`}
-            autoFocus
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ref={titleInputRef as any}
             value={title}
             onChangeText={(text) => {
               setTitle(text);
@@ -228,6 +246,20 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
+          <Pressable
+            onPress={() => void handleAdd()}
+            disabled={!canSubmit}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              !canSubmit && styles.primaryButtonDisabled,
+              pressed && { opacity: 0.85 },
+            ]}
+          >
+            <Text style={[styles.primaryButtonText, !canSubmit && styles.primaryButtonTextDisabled]}>
+              {saving ? "Adding…" : "Add task"}
+            </Text>
+          </Pressable>
+
           {hasDraftChanges ? (
             <Pressable
               onPress={() => {
@@ -238,21 +270,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
             >
               <Text style={styles.discardButtonText}>Discard</Text>
             </Pressable>
-          ) : (
-            <Pressable
-              onPress={() => void handleAdd()}
-              disabled={!canSubmit}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                !canSubmit && styles.primaryButtonDisabled,
-                pressed && { opacity: 0.85 },
-              ]}
-            >
-              <Text style={[styles.primaryButtonText, !canSubmit && styles.primaryButtonTextDisabled]}>
-                {saving ? "Adding…" : "Add task"}
-              </Text>
-            </Pressable>
-          )}
+          ) : null}
         </BottomSheetView>
       </BottomSheet>
     );

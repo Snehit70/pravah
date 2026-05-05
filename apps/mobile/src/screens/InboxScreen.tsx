@@ -1,18 +1,22 @@
 /**
  * InboxScreen
  *
- * Renders the inbox tab: a draggable list of inbox tasks with pull-to-refresh,
+ * Renders the inbox tab: a list of inbox tasks with pull-to-refresh,
  * empty state, and loading state. All task mutations are passed in from the
  * parent so this component stays free of mutation wiring.
+ *
+ * Drag-to-reorder is currently disabled. react-native-draggable-flatlist
+ * @4.0.3 silently fails to render under react-native-reanimated@4.x; the
+ * fallback to plain FlatList keeps the list visible. The renderItem prop
+ * still receives a RenderItemParams shape so the call sites in App.tsx stay
+ * unchanged — drag is a no-op until a Reanimated-4-compatible reorder
+ * library is in place.
  */
 
 import type { JSX } from "react";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { Pressable, Text } from "react-native";
-import DraggableFlatList, {
-  type RenderItemParams,
-} from "react-native-draggable-flatlist";
-import { RefreshControl } from "react-native";
+import { FlatList, Pressable, RefreshControl, Text } from "react-native";
+import type { RenderItemParams } from "react-native-draggable-flatlist";
 import { colors, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
@@ -23,10 +27,11 @@ type InboxScreenProps = {
   isRefreshing: boolean;
   tabBarHeight: number;
   onRefresh: () => Promise<void>;
-  onDragEnd: (original: MobileTask[], reordered: MobileTask[]) => void;
   onCapture: () => void;
   renderItem: (params: RenderItemParams<MobileTask>) => JSX.Element;
 };
+
+const noopDrag = () => {};
 
 export function InboxScreen({
   tasks,
@@ -34,13 +39,9 @@ export function InboxScreen({
   isRefreshing,
   tabBarHeight,
   onRefresh,
-  onDragEnd,
   onCapture,
   renderItem,
 }: InboxScreenProps) {
-  // Snapshot tasks at drag-start so the parent can detect priority violations.
-  const tasksRef = { current: tasks };
-
   const emptyBlock = (
     <Animated.View entering={FadeIn.duration(400)} style={styles.emptyWrap}>
       <Text style={styles.emptyTitle}>Nothing to carry forward.</Text>
@@ -60,7 +61,7 @@ export function InboxScreen({
   const loadingBlock = <TaskListSkeleton variant="inbox" />;
 
   return (
-    <DraggableFlatList
+    <FlatList
       style={{ flex: 1 }}
       contentContainerStyle={{
         paddingTop: spacing.md,
@@ -68,8 +69,14 @@ export function InboxScreen({
       }}
       data={tasks}
       keyExtractor={(item) => item._id}
-      renderItem={(params) => renderItem(params)}
-      onDragEnd={({ data }) => onDragEnd(tasksRef.current, data)}
+      renderItem={({ item, index }) =>
+        renderItem({
+          item,
+          drag: noopDrag,
+          isActive: false,
+          getIndex: () => index,
+        })
+      }
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl
@@ -81,7 +88,6 @@ export function InboxScreen({
         />
       }
       ListEmptyComponent={isLoading ? loadingBlock : emptyBlock}
-      activationDistance={8}
     />
   );
 }
