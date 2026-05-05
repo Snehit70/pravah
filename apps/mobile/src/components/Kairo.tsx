@@ -293,6 +293,11 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       ref={sheetRef}
       index={-1}
       snapPoints={snapPoints}
+      // v5 defaults enableDynamicSizing to true, which makes the sheet
+      // measure its children's intrinsic height and ignore snapPoints.
+      // Our children are plain <View>s with no fixed height, so the sheet
+      // collapses to 0px and never visibly appears. Pin to snapPoints.
+      enableDynamicSizing={false}
       enablePanDownToClose
       onChange={handleSheetChange}
       backdropComponent={renderBackdrop}
