@@ -15,7 +15,7 @@
 
 import type { JSX } from "react";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { FlatList, Pressable, RefreshControl, Text } from "react-native";
+import { FlatList, Pressable, RefreshControl, Text, View } from "react-native";
 import type { RenderItemParams } from "react-native-draggable-flatlist";
 import { colors, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
@@ -32,6 +32,45 @@ type InboxScreenProps = {
 };
 
 const noopDrag = () => {};
+
+type PriorityBucket = "p1" | "p2" | "p3" | "none";
+
+type InboxRow =
+  | { kind: "header"; bucket: PriorityBucket; label: string }
+  | { kind: "task"; task: MobileTask };
+
+const BUCKET_ORDER: PriorityBucket[] = ["p1", "p2", "p3", "none"];
+const BUCKET_LABEL: Record<PriorityBucket, string> = {
+  p1: "P1",
+  p2: "P2",
+  p3: "P3",
+  none: "Unprioritized",
+};
+
+function bucketOf(task: MobileTask): PriorityBucket {
+  return task.priority ?? "none";
+}
+
+// Build a mixed header/task row list. Inbox tasks arrive pre-sorted
+// (priority desc, then position), so a single pass keeps the order while
+// inserting one quiet header per non-empty bucket.
+function buildInboxRows(tasks: MobileTask[]): InboxRow[] {
+  const grouped = new Map<PriorityBucket, MobileTask[]>();
+  for (const task of tasks) {
+    const key = bucketOf(task);
+    const existing = grouped.get(key) ?? [];
+    existing.push(task);
+    grouped.set(key, existing);
+  }
+  const rows: InboxRow[] = [];
+  for (const bucket of BUCKET_ORDER) {
+    const inBucket = grouped.get(bucket);
+    if (!inBucket || inBucket.length === 0) continue;
+    rows.push({ kind: "header", bucket, label: BUCKET_LABEL[bucket] });
+    for (const task of inBucket) rows.push({ kind: "task", task });
+  }
+  return rows;
+}
 
 export function InboxScreen({
   tasks,
@@ -59,24 +98,34 @@ export function InboxScreen({
   );
 
   const loadingBlock = <TaskListSkeleton variant="inbox" />;
+  const rows = buildInboxRows(tasks);
 
   return (
-    <FlatList
+    <FlatList<InboxRow>
       style={{ flex: 1 }}
       contentContainerStyle={{
         paddingTop: spacing.md,
         paddingBottom: tabBarHeight + 84,
       }}
-      data={tasks}
-      keyExtractor={(item) => item._id}
-      renderItem={({ item, index }) =>
-        renderItem({
-          item,
+      data={rows}
+      keyExtractor={(row) =>
+        row.kind === "header" ? `header-${row.bucket}` : row.task._id
+      }
+      renderItem={({ item: row, index }) => {
+        if (row.kind === "header") {
+          return (
+            <View style={styles.sectionHeader} pointerEvents="box-none">
+              <Text style={styles.sectionLabel}>{row.label}</Text>
+            </View>
+          );
+        }
+        return renderItem({
+          item: row.task,
           drag: noopDrag,
           isActive: false,
           getIndex: () => index,
-        })
-      }
+        });
+      }}
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl
@@ -116,6 +165,15 @@ const styles = {
   },
   emptyCta: {
     color: colors.accent,
+    ...typography.micro,
+  },
+  sectionHeader: {
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
+  sectionLabel: {
+    color: colors.textMuted,
     ...typography.micro,
   },
 };
