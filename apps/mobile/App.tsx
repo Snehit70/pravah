@@ -1,6 +1,7 @@
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  BackHandler,
   Pressable,
   StyleSheet,
   Text,
@@ -429,6 +430,39 @@ function MobileApp() {
     mobileLogger.info("kairo_opened");
     kairoRef.current?.open();
   }, []);
+
+  // Android hardware back: close the topmost overlay (sheet/modal) instead
+  // of letting the OS exit the app. Without this, BACK from an open Capture
+  // sheet would dismiss the sheet *and* pop the activity, sending the user
+  // straight to the launcher.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (isKairoActive) {
+        kairoRef.current?.close();
+        return true;
+      }
+      if (isSettingsModalOpen) {
+        setIsSettingsModalOpen(false);
+        return true;
+      }
+      if (isEditSheetOpen) {
+        editTaskSheetRef.current?.close();
+        return true;
+      }
+      if (isAddSheetOpen) {
+        addTaskSheetRef.current?.close();
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [
+    isAddSheetOpen,
+    isEditSheetOpen,
+    isSettingsModalOpen,
+    isKairoActive,
+    setIsSettingsModalOpen,
+  ]);
 
   const renderInboxTaskItem = useCallback(
     ({ item, drag }: RenderItemParams<MobileTask>) => (
