@@ -252,17 +252,17 @@ the file timeline alone.
    `retry_queue_hydrated`.
 
 2. **Inbox tab.** Tap `Inbox` if not already active. The header subtitle
-   reads `NN to triage` (zero-padded). **Checkpoint:** if the count is
+   reads `NN TO TRIAGE` (zero-padded; rendered uppercase by CSS). **Checkpoint:** if the count is
    `> 0`, the list area must contain at least one task row; if `00`,
    the empty state ("Nothing to carry forward.") must be present. The
    list area must never be silently blank.
 
-3. **Timeline tab.** Tap `Timeline`. Subtitle reads `NN through this
-   week`. **Checkpoint:** if `NN > 0`, at least one date-section header
+3. **Timeline tab.** Tap `Timeline`. Subtitle reads `NN THROUGH THIS
+   WEEK` (or `NN OVERDUE · NN THIS WEEK` if any are overdue). **Checkpoint:** if `NN > 0`, at least one date-section header
    plus one task row must render. Pull-to-refresh (swipe down ~600px
    from the top of the list) should briefly show the spinner.
 
-4. **Completed tab.** Tap `Done`. Subtitle reads `Closed loops`.
+4. **Completed tab.** Tap `Done`. Subtitle reads `CLOSED LOOPS`.
    **Checkpoint:** completed tasks render with strikethrough and a
    green status dot, sorted by most-recent first.
 
@@ -320,11 +320,11 @@ If any checkpoint fails, capture: the screenshot, the UI dump, the last
 Each tab's subtitle is the cheapest signal that data is wired up
 correctly. Use it as the first thing you read after switching tabs.
 
-| Tab | Format | Source |
+| Tab | Format (rendered uppercase via CSS) | Source |
 |---|---|---|
-| Inbox | `NN to triage` (zero-padded) | count of `status:"inbox"` |
-| Timeline | `NN through this week` | count of `status:"scheduled"` within the visible date window |
-| Completed | `Closed loops` (no number) | — |
+| Inbox | `NN TO TRIAGE` (zero-padded) | count of `status:"inbox"` |
+| Timeline | `NN THROUGH THIS WEEK`, or `NN OVERDUE · NN THIS WEEK` if any are overdue | count of `status:"scheduled"` within the visible date window |
+| Completed | `CLOSED LOOPS` (no number) | — |
 
 If a count and the rendered list disagree (count > 0 but list is empty,
 or vice versa), that is a bug worth filing — the count comes from a
