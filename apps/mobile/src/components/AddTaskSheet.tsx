@@ -240,6 +240,20 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
+          <Pressable
+            onPress={() => void handleAdd()}
+            disabled={!canSubmit}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              !canSubmit && styles.primaryButtonDisabled,
+              pressed && { opacity: 0.85 },
+            ]}
+          >
+            <Text style={[styles.primaryButtonText, !canSubmit && styles.primaryButtonTextDisabled]}>
+              {saving ? "Adding…" : "Add task"}
+            </Text>
+          </Pressable>
+
           {hasDraftChanges ? (
             <Pressable
               onPress={() => {
@@ -250,21 +264,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
             >
               <Text style={styles.discardButtonText}>Discard</Text>
             </Pressable>
-          ) : (
-            <Pressable
-              onPress={() => void handleAdd()}
-              disabled={!canSubmit}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                !canSubmit && styles.primaryButtonDisabled,
-                pressed && { opacity: 0.85 },
-              ]}
-            >
-              <Text style={[styles.primaryButtonText, !canSubmit && styles.primaryButtonTextDisabled]}>
-                {saving ? "Adding…" : "Add task"}
-              </Text>
-            </Pressable>
-          )}
+          ) : null}
         </BottomSheetView>
       </BottomSheet>
     );
