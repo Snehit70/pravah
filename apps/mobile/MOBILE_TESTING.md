@@ -31,6 +31,58 @@ assume a single device.
 
 ---
 
+## 1a. Recommended tooling — `agent-device`
+
+For agent-driven runs, prefer Callstack's [`agent-device`](https://github.com/callstackincubator/agent-device)
+CLI over raw `adb`. It wraps `adb` with an accessibility-snapshot model
+that returns labelled, hittable nodes in JSON — much more reliable than
+parsing `uiautomator dump` output by hand.
+
+Install once (Node 22+):
+
+```bash
+npm install -g agent-device
+agent-device devices --json   # confirm your phone is listed
+```
+
+Common commands used in this guide:
+
+| Action | `agent-device` |
+|---|---|
+| List/select device | `agent-device devices --json` |
+| Cold start app | `adb shell am force-stop com.pravah.mobile && adb shell monkey -p com.pravah.mobile -c android.intent.category.LAUNCHER 1` |
+| Confirm foreground | `agent-device appstate --json` |
+| Screenshot | `agent-device screenshot <path>` |
+| Accessibility snapshot | `agent-device snapshot --json` (filter with `jq` on `.data.nodes[]`) |
+| Tap by coords | `agent-device click <x> <y>` |
+| Type into focused input | `agent-device type "<text>"` |
+| Swipe (scroll a list) | `agent-device swipe <x1> <y1> <x2> <y2> <durationMs>` |
+| Hardware BACK | `agent-device back` |
+
+Tips learned the hard way:
+
+- `agent-device open com.pravah.mobile` reports success even when the
+  device is on the lock screen / launcher and the app never came to
+  foreground. Always confirm with `agent-device appstate --json`. If
+  the package isn't `com.pravah.mobile`, fall back to `adb shell monkey`.
+- Snapshot `ref` ids (e.g. `e250`) are **session-local and stale fast**.
+  Re-snapshot immediately before clicking by ref, or just tap by
+  coordinates derived from the snapshot rect (`cx = x + width/2`,
+  `cy = y + height/2`).
+- `agent-device click <x> <y>` takes raw device pixels — same coordinate
+  space as `adb shell input tap`, which is **not** the screenshot's
+  pixel space if the screenshot was downscaled. Always derive coords
+  from `snapshot --json`, never by eyeballing a screenshot.
+- Snapshots include sheets that are mounted but not currently visible
+  (a closed `BottomSheet` with `index={-1}` still has measurable rects).
+  Filter to `hittable=true` and check the y-coord against the viewport
+  before trusting an element.
+- The raw `adb` commands in section 4 still work and are useful when
+  `agent-device` doesn't expose what you need (logcat tailing, package
+  introspection, dropbox crash dumps).
+
+---
+
 ## 2. Launch & lifecycle commands
 
 | Action | Command |
