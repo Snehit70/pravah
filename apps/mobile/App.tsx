@@ -437,12 +437,12 @@ function MobileApp() {
   // straight to the launcher.
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (isKairoActive) {
-        kairoRef.current?.close();
-        return true;
-      }
       if (isSettingsModalOpen) {
         setIsSettingsModalOpen(false);
+        return true;
+      }
+      if (isKairoActive) {
+        kairoRef.current?.close();
         return true;
       }
       if (isEditSheetOpen) {
@@ -450,7 +450,12 @@ function MobileApp() {
         return true;
       }
       if (isAddSheetOpen) {
-        addTaskSheetRef.current?.close();
+        const addSheet = addTaskSheetRef.current;
+        if (addSheet?.hasDraftChanges()) {
+          addSheet.dismissKeyboard();
+          return true;
+        }
+        addSheet?.close();
         return true;
       }
       return false;

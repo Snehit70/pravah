@@ -19,6 +19,8 @@ type ComposerMode = "inbox" | "today";
 export type AddTaskSheetRef = {
   open: () => void;
   close: () => void;
+  hasDraftChanges: () => boolean;
+  dismissKeyboard: () => void;
 };
 
 type AddTaskSheetProps = {
@@ -67,6 +69,10 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       },
       close: () => {
         bottomSheetRef.current?.close();
+      },
+      hasDraftChanges: () => hasDraftChanges,
+      dismissKeyboard: () => {
+        Keyboard.dismiss();
       },
     }));
 
