@@ -2,6 +2,8 @@
 
 Pravah is a timeline-first task manager built around a horizontal week view. Tasks live either on the timeline (scheduled to a date) or in the inbox (unscheduled). Kairo, an AI copilot docked at the bottom, can reason about your schedule and add tasks on your behalf.
 
+![Pravah timeline preview](public/images/pravah-timeline-preview.png)
+
 Pravah is currently designed and operated as a single-user system. Auth and `ownerTokenIdentifier` still scope records per signed-in identity, but that isolation exists for session safety, sync ownership, and legacy-data migration compatibility - not as a supported multi-user workspace model.
 
 Stack:
