@@ -35,11 +35,14 @@ VITE_GOOGLE_CLIENT_ID=your-google-web-client-id
 bunx convex dev
 ```
 
-4. Start the web app
+4. Start the web app and confirm the shell loads
 
 ```bash
 bun run dev
 ```
+
+Then open the printed local URL and confirm the timeline shell renders before
+you move on to mobile or backend debugging.
 
 ## Common Commands
 

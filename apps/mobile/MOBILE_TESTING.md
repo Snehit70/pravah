@@ -93,9 +93,10 @@ Tips learned the hard way:
 | Force stop | `adb shell am force-stop com.pravah.mobile` |
 | Clear app data (DESTRUCTIVE — wipes secure-store session) | `adb shell pm clear com.pravah.mobile` |
 
-After a cold start, give the app **5–6 seconds** before the first
+After a cold start, give the app **5-6 seconds** before the first
 screenshot. The JS bundle, Convex auth, and Reanimated initialization
-all run on first frame; querying earlier will catch a partial UI.
+all run on first frame; querying earlier will often capture a partial UI or
+an overlay that would disappear on its own a moment later.
 
 ---
 
