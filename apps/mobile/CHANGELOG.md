@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.1](https://github.com/Snehit70/pravah/compare/mobile-v1.1.0...mobile-v1.1.1) (2026-05-12)
+
+
+### Bug Fixes
+
+* **docs:** clarify web and mobile startup checks ([e3570ee](https://github.com/Snehit70/pravah/commit/e3570ee301eda1b91a5614aa0ce8914870033fd2))
+* **release:** sync Expo version updates for mobile ([1ac3d9d](https://github.com/Snehit70/pravah/commit/1ac3d9db594d838a68bc76c86635ddfb0c2ddea2))
+
 ## [1.1.0](https://github.com/Snehit70/pravah/compare/mobile-v1.0.0...mobile-v1.1.0) (2026-05-05)
 
 
