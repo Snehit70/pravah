@@ -48,6 +48,7 @@ import { CompletedScreen } from "./src/screens/CompletedScreen";
 import { useRetryQueue, type RetryPayload } from "./src/hooks/useRetryQueue";
 import { useTaskMutations } from "./src/hooks/useTaskMutations";
 import { useTaskQueries } from "./src/hooks/useTaskQueries";
+import { useWorkspaceSnapshot } from "./src/hooks/useWorkspaceSnapshot";
 import { useWorkspaceState } from "./src/hooks/useWorkspaceState";
 import { useGoogleAuth } from "./src/hooks/useGoogleAuth";
 import { useNotificationsSettings } from "./src/hooks/useNotificationsSettings";
@@ -112,6 +113,7 @@ function MobileApp() {
     isKairoActive,
     setIsKairoActive,
     isDataBootstrapReady,
+    hasCachedSessionHint,
   } = useWorkspaceState();
 
   const chromeDim = useSharedValue(1);
@@ -134,11 +136,6 @@ function MobileApp() {
     completedTasks,
     allWorkspaceTasks,
     timelineSections,
-    inboxCount,
-    timelineCount,
-    overdueCount,
-    thisWeekCount,
-    completedCount,
     isInboxLoading,
     isTimelineLoading,
     isCompletedLoading,
@@ -147,6 +144,59 @@ function MobileApp() {
     isAuthenticated: Boolean(session),
     includeAllTasks: isKairoActive,
   });
+
+  const hasLiveWorkspaceData = !isInboxLoading && !isTimelineLoading && !isCompletedLoading;
+  const { snapshot: workspaceSnapshot, isHydrated: isWorkspaceSnapshotHydrated, clearSnapshot } =
+    useWorkspaceSnapshot({
+      canHydrate: hasCachedSessionHint,
+      shouldPersist: Boolean(session) && hasLiveWorkspaceData,
+      inboxTasks,
+      scheduledTasks,
+      completedTasks,
+    });
+
+  const shouldRenderOptimisticShell = sessionLoading && hasCachedSessionHint;
+  const shouldUseWorkspaceSnapshot =
+    workspaceSnapshot !== null &&
+    ((shouldRenderOptimisticShell && isWorkspaceSnapshotHydrated) ||
+      (Boolean(session) && !hasLiveWorkspaceData));
+
+  const displayInboxTasks = shouldUseWorkspaceSnapshot ? workspaceSnapshot.inboxTasks : inboxTasks;
+  const displayScheduledTasks = shouldUseWorkspaceSnapshot
+    ? workspaceSnapshot.scheduledTasks
+    : scheduledTasks;
+  const displayCompletedTasks = shouldUseWorkspaceSnapshot
+    ? workspaceSnapshot.completedTasks
+    : completedTasks;
+
+  const displayTimelineSections = useMemo<[string, MobileTask[]][]>(() => {
+    const grouped = new Map<string, MobileTask[]>();
+    for (const task of displayScheduledTasks) {
+      const key = task.scheduledDate ?? "unscheduled";
+      const existing = grouped.get(key) ?? [];
+      existing.push(task);
+      grouped.set(key, existing);
+    }
+    return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [displayScheduledTasks]);
+
+  const { displayInboxCount, displayOverdueCount, displayThisWeekCount, displayCompletedCount } =
+    useMemo(() => {
+      let overdue = 0;
+      let thisWeek = 0;
+      for (const task of displayScheduledTasks) {
+        const date = task.scheduledDate;
+        if (!date) continue;
+        if (date < today) overdue += 1;
+        else thisWeek += 1;
+      }
+      return {
+        displayInboxCount: displayInboxTasks.length,
+        displayOverdueCount: overdue,
+        displayThisWeekCount: thisWeek,
+        displayCompletedCount: displayCompletedTasks.length,
+      };
+    }, [displayCompletedTasks.length, displayInboxTasks.length, displayScheduledTasks, today]);
 
   // Mutations still operate on the currently visible list. This keeps
   // optimistic updates scoped to what the user sees while query subscriptions
@@ -159,8 +209,14 @@ function MobileApp() {
         : completedTasks;
 
   const tasks = useMemo(
-    () => optimisticTasks ?? activeServerTasks,
-    [optimisticTasks, activeServerTasks]
+    () =>
+      optimisticTasks ??
+      (activeTab === "timeline"
+        ? displayScheduledTasks
+        : activeTab === "inbox"
+          ? displayInboxTasks
+          : displayCompletedTasks),
+    [activeTab, displayCompletedTasks, displayInboxTasks, displayScheduledTasks, optimisticTasks]
   );
 
   const addTaskMutation = useMutation(api.tasks.addTask);
@@ -180,10 +236,18 @@ function MobileApp() {
 
   const isActiveListLoading =
     activeTab === "timeline"
-      ? isTimelineLoading
+      ? shouldUseWorkspaceSnapshot
+        ? false
+        : isTimelineLoading
       : activeTab === "inbox"
-        ? isInboxLoading
-        : isCompletedLoading;
+        ? shouldUseWorkspaceSnapshot
+          ? false
+          : isInboxLoading
+        : shouldUseWorkspaceSnapshot
+          ? false
+          : isCompletedLoading;
+
+  const isBootShellLoading = shouldRenderOptimisticShell && !shouldUseWorkspaceSnapshot && !session;
 
   const kairoTasks = allWorkspaceTasks;
   const kairoInboxTasks = useMemo(
@@ -236,10 +300,16 @@ function MobileApp() {
 
   const handleSignOut = useCallback(() => {
     setIsSettingsModalOpen(false);
+    void clearSnapshot();
     googleSignOut();
-  }, [googleSignOut, setIsSettingsModalOpen]);
+  }, [clearSnapshot, googleSignOut, setIsSettingsModalOpen]);
 
   // ── Effects ─────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (sessionLoading || session || hasCachedSessionHint) return;
+    void clearSnapshot();
+  }, [clearSnapshot, hasCachedSessionHint, session, sessionLoading]);
 
   // ── Toast / retry ───────────────────────────────────────────────────
 
@@ -307,13 +377,22 @@ function MobileApp() {
     lastListStateLogMsRef.current = now;
     mobileLogger.debug("list_state", {
       activeTab,
-      inboxCount,
-      timelineCount,
-      completedCount,
+      inboxCount: displayInboxCount,
+      timelineCount: displayScheduledTasks.length,
+      completedCount: displayCompletedCount,
       pendingMutations,
       retryQueueCount: retryQueue.length,
+      usingSnapshot: shouldUseWorkspaceSnapshot,
     });
-  }, [activeTab, inboxCount, timelineCount, completedCount, pendingMutations, retryQueue.length]);
+  }, [
+    activeTab,
+    displayCompletedCount,
+    displayInboxCount,
+    displayScheduledTasks.length,
+    pendingMutations,
+    retryQueue.length,
+    shouldUseWorkspaceSnapshot,
+  ]);
 
   const {
     markDone,
@@ -421,15 +500,19 @@ function MobileApp() {
     []
   );
 
+  const canUseWorkspaceActions = Boolean(session) && !sessionLoading;
+
   const openSettingsModal = useCallback(() => {
+    if (!canUseWorkspaceActions) return;
     mobileLogger.info("settings_modal_opened");
     setIsSettingsModalOpen(true);
-  }, [setIsSettingsModalOpen]);
+  }, [canUseWorkspaceActions, setIsSettingsModalOpen]);
 
   const openKairo = useCallback(() => {
+    if (!canUseWorkspaceActions) return;
     mobileLogger.info("kairo_opened");
     kairoRef.current?.open();
-  }, []);
+  }, [canUseWorkspaceActions]);
 
   // Android hardware back: close the topmost overlay (sheet/modal) instead
   // of letting the OS exit the app. Without this, BACK from an open Capture
@@ -473,13 +556,13 @@ function MobileApp() {
     ({ item, drag }: RenderItemParams<MobileTask>) => (
       <TaskCard
         task={item}
-        onDone={markDone}
-        onMoveToday={moveToToday}
-        onEdit={handleEditTask}
-        onDragHandlePress={drag}
+        onDone={canUseWorkspaceActions ? markDone : () => undefined}
+        onMoveToday={canUseWorkspaceActions ? moveToToday : undefined}
+        onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
+        onDragHandlePress={canUseWorkspaceActions ? drag : undefined}
       />
     ),
-    [markDone, moveToToday, handleEditTask]
+    [canUseWorkspaceActions, handleEditTask, markDone, moveToToday]
   );
 
   const renderTimelineTaskItem = useCallback(
@@ -487,35 +570,48 @@ function MobileApp() {
       <TaskCard
         task={item}
         dateLabel={dateLabel(dateKey, today, tomorrow, weekEnd)}
-        onDone={markDone}
-        onSendToInbox={sendToInbox}
-        onReorder={(taskId, direction) => shiftTimelineTask(taskId, dateKey, direction)}
-        onEdit={handleEditTask}
-        onDragHandlePress={drag}
+        onDone={canUseWorkspaceActions ? markDone : () => undefined}
+        onSendToInbox={canUseWorkspaceActions ? sendToInbox : undefined}
+        onReorder={
+          canUseWorkspaceActions
+            ? (taskId, direction) => shiftTimelineTask(taskId, dateKey, direction)
+            : undefined
+        }
+        onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
+        onDragHandlePress={canUseWorkspaceActions ? drag : undefined}
       />
     ),
-    [today, tomorrow, weekEnd, markDone, sendToInbox, shiftTimelineTask, handleEditTask]
+    [
+      canUseWorkspaceActions,
+      today,
+      tomorrow,
+      weekEnd,
+      markDone,
+      sendToInbox,
+      shiftTimelineTask,
+      handleEditTask,
+    ]
   );
 
   const renderCompletedTaskItem = useCallback(
     ({ item }: { item: MobileTask }) => (
       <TaskCard
         task={item}
-        onDone={markDone}
-        onReopen={reopenToInbox}
-        onEdit={handleEditTask}
+        onDone={canUseWorkspaceActions ? markDone : () => undefined}
+        onReopen={canUseWorkspaceActions ? reopenToInbox : undefined}
+        onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
       />
     ),
-    [markDone, reopenToInbox, handleEditTask]
+    [canUseWorkspaceActions, handleEditTask, markDone, reopenToInbox]
   );
 
   // ── Loading / Auth screens ──────────────────────────────────────────
 
-  if (sessionLoading || (session && !isDataBootstrapReady)) {
+  if (sessionLoading && !hasCachedSessionHint) {
     return <BootScreen />;
   }
 
-  if (!session) {
+  if (!session && !shouldRenderOptimisticShell) {
     return (
       <MobileAuthScreen
         canGoogleSignIn={canGoogleSignIn}
@@ -535,15 +631,25 @@ function MobileApp() {
 
   const padCount = (n: number) => (n < 10 ? `0${n}` : `${n}`);
   const timelineSubtitle =
-    overdueCount > 0
-      ? `${padCount(overdueCount)} overdue · ${padCount(thisWeekCount)} this week`
-      : `${padCount(thisWeekCount)} through this week`;
+    displayOverdueCount > 0
+      ? `${padCount(displayOverdueCount)} overdue · ${padCount(displayThisWeekCount)} this week`
+      : `${padCount(displayThisWeekCount)} through this week`;
   const headerSubtitle =
-    activeTab === "timeline"
-      ? timelineSubtitle
-      : activeTab === "completed"
-        ? "Closed loops"
-        : `${padCount(inboxCount)} to triage`;
+    shouldRenderOptimisticShell
+      ? "Restoring your session"
+      : session && !hasLiveWorkspaceData
+        ? activeTab === "timeline"
+          ? "Opening your timeline"
+          : activeTab === "completed"
+            ? "Opening your archive"
+            : "Opening your inbox"
+        : session && !isDataBootstrapReady
+          ? "Syncing your workspace"
+        : activeTab === "timeline"
+          ? timelineSubtitle
+          : activeTab === "completed"
+            ? "Closed loops"
+            : `${padCount(displayInboxCount)} to triage`;
 
   // ── Main layout ─────────────────────────────────────────────────────
 
@@ -570,6 +676,7 @@ function MobileApp() {
           <View style={styles.headerLinks}>
             <Pressable
               onPress={openKairo}
+              disabled={!canUseWorkspaceActions}
               style={({ pressed }) => [styles.settingsLinkWrap, pressed && styles.pressed]}
               hitSlop={12}
               accessibilityRole="button"
@@ -579,6 +686,7 @@ function MobileApp() {
             </Pressable>
             <Pressable
               onPress={openSettingsModal}
+              disabled={!canUseWorkspaceActions}
               style={({ pressed }) => [styles.settingsLinkWrap, pressed && styles.pressed]}
               hitSlop={12}
               accessibilityRole="button"
@@ -625,11 +733,11 @@ function MobileApp() {
         <ScreenErrorBoundary screenName="Inbox">
           <InboxScreen
             tasks={visibleTasks}
-            isLoading={isActiveListLoading}
+            isLoading={isActiveListLoading || isBootShellLoading}
             isRefreshing={isRefreshing}
             tabBarHeight={tabBarHeight}
             onRefresh={handleRefresh}
-            onCapture={() => addTaskSheetRef.current?.open()}
+            onCapture={() => canUseWorkspaceActions && addTaskSheetRef.current?.open()}
             renderItem={renderInboxTaskItem}
           />
         </ScreenErrorBoundary>
@@ -638,11 +746,11 @@ function MobileApp() {
       {activeTab === "timeline" ? (
         <ScreenErrorBoundary screenName="Timeline">
           <TimelineScreen
-            sections={timelineSections}
+            sections={shouldUseWorkspaceSnapshot ? displayTimelineSections : timelineSections}
             today={today}
             tomorrow={tomorrow}
             weekEnd={weekEnd}
-            isLoading={isActiveListLoading}
+            isLoading={isActiveListLoading || isBootShellLoading}
             isRefreshing={isRefreshing}
             tabBarHeight={tabBarHeight}
             onRefresh={handleRefresh}
@@ -655,7 +763,7 @@ function MobileApp() {
         <ScreenErrorBoundary screenName="Completed">
           <CompletedScreen
             tasks={visibleTasks}
-            isLoading={isActiveListLoading}
+            isLoading={isActiveListLoading || isBootShellLoading}
             isRefreshing={isRefreshing}
             tabBarHeight={tabBarHeight}
             onRefresh={handleRefresh}
@@ -665,7 +773,7 @@ function MobileApp() {
       ) : null}
 
       {/* FAB */}
-      {!isAddSheetOpen && !isEditSheetOpen ? (
+      {canUseWorkspaceActions && !isAddSheetOpen && !isEditSheetOpen ? (
         <FAB bottom={fabBottom} onPress={() => addTaskSheetRef.current?.open()} />
       ) : null}
 
@@ -734,38 +842,13 @@ function MobileApp() {
   );
 }
 
-// ── Storage gate ────────────────────────────────────────────────────────
-// Delays mounting ConvexClientProvider (and thus authClient.useSession) until
-// the SecureStore cache is populated, so the session cookie is present on the
-// very first /get-session fetch and cold-start auto-sign-in works.
+// ── Launch gate ──────────────────────────────────────────────────────────
+// Fonts and the SecureStore-backed auth cache are still true preconditions for
+// a stable first paint, but they should resolve in parallel under one surface
+// instead of showing a chain of near-identical full-screen boot frames.
 
-function StorageGate({ children }: { children: ReactNode }) {
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    authStorageReady.finally(() => {
-      if (mounted) setReady(true);
-    });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  if (!ready) {
-    return <BootScreen detail="Restoring your secure session cache." />;
-  }
-
-  return <>{children}</>;
-}
-
-// ── Font gate ───────────────────────────────────────────────────────────
-// Block the visible UI until the editorial type system (Fraunces / Manrope /
-// JetBrains Mono) is loaded so the first paint isn't a flash of system font.
-// The gate runs in parallel with StorageGate; the slowest one decides the
-// boot time, but neither blocks data fetching once mounted below.
-
-function FontGate({ children }: { children: ReactNode }) {
+function LaunchGate({ children }: { children: ReactNode }) {
+  const [storageReady, setStorageReady] = useState(false);
   const [fontsLoaded] = useGeistFonts({
     Geist_400Regular,
     Geist_500Medium,
@@ -774,8 +857,21 @@ function FontGate({ children }: { children: ReactNode }) {
     GeistMono_500Medium,
   });
 
-  if (!fontsLoaded) {
-    return <BootScreen detail="Loading Pravah's interface." />;
+  useEffect(() => {
+    let mounted = true;
+    authStorageReady.finally(() => {
+      if (mounted) setStorageReady(true);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  if (!fontsLoaded || !storageReady) {
+    const detail = !fontsLoaded
+      ? "Loading Pravah's interface."
+      : "Restoring your secure session cache.";
+    return <BootScreen detail={detail} />;
   }
 
   return <>{children}</>;
@@ -786,16 +882,14 @@ function FontGate({ children }: { children: ReactNode }) {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <FontGate>
-          <StorageGate>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+        <LaunchGate>
             <ConvexClientProvider>
               <RootErrorBoundary>
                 <MobileApp />
               </RootErrorBoundary>
             </ConvexClientProvider>
-          </StorageGate>
-        </FontGate>
+        </LaunchGate>
       </GestureHandlerRootView>
     </SafeAreaProvider>
   );

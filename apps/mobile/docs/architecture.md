@@ -39,6 +39,7 @@ apps/mobile/
 │   │   ├── useRetryQueue.ts
 │   │   ├── useTaskMutations.ts
 │   │   ├── useTaskQueries.ts
+│   │   ├── useWorkspaceSnapshot.ts
 │   │   └── useWorkspaceState.ts
 │   ├── screens/
 │   │   ├── CompletedScreen.tsx
@@ -52,7 +53,8 @@ apps/mobile/
 │   │   ├── kairoConfig.ts
 │   │   ├── logger.ts
 │   │   ├── settingsSections.ts
-│   │   └── task-optimistic.ts
+│   │   ├── task-optimistic.ts
+│   │   └── workspace-snapshot.ts
 │   └── test/
 │       ├── kairoConfig.test.ts
 │       ├── mobileStateUtils.test.ts
@@ -61,7 +63,8 @@ apps/mobile/
 │       ├── useRetryQueue.test.ts
 │       ├── useTaskMutations.test.ts
 │       ├── useTaskQueries.test.ts
-│       └── useTaskQueriesGating.test.ts
+│       ├── useTaskQueriesGating.test.ts
+│       └── workspaceSnapshot.test.ts
 └── docs/
     ├── README.md
     ├── architecture.md
@@ -74,7 +77,7 @@ apps/mobile/
 
 It should own:
 
-- app gates (`FontGate`, `StorageGate`)
+- app launch gate (`LaunchGate`)
 - global providers (`ConvexClientProvider`)
 - global crash fallback (`RootErrorBoundary`)
 - header chrome and tab selection
@@ -92,7 +95,8 @@ This hook is the mobile source of truth for app-level state that spans tabs or o
 It owns:
 
 - Better Auth session via `authClient.useSession()`
-- bootstrap readiness (`storeUser`, `claimLegacyData`)
+- cached-session hint via `hasCachedAuthSessionHint()`
+- bootstrap readiness (`storeUser`, `claimLegacyData`) for background reconciliation
 - active tab
 - refresh flag
 - pending mutation count
@@ -101,6 +105,27 @@ It owns:
 - open/close state for add sheet, edit sheet, settings, and Kairo activity
 
 This separation matters because task queries should not also be responsible for session bootstrapping or toast timing.
+
+### 1a. Workspace snapshot - `useWorkspaceSnapshot.ts`
+
+This hook owns the non-blocking boot cache used for the mobile shell.
+
+It is responsible for:
+
+- hydrating the last known inbox / timeline / completed lists from device storage
+- showing that snapshot while Better Auth session validation and first task queries are still in flight
+- persisting a bounded fresh snapshot after the live queries resolve
+- clearing the snapshot when the session is known to be gone
+
+This is what turns mobile boot from a blocking transaction into a staged handoff:
+
+```text
+launch gate
+-> optimistic shell
+-> cached workspace snapshot (if present)
+-> live Convex data reconciles in background
+-> auth failure falls back to sign-in later if needed
+```
 
 ### 2. Query state - `useTaskQueries.ts`
 
