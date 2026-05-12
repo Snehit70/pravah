@@ -14,45 +14,13 @@ interface TopNavbarProps {
 
 function BrandMark({ size = 22 }: { size?: number }) {
   return (
-    <svg
+    <img
+      src="/favicon.png"
+      alt=""
       width={size}
       height={size}
-      viewBox="0 0 64 64"
-      style={{ borderRadius: 5, filter: "drop-shadow(0 0 6px oklch(0.78 0.14 260 / 0.35))" }}
-    >
-      <defs>
-        <linearGradient id="bm-bg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#1a1530" />
-          <stop offset=".6" stopColor="#0f0a1f" />
-          <stop offset="1" stopColor="#070510" />
-        </linearGradient>
-        <linearGradient id="bm-ac" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#a78bfa" />
-          <stop offset="1" stopColor="#7c5cff" />
-        </linearGradient>
-      </defs>
-      <rect width="64" height="64" rx="14" fill="url(#bm-bg)" />
-      <g stroke="#ffffff" strokeOpacity=".06" strokeWidth=".5">
-        <path d="M0 16h64M0 32h64M0 48h64M16 0v64M32 0v64M48 0v64" />
-      </g>
-      <path
-        d="M4 46 C 14 34, 22 56, 32 44 S 50 34, 60 46"
-        stroke="url(#bm-ac)"
-        strokeWidth="3.4"
-        fill="none"
-        strokeLinecap="round"
-      />
-      <path
-        d="M4 52 C 14 42, 22 60, 32 50 S 50 42, 60 52"
-        stroke="#a78bfa"
-        strokeOpacity=".4"
-        strokeWidth="2.2"
-        fill="none"
-        strokeLinecap="round"
-      />
-      <circle cx="46" cy="18" r="6" fill="url(#bm-ac)" />
-      <circle cx="46" cy="18" r="2" fill="#ffffff" />
-    </svg>
+      style={{ borderRadius: 5, objectFit: "cover", filter: "drop-shadow(0 0 6px oklch(0.78 0.14 260 / 0.35))" }}
+    />
   );
 }
 
