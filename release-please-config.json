@@ -13,7 +13,7 @@
       "extra-files": [
         {
           "type": "json",
-          "path": "apps/mobile/app.json",
+          "path": "app.json",
           "jsonpath": "$.expo.version"
         }
       ]
