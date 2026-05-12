@@ -122,10 +122,16 @@ This is what turns mobile boot from a blocking transaction into a staged handoff
 ```text
 launch gate
 -> optimistic shell
+-> brief BootScreen crossfade overlay
 -> cached workspace snapshot (if present)
 -> live Convex data reconciles in background
 -> auth failure falls back to sign-in later if needed
 ```
+
+`LaunchGate` owns that handoff. Once fonts and the SecureStore-backed auth cache
+are ready, it renders the real shell immediately and fades the branded boot
+surface out over the first frame so startup still feels intentional instead of
+cutting abruptly from splash to content.
 
 ### 2. Query state - `useTaskQueries.ts`
 

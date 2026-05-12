@@ -1,6 +1,7 @@
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  Animated as LegacyAnimated,
   BackHandler,
   Pressable,
   StyleSheet,
@@ -53,6 +54,7 @@ import { useWorkspaceState } from "./src/hooks/useWorkspaceState";
 import { useGoogleAuth } from "./src/hooks/useGoogleAuth";
 import { useNotificationsSettings } from "./src/hooks/useNotificationsSettings";
 import { useIntegrationsSettings } from "./src/hooks/useIntegrationsSettings";
+import { useReducedMotion } from "./src/hooks/useReducedMotion";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -856,6 +858,9 @@ function LaunchGate({ children }: { children: ReactNode }) {
     Geist_700Bold,
     GeistMono_500Medium,
   });
+  const reducedMotion = useReducedMotion();
+  const launchReady = fontsLoaded && storageReady;
+  const [handoffOpacity] = useState(() => new LegacyAnimated.Value(1));
 
   useEffect(() => {
     let mounted = true;
@@ -867,14 +872,45 @@ function LaunchGate({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  if (!fontsLoaded || !storageReady) {
+  useEffect(() => {
+    if (!launchReady) return;
+    if (reducedMotion) {
+      handoffOpacity.setValue(0);
+      return;
+    }
+
+    handoffOpacity.setValue(1);
+    const animation = LegacyAnimated.timing(handoffOpacity, {
+      toValue: 0,
+      duration: 220,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [handoffOpacity, launchReady, reducedMotion]);
+
+  if (!launchReady) {
     const detail = !fontsLoaded
       ? "Loading Pravah's interface."
       : "Restoring your secure session cache.";
     return <BootScreen detail={detail} />;
   }
 
-  return <>{children}</>;
+  return (
+    <View style={launchStyles.container}>
+      <Animated.View entering={FadeIn.duration(reducedMotion ? 0 : 180)} style={launchStyles.content}>
+        {children}
+      </Animated.View>
+      {!reducedMotion ? (
+        <LegacyAnimated.View
+          pointerEvents="none"
+          style={[launchStyles.overlay, { opacity: handoffOpacity }]}
+        >
+          <BootScreen detail="Opening your workspace." />
+        </LegacyAnimated.View>
+      ) : null}
+    </View>
+  );
 }
 
 // ── Root ────────────────────────────────────────────────────────────────
@@ -1031,5 +1067,18 @@ const styles = StyleSheet.create({
   // Shared
   pressed: {
     opacity: 0.8,
+  },
+});
+
+const launchStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  content: {
+    flex: 1,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
   },
 });

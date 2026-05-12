@@ -38,6 +38,7 @@ Current rule:
 ```text
 launch gate
 -> shell appears
+-> brief branded handoff overlay fades away
 -> cached workspace snapshot or list skeleton
 -> live session/bootstrap/query reconciliation happens in background
 ```
@@ -57,10 +58,14 @@ The preferred loading handoff is:
 ```text
 BootScreen
 -> real shell
+-> short BootScreen-to-shell crossfade
 -> cached workspace snapshot if present
 -> otherwise structural list skeleton
 -> live data replaces the placeholder in place
 ```
+
+The crossfade should stay short enough that it never delays interaction. It is
+there to smooth the visual cut between boot and shell, not to hide loading.
 
 Current principles:
 
@@ -229,6 +234,7 @@ Surfaces that already honor it:
 - skeleton pulse: collapses to a single static dim state, no looping opacity, no translate
 - settings section-jump scroll: jumps without scroll animation
 - Kairo advanced section reveal: skips fade entering/exiting
+- launch handoff overlay: drops the crossfade and cuts directly to the shell
 
 Rules for new motion:
 
