@@ -16,15 +16,15 @@ This file tracks the current mobile audit backlog on `review/mobile-improvement-
 
 ## P0 - Settings Safety
 
-- [ ] Gate Kairo settings save on `loaded === true` so unresolved SecureStore reads cannot overwrite a valid config.
-- [ ] Disable or visually downgrade the Kairo save action while config is still loading.
-- [ ] Add component tests for `KairoSettingsSection` covering:
-- [ ] Advanced section hidden by default on default config.
-- [ ] Advanced section opens when tapped.
-- [ ] Advanced section auto-opens for persisted custom endpoint/model.
-- [ ] Save is disabled while loading.
-- [ ] Save label transitions through idle -> saving -> saved -> idle.
-- [ ] Make Kairo settings surface storage write/delete failures instead of always showing success.
+- [x] Gate Kairo settings save on `loaded === true` so unresolved SecureStore reads cannot overwrite a valid config.
+- [x] Disable or visually downgrade the Kairo save action while config is still loading.
+- [x] Add component tests for `KairoSettingsSection` covering:
+- [x] Advanced section hidden by default on default config.
+- [x] Advanced section opens when tapped.
+- [x] Advanced section auto-opens for persisted custom endpoint/model.
+- [x] Save is disabled while loading.
+- [x] Save label transitions through idle -> saving -> saved -> idle.
+- [x] Make Kairo settings surface storage write/delete failures instead of always showing success.
 
 ## P1 - Feature Parity With Web
 

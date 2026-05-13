@@ -40,6 +40,7 @@ export function KairoSettingsSection() {
   const [draft, setDraft] = useState<KairoConfig>(EMPTY);
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const reducedMotion = useReducedMotion();
@@ -74,17 +75,29 @@ export function KairoSettingsSection() {
 
   const handleSave = async () => {
     if (!loaded || saveState === "saving") return;
+    setErrorMessage(null);
     setSaveState("saving");
-    await saveKairoConfig(draft);
-    flashState("saved");
+    try {
+      await saveKairoConfig(draft);
+      flashState("saved");
+    } catch {
+      setSaveState("idle");
+      setErrorMessage("Could not save Kairo settings.");
+    }
   };
 
   const handleClear = async () => {
     if (saveState === "saving") return;
+    setErrorMessage(null);
     setSaveState("saving");
-    await clearKairoConfig();
-    setDraft(getProviderDraft("anthropic", ""));
-    flashState("cleared");
+    try {
+      await clearKairoConfig();
+      setDraft(getProviderDraft("anthropic", ""));
+      flashState("cleared");
+    } catch {
+      setSaveState("idle");
+      setErrorMessage("Could not clear Kairo settings.");
+    }
   };
 
   const placeholders = KAIRO_DEFAULTS[draft.providerFormat];
@@ -102,9 +115,10 @@ export function KairoSettingsSection() {
       <Text style={styles.help}>
         Bring your own API key. Stored in the device keychain — never sent to Pravah.
       </Text>
-      <Text style={[styles.status, { color: isKairoConfigured(draft) ? colors.primary : colors.textMuted }]}>
+      <Text style={[styles.status, { color: isKairoConfigured(draft) ? colors.primary : colors.textMuted }]}> 
         {status}
       </Text>
+      {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
       <View style={styles.providerRow}>
         {(["anthropic", "openai"] as KairoProviderFormat[]).map((p) => {
@@ -257,6 +271,10 @@ const styles = StyleSheet.create({
     ...typography.bodyMd,
   },
   status: {
+    ...typography.micro,
+  },
+  errorText: {
+    color: colors.error,
     ...typography.micro,
   },
   providerRow: {

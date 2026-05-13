@@ -39,15 +39,10 @@ async function readValue(key: string): Promise<string> {
 
 async function writeValue(key: string, value: string): Promise<void> {
   const trimmed = value.trim();
-  try {
-    if (trimmed) {
-      await SecureStore.setItemAsync(key, trimmed);
-    } else {
-      await SecureStore.deleteItemAsync(key);
-    }
-  } catch {
-    // Keychain unavailable (e.g. on web fallback). Silently ignore — caller
-    // already validates `isKairoConfigured` before sending.
+  if (trimmed) {
+    await SecureStore.setItemAsync(key, trimmed);
+  } else {
+    await SecureStore.deleteItemAsync(key);
   }
 }
 
@@ -76,11 +71,7 @@ export async function saveKairoConfig(config: KairoConfig): Promise<void> {
 }
 
 export async function clearKairoConfig(): Promise<void> {
-  await Promise.all(
-    Object.values(STORAGE_KEYS).map((k) =>
-      SecureStore.deleteItemAsync(k).catch(() => undefined)
-    )
-  );
+  await Promise.all(Object.values(STORAGE_KEYS).map((k) => SecureStore.deleteItemAsync(k)));
 }
 
 export function isKairoConfigured(c: KairoConfig): boolean {
