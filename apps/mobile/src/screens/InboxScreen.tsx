@@ -108,6 +108,11 @@ export function InboxScreen({
         paddingBottom: tabBarHeight + 84,
       }}
       data={rows}
+      initialNumToRender={8}
+      maxToRenderPerBatch={6}
+      updateCellsBatchingPeriod={50}
+      windowSize={7}
+      removeClippedSubviews
       keyExtractor={(row) =>
         row.kind === "header" ? `header-${row.bucket}` : row.task._id
       }

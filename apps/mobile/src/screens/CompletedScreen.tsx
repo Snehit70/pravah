@@ -46,6 +46,11 @@ export function CompletedScreen({
         paddingBottom: tabBarHeight + 84,
       }}
       data={tasks}
+      initialNumToRender={8}
+      maxToRenderPerBatch={6}
+      updateCellsBatchingPeriod={50}
+      windowSize={7}
+      removeClippedSubviews
       keyExtractor={(item) => item._id}
       renderItem={renderItem}
       showsVerticalScrollIndicator={false}
