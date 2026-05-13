@@ -4,10 +4,10 @@ This file tracks the current mobile audit backlog on `review/mobile-improvement-
 
 ## P0 - Core Workflow Regressions
 
-- [ ] Restore drag-to-reorder in Inbox using a real `DraggableFlatList` path instead of `noopDrag`.
-- [ ] Restore drag-to-reorder in Timeline using a mixed-row `DraggableFlatList` without nesting it inside a `ScrollView`.
-- [ ] Reconnect `handleInboxDragEnd` and `handleTimelineDragEnd` from `useTaskMutations` into the live screen flow.
-- [ ] Keep same-day reorder validation and reject cross-day timeline drops safely.
+- [ ] Restore drag-to-reorder in Inbox using a real `DraggableFlatList` path instead of `noopDrag`, manually disabled for now due to known edge cases; handle last after the rest of the mobile audit is stable.
+- [ ] Restore drag-to-reorder in Timeline using a mixed-row `DraggableFlatList` without nesting it inside a `ScrollView`, manually disabled for now due to known edge cases; handle last after the rest of the mobile audit is stable.
+- [ ] Reconnect `handleInboxDragEnd` and `handleTimelineDragEnd` from `useTaskMutations` into the live screen flow, manually disabled for now due to known edge cases; handle last after the rest of the mobile audit is stable.
+- [ ] Keep same-day reorder validation and reject cross-day timeline drops safely, manually disabled for now due to known edge cases; handle last after the rest of the mobile audit is stable.
 - [ ] Re-bound the mobile timeline query by passing `startDate` again from `apps/mobile/src/hooks/useTaskQueries.ts`.
 - [ ] Add a regression test that asserts the real `getTimeline` query args include both `startDate` and `endDate`.
 - [ ] Fix Kairo deferred prompt replay so a prompt sent before `isAllTasksReady` does not duplicate the user message.

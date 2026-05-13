@@ -39,10 +39,9 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
 
   const timelineQuery = useQuery(
     api.tasks.getTimeline,
-    // No startDate lower bound — all incomplete scheduled tasks should be visible
-    // regardless of how overdue they are, so users can complete or reschedule them.
-    // The endDate upper bound (weekEnd) prevents fetching tasks months into the future.
-    isAuthenticated ? { endDate: weekEnd } : "skip"
+    // Mobile timeline intentionally stays bounded to the current planning window
+    // so large overdue backlogs do not inflate the initial scheduled-data load.
+    isAuthenticated ? { startDate: today, endDate: weekEnd } : "skip"
   );
 
   const completedQuery = useQuery(

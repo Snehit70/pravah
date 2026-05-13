@@ -80,6 +80,8 @@ const GREETING: KairoMessage = {
   text: "Hey, I'm Kairo. I can help you plan your week, prioritize tasks, or analyze your schedule. What do you need?",
 };
 
+const DEFERRED_LOADING_TEXT = "Loading your workspace... one moment.";
+
 /**
  * Mobile Kairo. Presents as a near-full-screen bottom sheet that takes the
  * app over when active. The parent uses the `onActiveChange` callback to
@@ -101,6 +103,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   const [thinking, setThinking] = useState(false);
   const [config, setConfig] = useState<KairoConfig | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<string | null>(null);
+  const [deferredPromptPreview, setDeferredPromptPreview] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   const addTaskMutation = useMutation(api.tasks.addTask);
@@ -170,14 +173,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       // zero context. Defer the prompt and replay it once the query resolves.
       if (!isAllTasksReady) {
         setDeferredPrompt(trimmed);
-        setMsgs((prev) => [
-          ...prev,
-          { from: "me", text: trimmed },
-          {
-            from: "kairo",
-            text: "Loading your workspace… one moment.",
-          },
-        ]);
+        setDeferredPromptPreview(trimmed);
         setVal("");
         return;
       }
@@ -195,6 +191,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           content: m.text,
         }));
 
+      setDeferredPromptPreview(null);
       setMsgs((prev) => [...prev, { from: "me", text: trimmed }]);
       setVal("");
       Keyboard.dismiss();
@@ -329,10 +326,12 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         {msgs.map((m, i) => (
           <Bubble key={i} message={m} />
         ))}
+        {deferredPromptPreview ? <Bubble message={{ from: "me", text: deferredPromptPreview }} /> : null}
+        {deferredPromptPreview ? <Bubble message={{ from: "kairo", text: DEFERRED_LOADING_TEXT }} /> : null}
         {thinking ? <Thinking /> : null}
 
         {/* Starters render on first paint only (no user messages yet). */}
-        {msgs.length === 1 && !thinking ? (
+        {msgs.length === 1 && !thinking && !deferredPromptPreview ? (
           <View style={styles.starters}>
             {STARTERS.map((p) => (
               <Pressable

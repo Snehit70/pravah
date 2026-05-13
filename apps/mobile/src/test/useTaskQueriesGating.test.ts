@@ -18,9 +18,10 @@ vi.mock("../../../../convex/_generated/api", () => ({
   },
 }));
 
-import { useTaskQueries } from "../hooks/useTaskQueries";
+import { buildTimelineWindow, useTaskQueries } from "../hooks/useTaskQueries";
 
 const LIST_REF = { __ref: "tasks.listTasks" };
+const TIMELINE_REF = { __ref: "tasks.getTimeline" };
 
 function callsTo(ref: { __ref: string }, args?: unknown) {
   return useQueryMock.mock.calls.filter(([fn, payload]) => {
@@ -70,5 +71,15 @@ describe("useTaskQueries — full corpus gating", () => {
     );
 
     expect(callsTo(LIST_REF, {})).toHaveLength(1);
+  });
+
+  it("passes both startDate and endDate to the timeline query", () => {
+    const window = buildTimelineWindow(new Date());
+
+    renderHook(() =>
+      useTaskQueries({ isAuthenticated: true, includeAllTasks: false })
+    );
+
+    expect(callsTo(TIMELINE_REF, { startDate: window.today, endDate: window.weekEnd })).toHaveLength(1);
   });
 });
