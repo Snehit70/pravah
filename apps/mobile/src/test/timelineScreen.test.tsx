@@ -6,7 +6,7 @@
  * of date-grouped sections, empty states, and loading states.
  */
 
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -27,11 +27,13 @@ vi.mock("react-native", () => {
     renderItem,
     keyExtractor,
     ListEmptyComponent,
+    ListFooterComponent,
   }: {
     data: unknown[];
     renderItem: (params: { item: unknown; index: number }) => React.ReactNode;
     keyExtractor: (item: unknown) => string;
     ListEmptyComponent?: React.ReactNode;
+    ListFooterComponent?: React.ReactNode;
     [key: string]: unknown;
   }) => {
     if (data.length === 0 && ListEmptyComponent) {
@@ -46,7 +48,8 @@ vi.mock("react-native", () => {
           { key: keyExtractor(item), "data-testid": `timeline-row-${index}` },
           renderItem({ item, index })
         )
-      )
+      ),
+      ListFooterComponent
     );
   };
   return {
@@ -168,6 +171,7 @@ describe("TimelineScreen", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   it("renders loading skeleton when isLoading is true", () => {
@@ -281,5 +285,43 @@ describe("TimelineScreen", () => {
 
     expect(screen.queryByText("An open day.")).toBeNull();
     expect(screen.getByTestId("skeleton-timeline")).toBeTruthy();
+  });
+
+  it("releases large timelines in small batches after the first paint", () => {
+    vi.useFakeTimers();
+    const tasks = Array.from({ length: 30 }, (_, index) => ({
+      _id: `bulk-${index}` as Id<"tasks">,
+      title: `Bulk task ${index}`,
+      status: "scheduled" as const,
+      scheduledDate: "2026-05-04",
+      priority: "p2" as const,
+      position: index,
+      updatedAt: index,
+    }));
+
+    render(
+      <TimelineScreen
+        sections={[["2026-05-04", tasks]]}
+        today="2026-05-04"
+        tomorrow="2026-05-05"
+        weekEnd="2026-05-10"
+        isLoading={false}
+        isRefreshing={false}
+        tabBarHeight={60}
+        onRefresh={mockOnRefresh}
+        renderItem={mockRenderItem}
+      />
+    );
+
+    expect(screen.getByTestId("task-bulk-22")).toBeTruthy();
+    expect(screen.queryByTestId("task-bulk-23")).toBeNull();
+    expect(screen.getByText("Preparing more tasks...")).toBeTruthy();
+
+    act(() => {
+      vi.advanceTimersByTime(32);
+    });
+
+    expect(screen.getByTestId("task-bulk-29")).toBeTruthy();
+    expect(screen.queryByText("Preparing more tasks...")).toBeNull();
   });
 });
