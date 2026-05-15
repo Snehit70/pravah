@@ -309,9 +309,9 @@ function MobileApp() {
   // ── Effects ─────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (sessionLoading || session || hasCachedSessionHint) return;
+    if (sessionLoading || session) return;
     void clearSnapshot();
-  }, [clearSnapshot, hasCachedSessionHint, session, sessionLoading]);
+  }, [clearSnapshot, session, sessionLoading]);
 
   // ── Toast / retry ───────────────────────────────────────────────────
 
