@@ -383,6 +383,24 @@ Timeline tab breaks
 -> User can switch tabs or retry
 ```
 
+## Runtime Diagnostics
+
+Development builds render a floating `Diag` chip above the bottom tabs. It opens
+a compact diagnostics panel with task counts, retry queue count, pending mutation
+count, Kairo readiness, snapshot usage, and bootstrap readiness.
+
+Rules:
+
+- keep this panel behind `__DEV__`
+- never include secrets, API keys, tokens, prompt text, or task titles
+- prefer counts and readiness booleans over raw data
+- pair panel readings with `[PRAVAH_MOBILE]` logs when debugging device issues
+
+Kairo chat history uses `FlatList`, not `ScrollView`, so long conversations keep
+the same virtualization posture as task lists. Kairo provider failures, deferred
+sends, deferred replays, and network/provider errors are logged with structured
+events for Logcat filtering.
+
 ## Recommended QA Flows
 
 ### Settings keyboard flow

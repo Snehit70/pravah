@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
+import { classifyError, mobileLogger } from "../lib/logger";
 
 type ShowToast = (next: { kind: "error" | "info"; message: string }) => void;
 type IntegrationProvider = "google_calendar" | "gmail";
@@ -82,7 +83,11 @@ export function useIntegrationsSettings({
         kind: "info",
         message: next ? "Google Calendar sync enabled." : "Google Calendar sync paused.",
       });
-    } catch {
+    } catch (error) {
+      mobileLogger.warn("google_calendar_toggle_failed", {
+        errorType: classifyError(error),
+        nextSyncEnabled: next,
+      });
       showToast({ kind: "error", message: "Could not update Google Calendar sync." });
     } finally {
       setIsGoogleToggleSaving(false);
@@ -99,7 +104,11 @@ export function useIntegrationsSettings({
         kind: "info",
         message: next ? "Gmail sync enabled." : "Gmail sync paused.",
       });
-    } catch {
+    } catch (error) {
+      mobileLogger.warn("gmail_toggle_failed", {
+        errorType: classifyError(error),
+        nextSyncEnabled: next,
+      });
       showToast({ kind: "error", message: "Could not update Gmail sync." });
     } finally {
       setIsGmailToggleSaving(false);
@@ -121,7 +130,8 @@ export function useIntegrationsSettings({
       }
       await importGoogleCalendarAction({ accessToken });
       showToast({ kind: "info", message: "Google Calendar sync complete." });
-    } catch {
+    } catch (error) {
+      mobileLogger.warn("google_calendar_sync_failed", { errorType: classifyError(error) });
       showToast({ kind: "error", message: "Google Calendar sync failed. Try again." });
     } finally {
       setIsCalendarSyncing(false);
@@ -132,7 +142,10 @@ export function useIntegrationsSettings({
     try {
       await persistIntegrationToggle("google_calendar", true);
       await runGoogleCalendarSync();
-    } catch {
+    } catch (error) {
+      mobileLogger.warn("google_calendar_enable_and_sync_failed", {
+        errorType: classifyError(error),
+      });
       showToast({ kind: "error", message: "Could not enable Google Calendar sync." });
     }
   }, [persistIntegrationToggle, runGoogleCalendarSync, showToast]);

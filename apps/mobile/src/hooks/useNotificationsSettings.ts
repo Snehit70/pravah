@@ -9,6 +9,7 @@ import {
   scheduleTestNotificationAsync,
   type NotificationPermissionState,
 } from "../lib/notifications";
+import { classifyError, mobileLogger } from "../lib/logger";
 
 type ToastState = { kind: "error" | "info"; message: string };
 type ShowToast = (next: ToastState) => void;
@@ -32,14 +33,20 @@ export function useNotificationsSettings(showToast: ShowToast): UseNotifications
   useEffect(() => {
     let mounted = true;
     void (async () => {
-      await initializeNotificationsAsync();
-      const [permission, dailyEnabled] = await Promise.all([
-        getNotificationPermissionStateAsync(),
-        isDailyReminderEnabledAsync(),
-      ]);
-      if (!mounted) return;
-      setNotificationPermissionState(permission);
-      setIsDailyReminderEnabled(dailyEnabled);
+      try {
+        await initializeNotificationsAsync();
+        const [permission, dailyEnabled] = await Promise.all([
+          getNotificationPermissionStateAsync(),
+          isDailyReminderEnabledAsync(),
+        ]);
+        if (!mounted) return;
+        setNotificationPermissionState(permission);
+        setIsDailyReminderEnabled(dailyEnabled);
+      } catch (error) {
+        mobileLogger.warn("notifications_bootstrap_failed", {
+          errorType: classifyError(error),
+        });
+      }
     })();
     return () => {
       mounted = false;
@@ -57,7 +64,10 @@ export function useNotificationsSettings(showToast: ShowToast): UseNotifications
       } else {
         showToast({ kind: "error", message: "Notification permission not granted." });
       }
-    } catch {
+    } catch (error) {
+      mobileLogger.warn("notifications_permission_request_failed", {
+        errorType: classifyError(error),
+      });
       showToast({ kind: "error", message: "Could not update notification permission." });
     } finally {
       setIsNotificationsBusy(false);
@@ -89,7 +99,11 @@ export function useNotificationsSettings(showToast: ShowToast): UseNotifications
         setIsDailyReminderEnabled(false);
         showToast({ kind: "info", message: "Daily reminder disabled." });
       }
-    } catch {
+    } catch (error) {
+      mobileLogger.warn("daily_reminder_toggle_failed", {
+        errorType: classifyError(error),
+        wasEnabled: isDailyReminderEnabled,
+      });
       showToast({ kind: "error", message: "Could not update daily reminder." });
     } finally {
       setIsNotificationsBusy(false);
@@ -111,7 +125,8 @@ export function useNotificationsSettings(showToast: ShowToast): UseNotifications
       }
       await scheduleTestNotificationAsync();
       showToast({ kind: "info", message: "Test notification sent." });
-    } catch {
+    } catch (error) {
+      mobileLogger.warn("test_notification_failed", { errorType: classifyError(error) });
       showToast({ kind: "error", message: "Could not send test notification." });
     } finally {
       setIsNotificationsBusy(false);

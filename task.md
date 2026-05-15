@@ -43,7 +43,7 @@ This file tracks the current mobile audit backlog on `review/mobile-improvement-
 - [x] Introduce incremental rendering or other safeguards for large timeline datasets.
 - [x] Add large-list performance safeguards so input remains responsive under stress.
 - [ ] Review whether `claimLegacyData` should stay on every mobile bootstrap or move behind an explicit one-time migration gate.
-- [ ] Audit Kairo conversation rendering for long chats and replace plain `ScrollView` if it becomes a scaling problem.
+- [x] Audit Kairo conversation rendering for long chats and replace plain `ScrollView` if it becomes a scaling problem.
 - [ ] Run an EAS Android preview build after the first round of fixes: `bunx eas-cli build --platform android --profile preview`.
 
 ## P1 - Accessibility And UX Ergonomics
@@ -57,9 +57,9 @@ This file tracks the current mobile audit backlog on `review/mobile-improvement-
 
 ## P1 - Logging, Debugging, And Runtime Visibility
 
-- [ ] Add optional developer diagnostics overlay/screen with runtime counters such as task counts, queue size, pending mutations, and recent timings.
-- [ ] Add richer error logging in integration and notification hooks instead of generic `catch {}` handling.
-- [ ] Add logging around Kairo deferred sends, replay, and provider failures for faster device-side triage.
+- [x] Add optional developer diagnostics overlay/screen with runtime counters such as task counts, queue size, pending mutations, and recent timings.
+- [x] Add richer error logging in integration and notification hooks instead of generic `catch {}` handling.
+- [x] Add logging around Kairo deferred sends, replay, and provider failures for faster device-side triage.
 - [ ] Validate the existing `DEBUGGING.md` flow against a current Android device pass and update any stale commands.
 
 ## P1 - Release And CI Coverage

@@ -6,6 +6,10 @@ type LogContext = Record<string, unknown>;
 const LOG_PREFIX = "[PRAVAH_MOBILE]";
 let actionCounter = 0;
 
+function isDevRuntime(): boolean {
+  return typeof __DEV__ === "boolean" ? __DEV__ : process.env.NODE_ENV !== "production";
+}
+
 function safeStringify(context?: LogContext): string {
   if (!context) return "";
   try {
@@ -16,7 +20,7 @@ function safeStringify(context?: LogContext): string {
 }
 
 function writeLog(level: LogLevel, event: string, context?: LogContext): void {
-  if (!__DEV__ && level === "debug") return;
+  if (!isDevRuntime() && level === "debug") return;
 
   const line = `${LOG_PREFIX} ${level.toUpperCase()} ${event}${safeStringify(context)}`;
   if (level === "error") {

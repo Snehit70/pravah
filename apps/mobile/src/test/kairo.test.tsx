@@ -47,13 +47,28 @@ vi.mock("react-native", () => {
       resolved,
     );
   };
-  const ScrollView = React.forwardRef(
-    ({ children, ...rest }: AnyProps, ref: React.Ref<{ scrollToEnd: (opts?: { animated?: boolean }) => void }>) => {
+  type FlatListProps = AnyProps & {
+    data?: unknown[];
+    renderItem?: (params: { item: unknown; index: number }) => React.ReactNode;
+    keyExtractor?: (item: unknown) => string;
+    ListFooterComponent?: React.ReactNode;
+  };
+  const FlatList = React.forwardRef(
+    (props: FlatListProps, ref: React.Ref<{ scrollToEnd: (opts?: { animated?: boolean }) => void }>) => {
+      const { data = [], renderItem, keyExtractor, ListFooterComponent, ...rest } = props;
       const { style: _, contentContainerStyle: __, ...safe } = rest;
       React.useImperativeHandle(ref, () => ({
         scrollToEnd: vi.fn(),
       }));
-      return React.createElement("div", { ...safe, "data-testid": "scroll-view" }, children);
+      return React.createElement(
+        "div",
+        { ...safe, "data-testid": "chat-list" },
+        data.map((item, index) => {
+          if (!renderItem || !keyExtractor) return null;
+          return React.createElement("div", { key: keyExtractor(item) }, renderItem({ item, index }));
+        }),
+        ListFooterComponent
+      );
     }
   );
   const ActivityIndicator = () => React.createElement("div", { "data-testid": "activity-indicator" });
@@ -62,7 +77,7 @@ vi.mock("react-native", () => {
     View,
     Text,
     Pressable,
-    ScrollView,
+    FlatList,
     ActivityIndicator,
     Keyboard,
     StyleSheet: { create: <T,>(s: T) => s, hairlineWidth: 1 },
