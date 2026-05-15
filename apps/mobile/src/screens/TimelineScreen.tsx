@@ -83,17 +83,41 @@ export function TimelineScreen({
   renderItem,
 }: TimelineScreenProps) {
   const totalRows = countTimelineRows(sections);
-  const [visibleRowCount, setVisibleRowCount] = useState(INITIAL_TIMELINE_ROWS);
+  const [rowBudget, setRowBudget] = useState(() => ({
+    totalRows,
+    visibleRows: Math.min(INITIAL_TIMELINE_ROWS, totalRows),
+  }));
+  const visibleRowCount =
+    rowBudget.totalRows === totalRows
+      ? rowBudget.visibleRows
+      : Math.min(INITIAL_TIMELINE_ROWS, totalRows);
 
   useEffect(() => {
+    if (rowBudget.totalRows !== totalRows) {
+      const timeout = setTimeout(() => {
+        setRowBudget({
+          totalRows,
+          visibleRows: Math.min(INITIAL_TIMELINE_ROWS, totalRows),
+        });
+      }, 0);
+      return () => clearTimeout(timeout);
+    }
     if (visibleRowCount >= totalRows) return;
     const timeout = setTimeout(() => {
-      setVisibleRowCount((count) =>
-        Math.min(count + TIMELINE_ROW_BATCH_SIZE, totalRows)
+      setRowBudget((budget) =>
+        budget.totalRows === totalRows
+          ? {
+              totalRows,
+              visibleRows: Math.min(
+                budget.visibleRows + TIMELINE_ROW_BATCH_SIZE,
+                totalRows
+              ),
+            }
+          : budget
       );
     }, TIMELINE_ROW_BATCH_DELAY_MS);
     return () => clearTimeout(timeout);
-  }, [totalRows, visibleRowCount]);
+  }, [rowBudget.totalRows, totalRows, visibleRowCount]);
 
   // Build only the rows currently released to FlatList. Large timelines still
   // hydrate quickly, but the first paint avoids handing every row to React.
