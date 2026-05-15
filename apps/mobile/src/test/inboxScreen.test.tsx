@@ -6,7 +6,7 @@
  * states (loading, empty, with tasks) and user interactions.
  */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -51,11 +51,13 @@ vi.mock("react-native", () => {
     renderItem,
     keyExtractor,
     ListEmptyComponent,
+    ListFooterComponent,
   }: {
     data: unknown[];
     renderItem: (params: { item: unknown; index: number }) => React.ReactNode;
     keyExtractor: (item: unknown) => string;
     ListEmptyComponent?: React.ReactNode;
+    ListFooterComponent?: React.ReactNode;
     [key: string]: unknown;
   }) => {
     if (data.length === 0 && ListEmptyComponent) {
@@ -70,7 +72,8 @@ vi.mock("react-native", () => {
           { key: keyExtractor(item), "data-testid": `task-item-${index}` },
           renderItem({ item, index })
         )
-      )
+      ),
+      ListFooterComponent
     );
   };
   return {
@@ -150,6 +153,7 @@ describe("InboxScreen", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   it("renders loading skeleton when isLoading is true", () => {
@@ -241,5 +245,40 @@ describe("InboxScreen", () => {
 
     expect(screen.queryByText("Nothing to carry forward.")).toBeNull();
     expect(screen.getByTestId("skeleton-inbox")).toBeTruthy();
+  });
+
+  it("releases large inboxes in small batches after the first paint", () => {
+    vi.useFakeTimers();
+    const tasks = Array.from({ length: 30 }, (_, index) => ({
+      _id: `bulk-${index}` as Id<"tasks">,
+      title: `Bulk task ${index}`,
+      status: "inbox" as const,
+      priority: "p1" as const,
+      position: index,
+      updatedAt: index,
+    }));
+
+    render(
+      <InboxScreen
+        tasks={tasks}
+        isLoading={false}
+        isRefreshing={false}
+        tabBarHeight={60}
+        onRefresh={mockOnRefresh}
+        onCapture={mockOnCapture}
+        renderItem={mockRenderItem}
+      />
+    );
+
+    expect(screen.getByTestId("task-bulk-22")).toBeTruthy();
+    expect(screen.queryByTestId("task-bulk-23")).toBeNull();
+    expect(screen.getByText("Preparing more tasks...")).toBeTruthy();
+
+    act(() => {
+      vi.advanceTimersByTime(32);
+    });
+
+    expect(screen.getByTestId("task-bulk-29")).toBeTruthy();
+    expect(screen.queryByText("Preparing more tasks...")).toBeNull();
   });
 });

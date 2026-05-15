@@ -74,6 +74,30 @@ Current principles:
 - keep animation cheap: one opacity pulse over a static structure
 - avoid per-row shimmer effects that feel noisy on Android
 
+### 2a. Large task lists
+
+Task-list screens should not hand every row to React on first paint. Use the
+shared incremental row release helper in `src/hooks/useIncrementalRowCount.ts`.
+
+Current policy:
+
+- first paint releases 24 rows
+- follow-up batches release 24 rows every 32ms
+- keep `FlatList` virtualization conservative (`initialNumToRender`,
+  `maxToRenderPerBatch`, `updateCellsBatchingPeriod`, `windowSize`)
+- show the lightweight `Preparing more tasks...` footer while rows are still
+  being released
+
+Current enforced screens:
+
+- `InboxScreen.tsx`
+- `TimelineScreen.tsx`
+- `CompletedScreen.tsx`
+
+This is a responsiveness safeguard, not pagination. All data can already be in
+memory; the helper only prevents large workspaces from scheduling too much React
+rendering in the same frame window.
+
 ### 3. Form load
 
 For Kairo settings, use a form-shaped skeleton rather than disabled blank fields.
@@ -260,6 +284,12 @@ Current enforced sites:
 
 - `KairoSettingsSection.tsx` — API key show/hide toggle, Advanced toggle, Save, Clear
 - `SettingsSheet.tsx` — Close button, section-jump chips, all inline action links
+- `AddTaskSheet.tsx` — mode switch, More/Less toggle, Add, Discard
+- `EditTaskSheet.tsx` — Cancel and Save
+- `TaskMetaFields.tsx` — Due, Clear, Priority
+- `BottomTabBar.tsx` — tab targets use vertical-only `hitSlop` plus a minimum
+  48pt visual height so adjacent tabs do not overlap horizontally
+- `TaskCard.tsx` — row press target and completion checkbox
 
 When adding a new `Pressable` to any screen or component:
 
@@ -267,8 +297,9 @@ When adding a new `Pressable` to any screen or component:
 2. Otherwise set `hitSlop={12}` unconditionally.
 
 Do not use a `hitSlop` object (`{ top, bottom, left, right }`) unless the target
-has a genuine directional constraint. The scalar form is correct and sufficient for
-all current surfaces.
+has a genuine directional constraint. Bottom tabs are the current exception:
+their hit area expands vertically only because horizontal expansion overlaps
+adjacent tab targets.
 
 ### Keyboard dismiss policy
 

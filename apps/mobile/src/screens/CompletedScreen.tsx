@@ -11,6 +11,7 @@ import { FlatList, RefreshControl, Text } from "react-native";
 import { colors, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
+import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
 
 type CompletedScreenProps = {
   tasks: MobileTask[];
@@ -29,6 +30,10 @@ export function CompletedScreen({
   onRefresh,
   renderItem,
 }: CompletedScreenProps) {
+  const visibleRowCount = useIncrementalRowCount(tasks.length);
+  const visibleTasks = tasks.slice(0, visibleRowCount);
+  const hasPendingRows = visibleTasks.length < tasks.length;
+
   const emptyBlock = (
     <Animated.View entering={FadeIn.duration(400)} style={styles.emptyWrap}>
       <Text style={styles.emptyTitle}>A quiet ledger — for now.</Text>
@@ -45,7 +50,7 @@ export function CompletedScreen({
         paddingTop: spacing.md,
         paddingBottom: tabBarHeight + 84,
       }}
-      data={tasks}
+      data={visibleTasks}
       initialNumToRender={8}
       maxToRenderPerBatch={6}
       updateCellsBatchingPeriod={50}
@@ -62,6 +67,9 @@ export function CompletedScreen({
           colors={[colors.accent]}
           progressBackgroundColor={colors.bgCard}
         />
+      }
+      ListFooterComponent={
+        hasPendingRows ? <Text style={styles.loadingMore}>Preparing more tasks...</Text> : null
       }
       ListEmptyComponent={isLoading ? loadingBlock : emptyBlock}
     />
@@ -84,5 +92,11 @@ const styles = {
     color: colors.textSecondary,
     ...typography.bodyMd,
     textAlign: "center" as const,
+  },
+  loadingMore: {
+    color: colors.textSecondary,
+    ...typography.micro,
+    textAlign: "center" as const,
+    paddingTop: spacing.md,
   },
 };

@@ -6,7 +6,7 @@
  * (RNDFL@4 / Reanimated@4 incompatibility).
  */
 
-import { useEffect, useState, type JSX } from "react";
+import type { JSX } from "react";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { FlatList, RefreshControl, Text, View } from "react-native";
 import type { RenderItemParams } from "react-native-draggable-flatlist";
@@ -15,14 +15,11 @@ import type { MobileTask } from "../components/TaskCard";
 import { TimelineSectionHeader } from "../components/TimelineSectionHeader";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { dateLabel } from "../lib/dates";
+import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
 
 type TimelineRow =
   | { kind: "header"; dateKey: string; label: string; isToday: boolean }
   | { kind: "task"; dateKey: string; task: MobileTask };
-
-const INITIAL_TIMELINE_ROWS = 24;
-const TIMELINE_ROW_BATCH_SIZE = 24;
-const TIMELINE_ROW_BATCH_DELAY_MS = 32;
 
 type TimelineScreenProps = {
   sections: [string, MobileTask[]][];
@@ -83,26 +80,7 @@ export function TimelineScreen({
   renderItem,
 }: TimelineScreenProps) {
   const totalRows = countTimelineRows(sections);
-  const [visibleRowCount, setVisibleRowCount] = useState(() =>
-    Math.min(INITIAL_TIMELINE_ROWS, totalRows)
-  );
-
-  useEffect(() => {
-    // Never hard-reset on a totalRows change. A live update (task
-    // added/completed while the user is scrolled deep) must preserve the
-    // existing visible budget instead of collapsing back to
-    // INITIAL_TIMELINE_ROWS and jumping the scroll position. Shrink is
-    // handled inline via `effectiveVisible` below, so we don't need to
-    // chase the state down to match — when totalRows climbs back, the
-    // preserved budget snaps the user's previous depth into view again.
-    if (visibleRowCount >= totalRows) return;
-    const timeout = setTimeout(() => {
-      setVisibleRowCount((current) =>
-        Math.min(current + TIMELINE_ROW_BATCH_SIZE, totalRows)
-      );
-    }, TIMELINE_ROW_BATCH_DELAY_MS);
-    return () => clearTimeout(timeout);
-  }, [totalRows, visibleRowCount]);
+  const visibleRowCount = useIncrementalRowCount(totalRows);
 
   // Build only the rows currently released to FlatList. Large timelines still
   // hydrate quickly, but the first paint avoids handing every row to React.

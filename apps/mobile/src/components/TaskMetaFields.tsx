@@ -38,6 +38,7 @@ export function TaskMetaFields({
             setShowDatePicker(true);
           }}
           style={({ pressed }) => [styles.metaField, pressed && { opacity: 0.6 }]}
+          hitSlop={12}
         >
           <Text style={styles.metaLabel}>Due</Text>
           <Text style={deadline ? styles.metaValue : styles.metaPlaceholder}>{deadline || "—"}</Text>
@@ -50,7 +51,7 @@ export function TaskMetaFields({
               onClearError();
             }}
             style={({ pressed }) => [styles.clearAction, pressed && { opacity: 0.6 }]}
-            hitSlop={8}
+            hitSlop={12}
           >
             <Text style={styles.clearActionText}>Clear</Text>
           </Pressable>
@@ -62,7 +63,7 @@ export function TaskMetaFields({
             void Haptics.selectionAsync();
           }}
           style={({ pressed }) => [styles.metaField, pressed && { opacity: 0.6 }]}
-          hitSlop={6}
+          hitSlop={12}
         >
           <Text style={styles.metaLabel}>Priority</Text>
           <View style={styles.priorityValue}>
@@ -100,6 +101,8 @@ const styles = StyleSheet.create({
   },
   metaField: {
     gap: 4,
+    minHeight: 44,
+    justifyContent: "center",
   },
   metaLabel: {
     ...typography.micro,
@@ -124,7 +127,9 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   clearAction: {
+    minHeight: 44,
     paddingBottom: 2,
+    justifyContent: "center",
   },
   clearActionText: {
     ...typography.micro,
