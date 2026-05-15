@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "typecheck:fast": "tsgo -b --noEmit",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest",
