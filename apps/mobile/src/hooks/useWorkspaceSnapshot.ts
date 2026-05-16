@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { MobileTask } from "../components/TaskCard";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
 import { classifyError, mobileLogger } from "../lib/logger";
@@ -27,6 +27,11 @@ export function useWorkspaceSnapshot({
 }: UseWorkspaceSnapshotOptions) {
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
+  // Monotonic token bumped on every clear. Persist writes capture the token
+  // before awaiting setItem and re-remove the key if a clear has happened in
+  // the meantime, so an in-flight persist cannot resurrect a snapshot that
+  // sign-out asked to drop.
+  const clearTokenRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,8 +75,13 @@ export function useWorkspaceSnapshot({
       scheduledTasks,
       completedTasks,
     });
+    const tokenAtStart = clearTokenRef.current;
     void retryQueueStorage
       .setItem(WORKSPACE_SNAPSHOT_STORAGE_KEY, JSON.stringify(next))
+      .then(() => {
+        if (clearTokenRef.current === tokenAtStart) return;
+        return retryQueueStorage.removeItem(WORKSPACE_SNAPSHOT_STORAGE_KEY);
+      })
       .catch((error) => {
         mobileLogger.warn("workspace_snapshot_persist_failed", {
           errorType: classifyError(error),
@@ -80,6 +90,7 @@ export function useWorkspaceSnapshot({
   }, [completedTasks, inboxTasks, scheduledTasks, shouldPersist]);
 
   const clearSnapshot = useCallback(async () => {
+    clearTokenRef.current += 1;
     setSnapshot(null);
     try {
       await retryQueueStorage.removeItem(WORKSPACE_SNAPSHOT_STORAGE_KEY);
