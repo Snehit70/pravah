@@ -512,11 +512,14 @@ function MobileApp() {
   // Settings/sign-out are session-level affordances and must remain reachable
   // even while we're still rendering a workspace snapshot or boot shell.
   const canOpenSession = Boolean(session) && !sessionLoading;
-  // Task-level mutations must wait for live workspace data. Acting against
-  // snapshot/boot rows would seed optimistic state from empty server arrays
-  // and visibly collapse the list before the live queries hydrate.
+  // Task-level mutations must wait for the active tab's live data. Acting
+  // against snapshot/boot rows would seed optimistic state from empty server
+  // arrays and visibly collapse the list before the live queries hydrate, but
+  // gating on global readiness would also suppress actions on a tab whose
+  // query has already resolved (e.g. Inbox is loaded but Timeline is still
+  // hydrating) — making interactive-looking rows silently no-op.
   const canUseWorkspaceActions =
-    canOpenSession && hasLiveWorkspaceData && !shouldUseWorkspaceSnapshot;
+    canOpenSession && !isActiveListLoading && !shouldUseWorkspaceSnapshot;
 
   const openSettingsModal = useCallback(() => {
     if (!canOpenSession) return;
