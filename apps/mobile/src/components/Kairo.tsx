@@ -9,9 +9,9 @@ import {
 } from "react";
 import {
   ActivityIndicator,
+  FlatList,
   Keyboard,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -32,6 +32,7 @@ import Animated, {
 import { useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { colors, fonts, motion, radii, spacing, typography } from "../theme/tokens";
+import { classifyError, createActionId, mobileLogger } from "../lib/logger";
 import {
   getKairoConfig,
   isKairoConfigured,
@@ -82,6 +83,10 @@ const GREETING: KairoMessage = {
 
 const DEFERRED_LOADING_TEXT = "Loading your workspace... one moment.";
 
+type KairoChatRow =
+  | { kind: "message"; id: string; message: KairoMessage }
+  | { kind: "thinking"; id: string };
+
 /**
  * Mobile Kairo. Presents as a near-full-screen bottom sheet that takes the
  * app over when active. The parent uses the `onActiveChange` callback to
@@ -104,7 +109,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   const [config, setConfig] = useState<KairoConfig | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<string | null>(null);
   const [deferredPromptPreview, setDeferredPromptPreview] = useState<string | null>(null);
-  const scrollRef = useRef<ScrollView>(null);
+  const listRef = useRef<FlatList<KairoChatRow>>(null);
 
   const addTaskMutation = useMutation(api.tasks.addTask);
 
@@ -130,9 +135,13 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    void getKairoConfig().then((c) => {
-      if (!cancelled) setConfig(c);
-    });
+    void getKairoConfig()
+      .then((c) => {
+        if (!cancelled) setConfig(c);
+      })
+      .catch((error) => {
+        mobileLogger.warn("kairo_config_load_failed", { errorType: classifyError(error) });
+      });
     return () => {
       cancelled = true;
     };
@@ -143,9 +152,36 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     // Defer scroll-to-end so the new content is laid out before we measure.
     // Deferred prompt previews append two bubbles outside of `msgs`, so
     // include them in the dependency list to keep the queued send visible.
-    const t = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+    const t = setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
     return () => clearTimeout(t);
   }, [msgs, thinking, deferredPromptPreview]);
+
+  const chatRows = useMemo<KairoChatRow[]>(() => {
+    const rows: KairoChatRow[] = msgs.map((message, index) => ({
+      kind: "message",
+      id: `msg-${index}`,
+      message,
+    }));
+    if (deferredPromptPreview) {
+      rows.push({
+        kind: "message",
+        id: "deferred-user-preview",
+        message: { from: "me", text: deferredPromptPreview },
+      });
+      rows.push({
+        kind: "message",
+        id: "deferred-loading-preview",
+        message: { from: "kairo", text: DEFERRED_LOADING_TEXT },
+      });
+    }
+    if (thinking) rows.push({ kind: "thinking", id: "thinking" });
+    return rows;
+  }, [deferredPromptPreview, msgs, thinking]);
+
+  const renderChatRow = useCallback(({ item }: { item: KairoChatRow }) => {
+    if (item.kind === "thinking") return <Thinking />;
+    return <Bubble message={item.message} />;
+  }, []);
 
   const handleSheetChange = useCallback((index: number) => {
     setOpen(index >= 0);
@@ -174,6 +210,11 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       // sends a message immediately after opening would get responses based on
       // zero context. Defer the prompt and replay it once the query resolves.
       if (!isAllTasksReady) {
+        mobileLogger.info("kairo_send_deferred", {
+          promptLength: trimmed.length,
+          taskCount: tasks.length,
+          inboxCount: inboxTasks.length,
+        });
         setDeferredPrompt(trimmed);
         setDeferredPromptPreview(trimmed);
         setVal("");
@@ -182,6 +223,14 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
 
       const nextConfig = config ?? (await getKairoConfig());
       setConfig(nextConfig);
+      const actionId = createActionId("kairo");
+      mobileLogger.info("kairo_send_started", {
+        actionId,
+        providerFormat: nextConfig.providerFormat,
+        taskCount: tasks.length,
+        inboxCount: inboxTasks.length,
+        historyTurns: Math.max(msgs.length - 1, 0),
+      });
 
       // Snapshot history *before* the optimistic user-message append, since
       // the API expects the assistant's prior turns paired with their
@@ -242,6 +291,11 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
               ? String((inner as Record<string, unknown>).message)
               : `API error ${res.status}`;
           setMsgs((prev) => [...prev, { from: "kairo", text: `⚠ ${message}` }]);
+          mobileLogger.warn("kairo_provider_failed", {
+            actionId,
+            providerFormat: nextConfig.providerFormat,
+            status: res.status,
+          });
           return;
         }
 
@@ -267,9 +321,19 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
             tasks: taskBlocks.length ? taskBlocks : undefined,
           },
         ]);
+        mobileLogger.info("kairo_send_succeeded", {
+          actionId,
+          providerFormat: nextConfig.providerFormat,
+          taskBlocks: taskBlocks.length,
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Network error";
         setMsgs((prev) => [...prev, { from: "kairo", text: `⚠ ${message}` }]);
+        mobileLogger.error("kairo_send_failed", {
+          actionId,
+          providerFormat: nextConfig.providerFormat,
+          errorType: classifyError(error),
+        });
       } finally {
         setThinking(false);
       }
@@ -283,9 +347,14 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   // becomes true, then automatically replay the original prompt.
   useEffect(() => {
     if (!isAllTasksReady || !deferredPrompt) return;
+    mobileLogger.info("kairo_deferred_replay_started", {
+      promptLength: deferredPrompt.length,
+      taskCount: tasks.length,
+      inboxCount: inboxTasks.length,
+    });
     setDeferredPrompt(null);
     void sendMessage(deferredPrompt);
-  }, [isAllTasksReady, deferredPrompt, sendMessage]);
+  }, [inboxTasks.length, isAllTasksReady, deferredPrompt, sendMessage, tasks.length]);
 
   return (
     <BottomSheet
@@ -319,45 +388,51 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         </Pressable>
       </View>
 
-      <ScrollView
-        ref={scrollRef}
+      <FlatList
+        ref={listRef}
         style={styles.scroll}
+        data={chatRows}
+        renderItem={renderChatRow}
+        keyExtractor={(item) => item.id}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
-      >
-        {msgs.map((m, i) => (
-          <Bubble key={i} message={m} />
-        ))}
-        {deferredPromptPreview ? <Bubble message={{ from: "me", text: deferredPromptPreview }} /> : null}
-        {deferredPromptPreview ? <Bubble message={{ from: "kairo", text: DEFERRED_LOADING_TEXT }} /> : null}
-        {thinking ? <Thinking /> : null}
-
-        {/* Starters render on first paint only (no user messages yet). */}
-        {msgs.length === 1 && !thinking && !deferredPromptPreview ? (
+        initialNumToRender={12}
+        maxToRenderPerBatch={8}
+        updateCellsBatchingPeriod={50}
+        windowSize={7}
+        removeClippedSubviews
+        ListFooterComponent={
+          <>
+            {/* Starters render on first paint only (no user messages yet). */}
+            {msgs.length === 1 && !thinking && !deferredPromptPreview ? (
           <View style={styles.starters}>
             {STARTERS.map((p) => (
               <Pressable
                 key={p}
                 onPress={() => void sendMessage(p)}
                 style={({ pressed }) => [styles.starterPill, pressed && { opacity: 0.7 }]}
+                hitSlop={12}
               >
                 <Text style={styles.starterText}>{p}</Text>
               </Pressable>
             ))}
           </View>
-        ) : null}
+            ) : null}
 
-        {config && !isKairoConfigured(config) ? (
+            {config && !isKairoConfigured(config) ? (
           <Pressable
             onPress={onOpenSettings}
             style={({ pressed }) => [styles.configBanner, pressed && { opacity: 0.7 }]}
+            hitSlop={12}
           >
             <Text style={styles.configBannerText}>
               Set up your Kairo provider and API key →
             </Text>
           </Pressable>
-        ) : null}
-      </ScrollView>
+            ) : null}
+          </>
+        }
+      />
 
       <View style={styles.inputBar}>
         <BottomSheetTextInput
@@ -374,6 +449,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         <Pressable
           onPress={() => void sendMessage(val)}
           disabled={!val.trim() || thinking}
+          hitSlop={12}
           style={({ pressed }) => [
             styles.sendButton,
             (!val.trim() || thinking) && styles.sendButtonDisabled,

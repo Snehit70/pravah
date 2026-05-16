@@ -16,6 +16,7 @@ import {
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { KairoSettingsSkeleton } from "./LoadingSkeleton";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { classifyError, mobileLogger } from "../lib/logger";
 
 const EMPTY: KairoConfig = {
   apiKey: "",
@@ -47,16 +48,21 @@ export function KairoSettingsSection() {
 
   useEffect(() => {
     let cancelled = false;
-    void getKairoConfig().then((c) => {
-      if (!cancelled) {
-        setDraft(c);
-        // Decide initial advanced visibility once, off the persisted config
-        // — not every keystroke. This avoids the section springing open the
-        // moment a user clears the URL field.
-        setShowAdvanced(hasCustomKairoEndpoint(c));
-        setLoaded(true);
-      }
-    });
+    void getKairoConfig()
+      .then((c) => {
+        if (!cancelled) {
+          setDraft(c);
+          // Decide initial advanced visibility once, off the persisted config
+          // — not every keystroke. This avoids the section springing open the
+          // moment a user clears the URL field.
+          setShowAdvanced(hasCustomKairoEndpoint(c));
+          setLoaded(true);
+        }
+      })
+      .catch((error) => {
+        mobileLogger.warn("kairo_settings_load_failed", { errorType: classifyError(error) });
+        if (!cancelled) setLoaded(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -80,7 +86,8 @@ export function KairoSettingsSection() {
     try {
       await saveKairoConfig(draft);
       flashState("saved");
-    } catch {
+    } catch (error) {
+      mobileLogger.warn("kairo_settings_save_failed", { errorType: classifyError(error) });
       setSaveState("idle");
       setErrorMessage("Could not save Kairo settings.");
     }
@@ -94,7 +101,8 @@ export function KairoSettingsSection() {
       await clearKairoConfig();
       setDraft(getProviderDraft("anthropic", ""));
       flashState("cleared");
-    } catch {
+    } catch (error) {
+      mobileLogger.warn("kairo_settings_clear_failed", { errorType: classifyError(error) });
       setSaveState("idle");
       setErrorMessage("Could not clear Kairo settings.");
     }

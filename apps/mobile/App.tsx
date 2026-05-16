@@ -43,6 +43,7 @@ import { MobileAuthScreen } from "./src/components/MobileAuthScreen";
 import { RootErrorBoundary } from "./src/components/RootErrorBoundary";
 import { ScreenErrorBoundary } from "./src/components/ScreenErrorBoundary";
 import { SettingsSheet } from "./src/components/SettingsSheet";
+import { DiagnosticsPanel } from "./src/components/DiagnosticsPanel";
 import { InboxScreen } from "./src/screens/InboxScreen";
 import { TimelineScreen } from "./src/screens/TimelineScreen";
 import { CompletedScreen } from "./src/screens/CompletedScreen";
@@ -92,6 +93,7 @@ function MobileApp() {
   const editTaskSheetRef = useRef<EditTaskSheetRef>(null);
   const kairoRef = useRef<KairoSheetRef>(null);
   const lastListStateLogMsRef = useRef<number>(0);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   const {
     session,
@@ -496,9 +498,13 @@ function MobileApp() {
         showToast({ kind: "info", message: "Up to date" });
       }
       mobileLogger.info("refresh_succeeded", { actionId, elapsedMs: Date.now() - startedAt });
-    } catch {
+    } catch (error) {
       showToast({ kind: "error", message: "Could not sync pending changes. Check connection." });
-      mobileLogger.error("refresh_failed", { actionId, elapsedMs: Date.now() - startedAt });
+      mobileLogger.error("refresh_failed", {
+        actionId,
+        elapsedMs: Date.now() - startedAt,
+        errorType: classifyError(error),
+      });
     } finally {
       setIsRefreshing(false);
     }
@@ -857,6 +863,23 @@ function MobileApp() {
         onSendTestNotification={() => void sendTestNotification()}
         onSignOut={handleSignOut}
       />
+
+      {__DEV__ ? (
+        <DiagnosticsPanel
+          visible={showDiagnostics}
+          activeTab={activeTab}
+          inboxCount={displayInboxCount}
+          timelineCount={displayScheduledTasks.length}
+          completedCount={displayCompletedCount}
+          pendingMutations={pendingMutations}
+          retryQueueCount={retryQueue.length}
+          isKairoActive={isKairoActive}
+          isAllTasksReady={isAllTasksReady}
+          usingSnapshot={shouldUseWorkspaceSnapshot}
+          isDataBootstrapReady={isDataBootstrapReady}
+          onToggle={() => setShowDiagnostics((visible) => !visible)}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

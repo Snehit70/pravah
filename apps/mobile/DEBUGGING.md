@@ -33,12 +33,30 @@ adb -s 57e38b78 shell dumpsys dropbox --print data_app_anr | rg -n "com.pravah.m
 - Expected vs actual behavior.
 - A matching `[PRAVAH_MOBILE]` action id if available.
 
+## Developer Diagnostics Panel
+
+In development builds, tap the floating `Diag` chip above the bottom tabs to
+open a lightweight runtime panel.
+
+It shows:
+
+- active tab
+- visible inbox/timeline/completed counts
+- pending mutation and retry queue counts
+- Kairo open/readiness state
+- whether the shell is rendering from the cached workspace snapshot
+- workspace bootstrap readiness
+
+Use it alongside Logcat when reproducing Android-only issues. The panel is
+guarded by `__DEV__` and is not rendered in production builds.
+
 ## High-Value Mobile QA Checks
 
 - Open Settings -> Kairo and verify the API key field stays visible above the keyboard.
 - With the keyboard open, scroll to base URL and model and confirm they remain reachable.
 - Switch between Inbox / Timeline / Completed and confirm no tab briefly renders blank.
 - Force a dev-time error in one tab and confirm only that tab falls back, not the whole app.
+- Open `Diag`, trigger a refresh or Kairo send, and confirm counts/readiness update while matching `[PRAVAH_MOBILE]` logs appear in Logcat.
 
 ## Known dependency pins
 
