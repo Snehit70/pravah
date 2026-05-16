@@ -213,14 +213,14 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             <Pressable
               onPress={requestClose}
               style={({ pressed }) => [styles.cancelButton, pressed && { opacity: 0.6 }]}
-              hitSlop={12}
+              hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </Pressable>
             <Pressable
               onPress={() => void handleSave()}
               disabled={!canSave}
-              hitSlop={12}
+              hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
               style={({ pressed }) => [
                 styles.primaryButton,
                 !canSave && styles.primaryButtonDisabled,

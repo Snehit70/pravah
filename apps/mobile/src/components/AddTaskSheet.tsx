@@ -191,7 +191,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
             <Pressable
               onPress={() => setMode("inbox")}
               style={({ pressed }) => [styles.modeItem, pressed && { opacity: 0.6 }]}
-              hitSlop={12}
+              hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
             >
               <Text style={[styles.modeText, mode === "inbox" && styles.modeTextActive]}>Inbox</Text>
               <View style={[styles.modeRule, mode === "inbox" && styles.modeRuleActive]} />
@@ -199,7 +199,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
             <Pressable
               onPress={() => setMode("today")}
               style={({ pressed }) => [styles.modeItem, pressed && { opacity: 0.6 }]}
-              hitSlop={12}
+              hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
             >
               <Text style={[styles.modeText, mode === "today" && styles.modeTextActive]}>Today</Text>
               <View style={[styles.modeRule, mode === "today" && styles.modeRuleActive]} />
@@ -210,7 +210,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
             <Pressable
               onPress={() => setShowDetails(!showDetails)}
               style={({ pressed }) => [styles.detailsToggle, pressed && { opacity: 0.6 }]}
-              hitSlop={12}
+              hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
             >
               <Text style={styles.detailsToggleText}>{showDetails ? "Less" : "More"}</Text>
             </Pressable>

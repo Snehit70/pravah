@@ -284,9 +284,13 @@ Current enforced sites:
 
 - `KairoSettingsSection.tsx` — API key show/hide toggle, Advanced toggle, Save, Clear
 - `SettingsSheet.tsx` — Close button, section-jump chips, all inline action links
-- `AddTaskSheet.tsx` — mode switch, More/Less toggle, Add, Discard
-- `EditTaskSheet.tsx` — Cancel and Save
-- `TaskMetaFields.tsx` — Due, Clear, Priority
+- `AddTaskSheet.tsx` — Add and Discard use scalar `hitSlop={12}`; the
+  Inbox/Today mode toggles and the More/Less toggle use vertical-only `hitSlop`
+  because they sit on the same row with sibling controls inside the touch radius
+- `EditTaskSheet.tsx` — Cancel and Save use vertical-only `hitSlop`; they sit
+  side-by-side in `styles.actions` with only `spacing.lg` between them
+- `TaskMetaFields.tsx` — Due, Clear, Priority share one row and use vertical-only
+  `hitSlop` to keep neighboring hit regions from overlapping
 - `BottomTabBar.tsx` — tab targets use vertical-only `hitSlop` plus a minimum
   48pt visual height so adjacent tabs do not overlap horizontally
 - `TaskCard.tsx` — row press target and completion checkbox
@@ -296,10 +300,12 @@ When adding a new `Pressable` to any screen or component:
 1. If the visual target is at least 44×44 pts, `hitSlop` is optional.
 2. Otherwise set `hitSlop={12}` unconditionally.
 
-Do not use a `hitSlop` object (`{ top, bottom, left, right }`) unless the target
-has a genuine directional constraint. Bottom tabs are the current exception:
-their hit area expands vertically only because horizontal expansion overlaps
-adjacent tab targets.
+Use a `hitSlop` object (`{ top, bottom, left, right }`) only when adjacent
+sibling controls would otherwise overlap the touch radius. Rule of thumb: if
+a sibling `Pressable` sits within 24pt of the target's edge on an axis,
+expansion on that axis must be zeroed. Bottom tabs, the EditTaskSheet action
+row, the AddTaskSheet mode row, and the TaskMetaFields meta row all qualify;
+isolated controls keep the scalar form.
 
 ### Keyboard dismiss policy
 
