@@ -6,7 +6,7 @@
  * (RNDFL@4 / Reanimated@4 incompatibility).
  */
 
-import type { JSX } from "react";
+import { useEffect, useState, type JSX } from "react";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { FlatList, RefreshControl, Text, View } from "react-native";
 import type { RenderItemParams } from "react-native-draggable-flatlist";
@@ -19,6 +19,10 @@ import { dateLabel } from "../lib/dates";
 type TimelineRow =
   | { kind: "header"; dateKey: string; label: string; isToday: boolean }
   | { kind: "task"; dateKey: string; task: MobileTask };
+
+const INITIAL_TIMELINE_ROWS = 24;
+const TIMELINE_ROW_BATCH_SIZE = 24;
+const TIMELINE_ROW_BATCH_DELAY_MS = 32;
 
 type TimelineScreenProps = {
   sections: [string, MobileTask[]][];
@@ -34,6 +38,39 @@ type TimelineScreenProps = {
 
 const noopDrag = () => {};
 
+function countTimelineRows(sections: [string, MobileTask[]][]) {
+  let count = 0;
+  for (const [, tasks] of sections) count += 1 + tasks.length;
+  return count;
+}
+
+function buildTimelineRows(
+  sections: [string, MobileTask[]][],
+  today: string,
+  tomorrow: string,
+  weekEnd: string,
+  maxRows: number
+) {
+  const rows: TimelineRow[] = [];
+
+  for (const [dateKey, tasks] of sections) {
+    if (rows.length >= maxRows) break;
+    rows.push({
+      kind: "header",
+      dateKey,
+      label: dateLabel(dateKey, today, tomorrow, weekEnd),
+      isToday: dateKey === today,
+    });
+
+    for (const task of tasks) {
+      if (rows.length >= maxRows) break;
+      rows.push({ kind: "task", dateKey, task });
+    }
+  }
+
+  return rows;
+}
+
 export function TimelineScreen({
   sections,
   today,
@@ -45,20 +82,47 @@ export function TimelineScreen({
   onRefresh,
   renderItem,
 }: TimelineScreenProps) {
-  // Build flat mixed-row array: headers interleaved between day groups.
-  const rows: TimelineRow[] = [];
+  const totalRows = countTimelineRows(sections);
+  const [visibleRowCount, setVisibleRowCount] = useState(() =>
+    Math.min(INITIAL_TIMELINE_ROWS, totalRows)
+  );
 
-  for (const [dateKey, tasks] of sections) {
-    rows.push({
-      kind: "header",
-      dateKey,
-      label: dateLabel(dateKey, today, tomorrow, weekEnd),
-      isToday: dateKey === today,
-    });
-    for (const task of tasks) {
-      rows.push({ kind: "task", dateKey, task });
-    }
-  }
+  useEffect(() => {
+    // Never hard-reset on a totalRows change. A live update (task
+    // added/completed while the user is scrolled deep) must preserve the
+    // existing visible budget instead of collapsing back to
+    // INITIAL_TIMELINE_ROWS and jumping the scroll position. Shrink is
+    // handled inline via `effectiveVisible` below, so we don't need to
+    // chase the state down to match — when totalRows climbs back, the
+    // preserved budget snaps the user's previous depth into view again.
+    if (visibleRowCount >= totalRows) return;
+    const timeout = setTimeout(() => {
+      setVisibleRowCount((current) =>
+        Math.min(current + TIMELINE_ROW_BATCH_SIZE, totalRows)
+      );
+    }, TIMELINE_ROW_BATCH_DELAY_MS);
+    return () => clearTimeout(timeout);
+  }, [totalRows, visibleRowCount]);
+
+  // Build only the rows currently released to FlatList. Large timelines still
+  // hydrate quickly, but the first paint avoids handing every row to React.
+  // Floor to INITIAL_TIMELINE_ROWS (clamped to totalRows) so the first paint
+  // after data arrives shows the initial budget immediately — `useState`
+  // doesn't re-run when sections transitions from empty to populated, so
+  // without this floor the screen briefly renders the empty state until the
+  // 32ms batch timer fires and bumps visibleRowCount off zero.
+  const effectiveVisible = Math.min(
+    Math.max(visibleRowCount, Math.min(INITIAL_TIMELINE_ROWS, totalRows)),
+    totalRows
+  );
+  const rows = buildTimelineRows(
+    sections,
+    today,
+    tomorrow,
+    weekEnd,
+    effectiveVisible
+  );
+  const hasPendingRows = rows.length < totalRows;
 
   const emptyBlock = (
     <Animated.View entering={FadeIn.duration(400)} style={styles.emptyWrap}>
@@ -110,6 +174,9 @@ export function TimelineScreen({
           progressBackgroundColor={colors.bgCard}
         />
       }
+      ListFooterComponent={
+        hasPendingRows ? <Text style={styles.loadingMore}>Preparing more tasks...</Text> : null
+      }
       ListEmptyComponent={isLoading ? loadingBlock : emptyBlock}
     />
   );
@@ -131,5 +198,11 @@ const styles = {
     color: colors.textSecondary,
     ...typography.bodyMd,
     textAlign: "center" as const,
+  },
+  loadingMore: {
+    color: colors.textSecondary,
+    ...typography.micro,
+    textAlign: "center" as const,
+    paddingTop: spacing.md,
   },
 };

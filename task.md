@@ -40,7 +40,7 @@ This file tracks the current mobile audit backlog on `review/mobile-improvement-
 
 - [x] Implement optimistic async mobile boot: one launch gate, early shell reveal, background bootstrap, and local workspace snapshot fallback.
 - [x] Reduce initial mount cost for large datasets to avoid UI thread stalls on heavy workspaces.
-- [ ] Introduce incremental rendering or other safeguards for large timeline datasets.
+- [x] Introduce incremental rendering or other safeguards for large timeline datasets.
 - [ ] Add large-list performance safeguards so input remains responsive under stress.
 - [ ] Review whether `claimLegacyData` should stay on every mobile bootstrap or move behind an explicit one-time migration gate.
 - [ ] Audit Kairo conversation rendering for long chats and replace plain `ScrollView` if it becomes a scaling problem.
