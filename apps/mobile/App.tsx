@@ -502,13 +502,20 @@ function MobileApp() {
     []
   );
 
-  const canUseWorkspaceActions = Boolean(session) && !sessionLoading;
+  // Settings/sign-out are session-level affordances and must remain reachable
+  // even while we're still rendering a workspace snapshot or boot shell.
+  const canOpenSession = Boolean(session) && !sessionLoading;
+  // Task-level mutations must wait for live workspace data. Acting against
+  // snapshot/boot rows would seed optimistic state from empty server arrays
+  // and visibly collapse the list before the live queries hydrate.
+  const canUseWorkspaceActions =
+    canOpenSession && hasLiveWorkspaceData && !shouldUseWorkspaceSnapshot;
 
   const openSettingsModal = useCallback(() => {
-    if (!canUseWorkspaceActions) return;
+    if (!canOpenSession) return;
     mobileLogger.info("settings_modal_opened");
     setIsSettingsModalOpen(true);
-  }, [canUseWorkspaceActions, setIsSettingsModalOpen]);
+  }, [canOpenSession, setIsSettingsModalOpen]);
 
   const openKairo = useCallback(() => {
     if (!canUseWorkspaceActions) return;
@@ -688,7 +695,7 @@ function MobileApp() {
             </Pressable>
             <Pressable
               onPress={openSettingsModal}
-              disabled={!canUseWorkspaceActions}
+              disabled={!canOpenSession}
               style={({ pressed }) => [styles.settingsLinkWrap, pressed && styles.pressed]}
               hitSlop={12}
               accessibilityRole="button"
@@ -861,6 +868,7 @@ function LaunchGate({ children }: { children: ReactNode }) {
   const reducedMotion = useReducedMotion();
   const launchReady = fontsLoaded && storageReady;
   const [handoffOpacity] = useState(() => new LegacyAnimated.Value(1));
+  const [showHandoffOverlay, setShowHandoffOverlay] = useState(true);
 
   useEffect(() => {
     let mounted = true;
@@ -885,7 +893,9 @@ function LaunchGate({ children }: { children: ReactNode }) {
       duration: 220,
       useNativeDriver: true,
     });
-    animation.start();
+    animation.start(({ finished }) => {
+      if (finished) setShowHandoffOverlay(false);
+    });
     return () => animation.stop();
   }, [handoffOpacity, launchReady, reducedMotion]);
 
@@ -901,7 +911,7 @@ function LaunchGate({ children }: { children: ReactNode }) {
       <Animated.View entering={FadeIn.duration(reducedMotion ? 0 : 180)} style={launchStyles.content}>
         {children}
       </Animated.View>
-      {!reducedMotion ? (
+      {!reducedMotion && showHandoffOverlay ? (
         <LegacyAnimated.View
           pointerEvents="none"
           style={[launchStyles.overlay, { opacity: handoffOpacity }]}
