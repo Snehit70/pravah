@@ -158,10 +158,17 @@ function MobileApp() {
     });
 
   const shouldRenderOptimisticShell = sessionLoading && hasCachedSessionHint;
+  // Snapshot data is only rendered once useSession() has confirmed an
+  // authenticated session. A stale cached auth hint (expired/revoked cookie
+  // still in secure storage) must not surface previous workspace data to a
+  // viewer whose session has not yet resolved — the boot shell skeleton
+  // covers that window instead. The hydrated check still gates display so
+  // we never render a partially-populated snapshot.
   const shouldUseWorkspaceSnapshot =
+    Boolean(session) &&
     workspaceSnapshot !== null &&
-    ((shouldRenderOptimisticShell && isWorkspaceSnapshotHydrated) ||
-      (Boolean(session) && !hasLiveWorkspaceData));
+    isWorkspaceSnapshotHydrated &&
+    !hasLiveWorkspaceData;
 
   const displayInboxTasks = shouldUseWorkspaceSnapshot ? workspaceSnapshot.inboxTasks : inboxTasks;
   const displayScheduledTasks = shouldUseWorkspaceSnapshot
