@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.1.0](https://github.com/Snehit70/pravah/compare/web-v1.0.1...web-v1.1.0) (2026-05-16)
+
+
+### Features
+
+* **mobile:** improve startup and task list resilience ([a290f74](https://github.com/Snehit70/pravah/commit/a290f740d8fa46d962c40fcf1fa29a6473476ab8))
+* **mobile:** make workspace boot non-blocking ([ff23d0e](https://github.com/Snehit70/pravah/commit/ff23d0e0d2ee677661ea5424b26308cfc8e5de78))
+* **mobile:** smooth boot-to-shell handoff ([4abb725](https://github.com/Snehit70/pravah/commit/4abb7254932c4f3177a3e398a90e2b4f86fa8978))
+
+
+### Bug Fixes
+
+* **mobile:** bound timeline and clean deferred Kairo replay ([49fc996](https://github.com/Snehit70/pravah/commit/49fc996e578a03814c175a8f27925e42b62f9eb6))
+* **mobile:** clear stale signed-out snapshots ([9770ab4](https://github.com/Snehit70/pravah/commit/9770ab4673a7509fff070016e07b23bb2e3152e9))
+* **mobile:** drop stale snapshot hydration after a clear ([05a15e3](https://github.com/Snehit70/pravah/commit/05a15e35c7562edfc1266a332169459666f2bfaf))
+* **mobile:** gate workspace actions on live data and unmount boot overlay ([9584527](https://github.com/Snehit70/pravah/commit/95845270bf570629b69d23b48c46a9181d34763d))
+* **mobile:** gate workspace actions per active tab, not global readiness ([bb35d23](https://github.com/Snehit70/pravah/commit/bb35d23288e51fbe2712e8b07f8c2b4ab811efd4))
+* **mobile:** guard workspace snapshot persist against clear races ([528172b](https://github.com/Snehit70/pravah/commit/528172bd280c27aa1dd53b3214fe4a8bb97bdcc4))
+* **mobile:** keep overdue tasks visible in timeline query ([155e156](https://github.com/Snehit70/pravah/commit/155e156c2473fb62bbcfa0590784d72ba2006973))
+* **mobile:** require confirmed session before rendering workspace snapshot ([8fb6488](https://github.com/Snehit70/pravah/commit/8fb648839c270021ee391053009594220201f31d))
+* **mobile:** scroll to end when queuing deferred Kairo prompts ([3a04f99](https://github.com/Snehit70/pravah/commit/3a04f990e1d27c07e5a35f1a33e8679dd13a3f83))
+* **mobile:** surface Kairo settings storage failures ([e33cab8](https://github.com/Snehit70/pravah/commit/e33cab83d90ad1600b22be3de5df6b1ede14a407))
+
+
+### Performance Improvements
+
+* **mobile:** tune task list virtualization ([f9f79bb](https://github.com/Snehit70/pravah/commit/f9f79bb2327322aa722cbd2ca319b0c6d178351c))
+
 ## [1.0.1](https://github.com/Snehit70/pravah/compare/web-v1.0.0...web-v1.0.1) (2026-05-12)
 
 
