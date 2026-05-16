@@ -27,5 +27,13 @@ export function useIncrementalRowCount(totalRows: number) {
     return () => clearTimeout(timeout);
   }, [totalRows, visibleRowCount]);
 
-  return Math.min(visibleRowCount, totalRows);
+  // Floor to INITIAL_INCREMENTAL_ROWS (clamped to totalRows) so the first
+  // paint after data arrives shows the initial budget immediately — `useState`
+  // doesn't re-run when totalRows transitions from 0 to populated, so without
+  // this floor the screen briefly renders the empty state until the 32ms
+  // batch timer fires and bumps visibleRowCount off zero.
+  return Math.min(
+    Math.max(visibleRowCount, Math.min(INITIAL_INCREMENTAL_ROWS, totalRows)),
+    totalRows
+  );
 }
