@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
-import { authClient } from "../lib/auth-client";
+import { authClient, hasCachedAuthSessionHint } from "../lib/auth-client";
 import { classifyError, mobileLogger } from "../lib/logger";
 import type { MobileTask } from "../components/TaskCard";
 import type { TabKey } from "../components/BottomTabBar";
@@ -28,6 +28,7 @@ export function useWorkspaceState() {
   const sessionResult = authClient.useSession();
   const session = sessionResult.data;
   const sessionLoading = sessionResult.isPending;
+  const hasCachedSessionHint = hasCachedAuthSessionHint();
 
   const storeUserMutation = useMutation(api.users.store);
   const claimLegacyDataMutation = useMutation(api.users.claimLegacyData);
@@ -106,5 +107,6 @@ export function useWorkspaceState() {
     isKairoActive,
     setIsKairoActive,
     isDataBootstrapReady,
+    hasCachedSessionHint,
   };
 }

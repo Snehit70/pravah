@@ -253,4 +253,38 @@ describe("KairoSettingsSection", () => {
 
     expect(saveBtn.textContent).toBe("Save");
   });
+
+  it("shows an error instead of Saved when storage write fails", async () => {
+    useEmptyConfig();
+    vi.mocked(SecureStore.setItemAsync).mockRejectedValue(new Error("keychain unavailable"));
+
+    render(<KairoSettingsSection />);
+
+    await waitFor(() => expect(screen.queryByTestId("kairo-skeleton")).toBeNull());
+
+    const saveBtn = screen.getByRole("button", { name: /save kairo configuration/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    expect(screen.getByText("Could not save Kairo settings.")).toBeTruthy();
+    expect(saveBtn.textContent).toBe("Save");
+  });
+
+  it("shows an error instead of Cleared when storage delete fails", async () => {
+    useCustomEndpointConfig();
+    vi.mocked(SecureStore.deleteItemAsync).mockRejectedValue(new Error("keychain unavailable"));
+
+    render(<KairoSettingsSection />);
+
+    await waitFor(() => expect(screen.queryByTestId("kairo-skeleton")).toBeNull());
+
+    const clearBtn = screen.getByRole("button", { name: /clear kairo configuration/i });
+    await act(async () => {
+      fireEvent.click(clearBtn);
+    });
+
+    expect(screen.getByText("Could not clear Kairo settings.")).toBeTruthy();
+    expect(clearBtn.textContent).toBe("Clear");
+  });
 });

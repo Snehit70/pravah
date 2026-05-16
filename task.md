@@ -1,34 +1,84 @@
-# Pravah Mobile - Pending Implementation Tasks
+# Pravah Mobile Improvement Backlog
 
-## Priority P0 (Stability / ANR)
+This file tracks the current mobile audit backlog on `review/mobile-improvement-audit`.
 
-- [x] Replace heavy task list rendering with virtualization (`SectionList` or `FlashList`) instead of full `ScrollView` + `map` rendering.
-- [ ] Reduce initial mount cost for large datasets (example observed: very high timeline item count) to avoid UI thread stalls.
-- [ ] Introduce incremental rendering strategy for timeline sections (lazy section expansion and/or capped initial items per section).
+## P0 - Core Workflow Regressions
+
+- [ ] Restore drag-to-reorder in Inbox using a real `DraggableFlatList` path instead of `noopDrag`, manually disabled for now due to known edge cases; handle last after the rest of the mobile audit is stable.
+- [ ] Restore drag-to-reorder in Timeline using a mixed-row `DraggableFlatList` without nesting it inside a `ScrollView`, manually disabled for now due to known edge cases; handle last after the rest of the mobile audit is stable.
+- [ ] Reconnect `handleInboxDragEnd` and `handleTimelineDragEnd` from `useTaskMutations` into the live screen flow, manually disabled for now due to known edge cases; handle last after the rest of the mobile audit is stable.
+- [ ] Keep same-day reorder validation and reject cross-day timeline drops safely, manually disabled for now due to known edge cases; handle last after the rest of the mobile audit is stable.
+- [ ] Re-bound the mobile timeline query by passing `startDate` again from `apps/mobile/src/hooks/useTaskQueries.ts`.
+- [ ] Add a regression test that asserts the real `getTimeline` query args include both `startDate` and `endDate`.
+- [ ] Fix Kairo deferred prompt replay so a prompt sent before `isAllTasksReady` does not duplicate the user message.
+- [ ] Ensure the temporary `Loading your workspace...` assistant placeholder is not replayed into final model history.
+- [ ] Add a Kairo test that covers deferred send and asserts there is no duplicated message or polluted history.
+
+## P0 - Settings Safety
+
+- [x] Gate Kairo settings save on `loaded === true` so unresolved SecureStore reads cannot overwrite a valid config.
+- [x] Disable or visually downgrade the Kairo save action while config is still loading.
+- [x] Add component tests for `KairoSettingsSection` covering:
+- [x] Advanced section hidden by default on default config.
+- [x] Advanced section opens when tapped.
+- [x] Advanced section auto-opens for persisted custom endpoint/model.
+- [x] Save is disabled while loading.
+- [x] Save label transitions through idle -> saving -> saved -> idle.
+- [x] Make Kairo settings surface storage write/delete failures instead of always showing success.
+
+## P1 - Feature Parity With Web
+
+- [ ] Bring Gmail review queue workflows to mobile: list pending items, approve, reject, and optionally choose schedule date.
+- [ ] Extend mobile Google auth/integration flow to support Gmail access where required.
+- [ ] Bring fuller Google Calendar controls to mobile: account visibility, calendar selection, and full resync.
+- [ ] Improve mobile task capture parity with web QuickAdd: add fast schedule options like Tomorrow and Next Week.
+- [ ] Improve mobile task editing parity with web TaskPopup: expose delete/unschedule/reopen paths more directly.
+- [ ] Add inbox search and filtering on mobile for larger task volumes.
+- [ ] Decide whether Long-term Goals should exist on mobile; if yes, design and implement the mobile surface.
+
+## P1 - Performance And Startup
+
+- [x] Implement optimistic async mobile boot: one launch gate, early shell reveal, background bootstrap, and local workspace snapshot fallback.
+- [x] Reduce initial mount cost for large datasets to avoid UI thread stalls on heavy workspaces.
+- [ ] Introduce incremental rendering or other safeguards for large timeline datasets.
 - [ ] Add large-list performance safeguards so input remains responsive under stress.
+- [ ] Review whether `claimLegacyData` should stay on every mobile bootstrap or move behind an explicit one-time migration gate.
+- [ ] Audit Kairo conversation rendering for long chats and replace plain `ScrollView` if it becomes a scaling problem.
+- [ ] Run an EAS Android preview build after the first round of fixes: `bunx eas-cli build --platform android --profile preview`.
 
-## Priority P1 (UX Consistency)
+## P1 - Accessibility And UX Ergonomics
 
-- [x] Replace system sign-out popup (`Alert.alert`) with a themed in-app confirmation modal/sheet.
-- [x] Ensure sign-out confirmation copy, colors, spacing, and buttons match Pravah design tokens.
+- [ ] Enforce minimum `hitSlop={12}` across all small mobile `Pressable` targets.
+- [ ] Audit `AddTaskSheet.tsx`, `EditTaskSheet.tsx`, `TaskMetaFields.tsx`, `BottomTabBar.tsx`, and `TaskCard.tsx` for undersized touch targets.
+- [x] Ensure `BootScreen` respects reduced-motion preferences instead of always pulsing.
+- [ ] Revisit bottom tab tap affordance and spacing on smaller Android devices.
+- [ ] Add onboarding or first-run guidance beyond auth for a first-time mobile user.
+- [ ] Review empty states and inline recovery paths for Inbox, Timeline, Completed, and Kairo.
 
-## Priority P1 (Debuggability / Detailed Logs)
+## P1 - Logging, Debugging, And Runtime Visibility
 
-- [x] Add structured app-level logging utility for mobile (`debug`, `info`, `warn`, `error`) with consistent tags and context fields.
-- [x] Add feature-level logs around critical flows:
-  - auth (sign-in, sign-out, token/session restore)
-  - task mutations (add, edit, move, done, reopen)
-  - retry queue (enqueue, persist, hydrate, retry start/success/failure)
-  - refresh/sync cycles
-- [x] Add timing logs for expensive paths (initial load, large list render, mutation latency, retry latency).
-- [x] Add correlation IDs per user action/mutation so related logs can be traced end-to-end.
-- [x] Add error classification in logs (network/offline/validation/server/unexpected) with user-visible message mapping.
-- [ ] Add optional development diagnostics overlay/screen showing key runtime counters (task counts, queue size, pending mutations, render timings).
-- [x] Ensure logs are easy to filter in Logcat (stable prefix/tag format).
-- [x] Add documentation for log capture commands and troubleshooting workflow for QA runs.
+- [ ] Add optional developer diagnostics overlay/screen with runtime counters such as task counts, queue size, pending mutations, and recent timings.
+- [ ] Add richer error logging in integration and notification hooks instead of generic `catch {}` handling.
+- [ ] Add logging around Kairo deferred sends, replay, and provider failures for faster device-side triage.
+- [ ] Validate the existing `DEBUGGING.md` flow against a current Android device pass and update any stale commands.
 
-## Priority P2 (QA Reliability)
+## P1 - Release And CI Coverage
 
-- [ ] No synthetic/test data generation. Use existing production-scale data for performance validation.
-- [ ] Define a repeatable ANR repro script with steps + timestamps for faster triage.
-- [ ] Add a post-test checklist template (failed step, timestamp, expected vs actual, log marker).
+- [ ] Add a mobile CI job in `.github/workflows/ci.yml` for `apps/mobile` typecheck.
+- [ ] Add a mobile CI job in `.github/workflows/ci.yml` for `apps/mobile` lint.
+- [ ] Add a mobile CI job in `.github/workflows/ci.yml` for `apps/mobile` tests.
+- [ ] Consider adding a lightweight mobile smoke/build validation step so CI catches platform-specific regressions earlier.
+
+## P2 - QA Reliability
+
+- [ ] Use existing production-scale data for performance validation rather than synthetic test data.
+- [ ] Define a repeatable ANR/performance repro script with steps and timestamps.
+- [ ] Add a post-test checklist template with failed step, timestamp, expected vs actual, and log marker.
+- [ ] Run a full manual mobile smoke walk from `apps/mobile/MOBILE_TESTING.md` after major fixes.
+
+## P2 - Documentation Consistency
+
+- [ ] Reconcile `apps/mobile/docs/architecture.md` with actual timeline query behavior after the timeline window fix.
+- [ ] Reconcile docs and comments around drag support so shipped behavior and documentation match.
+- [ ] Keep `apps/mobile/docs/ux-orchestration.md` aligned with real keyboard, hitSlop, and motion policies.
+- [ ] Add a short parity-tracking doc section for web-only vs mobile-supported features.

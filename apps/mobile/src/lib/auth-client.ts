@@ -29,6 +29,10 @@ export const authStorageReady = Promise.all([
   if (sessionData !== null) authStorageCache.set(SESSION_STORAGE_KEY, sessionData);
 });
 
+export function hasCachedAuthSessionHint(): boolean {
+  return authStorageCache.has(SESSION_STORAGE_KEY) || authStorageCache.has(COOKIE_STORAGE_KEY);
+}
+
 const authStorage = {
   getItem: (key: string): string | null => authStorageCache.get(key) ?? null,
   setItem: (key: string, value: string): void => {

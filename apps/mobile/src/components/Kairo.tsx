@@ -80,6 +80,8 @@ const GREETING: KairoMessage = {
   text: "Hey, I'm Kairo. I can help you plan your week, prioritize tasks, or analyze your schedule. What do you need?",
 };
 
+const DEFERRED_LOADING_TEXT = "Loading your workspace... one moment.";
+
 /**
  * Mobile Kairo. Presents as a near-full-screen bottom sheet that takes the
  * app over when active. The parent uses the `onActiveChange` callback to
@@ -101,6 +103,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   const [thinking, setThinking] = useState(false);
   const [config, setConfig] = useState<KairoConfig | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<string | null>(null);
+  const [deferredPromptPreview, setDeferredPromptPreview] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   const addTaskMutation = useMutation(api.tasks.addTask);
@@ -136,11 +139,13 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   }, [open]);
 
   useEffect(() => {
-    if (msgs.length === 0 && !thinking) return;
+    if (msgs.length === 0 && !thinking && !deferredPromptPreview) return;
     // Defer scroll-to-end so the new content is laid out before we measure.
+    // Deferred prompt previews append two bubbles outside of `msgs`, so
+    // include them in the dependency list to keep the queued send visible.
     const t = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
     return () => clearTimeout(t);
-  }, [msgs, thinking]);
+  }, [msgs, thinking, deferredPromptPreview]);
 
   const handleSheetChange = useCallback((index: number) => {
     setOpen(index >= 0);
@@ -170,14 +175,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       // zero context. Defer the prompt and replay it once the query resolves.
       if (!isAllTasksReady) {
         setDeferredPrompt(trimmed);
-        setMsgs((prev) => [
-          ...prev,
-          { from: "me", text: trimmed },
-          {
-            from: "kairo",
-            text: "Loading your workspace… one moment.",
-          },
-        ]);
+        setDeferredPromptPreview(trimmed);
         setVal("");
         return;
       }
@@ -195,6 +193,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           content: m.text,
         }));
 
+      setDeferredPromptPreview(null);
       setMsgs((prev) => [...prev, { from: "me", text: trimmed }]);
       setVal("");
       Keyboard.dismiss();
@@ -329,10 +328,12 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         {msgs.map((m, i) => (
           <Bubble key={i} message={m} />
         ))}
+        {deferredPromptPreview ? <Bubble message={{ from: "me", text: deferredPromptPreview }} /> : null}
+        {deferredPromptPreview ? <Bubble message={{ from: "kairo", text: DEFERRED_LOADING_TEXT }} /> : null}
         {thinking ? <Thinking /> : null}
 
         {/* Starters render on first paint only (no user messages yet). */}
-        {msgs.length === 1 && !thinking ? (
+        {msgs.length === 1 && !thinking && !deferredPromptPreview ? (
           <View style={styles.starters}>
             {STARTERS.map((p) => (
               <Pressable

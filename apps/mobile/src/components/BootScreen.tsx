@@ -10,6 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useEffect } from "react";
 import { colors, spacing, typography } from "../theme/tokens";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 import { BrandMark } from "./BrandMark";
 import { GridBackground } from "./GridBackground";
 
@@ -23,14 +24,19 @@ export function BootScreen({
   detail,
 }: BootScreenProps) {
   const glow = useSharedValue(0.9);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
+    if (reducedMotion) {
+      glow.value = withTiming(1, { duration: 160 });
+      return;
+    }
     glow.value = withRepeat(
       withSequence(withTiming(1.08, { duration: 900 }), withTiming(0.92, { duration: 900 })),
       -1,
       true
     );
-  }, [glow]);
+  }, [glow, reducedMotion]);
 
   const markStyle = useAnimatedStyle(() => ({
     transform: [{ scale: glow.value }],

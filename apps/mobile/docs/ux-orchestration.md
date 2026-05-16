@@ -26,17 +26,46 @@ That means:
 
 ### 1. Boot loading
 
-Use `BootScreen` for app-gate states:
+Use `BootScreen` only for true app-gate states:
 
 - font loading
 - secure auth cache restore
-- workspace bootstrap after session recovery
 
-These are full-shell waits, so they should not pretend to be list data.
+Workspace bootstrap after session recovery is no longer a full-screen blocker.
+
+Current rule:
+
+```text
+launch gate
+-> shell appears
+-> brief branded handoff overlay fades away
+-> cached workspace snapshot or list skeleton
+-> live session/bootstrap/query reconciliation happens in background
+```
+
+This keeps the boot experience short in the common case where the user is
+already signed in and just wants their inbox back.
+
+`BootScreen` should not be used for any phase that can safely happen inside the
+real shell.
 
 ### 2. First list load
 
 Use structural skeletons from `src/components/LoadingSkeleton.tsx`.
+
+The preferred loading handoff is:
+
+```text
+BootScreen
+-> real shell
+-> short BootScreen-to-shell crossfade
+-> cached workspace snapshot if present
+-> otherwise structural list skeleton
+-> live data replaces the placeholder in place
+```
+
+The crossfade should stay short enough that it never delays interaction. It is
+there to smooth the visual cut between boot and shell, not to hide loading.
 
 Current principles:
 
@@ -88,6 +117,26 @@ Good skeleton cases:
 Bad skeleton case:
 
 - replacing live content during a tiny refresh cycle
+
+## Boot Strategy
+
+### Async-first shell
+
+The mobile app should assume this is the common cold-start path:
+
+1. The user was already signed in previously.
+2. Their last-known workspace snapshot is still useful.
+3. Auth validation and Convex bootstrap can finish after first paint.
+
+That means:
+
+- render the shell as soon as the launch gate clears
+- use cached local workspace data when available
+- do not hold the whole app on `storeUser` / `claimLegacyData`
+- if the remote session later proves invalid, fall back to sign-in after paint
+
+This is intentionally optimistic because Pravah is a single-user personal tool,
+not a high-risk admin surface.
 
 ## Settings Sheet UX
 
@@ -185,6 +234,7 @@ Surfaces that already honor it:
 - skeleton pulse: collapses to a single static dim state, no looping opacity, no translate
 - settings section-jump scroll: jumps without scroll animation
 - Kairo advanced section reveal: skips fade entering/exiting
+- launch handoff overlay: drops the crossfade and cuts directly to the shell
 
 Rules for new motion:
 

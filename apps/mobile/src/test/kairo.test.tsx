@@ -356,6 +356,15 @@ describe("Kairo", () => {
     // Should replay the deferred message
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByText("Here's your plan")).toBeTruthy());
+
+    expect(screen.getAllByText("Plan my week")).toHaveLength(1);
+    expect(screen.queryByText(/Loading your workspace/i)).toBeNull();
+    expect(vi.mocked(KairoApi.buildAnthropicRequestBody)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      [],
+      "Plan my week"
+    );
   });
 
   it("sends message successfully when workspace is ready", async () => {

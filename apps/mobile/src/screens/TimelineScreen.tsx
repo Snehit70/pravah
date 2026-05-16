@@ -77,6 +77,11 @@ export function TimelineScreen({
         paddingBottom: tabBarHeight + 84,
       }}
       data={rows}
+      initialNumToRender={8}
+      maxToRenderPerBatch={6}
+      updateCellsBatchingPeriod={50}
+      windowSize={7}
+      removeClippedSubviews
       keyExtractor={(row) =>
         row.kind === "header" ? `header-${row.dateKey}` : row.task._id
       }
