@@ -27,18 +27,26 @@ export function useWorkspaceSnapshot({
 }: UseWorkspaceSnapshotOptions) {
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
-  // Monotonic token bumped on every clear. Persist writes capture the token
-  // before awaiting setItem and re-remove the key if a clear has happened in
-  // the meantime, so an in-flight persist cannot resurrect a snapshot that
-  // sign-out asked to drop.
+  // Monotonic token bumped on every clear. Async work (hydration reads,
+  // persist writes) captures the token before awaiting storage and drops or
+  // undoes its result if the token changed in the meantime, so an in-flight
+  // read/write cannot resurrect a snapshot that sign-out asked to drop.
   const clearTokenRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
+    const tokenAtStart = clearTokenRef.current;
     void retryQueueStorage
       .getItem(WORKSPACE_SNAPSHOT_STORAGE_KEY)
       .then((raw) => {
         if (cancelled) return;
+        // A clear that fired while we were reading must win — otherwise the
+        // pre-clear read result would call setSnapshot(next) below and
+        // reintroduce the prior account's data after sign-out.
+        if (clearTokenRef.current !== tokenAtStart) {
+          setIsHydrated(true);
+          return;
+        }
         if (!canHydrate || !raw) {
           setIsHydrated(true);
           return;
