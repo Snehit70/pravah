@@ -83,50 +83,36 @@ export function TimelineScreen({
   renderItem,
 }: TimelineScreenProps) {
   const totalRows = countTimelineRows(sections);
-  const [rowBudget, setRowBudget] = useState(() => ({
-    totalRows,
-    visibleRows: Math.min(INITIAL_TIMELINE_ROWS, totalRows),
-  }));
-  const visibleRowCount =
-    rowBudget.totalRows === totalRows
-      ? rowBudget.visibleRows
-      : Math.min(INITIAL_TIMELINE_ROWS, totalRows);
+  const [visibleRowCount, setVisibleRowCount] = useState(() =>
+    Math.min(INITIAL_TIMELINE_ROWS, totalRows)
+  );
 
   useEffect(() => {
-    if (rowBudget.totalRows !== totalRows) {
-      const timeout = setTimeout(() => {
-        setRowBudget({
-          totalRows,
-          visibleRows: Math.min(INITIAL_TIMELINE_ROWS, totalRows),
-        });
-      }, 0);
-      return () => clearTimeout(timeout);
-    }
+    // Never hard-reset on a totalRows change. A live update (task
+    // added/completed while the user is scrolled deep) must preserve the
+    // existing visible budget instead of collapsing back to
+    // INITIAL_TIMELINE_ROWS and jumping the scroll position. Shrink is
+    // handled inline via `effectiveVisible` below, so we don't need to
+    // chase the state down to match — when totalRows climbs back, the
+    // preserved budget snaps the user's previous depth into view again.
     if (visibleRowCount >= totalRows) return;
     const timeout = setTimeout(() => {
-      setRowBudget((budget) =>
-        budget.totalRows === totalRows
-          ? {
-              totalRows,
-              visibleRows: Math.min(
-                budget.visibleRows + TIMELINE_ROW_BATCH_SIZE,
-                totalRows
-              ),
-            }
-          : budget
+      setVisibleRowCount((current) =>
+        Math.min(current + TIMELINE_ROW_BATCH_SIZE, totalRows)
       );
     }, TIMELINE_ROW_BATCH_DELAY_MS);
     return () => clearTimeout(timeout);
-  }, [rowBudget.totalRows, totalRows, visibleRowCount]);
+  }, [totalRows, visibleRowCount]);
 
   // Build only the rows currently released to FlatList. Large timelines still
   // hydrate quickly, but the first paint avoids handing every row to React.
+  const effectiveVisible = Math.min(visibleRowCount, totalRows);
   const rows = buildTimelineRows(
     sections,
     today,
     tomorrow,
     weekEnd,
-    Math.min(visibleRowCount, totalRows)
+    effectiveVisible
   );
   const hasPendingRows = rows.length < totalRows;
 
