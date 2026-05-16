@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.1](https://github.com/Snehit70/pravah/compare/web-v1.1.0...web-v1.1.1) (2026-05-16)
+
+
+### Bug Fixes
+
+* **mobile:** preserve timeline visible rows on live updates ([22dad60](https://github.com/Snehit70/pravah/commit/22dad60442a25ad73fefa2978c1240fb38d19779))
+* **mobile:** reset timeline incremental row budget ([c23bd49](https://github.com/Snehit70/pravah/commit/c23bd49e27e621459452dc7aed04785aebf029ca))
+* **mobile:** show initial timeline rows before batch timer fires ([1acb615](https://github.com/Snehit70/pravah/commit/1acb6156817a0d1b82b8c2a36febc12b372f4591))
+
+
+### Performance Improvements
+
+* **mobile:** incrementally render timeline rows ([9da6123](https://github.com/Snehit70/pravah/commit/9da612367b4bbdfc2e183555d7e4a2162fe7ab24))
+* **mobile:** incrementally render timeline rows ([347431d](https://github.com/Snehit70/pravah/commit/347431dbd3f924bc0a686bb1ee35eff70458342b))
+
 ## [1.1.0](https://github.com/Snehit70/pravah/compare/web-v1.0.1...web-v1.1.0) (2026-05-16)
 
 
