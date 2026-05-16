@@ -39,9 +39,11 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
 
   const timelineQuery = useQuery(
     api.tasks.getTimeline,
-    // Mobile timeline intentionally stays bounded to the current planning window
-    // so large overdue backlogs do not inflate the initial scheduled-data load.
-    isAuthenticated ? { startDate: today, endDate: weekEnd } : "skip"
+    // Omit startDate so overdue scheduled tasks (scheduledDate < today) are
+    // still surfaced in the mobile timeline. Bounding only by endDate keeps
+    // the upper edge of the planning window without hiding backlog items the
+    // user still needs to act on.
+    isAuthenticated ? { endDate: weekEnd } : "skip"
   );
 
   const completedQuery = useQuery(

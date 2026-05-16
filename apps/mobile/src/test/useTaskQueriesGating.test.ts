@@ -73,13 +73,19 @@ describe("useTaskQueries — full corpus gating", () => {
     expect(callsTo(LIST_REF, {})).toHaveLength(1);
   });
 
-  it("passes both startDate and endDate to the timeline query", () => {
+  it("omits startDate so overdue scheduled tasks remain visible in the timeline", () => {
     const window = buildTimelineWindow(new Date());
 
     renderHook(() =>
       useTaskQueries({ isAuthenticated: true, includeAllTasks: false })
     );
 
-    expect(callsTo(TIMELINE_REF, { startDate: window.today, endDate: window.weekEnd })).toHaveLength(1);
+    expect(callsTo(TIMELINE_REF, { endDate: window.weekEnd })).toHaveLength(1);
+    expect(
+      callsTo(TIMELINE_REF).some(
+        ([, payload]) =>
+          payload && typeof payload === "object" && "startDate" in (payload as object)
+      )
+    ).toBe(false);
   });
 });
