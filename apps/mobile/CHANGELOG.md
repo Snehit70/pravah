@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.3.0](https://github.com/Snehit70/pravah/compare/mobile-v1.2.1...mobile-v1.3.0) (2026-05-16)
+
+
+### Features
+
+* **mobile:** improve list responsiveness and touch targets ([8dab01b](https://github.com/Snehit70/pravah/commit/8dab01b76b5653ec4fe80fab3d2016a90cf4c8a0))
+* **mobile:** improve list responsiveness and touch targets ([317c408](https://github.com/Snehit70/pravah/commit/317c40889992e4053e232fb9c982ec418f9c2c7b))
+
+
+### Bug Fixes
+
+* **mobile:** constrain adjacent-sibling hitSlop to vertical only ([795be5b](https://github.com/Snehit70/pravah/commit/795be5bd7bb1cf7c61184e5e75cb6962d61bd5b9))
+* **mobile:** preserve incremental row budget on live updates ([038f0bc](https://github.com/Snehit70/pravah/commit/038f0bc87bc44c45b390472a70dccc9dcd138419))
+* **mobile:** show initial rows before incremental batch timer fires ([c90a073](https://github.com/Snehit70/pravah/commit/c90a073e80a285f67feb9057545c1cd2b7e5ba76))
+
 ## [1.2.1](https://github.com/Snehit70/pravah/compare/mobile-v1.2.0...mobile-v1.2.1) (2026-05-16)
 
 
