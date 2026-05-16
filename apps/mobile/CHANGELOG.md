@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.0](https://github.com/Snehit70/pravah/compare/mobile-v1.3.0...mobile-v1.4.0) (2026-05-16)
+
+
+### Features
+
+* **mobile:** add runtime diagnostics and Kairo safeguards ([5b378db](https://github.com/Snehit70/pravah/commit/5b378dbe584f5279363ec40b142bdf194b567f60))
+* **mobile:** add runtime diagnostics and Kairo safeguards ([8f4243c](https://github.com/Snehit70/pravah/commit/8f4243cad61b54d95a4ed19d87083b55312cd367))
+
 ## [1.3.0](https://github.com/Snehit70/pravah/compare/mobile-v1.2.1...mobile-v1.3.0) (2026-05-16)
 
 
