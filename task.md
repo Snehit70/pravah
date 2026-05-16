@@ -41,17 +41,17 @@ This file tracks the current mobile audit backlog on `review/mobile-improvement-
 - [x] Implement optimistic async mobile boot: one launch gate, early shell reveal, background bootstrap, and local workspace snapshot fallback.
 - [x] Reduce initial mount cost for large datasets to avoid UI thread stalls on heavy workspaces.
 - [x] Introduce incremental rendering or other safeguards for large timeline datasets.
-- [ ] Add large-list performance safeguards so input remains responsive under stress.
+- [x] Add large-list performance safeguards so input remains responsive under stress.
 - [ ] Review whether `claimLegacyData` should stay on every mobile bootstrap or move behind an explicit one-time migration gate.
 - [ ] Audit Kairo conversation rendering for long chats and replace plain `ScrollView` if it becomes a scaling problem.
 - [ ] Run an EAS Android preview build after the first round of fixes: `bunx eas-cli build --platform android --profile preview`.
 
 ## P1 - Accessibility And UX Ergonomics
 
-- [ ] Enforce minimum `hitSlop={12}` across all small mobile `Pressable` targets.
-- [ ] Audit `AddTaskSheet.tsx`, `EditTaskSheet.tsx`, `TaskMetaFields.tsx`, `BottomTabBar.tsx`, and `TaskCard.tsx` for undersized touch targets.
+- [x] Enforce minimum `hitSlop={12}` across all small mobile `Pressable` targets.
+- [x] Audit `AddTaskSheet.tsx`, `EditTaskSheet.tsx`, `TaskMetaFields.tsx`, `BottomTabBar.tsx`, and `TaskCard.tsx` for undersized touch targets.
 - [x] Ensure `BootScreen` respects reduced-motion preferences instead of always pulsing.
-- [ ] Revisit bottom tab tap affordance and spacing on smaller Android devices.
+- [x] Revisit bottom tab tap affordance and spacing on smaller Android devices.
 - [ ] Add onboarding or first-run guidance beyond auth for a first-time mobile user.
 - [ ] Review empty states and inline recovery paths for Inbox, Timeline, Completed, and Kairo.
 
@@ -80,5 +80,5 @@ This file tracks the current mobile audit backlog on `review/mobile-improvement-
 
 - [ ] Reconcile `apps/mobile/docs/architecture.md` with actual timeline query behavior after the timeline window fix.
 - [ ] Reconcile docs and comments around drag support so shipped behavior and documentation match.
-- [ ] Keep `apps/mobile/docs/ux-orchestration.md` aligned with real keyboard, hitSlop, and motion policies.
+- [x] Keep `apps/mobile/docs/ux-orchestration.md` aligned with real keyboard, hitSlop, and motion policies.
 - [ ] Add a short parity-tracking doc section for web-only vs mobile-supported features.

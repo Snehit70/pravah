@@ -326,6 +326,7 @@ function TaskCardInner({
         accessibilityHint={accessibilityHint}
         accessibilityActions={accessibilityActions}
         onAccessibilityAction={handleAccessibilityAction}
+        hitSlop={12}
       >
         {/* Priority rail — the only enclosing shape on the row. */}
         <View style={[styles.rail, { backgroundColor: railColor }]} />
@@ -348,7 +349,7 @@ function TaskCardInner({
         ) : (
           <Pressable
             onPress={handleCheckboxPress}
-            hitSlop={10}
+            hitSlop={12}
             style={({ pressed }) => [styles.checkbox, pressed && styles.checkboxPressed]}
             accessibilityRole="checkbox"
             accessibilityLabel={`Complete ${task.title}`}

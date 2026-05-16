@@ -213,13 +213,14 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             <Pressable
               onPress={requestClose}
               style={({ pressed }) => [styles.cancelButton, pressed && { opacity: 0.6 }]}
-              hitSlop={8}
+              hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </Pressable>
             <Pressable
               onPress={() => void handleSave()}
               disabled={!canSave}
+              hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
               style={({ pressed }) => [
                 styles.primaryButton,
                 !canSave && styles.primaryButtonDisabled,
@@ -297,8 +298,10 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   cancelButton: {
+    minHeight: 44,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
+    justifyContent: "center",
   },
   cancelButtonText: {
     ...typography.title,
@@ -307,6 +310,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     backgroundColor: colors.accent,
     borderRadius: radii.full,
+    minHeight: 44,
     paddingVertical: 12,
     paddingHorizontal: 28,
     alignItems: "center",

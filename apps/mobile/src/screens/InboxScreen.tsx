@@ -20,6 +20,7 @@ import type { RenderItemParams } from "react-native-draggable-flatlist";
 import { colors, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
+import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
 
 type InboxScreenProps = {
   tasks: MobileTask[];
@@ -98,7 +99,10 @@ export function InboxScreen({
   );
 
   const loadingBlock = <TaskListSkeleton variant="inbox" />;
-  const rows = buildInboxRows(tasks);
+  const allRows = buildInboxRows(tasks);
+  const visibleRowCount = useIncrementalRowCount(allRows.length);
+  const rows = allRows.slice(0, visibleRowCount);
+  const hasPendingRows = rows.length < allRows.length;
 
   return (
     <FlatList<InboxRow>
@@ -141,6 +145,9 @@ export function InboxScreen({
           progressBackgroundColor={colors.bgCard}
         />
       }
+      ListFooterComponent={
+        hasPendingRows ? <Text style={styles.loadingMore}>Preparing more tasks...</Text> : null
+      }
       ListEmptyComponent={isLoading ? loadingBlock : emptyBlock}
     />
   );
@@ -180,5 +187,11 @@ const styles = {
   sectionLabel: {
     color: colors.textMuted,
     ...typography.micro,
+  },
+  loadingMore: {
+    color: colors.textSecondary,
+    ...typography.micro,
+    textAlign: "center" as const,
+    paddingTop: spacing.md,
   },
 };

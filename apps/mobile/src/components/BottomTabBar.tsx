@@ -88,7 +88,7 @@ function BottomTabBarInner({ active, onChange, bottomInset = spacing.md }: Botto
             onPress={() => handlePress(tab.key)}
             onLayout={(e) => handleLayout(tab.key, e)}
             style={({ pressed }) => [styles.tabItem, pressed && styles.tabItemPressed]}
-            hitSlop={{ top: 8, bottom: 8 }}
+            hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
             accessibilityRole="tab"
             accessibilityState={{ selected: active === tab.key }}
             accessibilityLabel={tab.label}
@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
     zIndex: 40,
     elevation: 40,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.xs,
     backgroundColor: colors.bg,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.borderSubtle,
@@ -130,9 +130,10 @@ const styles = StyleSheet.create({
   },
   tabItem: {
     flex: 1,
+    minHeight: 48,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
   },
   tabItemPressed: {
     opacity: 0.6,
