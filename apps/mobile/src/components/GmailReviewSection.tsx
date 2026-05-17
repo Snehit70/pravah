@@ -45,7 +45,7 @@ export function GmailReviewSection({ enabled, showToast }: Props) {
   const markBusy = useCallback((id: Id<"reviewQueue">, busy: boolean) => {
     setBusyIds((prev) => {
       if (busy) return { ...prev, [id]: true };
-      const { [id]: _removed, ...rest } = prev;
+      const { [id]: _, ...rest } = prev;
       return rest;
     });
   }, []);
