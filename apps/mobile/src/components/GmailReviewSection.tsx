@@ -39,12 +39,21 @@ export function GmailReviewSection({ enabled, showToast }: Props) {
   const approveReviewItem = useMutation(api.sync.approveReviewItem);
   const rejectReviewItem = useMutation(api.sync.rejectReviewItem);
 
-  const [busyId, setBusyId] = useState<Id<"reviewQueue"> | null>(null);
+  const [busyIds, setBusyIds] = useState<Record<string, boolean>>({});
   const [overrideByItem, setOverrideByItem] = useState<Record<string, ScheduleChoice>>({});
+
+  const markBusy = useCallback((id: Id<"reviewQueue">, busy: boolean) => {
+    setBusyIds((prev) => {
+      if (busy) return { ...prev, [id]: true };
+      const { [id]: _removed, ...rest } = prev;
+      return rest;
+    });
+  }, []);
 
   const handleApprove = useCallback(
     async (item: ReviewItem) => {
-      setBusyId(item._id);
+      if (busyIds[item._id]) return;
+      markBusy(item._id, true);
       const choice = overrideByItem[item._id];
       const scheduledDate =
         choice !== undefined ? scheduleChoiceToDate(choice) : item.scheduledDate;
@@ -57,15 +66,16 @@ export function GmailReviewSection({ enabled, showToast }: Props) {
         showToast({ kind: "error", message: "Could not approve. Try again." });
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       } finally {
-        setBusyId(null);
+        markBusy(item._id, false);
       }
     },
-    [approveReviewItem, overrideByItem, showToast]
+    [approveReviewItem, busyIds, markBusy, overrideByItem, showToast]
   );
 
   const handleReject = useCallback(
     async (item: ReviewItem) => {
-      setBusyId(item._id);
+      if (busyIds[item._id]) return;
+      markBusy(item._id, true);
       try {
         await rejectReviewItem({ reviewId: item._id });
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -75,10 +85,10 @@ export function GmailReviewSection({ enabled, showToast }: Props) {
         showToast({ kind: "error", message: "Could not reject. Try again." });
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       } finally {
-        setBusyId(null);
+        markBusy(item._id, false);
       }
     },
-    [rejectReviewItem, showToast]
+    [busyIds, markBusy, rejectReviewItem, showToast]
   );
 
   if (!enabled) {
@@ -109,7 +119,7 @@ export function GmailReviewSection({ enabled, showToast }: Props) {
       <View style={{ gap: spacing.sm }}>
         {pendingItems.map((item) => {
           const choice = overrideByItem[item._id];
-          const isBusy = busyId === item._id;
+          const isBusy = Boolean(busyIds[item._id]);
           return (
             <View key={item._id} style={styles.itemCard}>
               <Text style={styles.itemTitle} numberOfLines={2}>

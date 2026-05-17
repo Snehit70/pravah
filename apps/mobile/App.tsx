@@ -453,6 +453,14 @@ function MobileApp() {
             : data.mode === "nextweek"
               ? toIsoDate(addDays(new Date(), 7))
               : undefined;
+      if (data.deadline && scheduledDate && scheduledDate > data.deadline) {
+        showToast({ kind: "error", message: "Scheduled date cannot be after deadline." });
+        mobileLogger.warn("add_task_rejected_schedule_after_deadline", {
+          actionId,
+          mode: data.mode,
+        });
+        return false;
+      }
       try {
         await addTaskMutation({
           title: data.title,
