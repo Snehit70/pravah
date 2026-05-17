@@ -32,9 +32,11 @@ export function GoalsScreen({ tabBarHeight }: GoalsScreenProps) {
   const [goals, setGoals] = useState<GoalItem[]>([]);
   const [draft, setDraft] = useState("");
   const [isHydrated, setIsHydrated] = useState(false);
-  // Distinguish "loaded zero goals" from "load failed" so the save effect
-  // doesn't overwrite a temporarily unreadable store with an empty list.
-  const [loadFailed, setLoadFailed] = useState(false);
+  // Open the save gate only after a successful load OR after the first user
+  // edit. This protects an unreadable store from being silently overwritten
+  // with an empty list on mount, while still persisting any edits the user
+  // makes during/after a failed load.
+  const [canSave, setCanSave] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -42,7 +44,7 @@ export function GoalsScreen({ tabBarHeight }: GoalsScreenProps) {
       const result = await loadGoals();
       if (cancelled) return;
       if (result.kind === "error") {
-        setLoadFailed(true);
+        setIsHydrated(true);
         return;
       }
       // Merge with anything the user added between mount and hydration:
@@ -54,6 +56,7 @@ export function GoalsScreen({ tabBarHeight }: GoalsScreenProps) {
         return additions.length === 0 ? result.goals : [...result.goals, ...additions];
       });
       setIsHydrated(true);
+      setCanSave(true);
     })();
     return () => {
       cancelled = true;
@@ -61,15 +64,16 @@ export function GoalsScreen({ tabBarHeight }: GoalsScreenProps) {
   }, []);
 
   useEffect(() => {
-    if (!isHydrated || loadFailed) return;
+    if (!canSave) return;
     void saveGoals(goals);
-  }, [goals, isHydrated, loadFailed]);
+  }, [goals, canSave]);
 
   const handleAdd = useCallback(() => {
     const text = draft.trim();
     if (!text) return;
     setGoals((prev) => [...prev, createGoal(text)]);
     setDraft("");
+    setCanSave(true);
   }, [draft]);
 
   const handleDelete = useCallback((goal: GoalItem) => {
@@ -81,7 +85,10 @@ export function GoalsScreen({ tabBarHeight }: GoalsScreenProps) {
         {
           text: "Delete",
           style: "destructive",
-          onPress: () => setGoals((prev) => prev.filter((g) => g.id !== goal.id)),
+          onPress: () => {
+            setGoals((prev) => prev.filter((g) => g.id !== goal.id));
+            setCanSave(true);
+          },
         },
       ],
       { cancelable: true }
