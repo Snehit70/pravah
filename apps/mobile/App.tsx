@@ -200,7 +200,10 @@ function MobileApp() {
         const date = task.scheduledDate;
         if (!date) continue;
         if (date < today) overdue += 1;
-        else thisWeek += 1;
+        // Cap "this week" at weekEnd (today+6) so tasks scheduled at today+7
+        // via the +1w quickadd aren't double-labelled under a week-bounded
+        // header even though they're fetched inside the wider query window.
+        else if (date <= weekEnd) thisWeek += 1;
       }
       return {
         displayInboxCount: displayInboxTasks.length,
@@ -208,7 +211,7 @@ function MobileApp() {
         displayThisWeekCount: thisWeek,
         displayCompletedCount: displayCompletedTasks.length,
       };
-    }, [displayCompletedTasks.length, displayInboxTasks.length, displayScheduledTasks, today]);
+    }, [displayCompletedTasks.length, displayInboxTasks.length, displayScheduledTasks, today, weekEnd]);
 
   // Mutations still operate on the currently visible list. This keeps
   // optimistic updates scoped to what the user sees while query subscriptions
