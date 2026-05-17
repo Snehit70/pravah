@@ -26,14 +26,18 @@ function sanitize(value: unknown): GoalItem[] {
   );
 }
 
-export async function loadGoals(): Promise<GoalItem[]> {
+export type GoalsLoadResult =
+  | { kind: "ok"; goals: GoalItem[] }
+  | { kind: "error" };
+
+export async function loadGoals(): Promise<GoalsLoadResult> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    return sanitize(JSON.parse(raw));
+    if (!raw) return { kind: "ok", goals: [] };
+    return { kind: "ok", goals: sanitize(JSON.parse(raw)) };
   } catch (error) {
     mobileLogger.warn("goals_load_failed", { errorType: classifyError(error) });
-    return [];
+    return { kind: "error" };
   }
 }
 

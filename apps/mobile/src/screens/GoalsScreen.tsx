@@ -32,19 +32,26 @@ export function GoalsScreen({ tabBarHeight }: GoalsScreenProps) {
   const [goals, setGoals] = useState<GoalItem[]>([]);
   const [draft, setDraft] = useState("");
   const [isHydrated, setIsHydrated] = useState(false);
+  // Distinguish "loaded zero goals" from "load failed" so the save effect
+  // doesn't overwrite a temporarily unreadable store with an empty list.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const loaded = await loadGoals();
+      const result = await loadGoals();
       if (cancelled) return;
+      if (result.kind === "error") {
+        setLoadFailed(true);
+        return;
+      }
       // Merge with anything the user added between mount and hydration:
       // appended goals are kept after the loaded set, deduped by id.
       setGoals((prev) => {
-        if (prev.length === 0) return loaded;
-        const seen = new Set(loaded.map((g) => g.id));
+        if (prev.length === 0) return result.goals;
+        const seen = new Set(result.goals.map((g) => g.id));
         const additions = prev.filter((g) => !seen.has(g.id));
-        return additions.length === 0 ? loaded : [...loaded, ...additions];
+        return additions.length === 0 ? result.goals : [...result.goals, ...additions];
       });
       setIsHydrated(true);
     })();
@@ -54,9 +61,9 @@ export function GoalsScreen({ tabBarHeight }: GoalsScreenProps) {
   }, []);
 
   useEffect(() => {
-    if (!isHydrated) return;
+    if (!isHydrated || loadFailed) return;
     void saveGoals(goals);
-  }, [goals, isHydrated]);
+  }, [goals, isHydrated, loadFailed]);
 
   const handleAdd = useCallback(() => {
     const text = draft.trim();
