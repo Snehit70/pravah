@@ -80,7 +80,7 @@ describe("useTaskQueries — full corpus gating", () => {
       useTaskQueries({ isAuthenticated: true, includeAllTasks: false })
     );
 
-    expect(callsTo(TIMELINE_REF, { endDate: window.weekEnd })).toHaveLength(1);
+    expect(callsTo(TIMELINE_REF, { endDate: window.queryEndDate })).toHaveLength(1);
     expect(
       callsTo(TIMELINE_REF).some(
         ([, payload]) =>
