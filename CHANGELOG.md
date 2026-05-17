@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.4.0](https://github.com/Snehit70/pravah/compare/web-v1.3.0...web-v1.4.0) (2026-05-17)
+
+
+### Features
+
+* **mobile:** edit-task quick actions ([bc33b28](https://github.com/Snehit70/pravah/commit/bc33b286c80cc129b0a5b021e3712b15a9c005dd))
+* **mobile:** gmail review queue and integration status ([b0d8507](https://github.com/Snehit70/pravah/commit/b0d85076b657cbd08dedb3e4b79acbf138b318d1))
+* **mobile:** inbox search and priority filter ([d2ddcdc](https://github.com/Snehit70/pravah/commit/d2ddcdc5b161dd2320896e69203582d1268fa9f3))
+* **mobile:** long-term goals tab ([895250b](https://github.com/Snehit70/pravah/commit/895250b0f658238401742e0d1137e557a9f74851))
+* **mobile:** tomorrow and +1w quickadd shortcuts ([4515040](https://github.com/Snehit70/pravah/commit/45150405d7f36435ea57a28bc9ffce83ea0c95d4))
+* **mobile:** web feature parity (quickadd, edit actions, inbox search, gmail review, goals) ([43a8c81](https://github.com/Snehit70/pravah/commit/43a8c81c6163aa658f2dc0026d66d0658fba5af3))
+* **mobile:** wire web-parity features into app shell ([5a30700](https://github.com/Snehit70/pravah/commit/5a3070069c1cdea4e1f6c9099aa0935e3b77c1c2))
+
+
+### Bug Fixes
+
+* **mobile:** address PR review feedback ([af0e57e](https://github.com/Snehit70/pravah/commit/af0e57ebad47e81b52578232cba467c2a11b1aa5))
+* **mobile:** address PR review feedback (round 2) ([fcfb438](https://github.com/Snehit70/pravah/commit/fcfb43870322d022b341818c50c66638cd55be39))
+* **mobile:** block double-taps on review actions with ref-backed in-flight set ([129febe](https://github.com/Snehit70/pravah/commit/129febe03b6a217bb0f3a71913ec99b97738e902))
+* **mobile:** bound this-week count to weekEnd and persist goal edits after load error ([6eaa8c8](https://github.com/Snehit70/pravah/commit/6eaa8c8e8276da7228d330f0028290686c79a5a2))
+* **mobile:** cap header this-week count at weekEnd ([578fbea](https://github.com/Snehit70/pravah/commit/578fbea0d6d230ea1eee447cf688d36c4ba9e8ed))
+* **mobile:** exempt goals tab from active-list loading gate ([9463f04](https://github.com/Snehit70/pravah/commit/9463f048c9da495263e75924ee38ef85ffb75003))
+* **mobile:** filter review queue to gmail items in gmail panel ([40f4a51](https://github.com/Snehit70/pravah/commit/40f4a51f195cf951f2818efbfdf190fb62fc3919))
+* **mobile:** preserve weekEnd labels and protect goals from overwrite ([2d302ff](https://github.com/Snehit70/pravah/commit/2d302ff5878277354976b75fc910b9f592874c9d))
+* **mobile:** satisfy lint unused-var rule in gmail review busy tracker ([a6ab96a](https://github.com/Snehit70/pravah/commit/a6ab96afcac70b369404c83c7b5d32164fea9d79))
+* **sync:** accept provider arg in listReviewQueue so panels can scope the limit ([848e721](https://github.com/Snehit70/pravah/commit/848e721e600c9b13a527c7801c1faa4b53a4dbef))
+* **sync:** honor inbox override when approving review item ([8da0d84](https://github.com/Snehit70/pravah/commit/8da0d84bd0a3f2a374fe237875254d7aa944f188))
+
 ## [1.3.0](https://github.com/Snehit70/pravah/compare/web-v1.2.0...web-v1.3.0) (2026-05-16)
 
 
