@@ -67,6 +67,9 @@ export function useTaskMutations({
   const reorderTasksMutation = useMutation(api.tasks.reorderTasks);
   const reorderInboxTasksMutation = useMutation(api.tasks.reorderInboxTasks);
   const shiftScheduledTaskPositionMutation = useMutation(api.tasks.shiftScheduledTaskPosition);
+  // Order-sensitive: useTaskMutations.test.ts mocks useMutation by call index.
+  // Keep new mutations appended at the end of this list.
+  const deleteTaskMutation = useMutation(api.tasks.deleteTask);
 
   const runOptimisticMutation = useCallback(
     async ({
@@ -204,6 +207,22 @@ export function useTaskMutations({
       });
     },
     [runOptimisticMutation, reopenTaskMutation]
+  );
+
+  const deleteTask = useCallback(
+    (taskId: Id<"tasks">) => {
+      void runOptimisticMutation({
+        actionName: "delete_task",
+        optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
+        mutation: async () => {
+          await deleteTaskMutation({ taskId });
+        },
+        errorMessage: "Could not delete task.",
+        successHaptic: "medium",
+        taskId,
+      });
+    },
+    [runOptimisticMutation, deleteTaskMutation]
   );
 
   const handleSaveEdits = useCallback(
@@ -370,6 +389,7 @@ export function useTaskMutations({
     moveToToday,
     sendToInbox,
     reopenToInbox,
+    deleteTask,
     handleSaveEdits,
     handleInboxDragEnd,
     handleTimelineDragEnd,
