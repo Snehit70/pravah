@@ -182,6 +182,6 @@ export function buildTimelineWindow(baseDate: Date): {
   return {
     today: toIsoDate(baseDate),
     tomorrow: toIsoDate(addDays(baseDate, 1)),
-    weekEnd: toIsoDate(addDays(baseDate, 6)),
+    weekEnd: toIsoDate(addDays(baseDate, 7)),
   };
 }

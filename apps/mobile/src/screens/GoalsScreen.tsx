@@ -37,10 +37,16 @@ export function GoalsScreen({ tabBarHeight }: GoalsScreenProps) {
     let cancelled = false;
     void (async () => {
       const loaded = await loadGoals();
-      if (!cancelled) {
-        setGoals(loaded);
-        setIsHydrated(true);
-      }
+      if (cancelled) return;
+      // Merge with anything the user added between mount and hydration:
+      // appended goals are kept after the loaded set, deduped by id.
+      setGoals((prev) => {
+        if (prev.length === 0) return loaded;
+        const seen = new Set(loaded.map((g) => g.id));
+        const additions = prev.filter((g) => !seen.has(g.id));
+        return additions.length === 0 ? loaded : [...loaded, ...additions];
+      });
+      setIsHydrated(true);
     })();
     return () => {
       cancelled = true;
