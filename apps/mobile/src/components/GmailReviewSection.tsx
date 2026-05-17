@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useMutation, useQuery } from "convex/react";
 import * as Haptics from "expo-haptics";
@@ -32,9 +32,15 @@ function scheduleChoiceToDate(choice: ScheduleChoice): string | undefined {
 }
 
 export function GmailReviewSection({ enabled, showToast }: Props) {
-  const pendingItems = useQuery(
+  const reviewQueue = useQuery(
     api.sync.listReviewQueue,
     enabled ? { status: "pending", limit: 25 } : "skip"
+  );
+  // listReviewQueue returns all providers; this panel is Gmail-specific, so
+  // filter client-side to avoid rendering or actioning calendar items here.
+  const pendingItems = useMemo(
+    () => reviewQueue?.filter((item) => item.provider === "gmail"),
+    [reviewQueue]
   );
   const approveReviewItem = useMutation(api.sync.approveReviewItem);
   const rejectReviewItem = useMutation(api.sync.rejectReviewItem);
