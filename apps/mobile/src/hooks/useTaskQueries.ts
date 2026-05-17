@@ -30,7 +30,7 @@ type UseTaskQueriesOptions = {
 };
 
 export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseTaskQueriesOptions) {
-  const { today, tomorrow, weekEnd } = buildTimelineWindow(new Date());
+  const { today, tomorrow, weekEnd, queryEndDate } = buildTimelineWindow(new Date());
 
   const inboxQuery = useQuery(
     api.tasks.listTasks,
@@ -42,8 +42,10 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
     // Omit startDate so overdue scheduled tasks (scheduledDate < today) are
     // still surfaced in the mobile timeline. Bounding only by endDate keeps
     // the upper edge of the planning window without hiding backlog items the
-    // user still needs to act on.
-    isAuthenticated ? { endDate: weekEnd } : "skip"
+    // user still needs to act on. queryEndDate (today+7) is wider than the
+    // labelled "this week" boundary (today+6) so tasks scheduled via the
+    // +1w quickadd still appear in the fetched window.
+    isAuthenticated ? { endDate: queryEndDate } : "skip"
   );
 
   const completedQuery = useQuery(
@@ -139,10 +141,14 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
       const date = task.scheduledDate;
       if (!date) continue;
       if (date < today) overdue += 1;
-      else thisWeek += 1;
+      // Bound thisWeek by the labelled "this week" boundary (today+6). Tasks
+      // scheduled at today+7 via the +1w quickadd are fetched (queryEndDate
+      // is today+7) but fall outside the "through this week" header label,
+      // so we don't count them here to keep the metric honest.
+      else if (date <= weekEnd) thisWeek += 1;
     }
     return { overdueCount: overdue, thisWeekCount: thisWeek };
-  }, [scheduledTasks, today]);
+  }, [scheduledTasks, today, weekEnd]);
 
   const timelineCount = scheduledTasks.length;
   const completedCount =
@@ -178,10 +184,15 @@ export function buildTimelineWindow(baseDate: Date): {
   today: string;
   tomorrow: string;
   weekEnd: string;
+  queryEndDate: string;
 } {
   return {
     today: toIsoDate(baseDate),
     tomorrow: toIsoDate(addDays(baseDate, 1)),
+    // 7-day "this week" window; used for the dateLabel "This week" bucket.
     weekEnd: toIsoDate(addDays(baseDate, 6)),
+    // 8-day fetch window so tasks scheduled via the +1w quickadd
+    // (today + 7) remain inside the queried range.
+    queryEndDate: toIsoDate(addDays(baseDate, 7)),
   };
 }

@@ -8,8 +8,8 @@ This file tracks the current mobile audit backlog on `review/mobile-improvement-
 - [ ] Restore drag-to-reorder in Timeline using a mixed-row `DraggableFlatList` without nesting it inside a `ScrollView`, manually disabled for now due to known edge cases; handle last after the rest of the mobile audit is stable.
 - [ ] Reconnect `handleInboxDragEnd` and `handleTimelineDragEnd` from `useTaskMutations` into the live screen flow, manually disabled for now due to known edge cases; handle last after the rest of the mobile audit is stable.
 - [ ] Keep same-day reorder validation and reject cross-day timeline drops safely, manually disabled for now due to known edge cases; handle last after the rest of the mobile audit is stable.
-- [ ] Re-bound the mobile timeline query by passing `startDate` again from `apps/mobile/src/hooks/useTaskQueries.ts`.
-- [ ] Add a regression test that asserts the real `getTimeline` query args include both `startDate` and `endDate`.
+- [x] Re-bound the mobile timeline query upper edge by passing `endDate = weekEnd` from `apps/mobile/src/hooks/useTaskQueries.ts`. `startDate` is intentionally omitted so overdue tasks (scheduledDate < today) remain visible on mobile — see timeline window section in `apps/mobile/docs/architecture.md`.
+- [x] Add a regression test that asserts the real `getTimeline` query args include `endDate` (timeline window bound). The `buildTimelineWindow` function is covered by `useTaskQueries.test.ts`.
 - [ ] Fix Kairo deferred prompt replay so a prompt sent before `isAllTasksReady` does not duplicate the user message.
 - [ ] Ensure the temporary `Loading your workspace...` assistant placeholder is not replayed into final model history.
 - [ ] Add a Kairo test that covers deferred send and asserts there is no duplicated message or polluted history.

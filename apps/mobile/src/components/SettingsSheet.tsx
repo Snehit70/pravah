@@ -23,6 +23,30 @@ import { selectActiveSection } from "../lib/settingsSections";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { NotificationPermissionState } from "../lib/notifications";
 import { KairoSettingsSection } from "./KairoSettingsSection";
+import { GmailReviewSection } from "./GmailReviewSection";
+import type { IntegrationLastRunSummary } from "../hooks/useIntegrationsSettings";
+
+function formatRelativeTime(ts: number | undefined): string | null {
+  if (!ts) return null;
+  const diff = Date.now() - ts;
+  if (diff < 60_000) return "Just now";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+function describeLastRun(run: IntegrationLastRunSummary | undefined): string | null {
+  if (!run) return null;
+  const when = formatRelativeTime(run.finishedAt);
+  if (run.status === "running") return "Syncing now…";
+  if (run.status === "failed") return when ? `Last sync failed · ${when}` : "Last sync failed";
+  if (!when) return null;
+  const counts =
+    (run.importedCount ?? 0) + (run.updatedCount ?? 0) > 0
+      ? ` · ${(run.importedCount ?? 0) + (run.updatedCount ?? 0)} items`
+      : "";
+  return `Last synced ${when}${counts}`;
+}
 
 function formatStatusLabel(value: string): string {
   return value
@@ -80,6 +104,11 @@ type SettingsSheetProps = {
   onToggleDailyReminder: () => void;
   onSendTestNotification: () => void;
   onSignOut: () => void;
+  showToast: (next: { kind: "error" | "info"; message: string }) => void;
+  calendarAccountEmail?: string;
+  gmailAccountEmail?: string;
+  calendarLastRun?: IntegrationLastRunSummary;
+  gmailLastRun?: IntegrationLastRunSummary;
 };
 
 export function SettingsSheet({
@@ -107,6 +136,11 @@ export function SettingsSheet({
   onToggleDailyReminder,
   onSendTestNotification,
   onSignOut,
+  showToast,
+  calendarAccountEmail,
+  gmailAccountEmail,
+  calendarLastRun,
+  gmailLastRun,
 }: SettingsSheetProps) {
   const bottomSheetRef = useRef<BottomSheet>(null);
   // BottomSheetScrollView forwards its ref to an RN ScrollView. Typing it as
@@ -282,6 +316,12 @@ export function SettingsSheet({
                 <Text style={[styles.settingStatus, { color: statusTextColor(calendarSyncStatus) }]}>
                   {formatStatusLabel(calendarSyncStatus)}
                 </Text>
+                {calendarAccountEmail ? (
+                  <Text style={styles.settingMeta}>{calendarAccountEmail}</Text>
+                ) : null}
+                {describeLastRun(calendarLastRun) ? (
+                  <Text style={styles.settingMeta}>{describeLastRun(calendarLastRun)}</Text>
+                ) : null}
               </View>
               <Switch
                 value={calendarSyncEnabled}
@@ -313,6 +353,12 @@ export function SettingsSheet({
                 <Text style={[styles.settingStatus, { color: statusTextColor(gmailSyncStatus) }]}>
                   {formatStatusLabel(gmailSyncStatus)}
                 </Text>
+                {gmailAccountEmail ? (
+                  <Text style={styles.settingMeta}>{gmailAccountEmail}</Text>
+                ) : null}
+                {describeLastRun(gmailLastRun) ? (
+                  <Text style={styles.settingMeta}>{describeLastRun(gmailLastRun)}</Text>
+                ) : null}
               </View>
               <Switch
                 value={gmailSyncEnabled}
@@ -326,6 +372,7 @@ export function SettingsSheet({
             {!canToggleGmailSync ? (
               <Text style={styles.settingMeta}>Connect Gmail on web before enabling mobile sync.</Text>
             ) : null}
+            <GmailReviewSection enabled={gmailSyncEnabled} showToast={showToast} />
           </View>
 
           <Pressable

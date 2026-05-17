@@ -14,7 +14,14 @@ import { TaskMetaFields } from "./TaskMetaFields";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { type TaskPriority } from "../lib/task-form";
 
-type ComposerMode = "inbox" | "today";
+type ComposerMode = "inbox" | "today" | "tomorrow" | "nextweek";
+
+const MODE_OPTIONS: { mode: ComposerMode; label: string }[] = [
+  { mode: "inbox", label: "Inbox" },
+  { mode: "today", label: "Today" },
+  { mode: "tomorrow", label: "Tomorrow" },
+  { mode: "nextweek", label: "+1w" },
+];
 
 export type AddTaskSheetRef = {
   open: () => void;
@@ -188,22 +195,22 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           {/* Mode — segmented control as two mono labels with an underline
               under the active segment. Mirrors the bottom-tab language. */}
           <View style={styles.modeRow}>
-            <Pressable
-              onPress={() => setMode("inbox")}
-              style={({ pressed }) => [styles.modeItem, pressed && { opacity: 0.6 }]}
-              hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
-            >
-              <Text style={[styles.modeText, mode === "inbox" && styles.modeTextActive]}>Inbox</Text>
-              <View style={[styles.modeRule, mode === "inbox" && styles.modeRuleActive]} />
-            </Pressable>
-            <Pressable
-              onPress={() => setMode("today")}
-              style={({ pressed }) => [styles.modeItem, pressed && { opacity: 0.6 }]}
-              hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
-            >
-              <Text style={[styles.modeText, mode === "today" && styles.modeTextActive]}>Today</Text>
-              <View style={[styles.modeRule, mode === "today" && styles.modeRuleActive]} />
-            </Pressable>
+            {MODE_OPTIONS.map((option) => (
+              <Pressable
+                key={option.mode}
+                onPress={() => setMode(option.mode)}
+                style={({ pressed }) => [styles.modeItem, pressed && { opacity: 0.6 }]}
+                hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+                accessibilityRole="button"
+                accessibilityState={{ selected: mode === option.mode }}
+                accessibilityLabel={`Schedule ${option.label}`}
+              >
+                <Text style={[styles.modeText, mode === option.mode && styles.modeTextActive]}>
+                  {option.label}
+                </Text>
+                <View style={[styles.modeRule, mode === option.mode && styles.modeRuleActive]} />
+              </Pressable>
+            ))}
 
             <View style={{ flex: 1 }} />
 
@@ -328,7 +335,8 @@ const styles = StyleSheet.create({
   modeRow: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: spacing.lg,
+    gap: spacing.md,
+    flexWrap: "wrap",
   },
   modeItem: {
     minHeight: 44,

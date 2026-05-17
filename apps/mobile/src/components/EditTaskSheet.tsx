@@ -30,14 +30,22 @@ type EditTaskSheetProps = {
   }) => Promise<boolean>;
   isValidDeadline: (raw: string) => { value?: string; error?: string };
   onSheetChange?: (isOpen: boolean) => void;
+  onComplete?: (taskId: Id<"tasks">) => void;
+  onReopen?: (taskId: Id<"tasks">) => void;
+  onUnschedule?: (taskId: Id<"tasks">) => void;
+  onDelete?: (taskId: Id<"tasks">) => void;
 };
 
 export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
-  function EditTaskSheet({ onSave, isValidDeadline, onSheetChange }, ref) {
+  function EditTaskSheet(
+    { onSave, isValidDeadline, onSheetChange, onComplete, onReopen, onUnschedule, onDelete },
+    ref
+  ) {
     const bottomSheetRef = useRef<BottomSheet>(null);
     const insets = useSafeAreaInsets();
 
     const [taskId, setTaskId] = useState<Id<"tasks"> | null>(null);
+    const [taskStatus, setTaskStatus] = useState<MobileTask["status"] | null>(null);
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [deadline, setDeadline] = useState("");
@@ -55,6 +63,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     useImperativeHandle(ref, () => ({
       open: (task: MobileTask) => {
         setTaskId(task._id);
+        setTaskStatus(task.status);
         setTitle(task.title);
         setDescription(task.description ?? "");
         setDeadline(task.deadline ?? "");
@@ -163,12 +172,14 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           Keyboard.dismiss();
           onSheetChange?.(false);
           setTaskId(null);
+          setTaskStatus(null);
           setInitialDraft(null);
         }}
         onChange={(index) => {
           if (index === -1) {
             Keyboard.dismiss();
             setTaskId(null);
+            setTaskStatus(null);
             setInitialDraft(null);
           }
           onSheetChange?.(index >= 0);
@@ -208,6 +219,74 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           />
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+          {taskId ? (
+            <View style={styles.quickActions}>
+              {taskStatus === "completed" ? (
+                onReopen ? (
+                  <Pressable
+                    onPress={() => {
+                      onReopen(taskId);
+                      bottomSheetRef.current?.close();
+                    }}
+                    hitSlop={12}
+                    style={({ pressed }) => [styles.quickActionItem, pressed && { opacity: 0.6 }]}
+                  >
+                    <Text style={styles.quickActionText}>Reopen</Text>
+                  </Pressable>
+                ) : null
+              ) : (
+                <>
+                  {onComplete ? (
+                    <Pressable
+                      onPress={() => {
+                        onComplete(taskId);
+                        bottomSheetRef.current?.close();
+                      }}
+                      hitSlop={12}
+                      style={({ pressed }) => [styles.quickActionItem, pressed && { opacity: 0.6 }]}
+                    >
+                      <Text style={styles.quickActionText}>Complete</Text>
+                    </Pressable>
+                  ) : null}
+                  {taskStatus === "scheduled" && onUnschedule ? (
+                    <Pressable
+                      onPress={() => {
+                        onUnschedule(taskId);
+                        bottomSheetRef.current?.close();
+                      }}
+                      hitSlop={12}
+                      style={({ pressed }) => [styles.quickActionItem, pressed && { opacity: 0.6 }]}
+                    >
+                      <Text style={styles.quickActionText}>Unschedule</Text>
+                    </Pressable>
+                  ) : null}
+                </>
+              )}
+              <View style={{ flex: 1 }} />
+              {onDelete ? (
+                <Pressable
+                  onPress={() => {
+                    Alert.alert("Delete task?", "This cannot be undone.", [
+                      { text: "Cancel", style: "cancel" },
+                      {
+                        text: "Delete",
+                        style: "destructive",
+                        onPress: () => {
+                          onDelete(taskId);
+                          bottomSheetRef.current?.close();
+                        },
+                      },
+                    ]);
+                  }}
+                  hitSlop={12}
+                  style={({ pressed }) => [styles.quickActionItem, pressed && { opacity: 0.6 }]}
+                >
+                  <Text style={[styles.quickActionText, styles.deleteText]}>Delete</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
 
           <View style={styles.actions}>
             <Pressable
@@ -288,6 +367,27 @@ const styles = StyleSheet.create({
   },
   errorText: {
     ...typography.bodyMd,
+    color: colors.error,
+  },
+  quickActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  quickActionItem: {
+    minHeight: 44,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    justifyContent: "center",
+  },
+  quickActionText: {
+    ...typography.micro,
+    color: colors.textSecondary,
+  },
+  deleteText: {
     color: colors.error,
   },
   actions: {

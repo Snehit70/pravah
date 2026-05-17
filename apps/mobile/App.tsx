@@ -24,7 +24,7 @@ import {
 } from "@expo-google-fonts/geist";
 import { GeistMono_500Medium } from "@expo-google-fonts/geist-mono";
 import { ConvexClientProvider } from "./src/lib/convex";
-import { dateLabel, isIsoDate } from "./src/lib/dates";
+import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
 
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -47,6 +47,7 @@ import { DiagnosticsPanel } from "./src/components/DiagnosticsPanel";
 import { InboxScreen } from "./src/screens/InboxScreen";
 import { TimelineScreen } from "./src/screens/TimelineScreen";
 import { CompletedScreen } from "./src/screens/CompletedScreen";
+import { GoalsScreen } from "./src/screens/GoalsScreen";
 import { useRetryQueue, type RetryPayload } from "./src/hooks/useRetryQueue";
 import { useTaskMutations } from "./src/hooks/useTaskMutations";
 import { useTaskQueries } from "./src/hooks/useTaskQueries";
@@ -199,7 +200,10 @@ function MobileApp() {
         const date = task.scheduledDate;
         if (!date) continue;
         if (date < today) overdue += 1;
-        else thisWeek += 1;
+        // Cap "this week" at weekEnd (today+6) so tasks scheduled at today+7
+        // via the +1w quickadd aren't double-labelled under a week-bounded
+        // header even though they're fetched inside the wider query window.
+        else if (date <= weekEnd) thisWeek += 1;
       }
       return {
         displayInboxCount: displayInboxTasks.length,
@@ -207,7 +211,7 @@ function MobileApp() {
         displayThisWeekCount: thisWeek,
         displayCompletedCount: displayCompletedTasks.length,
       };
-    }, [displayCompletedTasks.length, displayInboxTasks.length, displayScheduledTasks, today]);
+    }, [displayCompletedTasks.length, displayInboxTasks.length, displayScheduledTasks, today, weekEnd]);
 
   // Mutations still operate on the currently visible list. This keeps
   // optimistic updates scoped to what the user sees while query subscriptions
@@ -254,9 +258,11 @@ function MobileApp() {
         ? shouldUseWorkspaceSnapshot
           ? false
           : isInboxLoading
-        : shouldUseWorkspaceSnapshot
-          ? false
-          : isCompletedLoading;
+        : activeTab === "completed"
+          ? shouldUseWorkspaceSnapshot
+            ? false
+            : isCompletedLoading
+          : false;
 
   const isBootShellLoading = shouldRenderOptimisticShell && !shouldUseWorkspaceSnapshot && !session;
 
@@ -303,6 +309,10 @@ function MobileApp() {
     canToggleGmailSync,
     pendingGmailReviewCount,
     syncSettingsBusy,
+    calendarAccountEmail,
+    gmailAccountEmail,
+    calendarLastRun,
+    gmailLastRun,
     toggleGoogleCalendarSync,
     toggleGmailSync,
     runGoogleCalendarSync,
@@ -410,6 +420,7 @@ function MobileApp() {
     moveToToday,
     sendToInbox,
     reopenToInbox,
+    deleteTask,
     handleSaveEdits,
     shiftTimelineTask,
   } = useTaskMutations({
@@ -429,7 +440,7 @@ function MobileApp() {
       title: string;
       description?: string;
       deadline?: string;
-      mode: "inbox" | "today";
+      mode: "inbox" | "today" | "tomorrow" | "nextweek";
       priority?: "p1" | "p2" | "p3";
     }) => {
       const actionId = createActionId("add");
@@ -439,13 +450,29 @@ function MobileApp() {
         mode: data.mode,
         hasDeadline: Boolean(data.deadline),
       });
+      const scheduledDate =
+        data.mode === "today"
+          ? today
+          : data.mode === "tomorrow"
+            ? toIsoDate(addDays(new Date(), 1))
+            : data.mode === "nextweek"
+              ? toIsoDate(addDays(new Date(), 7))
+              : undefined;
+      if (data.deadline && scheduledDate && scheduledDate > data.deadline) {
+        showToast({ kind: "error", message: "Scheduled date cannot be after deadline." });
+        mobileLogger.warn("add_task_rejected_schedule_after_deadline", {
+          actionId,
+          mode: data.mode,
+        });
+        return false;
+      }
       try {
         await addTaskMutation({
           title: data.title,
           description: data.description,
           deadline: data.deadline,
-          type: data.deadline && data.mode === "today" ? "deadline" : "open",
-          scheduledDate: data.mode === "today" ? today : undefined,
+          type: data.deadline && scheduledDate ? "deadline" : "open",
+          scheduledDate,
           priority: data.priority,
         });
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -461,7 +488,7 @@ function MobileApp() {
               title: data.title,
               description: data.description,
               deadline: data.deadline,
-              scheduledDate: data.mode === "today" ? today : undefined,
+              scheduledDate,
               priority: data.priority,
             },
           });
@@ -652,7 +679,13 @@ function MobileApp() {
   // making "graveyard size" feel like a metric.
 
   const headerViewName =
-    activeTab === "timeline" ? "Timeline" : activeTab === "completed" ? "Completed" : "Inbox";
+    activeTab === "timeline"
+      ? "Timeline"
+      : activeTab === "completed"
+        ? "Completed"
+        : activeTab === "goals"
+          ? "Goals"
+          : "Inbox";
 
   const padCount = (n: number) => (n < 10 ? `0${n}` : `${n}`);
   const timelineSubtitle =
@@ -667,14 +700,18 @@ function MobileApp() {
           ? "Opening your timeline"
           : activeTab === "completed"
             ? "Opening your archive"
-            : "Opening your inbox"
+            : activeTab === "goals"
+              ? "Opening your goals"
+              : "Opening your inbox"
         : session && !isDataBootstrapReady
           ? "Syncing your workspace"
         : activeTab === "timeline"
           ? timelineSubtitle
           : activeTab === "completed"
             ? "Closed loops"
-            : `${padCount(displayInboxCount)} to triage`;
+            : activeTab === "goals"
+              ? "Long horizon"
+              : `${padCount(displayInboxCount)} to triage`;
 
   // ── Main layout ─────────────────────────────────────────────────────
 
@@ -784,6 +821,12 @@ function MobileApp() {
         </ScreenErrorBoundary>
       ) : null}
 
+      {activeTab === "goals" ? (
+        <ScreenErrorBoundary screenName="Goals">
+          <GoalsScreen tabBarHeight={tabBarHeight} />
+        </ScreenErrorBoundary>
+      ) : null}
+
       {activeTab === "completed" ? (
         <ScreenErrorBoundary screenName="Completed">
           <CompletedScreen
@@ -823,6 +866,10 @@ function MobileApp() {
         onSave={handleSaveEdits}
         isValidDeadline={normalizeDeadlineInput}
         onSheetChange={setIsEditSheetOpen}
+        onComplete={markDone}
+        onReopen={reopenToInbox}
+        onUnschedule={sendToInbox}
+        onDelete={deleteTask}
       />
 
       {/* Kairo lives at the root so its overlay sits above tabs and FAB. The
@@ -862,6 +909,11 @@ function MobileApp() {
         onToggleDailyReminder={() => void toggleDailyReminder()}
         onSendTestNotification={() => void sendTestNotification()}
         onSignOut={handleSignOut}
+        showToast={showToast}
+        calendarAccountEmail={calendarAccountEmail}
+        gmailAccountEmail={gmailAccountEmail}
+        calendarLastRun={calendarLastRun}
+        gmailLastRun={gmailLastRun}
       />
 
       {__DEV__ ? (

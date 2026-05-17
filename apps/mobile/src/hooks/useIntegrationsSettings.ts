@@ -12,6 +12,13 @@ type UseIntegrationsSettingsOptions = {
   showToast: ShowToast;
 };
 
+export type IntegrationLastRunSummary = {
+  finishedAt?: number;
+  status?: "running" | "success" | "failed";
+  importedCount?: number;
+  updatedCount?: number;
+};
+
 type UseIntegrationsSettingsReturn = {
   isCalendarSyncing: boolean;
   isGoogleToggleSaving: boolean;
@@ -23,6 +30,10 @@ type UseIntegrationsSettingsReturn = {
   canToggleGmailSync: boolean;
   pendingGmailReviewCount: number;
   syncSettingsBusy: boolean;
+  calendarAccountEmail?: string;
+  gmailAccountEmail?: string;
+  calendarLastRun?: IntegrationLastRunSummary;
+  gmailLastRun?: IntegrationLastRunSummary;
   toggleGoogleCalendarSync: () => Promise<void>;
   toggleGmailSync: () => Promise<void>;
   runGoogleCalendarSync: () => Promise<void>;
@@ -150,6 +161,23 @@ export function useIntegrationsSettings({
     }
   }, [persistIntegrationToggle, runGoogleCalendarSync, showToast]);
 
+  const calendarLastRun = calendarIntegrationStatus?.lastRun
+    ? {
+        finishedAt: calendarIntegrationStatus.lastRun.finishedAt,
+        status: calendarIntegrationStatus.lastRun.status,
+        importedCount: calendarIntegrationStatus.lastRun.importedCount,
+        updatedCount: calendarIntegrationStatus.lastRun.updatedCount,
+      }
+    : undefined;
+  const gmailLastRun = gmailIntegrationStatus?.lastRun
+    ? {
+        finishedAt: gmailIntegrationStatus.lastRun.finishedAt,
+        status: gmailIntegrationStatus.lastRun.status,
+        importedCount: gmailIntegrationStatus.lastRun.importedCount,
+        updatedCount: gmailIntegrationStatus.lastRun.updatedCount,
+      }
+    : undefined;
+
   return {
     isCalendarSyncing,
     isGoogleToggleSaving,
@@ -161,6 +189,10 @@ export function useIntegrationsSettings({
     canToggleGmailSync,
     pendingGmailReviewCount,
     syncSettingsBusy,
+    calendarAccountEmail: calendarIntegrationStatus?.integration?.accountEmail,
+    gmailAccountEmail: gmailIntegrationStatus?.integration?.accountEmail,
+    calendarLastRun,
+    gmailLastRun,
     toggleGoogleCalendarSync,
     toggleGmailSync,
     runGoogleCalendarSync,
