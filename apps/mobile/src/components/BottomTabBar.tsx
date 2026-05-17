@@ -9,7 +9,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { colors, fonts, spacing } from "../theme/tokens";
 
-export type TabKey = "inbox" | "timeline" | "completed";
+export type TabKey = "inbox" | "timeline" | "goals" | "completed";
 
 type BottomTabBarProps = {
   active: TabKey;
@@ -20,6 +20,7 @@ type BottomTabBarProps = {
 const tabs: { key: TabKey; label: string }[] = [
   { key: "inbox", label: "Inbox" },
   { key: "timeline", label: "Timeline" },
+  { key: "goals", label: "Goals" },
   { key: "completed", label: "Done" },
 ];
 
