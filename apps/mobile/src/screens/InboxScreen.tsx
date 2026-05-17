@@ -13,14 +13,24 @@
  * library is in place.
  */
 
-import type { JSX } from "react";
+import { useMemo, useState, type JSX } from "react";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { FlatList, Pressable, RefreshControl, Text, View } from "react-native";
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
 import type { RenderItemParams } from "react-native-draggable-flatlist";
-import { colors, spacing, typography } from "../theme/tokens";
+import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
+
+type FilterValue = "all" | "p1" | "p2" | "p3" | "none";
+
+const FILTERS: { value: FilterValue; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "p1", label: "P1" },
+  { value: "p2", label: "P2" },
+  { value: "p3", label: "P3" },
+  { value: "none", label: "None" },
+];
 
 type InboxScreenProps = {
   tasks: MobileTask[];
@@ -82,7 +92,43 @@ export function InboxScreen({
   onCapture,
   renderItem,
 }: InboxScreenProps) {
-  const emptyBlock = (
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<FilterValue>("all");
+
+  const filteredTasks = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return tasks.filter((task) => {
+      if (filter !== "all") {
+        const bucket = task.priority ?? "none";
+        if (bucket !== filter) return false;
+      }
+      if (!q) return true;
+      const inTitle = task.title.toLowerCase().includes(q);
+      const inDescription = task.description?.toLowerCase().includes(q) ?? false;
+      return inTitle || inDescription;
+    });
+  }, [tasks, query, filter]);
+
+  const isFiltering = query.trim() !== "" || filter !== "all";
+
+  const emptyBlock = isFiltering ? (
+    <Animated.View entering={FadeIn.duration(400)} style={styles.emptyWrap}>
+      <Text style={styles.emptyTitle}>No matches.</Text>
+      <Text style={styles.emptyText}>Try a different word or clear filters.</Text>
+      <Pressable
+        onPress={() => {
+          setQuery("");
+          setFilter("all");
+        }}
+        hitSlop={12}
+        accessibilityRole="button"
+        accessibilityLabel="Clear filters"
+        style={({ pressed }) => [styles.emptyCtaWrap, pressed && { opacity: 0.6 }]}
+      >
+        <Text style={styles.emptyCta}>Clear filters</Text>
+      </Pressable>
+    </Animated.View>
+  ) : (
     <Animated.View entering={FadeIn.duration(400)} style={styles.emptyWrap}>
       <Text style={styles.emptyTitle}>Nothing to carry forward.</Text>
       <Text style={styles.emptyText}>When something comes up, capture it.</Text>
@@ -99,10 +145,50 @@ export function InboxScreen({
   );
 
   const loadingBlock = <TaskListSkeleton variant="inbox" />;
-  const allRows = buildInboxRows(tasks);
+  const allRows = buildInboxRows(filteredTasks);
   const visibleRowCount = useIncrementalRowCount(allRows.length);
   const rows = allRows.slice(0, visibleRowCount);
   const hasPendingRows = rows.length < allRows.length;
+
+  const searchHeader = (
+    <View style={styles.searchWrap}>
+      <TextInput
+        value={query}
+        onChangeText={setQuery}
+        placeholder="Search inbox"
+        placeholderTextColor={colors.textMuted}
+        style={styles.searchInput}
+        returnKeyType="search"
+        autoCorrect={false}
+        autoCapitalize="none"
+        clearButtonMode="while-editing"
+      />
+      <View style={styles.filterRow}>
+        {FILTERS.map((option) => {
+          const active = filter === option.value;
+          return (
+            <Pressable
+              key={option.value}
+              onPress={() => setFilter(option.value)}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`Filter ${option.label}`}
+              style={({ pressed }) => [
+                styles.filterChip,
+                active && styles.filterChipActive,
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
 
   return (
     <FlatList<InboxRow>
@@ -145,6 +231,7 @@ export function InboxScreen({
           progressBackgroundColor={colors.bgCard}
         />
       }
+      ListHeaderComponent={tasks.length > 0 || isFiltering ? searchHeader : null}
       ListFooterComponent={
         hasPendingRows ? <Text style={styles.loadingMore}>Preparing more tasks...</Text> : null
       }
@@ -153,22 +240,65 @@ export function InboxScreen({
   );
 }
 
-const styles = {
+const styles = StyleSheet.create({
+  searchWrap: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  searchInput: {
+    color: colors.textPrimary,
+    ...typography.bodyMd,
+    backgroundColor: colors.bgCard,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    minHeight: 40,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  filterRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+  },
+  filterChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: "transparent",
+    minHeight: 28,
+    justifyContent: "center",
+  },
+  filterChipActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  filterChipText: {
+    ...typography.micro,
+    color: colors.textSecondary,
+  },
+  filterChipTextActive: {
+    color: colors.bg,
+  },
   emptyWrap: {
     paddingTop: spacing.section * 2,
     paddingHorizontal: spacing.xxl,
     gap: spacing.sm,
-    alignItems: "center" as const,
+    alignItems: "center",
   },
   emptyTitle: {
     color: colors.textPrimary,
     ...typography.headline,
-    textAlign: "center" as const,
+    textAlign: "center",
   },
   emptyText: {
     color: colors.textSecondary,
     ...typography.bodyMd,
-    textAlign: "center" as const,
+    textAlign: "center",
   },
   emptyCtaWrap: {
     marginTop: spacing.lg,
@@ -191,7 +321,7 @@ const styles = {
   loadingMore: {
     color: colors.textSecondary,
     ...typography.micro,
-    textAlign: "center" as const,
+    textAlign: "center",
     paddingTop: spacing.md,
   },
-};
+});

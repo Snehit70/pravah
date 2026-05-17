@@ -76,12 +76,31 @@ vi.mock("react-native", () => {
       ListFooterComponent
     );
   };
+  const TextInput = ({ value, onChangeText, placeholder, ...rest }: AnyProps & {
+    value?: string;
+    onChangeText?: (text: string) => void;
+    placeholder?: string;
+  }) => {
+    const { style: _, ...safe } = rest;
+    return React.createElement("input", {
+      ...safe,
+      value: value ?? "",
+      placeholder,
+      onChange: (e: { target: { value: string } }) => onChangeText?.(e.target.value),
+    });
+  };
+  const StyleSheet = {
+    create: <T extends Record<string, unknown>>(styles: T): T => styles,
+    hairlineWidth: 1,
+  };
   return {
     View,
     Text,
     Pressable,
     RefreshControl,
     FlatList,
+    TextInput,
+    StyleSheet,
   };
 });
 
@@ -98,12 +117,16 @@ vi.mock("react-native-reanimated", () => ({
 vi.mock("../theme/tokens", () => ({
   colors: {
     accent: "#06f",
+    bg: "#000",
     bgCard: "#111",
+    border: "#222",
     textPrimary: "#fff",
     textSecondary: "#ccc",
+    textMuted: "#888",
   },
   spacing: { xs: 4, sm: 8, md: 16, lg: 24, xxl: 48, section: 32 },
   typography: { headline: {}, bodyMd: {}, micro: {} },
+  radii: { sm: 4, md: 8, lg: 12, xl: 16, full: 999 },
 }));
 
 // ─── LoadingSkeleton mock ─────────────────────────────────────────────────────
