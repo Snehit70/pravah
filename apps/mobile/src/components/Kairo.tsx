@@ -48,6 +48,8 @@ import {
   type KairoMessage,
   type KairoTaskInput,
 } from "../lib/kairoApi";
+import { useKairoChats } from "../hooks/useKairoChats";
+import { KairoChatList } from "./KairoChatList";
 
 export type KairoSheetRef = {
   open: () => void;
@@ -76,11 +78,6 @@ const STARTERS = [
   "What looks heavy this week?",
 ];
 
-const GREETING: KairoMessage = {
-  from: "kairo",
-  text: "Hey, I'm Kairo. I can help you plan your week, prioritize tasks, or analyze your schedule. What do you need?",
-};
-
 const DEFERRED_LOADING_TEXT = "Loading your workspace... one moment.";
 
 type KairoChatRow =
@@ -104,12 +101,26 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   const sheetRef = useRef<BottomSheet>(null);
   const [open, setOpen] = useState(false);
   const [val, setVal] = useState("");
-  const [msgs, setMsgs] = useState<KairoMessage[]>([GREETING]);
   const [thinking, setThinking] = useState(false);
   const [config, setConfig] = useState<KairoConfig | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<string | null>(null);
   const [deferredPromptPreview, setDeferredPromptPreview] = useState<string | null>(null);
+  // "chat" shows the active conversation, "list" shows the chat picker.
+  const [view, setView] = useState<"chat" | "list">("chat");
   const listRef = useRef<FlatList<KairoChatRow>>(null);
+
+  const {
+    chats,
+    activeChat,
+    createChat,
+    switchChat,
+    deleteChat,
+    setMessages: setMsgs,
+  } = useKairoChats();
+  const msgs = useMemo<KairoMessage[]>(
+    () => activeChat?.messages ?? [],
+    [activeChat?.messages]
+  );
 
   const addTaskMutation = useMutation(api.tasks.addTask);
 
@@ -338,7 +349,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         setThinking(false);
       }
     },
-    [addTaskMutation, config, inboxTasks, isAllTasksReady, msgs, tasks, thinking]
+    [addTaskMutation, config, inboxTasks, isAllTasksReady, msgs, setMsgs, tasks, thinking]
   );
 
   // Retry deferred prompt once the workspace loads. When a user sends a message
@@ -356,6 +367,39 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     void sendMessage(deferredPrompt);
   }, [inboxTasks.length, isAllTasksReady, deferredPrompt, sendMessage, tasks.length]);
 
+  const clearDeferred = useCallback(() => {
+    setDeferredPrompt(null);
+    setDeferredPromptPreview(null);
+  }, []);
+
+  const handleCreateChat = useCallback(() => {
+    if (thinking) return;
+    clearDeferred();
+    createChat();
+    setView("chat");
+  }, [clearDeferred, createChat, thinking]);
+
+  const handleSwitchChat = useCallback(
+    (id: string) => {
+      if (thinking) return;
+      clearDeferred();
+      switchChat(id);
+      setView("chat");
+    },
+    [clearDeferred, switchChat, thinking]
+  );
+
+  const handleDeleteChat = useCallback(
+    (id: string) => {
+      // Block deleting the chat currently waiting on a response so the
+      // in-flight reply doesn't try to append to a deleted chat.
+      if (thinking && id === activeChat?.id) return;
+      clearDeferred();
+      deleteChat(id);
+    },
+    [activeChat?.id, clearDeferred, deleteChat, thinking]
+  );
+
   return (
     <BottomSheet
       ref={sheetRef}
@@ -372,10 +416,39 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       handleIndicatorStyle={styles.indicator}
       backgroundStyle={styles.sheetBg}
     >
+      {view === "list" ? (
+        <KairoChatList
+          chats={chats}
+          activeChatId={activeChat?.id ?? null}
+          onSelect={handleSwitchChat}
+          onCreate={handleCreateChat}
+          onDelete={handleDeleteChat}
+          onClose={() => setView("chat")}
+        />
+      ) : (
+      <>
       <View style={styles.header}>
+        <Pressable
+          onPress={() => setView("list")}
+          hitSlop={12}
+          style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+          accessibilityLabel="Show chat list"
+          accessibilityRole="button"
+          disabled={thinking}
+        >
+          <Text
+            style={[styles.headerChats, thinking && { opacity: 0.4 }]}
+          >
+            Chats
+          </Text>
+        </Pressable>
         <View style={styles.headerLeftBlock}>
           <KairoMark size={20} />
-          <Text style={styles.headerTitle}>Kairo</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {activeChat?.title && activeChat.title !== "New chat"
+              ? activeChat.title
+              : "Kairo"}
+          </Text>
         </View>
         <Pressable
           onPress={() => sheetRef.current?.close()}
@@ -448,11 +521,11 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         />
         <Pressable
           onPress={() => void sendMessage(val)}
-          disabled={!val.trim() || thinking}
+          disabled={!val.trim() || thinking || !activeChat}
           hitSlop={12}
           style={({ pressed }) => [
             styles.sendButton,
-            (!val.trim() || thinking) && styles.sendButtonDisabled,
+            (!val.trim() || thinking || !activeChat) && styles.sendButtonDisabled,
             pressed && { opacity: 0.8 },
           ]}
           accessibilityRole="button"
@@ -465,6 +538,8 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           )}
         </Pressable>
       </View>
+      </>
+      )}
     </BottomSheet>
   );
 });
@@ -580,6 +655,10 @@ const styles = StyleSheet.create({
   },
   headerClose: {
     color: colors.textSecondary,
+    ...typography.micro,
+  },
+  headerChats: {
+    color: colors.accent,
     ...typography.micro,
   },
   scroll: {
