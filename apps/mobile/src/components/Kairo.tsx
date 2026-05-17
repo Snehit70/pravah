@@ -190,10 +190,18 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     return rows;
   }, [deferredPromptPreview, msgs, thinking]);
 
-  const renderChatRow = useCallback(({ item }: { item: KairoChatRow }) => {
-    if (item.kind === "thinking") return <Thinking />;
-    return <Bubble message={item.message} />;
+  const sendMessageRef = useRef<(text: string) => void>(() => {});
+  const handleRetry = useCallback((prompt: string) => {
+    sendMessageRef.current(prompt);
   }, []);
+
+  const renderChatRow = useCallback(
+    ({ item }: { item: KairoChatRow }) => {
+      if (item.kind === "thinking") return <Thinking />;
+      return <Bubble message={item.message} onRetry={handleRetry} />;
+    },
+    [handleRetry]
+  );
 
   const handleSheetChange = useCallback((index: number) => {
     setOpen(index >= 0);
@@ -307,7 +315,10 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
             inner && typeof inner === "object" && "message" in inner
               ? String((inner as Record<string, unknown>).message)
               : `API error ${res.status}`;
-          setMsgs((prev) => [...prev, { from: "kairo", text: `⚠ ${message}` }]);
+          setMsgs((prev) => [
+            ...prev,
+            { from: "kairo", text: `⚠ ${message}`, retryPrompt: trimmed },
+          ]);
           mobileLogger.warn("kairo_provider_failed", {
             actionId,
             providerFormat: nextConfig.providerFormat,
@@ -345,7 +356,10 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Network error";
-        setMsgs((prev) => [...prev, { from: "kairo", text: `⚠ ${message}` }]);
+        setMsgs((prev) => [
+          ...prev,
+          { from: "kairo", text: `⚠ ${message}`, retryPrompt: trimmed },
+        ]);
         mobileLogger.error("kairo_send_failed", {
           actionId,
           providerFormat: nextConfig.providerFormat,
@@ -357,6 +371,12 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     },
     [addTaskMutation, config, inboxTasks, isAllTasksReady, msgs, setMsgs, tasks, thinking]
   );
+
+  useEffect(() => {
+    sendMessageRef.current = (text: string) => {
+      void sendMessage(text);
+    };
+  }, [sendMessage]);
 
   // Retry deferred prompt once the workspace loads. When a user sends a message
   // immediately after opening Kairo, the full-corpus query is still cold-starting.
@@ -550,7 +570,13 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   );
 });
 
-function Bubble({ message }: { message: KairoMessage }) {
+function Bubble({
+  message,
+  onRetry,
+}: {
+  message: KairoMessage;
+  onRetry?: (prompt: string) => void;
+}) {
   const isMe = message.from === "me";
   return (
     <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleKairo]}>
@@ -568,6 +594,16 @@ function Bubble({ message }: { message: KairoMessage }) {
             </Text>
           ))}
         </View>
+      ) : null}
+      {message.retryPrompt && onRetry ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Try again"
+          onPress={() => onRetry(message.retryPrompt as string)}
+          style={({ pressed }) => [styles.retryButton, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={styles.retryButtonText}>Try again</Text>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -716,6 +752,21 @@ const styles = StyleSheet.create({
   taskAddedItem: {
     color: colors.success,
     ...typography.numeric,
+  },
+  retryButton: {
+    alignSelf: "flex-start",
+    marginTop: spacing.sm,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCardGlass,
+  },
+  retryButtonText: {
+    ...typography.bodyMd,
+    fontFamily: fonts.sansSemibold,
+    color: colors.textPrimary,
   },
   // Skeleton card matches web's KairoThinking — left rule, dim shimmer bars.
   thinkingCard: {

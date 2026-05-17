@@ -11,6 +11,9 @@ export interface KairoMessage {
   from: "me" | "kairo";
   text: string;
   tasks?: KairoTaskBlock[];
+  /** When set on a kairo error bubble, surfaces an inline "Try again" button
+   *  that re-runs the original prompt instead of forcing the user to retype. */
+  retryPrompt?: string;
 }
 
 export interface KairoTaskBlock {
