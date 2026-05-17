@@ -205,6 +205,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     [tasks, inboxTasks, today]
   );
 
+
   const sendMessageRef = useRef<(text: string) => void>(() => {});
   const handleRetry = useCallback((prompt: string) => {
     sendMessageRef.current(prompt);
