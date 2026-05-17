@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useMutation, useQuery } from "convex/react";
 import * as Haptics from "expo-haptics";
@@ -41,8 +41,16 @@ export function GmailReviewSection({ enabled, showToast }: Props) {
 
   const [busyIds, setBusyIds] = useState<Record<string, boolean>>({});
   const [overrideByItem, setOverrideByItem] = useState<Record<string, ScheduleChoice>>({});
+  // Ref-backed in-flight set so the second tap on the same row is blocked
+  // synchronously, before React re-renders with the new busy state.
+  const inFlightRef = useRef<Set<string>>(new Set());
 
   const markBusy = useCallback((id: Id<"reviewQueue">, busy: boolean) => {
+    if (busy) {
+      inFlightRef.current.add(id);
+    } else {
+      inFlightRef.current.delete(id);
+    }
     setBusyIds((prev) => {
       if (busy) return { ...prev, [id]: true };
       const { [id]: _, ...rest } = prev;
@@ -52,7 +60,7 @@ export function GmailReviewSection({ enabled, showToast }: Props) {
 
   const handleApprove = useCallback(
     async (item: ReviewItem) => {
-      if (busyIds[item._id]) return;
+      if (inFlightRef.current.has(item._id)) return;
       markBusy(item._id, true);
       const choice = overrideByItem[item._id];
       const clearScheduledDate = choice === "inbox";
@@ -77,12 +85,12 @@ export function GmailReviewSection({ enabled, showToast }: Props) {
         markBusy(item._id, false);
       }
     },
-    [approveReviewItem, busyIds, markBusy, overrideByItem, showToast]
+    [approveReviewItem, markBusy, overrideByItem, showToast]
   );
 
   const handleReject = useCallback(
     async (item: ReviewItem) => {
-      if (busyIds[item._id]) return;
+      if (inFlightRef.current.has(item._id)) return;
       markBusy(item._id, true);
       try {
         await rejectReviewItem({ reviewId: item._id });
@@ -96,7 +104,7 @@ export function GmailReviewSection({ enabled, showToast }: Props) {
         markBusy(item._id, false);
       }
     },
-    [busyIds, markBusy, rejectReviewItem, showToast]
+    [markBusy, rejectReviewItem, showToast]
   );
 
   if (!enabled) {
