@@ -345,8 +345,8 @@ one and consumes the event; only when no overlay is open does it return
 
 Priority order (closes the first match):
 
-1. Kairo sheet (`isKairoActive`)
-2. Settings sheet (`isSettingsModalOpen`)
+1. Settings sheet (`isSettingsModalOpen`)
+2. Kairo sheet (`isKairoActive`)
 3. Edit task sheet (`isEditSheetOpen`)
 4. Add task sheet (`isAddSheetOpen`)
 

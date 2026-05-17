@@ -25,7 +25,13 @@ loading behavior, or Android-specific ergonomics.
 After changing mobile UX or task behavior, run:
 
 ```bash
-bunx tsc --noEmit
+# Fast type check (uses tsgo)
+bun run typecheck:fast
+
+# Canonical type check (uses tsc)
+bun run typecheck
+
+# Test suite
 bun run test
 ```
 

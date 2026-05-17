@@ -21,19 +21,33 @@ The current mobile architecture is optimized for four things:
 apps/mobile/
 ├── App.tsx
 ├── DEBUGGING.md
+├── MOBILE_TESTING.md
 ├── src/
 │   ├── components/
 │   │   ├── AddTaskSheet.tsx
+│   │   ├── BootScreen.tsx
+│   │   ├── BottomTabBar.tsx
+│   │   ├── BrandMark.tsx
+│   │   ├── DiagnosticsPanel.tsx
 │   │   ├── EditTaskSheet.tsx
+│   │   ├── FAB.tsx
+│   │   ├── GridBackground.tsx
 │   │   ├── Kairo.tsx
 │   │   ├── KairoSettingsSection.tsx
 │   │   ├── LoadingSkeleton.tsx
+│   │   ├── MobileAuthScreen.tsx
 │   │   ├── RootErrorBoundary.tsx
 │   │   ├── ScreenErrorBoundary.tsx
-│   │   └── SettingsSheet.tsx
+│   │   ├── SettingsSheet.tsx
+│   │   ├── TaskCard.tsx
+│   │   ├── TaskMetaFields.tsx
+│   │   ├── TaskTabContent.tsx
+│   │   └── TimelineSectionHeader.tsx
 │   ├── hooks/
 │   │   ├── useGoogleAuth.ts
+│   │   ├── useIncrementalRowCount.ts
 │   │   ├── useIntegrationsSettings.ts
+│   │   ├── useKeyboardInset.ts
 │   │   ├── useNotificationsSettings.ts
 │   │   ├── useReducedMotion.ts
 │   │   ├── useRetryQueue.ts
@@ -49,17 +63,31 @@ apps/mobile/
 │   │   ├── auth-client.ts
 │   │   ├── convex.tsx
 │   │   ├── dates.ts
+│   │   ├── dates.test.ts
 │   │   ├── kairoApi.ts
 │   │   ├── kairoConfig.ts
 │   │   ├── logger.ts
+│   │   ├── notifications.ts
+│   │   ├── retry-queue-storage.ts
+│   │   ├── retry-queue-utils.ts
 │   │   ├── settingsSections.ts
+│   │   ├── task-form.ts
 │   │   ├── task-optimistic.ts
 │   │   └── workspace-snapshot.ts
+│   ├── theme/
+│   │   └── tokens.ts
 │   └── test/
+│       ├── addTaskSheet.test.tsx
+│       ├── completedScreen.test.tsx
+│       ├── editTaskSheet.test.tsx
+│       ├── inboxScreen.test.tsx
+│       ├── kairo.test.tsx
 │       ├── kairoConfig.test.ts
+│       ├── kairoSettingsSection.test.tsx
 │       ├── mobileStateUtils.test.ts
 │       ├── screenErrorBoundary.test.tsx
 │       ├── settingsSections.test.ts
+│       ├── timelineScreen.test.tsx
 │       ├── useRetryQueue.test.ts
 │       ├── useTaskMutations.test.ts
 │       ├── useTaskQueries.test.ts
@@ -97,6 +125,7 @@ It owns:
 - Better Auth session via `authClient.useSession()`
 - cached-session hint via `hasCachedAuthSessionHint()`
 - bootstrap readiness (`storeUser`, `claimLegacyData`) for background reconciliation
+- `isDataBootstrapReady` flag that gates task-action readiness (set to `true` once both bootstrap mutations complete)
 - active tab
 - refresh flag
 - pending mutation count
@@ -133,6 +162,11 @@ are ready, it renders the real shell immediately and fades the branded boot
 surface out over the first frame so startup still feels intentional instead of
 cutting abruptly from splash to content.
 
+Snapshot caps are applied before persist: 120 inbox tasks, 160 scheduled tasks,
+120 completed tasks (`workspace-snapshot.ts: prepareWorkspaceSnapshotForPersist`).
+A monotonic clear token prevents race conditions where an in-flight hydration read
+could resurrect a snapshot after sign-out.
+
 ### 2. Query state - `useTaskQueries.ts`
 
 This hook owns all task subscriptions and the pure derivation of task lists.
@@ -156,9 +190,11 @@ Derived outputs include:
 - `inboxTasks`
 - `scheduledTasks`
 - `completedTasks`
+- `allWorkspaceTasks`
 - `timelineSections`
-- `inboxCount`, `timelineCount`, `completedCount`
+- `inboxCount`, `timelineCount`, `overdueCount`, `thisWeekCount`, `completedCount`
 - `today`, `tomorrow`, `weekEnd`
+- loading flags: `isInboxLoading`, `isTimelineLoading`, `isCompletedLoading`, `isAllTasksReady`
 
 ### 3. Mutation state - `useTaskMutations.ts`
 
@@ -175,6 +211,29 @@ It handles:
 - timeline reorder *(currently disabled in the UI — see "List rendering" below)*
 - within-day timeline shift actions
 
+It does not own the session, Kairo settings, or notification settings.
+
+### 4. Integrations settings - `useIntegrationsSettings.ts`
+
+Owns Google Calendar and Gmail sync toggle state, sync-busy flags, and calendar
+sync actions. Exposes `pendingGmailReviewCount` derived from the integration
+status query.
+
+### 5. Notifications settings - `useNotificationsSettings.ts`
+
+Owns permission state, daily reminder toggle, and test notification dispatch.
+Bootstraps notification channels on first mount via `initializeNotificationsAsync`.
+
+### 6. Incremental row budget - `useIncrementalRowCount.ts`
+
+Shared hook used by all three task-list screens. Releases rows in timed batches
+to prevent large workspaces from blocking the JS thread on first paint:
+
+- first paint: `INITIAL_INCREMENTAL_ROWS` (24)
+- follow-up batches: 24 rows every 32ms until all rows are released
+- live updates (task added/completed while scrolled deep) preserve the existing
+  budget rather than collapsing back to 24
+
 ### List rendering
 
 Inbox and Timeline render with plain `FlatList`. Drag-to-reorder via
@@ -184,7 +243,18 @@ disabled in the UI: the library is not compatible with
 (headers visible, list area empty). Re-enable only after the drag library
 catches up to Reanimated 4 — see `apps/mobile/DEBUGGING.md`.
 
-It does not own the session, Kairo settings, or notification settings.
+## Inbox Priority Bucketing
+
+`InboxScreen` groups tasks into named priority sections before rendering.
+`buildInboxRows()` produces a mixed `InboxRow[]` list of `{ kind: "header" }`
+and `{ kind: "task" }` entries. Bucket order is always P1 → P2 → P3 →
+Unprioritized; empty buckets are omitted.
+
+Tasks arrive pre-sorted from `useTaskQueries` (priority rank first, then
+`position`), so the grouping pass is a single O(n) scan — no secondary sort.
+
+Section headers render as quiet muted labels above each group, matching the
+timeline's date-section header style.
 
 ## Query Lifetime Model
 
@@ -209,21 +279,27 @@ Authenticated user
 
 ## Timeline Window
 
-The mobile timeline intentionally queries only a bounded window.
+The mobile timeline intentionally queries only a bounded upper window, and
+deliberately omits a lower bound to surface overdue tasks.
 
 Current behavior:
 
 - `today` = local current day
 - `weekEnd` = `today + 6 days`
-- timeline query passes `startDate` and `endDate`
+- timeline query passes **only `endDate` = weekEnd** — `startDate` is omitted
+- tasks scheduled before `today` (overdue) are still surfaced so the user
+  cannot silently lose backlog items by switching to mobile
+- tasks after `weekEnd` are excluded — those live beyond the active mobile horizon
 
-Why:
+Why no lower bound:
 
-- older scheduled history should not bloat active mobile rendering
-- Kairo and archival flows can still use broader task context when needed
-- the UI only shows a short mobile horizon, so the query should match the surface
+- Bounding with `startDate = today` would silently hide overdue items
+- The mobile timeline header already distinguishes overdue vs. this-week counts:
+  `NN overdue · NN this week` when any overdue tasks exist
 
-`buildTimelineWindow()` is exported and regression-tested to keep this behavior pinned.
+`buildTimelineWindow()` is exported and regression-tested to keep the upper
+bound pinned. The overdue-surfacing behavior is implicit in the absence of
+`startDate` — do not add a lower bound without updating the header copy.
 
 ## Error Containment
 
@@ -349,14 +425,22 @@ The goal is to avoid both of these bad outcomes:
 
 Current mobile test coverage includes:
 
-- retry queue hydration / persistence utils
-- optimistic task list transforms
-- task mutation hook behavior
-- timeline date-window derivation
-- Kairo advanced auto-open decision (`hasCustomKairoEndpoint`)
-- `useTaskQueries` full-corpus gating (skip vs subscribe based on `isAuthenticated` and `includeAllTasks`)
-- settings chip activation logic (`selectActiveSection`)
-- `ScreenErrorBoundary` render / fallback / retry behavior
+- retry queue hydration / persistence utils (`useRetryQueue.test.ts`)
+- optimistic task list transforms (`mobileStateUtils.test.ts`)
+- task mutation hook behavior (`useTaskMutations.test.ts`)
+- timeline date-window derivation (`useTaskQueries.test.ts`)
+- full-corpus gating for `allTasksQuery` (`useTaskQueriesGating.test.ts`)
+- Kairo advanced auto-open decision (`kairoConfig.test.ts`)
+- settings chip activation logic (`settingsSections.test.ts`)
+- `ScreenErrorBoundary` render / fallback / retry (`screenErrorBoundary.test.tsx`)
+- workspace snapshot hydration and clear-token race safety (`workspaceSnapshot.test.ts`)
+- `AddTaskSheet` interaction tests (`addTaskSheet.test.tsx`)
+- `EditTaskSheet` interaction tests (`editTaskSheet.test.tsx`)
+- `KairoSettingsSection` interaction tests (`kairoSettingsSection.test.tsx`)
+- `InboxScreen` incremental row rendering (`inboxScreen.test.tsx`)
+- `TimelineScreen` incremental row rendering (`timelineScreen.test.tsx`)
+- `CompletedScreen` incremental row rendering (`completedScreen.test.tsx`)
+- Kairo chat FlatList, deferred send, deferred replay (`kairo.test.tsx`)
 
 The intended regression pattern is:
 
@@ -400,3 +484,12 @@ Check:
 - `includeAllTasks` behavior in `useTaskQueries.ts`
 - `Kairo.tsx` open/close flow
 - `kairoConfig.ts` and `kairoApi.ts`
+
+### If list performance is poor on large workspaces
+
+Check:
+
+- `useIncrementalRowCount.ts` — batch size and delay constants
+- `FlatList` virtualization props in the relevant screen (`initialNumToRender`,
+  `maxToRenderPerBatch`, `updateCellsBatchingPeriod`, `windowSize`)
+- `DiagnosticsPanel` counts in a dev build to confirm rendering vs. data mismatch
