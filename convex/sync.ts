@@ -275,6 +275,11 @@ export const approveReviewItem = mutation({
   args: {
     reviewId: v.id("reviewQueue"),
     scheduledDate: v.optional(v.string()),
+    // When true, force the approved task into the Inbox even if the review
+    // item carries a suggested scheduledDate. Without this, an omitted
+    // `scheduledDate` falls back to the suggested one, which makes an
+    // "Inbox" override on the client unrepresentable.
+    clearScheduledDate: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
@@ -286,7 +291,9 @@ export const approveReviewItem = mutation({
       throw new Error("Review item is not pending");
     }
 
-    const effectiveScheduledDate = args.scheduledDate ?? reviewItem.scheduledDate;
+    const effectiveScheduledDate = args.clearScheduledDate
+      ? undefined
+      : (args.scheduledDate ?? reviewItem.scheduledDate);
     if (reviewItem.deadline && effectiveScheduledDate && effectiveScheduledDate > reviewItem.deadline) {
       throw new Error("Cannot schedule task past its deadline");
     }

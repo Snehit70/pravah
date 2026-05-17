@@ -55,10 +55,18 @@ export function GmailReviewSection({ enabled, showToast }: Props) {
       if (busyIds[item._id]) return;
       markBusy(item._id, true);
       const choice = overrideByItem[item._id];
-      const scheduledDate =
-        choice !== undefined ? scheduleChoiceToDate(choice) : item.scheduledDate;
+      const clearScheduledDate = choice === "inbox";
+      const scheduledDate = clearScheduledDate
+        ? undefined
+        : choice !== undefined
+          ? scheduleChoiceToDate(choice)
+          : item.scheduledDate;
       try {
-        await approveReviewItem({ reviewId: item._id, scheduledDate });
+        await approveReviewItem({
+          reviewId: item._id,
+          scheduledDate,
+          clearScheduledDate: clearScheduledDate || undefined,
+        });
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         showToast({ kind: "info", message: "Review item approved." });
       } catch (error) {
