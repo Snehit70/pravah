@@ -248,26 +248,35 @@ export const enqueueGmailCandidate = mutation({
 export const listReviewQueue = query({
   args: {
     status: v.optional(v.union(v.literal("pending"), v.literal("approved"), v.literal("rejected"))),
+    provider: v.optional(v.union(v.literal("gmail"), v.literal("google_calendar"))),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
     const limit = args.limit ?? 100;
     if (args.status) {
-      return await ctx.db
+      let q = ctx.db
         .query("reviewQueue")
-        .withIndex("by_owner_status", (q) =>
-          q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", args.status!)
-        )
-        .order("desc")
-        .take(limit);
+        .withIndex("by_owner_status", (ix) =>
+          ix.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", args.status!)
+        );
+      // Filter by provider before take() so the row cap applies to
+      // provider-matching rows. Without this, a queue of mixed providers
+      // could push provider-specific items past the limit and hide them
+      // from a provider-specific panel.
+      if (args.provider) {
+        q = q.filter((f) => f.eq(f.field("provider"), args.provider!));
+      }
+      return await q.order("desc").take(limit);
     }
 
-    return await ctx.db
+    let q = ctx.db
       .query("reviewQueue")
-      .filter((q) => q.eq(q.field("ownerTokenIdentifier"), tokenIdentifier))
-      .order("desc")
-      .take(limit);
+      .filter((f) => f.eq(f.field("ownerTokenIdentifier"), tokenIdentifier));
+    if (args.provider) {
+      q = q.filter((f) => f.eq(f.field("provider"), args.provider!));
+    }
+    return await q.order("desc").take(limit);
   },
 });
 
