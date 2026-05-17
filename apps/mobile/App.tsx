@@ -255,9 +255,11 @@ function MobileApp() {
         ? shouldUseWorkspaceSnapshot
           ? false
           : isInboxLoading
-        : shouldUseWorkspaceSnapshot
-          ? false
-          : isCompletedLoading;
+        : activeTab === "completed"
+          ? shouldUseWorkspaceSnapshot
+            ? false
+            : isCompletedLoading
+          : false;
 
   const isBootShellLoading = shouldRenderOptimisticShell && !shouldUseWorkspaceSnapshot && !session;
 
