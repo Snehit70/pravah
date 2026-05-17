@@ -50,6 +50,7 @@ import {
 } from "../lib/kairoApi";
 import { useKairoChats } from "../hooks/useKairoChats";
 import { KairoChatList } from "./KairoChatList";
+import { KairoMarkdown } from "./KairoMarkdown";
 
 export type KairoSheetRef = {
   open: () => void;
@@ -553,7 +554,11 @@ function Bubble({ message }: { message: KairoMessage }) {
   const isMe = message.from === "me";
   return (
     <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleKairo]}>
-      <Text style={[styles.bubbleText, isMe && styles.bubbleTextMe]}>{message.text}</Text>
+      {isMe ? (
+        <Text style={[styles.bubbleText, styles.bubbleTextMe]}>{message.text}</Text>
+      ) : (
+        <KairoMarkdown text={message.text} baseStyle={styles.bubbleText} />
+      )}
       {message.tasks?.length ? (
         <View style={styles.taskAddedList}>
           {message.tasks.map((t, i) => (
