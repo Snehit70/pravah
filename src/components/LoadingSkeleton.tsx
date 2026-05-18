@@ -38,17 +38,17 @@ function SkeletonLine({
 
 function BrandMarkSkeleton() {
   return (
-    <div
-      className="relative h-[22px] w-[22px] overflow-hidden rounded-[5px] border"
+    <img
+      src="/favicon.png"
+      alt=""
+      width={22}
+      height={22}
       style={{
-        background: "linear-gradient(135deg,#1a1530,#070510)",
-        borderColor: "rgba(255,255,255,.08)",
+        borderRadius: 5,
+        objectFit: "cover",
+        filter: "drop-shadow(0 0 6px oklch(0.78 0.14 260 / 0.35))",
       }}
-    >
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,.05)_1px,transparent_1px)] bg-[length:7px_7px]" />
-      <div className="absolute bottom-1.5 left-1 right-1 h-[2px] rounded-full bg-[oklch(0.78_0.14_260)]" />
-      <div className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-[oklch(0.78_0.14_260)]" />
-    </div>
+    />
   );
 }
 
