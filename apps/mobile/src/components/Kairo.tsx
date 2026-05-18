@@ -42,12 +42,14 @@ import {
   KAIRO_SYSTEM_PROMPT,
   buildAnthropicRequestBody,
   buildKairoContext,
+  buildKairoStarters,
   buildOpenAIRequestBody,
   extractTaskBlocks,
   readKairoResponseText,
   type KairoMessage,
   type KairoTaskInput,
 } from "../lib/kairoApi";
+import { getLocalDateString } from "../lib/dates";
 import { useKairoChats } from "../hooks/useKairoChats";
 import { KairoChatList } from "./KairoChatList";
 import { KairoMarkdown } from "./KairoMarkdown";
@@ -71,13 +73,6 @@ type KairoProps = {
   /** Called when the user taps "Configure" on the unconfigured empty state. */
   onOpenSettings?: () => void;
 };
-
-const STARTERS = [
-  "Plan my week",
-  "What's overdue?",
-  "Summarize my progress",
-  "What looks heavy this week?",
-];
 
 const DEFERRED_LOADING_TEXT = "Loading your workspace... one moment.";
 
@@ -189,6 +184,11 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     if (thinking) rows.push({ kind: "thinking", id: "thinking" });
     return rows;
   }, [deferredPromptPreview, msgs, thinking]);
+
+  const starters = useMemo(
+    () => buildKairoStarters(tasks, inboxTasks, getLocalDateString()),
+    [tasks, inboxTasks]
+  );
 
   const sendMessageRef = useRef<(text: string) => void>(() => {});
   const handleRetry = useCallback((prompt: string) => {
@@ -505,7 +505,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
             {/* Starters render on first paint only (no user messages yet). */}
             {msgs.length === 1 && !thinking && !deferredPromptPreview ? (
           <View style={styles.starters}>
-            {STARTERS.map((p) => (
+            {starters.map((p) => (
               <Pressable
                 key={p}
                 onPress={() => void sendMessage(p)}

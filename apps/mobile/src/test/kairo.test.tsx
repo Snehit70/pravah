@@ -214,6 +214,7 @@ vi.mock("../lib/kairoConfig", () => ({
 vi.mock("../lib/kairoApi", () => ({
   KAIRO_SYSTEM_PROMPT: "You are Kairo. {CONTEXT}",
   buildKairoContext: vi.fn(() => "mocked context"),
+  buildKairoStarters: vi.fn(() => ["Plan my week", "What's overdue?"]),
   buildAnthropicRequestBody: vi.fn(() => ({ model: "claude", messages: [] })),
   buildOpenAIRequestBody: vi.fn(() => ({ model: "gpt-4", messages: [] })),
   extractTaskBlocks: vi.fn((text: string) => ({ cleanText: text, tasks: [] as Array<{ title: string; scheduledDate: string | null; type: "open" | "deadline" }> })),

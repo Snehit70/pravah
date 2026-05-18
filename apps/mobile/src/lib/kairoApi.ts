@@ -96,6 +96,39 @@ export function buildKairoContext(allTasks: KairoTaskInput[], inboxTasks: KairoT
   ].join("\n");
 }
 
+/** Pick four conversation starters that reflect the user's current state.
+ *  Falls back to evergreen prompts when the workspace is empty so a fresh
+ *  install still has something tappable. Pure for easy testing. */
+export function buildKairoStarters(
+  allTasks: KairoTaskInput[],
+  inboxTasks: KairoTaskInput[],
+  today: string
+): string[] {
+  const starters: string[] = [];
+  const scheduled = allTasks.filter((t) => t.status === "scheduled");
+  const overdue = scheduled.filter(
+    (t) => t.scheduledDate && t.scheduledDate < today
+  );
+  const dueToday = scheduled.filter((t) => t.scheduledDate === today);
+
+  if (overdue.length) starters.push(`What's overdue? (${overdue.length})`);
+  if (dueToday.length) starters.push("What's on today?");
+  if (inboxTasks.length >= 3) starters.push(`Triage my inbox (${inboxTasks.length})`);
+  if (scheduled.length >= 5) starters.push("What looks heavy this week?");
+
+  const evergreen = [
+    "Plan my week",
+    "Summarize my progress",
+    "What should I focus on?",
+    "What's overdue?",
+  ];
+  for (const s of evergreen) {
+    if (starters.length >= 4) break;
+    if (!starters.some((existing) => existing.startsWith(s))) starters.push(s);
+  }
+  return starters.slice(0, 4);
+}
+
 type ChatTurn = { role: "user" | "assistant"; content: string };
 
 export function buildOpenAIRequestBody(
