@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.7.0](https://github.com/Snehit70/pravah/compare/mobile-v1.6.0...mobile-v1.7.0) (2026-05-18)
+
+
+### Features
+
+* **mobile:** Kairo quick wins — markdown, retry, smart starters ([6ee58b6](https://github.com/Snehit70/pravah/commit/6ee58b62a317d78acf09c2ed35e3ae579321b229))
+* **mobile:** make Kairo starter pills context-aware ([2d917bb](https://github.com/Snehit70/pravah/commit/2d917bb3c3354aa09439b25c2b50c36b195778f1))
+* **mobile:** render markdown in Kairo assistant bubbles ([0e48188](https://github.com/Snehit70/pravah/commit/0e48188cd2b20e58e72d7a3c30a8a4b938f3367b))
+* **mobile:** show inline retry on Kairo error bubbles ([cb73936](https://github.com/Snehit70/pravah/commit/cb739366bc5371589c9ba76c51253f2f35d12601))
+
+
+### Bug Fixes
+
+* **mobile:** refresh Kairo starters across day rollover ([3ccbd65](https://github.com/Snehit70/pravah/commit/3ccbd654bd14654bc3f5a5d7db0c1247e4eb1ebb))
+* **mobile:** tick today every minute while Kairo sheet is open ([e0e771e](https://github.com/Snehit70/pravah/commit/e0e771e62bb2561fbc651fc5e70214714de78a5a))
+
 ## [1.6.0](https://github.com/Snehit70/pravah/compare/mobile-v1.5.0...mobile-v1.6.0) (2026-05-18)
 
 
