@@ -69,8 +69,10 @@ export function useKairoChats(): UseKairoChats {
   const [isHydrated, setIsHydrated] = useState(false);
   // Open the save gate only after hydration completes or the user has made
   // an explicit edit. Mirrors the GoalsScreen approach: a failed load must
-  // never silently overwrite stored data with the in-memory fallback.
-  const [canSave, setCanSave] = useState(false);
+  // never silently overwrite stored data with the in-memory fallback. Held
+  // as a ref so user-interaction handlers can flip it and have downstream
+  // writes in the same tick observe the new value.
+  const canSaveRef = useRef(false);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Track the chat being saved so the debounced flush always writes the
@@ -84,6 +86,16 @@ export function useKairoChats(): UseKairoChats {
   // discard stale `loadChat` results from earlier `switchChat` calls so a
   // slow read can't overwrite a newer selection.
   const latestSwitchRef = useRef<string | null>(null);
+
+  // Mark the user as having interacted and ensure the save gate is open.
+  // The gate was originally closed only when a load failed, but the user's
+  // explicit edits should always become the source of truth — otherwise an
+  // unrecoverable read leaves the whole session in memory-only mode and
+  // every message they type is lost on next launch.
+  const markUserTouched = useCallback(() => {
+    userTouchedRef.current = true;
+    canSaveRef.current = true;
+  }, []);
 
   const flushPendingSave = useCallback(() => {
     if (saveTimerRef.current) {
@@ -137,7 +149,7 @@ export function useKairoChats(): UseKairoChats {
         setChats([{ id: fresh.id, title: fresh.title, createdAt: fresh.createdAt, updatedAt: fresh.updatedAt }]);
         setActiveChat(fresh);
         setIsHydrated(true);
-        setCanSave(true);
+        canSaveRef.current = true;
         // Persist the seed so the next launch finds it.
         void saveChatIndex({
           chats: [{ id: fresh.id, title: fresh.title, createdAt: fresh.createdAt, updatedAt: fresh.updatedAt }],
@@ -155,7 +167,7 @@ export function useKairoChats(): UseKairoChats {
         setChats(storedChats);
         setActiveChat(chatResult.chat);
         setIsHydrated(true);
-        setCanSave(true);
+        canSaveRef.current = true;
         return;
       }
 
@@ -168,7 +180,7 @@ export function useKairoChats(): UseKairoChats {
         setChats([{ id: fresh.id, title: fresh.title, createdAt: fresh.createdAt, updatedAt: fresh.updatedAt }]);
         setActiveChat(fresh);
         setIsHydrated(true);
-        setCanSave(true);
+        canSaveRef.current = true;
         void saveChatIndex({
           chats: [{ id: fresh.id, title: fresh.title, createdAt: fresh.createdAt, updatedAt: fresh.updatedAt }],
           activeChatId: fresh.id,
@@ -183,7 +195,7 @@ export function useKairoChats(): UseKairoChats {
         setChats(remaining);
         setActiveChat(fallback.chat);
         setIsHydrated(true);
-        setCanSave(true);
+        canSaveRef.current = true;
         void saveChatIndex({ chats: remaining, activeChatId: fallback.chat.id });
         return;
       }
@@ -207,14 +219,14 @@ export function useKairoChats(): UseKairoChats {
 
   const persistIndex = useCallback(
     (nextChats: ChatMeta[], nextActiveId: string | null) => {
-      if (!canSave) return;
+      if (!canSaveRef.current) return;
       void saveChatIndex({ chats: nextChats, activeChatId: nextActiveId });
     },
-    [canSave]
+    []
   );
 
   const createChat = useCallback(() => {
-    userTouchedRef.current = true;
+    markUserTouched();
     flushPendingSave();
     const fresh = makeFreshChat();
     const meta: ChatMeta = {
@@ -230,8 +242,8 @@ export function useKairoChats(): UseKairoChats {
       return kept;
     });
     setActiveChat(fresh);
-    if (canSave) void saveChat(fresh);
-  }, [canSave, flushPendingSave, persistIndex]);
+    void saveChat(fresh);
+  }, [flushPendingSave, markUserTouched, persistIndex]);
 
   const switchChat = useCallback(
     (id: string) => {
@@ -276,11 +288,15 @@ export function useKairoChats(): UseKairoChats {
             };
             setActiveChat(fresh);
             persistIndex([meta], fresh.id);
-            if (canSave) void saveChat(fresh);
+            if (canSaveRef.current) void saveChat(fresh);
             return [meta];
           }
           const sorted = [...next].sort((a, b) => b.updatedAt - a.updatedAt);
           const target = sorted[0];
+          // Synchronously detach the deleted chat so the UI can't keep
+          // dispatching messages against it while loadChat resolves. We
+          // re-render with the real chat once the async read returns.
+          setActiveChat(null);
           latestSwitchRef.current = target.id;
           void (async () => {
             const result = await loadChat(target.id);
@@ -294,7 +310,7 @@ export function useKairoChats(): UseKairoChats {
         return next;
       });
     },
-    [activeChat?.id, canSave, flushPendingSave, persistIndex]
+    [activeChat?.id, flushPendingSave, persistIndex]
   );
 
   const applyMessageUpdate = useCallback(
@@ -316,7 +332,7 @@ export function useKairoChats(): UseKairoChats {
           updatedAt: now,
           messages: nextMessages,
         };
-        if (canSave) scheduleSave(nextChat);
+        if (canSaveRef.current) scheduleSave(nextChat);
         // Mirror title + updatedAt into the index so the chat list reorders.
         setChats((current) => {
           const next = current.map((c) =>
@@ -328,7 +344,7 @@ export function useKairoChats(): UseKairoChats {
         return nextChat;
       });
     },
-    [canSave, persistIndex, scheduleSave]
+    [persistIndex, scheduleSave]
   );
 
   const appendMessage = useCallback(
