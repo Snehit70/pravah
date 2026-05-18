@@ -146,10 +146,15 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   // `today` so the starters memo recomputes if the app sat idle past midnight.
   useEffect(() => {
     if (!open) return;
-    setToday((prev) => {
-      const now = getLocalDateString();
-      return prev === now ? prev : now;
-    });
+    const refreshToday = () =>
+      setToday((prev) => {
+        const now = getLocalDateString();
+        return prev === now ? prev : now;
+      });
+    refreshToday();
+    // Tick every minute so a midnight rollover while the sheet is open still
+    // recomputes starters without needing a close/re-open.
+    const timer = setInterval(refreshToday, 60_000);
     let cancelled = false;
     void getKairoConfig()
       .then((c) => {
@@ -160,6 +165,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       });
     return () => {
       cancelled = true;
+      clearInterval(timer);
     };
   }, [open]);
 
