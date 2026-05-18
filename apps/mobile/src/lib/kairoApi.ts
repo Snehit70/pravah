@@ -39,8 +39,17 @@ Your capabilities:
 - Move tasks around or help the user triage the inbox
 - Answer schedule questions ("What's happening Thursday?", "Am I free Friday?")
 
-When you decide to add a task, include a structured block in your response — one per task:
-<add-task>{"title":"<title>","scheduledDate":"<YYYY-MM-DD or null for inbox>","type":"open"}</add-task>
+When you decide to act on the user's behalf, include one structured block per
+action in your response. Use the task handle (e.g. T3) from the context to
+reference existing tasks. Every action is applied immediately and can be
+undone by the user, so don't ask for confirmation in prose — just act.
+
+<add-task>{"title":"...","scheduledDate":"YYYY-MM-DD or null for inbox","type":"open"}</add-task>
+<reschedule-task>{"id":"T3","scheduledDate":"YYYY-MM-DD"}</reschedule-task>
+<complete-task>{"id":"T3"}</complete-task>
+<unschedule-task>{"id":"T3"}</unschedule-task>
+<update-task>{"id":"T3","title":"...","priority":"p1"}</update-task>
+<delete-task>{"id":"T3"}</delete-task>
 
 Guidelines:
 - Be direct and warm, not corporate or verbose
@@ -256,4 +265,114 @@ export function extractTaskBlocks(rawText: string): { cleanText: string; tasks: 
     })
     .trim();
   return { cleanText, tasks };
+}
+
+// ─── Action blocks ────────────────────────────────────────────────────────────
+//
+// Kairo's full task-control surface. Each action mirrors a Convex mutation
+// 1:1; the parser converts <verb-task>{...}</verb-task> XML blobs into this
+// discriminated union, and the executor in `kairoActions.ts` runs them.
+
+export type KairoAction =
+  | {
+      kind: "add";
+      title: string;
+      scheduledDate: string | null;
+      type: "open" | "deadline";
+    }
+  | { kind: "reschedule"; handle: string; scheduledDate: string }
+  | { kind: "complete"; handle: string }
+  | { kind: "unschedule"; handle: string }
+  | {
+      kind: "update";
+      handle: string;
+      title?: string;
+      priority?: "p1" | "p2" | "p3";
+      deadline?: string | null;
+    }
+  | { kind: "delete"; handle: string };
+
+const ACTION_TAG_RE =
+  /<(add|reschedule|complete|unschedule|update|delete)-task>([\s\S]*?)<\/\1-task>/g;
+
+type ParsedJson = Record<string, unknown>;
+
+function asString(v: unknown): string | undefined {
+  return typeof v === "string" ? v : undefined;
+}
+
+function asPriority(v: unknown): "p1" | "p2" | "p3" | undefined {
+  return v === "p1" || v === "p2" || v === "p3" ? v : undefined;
+}
+
+function parseAction(kind: string, parsed: ParsedJson): KairoAction | null {
+  switch (kind) {
+    case "add": {
+      const title = asString(parsed.title);
+      if (!title) return null;
+      return {
+        kind: "add",
+        title,
+        scheduledDate: typeof parsed.scheduledDate === "string" ? parsed.scheduledDate : null,
+        type: parsed.type === "deadline" ? "deadline" : "open",
+      };
+    }
+    case "reschedule": {
+      const handle = asString(parsed.id ?? parsed.handle);
+      const scheduledDate = asString(parsed.scheduledDate);
+      if (!handle || !scheduledDate) return null;
+      return { kind: "reschedule", handle, scheduledDate };
+    }
+    case "complete":
+    case "unschedule":
+    case "delete": {
+      const handle = asString(parsed.id ?? parsed.handle);
+      if (!handle) return null;
+      return { kind, handle };
+    }
+    case "update": {
+      const handle = asString(parsed.id ?? parsed.handle);
+      if (!handle) return null;
+      const title = asString(parsed.title);
+      const priority = asPriority(parsed.priority);
+      // deadline:null is meaningful ("clear the deadline"), so distinguish
+      // between absent and explicitly null.
+      const hasDeadline = Object.prototype.hasOwnProperty.call(parsed, "deadline");
+      const deadline = hasDeadline
+        ? typeof parsed.deadline === "string"
+          ? parsed.deadline
+          : null
+        : undefined;
+      if (title === undefined && priority === undefined && deadline === undefined) {
+        return null;
+      }
+      return { kind: "update", handle, title, priority, deadline };
+    }
+    default:
+      return null;
+  }
+}
+
+/** Parse every <verb-task> block out of the assistant's raw text, returning
+ *  the stripped message and an ordered list of actions. Malformed blocks
+ *  (bad JSON, missing required fields) are silently dropped — same policy as
+ *  the original add-only parser. */
+export function extractKairoActions(rawText: string): {
+  cleanText: string;
+  actions: KairoAction[];
+} {
+  const actions: KairoAction[] = [];
+  const cleanText = rawText
+    .replace(ACTION_TAG_RE, (_, kind: string, json: string) => {
+      try {
+        const parsed = JSON.parse(json) as ParsedJson;
+        const action = parseAction(kind, parsed);
+        if (action) actions.push(action);
+      } catch {
+        /* skip malformed */
+      }
+      return "";
+    })
+    .trim();
+  return { cleanText, actions };
 }
