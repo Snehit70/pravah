@@ -245,13 +245,18 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
 
       // Snapshot history *before* the optimistic user-message append, since
       // the API expects the assistant's prior turns paired with their
-      // matching user prompts.
-      const history = msgs
-        .slice(1)
-        .map((m): { role: "user" | "assistant"; content: string } => ({
-          role: m.from === "me" ? "user" : "assistant",
-          content: m.text,
-        }));
+      // matching user prompts. We start from the first user message so the
+      // greeting (or any leading assistant-only turns) never lands in
+      // context — a positional `slice(1)` would mis-fire on chats where
+      // front-trimming has already removed the greeting.
+      const firstUserIdx = msgs.findIndex((m) => m.from === "me");
+      const history =
+        firstUserIdx === -1
+          ? []
+          : msgs.slice(firstUserIdx).map((m): { role: "user" | "assistant"; content: string } => ({
+              role: m.from === "me" ? "user" : "assistant",
+              content: m.text,
+            }));
 
       setDeferredPromptPreview(null);
       setMsgs((prev) => [...prev, { from: "me", text: trimmed }]);

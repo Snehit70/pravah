@@ -76,6 +76,14 @@ export function useKairoChats(): UseKairoChats {
   // Track the chat being saved so the debounced flush always writes the
   // latest content for the chat that was active when the timer fires.
   const pendingChatRef = useRef<StoredChat | null>(null);
+  // Flips once the user takes any action (create/switch/delete/edit). Mount-
+  // time hydration must bail out if it resolves after a local edit, otherwise
+  // a slow storage read would clobber the in-memory session.
+  const userTouchedRef = useRef(false);
+  // The id of the chat the user most recently asked to switch to. Lets us
+  // discard stale `loadChat` results from earlier `switchChat` calls so a
+  // slow read can't overwrite a newer selection.
+  const latestSwitchRef = useRef<string | null>(null);
 
   const flushPendingSave = useCallback(() => {
     if (saveTimerRef.current) {
@@ -106,9 +114,13 @@ export function useKairoChats(): UseKairoChats {
   // Hydrate once on mount.
   useEffect(() => {
     let cancelled = false;
+    // Treat user interaction as a hard cancel: once the user has done
+    // anything, the in-memory state is the source of truth and any pending
+    // hydration result is discarded.
+    const isStale = () => cancelled || userTouchedRef.current;
     void (async () => {
       const indexResult = await loadChatIndex();
-      if (cancelled) return;
+      if (isStale()) return;
       if (indexResult.kind === "error") {
         // Load failed. Show a fresh chat in memory but do NOT open the save
         // gate yet — a write here could clobber recoverable storage.
@@ -137,7 +149,7 @@ export function useKairoChats(): UseKairoChats {
 
       const targetId = activeChatId ?? storedChats[0].id;
       const chatResult = await loadChat(targetId);
-      if (cancelled) return;
+      if (isStale()) return;
 
       if (chatResult.kind === "ok") {
         setChats(storedChats);
@@ -166,7 +178,7 @@ export function useKairoChats(): UseKairoChats {
       }
 
       const fallback = await loadChat(remaining[0].id);
-      if (cancelled) return;
+      if (isStale()) return;
       if (fallback.kind === "ok") {
         setChats(remaining);
         setActiveChat(fallback.chat);
@@ -202,6 +214,7 @@ export function useKairoChats(): UseKairoChats {
   );
 
   const createChat = useCallback(() => {
+    userTouchedRef.current = true;
     flushPendingSave();
     const fresh = makeFreshChat();
     const meta: ChatMeta = {
@@ -223,9 +236,14 @@ export function useKairoChats(): UseKairoChats {
   const switchChat = useCallback(
     (id: string) => {
       if (activeChat?.id === id) return;
+      userTouchedRef.current = true;
       flushPendingSave();
+      latestSwitchRef.current = id;
       void (async () => {
         const result = await loadChat(id);
+        // Discard if the user has since tapped a different chat — otherwise
+        // a slow read could clobber the newer selection.
+        if (latestSwitchRef.current !== id) return;
         if (result.kind === "ok") {
           setActiveChat(result.chat);
           setChats((prev) => {
@@ -240,6 +258,7 @@ export function useKairoChats(): UseKairoChats {
 
   const deleteChatById = useCallback(
     (id: string) => {
+      userTouchedRef.current = true;
       flushPendingSave();
       void deleteChatBlob(id);
       setChats((prev) => {
@@ -262,8 +281,10 @@ export function useKairoChats(): UseKairoChats {
           }
           const sorted = [...next].sort((a, b) => b.updatedAt - a.updatedAt);
           const target = sorted[0];
+          latestSwitchRef.current = target.id;
           void (async () => {
             const result = await loadChat(target.id);
+            if (latestSwitchRef.current !== target.id) return;
             if (result.kind === "ok") setActiveChat(result.chat);
           })();
           persistIndex(next, target.id);
@@ -278,6 +299,7 @@ export function useKairoChats(): UseKairoChats {
 
   const applyMessageUpdate = useCallback(
     (updater: (prev: KairoMessage[]) => KairoMessage[]) => {
+      userTouchedRef.current = true;
       setActiveChat((prev) => {
         if (!prev) return prev;
         const nextMessages = updater(prev.messages);
