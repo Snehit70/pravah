@@ -354,13 +354,20 @@ function parseAction(kind: string, parsed: ParsedJson): KairoAction | null {
       const title = asString(parsed.title);
       const priority = asPriority(parsed.priority);
       // deadline:null is meaningful ("clear the deadline"), so distinguish
-      // between absent and explicitly null.
+      // between absent, explicitly null, and a string value. Any other type
+      // (number, boolean, object) is malformed — treat as absent so a bad
+      // value can't silently clear an existing deadline.
       const hasDeadline = Object.prototype.hasOwnProperty.call(parsed, "deadline");
-      const deadline = hasDeadline
-        ? typeof parsed.deadline === "string"
-          ? parsed.deadline
-          : null
-        : undefined;
+      let deadline: string | null | undefined;
+      if (!hasDeadline) {
+        deadline = undefined;
+      } else if (parsed.deadline === null) {
+        deadline = null;
+      } else if (typeof parsed.deadline === "string") {
+        deadline = parsed.deadline;
+      } else {
+        deadline = undefined;
+      }
       if (title === undefined && priority === undefined && deadline === undefined) {
         return null;
       }
