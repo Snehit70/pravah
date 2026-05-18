@@ -213,11 +213,11 @@ vi.mock("../lib/kairoConfig", () => ({
 // ─── kairoApi mock ────────────────────────────────────────────────────────────
 vi.mock("../lib/kairoApi", () => ({
   KAIRO_SYSTEM_PROMPT: "You are Kairo. {CONTEXT}",
-  buildKairoContext: vi.fn(() => "mocked context"),
+  buildKairoContext: vi.fn(() => ({ text: "mocked context", idMap: {} })),
   buildKairoStarters: vi.fn(() => ["Plan my week", "What's overdue?"]),
   buildAnthropicRequestBody: vi.fn(() => ({ model: "claude", messages: [] })),
   buildOpenAIRequestBody: vi.fn(() => ({ model: "gpt-4", messages: [] })),
-  extractTaskBlocks: vi.fn((text: string) => ({ cleanText: text, tasks: [] as Array<{ title: string; scheduledDate: string | null; type: "open" | "deadline" }> })),
+  extractKairoActions: vi.fn((text: string) => ({ cleanText: text, actions: [] as Array<{ kind: "add"; title: string; scheduledDate: string | null; type: "open" | "deadline" }> })),
   readKairoResponseText: vi.fn(() => "mocked response"),
 }));
 
@@ -353,7 +353,7 @@ describe("Kairo", () => {
   it("replays deferred message once isAllTasksReady becomes true", async () => {
     useConfiguredKairo();
     vi.mocked(KairoApi.readKairoResponseText).mockReturnValue("Here's your plan");
-    vi.mocked(KairoApi.extractTaskBlocks).mockReturnValue({ cleanText: "Here's your plan", tasks: [] });
+    vi.mocked(KairoApi.extractKairoActions).mockReturnValue({ cleanText: "Here's your plan", actions: [] });
 
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
@@ -410,7 +410,7 @@ describe("Kairo", () => {
   it("sends message successfully when workspace is ready", async () => {
     useConfiguredKairo();
     vi.mocked(KairoApi.readKairoResponseText).mockReturnValue("Got it!");
-    vi.mocked(KairoApi.extractTaskBlocks).mockReturnValue({ cleanText: "Got it!", tasks: [] });
+    vi.mocked(KairoApi.extractKairoActions).mockReturnValue({ cleanText: "Got it!", actions: [] });
 
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
@@ -482,11 +482,11 @@ describe("Kairo", () => {
   it("extracts and creates tasks from response with task blocks", async () => {
     useConfiguredKairo();
     vi.mocked(KairoApi.readKairoResponseText).mockReturnValue("I've added these tasks");
-    vi.mocked(KairoApi.extractTaskBlocks).mockReturnValue({
+    vi.mocked(KairoApi.extractKairoActions).mockReturnValue({
       cleanText: "I've added these tasks",
-      tasks: [
-        { title: "Review PR", scheduledDate: "2026-05-05", type: "open" },
-        { title: "Write tests", scheduledDate: null, type: "open" },
+      actions: [
+        { kind: "add", title: "Review PR", scheduledDate: "2026-05-05", type: "open" },
+        { kind: "add", title: "Write tests", scheduledDate: null, type: "open" },
       ],
     });
 

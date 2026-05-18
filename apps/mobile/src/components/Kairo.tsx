@@ -31,6 +31,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
 import { colors, fonts, motion, radii, spacing, typography } from "../theme/tokens";
 import { classifyError, createActionId, mobileLogger } from "../lib/logger";
 import {
@@ -44,11 +45,18 @@ import {
   buildKairoContext,
   buildKairoStarters,
   buildOpenAIRequestBody,
-  extractTaskBlocks,
+  extractKairoActions,
   readKairoResponseText,
+  type KairoAction,
   type KairoMessage,
+  type KairoMessageAction,
   type KairoTaskInput,
 } from "../lib/kairoApi";
+import {
+  applyKairoActions,
+  type KairoActionResult,
+  type TaskSnapshot,
+} from "../lib/kairoActions";
 import { getLocalDateString } from "../lib/dates";
 import { useKairoChats } from "../hooks/useKairoChats";
 import { KairoChatList } from "./KairoChatList";
@@ -75,6 +83,74 @@ type KairoProps = {
 };
 
 const DEFERRED_LOADING_TEXT = "Loading your workspace... one moment.";
+
+/** Render a short human-readable label for an applied action chip. The
+ *  before-state lookup gives us the original title for reference actions
+ *  (reschedule/complete/etc.) — for adds we already know the title from the
+ *  action itself. */
+function labelForAction(
+  action: KairoAction,
+  beforeTitle: string | null
+): string {
+  switch (action.kind) {
+    case "add":
+      return action.scheduledDate
+        ? `Added "${action.title}" → ${action.scheduledDate}`
+        : `Added "${action.title}" to inbox`;
+    case "reschedule":
+      return beforeTitle
+        ? `Rescheduled "${beforeTitle}" → ${action.scheduledDate}`
+        : `Rescheduled task → ${action.scheduledDate}`;
+    case "complete":
+      return beforeTitle ? `Completed "${beforeTitle}"` : "Completed task";
+    case "unschedule":
+      return beforeTitle ? `Sent "${beforeTitle}" to inbox` : "Sent task to inbox";
+    case "update":
+      return beforeTitle ? `Updated "${beforeTitle}"` : "Updated task";
+    case "delete":
+      return beforeTitle ? `Deleted "${beforeTitle}"` : "Deleted task";
+  }
+}
+
+function actionResultToMessageAction(
+  result: KairoActionResult,
+  beforeTitle: string | null
+): { chip: KairoMessageAction; undo: (() => Promise<void>) | null } {
+  const id = `${result.action.kind}-${Math.random().toString(36).slice(2, 9)}`;
+  if (result.status === "applied") {
+    return {
+      chip: {
+        id,
+        kind: result.action.kind,
+        label: labelForAction(result.action, beforeTitle),
+        state: "applied",
+      },
+      undo: result.undo,
+    };
+  }
+  if (result.status === "skipped") {
+    return {
+      chip: {
+        id,
+        kind: result.action.kind,
+        label: labelForAction(result.action, beforeTitle),
+        state: "skipped",
+        detail: result.reason,
+      },
+      undo: null,
+    };
+  }
+  return {
+    chip: {
+      id,
+      kind: result.action.kind,
+      label: labelForAction(result.action, beforeTitle),
+      state: "failed",
+      detail: result.error,
+    },
+    undo: null,
+  };
+}
 
 type KairoChatRow =
   | { kind: "message"; id: string; message: KairoMessage }
@@ -108,6 +184,10 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   // new day's "What's on today?" / overdue counts on next visit.
   const [today, setToday] = useState(() => getLocalDateString());
   const listRef = useRef<FlatList<KairoChatRow>>(null);
+  // Undo closures keyed by KairoMessageAction.id. Held in a ref so the closure
+  // identity is stable across renders; messages only carry the serializable
+  // chip state and reference back into this map by id.
+  const undoMap = useRef<Map<string, () => Promise<void>>>(new Map());
 
   const {
     chats,
@@ -123,6 +203,13 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   );
 
   const addTaskMutation = useMutation(api.tasks.addTask);
+  const moveTaskMutation = useMutation(api.tasks.moveTask);
+  const completeTaskMutation = useMutation(api.tasks.completeTask);
+  const reopenTaskMutation = useMutation(api.tasks.reopenTask);
+  const unscheduleTaskMutation = useMutation(api.tasks.unscheduleTask);
+  const updateTaskMutation = useMutation(api.tasks.updateTask);
+  const softDeleteTaskMutation = useMutation(api.tasks.softDeleteTask);
+  const restoreTaskMutation = useMutation(api.tasks.restoreTask);
 
   // Single snap point at 92% — leaves a sliver of the dimmed app visible at
   // the top as a peek, the same affordance the web overlay leaves.
@@ -210,12 +297,56 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     sendMessageRef.current(prompt);
   }, []);
 
+  const handleUndo = useCallback(
+    async (chipId: string) => {
+      const undoFn = undoMap.current.get(chipId);
+      if (!undoFn) return;
+      undoMap.current.delete(chipId);
+      try {
+        await undoFn();
+        setMsgs((prev) =>
+          prev.map((m) =>
+            m.actions?.some((a) => a.id === chipId)
+              ? {
+                  ...m,
+                  actions: m.actions.map((a) =>
+                    a.id === chipId ? { ...a, state: "undone" as const } : a
+                  ),
+                }
+              : m
+          )
+        );
+      } catch (error) {
+        mobileLogger.warn("kairo_undo_failed", { errorType: classifyError(error) });
+        setMsgs((prev) =>
+          prev.map((m) =>
+            m.actions?.some((a) => a.id === chipId)
+              ? {
+                  ...m,
+                  actions: m.actions.map((a) =>
+                    a.id === chipId
+                      ? {
+                          ...a,
+                          state: "failed" as const,
+                          detail: error instanceof Error ? error.message : "Undo failed",
+                        }
+                      : a
+                  ),
+                }
+              : m
+          )
+        );
+      }
+    },
+    [setMsgs]
+  );
+
   const renderChatRow = useCallback(
     ({ item }: { item: KairoChatRow }) => {
       if (item.kind === "thinking") return <Thinking />;
-      return <Bubble message={item.message} onRetry={handleRetry} />;
+      return <Bubble message={item.message} onRetry={handleRetry} onUndo={handleUndo} />;
     },
-    [handleRetry]
+    [handleRetry, handleUndo]
   );
 
   const handleSheetChange = useCallback((index: number) => {
@@ -302,9 +433,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       }
 
       try {
-        const { text: contextText } = buildKairoContext(tasks, inboxTasks);
-        // idMap will be threaded into the action executor in Slice 2; for now
-        // we only need its side effect of stamping handles into contextText.
+        const { text: contextText, idMap } = buildKairoContext(tasks, inboxTasks);
         const systemPrompt = KAIRO_SYSTEM_PROMPT.replace("{CONTEXT}", contextText);
         const body =
           nextConfig.providerFormat === "anthropic"
@@ -346,30 +475,82 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
 
         const data = await res.json();
         const rawText = readKairoResponseText(data, nextConfig.providerFormat);
-        const { cleanText, tasks: taskBlocks } = extractTaskBlocks(rawText);
+        const { cleanText, actions } = extractKairoActions(rawText);
 
-        for (const t of taskBlocks) {
-          await addTaskMutation({
+        // Snapshot the title for each referenced task *before* mutations run —
+        // after applyKairoActions the task may be deleted or renamed, but the
+        // chip label still needs the original.
+        const lookupTask = (taskId: string): TaskSnapshot | null => {
+          const t = tasks.find((x) => x._id === taskId) ?? inboxTasks.find((x) => x._id === taskId);
+          if (!t) return null;
+          return {
+            _id: t._id,
             title: t.title,
-            type: t.type,
-            scheduledDate: t.scheduledDate ?? undefined,
-            deadline: t.type === "deadline" ? t.scheduledDate ?? undefined : undefined,
-            source: "ai-agent",
-          });
-        }
+            status: t.status,
+            scheduledDate: t.scheduledDate,
+            priority: t.priority,
+          };
+        };
+        const beforeTitles = actions.map((a) => {
+          if (a.kind === "add") return null;
+          const id = idMap[a.handle];
+          return id ? lookupTask(id)?.title ?? null : null;
+        });
+
+        const mutations = {
+          addTask: (args: Parameters<typeof addTaskMutation>[0]) => addTaskMutation(args),
+          moveTask: (args: { taskId: string; targetDate: string }) =>
+            moveTaskMutation({ taskId: args.taskId as Id<"tasks">, targetDate: args.targetDate }),
+          completeTask: (args: { taskId: string }) =>
+            completeTaskMutation({ taskId: args.taskId as Id<"tasks"> }),
+          reopenTask: (args: { taskId: string }) =>
+            reopenTaskMutation({ taskId: args.taskId as Id<"tasks"> }),
+          unscheduleTask: (args: { taskId: string }) =>
+            unscheduleTaskMutation({ taskId: args.taskId as Id<"tasks"> }),
+          updateTask: (args: {
+            taskId: string;
+            title?: string;
+            priority?: "p1" | "p2" | "p3";
+            deadline?: string;
+          }) =>
+            updateTaskMutation({
+              taskId: args.taskId as Id<"tasks">,
+              title: args.title,
+              priority: args.priority,
+              deadline: args.deadline,
+            }),
+          softDeleteTask: (args: { taskId: string }) =>
+            softDeleteTaskMutation({ taskId: args.taskId as Id<"tasks"> }),
+          restoreTask: (args: { taskId: string }) =>
+            restoreTaskMutation({ taskId: args.taskId as Id<"tasks"> }),
+        };
+
+        const results = await applyKairoActions(actions, idMap, {
+          mutations,
+          lookupTask,
+        });
+
+        const chips: KairoMessageAction[] = [];
+        results.forEach((result, i) => {
+          const { chip, undo } = actionResultToMessageAction(result, beforeTitles[i] ?? null);
+          chips.push(chip);
+          if (undo) undoMap.current.set(chip.id, undo);
+        });
 
         setMsgs((prev) => [
           ...prev,
           {
             from: "kairo",
             text: cleanText || "(no response text)",
-            tasks: taskBlocks.length ? taskBlocks : undefined,
+            actions: chips.length ? chips : undefined,
           },
         ]);
         mobileLogger.info("kairo_send_succeeded", {
           actionId,
           providerFormat: nextConfig.providerFormat,
-          taskBlocks: taskBlocks.length,
+          actionsApplied: results.filter((r) => r.status === "applied").length,
+          actionsSkipped: results.filter((r) => r.status === "skipped").length,
+          actionsFailed: results.filter((r) => r.status === "failed").length,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Network error";
@@ -386,7 +567,23 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         setThinking(false);
       }
     },
-    [addTaskMutation, config, inboxTasks, isAllTasksReady, msgs, setMsgs, tasks, thinking]
+    [
+      addTaskMutation,
+      moveTaskMutation,
+      completeTaskMutation,
+      reopenTaskMutation,
+      unscheduleTaskMutation,
+      updateTaskMutation,
+      softDeleteTaskMutation,
+      restoreTaskMutation,
+      config,
+      inboxTasks,
+      isAllTasksReady,
+      msgs,
+      setMsgs,
+      tasks,
+      thinking,
+    ]
   );
 
   useEffect(() => {
@@ -590,9 +787,11 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
 function Bubble({
   message,
   onRetry,
+  onUndo,
 }: {
   message: KairoMessage;
   onRetry?: (prompt: string) => void;
+  onUndo?: (chipId: string) => void;
 }) {
   const isMe = message.from === "me";
   return (
@@ -602,6 +801,13 @@ function Bubble({
       ) : (
         <KairoMarkdown text={message.text} baseStyle={styles.bubbleText} />
       )}
+      {message.actions?.length ? (
+        <View style={styles.actionChipList}>
+          {message.actions.map((a) => (
+            <ActionChip key={a.id} action={a} onUndo={onUndo} />
+          ))}
+        </View>
+      ) : null}
       {message.tasks?.length ? (
         <View style={styles.taskAddedList}>
           {message.tasks.map((t, i) => (
@@ -621,6 +827,49 @@ function Bubble({
         >
           <Text style={styles.retryButtonText}>Try again</Text>
         </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+function ActionChip({
+  action,
+  onUndo,
+}: {
+  action: KairoMessageAction;
+  onUndo?: (chipId: string) => void;
+}) {
+  const chipStyle =
+    action.state === "applied"
+      ? styles.chipApplied
+      : action.state === "undone"
+        ? styles.chipUndone
+        : action.state === "skipped"
+          ? styles.chipSkipped
+          : styles.chipFailed;
+  const canUndo = action.state === "applied" && !!onUndo;
+  return (
+    <View style={[styles.chip, chipStyle]}>
+      <Text style={styles.chipLabel} numberOfLines={2}>
+        {action.label}
+      </Text>
+      {action.detail ? (
+        <Text style={styles.chipDetail} numberOfLines={2}>
+          {action.detail}
+        </Text>
+      ) : null}
+      {canUndo ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Undo"
+          onPress={() => onUndo!(action.id)}
+          hitSlop={8}
+          style={({ pressed }) => [styles.chipUndoButton, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={styles.chipUndoText}>Undo</Text>
+        </Pressable>
+      ) : action.state === "undone" ? (
+        <Text style={styles.chipStateLabel}>Undone</Text>
       ) : null}
     </View>
   );
@@ -761,6 +1010,63 @@ const styles = StyleSheet.create({
   },
   bubbleTextMe: {
     color: colors.textInverse,
+  },
+  actionChipList: {
+    marginTop: spacing.sm,
+    gap: spacing.xs,
+  },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radii.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCardGlass,
+  },
+  chipApplied: {
+    borderLeftWidth: 2,
+    borderLeftColor: colors.success,
+  },
+  chipUndone: {
+    borderLeftWidth: 2,
+    borderLeftColor: colors.textMuted,
+    opacity: 0.7,
+  },
+  chipSkipped: {
+    borderLeftWidth: 2,
+    borderLeftColor: colors.warning,
+  },
+  chipFailed: {
+    borderLeftWidth: 2,
+    borderLeftColor: colors.warning,
+  },
+  chipLabel: {
+    flex: 1,
+    color: colors.textPrimary,
+    ...typography.bodyMd,
+  },
+  chipDetail: {
+    color: colors.textSecondary,
+    ...typography.micro,
+  },
+  chipUndoButton: {
+    paddingVertical: 4,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chipUndoText: {
+    ...typography.micro,
+    fontFamily: fonts.sansSemibold,
+    color: colors.textPrimary,
+  },
+  chipStateLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
   },
   taskAddedList: {
     marginTop: spacing.sm,

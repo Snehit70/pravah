@@ -14,6 +14,23 @@ export interface KairoMessage {
   /** When set on a kairo error bubble, surfaces an inline "Try again" button
    *  that re-runs the original prompt instead of forcing the user to retype. */
   retryPrompt?: string;
+  /** Per-bubble action chips rendered under the message body. Carries the
+   *  outcome of every <verb-task> block the assistant emitted with this turn
+   *  plus a synchronous handle to undo it. Not persisted across sessions —
+   *  see kairoChatStorage which strips this field on save. */
+  actions?: KairoMessageAction[];
+}
+
+export type KairoMessageActionState = "applied" | "skipped" | "failed" | "undone";
+
+export interface KairoMessageAction {
+  id: string;
+  kind: KairoAction["kind"];
+  /** Display label like "Rescheduled \"Email Sara\" to Fri". */
+  label: string;
+  state: KairoMessageActionState;
+  /** Reason text shown alongside skipped/failed chips. */
+  detail?: string;
 }
 
 export interface KairoTaskBlock {
