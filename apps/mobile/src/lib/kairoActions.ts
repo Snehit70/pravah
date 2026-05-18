@@ -194,17 +194,14 @@ export async function applyKairoActions(
           if (before) localSnapshots.set(taskId, { ...before, status: "inbox", scheduledDate: undefined });
           break;
         case "update": {
-          // Only include the deadline key when the parser explicitly set it.
-          // The Convex mutation uses hasOwnProperty to distinguish "clear
-          // deadline" (key present, value undefined) from "don't touch"
-          // (key absent). Collapsing null → undefined via ?? would make both
-          // indistinguishable.
-          const updateArgs: Parameters<typeof mutations.updateTask>[0] = {
-            taskId,
-            title: action.title,
-            priority: action.priority,
-          };
+          // Only include keys the parser explicitly set. The Convex mutation
+          // uses hasOwnProperty for title, priority, and deadline, so a
+          // present-but-undefined key is interpreted as "clear this field".
+          const updateArgs: Parameters<typeof mutations.updateTask>[0] = { taskId };
+          if (action.title !== undefined) updateArgs.title = action.title;
+          if (action.priority !== undefined) updateArgs.priority = action.priority;
           if (action.deadline !== undefined) {
+            // null → clear (key present, value undefined); string → set
             updateArgs.deadline = action.deadline ?? undefined;
           }
           await mutations.updateTask(updateArgs);

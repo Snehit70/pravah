@@ -523,17 +523,15 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
             priority?: "p1" | "p2" | "p3";
             deadline?: string;
           }) => {
-            // Mirror the kairoActions conditional-key approach: only forward
-            // deadline when it was explicitly set so Convex's hasOwnProperty
-            // check doesn't treat an absent deadline as "clear".
+            // Only forward keys that were explicitly set. Convex's updateTask
+            // uses hasOwnProperty for title, priority, and deadline, so a
+            // present-but-undefined key clears that field.
             const mutArgs: Parameters<typeof updateTaskMutation>[0] = {
               taskId: args.taskId as Id<"tasks">,
-              title: args.title,
-              priority: args.priority,
             };
-            if (Object.prototype.hasOwnProperty.call(args, "deadline")) {
-              mutArgs.deadline = args.deadline;
-            }
+            if (Object.prototype.hasOwnProperty.call(args, "title")) mutArgs.title = args.title;
+            if (Object.prototype.hasOwnProperty.call(args, "priority")) mutArgs.priority = args.priority;
+            if (Object.prototype.hasOwnProperty.call(args, "deadline")) mutArgs.deadline = args.deadline;
             return updateTaskMutation(mutArgs);
           },
           softDeleteTask: (args: { taskId: string }) =>
