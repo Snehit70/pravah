@@ -248,7 +248,7 @@ export function useKairoChats(): UseKairoChats {
   const switchChat = useCallback(
     (id: string) => {
       if (activeChat?.id === id) return;
-      userTouchedRef.current = true;
+      markUserTouched();
       flushPendingSave();
       latestSwitchRef.current = id;
       void (async () => {
@@ -265,12 +265,12 @@ export function useKairoChats(): UseKairoChats {
         }
       })();
     },
-    [activeChat?.id, flushPendingSave, persistIndex]
+    [activeChat?.id, flushPendingSave, markUserTouched, persistIndex]
   );
 
   const deleteChatById = useCallback(
     (id: string) => {
-      userTouchedRef.current = true;
+      markUserTouched();
       flushPendingSave();
       void deleteChatBlob(id);
       setChats((prev) => {
@@ -310,12 +310,12 @@ export function useKairoChats(): UseKairoChats {
         return next;
       });
     },
-    [activeChat?.id, flushPendingSave, persistIndex]
+    [activeChat?.id, flushPendingSave, markUserTouched, persistIndex]
   );
 
   const applyMessageUpdate = useCallback(
     (updater: (prev: KairoMessage[]) => KairoMessage[]) => {
-      userTouchedRef.current = true;
+      markUserTouched();
       setActiveChat((prev) => {
         if (!prev) return prev;
         const nextMessages = updater(prev.messages);
@@ -344,7 +344,7 @@ export function useKairoChats(): UseKairoChats {
         return nextChat;
       });
     },
-    [persistIndex, scheduleSave]
+    [markUserTouched, persistIndex, scheduleSave]
   );
 
   const appendMessage = useCallback(
