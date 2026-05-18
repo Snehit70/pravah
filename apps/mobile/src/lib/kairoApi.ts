@@ -11,6 +11,9 @@ export interface KairoMessage {
   from: "me" | "kairo";
   text: string;
   tasks?: KairoTaskBlock[];
+  /** When set on a kairo error bubble, surfaces an inline "Try again" button
+   *  that re-runs the original prompt instead of forcing the user to retype. */
+  retryPrompt?: string;
 }
 
 export interface KairoTaskBlock {
@@ -91,6 +94,39 @@ export function buildKairoContext(allTasks: KairoTaskInput[], inboxTasks: KairoT
     "",
     `Completed this session: ${completed.length} tasks`,
   ].join("\n");
+}
+
+/** Pick four conversation starters that reflect the user's current state.
+ *  Falls back to evergreen prompts when the workspace is empty so a fresh
+ *  install still has something tappable. Pure for easy testing. */
+export function buildKairoStarters(
+  allTasks: KairoTaskInput[],
+  inboxTasks: KairoTaskInput[],
+  today: string
+): string[] {
+  const starters: string[] = [];
+  const scheduled = allTasks.filter((t) => t.status === "scheduled");
+  const overdue = scheduled.filter(
+    (t) => t.scheduledDate && t.scheduledDate < today
+  );
+  const dueToday = scheduled.filter((t) => t.scheduledDate === today);
+
+  if (overdue.length) starters.push(`What's overdue? (${overdue.length})`);
+  if (dueToday.length) starters.push("What's on today?");
+  if (inboxTasks.length >= 3) starters.push(`Triage my inbox (${inboxTasks.length})`);
+  if (scheduled.length >= 5) starters.push("What looks heavy this week?");
+
+  const evergreen = [
+    "Plan my week",
+    "Summarize my progress",
+    "What should I focus on?",
+    "What's overdue?",
+  ];
+  for (const s of evergreen) {
+    if (starters.length >= 4) break;
+    if (!starters.some((existing) => existing.startsWith(s))) starters.push(s);
+  }
+  return starters.slice(0, 4);
 }
 
 type ChatTurn = { role: "user" | "assistant"; content: string };

@@ -42,14 +42,17 @@ import {
   KAIRO_SYSTEM_PROMPT,
   buildAnthropicRequestBody,
   buildKairoContext,
+  buildKairoStarters,
   buildOpenAIRequestBody,
   extractTaskBlocks,
   readKairoResponseText,
   type KairoMessage,
   type KairoTaskInput,
 } from "../lib/kairoApi";
+import { getLocalDateString } from "../lib/dates";
 import { useKairoChats } from "../hooks/useKairoChats";
 import { KairoChatList } from "./KairoChatList";
+import { KairoMarkdown } from "./KairoMarkdown";
 
 export type KairoSheetRef = {
   open: () => void;
@@ -70,13 +73,6 @@ type KairoProps = {
   /** Called when the user taps "Configure" on the unconfigured empty state. */
   onOpenSettings?: () => void;
 };
-
-const STARTERS = [
-  "Plan my week",
-  "What's overdue?",
-  "Summarize my progress",
-  "What looks heavy this week?",
-];
 
 const DEFERRED_LOADING_TEXT = "Loading your workspace... one moment.";
 
@@ -107,6 +103,10 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   const [deferredPromptPreview, setDeferredPromptPreview] = useState<string | null>(null);
   // "chat" shows the active conversation, "list" shows the chat picker.
   const [view, setView] = useState<"chat" | "list">("chat");
+  // Local-date snapshot used to derive starters. Refreshed each time the
+  // sheet opens so an app left mounted across midnight still picks up the
+  // new day's "What's on today?" / overdue counts on next visit.
+  const [today, setToday] = useState(() => getLocalDateString());
   const listRef = useRef<FlatList<KairoChatRow>>(null);
 
   const {
@@ -142,9 +142,19 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   }, [open, onActiveChange]);
 
   // Reload Kairo config every time the sheet opens — the user might have
-  // edited their API key in the Settings sheet between visits.
+  // edited their API key in the Settings sheet between visits. Also refresh
+  // `today` so the starters memo recomputes if the app sat idle past midnight.
   useEffect(() => {
     if (!open) return;
+    const refreshToday = () =>
+      setToday((prev) => {
+        const now = getLocalDateString();
+        return prev === now ? prev : now;
+      });
+    refreshToday();
+    // Tick every minute so a midnight rollover while the sheet is open still
+    // recomputes starters without needing a close/re-open.
+    const timer = setInterval(refreshToday, 60_000);
     let cancelled = false;
     void getKairoConfig()
       .then((c) => {
@@ -155,6 +165,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       });
     return () => {
       cancelled = true;
+      clearInterval(timer);
     };
   }, [open]);
 
@@ -189,10 +200,23 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     return rows;
   }, [deferredPromptPreview, msgs, thinking]);
 
-  const renderChatRow = useCallback(({ item }: { item: KairoChatRow }) => {
-    if (item.kind === "thinking") return <Thinking />;
-    return <Bubble message={item.message} />;
+  const starters = useMemo(
+    () => buildKairoStarters(tasks, inboxTasks, today),
+    [tasks, inboxTasks, today]
+  );
+
+  const sendMessageRef = useRef<(text: string) => void>(() => {});
+  const handleRetry = useCallback((prompt: string) => {
+    sendMessageRef.current(prompt);
   }, []);
+
+  const renderChatRow = useCallback(
+    ({ item }: { item: KairoChatRow }) => {
+      if (item.kind === "thinking") return <Thinking />;
+      return <Bubble message={item.message} onRetry={handleRetry} />;
+    },
+    [handleRetry]
+  );
 
   const handleSheetChange = useCallback((index: number) => {
     setOpen(index >= 0);
@@ -306,7 +330,10 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
             inner && typeof inner === "object" && "message" in inner
               ? String((inner as Record<string, unknown>).message)
               : `API error ${res.status}`;
-          setMsgs((prev) => [...prev, { from: "kairo", text: `⚠ ${message}` }]);
+          setMsgs((prev) => [
+            ...prev,
+            { from: "kairo", text: `⚠ ${message}`, retryPrompt: trimmed },
+          ]);
           mobileLogger.warn("kairo_provider_failed", {
             actionId,
             providerFormat: nextConfig.providerFormat,
@@ -344,7 +371,10 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Network error";
-        setMsgs((prev) => [...prev, { from: "kairo", text: `⚠ ${message}` }]);
+        setMsgs((prev) => [
+          ...prev,
+          { from: "kairo", text: `⚠ ${message}`, retryPrompt: trimmed },
+        ]);
         mobileLogger.error("kairo_send_failed", {
           actionId,
           providerFormat: nextConfig.providerFormat,
@@ -356,6 +386,12 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     },
     [addTaskMutation, config, inboxTasks, isAllTasksReady, msgs, setMsgs, tasks, thinking]
   );
+
+  useEffect(() => {
+    sendMessageRef.current = (text: string) => {
+      void sendMessage(text);
+    };
+  }, [sendMessage]);
 
   // Retry deferred prompt once the workspace loads. When a user sends a message
   // immediately after opening Kairo, the full-corpus query is still cold-starting.
@@ -484,7 +520,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
             {/* Starters render on first paint only (no user messages yet). */}
             {msgs.length === 1 && !thinking && !deferredPromptPreview ? (
           <View style={styles.starters}>
-            {STARTERS.map((p) => (
+            {starters.map((p) => (
               <Pressable
                 key={p}
                 onPress={() => void sendMessage(p)}
@@ -549,11 +585,21 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   );
 });
 
-function Bubble({ message }: { message: KairoMessage }) {
+function Bubble({
+  message,
+  onRetry,
+}: {
+  message: KairoMessage;
+  onRetry?: (prompt: string) => void;
+}) {
   const isMe = message.from === "me";
   return (
     <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleKairo]}>
-      <Text style={[styles.bubbleText, isMe && styles.bubbleTextMe]}>{message.text}</Text>
+      {isMe ? (
+        <Text style={[styles.bubbleText, styles.bubbleTextMe]}>{message.text}</Text>
+      ) : (
+        <KairoMarkdown text={message.text} baseStyle={styles.bubbleText} />
+      )}
       {message.tasks?.length ? (
         <View style={styles.taskAddedList}>
           {message.tasks.map((t, i) => (
@@ -563,6 +609,16 @@ function Bubble({ message }: { message: KairoMessage }) {
             </Text>
           ))}
         </View>
+      ) : null}
+      {message.retryPrompt && onRetry ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Try again"
+          onPress={() => onRetry(message.retryPrompt as string)}
+          style={({ pressed }) => [styles.retryButton, pressed && { opacity: 0.7 }]}
+        >
+          <Text style={styles.retryButtonText}>Try again</Text>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -711,6 +767,21 @@ const styles = StyleSheet.create({
   taskAddedItem: {
     color: colors.success,
     ...typography.numeric,
+  },
+  retryButton: {
+    alignSelf: "flex-start",
+    marginTop: spacing.sm,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCardGlass,
+  },
+  retryButtonText: {
+    ...typography.bodyMd,
+    fontFamily: fonts.sansSemibold,
+    color: colors.textPrimary,
   },
   // Skeleton card matches web's KairoThinking — left rule, dim shimmer bars.
   thinkingCard: {
