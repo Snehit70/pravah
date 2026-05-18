@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.5.0](https://github.com/Snehit70/pravah/compare/web-v1.4.0...web-v1.5.0) (2026-05-18)
+
+
+### Features
+
+* **mobile:** add Kairo chat list panel UI ([4d89c00](https://github.com/Snehit70/pravah/commit/4d89c00b56972787c10c7c0e1b619188532bc746))
+* **mobile:** add useKairoChats hook for chat history state ([2e3562c](https://github.com/Snehit70/pravah/commit/2e3562cfc4eafdeb3410e4bf74303415da8885ff))
+* **mobile:** Kairo persistent multi-chat history ([1c51a4b](https://github.com/Snehit70/pravah/commit/1c51a4bb07629510858d767cca874d531f4bf200))
+* **mobile:** persist Kairo chats to AsyncStorage ([5063f74](https://github.com/Snehit70/pravah/commit/5063f744cd6ead8a8cb623359b4ff515685ad2d4))
+* **mobile:** wire Kairo to persistent multi-chat history ([f0f823b](https://github.com/Snehit70/pravah/commit/f0f823bfbb4fee1f585e60b8d6db4c04889ed006))
+
+
+### Bug Fixes
+
+* **mobile:** detach chat on switch and upsert meta on message edit ([a381220](https://github.com/Snehit70/pravah/commit/a381220b817209e444aaa91bedbda42ffacffce5))
+* **mobile:** harden Kairo chat hydration and history slicing ([f6ad973](https://github.com/Snehit70/pravah/commit/f6ad9734d57888f4d3ab774b45e578ee56866887))
+* **mobile:** persist user edits after hydrate failure and avoid delete-race writes ([e96ef3f](https://github.com/Snehit70/pravah/commit/e96ef3fde21deb4ebda025ecc5d68f2781785725))
+* **mobile:** route all user-driven chat updates through markUserTouched ([c28ad20](https://github.com/Snehit70/pravah/commit/c28ad2022a37e3db86bdd3bb43e247547a1ac421))
+
 ## [1.4.0](https://github.com/Snehit70/pravah/compare/web-v1.3.0...web-v1.4.0) (2026-05-17)
 
 
