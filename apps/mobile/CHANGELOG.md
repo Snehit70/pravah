@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.8.0](https://github.com/Snehit70/pravah/compare/mobile-v1.7.0...mobile-v1.8.0) (2026-05-18)
+
+
+### Features
+
+* **mobile:** give Kairo task handles in its context ([508d251](https://github.com/Snehit70/pravah/commit/508d251bf38401fcd57f7f3f958c6a4fee59607e))
+* **mobile:** Kairo full task control with per-action undo ([491a7ad](https://github.com/Snehit70/pravah/commit/491a7ad3e81fd600dceea417b5defa2d7547e45e))
+* **mobile:** make Kairo starter pills context-aware ([90661ac](https://github.com/Snehit70/pravah/commit/90661acf6a1708104ff1f88367b367c608827dff))
+* **mobile:** parser and executor for full Kairo action set ([2b3fe7e](https://github.com/Snehit70/pravah/commit/2b3fe7e0f24a5b2ecf11a70a5565cbaa9c1cdca5))
+* **mobile:** run Kairo actions with per-action undo ([1d46c01](https://github.com/Snehit70/pravah/commit/1d46c01291164e506ff8baa5c2f37ac4f9883a75))
+* **mobile:** show inline retry on Kairo error bubbles ([17a2d72](https://github.com/Snehit70/pravah/commit/17a2d72a8a86113b25105829be356a386abe4dc7))
+
+
+### Bug Fixes
+
+* **mobile:** conditionally include title/priority keys in updateTask ([6fd5cb3](https://github.com/Snehit70/pravah/commit/6fd5cb3d86b6d368b400ce6fc2d52eea10164f91))
+* **mobile:** fix updateTask adapter deadline key and undo retry on failure ([0388a66](https://github.com/Snehit70/pravah/commit/0388a66c0e09fe871f9c45d042f76200ac7ca5c1))
+* **mobile:** harden Kairo action undo correctness and deadline semantics ([4ba291d](https://github.com/Snehit70/pravah/commit/4ba291dcf7c1b3bc412b0cefeacc04a593b2f80e))
+* **mobile:** include task type when mirroring deadline side-effects ([feef8a3](https://github.com/Snehit70/pravah/commit/feef8a35a46b755d7506ef733b0e704603349f03))
+* **mobile:** reject malformed update deadlines instead of clearing ([641fe96](https://github.com/Snehit70/pravah/commit/641fe96d0c6b9f51b14457e52ba26a5fa94f28cd))
+* **mobile:** restore schedule state on deadline-change update undo ([bf5ba13](https://github.com/Snehit70/pravah/commit/bf5ba136ea02d3cd30852cd3f655cf22e0903895))
+
 ## [1.7.0](https://github.com/Snehit70/pravah/compare/mobile-v1.6.0...mobile-v1.7.0) (2026-05-18)
 
 
