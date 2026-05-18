@@ -103,6 +103,10 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   const [deferredPromptPreview, setDeferredPromptPreview] = useState<string | null>(null);
   // "chat" shows the active conversation, "list" shows the chat picker.
   const [view, setView] = useState<"chat" | "list">("chat");
+  // Local-date snapshot used to derive starters. Refreshed each time the
+  // sheet opens so an app left mounted across midnight still picks up the
+  // new day's "What's on today?" / overdue counts on next visit.
+  const [today, setToday] = useState(() => getLocalDateString());
   const listRef = useRef<FlatList<KairoChatRow>>(null);
 
   const {
@@ -138,9 +142,14 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   }, [open, onActiveChange]);
 
   // Reload Kairo config every time the sheet opens — the user might have
-  // edited their API key in the Settings sheet between visits.
+  // edited their API key in the Settings sheet between visits. Also refresh
+  // `today` so the starters memo recomputes if the app sat idle past midnight.
   useEffect(() => {
     if (!open) return;
+    setToday((prev) => {
+      const now = getLocalDateString();
+      return prev === now ? prev : now;
+    });
     let cancelled = false;
     void getKairoConfig()
       .then((c) => {
@@ -186,8 +195,8 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   }, [deferredPromptPreview, msgs, thinking]);
 
   const starters = useMemo(
-    () => buildKairoStarters(tasks, inboxTasks, getLocalDateString()),
-    [tasks, inboxTasks]
+    () => buildKairoStarters(tasks, inboxTasks, today),
+    [tasks, inboxTasks, today]
   );
 
   const sendMessageRef = useRef<(text: string) => void>(() => {});
