@@ -251,6 +251,10 @@ export function useKairoChats(): UseKairoChats {
       markUserTouched();
       flushPendingSave();
       latestSwitchRef.current = id;
+      // Detach immediately so the UI can't dispatch messages to the old chat
+      // while the new one is loading. The send button is disabled when
+      // activeChat is null.
+      setActiveChat(null);
       void (async () => {
         const result = await loadChat(id);
         // Discard if the user has since tapped a different chat — otherwise
@@ -334,10 +338,19 @@ export function useKairoChats(): UseKairoChats {
         };
         if (canSaveRef.current) scheduleSave(nextChat);
         // Mirror title + updatedAt into the index so the chat list reorders.
+        // Upsert rather than map-only: if hydration fell into the error path,
+        // chats starts empty and the active chat would never be indexed.
         setChats((current) => {
-          const next = current.map((c) =>
-            c.id === nextChat.id ? { ...c, title: nextTitle, updatedAt: now } : c
-          );
+          const meta: ChatMeta = {
+            id: nextChat.id,
+            title: nextTitle,
+            createdAt: nextChat.createdAt,
+            updatedAt: now,
+          };
+          const alreadyPresent = current.some((c) => c.id === nextChat.id);
+          const next = alreadyPresent
+            ? current.map((c) => (c.id === nextChat.id ? meta : c))
+            : [...current, meta];
           persistIndex(next, nextChat.id);
           return next;
         });
