@@ -20,6 +20,7 @@ export interface TaskSnapshot {
   _id: string;
   title: string;
   status: "inbox" | "scheduled" | "completed" | "cancelled";
+  type: "open" | "deadline";
   scheduledDate?: string;
   priority?: "p1" | "p2" | "p3";
   deadline?: string;
@@ -229,21 +230,32 @@ export async function applyKairoActions(
               deadline: nextDeadline,
             };
             // Mirror convex/tasks.ts updateTask side-effects so a later action
-            // in the same turn sees the post-mutation scheduling state.
+            // in the same turn sees the post-mutation scheduling state. The
+            // convex checks are type-sensitive (shouldPreserveInboxOpenTask
+            // requires type === "open"; wasAutoScheduledByDeadline requires
+            // type === "deadline"), so include type in the mirror.
             if (action.deadline !== undefined) {
               if (action.deadline) {
-                const isInboxOpen = before.status === "inbox" && !before.scheduledDate;
-                if (
-                  !isInboxOpen &&
-                  before.status !== "completed" &&
-                  before.status !== "cancelled"
-                ) {
-                  snap.status = "scheduled";
-                  snap.scheduledDate = action.deadline;
+                const shouldPreserveInboxOpen =
+                  before.status === "inbox" &&
+                  before.type === "open" &&
+                  !before.scheduledDate;
+                if (shouldPreserveInboxOpen) {
+                  snap.type = "open";
+                  snap.status = "inbox";
+                  snap.scheduledDate = undefined;
+                } else {
+                  snap.type = "deadline";
+                  if (before.status !== "completed" && before.status !== "cancelled") {
+                    snap.status = "scheduled";
+                    snap.scheduledDate = action.deadline;
+                  }
                 }
               } else {
+                snap.type = "open";
                 const wasAutoScheduledByDeadline =
                   before.status === "scheduled" &&
+                  before.type === "deadline" &&
                   !!before.deadline &&
                   before.scheduledDate === before.deadline;
                 if (wasAutoScheduledByDeadline) {

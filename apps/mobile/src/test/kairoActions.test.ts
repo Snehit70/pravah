@@ -70,6 +70,7 @@ describe("applyKairoActions", () => {
         _id: "real-1",
         title: "x",
         status: "scheduled",
+        type: "open",
         scheduledDate: "2026-05-10",
       },
     });
@@ -87,7 +88,7 @@ describe("applyKairoActions", () => {
   it("reschedule undo unschedules when the task was previously in the inbox", async () => {
     const m = makeMutations();
     const env = envFrom(m, {
-      r1: { _id: "r1", title: "x", status: "inbox" },
+      r1: { _id: "r1", title: "x", status: "inbox", type: "open" },
     });
     const results = await applyKairoActions(
       [{ kind: "reschedule", handle: "T1", scheduledDate: "2026-05-22" }],
@@ -102,7 +103,7 @@ describe("applyKairoActions", () => {
   it("complete + undo reopens the task and restores its scheduled placement", async () => {
     const m = makeMutations();
     const env = envFrom(m, {
-      r1: { _id: "r1", title: "x", status: "scheduled", scheduledDate: "2026-05-15" },
+      r1: { _id: "r1", title: "x", status: "scheduled", type: "open", scheduledDate: "2026-05-15" },
     });
     const results = await applyKairoActions(
       [{ kind: "complete", handle: "T1" }],
@@ -117,7 +118,7 @@ describe("applyKairoActions", () => {
 
   it("delete routes to soft delete and undo calls restore", async () => {
     const m = makeMutations();
-    const env = envFrom(m, { r1: { _id: "r1", title: "x", status: "scheduled" } });
+    const env = envFrom(m, { r1: { _id: "r1", title: "x", status: "scheduled", type: "open" } });
     const results = await applyKairoActions(
       [{ kind: "delete", handle: "T1" }],
       { T1: "r1" },
@@ -132,7 +133,7 @@ describe("applyKairoActions", () => {
   it("update + undo restores only the fields that were actually changed", async () => {
     const m = makeMutations();
     const env = envFrom(m, {
-      r1: { _id: "r1", title: "Old", status: "inbox", priority: "p3" },
+      r1: { _id: "r1", title: "Old", status: "inbox", type: "open", priority: "p3" },
     });
     const results = await applyKairoActions(
       [{ kind: "update", handle: "T1", title: "New", priority: "p1" }],
@@ -169,7 +170,7 @@ describe("applyKairoActions", () => {
         throw new Error("boom");
       }),
     });
-    const env = envFrom(m, { r1: { _id: "r1", title: "a", status: "scheduled" } });
+    const env = envFrom(m, { r1: { _id: "r1", title: "a", status: "scheduled", type: "open" } });
     const actions: KairoAction[] = [
       { kind: "complete", handle: "T1" },
       { kind: "delete", handle: "T2" },

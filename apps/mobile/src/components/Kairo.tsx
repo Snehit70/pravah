@@ -496,6 +496,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
             _id: t._id,
             title: t.title,
             status: t.status,
+            type: t.type ?? "open",
             scheduledDate: t.scheduledDate,
             priority: t.priority,
             deadline: t.deadline,
