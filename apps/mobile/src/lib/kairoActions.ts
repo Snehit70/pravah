@@ -105,12 +105,13 @@ function buildUpdateUndo(
   mutations: KairoMutations
 ): () => Promise<void> {
   return async () => {
-    await mutations.updateTask({
-      taskId,
-      title: action.title !== undefined ? before.title : undefined,
-      priority: action.priority !== undefined ? before.priority : undefined,
-      deadline: action.deadline !== undefined ? before.deadline : undefined,
-    });
+    const restoreArgs: Parameters<typeof mutations.updateTask>[0] = { taskId };
+    if (action.title !== undefined) restoreArgs.title = before.title;
+    if (action.priority !== undefined) restoreArgs.priority = before.priority;
+    // Only include deadline key when the action touched it, so the undo
+    // mutation's hasOwnProperty check correctly scopes the field.
+    if (action.deadline !== undefined) restoreArgs.deadline = before.deadline;
+    await mutations.updateTask(restoreArgs);
   };
 }
 
@@ -121,6 +122,12 @@ export async function applyKairoActions(
 ): Promise<KairoActionResult[]> {
   const { mutations, lookupTask } = env;
   const results: KairoActionResult[] = [];
+  // Local snapshot cache updated after each mutation so multi-action sequences
+  // on the same task build undo closures from the correct post-mutation state
+  // rather than the stale pre-turn snapshot.
+  const localSnapshots = new Map<string, TaskSnapshot>();
+  const lookupCurrent = (taskId: string): TaskSnapshot | null =>
+    localSnapshots.get(taskId) ?? lookupTask(taskId);
 
   for (const action of actions) {
     try {
@@ -155,13 +162,14 @@ export async function applyKairoActions(
         continue;
       }
 
-      const before = lookupTask(taskId);
+      const before = lookupCurrent(taskId);
       let undo: (() => Promise<void>) | null = null;
 
       switch (action.kind) {
         case "reschedule":
           await mutations.moveTask({ taskId, targetDate: action.scheduledDate });
           if (before) undo = buildRescheduleUndo(before, taskId, mutations);
+          if (before) localSnapshots.set(taskId, { ...before, status: "scheduled", scheduledDate: action.scheduledDate });
           break;
         case "complete":
           await mutations.completeTask({ taskId });
@@ -173,6 +181,7 @@ export async function applyKairoActions(
               await mutations.moveTask({ taskId, targetDate: before.scheduledDate });
             }
           };
+          if (before) localSnapshots.set(taskId, { ...before, status: "completed" });
           break;
         case "unschedule":
           await mutations.unscheduleTask({ taskId });
@@ -182,21 +191,40 @@ export async function applyKairoActions(
               await mutations.moveTask({ taskId, targetDate: prior });
             };
           }
+          if (before) localSnapshots.set(taskId, { ...before, status: "inbox", scheduledDate: undefined });
           break;
-        case "update":
-          await mutations.updateTask({
+        case "update": {
+          // Only include the deadline key when the parser explicitly set it.
+          // The Convex mutation uses hasOwnProperty to distinguish "clear
+          // deadline" (key present, value undefined) from "don't touch"
+          // (key absent). Collapsing null → undefined via ?? would make both
+          // indistinguishable.
+          const updateArgs: Parameters<typeof mutations.updateTask>[0] = {
             taskId,
             title: action.title,
             priority: action.priority,
-            deadline: action.deadline ?? undefined,
-          });
+          };
+          if (action.deadline !== undefined) {
+            updateArgs.deadline = action.deadline ?? undefined;
+          }
+          await mutations.updateTask(updateArgs);
           if (before) undo = buildUpdateUndo(before, taskId, action, mutations);
+          if (before) {
+            localSnapshots.set(taskId, {
+              ...before,
+              title: action.title !== undefined ? action.title : before.title,
+              priority: action.priority !== undefined ? action.priority : before.priority,
+              deadline: action.deadline !== undefined ? (action.deadline ?? undefined) : before.deadline,
+            });
+          }
           break;
+        }
         case "delete":
           await mutations.softDeleteTask({ taskId });
           undo = async () => {
             await mutations.restoreTask({ taskId });
           };
+          if (before) localSnapshots.set(taskId, { ...before, status: "cancelled" });
           break;
       }
       results.push({ action, status: "applied", taskId, undo });

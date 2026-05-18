@@ -301,9 +301,11 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     async (chipId: string) => {
       const undoFn = undoMap.current.get(chipId);
       if (!undoFn) return;
-      undoMap.current.delete(chipId);
       try {
         await undoFn();
+        // Only remove the closure after a confirmed success so transient
+        // failures leave it available for a retry.
+        undoMap.current.delete(chipId);
         setMsgs((prev) =>
           prev.map((m) =>
             m.actions?.some((a) => a.id === chipId)
@@ -344,7 +346,14 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   const renderChatRow = useCallback(
     ({ item }: { item: KairoChatRow }) => {
       if (item.kind === "thinking") return <Thinking />;
-      return <Bubble message={item.message} onRetry={handleRetry} onUndo={handleUndo} />;
+      return (
+        <Bubble
+          message={item.message}
+          onRetry={handleRetry}
+          onUndo={handleUndo}
+          isUndoable={(id) => undoMap.current.has(id)}
+        />
+      );
     },
     [handleRetry, handleUndo]
   );
@@ -489,6 +498,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
             status: t.status,
             scheduledDate: t.scheduledDate,
             priority: t.priority,
+            deadline: t.deadline,
           };
         };
         const beforeTitles = actions.map((a) => {
@@ -788,10 +798,12 @@ function Bubble({
   message,
   onRetry,
   onUndo,
+  isUndoable,
 }: {
   message: KairoMessage;
   onRetry?: (prompt: string) => void;
   onUndo?: (chipId: string) => void;
+  isUndoable?: (id: string) => boolean;
 }) {
   const isMe = message.from === "me";
   return (
@@ -804,7 +816,7 @@ function Bubble({
       {message.actions?.length ? (
         <View style={styles.actionChipList}>
           {message.actions.map((a) => (
-            <ActionChip key={a.id} action={a} onUndo={onUndo} />
+            <ActionChip key={a.id} action={a} onUndo={onUndo} isUndoable={isUndoable} />
           ))}
         </View>
       ) : null}
@@ -835,9 +847,11 @@ function Bubble({
 function ActionChip({
   action,
   onUndo,
+  isUndoable,
 }: {
   action: KairoMessageAction;
   onUndo?: (chipId: string) => void;
+  isUndoable?: (id: string) => boolean;
 }) {
   const chipStyle =
     action.state === "applied"
@@ -847,7 +861,9 @@ function ActionChip({
         : action.state === "skipped"
           ? styles.chipSkipped
           : styles.chipFailed;
-  const canUndo = action.state === "applied" && !!onUndo;
+  // Suppress the Undo button when no inverse closure is in memory (e.g. after
+  // app restart — closures are in-memory only and don't survive serialisation).
+  const canUndo = action.state === "applied" && !!onUndo && (isUndoable?.(action.id) ?? true);
   return (
     <View style={[styles.chip, chipStyle]}>
       <Text style={styles.chipLabel} numberOfLines={2}>

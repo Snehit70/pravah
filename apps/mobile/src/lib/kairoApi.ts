@@ -85,6 +85,7 @@ export type KairoTaskInput = {
   status: "inbox" | "scheduled" | "completed" | "cancelled";
   priority?: "p1" | "p2" | "p3";
   type?: "open" | "deadline";
+  deadline?: string;
 };
 
 /** Maps short handles surfaced to the model (e.g. "T12") back to real Convex
