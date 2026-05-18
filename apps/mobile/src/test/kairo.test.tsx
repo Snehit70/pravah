@@ -231,8 +231,8 @@ import type { KairoTaskInput } from "../lib/kairoApi";
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 const sampleTasks: KairoTaskInput[] = [
-  { title: "Task 1", status: "inbox" },
-  { title: "Task 2", scheduledDate: "2026-05-05", status: "scheduled" },
+  { _id: "task1", title: "Task 1", status: "inbox" },
+  { _id: "task2", title: "Task 2", scheduledDate: "2026-05-05", status: "scheduled" },
 ];
 
 function useConfiguredKairo() {

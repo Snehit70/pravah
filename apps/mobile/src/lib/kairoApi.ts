@@ -24,7 +24,11 @@ export interface KairoTaskBlock {
 
 export const KAIRO_SYSTEM_PROMPT = `You are Kairo, an intelligent work orchestration assistant embedded in Pravah — a timeline-first task management tool. Your role is to help the user manage their schedule, think through priorities, and keep their week intentional.
 
-You have the following information about the user's current state:
+You have the following information about the user's current state. Each task
+is prefixed with a short handle in square brackets like [T3]. Use that handle
+verbatim whenever you reference or act on a task — never invent handles, never
+mention them in prose to the user (they are internal).
+
 {CONTEXT}
 
 Your capabilities:
@@ -47,6 +51,9 @@ Guidelines:
 - Never make up tasks or details not present in the context`;
 
 export type KairoTaskInput = {
+  /** Convex task id. Required so we can mint a short handle ([T1], [T2], ...)
+   *  the model can use to reference the task in action blocks. */
+  _id: string;
   title: string;
   scheduledDate?: string;
   status: "inbox" | "scheduled" | "completed" | "cancelled";
@@ -54,10 +61,35 @@ export type KairoTaskInput = {
   type?: "open" | "deadline";
 };
 
-export function buildKairoContext(allTasks: KairoTaskInput[], inboxTasks: KairoTaskInput[]): string {
+/** Maps short handles surfaced to the model (e.g. "T12") back to real Convex
+ *  task ids. Scoped to a single send: regenerated each turn so handles don't
+ *  drift as the workspace changes. */
+export type KairoIdMap = Record<string, string>;
+
+export interface KairoContext {
+  text: string;
+  idMap: KairoIdMap;
+}
+
+export function buildKairoContext(
+  allTasks: KairoTaskInput[],
+  inboxTasks: KairoTaskInput[]
+): KairoContext {
   const today = getLocalDateString();
   const scheduled = allTasks.filter((t) => t.status === "scheduled");
   const completed = allTasks.filter((t) => t.status === "completed");
+
+  // Assign handles deterministically: scheduled tasks first (sorted by date,
+  // then position-stable insertion order), then inbox. Stable ordering keeps
+  // [T1] meaning the same task across the few seconds between context build
+  // and action execution.
+  const idMap: KairoIdMap = {};
+  let nextHandle = 1;
+  const handleFor = (task: KairoTaskInput): string => {
+    const handle = `T${nextHandle++}`;
+    idMap[handle] = task._id;
+    return handle;
+  };
 
   const byDate: Record<string, KairoTaskInput[]> = {};
   for (const t of scheduled) {
@@ -72,7 +104,7 @@ export function buildKairoContext(allTasks: KairoTaskInput[], inboxTasks: KairoT
       const taskList = ts
         .map(
           (t) =>
-            `  - "${t.title}"${t.type === "deadline" ? " [DEADLINE]" : ""}${t.priority ? ` [${t.priority.toUpperCase()}]` : ""}`
+            `  - [${handleFor(t)}] "${t.title}"${t.type === "deadline" ? " [DEADLINE]" : ""}${t.priority ? ` [${t.priority.toUpperCase()}]` : ""}`
         )
         .join("\n");
       return `${label}:\n${taskList}`;
@@ -80,10 +112,10 @@ export function buildKairoContext(allTasks: KairoTaskInput[], inboxTasks: KairoT
     .join("\n\n");
 
   const inboxLines = inboxTasks.length
-    ? inboxTasks.map((t) => `  - "${t.title}"`).join("\n")
+    ? inboxTasks.map((t) => `  - [${handleFor(t)}] "${t.title}"`).join("\n")
     : "  (empty)";
 
-  return [
+  const text = [
     `Today: ${today}`,
     "",
     "Scheduled tasks:",
@@ -94,6 +126,8 @@ export function buildKairoContext(allTasks: KairoTaskInput[], inboxTasks: KairoT
     "",
     `Completed this session: ${completed.length} tasks`,
   ].join("\n");
+
+  return { text, idMap };
 }
 
 /** Pick four conversation starters that reflect the user's current state.

@@ -302,8 +302,10 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       }
 
       try {
-        const context = buildKairoContext(tasks, inboxTasks);
-        const systemPrompt = KAIRO_SYSTEM_PROMPT.replace("{CONTEXT}", context);
+        const { text: contextText } = buildKairoContext(tasks, inboxTasks);
+        // idMap will be threaded into the action executor in Slice 2; for now
+        // we only need its side effect of stamping handles into contextText.
+        const systemPrompt = KAIRO_SYSTEM_PROMPT.replace("{CONTEXT}", contextText);
         const body =
           nextConfig.providerFormat === "anthropic"
             ? buildAnthropicRequestBody(nextConfig, systemPrompt, history, trimmed)
