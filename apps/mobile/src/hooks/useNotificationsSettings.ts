@@ -10,6 +10,7 @@ import {
   type NotificationPermissionState,
 } from "../lib/notifications";
 import { classifyError, mobileLogger } from "../lib/logger";
+import { useUserPreferences } from "./useUserPreferences";
 
 type ToastState = { kind: "error" | "info"; message: string };
 type ShowToast = (next: ToastState) => void;
@@ -24,7 +25,23 @@ type UseNotificationsSettingsReturn = {
   sendTestNotification: () => Promise<void>;
 };
 
+function parseTime(value: string): { hour: number; minute: number } {
+  const [h, m] = value.split(":").map(Number);
+  // Sanitization in userPreferences guarantees the format; this is a belt &
+  // braces fallback for an out-of-band write.
+  if (Number.isNaN(h) || Number.isNaN(m)) return { hour: 9, minute: 0 };
+  return { hour: h, minute: m };
+}
+
+function formatClock(value: string): string {
+  const { hour, minute } = parseTime(value);
+  const period = hour >= 12 ? "PM" : "AM";
+  const display = hour % 12 || 12;
+  return `${display}:${minute.toString().padStart(2, "0")} ${period}`;
+}
+
 export function useNotificationsSettings(showToast: ShowToast): UseNotificationsSettingsReturn {
+  const { prefs } = useUserPreferences();
   const [notificationPermissionState, setNotificationPermissionState] =
     useState<NotificationPermissionState>("undetermined");
   const [isNotificationsBusy, setIsNotificationsBusy] = useState(false);
@@ -52,6 +69,20 @@ export function useNotificationsSettings(showToast: ShowToast): UseNotifications
       mounted = false;
     };
   }, []);
+
+  // Reschedule whenever the configured reminder time changes while the
+  // reminder is on. Without this, edits to the time picker would only take
+  // effect on the next toggle-off/on cycle.
+  useEffect(() => {
+    if (!isDailyReminderEnabled) return;
+    if (notificationPermissionState !== "granted") return;
+    const { hour, minute } = parseTime(prefs.dailyReminderTime);
+    void scheduleDailyReminderAsync({ hour, minute }).catch((error) => {
+      mobileLogger.warn("daily_reminder_reschedule_failed", {
+        errorType: classifyError(error),
+      });
+    });
+  }, [prefs.dailyReminderTime, isDailyReminderEnabled, notificationPermissionState]);
 
   const requestNotificationsAccess = useCallback(async () => {
     if (isNotificationsBusy) return;
@@ -91,9 +122,13 @@ export function useNotificationsSettings(showToast: ShowToast): UseNotifications
 
       const next = !isDailyReminderEnabled;
       if (next) {
-        await scheduleDailyReminderAsync();
+        const { hour, minute } = parseTime(prefs.dailyReminderTime);
+        await scheduleDailyReminderAsync({ hour, minute });
         setIsDailyReminderEnabled(true);
-        showToast({ kind: "info", message: "Daily reminder set for 9:00 AM." });
+        showToast({
+          kind: "info",
+          message: `Daily reminder set for ${formatClock(prefs.dailyReminderTime)}.`,
+        });
       } else {
         await disableDailyReminderAsync();
         setIsDailyReminderEnabled(false);
@@ -108,7 +143,13 @@ export function useNotificationsSettings(showToast: ShowToast): UseNotifications
     } finally {
       setIsNotificationsBusy(false);
     }
-  }, [isDailyReminderEnabled, isNotificationsBusy, notificationPermissionState, showToast]);
+  }, [
+    isDailyReminderEnabled,
+    isNotificationsBusy,
+    notificationPermissionState,
+    prefs.dailyReminderTime,
+    showToast,
+  ]);
 
   const sendTestNotification = useCallback(async () => {
     if (isNotificationsBusy) return;

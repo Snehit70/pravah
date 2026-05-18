@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Keyboard,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,13 +16,40 @@ import BottomSheet, {
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
 import Animated, { FadeIn } from "react-native-reanimated";
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useReducedMotion } from "../hooks/useReducedMotion";
+import { useUserPreferences } from "../hooks/useUserPreferences";
 import { colors, radii, spacing, typography } from "../theme/tokens";
-import type { NotificationPermissionState } from "../lib/notifications";
+import { isWithinQuietHours, type NotificationPermissionState } from "../lib/notifications";
 import { KairoSettingsSection } from "./KairoSettingsSection";
 import { GmailReviewSection } from "./GmailReviewSection";
 import type { IntegrationLastRunSummary } from "../hooks/useIntegrationsSettings";
+
+type QuietPickerKind = "reminder" | "quietStart" | "quietEnd";
+
+function timeToDate(value: string): Date {
+  const [h, m] = value.split(":").map((n) => Number(n));
+  const d = new Date();
+  d.setHours(Number.isFinite(h) ? h : 9, Number.isFinite(m) ? m : 0, 0, 0);
+  return d;
+}
+
+function dateToTime(d: Date): string {
+  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+}
+
+function formatClockLabel(value: string): string {
+  const [hStr, mStr] = value.split(":");
+  const hour = Number(hStr);
+  const minute = Number(mStr);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return value;
+  const period = hour >= 12 ? "PM" : "AM";
+  const display = hour % 12 || 12;
+  return `${display}:${minute.toString().padStart(2, "0")} ${period}`;
+}
 
 function formatRelativeTime(ts: number | undefined): string | null {
   if (!ts) return null;
@@ -148,6 +176,26 @@ export function SettingsSheet({
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
   const [activeSection, setActiveSection] = useState<SectionKey>("assistant");
+  const { prefs, setPreference } = useUserPreferences();
+  const [openPicker, setOpenPicker] = useState<QuietPickerKind | null>(null);
+
+  const handleTimePicked = useCallback(
+    (kind: QuietPickerKind) => (_event: DateTimePickerEvent, picked?: Date) => {
+      if (Platform.OS === "android") setOpenPicker(null);
+      if (!picked) return;
+      const value = dateToTime(picked);
+      if (kind === "reminder") void setPreference("dailyReminderTime", value);
+      else if (kind === "quietStart") void setPreference("quietHoursStart", value);
+      else void setPreference("quietHoursEnd", value);
+    },
+    [setPreference],
+  );
+
+  const reminderInQuietHours = isWithinQuietHours(prefs.dailyReminderTime, {
+    enabled: prefs.quietHoursEnabled,
+    start: prefs.quietHoursStart,
+    end: prefs.quietHoursEnd,
+  });
 
   // Reset to the first tab whenever the sheet opens so users always land in
   // the same predictable place rather than wherever they last were.
@@ -405,7 +453,9 @@ export function SettingsSheet({
                 <View style={styles.settingRow}>
                   <View style={styles.settingCopy}>
                     <Text style={styles.settingLabel}>Daily reminder</Text>
-                    <Text style={styles.settingHelp}>Send one reminder at 9:00 AM every day.</Text>
+                    <Text style={styles.settingHelp}>
+                      Send one reminder every day at the time you choose.
+                    </Text>
                   </View>
                   <Switch
                     value={isDailyReminderEnabled}
@@ -415,6 +465,29 @@ export function SettingsSheet({
                     thumbColor={isDailyReminderEnabled ? colors.accent : colors.textMuted}
                   />
                 </View>
+
+                <Pressable
+                  onPress={() => setOpenPicker("reminder")}
+                  disabled={!isDailyReminderEnabled || isNotificationsBusy}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Change reminder time, currently ${formatClockLabel(prefs.dailyReminderTime)}`}
+                  style={({ pressed }) => [
+                    styles.timeRow,
+                    !isDailyReminderEnabled && { opacity: 0.5 },
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Text style={styles.settingMeta}>Reminder time</Text>
+                  <Text style={styles.timeRowValue}>{formatClockLabel(prefs.dailyReminderTime)}</Text>
+                </Pressable>
+
+                {reminderInQuietHours ? (
+                  <Text style={[styles.settingMeta, { color: colors.accent }]}>
+                    This time falls within your quiet hours — the reminder will still fire.
+                  </Text>
+                ) : null}
+
                 <Pressable
                   onPress={onSendTestNotification}
                   disabled={isNotificationsBusy}
@@ -428,6 +501,72 @@ export function SettingsSheet({
                   </Text>
                 </Pressable>
               </View>
+
+              <View style={[styles.settingBlock, styles.sectionCard]}>
+                <View style={styles.settingRow}>
+                  <View style={styles.settingCopy}>
+                    <Text style={styles.settingLabel}>Quiet hours</Text>
+                    <Text style={styles.settingHelp}>
+                      A window where notifications are paused. Applies to future
+                      ad-hoc alerts; daily reminders still fire.
+                    </Text>
+                  </View>
+                  <Switch
+                    value={prefs.quietHoursEnabled}
+                    onValueChange={(next) => void setPreference("quietHoursEnabled", next)}
+                    trackColor={{ false: colors.border, true: colors.accentSoft }}
+                    thumbColor={prefs.quietHoursEnabled ? colors.accent : colors.textMuted}
+                  />
+                </View>
+
+                <Pressable
+                  onPress={() => setOpenPicker("quietStart")}
+                  disabled={!prefs.quietHoursEnabled}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Change quiet hours start, currently ${formatClockLabel(prefs.quietHoursStart)}`}
+                  style={({ pressed }) => [
+                    styles.timeRow,
+                    !prefs.quietHoursEnabled && { opacity: 0.5 },
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Text style={styles.settingMeta}>Starts</Text>
+                  <Text style={styles.timeRowValue}>{formatClockLabel(prefs.quietHoursStart)}</Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => setOpenPicker("quietEnd")}
+                  disabled={!prefs.quietHoursEnabled}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Change quiet hours end, currently ${formatClockLabel(prefs.quietHoursEnd)}`}
+                  style={({ pressed }) => [
+                    styles.timeRow,
+                    !prefs.quietHoursEnabled && { opacity: 0.5 },
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Text style={styles.settingMeta}>Ends</Text>
+                  <Text style={styles.timeRowValue}>{formatClockLabel(prefs.quietHoursEnd)}</Text>
+                </Pressable>
+              </View>
+
+              {openPicker !== null ? (
+                <DateTimePicker
+                  value={timeToDate(
+                    openPicker === "reminder"
+                      ? prefs.dailyReminderTime
+                      : openPicker === "quietStart"
+                        ? prefs.quietHoursStart
+                        : prefs.quietHoursEnd,
+                  )}
+                  mode="time"
+                  is24Hour={false}
+                  display={Platform.OS === "ios" ? "spinner" : "default"}
+                  onChange={handleTimePicked(openPicker)}
+                />
+              ) : null}
             </View>
           ) : null}
 
@@ -582,6 +721,19 @@ const styles = StyleSheet.create({
   },
   sectionFootAction: {
     marginTop: spacing.xs,
+  },
+  timeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
+    marginTop: spacing.xs,
+  },
+  timeRowValue: {
+    ...typography.bodyMd,
+    color: colors.accent,
   },
   signOutLink: {
     color: colors.error,

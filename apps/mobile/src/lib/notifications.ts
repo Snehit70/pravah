@@ -91,6 +91,32 @@ export async function disableDailyReminderAsync(): Promise<void> {
   }
 }
 
+function parseHHMM(value: string): { hour: number; minute: number } | null {
+  const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(value);
+  if (!m) return null;
+  return { hour: Number(m[1]), minute: Number(m[2]) };
+}
+
+// Pure helper so notification scheduling and the settings UI can both answer
+// "does this clock time fall in the configured quiet window?" without
+// duplicating logic. The window wraps across midnight when start > end.
+export function isWithinQuietHours(
+  timeStr: string,
+  options: { enabled: boolean; start: string; end: string },
+): boolean {
+  if (!options.enabled) return false;
+  const t = parseHHMM(timeStr);
+  const s = parseHHMM(options.start);
+  const e = parseHHMM(options.end);
+  if (!t || !s || !e) return false;
+  const toMin = ({ hour, minute }: { hour: number; minute: number }) => hour * 60 + minute;
+  const tMin = toMin(t);
+  const sMin = toMin(s);
+  const eMin = toMin(e);
+  if (sMin === eMin) return false;
+  return sMin < eMin ? tMin >= sMin && tMin < eMin : tMin >= sMin || tMin < eMin;
+}
+
 export async function scheduleTestNotificationAsync(): Promise<void> {
   await Notifications.scheduleNotificationAsync({
     content: {
