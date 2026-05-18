@@ -359,26 +359,21 @@ Reasoning:
 - Account is low-frequency and belongs at the end.
 - The Kairo section keeps provider and API key visible by default, while endpoint URL and model live behind an `Advanced` toggle so the default editing path stays short on mobile.
 
-### Section jump chips
+### Section tab bar
 
-The chip row at the top of the settings sheet (`Assistant`, `Sync`, `Alerts`, `Account`) is both a navigation control and a passive position indicator.
+The bar at the top of the settings sheet (`Assistant`, `Sync`, `Alerts`, `Account`, …) is a tab control: only the active tab's content renders below it, and switching tabs swaps content rather than scrolling within a single long sheet.
 
 Implementation rules:
 
-- each chip is a `Pressable` that scrolls the bottom-sheet `BottomSheetScrollView` to the matching section's stored `onLayout` y-offset
-- offsets are captured per-section via `onLayout` on a wrapping `View`, not by ref-measuring children — measurement timing on Android is unreliable inside bottom sheets
-- the active chip is highlighted with the accent fill so the user can tell which section they jumped to
-- scroll animation is gated on `useReducedMotion`; reduced motion jumps without animating
-- the scroll view's `onScroll` handler also updates the active chip during manual scrolling, using `selectActiveSection` from `src/lib/settingsSections.ts` — the chip stays in sync with whatever section the user has scrolled into view, not just what they last tapped
+- the tab bar lives inside the pinned header (`BottomSheetView`) so it stays put while content scrolls
+- the bar itself is a horizontally-scrollable `ScrollView` so new tabs can be added without crowding the visible row
+- the active tab is highlighted with the accent fill; inactive tabs share the muted card chrome
+- exactly one section component renders at a time; the others are unmounted so a section with heavy state (Kairo, Gmail review) doesn't keep working when the user is elsewhere
+- tab content animates in with a short `FadeIn` keyed on the active section, gated on `useReducedMotion`
+- tapping the already-active tab scrolls its content back to the top (standard iOS tab-bar gesture); switching to a new tab resets scroll to top instantly
+- opening the sheet always lands on the first tab — predictable rather than "wherever you last were"
 
-### Section activation rule
-
-`selectActiveSection(scrollY, offsets, bias)` is the pure helper that decides which chip should look active for a given scroll position:
-
-- offsets must be ordered top-to-bottom (the order is naturally produced by per-section `onLayout` capture)
-- a section is "active" when its captured offset is `<= scrollY + bias`; the last such section wins
-- `bias` shifts the probe line downward so a section feels active once its header is comfortably under the chip row, not the instant its top edge appears
-- the helper is unit-tested in `src/test/settingsSections.test.ts`
+The earlier chip-scroll model (`src/lib/settingsSections.ts` + `selectActiveSection`) is no longer wired in; the helper remains in the tree as a legacy artifact and is not imported.
 
 ### Advanced auto-open rule
 
@@ -431,7 +426,7 @@ Current mobile test coverage includes:
 - timeline date-window derivation (`useTaskQueries.test.ts`)
 - full-corpus gating for `allTasksQuery` (`useTaskQueriesGating.test.ts`)
 - Kairo advanced auto-open decision (`kairoConfig.test.ts`)
-- settings chip activation logic (`settingsSections.test.ts`)
+- user preferences sanitization (`userPreferences.test.ts`)
 - `ScreenErrorBoundary` render / fallback / retry (`screenErrorBoundary.test.tsx`)
 - workspace snapshot hydration and clear-token race safety (`workspaceSnapshot.test.ts`)
 - `AddTaskSheet` interaction tests (`addTaskSheet.test.tsx`)
