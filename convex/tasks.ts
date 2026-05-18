@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
@@ -103,9 +103,14 @@ export const listTasks = query({
       .withIndex("by_owner", (q) => q.eq("ownerTokenIdentifier", tokenIdentifier))
       .collect();
 
+    // Hide soft-deleted tasks from the default (unfiltered) view so the
+    // 30-minute undo grace window doesn't leak ghost rows into the UI.
+    // Callers that explicitly want cancelled tasks must pass status:"cancelled".
+    const visible = tasks.filter((task) => task.status !== "cancelled");
+
     return args.date
-      ? tasks.filter((task) => task.scheduledDate === args.date)
-      : tasks;
+      ? visible.filter((task) => task.scheduledDate === args.date)
+      : visible;
   },
 });
 
@@ -537,6 +542,71 @@ export const deleteTask = mutation({
     const tokenIdentifier = await requireTokenIdentifier(ctx);
     await getOwnedTask(ctx, args.taskId, tokenIdentifier);
     await ctx.db.delete(args.taskId);
+  },
+});
+
+/** Soft-delete a task: flip status to "cancelled" and stamp cancelledAt so
+ *  the scheduled purger can hard-delete it after the 30-minute grace window.
+ *  The default listTasks query already hides cancelled rows, so the task
+ *  disappears from the UI immediately while remaining undoable.
+ *  Used by Kairo so the user can undo an unintended delete; the UI's direct
+ *  delete buttons still call hard `deleteTask` for now. */
+export const softDeleteTask = mutation({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    await getOwnedTask(ctx, args.taskId, tokenIdentifier);
+    await ctx.db.patch(args.taskId, {
+      status: "cancelled",
+      cancelledAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/** Undo a soft-delete. Restores the task to the inbox rather than its prior
+ *  scheduled slot — reconstructing the old position/date is fiddly and the
+ *  user can re-schedule with one tap. Errors if the task was already purged
+ *  (i.e. the undo window expired). */
+export const restoreTask = mutation({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
+    if (task.status !== "cancelled") {
+      throw new Error("Task is not pending deletion");
+    }
+    const position = await getNextPositionForStatus(ctx, tokenIdentifier, "inbox");
+    await ctx.db.patch(args.taskId, {
+      status: "inbox",
+      scheduledDate: undefined,
+      position,
+      cancelledAt: undefined,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/** Cron job: hard-delete cancelled tasks past the 30-minute undo window.
+ *  Internal — invoked by convex/crons.ts only. */
+const PURGE_GRACE_MS = 30 * 60 * 1000;
+export const purgeExpiredCancelledTasks = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const cutoff = Date.now() - PURGE_GRACE_MS;
+    const cancelled = await ctx.db
+      .query("tasks")
+      .withIndex("by_status", (q) => q.eq("status", "cancelled"))
+      .collect();
+
+    let purged = 0;
+    for (const task of cancelled) {
+      if (task.cancelledAt !== undefined && task.cancelledAt < cutoff) {
+        await ctx.db.delete(task._id);
+        purged += 1;
+      }
+    }
+    return { purged };
   },
 });
 

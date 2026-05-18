@@ -3,12 +3,13 @@ import { buildKairoStarters, type KairoTaskInput } from "../lib/kairoApi";
 
 const TODAY = "2026-05-18";
 
+let nextId = 0;
 function scheduled(date: string, title = "t"): KairoTaskInput {
-  return { title, status: "scheduled", scheduledDate: date };
+  return { _id: `t${++nextId}`, title, status: "scheduled", scheduledDate: date };
 }
 
 function inbox(title = "t"): KairoTaskInput {
-  return { title, status: "inbox" };
+  return { _id: `t${++nextId}`, title, status: "inbox" };
 }
 
 describe("buildKairoStarters", () => {
