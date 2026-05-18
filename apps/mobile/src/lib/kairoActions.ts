@@ -112,6 +112,19 @@ function buildUpdateUndo(
     // mutation's hasOwnProperty check correctly scopes the field.
     if (action.deadline !== undefined) restoreArgs.deadline = before.deadline;
     await mutations.updateTask(restoreArgs);
+
+    // Convex's updateTask can mutate status/scheduledDate as a side-effect of
+    // changing deadline (e.g. clearing the deadline of an auto-scheduled task
+    // sends it to inbox; setting a deadline on a scheduled task moves it). After
+    // replaying the prior deadline, those side-effects don't necessarily revert
+    // — explicitly restore the prior placement.
+    if (action.deadline !== undefined) {
+      if (before.status === "scheduled" && before.scheduledDate) {
+        await mutations.moveTask({ taskId, targetDate: before.scheduledDate });
+      } else if (before.status === "inbox") {
+        await mutations.unscheduleTask({ taskId });
+      }
+    }
   };
 }
 
@@ -207,12 +220,39 @@ export async function applyKairoActions(
           await mutations.updateTask(updateArgs);
           if (before) undo = buildUpdateUndo(before, taskId, action, mutations);
           if (before) {
-            localSnapshots.set(taskId, {
+            const nextDeadline =
+              action.deadline !== undefined ? action.deadline ?? undefined : before.deadline;
+            const snap: TaskSnapshot = {
               ...before,
               title: action.title !== undefined ? action.title : before.title,
               priority: action.priority !== undefined ? action.priority : before.priority,
-              deadline: action.deadline !== undefined ? (action.deadline ?? undefined) : before.deadline,
-            });
+              deadline: nextDeadline,
+            };
+            // Mirror convex/tasks.ts updateTask side-effects so a later action
+            // in the same turn sees the post-mutation scheduling state.
+            if (action.deadline !== undefined) {
+              if (action.deadline) {
+                const isInboxOpen = before.status === "inbox" && !before.scheduledDate;
+                if (
+                  !isInboxOpen &&
+                  before.status !== "completed" &&
+                  before.status !== "cancelled"
+                ) {
+                  snap.status = "scheduled";
+                  snap.scheduledDate = action.deadline;
+                }
+              } else {
+                const wasAutoScheduledByDeadline =
+                  before.status === "scheduled" &&
+                  !!before.deadline &&
+                  before.scheduledDate === before.deadline;
+                if (wasAutoScheduledByDeadline) {
+                  snap.status = "inbox";
+                  snap.scheduledDate = undefined;
+                }
+              }
+            }
+            localSnapshots.set(taskId, snap);
           }
           break;
         }
