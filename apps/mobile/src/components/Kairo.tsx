@@ -522,13 +522,20 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
             title?: string;
             priority?: "p1" | "p2" | "p3";
             deadline?: string;
-          }) =>
-            updateTaskMutation({
+          }) => {
+            // Mirror the kairoActions conditional-key approach: only forward
+            // deadline when it was explicitly set so Convex's hasOwnProperty
+            // check doesn't treat an absent deadline as "clear".
+            const mutArgs: Parameters<typeof updateTaskMutation>[0] = {
               taskId: args.taskId as Id<"tasks">,
               title: args.title,
               priority: args.priority,
-              deadline: args.deadline,
-            }),
+            };
+            if (Object.prototype.hasOwnProperty.call(args, "deadline")) {
+              mutArgs.deadline = args.deadline;
+            }
+            return updateTaskMutation(mutArgs);
+          },
           softDeleteTask: (args: { taskId: string }) =>
             softDeleteTaskMutation({ taskId: args.taskId as Id<"tasks"> }),
           restoreTask: (args: { taskId: string }) =>
@@ -861,9 +868,13 @@ function ActionChip({
         : action.state === "skipped"
           ? styles.chipSkipped
           : styles.chipFailed;
-  // Suppress the Undo button when no inverse closure is in memory (e.g. after
-  // app restart — closures are in-memory only and don't survive serialisation).
-  const canUndo = action.state === "applied" && !!onUndo && (isUndoable?.(action.id) ?? true);
+  // Show Undo for "applied" (normal) and "failed" (undo failed, retryable).
+  // isUndoable gates both cases — if the closure is gone (e.g. after restart
+  // or when the action itself failed) the button stays hidden.
+  const canUndo =
+    (action.state === "applied" || action.state === "failed") &&
+    !!onUndo &&
+    (isUndoable?.(action.id) ?? true);
   return (
     <View style={[styles.chip, chipStyle]}>
       <Text style={styles.chipLabel} numberOfLines={2}>
