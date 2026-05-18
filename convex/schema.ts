@@ -36,6 +36,11 @@ export default defineSchema({
     ownerTokenIdentifier: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
+    /** Set when a task is soft-deleted (status="cancelled"). A scheduled
+     *  cron purges these after a 30-minute grace window so the user can undo.
+     *  Older cancelled rows from before this column exists will be missing
+     *  this field — the purger ignores them. */
+    cancelledAt: v.optional(v.number()),
   })
     .index("by_owner", ["ownerTokenIdentifier"])
     .index("by_status", ["status"])
