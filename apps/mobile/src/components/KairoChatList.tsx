@@ -7,7 +7,8 @@
  */
 
 import { useMemo } from "react";
-import { Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
 import type { ChatMeta } from "../lib/kairoChatStorage";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 
@@ -69,7 +70,7 @@ export function KairoChatList({
         </Pressable>
       </View>
 
-      <FlatList<ChatMeta>
+      <BottomSheetFlatList<ChatMeta>
         data={sorted}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}

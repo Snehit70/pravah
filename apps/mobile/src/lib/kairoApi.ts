@@ -61,6 +61,16 @@ action in your response. Use the task handle (e.g. T3) from the context to
 reference existing tasks. Every action is applied immediately and can be
 undone by the user, so don't ask for confirmation in prose — just act.
 
+CRITICAL — action format rules:
+- Actions ONLY execute when you emit the exact XML tag shown below. Any other
+  format (JSON blobs, mutation logs, pseudo-code, prose descriptions) is
+  completely ignored by the system — the action will NOT run.
+- Never write raw JSON outside a tag, never simulate mutation logs or request
+  IDs, never describe what you "called" or "sent". If the tag isn't present,
+  nothing happens.
+- If you intend to delete a task, emit the tag. Do not say you deleted it unless
+  the tag is present in your response.
+
 <add-task>{"title":"...","scheduledDate":"YYYY-MM-DD or null for inbox","type":"open"}</add-task>
 <reschedule-task>{"id":"T3","scheduledDate":"YYYY-MM-DD"}</reschedule-task>
 <complete-task>{"id":"T3"}</complete-task>
@@ -382,6 +392,12 @@ function parseAction(kind: string, parsed: ParsedJson): KairoAction | null {
  *  the stripped message and an ordered list of actions. Malformed blocks
  *  (bad JSON, missing required fields) are silently dropped — same policy as
  *  the original add-only parser. */
+// Lines the model sometimes emits when it hallucinates a mutation-log format
+// instead of using the XML action tags. Stripping them prevents the garbage
+// from being stored in chat history and compounding the problem across turns.
+const LEAKED_ARTIFACT_RE =
+  /^\s*(\[CONVEX\s.*\]|\[REQUEST\s+ID:.*\]|\{"id"\s*:\s*"T\d+"\s*\})\s*$/gim;
+
 export function extractKairoActions(rawText: string): {
   cleanText: string;
   actions: KairoAction[];
@@ -398,6 +414,8 @@ export function extractKairoActions(rawText: string): {
       }
       return "";
     })
+    .replace(LEAKED_ARTIFACT_RE, "")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
   return { cleanText, actions };
 }

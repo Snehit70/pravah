@@ -9,7 +9,6 @@ import {
 } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Keyboard,
   Pressable,
   StyleSheet,
@@ -18,6 +17,7 @@ import {
 } from "react-native";
 import BottomSheet, {
   BottomSheetBackdrop,
+  BottomSheetFlatList,
   BottomSheetTextInput,
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
@@ -25,6 +25,7 @@ import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withRepeat,
   withSequence,
   withTiming,
@@ -59,6 +60,7 @@ import {
 } from "../lib/kairoActions";
 import { getLocalDateString } from "../lib/dates";
 import { useKairoChats } from "../hooks/useKairoChats";
+import { useUserPreferences } from "../hooks/useUserPreferences";
 import { KairoChatList } from "./KairoChatList";
 import { KairoMarkdown } from "./KairoMarkdown";
 
@@ -183,11 +185,13 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   // sheet opens so an app left mounted across midnight still picks up the
   // new day's "What's on today?" / overdue counts on next visit.
   const [today, setToday] = useState(() => getLocalDateString());
-  const listRef = useRef<FlatList<KairoChatRow>>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const listRef = useRef<any>(null);
   // Undo closures keyed by KairoMessageAction.id. Held in a ref so the closure
   // identity is stable across renders; messages only carry the serializable
   // chip state and reference back into this map by id.
   const undoMap = useRef<Map<string, () => Promise<void>>>(new Map());
+  const { prefs } = useUserPreferences();
 
   const {
     chats,
@@ -553,11 +557,17 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           if (undo) undoMap.current.set(chip.id, undo);
         });
 
+        const failedCount = results.filter((r) => r.status === "failed").length;
+        let displayText = cleanText || "(no response text)";
+        if (failedCount > 0) {
+          displayText += `\n\n⚠ ${failedCount} action${failedCount > 1 ? "s" : ""} failed to apply.`;
+        }
+
         setMsgs((prev) => [
           ...prev,
           {
             from: "kairo",
-            text: cleanText || "(no response text)",
+            text: displayText,
             actions: chips.length ? chips : undefined,
           },
         ]);
@@ -684,21 +694,30 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       ) : (
       <>
       <View style={styles.header}>
-        <Pressable
-          onPress={() => setView("list")}
-          hitSlop={12}
-          style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-          accessibilityLabel="Show chat list"
-          accessibilityRole="button"
-          disabled={thinking}
-        >
-          <Text
-            style={[styles.headerChats, thinking && { opacity: 0.4 }]}
+        <View style={styles.headerTopRow}>
+          <Pressable
+            onPress={() => setView("list")}
+            hitSlop={12}
+            style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+            accessibilityLabel="Show chat list"
+            accessibilityRole="button"
+            disabled={thinking}
           >
-            Chats
-          </Text>
-        </Pressable>
-        <View style={styles.headerLeftBlock}>
+            <Text style={[styles.headerChats, thinking && { opacity: 0.4 }]}>
+              Chats
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => sheetRef.current?.close()}
+            hitSlop={12}
+            style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+            accessibilityLabel="Close Kairo"
+            accessibilityRole="button"
+          >
+            <Text style={styles.headerClose}>Close</Text>
+          </Pressable>
+        </View>
+        <View style={styles.headerTitleRow}>
           <KairoMark size={20} />
           <Text style={styles.headerTitle} numberOfLines={1}>
             {activeChat?.title && activeChat.title !== "New chat"
@@ -706,18 +725,9 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
               : "Kairo"}
           </Text>
         </View>
-        <Pressable
-          onPress={() => sheetRef.current?.close()}
-          hitSlop={12}
-          style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-          accessibilityLabel="Close Kairo"
-          accessibilityRole="button"
-        >
-          <Text style={styles.headerClose}>Close</Text>
-        </Pressable>
       </View>
 
-      <FlatList
+      <BottomSheetFlatList
         ref={listRef}
         style={styles.scroll}
         data={chatRows}
@@ -733,7 +743,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         ListFooterComponent={
           <>
             {/* Starters render on first paint only (no user messages yet). */}
-            {msgs.length === 1 && !thinking && !deferredPromptPreview ? (
+            {msgs.length === 1 && !thinking && !deferredPromptPreview && prefs.kairoStarterPillsEnabled ? (
           <View style={styles.starters}>
             {starters.map((p) => (
               <Pressable
@@ -901,33 +911,52 @@ function ActionChip({
   );
 }
 
-/** Web parity (src/index.css:296-305 kairoShine + kairoSkeletonSweep): a
- *  shimmering "thinking" line + 3 skeleton bars whose backgrounds sweep
- *  left-to-right on a loop. RN doesn't render `background-position`, so we
- *  fake the sweep with translateX on a gradient strip masked by the bar. */
-function Thinking() {
-  const sweep = useSharedValue(0);
-  useEffect(() => {
-    sweep.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 1200, easing: Easing.bezier(...motion.easing.inOutQuart) }),
-        withTiming(0, { duration: 0 })
-      ),
-      -1,
-      false
-    );
-  }, [sweep]);
+const THINKING_BARS = [0.92, 0.74, 0.48];
+const BAR_STAGGER_MS = 130;
+const DOT_CYCLE_MS = 420;
 
-  const sweepStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: `${(sweep.value - 0.5) * 220}%` }],
-  }));
+function Thinking() {
+  // Each bar gets its own sweep value so stagger offsets work independently.
+  const sweeps = [useSharedValue(0), useSharedValue(0), useSharedValue(0)];
+
+  useEffect(() => {
+    sweeps.forEach((sv, i) => {
+      sv.value = withDelay(
+        i * BAR_STAGGER_MS,
+        withRepeat(
+          withSequence(
+            withTiming(1, { duration: 1200, easing: Easing.bezier(...motion.easing.inOutQuart) }),
+            withTiming(0, { duration: 0 }),
+          ),
+          -1,
+          false,
+        ),
+      );
+    });
+  // sweeps refs are stable across renders — safe to omit from deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const sweepStyles = sweeps.map((sv) =>
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useAnimatedStyle(() => ({
+      transform: [{ translateX: `${(sv.value - 0.5) * 220}%` }],
+    }))
+  );
+
+  // Cycle dot count 1 → 2 → 3 → 1 …
+  const [dots, setDots] = useState(1);
+  useEffect(() => {
+    const id = setInterval(() => setDots((d) => (d % 3) + 1), DOT_CYCLE_MS);
+    return () => clearInterval(id);
+  }, []);
 
   return (
     <View style={styles.thinkingCard}>
-      <Text style={styles.thinkingLabel}>thinking</Text>
-      {[0.92, 0.74, 0.48].map((w, i) => (
+      <Text style={styles.thinkingLabel}>{"thinking" + ".".repeat(dots)}</Text>
+      {THINKING_BARS.map((w, i) => (
         <View key={i} style={[styles.thinkingBar, { width: `${w * 100}%` }]}>
-          <Animated.View style={[styles.thinkingBarSweep, sweepStyle]} />
+          <Animated.View style={[styles.thinkingBarSweep, sweepStyles[i]]} />
         </View>
       ))}
     </View>
@@ -973,23 +1002,28 @@ const styles = StyleSheet.create({
     height: 4,
   },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    flexDirection: "column",
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderSubtle,
   },
-  headerLeftBlock: {
+  headerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  headerTitleRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
+    paddingTop: spacing.sm,
   },
   headerTitle: {
     color: colors.textPrimary,
     ...typography.title,
+    flexShrink: 1,
   },
   headerClose: {
     color: colors.textSecondary,
@@ -1135,7 +1169,7 @@ const styles = StyleSheet.create({
   thinkingBar: {
     height: 8,
     borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "rgba(255,255,255,0.08)",
     overflow: "hidden",
   },
   thinkingBarSweep: {
@@ -1143,7 +1177,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: "60%",
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.25)",
   },
   starters: {
     flexDirection: "row",

@@ -4,6 +4,7 @@ import {
   Animated as LegacyAnimated,
   BackHandler,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   View,
@@ -57,6 +58,7 @@ import { useGoogleAuth } from "./src/hooks/useGoogleAuth";
 import { useNotificationsSettings } from "./src/hooks/useNotificationsSettings";
 import { useIntegrationsSettings } from "./src/hooks/useIntegrationsSettings";
 import { useReducedMotion } from "./src/hooks/useReducedMotion";
+import { resetPreferencesStore } from "./src/hooks/useUserPreferences";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -294,6 +296,7 @@ function MobileApp() {
     requestNotificationsAccess,
     toggleDailyReminder,
     sendTestNotification,
+    resetDailyReminderState,
   } = useNotificationsSettings(showToast);
 
   // ── Integrations ────────────────────────────────────────────────────
@@ -311,8 +314,14 @@ function MobileApp() {
     syncSettingsBusy,
     calendarAccountEmail,
     gmailAccountEmail,
+    calendarLastError,
+    gmailLastError,
     calendarLastRun,
     gmailLastRun,
+    availableCalendars,
+    selectedCalendarIds,
+    isLoadingCalendars,
+    toggleCalendarSelected,
     toggleGoogleCalendarSync,
     toggleGmailSync,
     runGoogleCalendarSync,
@@ -324,6 +333,29 @@ function MobileApp() {
     void clearSnapshot();
     googleSignOut();
   }, [clearSnapshot, googleSignOut, setIsSettingsModalOpen]);
+
+  const handleWipeLocalData = useCallback(async () => {
+    const { wipeLocalAppData } = await import("./src/lib/dataReset");
+    await wipeLocalAppData();
+    resetPreferencesStore();
+    resetDailyReminderState();
+    setIsSettingsModalOpen(false);
+    void clearSnapshot();
+    googleSignOut();
+  }, [clearSnapshot, googleSignOut, resetDailyReminderState, setIsSettingsModalOpen]);
+
+  const handleExportTasks = useCallback(async () => {
+    try {
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        version: 1,
+        tasks: [...displayInboxTasks, ...displayScheduledTasks, ...displayCompletedTasks],
+      };
+      await Share.share({ message: JSON.stringify(payload, null, 2) });
+    } catch {
+      showToast({ kind: "error", message: "Could not share tasks export." });
+    }
+  }, [displayCompletedTasks, displayInboxTasks, displayScheduledTasks, showToast]);
 
   // ── Effects ─────────────────────────────────────────────────────────
 
@@ -909,11 +941,19 @@ function MobileApp() {
         onToggleDailyReminder={() => void toggleDailyReminder()}
         onSendTestNotification={() => void sendTestNotification()}
         onSignOut={handleSignOut}
+        onExportTasks={() => void handleExportTasks()}
+        onWipeLocalData={handleWipeLocalData}
         showToast={showToast}
         calendarAccountEmail={calendarAccountEmail}
         gmailAccountEmail={gmailAccountEmail}
         calendarLastRun={calendarLastRun}
         gmailLastRun={gmailLastRun}
+        availableCalendars={availableCalendars}
+        selectedCalendarIds={selectedCalendarIds}
+        isLoadingCalendars={isLoadingCalendars}
+        onToggleCalendarSelected={toggleCalendarSelected}
+        calendarLastError={calendarLastError}
+        gmailLastError={gmailLastError}
       />
 
       {__DEV__ ? (
