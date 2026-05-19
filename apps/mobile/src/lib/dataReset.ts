@@ -8,6 +8,9 @@ import { classifyError, mobileLogger } from "./logger";
 // SDKs).
 const SECURE_STORE_KEYS = [
   "pravah_daily_reminder_notification_id_v1",
+  // Legacy retry-queue location: older app versions wrote this to SecureStore
+  // directly; current versions fall back to it when AsyncStorage is unavailable.
+  "pravah_mobile_retry_queue_v1",
 ];
 
 // Wipe every Pravah-prefixed entry in AsyncStorage and the known SecureStore

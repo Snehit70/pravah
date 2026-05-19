@@ -9,6 +9,7 @@ type ShowToast = (next: { kind: "error" | "info"; message: string }) => void;
 type IntegrationProvider = "google_calendar" | "gmail";
 
 const CALENDAR_SELECTION_STORAGE_KEY = "pravah_mobile_google_calendar_selection_v1";
+const CALENDAR_SYNCED_IDS_STORAGE_KEY = "pravah_mobile_google_calendar_synced_ids_v1";
 
 type UseIntegrationsSettingsOptions = {
   isAuthenticated: boolean;
@@ -254,10 +255,38 @@ export function useIntegrationsSettings({
         showToast({ kind: "error", message: "Could not get Google token. Please sign in again." });
         return;
       }
+
+      // If any selected calendar has never been synced before, the global
+      // cursor would skip its older events. Force a full resync so every
+      // calendar gets a complete initial import.
+      let fullResync: boolean | undefined;
+      try {
+        const storedRaw = await AsyncStorage.getItem(CALENDAR_SYNCED_IDS_STORAGE_KEY);
+        const syncedIds = new Set<string>(
+          Array.isArray(JSON.parse(storedRaw ?? "[]")) ? JSON.parse(storedRaw ?? "[]") : []
+        );
+        fullResync = selectedCalendarIds.some((id) => !syncedIds.has(id)) || undefined;
+      } catch {
+        // If storage read fails, proceed without forcing a resync.
+      }
+
       await importGoogleCalendarAction({
         accessToken,
         calendarIds: selectedCalendarIds.length > 0 ? selectedCalendarIds : undefined,
+        fullResync,
       });
+
+      // Record all currently selected calendars as having been fully synced.
+      try {
+        await AsyncStorage.setItem(
+          CALENDAR_SYNCED_IDS_STORAGE_KEY,
+          JSON.stringify(selectedCalendarIds),
+        );
+      } catch {
+        // Best-effort; the next sync for a newly-added calendar will just
+        // trigger another full resync.
+      }
+
       showToast({ kind: "info", message: "Google Calendar sync complete." });
     } catch (error) {
       mobileLogger.warn("google_calendar_sync_failed", { errorType: classifyError(error) });
