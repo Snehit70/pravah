@@ -313,6 +313,10 @@ function MobileApp() {
     gmailAccountEmail,
     calendarLastRun,
     gmailLastRun,
+    availableCalendars,
+    selectedCalendarIds,
+    isLoadingCalendars,
+    toggleCalendarSelected,
     toggleGoogleCalendarSync,
     toggleGmailSync,
     runGoogleCalendarSync,
@@ -914,6 +918,10 @@ function MobileApp() {
         gmailAccountEmail={gmailAccountEmail}
         calendarLastRun={calendarLastRun}
         gmailLastRun={gmailLastRun}
+        availableCalendars={availableCalendars}
+        selectedCalendarIds={selectedCalendarIds}
+        isLoadingCalendars={isLoadingCalendars}
+        onToggleCalendarSelected={toggleCalendarSelected}
       />
 
       {__DEV__ ? (

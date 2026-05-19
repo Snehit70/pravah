@@ -26,7 +26,7 @@ import { colors, radii, spacing, typography } from "../theme/tokens";
 import { isWithinQuietHours, type NotificationPermissionState } from "../lib/notifications";
 import { KairoSettingsSection } from "./KairoSettingsSection";
 import { GmailReviewSection } from "./GmailReviewSection";
-import type { IntegrationLastRunSummary } from "../hooks/useIntegrationsSettings";
+import type { GoogleCalendarOption, IntegrationLastRunSummary } from "../hooks/useIntegrationsSettings";
 
 type QuietPickerKind = "reminder" | "quietStart" | "quietEnd";
 
@@ -134,6 +134,10 @@ type SettingsSheetProps = {
   gmailAccountEmail?: string;
   calendarLastRun?: IntegrationLastRunSummary;
   gmailLastRun?: IntegrationLastRunSummary;
+  availableCalendars: GoogleCalendarOption[];
+  selectedCalendarIds: string[];
+  isLoadingCalendars: boolean;
+  onToggleCalendarSelected: (id: string) => void;
 };
 
 export function SettingsSheet({
@@ -166,6 +170,10 @@ export function SettingsSheet({
   gmailAccountEmail,
   calendarLastRun,
   gmailLastRun,
+  availableCalendars,
+  selectedCalendarIds,
+  isLoadingCalendars,
+  onToggleCalendarSelected,
 }: SettingsSheetProps) {
   const bottomSheetRef = useRef<BottomSheet>(null);
   // Scrolled content lives inside the active tab. Reset scroll to top on tab
@@ -363,6 +371,61 @@ export function SettingsSheet({
                     thumbColor={calendarSyncEnabled ? colors.accent : colors.textMuted}
                   />
                 </View>
+                {calendarSyncEnabled ? (
+                  <View style={styles.calendarPickerBlock}>
+                    <View style={styles.calendarPickerHeaderRow}>
+                      <Text style={styles.settingMeta}>
+                        Calendars
+                        {availableCalendars.length > 0
+                          ? ` · ${selectedCalendarIds.length || availableCalendars.length}/${availableCalendars.length}`
+                          : ""}
+                      </Text>
+                      {isLoadingCalendars ? (
+                        <Text style={styles.settingMeta}>Loading…</Text>
+                      ) : null}
+                    </View>
+                    {!isLoadingCalendars && availableCalendars.length === 0 ? (
+                      <Text style={styles.settingMeta}>
+                        Calendar list unavailable. All accessible calendars will be imported.
+                      </Text>
+                    ) : null}
+                    {availableCalendars.map((calendar) => {
+                      const checked =
+                        selectedCalendarIds.length === 0 || selectedCalendarIds.includes(calendar.id);
+                      return (
+                        <Pressable
+                          key={calendar.id}
+                          onPress={() => onToggleCalendarSelected(calendar.id)}
+                          hitSlop={6}
+                          accessibilityRole="checkbox"
+                          accessibilityState={{ checked }}
+                          accessibilityLabel={`Sync ${calendar.summary}${calendar.primary ? ", primary" : ""}`}
+                          style={({ pressed }) => [
+                            styles.calendarPickerRow,
+                            pressed && { opacity: 0.6 },
+                          ]}
+                        >
+                          <View style={[styles.calendarCheckbox, checked && styles.calendarCheckboxChecked]}>
+                            {checked ? <Text style={styles.calendarCheckmark}>✓</Text> : null}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.settingLabel} numberOfLines={1}>
+                              {calendar.summary}
+                            </Text>
+                            {calendar.primary ? (
+                              <Text style={styles.settingMeta}>Primary</Text>
+                            ) : null}
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                    {availableCalendars.length > 0 && selectedCalendarIds.length === 0 ? (
+                      <Text style={styles.settingMeta}>
+                        No calendars selected — sync will pull all of them.
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
                 <Pressable
                   onPress={onGoogleCalendarSync}
                   disabled={isCalendarSyncing}
@@ -721,6 +784,42 @@ const styles = StyleSheet.create({
   },
   sectionFootAction: {
     marginTop: spacing.xs,
+  },
+  calendarPickerBlock: {
+    marginTop: spacing.sm,
+    gap: spacing.xs,
+  },
+  calendarPickerHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  calendarPickerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
+  },
+  calendarCheckbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "transparent",
+  },
+  calendarCheckboxChecked: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  calendarCheckmark: {
+    ...typography.micro,
+    color: colors.accent,
+    fontWeight: "700",
   },
   timeRow: {
     flexDirection: "row",
