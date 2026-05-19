@@ -281,11 +281,9 @@ export function useIntegrationsSettings({
         return;
       }
 
-      // Force a full resync when:
-      // (a) any explicitly selected calendar hasn't been synced before, or
-      // (b) the user is in "all calendars" mode (empty selection) and the
-      //     previous sync was a subset — newly included calendars would
-      //     otherwise be fetched with the stale cursor and miss older events.
+      // Force a full resync when any calendar in scope hasn't been fully
+      // imported before: either an explicitly selected one, or a newly-added
+      // calendar that appeared since the last all-calendars sync.
       let fullResync: boolean | undefined;
       try {
         const storedRaw = await AsyncStorage.getItem(CALENDAR_SYNCED_IDS_STORAGE_KEY);
@@ -293,9 +291,11 @@ export function useIntegrationsSettings({
         const syncedIds = new Set<string>(Array.isArray(parsed) ? parsed : []);
         const syncingAll = selectedCalendarIds.length === 0;
         if (syncingAll) {
-          // Transitioning to "all calendars" from a previous subset sync
-          // means at least one calendar hasn't been fully imported.
-          fullResync = syncedIds.size > 0 || undefined;
+          // Compare the live calendar list against the IDs recorded after the
+          // last all-calendars sync. A calendar absent from that set is new and
+          // hasn't been fully imported from the beginning of time yet.
+          const currentIds = availableCalendars.map((c) => c.id);
+          fullResync = currentIds.some((id) => !syncedIds.has(id)) || undefined;
         } else {
           fullResync = selectedCalendarIds.some((id) => !syncedIds.has(id)) || undefined;
         }
@@ -309,15 +309,22 @@ export function useIntegrationsSettings({
         fullResync,
       });
 
-      // Record synced IDs. Empty means "all" — clear the key so the next
-      // sync correctly detects the all-calendars sentinel.
+      // Record the concrete IDs that were just synced so the next run can
+      // detect any newly-added calendar and force a full resync for it.
+      // In all-calendars mode use the live availableCalendars list; if it's
+      // empty (calendar list not yet loaded) fall back to removing the key
+      // so the next sync conservatively treats every calendar as new.
       try {
-        if (selectedCalendarIds.length === 0) {
+        const idsToRecord =
+          selectedCalendarIds.length === 0
+            ? availableCalendars.map((c) => c.id)
+            : selectedCalendarIds;
+        if (idsToRecord.length === 0) {
           await AsyncStorage.removeItem(CALENDAR_SYNCED_IDS_STORAGE_KEY);
         } else {
           await AsyncStorage.setItem(
             CALENDAR_SYNCED_IDS_STORAGE_KEY,
-            JSON.stringify(selectedCalendarIds),
+            JSON.stringify(idsToRecord),
           );
         }
       } catch {
@@ -331,7 +338,7 @@ export function useIntegrationsSettings({
     } finally {
       setIsCalendarSyncing(false);
     }
-  }, [importGoogleCalendarAction, isCalendarSelectionReady, isCalendarSyncing, selectedCalendarIds, showToast]);
+  }, [availableCalendars, importGoogleCalendarAction, isCalendarSelectionReady, isCalendarSyncing, selectedCalendarIds, showToast]);
 
   const enableAndSyncGoogleCalendar = useCallback(async () => {
     try {
