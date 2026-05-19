@@ -692,21 +692,30 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       ) : (
       <>
       <View style={styles.header}>
-        <Pressable
-          onPress={() => setView("list")}
-          hitSlop={12}
-          style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-          accessibilityLabel="Show chat list"
-          accessibilityRole="button"
-          disabled={thinking}
-        >
-          <Text
-            style={[styles.headerChats, thinking && { opacity: 0.4 }]}
+        <View style={styles.headerTopRow}>
+          <Pressable
+            onPress={() => setView("list")}
+            hitSlop={12}
+            style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+            accessibilityLabel="Show chat list"
+            accessibilityRole="button"
+            disabled={thinking}
           >
-            Chats
-          </Text>
-        </Pressable>
-        <View style={styles.headerLeftBlock}>
+            <Text style={[styles.headerChats, thinking && { opacity: 0.4 }]}>
+              Chats
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => sheetRef.current?.close()}
+            hitSlop={12}
+            style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+            accessibilityLabel="Close Kairo"
+            accessibilityRole="button"
+          >
+            <Text style={styles.headerClose}>Close</Text>
+          </Pressable>
+        </View>
+        <View style={styles.headerTitleRow}>
           <KairoMark size={20} />
           <Text style={styles.headerTitle} numberOfLines={1}>
             {activeChat?.title && activeChat.title !== "New chat"
@@ -714,15 +723,6 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
               : "Kairo"}
           </Text>
         </View>
-        <Pressable
-          onPress={() => sheetRef.current?.close()}
-          hitSlop={12}
-          style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-          accessibilityLabel="Close Kairo"
-          accessibilityRole="button"
-        >
-          <Text style={styles.headerClose}>Close</Text>
-        </Pressable>
       </View>
 
       <FlatList
@@ -981,23 +981,28 @@ const styles = StyleSheet.create({
     height: 4,
   },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    flexDirection: "column",
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderSubtle,
   },
-  headerLeftBlock: {
+  headerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  headerTitleRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
+    paddingTop: spacing.xs,
   },
   headerTitle: {
     color: colors.textPrimary,
     ...typography.title,
+    flexShrink: 1,
   },
   headerClose: {
     color: colors.textSecondary,
