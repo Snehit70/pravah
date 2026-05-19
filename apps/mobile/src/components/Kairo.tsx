@@ -555,11 +555,17 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           if (undo) undoMap.current.set(chip.id, undo);
         });
 
+        const failedCount = results.filter((r) => r.status === "failed").length;
+        let displayText = cleanText || "(no response text)";
+        if (failedCount > 0) {
+          displayText += `\n\n⚠ ${failedCount} action${failedCount > 1 ? "s" : ""} failed to apply.`;
+        }
+
         setMsgs((prev) => [
           ...prev,
           {
             from: "kairo",
-            text: cleanText || "(no response text)",
+            text: displayText,
             actions: chips.length ? chips : undefined,
           },
         ]);
