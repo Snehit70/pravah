@@ -82,6 +82,15 @@ export function useUserPreferences(): {
   return { prefs, ready, setPreference };
 }
 
+// Resets the module-level snapshot to defaults so that a wipe during an active
+// session doesn't serve stale preferences to components that remount afterward.
+export function resetPreferencesStore(): void {
+  snapshot = { ...DEFAULT_PREFERENCES };
+  hydrated = false;
+  hydrationPromise = null;
+  emit();
+}
+
 // Test-only reset so unit tests can isolate state between cases.
 export const __testing = {
   reset() {

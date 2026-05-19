@@ -26,6 +26,7 @@ import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { getOrCreateDeviceId } from "../lib/deviceIdentity";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
+import * as SecureStore from "expo-secure-store";
 import { classifyError, mobileLogger } from "../lib/logger";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { isWithinQuietHours, type NotificationPermissionState } from "../lib/notifications";
@@ -259,6 +260,9 @@ export function SettingsSheet({
     setIsClearingRetryQueue(true);
     try {
       await retryQueueStorage.removeItem("pravah_mobile_retry_queue_v1");
+      // Also clear the legacy SecureStore copy; if left behind it would be
+      // migrated back into AsyncStorage on the next read.
+      await SecureStore.deleteItemAsync("pravah_mobile_retry_queue_v1").catch(() => undefined);
       showToast({ kind: "info", message: "Retry queue cleared." });
     } catch (error) {
       mobileLogger.warn("retry_queue_clear_failed", { errorType: classifyError(error) });

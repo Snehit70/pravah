@@ -58,6 +58,7 @@ import { useGoogleAuth } from "./src/hooks/useGoogleAuth";
 import { useNotificationsSettings } from "./src/hooks/useNotificationsSettings";
 import { useIntegrationsSettings } from "./src/hooks/useIntegrationsSettings";
 import { useReducedMotion } from "./src/hooks/useReducedMotion";
+import { resetPreferencesStore } from "./src/hooks/useUserPreferences";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -335,6 +336,7 @@ function MobileApp() {
   const handleWipeLocalData = useCallback(async () => {
     const { wipeLocalAppData } = await import("./src/lib/dataReset");
     await wipeLocalAppData();
+    resetPreferencesStore();
     setIsSettingsModalOpen(false);
     void clearSnapshot();
     googleSignOut();

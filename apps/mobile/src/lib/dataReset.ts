@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
+import { disableDailyReminderAsync } from "./notifications";
 import { classifyError, mobileLogger } from "./logger";
 
 // Keys touched by the secure-store backed parts of the app. Listed explicitly
@@ -20,6 +21,14 @@ const SECURE_STORE_KEYS = [
 export async function wipeLocalAppData(): Promise<{ removedAsync: number; removedSecure: number }> {
   let removedAsync = 0;
   let removedSecure = 0;
+
+  // Cancel any scheduled daily reminder before its SecureStore ID is removed;
+  // without this the orphaned OS notification keeps firing with no way to cancel it.
+  try {
+    await disableDailyReminderAsync();
+  } catch (error) {
+    mobileLogger.warn("wipe_disable_reminder_failed", { errorType: classifyError(error) });
+  }
 
   try {
     const keys = await AsyncStorage.getAllKeys();
