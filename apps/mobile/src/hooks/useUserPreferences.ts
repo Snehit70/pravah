@@ -69,10 +69,7 @@ export function useUserPreferences(): {
   const [ready, setReady] = useState(hydrated);
 
   useEffect(() => {
-    if (hydrated) {
-      setReady(true);
-      return;
-    }
+    if (hydrated) return; // useState(hydrated) already initialised ready to true
     let cancelled = false;
     void hydrate().then(() => {
       if (!cancelled) setReady(true);

@@ -10,8 +10,7 @@ import {
   Text,
   View,
 } from "react-native";
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const appJson = require("../../app.json") as { expo?: { version?: string } };
+import appJson from "../../app.json";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,

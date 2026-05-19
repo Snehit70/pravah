@@ -1,10 +1,9 @@
 import { Image, StyleSheet } from "react-native";
+import ICON_SOURCE from "../../assets/icon.png";
 
 type BrandMarkProps = {
   size?: number;
 };
-
-const ICON_SOURCE = require("../../assets/icon.png");
 
 export function BrandMark({ size = 22 }: BrandMarkProps) {
   return (
