@@ -25,6 +25,7 @@ import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withRepeat,
   withSequence,
   withTiming,
@@ -910,33 +911,52 @@ function ActionChip({
   );
 }
 
-/** Web parity (src/index.css:296-305 kairoShine + kairoSkeletonSweep): a
- *  shimmering "thinking" line + 3 skeleton bars whose backgrounds sweep
- *  left-to-right on a loop. RN doesn't render `background-position`, so we
- *  fake the sweep with translateX on a gradient strip masked by the bar. */
-function Thinking() {
-  const sweep = useSharedValue(0);
-  useEffect(() => {
-    sweep.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 1200, easing: Easing.bezier(...motion.easing.inOutQuart) }),
-        withTiming(0, { duration: 0 })
-      ),
-      -1,
-      false
-    );
-  }, [sweep]);
+const THINKING_BARS = [0.92, 0.74, 0.48];
+const BAR_STAGGER_MS = 130;
+const DOT_CYCLE_MS = 420;
 
-  const sweepStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: `${(sweep.value - 0.5) * 220}%` }],
-  }));
+function Thinking() {
+  // Each bar gets its own sweep value so stagger offsets work independently.
+  const sweeps = [useSharedValue(0), useSharedValue(0), useSharedValue(0)];
+
+  useEffect(() => {
+    sweeps.forEach((sv, i) => {
+      sv.value = withDelay(
+        i * BAR_STAGGER_MS,
+        withRepeat(
+          withSequence(
+            withTiming(1, { duration: 1200, easing: Easing.bezier(...motion.easing.inOutQuart) }),
+            withTiming(0, { duration: 0 }),
+          ),
+          -1,
+          false,
+        ),
+      );
+    });
+  // sweeps refs are stable across renders — safe to omit from deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const sweepStyles = sweeps.map((sv) =>
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useAnimatedStyle(() => ({
+      transform: [{ translateX: `${(sv.value - 0.5) * 220}%` }],
+    }))
+  );
+
+  // Cycle dot count 1 → 2 → 3 → 1 …
+  const [dots, setDots] = useState(1);
+  useEffect(() => {
+    const id = setInterval(() => setDots((d) => (d % 3) + 1), DOT_CYCLE_MS);
+    return () => clearInterval(id);
+  }, []);
 
   return (
     <View style={styles.thinkingCard}>
-      <Text style={styles.thinkingLabel}>thinking</Text>
-      {[0.92, 0.74, 0.48].map((w, i) => (
+      <Text style={styles.thinkingLabel}>{"thinking" + ".".repeat(dots)}</Text>
+      {THINKING_BARS.map((w, i) => (
         <View key={i} style={[styles.thinkingBar, { width: `${w * 100}%` }]}>
-          <Animated.View style={[styles.thinkingBarSweep, sweepStyle]} />
+          <Animated.View style={[styles.thinkingBarSweep, sweepStyles[i]]} />
         </View>
       ))}
     </View>
@@ -1149,7 +1169,7 @@ const styles = StyleSheet.create({
   thinkingBar: {
     height: 8,
     borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "rgba(255,255,255,0.08)",
     overflow: "hidden",
   },
   thinkingBarSweep: {
@@ -1157,7 +1177,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: "60%",
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.25)",
   },
   starters: {
     flexDirection: "row",
