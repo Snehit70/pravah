@@ -95,12 +95,13 @@ function statusTextColor(status: string): string {
   return colors.textMuted;
 }
 
-type SectionKey = "assistant" | "sync" | "alerts" | "account";
+type SectionKey = "assistant" | "sync" | "alerts" | "timeline" | "account";
 
 const SECTIONS: ReadonlyArray<{ key: SectionKey; label: string }> = [
   { key: "assistant", label: "Assistant" },
   { key: "sync", label: "Sync" },
   { key: "alerts", label: "Alerts" },
+  { key: "timeline", label: "Timeline" },
   { key: "account", label: "Account" },
 ];
 
@@ -738,6 +739,108 @@ export function SettingsSheet({
                   onChange={handleTimePicked(openPicker)}
                 />
               ) : null}
+            </View>
+          ) : null}
+
+          {activeSection === "timeline" ? (
+            <View>
+              <Text style={styles.sectionHeader}>Timeline</Text>
+
+              <View style={[styles.settingBlock, styles.sectionCard]}>
+                <Text style={styles.settingLabel}>Defaults</Text>
+                <Text style={styles.settingHelp}>
+                  Control how the timeline plans your week and sizes new tasks.
+                </Text>
+
+                <View style={styles.behaviorRow}>
+                  <Text style={styles.settingMeta}>Week starts on</Text>
+                  <View style={styles.chipRow}>
+                    {(["monday", "sunday"] as const).map((day) => {
+                      const active = prefs.weekStart === day;
+                      return (
+                        <Pressable
+                          key={day}
+                          onPress={() => void setPreference("weekStart", day)}
+                          hitSlop={6}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: active }}
+                          style={({ pressed }) => [
+                            styles.choiceChip,
+                            active && styles.choiceChipActive,
+                            pressed && { opacity: 0.6 },
+                          ]}
+                        >
+                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
+                            {day === "monday" ? "Mon" : "Sun"}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={styles.behaviorRow}>
+                  <Text style={styles.settingMeta}>Default task duration</Text>
+                  <View style={styles.stepperRow}>
+                    <Pressable
+                      onPress={() =>
+                        void setPreference(
+                          "defaultTaskDurationMin",
+                          Math.max(5, prefs.defaultTaskDurationMin - 5),
+                        )
+                      }
+                      hitSlop={12}
+                      accessibilityRole="button"
+                      accessibilityLabel="Decrease default task duration"
+                      style={({ pressed }) => [styles.stepperButton, pressed && { opacity: 0.6 }]}
+                    >
+                      <Text style={styles.stepperGlyph}>−</Text>
+                    </Pressable>
+                    <Text style={styles.stepperValue}>{prefs.defaultTaskDurationMin}m</Text>
+                    <Pressable
+                      onPress={() =>
+                        void setPreference(
+                          "defaultTaskDurationMin",
+                          Math.min(480, prefs.defaultTaskDurationMin + 5),
+                        )
+                      }
+                      hitSlop={12}
+                      accessibilityRole="button"
+                      accessibilityLabel="Increase default task duration"
+                      style={({ pressed }) => [styles.stepperButton, pressed && { opacity: 0.6 }]}
+                    >
+                      <Text style={styles.stepperGlyph}>+</Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                <View style={styles.behaviorRow}>
+                  <Text style={styles.settingMeta}>Task color scheme</Text>
+                  <View style={styles.chipRow}>
+                    {(["purple", "copper", "teal", "rose"] as const).map((scheme) => {
+                      const active = prefs.taskColorScheme === scheme;
+                      return (
+                        <Pressable
+                          key={scheme}
+                          onPress={() => void setPreference("taskColorScheme", scheme)}
+                          hitSlop={6}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: active }}
+                          style={({ pressed }) => [
+                            styles.choiceChip,
+                            active && styles.choiceChipActive,
+                            pressed && { opacity: 0.6 },
+                          ]}
+                        >
+                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
+                            {scheme[0].toUpperCase() + scheme.slice(1)}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
             </View>
           ) : null}
 
