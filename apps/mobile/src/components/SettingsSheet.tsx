@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Keyboard,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -9,6 +10,8 @@ import {
   Text,
   View,
 } from "react-native";
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const appJson = require("../../app.json") as { expo?: { version?: string } };
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
@@ -105,7 +108,13 @@ type SectionKey =
   | "timeline"
   | "appearance"
   | "diagnostics"
+  | "about"
   | "account";
+
+const APP_VERSION = appJson.expo?.version ?? "—";
+const REPO_URL = "https://github.com/Snehit70/pravah";
+const CHANGELOG_URL = `${REPO_URL}/blob/main/apps/mobile/CHANGELOG.md`;
+const ISSUES_URL = `${REPO_URL}/issues`;
 
 const SECTIONS: ReadonlyArray<{ key: SectionKey; label: string }> = [
   { key: "assistant", label: "Assistant" },
@@ -114,6 +123,7 @@ const SECTIONS: ReadonlyArray<{ key: SectionKey; label: string }> = [
   { key: "timeline", label: "Timeline" },
   { key: "appearance", label: "Appearance" },
   { key: "diagnostics", label: "Diagnostics" },
+  { key: "about", label: "About" },
   { key: "account", label: "Account" },
 ];
 
@@ -1037,6 +1047,53 @@ export function SettingsSheet({
                   >
                     {isClearingRetryQueue ? "Clearing…" : "Clear retry queue"}
                   </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+
+          {activeSection === "about" ? (
+            <View>
+              <Text style={styles.sectionHeader}>About</Text>
+
+              <View style={[styles.settingBlock, styles.sectionCard]}>
+                <Text style={styles.settingLabel}>Pravah Mobile</Text>
+                <View style={styles.behaviorRow}>
+                  <Text style={styles.settingMeta}>Version</Text>
+                  <Text selectable style={styles.diagnosticsCode}>
+                    {APP_VERSION}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => void Linking.openURL(CHANGELOG_URL)}
+                  hitSlop={12}
+                  accessibilityRole="link"
+                  accessibilityLabel="Open changelog on GitHub"
+                  style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
+                >
+                  <Text style={styles.inlineActionText}>What's new →</Text>
+                </Pressable>
+              </View>
+
+              <View style={[styles.settingBlock, styles.sectionCard]}>
+                <Text style={styles.settingLabel}>Support</Text>
+                <Pressable
+                  onPress={() => void Linking.openURL(ISSUES_URL)}
+                  hitSlop={12}
+                  accessibilityRole="link"
+                  accessibilityLabel="Report an issue on GitHub"
+                  style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
+                >
+                  <Text style={styles.inlineActionText}>Report an issue →</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => void Linking.openURL(REPO_URL)}
+                  hitSlop={12}
+                  accessibilityRole="link"
+                  accessibilityLabel="Open Pravah repository on GitHub"
+                  style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
+                >
+                  <Text style={styles.inlineActionText}>GitHub repository →</Text>
                 </Pressable>
               </View>
             </View>
