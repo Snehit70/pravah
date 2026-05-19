@@ -49,6 +49,7 @@ type UseIntegrationsSettingsReturn = {
   availableCalendars: GoogleCalendarOption[];
   selectedCalendarIds: string[];
   isLoadingCalendars: boolean;
+  isCalendarSelectionReady: boolean;
   toggleCalendarSelected: (id: string) => void;
   toggleGoogleCalendarSync: () => Promise<void>;
   toggleGmailSync: () => Promise<void>;
@@ -66,6 +67,7 @@ export function useIntegrationsSettings({
   const [availableCalendars, setAvailableCalendars] = useState<GoogleCalendarOption[]>([]);
   const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>([]);
   const [isLoadingCalendars, setIsLoadingCalendars] = useState(false);
+  const [isCalendarSelectionReady, setIsCalendarSelectionReady] = useState(false);
   const calendarSelectionHydrated = useRef(false);
 
   const calendarIntegrationStatus = useQuery(
@@ -129,12 +131,17 @@ export function useIntegrationsSettings({
             ? storedIds.filter((v): v is string => typeof v === "string")
             : [];
           const calendarIds = calendars.map((c) => c.id);
+          // Keep [] as the "sync all" sentinel — expanding it to concrete IDs
+          // would cause newly-added calendars to be silently excluded on the
+          // next session. Only store an explicit subset when the user has
+          // actually deselected something.
           const nextSelection =
             safeStored.length > 0
               ? safeStored.filter((id) => calendarIds.includes(id))
-              : calendarIds;
+              : [];
           setSelectedCalendarIds(nextSelection);
           calendarSelectionHydrated.current = true;
+          setIsCalendarSelectionReady(true);
         } else {
           // Drop any selected ids that no longer exist in the fresh list.
           setSelectedCalendarIds((prev) => {
@@ -179,10 +186,15 @@ export function useIntegrationsSettings({
   }, [selectedCalendarIds]);
 
   const toggleCalendarSelected = useCallback((id: string) => {
-    setSelectedCalendarIds((prev) =>
-      prev.includes(id) ? prev.filter((existing) => existing !== id) : [...prev, id],
-    );
-  }, []);
+    setSelectedCalendarIds((prev) => {
+      if (prev.length === 0) {
+        // "All calendars" mode — unchecking one means "all except this one".
+        // Expand to the full discovered list minus the tapped calendar.
+        return availableCalendars.map((c) => c.id).filter((cid) => cid !== id);
+      }
+      return prev.includes(id) ? prev.filter((existing) => existing !== id) : [...prev, id];
+    });
+  }, [availableCalendars]);
 
   const persistIntegrationToggle = useCallback(
     async (provider: IntegrationProvider, syncEnabled: boolean) => {
@@ -244,6 +256,13 @@ export function useIntegrationsSettings({
 
   const runGoogleCalendarSync = useCallback(async () => {
     if (isCalendarSyncing) return;
+    // Don't sync before the stored selection has been loaded — calendarIds
+    // would be undefined, silently importing every calendar regardless of
+    // what the user previously chose.
+    if (!isCalendarSelectionReady) {
+      showToast({ kind: "info", message: "Calendar list is still loading. Try again shortly." });
+      return;
+    }
     setIsCalendarSyncing(true);
     try {
       let accessToken = (await GoogleSignin.getTokens()).accessToken;
@@ -256,16 +275,24 @@ export function useIntegrationsSettings({
         return;
       }
 
-      // If any selected calendar has never been synced before, the global
-      // cursor would skip its older events. Force a full resync so every
-      // calendar gets a complete initial import.
+      // Force a full resync when:
+      // (a) any explicitly selected calendar hasn't been synced before, or
+      // (b) the user is in "all calendars" mode (empty selection) and the
+      //     previous sync was a subset — newly included calendars would
+      //     otherwise be fetched with the stale cursor and miss older events.
       let fullResync: boolean | undefined;
       try {
         const storedRaw = await AsyncStorage.getItem(CALENDAR_SYNCED_IDS_STORAGE_KEY);
-        const syncedIds = new Set<string>(
-          Array.isArray(JSON.parse(storedRaw ?? "[]")) ? JSON.parse(storedRaw ?? "[]") : []
-        );
-        fullResync = selectedCalendarIds.some((id) => !syncedIds.has(id)) || undefined;
+        const parsed = JSON.parse(storedRaw ?? "[]");
+        const syncedIds = new Set<string>(Array.isArray(parsed) ? parsed : []);
+        const syncingAll = selectedCalendarIds.length === 0;
+        if (syncingAll) {
+          // Transitioning to "all calendars" from a previous subset sync
+          // means at least one calendar hasn't been fully imported.
+          fullResync = syncedIds.size > 0 || undefined;
+        } else {
+          fullResync = selectedCalendarIds.some((id) => !syncedIds.has(id)) || undefined;
+        }
       } catch {
         // If storage read fails, proceed without forcing a resync.
       }
@@ -276,15 +303,19 @@ export function useIntegrationsSettings({
         fullResync,
       });
 
-      // Record all currently selected calendars as having been fully synced.
+      // Record synced IDs. Empty means "all" — clear the key so the next
+      // sync correctly detects the all-calendars sentinel.
       try {
-        await AsyncStorage.setItem(
-          CALENDAR_SYNCED_IDS_STORAGE_KEY,
-          JSON.stringify(selectedCalendarIds),
-        );
+        if (selectedCalendarIds.length === 0) {
+          await AsyncStorage.removeItem(CALENDAR_SYNCED_IDS_STORAGE_KEY);
+        } else {
+          await AsyncStorage.setItem(
+            CALENDAR_SYNCED_IDS_STORAGE_KEY,
+            JSON.stringify(selectedCalendarIds),
+          );
+        }
       } catch {
-        // Best-effort; the next sync for a newly-added calendar will just
-        // trigger another full resync.
+        // Best-effort; next sync for a newly-added calendar will re-trigger.
       }
 
       showToast({ kind: "info", message: "Google Calendar sync complete." });
@@ -294,7 +325,7 @@ export function useIntegrationsSettings({
     } finally {
       setIsCalendarSyncing(false);
     }
-  }, [importGoogleCalendarAction, isCalendarSyncing, selectedCalendarIds, showToast]);
+  }, [importGoogleCalendarAction, isCalendarSelectionReady, isCalendarSyncing, selectedCalendarIds, showToast]);
 
   const enableAndSyncGoogleCalendar = useCallback(async () => {
     try {
@@ -345,6 +376,7 @@ export function useIntegrationsSettings({
     availableCalendars,
     selectedCalendarIds,
     isLoadingCalendars,
+    isCalendarSelectionReady,
     toggleCalendarSelected,
     toggleGoogleCalendarSync,
     toggleGmailSync,

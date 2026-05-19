@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
+import { clearKairoConfig } from "./kairoConfig";
 import { disableDailyReminderAsync } from "./notifications";
 import { classifyError, mobileLogger } from "./logger";
 
@@ -28,6 +29,14 @@ export async function wipeLocalAppData(): Promise<{ removedAsync: number; remove
     await disableDailyReminderAsync();
   } catch (error) {
     mobileLogger.warn("wipe_disable_reminder_failed", { errorType: classifyError(error) });
+  }
+
+  // Clear Kairo provider config from SecureStore. These keys are not in
+  // AsyncStorage so the prefix-scan below won't reach them.
+  try {
+    await clearKairoConfig();
+  } catch (error) {
+    mobileLogger.warn("wipe_kairo_config_failed", { errorType: classifyError(error) });
   }
 
   try {
