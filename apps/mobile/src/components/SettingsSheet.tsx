@@ -95,13 +95,14 @@ function statusTextColor(status: string): string {
   return colors.textMuted;
 }
 
-type SectionKey = "assistant" | "sync" | "alerts" | "timeline" | "account";
+type SectionKey = "assistant" | "sync" | "alerts" | "timeline" | "appearance" | "account";
 
 const SECTIONS: ReadonlyArray<{ key: SectionKey; label: string }> = [
   { key: "assistant", label: "Assistant" },
   { key: "sync", label: "Sync" },
   { key: "alerts", label: "Alerts" },
   { key: "timeline", label: "Timeline" },
+  { key: "appearance", label: "Appearance" },
   { key: "account", label: "Account" },
 ];
 
@@ -834,6 +835,105 @@ export function SettingsSheet({
                         >
                           <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
                             {scheme[0].toUpperCase() + scheme.slice(1)}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
+            </View>
+          ) : null}
+
+          {activeSection === "appearance" ? (
+            <View>
+              <Text style={styles.sectionHeader}>Appearance</Text>
+
+              <View style={[styles.settingBlock, styles.sectionCard]}>
+                <Text style={styles.settingLabel}>Motion & density</Text>
+                <Text style={styles.settingHelp}>
+                  Override the system motion setting and tighten spacing.
+                </Text>
+
+                <View style={styles.behaviorRow}>
+                  <Text style={styles.settingMeta}>Reduced motion</Text>
+                  <View style={styles.chipRow}>
+                    {(["system", "always", "never"] as const).map((mode) => {
+                      const active = prefs.reducedMotionOverride === mode;
+                      return (
+                        <Pressable
+                          key={mode}
+                          onPress={() => void setPreference("reducedMotionOverride", mode)}
+                          hitSlop={6}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: active }}
+                          style={({ pressed }) => [
+                            styles.choiceChip,
+                            active && styles.choiceChipActive,
+                            pressed && { opacity: 0.6 },
+                          ]}
+                        >
+                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
+                            {mode === "system" ? "System" : mode === "always" ? "On" : "Off"}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={styles.behaviorRow}>
+                  <Text style={styles.settingMeta}>Density</Text>
+                  <View style={styles.chipRow}>
+                    {(["cozy", "compact"] as const).map((d) => {
+                      const active = prefs.density === d;
+                      return (
+                        <Pressable
+                          key={d}
+                          onPress={() => void setPreference("density", d)}
+                          hitSlop={6}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: active }}
+                          style={({ pressed }) => [
+                            styles.choiceChip,
+                            active && styles.choiceChipActive,
+                            pressed && { opacity: 0.6 },
+                          ]}
+                        >
+                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
+                            {d === "cozy" ? "Cozy" : "Compact"}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
+
+              <View style={[styles.settingBlock, styles.sectionCard]}>
+                <Text style={styles.settingLabel}>Accent color</Text>
+                <Text style={styles.settingHelp}>
+                  Used for highlights, buttons, and active states.
+                </Text>
+                <View style={[styles.behaviorRow, { borderTopWidth: 0 }]}>
+                  <View style={styles.chipRow}>
+                    {(["purple", "copper", "teal", "rose"] as const).map((color) => {
+                      const active = prefs.accentColor === color;
+                      return (
+                        <Pressable
+                          key={color}
+                          onPress={() => void setPreference("accentColor", color)}
+                          hitSlop={6}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: active }}
+                          style={({ pressed }) => [
+                            styles.choiceChip,
+                            active && styles.choiceChipActive,
+                            pressed && { opacity: 0.6 },
+                          ]}
+                        >
+                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
+                            {color[0].toUpperCase() + color.slice(1)}
                           </Text>
                         </Pressable>
                       );

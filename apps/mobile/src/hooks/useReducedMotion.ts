@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AccessibilityInfo } from "react-native";
+import { useUserPreferences } from "./useUserPreferences";
 
 /**
  * Tracks the OS-level reduce-motion accessibility setting.
@@ -11,6 +12,7 @@ import { AccessibilityInfo } from "react-native";
  */
 export function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
+  const { prefs } = useUserPreferences();
 
   useEffect(() => {
     let mounted = true;
@@ -37,5 +39,7 @@ export function useReducedMotion(): boolean {
     };
   }, []);
 
+  if (prefs.reducedMotionOverride === "always") return true;
+  if (prefs.reducedMotionOverride === "never") return false;
   return reduced;
 }
