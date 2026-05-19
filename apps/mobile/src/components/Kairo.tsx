@@ -9,7 +9,6 @@ import {
 } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Keyboard,
   Pressable,
   StyleSheet,
@@ -18,6 +17,7 @@ import {
 } from "react-native";
 import BottomSheet, {
   BottomSheetBackdrop,
+  BottomSheetFlatList,
   BottomSheetTextInput,
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
@@ -184,7 +184,8 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   // sheet opens so an app left mounted across midnight still picks up the
   // new day's "What's on today?" / overdue counts on next visit.
   const [today, setToday] = useState(() => getLocalDateString());
-  const listRef = useRef<FlatList<KairoChatRow>>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const listRef = useRef<any>(null);
   // Undo closures keyed by KairoMessageAction.id. Held in a ref so the closure
   // identity is stable across renders; messages only carry the serializable
   // chip state and reference back into this map by id.
@@ -725,7 +726,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         </View>
       </View>
 
-      <FlatList
+      <BottomSheetFlatList
         ref={listRef}
         style={styles.scroll}
         data={chatRows}
