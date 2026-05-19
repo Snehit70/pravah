@@ -341,6 +341,114 @@ export function SettingsSheet({
                 </Text>
                 <KairoSettingsSection />
               </View>
+
+              <View style={[styles.settingBlock, styles.sectionCard]}>
+                <Text style={styles.settingLabel}>Behavior</Text>
+                <Text style={styles.settingHelp}>
+                  Tune how Kairo responds and how long undo stays available.
+                </Text>
+
+                <View style={styles.behaviorRow}>
+                  <Text style={styles.settingMeta}>Temperature</Text>
+                  <View style={styles.stepperRow}>
+                    <Pressable
+                      onPress={() =>
+                        void setPreference(
+                          "kairoTemperature",
+                          Math.max(0, Math.round((prefs.kairoTemperature - 0.1) * 10) / 10),
+                        )
+                      }
+                      hitSlop={12}
+                      accessibilityRole="button"
+                      accessibilityLabel="Decrease Kairo temperature"
+                      style={({ pressed }) => [styles.stepperButton, pressed && { opacity: 0.6 }]}
+                    >
+                      <Text style={styles.stepperGlyph}>−</Text>
+                    </Pressable>
+                    <Text style={styles.stepperValue}>{prefs.kairoTemperature.toFixed(1)}</Text>
+                    <Pressable
+                      onPress={() =>
+                        void setPreference(
+                          "kairoTemperature",
+                          Math.min(1.5, Math.round((prefs.kairoTemperature + 0.1) * 10) / 10),
+                        )
+                      }
+                      hitSlop={12}
+                      accessibilityRole="button"
+                      accessibilityLabel="Increase Kairo temperature"
+                      style={({ pressed }) => [styles.stepperButton, pressed && { opacity: 0.6 }]}
+                    >
+                      <Text style={styles.stepperGlyph}>+</Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                <View style={styles.behaviorRow}>
+                  <Text style={styles.settingMeta}>Response style</Text>
+                  <View style={styles.chipRow}>
+                    {(["concise", "detailed"] as const).map((style) => {
+                      const active = prefs.kairoResponseStyle === style;
+                      return (
+                        <Pressable
+                          key={style}
+                          onPress={() => void setPreference("kairoResponseStyle", style)}
+                          hitSlop={6}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: active }}
+                          style={({ pressed }) => [
+                            styles.choiceChip,
+                            active && styles.choiceChipActive,
+                            pressed && { opacity: 0.6 },
+                          ]}
+                        >
+                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
+                            {style === "concise" ? "Concise" : "Detailed"}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={styles.behaviorRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.settingMeta}>Starter pills</Text>
+                  </View>
+                  <Switch
+                    value={prefs.kairoStarterPillsEnabled}
+                    onValueChange={(next) => void setPreference("kairoStarterPillsEnabled", next)}
+                    trackColor={{ false: colors.border, true: colors.accentSoft }}
+                    thumbColor={prefs.kairoStarterPillsEnabled ? colors.accent : colors.textMuted}
+                  />
+                </View>
+
+                <View style={styles.behaviorRow}>
+                  <Text style={styles.settingMeta}>Undo window</Text>
+                  <View style={styles.chipRow}>
+                    {([5, 15, 30, 60] as const).map((minutes) => {
+                      const active = prefs.kairoUndoWindowMinutes === minutes;
+                      return (
+                        <Pressable
+                          key={minutes}
+                          onPress={() => void setPreference("kairoUndoWindowMinutes", minutes)}
+                          hitSlop={6}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: active }}
+                          style={({ pressed }) => [
+                            styles.choiceChip,
+                            active && styles.choiceChipActive,
+                            pressed && { opacity: 0.6 },
+                          ]}
+                        >
+                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
+                            {minutes}m
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
             </View>
           ) : null}
 
@@ -820,6 +928,64 @@ const styles = StyleSheet.create({
     ...typography.micro,
     color: colors.accent,
     fontWeight: "700",
+  },
+  behaviorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
+  },
+  stepperRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  stepperButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepperGlyph: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+  },
+  stepperValue: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+    minWidth: 36,
+    textAlign: "center",
+  },
+  chipRow: {
+    flexDirection: "row",
+    gap: spacing.xs,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
+  choiceChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs / 2,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  choiceChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  choiceChipText: {
+    ...typography.micro,
+    color: colors.textMuted,
+  },
+  choiceChipTextActive: {
+    color: colors.accent,
+    fontWeight: "600",
   },
   timeRow: {
     flexDirection: "row",
