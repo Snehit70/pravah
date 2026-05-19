@@ -48,6 +48,51 @@ export function shouldRetryCalendarWithoutUpdatedMin(status: number, bodyText: s
   }
 }
 
+export const listGoogleCalendarsAction = action({
+  args: {
+    accessToken: v.string(),
+  },
+  handler: async (_ctx, args): Promise<GoogleCalendarListEntry[]> => {
+    const calendars: GoogleCalendarListEntry[] = [];
+    let pageToken: string | undefined;
+
+    do {
+      const params = new URLSearchParams({
+        minAccessRole: "reader",
+        showDeleted: "false",
+        showHidden: "false",
+        maxResults: "250",
+      });
+      if (pageToken) params.set("pageToken", pageToken);
+
+      const response = await fetch(
+        `https://www.googleapis.com/calendar/v3/users/me/calendarList?${params}`,
+        {
+          headers: {
+            Authorization: `Bearer ${args.accessToken}`,
+          },
+        }
+      );
+      if (!response.ok) {
+        throw new Error(`Calendar list failed: ${await response.text()}`);
+      }
+
+      const payload = (await response.json()) as {
+        items?: GoogleCalendarListEntry[];
+        nextPageToken?: string;
+      };
+
+      for (const calendar of payload.items ?? []) {
+        if (!calendar.id) continue;
+        calendars.push(calendar);
+      }
+      pageToken = payload.nextPageToken;
+    } while (pageToken);
+
+    return calendars;
+  },
+});
+
 export const importGoogleCalendarAction = action({
   args: {
     accessToken: v.string(),
