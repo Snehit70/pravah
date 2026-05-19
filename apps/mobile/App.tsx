@@ -311,6 +311,8 @@ function MobileApp() {
     syncSettingsBusy,
     calendarAccountEmail,
     gmailAccountEmail,
+    calendarLastError,
+    gmailLastError,
     calendarLastRun,
     gmailLastRun,
     availableCalendars,
@@ -922,6 +924,8 @@ function MobileApp() {
         selectedCalendarIds={selectedCalendarIds}
         isLoadingCalendars={isLoadingCalendars}
         onToggleCalendarSelected={toggleCalendarSelected}
+        calendarLastError={calendarLastError}
+        gmailLastError={gmailLastError}
       />
 
       {__DEV__ ? (

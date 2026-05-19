@@ -41,6 +41,8 @@ type UseIntegrationsSettingsReturn = {
   syncSettingsBusy: boolean;
   calendarAccountEmail?: string;
   gmailAccountEmail?: string;
+  calendarLastError?: string;
+  gmailLastError?: string;
   calendarLastRun?: IntegrationLastRunSummary;
   gmailLastRun?: IntegrationLastRunSummary;
   availableCalendars: GoogleCalendarOption[];
@@ -307,6 +309,8 @@ export function useIntegrationsSettings({
     syncSettingsBusy,
     calendarAccountEmail: calendarIntegrationStatus?.integration?.accountEmail,
     gmailAccountEmail: gmailIntegrationStatus?.integration?.accountEmail,
+    calendarLastError: calendarIntegrationStatus?.integration?.lastError,
+    gmailLastError: gmailIntegrationStatus?.integration?.lastError,
     calendarLastRun,
     gmailLastRun,
     availableCalendars,

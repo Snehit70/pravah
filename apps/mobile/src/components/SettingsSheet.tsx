@@ -22,6 +22,9 @@ import DateTimePicker, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useUserPreferences } from "../hooks/useUserPreferences";
+import { getOrCreateDeviceId } from "../lib/deviceIdentity";
+import { retryQueueStorage } from "../lib/retry-queue-storage";
+import { classifyError, mobileLogger } from "../lib/logger";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { isWithinQuietHours, type NotificationPermissionState } from "../lib/notifications";
 import { KairoSettingsSection } from "./KairoSettingsSection";
@@ -95,7 +98,14 @@ function statusTextColor(status: string): string {
   return colors.textMuted;
 }
 
-type SectionKey = "assistant" | "sync" | "alerts" | "timeline" | "appearance" | "account";
+type SectionKey =
+  | "assistant"
+  | "sync"
+  | "alerts"
+  | "timeline"
+  | "appearance"
+  | "diagnostics"
+  | "account";
 
 const SECTIONS: ReadonlyArray<{ key: SectionKey; label: string }> = [
   { key: "assistant", label: "Assistant" },
@@ -103,6 +113,7 @@ const SECTIONS: ReadonlyArray<{ key: SectionKey; label: string }> = [
   { key: "alerts", label: "Alerts" },
   { key: "timeline", label: "Timeline" },
   { key: "appearance", label: "Appearance" },
+  { key: "diagnostics", label: "Diagnostics" },
   { key: "account", label: "Account" },
 ];
 
@@ -140,6 +151,8 @@ type SettingsSheetProps = {
   selectedCalendarIds: string[];
   isLoadingCalendars: boolean;
   onToggleCalendarSelected: (id: string) => void;
+  calendarLastError?: string;
+  gmailLastError?: string;
 };
 
 export function SettingsSheet({
@@ -176,6 +189,8 @@ export function SettingsSheet({
   selectedCalendarIds,
   isLoadingCalendars,
   onToggleCalendarSelected,
+  calendarLastError,
+  gmailLastError,
 }: SettingsSheetProps) {
   const bottomSheetRef = useRef<BottomSheet>(null);
   // Scrolled content lives inside the active tab. Reset scroll to top on tab
@@ -188,6 +203,29 @@ export function SettingsSheet({
   const [activeSection, setActiveSection] = useState<SectionKey>("assistant");
   const { prefs, setPreference } = useUserPreferences();
   const [openPicker, setOpenPicker] = useState<QuietPickerKind | null>(null);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [isClearingRetryQueue, setIsClearingRetryQueue] = useState(false);
+
+  // Lazy-load device id only when the Diagnostics tab needs it. Avoids touching
+  // storage on every settings open.
+  useEffect(() => {
+    if (activeSection !== "diagnostics" || deviceId) return;
+    void getOrCreateDeviceId().then(setDeviceId);
+  }, [activeSection, deviceId]);
+
+  const handleClearRetryQueue = useCallback(async () => {
+    if (isClearingRetryQueue) return;
+    setIsClearingRetryQueue(true);
+    try {
+      await retryQueueStorage.removeItem("pravah_mobile_retry_queue_v1");
+      showToast({ kind: "info", message: "Retry queue cleared." });
+    } catch (error) {
+      mobileLogger.warn("retry_queue_clear_failed", { errorType: classifyError(error) });
+      showToast({ kind: "error", message: "Could not clear retry queue." });
+    } finally {
+      setIsClearingRetryQueue(false);
+    }
+  }, [isClearingRetryQueue, showToast]);
 
   const handleTimePicked = useCallback(
     (kind: QuietPickerKind) => (_event: DateTimePickerEvent, picked?: Date) => {
@@ -944,6 +982,66 @@ export function SettingsSheet({
             </View>
           ) : null}
 
+          {activeSection === "diagnostics" ? (
+            <View>
+              <Text style={styles.sectionHeader}>Diagnostics</Text>
+
+              <View style={[styles.settingBlock, styles.sectionCard]}>
+                <Text style={styles.settingLabel}>Device</Text>
+                <Text style={styles.settingHelp}>
+                  Share this ID with support when reporting a bug. Long-press to copy.
+                </Text>
+                <Text selectable style={styles.diagnosticsCode}>
+                  {deviceId ?? "Loading…"}
+                </Text>
+              </View>
+
+              <View style={[styles.settingBlock, styles.sectionCard]}>
+                <Text style={styles.settingLabel}>Recent sync errors</Text>
+                <Text style={styles.settingHelp}>
+                  Surfaced from the most recent Google Calendar and Gmail sync runs.
+                </Text>
+                <View style={styles.behaviorRow}>
+                  <Text style={styles.settingMeta}>Google Calendar</Text>
+                </View>
+                <Text style={styles.settingMeta}>
+                  {calendarLastError ? calendarLastError : "No recent errors."}
+                </Text>
+                <View style={styles.behaviorRow}>
+                  <Text style={styles.settingMeta}>Gmail</Text>
+                </View>
+                <Text style={styles.settingMeta}>
+                  {gmailLastError ? gmailLastError : "No recent errors."}
+                </Text>
+              </View>
+
+              <View style={[styles.settingBlock, styles.sectionCard]}>
+                <Text style={styles.settingLabel}>Retry queue</Text>
+                <Text style={styles.settingHelp}>
+                  Drops any pending offline retries. Use if a stuck request is preventing
+                  fresh syncs from running.
+                </Text>
+                <Pressable
+                  onPress={() => void handleClearRetryQueue()}
+                  disabled={isClearingRetryQueue}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear retry queue"
+                  style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
+                >
+                  <Text
+                    style={[
+                      styles.inlineActionText,
+                      isClearingRetryQueue && styles.inlineActionDisabled,
+                    ]}
+                  >
+                    {isClearingRetryQueue ? "Clearing…" : "Clear retry queue"}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+
           {activeSection === "account" ? (
             <View>
               <Text style={styles.sectionHeader}>Account</Text>
@@ -1189,6 +1287,12 @@ const styles = StyleSheet.create({
   choiceChipTextActive: {
     color: colors.accent,
     fontWeight: "600",
+  },
+  diagnosticsCode: {
+    ...typography.micro,
+    color: colors.textPrimary,
+    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+    paddingVertical: spacing.xs,
   },
   timeRow: {
     flexDirection: "row",
