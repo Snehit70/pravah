@@ -152,6 +152,8 @@ type SettingsSheetProps = {
   onToggleDailyReminder: () => void;
   onSendTestNotification: () => void;
   onSignOut: () => void;
+  onExportTasks: () => void;
+  onWipeLocalData: () => Promise<void> | void;
   showToast: (next: { kind: "error" | "info"; message: string }) => void;
   calendarAccountEmail?: string;
   gmailAccountEmail?: string;
@@ -190,6 +192,8 @@ export function SettingsSheet({
   onToggleDailyReminder,
   onSendTestNotification,
   onSignOut,
+  onExportTasks,
+  onWipeLocalData,
   showToast,
   calendarAccountEmail,
   gmailAccountEmail,
@@ -215,6 +219,34 @@ export function SettingsSheet({
   const [openPicker, setOpenPicker] = useState<QuietPickerKind | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [isClearingRetryQueue, setIsClearingRetryQueue] = useState(false);
+  const [dangerArmed, setDangerArmed] = useState<"wipe" | null>(null);
+  const [isWiping, setIsWiping] = useState(false);
+
+  // Disarm the danger button after a few seconds so a stray re-tap doesn't
+  // execute a destructive action long after the user moved on.
+  useEffect(() => {
+    if (!dangerArmed) return;
+    const t = setTimeout(() => setDangerArmed(null), 5000);
+    return () => clearTimeout(t);
+  }, [dangerArmed]);
+
+  const handleWipeLocalData = useCallback(async () => {
+    if (dangerArmed !== "wipe") {
+      setDangerArmed("wipe");
+      return;
+    }
+    setDangerArmed(null);
+    setIsWiping(true);
+    try {
+      await onWipeLocalData();
+      showToast({ kind: "info", message: "Local data wiped." });
+    } catch (error) {
+      mobileLogger.warn("wipe_local_data_failed", { errorType: classifyError(error) });
+      showToast({ kind: "error", message: "Could not wipe local data." });
+    } finally {
+      setIsWiping(false);
+    }
+  }, [dangerArmed, onWipeLocalData, showToast]);
 
   // Lazy-load device id only when the Diagnostics tab needs it. Avoids touching
   // storage on every settings open.
@@ -1103,6 +1135,23 @@ export function SettingsSheet({
             <View>
               <Text style={styles.sectionHeader}>Account</Text>
 
+              <View style={[styles.settingBlock, styles.sectionCard]}>
+                <Text style={styles.settingLabel}>Your data</Text>
+                <Text style={styles.settingHelp}>
+                  Export every task currently in view as a JSON payload via the system share
+                  sheet (save to Files, email, or another app).
+                </Text>
+                <Pressable
+                  onPress={onExportTasks}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel="Export tasks as JSON"
+                  style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
+                >
+                  <Text style={styles.inlineActionText}>Export tasks as JSON →</Text>
+                </Pressable>
+              </View>
+
               <View style={[styles.settingBlock, styles.sectionCard, styles.accountCard]}>
                 <Text style={styles.settingHelp}>Sign out if you want to switch Google accounts on this device.</Text>
                 <Pressable
@@ -1113,6 +1162,46 @@ export function SettingsSheet({
                   style={({ pressed }) => [pressed && { opacity: 0.6 }]}
                 >
                   <Text style={styles.signOutLink}>Sign out</Text>
+                </Pressable>
+              </View>
+
+              <View style={[styles.settingBlock, styles.sectionCard, styles.dangerCard]}>
+                <Text style={styles.dangerLabel}>Danger zone</Text>
+                <Text style={styles.settingHelp}>
+                  Wipe locally cached preferences, retry queue, snapshot, and reminder
+                  schedule. Server data is untouched. Signs you out.
+                </Text>
+                <Pressable
+                  onPress={() => void handleWipeLocalData()}
+                  disabled={isWiping}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    dangerArmed === "wipe" ? "Tap again to confirm wipe" : "Wipe local data"
+                  }
+                  style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
+                >
+                  <Text style={[styles.dangerActionText, isWiping && styles.inlineActionDisabled]}>
+                    {isWiping
+                      ? "Wiping…"
+                      : dangerArmed === "wipe"
+                        ? "Tap again to confirm →"
+                        : "Wipe local data"}
+                  </Text>
+                </Pressable>
+
+                <Text style={[styles.settingHelp, { marginTop: spacing.sm }]}>
+                  To permanently delete your Pravah account and server data, open a
+                  request with support.
+                </Text>
+                <Pressable
+                  onPress={() => void Linking.openURL(`${ISSUES_URL}/new?title=Delete+my+Pravah+account`)}
+                  hitSlop={12}
+                  accessibilityRole="link"
+                  accessibilityLabel="Request account deletion via GitHub issue"
+                  style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
+                >
+                  <Text style={styles.dangerActionText}>Request account deletion →</Text>
                 </Pressable>
               </View>
             </View>
@@ -1350,6 +1439,20 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
     paddingVertical: spacing.xs,
+  },
+  dangerCard: {
+    borderColor: "#c0552d",
+  },
+  dangerLabel: {
+    ...typography.bodyMd,
+    color: "#c0552d",
+    fontWeight: "600",
+    marginBottom: spacing.xs,
+  },
+  dangerActionText: {
+    ...typography.micro,
+    color: "#c0552d",
+    fontWeight: "600",
   },
   timeRow: {
     flexDirection: "row",

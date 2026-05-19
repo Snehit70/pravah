@@ -4,6 +4,7 @@ import {
   Animated as LegacyAnimated,
   BackHandler,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   View,
@@ -330,6 +331,27 @@ function MobileApp() {
     void clearSnapshot();
     googleSignOut();
   }, [clearSnapshot, googleSignOut, setIsSettingsModalOpen]);
+
+  const handleWipeLocalData = useCallback(async () => {
+    const { wipeLocalAppData } = await import("./src/lib/dataReset");
+    await wipeLocalAppData();
+    setIsSettingsModalOpen(false);
+    void clearSnapshot();
+    googleSignOut();
+  }, [clearSnapshot, googleSignOut, setIsSettingsModalOpen]);
+
+  const handleExportTasks = useCallback(async () => {
+    try {
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        version: 1,
+        tasks: [...displayInboxTasks, ...displayScheduledTasks, ...displayCompletedTasks],
+      };
+      await Share.share({ message: JSON.stringify(payload, null, 2) });
+    } catch {
+      showToast({ kind: "error", message: "Could not share tasks export." });
+    }
+  }, [displayCompletedTasks, displayInboxTasks, displayScheduledTasks, showToast]);
 
   // ── Effects ─────────────────────────────────────────────────────────
 
@@ -915,6 +937,8 @@ function MobileApp() {
         onToggleDailyReminder={() => void toggleDailyReminder()}
         onSendTestNotification={() => void sendTestNotification()}
         onSignOut={handleSignOut}
+        onExportTasks={() => void handleExportTasks()}
+        onWipeLocalData={handleWipeLocalData}
         showToast={showToast}
         calendarAccountEmail={calendarAccountEmail}
         gmailAccountEmail={gmailAccountEmail}
