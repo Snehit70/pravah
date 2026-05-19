@@ -97,6 +97,11 @@ export function useIntegrationsSettings({
   useEffect(() => {
     if (!isAuthenticated || !googleSyncEnabled) {
       setAvailableCalendars([]);
+      if (!isAuthenticated) {
+        setSelectedCalendarIds([]);
+        calendarSelectionHydrated.current = false;
+        setIsCalendarSelectionReady(false);
+      }
       return;
     }
 
@@ -256,10 +261,11 @@ export function useIntegrationsSettings({
 
   const runGoogleCalendarSync = useCallback(async () => {
     if (isCalendarSyncing) return;
-    // Don't sync before the stored selection has been loaded — calendarIds
-    // would be undefined, silently importing every calendar regardless of
-    // what the user previously chose.
-    if (!isCalendarSelectionReady) {
+    // Don't sync before the stored selection has been loaded when there's an
+    // explicit subset — calendarIds would reflect stale in-memory state.
+    // The all-calendars path (empty selectedCalendarIds) is always safe to
+    // proceed: it's the initial state and importing everything is correct.
+    if (!isCalendarSelectionReady && selectedCalendarIds.length > 0) {
       showToast({ kind: "info", message: "Calendar list is still loading. Try again shortly." });
       return;
     }

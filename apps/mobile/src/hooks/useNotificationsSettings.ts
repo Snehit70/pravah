@@ -23,6 +23,7 @@ type UseNotificationsSettingsReturn = {
   requestNotificationsAccess: () => Promise<void>;
   toggleDailyReminder: () => Promise<void>;
   sendTestNotification: () => Promise<void>;
+  resetDailyReminderState: () => void;
 };
 
 function parseTime(value: string): { hour: number; minute: number } {
@@ -174,6 +175,10 @@ export function useNotificationsSettings(showToast: ShowToast): UseNotifications
     }
   }, [isNotificationsBusy, notificationPermissionState, showToast]);
 
+  const resetDailyReminderState = useCallback(() => {
+    setIsDailyReminderEnabled(false);
+  }, []);
+
   return {
     notificationPermissionState,
     isDailyReminderEnabled,
@@ -182,5 +187,6 @@ export function useNotificationsSettings(showToast: ShowToast): UseNotifications
     requestNotificationsAccess,
     toggleDailyReminder,
     sendTestNotification,
+    resetDailyReminderState,
   };
 }

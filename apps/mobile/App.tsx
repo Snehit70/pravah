@@ -296,6 +296,7 @@ function MobileApp() {
     requestNotificationsAccess,
     toggleDailyReminder,
     sendTestNotification,
+    resetDailyReminderState,
   } = useNotificationsSettings(showToast);
 
   // ── Integrations ────────────────────────────────────────────────────
@@ -337,10 +338,11 @@ function MobileApp() {
     const { wipeLocalAppData } = await import("./src/lib/dataReset");
     await wipeLocalAppData();
     resetPreferencesStore();
+    resetDailyReminderState();
     setIsSettingsModalOpen(false);
     void clearSnapshot();
     googleSignOut();
-  }, [clearSnapshot, googleSignOut, setIsSettingsModalOpen]);
+  }, [clearSnapshot, googleSignOut, resetDailyReminderState, setIsSettingsModalOpen]);
 
   const handleExportTasks = useCallback(async () => {
     try {
