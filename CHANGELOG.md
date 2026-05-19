@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.8.0](https://github.com/Snehit70/pravah/compare/web-v1.7.0...web-v1.8.0) (2026-05-19)
+
+
+### Features
+
+* **branding:** swap in new Pravah logo across in-app surfaces ([cb1a1eb](https://github.com/Snehit70/pravah/commit/cb1a1ebb4878341319e57c3c160a7b7b94b1d508))
+* **convex:** expose listGoogleCalendarsAction for mobile picker ([705fe9b](https://github.com/Snehit70/pravah/commit/705fe9be25609f73a7eebdf02458a9c7ff6ae43b))
+* **mobile:** About settings tab ([7801dd2](https://github.com/Snehit70/pravah/commit/7801dd26c6db172bbaff7c3ea478464e75ecb365))
+* **mobile:** add userPreferences storage module ([a5921ec](https://github.com/Snehit70/pravah/commit/a5921ec9f87b07b33decfabb7ab052e2bc91d645))
+* **mobile:** Appearance settings tab ([603dd57](https://github.com/Snehit70/pravah/commit/603dd5721ab74e1be194f9927c66f86c844930ff))
+* **mobile:** calendar picker in Sync settings ([c465090](https://github.com/Snehit70/pravah/commit/c46509099e524a910ed458c1f196f88b5d951d26))
+* **mobile:** configurable daily reminder time and quiet hours ([fb44527](https://github.com/Snehit70/pravah/commit/fb445276d569bf2132bc9740a898bfe9d28a7b41))
+* **mobile:** Diagnostics settings tab ([042be35](https://github.com/Snehit70/pravah/commit/042be355d6d1fb5d487b88cbf3fe08b7c9ecb77b))
+* **mobile:** Export tasks and Danger Zone in Account tab ([93e9147](https://github.com/Snehit70/pravah/commit/93e91475ced1e0703ad65e435120bb3050eee20e))
+* **mobile:** improve Kairo thinking skeleton ([fefdced](https://github.com/Snehit70/pravah/commit/fefdcedb5bd28e0cceee0fc6220533ec3e106f3a))
+* **mobile:** Kairo behavior controls (temperature, style, pills, undo) ([90e1c0f](https://github.com/Snehit70/pravah/commit/90e1c0fd609d0470e7b1b774528ffc75bcff3f07))
+* **mobile:** logo refresh + full settings pass ([665a871](https://github.com/Snehit70/pravah/commit/665a871c0d68b5e20bc878741183429ad2a0e750))
+* **mobile:** Timeline preferences tab in settings ([3154dc0](https://github.com/Snehit70/pravah/commit/3154dc007f57043d0bf2c36cad8fac652662854f))
+
+
+### Bug Fixes
+
+* **mobile:** address five calendar/wipe correctness issues ([4b91161](https://github.com/Snehit70/pravah/commit/4b911614d763afb4b3463927f6a0d87db54d8ac4))
+* **mobile:** address post-wipe correctness issues ([a1a469d](https://github.com/Snehit70/pravah/commit/a1a469d783da84ac76d9c482a553570f571fa5e9))
+* **mobile:** clear stale in-memory state after wipe and on auth loss ([c674fae](https://github.com/Snehit70/pravah/commit/c674fae6d5e25d2ab61ba869c492c7731f0d8a62))
+* **mobile:** full resync for new calendars; wipe legacy retry-queue SecureStore key ([349f755](https://github.com/Snehit70/pravah/commit/349f755b496aa0b540c0f267b3d326c85255c179))
+* **mobile:** increase gap between Chats/Close row and title row ([ebe0dc3](https://github.com/Snehit70/pravah/commit/ebe0dc3c6800d5e9916ce1f11be0f0da70014e26))
+* **mobile:** Kairo delete silently no-ops when model uses wrong action format ([11a85c6](https://github.com/Snehit70/pravah/commit/11a85c66432a5f8114e0cc9b8c7798c279b1dea3))
+* **mobile:** move Kairo chat title to its own row below Chats/Close ([2ab33f3](https://github.com/Snehit70/pravah/commit/2ab33f3cc429d09bc670f2e6982162386d116260))
+* **mobile:** persist synced calendar IDs after all-calendars sync ([9fd1caa](https://github.com/Snehit70/pravah/commit/9fd1caa671349b4511ae26fc02784bb3ed12d76a))
+* **mobile:** replace FlatList with BottomSheetFlatList for scrollable chat ([7d6d525](https://github.com/Snehit70/pravah/commit/7d6d5254213b1ffef126cc3dd9e55bc9dc501928))
+* **mobile:** resolve lint errors failing CI ([da04c27](https://github.com/Snehit70/pravah/commit/da04c27aa1cc5a7bca29a8b363065f14c3dd1c15))
+
 ## [1.7.0](https://github.com/Snehit70/pravah/compare/web-v1.6.0...web-v1.7.0) (2026-05-18)
 
 
