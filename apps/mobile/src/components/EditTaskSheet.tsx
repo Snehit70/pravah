@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { Alert, Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
+import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetTextInput,
@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TaskMetaFields } from "./TaskMetaFields";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { type TaskPriority } from "../lib/task-form";
+import { useConfirm } from "./ConfirmDialog";
 
 export type EditTaskSheetRef = {
   open: (task: MobileTask) => void;
@@ -43,6 +44,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
   ) {
     const bottomSheetRef = useRef<BottomSheet>(null);
     const insets = useSafeAreaInsets();
+    const confirm = useConfirm();
 
     const [taskId, setTaskId] = useState<Id<"tasks"> | null>(null);
     const [taskStatus, setTaskStatus] = useState<MobileTask["status"] | null>(null);
@@ -136,21 +138,21 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     );
 
     const canSave = useMemo(() => Boolean(title.trim()) && !saving, [title, saving]);
-    const requestClose = useCallback(() => {
+    const requestClose = useCallback(async () => {
       if (!hasUnsavedChanges) {
         bottomSheetRef.current?.close();
         return;
       }
 
-      Alert.alert("Discard changes?", "You have unsaved edits in this task.", [
-        { text: "Keep editing", style: "cancel" },
-        {
-          text: "Discard",
-          style: "destructive",
-          onPress: () => bottomSheetRef.current?.close(),
-        },
-      ]);
-    }, [hasUnsavedChanges]);
+      const discard = await confirm({
+        title: "Discard changes?",
+        message: "You have unsaved edits in this task.",
+        confirmLabel: "Discard",
+        cancelLabel: "Keep editing",
+        destructive: true,
+      });
+      if (discard) bottomSheetRef.current?.close();
+    }, [hasUnsavedChanges, confirm]);
 
     return (
       <BottomSheet
@@ -267,17 +269,17 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
               {onDelete ? (
                 <Pressable
                   onPress={() => {
-                    Alert.alert("Delete task?", "This cannot be undone.", [
-                      { text: "Cancel", style: "cancel" },
-                      {
-                        text: "Delete",
-                        style: "destructive",
-                        onPress: () => {
-                          onDelete(taskId);
-                          bottomSheetRef.current?.close();
-                        },
-                      },
-                    ]);
+                    void (async () => {
+                      const ok = await confirm({
+                        title: "Delete task?",
+                        message: "This cannot be undone.",
+                        confirmLabel: "Delete",
+                        destructive: true,
+                      });
+                      if (!ok) return;
+                      onDelete(taskId);
+                      bottomSheetRef.current?.close();
+                    })();
                   }}
                   hitSlop={12}
                   style={({ pressed }) => [styles.quickActionItem, pressed && { opacity: 0.6 }]}
@@ -290,7 +292,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
 
           <View style={styles.actions}>
             <Pressable
-              onPress={requestClose}
+              onPress={() => void requestClose()}
               style={({ pressed }) => [styles.cancelButton, pressed && { opacity: 0.6 }]}
               hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
             >

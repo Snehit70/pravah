@@ -7,10 +7,11 @@
  */
 
 import { useMemo } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
 import type { ChatMeta } from "../lib/kairoChatStorage";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { useConfirm } from "./ConfirmDialog";
 
 type Props = {
   chats: ChatMeta[];
@@ -41,6 +42,7 @@ export function KairoChatList({
   onDelete,
   onClose,
 }: Props) {
+  const confirm = useConfirm();
   const sorted = useMemo(
     () => [...chats].sort((a, b) => b.updatedAt - a.updatedAt),
     [chats]
@@ -81,20 +83,14 @@ export function KairoChatList({
         }
         renderItem={({ item }) => {
           const isActive = item.id === activeChatId;
-          const askDelete = () => {
-            Alert.alert(
-              "Delete chat?",
-              item.title,
-              [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Delete",
-                  style: "destructive",
-                  onPress: () => onDelete(item.id),
-                },
-              ],
-              { cancelable: true }
-            );
+          const askDelete = async () => {
+            const ok = await confirm({
+              title: "Delete chat?",
+              message: item.title,
+              confirmLabel: "Delete",
+              destructive: true,
+            });
+            if (ok) onDelete(item.id);
           };
           return (
             <View style={[styles.row, isActive && styles.rowActive]}>
@@ -110,7 +106,7 @@ export function KairoChatList({
                 <Text style={styles.rowMeta}>{formatRelative(item.updatedAt)}</Text>
               </Pressable>
               <Pressable
-                onPress={askDelete}
+                onPress={() => void askDelete()}
                 hitSlop={12}
                 style={({ pressed }) => [styles.deleteBtn, pressed && { opacity: 0.5 }]}
                 accessibilityLabel={`Delete chat: ${item.title}`}

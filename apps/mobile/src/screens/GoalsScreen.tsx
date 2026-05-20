@@ -12,7 +12,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -23,12 +22,14 @@ import {
 import Animated, { FadeIn } from "react-native-reanimated";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { createGoal, loadGoals, saveGoals, type GoalItem } from "../lib/goalsStorage";
+import { useConfirm } from "../components/ConfirmDialog";
 
 type GoalsScreenProps = {
   tabBarHeight: number;
 };
 
 export function GoalsScreen({ tabBarHeight }: GoalsScreenProps) {
+  const confirm = useConfirm();
   const [goals, setGoals] = useState<GoalItem[]>([]);
   const [draft, setDraft] = useState("");
   const [isHydrated, setIsHydrated] = useState(false);
@@ -76,24 +77,20 @@ export function GoalsScreen({ tabBarHeight }: GoalsScreenProps) {
     setCanSave(true);
   }, [draft]);
 
-  const handleDelete = useCallback((goal: GoalItem) => {
-    Alert.alert(
-      "Delete goal?",
-      goal.text,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            setGoals((prev) => prev.filter((g) => g.id !== goal.id));
-            setCanSave(true);
-          },
-        },
-      ],
-      { cancelable: true }
-    );
-  }, []);
+  const handleDelete = useCallback(
+    async (goal: GoalItem) => {
+      const ok = await confirm({
+        title: "Delete goal?",
+        message: goal.text,
+        confirmLabel: "Delete",
+        destructive: true,
+      });
+      if (!ok) return;
+      setGoals((prev) => prev.filter((g) => g.id !== goal.id));
+      setCanSave(true);
+    },
+    [confirm],
+  );
 
   const composer = (
     <View style={styles.composer}>
@@ -160,7 +157,7 @@ export function GoalsScreen({ tabBarHeight }: GoalsScreenProps) {
         <View style={styles.goalRow}>
           <Text style={styles.goalText}>{item.text}</Text>
           <Pressable
-            onPress={() => handleDelete(item)}
+            onPress={() => void handleDelete(item)}
             hitSlop={12}
             accessibilityRole="button"
             accessibilityLabel={`Delete goal: ${item.text}`}

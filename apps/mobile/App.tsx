@@ -44,6 +44,7 @@ import { MobileAuthScreen } from "./src/components/MobileAuthScreen";
 import { RootErrorBoundary } from "./src/components/RootErrorBoundary";
 import { ScreenErrorBoundary } from "./src/components/ScreenErrorBoundary";
 import { SettingsSheet } from "./src/components/SettingsSheet";
+import { ConfirmProvider } from "./src/components/ConfirmDialog";
 import { DiagnosticsPanel } from "./src/components/DiagnosticsPanel";
 import { InboxScreen } from "./src/screens/InboxScreen";
 import { TimelineScreen } from "./src/screens/TimelineScreen";
@@ -1057,7 +1058,9 @@ export default function App() {
         <LaunchGate>
             <ConvexClientProvider>
               <RootErrorBoundary>
-                <MobileApp />
+                <ConfirmProvider>
+                  <MobileApp />
+                </ConfirmProvider>
               </RootErrorBoundary>
             </ConvexClientProvider>
         </LaunchGate>

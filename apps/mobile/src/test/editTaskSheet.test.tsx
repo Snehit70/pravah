@@ -161,6 +161,15 @@ vi.mock("../components/TaskMetaFields", () => ({
   TaskMetaFields: () => React.createElement("div", { "data-testid": "task-meta-fields" }),
 }));
 
+// ─── ConfirmDialog mock ───────────────────────────────────────────────────────
+// Avoid pulling reanimated/worklets into the test by stubbing the hook.
+// Auto-confirm so discard flows resolve to true.
+vi.mock("../components/ConfirmDialog", () => ({
+  useConfirm: () => async () => true,
+  ConfirmProvider: ({ children }: { children?: React.ReactNode }) =>
+    React.createElement("div", {}, children),
+}));
+
 // Import component after all mocks are set up.
 import { EditTaskSheet, type EditTaskSheetRef } from "../components/EditTaskSheet";
 import type { MobileTask } from "../components/TaskCard";
