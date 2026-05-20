@@ -33,6 +33,13 @@ function startOfLocalDay(ts: number): Date {
   return d;
 }
 
+/** Advance a local-midnight Date by `n` calendar days (DST-safe). */
+function addCalendarDays(d: Date, n: number): Date {
+  const result = new Date(d);
+  result.setDate(result.getDate() + n);
+  return result;
+}
+
 export type DayPoint = { date: string; count: number };
 
 /**
@@ -44,7 +51,8 @@ export function completionsByDay(
   now: number,
   days: number,
 ): DayPoint[] {
-  const cutoff = startOfLocalDay(now).getTime() - (days - 1) * MS_PER_DAY;
+  const windowStart = addCalendarDays(startOfLocalDay(now), -(days - 1));
+  const cutoff = windowStart.getTime();
   const buckets = new Map<string, number>();
   for (const t of tasks) {
     if (t.status !== "completed") continue;
@@ -54,8 +62,7 @@ export function completionsByDay(
   }
   const out: DayPoint[] = [];
   for (let i = 0; i < days; i++) {
-    const ts = cutoff + i * MS_PER_DAY;
-    const key = localDateKey(ts);
+    const key = localDateKey(addCalendarDays(windowStart, i).getTime());
     out.push({ date: key, count: buckets.get(key) ?? 0 });
   }
   return out;
@@ -90,15 +97,15 @@ export function currentStreak(tasks: MobileTask[], now: number): number {
   }
   if (days.size === 0) return 0;
 
-  let cursor = startOfLocalDay(now).getTime();
-  if (!days.has(localDateKey(cursor))) {
-    cursor -= MS_PER_DAY;
-    if (!days.has(localDateKey(cursor))) return 0;
+  let cursorDay = startOfLocalDay(now);
+  if (!days.has(localDateKey(cursorDay.getTime()))) {
+    cursorDay = addCalendarDays(cursorDay, -1);
+    if (!days.has(localDateKey(cursorDay.getTime()))) return 0;
   }
   let streak = 0;
-  while (days.has(localDateKey(cursor))) {
+  while (days.has(localDateKey(cursorDay.getTime()))) {
     streak++;
-    cursor -= MS_PER_DAY;
+    cursorDay = addCalendarDays(cursorDay, -1);
   }
   return streak;
 }
@@ -124,15 +131,12 @@ export function kpis(tasks: MobileTask[], now: number): StatsKpis {
   for (const t of tasks) {
     if (t.status === "completed" && t.updatedAt >= sevenDaysAgo) completed7d++;
     if (t.status === "inbox") inbox++;
-    const dueKey = t.deadline ?? t.scheduledDate;
-    if (
-      dueKey &&
-      dueKey < todayKey &&
+    const isOverdue =
       t.status !== "completed" &&
-      t.status !== "cancelled"
-    ) {
-      overdue++;
-    }
+      t.status !== "cancelled" &&
+      ((t.deadline && t.deadline < todayKey) ||
+        (t.scheduledDate && t.scheduledDate < todayKey));
+    if (isOverdue) overdue++;
   }
   return {
     streak: currentStreak(tasks, now),

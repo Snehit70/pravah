@@ -7,8 +7,8 @@
  * cycle-time chart — the aggregator lib is structured to make those drop-in.
  */
 
-import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import type { MobileTask } from "../components/TaskCard";
 import { CompletionLineChart } from "../components/CompletionLineChart";
@@ -34,7 +34,13 @@ const RANGE_LABELS: Record<RangeKey, string> = {
 
 export function StatsScreen({ tasks, tabBarHeight }: StatsScreenProps) {
   const [range, setRange] = useState<RangeKey>("30d");
-  const [now] = useState<number>(() => Date.now());
+  const [now, setNow] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") setNow(Date.now());
+    });
+    return () => sub.remove();
+  }, []);
 
   const k = useMemo(() => kpis(tasks, now), [tasks, now]);
   const series = useMemo(
