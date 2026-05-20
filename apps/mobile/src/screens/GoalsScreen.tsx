@@ -115,11 +115,11 @@ export function GoalsScreen({ tabBarHeight }: GoalsScreenProps) {
         accessibilityLabel="Add goal"
         style={({ pressed }) => [
           styles.addBtn,
+          !draft.trim() && styles.addBtnDisabled,
           pressed && { opacity: 0.7 },
-          !draft.trim() && { opacity: 0.4 },
         ]}
       >
-        <Text style={styles.addBtnText}>Add</Text>
+        <Text style={[styles.addBtnText, !draft.trim() && styles.addBtnTextDisabled]}>Add</Text>
       </Pressable>
     </View>
   );
@@ -134,7 +134,7 @@ export function GoalsScreen({ tabBarHeight }: GoalsScreenProps) {
   );
 
   const footerHint = (
-    <Text style={styles.footerHint}>Saved locally on this device.</Text>
+    <Text style={styles.footerHint}>Private to this device. Goals don't sync.</Text>
   );
 
   return (
@@ -148,12 +148,9 @@ export function GoalsScreen({ tabBarHeight }: GoalsScreenProps) {
       keyExtractor={(item) => item.id}
       ListHeaderComponent={
         <View>
-          <View style={styles.headingRow}>
-            <Text style={styles.headingLabel}>Long horizon</Text>
-            <Text style={styles.headingCount}>
-              {goals.length === 0 ? "" : `${goals.length} active`}
-            </Text>
-          </View>
+          {goals.length > 0 ? (
+            <Text style={styles.sectionMeta}>{`${goals.length} active`}</Text>
+          ) : null}
           {composer}
         </View>
       }
@@ -179,20 +176,11 @@ export function GoalsScreen({ tabBarHeight }: GoalsScreenProps) {
 }
 
 const styles = StyleSheet.create({
-  headingRow: {
+  sectionMeta: {
+    ...typography.micro,
+    color: colors.textMuted,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  headingLabel: {
-    ...typography.micro,
-    color: colors.textMuted,
-  },
-  headingCount: {
-    ...typography.micro,
-    color: colors.textMuted,
   },
   composer: {
     paddingHorizontal: spacing.lg,
@@ -221,9 +209,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  addBtnDisabled: {
+    backgroundColor: colors.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
   addBtnText: {
     ...typography.title,
     color: colors.bg,
+  },
+  addBtnTextDisabled: {
+    color: colors.textMuted,
   },
   goalRow: {
     marginHorizontal: spacing.lg,
