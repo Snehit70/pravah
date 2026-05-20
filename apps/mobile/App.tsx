@@ -48,7 +48,7 @@ import { ConfirmProvider } from "./src/components/ConfirmDialog";
 import { DiagnosticsPanel } from "./src/components/DiagnosticsPanel";
 import { InboxScreen } from "./src/screens/InboxScreen";
 import { TimelineScreen } from "./src/screens/TimelineScreen";
-import { CompletedScreen } from "./src/screens/CompletedScreen";
+import { InsightsScreen } from "./src/screens/InsightsScreen";
 import { GoalsScreen } from "./src/screens/GoalsScreen";
 import { useRetryQueue, type RetryPayload } from "./src/hooks/useRetryQueue";
 import { useTaskMutations } from "./src/hooks/useTaskMutations";
@@ -261,7 +261,7 @@ function MobileApp() {
         ? shouldUseWorkspaceSnapshot
           ? false
           : isInboxLoading
-        : activeTab === "completed"
+        : activeTab === "insights"
           ? shouldUseWorkspaceSnapshot
             ? false
             : isCompletedLoading
@@ -714,8 +714,8 @@ function MobileApp() {
   const headerViewName =
     activeTab === "timeline"
       ? "Timeline"
-      : activeTab === "completed"
-        ? "Completed"
+      : activeTab === "insights"
+        ? "Insights"
         : activeTab === "goals"
           ? "Goals"
           : "Inbox";
@@ -731,8 +731,8 @@ function MobileApp() {
       : session && !hasLiveWorkspaceData
         ? activeTab === "timeline"
           ? "Opening your timeline"
-          : activeTab === "completed"
-            ? "Opening your archive"
+          : activeTab === "insights"
+            ? "Opening your stats"
             : activeTab === "goals"
               ? "Opening your goals"
               : "Opening your inbox"
@@ -740,8 +740,8 @@ function MobileApp() {
           ? "Syncing your workspace"
         : activeTab === "timeline"
           ? timelineSubtitle
-          : activeTab === "completed"
-            ? "Closed loops"
+          : activeTab === "insights"
+            ? "On-device snapshot"
             : activeTab === "goals"
               ? "Long horizon"
               : `${padCount(displayInboxCount)} to triage`;
@@ -860,15 +860,16 @@ function MobileApp() {
         </ScreenErrorBoundary>
       ) : null}
 
-      {activeTab === "completed" ? (
-        <ScreenErrorBoundary screenName="Completed">
-          <CompletedScreen
-            tasks={visibleTasks}
+      {activeTab === "insights" ? (
+        <ScreenErrorBoundary screenName="Insights">
+          <InsightsScreen
+            tasks={allWorkspaceTasks}
+            completedTasks={displayCompletedTasks}
             isLoading={isActiveListLoading || isBootShellLoading}
             isRefreshing={isRefreshing}
             tabBarHeight={tabBarHeight}
             onRefresh={handleRefresh}
-            renderItem={renderCompletedTaskItem}
+            renderCompletedTaskItem={renderCompletedTaskItem}
           />
         </ScreenErrorBoundary>
       ) : null}
