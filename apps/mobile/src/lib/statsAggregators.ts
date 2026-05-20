@@ -123,7 +123,7 @@ export type StatsKpis = {
  */
 export function kpis(tasks: MobileTask[], now: number): StatsKpis {
   const todayKey = localDateKey(now);
-  const sevenDaysAgo = startOfLocalDay(now).getTime() - 6 * MS_PER_DAY;
+  const sevenDaysAgo = addCalendarDays(startOfLocalDay(now), -6).getTime();
 
   let completed7d = 0;
   let overdue = 0;
