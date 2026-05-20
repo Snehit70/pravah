@@ -2,8 +2,8 @@ import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState
 import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
 import BottomSheet, {
   BottomSheetBackdrop,
+  BottomSheetScrollView,
   BottomSheetTextInput,
-  BottomSheetView,
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
@@ -173,7 +173,11 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           }
         }}
       >
-        <BottomSheetView style={styles.content}>
+        <BottomSheetScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
           <Text style={styles.sheetKicker}>Capture</Text>
           <Text style={styles.sheetTitle}>New task</Text>
 
@@ -280,7 +284,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               <Text style={styles.discardButtonText}>Discard</Text>
             </Pressable>
           ) : null}
-        </BottomSheetView>
+        </BottomSheetScrollView>
       </BottomSheet>
     );
   }
