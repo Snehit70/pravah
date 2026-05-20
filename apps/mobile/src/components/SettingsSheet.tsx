@@ -17,7 +17,7 @@ import BottomSheet, {
   BottomSheetView,
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
-import Animated, { FadeIn } from "react-native-reanimated";
+import Animated, { SlideInLeft, SlideInRight } from "react-native-reanimated";
 import DateTimePicker, {
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
@@ -101,15 +101,7 @@ function statusTextColor(status: string): string {
   return colors.textMuted;
 }
 
-type SectionKey =
-  | "assistant"
-  | "sync"
-  | "alerts"
-  | "timeline"
-  | "appearance"
-  | "diagnostics"
-  | "about"
-  | "account";
+type SectionKey = "assistant" | "sync" | "alerts" | "timeline" | "more";
 
 const APP_VERSION = appJson.expo?.version ?? "—";
 const REPO_URL = "https://github.com/Snehit70/pravah";
@@ -121,10 +113,7 @@ const SECTIONS: ReadonlyArray<{ key: SectionKey; label: string }> = [
   { key: "sync", label: "Sync" },
   { key: "alerts", label: "Alerts" },
   { key: "timeline", label: "Timeline" },
-  { key: "appearance", label: "Appearance" },
-  { key: "diagnostics", label: "Diagnostics" },
-  { key: "about", label: "About" },
-  { key: "account", label: "Account" },
+  { key: "more", label: "More" },
 ];
 
 type SettingsSheetProps = {
@@ -215,6 +204,9 @@ export function SettingsSheet({
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
   const [activeSection, setActiveSection] = useState<SectionKey>("assistant");
+  // Track the direction of the most recent tab change so content can slide in
+  // from the side matching the user's spatial mental model of the tab bar.
+  const [tabDirection, setTabDirection] = useState<"forward" | "backward">("forward");
   const { prefs, setPreference } = useUserPreferences();
   const [openPicker, setOpenPicker] = useState<QuietPickerKind | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
@@ -248,10 +240,10 @@ export function SettingsSheet({
     }
   }, [dangerArmed, onWipeLocalData, showToast]);
 
-  // Lazy-load device id only when the Diagnostics tab needs it. Avoids touching
-  // storage on every settings open.
+  // Lazy-load device id only when the More tab (which contains Diagnostics)
+  // is opened. Avoids touching storage on every settings open.
   useEffect(() => {
-    if (activeSection !== "diagnostics" || deviceId) return;
+    if (activeSection !== "more" || deviceId) return;
     void getOrCreateDeviceId().then(setDeviceId);
   }, [activeSection, deviceId]);
 
@@ -328,6 +320,9 @@ export function SettingsSheet({
         scrollRef.current?.scrollTo({ y: 0, animated: !reducedMotion });
         return;
       }
+      const prevIndex = SECTIONS.findIndex((s) => s.key === activeSection);
+      const nextIndex = SECTIONS.findIndex((s) => s.key === key);
+      setTabDirection(nextIndex > prevIndex ? "forward" : "backward");
       setActiveSection(key);
       scrollRef.current?.scrollTo({ y: 0, animated: false });
     },
@@ -357,7 +352,6 @@ export function SettingsSheet({
       <BottomSheetView style={styles.pinnedHeader}>
         <View style={styles.settingsHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.settingsKicker}>Workspace</Text>
             <Text style={styles.settingsHeadline}>Settings</Text>
           </View>
           <Pressable
@@ -414,7 +408,13 @@ export function SettingsSheet({
       >
         <Animated.View
           key={activeSection}
-          entering={reducedMotion ? undefined : FadeIn.duration(160)}
+          entering={
+            reducedMotion
+              ? undefined
+              : tabDirection === "forward"
+                ? SlideInRight.duration(180)
+                : SlideInLeft.duration(180)
+          }
         >
           {activeSection === "assistant" ? (
             <View>
@@ -925,11 +925,7 @@ export function SettingsSheet({
                   </View>
                 </View>
               </View>
-            </View>
-          ) : null}
 
-          {activeSection === "appearance" ? (
-            <View>
               <Text style={styles.sectionHeader}>Appearance</Text>
 
               <View style={[styles.settingBlock, styles.sectionCard]}>
@@ -1027,7 +1023,7 @@ export function SettingsSheet({
             </View>
           ) : null}
 
-          {activeSection === "diagnostics" ? (
+          {activeSection === "more" ? (
             <View>
               <Text style={styles.sectionHeader}>Diagnostics</Text>
 
@@ -1084,11 +1080,7 @@ export function SettingsSheet({
                   </Text>
                 </Pressable>
               </View>
-            </View>
-          ) : null}
 
-          {activeSection === "about" ? (
-            <View>
               <Text style={styles.sectionHeader}>About</Text>
 
               <View style={[styles.settingBlock, styles.sectionCard]}>
@@ -1131,11 +1123,7 @@ export function SettingsSheet({
                   <Text style={styles.inlineActionText}>GitHub repository →</Text>
                 </Pressable>
               </View>
-            </View>
-          ) : null}
 
-          {activeSection === "account" ? (
-            <View>
               <Text style={styles.sectionHeader}>Account</Text>
 
               <View style={[styles.settingBlock, styles.sectionCard]}>
@@ -1241,7 +1229,7 @@ const styles = StyleSheet.create({
   },
   settingsHeader: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.md,
     marginBottom: spacing.md,
@@ -1255,7 +1243,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   tab: {
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radii.full,
     backgroundColor: colors.bgCard,
@@ -1267,15 +1255,12 @@ const styles = StyleSheet.create({
     borderColor: colors.accent,
   },
   tabLabel: {
-    ...typography.micro,
+    ...typography.bodyMd,
     color: colors.textMuted,
   },
   tabLabelActive: {
     color: colors.accent,
-  },
-  settingsKicker: {
-    ...typography.micro,
-    color: colors.textMuted,
+    fontWeight: "600",
   },
   settingsHeadline: {
     ...typography.headline,
@@ -1283,9 +1268,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   settingsCloseLink: {
-    ...typography.micro,
+    ...typography.bodyMd,
     color: colors.accent,
-    paddingTop: spacing.sm,
   },
   sectionHeader: {
     ...typography.micro,
