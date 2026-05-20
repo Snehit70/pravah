@@ -12,10 +12,9 @@
  */
 
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -32,27 +31,12 @@ import {
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { useReducedMotion } from "../hooks/useReducedMotion";
+import {
+  ConfirmContext,
+  type ConfirmFn,
+  type ConfirmOptions,
+} from "../hooks/useConfirm";
 
-export type ConfirmOptions = {
-  title: string;
-  message?: string;
-  confirmLabel?: string;
-  cancelLabel?: string;
-  /** When true the confirm button uses the destructive (error) tone. */
-  destructive?: boolean;
-};
-
-type ConfirmFn = (options: ConfirmOptions) => Promise<boolean>;
-
-const ConfirmContext = createContext<ConfirmFn | null>(null);
-
-export function useConfirm(): ConfirmFn {
-  const ctx = useContext(ConfirmContext);
-  if (!ctx) {
-    throw new Error("useConfirm must be used inside <ConfirmProvider>");
-  }
-  return ctx;
-}
 
 type PendingState = {
   options: ConfirmOptions;
@@ -65,7 +49,9 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   // Track the latest pending dialog so the Android back handler always
   // resolves the right promise, even if a new dialog has replaced it.
   const pendingRef = useRef<PendingState | null>(null);
-  pendingRef.current = pending;
+  useLayoutEffect(() => {
+    pendingRef.current = pending;
+  });
 
   const confirm = useCallback<ConfirmFn>((options) => {
     return new Promise<boolean>((resolve) => {

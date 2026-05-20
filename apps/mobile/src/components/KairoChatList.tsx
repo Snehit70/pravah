@@ -11,7 +11,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
 import type { ChatMeta } from "../lib/kairoChatStorage";
 import { colors, radii, spacing, typography } from "../theme/tokens";
-import { useConfirm } from "./ConfirmDialog";
+import { useConfirm } from "../hooks/useConfirm";
 
 type Props = {
   chats: ChatMeta[];

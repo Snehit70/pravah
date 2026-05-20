@@ -164,7 +164,7 @@ vi.mock("../components/TaskMetaFields", () => ({
 // ─── ConfirmDialog mock ───────────────────────────────────────────────────────
 // Avoid pulling reanimated/worklets into the test by stubbing the hook.
 // Auto-confirm so discard flows resolve to true.
-vi.mock("../components/ConfirmDialog", () => ({
+vi.mock("../hooks/useConfirm", () => ({
   useConfirm: () => async () => true,
   ConfirmProvider: ({ children }: { children?: React.ReactNode }) =>
     React.createElement("div", {}, children),

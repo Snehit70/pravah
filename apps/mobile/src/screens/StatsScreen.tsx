@@ -34,7 +34,7 @@ const RANGE_LABELS: Record<RangeKey, string> = {
 
 export function StatsScreen({ tasks, tabBarHeight }: StatsScreenProps) {
   const [range, setRange] = useState<RangeKey>("30d");
-  const now = useMemo(() => Date.now(), []);
+  const [now] = useState<number>(() => Date.now());
 
   const k = useMemo(() => kpis(tasks, now), [tasks, now]);
   const series = useMemo(

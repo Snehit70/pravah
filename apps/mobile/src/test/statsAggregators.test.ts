@@ -16,8 +16,6 @@ import {
 import type { MobileTask } from "../components/TaskCard";
 import type { Id } from "../../../../convex/_generated/dataModel";
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
 // Fixed reference point: 2025-06-15 12:00 local.
 const NOW = new Date(2025, 5, 15, 12, 0, 0, 0).getTime();
 

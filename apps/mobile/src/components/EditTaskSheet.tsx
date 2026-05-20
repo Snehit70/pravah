@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TaskMetaFields } from "./TaskMetaFields";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { type TaskPriority } from "../lib/task-form";
-import { useConfirm } from "./ConfirmDialog";
+import { useConfirm } from "../hooks/useConfirm";
 
 export type EditTaskSheetRef = {
   open: (task: MobileTask) => void;

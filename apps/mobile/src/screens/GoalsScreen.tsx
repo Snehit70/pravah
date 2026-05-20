@@ -22,7 +22,7 @@ import {
 import Animated, { FadeIn } from "react-native-reanimated";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { createGoal, loadGoals, saveGoals, type GoalItem } from "../lib/goalsStorage";
-import { useConfirm } from "../components/ConfirmDialog";
+import { useConfirm } from "../hooks/useConfirm";
 
 type GoalsScreenProps = {
   tabBarHeight: number;
