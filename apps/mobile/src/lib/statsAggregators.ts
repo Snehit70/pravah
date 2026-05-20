@@ -15,8 +15,6 @@
 
 import type { MobileTask } from "../components/TaskCard";
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
 /** Local-date YYYY-MM-DD key for a timestamp. */
 function localDateKey(ts: number): string {
   const d = new Date(ts);
