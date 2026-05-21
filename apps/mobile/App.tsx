@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { type RenderItemParams } from "react-native-draggable-flatlist";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -80,6 +80,19 @@ function getPriorityRank(priority?: "p1" | "p2" | "p3"): number {
   if (priority === "p2") return 1;
   if (priority === "p3") return 2;
   return 3;
+}
+
+// Custom entering animation for tab screens — 8px upward reveal + fade.
+// Defined outside the component so it's a stable worklet reference.
+function tabEnter() {
+  'worklet';
+  return {
+    initialValues: { opacity: 0, transform: [{ translateY: 8 }] },
+    animations: {
+      opacity: withTiming(1, { duration: 220, easing: Easing.out(Easing.cubic) }),
+      transform: [{ translateY: withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) }) }],
+    },
+  };
 }
 
 function hasPriorityBoundaryViolation(original: MobileTask[], reordered: MobileTask[]): boolean {
@@ -870,57 +883,65 @@ function MobileApp() {
       ) : null}
 
       {activeTab === "inbox" ? (
-        <ScreenErrorBoundary screenName="Inbox">
-          <InboxScreen
-            tasks={visibleTasks}
-            isLoading={isActiveListLoading || isBootShellLoading}
-            isRefreshing={isRefreshing}
-            tabBarHeight={tabBarHeight}
-            onRefresh={handleRefresh}
-            onCapture={() => canUseWorkspaceActions && addTaskSheetRef.current?.open()}
-            renderItem={renderInboxTaskItem}
-          />
-        </ScreenErrorBoundary>
+        <Animated.View entering={tabEnter} style={styles.tabScreen}>
+          <ScreenErrorBoundary screenName="Inbox">
+            <InboxScreen
+              tasks={visibleTasks}
+              isLoading={isActiveListLoading || isBootShellLoading}
+              isRefreshing={isRefreshing}
+              tabBarHeight={tabBarHeight}
+              onRefresh={handleRefresh}
+              onCapture={() => canUseWorkspaceActions && addTaskSheetRef.current?.open()}
+              renderItem={renderInboxTaskItem}
+            />
+          </ScreenErrorBoundary>
+        </Animated.View>
       ) : null}
 
       {activeTab === "timeline" ? (
-        <ScreenErrorBoundary screenName="Timeline">
-          <TimelineScreen
-            sections={shouldUseWorkspaceSnapshot ? displayTimelineSections : timelineSections}
-            today={today}
-            tomorrow={tomorrow}
-            weekEnd={weekEnd}
-            isLoading={isActiveListLoading || isBootShellLoading}
-            isRefreshing={isRefreshing}
-            tabBarHeight={tabBarHeight}
-            onRefresh={handleRefresh}
-            renderItem={renderTimelineTaskItem}
-          />
-        </ScreenErrorBoundary>
+        <Animated.View entering={tabEnter} style={styles.tabScreen}>
+          <ScreenErrorBoundary screenName="Timeline">
+            <TimelineScreen
+              sections={shouldUseWorkspaceSnapshot ? displayTimelineSections : timelineSections}
+              today={today}
+              tomorrow={tomorrow}
+              weekEnd={weekEnd}
+              isLoading={isActiveListLoading || isBootShellLoading}
+              isRefreshing={isRefreshing}
+              tabBarHeight={tabBarHeight}
+              onRefresh={handleRefresh}
+              renderItem={renderTimelineTaskItem}
+            />
+          </ScreenErrorBoundary>
+        </Animated.View>
       ) : null}
 
       {activeTab === "goals" ? (
-        <ScreenErrorBoundary screenName="Goals">
-          <GoalsScreen
-            tabBarHeight={tabBarHeight}
-            tasks={workspaceTaskCorpus}
-            isTaskDataLoading={isGoalsTaskDataLoading}
-          />
-        </ScreenErrorBoundary>
+        <Animated.View entering={tabEnter} style={styles.tabScreen}>
+          <ScreenErrorBoundary screenName="Goals">
+            <GoalsScreen
+              tabBarHeight={tabBarHeight}
+              tasks={workspaceTaskCorpus}
+              isTaskDataLoading={isGoalsTaskDataLoading}
+            />
+          </ScreenErrorBoundary>
+        </Animated.View>
       ) : null}
 
       {activeTab === "insights" ? (
-        <ScreenErrorBoundary screenName="Insights">
-          <InsightsScreen
-            tasks={workspaceTaskCorpus}
-            completedTasks={displayCompletedTasks}
-            isLoading={isActiveListLoading || isBootShellLoading}
-            isRefreshing={isRefreshing}
-            tabBarHeight={tabBarHeight}
-            onRefresh={handleRefresh}
-            renderCompletedTaskItem={renderCompletedTaskItem}
-          />
-        </ScreenErrorBoundary>
+        <Animated.View entering={tabEnter} style={styles.tabScreen}>
+          <ScreenErrorBoundary screenName="Insights">
+            <InsightsScreen
+              tasks={workspaceTaskCorpus}
+              completedTasks={displayCompletedTasks}
+              isLoading={isActiveListLoading || isBootShellLoading}
+              isRefreshing={isRefreshing}
+              tabBarHeight={tabBarHeight}
+              onRefresh={handleRefresh}
+              renderCompletedTaskItem={renderCompletedTaskItem}
+            />
+          </ScreenErrorBoundary>
+        </Animated.View>
       ) : null}
 
       {/* FAB */}
@@ -1126,6 +1147,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  tabScreen: {
+    flex: 1,
   },
   chrome: {
     flex: 1,
