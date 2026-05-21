@@ -36,7 +36,7 @@ export function MobileAuthScreen({
         <StatusBar style="light" />
 
         <Animated.View entering={FadeInDown.duration(500).delay(80)} style={styles.brandZone}>
-          <BrandMark size={52} />
+          <BrandMark size={64} />
           <Text style={styles.wordmark}>Pravah</Text>
         </Animated.View>
 
@@ -85,12 +85,14 @@ const styles = StyleSheet.create({
   },
   brandZone: {
     alignItems: "center",
-    gap: spacing.md,
+    gap: spacing.lg,
   },
   wordmark: {
     color: colors.textPrimary,
     ...typography.display,
-    letterSpacing: -0.8,
+    fontSize: 40,
+    lineHeight: 44,
+    letterSpacing: -1.2,
   },
   actionZone: {
     gap: spacing.xl,
