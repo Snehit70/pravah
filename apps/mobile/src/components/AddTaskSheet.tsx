@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TaskMetaFields } from "./TaskMetaFields";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { type TaskPriority } from "../lib/task-form";
+import { useGoals } from "../hooks/useGoals";
 
 type ComposerMode = "inbox" | "today" | "tomorrow" | "nextweek";
 
@@ -37,6 +38,7 @@ type AddTaskSheetProps = {
     deadline?: string;
     mode: ComposerMode;
     priority?: TaskPriority;
+    goalId?: string;
   }) => Promise<boolean>;
   isValidDeadline: (raw: string) => { value?: string; error?: string };
   onSheetChange?: (isOpen: boolean) => void;
@@ -55,15 +57,23 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [deadline, setDeadline] = useState("");
     const [mode, setMode] = useState<ComposerMode>("inbox");
     const [priority, setPriority] = useState<TaskPriority>(undefined);
+    const [goalId, setGoalId] = useState<string | undefined>(undefined);
+    const [showGoalPicker, setShowGoalPicker] = useState(false);
     const [saving, setSaving] = useState(false);
     const [showDetails, setShowDetails] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const sheetBottomInset = useKeyboardInset(insets.bottom);
+    const { goals } = useGoals();
+    const selectedGoal = useMemo(
+      () => goals.find((g) => g.id === goalId),
+      [goals, goalId]
+    );
     const hasDraftChanges = Boolean(
       title.trim() ||
         description.trim() ||
         deadline.trim() ||
         priority ||
+        goalId ||
         mode !== "inbox"
     );
 
@@ -88,6 +98,8 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setDescription("");
       setDeadline("");
       setPriority(undefined);
+      setGoalId(undefined);
+      setShowGoalPicker(false);
       setShowDetails(false);
       setError(null);
     };
@@ -112,6 +124,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         deadline: deadlineResult.value,
         mode,
         priority,
+        goalId,
       });
 
       setSaving(false);
@@ -120,7 +133,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         reset();
         bottomSheetRef.current?.close();
       }
-    }, [title, description, deadline, mode, priority, saving, onAdd, isValidDeadline]);
+    }, [title, description, deadline, mode, priority, goalId, saving, onAdd, isValidDeadline]);
 
     const renderBackdrop = useCallback(
       (props: BottomSheetBackdropProps) => (
@@ -226,6 +239,86 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               <Text style={styles.detailsToggleText}>{showDetails ? "Less" : "More"}</Text>
             </Pressable>
           </View>
+
+          {goals.length > 0 ? (
+            <View style={styles.goalSection}>
+              <Pressable
+                onPress={() => setShowGoalPicker((s) => !s)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  selectedGoal ? `Goal: ${selectedGoal.text}. Tap to change.` : "Pick a goal"
+                }
+                style={({ pressed }) => [
+                  styles.goalChip,
+                  selectedGoal && styles.goalChipActive,
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <Text style={styles.goalChipKicker}>Goal</Text>
+                <Text
+                  style={[
+                    styles.goalChipValue,
+                    selectedGoal && styles.goalChipValueActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {selectedGoal ? selectedGoal.text : "None"}
+                </Text>
+                <Text style={styles.goalChipCaret}>{showGoalPicker ? "▾" : "▸"}</Text>
+              </Pressable>
+
+              {showGoalPicker ? (
+                <Animated.View
+                  entering={FadeIn.duration(150)}
+                  exiting={FadeOut.duration(120)}
+                  style={styles.goalPicker}
+                >
+                  <Pressable
+                    onPress={() => {
+                      setGoalId(undefined);
+                      setShowGoalPicker(false);
+                    }}
+                    hitSlop={8}
+                    style={({ pressed }) => [
+                      styles.goalOption,
+                      !goalId && styles.goalOptionActive,
+                      pressed && { opacity: 0.7 },
+                    ]}
+                  >
+                    <Text style={[styles.goalOptionText, !goalId && styles.goalOptionTextActive]}>
+                      No goal
+                    </Text>
+                  </Pressable>
+                  {goals.map((g) => {
+                    const active = g.id === goalId;
+                    return (
+                      <Pressable
+                        key={g.id}
+                        onPress={() => {
+                          setGoalId(g.id);
+                          setShowGoalPicker(false);
+                        }}
+                        hitSlop={8}
+                        style={({ pressed }) => [
+                          styles.goalOption,
+                          active && styles.goalOptionActive,
+                          pressed && { opacity: 0.7 },
+                        ]}
+                      >
+                        <Text
+                          style={[styles.goalOptionText, active && styles.goalOptionTextActive]}
+                          numberOfLines={2}
+                        >
+                          {g.text}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </Animated.View>
+              ) : null}
+            </View>
+          ) : null}
 
           {showDetails ? (
             <Animated.View
@@ -414,6 +507,70 @@ const styles = StyleSheet.create({
   },
   primaryButtonTextDisabled: {
     color: colors.textMuted,
+  },
+  // Goal picker — collapsed chip with kicker + value, expands inline to a
+  // vertical list of goal options. Stays out of the way when no goal is set.
+  goalSection: {
+    gap: spacing.sm,
+  },
+  goalChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+  },
+  goalChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  goalChipKicker: {
+    ...typography.micro,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  goalChipValue: {
+    flex: 1,
+    ...typography.bodyMd,
+    color: colors.textMuted,
+  },
+  goalChipValueActive: {
+    color: colors.accent,
+    fontWeight: "600",
+  },
+  goalChipCaret: {
+    ...typography.micro,
+    color: colors.textMuted,
+  },
+  goalPicker: {
+    gap: 2,
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  goalOption: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+  },
+  goalOptionActive: {
+    backgroundColor: colors.accentSoft,
+  },
+  goalOptionText: {
+    ...typography.bodyMd,
+    color: colors.textSecondary,
+  },
+  goalOptionTextActive: {
+    color: colors.accent,
+    fontWeight: "600",
   },
   discardButton: {
     paddingVertical: 14,

@@ -27,6 +27,7 @@ import { GeistMono_500Medium } from "@expo-google-fonts/geist-mono";
 import { ConvexClientProvider } from "./src/lib/convex";
 import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
+import { goalLinksStore } from "./src/lib/goalLinks";
 
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -475,6 +476,7 @@ function MobileApp() {
       deadline?: string;
       mode: "inbox" | "today" | "tomorrow" | "nextweek";
       priority?: "p1" | "p2" | "p3";
+      goalId?: string;
     }) => {
       const actionId = createActionId("add");
       const startedAt = Date.now();
@@ -500,7 +502,7 @@ function MobileApp() {
         return false;
       }
       try {
-        await addTaskMutation({
+        const newTaskId = await addTaskMutation({
           title: data.title,
           description: data.description,
           deadline: data.deadline,
@@ -508,6 +510,9 @@ function MobileApp() {
           scheduledDate,
           priority: data.priority,
         });
+        if (data.goalId && newTaskId) {
+          goalLinksStore.setLink(String(newTaskId), data.goalId);
+        }
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         mobileLogger.info("add_task_succeeded", { actionId, elapsedMs: Date.now() - startedAt });
         return true;
@@ -856,7 +861,7 @@ function MobileApp() {
 
       {activeTab === "goals" ? (
         <ScreenErrorBoundary screenName="Goals">
-          <GoalsScreen tabBarHeight={tabBarHeight} />
+          <GoalsScreen tabBarHeight={tabBarHeight} tasks={allWorkspaceTasks} />
         </ScreenErrorBoundary>
       ) : null}
 
