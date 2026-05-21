@@ -29,6 +29,7 @@ import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
 import { goalLinksStore } from "./src/lib/goalLinks";
 import { goalsStore } from "./src/lib/goalsStorage";
+import { useGoalLinks, useGoals } from "./src/hooks/useGoals";
 
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -288,6 +289,18 @@ function MobileApp() {
   const isBootShellLoading = shouldRenderOptimisticShell && !shouldUseWorkspaceSnapshot && !session;
 
   const kairoTasks = allWorkspaceTasks;
+
+  const goalLinks = useGoalLinks();
+  const { goals } = useGoals();
+  const taskGoalNames = useMemo(() => {
+    const goalById = new Map(goals.map((g) => [g.id, g.text]));
+    const out = new Map<string, string>();
+    for (const [taskId, goalId] of Object.entries(goalLinks)) {
+      const name = goalById.get(goalId);
+      if (name) out.set(taskId, name);
+    }
+    return out;
+  }, [goalLinks, goals]);
   const kairoInboxTasks = useMemo(
     () => kairoTasks.filter((task) => task.status === "inbox"),
     [kairoTasks]
@@ -673,9 +686,10 @@ function MobileApp() {
         onMoveToday={canUseWorkspaceActions ? moveToToday : undefined}
         onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
         onDragHandlePress={canUseWorkspaceActions ? drag : undefined}
+        linkedGoalName={taskGoalNames.get(String(item._id))}
       />
     ),
-    [canUseWorkspaceActions, handleEditTask, markDone, moveToToday]
+    [canUseWorkspaceActions, handleEditTask, markDone, moveToToday, taskGoalNames]
   );
 
   const renderTimelineTaskItem = useCallback(
@@ -692,6 +706,7 @@ function MobileApp() {
         }
         onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
         onDragHandlePress={canUseWorkspaceActions ? drag : undefined}
+        linkedGoalName={taskGoalNames.get(String(item._id))}
       />
     ),
     [
@@ -703,6 +718,7 @@ function MobileApp() {
       sendToInbox,
       shiftTimelineTask,
       handleEditTask,
+      taskGoalNames,
     ]
   );
 
@@ -713,9 +729,10 @@ function MobileApp() {
         onDone={canUseWorkspaceActions ? markDone : () => undefined}
         onReopen={canUseWorkspaceActions ? reopenToInbox : undefined}
         onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
+        linkedGoalName={taskGoalNames.get(String(item._id))}
       />
     ),
-    [canUseWorkspaceActions, handleEditTask, markDone, reopenToInbox]
+    [canUseWorkspaceActions, handleEditTask, markDone, reopenToInbox, taskGoalNames]
   );
 
   // ── Loading / Auth screens ──────────────────────────────────────────
