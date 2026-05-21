@@ -104,6 +104,6 @@ export const KAIRO_DEFAULTS = {
   },
   openai: {
     baseUrl: "https://api.openai.com/v1/chat/completions",
-    model: "gpt-4o-mini",
+    model: "gpt-5.4-mini",
   },
 } as const;
