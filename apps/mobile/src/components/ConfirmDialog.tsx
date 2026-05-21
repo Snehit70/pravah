@@ -110,7 +110,9 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
               onPress={() => close(false)}
             />
             <View style={styles.card} accessibilityViewIsModal accessibilityRole="alert">
-              <Text style={styles.title}>{pending.options.title}</Text>
+              <Text style={[styles.title, !pending.options.message && styles.titleOnly]}>
+                {pending.options.title}
+              </Text>
               {pending.options.message ? (
                 <Text style={styles.message}>{pending.options.message}</Text>
               ) : null}
@@ -164,7 +166,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(0,0,0,0.72)",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: spacing.xl,
@@ -173,41 +175,50 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 380,
     backgroundColor: colors.bgFloating,
-    borderRadius: radii.lg,
+    borderRadius: radii.xl,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-    padding: spacing.lg,
-    gap: spacing.md,
+    borderColor: colors.border,
+    overflow: "hidden",
   },
   title: {
     ...typography.title,
     color: colors.textPrimary,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+  },
+  titleOnly: {
+    paddingBottom: spacing.md,
   },
   message: {
     ...typography.bodyMd,
     color: colors.textSecondary,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.md,
   },
   actions: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    alignItems: "center",
+    gap: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   actionBtn: {
-    minHeight: 40,
+    minHeight: 38,
     paddingHorizontal: spacing.md,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     alignItems: "center",
     justifyContent: "center",
   },
   cancelBtn: {
     backgroundColor: "transparent",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
   },
   cancelText: {
     ...typography.bodyMd,
-    color: colors.textSecondary,
+    color: colors.textMuted,
   },
   confirmBtn: {
     backgroundColor: colors.accent,
@@ -222,7 +233,7 @@ const styles = StyleSheet.create({
   },
   destructiveText: {
     ...typography.bodyMd,
-    color: colors.bg,
+    color: "#fff",
     fontWeight: "600",
   },
 });
