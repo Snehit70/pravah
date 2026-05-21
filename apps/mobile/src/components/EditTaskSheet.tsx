@@ -27,6 +27,7 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import { TaskMetaFields } from "./TaskMetaFields";
 import { type TaskPriority } from "../lib/task-form";
 import { useConfirm } from "../hooks/useConfirm";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useGoalLinks, useGoals } from "../hooks/useGoals";
 import { goalLinksStore } from "../lib/goalLinks";
 
@@ -70,6 +71,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const [priority, setPriority] = useState<TaskPriority>(undefined);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [showGoalPicker, setShowGoalPicker] = useState(false);
     const [initialDraft, setInitialDraft] = useState<{
       title: string;
       description: string;
@@ -84,6 +86,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         setTaskId(null);
         setTaskStatus(null);
         setInitialDraft(null);
+        setShowGoalPicker(false);
         if (notify) onSheetChange?.(false);
       },
       [onSheetChange]
@@ -160,12 +163,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
 
     const canSave = useMemo(() => Boolean(title.trim()) && !saving, [title, saving]);
 
-    const linkedGoalName = useMemo(() => {
-      if (!taskId) return null;
-      const goalId = links[String(taskId)];
-      if (!goalId) return null;
-      return goals.find((g) => g.id === goalId)?.text ?? null;
-    }, [taskId, links, goals]);
+    const linkedGoalId = taskId ? (links[String(taskId)] ?? null) : null;
+    const linkedGoal = linkedGoalId ? goals.find((g) => g.id === linkedGoalId) ?? null : null;
 
     const requestClose = useCallback(async () => {
       if (!hasUnsavedChanges) {
@@ -213,18 +212,80 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
               <Text style={styles.sheetKicker}>Edit</Text>
               <Text style={styles.sheetTitle}>Edit task</Text>
 
-              {linkedGoalName ? (
-                <View style={styles.goalRow}>
-                  <View style={styles.goalBadge}>
-                    <Text style={styles.goalBadgeText} numberOfLines={1}>◈ {linkedGoalName}</Text>
-                  </View>
+              {goals.length > 0 ? (
+                <View style={styles.goalSection}>
                   <Pressable
-                    onPress={() => { goalLinksStore.setLink(String(taskId), null); haptic.light(); }}
+                    onPress={() => setShowGoalPicker((s) => !s)}
                     hitSlop={8}
-                    style={({ pressed }) => [styles.unlinkBtn, pressed && { opacity: 0.6 }]}
+                    accessibilityRole="button"
+                    accessibilityLabel={linkedGoal ? `Goal: ${linkedGoal.text}. Tap to change.` : "Link to a goal"}
+                    style={({ pressed }) => [
+                      styles.goalChip,
+                      linkedGoal && styles.goalChipActive,
+                      pressed && { opacity: 0.7 },
+                    ]}
                   >
-                    <Text style={styles.unlinkText}>Unlink</Text>
+                    <Text style={styles.goalChipKicker}>Goal</Text>
+                    <Text
+                      style={[styles.goalChipValue, linkedGoal && styles.goalChipValueActive]}
+                      numberOfLines={1}
+                    >
+                      {linkedGoal ? linkedGoal.text : "None"}
+                    </Text>
+                    <Text style={styles.goalChipCaret}>{showGoalPicker ? "▾" : "▸"}</Text>
                   </Pressable>
+
+                  {showGoalPicker ? (
+                    <Animated.View
+                      entering={FadeIn.duration(150)}
+                      exiting={FadeOut.duration(120)}
+                      style={styles.goalPicker}
+                    >
+                      <Pressable
+                        onPress={() => {
+                          goalLinksStore.setLink(String(taskId), null);
+                          setShowGoalPicker(false);
+                          haptic.light();
+                        }}
+                        hitSlop={8}
+                        style={({ pressed }) => [
+                          styles.goalOption,
+                          !linkedGoalId && styles.goalOptionActive,
+                          pressed && { opacity: 0.7 },
+                        ]}
+                      >
+                        <Text style={[styles.goalOptionText, !linkedGoalId && styles.goalOptionTextActive]}>
+                          No goal
+                        </Text>
+                      </Pressable>
+                      {goals.map((g) => {
+                        const active = g.id === linkedGoalId;
+                        return (
+                          <Pressable
+                            key={g.id}
+                            onPress={() => {
+                              goalLinksStore.setLink(String(taskId), g.id);
+                              setShowGoalPicker(false);
+                              haptic.light();
+                            }}
+                            hitSlop={8}
+                            style={({ pressed }) => [
+                              styles.goalOption,
+                              active && styles.goalOptionActive,
+                              pressed && { opacity: 0.7 },
+                            ]}
+                          >
+                            <Text
+                              style={[styles.goalOptionText, active && styles.goalOptionTextActive]}
+                              numberOfLines={2}
+                            >
+                              {g.text}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </Animated.View>
+                  ) : null}
                 </View>
               ) : null}
 
@@ -394,29 +455,67 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     marginTop: -spacing.sm,
   },
-  goalRow: {
+  goalSection: {
+    gap: spacing.sm,
+  },
+  goalChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-  },
-  goalBadge: {
-    backgroundColor: colors.accentSoft,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     borderRadius: radii.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
   },
-  goalBadgeText: {
+  goalChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  goalChipKicker: {
     ...typography.micro,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  goalChipValue: {
+    flex: 1,
+    ...typography.bodyMd,
+    color: colors.textMuted,
+  },
+  goalChipValueActive: {
     color: colors.accent,
     fontWeight: "600",
   },
-  unlinkBtn: {
-    paddingVertical: 4,
-    paddingHorizontal: spacing.xs,
-  },
-  unlinkText: {
+  goalChipCaret: {
     ...typography.micro,
     color: colors.textMuted,
+  },
+  goalPicker: {
+    gap: 2,
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  goalOption: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+  },
+  goalOptionActive: {
+    backgroundColor: colors.accentSoft,
+  },
+  goalOptionText: {
+    ...typography.bodyMd,
+    color: colors.textSecondary,
+  },
+  goalOptionTextActive: {
+    color: colors.accent,
+    fontWeight: "600",
   },
   titleInput: {
     color: colors.textPrimary,
