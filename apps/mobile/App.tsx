@@ -185,6 +185,19 @@ function MobileApp() {
     ? workspaceSnapshot.completedTasks
     : completedTasks;
 
+  const workspaceTaskCorpus = useMemo<MobileTask[]>(() => {
+    if (shouldUseWorkspaceSnapshot) {
+      return [...displayInboxTasks, ...displayScheduledTasks, ...displayCompletedTasks];
+    }
+    return allWorkspaceTasks;
+  }, [
+    allWorkspaceTasks,
+    displayCompletedTasks,
+    displayInboxTasks,
+    displayScheduledTasks,
+    shouldUseWorkspaceSnapshot,
+  ]);
+
   const displayTimelineSections = useMemo<[string, MobileTask[]][]>(() => {
     const grouped = new Map<string, MobileTask[]>();
     for (const task of displayScheduledTasks) {
@@ -870,7 +883,7 @@ function MobileApp() {
         <ScreenErrorBoundary screenName="Goals">
           <GoalsScreen
             tabBarHeight={tabBarHeight}
-            tasks={allWorkspaceTasks}
+            tasks={workspaceTaskCorpus}
             isTaskDataLoading={isGoalsTaskDataLoading}
           />
         </ScreenErrorBoundary>
@@ -879,7 +892,7 @@ function MobileApp() {
       {activeTab === "insights" ? (
         <ScreenErrorBoundary screenName="Insights">
           <InsightsScreen
-            tasks={allWorkspaceTasks}
+            tasks={workspaceTaskCorpus}
             completedTasks={displayCompletedTasks}
             isLoading={isActiveListLoading || isBootShellLoading}
             isRefreshing={isRefreshing}
