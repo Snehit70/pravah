@@ -262,6 +262,10 @@ function MobileApp() {
         ? shouldUseWorkspaceSnapshot
           ? false
           : isInboxLoading
+        : activeTab === "goals"
+          ? shouldUseWorkspaceSnapshot
+            ? false
+            : !isAllTasksReady
         : activeTab === "insights"
           ? shouldUseWorkspaceSnapshot
             ? false
@@ -865,7 +869,9 @@ function MobileApp() {
 
       {activeTab === "goals" ? (
         <ScreenErrorBoundary screenName="Goals">
-          <GoalsScreen tabBarHeight={tabBarHeight} tasks={allWorkspaceTasks} />
+          {!isActiveListLoading && !isBootShellLoading ? (
+            <GoalsScreen tabBarHeight={tabBarHeight} tasks={allWorkspaceTasks} />
+          ) : null}
         </ScreenErrorBoundary>
       ) : null}
 
