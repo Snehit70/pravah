@@ -10,7 +10,13 @@
     "newArchEnabled": true,
     "plugins": [
       "expo-dev-client",
-      "expo-notifications"
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#a78bfa"
+        }
+      ]
     ],
     "autolinking": {
       "exclude": ["expo-fetch"]
