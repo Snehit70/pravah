@@ -33,6 +33,7 @@ export type MobileTask = {
   scheduledDate?: string;
   position: number;
   updatedAt: number;
+  createdAt?: number;
 };
 
 type TaskCardProps = {

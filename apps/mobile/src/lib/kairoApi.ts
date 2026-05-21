@@ -320,8 +320,12 @@ export type KairoAction =
     }
   | { kind: "delete"; handle: string };
 
+// The closing slash is optionally backslash-escaped to tolerate models that
+// emit `<\/delete-task>` (sometimes mimicking regex/HTML escaping seen in
+// training data). Without this, the tag isn't matched, no action runs, and the
+// raw XML leaks into the chat bubble.
 const ACTION_TAG_RE =
-  /<(add|reschedule|complete|unschedule|update|delete)-task>([\s\S]*?)<\/\1-task>/g;
+  /<(add|reschedule|complete|unschedule|update|delete)-task>([\s\S]*?)<\\?\/\1-task>/g;
 
 type ParsedJson = Record<string, unknown>;
 

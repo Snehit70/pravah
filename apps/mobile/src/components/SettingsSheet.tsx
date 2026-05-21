@@ -14,10 +14,9 @@ import appJson from "../../app.json";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
-  BottomSheetView,
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
-import Animated, { FadeIn } from "react-native-reanimated";
+import Animated, { SlideInLeft, SlideInRight } from "react-native-reanimated";
 import DateTimePicker, {
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
@@ -27,6 +26,7 @@ import { useUserPreferences } from "../hooks/useUserPreferences";
 import { getOrCreateDeviceId } from "../lib/deviceIdentity";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
 import * as SecureStore from "expo-secure-store";
+import * as Clipboard from "expo-clipboard";
 import { classifyError, mobileLogger } from "../lib/logger";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { isWithinQuietHours, type NotificationPermissionState } from "../lib/notifications";
@@ -101,30 +101,28 @@ function statusTextColor(status: string): string {
   return colors.textMuted;
 }
 
-type SectionKey =
-  | "assistant"
-  | "sync"
-  | "alerts"
-  | "timeline"
-  | "appearance"
-  | "diagnostics"
-  | "about"
-  | "account";
+type SectionKey = "assistant" | "sync" | "alerts" | "timeline" | "more";
 
 const APP_VERSION = appJson.expo?.version ?? "—";
 const REPO_URL = "https://github.com/Snehit70/pravah";
 const CHANGELOG_URL = `${REPO_URL}/blob/main/apps/mobile/CHANGELOG.md`;
 const ISSUES_URL = `${REPO_URL}/issues`;
 
+type ColorKey = "purple" | "copper" | "teal" | "rose";
+
+const COLOR_SWATCHES: ReadonlyArray<{ key: ColorKey; fill: string; label: string }> = [
+  { key: "purple", fill: "#a78bfa", label: "Purple" },
+  { key: "copper", fill: "#c0552d", label: "Copper" },
+  { key: "teal", fill: "#4ec9b0", label: "Teal" },
+  { key: "rose", fill: "#e87a90", label: "Rose" },
+];
+
 const SECTIONS: ReadonlyArray<{ key: SectionKey; label: string }> = [
   { key: "assistant", label: "Assistant" },
   { key: "sync", label: "Sync" },
   { key: "alerts", label: "Alerts" },
   { key: "timeline", label: "Timeline" },
-  { key: "appearance", label: "Appearance" },
-  { key: "diagnostics", label: "Diagnostics" },
-  { key: "about", label: "About" },
-  { key: "account", label: "Account" },
+  { key: "more", label: "More" },
 ];
 
 type SettingsSheetProps = {
@@ -215,6 +213,9 @@ export function SettingsSheet({
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
   const [activeSection, setActiveSection] = useState<SectionKey>("assistant");
+  // Track the direction of the most recent tab change so content can slide in
+  // from the side matching the user's spatial mental model of the tab bar.
+  const [tabDirection, setTabDirection] = useState<"forward" | "backward">("forward");
   const { prefs, setPreference } = useUserPreferences();
   const [openPicker, setOpenPicker] = useState<QuietPickerKind | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
@@ -248,12 +249,25 @@ export function SettingsSheet({
     }
   }, [dangerArmed, onWipeLocalData, showToast]);
 
-  // Lazy-load device id only when the Diagnostics tab needs it. Avoids touching
-  // storage on every settings open.
+  // Lazy-load device id only when the More tab (which contains Diagnostics)
+  // is opened. Avoids touching storage on every settings open.
   useEffect(() => {
-    if (activeSection !== "diagnostics" || deviceId) return;
+    if (activeSection !== "more" || deviceId) return;
     void getOrCreateDeviceId().then(setDeviceId);
   }, [activeSection, deviceId]);
+
+  const handleCopy = useCallback(
+    async (value: string, label: string) => {
+      try {
+        await Clipboard.setStringAsync(value);
+        showToast({ kind: "info", message: `${label} copied.` });
+      } catch (error) {
+        mobileLogger.warn("clipboard_copy_failed", { errorType: classifyError(error) });
+        showToast({ kind: "error", message: `Could not copy ${label.toLowerCase()}.` });
+      }
+    },
+    [showToast]
+  );
 
   const handleClearRetryQueue = useCallback(async () => {
     if (isClearingRetryQueue) return;
@@ -328,6 +342,9 @@ export function SettingsSheet({
         scrollRef.current?.scrollTo({ y: 0, animated: !reducedMotion });
         return;
       }
+      const prevIndex = SECTIONS.findIndex((s) => s.key === activeSection);
+      const nextIndex = SECTIONS.findIndex((s) => s.key === key);
+      setTabDirection(nextIndex > prevIndex ? "forward" : "backward");
       setActiveSection(key);
       scrollRef.current?.scrollTo({ y: 0, animated: false });
     },
@@ -354,10 +371,9 @@ export function SettingsSheet({
         }
       }}
     >
-      <BottomSheetView style={styles.pinnedHeader}>
+      <View style={styles.pinnedHeader}>
         <View style={styles.settingsHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.settingsKicker}>Workspace</Text>
             <Text style={styles.settingsHeadline}>Settings</Text>
           </View>
           <Pressable
@@ -401,10 +417,11 @@ export function SettingsSheet({
             );
           })}
         </ScrollView>
-      </BottomSheetView>
+      </View>
 
       <BottomSheetScrollView
         ref={scrollRef}
+        style={styles.settingsScroll}
         contentContainerStyle={[
           styles.settingsScrollContent,
           { paddingBottom: insets.bottom + spacing.section },
@@ -414,7 +431,13 @@ export function SettingsSheet({
       >
         <Animated.View
           key={activeSection}
-          entering={reducedMotion ? undefined : FadeIn.duration(160)}
+          entering={
+            reducedMotion
+              ? undefined
+              : tabDirection === "forward"
+                ? SlideInRight.duration(180)
+                : SlideInLeft.duration(180)
+          }
         >
           {activeSection === "assistant" ? (
             <View>
@@ -836,26 +859,25 @@ export function SettingsSheet({
                   Control how the timeline plans your week and sizes new tasks.
                 </Text>
 
-                <View style={styles.behaviorRow}>
-                  <Text style={styles.settingMeta}>Week starts on</Text>
-                  <View style={styles.chipRow}>
+                <View style={styles.fieldStack}>
+                  <Text style={styles.fieldLabel}>Week starts on</Text>
+                  <View style={styles.segmented}>
                     {(["monday", "sunday"] as const).map((day) => {
                       const active = prefs.weekStart === day;
                       return (
                         <Pressable
                           key={day}
                           onPress={() => void setPreference("weekStart", day)}
-                          hitSlop={6}
                           accessibilityRole="button"
                           accessibilityState={{ selected: active }}
                           style={({ pressed }) => [
-                            styles.choiceChip,
-                            active && styles.choiceChipActive,
-                            pressed && { opacity: 0.6 },
+                            styles.segment,
+                            active && styles.segmentActive,
+                            pressed && { opacity: 0.7 },
                           ]}
                         >
-                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
-                            {day === "monday" ? "Mon" : "Sun"}
+                          <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                            {day === "monday" ? "Monday" : "Sunday"}
                           </Text>
                         </Pressable>
                       );
@@ -898,26 +920,25 @@ export function SettingsSheet({
                   </View>
                 </View>
 
-                <View style={styles.behaviorRow}>
-                  <Text style={styles.settingMeta}>Task color scheme</Text>
-                  <View style={styles.chipRow}>
-                    {(["purple", "copper", "teal", "rose"] as const).map((scheme) => {
-                      const active = prefs.taskColorScheme === scheme;
+                <View style={styles.fieldStack}>
+                  <Text style={styles.fieldLabel}>Task color scheme</Text>
+                  <View style={styles.swatchRow}>
+                    {COLOR_SWATCHES.map(({ key, fill, label }) => {
+                      const active = prefs.taskColorScheme === key;
                       return (
                         <Pressable
-                          key={scheme}
-                          onPress={() => void setPreference("taskColorScheme", scheme)}
-                          hitSlop={6}
+                          key={key}
+                          onPress={() => void setPreference("taskColorScheme", key)}
                           accessibilityRole="button"
+                          accessibilityLabel={`${label} task color`}
                           accessibilityState={{ selected: active }}
-                          style={({ pressed }) => [
-                            styles.choiceChip,
-                            active && styles.choiceChipActive,
-                            pressed && { opacity: 0.6 },
-                          ]}
+                          style={({ pressed }) => [styles.swatchItem, pressed && { opacity: 0.7 }]}
                         >
-                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
-                            {scheme[0].toUpperCase() + scheme.slice(1)}
+                          <View style={[styles.swatch, { backgroundColor: fill }, active && styles.swatchActive]}>
+                            {active ? <Text style={styles.swatchCheck}>✓</Text> : null}
+                          </View>
+                          <Text style={[styles.swatchLabel, active && styles.swatchLabelActive]}>
+                            {label}
                           </Text>
                         </Pressable>
                       );
@@ -925,11 +946,7 @@ export function SettingsSheet({
                   </View>
                 </View>
               </View>
-            </View>
-          ) : null}
 
-          {activeSection === "appearance" ? (
-            <View>
               <Text style={styles.sectionHeader}>Appearance</Text>
 
               <View style={[styles.settingBlock, styles.sectionCard]}>
@@ -938,25 +955,24 @@ export function SettingsSheet({
                   Override the system motion setting and tighten spacing.
                 </Text>
 
-                <View style={styles.behaviorRow}>
-                  <Text style={styles.settingMeta}>Reduced motion</Text>
-                  <View style={styles.chipRow}>
+                <View style={styles.fieldStack}>
+                  <Text style={styles.fieldLabel}>Reduced motion</Text>
+                  <View style={styles.segmented}>
                     {(["system", "always", "never"] as const).map((mode) => {
                       const active = prefs.reducedMotionOverride === mode;
                       return (
                         <Pressable
                           key={mode}
                           onPress={() => void setPreference("reducedMotionOverride", mode)}
-                          hitSlop={6}
                           accessibilityRole="button"
                           accessibilityState={{ selected: active }}
                           style={({ pressed }) => [
-                            styles.choiceChip,
-                            active && styles.choiceChipActive,
-                            pressed && { opacity: 0.6 },
+                            styles.segment,
+                            active && styles.segmentActive,
+                            pressed && { opacity: 0.7 },
                           ]}
                         >
-                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
+                          <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
                             {mode === "system" ? "System" : mode === "always" ? "On" : "Off"}
                           </Text>
                         </Pressable>
@@ -965,25 +981,24 @@ export function SettingsSheet({
                   </View>
                 </View>
 
-                <View style={styles.behaviorRow}>
-                  <Text style={styles.settingMeta}>Density</Text>
-                  <View style={styles.chipRow}>
+                <View style={styles.fieldStack}>
+                  <Text style={styles.fieldLabel}>Density</Text>
+                  <View style={styles.segmented}>
                     {(["cozy", "compact"] as const).map((d) => {
                       const active = prefs.density === d;
                       return (
                         <Pressable
                           key={d}
                           onPress={() => void setPreference("density", d)}
-                          hitSlop={6}
                           accessibilityRole="button"
                           accessibilityState={{ selected: active }}
                           style={({ pressed }) => [
-                            styles.choiceChip,
-                            active && styles.choiceChipActive,
-                            pressed && { opacity: 0.6 },
+                            styles.segment,
+                            active && styles.segmentActive,
+                            pressed && { opacity: 0.7 },
                           ]}
                         >
-                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
+                          <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
                             {d === "cozy" ? "Cozy" : "Compact"}
                           </Text>
                         </Pressable>
@@ -998,66 +1013,145 @@ export function SettingsSheet({
                 <Text style={styles.settingHelp}>
                   Used for highlights, buttons, and active states.
                 </Text>
-                <View style={[styles.behaviorRow, { borderTopWidth: 0 }]}>
-                  <View style={styles.chipRow}>
-                    {(["purple", "copper", "teal", "rose"] as const).map((color) => {
-                      const active = prefs.accentColor === color;
-                      return (
-                        <Pressable
-                          key={color}
-                          onPress={() => void setPreference("accentColor", color)}
-                          hitSlop={6}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: active }}
-                          style={({ pressed }) => [
-                            styles.choiceChip,
-                            active && styles.choiceChipActive,
-                            pressed && { opacity: 0.6 },
-                          ]}
-                        >
-                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
-                            {color[0].toUpperCase() + color.slice(1)}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
+                <View style={styles.swatchRow}>
+                  {COLOR_SWATCHES.map(({ key, fill, label }) => {
+                    const active = prefs.accentColor === key;
+                    return (
+                      <Pressable
+                        key={key}
+                        onPress={() => void setPreference("accentColor", key)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${label} accent color`}
+                        accessibilityState={{ selected: active }}
+                        style={({ pressed }) => [styles.swatchItem, pressed && { opacity: 0.7 }]}
+                      >
+                        <View style={[styles.swatch, { backgroundColor: fill }, active && styles.swatchActive]}>
+                          {active ? <Text style={styles.swatchCheck}>✓</Text> : null}
+                        </View>
+                        <Text style={[styles.swatchLabel, active && styles.swatchLabelActive]}>
+                          {label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
                 </View>
               </View>
             </View>
           ) : null}
 
-          {activeSection === "diagnostics" ? (
+          {activeSection === "more" ? (
             <View>
               <Text style={styles.sectionHeader}>Diagnostics</Text>
 
               <View style={[styles.settingBlock, styles.sectionCard]}>
                 <Text style={styles.settingLabel}>Device</Text>
                 <Text style={styles.settingHelp}>
-                  Share this ID with support when reporting a bug. Long-press to copy.
+                  Share this ID with support when reporting a bug.
                 </Text>
-                <Text selectable style={styles.diagnosticsCode}>
-                  {deviceId ?? "Loading…"}
-                </Text>
+                <View style={styles.copyRow}>
+                  <View style={[styles.codePill, styles.copyRowPill]}>
+                    <Text selectable style={styles.codePillText} numberOfLines={1}>
+                      {deviceId ?? "Loading…"}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() => deviceId && void handleCopy(deviceId, "Device ID")}
+                    disabled={!deviceId}
+                    hitSlop={12}
+                    accessibilityRole="button"
+                    accessibilityLabel="Copy device ID"
+                    style={({ pressed }) => [
+                      styles.copyButton,
+                      pressed && { opacity: 0.6 },
+                      !deviceId && styles.softButtonDisabled,
+                    ]}
+                  >
+                    <Text style={styles.copyButtonText}>Copy</Text>
+                  </Pressable>
+                </View>
               </View>
 
               <View style={[styles.settingBlock, styles.sectionCard]}>
                 <Text style={styles.settingLabel}>Recent sync errors</Text>
                 <Text style={styles.settingHelp}>
-                  Surfaced from the most recent Google Calendar and Gmail sync runs.
+                  From the most recent Google Calendar and Gmail sync runs.
                 </Text>
-                <View style={styles.behaviorRow}>
-                  <Text style={styles.settingMeta}>Google Calendar</Text>
+
+                <View style={styles.sourceBlock}>
+                  <View style={styles.sourceHeader}>
+                    <View
+                      style={[
+                        styles.statusDot,
+                        calendarLastError ? styles.statusDotErr : styles.statusDotOk,
+                      ]}
+                    />
+                    <Text style={styles.sourceName}>Google Calendar</Text>
+                    <Text
+                      style={[
+                        styles.sourceStatus,
+                        calendarLastError ? styles.sourceStatusErr : styles.sourceStatusOk,
+                      ]}
+                    >
+                      {calendarLastError ? "Error" : "Healthy"}
+                    </Text>
+                    {calendarLastError ? (
+                      <Pressable
+                        onPress={() => void handleCopy(calendarLastError, "Calendar error")}
+                        hitSlop={12}
+                        accessibilityRole="button"
+                        accessibilityLabel="Copy Google Calendar error"
+                        style={({ pressed }) => [styles.copyChip, pressed && { opacity: 0.6 }]}
+                      >
+                        <Text style={styles.copyChipText}>Copy</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                  {calendarLastError ? (
+                    <View style={styles.errorBlock}>
+                      <Text selectable style={styles.errorBlockText}>
+                        {calendarLastError}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
-                <Text style={styles.settingMeta}>
-                  {calendarLastError ? calendarLastError : "No recent errors."}
-                </Text>
-                <View style={styles.behaviorRow}>
-                  <Text style={styles.settingMeta}>Gmail</Text>
+
+                <View style={styles.sourceBlock}>
+                  <View style={styles.sourceHeader}>
+                    <View
+                      style={[
+                        styles.statusDot,
+                        gmailLastError ? styles.statusDotErr : styles.statusDotOk,
+                      ]}
+                    />
+                    <Text style={styles.sourceName}>Gmail</Text>
+                    <Text
+                      style={[
+                        styles.sourceStatus,
+                        gmailLastError ? styles.sourceStatusErr : styles.sourceStatusOk,
+                      ]}
+                    >
+                      {gmailLastError ? "Error" : "Healthy"}
+                    </Text>
+                    {gmailLastError ? (
+                      <Pressable
+                        onPress={() => void handleCopy(gmailLastError, "Gmail error")}
+                        hitSlop={12}
+                        accessibilityRole="button"
+                        accessibilityLabel="Copy Gmail error"
+                        style={({ pressed }) => [styles.copyChip, pressed && { opacity: 0.6 }]}
+                      >
+                        <Text style={styles.copyChipText}>Copy</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                  {gmailLastError ? (
+                    <View style={styles.errorBlock}>
+                      <Text selectable style={styles.errorBlockText}>
+                        {gmailLastError}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
-                <Text style={styles.settingMeta}>
-                  {gmailLastError ? gmailLastError : "No recent errors."}
-                </Text>
               </View>
 
               <View style={[styles.settingBlock, styles.sectionCard]}>
@@ -1072,11 +1166,15 @@ export function SettingsSheet({
                   hitSlop={12}
                   accessibilityRole="button"
                   accessibilityLabel="Clear retry queue"
-                  style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
+                  style={({ pressed }) => [
+                    styles.softButton,
+                    pressed && { opacity: 0.6 },
+                    isClearingRetryQueue && styles.softButtonDisabled,
+                  ]}
                 >
                   <Text
                     style={[
-                      styles.inlineActionText,
+                      styles.softButtonText,
                       isClearingRetryQueue && styles.inlineActionDisabled,
                     ]}
                   >
@@ -1084,58 +1182,48 @@ export function SettingsSheet({
                   </Text>
                 </Pressable>
               </View>
-            </View>
-          ) : null}
 
-          {activeSection === "about" ? (
-            <View>
               <Text style={styles.sectionHeader}>About</Text>
 
               <View style={[styles.settingBlock, styles.sectionCard]}>
-                <Text style={styles.settingLabel}>Pravah Mobile</Text>
-                <View style={styles.behaviorRow}>
-                  <Text style={styles.settingMeta}>Version</Text>
-                  <Text selectable style={styles.diagnosticsCode}>
-                    {APP_VERSION}
-                  </Text>
+                <View style={styles.aboutHeader}>
+                  <View style={styles.aboutHeaderCopy}>
+                    <Text style={styles.settingLabel}>Pravah Mobile</Text>
+                    <Text style={styles.aboutVersion}>Version {APP_VERSION}</Text>
+                  </View>
+                  <Pressable
+                    onPress={() => void Linking.openURL(CHANGELOG_URL)}
+                    hitSlop={12}
+                    accessibilityRole="link"
+                    accessibilityLabel="Open changelog on GitHub"
+                    style={({ pressed }) => [styles.versionPill, pressed && { opacity: 0.6 }]}
+                  >
+                    <Text style={styles.versionPillText}>What's new</Text>
+                  </Pressable>
                 </View>
-                <Pressable
-                  onPress={() => void Linking.openURL(CHANGELOG_URL)}
-                  hitSlop={12}
-                  accessibilityRole="link"
-                  accessibilityLabel="Open changelog on GitHub"
-                  style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={styles.inlineActionText}>What's new →</Text>
-                </Pressable>
-              </View>
 
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <Text style={styles.settingLabel}>Support</Text>
                 <Pressable
                   onPress={() => void Linking.openURL(ISSUES_URL)}
                   hitSlop={12}
                   accessibilityRole="link"
                   accessibilityLabel="Report an issue on GitHub"
-                  style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
+                  style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
                 >
-                  <Text style={styles.inlineActionText}>Report an issue →</Text>
+                  <Text style={styles.linkRowText}>Report an issue</Text>
+                  <Text style={styles.linkRowChevron}>↗</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => void Linking.openURL(REPO_URL)}
                   hitSlop={12}
                   accessibilityRole="link"
                   accessibilityLabel="Open Pravah repository on GitHub"
-                  style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
+                  style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
                 >
-                  <Text style={styles.inlineActionText}>GitHub repository →</Text>
+                  <Text style={styles.linkRowText}>GitHub repository</Text>
+                  <Text style={styles.linkRowChevron}>↗</Text>
                 </Pressable>
               </View>
-            </View>
-          ) : null}
 
-          {activeSection === "account" ? (
-            <View>
               <Text style={styles.sectionHeader}>Account</Text>
 
               <View style={[styles.settingBlock, styles.sectionCard]}>
@@ -1149,20 +1237,23 @@ export function SettingsSheet({
                   hitSlop={12}
                   accessibilityRole="button"
                   accessibilityLabel="Export tasks as JSON"
-                  style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
+                  style={({ pressed }) => [styles.softButton, pressed && { opacity: 0.6 }]}
                 >
-                  <Text style={styles.inlineActionText}>Export tasks as JSON →</Text>
+                  <Text style={styles.softButtonText}>Export tasks as JSON</Text>
                 </Pressable>
               </View>
 
               <View style={[styles.settingBlock, styles.sectionCard, styles.accountCard]}>
-                <Text style={styles.settingHelp}>Sign out if you want to switch Google accounts on this device.</Text>
+                <Text style={styles.settingLabel}>Signed in</Text>
+                <Text style={styles.settingHelp}>
+                  Sign out if you want to switch Google accounts on this device.
+                </Text>
                 <Pressable
                   onPress={onSignOut}
                   hitSlop={12}
                   accessibilityRole="button"
                   accessibilityLabel="Sign out"
-                  style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+                  style={({ pressed }) => [styles.signOutButton, pressed && { opacity: 0.6 }]}
                 >
                   <Text style={styles.signOutLink}>Sign out</Text>
                 </Pressable>
@@ -1227,6 +1318,9 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: colors.border,
   },
+  settingsScroll: {
+    flex: 1,
+  },
   settingsScrollContent: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
@@ -1241,7 +1335,7 @@ const styles = StyleSheet.create({
   },
   settingsHeader: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.md,
     marginBottom: spacing.md,
@@ -1255,9 +1349,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   tab: {
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     backgroundColor: colors.bgCard,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
@@ -1267,15 +1361,12 @@ const styles = StyleSheet.create({
     borderColor: colors.accent,
   },
   tabLabel: {
-    ...typography.micro,
+    ...typography.bodyMd,
     color: colors.textMuted,
   },
   tabLabelActive: {
     color: colors.accent,
-  },
-  settingsKicker: {
-    ...typography.micro,
-    color: colors.textMuted,
+    fontWeight: "600",
   },
   settingsHeadline: {
     ...typography.headline,
@@ -1283,15 +1374,18 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   settingsCloseLink: {
-    ...typography.micro,
+    ...typography.bodyMd,
     color: colors.accent,
-    paddingTop: spacing.sm,
   },
   sectionHeader: {
     ...typography.micro,
     color: colors.textMuted,
-    marginTop: spacing.lg,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    fontWeight: "600",
+    marginTop: spacing.xl,
     marginBottom: spacing.sm,
+    paddingHorizontal: spacing.xs,
   },
   settingBlock: {
     gap: spacing.sm,
@@ -1418,6 +1512,81 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     justifyContent: "flex-end",
   },
+  fieldStack: {
+    paddingTop: spacing.sm,
+    marginTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
+    gap: spacing.sm,
+  },
+  fieldLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  segmented: {
+    flexDirection: "row",
+    backgroundColor: colors.bgCard,
+    borderRadius: 10,
+    padding: 3,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  segment: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+  },
+  segmentActive: {
+    backgroundColor: colors.accentSoft,
+  },
+  segmentText: {
+    ...typography.micro,
+    color: colors.textMuted,
+    textAlign: "center",
+  },
+  segmentTextActive: {
+    color: colors.accent,
+    fontWeight: "600",
+  },
+  swatchRow: {
+    flexDirection: "row",
+    gap: spacing.lg,
+    flexWrap: "wrap",
+  },
+  swatchItem: {
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  swatch: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  swatchActive: {
+    borderColor: colors.textPrimary,
+  },
+  swatchCheck: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 18,
+  },
+  swatchLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
+  },
+  swatchLabelActive: {
+    color: colors.textPrimary,
+    fontWeight: "600",
+  },
   choiceChip: {
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs / 2,
@@ -1473,5 +1642,169 @@ const styles = StyleSheet.create({
   signOutLink: {
     color: colors.error,
     ...typography.micro,
+    fontWeight: "600",
+  },
+  signOutButton: {
+    alignSelf: "flex-start",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.error,
+    marginTop: spacing.xs,
+  },
+  codePill: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.bgCard,
+    borderRadius: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    marginTop: spacing.xs,
+  },
+  codePillText: {
+    ...typography.micro,
+    color: colors.textPrimary,
+    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+  },
+  sourceBlock: {
+    marginTop: spacing.sm,
+    gap: spacing.xs,
+  },
+  sourceHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusDotOk: {
+    backgroundColor: colors.success,
+  },
+  statusDotErr: {
+    backgroundColor: colors.error,
+  },
+  sourceName: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+  sourceStatus: {
+    ...typography.micro,
+    fontWeight: "600",
+  },
+  sourceStatusOk: {
+    color: colors.success,
+  },
+  sourceStatusErr: {
+    color: colors.error,
+  },
+  errorBlock: {
+    backgroundColor: colors.bgCard,
+    borderRadius: 8,
+    padding: spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  errorBlockText: {
+    ...typography.micro,
+    color: colors.textSecondary,
+    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+    lineHeight: 16,
+  },
+  softButton: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.accentSoft,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 10,
+    marginTop: spacing.xs,
+  },
+  softButtonDisabled: {
+    opacity: 0.5,
+  },
+  softButtonText: {
+    ...typography.micro,
+    color: colors.accent,
+    fontWeight: "600",
+  },
+  aboutHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  aboutHeaderCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  aboutVersion: {
+    ...typography.micro,
+    color: colors.textMuted,
+  },
+  versionPill: {
+    backgroundColor: colors.accentSoft,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 999,
+  },
+  versionPillText: {
+    ...typography.micro,
+    color: colors.accent,
+    fontWeight: "600",
+  },
+  linkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
+  },
+  linkRowText: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+  },
+  linkRowChevron: {
+    color: colors.textMuted,
+    fontSize: 16,
+  },
+  copyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  copyRowPill: {
+    flex: 1,
+    marginTop: 0,
+  },
+  copyButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 10,
+    backgroundColor: colors.accentSoft,
+  },
+  copyButtonText: {
+    ...typography.micro,
+    color: colors.accent,
+    fontWeight: "600",
+  },
+  copyChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    backgroundColor: colors.bgCard,
+  },
+  copyChipText: {
+    ...typography.micro,
+    color: colors.textSecondary,
+    fontWeight: "600",
   },
 });

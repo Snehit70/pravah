@@ -2,8 +2,8 @@ import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState
 import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
 import BottomSheet, {
   BottomSheetBackdrop,
+  BottomSheetScrollView,
   BottomSheetTextInput,
-  BottomSheetView,
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
@@ -13,6 +13,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TaskMetaFields } from "./TaskMetaFields";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { type TaskPriority } from "../lib/task-form";
+import { useGoals } from "../hooks/useGoals";
+import { goalsStore } from "../lib/goalsStorage";
 
 type ComposerMode = "inbox" | "today" | "tomorrow" | "nextweek";
 
@@ -37,6 +39,7 @@ type AddTaskSheetProps = {
     deadline?: string;
     mode: ComposerMode;
     priority?: TaskPriority;
+    goalId?: string;
   }) => Promise<boolean>;
   isValidDeadline: (raw: string) => { value?: string; error?: string };
   onSheetChange?: (isOpen: boolean) => void;
@@ -55,15 +58,24 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [deadline, setDeadline] = useState("");
     const [mode, setMode] = useState<ComposerMode>("inbox");
     const [priority, setPriority] = useState<TaskPriority>(undefined);
+    const [kind, setKind] = useState<"task" | "goal">("task");
+    const [goalId, setGoalId] = useState<string | undefined>(undefined);
+    const [showGoalPicker, setShowGoalPicker] = useState(false);
     const [saving, setSaving] = useState(false);
     const [showDetails, setShowDetails] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const sheetBottomInset = useKeyboardInset(insets.bottom);
+    const { goals } = useGoals();
+    const selectedGoal = useMemo(
+      () => goals.find((g) => g.id === goalId),
+      [goals, goalId]
+    );
     const hasDraftChanges = Boolean(
       title.trim() ||
         description.trim() ||
         deadline.trim() ||
         priority ||
+        goalId ||
         mode !== "inbox"
     );
 
@@ -88,7 +100,10 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setDescription("");
       setDeadline("");
       setPriority(undefined);
+      setGoalId(undefined);
+      setShowGoalPicker(false);
       setShowDetails(false);
+      setKind("task");
       setError(null);
     };
 
@@ -106,12 +121,32 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setSaving(true);
       setError(null);
 
+      if (kind === "goal") {
+        const created = await goalsStore.add({
+          text: trimmed,
+          description: description.trim() || undefined,
+          deadline: deadlineResult.value,
+          priority,
+        });
+        setSaving(false);
+        if (!created) {
+          setError("You already have a goal with that name.");
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          return;
+        }
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        reset();
+        bottomSheetRef.current?.close();
+        return;
+      }
+
       const success = await onAdd({
         title: trimmed,
         description: description.trim() || undefined,
         deadline: deadlineResult.value,
         mode,
         priority,
+        goalId,
       });
 
       setSaving(false);
@@ -120,7 +155,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         reset();
         bottomSheetRef.current?.close();
       }
-    }, [title, description, deadline, mode, priority, saving, onAdd, isValidDeadline]);
+    }, [title, description, deadline, mode, priority, goalId, kind, saving, onAdd, isValidDeadline]);
 
     const renderBackdrop = useCallback(
       (props: BottomSheetBackdropProps) => (
@@ -173,9 +208,40 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           }
         }}
       >
-        <BottomSheetView style={styles.content}>
+        <BottomSheetScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
           <Text style={styles.sheetKicker}>Capture</Text>
-          <Text style={styles.sheetTitle}>New task</Text>
+          <View style={styles.kindRow}>
+            <Pressable
+              onPress={() => setKind("task")}
+              hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: kind === "task" }}
+              accessibilityLabel="New task"
+              style={({ pressed }) => [styles.kindItem, pressed && { opacity: 0.6 }]}
+            >
+              <Text style={[styles.kindText, kind === "task" && styles.kindTextActive]}>
+                New task
+              </Text>
+              <View style={[styles.kindRule, kind === "task" && styles.kindRuleActive]} />
+            </Pressable>
+            <Pressable
+              onPress={() => setKind("goal")}
+              hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: kind === "goal" }}
+              accessibilityLabel="New goal"
+              style={({ pressed }) => [styles.kindItem, pressed && { opacity: 0.6 }]}
+            >
+              <Text style={[styles.kindText, kind === "goal" && styles.kindTextActive]}>
+                New goal
+              </Text>
+              <View style={[styles.kindRule, kind === "goal" && styles.kindRuleActive]} />
+            </Pressable>
+          </View>
 
           <BottomSheetTextInput
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -185,7 +251,9 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               setTitle(text);
               setError(null);
             }}
-            placeholder="What needs to be done?"
+            placeholder={
+              kind === "goal" ? "What do you want to achieve?" : "What needs to be done?"
+            }
             placeholderTextColor={colors.textMuted}
             style={styles.titleInput}
             returnKeyType="done"
@@ -193,7 +261,9 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           />
 
           {/* Mode — segmented control as two mono labels with an underline
-              under the active segment. Mirrors the bottom-tab language. */}
+              under the active segment. Tasks only; goals are open-ended and
+              don't get scheduled into the day. */}
+          {kind === "task" ? (
           <View style={styles.modeRow}>
             {MODE_OPTIONS.map((option) => (
               <Pressable
@@ -222,6 +292,98 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               <Text style={styles.detailsToggleText}>{showDetails ? "Less" : "More"}</Text>
             </Pressable>
           </View>
+          ) : (
+            <View style={styles.goalKindRow}>
+              <View style={{ flex: 1 }} />
+              <Pressable
+                onPress={() => setShowDetails(!showDetails)}
+                style={({ pressed }) => [styles.detailsToggle, pressed && { opacity: 0.6 }]}
+                hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+              >
+                <Text style={styles.detailsToggleText}>{showDetails ? "Less" : "More"}</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {kind === "task" && goals.length > 0 ? (
+            <View style={styles.goalSection}>
+              <Pressable
+                onPress={() => setShowGoalPicker((s) => !s)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  selectedGoal ? `Goal: ${selectedGoal.text}. Tap to change.` : "Pick a goal"
+                }
+                style={({ pressed }) => [
+                  styles.goalChip,
+                  selectedGoal && styles.goalChipActive,
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <Text style={styles.goalChipKicker}>Goal</Text>
+                <Text
+                  style={[
+                    styles.goalChipValue,
+                    selectedGoal && styles.goalChipValueActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {selectedGoal ? selectedGoal.text : "None"}
+                </Text>
+                <Text style={styles.goalChipCaret}>{showGoalPicker ? "▾" : "▸"}</Text>
+              </Pressable>
+
+              {showGoalPicker ? (
+                <Animated.View
+                  entering={FadeIn.duration(150)}
+                  exiting={FadeOut.duration(120)}
+                  style={styles.goalPicker}
+                >
+                  <Pressable
+                    onPress={() => {
+                      setGoalId(undefined);
+                      setShowGoalPicker(false);
+                    }}
+                    hitSlop={8}
+                    style={({ pressed }) => [
+                      styles.goalOption,
+                      !goalId && styles.goalOptionActive,
+                      pressed && { opacity: 0.7 },
+                    ]}
+                  >
+                    <Text style={[styles.goalOptionText, !goalId && styles.goalOptionTextActive]}>
+                      No goal
+                    </Text>
+                  </Pressable>
+                  {goals.map((g) => {
+                    const active = g.id === goalId;
+                    return (
+                      <Pressable
+                        key={g.id}
+                        onPress={() => {
+                          setGoalId(g.id);
+                          setShowGoalPicker(false);
+                        }}
+                        hitSlop={8}
+                        style={({ pressed }) => [
+                          styles.goalOption,
+                          active && styles.goalOptionActive,
+                          pressed && { opacity: 0.7 },
+                        ]}
+                      >
+                        <Text
+                          style={[styles.goalOptionText, active && styles.goalOptionTextActive]}
+                          numberOfLines={2}
+                        >
+                          {g.text}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </Animated.View>
+              ) : null}
+            </View>
+          ) : null}
 
           {showDetails ? (
             <Animated.View
@@ -264,7 +426,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
             ]}
           >
             <Text style={[styles.primaryButtonText, !canSubmit && styles.primaryButtonTextDisabled]}>
-              {saving ? "Adding…" : "Add task"}
+              {saving ? "Adding…" : kind === "goal" ? "Add goal" : "Add task"}
             </Text>
           </Pressable>
 
@@ -280,7 +442,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               <Text style={styles.discardButtonText}>Discard</Text>
             </Pressable>
           ) : null}
-        </BottomSheetView>
+        </BottomSheetScrollView>
       </BottomSheet>
     );
   }
@@ -318,6 +480,39 @@ const styles = StyleSheet.create({
     ...typography.headline,
     color: colors.textPrimary,
     marginTop: -spacing.sm,
+  },
+
+  // Kind toggle — two large segments using the same underline language as
+  // the mode row, but headline-sized so it replaces the static page title.
+  kindRow: {
+    flexDirection: "row",
+    gap: spacing.lg,
+    marginTop: -spacing.sm,
+  },
+  kindItem: {
+    alignItems: "flex-start",
+    paddingBottom: 4,
+  },
+  kindText: {
+    ...typography.headline,
+    color: colors.textMuted,
+  },
+  kindTextActive: {
+    color: colors.textPrimary,
+  },
+  kindRule: {
+    marginTop: 6,
+    height: 2,
+    width: 24,
+    borderRadius: 1,
+    backgroundColor: "transparent",
+  },
+  kindRuleActive: {
+    backgroundColor: colors.accent,
+  },
+  goalKindRow: {
+    flexDirection: "row",
+    alignItems: "center",
   },
 
   // Title input — bottom rule only, no bordered box.
@@ -410,6 +605,70 @@ const styles = StyleSheet.create({
   },
   primaryButtonTextDisabled: {
     color: colors.textMuted,
+  },
+  // Goal picker — collapsed chip with kicker + value, expands inline to a
+  // vertical list of goal options. Stays out of the way when no goal is set.
+  goalSection: {
+    gap: spacing.sm,
+  },
+  goalChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+  },
+  goalChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  goalChipKicker: {
+    ...typography.micro,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  goalChipValue: {
+    flex: 1,
+    ...typography.bodyMd,
+    color: colors.textMuted,
+  },
+  goalChipValueActive: {
+    color: colors.accent,
+    fontWeight: "600",
+  },
+  goalChipCaret: {
+    ...typography.micro,
+    color: colors.textMuted,
+  },
+  goalPicker: {
+    gap: 2,
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  goalOption: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+  },
+  goalOptionActive: {
+    backgroundColor: colors.accentSoft,
+  },
+  goalOptionText: {
+    ...typography.bodyMd,
+    color: colors.textSecondary,
+  },
+  goalOptionTextActive: {
+    color: colors.accent,
+    fontWeight: "600",
   },
   discardButton: {
     paddingVertical: 14,

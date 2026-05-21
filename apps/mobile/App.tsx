@@ -27,6 +27,8 @@ import { GeistMono_500Medium } from "@expo-google-fonts/geist-mono";
 import { ConvexClientProvider } from "./src/lib/convex";
 import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
+import { goalLinksStore } from "./src/lib/goalLinks";
+import { goalsStore } from "./src/lib/goalsStorage";
 
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -44,10 +46,11 @@ import { MobileAuthScreen } from "./src/components/MobileAuthScreen";
 import { RootErrorBoundary } from "./src/components/RootErrorBoundary";
 import { ScreenErrorBoundary } from "./src/components/ScreenErrorBoundary";
 import { SettingsSheet } from "./src/components/SettingsSheet";
+import { ConfirmProvider } from "./src/components/ConfirmDialog";
 import { DiagnosticsPanel } from "./src/components/DiagnosticsPanel";
 import { InboxScreen } from "./src/screens/InboxScreen";
 import { TimelineScreen } from "./src/screens/TimelineScreen";
-import { CompletedScreen } from "./src/screens/CompletedScreen";
+import { InsightsScreen } from "./src/screens/InsightsScreen";
 import { GoalsScreen } from "./src/screens/GoalsScreen";
 import { useRetryQueue, type RetryPayload } from "./src/hooks/useRetryQueue";
 import { useTaskMutations } from "./src/hooks/useTaskMutations";
@@ -149,7 +152,7 @@ function MobileApp() {
     isAllTasksReady,
   } = useTaskQueries({
     isAuthenticated: Boolean(session),
-    includeAllTasks: isKairoActive,
+    includeAllTasks: isKairoActive || activeTab === "insights" || activeTab === "goals",
   });
 
   const hasLiveWorkspaceData = !isInboxLoading && !isTimelineLoading && !isCompletedLoading;
@@ -182,6 +185,19 @@ function MobileApp() {
   const displayCompletedTasks = shouldUseWorkspaceSnapshot
     ? workspaceSnapshot.completedTasks
     : completedTasks;
+
+  const workspaceTaskCorpus = useMemo<MobileTask[]>(() => {
+    if (shouldUseWorkspaceSnapshot) {
+      return [...displayInboxTasks, ...displayScheduledTasks, ...displayCompletedTasks];
+    }
+    return allWorkspaceTasks;
+  }, [
+    allWorkspaceTasks,
+    displayCompletedTasks,
+    displayInboxTasks,
+    displayScheduledTasks,
+    shouldUseWorkspaceSnapshot,
+  ]);
 
   const displayTimelineSections = useMemo<[string, MobileTask[]][]>(() => {
     const grouped = new Map<string, MobileTask[]>();
@@ -260,11 +276,14 @@ function MobileApp() {
         ? shouldUseWorkspaceSnapshot
           ? false
           : isInboxLoading
-        : activeTab === "completed"
+        : activeTab === "insights"
           ? shouldUseWorkspaceSnapshot
             ? false
-            : isCompletedLoading
+            : isCompletedLoading || !isAllTasksReady
           : false;
+
+  const isGoalsTaskDataLoading =
+    activeTab === "goals" && !shouldUseWorkspaceSnapshot && !isAllTasksReady;
 
   const isBootShellLoading = shouldRenderOptimisticShell && !shouldUseWorkspaceSnapshot && !session;
 
@@ -337,6 +356,8 @@ function MobileApp() {
   const handleWipeLocalData = useCallback(async () => {
     const { wipeLocalAppData } = await import("./src/lib/dataReset");
     await wipeLocalAppData();
+    goalsStore.reset();
+    goalLinksStore.reset();
     resetPreferencesStore();
     resetDailyReminderState();
     setIsSettingsModalOpen(false);
@@ -370,7 +391,7 @@ function MobileApp() {
     async (payload: RetryPayload) => {
       switch (payload.type) {
         case "addTask": {
-          await addTaskMutation({
+          const retriedId = await addTaskMutation({
             title: payload.title,
             description: payload.description,
             deadline: payload.deadline,
@@ -378,6 +399,9 @@ function MobileApp() {
             scheduledDate: payload.scheduledDate,
             priority: payload.priority,
           });
+          if (payload.goalId && retriedId) {
+            goalLinksStore.setLink(String(retriedId), payload.goalId);
+          }
           return;
         }
         case "updateTask": {
@@ -474,6 +498,7 @@ function MobileApp() {
       deadline?: string;
       mode: "inbox" | "today" | "tomorrow" | "nextweek";
       priority?: "p1" | "p2" | "p3";
+      goalId?: string;
     }) => {
       const actionId = createActionId("add");
       const startedAt = Date.now();
@@ -499,7 +524,7 @@ function MobileApp() {
         return false;
       }
       try {
-        await addTaskMutation({
+        const newTaskId = await addTaskMutation({
           title: data.title,
           description: data.description,
           deadline: data.deadline,
@@ -507,6 +532,9 @@ function MobileApp() {
           scheduledDate,
           priority: data.priority,
         });
+        if (data.goalId && newTaskId) {
+          goalLinksStore.setLink(String(newTaskId), data.goalId);
+        }
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         mobileLogger.info("add_task_succeeded", { actionId, elapsedMs: Date.now() - startedAt });
         return true;
@@ -522,6 +550,7 @@ function MobileApp() {
               deadline: data.deadline,
               scheduledDate,
               priority: data.priority,
+              goalId: data.goalId,
             },
           });
           showToast({ kind: "error", message: "Offline. Task queued for retry." });
@@ -713,8 +742,8 @@ function MobileApp() {
   const headerViewName =
     activeTab === "timeline"
       ? "Timeline"
-      : activeTab === "completed"
-        ? "Completed"
+      : activeTab === "insights"
+        ? "Insights"
         : activeTab === "goals"
           ? "Goals"
           : "Inbox";
@@ -730,8 +759,8 @@ function MobileApp() {
       : session && !hasLiveWorkspaceData
         ? activeTab === "timeline"
           ? "Opening your timeline"
-          : activeTab === "completed"
-            ? "Opening your archive"
+          : activeTab === "insights"
+            ? "Opening your stats"
             : activeTab === "goals"
               ? "Opening your goals"
               : "Opening your inbox"
@@ -739,8 +768,8 @@ function MobileApp() {
           ? "Syncing your workspace"
         : activeTab === "timeline"
           ? timelineSubtitle
-          : activeTab === "completed"
-            ? "Closed loops"
+          : activeTab === "insights"
+            ? "On-device snapshot"
             : activeTab === "goals"
               ? "Long horizon"
               : `${padCount(displayInboxCount)} to triage`;
@@ -855,19 +884,24 @@ function MobileApp() {
 
       {activeTab === "goals" ? (
         <ScreenErrorBoundary screenName="Goals">
-          <GoalsScreen tabBarHeight={tabBarHeight} />
+          <GoalsScreen
+            tabBarHeight={tabBarHeight}
+            tasks={workspaceTaskCorpus}
+            isTaskDataLoading={isGoalsTaskDataLoading}
+          />
         </ScreenErrorBoundary>
       ) : null}
 
-      {activeTab === "completed" ? (
-        <ScreenErrorBoundary screenName="Completed">
-          <CompletedScreen
-            tasks={visibleTasks}
+      {activeTab === "insights" ? (
+        <ScreenErrorBoundary screenName="Insights">
+          <InsightsScreen
+            tasks={workspaceTaskCorpus}
+            completedTasks={displayCompletedTasks}
             isLoading={isActiveListLoading || isBootShellLoading}
             isRefreshing={isRefreshing}
             tabBarHeight={tabBarHeight}
             onRefresh={handleRefresh}
-            renderItem={renderCompletedTaskItem}
+            renderCompletedTaskItem={renderCompletedTaskItem}
           />
         </ScreenErrorBoundary>
       ) : null}
@@ -1057,7 +1091,9 @@ export default function App() {
         <LaunchGate>
             <ConvexClientProvider>
               <RootErrorBoundary>
-                <MobileApp />
+                <ConfirmProvider>
+                  <MobileApp />
+                </ConfirmProvider>
               </RootErrorBoundary>
             </ConvexClientProvider>
         </LaunchGate>

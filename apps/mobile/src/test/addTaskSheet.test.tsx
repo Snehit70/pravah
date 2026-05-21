@@ -93,6 +93,12 @@ vi.mock("@gorhom/bottom-sheet", () => {
       React.createElement("div", { "data-testid": "backdrop" }, children),
     BottomSheetView: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
       React.createElement("div", {}, children),
+    BottomSheetScrollView: ({
+      children,
+    }: {
+      children?: React.ReactNode;
+      [key: string]: unknown;
+    }) => React.createElement("div", {}, children),
     BottomSheetTextInput: ({
       value,
       onChangeText,

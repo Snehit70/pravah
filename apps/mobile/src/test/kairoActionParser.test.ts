@@ -40,6 +40,16 @@ describe("extractKairoActions", () => {
     expect(cleanText).toBe("Done.");
   });
 
+  it("tolerates a backslash-escaped closing slash in the tag", () => {
+    // Some model outputs emit `<\/delete-task>` instead of `</delete-task>`,
+    // mimicking regex/HTML escape conventions. The parser must still extract
+    // the action and strip the tag from the visible text.
+    const raw = `Deleted.\n<delete-task>{"id":"T7"}<\\/delete-task>`;
+    const { cleanText, actions } = extractKairoActions(raw);
+    expect(actions).toEqual([{ kind: "delete", handle: "T7" }]);
+    expect(cleanText).toBe("Deleted.");
+  });
+
   it("parses update-task with partial fields", () => {
     const { actions } = extractKairoActions(
       `<update-task>{"id":"T5","title":"Renamed","priority":"p1"}</update-task>`

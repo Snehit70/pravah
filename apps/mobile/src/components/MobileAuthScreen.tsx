@@ -1,9 +1,18 @@
 import { StatusBar } from "expo-status-bar";
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
-import Animated, { FadeIn } from "react-native-reanimated";
-import { colors, spacing, typography } from "../theme/tokens";
+import { LinearGradient } from "expo-linear-gradient";
+import {
+  ImageBackground,
+  Pressable,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
+import { colors, shadow, spacing, typography } from "../theme/tokens";
 import { BrandMark } from "./BrandMark";
-import { GridBackground } from "./GridBackground";
+
+import authBg from "../../assets/auth-bg.png";
 
 type MobileAuthScreenProps = {
   canGoogleSignIn: boolean;
@@ -17,88 +26,98 @@ export function MobileAuthScreen({
   onGoogleSignIn,
 }: MobileAuthScreenProps) {
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar style="light" />
-      <GridBackground />
-      <Animated.View entering={FadeIn.duration(400)} style={styles.shell}>
-        <View style={styles.lockup}>
-          <View style={styles.brandRow}>
-            <BrandMark size={26} />
-            <Text style={styles.wordmark}>Pravah</Text>
+    <ImageBackground source={authBg} resizeMode="cover" style={styles.bg}>
+      <LinearGradient
+        colors={["rgba(8,6,18,0.55)", "rgba(8,6,18,0.15)", "rgba(8,6,18,0.7)"]}
+        locations={[0, 0.5, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+      <SafeAreaView style={styles.container}>
+        <StatusBar style="light" />
+
+        <Animated.View entering={FadeInDown.duration(500).delay(80)} style={styles.brandZone}>
+          <BrandMark size={64} />
+          <Text style={styles.wordmark}>Pravah</Text>
+        </Animated.View>
+
+        <Animated.View entering={FadeInUp.duration(500).delay(160)} style={styles.actionZone}>
+          <View style={styles.copy}>
+            <Text style={styles.headline}>A calmer way to keep your day in view.</Text>
+            <Text style={styles.subtitle}>
+              Your inbox, timeline, and completed ledger — kept in sync.
+            </Text>
           </View>
-          <Text style={styles.title}>A calmer way to keep your day in view.</Text>
-          <Text style={styles.subtitle}>
-            Sign in with Google to keep your inbox, timeline, and completed ledger in sync.
-          </Text>
-        </View>
-        <View style={styles.divider} />
-        <Pressable
-          onPress={onGoogleSignIn}
-          disabled={!canGoogleSignIn || isSigningIn}
-          style={({ pressed }) => [
-            styles.googleButton,
-            (!canGoogleSignIn || isSigningIn) && styles.disabledButton,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Text style={styles.googleButtonText}>
-            {isSigningIn ? "Signing in..." : "Continue with Google"}
-          </Text>
-        </Pressable>
-        {!canGoogleSignIn ? (
-          <Text style={styles.hint}>Set `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` in mobile env.</Text>
-        ) : null}
-      </Animated.View>
-    </SafeAreaView>
+
+          <Pressable
+            onPress={onGoogleSignIn}
+            disabled={!canGoogleSignIn || isSigningIn}
+            style={({ pressed }) => [
+              styles.googleButton,
+              (!canGoogleSignIn || isSigningIn) && styles.disabledButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.googleButtonText}>
+              {isSigningIn ? "Signing in..." : "Continue with Google"}
+            </Text>
+          </Pressable>
+
+          {!canGoogleSignIn ? (
+            <Text style={styles.hint}>Set `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` in mobile env.</Text>
+          ) : null}
+        </Animated.View>
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  bg: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  container: {
+    flex: 1,
+    justifyContent: "space-between",
     paddingHorizontal: spacing.xl,
-    justifyContent: "center",
+    paddingTop: spacing.section * 2,
+    paddingBottom: spacing.section,
   },
-  shell: {
-    gap: spacing.lg,
-  },
-  lockup: {
-    gap: spacing.sm,
-  },
-  brandRow: {
-    flexDirection: "row",
+  brandZone: {
     alignItems: "center",
-    gap: spacing.sm,
+    gap: spacing.lg,
   },
   wordmark: {
     color: colors.textPrimary,
-    ...typography.title,
+    ...typography.display,
+    fontSize: 40,
+    lineHeight: 44,
+    letterSpacing: -1.2,
   },
-  title: {
+  actionZone: {
+    gap: spacing.xl,
+  },
+  copy: {
+    gap: spacing.sm,
+  },
+  headline: {
     color: colors.textPrimary,
-    ...typography.headline,
+    ...typography.display,
   },
   subtitle: {
     color: colors.textSecondary,
     ...typography.bodyLg,
-    maxWidth: 320,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.borderSubtle,
-    width: "100%",
   },
   googleButton: {
     borderRadius: 9999,
     backgroundColor: colors.accent,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.md + 2,
     alignItems: "center",
+    ...shadow.glow,
   },
   googleButtonText: {
     color: colors.textInverse,
-    ...typography.bodyMd,
+    ...typography.title,
   },
   disabledButton: {
     opacity: 0.45,
@@ -109,5 +128,6 @@ const styles = StyleSheet.create({
   hint: {
     color: colors.textMuted,
     ...typography.bodyMd,
+    textAlign: "center",
   },
 });

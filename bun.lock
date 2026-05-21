@@ -50,7 +50,7 @@
     },
     "apps/mobile": {
       "name": "@pravah/mobile",
-      "version": "1.1.1",
+      "version": "1.9.0",
       "dependencies": {
         "@convex-dev/better-auth": "^0.11.4",
         "@expo-google-fonts/geist": "^0.4.1",
@@ -62,6 +62,7 @@
         "better-auth": "1.5.3",
         "convex": "^1.34.1",
         "expo": "~54.0.33",
+        "expo-clipboard": "~8.0.8",
         "expo-crypto": "~15.0.7",
         "expo-dev-client": "~6.0.20",
         "expo-font": "^55.0.6",
@@ -1036,6 +1037,8 @@
     "expo-application": ["expo-application@55.0.14", "", { "peerDependencies": { "expo": "*" } }, "sha512-NgqDIt3eCf4aVLp1L6AcEanCYoyJeuBsGrgGSzOIvxAsOvp5X3SYKW3ROgpKUnLQEKMWlzwETpjsUGszcqkk8g=="],
 
     "expo-asset": ["expo-asset@12.0.12", "", { "dependencies": { "@expo/image-utils": "^0.8.8", "expo-constants": "~18.0.12" }, "peerDependencies": { "expo": "*", "react": "*", "react-native": "*" } }, "sha512-CsXFCQbx2fElSMn0lyTdRIyKlSXOal6ilLJd+yeZ6xaC7I9AICQgscY5nj0QcwgA+KYYCCEQEBndMsmj7drOWQ=="],
+
+    "expo-clipboard": ["expo-clipboard@8.0.8", "", { "peerDependencies": { "expo": "*", "react": "*", "react-native": "*" } }, "sha512-VKoBkHIpZZDJTB0jRO4/PZskHdMNOEz3P/41tmM6fDuODMpqhvyWK053X0ebspkxiawJX9lX33JXHBCvVsTTOA=="],
 
     "expo-constants": ["expo-constants@18.0.13", "", { "dependencies": { "@expo/config": "~12.0.13", "@expo/env": "~2.0.8" }, "peerDependencies": { "expo": "*", "react-native": "*" } }, "sha512-FnZn12E1dRYKDHlAdIyNFhBurKTS3F9CrfrBDJI5m3D7U17KBHMQ6JEfYlSj7LG7t+Ulr+IKaj58L1k5gBwTcQ=="],
 

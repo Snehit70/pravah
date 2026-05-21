@@ -1,23 +1,20 @@
-name: CI
+name: Lint
 
 on:
   pull_request:
   push:
     branches:
       - main
-      - master
 
 jobs:
-  quality:
+  lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
@@ -26,6 +23,3 @@ jobs:
 
       - name: Lint
         run: bun run lint
-
-      - name: Build
-        run: bun run build

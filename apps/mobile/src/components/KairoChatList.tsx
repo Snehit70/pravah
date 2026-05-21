@@ -7,10 +7,11 @@
  */
 
 import { useMemo } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
-import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import type { ChatMeta } from "../lib/kairoChatStorage";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { useConfirm } from "../hooks/useConfirm";
 
 type Props = {
   chats: ChatMeta[];
@@ -41,6 +42,7 @@ export function KairoChatList({
   onDelete,
   onClose,
 }: Props) {
+  const confirm = useConfirm();
   const sorted = useMemo(
     () => [...chats].sort((a, b) => b.updatedAt - a.updatedAt),
     [chats]
@@ -70,58 +72,50 @@ export function KairoChatList({
         </Pressable>
       </View>
 
-      <BottomSheetFlatList<ChatMeta>
-        data={sorted}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
+      <BottomSheetScrollView contentContainerStyle={styles.listContent}>
+        {sorted.length === 0 ? (
           <View style={styles.empty}>
             <Text style={styles.emptyText}>No chats yet.</Text>
           </View>
-        }
-        renderItem={({ item }) => {
-          const isActive = item.id === activeChatId;
-          const askDelete = () => {
-            Alert.alert(
-              "Delete chat?",
-              item.title,
-              [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Delete",
-                  style: "destructive",
-                  onPress: () => onDelete(item.id),
-                },
-              ],
-              { cancelable: true }
+        ) : (
+          sorted.map((item) => {
+            const isActive = item.id === activeChatId;
+            const askDelete = async () => {
+              const ok = await confirm({
+                title: "Delete chat?",
+                message: item.title,
+                confirmLabel: "Delete",
+                destructive: true,
+              });
+              if (ok) onDelete(item.id);
+            };
+            return (
+              <View key={item.id} style={[styles.row, isActive && styles.rowActive]}>
+                <Pressable
+                  onPress={() => onSelect(item.id)}
+                  style={styles.rowTap}
+                  accessibilityLabel={`Open chat: ${item.title}`}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.rowTitle} numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                  <Text style={styles.rowMeta}>{formatRelative(item.updatedAt)}</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => void askDelete()}
+                  hitSlop={12}
+                  style={({ pressed }) => [styles.deleteBtn, pressed && { opacity: 0.5 }]}
+                  accessibilityLabel={`Delete chat: ${item.title}`}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.deleteText}>Delete</Text>
+                </Pressable>
+              </View>
             );
-          };
-          return (
-            <View style={[styles.row, isActive && styles.rowActive]}>
-              <Pressable
-                onPress={() => onSelect(item.id)}
-                style={styles.rowTap}
-                accessibilityLabel={`Open chat: ${item.title}`}
-                accessibilityRole="button"
-              >
-                <Text style={styles.rowTitle} numberOfLines={1}>
-                  {item.title}
-                </Text>
-                <Text style={styles.rowMeta}>{formatRelative(item.updatedAt)}</Text>
-              </Pressable>
-              <Pressable
-                onPress={askDelete}
-                hitSlop={12}
-                style={({ pressed }) => [styles.deleteBtn, pressed && { opacity: 0.5 }]}
-                accessibilityLabel={`Delete chat: ${item.title}`}
-                accessibilityRole="button"
-              >
-                <Text style={styles.deleteText}>Delete</Text>
-              </Pressable>
-            </View>
-          );
-        }}
-      />
+          })
+        )}
+      </BottomSheetScrollView>
     </View>
   );
 }

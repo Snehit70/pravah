@@ -155,6 +155,37 @@ vi.mock("@gorhom/bottom-sheet", () => {
         placeholder,
         "data-testid": "kairo-input",
       }),
+    BottomSheetScrollView: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
+      React.createElement("div", { "data-testid": "bottom-sheet-scroll-view" }, children),
+    BottomSheetFlatList: ({
+      data,
+      renderItem,
+      keyExtractor,
+      ListFooterComponent,
+      ListEmptyComponent,
+    }: {
+      data?: unknown[];
+      renderItem?: (info: { item: unknown; index: number }) => React.ReactNode;
+      keyExtractor?: (item: unknown, index: number) => string;
+      ListFooterComponent?: React.ReactNode;
+      ListEmptyComponent?: React.ReactNode;
+      [key: string]: unknown;
+    }) => {
+      const items = data ?? [];
+      return React.createElement(
+        "div",
+        { "data-testid": "bottom-sheet-flat-list" },
+        items.length === 0 && ListEmptyComponent ? ListEmptyComponent : null,
+        ...items.map((item, index) =>
+          React.createElement(
+            "div",
+            { key: keyExtractor ? keyExtractor(item, index) : index },
+            renderItem ? renderItem({ item, index }) : null
+          )
+        ),
+        ListFooterComponent ?? null
+      );
+    },
   };
 });
 
@@ -167,6 +198,7 @@ vi.mock("react-native-reanimated", () => ({
   Easing: { bezier: () => undefined },
   useAnimatedStyle: () => ({}),
   useSharedValue: (v: number) => ({ value: v }),
+  withDelay: (_ms: number, v: unknown) => v,
   withRepeat: (v: unknown) => v,
   withSequence: (v: unknown) => v,
   withTiming: (v: unknown) => v,

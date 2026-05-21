@@ -100,10 +100,10 @@ export function hasCustomKairoEndpoint(c: KairoConfig): boolean {
 export const KAIRO_DEFAULTS = {
   anthropic: {
     baseUrl: "https://api.anthropic.com/v1/messages",
-    model: "claude-sonnet-4-6",
+    model: "claude-haiku-4-5",
   },
   openai: {
     baseUrl: "https://api.openai.com/v1/chat/completions",
-    model: "gpt-4o-mini",
+    model: "gpt-5.4-mini",
   },
 } as const;

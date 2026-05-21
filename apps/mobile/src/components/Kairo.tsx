@@ -17,7 +17,7 @@ import {
 } from "react-native";
 import BottomSheet, {
   BottomSheetBackdrop,
-  BottomSheetFlatList,
+  BottomSheetScrollView,
   BottomSheetTextInput,
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
@@ -727,23 +727,18 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         </View>
       </View>
 
-      <BottomSheetFlatList
+      <BottomSheetScrollView
         ref={listRef}
         style={styles.scroll}
-        data={chatRows}
-        renderItem={renderChatRow}
-        keyExtractor={(item) => item.id}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
-        initialNumToRender={12}
-        maxToRenderPerBatch={8}
-        updateCellsBatchingPeriod={50}
-        windowSize={7}
-        removeClippedSubviews
-        ListFooterComponent={
-          <>
-            {/* Starters render on first paint only (no user messages yet). */}
-            {msgs.length === 1 && !thinking && !deferredPromptPreview && prefs.kairoStarterPillsEnabled ? (
+      >
+        {chatRows.map((item) => (
+          <View key={item.id}>{renderChatRow({ item })}</View>
+        ))}
+
+        {/* Starters render on first paint only (no user messages yet). */}
+        {msgs.length === 1 && !thinking && !deferredPromptPreview && prefs.kairoStarterPillsEnabled ? (
           <View style={styles.starters}>
             {starters.map((p) => (
               <Pressable
@@ -756,9 +751,9 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
               </Pressable>
             ))}
           </View>
-            ) : null}
+        ) : null}
 
-            {config && !isKairoConfigured(config) ? (
+        {config && !isKairoConfigured(config) ? (
           <Pressable
             onPress={onOpenSettings}
             style={({ pressed }) => [styles.configBanner, pressed && { opacity: 0.7 }]}
@@ -768,10 +763,8 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
               Set up your Kairo provider and API key →
             </Text>
           </Pressable>
-            ) : null}
-          </>
-        }
-      />
+        ) : null}
+      </BottomSheetScrollView>
 
       <View style={styles.inputBar}>
         <BottomSheetTextInput

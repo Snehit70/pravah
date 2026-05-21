@@ -74,6 +74,7 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
       scheduledDate: task.scheduledDate,
       position: task.position,
       updatedAt: task.updatedAt,
+      createdAt: task.createdAt,
     }),
     []
   );
