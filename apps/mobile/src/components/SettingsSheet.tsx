@@ -107,6 +107,15 @@ const REPO_URL = "https://github.com/Snehit70/pravah";
 const CHANGELOG_URL = `${REPO_URL}/blob/main/apps/mobile/CHANGELOG.md`;
 const ISSUES_URL = `${REPO_URL}/issues`;
 
+type ColorKey = "purple" | "copper" | "teal" | "rose";
+
+const COLOR_SWATCHES: ReadonlyArray<{ key: ColorKey; fill: string; label: string }> = [
+  { key: "purple", fill: "#a78bfa", label: "Purple" },
+  { key: "copper", fill: "#c0552d", label: "Copper" },
+  { key: "teal", fill: "#4ec9b0", label: "Teal" },
+  { key: "rose", fill: "#e87a90", label: "Rose" },
+];
+
 const SECTIONS: ReadonlyArray<{ key: SectionKey; label: string }> = [
   { key: "assistant", label: "Assistant" },
   { key: "sync", label: "Sync" },
@@ -835,26 +844,25 @@ export function SettingsSheet({
                   Control how the timeline plans your week and sizes new tasks.
                 </Text>
 
-                <View style={styles.behaviorRow}>
-                  <Text style={styles.settingMeta}>Week starts on</Text>
-                  <View style={styles.chipRow}>
+                <View style={styles.fieldStack}>
+                  <Text style={styles.fieldLabel}>Week starts on</Text>
+                  <View style={styles.segmented}>
                     {(["monday", "sunday"] as const).map((day) => {
                       const active = prefs.weekStart === day;
                       return (
                         <Pressable
                           key={day}
                           onPress={() => void setPreference("weekStart", day)}
-                          hitSlop={6}
                           accessibilityRole="button"
                           accessibilityState={{ selected: active }}
                           style={({ pressed }) => [
-                            styles.choiceChip,
-                            active && styles.choiceChipActive,
-                            pressed && { opacity: 0.6 },
+                            styles.segment,
+                            active && styles.segmentActive,
+                            pressed && { opacity: 0.7 },
                           ]}
                         >
-                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
-                            {day === "monday" ? "Mon" : "Sun"}
+                          <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                            {day === "monday" ? "Monday" : "Sunday"}
                           </Text>
                         </Pressable>
                       );
@@ -897,26 +905,25 @@ export function SettingsSheet({
                   </View>
                 </View>
 
-                <View style={styles.behaviorRow}>
-                  <Text style={styles.settingMeta}>Task color scheme</Text>
-                  <View style={styles.chipRow}>
-                    {(["purple", "copper", "teal", "rose"] as const).map((scheme) => {
-                      const active = prefs.taskColorScheme === scheme;
+                <View style={styles.fieldStack}>
+                  <Text style={styles.fieldLabel}>Task color scheme</Text>
+                  <View style={styles.swatchRow}>
+                    {COLOR_SWATCHES.map(({ key, fill, label }) => {
+                      const active = prefs.taskColorScheme === key;
                       return (
                         <Pressable
-                          key={scheme}
-                          onPress={() => void setPreference("taskColorScheme", scheme)}
-                          hitSlop={6}
+                          key={key}
+                          onPress={() => void setPreference("taskColorScheme", key)}
                           accessibilityRole="button"
+                          accessibilityLabel={`${label} task color`}
                           accessibilityState={{ selected: active }}
-                          style={({ pressed }) => [
-                            styles.choiceChip,
-                            active && styles.choiceChipActive,
-                            pressed && { opacity: 0.6 },
-                          ]}
+                          style={({ pressed }) => [styles.swatchItem, pressed && { opacity: 0.7 }]}
                         >
-                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
-                            {scheme[0].toUpperCase() + scheme.slice(1)}
+                          <View style={[styles.swatch, { backgroundColor: fill }, active && styles.swatchActive]}>
+                            {active ? <Text style={styles.swatchCheck}>✓</Text> : null}
+                          </View>
+                          <Text style={[styles.swatchLabel, active && styles.swatchLabelActive]}>
+                            {label}
                           </Text>
                         </Pressable>
                       );
@@ -933,25 +940,24 @@ export function SettingsSheet({
                   Override the system motion setting and tighten spacing.
                 </Text>
 
-                <View style={styles.behaviorRow}>
-                  <Text style={styles.settingMeta}>Reduced motion</Text>
-                  <View style={styles.chipRow}>
+                <View style={styles.fieldStack}>
+                  <Text style={styles.fieldLabel}>Reduced motion</Text>
+                  <View style={styles.segmented}>
                     {(["system", "always", "never"] as const).map((mode) => {
                       const active = prefs.reducedMotionOverride === mode;
                       return (
                         <Pressable
                           key={mode}
                           onPress={() => void setPreference("reducedMotionOverride", mode)}
-                          hitSlop={6}
                           accessibilityRole="button"
                           accessibilityState={{ selected: active }}
                           style={({ pressed }) => [
-                            styles.choiceChip,
-                            active && styles.choiceChipActive,
-                            pressed && { opacity: 0.6 },
+                            styles.segment,
+                            active && styles.segmentActive,
+                            pressed && { opacity: 0.7 },
                           ]}
                         >
-                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
+                          <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
                             {mode === "system" ? "System" : mode === "always" ? "On" : "Off"}
                           </Text>
                         </Pressable>
@@ -960,25 +966,24 @@ export function SettingsSheet({
                   </View>
                 </View>
 
-                <View style={styles.behaviorRow}>
-                  <Text style={styles.settingMeta}>Density</Text>
-                  <View style={styles.chipRow}>
+                <View style={styles.fieldStack}>
+                  <Text style={styles.fieldLabel}>Density</Text>
+                  <View style={styles.segmented}>
                     {(["cozy", "compact"] as const).map((d) => {
                       const active = prefs.density === d;
                       return (
                         <Pressable
                           key={d}
                           onPress={() => void setPreference("density", d)}
-                          hitSlop={6}
                           accessibilityRole="button"
                           accessibilityState={{ selected: active }}
                           style={({ pressed }) => [
-                            styles.choiceChip,
-                            active && styles.choiceChipActive,
-                            pressed && { opacity: 0.6 },
+                            styles.segment,
+                            active && styles.segmentActive,
+                            pressed && { opacity: 0.7 },
                           ]}
                         >
-                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
+                          <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
                             {d === "cozy" ? "Cozy" : "Compact"}
                           </Text>
                         </Pressable>
@@ -993,30 +998,27 @@ export function SettingsSheet({
                 <Text style={styles.settingHelp}>
                   Used for highlights, buttons, and active states.
                 </Text>
-                <View style={[styles.behaviorRow, { borderTopWidth: 0 }]}>
-                  <View style={styles.chipRow}>
-                    {(["purple", "copper", "teal", "rose"] as const).map((color) => {
-                      const active = prefs.accentColor === color;
-                      return (
-                        <Pressable
-                          key={color}
-                          onPress={() => void setPreference("accentColor", color)}
-                          hitSlop={6}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: active }}
-                          style={({ pressed }) => [
-                            styles.choiceChip,
-                            active && styles.choiceChipActive,
-                            pressed && { opacity: 0.6 },
-                          ]}
-                        >
-                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
-                            {color[0].toUpperCase() + color.slice(1)}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
+                <View style={styles.swatchRow}>
+                  {COLOR_SWATCHES.map(({ key, fill, label }) => {
+                    const active = prefs.accentColor === key;
+                    return (
+                      <Pressable
+                        key={key}
+                        onPress={() => void setPreference("accentColor", key)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${label} accent color`}
+                        accessibilityState={{ selected: active }}
+                        style={({ pressed }) => [styles.swatchItem, pressed && { opacity: 0.7 }]}
+                      >
+                        <View style={[styles.swatch, { backgroundColor: fill }, active && styles.swatchActive]}>
+                          {active ? <Text style={styles.swatchCheck}>✓</Text> : null}
+                        </View>
+                        <Text style={[styles.swatchLabel, active && styles.swatchLabelActive]}>
+                          {label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
                 </View>
               </View>
             </View>
@@ -1400,6 +1402,81 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     flexWrap: "wrap",
     justifyContent: "flex-end",
+  },
+  fieldStack: {
+    paddingTop: spacing.sm,
+    marginTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
+    gap: spacing.sm,
+  },
+  fieldLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  segmented: {
+    flexDirection: "row",
+    backgroundColor: colors.bgCard,
+    borderRadius: 10,
+    padding: 3,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  segment: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+  },
+  segmentActive: {
+    backgroundColor: colors.accentSoft,
+  },
+  segmentText: {
+    ...typography.micro,
+    color: colors.textMuted,
+    textAlign: "center",
+  },
+  segmentTextActive: {
+    color: colors.accent,
+    fontWeight: "600",
+  },
+  swatchRow: {
+    flexDirection: "row",
+    gap: spacing.lg,
+    flexWrap: "wrap",
+  },
+  swatchItem: {
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  swatch: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  swatchActive: {
+    borderColor: colors.textPrimary,
+  },
+  swatchCheck: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 18,
+  },
+  swatchLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
+  },
+  swatchLabelActive: {
+    color: colors.textPrimary,
+    fontWeight: "600",
   },
   choiceChip: {
     paddingHorizontal: spacing.sm,
