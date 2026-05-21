@@ -29,6 +29,7 @@ import {
   View,
 } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { BlurView } from "expo-blur";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { haptic } from "../lib/haptic";
@@ -104,6 +105,8 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             exiting={reducedMotion ? undefined : FadeOut.duration(120)}
             style={styles.backdrop}
           >
+            <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
+            <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
             <Pressable
               accessibilityLabel="Dismiss dialog"
               style={StyleSheet.absoluteFill}
@@ -166,10 +169,12 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.72)",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: spacing.xl,
+  },
+  backdropDim: {
+    backgroundColor: "rgba(0,0,0,0.55)",
   },
   card: {
     width: "100%",
