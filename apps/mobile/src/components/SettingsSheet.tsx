@@ -1033,28 +1033,72 @@ export function SettingsSheet({
                 <Text style={styles.settingHelp}>
                   Share this ID with support when reporting a bug. Long-press to copy.
                 </Text>
-                <Text selectable style={styles.diagnosticsCode}>
-                  {deviceId ?? "Loading…"}
-                </Text>
+                <View style={styles.codePill}>
+                  <Text selectable style={styles.codePillText}>
+                    {deviceId ?? "Loading…"}
+                  </Text>
+                </View>
               </View>
 
               <View style={[styles.settingBlock, styles.sectionCard]}>
                 <Text style={styles.settingLabel}>Recent sync errors</Text>
                 <Text style={styles.settingHelp}>
-                  Surfaced from the most recent Google Calendar and Gmail sync runs.
+                  From the most recent Google Calendar and Gmail sync runs.
                 </Text>
-                <View style={styles.behaviorRow}>
-                  <Text style={styles.settingMeta}>Google Calendar</Text>
+
+                <View style={styles.sourceBlock}>
+                  <View style={styles.sourceHeader}>
+                    <View
+                      style={[
+                        styles.statusDot,
+                        calendarLastError ? styles.statusDotErr : styles.statusDotOk,
+                      ]}
+                    />
+                    <Text style={styles.sourceName}>Google Calendar</Text>
+                    <Text
+                      style={[
+                        styles.sourceStatus,
+                        calendarLastError ? styles.sourceStatusErr : styles.sourceStatusOk,
+                      ]}
+                    >
+                      {calendarLastError ? "Error" : "Healthy"}
+                    </Text>
+                  </View>
+                  {calendarLastError ? (
+                    <View style={styles.errorBlock}>
+                      <Text selectable style={styles.errorBlockText}>
+                        {calendarLastError}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
-                <Text style={styles.settingMeta}>
-                  {calendarLastError ? calendarLastError : "No recent errors."}
-                </Text>
-                <View style={styles.behaviorRow}>
-                  <Text style={styles.settingMeta}>Gmail</Text>
+
+                <View style={styles.sourceBlock}>
+                  <View style={styles.sourceHeader}>
+                    <View
+                      style={[
+                        styles.statusDot,
+                        gmailLastError ? styles.statusDotErr : styles.statusDotOk,
+                      ]}
+                    />
+                    <Text style={styles.sourceName}>Gmail</Text>
+                    <Text
+                      style={[
+                        styles.sourceStatus,
+                        gmailLastError ? styles.sourceStatusErr : styles.sourceStatusOk,
+                      ]}
+                    >
+                      {gmailLastError ? "Error" : "Healthy"}
+                    </Text>
+                  </View>
+                  {gmailLastError ? (
+                    <View style={styles.errorBlock}>
+                      <Text selectable style={styles.errorBlockText}>
+                        {gmailLastError}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
-                <Text style={styles.settingMeta}>
-                  {gmailLastError ? gmailLastError : "No recent errors."}
-                </Text>
               </View>
 
               <View style={[styles.settingBlock, styles.sectionCard]}>
@@ -1069,11 +1113,15 @@ export function SettingsSheet({
                   hitSlop={12}
                   accessibilityRole="button"
                   accessibilityLabel="Clear retry queue"
-                  style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
+                  style={({ pressed }) => [
+                    styles.softButton,
+                    pressed && { opacity: 0.6 },
+                    isClearingRetryQueue && styles.softButtonDisabled,
+                  ]}
                 >
                   <Text
                     style={[
-                      styles.inlineActionText,
+                      styles.softButtonText,
                       isClearingRetryQueue && styles.inlineActionDisabled,
                     ]}
                   >
@@ -1085,43 +1133,41 @@ export function SettingsSheet({
               <Text style={styles.sectionHeader}>About</Text>
 
               <View style={[styles.settingBlock, styles.sectionCard]}>
-                <Text style={styles.settingLabel}>Pravah Mobile</Text>
-                <View style={styles.behaviorRow}>
-                  <Text style={styles.settingMeta}>Version</Text>
-                  <Text selectable style={styles.diagnosticsCode}>
-                    {APP_VERSION}
-                  </Text>
+                <View style={styles.aboutHeader}>
+                  <View style={styles.aboutHeaderCopy}>
+                    <Text style={styles.settingLabel}>Pravah Mobile</Text>
+                    <Text style={styles.aboutVersion}>Version {APP_VERSION}</Text>
+                  </View>
+                  <Pressable
+                    onPress={() => void Linking.openURL(CHANGELOG_URL)}
+                    hitSlop={12}
+                    accessibilityRole="link"
+                    accessibilityLabel="Open changelog on GitHub"
+                    style={({ pressed }) => [styles.versionPill, pressed && { opacity: 0.6 }]}
+                  >
+                    <Text style={styles.versionPillText}>What's new</Text>
+                  </Pressable>
                 </View>
-                <Pressable
-                  onPress={() => void Linking.openURL(CHANGELOG_URL)}
-                  hitSlop={12}
-                  accessibilityRole="link"
-                  accessibilityLabel="Open changelog on GitHub"
-                  style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={styles.inlineActionText}>What's new →</Text>
-                </Pressable>
-              </View>
 
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <Text style={styles.settingLabel}>Support</Text>
                 <Pressable
                   onPress={() => void Linking.openURL(ISSUES_URL)}
                   hitSlop={12}
                   accessibilityRole="link"
                   accessibilityLabel="Report an issue on GitHub"
-                  style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
+                  style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
                 >
-                  <Text style={styles.inlineActionText}>Report an issue →</Text>
+                  <Text style={styles.linkRowText}>Report an issue</Text>
+                  <Text style={styles.linkRowChevron}>↗</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => void Linking.openURL(REPO_URL)}
                   hitSlop={12}
                   accessibilityRole="link"
                   accessibilityLabel="Open Pravah repository on GitHub"
-                  style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
+                  style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
                 >
-                  <Text style={styles.inlineActionText}>GitHub repository →</Text>
+                  <Text style={styles.linkRowText}>GitHub repository</Text>
+                  <Text style={styles.linkRowChevron}>↗</Text>
                 </Pressable>
               </View>
 
@@ -1138,20 +1184,23 @@ export function SettingsSheet({
                   hitSlop={12}
                   accessibilityRole="button"
                   accessibilityLabel="Export tasks as JSON"
-                  style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
+                  style={({ pressed }) => [styles.softButton, pressed && { opacity: 0.6 }]}
                 >
-                  <Text style={styles.inlineActionText}>Export tasks as JSON →</Text>
+                  <Text style={styles.softButtonText}>Export tasks as JSON</Text>
                 </Pressable>
               </View>
 
               <View style={[styles.settingBlock, styles.sectionCard, styles.accountCard]}>
-                <Text style={styles.settingHelp}>Sign out if you want to switch Google accounts on this device.</Text>
+                <Text style={styles.settingLabel}>Signed in</Text>
+                <Text style={styles.settingHelp}>
+                  Sign out if you want to switch Google accounts on this device.
+                </Text>
                 <Pressable
                   onPress={onSignOut}
                   hitSlop={12}
                   accessibilityRole="button"
                   accessibilityLabel="Sign out"
-                  style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+                  style={({ pressed }) => [styles.signOutButton, pressed && { opacity: 0.6 }]}
                 >
                   <Text style={styles.signOutLink}>Sign out</Text>
                 </Pressable>
@@ -1275,8 +1324,12 @@ const styles = StyleSheet.create({
   sectionHeader: {
     ...typography.micro,
     color: colors.textMuted,
-    marginTop: spacing.lg,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    fontWeight: "600",
+    marginTop: spacing.xl,
     marginBottom: spacing.sm,
+    paddingHorizontal: spacing.xs,
   },
   settingBlock: {
     gap: spacing.sm,
@@ -1533,5 +1586,135 @@ const styles = StyleSheet.create({
   signOutLink: {
     color: colors.error,
     ...typography.micro,
+    fontWeight: "600",
+  },
+  signOutButton: {
+    alignSelf: "flex-start",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.error,
+    marginTop: spacing.xs,
+  },
+  codePill: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.bgCard,
+    borderRadius: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    marginTop: spacing.xs,
+  },
+  codePillText: {
+    ...typography.micro,
+    color: colors.textPrimary,
+    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+  },
+  sourceBlock: {
+    marginTop: spacing.sm,
+    gap: spacing.xs,
+  },
+  sourceHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusDotOk: {
+    backgroundColor: colors.success,
+  },
+  statusDotErr: {
+    backgroundColor: colors.error,
+  },
+  sourceName: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+  sourceStatus: {
+    ...typography.micro,
+    fontWeight: "600",
+  },
+  sourceStatusOk: {
+    color: colors.success,
+  },
+  sourceStatusErr: {
+    color: colors.error,
+  },
+  errorBlock: {
+    backgroundColor: colors.bgCard,
+    borderRadius: 8,
+    padding: spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  errorBlockText: {
+    ...typography.micro,
+    color: colors.textSecondary,
+    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+    lineHeight: 16,
+  },
+  softButton: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.accentSoft,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 10,
+    marginTop: spacing.xs,
+  },
+  softButtonDisabled: {
+    opacity: 0.5,
+  },
+  softButtonText: {
+    ...typography.micro,
+    color: colors.accent,
+    fontWeight: "600",
+  },
+  aboutHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  aboutHeaderCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  aboutVersion: {
+    ...typography.micro,
+    color: colors.textMuted,
+  },
+  versionPill: {
+    backgroundColor: colors.accentSoft,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 999,
+  },
+  versionPillText: {
+    ...typography.micro,
+    color: colors.accent,
+    fontWeight: "600",
+  },
+  linkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
+  },
+  linkRowText: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+  },
+  linkRowChevron: {
+    color: colors.textMuted,
+    fontSize: 16,
   },
 });
