@@ -39,9 +39,10 @@ export function CompletionLineChart({ series, rollingAvg, height = 180 }: Props)
     const padBottom = 12;
     const innerW = Math.max(1, width - padX * 2);
     const innerH = Math.max(1, height - padTop - padBottom);
-    const peak = Math.max(1, ...series.map((p) => p.count));
+    const peak = Math.max(...series.map((p) => p.count));
+    const scalePeak = Math.max(1, peak);
     const stepX = series.length > 1 ? innerW / (series.length - 1) : 0;
-    const yFor = (v: number) => padTop + innerH - (v / peak) * innerH;
+    const yFor = (v: number) => padTop + innerH - (v / scalePeak) * innerH;
 
     const pts = series.map((p, i) => ({ x: padX + i * stepX, y: yFor(p.count) }));
     const linePath = pts
