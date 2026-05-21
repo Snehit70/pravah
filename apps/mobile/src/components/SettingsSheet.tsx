@@ -421,6 +421,7 @@ export function SettingsSheet({
 
       <BottomSheetScrollView
         ref={scrollRef}
+        style={styles.settingsScroll}
         contentContainerStyle={[
           styles.settingsScrollContent,
           { paddingBottom: insets.bottom + spacing.section },
@@ -1316,6 +1317,9 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: 2,
     backgroundColor: colors.border,
+  },
+  settingsScroll: {
+    flex: 1,
   },
   settingsScrollContent: {
     paddingHorizontal: spacing.lg,
