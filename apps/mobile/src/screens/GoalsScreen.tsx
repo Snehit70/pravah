@@ -30,6 +30,21 @@ function formatDeadline(iso: string): string {
   return `${month} ${Number(m[3])}, ${m[1]}`;
 }
 
+type DeadlineStatus = "overdue" | "soon" | "normal";
+function deadlineStatus(iso: string): DeadlineStatus {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return "normal";
+  const deadline = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = (deadline.getTime() - today.getTime()) / 86400000;
+  if (diffDays < 0) return "overdue";
+  if (diffDays <= 7) return "soon";
+  return "normal";
+}
+
+const PRIORITY_RANK: Record<string, number> = { p1: 0, p2: 1, p3: 2 };
+
 const PRIORITY_LABEL: Record<"p1" | "p2" | "p3", { label: string; color: string }> = {
   p1: { label: "P1", color: "#e87a90" },
   p2: { label: "P2", color: "#d3a04b" },
@@ -70,6 +85,14 @@ export function GoalsScreen({ tabBarHeight, tasks }: GoalsScreenProps) {
     }
     return out;
   }, [tasks, links]);
+
+  const sortedGoals = useMemo(() => {
+    return [...goals].sort((a, b) => {
+      const pr = (PRIORITY_RANK[a.priority ?? ""] ?? 3) - (PRIORITY_RANK[b.priority ?? ""] ?? 3);
+      if (pr !== 0) return pr;
+      return (a.createdAt ?? 0) - (b.createdAt ?? 0);
+    });
+  }, [goals]);
 
   const progressByGoal = useMemo(() => {
     const out = new Map<string, GoalProgress>();
@@ -123,15 +146,15 @@ export function GoalsScreen({ tabBarHeight, tasks }: GoalsScreenProps) {
         paddingTop: spacing.md,
         paddingBottom: tabBarHeight + 84,
       }}
-      data={goals}
+      data={sortedGoals}
       keyExtractor={(item) => item.id}
       ListHeaderComponent={
-        goals.length > 0 ? (
-          <Text style={styles.sectionMeta}>{`${goals.length} active`}</Text>
+        sortedGoals.length > 0 ? (
+          <Text style={styles.sectionMeta}>{`${sortedGoals.length} active`}</Text>
         ) : null
       }
       ListEmptyComponent={isHydrated ? emptyBlock : null}
-      ListFooterComponent={goals.length > 0 ? footerHint : null}
+      ListFooterComponent={sortedGoals.length > 0 ? footerHint : null}
       renderItem={({ item }) => {
         const progress = progressByGoal.get(item.id) ?? { total: 0, done: 0, ratio: 0 };
         const linked = tasksByGoal.get(item.id) ?? [];
@@ -156,6 +179,12 @@ export function GoalsScreen({ tabBarHeight, tasks }: GoalsScreenProps) {
                   {hasTasks ? `${progress.done}/${progress.total}` : "—"}
                 </Text>
               </View>
+
+              {item.description ? (
+                <Text style={styles.goalDesc} numberOfLines={2}>
+                  {item.description}
+                </Text>
+              ) : null}
 
               <View style={styles.progressTrack}>
                 <View
@@ -182,9 +211,15 @@ export function GoalsScreen({ tabBarHeight, tasks }: GoalsScreenProps) {
                       </Text>
                     </View>
                   ) : null}
-                  {item.deadline ? (
-                    <Text style={styles.goalMeta}>{formatDeadline(item.deadline)}</Text>
-                  ) : null}
+                  {item.deadline ? (() => {
+                    const ds = deadlineStatus(item.deadline);
+                    const dlColor = ds === "overdue" ? colors.error : ds === "soon" ? "#d3a04b" : undefined;
+                    return (
+                      <Text style={[styles.goalMeta, dlColor ? { color: dlColor } : null]}>
+                        {ds === "overdue" ? `Overdue · ${formatDeadline(item.deadline)}` : formatDeadline(item.deadline)}
+                      </Text>
+                    );
+                  })() : null}
                   <Text style={styles.goalMeta}>
                     {hasTasks
                       ? isComplete
@@ -281,6 +316,10 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
+  },
+  goalDesc: {
+    ...typography.bodyMd,
+    color: colors.textSecondary,
   },
   progressTrack: {
     height: 4,
