@@ -14,7 +14,6 @@ import appJson from "../../app.json";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
-  BottomSheetView,
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
 import Animated, { SlideInLeft, SlideInRight } from "react-native-reanimated";
@@ -349,7 +348,7 @@ export function SettingsSheet({
         }
       }}
     >
-      <BottomSheetView style={styles.pinnedHeader}>
+      <View style={styles.pinnedHeader}>
         <View style={styles.settingsHeader}>
           <View style={{ flex: 1 }}>
             <Text style={styles.settingsHeadline}>Settings</Text>
@@ -395,7 +394,7 @@ export function SettingsSheet({
             );
           })}
         </ScrollView>
-      </BottomSheetView>
+      </View>
 
       <BottomSheetScrollView
         ref={scrollRef}
@@ -1245,7 +1244,7 @@ const styles = StyleSheet.create({
   tab: {
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     backgroundColor: colors.bgCard,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
