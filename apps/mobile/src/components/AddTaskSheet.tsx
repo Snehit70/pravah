@@ -14,6 +14,7 @@ import { TaskMetaFields } from "./TaskMetaFields";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { type TaskPriority } from "../lib/task-form";
 import { useGoals } from "../hooks/useGoals";
+import { goalsStore } from "../lib/goalsStorage";
 
 type ComposerMode = "inbox" | "today" | "tomorrow" | "nextweek";
 
@@ -57,6 +58,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [deadline, setDeadline] = useState("");
     const [mode, setMode] = useState<ComposerMode>("inbox");
     const [priority, setPriority] = useState<TaskPriority>(undefined);
+    const [kind, setKind] = useState<"task" | "goal">("task");
     const [goalId, setGoalId] = useState<string | undefined>(undefined);
     const [showGoalPicker, setShowGoalPicker] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -101,6 +103,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setGoalId(undefined);
       setShowGoalPicker(false);
       setShowDetails(false);
+      setKind("task");
       setError(null);
     };
 
@@ -118,6 +121,25 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setSaving(true);
       setError(null);
 
+      if (kind === "goal") {
+        const created = goalsStore.add({
+          text: trimmed,
+          description: description.trim() || undefined,
+          deadline: deadlineResult.value,
+          priority,
+        });
+        setSaving(false);
+        if (!created) {
+          setError("You already have a goal with that name.");
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          return;
+        }
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        reset();
+        bottomSheetRef.current?.close();
+        return;
+      }
+
       const success = await onAdd({
         title: trimmed,
         description: description.trim() || undefined,
@@ -133,7 +155,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         reset();
         bottomSheetRef.current?.close();
       }
-    }, [title, description, deadline, mode, priority, goalId, saving, onAdd, isValidDeadline]);
+    }, [title, description, deadline, mode, priority, goalId, kind, saving, onAdd, isValidDeadline]);
 
     const renderBackdrop = useCallback(
       (props: BottomSheetBackdropProps) => (
@@ -192,7 +214,34 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           showsVerticalScrollIndicator={false}
         >
           <Text style={styles.sheetKicker}>Capture</Text>
-          <Text style={styles.sheetTitle}>New task</Text>
+          <View style={styles.kindRow}>
+            <Pressable
+              onPress={() => setKind("task")}
+              hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: kind === "task" }}
+              accessibilityLabel="New task"
+              style={({ pressed }) => [styles.kindItem, pressed && { opacity: 0.6 }]}
+            >
+              <Text style={[styles.kindText, kind === "task" && styles.kindTextActive]}>
+                New task
+              </Text>
+              <View style={[styles.kindRule, kind === "task" && styles.kindRuleActive]} />
+            </Pressable>
+            <Pressable
+              onPress={() => setKind("goal")}
+              hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: kind === "goal" }}
+              accessibilityLabel="New goal"
+              style={({ pressed }) => [styles.kindItem, pressed && { opacity: 0.6 }]}
+            >
+              <Text style={[styles.kindText, kind === "goal" && styles.kindTextActive]}>
+                New goal
+              </Text>
+              <View style={[styles.kindRule, kind === "goal" && styles.kindRuleActive]} />
+            </Pressable>
+          </View>
 
           <BottomSheetTextInput
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -202,7 +251,9 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               setTitle(text);
               setError(null);
             }}
-            placeholder="What needs to be done?"
+            placeholder={
+              kind === "goal" ? "What do you want to achieve?" : "What needs to be done?"
+            }
             placeholderTextColor={colors.textMuted}
             style={styles.titleInput}
             returnKeyType="done"
@@ -210,7 +261,9 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           />
 
           {/* Mode — segmented control as two mono labels with an underline
-              under the active segment. Mirrors the bottom-tab language. */}
+              under the active segment. Tasks only; goals are open-ended and
+              don't get scheduled into the day. */}
+          {kind === "task" ? (
           <View style={styles.modeRow}>
             {MODE_OPTIONS.map((option) => (
               <Pressable
@@ -239,8 +292,20 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               <Text style={styles.detailsToggleText}>{showDetails ? "Less" : "More"}</Text>
             </Pressable>
           </View>
+          ) : (
+            <View style={styles.goalKindRow}>
+              <View style={{ flex: 1 }} />
+              <Pressable
+                onPress={() => setShowDetails(!showDetails)}
+                style={({ pressed }) => [styles.detailsToggle, pressed && { opacity: 0.6 }]}
+                hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+              >
+                <Text style={styles.detailsToggleText}>{showDetails ? "Less" : "More"}</Text>
+              </Pressable>
+            </View>
+          )}
 
-          {goals.length > 0 ? (
+          {kind === "task" && goals.length > 0 ? (
             <View style={styles.goalSection}>
               <Pressable
                 onPress={() => setShowGoalPicker((s) => !s)}
@@ -361,7 +426,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
             ]}
           >
             <Text style={[styles.primaryButtonText, !canSubmit && styles.primaryButtonTextDisabled]}>
-              {saving ? "Adding…" : "Add task"}
+              {saving ? "Adding…" : kind === "goal" ? "Add goal" : "Add task"}
             </Text>
           </Pressable>
 
@@ -415,6 +480,39 @@ const styles = StyleSheet.create({
     ...typography.headline,
     color: colors.textPrimary,
     marginTop: -spacing.sm,
+  },
+
+  // Kind toggle — two large segments using the same underline language as
+  // the mode row, but headline-sized so it replaces the static page title.
+  kindRow: {
+    flexDirection: "row",
+    gap: spacing.lg,
+    marginTop: -spacing.sm,
+  },
+  kindItem: {
+    alignItems: "flex-start",
+    paddingBottom: 4,
+  },
+  kindText: {
+    ...typography.headline,
+    color: colors.textMuted,
+  },
+  kindTextActive: {
+    color: colors.textPrimary,
+  },
+  kindRule: {
+    marginTop: 6,
+    height: 2,
+    width: 24,
+    borderRadius: 1,
+    backgroundColor: "transparent",
+  },
+  kindRuleActive: {
+    backgroundColor: colors.accent,
+  },
+  goalKindRow: {
+    flexDirection: "row",
+    alignItems: "center",
   },
 
   // Title input — bottom rule only, no bordered box.

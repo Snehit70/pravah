@@ -3,9 +3,24 @@ import { classifyError, mobileLogger } from "./logger";
 
 const STORAGE_KEY = "pravah_long_term_goals_v1";
 
+export type GoalPriority = "p1" | "p2" | "p3";
+
 export type GoalItem = {
   id: string;
   text: string;
+  description?: string;
+  /** Target date in YYYY-MM-DD. Optional — goals without one are open-ended. */
+  deadline?: string;
+  priority?: GoalPriority;
+  /** ms epoch. Optional because legacy goals saved before this field exists. */
+  createdAt?: number;
+};
+
+export type GoalDraft = {
+  text: string;
+  description?: string;
+  deadline?: string;
+  priority?: GoalPriority;
 };
 
 function makeId(): string {
@@ -17,13 +32,21 @@ function makeId(): string {
 
 function sanitize(value: unknown): GoalItem[] {
   if (!Array.isArray(value)) return [];
-  return value.filter(
-    (entry): entry is GoalItem =>
-      !!entry &&
-      typeof entry === "object" &&
-      typeof (entry as { id?: unknown }).id === "string" &&
-      typeof (entry as { text?: unknown }).text === "string"
-  );
+  const out: GoalItem[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as Record<string, unknown>;
+    if (typeof e.id !== "string" || typeof e.text !== "string") continue;
+    const goal: GoalItem = { id: e.id, text: e.text };
+    if (typeof e.description === "string") goal.description = e.description;
+    if (typeof e.deadline === "string") goal.deadline = e.deadline;
+    if (e.priority === "p1" || e.priority === "p2" || e.priority === "p3") {
+      goal.priority = e.priority;
+    }
+    if (typeof e.createdAt === "number") goal.createdAt = e.createdAt;
+    out.push(goal);
+  }
+  return out;
 }
 
 export type GoalsLoadResult =
@@ -49,8 +72,15 @@ export async function saveGoals(goals: GoalItem[]): Promise<void> {
   }
 }
 
-export function createGoal(text: string): GoalItem {
-  return { id: makeId(), text };
+export function createGoal(draft: GoalDraft | string): GoalItem {
+  if (typeof draft === "string") {
+    return { id: makeId(), text: draft, createdAt: Date.now() };
+  }
+  const goal: GoalItem = { id: makeId(), text: draft.text, createdAt: Date.now() };
+  if (draft.description) goal.description = draft.description;
+  if (draft.deadline) goal.deadline = draft.deadline;
+  if (draft.priority) goal.priority = draft.priority;
+  return goal;
 }
 
 /**
@@ -92,13 +122,22 @@ export const goalsStore = {
       listeners.delete(listener);
     };
   },
-  /** Returns the created goal, or null when `text` is empty or a duplicate. */
-  add(text: string): GoalItem | null {
-    const trimmed = text.trim();
-    if (!trimmed) return null;
-    const dup = cached.find((g) => g.text.toLowerCase() === trimmed.toLowerCase());
+  /** Returns the created goal, or null when text is empty or a duplicate. */
+  add(draft: GoalDraft | string): GoalItem | null {
+    const text = typeof draft === "string" ? draft.trim() : draft.text.trim();
+    if (!text) return null;
+    const dup = cached.find((g) => g.text.toLowerCase() === text.toLowerCase());
     if (dup) return null;
-    const goal = createGoal(trimmed);
+    const goal = createGoal(
+      typeof draft === "string"
+        ? text
+        : {
+            text,
+            description: draft.description?.trim() || undefined,
+            deadline: draft.deadline?.trim() || undefined,
+            priority: draft.priority,
+          },
+    );
     cached = [...cached, goal];
     void saveGoals(cached);
     emit();
