@@ -155,6 +155,8 @@ vi.mock("@gorhom/bottom-sheet", () => {
         placeholder,
         "data-testid": "kairo-input",
       }),
+    BottomSheetScrollView: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
+      React.createElement("div", { "data-testid": "bottom-sheet-scroll-view" }, children),
     BottomSheetFlatList: ({
       data,
       renderItem,

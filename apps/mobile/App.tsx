@@ -151,7 +151,7 @@ function MobileApp() {
     isAllTasksReady,
   } = useTaskQueries({
     isAuthenticated: Boolean(session),
-    includeAllTasks: isKairoActive || activeTab === "insights",
+    includeAllTasks: isKairoActive || activeTab === "insights" || activeTab === "goals",
   });
 
   const hasLiveWorkspaceData = !isInboxLoading && !isTimelineLoading && !isCompletedLoading;

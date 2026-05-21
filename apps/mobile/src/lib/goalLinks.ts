@@ -79,17 +79,26 @@ export const goalLinksStore = {
   },
   setLink(taskId: string, goalId: string | null): void {
     if (!taskId) return;
-    if (goalId == null) {
-      if (!(taskId in cached)) return;
-      const next = { ...cached };
-      delete next[taskId];
-      cached = next;
+    const apply = () => {
+      if (goalId == null) {
+        if (!(taskId in cached)) return;
+        const next = { ...cached };
+        delete next[taskId];
+        cached = next;
+      } else {
+        if (cached[taskId] === goalId) return;
+        cached = { ...cached, [taskId]: goalId };
+      }
+      void persist();
+      emit();
+    };
+    // Await hydration so we never clobber links loaded from AsyncStorage
+    // with a write that races the initial load on cold launch.
+    if (hydrated) {
+      apply();
     } else {
-      if (cached[taskId] === goalId) return;
-      cached = { ...cached, [taskId]: goalId };
+      void ensureHydrated().then(apply);
     }
-    void persist();
-    emit();
   },
   /** Remove every link pointing at this goal — used when the goal is deleted. */
   clearGoal(goalId: string): void {
