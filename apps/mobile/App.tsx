@@ -262,15 +262,14 @@ function MobileApp() {
         ? shouldUseWorkspaceSnapshot
           ? false
           : isInboxLoading
-        : activeTab === "goals"
-          ? shouldUseWorkspaceSnapshot
-            ? false
-            : !isAllTasksReady
         : activeTab === "insights"
           ? shouldUseWorkspaceSnapshot
             ? false
             : isCompletedLoading || !isAllTasksReady
           : false;
+
+  const isGoalsTaskDataLoading =
+    activeTab === "goals" && !shouldUseWorkspaceSnapshot && !isAllTasksReady;
 
   const isBootShellLoading = shouldRenderOptimisticShell && !shouldUseWorkspaceSnapshot && !session;
 
@@ -869,9 +868,11 @@ function MobileApp() {
 
       {activeTab === "goals" ? (
         <ScreenErrorBoundary screenName="Goals">
-          {!isActiveListLoading && !isBootShellLoading ? (
-            <GoalsScreen tabBarHeight={tabBarHeight} tasks={allWorkspaceTasks} />
-          ) : null}
+          <GoalsScreen
+            tabBarHeight={tabBarHeight}
+            tasks={allWorkspaceTasks}
+            isTaskDataLoading={isGoalsTaskDataLoading}
+          />
         </ScreenErrorBoundary>
       ) : null}
 

@@ -54,6 +54,7 @@ const PRIORITY_LABEL: Record<"p1" | "p2" | "p3", { label: string; color: string 
 type GoalsScreenProps = {
   tabBarHeight: number;
   tasks: MobileTask[];
+  isTaskDataLoading?: boolean;
 };
 
 type GoalProgress = {
@@ -62,7 +63,7 @@ type GoalProgress = {
   ratio: number;
 };
 
-export function GoalsScreen({ tabBarHeight, tasks }: GoalsScreenProps) {
+export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false }: GoalsScreenProps) {
   const confirm = useConfirm();
   const { goals, isHydrated } = useGoals();
   const links = useGoalLinks();
@@ -160,6 +161,7 @@ export function GoalsScreen({ tabBarHeight, tasks }: GoalsScreenProps) {
         const linked = tasksByGoal.get(item.id) ?? [];
         const isExpanded = expandedId === item.id;
         const hasTasks = progress.total > 0;
+        const showLinkedLoading = isTaskDataLoading && !hasTasks;
         const isComplete = hasTasks && progress.done === progress.total;
         return (
           <View style={[styles.goalCard, isComplete && styles.goalCardComplete]}>
@@ -176,7 +178,7 @@ export function GoalsScreen({ tabBarHeight, tasks }: GoalsScreenProps) {
                   {item.text}
                 </Text>
                 <Text style={styles.goalCount}>
-                  {hasTasks ? `${progress.done}/${progress.total}` : "—"}
+                  {showLinkedLoading ? "…" : hasTasks ? `${progress.done}/${progress.total}` : "—"}
                 </Text>
               </View>
 
@@ -190,7 +192,8 @@ export function GoalsScreen({ tabBarHeight, tasks }: GoalsScreenProps) {
                 <View
                   style={[
                     styles.progressFill,
-                    { width: `${Math.round(progress.ratio * 100)}%` },
+                    { width: `${showLinkedLoading ? 30 : Math.round(progress.ratio * 100)}%` },
+                    showLinkedLoading && styles.progressFillLoading,
                     isComplete && styles.progressFillComplete,
                   ]}
                 />
@@ -221,7 +224,9 @@ export function GoalsScreen({ tabBarHeight, tasks }: GoalsScreenProps) {
                     );
                   })() : null}
                   <Text style={styles.goalMeta}>
-                    {hasTasks
+                    {showLinkedLoading
+                      ? "Loading linked tasks..."
+                      : hasTasks
                       ? isComplete
                         ? "All done"
                         : `${progress.total - progress.done} open`
@@ -333,6 +338,9 @@ const styles = StyleSheet.create({
   },
   progressFillComplete: {
     backgroundColor: colors.success,
+  },
+  progressFillLoading: {
+    opacity: 0.45,
   },
   goalMetaRow: {
     flexDirection: "row",
