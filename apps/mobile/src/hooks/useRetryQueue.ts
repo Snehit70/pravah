@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import * as Haptics from "expo-haptics";
+import { haptic } from "../lib/haptic";
 import { classifyError, createActionId, mobileLogger } from "../lib/logger";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
 import { hydrateRetryQueue, prepareRetryQueueForPersist } from "../lib/retry-queue-utils";
@@ -159,7 +159,7 @@ export function useRetryQueue({
 
     if (failed === 0) {
       onRetryComplete("Retry complete");
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptic.success();
     }
 
     mobileLogger.info("retry_run_finished", {

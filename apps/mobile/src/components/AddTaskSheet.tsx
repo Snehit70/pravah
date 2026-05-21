@@ -7,7 +7,7 @@ import BottomSheet, {
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
-import * as Haptics from "expo-haptics";
+import { haptic } from "../lib/haptic";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TaskMetaFields } from "./TaskMetaFields";
@@ -114,7 +114,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       const deadlineResult = isValidDeadline(deadline);
       if (deadlineResult.error) {
         setError(deadlineResult.error);
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptic.error();
         return;
       }
 
@@ -131,10 +131,10 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         setSaving(false);
         if (!created) {
           setError("You already have a goal with that name.");
-          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          haptic.error();
           return;
         }
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        haptic.medium();
         reset();
         bottomSheetRef.current?.close();
         return;

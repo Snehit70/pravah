@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useMutation, useQuery } from "convex/react";
-import * as Haptics from "expo-haptics";
+import { haptic } from "../lib/haptic";
 import { api } from "../../../../convex/_generated/api";
 import type { Doc, Id } from "../../../../convex/_generated/dataModel";
 import { colors, radii, spacing, typography } from "../theme/tokens";
@@ -78,12 +78,12 @@ export function GmailReviewSection({ enabled, showToast }: Props) {
           scheduledDate,
           clearScheduledDate: clearScheduledDate || undefined,
         });
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        haptic.success();
         showToast({ kind: "info", message: "Review item approved." });
       } catch (error) {
         mobileLogger.warn("review_approve_failed", { errorType: classifyError(error) });
         showToast({ kind: "error", message: "Could not approve. Try again." });
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptic.error();
       } finally {
         markBusy(item._id, false);
       }
@@ -97,12 +97,12 @@ export function GmailReviewSection({ enabled, showToast }: Props) {
       markBusy(item._id, true);
       try {
         await rejectReviewItem({ reviewId: item._id });
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        haptic.light();
         showToast({ kind: "info", message: "Review item rejected." });
       } catch (error) {
         mobileLogger.warn("review_reject_failed", { errorType: classifyError(error) });
         showToast({ kind: "error", message: "Could not reject. Try again." });
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptic.error();
       } finally {
         markBusy(item._id, false);
       }

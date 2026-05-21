@@ -6,7 +6,7 @@ import BottomSheet, {
   BottomSheetView,
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
-import * as Haptics from "expo-haptics";
+import { haptic } from "../lib/haptic";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "./TaskCard";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -78,7 +78,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         });
         setError(null);
         bottomSheetRef.current?.expand();
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        haptic.light();
       },
       close: () => {
         bottomSheetRef.current?.close();
@@ -91,7 +91,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       const deadlineResult = isValidDeadline(deadline);
       if (deadlineResult.error) {
         setError(deadlineResult.error);
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptic.error();
         return;
       }
 

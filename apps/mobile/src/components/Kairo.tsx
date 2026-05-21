@@ -63,6 +63,7 @@ import { useKairoChats } from "../hooks/useKairoChats";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { KairoChatList } from "./KairoChatList";
 import { KairoMarkdown } from "./KairoMarkdown";
+import { haptic } from "../lib/haptic";
 
 export type KairoSheetRef = {
   open: () => void;
@@ -383,6 +384,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || thinking) return;
+      haptic.light();
 
       // Guard against sending with an empty or partial workspace snapshot.
       // The full-corpus query is cold-started when Kairo opens, so a user who

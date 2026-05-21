@@ -31,7 +31,7 @@ export async function initializeNotificationsAsync(): Promise<void> {
   await Notifications.setNotificationChannelAsync(DAILY_REMINDER_CHANNEL_ID, {
     name: "Daily reminders",
     description: "Daily planning reminder notifications",
-    importance: Notifications.AndroidImportance.DEFAULT,
+    importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 200, 150, 200],
     lightColor: "#c88445",
     sound: "default",

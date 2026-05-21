@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Keyboard, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import * as Haptics from "expo-haptics";
+import { haptic } from "../lib/haptic";
 import { colors, spacing, typography } from "../theme/tokens";
 import {
   formatLocalDate,
@@ -60,7 +60,7 @@ export function TaskMetaFields({
         <Pressable
           onPress={() => {
             onPriorityChange(nextPriority(priority));
-            void Haptics.selectionAsync();
+            haptic.selection();
           }}
           style={({ pressed }) => [styles.metaField, pressed && { opacity: 0.6 }]}
           hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}

@@ -12,9 +12,17 @@
  * comment). Delete-and-readd is the manual reorder path until that's fixed.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import Animated, { FadeIn } from "react-native-reanimated";
+import { haptic } from "../lib/haptic";
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { goalsStore, type GoalItem } from "../lib/goalsStorage";
 import { goalLinksStore } from "../lib/goalLinks";
@@ -50,6 +58,39 @@ const PRIORITY_LABEL: Record<"p1" | "p2" | "p3", { label: string; color: string 
   p2: { label: "P2", color: "#d3a04b" },
   p3: { label: "P3", color: "#4ec9b0" },
 };
+
+function GoalProgressBar({
+  ratio,
+  isComplete,
+  isLoading,
+}: {
+  ratio: number;
+  isComplete: boolean;
+  isLoading?: boolean;
+}) {
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    progress.value = withTiming(ratio, {
+      duration: 600,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [ratio, progress]);
+  const fillStyle = useAnimatedStyle(() => ({
+    width: `${(isLoading ? 0.3 : progress.value) * 100}%` as `${number}%`,
+  }));
+  return (
+    <View style={styles.progressTrack}>
+      <Animated.View
+        style={[
+          styles.progressFill,
+          isLoading && styles.progressFillLoading,
+          isComplete && styles.progressFillComplete,
+          fillStyle,
+        ]}
+      />
+    </View>
+  );
+}
 
 type GoalsScreenProps = {
   tabBarHeight: number;
@@ -122,6 +163,7 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false }: 
       if (!ok) return;
       goalLinksStore.clearGoal(goal.id);
       goalsStore.remove(goal.id);
+      haptic.success();
     },
     [confirm, tasksByGoal],
   );
@@ -156,7 +198,7 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false }: 
       }
       ListEmptyComponent={isHydrated ? emptyBlock : null}
       ListFooterComponent={sortedGoals.length > 0 ? footerHint : null}
-      renderItem={({ item }) => {
+      renderItem={({ item, index }) => {
         const progress = progressByGoal.get(item.id) ?? { total: 0, done: 0, ratio: 0 };
         const linked = tasksByGoal.get(item.id) ?? [];
         const isExpanded = expandedId === item.id;
@@ -164,7 +206,8 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false }: 
         const showLinkedLoading = isTaskDataLoading && !hasTasks;
         const isComplete = hasTasks && progress.done === progress.total;
         return (
-          <View style={[styles.goalCard, isComplete && styles.goalCardComplete]}>
+          <Animated.View entering={FadeInDown.duration(280).delay(index * 50)}>
+            <View style={[styles.goalCard, isComplete && styles.goalCardComplete]}>
             <Pressable
               onPress={() => setExpandedId(isExpanded ? null : item.id)}
               onLongPress={() => void handleDelete(item)}
@@ -188,16 +231,11 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false }: 
                 </Text>
               ) : null}
 
-              <View style={styles.progressTrack}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    { width: `${showLinkedLoading ? 30 : Math.round(progress.ratio * 100)}%` },
-                    showLinkedLoading && styles.progressFillLoading,
-                    isComplete && styles.progressFillComplete,
-                  ]}
-                />
-              </View>
+              <GoalProgressBar
+                ratio={progress.ratio}
+                isComplete={isComplete}
+                isLoading={showLinkedLoading}
+              />
 
               <View style={styles.goalMetaRow}>
                 <View style={styles.goalMetaLeft}>
@@ -271,7 +309,8 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false }: 
                 })}
               </View>
             ) : null}
-          </View>
+            </View>
+          </Animated.View>
         );
       }}
       showsVerticalScrollIndicator={false}

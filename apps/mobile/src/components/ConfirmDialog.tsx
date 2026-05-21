@@ -31,6 +31,7 @@ import {
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { useReducedMotion } from "../hooks/useReducedMotion";
+import { haptic } from "../lib/haptic";
 import {
   ConfirmContext,
   type ConfirmFn,
@@ -130,7 +131,10 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                   </Text>
                 </Pressable>
                 <Pressable
-                  onPress={() => close(true)}
+                  onPress={() => {
+                    pending.options.destructive ? haptic.error() : haptic.success();
+                    close(true);
+                  }}
                   hitSlop={8}
                   accessibilityRole="button"
                   accessibilityLabel={pending.options.confirmLabel ?? "Confirm"}
