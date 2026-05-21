@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
-import * as Haptics from "expo-haptics";
+import { haptic } from "../lib/haptic";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -73,7 +73,7 @@ function BottomTabBarInner({ active, onChange, bottomInset = spacing.md }: Botto
   const handlePress = useCallback(
     (tab: TabKey) => {
       if (tab !== active) {
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        haptic.light();
         onChange(tab);
       }
     },

@@ -1,5 +1,5 @@
 import { useCallback, useRef, type Dispatch, type SetStateAction } from "react";
-import * as Haptics from "expo-haptics";
+import { haptic } from "../lib/haptic";
 import { useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -44,19 +44,15 @@ export function useTaskMutations({
         kind: "error",
         message: canRetry ? `${message} Queued for retry.` : message,
       });
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptic.error();
     },
     [showToast]
   );
 
   const triggerSuccessHaptic = useCallback((kind: SuccessHaptic) => {
-    if (kind === "notification") {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      return;
-    }
-    void Haptics.impactAsync(
-      kind === "medium" ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light
-    );
+    if (kind === "notification") { haptic.success(); return; }
+    if (kind === "medium") { haptic.medium(); return; }
+    haptic.light();
   }, []);
 
   const completeTaskMutation = useMutation(api.tasks.completeTask);
@@ -293,7 +289,7 @@ export function useTaskMutations({
 
       try {
         await reorderTasksMutation({ date: dateKey, taskIds });
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        haptic.light();
       } catch {
         setOptimisticTasks(stateRef.current);
         showToast({ kind: "error", message: "Could not save timeline order." });
@@ -327,7 +323,7 @@ export function useTaskMutations({
 
       try {
         await reorderInboxTasksMutation({ taskIds });
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        haptic.light();
       } catch {
         setOptimisticTasks(stateRef.current);
         showToast({ kind: "error", message: "Could not save inbox order." });
@@ -358,7 +354,7 @@ export function useTaskMutations({
         reordered.splice(neighborIdx, 0, moved);
         if (hasPriorityBoundaryViolation(scoped, reordered)) {
           showToast({ kind: "error", message: "Drag only within the same priority group." });
-          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          haptic.error();
           return;
         }
       }

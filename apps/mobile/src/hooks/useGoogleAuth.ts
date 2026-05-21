@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
-import * as Haptics from "expo-haptics";
+import { haptic } from "../lib/haptic";
 import { authClient } from "../lib/auth-client";
 import { classifyError, createActionId, mobileLogger } from "../lib/logger";
 
@@ -78,7 +78,7 @@ export function useGoogleAuth({
             : "unknown";
 
       showToast({ kind: "error", message: "Google sign-in failed. Check OAuth client setup." });
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptic.error();
       mobileLogger.error("google_signin_failed", {
         actionId,
         elapsedMs: Date.now() - startedAt,
@@ -94,7 +94,7 @@ export function useGoogleAuth({
 
   const handleSignOut = useCallback(() => {
     mobileLogger.info("signout_confirmed");
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    haptic.warning();
     void authClient.signOut();
     // Clear the native Google account so the next sign-in prompts account
     // selection rather than silently reusing the cached account.
