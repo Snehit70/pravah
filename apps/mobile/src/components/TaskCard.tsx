@@ -56,6 +56,8 @@ type TaskCardProps = {
    *  unused — drag-to-reorder is disabled while RNDFL is incompatible with
    *  Reanimated 4. The prop is kept so the wiring stays in place. */
   onDragHandlePress?: () => void;
+  /** Name of the goal this task is linked to, if any. */
+  linkedGoalName?: string;
 };
 
 const TASK_CARD_RADIUS = radii.lg;
@@ -109,6 +111,7 @@ function TaskCardInner({
   onReorder,
   onEdit,
   onDragHandlePress,
+  linkedGoalName,
 }: TaskCardProps) {
   const isCompleted = task.status === "completed";
   const isInboxTask = task.status === "inbox";
@@ -385,6 +388,11 @@ function TaskCardInner({
               {task.description}
             </Text>
           ) : null}
+          {linkedGoalName ? (
+            <Text style={styles.goalTag} numberOfLines={1} ellipsizeMode="tail">
+              ◈ {linkedGoalName}
+            </Text>
+          ) : null}
         </View>
 
         {/* Metadata column — right-aligned mono micro stack. Renders nothing
@@ -497,6 +505,12 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     ...typography.bodyMd,
     marginTop: 2,
+  },
+  goalTag: {
+    ...typography.micro,
+    color: colors.accent,
+    marginTop: 4,
+    opacity: 0.8,
   },
   // Right-aligned metadata column. Stays narrow so the title gets the
   // horizontal real estate. Each micro line stacks tightly.
