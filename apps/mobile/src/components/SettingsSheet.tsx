@@ -26,6 +26,7 @@ import { useUserPreferences } from "../hooks/useUserPreferences";
 import { getOrCreateDeviceId } from "../lib/deviceIdentity";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
 import * as SecureStore from "expo-secure-store";
+import * as Clipboard from "expo-clipboard";
 import { classifyError, mobileLogger } from "../lib/logger";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { isWithinQuietHours, type NotificationPermissionState } from "../lib/notifications";
@@ -254,6 +255,19 @@ export function SettingsSheet({
     if (activeSection !== "more" || deviceId) return;
     void getOrCreateDeviceId().then(setDeviceId);
   }, [activeSection, deviceId]);
+
+  const handleCopy = useCallback(
+    async (value: string, label: string) => {
+      try {
+        await Clipboard.setStringAsync(value);
+        showToast({ kind: "info", message: `${label} copied.` });
+      } catch (error) {
+        mobileLogger.warn("clipboard_copy_failed", { errorType: classifyError(error) });
+        showToast({ kind: "error", message: `Could not copy ${label.toLowerCase()}.` });
+      }
+    },
+    [showToast]
+  );
 
   const handleClearRetryQueue = useCallback(async () => {
     if (isClearingRetryQueue) return;
@@ -1031,12 +1045,28 @@ export function SettingsSheet({
               <View style={[styles.settingBlock, styles.sectionCard]}>
                 <Text style={styles.settingLabel}>Device</Text>
                 <Text style={styles.settingHelp}>
-                  Share this ID with support when reporting a bug. Long-press to copy.
+                  Share this ID with support when reporting a bug.
                 </Text>
-                <View style={styles.codePill}>
-                  <Text selectable style={styles.codePillText}>
-                    {deviceId ?? "Loading…"}
-                  </Text>
+                <View style={styles.copyRow}>
+                  <View style={[styles.codePill, styles.copyRowPill]}>
+                    <Text selectable style={styles.codePillText} numberOfLines={1}>
+                      {deviceId ?? "Loading…"}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() => deviceId && void handleCopy(deviceId, "Device ID")}
+                    disabled={!deviceId}
+                    hitSlop={12}
+                    accessibilityRole="button"
+                    accessibilityLabel="Copy device ID"
+                    style={({ pressed }) => [
+                      styles.copyButton,
+                      pressed && { opacity: 0.6 },
+                      !deviceId && styles.softButtonDisabled,
+                    ]}
+                  >
+                    <Text style={styles.copyButtonText}>Copy</Text>
+                  </Pressable>
                 </View>
               </View>
 
@@ -1063,6 +1093,17 @@ export function SettingsSheet({
                     >
                       {calendarLastError ? "Error" : "Healthy"}
                     </Text>
+                    {calendarLastError ? (
+                      <Pressable
+                        onPress={() => void handleCopy(calendarLastError, "Calendar error")}
+                        hitSlop={12}
+                        accessibilityRole="button"
+                        accessibilityLabel="Copy Google Calendar error"
+                        style={({ pressed }) => [styles.copyChip, pressed && { opacity: 0.6 }]}
+                      >
+                        <Text style={styles.copyChipText}>Copy</Text>
+                      </Pressable>
+                    ) : null}
                   </View>
                   {calendarLastError ? (
                     <View style={styles.errorBlock}>
@@ -1090,6 +1131,17 @@ export function SettingsSheet({
                     >
                       {gmailLastError ? "Error" : "Healthy"}
                     </Text>
+                    {gmailLastError ? (
+                      <Pressable
+                        onPress={() => void handleCopy(gmailLastError, "Gmail error")}
+                        hitSlop={12}
+                        accessibilityRole="button"
+                        accessibilityLabel="Copy Gmail error"
+                        style={({ pressed }) => [styles.copyChip, pressed && { opacity: 0.6 }]}
+                      >
+                        <Text style={styles.copyChipText}>Copy</Text>
+                      </Pressable>
+                    ) : null}
                   </View>
                   {gmailLastError ? (
                     <View style={styles.errorBlock}>
@@ -1716,5 +1768,39 @@ const styles = StyleSheet.create({
   linkRowChevron: {
     color: colors.textMuted,
     fontSize: 16,
+  },
+  copyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  copyRowPill: {
+    flex: 1,
+    marginTop: 0,
+  },
+  copyButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 10,
+    backgroundColor: colors.accentSoft,
+  },
+  copyButtonText: {
+    ...typography.micro,
+    color: colors.accent,
+    fontWeight: "600",
+  },
+  copyChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    backgroundColor: colors.bgCard,
+  },
+  copyChipText: {
+    ...typography.micro,
+    color: colors.textSecondary,
+    fontWeight: "600",
   },
 });
