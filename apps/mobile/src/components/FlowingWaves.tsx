@@ -94,4 +94,3 @@ export function FlowingWaves() {
   );
 }
 
-const styles = StyleSheet.create({});

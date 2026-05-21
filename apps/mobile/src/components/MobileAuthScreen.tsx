@@ -12,7 +12,7 @@ import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
 import { colors, shadow, spacing, typography } from "../theme/tokens";
 import { BrandMark } from "./BrandMark";
 
-const authBg = require("../../assets/auth-bg.png");
+import authBg from "../../assets/auth-bg.png";
 
 type MobileAuthScreenProps = {
   canGoogleSignIn: boolean;
