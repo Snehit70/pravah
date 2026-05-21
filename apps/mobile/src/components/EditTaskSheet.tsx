@@ -28,6 +28,7 @@ import { TaskMetaFields } from "./TaskMetaFields";
 import { type TaskPriority } from "../lib/task-form";
 import { useConfirm } from "../hooks/useConfirm";
 import { useGoalLinks, useGoals } from "../hooks/useGoals";
+import { goalLinksStore } from "../lib/goalLinks";
 
 export type EditTaskSheetRef = {
   open: (task: MobileTask) => void;
@@ -213,8 +214,17 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
               <Text style={styles.sheetTitle}>Edit task</Text>
 
               {linkedGoalName ? (
-                <View style={styles.goalBadge}>
-                  <Text style={styles.goalBadgeText} numberOfLines={1}>◈ {linkedGoalName}</Text>
+                <View style={styles.goalRow}>
+                  <View style={styles.goalBadge}>
+                    <Text style={styles.goalBadgeText} numberOfLines={1}>◈ {linkedGoalName}</Text>
+                  </View>
+                  <Pressable
+                    onPress={() => { goalLinksStore.setLink(String(taskId), null); haptic.light(); }}
+                    hitSlop={8}
+                    style={({ pressed }) => [styles.unlinkBtn, pressed && { opacity: 0.6 }]}
+                  >
+                    <Text style={styles.unlinkText}>Unlink</Text>
+                  </Pressable>
                 </View>
               ) : null}
 
@@ -384,8 +394,12 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     marginTop: -spacing.sm,
   },
+  goalRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
   goalBadge: {
-    alignSelf: "flex-start",
     backgroundColor: colors.accentSoft,
     borderRadius: radii.md,
     paddingHorizontal: spacing.sm,
@@ -395,6 +409,14 @@ const styles = StyleSheet.create({
     ...typography.micro,
     color: colors.accent,
     fontWeight: "600",
+  },
+  unlinkBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: spacing.xs,
+  },
+  unlinkText: {
+    ...typography.micro,
+    color: colors.textMuted,
   },
   titleInput: {
     color: colors.textPrimary,
