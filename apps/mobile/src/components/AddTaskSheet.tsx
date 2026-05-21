@@ -176,7 +176,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       <BottomSheet
         ref={bottomSheetRef}
         index={-1}
-        snapPoints={showDetails ? ["72%"] : ["52%"]}
+        snapPoints={showDetails || kind === "goal" ? ["72%"] : ["52%"]}
         detached
         bottomInset={sheetBottomInset}
         style={styles.sheetContainer}
@@ -216,7 +216,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           <Text style={styles.sheetKicker}>Capture</Text>
           <View style={styles.kindRow}>
             <Pressable
-              onPress={() => setKind("task")}
+              onPress={() => { setKind("task"); setShowDetails(false); }}
               hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
               accessibilityRole="button"
               accessibilityState={{ selected: kind === "task" }}
@@ -229,7 +229,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               <View style={[styles.kindRule, kind === "task" && styles.kindRuleActive]} />
             </Pressable>
             <Pressable
-              onPress={() => setKind("goal")}
+              onPress={() => { setKind("goal"); setShowDetails(true); }}
               hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
               accessibilityRole="button"
               accessibilityState={{ selected: kind === "goal" }}
