@@ -12,14 +12,10 @@
  * comment). Delete-and-readd is the manual reorder path until that's fixed.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import BottomSheet, {
-  BottomSheetBackdrop,
-  BottomSheetScrollView,
-  type BottomSheetBackdropProps,
-} from "@gorhom/bottom-sheet";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { BlurView } from "expo-blur";
+
 import { haptic } from "../lib/haptic";
 import Animated, {
   Easing,
@@ -104,98 +100,83 @@ type GoalDetailSheetProps = {
   linked: MobileTask[];
   onDelete: () => void;
   onClose: () => void;
-  bottomInset: number;
 };
 
-function GoalDetailSheet({ goal, progress, linked, onDelete, onClose, bottomInset }: GoalDetailSheetProps) {
-  const sheetRef = useRef<BottomSheet>(null);
-  const isOpen = goal !== null;
-
-  useEffect(() => {
-    if (isOpen) sheetRef.current?.expand();
-    else sheetRef.current?.close();
-  }, [isOpen]);
-
+function GoalDetailSheet({ goal, progress, linked, onDelete, onClose }: GoalDetailSheetProps) {
   const hasTasks = progress.total > 0;
   const isComplete = hasTasks && progress.done === progress.total;
 
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop {...props} disappearsOnIndex={-1} appearsOnIndex={0} opacity={0.6} />
-    ),
-    [],
-  );
-
   return (
-    <BottomSheet
-      ref={sheetRef}
-      index={-1}
-      snapPoints={["78%"]}
-      enableDynamicSizing={false}
-      enablePanDownToClose
-      onClose={onClose}
-      backdropComponent={renderBackdrop}
-      backgroundStyle={detailStyles.sheetBg}
-      handleIndicatorStyle={detailStyles.handle}
+    <Modal
+      visible={goal !== null}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onClose}
     >
-      <BottomSheetScrollView
-        contentContainerStyle={[detailStyles.content, { paddingBottom: bottomInset + spacing.xxl }]}
-        showsVerticalScrollIndicator={false}
-      >
+      <View style={detailStyles.backdrop}>
+        <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
+        <View style={[StyleSheet.absoluteFill, detailStyles.backdropDim]} />
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+
         {goal ? (
-          <>
+          <Animated.View entering={FadeIn.duration(140)} style={detailStyles.card}>
             {/* Header */}
             <View style={detailStyles.header}>
-              <Text style={detailStyles.title}>{goal.text}</Text>
+              <Text style={detailStyles.title} numberOfLines={3}>{goal.text}</Text>
               <Pressable onPress={onClose} hitSlop={12} style={({ pressed }) => [detailStyles.closeBtn, pressed && { opacity: 0.6 }]}>
                 <Text style={detailStyles.closeBtnText}>✕</Text>
               </Pressable>
             </View>
 
-            {/* Description */}
-            {goal.description ? (
-              <Text style={detailStyles.description}>{goal.description}</Text>
-            ) : null}
+            <ScrollView
+              style={detailStyles.scrollArea}
+              contentContainerStyle={detailStyles.scrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Description */}
+              {goal.description ? (
+                <Text style={detailStyles.description}>{goal.description}</Text>
+              ) : null}
 
-            {/* Meta: priority + deadline */}
-            {(goal.priority || goal.deadline) ? (
-              <View style={detailStyles.metaRow}>
-                {goal.priority ? (
-                  <View style={detailStyles.priorityChip}>
-                    <View style={[detailStyles.priorityDot, { backgroundColor: PRIORITY_LABEL[goal.priority].color }]} />
-                    <Text style={[detailStyles.priorityText, { color: PRIORITY_LABEL[goal.priority].color }]}>
-                      {PRIORITY_LABEL[goal.priority].label}
-                    </Text>
-                  </View>
-                ) : null}
-                {goal.deadline ? (() => {
-                  const ds = deadlineStatus(goal.deadline);
-                  const dlColor = ds === "overdue" ? colors.error : ds === "soon" ? "#d3a04b" : colors.textMuted;
-                  return (
-                    <Text style={[detailStyles.metaText, { color: dlColor }]}>
-                      {ds === "overdue" ? `Overdue · ${formatDeadline(goal.deadline)}` : formatDeadline(goal.deadline)}
-                    </Text>
-                  );
-                })() : null}
+              {/* Meta: priority + deadline */}
+              {(goal.priority || goal.deadline) ? (
+                <View style={detailStyles.metaRow}>
+                  {goal.priority ? (
+                    <View style={detailStyles.priorityChip}>
+                      <View style={[detailStyles.priorityDot, { backgroundColor: PRIORITY_LABEL[goal.priority].color }]} />
+                      <Text style={[detailStyles.priorityText, { color: PRIORITY_LABEL[goal.priority].color }]}>
+                        {PRIORITY_LABEL[goal.priority].label}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {goal.deadline ? (() => {
+                    const ds = deadlineStatus(goal.deadline);
+                    const dlColor = ds === "overdue" ? colors.error : ds === "soon" ? "#d3a04b" : colors.textMuted;
+                    return (
+                      <Text style={[detailStyles.metaText, { color: dlColor }]}>
+                        {ds === "overdue" ? `Overdue · ${formatDeadline(goal.deadline)}` : formatDeadline(goal.deadline)}
+                      </Text>
+                    );
+                  })() : null}
+                </View>
+              ) : null}
+
+              {/* Progress */}
+              <View style={detailStyles.progressSection}>
+                <View style={detailStyles.progressHeader}>
+                  <Text style={detailStyles.progressLabel}>Progress</Text>
+                  <Text style={detailStyles.progressCount}>
+                    {hasTasks ? `${progress.done} of ${progress.total} done` : "No tasks linked"}
+                  </Text>
+                </View>
+                <GoalProgressBar ratio={progress.ratio} isComplete={isComplete} />
               </View>
-            ) : null}
 
-            {/* Progress */}
-            <View style={detailStyles.progressSection}>
-              <View style={detailStyles.progressHeader}>
-                <Text style={detailStyles.progressLabel}>Progress</Text>
-                <Text style={detailStyles.progressCount}>
-                  {hasTasks ? `${progress.done} of ${progress.total} done` : "No tasks linked"}
-                </Text>
-              </View>
-              <GoalProgressBar ratio={progress.ratio} isComplete={isComplete} />
-            </View>
-
-            {/* Linked tasks */}
-            {hasTasks ? (
+              {/* Linked tasks */}
               <View style={detailStyles.tasksSection}>
                 <Text style={detailStyles.sectionLabel}>Linked tasks</Text>
-                {linked.map((t) => {
+                {hasTasks ? linked.map((t) => {
                   const done = t.status === "completed";
                   return (
                     <View key={String(t._id)} style={detailStyles.taskRow}>
@@ -212,28 +193,25 @@ function GoalDetailSheet({ goal, progress, linked, onDelete, onClose, bottomInse
                       </Pressable>
                     </View>
                   );
-                })}
+                }) : (
+                  <Text style={detailStyles.noTasksHint}>
+                    Open Capture, pick a goal while adding a task to link it here.
+                  </Text>
+                )}
               </View>
-            ) : (
-              <View style={detailStyles.tasksSection}>
-                <Text style={detailStyles.sectionLabel}>Linked tasks</Text>
-                <Text style={detailStyles.noTasksHint}>
-                  Open Capture, pick a goal while adding a task to link it here.
-                </Text>
-              </View>
-            )}
 
-            {/* Delete */}
-            <Pressable
-              onPress={onDelete}
-              style={({ pressed }) => [detailStyles.deleteBtn, pressed && { opacity: 0.8 }]}
-            >
-              <Text style={detailStyles.deleteBtnText}>Delete goal</Text>
-            </Pressable>
-          </>
+              {/* Delete */}
+              <Pressable
+                onPress={onDelete}
+                style={({ pressed }) => [detailStyles.deleteBtn, pressed && { opacity: 0.8 }]}
+              >
+                <Text style={detailStyles.deleteBtnText}>Delete goal</Text>
+              </Pressable>
+            </ScrollView>
+          </Animated.View>
         ) : null}
-      </BottomSheetScrollView>
-    </BottomSheet>
+      </View>
+    </Modal>
   );
 }
 
@@ -251,7 +229,6 @@ type GoalProgress = {
 
 export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false }: GoalsScreenProps) {
   const confirm = useConfirm();
-  const insets = useSafeAreaInsets();
   const { goals, isHydrated } = useGoals();
   const links = useGoalLinks();
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
@@ -563,24 +540,41 @@ const styles = StyleSheet.create({
 });
 
 const detailStyles = StyleSheet.create({
-  sheetBg: {
-    backgroundColor: colors.bg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  handle: {
-    backgroundColor: colors.border,
-    width: 36,
-  },
-  content: {
+  backdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: spacing.lg,
+  },
+  backdropDim: {
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  card: {
+    width: "100%",
+    maxWidth: 420,
+    maxHeight: "80%",
+    backgroundColor: colors.bg,
+    borderRadius: radii.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    overflow: "hidden",
+  },
+  scrollArea: {
+    flexShrink: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
     gap: spacing.lg,
   },
   header: {
     flexDirection: "row",
     alignItems: "flex-start",
     gap: spacing.sm,
-    paddingTop: spacing.sm,
+    padding: spacing.lg,
+    paddingBottom: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
   },
   title: {
     flex: 1,
