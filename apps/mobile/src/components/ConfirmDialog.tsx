@@ -174,7 +174,7 @@ const styles = StyleSheet.create({
   card: {
     width: "100%",
     maxWidth: 380,
-    backgroundColor: colors.bgFloating,
+    backgroundColor: colors.bgCard,
     borderRadius: radii.xl,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
