@@ -12,6 +12,9 @@
       "expo-dev-client",
       "expo-notifications"
     ],
+    "autolinking": {
+      "exclude": ["expo-fetch"]
+    },
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
