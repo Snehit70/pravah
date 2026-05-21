@@ -122,7 +122,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setError(null);
 
       if (kind === "goal") {
-        const created = goalsStore.add({
+        const created = await goalsStore.add({
           text: trimmed,
           description: description.trim() || undefined,
           deadline: deadlineResult.value,

@@ -123,30 +123,26 @@ export const goalsStore = {
     };
   },
   /** Returns the created goal, or null when text is empty or a duplicate. */
-  add(draft: GoalDraft | string): GoalItem | null {
+  async add(draft: GoalDraft | string): Promise<GoalItem | null> {
     const text = typeof draft === "string" ? draft.trim() : draft.text.trim();
     if (!text) return null;
-    const apply = (): GoalItem | null => {
-      const dup = cached.find((g) => g.text.toLowerCase() === text.toLowerCase());
-      if (dup) return null;
-      const goal = createGoal(
-        typeof draft === "string"
-          ? text
-          : {
-              text,
-              description: draft.description?.trim() || undefined,
-              deadline: draft.deadline?.trim() || undefined,
-              priority: draft.priority,
-            },
-      );
-      cached = [...cached, goal];
-      void saveGoals(cached);
-      emit();
-      return goal;
-    };
-    if (hydrated) return apply();
-    void ensureHydrated().then(apply);
-    return null;
+    await ensureHydrated();
+    const dup = cached.find((g) => g.text.toLowerCase() === text.toLowerCase());
+    if (dup) return null;
+    const goal = createGoal(
+      typeof draft === "string"
+        ? text
+        : {
+            text,
+            description: draft.description?.trim() || undefined,
+            deadline: draft.deadline?.trim() || undefined,
+            priority: draft.priority,
+          },
+    );
+    cached = [...cached, goal];
+    void saveGoals(cached);
+    emit();
+    return goal;
   },
   remove(id: string): void {
     const next = cached.filter((g) => g.id !== id);
