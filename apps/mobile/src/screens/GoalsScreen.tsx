@@ -12,8 +12,14 @@
  * comment). Delete-and-readd is the manual reorder path until that's fixed.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import BottomSheet, {
+  BottomSheetBackdrop,
+  BottomSheetScrollView,
+  type BottomSheetBackdropProps,
+} from "@gorhom/bottom-sheet";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { haptic } from "../lib/haptic";
 import Animated, {
   Easing,
@@ -92,6 +98,145 @@ function GoalProgressBar({
   );
 }
 
+type GoalDetailSheetProps = {
+  goal: GoalItem | null;
+  progress: GoalProgress;
+  linked: MobileTask[];
+  onDelete: () => void;
+  onClose: () => void;
+  bottomInset: number;
+};
+
+function GoalDetailSheet({ goal, progress, linked, onDelete, onClose, bottomInset }: GoalDetailSheetProps) {
+  const sheetRef = useRef<BottomSheet>(null);
+  const isOpen = goal !== null;
+
+  useEffect(() => {
+    if (isOpen) sheetRef.current?.expand();
+    else sheetRef.current?.close();
+  }, [isOpen]);
+
+  const hasTasks = progress.total > 0;
+  const isComplete = hasTasks && progress.done === progress.total;
+
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop {...props} disappearsOnIndex={-1} appearsOnIndex={0} opacity={0.6} />
+    ),
+    [],
+  );
+
+  return (
+    <BottomSheet
+      ref={sheetRef}
+      index={-1}
+      snapPoints={["78%"]}
+      enableDynamicSizing={false}
+      enablePanDownToClose
+      onClose={onClose}
+      backdropComponent={renderBackdrop}
+      backgroundStyle={detailStyles.sheetBg}
+      handleIndicatorStyle={detailStyles.handle}
+    >
+      <BottomSheetScrollView
+        contentContainerStyle={[detailStyles.content, { paddingBottom: bottomInset + spacing.xxl }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {goal ? (
+          <>
+            {/* Header */}
+            <View style={detailStyles.header}>
+              <Text style={detailStyles.title}>{goal.text}</Text>
+              <Pressable onPress={onClose} hitSlop={12} style={({ pressed }) => [detailStyles.closeBtn, pressed && { opacity: 0.6 }]}>
+                <Text style={detailStyles.closeBtnText}>✕</Text>
+              </Pressable>
+            </View>
+
+            {/* Description */}
+            {goal.description ? (
+              <Text style={detailStyles.description}>{goal.description}</Text>
+            ) : null}
+
+            {/* Meta: priority + deadline */}
+            {(goal.priority || goal.deadline) ? (
+              <View style={detailStyles.metaRow}>
+                {goal.priority ? (
+                  <View style={detailStyles.priorityChip}>
+                    <View style={[detailStyles.priorityDot, { backgroundColor: PRIORITY_LABEL[goal.priority].color }]} />
+                    <Text style={[detailStyles.priorityText, { color: PRIORITY_LABEL[goal.priority].color }]}>
+                      {PRIORITY_LABEL[goal.priority].label}
+                    </Text>
+                  </View>
+                ) : null}
+                {goal.deadline ? (() => {
+                  const ds = deadlineStatus(goal.deadline);
+                  const dlColor = ds === "overdue" ? colors.error : ds === "soon" ? "#d3a04b" : colors.textMuted;
+                  return (
+                    <Text style={[detailStyles.metaText, { color: dlColor }]}>
+                      {ds === "overdue" ? `Overdue · ${formatDeadline(goal.deadline)}` : formatDeadline(goal.deadline)}
+                    </Text>
+                  );
+                })() : null}
+              </View>
+            ) : null}
+
+            {/* Progress */}
+            <View style={detailStyles.progressSection}>
+              <View style={detailStyles.progressHeader}>
+                <Text style={detailStyles.progressLabel}>Progress</Text>
+                <Text style={detailStyles.progressCount}>
+                  {hasTasks ? `${progress.done} of ${progress.total} done` : "No tasks linked"}
+                </Text>
+              </View>
+              <GoalProgressBar ratio={progress.ratio} isComplete={isComplete} />
+            </View>
+
+            {/* Linked tasks */}
+            {hasTasks ? (
+              <View style={detailStyles.tasksSection}>
+                <Text style={detailStyles.sectionLabel}>Linked tasks</Text>
+                {linked.map((t) => {
+                  const done = t.status === "completed";
+                  return (
+                    <View key={String(t._id)} style={detailStyles.taskRow}>
+                      <View style={[detailStyles.taskDot, done ? detailStyles.taskDotDone : detailStyles.taskDotOpen]} />
+                      <Text style={[detailStyles.taskTitle, done && detailStyles.taskTitleDone]} numberOfLines={2}>
+                        {t.title}
+                      </Text>
+                      <Pressable
+                        onPress={() => { goalLinksStore.setLink(String(t._id), null); haptic.light(); }}
+                        hitSlop={8}
+                        style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+                      >
+                        <Text style={detailStyles.unlinkText}>Unlink</Text>
+                      </Pressable>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={detailStyles.tasksSection}>
+                <Text style={detailStyles.sectionLabel}>Linked tasks</Text>
+                <Text style={detailStyles.noTasksHint}>
+                  Open Capture, pick a goal while adding a task to link it here.
+                </Text>
+              </View>
+            )}
+
+            {/* Delete */}
+            <Pressable
+              onPress={onDelete}
+              style={({ pressed }) => [detailStyles.deleteBtn, pressed && { opacity: 0.8 }]}
+            >
+              <Text style={detailStyles.deleteBtnText}>Delete goal</Text>
+            </Pressable>
+          </>
+        ) : null}
+      </BottomSheetScrollView>
+    </BottomSheet>
+  );
+}
+
 type GoalsScreenProps = {
   tabBarHeight: number;
   tasks: MobileTask[];
@@ -106,9 +251,10 @@ type GoalProgress = {
 
 export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false }: GoalsScreenProps) {
   const confirm = useConfirm();
+  const insets = useSafeAreaInsets();
   const { goals, isHydrated } = useGoals();
   const links = useGoalLinks();
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
 
   // Map goalId -> linked MobileTask[] (newest first), filtered by current
   // task list so orphan links (task deleted) silently drop out.
@@ -163,6 +309,7 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false }: 
       if (!ok) return;
       goalLinksStore.clearGoal(goal.id);
       goalsStore.remove(goal.id);
+      setSelectedGoalId(null);
       haptic.success();
     },
     [confirm, tasksByGoal],
@@ -182,139 +329,111 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false }: 
     <Text style={styles.footerHint}>Private to this device. Goals don't sync.</Text>
   );
 
+  const selectedGoal = sortedGoals.find((g) => g.id === selectedGoalId) ?? null;
+  const selectedProgress = selectedGoal
+    ? (progressByGoal.get(selectedGoal.id) ?? { total: 0, done: 0, ratio: 0 })
+    : { total: 0, done: 0, ratio: 0 };
+  const selectedLinked = selectedGoal ? (tasksByGoal.get(selectedGoal.id) ?? []) : [];
+
   return (
-    <FlatList<GoalItem>
-      style={{ flex: 1 }}
-      contentContainerStyle={{
-        paddingTop: spacing.md,
-        paddingBottom: tabBarHeight + 84,
-      }}
-      data={sortedGoals}
-      keyExtractor={(item) => item.id}
-      ListHeaderComponent={
-        sortedGoals.length > 0 ? (
-          <Text style={styles.sectionMeta}>{`${sortedGoals.length} active`}</Text>
-        ) : null
-      }
-      ListEmptyComponent={isHydrated ? emptyBlock : null}
-      ListFooterComponent={sortedGoals.length > 0 ? footerHint : null}
-      renderItem={({ item, index }) => {
-        const progress = progressByGoal.get(item.id) ?? { total: 0, done: 0, ratio: 0 };
-        const linked = tasksByGoal.get(item.id) ?? [];
-        const isExpanded = expandedId === item.id;
-        const hasTasks = progress.total > 0;
-        const showLinkedLoading = isTaskDataLoading && !hasTasks;
-        const isComplete = hasTasks && progress.done === progress.total;
-        return (
-          <Animated.View entering={FadeInDown.duration(280).delay(index * 50)}>
-            <View style={[styles.goalCard, isComplete && styles.goalCardComplete]}>
+    <View style={{ flex: 1 }}>
+      <FlatList<GoalItem>
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingTop: spacing.md,
+          paddingBottom: tabBarHeight + 84,
+        }}
+        data={sortedGoals}
+        keyExtractor={(item) => item.id}
+        ListHeaderComponent={
+          sortedGoals.length > 0 ? (
+            <Text style={styles.sectionMeta}>{`${sortedGoals.length} active`}</Text>
+          ) : null
+        }
+        ListEmptyComponent={isHydrated ? emptyBlock : null}
+        ListFooterComponent={sortedGoals.length > 0 ? footerHint : null}
+        renderItem={({ item, index }) => {
+          const progress = progressByGoal.get(item.id) ?? { total: 0, done: 0, ratio: 0 };
+          const hasTasks = progress.total > 0;
+          const showLinkedLoading = isTaskDataLoading && !hasTasks;
+          const isComplete = hasTasks && progress.done === progress.total;
+          return (
+            <Animated.View entering={FadeInDown.duration(280).delay(index * 50)}>
               <Pressable
-                onPress={() => setExpandedId(isExpanded ? null : item.id)}
+                onPress={() => { setSelectedGoalId(item.id); haptic.light(); }}
                 onLongPress={() => void handleDelete(item)}
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel={`Goal: ${item.text}. Long-press to delete.`}
-                style={({ pressed }) => [styles.goalTap, pressed && { opacity: 0.85 }]}
+                style={({ pressed }) => [
+                  styles.goalCard,
+                  isComplete && styles.goalCardComplete,
+                  pressed && { opacity: 0.85 },
+                ]}
               >
-                <View style={styles.goalHead}>
-                  <Text style={styles.goalText} numberOfLines={3}>
-                    {item.text}
-                  </Text>
-                  <Text style={styles.goalCount}>
-                    {showLinkedLoading ? "…" : hasTasks ? `${progress.done}/${progress.total}` : "—"}
-                  </Text>
-                </View>
-
-                {item.description ? (
-                  <Text style={styles.goalDesc} numberOfLines={2}>
-                    {item.description}
-                  </Text>
-                ) : null}
-
-                <GoalProgressBar
-                  ratio={progress.ratio}
-                  isComplete={isComplete}
-                  isLoading={showLinkedLoading}
-                />
-
-                <View style={styles.goalMetaRow}>
-                  <View style={styles.goalMetaLeft}>
-                    {item.priority ? (
-                      <View style={styles.priorityChip}>
-                        <View
-                          style={[
-                            styles.priorityDot,
-                            { backgroundColor: PRIORITY_LABEL[item.priority].color },
-                          ]}
-                        />
-                        <Text style={styles.priorityText}>
-                          {PRIORITY_LABEL[item.priority].label}
-                        </Text>
-                      </View>
-                    ) : null}
-                    {item.deadline ? (() => {
-                      const ds = deadlineStatus(item.deadline);
-                      const dlColor = ds === "overdue" ? colors.error : ds === "soon" ? "#d3a04b" : undefined;
-                      return (
-                        <Text style={[styles.goalMeta, dlColor ? { color: dlColor } : null]}>
-                          {ds === "overdue" ? `Overdue · ${formatDeadline(item.deadline)}` : formatDeadline(item.deadline)}
-                        </Text>
-                      );
-                    })() : null}
-                    <Text style={styles.goalMeta}>
-                      {showLinkedLoading
-                        ? "Loading linked tasks..."
-                        : hasTasks
-                        ? isComplete
-                          ? "All done"
-                          : `${progress.total - progress.done} open`
-                        : "No tasks linked"}
+                <View style={styles.goalTap}>
+                  <View style={styles.goalHead}>
+                    <Text style={styles.goalText} numberOfLines={2}>{item.text}</Text>
+                    <Text style={styles.goalCount}>
+                      {showLinkedLoading ? "…" : hasTasks ? `${progress.done}/${progress.total}` : "—"}
                     </Text>
                   </View>
-                  {hasTasks ? (
-                    <Text style={styles.goalToggle}>{isExpanded ? "Hide" : "Show"}</Text>
+
+                  {item.description ? (
+                    <Text style={styles.goalDesc} numberOfLines={2}>{item.description}</Text>
                   ) : null}
+
+                  <GoalProgressBar
+                    ratio={progress.ratio}
+                    isComplete={isComplete}
+                    isLoading={showLinkedLoading}
+                  />
+
+                  <View style={styles.goalMetaRow}>
+                    <View style={styles.goalMetaLeft}>
+                      {item.priority ? (
+                        <View style={styles.priorityChip}>
+                          <View style={[styles.priorityDot, { backgroundColor: PRIORITY_LABEL[item.priority].color }]} />
+                          <Text style={styles.priorityText}>{PRIORITY_LABEL[item.priority].label}</Text>
+                        </View>
+                      ) : null}
+                      {item.deadline ? (() => {
+                        const ds = deadlineStatus(item.deadline);
+                        const dlColor = ds === "overdue" ? colors.error : ds === "soon" ? "#d3a04b" : undefined;
+                        return (
+                          <Text style={[styles.goalMeta, dlColor ? { color: dlColor } : null]}>
+                            {ds === "overdue" ? `Overdue · ${formatDeadline(item.deadline)}` : formatDeadline(item.deadline)}
+                          </Text>
+                        );
+                      })() : null}
+                      <Text style={styles.goalMeta}>
+                        {showLinkedLoading
+                          ? "Loading linked tasks..."
+                          : hasTasks
+                          ? isComplete
+                            ? "All done"
+                            : `${progress.total - progress.done} open`
+                          : "No tasks linked"}
+                      </Text>
+                    </View>
+                    <Text style={styles.goalChevron}>›</Text>
+                  </View>
                 </View>
               </Pressable>
-
-            {isExpanded && linked.length > 0 ? (
-              <View style={styles.linkedList}>
-                {linked.map((t) => {
-                  const done = t.status === "completed";
-                  return (
-                    <View key={String(t._id)} style={styles.linkedRow}>
-                      <View
-                        style={[
-                          styles.linkedDot,
-                          done ? styles.linkedDotDone : styles.linkedDotOpen,
-                        ]}
-                      />
-                      <Text
-                        style={[styles.linkedText, done && styles.linkedTextDone]}
-                        numberOfLines={2}
-                      >
-                        {t.title}
-                      </Text>
-                      <Pressable
-                        onPress={() => goalLinksStore.setLink(String(t._id), null)}
-                        hitSlop={8}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Unlink ${t.title} from this goal`}
-                        style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-                      >
-                        <Text style={styles.linkedUnlink}>Unlink</Text>
-                      </Pressable>
-                    </View>
-                  );
-                })}
-              </View>
-            ) : null}
-            </View>
-          </Animated.View>
-        );
-      }}
-      showsVerticalScrollIndicator={false}
-    />
+            </Animated.View>
+          );
+        }}
+        showsVerticalScrollIndicator={false}
+      />
+      <GoalDetailSheet
+        goal={selectedGoal}
+        progress={selectedProgress}
+        linked={selectedLinked}
+        onDelete={() => selectedGoal && void handleDelete(selectedGoal)}
+        onClose={() => setSelectedGoalId(null)}
+        bottomInset={insets.bottom}
+      />
+    </View>
   );
 }
 
@@ -414,48 +533,10 @@ const styles = StyleSheet.create({
     ...typography.micro,
     color: colors.textMuted,
   },
-  goalToggle: {
-    ...typography.micro,
-    color: colors.accent,
-    fontWeight: "600",
-  },
-  linkedList: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-    gap: spacing.xs,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderSubtle,
-    paddingTop: spacing.sm,
-  },
-  linkedRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  linkedDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  linkedDotDone: {
-    backgroundColor: colors.success,
-  },
-  linkedDotOpen: {
-    backgroundColor: colors.border,
-  },
-  linkedText: {
-    flex: 1,
-    ...typography.bodyMd,
-    color: colors.textPrimary,
-  },
-  linkedTextDone: {
+  goalChevron: {
+    ...typography.bodyLg,
     color: colors.textMuted,
-    textDecorationLine: "line-through",
-  },
-  linkedUnlink: {
-    ...typography.micro,
-    color: colors.textSecondary,
+    lineHeight: 20,
   },
   emptyWrap: {
     paddingTop: spacing.section,
@@ -478,5 +559,152 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: "center",
     paddingTop: spacing.md,
+  },
+});
+
+const detailStyles = StyleSheet.create({
+  sheetBg: {
+    backgroundColor: colors.bg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  handle: {
+    backgroundColor: colors.border,
+    width: 36,
+  },
+  content: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.lg,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    paddingTop: spacing.sm,
+  },
+  title: {
+    flex: 1,
+    ...typography.headline,
+    color: colors.textPrimary,
+  },
+  closeBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.bgCard,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+  closeBtnText: {
+    ...typography.micro,
+    color: colors.textMuted,
+    fontWeight: "600",
+  },
+  description: {
+    ...typography.bodyMd,
+    color: colors.textSecondary,
+    lineHeight: 22,
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  priorityChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    backgroundColor: colors.bgCard,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.sm,
+  },
+  priorityDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  priorityText: {
+    ...typography.micro,
+    fontWeight: "700",
+  },
+  metaText: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+  },
+  progressSection: {
+    gap: spacing.sm,
+  },
+  progressHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  progressLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  progressCount: {
+    ...typography.micro,
+    color: colors.textSecondary,
+    fontWeight: "600",
+  },
+  tasksSection: {
+    gap: spacing.sm,
+  },
+  sectionLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  taskRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
+  },
+  taskDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  taskDotDone: { backgroundColor: colors.success },
+  taskDotOpen: { backgroundColor: colors.border },
+  taskTitle: {
+    flex: 1,
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+  },
+  taskTitleDone: {
+    color: colors.textMuted,
+    textDecorationLine: "line-through",
+  },
+  unlinkText: {
+    ...typography.micro,
+    color: colors.textSecondary,
+  },
+  noTasksHint: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+  },
+  deleteBtn: {
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.error,
+    alignItems: "center",
+  },
+  deleteBtnText: {
+    ...typography.bodyMd,
+    color: colors.error,
+    fontWeight: "600",
   },
 });
