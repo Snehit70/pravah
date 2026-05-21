@@ -76,7 +76,7 @@ function GoalProgressBar({
     });
   }, [ratio, progress]);
   const fillStyle = useAnimatedStyle(() => ({
-    width: `${(isLoading ? 0.3 : progress.value) * 100}%` as `${number}%`,
+    width: `${(isLoading ? 0.3 : progress.value) * 100}%`,
   }));
   return (
     <View style={styles.progressTrack}>
@@ -208,74 +208,74 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false }: 
         return (
           <Animated.View entering={FadeInDown.duration(280).delay(index * 50)}>
             <View style={[styles.goalCard, isComplete && styles.goalCardComplete]}>
-            <Pressable
-              onPress={() => setExpandedId(isExpanded ? null : item.id)}
-              onLongPress={() => void handleDelete(item)}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={`Goal: ${item.text}. Long-press to delete.`}
-              style={({ pressed }) => [styles.goalTap, pressed && { opacity: 0.85 }]}
-            >
-              <View style={styles.goalHead}>
-                <Text style={styles.goalText} numberOfLines={3}>
-                  {item.text}
-                </Text>
-                <Text style={styles.goalCount}>
-                  {showLinkedLoading ? "…" : hasTasks ? `${progress.done}/${progress.total}` : "—"}
-                </Text>
-              </View>
-
-              {item.description ? (
-                <Text style={styles.goalDesc} numberOfLines={2}>
-                  {item.description}
-                </Text>
-              ) : null}
-
-              <GoalProgressBar
-                ratio={progress.ratio}
-                isComplete={isComplete}
-                isLoading={showLinkedLoading}
-              />
-
-              <View style={styles.goalMetaRow}>
-                <View style={styles.goalMetaLeft}>
-                  {item.priority ? (
-                    <View style={styles.priorityChip}>
-                      <View
-                        style={[
-                          styles.priorityDot,
-                          { backgroundColor: PRIORITY_LABEL[item.priority].color },
-                        ]}
-                      />
-                      <Text style={styles.priorityText}>
-                        {PRIORITY_LABEL[item.priority].label}
-                      </Text>
-                    </View>
-                  ) : null}
-                  {item.deadline ? (() => {
-                    const ds = deadlineStatus(item.deadline);
-                    const dlColor = ds === "overdue" ? colors.error : ds === "soon" ? "#d3a04b" : undefined;
-                    return (
-                      <Text style={[styles.goalMeta, dlColor ? { color: dlColor } : null]}>
-                        {ds === "overdue" ? `Overdue · ${formatDeadline(item.deadline)}` : formatDeadline(item.deadline)}
-                      </Text>
-                    );
-                  })() : null}
-                  <Text style={styles.goalMeta}>
-                    {showLinkedLoading
-                      ? "Loading linked tasks..."
-                      : hasTasks
-                      ? isComplete
-                        ? "All done"
-                        : `${progress.total - progress.done} open`
-                      : "No tasks linked"}
+              <Pressable
+                onPress={() => setExpandedId(isExpanded ? null : item.id)}
+                onLongPress={() => void handleDelete(item)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Goal: ${item.text}. Long-press to delete.`}
+                style={({ pressed }) => [styles.goalTap, pressed && { opacity: 0.85 }]}
+              >
+                <View style={styles.goalHead}>
+                  <Text style={styles.goalText} numberOfLines={3}>
+                    {item.text}
+                  </Text>
+                  <Text style={styles.goalCount}>
+                    {showLinkedLoading ? "…" : hasTasks ? `${progress.done}/${progress.total}` : "—"}
                   </Text>
                 </View>
-                {hasTasks ? (
-                  <Text style={styles.goalToggle}>{isExpanded ? "Hide" : "Show"}</Text>
+
+                {item.description ? (
+                  <Text style={styles.goalDesc} numberOfLines={2}>
+                    {item.description}
+                  </Text>
                 ) : null}
-              </View>
-            </Pressable>
+
+                <GoalProgressBar
+                  ratio={progress.ratio}
+                  isComplete={isComplete}
+                  isLoading={showLinkedLoading}
+                />
+
+                <View style={styles.goalMetaRow}>
+                  <View style={styles.goalMetaLeft}>
+                    {item.priority ? (
+                      <View style={styles.priorityChip}>
+                        <View
+                          style={[
+                            styles.priorityDot,
+                            { backgroundColor: PRIORITY_LABEL[item.priority].color },
+                          ]}
+                        />
+                        <Text style={styles.priorityText}>
+                          {PRIORITY_LABEL[item.priority].label}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {item.deadline ? (() => {
+                      const ds = deadlineStatus(item.deadline);
+                      const dlColor = ds === "overdue" ? colors.error : ds === "soon" ? "#d3a04b" : undefined;
+                      return (
+                        <Text style={[styles.goalMeta, dlColor ? { color: dlColor } : null]}>
+                          {ds === "overdue" ? `Overdue · ${formatDeadline(item.deadline)}` : formatDeadline(item.deadline)}
+                        </Text>
+                      );
+                    })() : null}
+                    <Text style={styles.goalMeta}>
+                      {showLinkedLoading
+                        ? "Loading linked tasks..."
+                        : hasTasks
+                        ? isComplete
+                          ? "All done"
+                          : `${progress.total - progress.done} open`
+                        : "No tasks linked"}
+                    </Text>
+                  </View>
+                  {hasTasks ? (
+                    <Text style={styles.goalToggle}>{isExpanded ? "Hide" : "Show"}</Text>
+                  ) : null}
+                </View>
+              </Pressable>
 
             {isExpanded && linked.length > 0 ? (
               <View style={styles.linkedList}>
