@@ -372,7 +372,7 @@ function MobileApp() {
     async (payload: RetryPayload) => {
       switch (payload.type) {
         case "addTask": {
-          await addTaskMutation({
+          const retriedId = await addTaskMutation({
             title: payload.title,
             description: payload.description,
             deadline: payload.deadline,
@@ -380,6 +380,9 @@ function MobileApp() {
             scheduledDate: payload.scheduledDate,
             priority: payload.priority,
           });
+          if (payload.goalId && retriedId) {
+            goalLinksStore.setLink(String(retriedId), payload.goalId);
+          }
           return;
         }
         case "updateTask": {
@@ -528,6 +531,7 @@ function MobileApp() {
               deadline: data.deadline,
               scheduledDate,
               priority: data.priority,
+              goalId: data.goalId,
             },
           });
           showToast({ kind: "error", message: "Offline. Task queued for retry." });

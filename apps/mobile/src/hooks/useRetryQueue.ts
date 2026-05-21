@@ -16,6 +16,7 @@ export type RetryPayload =
       deadline?: string;
       scheduledDate?: string;
       priority?: "p1" | "p2" | "p3";
+      goalId?: string;
     }
   | {
       type: "updateTask";
