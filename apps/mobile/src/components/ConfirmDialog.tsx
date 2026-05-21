@@ -174,7 +174,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
   },
   backdropDim: {
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: "rgba(0,0,0,0.72)",
   },
   card: {
     width: "100%",
