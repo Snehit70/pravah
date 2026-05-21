@@ -13,14 +13,7 @@
  */
 
 import { useCallback, useMemo, useState } from "react";
-import {
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { goalsStore, type GoalItem } from "../lib/goalsStorage";
@@ -28,6 +21,20 @@ import { goalLinksStore } from "../lib/goalLinks";
 import { useGoals, useGoalLinks } from "../hooks/useGoals";
 import { useConfirm } from "../hooks/useConfirm";
 import type { MobileTask } from "../components/TaskCard";
+
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function formatDeadline(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return iso;
+  const month = SHORT_MONTHS[Number(m[2]) - 1] ?? m[2];
+  return `${month} ${Number(m[3])}, ${m[1]}`;
+}
+
+const PRIORITY_LABEL: Record<"p1" | "p2" | "p3", { label: string; color: string }> = {
+  p1: { label: "P1", color: "#e87a90" },
+  p2: { label: "P2", color: "#d3a04b" },
+  p3: { label: "P3", color: "#4ec9b0" },
+};
 
 type GoalsScreenProps = {
   tabBarHeight: number;
@@ -44,8 +51,6 @@ export function GoalsScreen({ tabBarHeight, tasks }: GoalsScreenProps) {
   const confirm = useConfirm();
   const { goals, isHydrated } = useGoals();
   const links = useGoalLinks();
-  const [draft, setDraft] = useState("");
-  const [dupNotice, setDupNotice] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Map goalId -> linked MobileTask[] (newest first), filtered by current
@@ -78,18 +83,6 @@ export function GoalsScreen({ tabBarHeight, tasks }: GoalsScreenProps) {
     return out;
   }, [goals, tasksByGoal]);
 
-  const handleAdd = useCallback(() => {
-    const text = draft.trim();
-    if (!text) return;
-    const created = goalsStore.add(text);
-    if (!created) {
-      setDupNotice(true);
-      return;
-    }
-    setDraft("");
-    setDupNotice(false);
-  }, [draft]);
-
   const handleDelete = useCallback(
     async (goal: GoalItem) => {
       const linkedCount = tasksByGoal.get(goal.id)?.length ?? 0;
@@ -109,49 +102,12 @@ export function GoalsScreen({ tabBarHeight, tasks }: GoalsScreenProps) {
     [confirm, tasksByGoal],
   );
 
-  const composer = (
-    <View>
-      <View style={styles.composer}>
-        <TextInput
-          value={draft}
-          onChangeText={(t) => {
-            setDraft(t);
-            if (dupNotice) setDupNotice(false);
-          }}
-          placeholder="Add a long-term goal..."
-          placeholderTextColor={colors.textMuted}
-          style={styles.input}
-          returnKeyType="done"
-          onSubmitEditing={handleAdd}
-          blurOnSubmit
-        />
-        <Pressable
-          onPress={handleAdd}
-          disabled={!draft.trim()}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel="Add goal"
-          style={({ pressed }) => [
-            styles.addBtn,
-            !draft.trim() && styles.addBtnDisabled,
-            pressed && { opacity: 0.7 },
-          ]}
-        >
-          <Text style={[styles.addBtnText, !draft.trim() && styles.addBtnTextDisabled]}>Add</Text>
-        </Pressable>
-      </View>
-      {dupNotice ? (
-        <Text style={styles.dupNotice}>You already have a goal with that name.</Text>
-      ) : null}
-    </View>
-  );
-
   const emptyBlock = (
     <Animated.View entering={FadeIn.duration(400)} style={styles.emptyWrap}>
       <Text style={styles.emptyTitle}>No goals yet.</Text>
       <Text style={styles.emptyText}>
-        Capture the long-horizon things that should guide your timeline. New tasks can
-        be linked to a goal from the Capture sheet.
+        Tap + Capture and switch to "New goal" to add a long-horizon goal. New
+        tasks can be linked to a goal from the same sheet.
       </Text>
     </Animated.View>
   );
@@ -170,12 +126,9 @@ export function GoalsScreen({ tabBarHeight, tasks }: GoalsScreenProps) {
       data={goals}
       keyExtractor={(item) => item.id}
       ListHeaderComponent={
-        <View>
-          {goals.length > 0 ? (
-            <Text style={styles.sectionMeta}>{`${goals.length} active`}</Text>
-          ) : null}
-          {composer}
-        </View>
+        goals.length > 0 ? (
+          <Text style={styles.sectionMeta}>{`${goals.length} active`}</Text>
+        ) : null
       }
       ListEmptyComponent={isHydrated ? emptyBlock : null}
       ListFooterComponent={goals.length > 0 ? footerHint : null}
@@ -215,13 +168,31 @@ export function GoalsScreen({ tabBarHeight, tasks }: GoalsScreenProps) {
               </View>
 
               <View style={styles.goalMetaRow}>
-                <Text style={styles.goalMeta}>
-                  {hasTasks
-                    ? isComplete
-                      ? "All linked tasks done"
-                      : `${progress.total - progress.done} open`
-                    : "No tasks linked yet"}
-                </Text>
+                <View style={styles.goalMetaLeft}>
+                  {item.priority ? (
+                    <View style={styles.priorityChip}>
+                      <View
+                        style={[
+                          styles.priorityDot,
+                          { backgroundColor: PRIORITY_LABEL[item.priority].color },
+                        ]}
+                      />
+                      <Text style={styles.priorityText}>
+                        {PRIORITY_LABEL[item.priority].label}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {item.deadline ? (
+                    <Text style={styles.goalMeta}>{formatDeadline(item.deadline)}</Text>
+                  ) : null}
+                  <Text style={styles.goalMeta}>
+                    {hasTasks
+                      ? isComplete
+                        ? "All done"
+                        : `${progress.total - progress.done} open`
+                      : "No tasks linked"}
+                  </Text>
+                </View>
                 {hasTasks ? (
                   <Text style={styles.goalToggle}>{isExpanded ? "Hide" : "Show"}</Text>
                 ) : null}
@@ -277,51 +248,6 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.6,
   },
-  composer: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  input: {
-    flex: 1,
-    color: colors.textPrimary,
-    ...typography.bodyMd,
-    backgroundColor: colors.bgCard,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    minHeight: 44,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  addBtn: {
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.full,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  addBtnDisabled: {
-    backgroundColor: colors.bgCard,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  addBtnText: {
-    ...typography.title,
-    color: colors.bg,
-  },
-  addBtnTextDisabled: {
-    color: colors.textMuted,
-  },
-  dupNotice: {
-    ...typography.micro,
-    color: colors.error,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
   goalCard: {
     marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
@@ -373,6 +299,30 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  goalMetaLeft: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    columnGap: spacing.sm,
+    rowGap: spacing.xs / 2,
+  },
+  priorityChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  priorityDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  priorityText: {
+    ...typography.micro,
+    color: colors.textSecondary,
+    fontWeight: "600",
   },
   goalMeta: {
     ...typography.micro,
