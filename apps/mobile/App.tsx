@@ -28,6 +28,7 @@ import { ConvexClientProvider } from "./src/lib/convex";
 import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
 import { goalLinksStore } from "./src/lib/goalLinks";
+import { goalsStore } from "./src/lib/goalsStorage";
 
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -355,6 +356,8 @@ function MobileApp() {
   const handleWipeLocalData = useCallback(async () => {
     const { wipeLocalAppData } = await import("./src/lib/dataReset");
     await wipeLocalAppData();
+    goalsStore.reset();
+    goalLinksStore.reset();
     resetPreferencesStore();
     resetDailyReminderState();
     setIsSettingsModalOpen(false);

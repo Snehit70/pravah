@@ -116,4 +116,10 @@ export const goalLinksStore = {
     void persist();
     emit();
   },
+  reset(): void {
+    cached = {};
+    hydrated = false;
+    hydratingPromise = null;
+    emit();
+  },
 };

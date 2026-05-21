@@ -158,4 +158,10 @@ export const goalsStore = {
     void saveGoals(cached);
     emit();
   },
+  reset(): void {
+    cached = [];
+    hydrated = false;
+    hydratingPromise = null;
+    emit();
+  },
 };
