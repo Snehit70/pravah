@@ -4,15 +4,27 @@
     "appVersionSource": "remote"
   },
   "build": {
+    "base": {
+      "cache": {
+        "key": "v1",
+        "customPaths": ["apps/mobile/node_modules"]
+      }
+    },
     "development": {
+      "extends": "base",
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "resourceClass": "large"
     },
     "preview": {
-      "distribution": "internal"
+      "extends": "base",
+      "distribution": "internal",
+      "resourceClass": "large"
     },
     "production": {
-      "autoIncrement": true
+      "extends": "base",
+      "autoIncrement": true,
+      "resourceClass": "large"
     }
   },
   "submit": {
