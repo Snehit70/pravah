@@ -60,6 +60,8 @@ mcp-server.ts               MCP stdio bridge
 | Table | Purpose |
 |---|---|
 | `tasks` | All tasks — inbox and scheduled |
+| `goals` | Long-horizon goals; synced across devices via Convex |
+| `goalLinks` | taskId → goalClientId mapping; synced alongside goals |
 | `integrations` | Per-user Google sync config |
 | `syncCursors` | Resume cursors for Calendar sync |
 | `externalTaskMappings` | Calendar event → task mapping |

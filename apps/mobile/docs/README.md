@@ -17,6 +17,8 @@ loading behavior, or Android-specific ergonomics.
 - Mobile task subscriptions and derived lists live in `src/hooks/useTaskQueries.ts`.
 - Task mutations and optimistic updates live in `src/hooks/useTaskMutations.ts`.
 - The three task tabs are split into `src/screens/InboxScreen.tsx`, `src/screens/TimelineScreen.tsx`, and `src/screens/CompletedScreen.tsx`.
+- Goals sync via Convex (`convex/goals.ts`). `useConvexGoalsSync` keeps the local stores hydrated; `useGoalMutations` is the single entrypoint for all goal writes.
+- The Capture surface (`AddTaskSheet`) and Edit task surface (`EditTaskSheet`) are centered `Modal` components, not `BottomSheet`.
 - Kairo settings on mobile use `expo-secure-store`, not browser `localStorage`.
 - The settings sheet is a `@gorhom/bottom-sheet` surface and must remain keyboard-safe on Android.
 
