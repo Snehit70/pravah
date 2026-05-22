@@ -14,17 +14,17 @@
       "extends": "base",
       "developmentClient": true,
       "distribution": "internal",
-      "resourceClass": "large"
+      "resourceClass": "medium"
     },
     "preview": {
       "extends": "base",
       "distribution": "internal",
-      "resourceClass": "large"
+      "resourceClass": "medium"
     },
     "production": {
       "extends": "base",
       "autoIncrement": true,
-      "resourceClass": "large"
+      "resourceClass": "medium"
     }
   },
   "submit": {
