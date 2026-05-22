@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { type RenderItemParams } from "react-native-draggable-flatlist";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -27,8 +27,9 @@ import { GeistMono_500Medium } from "@expo-google-fonts/geist-mono";
 import { ConvexClientProvider } from "./src/lib/convex";
 import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
-import { goalLinksStore } from "./src/lib/goalLinks";
-import { goalsStore } from "./src/lib/goalsStorage";
+import { useGoalLinks, useGoals } from "./src/hooks/useGoals";
+import { useConvexGoalsSync } from "./src/hooks/useConvexGoalsSync";
+import { useGoalMutations } from "./src/hooks/useGoalMutations";
 
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -81,6 +82,19 @@ function getPriorityRank(priority?: "p1" | "p2" | "p3"): number {
   return 3;
 }
 
+// Custom entering animation for tab screens — 8px upward reveal + fade.
+// Defined outside the component so it's a stable worklet reference.
+function tabEnter() {
+  'worklet';
+  return {
+    initialValues: { opacity: 0, transform: [{ translateY: 8 }] },
+    animations: {
+      opacity: withTiming(1, { duration: 220, easing: Easing.out(Easing.cubic) }),
+      transform: [{ translateY: withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) }) }],
+    },
+  };
+}
+
 function hasPriorityBoundaryViolation(original: MobileTask[], reordered: MobileTask[]): boolean {
   if (original.length !== reordered.length) return true;
   for (let index = 0; index < original.length; index += 1) {
@@ -95,6 +109,8 @@ function hasPriorityBoundaryViolation(original: MobileTask[], reordered: MobileT
 
 function MobileApp() {
   const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
+  const tabEnterAnimation = reducedMotion ? undefined : tabEnter;
   const addTaskSheetRef = useRef<AddTaskSheetRef>(null);
   const editTaskSheetRef = useRef<EditTaskSheetRef>(null);
   const kairoRef = useRef<KairoSheetRef>(null);
@@ -258,6 +274,10 @@ function MobileApp() {
   const moveTaskMutation = useMutation(api.tasks.moveTask);
   const unscheduleTaskMutation = useMutation(api.tasks.unscheduleTask);
   const reopenTaskMutation = useMutation(api.tasks.reopenTask);
+
+  useConvexGoalsSync();
+  const { setGoalLink, clearAll: clearAllGoals } = useGoalMutations();
+
   // ── Derived data ────────────────────────────────────────────────────
 
   const visibleTasks =
@@ -288,6 +308,18 @@ function MobileApp() {
   const isBootShellLoading = shouldRenderOptimisticShell && !shouldUseWorkspaceSnapshot && !session;
 
   const kairoTasks = allWorkspaceTasks;
+
+  const goalLinks = useGoalLinks();
+  const { goals } = useGoals();
+  const taskGoalNames = useMemo(() => {
+    const goalById = new Map(goals.map((g) => [g.id, g.text]));
+    const out = new Map<string, string>();
+    for (const [taskId, goalId] of Object.entries(goalLinks)) {
+      const name = goalById.get(goalId);
+      if (name) out.set(taskId, name);
+    }
+    return out;
+  }, [goalLinks, goals]);
   const kairoInboxTasks = useMemo(
     () => kairoTasks.filter((task) => task.status === "inbox"),
     [kairoTasks]
@@ -356,14 +388,13 @@ function MobileApp() {
   const handleWipeLocalData = useCallback(async () => {
     const { wipeLocalAppData } = await import("./src/lib/dataReset");
     await wipeLocalAppData();
-    goalsStore.reset();
-    goalLinksStore.reset();
+    clearAllGoals();
     resetPreferencesStore();
     resetDailyReminderState();
     setIsSettingsModalOpen(false);
     void clearSnapshot();
     googleSignOut();
-  }, [clearSnapshot, googleSignOut, resetDailyReminderState, setIsSettingsModalOpen]);
+  }, [clearAllGoals, clearSnapshot, googleSignOut, resetDailyReminderState, setIsSettingsModalOpen]);
 
   const handleExportTasks = useCallback(async () => {
     try {
@@ -400,7 +431,7 @@ function MobileApp() {
             priority: payload.priority,
           });
           if (payload.goalId && retriedId) {
-            goalLinksStore.setLink(String(retriedId), payload.goalId);
+            setGoalLink(String(retriedId), payload.goalId);
           }
           return;
         }
@@ -439,6 +470,7 @@ function MobileApp() {
       moveTaskMutation,
       unscheduleTaskMutation,
       reopenTaskMutation,
+      setGoalLink,
     ]
   );
 
@@ -533,7 +565,7 @@ function MobileApp() {
           priority: data.priority,
         });
         if (data.goalId && newTaskId) {
-          goalLinksStore.setLink(String(newTaskId), data.goalId);
+          setGoalLink(String(newTaskId), data.goalId);
         }
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         mobileLogger.info("add_task_succeeded", { actionId, elapsedMs: Date.now() - startedAt });
@@ -567,7 +599,7 @@ function MobileApp() {
         return false;
       }
     },
-    [addTaskMutation, today, enqueueRetry, showToast]
+    [addTaskMutation, today, enqueueRetry, setGoalLink, showToast]
   );
 
   const handleRefresh = async () => {
@@ -673,9 +705,10 @@ function MobileApp() {
         onMoveToday={canUseWorkspaceActions ? moveToToday : undefined}
         onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
         onDragHandlePress={canUseWorkspaceActions ? drag : undefined}
+        linkedGoalName={taskGoalNames.get(String(item._id))}
       />
     ),
-    [canUseWorkspaceActions, handleEditTask, markDone, moveToToday]
+    [canUseWorkspaceActions, handleEditTask, markDone, moveToToday, taskGoalNames]
   );
 
   const renderTimelineTaskItem = useCallback(
@@ -692,6 +725,7 @@ function MobileApp() {
         }
         onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
         onDragHandlePress={canUseWorkspaceActions ? drag : undefined}
+        linkedGoalName={taskGoalNames.get(String(item._id))}
       />
     ),
     [
@@ -703,6 +737,7 @@ function MobileApp() {
       sendToInbox,
       shiftTimelineTask,
       handleEditTask,
+      taskGoalNames,
     ]
   );
 
@@ -713,9 +748,10 @@ function MobileApp() {
         onDone={canUseWorkspaceActions ? markDone : () => undefined}
         onReopen={canUseWorkspaceActions ? reopenToInbox : undefined}
         onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
+        linkedGoalName={taskGoalNames.get(String(item._id))}
       />
     ),
-    [canUseWorkspaceActions, handleEditTask, markDone, reopenToInbox]
+    [canUseWorkspaceActions, handleEditTask, markDone, reopenToInbox, taskGoalNames]
   );
 
   // ── Loading / Auth screens ──────────────────────────────────────────
@@ -853,57 +889,65 @@ function MobileApp() {
       ) : null}
 
       {activeTab === "inbox" ? (
-        <ScreenErrorBoundary screenName="Inbox">
-          <InboxScreen
-            tasks={visibleTasks}
-            isLoading={isActiveListLoading || isBootShellLoading}
-            isRefreshing={isRefreshing}
-            tabBarHeight={tabBarHeight}
-            onRefresh={handleRefresh}
-            onCapture={() => canUseWorkspaceActions && addTaskSheetRef.current?.open()}
-            renderItem={renderInboxTaskItem}
-          />
-        </ScreenErrorBoundary>
+        <Animated.View entering={tabEnterAnimation} style={styles.tabScreen}>
+          <ScreenErrorBoundary screenName="Inbox">
+            <InboxScreen
+              tasks={visibleTasks}
+              isLoading={isActiveListLoading || isBootShellLoading}
+              isRefreshing={isRefreshing}
+              tabBarHeight={tabBarHeight}
+              onRefresh={handleRefresh}
+              onCapture={() => canUseWorkspaceActions && addTaskSheetRef.current?.open()}
+              renderItem={renderInboxTaskItem}
+            />
+          </ScreenErrorBoundary>
+        </Animated.View>
       ) : null}
 
       {activeTab === "timeline" ? (
-        <ScreenErrorBoundary screenName="Timeline">
-          <TimelineScreen
-            sections={shouldUseWorkspaceSnapshot ? displayTimelineSections : timelineSections}
-            today={today}
-            tomorrow={tomorrow}
-            weekEnd={weekEnd}
-            isLoading={isActiveListLoading || isBootShellLoading}
-            isRefreshing={isRefreshing}
-            tabBarHeight={tabBarHeight}
-            onRefresh={handleRefresh}
-            renderItem={renderTimelineTaskItem}
-          />
-        </ScreenErrorBoundary>
+        <Animated.View entering={tabEnterAnimation} style={styles.tabScreen}>
+          <ScreenErrorBoundary screenName="Timeline">
+            <TimelineScreen
+              sections={shouldUseWorkspaceSnapshot ? displayTimelineSections : timelineSections}
+              today={today}
+              tomorrow={tomorrow}
+              weekEnd={weekEnd}
+              isLoading={isActiveListLoading || isBootShellLoading}
+              isRefreshing={isRefreshing}
+              tabBarHeight={tabBarHeight}
+              onRefresh={handleRefresh}
+              renderItem={renderTimelineTaskItem}
+            />
+          </ScreenErrorBoundary>
+        </Animated.View>
       ) : null}
 
       {activeTab === "goals" ? (
-        <ScreenErrorBoundary screenName="Goals">
-          <GoalsScreen
-            tabBarHeight={tabBarHeight}
-            tasks={workspaceTaskCorpus}
-            isTaskDataLoading={isGoalsTaskDataLoading}
-          />
-        </ScreenErrorBoundary>
+        <Animated.View entering={tabEnterAnimation} style={styles.tabScreen}>
+          <ScreenErrorBoundary screenName="Goals">
+            <GoalsScreen
+              tabBarHeight={tabBarHeight}
+              tasks={workspaceTaskCorpus}
+              isTaskDataLoading={isGoalsTaskDataLoading}
+            />
+          </ScreenErrorBoundary>
+        </Animated.View>
       ) : null}
 
       {activeTab === "insights" ? (
-        <ScreenErrorBoundary screenName="Insights">
-          <InsightsScreen
-            tasks={workspaceTaskCorpus}
-            completedTasks={displayCompletedTasks}
-            isLoading={isActiveListLoading || isBootShellLoading}
-            isRefreshing={isRefreshing}
-            tabBarHeight={tabBarHeight}
-            onRefresh={handleRefresh}
-            renderCompletedTaskItem={renderCompletedTaskItem}
-          />
-        </ScreenErrorBoundary>
+        <Animated.View entering={tabEnterAnimation} style={styles.tabScreen}>
+          <ScreenErrorBoundary screenName="Insights">
+            <InsightsScreen
+              tasks={workspaceTaskCorpus}
+              completedTasks={displayCompletedTasks}
+              isLoading={isActiveListLoading || isBootShellLoading}
+              isRefreshing={isRefreshing}
+              tabBarHeight={tabBarHeight}
+              onRefresh={handleRefresh}
+              renderCompletedTaskItem={renderCompletedTaskItem}
+            />
+          </ScreenErrorBoundary>
+        </Animated.View>
       ) : null}
 
       {/* FAB */}
@@ -1109,6 +1153,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  tabScreen: {
+    flex: 1,
   },
   chrome: {
     flex: 1,

@@ -158,6 +158,13 @@ export const goalsStore = {
     void saveGoals(cached);
     emit();
   },
+  _syncFromServer(goals: GoalItem[]): void {
+    cached = goals;
+    hydrated = true;
+    hydratingPromise = null;
+    emit();
+    void saveGoals(cached);
+  },
   reset(): void {
     cached = [];
     hydrated = false;

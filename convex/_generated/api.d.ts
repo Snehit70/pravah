@@ -10,6 +10,8 @@
 
 import type * as auth from "../auth.js";
 import type * as authHelpers from "../authHelpers.js";
+import type * as crons from "../crons.js";
+import type * as goals from "../goals.js";
 import type * as http from "../http.js";
 import type * as httpContracts from "../httpContracts.js";
 import type * as index from "../index.js";
@@ -28,6 +30,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   authHelpers: typeof authHelpers;
+  crons: typeof crons;
+  goals: typeof goals;
   http: typeof http;
   httpContracts: typeof httpContracts;
   index: typeof index;

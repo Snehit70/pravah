@@ -24,18 +24,25 @@ apps/mobile/
 ├── MOBILE_TESTING.md
 ├── src/
 │   ├── components/
-│   │   ├── AddTaskSheet.tsx
+│   │   ├── AddTaskSheet.tsx       — Capture modal (centered Modal, not BottomSheet)
 │   │   ├── BootScreen.tsx
 │   │   ├── BottomTabBar.tsx
 │   │   ├── BrandMark.tsx
+│   │   ├── CompletionLineChart.tsx
+│   │   ├── ConfirmDialog.tsx      — Theme-matched confirm overlay with BlurView backdrop
 │   │   ├── DiagnosticsPanel.tsx
-│   │   ├── EditTaskSheet.tsx
-│   │   ├── FAB.tsx
+│   │   ├── EditTaskSheet.tsx      — Edit task modal (centered Modal, not BottomSheet)
+│   │   ├── FAB.tsx                — Capture pill button with layered glow
+│   │   ├── FlowingWaves.tsx
+│   │   ├── GmailReviewSection.tsx
 │   │   ├── GridBackground.tsx
 │   │   ├── Kairo.tsx
+│   │   ├── KairoChatList.tsx
+│   │   ├── KairoMarkdown.tsx
 │   │   ├── KairoSettingsSection.tsx
 │   │   ├── LoadingSkeleton.tsx
 │   │   ├── MobileAuthScreen.tsx
+│   │   ├── RippleRings.tsx
 │   │   ├── RootErrorBoundary.tsx
 │   │   ├── ScreenErrorBoundary.tsx
 │   │   ├── SettingsSheet.tsx
@@ -44,35 +51,52 @@ apps/mobile/
 │   │   ├── TaskTabContent.tsx
 │   │   └── TimelineSectionHeader.tsx
 │   ├── hooks/
+│   │   ├── useConfirm.ts              — Imperative confirm dialog hook
+│   │   ├── useConvexGoalsSync.ts      — Syncs Convex goals/links → local stores; migrates on first run
+│   │   ├── useGoalMutations.ts        — Wraps goal add/delete/setLink/clearAll for Convex + local
+│   │   ├── useGoals.ts                — useSyncExternalStore wrappers around goalsStore and goalLinksStore
 │   │   ├── useGoogleAuth.ts
 │   │   ├── useIncrementalRowCount.ts
 │   │   ├── useIntegrationsSettings.ts
+│   │   ├── useKairoChats.ts
 │   │   ├── useKeyboardInset.ts
 │   │   ├── useNotificationsSettings.ts
 │   │   ├── useReducedMotion.ts
 │   │   ├── useRetryQueue.ts
 │   │   ├── useTaskMutations.ts
 │   │   ├── useTaskQueries.ts
+│   │   ├── useUserPreferences.ts
 │   │   ├── useWorkspaceSnapshot.ts
 │   │   └── useWorkspaceState.ts
 │   ├── screens/
 │   │   ├── CompletedScreen.tsx
+│   │   ├── GoalsScreen.tsx        — Long-horizon goals list with detail modal and progress bars
 │   │   ├── InboxScreen.tsx
+│   │   ├── InsightsScreen.tsx
+│   │   ├── StatsScreen.tsx
 │   │   └── TimelineScreen.tsx
 │   ├── lib/
 │   │   ├── auth-client.ts
 │   │   ├── convex.tsx
+│   │   ├── dataReset.ts
 │   │   ├── dates.ts
-│   │   ├── dates.test.ts
+│   │   ├── deviceIdentity.ts
+│   │   ├── goalLinks.ts           — In-memory pub/sub cache for task→goal links (backed by Convex)
+│   │   ├── goalsStorage.ts        — In-memory pub/sub cache for goals (backed by Convex)
+│   │   ├── haptic.ts              — Semantic haptic helpers: light/medium/heavy/success/error/warning
+│   │   ├── kairoActions.ts
 │   │   ├── kairoApi.ts
+│   │   ├── kairoChatStorage.ts
 │   │   ├── kairoConfig.ts
 │   │   ├── logger.ts
 │   │   ├── notifications.ts
 │   │   ├── retry-queue-storage.ts
 │   │   ├── retry-queue-utils.ts
 │   │   ├── settingsSections.ts
+│   │   ├── statsAggregators.ts
 │   │   ├── task-form.ts
 │   │   ├── task-optimistic.ts
+│   │   ├── userPreferences.ts
 │   │   └── workspace-snapshot.ts
 │   ├── theme/
 │   │   └── tokens.ts
@@ -321,18 +345,28 @@ This means a render crash inside one tab only replaces that tab content with a l
 
 ## Sheets and Overlay Model
 
-The app uses bottom sheets heavily, so overlay responsibilities must stay clear.
+The app mixes bottom sheets and centered modals; each surface has a clear role.
 
-### Add / Edit sheets
+### Add task / Capture modal (`AddTaskSheet`)
 
-- task creation and editing
-- keyboard-aware
-- use `BottomSheetTextInput`
-- Android uses `adjustResize`
+- centered `Modal` with blur+dim backdrop, not a `BottomSheet`
+- opened via the FAB (Capture pill)
+- supports task mode and "New goal" mode in a single surface
+- `hasDraftChanges` guard blocks accidental dismiss when the user has typed
+
+### Edit task modal (`EditTaskSheet`)
+
+- centered `Modal` with blur+dim backdrop
+- includes goal picker chip for link / relink / unlink on any existing task
+
+### Goal detail modal (inline in `GoalsScreen`)
+
+- `GoalDetailSheet` component rendered inside `GoalsScreen`
+- tapping a goal card opens it with description, priority, deadline, progress bar, linked tasks, and delete
 
 ### Settings sheet
 
-- long-form configuration surface
+- long-form configuration surface using `@gorhom/bottom-sheet`
 - includes sync, alerts, Kairo config, and account actions
 - must remain scrollable and usable while keyboard is visible
 
@@ -446,6 +480,36 @@ bug discovered
 -> one focused regression test added if logic is testable in isolation
 ```
 
+## Goals Architecture
+
+Goals are long-horizon objectives that tasks can be linked to. They sync across devices via Convex.
+
+### Data flow
+
+```text
+Convex (goals + goalLinks tables)
+  ↓  useConvexGoalsSync (runs in App.tsx)
+goalsStore / goalLinksStore   ← in-memory pub/sub cache
+  ↓  useGoals() / useGoalLinks()
+GoalsScreen / AddTaskSheet / EditTaskSheet
+```
+
+### Stores
+
+`goalsStorage.ts` and `goalLinks.ts` are thin in-memory pub/sub stores with the same `useSyncExternalStore` shape. Their primary purpose is to avoid prop-drilling and let multiple screens subscribe to the same data. AsyncStorage is used as a fast-start fallback only — Convex is the source of truth.
+
+### Sync
+
+`useConvexGoalsSync` (called once in `App.tsx`) subscribes to `api.goals.list` and `api.goals.listLinks`. When either query resolves, it calls `_syncFromServer` on the corresponding store. On the first run after the feature ships, if Convex has no goals but the local store does, it uploads the local goals as a one-time migration.
+
+### Mutations
+
+`useGoalMutations` is used by every callsite that adds, deletes, or links goals. Each mutation writes optimistically to the local store and then fires the Convex mutation. Wipe (`clearAll`) also deletes server-side goal data.
+
+### Adding goals
+
+Goals can only be created via the Capture modal ("New goal" mode). The Goals tab has no inline composer.
+
 ## What To Touch For Common Changes
 
 ### If inbox/timeline/completed tab behavior is wrong
@@ -464,6 +528,15 @@ Check:
 - `src/components/SettingsSheet.tsx`
 - `src/components/KairoSettingsSection.tsx`
 - bottom-sheet keyboard props
+
+### If goal sync is broken or goals don't appear after reinstall
+
+Check:
+
+- `convex/goals.ts` — `list`, `upsert`, `remove`, `listLinks`, `setLink`, `clearAll`
+- `src/hooks/useConvexGoalsSync.ts` — Convex → local sync and one-time migration logic
+- `src/hooks/useGoalMutations.ts` — mutation wrapper
+- `src/lib/goalsStorage.ts` and `src/lib/goalLinks.ts` — `_syncFromServer` and store shape
 
 ### If a crash takes down the whole app unexpectedly
 

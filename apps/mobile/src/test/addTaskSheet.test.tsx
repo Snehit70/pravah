@@ -2,7 +2,7 @@
 /**
  * AddTaskSheet tests
  *
- * Strategy: mock bottom sheet and test form interactions, validation,
+ * Strategy: mock RN primitives and test form interactions, validation,
  * and task creation flow.
  */
 
@@ -47,79 +47,65 @@ vi.mock("react-native", () => {
       resolved,
     );
   };
+  const TextInput = ({
+    value,
+    onChangeText,
+    onSubmitEditing,
+    placeholder,
+  }: {
+    value?: string;
+    onChangeText?: (v: string) => void;
+    onSubmitEditing?: () => void;
+    placeholder?: string;
+    [key: string]: unknown;
+  }) =>
+    React.createElement("input", {
+      value: value ?? "",
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChangeText?.(e.target.value),
+      onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Enter") onSubmitEditing?.();
+      },
+      placeholder,
+      "data-testid":
+        placeholder === "What needs to be done?"
+          ? "title-input"
+          : placeholder === "Notes (optional)"
+          ? "description-input"
+          : undefined,
+    });
+  const ScrollView = ({ children, ...rest }: AnyProps) => {
+    const { style: _, contentContainerStyle: __, ...safe } = rest;
+    return React.createElement("div", safe, children);
+  };
+  const Modal = ({
+    children,
+    visible,
+  }: {
+    children?: React.ReactNode;
+    visible?: boolean;
+    [key: string]: unknown;
+  }) => (visible ? React.createElement("div", { "data-testid": "modal" }, children) : null);
+  const KeyboardAvoidingView = ({ children, ...rest }: AnyProps) => {
+    const { style: _, behavior: __, keyboardVerticalOffset: ___ } = rest;
+    return React.createElement("div", {}, children);
+  };
   const Keyboard = { dismiss: vi.fn() };
+  const Platform = { OS: "android" };
   return {
     View,
     Text,
     Pressable,
+    TextInput,
+    ScrollView,
+    Modal,
+    KeyboardAvoidingView,
     Keyboard,
-    StyleSheet: { create: <T,>(s: T) => s },
-  };
-});
-
-// ─── @gorhom/bottom-sheet mock ────────────────────────────────────────────────
-const mockExpand = vi.fn();
-const mockClose = vi.fn();
-
-vi.mock("@gorhom/bottom-sheet", () => {
-  const BottomSheet = React.forwardRef(
-    (
-      {
-        children,
-        onChange,
-      }: {
-        children?: React.ReactNode;
-        onChange?: (index: number) => void;
-        [key: string]: unknown;
-      },
-      ref: React.Ref<{ expand: () => void; close: () => void }>
-    ) => {
-      React.useImperativeHandle(ref, () => ({
-        expand: () => {
-          mockExpand();
-          onChange?.(0);
-        },
-        close: () => {
-          mockClose();
-          onChange?.(-1);
-        },
-      }));
-      return React.createElement("div", { "data-testid": "bottom-sheet" }, children);
-    }
-  );
-  return {
-    default: BottomSheet,
-    BottomSheetBackdrop: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
-      React.createElement("div", { "data-testid": "backdrop" }, children),
-    BottomSheetView: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
-      React.createElement("div", {}, children),
-    BottomSheetScrollView: ({
-      children,
-    }: {
-      children?: React.ReactNode;
-      [key: string]: unknown;
-    }) => React.createElement("div", {}, children),
-    BottomSheetTextInput: ({
-      value,
-      onChangeText,
-      onSubmitEditing,
-      placeholder,
-    }: {
-      value?: string;
-      onChangeText?: (v: string) => void;
-      onSubmitEditing?: () => void;
-      placeholder?: string;
-      [key: string]: unknown;
-    }) =>
-      React.createElement("input", {
-        value: value ?? "",
-        onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChangeText?.(e.target.value),
-        onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
-          if (e.key === "Enter") onSubmitEditing?.();
-        },
-        placeholder,
-        "data-testid": placeholder === "What needs to be done?" ? "title-input" : "description-input",
-      }),
+    Platform,
+    StyleSheet: {
+      create: <T,>(s: T) => s,
+      hairlineWidth: 0.5,
+      absoluteFill: {},
+    },
   };
 });
 
@@ -141,20 +127,19 @@ vi.mock("expo-haptics", () => ({
   NotificationFeedbackType: { Success: "success", Error: "error" },
 }));
 
-// ─── react-native-safe-area-context mock ──────────────────────────────────────
-vi.mock("react-native-safe-area-context", () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
-}));
-
-// ─── useKeyboardInset mock ────────────────────────────────────────────────────
-vi.mock("../hooks/useKeyboardInset", () => ({
-  useKeyboardInset: (bottom: number) => bottom,
+// ─── expo-blur mock ───────────────────────────────────────────────────────────
+vi.mock("expo-blur", () => ({
+  BlurView: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
+    React.createElement("div", { "data-testid": "blur-view" }, children),
 }));
 
 // ─── theme tokens mock ────────────────────────────────────────────────────────
 vi.mock("../theme/tokens", () => ({
   colors: {
     accent: "#06f",
+    accentSoft: "#003",
+    bg: "#000",
+    bgCard: "#111",
     bgFloating: "#111",
     bgInput: "#222",
     border: "#333",
@@ -165,9 +150,9 @@ vi.mock("../theme/tokens", () => ({
     textInverse: "#000",
     error: "#f00",
   },
-  radii: { md: 8, lg: 12, xl: 16 },
-  spacing: { xs: 4, sm: 8, md: 16, lg: 24 },
-  typography: { title: {}, bodyMd: {}, micro: {} },
+  radii: { md: 8, lg: 12, xl: 16, full: 9999 },
+  spacing: { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 },
+  typography: { title: {}, bodyMd: {}, bodyLg: {}, headline: {}, micro: {} },
 }));
 
 // ─── TaskMetaFields mock ──────────────────────────────────────────────────────
@@ -203,6 +188,21 @@ vi.mock("../components/TaskMetaFields", () => ({
     ),
 }));
 
+// ─── useGoals mock ────────────────────────────────────────────────────────────
+vi.mock("../hooks/useGoals", () => ({
+  useGoals: () => ({ goals: [] }),
+}));
+
+// ─── useGoalMutations mock ────────────────────────────────────────────────────
+vi.mock("../hooks/useGoalMutations", () => ({
+  useGoalMutations: () => ({
+    addGoal: vi.fn(async () => ({ id: "g1", text: "Goal" })),
+    deleteGoal: vi.fn(),
+    setGoalLink: vi.fn(),
+    clearAll: vi.fn(),
+  }),
+}));
+
 // Import component after all mocks are set up.
 import { AddTaskSheet, type AddTaskSheetRef } from "../components/AddTaskSheet";
 
@@ -222,8 +222,6 @@ describe("AddTaskSheet", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     ref = { current: null };
-    mockExpand.mockClear();
-    mockClose.mockClear();
   });
 
   afterEach(() => {
@@ -244,13 +242,14 @@ describe("AddTaskSheet", () => {
       ref.current?.open();
     });
 
-    expect(mockExpand).toHaveBeenCalledTimes(1);
+    expect(mockOnSheetChange).toHaveBeenCalledWith(true);
+    expect(screen.getByTestId("modal")).toBeTruthy();
 
     act(() => {
       ref.current?.close();
     });
 
-    expect(mockClose).toHaveBeenCalledTimes(1);
+    expect(mockOnSheetChange).toHaveBeenCalledWith(false);
   });
 
   it("creates inbox task with title only", async () => {
@@ -268,20 +267,17 @@ describe("AddTaskSheet", () => {
     });
 
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
-    
-    // Type the title
+
     fireEvent.change(titleInput, { target: { value: "New task" } });
-    
-    // Trigger submit via Enter key
+
     await act(async () => {
       fireEvent.keyDown(titleInput, { key: "Enter" });
     });
 
-    // Should call onAdd with the correct data
     await waitFor(() => {
       expect(mockOnAdd).toHaveBeenCalledTimes(1);
     });
-    
+
     expect(mockOnAdd).toHaveBeenCalledWith({
       title: "New task",
       description: undefined,
@@ -305,7 +301,6 @@ describe("AddTaskSheet", () => {
       ref.current?.open();
     });
 
-    // When title is empty, should show "Add task" button that is disabled
     const addBtn = screen.getByText("Add task");
     expect(addBtn.parentElement).toHaveProperty("disabled", true);
   });
@@ -327,8 +322,6 @@ describe("AddTaskSheet", () => {
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
     fireEvent.change(titleInput, { target: { value: "Draft" } });
 
-    // Add must remain visible so the user can submit; Discard is added
-    // as a secondary affordance once a draft exists.
     expect(screen.getByText("Add task")).toBeTruthy();
     expect(screen.getByText("Discard")).toBeTruthy();
   });

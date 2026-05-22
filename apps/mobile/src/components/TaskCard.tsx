@@ -16,6 +16,8 @@ import Animated, {
   interpolate,
   useAnimatedStyle,
   useSharedValue,
+  withSequence,
+  withSpring,
   withTiming,
   type SharedValue,
 } from "react-native-reanimated";
@@ -54,6 +56,8 @@ type TaskCardProps = {
    *  unused — drag-to-reorder is disabled while RNDFL is incompatible with
    *  Reanimated 4. The prop is kept so the wiring stays in place. */
   onDragHandlePress?: () => void;
+  /** Name of the goal this task is linked to, if any. */
+  linkedGoalName?: string;
 };
 
 const TASK_CARD_RADIUS = radii.lg;
@@ -107,6 +111,7 @@ function TaskCardInner({
   onReorder,
   onEdit,
   onDragHandlePress,
+  linkedGoalName,
 }: TaskCardProps) {
   const isCompleted = task.status === "completed";
   const isInboxTask = task.status === "inbox";
@@ -119,6 +124,7 @@ function TaskCardInner({
   // chases) plus opacity for the final fadeout.
   const sweepProgress = useSharedValue(0);
   const sweepOpacity = useSharedValue(0);
+  const checkboxScale = useSharedValue(1);
   const prevStatus = useRef(task.status);
   useEffect(() => {
     if (prevStatus.current !== "completed" && task.status === "completed") {
@@ -136,10 +142,18 @@ function TaskCardInner({
             if (finished) sweepOpacity.value = withTiming(0, { duration: motion.duration.fast });
           }
         );
+        checkboxScale.value = withSequence(
+          withSpring(1.35, { damping: 8, stiffness: 400 }),
+          withSpring(1, { damping: 14, stiffness: 280 }),
+        );
       });
     }
     prevStatus.current = task.status;
-  }, [task.status, sweepOpacity, sweepProgress]);
+  }, [task.status, sweepOpacity, sweepProgress, checkboxScale]);
+  const checkboxStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: checkboxScale.value }],
+  }));
+
   // Bar leading edge tracks progress; trailing edge follows ~50% behind so the
   // visible accent stripe is a moving slice rather than a full fill. Width is
   // expressed as % of the row, translated via flex on a wrapper View.
@@ -339,24 +353,26 @@ function TaskCardInner({
         {/* Checkbox — 20px circle. Tapping completes the task; for completed
             rows it's filled and inert (the swipe-right reopen action handles
             that case). */}
-        {isCompleted ? (
-          <View
-            style={[styles.checkbox, styles.checkboxDone]}
-            accessible
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: true }}
-            accessibilityLabel={`${task.title} completed`}
-          />
-        ) : (
-          <Pressable
-            onPress={handleCheckboxPress}
-            hitSlop={12}
-            style={({ pressed }) => [styles.checkbox, pressed && styles.checkboxPressed]}
-            accessibilityRole="checkbox"
-            accessibilityLabel={`Complete ${task.title}`}
-            accessibilityState={{ checked: false }}
-          />
-        )}
+        <Animated.View style={checkboxStyle}>
+          {isCompleted ? (
+            <View
+              style={[styles.checkbox, styles.checkboxDone]}
+              accessible
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: true }}
+              accessibilityLabel={`${task.title} completed`}
+            />
+          ) : (
+            <Pressable
+              onPress={handleCheckboxPress}
+              hitSlop={12}
+              style={({ pressed }) => [styles.checkbox, pressed && styles.checkboxPressed]}
+              accessibilityRole="checkbox"
+              accessibilityLabel={`Complete ${task.title}`}
+              accessibilityState={{ checked: false }}
+            />
+          )}
+        </Animated.View>
 
         {/* Body — title + description. Both single-line by default. */}
         <View style={styles.body}>
@@ -370,6 +386,11 @@ function TaskCardInner({
           {hasDescription ? (
             <Text style={styles.description} numberOfLines={1} ellipsizeMode="tail">
               {task.description}
+            </Text>
+          ) : null}
+          {linkedGoalName ? (
+            <Text style={styles.goalTag} numberOfLines={1} ellipsizeMode="tail">
+              ◈ {linkedGoalName}
             </Text>
           ) : null}
         </View>
@@ -484,6 +505,12 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     ...typography.bodyMd,
     marginTop: 2,
+  },
+  goalTag: {
+    ...typography.micro,
+    color: colors.accent,
+    marginTop: 4,
+    opacity: 0.8,
   },
   // Right-aligned metadata column. Stays narrow so the title gets the
   // horizontal real estate. Each micro line stacks tightly.

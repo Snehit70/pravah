@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import * as Haptics from "expo-haptics";
+import { haptic } from "../lib/haptic";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -44,7 +44,7 @@ function FABInner({ onPress, bottom = 92 }: FABProps) {
   };
 
   const handlePress = () => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptic.medium();
     onPress();
   };
 

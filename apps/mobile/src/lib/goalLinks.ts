@@ -1,11 +1,10 @@
 /**
  * goalLinks
  *
- * Mobile-local map of taskId → goalId. Tasks sync via Convex but goals
- * stay on-device (matching the web localStorage policy), so we keep the
- * linkage local too. Orphan links (task deleted server-side) are kept on
- * disk but filtered out by callers via `tasksFor` — a periodic compaction
- * can prune them later.
+ * In-memory pub/sub cache of taskId → goalId. The authoritative store is
+ * the Convex `goalLinks` table; useConvexGoalsSync keeps this cache in sync
+ * via _syncFromServer. AsyncStorage is used only as a fast-start fallback
+ * for the first render before the Convex query resolves.
  *
  * Same pub/sub shape as goalsStore so screens can mix the two with one
  * useSyncExternalStore.
@@ -115,6 +114,13 @@ export const goalLinksStore = {
     cached = next;
     void persist();
     emit();
+  },
+  _syncFromServer(links: GoalLinkMap): void {
+    cached = links;
+    hydrated = true;
+    hydratingPromise = null;
+    emit();
+    void persist();
   },
   reset(): void {
     cached = {};

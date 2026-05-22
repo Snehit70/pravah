@@ -29,8 +29,10 @@ import {
   View,
 } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { BlurView } from "expo-blur";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { useReducedMotion } from "../hooks/useReducedMotion";
+import { haptic } from "../lib/haptic";
 import {
   ConfirmContext,
   type ConfirmFn,
@@ -103,13 +105,17 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             exiting={reducedMotion ? undefined : FadeOut.duration(120)}
             style={styles.backdrop}
           >
+            <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
+            <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
             <Pressable
               accessibilityLabel="Dismiss dialog"
               style={StyleSheet.absoluteFill}
               onPress={() => close(false)}
             />
             <View style={styles.card} accessibilityViewIsModal accessibilityRole="alert">
-              <Text style={styles.title}>{pending.options.title}</Text>
+              <Text style={[styles.title, !pending.options.message && styles.titleOnly]}>
+                {pending.options.title}
+              </Text>
               {pending.options.message ? (
                 <Text style={styles.message}>{pending.options.message}</Text>
               ) : null}
@@ -130,7 +136,11 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                   </Text>
                 </Pressable>
                 <Pressable
-                  onPress={() => close(true)}
+                  onPress={() => {
+                    if (pending.options.destructive) haptic.error();
+                    else haptic.success();
+                    close(true);
+                  }}
                   hitSlop={8}
                   accessibilityRole="button"
                   accessibilityLabel={pending.options.confirmLabel ?? "Confirm"}
@@ -160,50 +170,61 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: spacing.xl,
   },
+  backdropDim: {
+    backgroundColor: "rgba(0,0,0,0.72)",
+  },
   card: {
     width: "100%",
     maxWidth: 380,
-    backgroundColor: colors.bgFloating,
-    borderRadius: radii.lg,
+    backgroundColor: colors.bg,
+    borderRadius: radii.xl,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-    padding: spacing.lg,
-    gap: spacing.md,
+    borderColor: colors.border,
+    overflow: "hidden",
   },
   title: {
     ...typography.title,
     color: colors.textPrimary,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+  },
+  titleOnly: {
+    paddingBottom: spacing.md,
   },
   message: {
     ...typography.bodyMd,
     color: colors.textSecondary,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.md,
   },
   actions: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    alignItems: "center",
+    gap: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   actionBtn: {
-    minHeight: 40,
+    minHeight: 38,
     paddingHorizontal: spacing.md,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     alignItems: "center",
     justifyContent: "center",
   },
   cancelBtn: {
     backgroundColor: "transparent",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
   },
   cancelText: {
     ...typography.bodyMd,
-    color: colors.textSecondary,
+    color: colors.textMuted,
   },
   confirmBtn: {
     backgroundColor: colors.accent,
@@ -218,7 +239,7 @@ const styles = StyleSheet.create({
   },
   destructiveText: {
     ...typography.bodyMd,
-    color: colors.bg,
+    color: "#fff",
     fontWeight: "600",
   },
 });

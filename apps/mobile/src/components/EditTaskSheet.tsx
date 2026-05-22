@@ -1,20 +1,36 @@
-import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
-import BottomSheet, {
-  BottomSheetBackdrop,
-  BottomSheetTextInput,
-  BottomSheetView,
-  type BottomSheetBackdropProps,
-} from "@gorhom/bottom-sheet";
-import * as Haptics from "expo-haptics";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { BlurView } from "expo-blur";
+import { haptic } from "../lib/haptic";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "./TaskCard";
 import type { Id } from "../../../../convex/_generated/dataModel";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TaskMetaFields } from "./TaskMetaFields";
-import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { type TaskPriority } from "../lib/task-form";
 import { useConfirm } from "../hooks/useConfirm";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { useGoals } from "../hooks/useGoals";
+import { goalLinksStore } from "../lib/goalLinks";
+import { useGoalMutations } from "../hooks/useGoalMutations";
 
 export type EditTaskSheetRef = {
   open: (task: MobileTask) => void;
@@ -42,10 +58,13 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     { onSave, isValidDeadline, onSheetChange, onComplete, onReopen, onUnschedule, onDelete },
     ref
   ) {
-    const bottomSheetRef = useRef<BottomSheet>(null);
-    const insets = useSafeAreaInsets();
+    const titleInputRef = useRef<TextInput>(null);
+    const openSeqRef = useRef(0);
     const confirm = useConfirm();
+    const { goals } = useGoals();
+    const { setGoalLink } = useGoalMutations();
 
+    const [visible, setVisible] = useState(false);
     const [taskId, setTaskId] = useState<Id<"tasks"> | null>(null);
     const [taskStatus, setTaskStatus] = useState<MobileTask["status"] | null>(null);
     const [title, setTitle] = useState("");
@@ -54,36 +73,68 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const [priority, setPriority] = useState<TaskPriority>(undefined);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [showGoalPicker, setShowGoalPicker] = useState(false);
     const [initialDraft, setInitialDraft] = useState<{
       title: string;
       description: string;
       deadline: string;
       priority: TaskPriority;
+      goalId: string | null;
     } | null>(null);
-    const sheetBottomInset = useKeyboardInset(insets.bottom);
+    const [draftGoalId, setDraftGoalId] = useState<string | null>(null);
+
+    const closeModal = useCallback(
+      (notify = true) => {
+        Keyboard.dismiss();
+        setVisible(false);
+        setTaskId(null);
+        setTaskStatus(null);
+        setInitialDraft(null);
+        setDraftGoalId(null);
+        setShowGoalPicker(false);
+        if (notify) onSheetChange?.(false);
+      },
+      [onSheetChange]
+    );
 
     useImperativeHandle(ref, () => ({
       open: (task: MobileTask) => {
-        setTaskId(task._id);
-        setTaskStatus(task.status);
-        setTitle(task.title);
-        setDescription(task.description ?? "");
-        setDeadline(task.deadline ?? "");
-        setPriority(task.priority);
-        setInitialDraft({
-          title: task.title,
-          description: task.description ?? "",
-          deadline: task.deadline ?? "",
-          priority: task.priority,
+        const seq = openSeqRef.current + 1;
+        openSeqRef.current = seq;
+        void goalLinksStore.hydrate().then(() => {
+          if (openSeqRef.current !== seq) return;
+          const currentGoalId = goalLinksStore.goalFor(String(task._id)) ?? null;
+          setTaskId(task._id);
+          setTaskStatus(task.status);
+          setTitle(task.title);
+          setDescription(task.description ?? "");
+          setDeadline(task.deadline ?? "");
+          setPriority(task.priority);
+          setDraftGoalId(currentGoalId);
+          setInitialDraft({
+            title: task.title,
+            description: task.description ?? "",
+            deadline: task.deadline ?? "",
+            priority: task.priority,
+            goalId: currentGoalId,
+          });
+          setError(null);
+          setVisible(true);
+          onSheetChange?.(true);
+          haptic.light();
         });
-        setError(null);
-        bottomSheetRef.current?.expand();
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       },
       close: () => {
-        bottomSheetRef.current?.close();
+        openSeqRef.current += 1;
+        closeModal();
       },
-    }));
+    }), [closeModal, onSheetChange]);
+
+    useEffect(() => {
+      if (!visible) return;
+      const t = setTimeout(() => titleInputRef.current?.focus(), 120);
+      return () => clearTimeout(t);
+    }, [visible]);
 
     const handleSave = useCallback(async () => {
       if (!taskId || !title.trim() || saving) return;
@@ -91,7 +142,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       const deadlineResult = isValidDeadline(deadline);
       if (deadlineResult.error) {
         setError(deadlineResult.error);
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptic.error();
         return;
       }
 
@@ -109,9 +160,12 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       setSaving(false);
 
       if (success) {
-        bottomSheetRef.current?.close();
+        if (initialDraft?.goalId !== draftGoalId) {
+          setGoalLink(String(taskId), draftGoalId);
+        }
+        closeModal();
       }
-    }, [taskId, title, description, deadline, priority, saving, onSave, isValidDeadline]);
+    }, [taskId, title, description, deadline, priority, saving, onSave, isValidDeadline, initialDraft, draftGoalId, closeModal, setGoalLink]);
 
     const hasUnsavedChanges = useMemo(() => {
       const initial = initialDraft;
@@ -120,30 +174,21 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         title !== initial.title ||
         description !== initial.description ||
         deadline !== initial.deadline ||
-        priority !== initial.priority
+        priority !== initial.priority ||
+        draftGoalId !== initial.goalId
       );
-    }, [deadline, description, initialDraft, priority, taskId, title]);
-
-    const renderBackdrop = useCallback(
-      (props: BottomSheetBackdropProps) => (
-        <BottomSheetBackdrop
-          {...props}
-          pressBehavior={hasUnsavedChanges ? "none" : "close"}
-          disappearsOnIndex={-1}
-          appearsOnIndex={0}
-          opacity={0.6}
-        />
-      ),
-      [hasUnsavedChanges]
-    );
+    }, [deadline, description, draftGoalId, initialDraft, priority, taskId, title]);
 
     const canSave = useMemo(() => Boolean(title.trim()) && !saving, [title, saving]);
+
+    const linkedGoalId = taskId ? draftGoalId : null;
+    const linkedGoal = linkedGoalId ? goals.find((g) => g.id === linkedGoalId) ?? null : null;
+
     const requestClose = useCallback(async () => {
       if (!hasUnsavedChanges) {
-        bottomSheetRef.current?.close();
+        closeModal();
         return;
       }
-
       const discard = await confirm({
         title: "Discard changes?",
         message: "You have unsaved edits in this task.",
@@ -151,187 +196,267 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         cancelLabel: "Keep editing",
         destructive: true,
       });
-      if (discard) bottomSheetRef.current?.close();
-    }, [hasUnsavedChanges, confirm]);
+      if (discard) closeModal();
+    }, [hasUnsavedChanges, confirm, closeModal]);
 
     return (
-      <BottomSheet
-        ref={bottomSheetRef}
-        index={-1}
-        snapPoints={["62%"]}
-        detached
-        bottomInset={sheetBottomInset}
-        style={styles.sheetContainer}
-        enablePanDownToClose={!hasUnsavedChanges}
-        enableDynamicSizing={false}
-        backgroundStyle={styles.sheetBg}
-        handleIndicatorStyle={styles.indicator}
-        backdropComponent={renderBackdrop}
-        keyboardBehavior="extend"
-        keyboardBlurBehavior="restore"
-        android_keyboardInputMode="adjustResize"
-        onClose={() => {
-          Keyboard.dismiss();
-          onSheetChange?.(false);
-          setTaskId(null);
-          setTaskStatus(null);
-          setInitialDraft(null);
-        }}
-        onChange={(index) => {
-          if (index === -1) {
-            Keyboard.dismiss();
-            setTaskId(null);
-            setTaskStatus(null);
-            setInitialDraft(null);
-          }
-          onSheetChange?.(index >= 0);
-        }}
+      <Modal
+        visible={visible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => void requestClose()}
       >
-        <BottomSheetView style={styles.content}>
-          <Text style={styles.sheetKicker}>Edit</Text>
-          <Text style={styles.sheetTitle}>Edit task</Text>
-
-          <BottomSheetTextInput
-            value={title}
-            onChangeText={(text) => {
-              setTitle(text);
-              setError(null);
-            }}
-            placeholder="Task title"
-            placeholderTextColor={colors.textMuted}
-            style={styles.titleInput}
-          />
-
-          <BottomSheetTextInput
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Notes"
-            placeholderTextColor={colors.textMuted}
-            style={styles.notesInput}
-            multiline
-          />
-
-          <TaskMetaFields
-            key={taskId ?? "edit-task-meta-fields-closed"}
-            deadline={deadline}
-            priority={priority}
-            onDeadlineChange={setDeadline}
-            onPriorityChange={setPriority}
-            onClearError={() => setError(null)}
-          />
-
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-          {taskId ? (
-            <View style={styles.quickActions}>
-              {taskStatus === "completed" ? (
-                onReopen ? (
-                  <Pressable
-                    onPress={() => {
-                      onReopen(taskId);
-                      bottomSheetRef.current?.close();
-                    }}
-                    hitSlop={12}
-                    style={({ pressed }) => [styles.quickActionItem, pressed && { opacity: 0.6 }]}
-                  >
-                    <Text style={styles.quickActionText}>Reopen</Text>
-                  </Pressable>
-                ) : null
-              ) : (
-                <>
-                  {onComplete ? (
-                    <Pressable
-                      onPress={() => {
-                        onComplete(taskId);
-                        bottomSheetRef.current?.close();
-                      }}
-                      hitSlop={12}
-                      style={({ pressed }) => [styles.quickActionItem, pressed && { opacity: 0.6 }]}
-                    >
-                      <Text style={styles.quickActionText}>Complete</Text>
-                    </Pressable>
-                  ) : null}
-                  {taskStatus === "scheduled" && onUnschedule ? (
-                    <Pressable
-                      onPress={() => {
-                        onUnschedule(taskId);
-                        bottomSheetRef.current?.close();
-                      }}
-                      hitSlop={12}
-                      style={({ pressed }) => [styles.quickActionItem, pressed && { opacity: 0.6 }]}
-                    >
-                      <Text style={styles.quickActionText}>Unschedule</Text>
-                    </Pressable>
-                  ) : null}
-                </>
-              )}
-              <View style={{ flex: 1 }} />
-              {onDelete ? (
-                <Pressable
-                  onPress={() => {
-                    void (async () => {
-                      const ok = await confirm({
-                        title: "Delete task?",
-                        message: "This cannot be undone.",
-                        confirmLabel: "Delete",
-                        destructive: true,
-                      });
-                      if (!ok) return;
-                      onDelete(taskId);
-                      bottomSheetRef.current?.close();
-                    })();
-                  }}
-                  hitSlop={12}
-                  style={({ pressed }) => [styles.quickActionItem, pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={[styles.quickActionText, styles.deleteText]}>Delete</Text>
-                </Pressable>
-              ) : null}
-            </View>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.overlay}
+        >
+          <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
+          <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
+          {!hasUnsavedChanges ? (
+            <Pressable
+              accessibilityLabel="Dismiss"
+              style={StyleSheet.absoluteFill}
+              onPress={() => void requestClose()}
+            />
           ) : null}
 
-          <View style={styles.actions}>
-            <Pressable
-              onPress={() => void requestClose()}
-              style={({ pressed }) => [styles.cancelButton, pressed && { opacity: 0.6 }]}
-              hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+          <View style={styles.card}>
+            <ScrollView
+              contentContainerStyle={styles.content}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
             >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => void handleSave()}
-              disabled={!canSave}
-              hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                !canSave && styles.primaryButtonDisabled,
-                pressed && { opacity: 0.85 },
-              ]}
-            >
-              <Text style={[styles.primaryButtonText, !canSave && styles.primaryButtonTextDisabled]}>
-                {saving ? "Saving…" : "Save"}
-              </Text>
-            </Pressable>
+              <Text style={styles.sheetKicker}>Edit</Text>
+              <Text style={styles.sheetTitle}>Edit task</Text>
+
+              {goals.length > 0 ? (
+                <View style={styles.goalSection}>
+                  <Pressable
+                    onPress={() => setShowGoalPicker((s) => !s)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={linkedGoal ? `Goal: ${linkedGoal.text}. Tap to change.` : "Link to a goal"}
+                    style={({ pressed }) => [
+                      styles.goalChip,
+                      linkedGoal && styles.goalChipActive,
+                      pressed && { opacity: 0.7 },
+                    ]}
+                  >
+                    <Text style={styles.goalChipKicker}>Goal</Text>
+                    <Text
+                      style={[styles.goalChipValue, linkedGoal && styles.goalChipValueActive]}
+                      numberOfLines={1}
+                    >
+                      {linkedGoal ? linkedGoal.text : "None"}
+                    </Text>
+                    <Text style={styles.goalChipCaret}>{showGoalPicker ? "▾" : "▸"}</Text>
+                  </Pressable>
+
+                  {showGoalPicker ? (
+                    <Animated.View
+                      entering={FadeIn.duration(150)}
+                      exiting={FadeOut.duration(120)}
+                      style={styles.goalPicker}
+                    >
+                      <Pressable
+                        onPress={() => {
+                          setDraftGoalId(null);
+                          setShowGoalPicker(false);
+                          haptic.light();
+                        }}
+                        hitSlop={8}
+                        style={({ pressed }) => [
+                          styles.goalOption,
+                          !linkedGoalId && styles.goalOptionActive,
+                          pressed && { opacity: 0.7 },
+                        ]}
+                      >
+                        <Text style={[styles.goalOptionText, !linkedGoalId && styles.goalOptionTextActive]}>
+                          No goal
+                        </Text>
+                      </Pressable>
+                      {goals.map((g) => {
+                        const active = g.id === linkedGoalId;
+                        return (
+                          <Pressable
+                            key={g.id}
+                            onPress={() => {
+                              setDraftGoalId(g.id);
+                              setShowGoalPicker(false);
+                              haptic.light();
+                            }}
+                            hitSlop={8}
+                            style={({ pressed }) => [
+                              styles.goalOption,
+                              active && styles.goalOptionActive,
+                              pressed && { opacity: 0.7 },
+                            ]}
+                          >
+                            <Text
+                              style={[styles.goalOptionText, active && styles.goalOptionTextActive]}
+                              numberOfLines={2}
+                            >
+                              {g.text}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </Animated.View>
+                  ) : null}
+                </View>
+              ) : null}
+
+              <TextInput
+                ref={titleInputRef}
+                value={title}
+                onChangeText={(text) => {
+                  setTitle(text);
+                  setError(null);
+                }}
+                placeholder="Task title"
+                placeholderTextColor={colors.textMuted}
+                style={styles.titleInput}
+              />
+
+              <TextInput
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Notes"
+                placeholderTextColor={colors.textMuted}
+                style={styles.notesInput}
+                multiline
+              />
+
+              <TaskMetaFields
+                key={taskId ?? "edit-task-meta-fields-closed"}
+                deadline={deadline}
+                priority={priority}
+                onDeadlineChange={setDeadline}
+                onPriorityChange={setPriority}
+                onClearError={() => setError(null)}
+              />
+
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+              {taskId ? (
+                <View style={styles.quickActions}>
+                  {taskStatus === "completed" ? (
+                    onReopen ? (
+                      <Pressable
+                        onPress={() => {
+                          onReopen(taskId);
+                          closeModal();
+                        }}
+                        hitSlop={12}
+                        style={({ pressed }) => [styles.quickActionItem, pressed && { opacity: 0.6 }]}
+                      >
+                        <Text style={styles.quickActionText}>Reopen</Text>
+                      </Pressable>
+                    ) : null
+                  ) : (
+                    <>
+                      {onComplete ? (
+                        <Pressable
+                          onPress={() => {
+                            onComplete(taskId);
+                            closeModal();
+                          }}
+                          hitSlop={12}
+                          style={({ pressed }) => [styles.quickActionItem, pressed && { opacity: 0.6 }]}
+                        >
+                          <Text style={styles.quickActionText}>Complete</Text>
+                        </Pressable>
+                      ) : null}
+                      {taskStatus === "scheduled" && onUnschedule ? (
+                        <Pressable
+                          onPress={() => {
+                            onUnschedule(taskId);
+                            closeModal();
+                          }}
+                          hitSlop={12}
+                          style={({ pressed }) => [styles.quickActionItem, pressed && { opacity: 0.6 }]}
+                        >
+                          <Text style={styles.quickActionText}>Unschedule</Text>
+                        </Pressable>
+                      ) : null}
+                    </>
+                  )}
+                  <View style={{ flex: 1 }} />
+                  {onDelete ? (
+                    <Pressable
+                      onPress={() => {
+                        void (async () => {
+                          const ok = await confirm({
+                            title: "Delete task?",
+                            message: "This cannot be undone.",
+                            confirmLabel: "Delete",
+                            destructive: true,
+                          });
+                          if (!ok) return;
+                          onDelete(taskId);
+                          closeModal();
+                        })();
+                      }}
+                      hitSlop={12}
+                      style={({ pressed }) => [styles.quickActionItem, pressed && { opacity: 0.6 }]}
+                    >
+                      <Text style={[styles.quickActionText, styles.deleteText]}>Delete</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : null}
+
+              <View style={styles.actions}>
+                <Pressable
+                  onPress={() => void requestClose()}
+                  style={({ pressed }) => [styles.cancelButton, pressed && { opacity: 0.6 }]}
+                  hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => void handleSave()}
+                  disabled={!canSave}
+                  hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    !canSave && styles.primaryButtonDisabled,
+                    pressed && { opacity: 0.85 },
+                  ]}
+                >
+                  <Text style={[styles.primaryButtonText, !canSave && styles.primaryButtonTextDisabled]}>
+                    {saving ? "Saving…" : "Save"}
+                  </Text>
+                </Pressable>
+              </View>
+            </ScrollView>
           </View>
-        </BottomSheetView>
-      </BottomSheet>
+        </KeyboardAvoidingView>
+      </Modal>
     );
   }
 );
 
 const styles = StyleSheet.create({
-  sheetBg: {
-    backgroundColor: colors.bgFloating,
-    borderTopLeftRadius: radii.xl,
-    borderTopRightRadius: radii.xl,
+  overlay: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
   },
-  sheetContainer: {
-    marginHorizontal: spacing.md,
+  backdropDim: {
+    backgroundColor: "rgba(0,0,0,0.72)",
   },
-  indicator: {
-    backgroundColor: colors.border,
-    width: 36,
-    height: 4,
+  card: {
+    width: "100%",
+    maxWidth: 480,
+    maxHeight: "85%",
+    backgroundColor: colors.bg,
+    borderRadius: radii.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    overflow: "hidden",
   },
   content: {
     paddingHorizontal: spacing.lg,
@@ -347,6 +472,68 @@ const styles = StyleSheet.create({
     ...typography.headline,
     color: colors.textPrimary,
     marginTop: -spacing.sm,
+  },
+  goalSection: {
+    gap: spacing.sm,
+  },
+  goalChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+  },
+  goalChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  goalChipKicker: {
+    ...typography.micro,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  goalChipValue: {
+    flex: 1,
+    ...typography.bodyMd,
+    color: colors.textMuted,
+  },
+  goalChipValueActive: {
+    color: colors.accent,
+    fontWeight: "600",
+  },
+  goalChipCaret: {
+    ...typography.micro,
+    color: colors.textMuted,
+  },
+  goalPicker: {
+    gap: 2,
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  goalOption: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+  },
+  goalOptionActive: {
+    backgroundColor: colors.accentSoft,
+  },
+  goalOptionText: {
+    ...typography.bodyMd,
+    color: colors.textSecondary,
+  },
+  goalOptionTextActive: {
+    color: colors.accent,
+    fontWeight: "600",
   },
   titleInput: {
     color: colors.textPrimary,

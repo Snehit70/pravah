@@ -49,13 +49,27 @@ vi.mock("react-native", () => {
   };
   const Keyboard = { dismiss: vi.fn() };
   const Alert = { alert: vi.fn() };
+  const Platform = { OS: "ios", select: <T,>(options: { ios?: T; android?: T; default?: T }) => options.ios ?? options.default };
+  const TextInput = ({ value, onChangeText, placeholder, ...rest }: AnyProps & { value?: string; onChangeText?: (v: string) => void; placeholder?: string }) =>
+    React.createElement("input", {
+      ...rest,
+      value: value ?? "",
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChangeText?.(e.target.value),
+      placeholder,
+      "data-testid": placeholder === "Task title" ? "title-input" : "description-input",
+    });
   return {
     View,
     Text,
     Pressable,
+    KeyboardAvoidingView: View,
     Keyboard,
     Alert,
+    Modal: ({ children, visible }: AnyProps & { visible?: boolean }) => (visible ? React.createElement("div", {}, children) : null),
+    Platform,
+    ScrollView: View,
     StyleSheet: { create: <T,>(s: T) => s },
+    TextInput,
   };
 });
 
@@ -127,6 +141,22 @@ vi.mock("expo-haptics", () => ({
   NotificationFeedbackType: { Success: "success", Error: "error" },
 }));
 
+// ─── expo-blur mock ───────────────────────────────────────────────────────────
+vi.mock("expo-blur", () => ({
+  BlurView: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
+    React.createElement("div", { "data-testid": "blur-view" }, children),
+}));
+
+// ─── react-native-reanimated mock ─────────────────────────────────────────────
+vi.mock("react-native-reanimated", () => ({
+  default: {
+    View: ({ children, ...rest }: { children?: React.ReactNode; [key: string]: unknown }) =>
+      React.createElement("div", rest, children),
+  },
+  FadeIn: { duration: () => ({}) },
+  FadeOut: { duration: () => ({}) },
+}));
+
 // ─── react-native-safe-area-context mock ──────────────────────────────────────
 vi.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -164,6 +194,26 @@ vi.mock("../components/TaskMetaFields", () => ({
 // ─── ConfirmDialog mock ───────────────────────────────────────────────────────
 // Avoid pulling reanimated/worklets into the test by stubbing the hook.
 // Auto-confirm so discard flows resolve to true.
+vi.mock("../hooks/useGoals", () => ({
+  useGoals: () => ({ goals: [] }),
+}));
+
+vi.mock("../hooks/useGoalMutations", () => ({
+  useGoalMutations: () => ({
+    addGoal: vi.fn(),
+    deleteGoal: vi.fn(),
+    setGoalLink: vi.fn(),
+    clearAll: vi.fn(),
+  }),
+}));
+
+vi.mock("../lib/goalLinks", () => ({
+  goalLinksStore: {
+    hydrate: vi.fn(() => Promise.resolve()),
+    goalFor: vi.fn(() => null),
+  },
+}));
+
 vi.mock("../hooks/useConfirm", () => ({
   useConfirm: () => async () => true,
   ConfirmProvider: ({ children }: { children?: React.ReactNode }) =>
@@ -211,7 +261,7 @@ describe("EditTaskSheet", () => {
     vi.clearAllMocks();
   });
 
-  it("opens with pre-filled task data", () => {
+  it("opens with pre-filled task data", async () => {
     render(
       <EditTaskSheet
         ref={ref}
@@ -221,11 +271,12 @@ describe("EditTaskSheet", () => {
       />
     );
 
-    act(() => {
+    await act(async () => {
       ref.current?.open(sampleTask);
+      await Promise.resolve();
     });
 
-    expect(mockExpand).toHaveBeenCalledTimes(1);
+    expect(mockOnSheetChange).toHaveBeenCalledWith(true);
 
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
     expect(titleInput.value).toBe("Original task");
@@ -241,8 +292,9 @@ describe("EditTaskSheet", () => {
       />
     );
 
-    act(() => {
+    await act(async () => {
       ref.current?.open(sampleTask);
+      await Promise.resolve();
     });
 
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
@@ -266,7 +318,7 @@ describe("EditTaskSheet", () => {
     });
   });
 
-  it("closes via ref method", () => {
+  it("closes via ref method", async () => {
     render(
       <EditTaskSheet
         ref={ref}
@@ -276,15 +328,16 @@ describe("EditTaskSheet", () => {
       />
     );
 
-    act(() => {
+    await act(async () => {
       ref.current?.open(sampleTask);
+      await Promise.resolve();
     });
 
     act(() => {
       ref.current?.close();
     });
 
-    expect(mockClose).toHaveBeenCalledTimes(1);
+    expect(mockOnSheetChange).toHaveBeenLastCalledWith(false);
   });
 
   it("closes after successful save", async () => {
@@ -297,8 +350,9 @@ describe("EditTaskSheet", () => {
       />
     );
 
-    act(() => {
+    await act(async () => {
       ref.current?.open(sampleTask);
+      await Promise.resolve();
     });
 
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
@@ -310,7 +364,7 @@ describe("EditTaskSheet", () => {
     });
 
     await waitFor(() => {
-      expect(mockClose).toHaveBeenCalled();
+      expect(mockOnSheetChange).toHaveBeenLastCalledWith(false);
     });
   });
 
@@ -326,8 +380,9 @@ describe("EditTaskSheet", () => {
       />
     );
 
-    act(() => {
+    await act(async () => {
       ref.current?.open(sampleTask);
+      await Promise.resolve();
     });
 
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
@@ -342,7 +397,7 @@ describe("EditTaskSheet", () => {
       expect(mockOnSave).toHaveBeenCalled();
     });
 
-    // Should not close on failure
-    expect(mockClose).not.toHaveBeenCalled();
+    // Should not close on failure.
+    expect(mockOnSheetChange).not.toHaveBeenLastCalledWith(false);
   });
 });
