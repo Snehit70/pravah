@@ -49,13 +49,27 @@ vi.mock("react-native", () => {
   };
   const Keyboard = { dismiss: vi.fn() };
   const Alert = { alert: vi.fn() };
+  const Platform = { OS: "ios", select: <T,>(options: { ios?: T; android?: T; default?: T }) => options.ios ?? options.default };
+  const TextInput = ({ value, onChangeText, placeholder, ...rest }: AnyProps & { value?: string; onChangeText?: (v: string) => void; placeholder?: string }) =>
+    React.createElement("input", {
+      ...rest,
+      value: value ?? "",
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChangeText?.(e.target.value),
+      placeholder,
+      "data-testid": placeholder === "Task title" ? "title-input" : "description-input",
+    });
   return {
     View,
     Text,
     Pressable,
+    KeyboardAvoidingView: View,
     Keyboard,
     Alert,
+    Modal: ({ children, visible }: AnyProps & { visible?: boolean }) => (visible ? React.createElement("div", {}, children) : null),
+    Platform,
+    ScrollView: View,
     StyleSheet: { create: <T,>(s: T) => s },
+    TextInput,
   };
 });
 
@@ -125,6 +139,22 @@ vi.mock("expo-haptics", () => ({
   notificationAsync: vi.fn(async () => undefined),
   ImpactFeedbackStyle: { Light: "light", Medium: "medium" },
   NotificationFeedbackType: { Success: "success", Error: "error" },
+}));
+
+// ─── expo-blur mock ───────────────────────────────────────────────────────────
+vi.mock("expo-blur", () => ({
+  BlurView: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
+    React.createElement("div", { "data-testid": "blur-view" }, children),
+}));
+
+// ─── react-native-reanimated mock ─────────────────────────────────────────────
+vi.mock("react-native-reanimated", () => ({
+  default: {
+    View: ({ children, ...rest }: { children?: React.ReactNode; [key: string]: unknown }) =>
+      React.createElement("div", rest, children),
+  },
+  FadeIn: { duration: () => ({}) },
+  FadeOut: { duration: () => ({}) },
 }));
 
 // ─── react-native-safe-area-context mock ──────────────────────────────────────
@@ -225,7 +255,7 @@ describe("EditTaskSheet", () => {
       ref.current?.open(sampleTask);
     });
 
-    expect(mockExpand).toHaveBeenCalledTimes(1);
+    expect(mockOnSheetChange).toHaveBeenCalledWith(true);
 
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
     expect(titleInput.value).toBe("Original task");
@@ -284,7 +314,7 @@ describe("EditTaskSheet", () => {
       ref.current?.close();
     });
 
-    expect(mockClose).toHaveBeenCalledTimes(1);
+    expect(mockOnSheetChange).toHaveBeenLastCalledWith(false);
   });
 
   it("closes after successful save", async () => {
@@ -310,7 +340,7 @@ describe("EditTaskSheet", () => {
     });
 
     await waitFor(() => {
-      expect(mockClose).toHaveBeenCalled();
+      expect(mockOnSheetChange).toHaveBeenLastCalledWith(false);
     });
   });
 
@@ -342,7 +372,7 @@ describe("EditTaskSheet", () => {
       expect(mockOnSave).toHaveBeenCalled();
     });
 
-    // Should not close on failure
-    expect(mockClose).not.toHaveBeenCalled();
+    // Should not close on failure.
+    expect(mockOnSheetChange).not.toHaveBeenLastCalledWith(false);
   });
 });
