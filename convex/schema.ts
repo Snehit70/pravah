@@ -2,6 +2,26 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  goals: defineTable({
+    clientId: v.string(),
+    text: v.string(),
+    description: v.optional(v.string()),
+    deadline: v.optional(v.string()),
+    priority: v.optional(v.union(v.literal("p1"), v.literal("p2"), v.literal("p3"))),
+    ownerTokenIdentifier: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner", ["ownerTokenIdentifier"])
+    .index("by_owner_client_id", ["ownerTokenIdentifier", "clientId"]),
+  goalLinks: defineTable({
+    taskId: v.string(),
+    goalClientId: v.string(),
+    ownerTokenIdentifier: v.string(),
+  })
+    .index("by_owner", ["ownerTokenIdentifier"])
+    .index("by_owner_task", ["ownerTokenIdentifier", "taskId"])
+    .index("by_owner_goal", ["ownerTokenIdentifier", "goalClientId"]),
   users: defineTable({
     name: v.optional(v.string()),
     email: v.optional(v.string()),

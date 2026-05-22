@@ -30,6 +30,7 @@ import { useConfirm } from "../hooks/useConfirm";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useGoals } from "../hooks/useGoals";
 import { goalLinksStore } from "../lib/goalLinks";
+import { useGoalMutations } from "../hooks/useGoalMutations";
 
 export type EditTaskSheetRef = {
   open: (task: MobileTask) => void;
@@ -61,6 +62,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const openSeqRef = useRef(0);
     const confirm = useConfirm();
     const { goals } = useGoals();
+    const { setGoalLink } = useGoalMutations();
 
     const [visible, setVisible] = useState(false);
     const [taskId, setTaskId] = useState<Id<"tasks"> | null>(null);
@@ -159,7 +161,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
 
       if (success) {
         if (initialDraft?.goalId !== draftGoalId) {
-          goalLinksStore.setLink(String(taskId), draftGoalId);
+          setGoalLink(String(taskId), draftGoalId);
         }
         closeModal();
       }

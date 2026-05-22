@@ -27,9 +27,9 @@ import { GeistMono_500Medium } from "@expo-google-fonts/geist-mono";
 import { ConvexClientProvider } from "./src/lib/convex";
 import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
-import { goalLinksStore } from "./src/lib/goalLinks";
-import { goalsStore } from "./src/lib/goalsStorage";
 import { useGoalLinks, useGoals } from "./src/hooks/useGoals";
+import { useConvexGoalsSync } from "./src/hooks/useConvexGoalsSync";
+import { useGoalMutations } from "./src/hooks/useGoalMutations";
 
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -274,6 +274,10 @@ function MobileApp() {
   const moveTaskMutation = useMutation(api.tasks.moveTask);
   const unscheduleTaskMutation = useMutation(api.tasks.unscheduleTask);
   const reopenTaskMutation = useMutation(api.tasks.reopenTask);
+
+  useConvexGoalsSync();
+  const { setGoalLink, clearAll: clearAllGoals } = useGoalMutations();
+
   // ── Derived data ────────────────────────────────────────────────────
 
   const visibleTasks =
@@ -384,14 +388,13 @@ function MobileApp() {
   const handleWipeLocalData = useCallback(async () => {
     const { wipeLocalAppData } = await import("./src/lib/dataReset");
     await wipeLocalAppData();
-    goalsStore.reset();
-    goalLinksStore.reset();
+    clearAllGoals();
     resetPreferencesStore();
     resetDailyReminderState();
     setIsSettingsModalOpen(false);
     void clearSnapshot();
     googleSignOut();
-  }, [clearSnapshot, googleSignOut, resetDailyReminderState, setIsSettingsModalOpen]);
+  }, [clearAllGoals, clearSnapshot, googleSignOut, resetDailyReminderState, setIsSettingsModalOpen]);
 
   const handleExportTasks = useCallback(async () => {
     try {
@@ -428,7 +431,7 @@ function MobileApp() {
             priority: payload.priority,
           });
           if (payload.goalId && retriedId) {
-            goalLinksStore.setLink(String(retriedId), payload.goalId);
+            setGoalLink(String(retriedId), payload.goalId);
           }
           return;
         }
@@ -467,6 +470,7 @@ function MobileApp() {
       moveTaskMutation,
       unscheduleTaskMutation,
       reopenTaskMutation,
+      setGoalLink,
     ]
   );
 
@@ -561,7 +565,7 @@ function MobileApp() {
           priority: data.priority,
         });
         if (data.goalId && newTaskId) {
-          goalLinksStore.setLink(String(newTaskId), data.goalId);
+          setGoalLink(String(newTaskId), data.goalId);
         }
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         mobileLogger.info("add_task_succeeded", { actionId, elapsedMs: Date.now() - startedAt });
@@ -595,7 +599,7 @@ function MobileApp() {
         return false;
       }
     },
-    [addTaskMutation, today, enqueueRetry, showToast]
+    [addTaskMutation, today, enqueueRetry, setGoalLink, showToast]
   );
 
   const handleRefresh = async () => {

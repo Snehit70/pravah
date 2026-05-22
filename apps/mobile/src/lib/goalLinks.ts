@@ -116,6 +116,13 @@ export const goalLinksStore = {
     void persist();
     emit();
   },
+  _syncFromServer(links: GoalLinkMap): void {
+    cached = links;
+    hydrated = true;
+    hydratingPromise = null;
+    emit();
+    void persist();
+  },
   reset(): void {
     cached = {};
     hydrated = false;

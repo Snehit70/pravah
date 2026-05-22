@@ -26,9 +26,9 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { colors, radii, spacing, typography } from "../theme/tokens";
-import { goalsStore, type GoalItem } from "../lib/goalsStorage";
-import { goalLinksStore } from "../lib/goalLinks";
+import type { GoalItem } from "../lib/goalsStorage";
 import { useGoals, useGoalLinks } from "../hooks/useGoals";
+import { useGoalMutations } from "../hooks/useGoalMutations";
 import { useConfirm } from "../hooks/useConfirm";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import type { MobileTask } from "../components/TaskCard";
@@ -109,6 +109,7 @@ type GoalDetailSheetProps = {
 };
 
 function GoalDetailSheet({ goal, progress, linked, onDelete, onClose }: GoalDetailSheetProps) {
+  const { setGoalLink } = useGoalMutations();
   const hasTasks = progress.total > 0;
   const isComplete = hasTasks && progress.done === progress.total;
 
@@ -191,7 +192,7 @@ function GoalDetailSheet({ goal, progress, linked, onDelete, onClose }: GoalDeta
                         {t.title}
                       </Text>
                       <Pressable
-                        onPress={() => { goalLinksStore.setLink(String(t._id), null); haptic.light(); }}
+                        onPress={() => { setGoalLink(String(t._id), null); haptic.light(); }}
                         hitSlop={8}
                         style={({ pressed }) => [pressed && { opacity: 0.6 }]}
                       >
@@ -235,6 +236,7 @@ type GoalProgress = {
 
 export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false }: GoalsScreenProps) {
   const confirm = useConfirm();
+  const { deleteGoal } = useGoalMutations();
   const { goals, isHydrated } = useGoals();
   const links = useGoalLinks();
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
@@ -290,12 +292,11 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false }: 
         destructive: true,
       });
       if (!ok) return;
-      goalLinksStore.clearGoal(goal.id);
-      goalsStore.remove(goal.id);
+      deleteGoal(goal.id);
       setSelectedGoalId(null);
       haptic.success();
     },
-    [confirm, tasksByGoal],
+    [confirm, deleteGoal, tasksByGoal],
   );
 
   const emptyBlock = (
@@ -309,7 +310,7 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false }: 
   );
 
   const footerHint = (
-    <Text style={styles.footerHint}>Private to this device. Goals don't sync.</Text>
+    <Text style={styles.footerHint}>Goals sync across your devices.</Text>
   );
 
   const selectedGoal = sortedGoals.find((g) => g.id === selectedGoalId) ?? null;

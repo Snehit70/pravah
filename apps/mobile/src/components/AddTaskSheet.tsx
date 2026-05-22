@@ -26,7 +26,7 @@ import { colors, radii, spacing, typography } from "../theme/tokens";
 import { TaskMetaFields } from "./TaskMetaFields";
 import { type TaskPriority } from "../lib/task-form";
 import { useGoals } from "../hooks/useGoals";
-import { goalsStore } from "../lib/goalsStorage";
+import { useGoalMutations } from "../hooks/useGoalMutations";
 
 type ComposerMode = "inbox" | "today" | "tomorrow" | "nextweek";
 
@@ -73,6 +73,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [showDetails, setShowDetails] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const { goals } = useGoals();
+    const { addGoal } = useGoalMutations();
     const selectedGoal = useMemo(
       () => goals.find((g) => g.id === goalId),
       [goals, goalId]
@@ -144,7 +145,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setError(null);
 
       if (kind === "goal") {
-        const created = await goalsStore.add({
+        const created = await addGoal({
           text: trimmed,
           description: description.trim() || undefined,
           deadline: deadlineResult.value,
