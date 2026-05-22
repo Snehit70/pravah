@@ -4,6 +4,18 @@ Pravah is a timeline-first task manager built around a horizontal week view. Tas
 
 ![Pravah timeline preview](public/images/pravah-timeline-preview.png)
 
+## Mobile App
+
+The mobile app (Expo / React Native) brings the full Pravah experience to Android and iOS — inbox, timeline, goals, Kairo AI, and sync — all in the same dark typographic style.
+
+<p align="center">
+  <img src="public/images/mobile/mobile-auth.jpeg" width="18%" alt="Sign in" />
+  <img src="public/images/mobile/mobile-kairo.jpeg" width="18%" alt="Kairo AI copilot" />
+  <img src="public/images/mobile/mobile-settings-assistant.jpeg" width="18%" alt="Settings — Assistant" />
+  <img src="public/images/mobile/mobile-settings-timeline.jpeg" width="18%" alt="Settings — Timeline" />
+  <img src="public/images/mobile/mobile-settings-more.jpeg" width="18%" alt="Settings — More" />
+</p>
+
 Pravah is currently designed and operated as a single-user system. Auth and `ownerTokenIdentifier` still scope records per signed-in identity, but that isolation exists for session safety, sync ownership, and legacy-data migration compatibility - not as a supported multi-user workspace model.
 
 Stack:
