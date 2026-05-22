@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.10.0](https://github.com/Snehit70/pravah/compare/web-v1.9.0...web-v1.10.0) (2026-05-22)
+
+
+### Features
+
+* **mobile:** add 220ms fade+rise entry animation on tab switch ([b8a1057](https://github.com/Snehit70/pravah/commit/b8a1057bcaa0068188b61860521cafed51492d16))
+* **mobile:** add BlurView backdrop to ConfirmDialog ([af37b66](https://github.com/Snehit70/pravah/commit/af37b66a7b495288a256f7c6905ac9196f3e3a16))
+* **mobile:** add goal picker to edit modal for link/relink/unlink ([ff376c5](https://github.com/Snehit70/pravah/commit/ff376c5d4ce33b0f08dcfa457e00528635e25ee8))
+* **mobile:** add Unlink button to edit modal goal badge ([1b90fbc](https://github.com/Snehit70/pravah/commit/1b90fbc8663f06294183efacf137608dd522e6cd))
+* **mobile:** animate task checkbox bounce and goal progress bar fill ([d5807b8](https://github.com/Snehit70/pravah/commit/d5807b83ebd4ff6ca885ede474d0b3b8471caa36))
+* **mobile:** centralize haptics and add missing feedback moments ([5e9dd5d](https://github.com/Snehit70/pravah/commit/5e9dd5dcaba3cc1a6d6bd1139bb750f7e6f927fe))
+* **mobile:** convert AddTaskSheet from BottomSheet to centered Modal ([2d724e8](https://github.com/Snehit70/pravah/commit/2d724e8ee7f32e8fc6e2d14965423d28c723d397))
+* **mobile:** convert EditTaskSheet from BottomSheet to centered Modal ([de3ee6c](https://github.com/Snehit70/pravah/commit/de3ee6cffd63ae29e5b359e9f6bf7ee004998729))
+* **mobile:** open goal detail sheet on tap with full info and delete ([5f0dc2d](https://github.com/Snehit70/pravah/commit/5f0dc2dcc4d9cd8c62df5536018d947cfb1ddc67))
+* **mobile:** show goal link indicator on task cards and edit modal ([eb1dfb9](https://github.com/Snehit70/pravah/commit/eb1dfb9f44ba5a44cdca8308d4ab38504e35497b))
+* **mobile:** sync goals and goal links via Convex ([e504474](https://github.com/Snehit70/pravah/commit/e50447426ebd8ed5dc8d3871a9e15f040a862bae))
+
+
+### Bug Fixes
+
+* **mobile:** add missing deps to handleAdd/handleSave and mock useGoalMutations in tests ([0ccf994](https://github.com/Snehit70/pravah/commit/0ccf994c33c884e2af1703a7c089f0b71f64c2f3))
+* **mobile:** address haptics animations PR feedback ([3dafb3e](https://github.com/Snehit70/pravah/commit/3dafb3e830cc1ed882349df11b2d080f0706776f))
+* **mobile:** expand Capture sheet to 72% and show details when switching to New goal ([a3d5819](https://github.com/Snehit70/pravah/commit/a3d58192dfe1f203d700b0bc6f94765bed580ed5))
+* **mobile:** redesign ConfirmDialog to match app theme ([cd16e87](https://github.com/Snehit70/pravah/commit/cd16e87879dd9a5f9ffb78c4e8c362ada7fff608))
+* **mobile:** remove stale bottomInset prop from GoalDetailSheet call ([fbb0892](https://github.com/Snehit70/pravah/commit/fbb0892d875d8d610b96e89bc86e74544d41edd2))
+* **mobile:** remove template literal type cast crashing Metro Babel parser ([7986138](https://github.com/Snehit70/pravah/commit/79861386493d6f778c2af859eadfc12824005b21))
+* **mobile:** replace goal detail BottomSheet with centered Modal popup ([d2cc406](https://github.com/Snehit70/pravah/commit/d2cc40643a22358970290b29cb8e45afea0b40da))
+* **mobile:** restore backdrop dim opacity until expo-blur is installed ([db29eab](https://github.com/Snehit70/pravah/commit/db29eab1817e7761fcf75bd7a958f059a9b1a209))
+* **mobile:** restore PR [#46](https://github.com/Snehit70/pravah/issues/46) changes + add Convex goals sync ([c1b4611](https://github.com/Snehit70/pravah/commit/c1b46115ffc47d9f73aa9b0b65747ac8b9aa106a))
+* **mobile:** use bgCard instead of bgFloating for ConfirmDialog to match theme ([d645787](https://github.com/Snehit70/pravah/commit/d64578750e02fecc6aeb755232de528bcd78b58a))
+* **mobile:** use colors.bg for ConfirmDialog card to match near-black app background ([400aa1a](https://github.com/Snehit70/pravah/commit/400aa1a52567e2b2d699608c2735a86f8a40f792))
+* **mobile:** wait for goal links before editing task goals ([ecb3114](https://github.com/Snehit70/pravah/commit/ecb3114e5ded6d77bf660dae8ab5f3038fca86e9))
+
 ## [1.9.0](https://github.com/Snehit70/pravah/compare/web-v1.8.0...web-v1.9.0) (2026-05-21)
 
 
