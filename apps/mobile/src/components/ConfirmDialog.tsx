@@ -137,7 +137,8 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                 </Pressable>
                 <Pressable
                   onPress={() => {
-                    pending.options.destructive ? haptic.error() : haptic.success();
+                    if (pending.options.destructive) haptic.error();
+                    else haptic.success();
                     close(true);
                   }}
                   hitSlop={8}

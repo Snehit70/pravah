@@ -109,6 +109,8 @@ function hasPriorityBoundaryViolation(original: MobileTask[], reordered: MobileT
 
 function MobileApp() {
   const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
+  const tabEnterAnimation = reducedMotion ? undefined : tabEnter;
   const addTaskSheetRef = useRef<AddTaskSheetRef>(null);
   const editTaskSheetRef = useRef<EditTaskSheetRef>(null);
   const kairoRef = useRef<KairoSheetRef>(null);
@@ -883,7 +885,7 @@ function MobileApp() {
       ) : null}
 
       {activeTab === "inbox" ? (
-        <Animated.View entering={tabEnter} style={styles.tabScreen}>
+        <Animated.View entering={tabEnterAnimation} style={styles.tabScreen}>
           <ScreenErrorBoundary screenName="Inbox">
             <InboxScreen
               tasks={visibleTasks}
@@ -899,7 +901,7 @@ function MobileApp() {
       ) : null}
 
       {activeTab === "timeline" ? (
-        <Animated.View entering={tabEnter} style={styles.tabScreen}>
+        <Animated.View entering={tabEnterAnimation} style={styles.tabScreen}>
           <ScreenErrorBoundary screenName="Timeline">
             <TimelineScreen
               sections={shouldUseWorkspaceSnapshot ? displayTimelineSections : timelineSections}
@@ -917,7 +919,7 @@ function MobileApp() {
       ) : null}
 
       {activeTab === "goals" ? (
-        <Animated.View entering={tabEnter} style={styles.tabScreen}>
+        <Animated.View entering={tabEnterAnimation} style={styles.tabScreen}>
           <ScreenErrorBoundary screenName="Goals">
             <GoalsScreen
               tabBarHeight={tabBarHeight}
@@ -929,7 +931,7 @@ function MobileApp() {
       ) : null}
 
       {activeTab === "insights" ? (
-        <Animated.View entering={tabEnter} style={styles.tabScreen}>
+        <Animated.View entering={tabEnterAnimation} style={styles.tabScreen}>
           <ScreenErrorBoundary screenName="Insights">
             <InsightsScreen
               tasks={workspaceTaskCorpus}

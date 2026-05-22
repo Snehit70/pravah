@@ -95,6 +95,18 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       [onSheetChange]
     );
 
+    const reset = () => {
+      setTitle("");
+      setDescription("");
+      setDeadline("");
+      setPriority(undefined);
+      setGoalId(undefined);
+      setShowGoalPicker(false);
+      setShowDetails(false);
+      setKind("task");
+      setError(null);
+    };
+
     useImperativeHandle(ref, () => ({
       open: () => {
         setVisible(true);
@@ -116,18 +128,6 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       const t = setTimeout(() => titleInputRef.current?.focus(), 120);
       return () => clearTimeout(t);
     }, [visible]);
-
-    const reset = () => {
-      setTitle("");
-      setDescription("");
-      setDeadline("");
-      setPriority(undefined);
-      setGoalId(undefined);
-      setShowGoalPicker(false);
-      setShowDetails(false);
-      setKind("task");
-      setError(null);
-    };
 
     const handleAdd = useCallback(async () => {
       const trimmed = title.trim();

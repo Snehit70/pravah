@@ -30,6 +30,7 @@ import { goalsStore, type GoalItem } from "../lib/goalsStorage";
 import { goalLinksStore } from "../lib/goalLinks";
 import { useGoals, useGoalLinks } from "../hooks/useGoals";
 import { useConfirm } from "../hooks/useConfirm";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 import type { MobileTask } from "../components/TaskCard";
 
 const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -70,13 +71,18 @@ function GoalProgressBar({
   isComplete: boolean;
   isLoading?: boolean;
 }) {
+  const reducedMotion = useReducedMotion();
   const progress = useSharedValue(0);
   useEffect(() => {
+    if (reducedMotion) {
+      progress.value = ratio;
+      return;
+    }
     progress.value = withTiming(ratio, {
       duration: 600,
       easing: Easing.out(Easing.cubic),
     });
-  }, [ratio, progress]);
+  }, [ratio, progress, reducedMotion]);
   const fillStyle = useAnimatedStyle(() => ({
     width: `${(isLoading ? 0.3 : progress.value) * 100}%`,
   }));

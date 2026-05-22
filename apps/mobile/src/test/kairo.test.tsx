@@ -26,6 +26,18 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
   },
 }));
 
+vi.mock("expo-blur", () => ({
+  BlurView: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
+    React.createElement("div", { "data-testid": "blur-view" }, children),
+}));
+
+vi.mock("expo-haptics", () => ({
+  impactAsync: vi.fn(async () => undefined),
+  notificationAsync: vi.fn(async () => undefined),
+  ImpactFeedbackStyle: { Light: "light", Medium: "medium" },
+  NotificationFeedbackType: { Success: "success", Error: "error" },
+}));
+
 // ─── react-native mock ────────────────────────────────────────────────────────
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };

@@ -77,7 +77,9 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       description: string;
       deadline: string;
       priority: TaskPriority;
+      goalId: string | null;
     } | null>(null);
+    const [draftGoalId, setDraftGoalId] = useState<string | null>(null);
 
     const closeModal = useCallback(
       (notify = true) => {
@@ -86,6 +88,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         setTaskId(null);
         setTaskStatus(null);
         setInitialDraft(null);
+        setDraftGoalId(null);
         setShowGoalPicker(false);
         if (notify) onSheetChange?.(false);
       },
@@ -100,11 +103,14 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         setDescription(task.description ?? "");
         setDeadline(task.deadline ?? "");
         setPriority(task.priority);
+        const currentGoalId = links[String(task._id)] ?? null;
+        setDraftGoalId(currentGoalId);
         setInitialDraft({
           title: task.title,
           description: task.description ?? "",
           deadline: task.deadline ?? "",
           priority: task.priority,
+          goalId: currentGoalId,
         });
         setError(null);
         setVisible(true);
@@ -146,9 +152,12 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       setSaving(false);
 
       if (success) {
+        if (initialDraft?.goalId !== draftGoalId) {
+          goalLinksStore.setLink(String(taskId), draftGoalId);
+        }
         closeModal();
       }
-    }, [taskId, title, description, deadline, priority, saving, onSave, isValidDeadline, closeModal]);
+    }, [taskId, title, description, deadline, priority, saving, onSave, isValidDeadline, initialDraft, draftGoalId, closeModal]);
 
     const hasUnsavedChanges = useMemo(() => {
       const initial = initialDraft;
@@ -157,13 +166,14 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         title !== initial.title ||
         description !== initial.description ||
         deadline !== initial.deadline ||
-        priority !== initial.priority
+        priority !== initial.priority ||
+        draftGoalId !== initial.goalId
       );
-    }, [deadline, description, initialDraft, priority, taskId, title]);
+    }, [deadline, description, draftGoalId, initialDraft, priority, taskId, title]);
 
     const canSave = useMemo(() => Boolean(title.trim()) && !saving, [title, saving]);
 
-    const linkedGoalId = taskId ? (links[String(taskId)] ?? null) : null;
+    const linkedGoalId = taskId ? draftGoalId : null;
     const linkedGoal = linkedGoalId ? goals.find((g) => g.id === linkedGoalId) ?? null : null;
 
     const requestClose = useCallback(async () => {
@@ -243,7 +253,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                     >
                       <Pressable
                         onPress={() => {
-                          goalLinksStore.setLink(String(taskId), null);
+                          setDraftGoalId(null);
                           setShowGoalPicker(false);
                           haptic.light();
                         }}
@@ -264,7 +274,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                           <Pressable
                             key={g.id}
                             onPress={() => {
-                              goalLinksStore.setLink(String(taskId), g.id);
+                              setDraftGoalId(g.id);
                               setShowGoalPicker(false);
                               haptic.light();
                             }}
