@@ -408,7 +408,6 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false }: 
         linked={selectedLinked}
         onDelete={() => selectedGoal && void handleDelete(selectedGoal)}
         onClose={() => setSelectedGoalId(null)}
-        bottomInset={insets.bottom}
       />
     </View>
   );
