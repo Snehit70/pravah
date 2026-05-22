@@ -241,7 +241,7 @@ describe("EditTaskSheet", () => {
     vi.clearAllMocks();
   });
 
-  it("opens with pre-filled task data", () => {
+  it("opens with pre-filled task data", async () => {
     render(
       <EditTaskSheet
         ref={ref}
@@ -251,8 +251,9 @@ describe("EditTaskSheet", () => {
       />
     );
 
-    act(() => {
+    await act(async () => {
       ref.current?.open(sampleTask);
+      await Promise.resolve();
     });
 
     expect(mockOnSheetChange).toHaveBeenCalledWith(true);
@@ -271,8 +272,9 @@ describe("EditTaskSheet", () => {
       />
     );
 
-    act(() => {
+    await act(async () => {
       ref.current?.open(sampleTask);
+      await Promise.resolve();
     });
 
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
@@ -296,7 +298,7 @@ describe("EditTaskSheet", () => {
     });
   });
 
-  it("closes via ref method", () => {
+  it("closes via ref method", async () => {
     render(
       <EditTaskSheet
         ref={ref}
@@ -306,8 +308,9 @@ describe("EditTaskSheet", () => {
       />
     );
 
-    act(() => {
+    await act(async () => {
       ref.current?.open(sampleTask);
+      await Promise.resolve();
     });
 
     act(() => {
@@ -327,8 +330,9 @@ describe("EditTaskSheet", () => {
       />
     );
 
-    act(() => {
+    await act(async () => {
       ref.current?.open(sampleTask);
+      await Promise.resolve();
     });
 
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
@@ -356,8 +360,9 @@ describe("EditTaskSheet", () => {
       />
     );
 
-    act(() => {
+    await act(async () => {
       ref.current?.open(sampleTask);
+      await Promise.resolve();
     });
 
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
