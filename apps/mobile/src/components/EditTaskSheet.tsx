@@ -28,7 +28,7 @@ import { TaskMetaFields } from "./TaskMetaFields";
 import { type TaskPriority } from "../lib/task-form";
 import { useConfirm } from "../hooks/useConfirm";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
-import { useGoalLinks, useGoals } from "../hooks/useGoals";
+import { useGoals } from "../hooks/useGoals";
 import { goalLinksStore } from "../lib/goalLinks";
 
 export type EditTaskSheetRef = {
@@ -58,8 +58,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     ref
   ) {
     const titleInputRef = useRef<TextInput>(null);
+    const openSeqRef = useRef(0);
     const confirm = useConfirm();
-    const links = useGoalLinks();
     const { goals } = useGoals();
 
     const [visible, setVisible] = useState(false);
@@ -97,30 +97,36 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
 
     useImperativeHandle(ref, () => ({
       open: (task: MobileTask) => {
-        setTaskId(task._id);
-        setTaskStatus(task.status);
-        setTitle(task.title);
-        setDescription(task.description ?? "");
-        setDeadline(task.deadline ?? "");
-        setPriority(task.priority);
-        const currentGoalId = links[String(task._id)] ?? null;
-        setDraftGoalId(currentGoalId);
-        setInitialDraft({
-          title: task.title,
-          description: task.description ?? "",
-          deadline: task.deadline ?? "",
-          priority: task.priority,
-          goalId: currentGoalId,
+        const seq = openSeqRef.current + 1;
+        openSeqRef.current = seq;
+        void goalLinksStore.hydrate().then(() => {
+          if (openSeqRef.current !== seq) return;
+          const currentGoalId = goalLinksStore.goalFor(String(task._id)) ?? null;
+          setTaskId(task._id);
+          setTaskStatus(task.status);
+          setTitle(task.title);
+          setDescription(task.description ?? "");
+          setDeadline(task.deadline ?? "");
+          setPriority(task.priority);
+          setDraftGoalId(currentGoalId);
+          setInitialDraft({
+            title: task.title,
+            description: task.description ?? "",
+            deadline: task.deadline ?? "",
+            priority: task.priority,
+            goalId: currentGoalId,
+          });
+          setError(null);
+          setVisible(true);
+          onSheetChange?.(true);
+          haptic.light();
         });
-        setError(null);
-        setVisible(true);
-        onSheetChange?.(true);
-        haptic.light();
       },
       close: () => {
+        openSeqRef.current += 1;
         closeModal();
       },
-    }));
+    }), [closeModal, onSheetChange]);
 
     useEffect(() => {
       if (!visible) return;
