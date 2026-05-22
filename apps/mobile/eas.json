@@ -7,7 +7,7 @@
     "base": {
       "cache": {
         "key": "v1",
-        "customPaths": ["apps/mobile/node_modules"]
+        "paths": ["apps/mobile/node_modules"]
       }
     },
     "development": {
