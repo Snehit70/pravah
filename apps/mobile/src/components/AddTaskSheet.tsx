@@ -178,7 +178,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         reset();
         closeModal();
       }
-    }, [title, description, deadline, mode, priority, goalId, kind, saving, onAdd, isValidDeadline, closeModal]);
+    }, [title, description, deadline, mode, priority, goalId, kind, saving, onAdd, isValidDeadline, closeModal, addGoal]);
 
     const canSubmit = useMemo(() => Boolean(title.trim()) && !saving, [title, saving]);
 

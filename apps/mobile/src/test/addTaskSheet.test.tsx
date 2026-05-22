@@ -193,9 +193,14 @@ vi.mock("../hooks/useGoals", () => ({
   useGoals: () => ({ goals: [] }),
 }));
 
-// ─── goalsStorage mock ────────────────────────────────────────────────────────
-vi.mock("../lib/goalsStorage", () => ({
-  goalsStore: { add: vi.fn(() => true) },
+// ─── useGoalMutations mock ────────────────────────────────────────────────────
+vi.mock("../hooks/useGoalMutations", () => ({
+  useGoalMutations: () => ({
+    addGoal: vi.fn(async () => ({ id: "g1", text: "Goal" })),
+    deleteGoal: vi.fn(),
+    setGoalLink: vi.fn(),
+    clearAll: vi.fn(),
+  }),
 }));
 
 // Import component after all mocks are set up.

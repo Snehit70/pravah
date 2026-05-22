@@ -194,6 +194,26 @@ vi.mock("../components/TaskMetaFields", () => ({
 // ─── ConfirmDialog mock ───────────────────────────────────────────────────────
 // Avoid pulling reanimated/worklets into the test by stubbing the hook.
 // Auto-confirm so discard flows resolve to true.
+vi.mock("../hooks/useGoals", () => ({
+  useGoals: () => ({ goals: [] }),
+}));
+
+vi.mock("../hooks/useGoalMutations", () => ({
+  useGoalMutations: () => ({
+    addGoal: vi.fn(),
+    deleteGoal: vi.fn(),
+    setGoalLink: vi.fn(),
+    clearAll: vi.fn(),
+  }),
+}));
+
+vi.mock("../lib/goalLinks", () => ({
+  goalLinksStore: {
+    hydrate: vi.fn(() => Promise.resolve()),
+    goalFor: vi.fn(() => null),
+  },
+}));
+
 vi.mock("../hooks/useConfirm", () => ({
   useConfirm: () => async () => true,
   ConfirmProvider: ({ children }: { children?: React.ReactNode }) =>

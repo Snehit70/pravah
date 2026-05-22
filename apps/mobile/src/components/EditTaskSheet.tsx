@@ -165,7 +165,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         }
         closeModal();
       }
-    }, [taskId, title, description, deadline, priority, saving, onSave, isValidDeadline, initialDraft, draftGoalId, closeModal]);
+    }, [taskId, title, description, deadline, priority, saving, onSave, isValidDeadline, initialDraft, draftGoalId, closeModal, setGoalLink]);
 
     const hasUnsavedChanges = useMemo(() => {
       const initial = initialDraft;
