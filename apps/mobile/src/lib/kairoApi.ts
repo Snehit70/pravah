@@ -210,7 +210,7 @@ export function buildOpenAIRequestBody(
 ) {
   return {
     model: config.model,
-    max_tokens: 1024,
+    max_completion_tokens: 1024,
     messages: [
       { role: "system", content: systemPrompt },
       ...history,
