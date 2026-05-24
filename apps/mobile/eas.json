@@ -18,6 +18,7 @@
     },
     "preview": {
       "extends": "base",
+      "channel": "preview",
       "distribution": "internal",
       "resourceClass": "medium"
     },

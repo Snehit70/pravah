@@ -32,6 +32,35 @@ cd apps/mobile
 npx expo start
 ```
 
+## EAS preview delivery (APK install vs JS-only OTA update)
+
+Use this when testing a cloud-built preview APK on a real device.
+
+### One-time baseline (or after native/config changes)
+Build and install a fresh preview APK:
+```bash
+cd apps/mobile
+bunx eas-cli build --platform android --profile preview
+```
+
+### Fast path for JS-only fixes
+If you only changed JS/TS code (no native/plugin/config changes), publish an OTA update:
+```bash
+cd apps/mobile
+bunx eas-cli update --branch preview --message "fix: <short message>"
+```
+
+After publishing, close and reopen the installed app to pick up the update.
+
+### Decision rule: when `build` is required
+Run a new `eas build` when any of these changed:
+- native modules or package native code
+- Expo plugins list
+- Android/iOS app config (package identifiers, permissions, icons/splash, etc.)
+- Expo SDK or React Native version
+
+If none of the above changed, prefer `eas update`.
+
 ## Emulator setup (one-time)
 
 1. Install Android Studio via Flatpak:
