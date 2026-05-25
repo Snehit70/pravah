@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.11.0](https://github.com/Snehit70/pravah/compare/web-v1.10.0...web-v1.11.0) (2026-05-25)
+
+
+### Features
+
+* **mobile:** polish OTA-safe UI surfaces ([cb25dfe](https://github.com/Snehit70/pravah/commit/cb25dfe4e7ba633b9f4e237a8b19c7f56f482162))
+* **mobile:** polish OTA-safe UI surfaces ([46a5579](https://github.com/Snehit70/pravah/commit/46a55790a60dce00ee1d7aeccc9713f5d90f0dcc))
+
+
+### Bug Fixes
+
+* **mobile:** allow deferred Kairo replay ([f024591](https://github.com/Snehit70/pravah/commit/f024591405905b4ac84dd2958bf394f829fad417))
+* **mobile:** use max_completion_tokens for OpenAI chat requests ([8cecce5](https://github.com/Snehit70/pravah/commit/8cecce52e4294ab1d235d22683ff749a8fd51852))
+
 ## [1.10.0](https://github.com/Snehit70/pravah/compare/web-v1.9.0...web-v1.10.0) (2026-05-22)
 
 
