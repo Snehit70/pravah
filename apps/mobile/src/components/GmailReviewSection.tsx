@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
   chip: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 6,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     minHeight: 28,

@@ -91,4 +91,53 @@ describe("extractKairoActions", () => {
     );
     expect(actions).toEqual([{ kind: "complete", handle: "T9" }]);
   });
+
+  it("parses add-goal with optional fields", () => {
+    const { actions } = extractKairoActions(
+      `<add-goal>{"text":"Launch beta","description":"ship","deadline":"2026-06-20","priority":"p1"}</add-goal>`
+    );
+    expect(actions).toEqual([
+      {
+        kind: "addGoal",
+        text: "Launch beta",
+        description: "ship",
+        deadline: "2026-06-20",
+        priority: "p1",
+      },
+    ]);
+  });
+
+  it("parses update-goal clear semantics with null", () => {
+    const { actions } = extractKairoActions(
+      `<update-goal>{"id":"G1","description":null,"deadline":null,"priority":null}</update-goal>`
+    );
+    expect(actions).toEqual([
+      {
+        kind: "updateGoal",
+        handle: "G1",
+        text: undefined,
+        description: null,
+        deadline: null,
+        priority: null,
+      },
+    ]);
+  });
+
+  it("parses delete-goal and task-goal link blocks", () => {
+    const { actions } = extractKairoActions(`
+      <delete-goal>{"id":"G2"}</delete-goal>
+      <link-task-goal>{"taskId":"T1","goalId":"G2"}</link-task-goal>
+      <unlink-task-goal>{"taskId":"T1"}</unlink-task-goal>
+    `);
+    expect(actions).toEqual([
+      { kind: "deleteGoal", handle: "G2" },
+      { kind: "linkTaskGoal", taskHandle: "T1", goalHandle: "G2" },
+      { kind: "unlinkTaskGoal", taskHandle: "T1" },
+    ]);
+  });
+
+  it("drops update-goal blocks that contain no mutable fields", () => {
+    const { actions } = extractKairoActions(`<update-goal>{"id":"G1"}</update-goal>`);
+    expect(actions).toEqual([]);
+  });
 });

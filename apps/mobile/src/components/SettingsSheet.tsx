@@ -1528,7 +1528,7 @@ const styles = StyleSheet.create({
   segmented: {
     flexDirection: "row",
     backgroundColor: colors.bgCard,
-    borderRadius: 10,
+    borderRadius: radii.lg,
     padding: 3,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
@@ -1539,7 +1539,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 8,
+    borderRadius: radii.md,
   },
   segmentActive: {
     backgroundColor: colors.accentSoft,
@@ -1590,7 +1590,7 @@ const styles = StyleSheet.create({
   choiceChip: {
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs / 2,
-    borderRadius: 999,
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -1750,7 +1750,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentSoft,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    borderRadius: 999,
+    borderRadius: radii.md,
   },
   versionPillText: {
     ...typography.micro,
@@ -1797,7 +1797,7 @@ const styles = StyleSheet.create({
   copyChip: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
-    borderRadius: 999,
+    borderRadius: radii.sm,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
     backgroundColor: colors.bgCard,

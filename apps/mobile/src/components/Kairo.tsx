@@ -61,6 +61,7 @@ import {
 import { getLocalDateString } from "../lib/dates";
 import { useKairoChats } from "../hooks/useKairoChats";
 import { useUserPreferences } from "../hooks/useUserPreferences";
+import { useGoalLinks, useGoals } from "../hooks/useGoals";
 import { KairoChatList } from "./KairoChatList";
 import { KairoMarkdown } from "./KairoMarkdown";
 import { haptic } from "../lib/haptic";
@@ -112,6 +113,16 @@ function labelForAction(
       return beforeTitle ? `Updated "${beforeTitle}"` : "Updated task";
     case "delete":
       return beforeTitle ? `Deleted "${beforeTitle}"` : "Deleted task";
+    case "addGoal":
+      return `Added goal "${action.text}"`;
+    case "updateGoal":
+      return beforeTitle ? `Updated goal "${beforeTitle}"` : "Updated goal";
+    case "deleteGoal":
+      return beforeTitle ? `Deleted goal "${beforeTitle}"` : "Deleted goal";
+    case "linkTaskGoal":
+      return "Linked task to goal";
+    case "unlinkTaskGoal":
+      return "Unlinked task from goal";
   }
 }
 
@@ -215,6 +226,11 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   const updateTaskMutation = useMutation(api.tasks.updateTask);
   const softDeleteTaskMutation = useMutation(api.tasks.softDeleteTask);
   const restoreTaskMutation = useMutation(api.tasks.restoreTask);
+  const upsertGoalMutation = useMutation(api.goals.upsert);
+  const removeGoalMutation = useMutation(api.goals.remove);
+  const setGoalLinkMutation = useMutation(api.goals.setLink);
+  const { goals } = useGoals();
+  const goalLinks = useGoalLinks();
 
   // Single snap point at 92% — leaves a sliver of the dimmed app visible at
   // the top as a peek, the same affordance the web overlay leaves.
@@ -450,7 +466,12 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       }
 
       try {
-        const { text: contextText, idMap } = buildKairoContext(tasks, inboxTasks);
+        const { text: contextText, taskIdMap, goalIdMap } = buildKairoContext(
+          tasks,
+          inboxTasks,
+          goals,
+          goalLinks
+        );
         const systemPrompt = KAIRO_SYSTEM_PROMPT.replace("{CONTEXT}", contextText);
         const body =
           nextConfig.providerFormat === "anthropic"
@@ -511,9 +532,15 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           };
         };
         const beforeTitles = actions.map((a) => {
-          if (a.kind === "add") return null;
-          const id = idMap[a.handle];
-          return id ? lookupTask(id)?.title ?? null : null;
+          if (a.kind === "add" || a.kind === "addGoal" || a.kind === "linkTaskGoal" || a.kind === "unlinkTaskGoal") {
+            return null;
+          }
+          if (a.kind === "updateGoal" || a.kind === "deleteGoal") {
+            const goalId = goalIdMap[a.handle];
+            return goalId ? goals.find((g) => g.id === goalId)?.text ?? null : null;
+          }
+          const taskId = taskIdMap[a.handle];
+          return taskId ? lookupTask(taskId)?.title ?? null : null;
         });
 
         const mutations = {
@@ -547,11 +574,65 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
             softDeleteTaskMutation({ taskId: args.taskId as Id<"tasks"> }),
           restoreTask: (args: { taskId: string }) =>
             restoreTaskMutation({ taskId: args.taskId as Id<"tasks"> }),
+          addGoal: async (args: {
+            text: string;
+            description?: string;
+            deadline?: string;
+            priority?: "p1" | "p2" | "p3";
+          }) => {
+            const trimmed = args.text.trim();
+            if (!trimmed) return null;
+            const existing = goals.find((g) => g.text.toLowerCase() === trimmed.toLowerCase());
+            if (existing) return null;
+            const goalId =
+              (globalThis as { crypto?: { randomUUID?: () => string } }).crypto?.randomUUID?.() ??
+              `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+            await upsertGoalMutation({
+              clientId: goalId,
+              text: trimmed,
+              description: args.description?.trim() || undefined,
+              deadline: args.deadline,
+              priority: args.priority,
+              createdAt: Date.now(),
+            });
+            return goalId;
+          },
+          updateGoal: async (args: {
+            goalId: string;
+            text?: string;
+            description?: string;
+            deadline?: string;
+            priority?: "p1" | "p2" | "p3";
+          }) => {
+            const goal = goals.find((g) => g.id === args.goalId);
+            if (!goal) throw new Error("Goal not found");
+            await upsertGoalMutation({
+              clientId: goal.id,
+              text: Object.prototype.hasOwnProperty.call(args, "text")
+                ? (args.text ?? "").trim()
+                : goal.text,
+              description: Object.prototype.hasOwnProperty.call(args, "description")
+                ? args.description
+                : goal.description,
+              deadline: Object.prototype.hasOwnProperty.call(args, "deadline")
+                ? args.deadline
+                : goal.deadline,
+              priority: Object.prototype.hasOwnProperty.call(args, "priority")
+                ? args.priority
+                : goal.priority,
+              createdAt: goal.createdAt ?? Date.now(),
+            });
+          },
+          deleteGoal: (args: { goalId: string }) => removeGoalMutation({ clientId: args.goalId }),
+          setGoalLink: (args: { taskId: string; goalId: string | null }) =>
+            setGoalLinkMutation({ taskId: args.taskId, goalClientId: args.goalId }),
         };
 
-        const results = await applyKairoActions(actions, idMap, {
+        const results = await applyKairoActions(actions, { taskIdMap, goalIdMap }, {
           mutations,
           lookupTask,
+          lookupGoal: (goalId: string) => goals.find((g) => g.id === goalId) ?? null,
+          lookupTaskGoalLink: (taskId: string) => goalLinks[taskId] ?? null,
         });
 
         const chips: KairoMessageAction[] = [];
@@ -616,8 +697,13 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       updateTaskMutation,
       softDeleteTaskMutation,
       restoreTaskMutation,
+      upsertGoalMutation,
+      removeGoalMutation,
+      setGoalLinkMutation,
       config,
       deferredPrompt,
+      goalLinks,
+      goals,
       inboxTasks,
       isAllTasksReady,
       msgs,
