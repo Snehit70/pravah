@@ -111,24 +111,12 @@ type GoalDetailSheetProps = {
 function GoalDetailSheet({ goal, progress, linked, onDelete, onClose }: GoalDetailSheetProps) {
   const { setGoalLink, updateGoal } = useGoalMutations();
   const [editing, setEditing] = useState(false);
-  const [draftText, setDraftText] = useState("");
-  const [draftDescription, setDraftDescription] = useState("");
-  const [draftDeadline, setDraftDeadline] = useState("");
-  const [draftPriority, setDraftPriority] = useState<GoalItem["priority"]>(undefined);
+  const [draftText, setDraftText] = useState(() => goal?.text ?? "");
+  const [draftDescription, setDraftDescription] = useState(() => goal?.description ?? "");
+  const [draftDeadline, setDraftDeadline] = useState(() => goal?.deadline ?? "");
+  const [draftPriority, setDraftPriority] = useState<GoalItem["priority"]>(() => goal?.priority);
   const hasTasks = progress.total > 0;
   const isComplete = hasTasks && progress.done === progress.total;
-
-  useEffect(() => {
-    if (!goal) {
-      setEditing(false);
-      return;
-    }
-    setDraftText(goal.text);
-    setDraftDescription(goal.description ?? "");
-    setDraftDeadline(goal.deadline ?? "");
-    setDraftPriority(goal.priority);
-    setEditing(false);
-  }, [goal]);
 
   const saveEdit = () => {
     if (!goal) return;
@@ -525,6 +513,7 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false }: 
         showsVerticalScrollIndicator={false}
       />
       <GoalDetailSheet
+        key={selectedGoal?.id ?? "goal-detail-empty"}
         goal={selectedGoal}
         progress={selectedProgress}
         linked={selectedLinked}
