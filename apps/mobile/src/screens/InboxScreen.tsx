@@ -264,13 +264,13 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   filterChip: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
     paddingVertical: 6,
-    borderRadius: radii.full,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.md,
+    borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: "transparent",
-    minHeight: 28,
+    backgroundColor: colors.bgCardGlass,
+    minHeight: 32,
     justifyContent: "center",
   },
   filterChipActive: {

@@ -383,7 +383,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || thinking) return;
+      if (!trimmed || thinking || deferredPrompt) return;
       haptic.light();
 
       // Guard against sending with an empty or partial workspace snapshot.
@@ -560,7 +560,17 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         });
 
         const failedCount = results.filter((r) => r.status === "failed").length;
-        let displayText = cleanText || "(no response text)";
+        const appliedCount = results.filter((r) => r.status === "applied").length;
+        const skippedCount = results.filter((r) => r.status === "skipped").length;
+        let displayText =
+          cleanText ||
+          (appliedCount > 0
+            ? appliedCount === 1
+              ? "Done. I made that change."
+              : `Done. I made ${appliedCount} changes.`
+            : skippedCount > 0
+              ? "I could not apply that change. Check the action status below."
+              : "I did not receive a readable response. Try again in a moment.");
         if (failedCount > 0) {
           displayText += `\n\n⚠ ${failedCount} action${failedCount > 1 ? "s" : ""} failed to apply.`;
         }
@@ -605,6 +615,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       softDeleteTaskMutation,
       restoreTaskMutation,
       config,
+      deferredPrompt,
       inboxTasks,
       isAllTasksReady,
       msgs,
@@ -700,33 +711,67 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           <Pressable
             onPress={() => setView("list")}
             hitSlop={12}
-            style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+            style={({ pressed }) => [
+              styles.headerHistoryButton,
+              thinking && styles.headerButtonDisabled,
+              pressed && { opacity: 0.72 },
+            ]}
             accessibilityLabel="Show chat list"
             accessibilityRole="button"
             disabled={thinking}
           >
-            <Text style={[styles.headerChats, thinking && { opacity: 0.4 }]}>
-              Chats
-            </Text>
+            <Text style={styles.headerHistoryIcon}>⌕</Text>
+            <Text style={styles.headerHistoryText}>Chat history</Text>
           </Pressable>
-          <Pressable
-            onPress={() => sheetRef.current?.close()}
-            hitSlop={12}
-            style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-            accessibilityLabel="Close Kairo"
-            accessibilityRole="button"
-          >
-            <Text style={styles.headerClose}>Close</Text>
-          </Pressable>
+          <View style={styles.headerActions}>
+            <Pressable
+              onPress={handleCreateChat}
+              hitSlop={12}
+              style={({ pressed }) => [
+                styles.headerNewButton,
+                thinking && styles.headerButtonDisabled,
+                pressed && { opacity: 0.72 },
+              ]}
+              accessibilityLabel="Start new chat"
+              accessibilityRole="button"
+              disabled={thinking}
+            >
+              <Text style={styles.headerNewText}>+ New</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => sheetRef.current?.close()}
+              hitSlop={12}
+              style={({ pressed }) => [styles.headerCloseButton, pressed && { opacity: 0.6 }]}
+              accessibilityLabel="Close Kairo"
+              accessibilityRole="button"
+            >
+              <Text style={styles.headerClose}>Close</Text>
+            </Pressable>
+          </View>
         </View>
-        <View style={styles.headerTitleRow}>
+        <Pressable
+          onPress={() => setView("list")}
+          hitSlop={10}
+          style={({ pressed }) => [
+            styles.headerTitleRow,
+            thinking && styles.headerButtonDisabled,
+            pressed && { opacity: 0.78 },
+          ]}
+          accessibilityLabel="Open chat history"
+          accessibilityHint="Shows all chats and lets you switch conversations"
+          accessibilityRole="button"
+          disabled={thinking}
+        >
           <KairoMark size={20} />
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {activeChat?.title && activeChat.title !== "New chat"
-              ? activeChat.title
-              : "Kairo"}
-          </Text>
-        </View>
+          <View style={styles.headerTitleCopy}>
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {activeChat?.title && activeChat.title !== "New chat"
+                ? activeChat.title
+                : "Kairo"}
+            </Text>
+            <Text style={styles.headerTitleHint}>Tap to switch chats</Text>
+          </View>
+        </Pressable>
       </View>
 
       <BottomSheetScrollView
@@ -782,11 +827,11 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         />
         <Pressable
           onPress={() => void sendMessage(val)}
-          disabled={!val.trim() || thinking || !activeChat}
+          disabled={!val.trim() || thinking || !!deferredPrompt || !activeChat}
           hitSlop={12}
           style={({ pressed }) => [
             styles.sendButton,
-            (!val.trim() || thinking || !activeChat) && styles.sendButtonDisabled,
+            (!val.trim() || thinking || !!deferredPrompt || !activeChat) && styles.sendButtonDisabled,
             pressed && { opacity: 0.8 },
           ]}
           accessibilityRole="button"
@@ -881,11 +926,14 @@ function ActionChip({
     (isUndoable?.(action.id) ?? true);
   return (
     <View style={[styles.chip, chipStyle]}>
-      <Text style={styles.chipLabel} numberOfLines={2}>
-        {action.label}
-      </Text>
+      <View style={styles.chipTextStack}>
+        <Text style={styles.chipKicker}>{action.kind}</Text>
+        <Text style={styles.chipLabel}>
+          {action.label}
+        </Text>
+      </View>
       {action.detail ? (
-        <Text style={styles.chipDetail} numberOfLines={2}>
+        <Text style={styles.chipDetail}>
           {action.detail}
         </Text>
       ) : null}
@@ -1008,25 +1056,79 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: spacing.sm,
   },
   headerTitleRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    paddingTop: spacing.sm,
+    marginTop: spacing.md,
+    padding: spacing.sm,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCardGlass,
+  },
+  headerTitleCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   headerTitle: {
     color: colors.textPrimary,
     ...typography.title,
-    flexShrink: 1,
+  },
+  headerTitleHint: {
+    color: colors.textMuted,
+    ...typography.micro,
+    marginTop: 1,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  headerHistoryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 7,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: "rgba(167, 139, 250, 0.12)",
+  },
+  headerHistoryIcon: {
+    color: colors.accent,
+    fontFamily: fonts.sansSemibold,
+    fontSize: 13,
+  },
+  headerHistoryText: {
+    color: colors.accent,
+    ...typography.micro,
+    fontFamily: fonts.sansSemibold,
+  },
+  headerNewButton: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 7,
+    borderRadius: radii.full,
+    backgroundColor: colors.accent,
+  },
+  headerNewText: {
+    color: colors.textInverse,
+    ...typography.micro,
+    fontFamily: fonts.sansSemibold,
   },
   headerClose: {
     color: colors.textSecondary,
     ...typography.micro,
   },
-  headerChats: {
-    color: colors.accent,
-    ...typography.micro,
+  headerCloseButton: {
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 7,
+  },
+  headerButtonDisabled: {
+    opacity: 0.45,
   },
   scroll: {
     flex: 1,
@@ -1056,8 +1158,7 @@ const styles = StyleSheet.create({
   bubbleKairo: {
     alignSelf: "flex-start",
     backgroundColor: colors.bgCardGlass,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.accent,
+    borderColor: colors.border,
   },
   bubbleText: {
     color: colors.textPrimary,
@@ -1071,35 +1172,40 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   chip: {
-    flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    borderRadius: radii.sm,
-    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.bgCardGlass,
   },
   chipApplied: {
-    borderLeftWidth: 2,
-    borderLeftColor: colors.success,
+    borderColor: colors.success,
+    backgroundColor: "rgba(34, 197, 94, 0.10)",
   },
   chipUndone: {
-    borderLeftWidth: 2,
-    borderLeftColor: colors.textMuted,
+    borderColor: colors.textMuted,
     opacity: 0.7,
   },
   chipSkipped: {
-    borderLeftWidth: 2,
-    borderLeftColor: colors.warning,
+    borderColor: colors.warning,
   },
   chipFailed: {
-    borderLeftWidth: 2,
-    borderLeftColor: colors.warning,
+    borderColor: colors.warning,
+  },
+  chipTextStack: {
+    alignSelf: "stretch",
+    gap: 2,
+  },
+  chipKicker: {
+    color: colors.textMuted,
+    ...typography.micro,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   chipLabel: {
-    flex: 1,
     color: colors.textPrimary,
     ...typography.bodyMd,
   },
@@ -1108,11 +1214,13 @@ const styles = StyleSheet.create({
     ...typography.micro,
   },
   chipUndoButton: {
+    alignSelf: "flex-start",
     paddingVertical: 4,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
     borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: colors.border,
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
   chipUndoText: {
     ...typography.micro,
@@ -1153,8 +1261,8 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     backgroundColor: colors.bgCardGlass,
     borderRadius: radii.sm,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.accent,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
     gap: spacing.sm,
   },
   thinkingLabel: {

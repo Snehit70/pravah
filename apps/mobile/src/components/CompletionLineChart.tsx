@@ -1,16 +1,14 @@
 /**
  * CompletionLineChart
  *
- * Minimal SVG line chart for the Stats screen. Renders the completion-count
- * series as a filled area + line, with a faint dashed rolling-average line
- * on top. Intentionally lightweight: no external chart lib, no axes — just
- * the shape of the data, with start/end date labels under the plot and a
- * peak-value annotation. Width is responsive to the layout it sits in.
+ * Minimal SVG bar chart for the Stats screen. Renders daily completion counts
+ * as bars with scale labels, plus a faint dashed rolling-average line. Kept
+ * dependency-free so JS-only visual changes can still ship through OTA.
  */
 
 import { useMemo, useState } from "react";
 import { StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
-import Svg, { Defs, LinearGradient, Path, Stop } from "react-native-svg";
+import Svg, { G, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { DayPoint } from "../lib/statsAggregators";
 
@@ -30,37 +28,59 @@ export function CompletionLineChart({ series, rollingAvg, height = 180 }: Props)
   const [width, setWidth] = useState(0);
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
 
-  const { linePath, areaPath, avgPath, peak } = useMemo(() => {
+  const { bars, avgPath, scaleMax, ticks, plot } = useMemo(() => {
+    const emptyPlot = {
+      padX: 8,
+      padTop: 18,
+      padBottom: 18,
+      axisWidth: 30,
+      innerW: 0,
+      innerH: 0,
+    };
     if (width === 0 || series.length === 0) {
-      return { linePath: "", areaPath: "", avgPath: "", peak: 0 };
+      return { bars: [], avgPath: "", scaleMax: 1, ticks: [0], plot: emptyPlot };
     }
     const padX = 8;
     const padTop = 18;
-    const padBottom = 12;
-    const innerW = Math.max(1, width - padX * 2);
+    const padBottom = 18;
+    const axisWidth = 30;
+    const innerW = Math.max(1, width - padX * 2 - axisWidth);
     const innerH = Math.max(1, height - padTop - padBottom);
-    const peak = Math.max(...series.map((p) => p.count));
-    const scalePeak = Math.max(1, peak);
-    const stepX = series.length > 1 ? innerW / (series.length - 1) : 0;
-    const yFor = (v: number) => padTop + innerH - (v / scalePeak) * innerH;
+    const scaleMax = Math.max(1, Math.max(...series.map((p) => p.count)), ...rollingAvg);
+    const tickMid = Math.ceil(scaleMax / 2);
+    const ticks = [scaleMax, tickMid, 0].filter((v, i, arr) => arr.indexOf(v) === i);
+    const slotW = innerW / series.length;
+    const barW = Math.max(3, Math.min(12, slotW * 0.58));
+    const yFor = (v: number) => padTop + innerH - (v / scaleMax) * innerH;
 
-    const pts = series.map((p, i) => ({ x: padX + i * stepX, y: yFor(p.count) }));
-    const linePath = pts
-      .map((pt, i) => `${i === 0 ? "M" : "L"}${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`)
-      .join(" ");
-    const areaPath =
-      pts.length > 0
-        ? `${linePath} L${pts[pts.length - 1].x.toFixed(1)} ${(padTop + innerH).toFixed(
-            1,
-          )} L${pts[0].x.toFixed(1)} ${(padTop + innerH).toFixed(1)} Z`
-        : "";
+    const bars = series.map((p, i) => {
+      const x = padX + i * slotW + (slotW - barW) / 2;
+      const y = yFor(p.count);
+      const h = padTop + innerH - y;
+      return {
+        x,
+        y,
+        width: barW,
+        height: Math.max(p.count > 0 ? 2 : 0, h),
+        count: p.count,
+      };
+    });
 
-    const avgPts = rollingAvg.map((v, i) => ({ x: padX + i * stepX, y: yFor(v) }));
+    const avgPts = rollingAvg.map((v, i) => ({
+      x: padX + i * slotW + slotW / 2,
+      y: yFor(v),
+    }));
     const avgPath = avgPts
       .map((pt, i) => `${i === 0 ? "M" : "L"}${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`)
       .join(" ");
 
-    return { linePath, areaPath, avgPath, peak };
+    return {
+      bars,
+      avgPath,
+      scaleMax,
+      ticks,
+      plot: { padX, padTop, padBottom, axisWidth, innerW, innerH },
+    };
   }, [series, rollingAvg, width, height]);
 
   const total = useMemo(
@@ -79,31 +99,50 @@ export function CompletionLineChart({ series, rollingAvg, height = 180 }: Props)
       <View style={{ height }}>
         {width > 0 && series.length > 0 ? (
           <Svg width={width} height={height}>
-            <Defs>
-              <LinearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor={colors.accent} stopOpacity="0.28" />
-                <Stop offset="1" stopColor={colors.accent} stopOpacity="0" />
-              </LinearGradient>
-            </Defs>
-            {areaPath ? <Path d={areaPath} fill="url(#fill)" /> : null}
-            {linePath ? (
-              <Path
-                d={linePath}
-                stroke={colors.accent}
-                strokeWidth={2}
-                fill="none"
-                strokeLinejoin="round"
-                strokeLinecap="round"
+            {ticks.map((tick) => {
+              const y = plot.padTop + plot.innerH - (tick / Math.max(1, ticks[0] ?? 1)) * plot.innerH;
+              return (
+                <G key={`tick-${tick}`}>
+                  <Line
+                    x1={plot.padX}
+                    x2={plot.padX + plot.innerW}
+                    y1={y}
+                    y2={y}
+                    stroke={colors.borderSubtle}
+                    strokeWidth={1}
+                  />
+                  <SvgText
+                    x={width - 2}
+                    y={y + 4}
+                    fill={colors.textMuted}
+                    fontSize={10}
+                    textAnchor="end"
+                  >
+                    {tick}
+                  </SvgText>
+                </G>
+              );
+            })}
+            {bars.map((bar, i) => (
+              <Rect
+                key={`${series[i]?.date ?? i}-${bar.count}`}
+                x={bar.x}
+                y={bar.y}
+                width={bar.width}
+                height={bar.height}
+                rx={3}
+                fill={bar.count > 0 ? colors.accent : colors.borderSubtle}
+                opacity={bar.count > 0 ? 0.92 : 0.45}
               />
-            ) : null}
+            ))}
             {avgPath ? (
               <Path
                 d={avgPath}
-                stroke={colors.textMuted}
+                stroke={colors.textSecondary}
                 strokeWidth={1}
                 strokeDasharray="3 4"
                 fill="none"
-                opacity={0.7}
+                opacity={0.55}
               />
             ) : null}
           </Svg>
@@ -114,7 +153,7 @@ export function CompletionLineChart({ series, rollingAvg, height = 180 }: Props)
           {series.length > 0 ? formatShortDate(series[0].date) : ""}
         </Text>
         <Text style={styles.axisText}>
-          peak {peak}/day
+          scale: 0-{Math.ceil(scaleMax)}/day
         </Text>
         <Text style={styles.axisText}>
           {series.length > 0 ? formatShortDate(series[series.length - 1].date) : ""}
