@@ -196,7 +196,10 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         }}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          // Android already resizes the modal window for the keyboard. Adding
+          // KeyboardAvoidingView's height behavior on top can make the centered
+          // capture card repeatedly re-measure and visibly oscillate.
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.overlay}
         >
           <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />

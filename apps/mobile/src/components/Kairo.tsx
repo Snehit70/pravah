@@ -1037,7 +1037,7 @@ function KairoMark({ size = 20 }: { size?: number }) {
 
 const styles = StyleSheet.create({
   sheetBg: {
-    backgroundColor: colors.bgFloating,
+    backgroundColor: colors.bg,
     borderTopLeftRadius: radii.xl,
     borderTopRightRadius: radii.xl,
   },
@@ -1069,7 +1069,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    backgroundColor: colors.bgCardGlass,
+    backgroundColor: colors.bgCard,
   },
   headerTitleCopy: {
     flex: 1,
@@ -1159,7 +1159,7 @@ const styles = StyleSheet.create({
   },
   bubbleKairo: {
     alignSelf: "flex-start",
-    backgroundColor: colors.bgCardGlass,
+    backgroundColor: colors.bgCard,
     borderColor: colors.border,
   },
   bubbleText: {
@@ -1323,10 +1323,11 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.borderSubtle,
+    backgroundColor: colors.bg,
   },
   input: {
     flex: 1,
-    backgroundColor: colors.bgInput,
+    backgroundColor: colors.bgCard,
     borderRadius: radii.lg,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,

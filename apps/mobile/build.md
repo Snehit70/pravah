@@ -47,10 +47,44 @@ bunx eas-cli build --platform android --profile preview
 If you only changed JS/TS code (no native/plugin/config changes), publish an OTA update:
 ```bash
 cd apps/mobile
-bunx eas-cli update --branch preview --message "fix: <short message>"
+bunx eas-cli update --branch preview --platform android --message "fix: <short message>"
 ```
 
 After publishing, close and reopen the installed app to pick up the update.
+
+`--platform android` is intentional. Without it, `eas update` exports all platforms
+and fails in this repo because web support dependencies are not installed for the
+mobile Expo app.
+
+### Publishing from a known-good runtime commit
+This app uses `runtimeVersion.policy = "appVersion"`, so OTA updates only reach
+installed APKs with the same `expo.version`. If a release commit bumps
+`apps/mobile/app.json` before the current installed APK is rebuilt, publish the
+OTA from the last commit that still has the installed runtime version.
+
+### Version policy for OTA UI rounds
+During JS-only UI rounds, do not bump `apps/mobile/app.json` `expo.version`.
+Release automation is configured to stop auto-bumping mobile version so OTA
+updates keep matching the installed preview runtime. Only bump mobile version
+when you intentionally plan a new APK build rollout.
+
+Verified example: the preview APK was built with runtime `2.1.0`, while `main`
+had already moved to `2.2.0`. Publishing from the earlier merge commit worked:
+```bash
+git checkout cb25dfe
+cd apps/mobile
+node -e 'console.log(require("./app.json").expo.version)' # should print 2.1.0
+bunx eas-cli update --branch preview --platform android --message "feat: polish mobile UI surfaces"
+cd ../..
+git switch main
+```
+
+Successful update details from that run:
+- Branch: `preview`
+- Runtime version: `2.1.0`
+- Platform: `android`
+- Commit: `cb25dfe4e7ba633b9f4e237a8b19c7f56f482162`
+- Update group: `e8738f06-705f-44de-ba5d-217036e11002`
 
 ### Decision rule: when `build` is required
 Run a new `eas build` when any of these changed:

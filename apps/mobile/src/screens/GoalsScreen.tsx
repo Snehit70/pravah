@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { BlurView } from "expo-blur";
 
 import { haptic } from "../lib/haptic";
@@ -109,9 +109,39 @@ type GoalDetailSheetProps = {
 };
 
 function GoalDetailSheet({ goal, progress, linked, onDelete, onClose }: GoalDetailSheetProps) {
-  const { setGoalLink } = useGoalMutations();
+  const { setGoalLink, updateGoal } = useGoalMutations();
+  const [editing, setEditing] = useState(false);
+  const [draftText, setDraftText] = useState("");
+  const [draftDescription, setDraftDescription] = useState("");
+  const [draftDeadline, setDraftDeadline] = useState("");
+  const [draftPriority, setDraftPriority] = useState<GoalItem["priority"]>(undefined);
   const hasTasks = progress.total > 0;
   const isComplete = hasTasks && progress.done === progress.total;
+
+  useEffect(() => {
+    if (!goal) {
+      setEditing(false);
+      return;
+    }
+    setDraftText(goal.text);
+    setDraftDescription(goal.description ?? "");
+    setDraftDeadline(goal.deadline ?? "");
+    setDraftPriority(goal.priority);
+    setEditing(false);
+  }, [goal]);
+
+  const saveEdit = () => {
+    if (!goal) return;
+    const updated = updateGoal(goal.id, {
+      text: draftText,
+      description: draftDescription,
+      deadline: draftDeadline,
+      priority: draftPriority,
+    });
+    if (!updated) return;
+    setEditing(false);
+    haptic.success();
+  };
 
   return (
     <Modal
@@ -130,10 +160,24 @@ function GoalDetailSheet({ goal, progress, linked, onDelete, onClose }: GoalDeta
           <Animated.View entering={FadeIn.duration(140)} style={detailStyles.card}>
             {/* Header */}
             <View style={detailStyles.header}>
-              <Text style={detailStyles.title} numberOfLines={3}>{goal.text}</Text>
-              <Pressable onPress={onClose} hitSlop={12} style={({ pressed }) => [detailStyles.closeBtn, pressed && { opacity: 0.6 }]}>
-                <Text style={detailStyles.closeBtnText}>✕</Text>
-              </Pressable>
+              <View style={detailStyles.titleBlock}>
+                <Text style={detailStyles.title} numberOfLines={3}>{goal.text}</Text>
+                <Text style={detailStyles.titleHint}>{editing ? "Editing goal details" : "Tap Edit to change title, notes, priority, or deadline"}</Text>
+              </View>
+              <View style={detailStyles.headerActions}>
+                <Pressable
+                  onPress={() => setEditing((v) => !v)}
+                  hitSlop={12}
+                  style={({ pressed }) => [detailStyles.editBtn, editing && detailStyles.editBtnActive, pressed && { opacity: 0.7 }]}
+                >
+                  <Text style={[detailStyles.editBtnText, editing && detailStyles.editBtnTextActive]}>
+                    {editing ? "Cancel" : "Edit"}
+                  </Text>
+                </Pressable>
+                <Pressable onPress={onClose} hitSlop={12} style={({ pressed }) => [detailStyles.closeBtn, pressed && { opacity: 0.6 }]}>
+                  <Text style={detailStyles.closeBtnText}>✕</Text>
+                </Pressable>
+              </View>
             </View>
 
             <ScrollView
@@ -141,13 +185,84 @@ function GoalDetailSheet({ goal, progress, linked, onDelete, onClose }: GoalDeta
               contentContainerStyle={detailStyles.scrollContent}
               showsVerticalScrollIndicator={false}
             >
+              {editing ? (
+                <View style={detailStyles.editPanel}>
+                  <View style={detailStyles.fieldGroup}>
+                    <Text style={detailStyles.fieldLabel}>Goal title</Text>
+                    <TextInput
+                      value={draftText}
+                      onChangeText={setDraftText}
+                      style={detailStyles.input}
+                      placeholder="Goal title"
+                      placeholderTextColor={colors.textMuted}
+                    />
+                  </View>
+                  <View style={detailStyles.fieldGroup}>
+                    <Text style={detailStyles.fieldLabel}>Description</Text>
+                    <TextInput
+                      value={draftDescription}
+                      onChangeText={setDraftDescription}
+                      style={[detailStyles.input, detailStyles.textArea]}
+                      placeholder="Optional notes"
+                      placeholderTextColor={colors.textMuted}
+                      multiline
+                    />
+                  </View>
+                  <View style={detailStyles.fieldGroup}>
+                    <Text style={detailStyles.fieldLabel}>Priority</Text>
+                    <View style={detailStyles.priorityPicker}>
+                      {(["p1", "p2", "p3"] as const).map((p) => {
+                        const active = draftPriority === p;
+                        return (
+                          <Pressable
+                            key={p}
+                            onPress={() => setDraftPriority(active ? undefined : p)}
+                            style={({ pressed }) => [
+                              detailStyles.priorityOption,
+                              active && detailStyles.priorityOptionActive,
+                              pressed && { opacity: 0.75 },
+                            ]}
+                          >
+                            <Text style={[detailStyles.priorityOptionText, active && detailStyles.priorityOptionTextActive]}>
+                              {PRIORITY_LABEL[p].label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                  <View style={detailStyles.fieldGroup}>
+                    <Text style={detailStyles.fieldLabel}>Deadline</Text>
+                    <TextInput
+                      value={draftDeadline}
+                      onChangeText={setDraftDeadline}
+                      style={detailStyles.input}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor={colors.textMuted}
+                      autoCapitalize="none"
+                    />
+                  </View>
+                  <Pressable
+                    onPress={saveEdit}
+                    style={({ pressed }) => [
+                      detailStyles.saveBtn,
+                      !draftText.trim() && detailStyles.saveBtnDisabled,
+                      pressed && { opacity: 0.8 },
+                    ]}
+                    disabled={!draftText.trim()}
+                  >
+                    <Text style={detailStyles.saveBtnText}>Save changes</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+
               {/* Description */}
-              {goal.description ? (
+              {!editing && goal.description ? (
                 <Text style={detailStyles.description}>{goal.description}</Text>
               ) : null}
 
               {/* Meta: priority + deadline */}
-              {(goal.priority || goal.deadline) ? (
+              {!editing && (goal.priority || goal.deadline) ? (
                 <View style={detailStyles.metaRow}>
                   {goal.priority ? (
                     <View style={detailStyles.priorityChip}>
@@ -587,6 +702,41 @@ const detailStyles = StyleSheet.create({
     ...typography.headline,
     color: colors.textPrimary,
   },
+  titleBlock: {
+    flex: 1,
+    gap: 3,
+  },
+  titleHint: {
+    ...typography.micro,
+    color: colors.textMuted,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  editBtn: {
+    paddingHorizontal: spacing.sm,
+    height: 28,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgCard,
+  },
+  editBtnActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentDim,
+  },
+  editBtnText: {
+    ...typography.micro,
+    color: colors.textSecondary,
+    fontWeight: "600",
+  },
+  editBtnTextActive: {
+    color: colors.accent,
+  },
   closeBtn: {
     width: 28,
     height: 28,
@@ -605,6 +755,79 @@ const detailStyles = StyleSheet.create({
     ...typography.bodyMd,
     color: colors.textSecondary,
     lineHeight: 22,
+  },
+  editPanel: {
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+  },
+  fieldGroup: {
+    gap: spacing.xs,
+  },
+  fieldLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  input: {
+    minHeight: 40,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.bgInput,
+    color: colors.textPrimary,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    ...typography.bodyMd,
+  },
+  textArea: {
+    minHeight: 86,
+    textAlignVertical: "top",
+  },
+  priorityPicker: {
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  priorityOption: {
+    minHeight: 32,
+    minWidth: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.bgInput,
+  },
+  priorityOptionActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentDim,
+  },
+  priorityOptionText: {
+    ...typography.micro,
+    color: colors.textSecondary,
+    fontWeight: "700",
+  },
+  priorityOptionTextActive: {
+    color: colors.accent,
+  },
+  saveBtn: {
+    minHeight: 40,
+    borderRadius: radii.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.accent,
+  },
+  saveBtnDisabled: {
+    opacity: 0.5,
+  },
+  saveBtnText: {
+    ...typography.bodyMd,
+    color: colors.textInverse,
+    fontWeight: "700",
   },
   metaRow: {
     flexDirection: "row",

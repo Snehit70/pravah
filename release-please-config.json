@@ -6,17 +6,6 @@
     ".": {
       "component": "web",
       "release-type": "node"
-    },
-    "apps/mobile": {
-      "component": "mobile",
-      "release-type": "node",
-      "extra-files": [
-        {
-          "type": "json",
-          "path": "app.json",
-          "jsonpath": "$.expo.version"
-        }
-      ]
     }
   }
 }
