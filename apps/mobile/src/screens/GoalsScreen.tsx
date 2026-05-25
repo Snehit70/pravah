@@ -109,6 +109,7 @@ type GoalDetailSheetProps = {
 };
 
 function GoalDetailSheet({ goal, progress, linked, onDelete, onClose }: GoalDetailSheetProps) {
+  const confirm = useConfirm();
   const { setGoalLink, updateGoal } = useGoalMutations();
   const [editing, setEditing] = useState(false);
   const [draftText, setDraftText] = useState(() => goal?.text ?? "");
@@ -130,6 +131,21 @@ function GoalDetailSheet({ goal, progress, linked, onDelete, onClose }: GoalDeta
     setEditing(false);
     haptic.success();
   };
+
+  const handleUnlinkTask = useCallback(
+    async (task: MobileTask) => {
+      const ok = await confirm({
+        title: "Unlink task from goal?",
+        message: `${task.title}\n\nThis task will stay in your timeline/inbox, but it will no longer be linked to this goal.`,
+        confirmLabel: "Unlink",
+        destructive: true,
+      });
+      if (!ok) return;
+      setGoalLink(String(task._id), null);
+      haptic.light();
+    },
+    [confirm, setGoalLink]
+  );
 
   return (
     <Modal
@@ -295,7 +311,9 @@ function GoalDetailSheet({ goal, progress, linked, onDelete, onClose }: GoalDeta
                         {t.title}
                       </Text>
                       <Pressable
-                        onPress={() => { setGoalLink(String(t._id), null); haptic.light(); }}
+                        onPress={() => {
+                          void handleUnlinkTask(t);
+                        }}
                         hitSlop={8}
                         style={({ pressed }) => [pressed && { opacity: 0.6 }]}
                       >
