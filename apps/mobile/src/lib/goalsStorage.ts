@@ -151,6 +151,26 @@ export const goalsStore = {
     void saveGoals(cached);
     emit();
   },
+  update(id: string, draft: GoalDraft): GoalItem | null {
+    const text = draft.text.trim();
+    if (!text) return null;
+    let updated: GoalItem | null = null;
+    cached = cached.map((g) => {
+      if (g.id !== id) return g;
+      updated = {
+        ...g,
+        text,
+        description: draft.description?.trim() || undefined,
+        deadline: draft.deadline?.trim() || undefined,
+        priority: draft.priority,
+      };
+      return updated;
+    });
+    if (!updated) return null;
+    void saveGoals(cached);
+    emit();
+    return updated;
+  },
   rename(id: string, text: string): void {
     const trimmed = text.trim();
     if (!trimmed) return;

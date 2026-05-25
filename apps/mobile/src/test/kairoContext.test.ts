@@ -17,26 +17,26 @@ const sched2: KairoTaskInput = {
 
 describe("buildKairoContext", () => {
   it("stamps a [T#] handle on every task and maps it back to the real id", () => {
-    const result = buildKairoContext([sched1, sched2, inbox], [inbox]);
+    const result = buildKairoContext([sched1, sched2, inbox], [inbox], [], {});
 
     expect(result.text).toMatch(/\[T1\] "Sched Tue"/);
     expect(result.text).toMatch(/\[T2\] "Sched Wed"/);
     expect(result.text).toMatch(/\[T3\] "Inbox A"/);
 
-    expect(result.idMap).toEqual({ T1: "s1", T2: "s2", T3: "a1" });
+    expect(result.taskIdMap).toEqual({ T1: "s1", T2: "s2", T3: "a1" });
   });
 
   it("numbers scheduled tasks before inbox tasks", () => {
     // Pass inbox first in the all-tasks list to make sure ordering is by
     // section (scheduled → inbox), not by input order.
-    const result = buildKairoContext([inbox, sched1], [inbox]);
-    expect(result.idMap.T1).toBe("s1");
-    expect(result.idMap.T2).toBe("a1");
+    const result = buildKairoContext([inbox, sched1], [inbox], [], {});
+    expect(result.taskIdMap.T1).toBe("s1");
+    expect(result.taskIdMap.T2).toBe("a1");
   });
 
   it("returns an empty idMap when there are no tasks", () => {
-    const result = buildKairoContext([], []);
-    expect(result.idMap).toEqual({});
+    const result = buildKairoContext([], [], [], {});
+    expect(result.taskIdMap).toEqual({});
     expect(result.text).toMatch(/Inbox \(0 items\):/);
   });
 });

@@ -261,8 +261,13 @@ vi.mock("../lib/kairoApi", () => ({
   buildKairoStarters: vi.fn(() => ["Plan my week", "What's overdue?"]),
   buildAnthropicRequestBody: vi.fn(() => ({ model: "claude", messages: [] })),
   buildOpenAIRequestBody: vi.fn(() => ({ model: "gpt-4", messages: [] })),
-  extractKairoActions: vi.fn((text: string) => ({ cleanText: text, actions: [] as Array<{ kind: "add"; title: string; scheduledDate: string | null; type: "open" | "deadline" }> })),
+  extractKairoActions: vi.fn((text: string) => ({ cleanText: text, actions: [] as Array<Record<string, unknown>> })),
   readKairoResponseText: vi.fn(() => "mocked response"),
+}));
+
+vi.mock("../hooks/useGoals", () => ({
+  useGoals: () => ({ goals: [], isHydrated: true }),
+  useGoalLinks: () => ({}),
 }));
 
 // Import the mocked module *after* vi.mock so we get the spy references.

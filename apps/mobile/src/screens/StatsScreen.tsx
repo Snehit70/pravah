@@ -384,7 +384,7 @@ const styles = StyleSheet.create({
   rangePill: {
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.bgCard,
@@ -561,7 +561,7 @@ const styles = StyleSheet.create({
   deltaBadge: {
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
-    borderRadius: 999,
+    borderRadius: radii.sm,
     backgroundColor: colors.bgCard,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,

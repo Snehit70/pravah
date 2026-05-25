@@ -208,7 +208,10 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         onRequestClose={() => void requestClose()}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          // Android already resizes the modal window for the keyboard. Adding
+          // KeyboardAvoidingView's height behavior on top can push the lower
+          // edit actions outside the visible card.
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.overlay}
         >
           <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
@@ -399,7 +402,11 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                         })();
                       }}
                       hitSlop={12}
-                      style={({ pressed }) => [styles.quickActionItem, pressed && { opacity: 0.6 }]}
+                      style={({ pressed }) => [
+                        styles.quickActionItem,
+                        styles.deleteActionItem,
+                        pressed && { opacity: 0.6 },
+                      ]}
                     >
                       <Text style={[styles.quickActionText, styles.deleteText]}>Delete</Text>
                     </Pressable>
@@ -442,8 +449,9 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-start",
     paddingHorizontal: spacing.md,
+    paddingTop: spacing.xxl,
   },
   backdropDim: {
     backgroundColor: "rgba(0,0,0,0.72)",
@@ -451,7 +459,7 @@ const styles = StyleSheet.create({
   card: {
     width: "100%",
     maxWidth: 480,
-    maxHeight: "85%",
+    maxHeight: "78%",
     backgroundColor: colors.bg,
     borderRadius: radii.xl,
     borderWidth: StyleSheet.hairlineWidth,
@@ -561,23 +569,33 @@ const styles = StyleSheet.create({
   quickActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingTop: spacing.sm,
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    paddingTop: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
   },
   quickActionItem: {
-    minHeight: 44,
+    minHeight: 36,
     paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: spacing.md,
     justifyContent: "center",
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
   },
   quickActionText: {
     ...typography.micro,
     color: colors.textSecondary,
+    fontWeight: "700",
   },
   deleteText: {
     color: colors.error,
+  },
+  deleteActionItem: {
+    borderColor: colors.error,
+    backgroundColor: colors.errorMuted,
   },
   actions: {
     flexDirection: "row",

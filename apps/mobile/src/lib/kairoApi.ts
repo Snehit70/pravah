@@ -39,6 +39,15 @@ export interface KairoTaskBlock {
   type: "open" | "deadline";
 }
 
+export type KairoGoalInput = {
+  id: string;
+  text: string;
+  description?: string;
+  deadline?: string;
+  priority?: "p1" | "p2" | "p3";
+  createdAt?: number;
+};
+
 export const KAIRO_SYSTEM_PROMPT = `You are Kairo, an intelligent work orchestration assistant embedded in Pravah — a timeline-first task management tool. Your role is to help the user manage their schedule, think through priorities, and keep their week intentional.
 
 You have the following information about the user's current state. Each task
@@ -57,9 +66,9 @@ Your capabilities:
 - Answer schedule questions ("What's happening Thursday?", "Am I free Friday?")
 
 When you decide to act on the user's behalf, include one structured block per
-action in your response. Use the task handle (e.g. T3) from the context to
-reference existing tasks. Every action is applied immediately and can be
-undone by the user, so don't ask for confirmation in prose — just act.
+action in your response. Use task handles (e.g. T3) and goal handles (e.g. G1)
+from the context exactly as shown. Every action is applied immediately and can
+be undone by the user, so don't ask for confirmation in prose — just act.
 
 CRITICAL — action format rules:
 - Actions ONLY execute when you emit the exact XML tag shown below. Any other
@@ -77,6 +86,11 @@ CRITICAL — action format rules:
 <unschedule-task>{"id":"T3"}</unschedule-task>
 <update-task>{"id":"T3","title":"...","priority":"p1"}</update-task>
 <delete-task>{"id":"T3"}</delete-task>
+<add-goal>{"text":"...","description":"optional","deadline":"YYYY-MM-DD","priority":"p1"}</add-goal>
+<update-goal>{"id":"G1","text":"...","description":"optional or null","deadline":"YYYY-MM-DD or null","priority":"p1 or null"}</update-goal>
+<delete-goal>{"id":"G1"}</delete-goal>
+<link-task-goal>{"taskId":"T3","goalId":"G1"}</link-task-goal>
+<unlink-task-goal>{"taskId":"T3"}</unlink-task-goal>
 
 Guidelines:
 - Be direct and warm, not corporate or verbose
@@ -105,12 +119,15 @@ export type KairoIdMap = Record<string, string>;
 
 export interface KairoContext {
   text: string;
-  idMap: KairoIdMap;
+  taskIdMap: KairoIdMap;
+  goalIdMap: KairoIdMap;
 }
 
 export function buildKairoContext(
   allTasks: KairoTaskInput[],
-  inboxTasks: KairoTaskInput[]
+  inboxTasks: KairoTaskInput[],
+  goals: KairoGoalInput[],
+  links: Record<string, string>
 ): KairoContext {
   const today = getLocalDateString();
   const scheduled = allTasks.filter((t) => t.status === "scheduled");
@@ -120,13 +137,14 @@ export function buildKairoContext(
   // then position-stable insertion order), then inbox. Stable ordering keeps
   // [T1] meaning the same task across the few seconds between context build
   // and action execution.
-  const idMap: KairoIdMap = {};
-  let nextHandle = 1;
+  const taskIdMap: KairoIdMap = {};
+  let nextTaskHandle = 1;
   const handleFor = (task: KairoTaskInput): string => {
-    const handle = `T${nextHandle++}`;
-    idMap[handle] = task._id;
+    const handle = `T${nextTaskHandle++}`;
+    taskIdMap[handle] = task._id;
     return handle;
   };
+  const taskHandleById: Record<string, string> = {};
 
   const byDate: Record<string, KairoTaskInput[]> = {};
   for (const t of scheduled) {
@@ -140,8 +158,11 @@ export function buildKairoContext(
       const label = date === today ? `${date} (TODAY)` : date;
       const taskList = ts
         .map(
-          (t) =>
-            `  - [${handleFor(t)}] "${t.title}"${t.type === "deadline" ? " [DEADLINE]" : ""}${t.priority ? ` [${t.priority.toUpperCase()}]` : ""}`
+          (t) => {
+            const handle = handleFor(t);
+            taskHandleById[t._id] = handle;
+            return `  - [${handle}] "${t.title}"${t.type === "deadline" ? " [DEADLINE]" : ""}${t.priority ? ` [${t.priority.toUpperCase()}]` : ""}`;
+          }
         )
         .join("\n");
       return `${label}:\n${taskList}`;
@@ -149,8 +170,33 @@ export function buildKairoContext(
     .join("\n\n");
 
   const inboxLines = inboxTasks.length
-    ? inboxTasks.map((t) => `  - [${handleFor(t)}] "${t.title}"`).join("\n")
+    ? inboxTasks
+        .map((t) => {
+          const handle = handleFor(t);
+          taskHandleById[t._id] = handle;
+          return `  - [${handle}] "${t.title}"`;
+        })
+        .join("\n")
     : "  (empty)";
+
+  const goalIdMap: KairoIdMap = {};
+  let nextGoalHandle = 1;
+  const sortedGoals = [...goals].sort((a, b) =>
+    (a.createdAt ?? 0) - (b.createdAt ?? 0) || a.text.localeCompare(b.text)
+  );
+  const goalLines = sortedGoals.length
+    ? sortedGoals
+        .map((g) => {
+          const handle = `G${nextGoalHandle++}`;
+          goalIdMap[handle] = g.id;
+          const linkedTaskHandle = Object.entries(links).find(([, gid]) => gid === g.id)?.[0];
+          const linkedTaskLabel = linkedTaskHandle
+            ? ` [LINKED:${taskHandleById[linkedTaskHandle] ?? linkedTaskHandle}]`
+            : "";
+          return `  - [${handle}] "${g.text}"${g.priority ? ` [${g.priority.toUpperCase()}]` : ""}${g.deadline ? ` [DUE:${g.deadline}]` : ""}${linkedTaskLabel}`;
+        })
+        .join("\n")
+    : "  (none)";
 
   const text = [
     `Today: ${today}`,
@@ -161,10 +207,13 @@ export function buildKairoContext(
     `Inbox (${inboxTasks.length} items):`,
     inboxLines,
     "",
+    `Goals (${sortedGoals.length} items):`,
+    goalLines,
+    "",
     `Completed this session: ${completed.length} tasks`,
   ].join("\n");
 
-  return { text, idMap };
+  return { text, taskIdMap, goalIdMap };
 }
 
 /** Pick four conversation starters that reflect the user's current state.
@@ -318,14 +367,32 @@ export type KairoAction =
       priority?: "p1" | "p2" | "p3";
       deadline?: string | null;
     }
-  | { kind: "delete"; handle: string };
+  | { kind: "delete"; handle: string }
+  | {
+      kind: "addGoal";
+      text: string;
+      description?: string;
+      deadline?: string;
+      priority?: "p1" | "p2" | "p3";
+    }
+  | {
+      kind: "updateGoal";
+      handle: string;
+      text?: string;
+      description?: string | null;
+      deadline?: string | null;
+      priority?: "p1" | "p2" | "p3" | null;
+    }
+  | { kind: "deleteGoal"; handle: string }
+  | { kind: "linkTaskGoal"; taskHandle: string; goalHandle: string }
+  | { kind: "unlinkTaskGoal"; taskHandle: string };
 
 // The closing slash is optionally backslash-escaped to tolerate models that
 // emit `<\/delete-task>` (sometimes mimicking regex/HTML escaping seen in
 // training data). Without this, the tag isn't matched, no action runs, and the
 // raw XML leaks into the chat bubble.
 const ACTION_TAG_RE =
-  /<(add|reschedule|complete|unschedule|update|delete)-task>([\s\S]*?)<\\?\/\1-task>/g;
+  /<(add|reschedule|complete|unschedule|update|delete)-task>([\s\S]*?)<\\?\/\1-task>|<(add|update|delete)-goal>([\s\S]*?)<\\?\/\3-goal>|<(link-task-goal|unlink-task-goal)>([\s\S]*?)<\\?\/\5>/g;
 
 type ParsedJson = Record<string, unknown>;
 
@@ -387,6 +454,66 @@ function parseAction(kind: string, parsed: ParsedJson): KairoAction | null {
       }
       return { kind: "update", handle, title, priority, deadline };
     }
+    case "add-goal": {
+      const text = asString(parsed.text)?.trim();
+      if (!text) return null;
+      const description = typeof parsed.description === "string" ? parsed.description.trim() : undefined;
+      const deadline = typeof parsed.deadline === "string" ? parsed.deadline : undefined;
+      const priority = asPriority(parsed.priority);
+      return { kind: "addGoal", text, description, deadline, priority };
+    }
+    case "update-goal": {
+      const handle = asString(parsed.id ?? parsed.handle);
+      if (!handle) return null;
+      const text = typeof parsed.text === "string" ? parsed.text.trim() : undefined;
+      const hasDescription = Object.prototype.hasOwnProperty.call(parsed, "description");
+      const description = hasDescription
+        ? parsed.description === null
+          ? null
+          : typeof parsed.description === "string"
+            ? parsed.description.trim()
+            : undefined
+        : undefined;
+      const hasDeadline = Object.prototype.hasOwnProperty.call(parsed, "deadline");
+      const deadline = hasDeadline
+        ? parsed.deadline === null
+          ? null
+          : typeof parsed.deadline === "string"
+            ? parsed.deadline
+            : undefined
+        : undefined;
+      const hasPriority = Object.prototype.hasOwnProperty.call(parsed, "priority");
+      const priority = hasPriority
+        ? parsed.priority === null
+          ? null
+          : asPriority(parsed.priority)
+        : undefined;
+      if (
+        text === undefined &&
+        description === undefined &&
+        deadline === undefined &&
+        priority === undefined
+      ) {
+        return null;
+      }
+      return { kind: "updateGoal", handle, text, description, deadline, priority };
+    }
+    case "delete-goal": {
+      const handle = asString(parsed.id ?? parsed.handle);
+      if (!handle) return null;
+      return { kind: "deleteGoal", handle };
+    }
+    case "link-task-goal": {
+      const taskHandle = asString(parsed.taskId ?? parsed.taskHandle);
+      const goalHandle = asString(parsed.goalId ?? parsed.goalHandle);
+      if (!taskHandle || !goalHandle) return null;
+      return { kind: "linkTaskGoal", taskHandle, goalHandle };
+    }
+    case "unlink-task-goal": {
+      const taskHandle = asString(parsed.taskId ?? parsed.taskHandle);
+      if (!taskHandle) return null;
+      return { kind: "unlinkTaskGoal", taskHandle };
+    }
     default:
       return null;
   }
@@ -408,7 +535,19 @@ export function extractKairoActions(rawText: string): {
 } {
   const actions: KairoAction[] = [];
   const cleanText = rawText
-    .replace(ACTION_TAG_RE, (_, kind: string, json: string) => {
+    .replace(
+      ACTION_TAG_RE,
+      (
+        _,
+        taskKind: string | undefined,
+        taskJson: string | undefined,
+        goalKind: string | undefined,
+        goalJson: string | undefined,
+        linkKind: string | undefined,
+        linkJson: string | undefined
+      ) => {
+        const kind = taskKind ? `${taskKind}` : goalKind ? `${goalKind}-goal` : linkKind ?? "";
+        const json = taskJson ?? goalJson ?? linkJson ?? "";
       try {
         const parsed = JSON.parse(json) as ParsedJson;
         const action = parseAction(kind, parsed);
@@ -417,7 +556,8 @@ export function extractKairoActions(rawText: string): {
         /* skip malformed */
       }
       return "";
-    })
+      }
+    )
     .replace(LEAKED_ARTIFACT_RE, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();

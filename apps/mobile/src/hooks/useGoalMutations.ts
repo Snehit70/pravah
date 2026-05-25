@@ -36,6 +36,23 @@ export function useGoalMutations() {
     [removeGoalMutation],
   );
 
+  const updateGoal = useCallback(
+    (id: string, draft: GoalDraft) => {
+      const goal = goalsStore.update(id, draft);
+      if (!goal) return null;
+      void upsertGoalMutation({
+        clientId: goal.id,
+        text: goal.text,
+        description: goal.description,
+        deadline: goal.deadline,
+        priority: goal.priority,
+        createdAt: goal.createdAt ?? Date.now(),
+      });
+      return goal;
+    },
+    [upsertGoalMutation],
+  );
+
   const setGoalLink = useCallback(
     (taskId: string, goalId: string | null) => {
       goalLinksStore.setLink(taskId, goalId);
@@ -50,5 +67,5 @@ export function useGoalMutations() {
     void clearAllMutation();
   }, [clearAllMutation]);
 
-  return { addGoal, deleteGoal, setGoalLink, clearAll };
+  return { addGoal, updateGoal, deleteGoal, setGoalLink, clearAll };
 }

@@ -51,6 +51,29 @@ export interface KairoMutations {
   /** Restore a soft-deleted task. Sends it back to the inbox (not its prior
    *  scheduled slot — see convex/tasks.ts restoreTask for why). */
   restoreTask: (args: { taskId: string }) => Promise<unknown>;
+  addGoal: (args: {
+    text: string;
+    description?: string;
+    deadline?: string;
+    priority?: "p1" | "p2" | "p3";
+  }) => Promise<string | null>;
+  updateGoal: (args: {
+    goalId: string;
+    text?: string;
+    description?: string;
+    deadline?: string;
+    priority?: "p1" | "p2" | "p3";
+  }) => Promise<unknown>;
+  deleteGoal: (args: { goalId: string }) => Promise<unknown>;
+  setGoalLink: (args: { taskId: string; goalId: string | null }) => Promise<unknown>;
+}
+
+export interface GoalSnapshot {
+  id: string;
+  text: string;
+  description?: string;
+  deadline?: string;
+  priority?: "p1" | "p2" | "p3";
 }
 
 export interface KairoActionEnv {
@@ -58,6 +81,8 @@ export interface KairoActionEnv {
   /** Snapshot lookup at the moment the action runs. Used to capture before-
    *  state so we can synthesize an inverse mutation for undo. */
   lookupTask: (taskId: string) => TaskSnapshot | null;
+  lookupGoal: (goalId: string) => GoalSnapshot | null;
+  lookupTaskGoalLink: (taskId: string) => string | null;
 }
 
 export type KairoActionResult =
@@ -131,10 +156,10 @@ function buildUpdateUndo(
 
 export async function applyKairoActions(
   actions: KairoAction[],
-  idMap: KairoIdMap,
+  maps: { taskIdMap: KairoIdMap; goalIdMap: KairoIdMap },
   env: KairoActionEnv
 ): Promise<KairoActionResult[]> {
-  const { mutations, lookupTask } = env;
+  const { mutations, lookupTask, lookupGoal, lookupTaskGoalLink } = env;
   const results: KairoActionResult[] = [];
   // Local snapshot cache updated after each mutation so multi-action sequences
   // on the same task build undo closures from the correct post-mutation state
@@ -142,6 +167,9 @@ export async function applyKairoActions(
   const localSnapshots = new Map<string, TaskSnapshot>();
   const lookupCurrent = (taskId: string): TaskSnapshot | null =>
     localSnapshots.get(taskId) ?? lookupTask(taskId);
+  const localLinks = new Map<string, string | null>();
+  const lookupCurrentLink = (taskId: string): string | null =>
+    localLinks.has(taskId) ? localLinks.get(taskId) ?? null : lookupTaskGoalLink(taskId);
 
   for (const action of actions) {
     try {
@@ -166,7 +194,144 @@ export async function applyKairoActions(
         continue;
       }
 
-      const taskId = resolveHandle(action.handle, idMap);
+      if (action.kind === "addGoal") {
+        const goalId = await mutations.addGoal({
+          text: action.text,
+          description: action.description,
+          deadline: action.deadline,
+          priority: action.priority,
+        });
+        if (!goalId) {
+          results.push({
+            action,
+            status: "skipped",
+            reason: "Goal is empty or duplicates an existing goal title",
+          });
+          continue;
+        }
+        const undo = async () => {
+          await mutations.deleteGoal({ goalId });
+        };
+        results.push({ action, status: "applied", undo });
+        continue;
+      }
+
+      if (action.kind === "updateGoal") {
+        const goalId = resolveHandle(action.handle, maps.goalIdMap);
+        if (!goalId) {
+          results.push({
+            action,
+            status: "skipped",
+            reason: `Unknown goal handle "${action.handle}"`,
+          });
+          continue;
+        }
+        const before = lookupGoal(goalId);
+        const updateArgs: Parameters<typeof mutations.updateGoal>[0] = { goalId };
+        if (Object.prototype.hasOwnProperty.call(action, "text")) updateArgs.text = action.text;
+        if (Object.prototype.hasOwnProperty.call(action, "description")) {
+          updateArgs.description = action.description ?? undefined;
+        }
+        if (Object.prototype.hasOwnProperty.call(action, "deadline")) {
+          updateArgs.deadline = action.deadline ?? undefined;
+        }
+        if (Object.prototype.hasOwnProperty.call(action, "priority")) {
+          updateArgs.priority = action.priority ?? undefined;
+        }
+        await mutations.updateGoal(updateArgs);
+        const undo = before
+          ? async () => {
+              const restoreArgs: Parameters<typeof mutations.updateGoal>[0] = { goalId };
+              if (Object.prototype.hasOwnProperty.call(action, "text")) restoreArgs.text = before.text;
+              if (Object.prototype.hasOwnProperty.call(action, "description")) {
+                restoreArgs.description = before.description;
+              }
+              if (Object.prototype.hasOwnProperty.call(action, "deadline")) {
+                restoreArgs.deadline = before.deadline;
+              }
+              if (Object.prototype.hasOwnProperty.call(action, "priority")) {
+                restoreArgs.priority = before.priority;
+              }
+              await mutations.updateGoal(restoreArgs);
+            }
+          : null;
+        results.push({ action, status: "applied", undo });
+        continue;
+      }
+
+      if (action.kind === "deleteGoal") {
+        const goalId = resolveHandle(action.handle, maps.goalIdMap);
+        if (!goalId) {
+          results.push({
+            action,
+            status: "skipped",
+            reason: `Unknown goal handle "${action.handle}"`,
+          });
+          continue;
+        }
+        const before = lookupGoal(goalId);
+        const linkedTaskIds = Object.values(maps.taskIdMap)
+          .filter((taskId) => lookupCurrentLink(taskId) === goalId);
+        await mutations.deleteGoal({ goalId });
+        linkedTaskIds.forEach((taskId) => localLinks.set(taskId, null));
+        const undo =
+          before != null
+            ? async () => {
+                const restoredId = await mutations.addGoal({
+                  text: before.text,
+                  description: before.description,
+                  deadline: before.deadline,
+                  priority: before.priority,
+                });
+                if (!restoredId) return;
+                for (const taskId of linkedTaskIds) {
+                  await mutations.setGoalLink({ taskId, goalId: restoredId });
+                }
+              }
+            : null;
+        results.push({ action, status: "applied", undo });
+        continue;
+      }
+
+      if (action.kind === "linkTaskGoal" || action.kind === "unlinkTaskGoal") {
+        const taskId = resolveHandle(action.taskHandle, maps.taskIdMap);
+        if (!taskId) {
+          results.push({
+            action,
+            status: "skipped",
+            reason: `Unknown task handle "${action.taskHandle}"`,
+          });
+          continue;
+        }
+        const beforeGoalId = lookupCurrentLink(taskId);
+        if (action.kind === "unlinkTaskGoal") {
+          await mutations.setGoalLink({ taskId, goalId: null });
+          localLinks.set(taskId, null);
+          const undo = async () => {
+            await mutations.setGoalLink({ taskId, goalId: beforeGoalId });
+          };
+          results.push({ action, status: "applied", taskId, undo });
+          continue;
+        }
+        const goalId = resolveHandle(action.goalHandle, maps.goalIdMap);
+        if (!goalId) {
+          results.push({
+            action,
+            status: "skipped",
+            reason: `Unknown goal handle "${action.goalHandle}"`,
+          });
+          continue;
+        }
+        await mutations.setGoalLink({ taskId, goalId });
+        localLinks.set(taskId, goalId);
+        const undo = async () => {
+          await mutations.setGoalLink({ taskId, goalId: beforeGoalId });
+        };
+        results.push({ action, status: "applied", taskId, undo });
+        continue;
+      }
+
+      const taskId = resolveHandle(action.handle, maps.taskIdMap);
       if (!taskId) {
         results.push({
           action,
