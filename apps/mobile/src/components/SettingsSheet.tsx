@@ -1308,7 +1308,7 @@ export function SettingsSheet({
 
 const styles = StyleSheet.create({
   settingsSheet: {
-    backgroundColor: colors.bgFloating,
+    backgroundColor: colors.bg,
     borderTopLeftRadius: radii.xl,
     borderTopRightRadius: radii.xl,
   },
@@ -1329,7 +1329,7 @@ const styles = StyleSheet.create({
   pinnedHeader: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
-    backgroundColor: colors.bgFloating,
+    backgroundColor: colors.bg,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderSubtle,
   },
