@@ -297,7 +297,9 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     [tasks, inboxTasks, today]
   );
 
-  const sendMessageRef = useRef<(text: string) => void>(() => {});
+  const sendMessageRef = useRef<(text: string, options?: { replayDeferred?: boolean }) => void>(
+    () => {}
+  );
   const handleRetry = useCallback((prompt: string) => {
     sendMessageRef.current(prompt);
   }, []);
@@ -381,9 +383,9 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   );
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, options?: { replayDeferred?: boolean }) => {
       const trimmed = text.trim();
-      if (!trimmed || thinking || deferredPrompt) return;
+      if (!trimmed || thinking || (deferredPrompt && !options?.replayDeferred)) return;
       haptic.light();
 
       // Guard against sending with an empty or partial workspace snapshot.
@@ -626,8 +628,8 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   );
 
   useEffect(() => {
-    sendMessageRef.current = (text: string) => {
-      void sendMessage(text);
+    sendMessageRef.current = (text: string, options?: { replayDeferred?: boolean }) => {
+      void sendMessage(text, options);
     };
   }, [sendMessage]);
 
@@ -643,7 +645,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       inboxCount: inboxTasks.length,
     });
     setDeferredPrompt(null);
-    void sendMessage(deferredPrompt);
+    void sendMessage(deferredPrompt, { replayDeferred: true });
   }, [inboxTasks.length, isAllTasksReady, deferredPrompt, sendMessage, tasks.length]);
 
   const clearDeferred = useCallback(() => {
