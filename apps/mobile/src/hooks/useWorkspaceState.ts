@@ -24,6 +24,8 @@ export function useWorkspaceState() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isKairoActive, setIsKairoActive] = useState(false);
   const [isDataBootstrapReady, setIsDataBootstrapReady] = useState(false);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const [bootstrapRetryNonce, setBootstrapRetryNonce] = useState(0);
 
   const sessionResult = authClient.useSession();
   const session = sessionResult.data;
@@ -55,27 +57,38 @@ export function useWorkspaceState() {
   useEffect(() => {
     if (!session) {
       setIsDataBootstrapReady(false);
+      setBootstrapError(null);
       return;
     }
 
     let cancelled = false;
     setIsDataBootstrapReady(false);
+    setBootstrapError(null);
 
     void (async () => {
       try {
+        mobileLogger.info("bootstrap_start", { attempt: bootstrapRetryNonce + 1 });
         await storeUserMutation({});
+        mobileLogger.info("bootstrap_store_user_done");
         await claimLegacyDataMutation({});
+        mobileLogger.info("bootstrap_claim_legacy_done");
+        if (!cancelled) {
+          setIsDataBootstrapReady(true);
+          mobileLogger.info("bootstrap_ready");
+        }
       } catch (error) {
+        const message = "Could not finish loading your workspace.";
         mobileLogger.warn("data_bootstrap_failed", {
           errorType: classifyError(error),
+          attempt: bootstrapRetryNonce + 1,
         });
         showToast({
           kind: "error",
-          message: "Could not finish loading your workspace.",
+          message,
         });
-      } finally {
         if (!cancelled) {
-          setIsDataBootstrapReady(true);
+          setIsDataBootstrapReady(false);
+          setBootstrapError(message);
         }
       }
     })();
@@ -83,7 +96,12 @@ export function useWorkspaceState() {
     return () => {
       cancelled = true;
     };
-  }, [session, storeUserMutation, claimLegacyDataMutation, showToast]);
+  }, [session, storeUserMutation, claimLegacyDataMutation, showToast, bootstrapRetryNonce]);
+
+  const retryBootstrap = useCallback(() => {
+    if (!session) return;
+    setBootstrapRetryNonce((n) => n + 1);
+  }, [session]);
 
   return {
     session,
@@ -107,6 +125,8 @@ export function useWorkspaceState() {
     isKairoActive,
     setIsKairoActive,
     isDataBootstrapReady,
+    bootstrapError,
+    retryBootstrap,
     hasCachedSessionHint,
   };
 }

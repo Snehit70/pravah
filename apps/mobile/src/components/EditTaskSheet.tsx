@@ -264,9 +264,21 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                     >
                       <Pressable
                         onPress={() => {
-                          setDraftGoalId(null);
-                          setShowGoalPicker(false);
-                          haptic.light();
+                          void (async () => {
+                            if (linkedGoalId) {
+                              const ok = await confirm({
+                                title: "Unlink task from goal?",
+                                message: "This task will no longer be linked to its goal.",
+                                confirmLabel: "Unlink",
+                                cancelLabel: "Keep linked",
+                                destructive: true,
+                              });
+                              if (!ok) return;
+                            }
+                            setDraftGoalId(null);
+                            setShowGoalPicker(false);
+                            haptic.light();
+                          })();
                         }}
                         hitSlop={8}
                         style={({ pressed }) => [

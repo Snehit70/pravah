@@ -211,3 +211,27 @@ export async function getDiagnosticsSnapshot(): Promise<DiagnosticEvent[]> {
   const merged = priorSessions.flatMap((session) => session.events).concat(buffer);
   return pruneEvents(merged);
 }
+
+export function getDiagnosticsRuntimeState(): {
+  sessionId: string;
+  currentScreen: string;
+  inMemoryCount: number;
+  latestEvent?: Pick<DiagnosticEvent, "event" | "ts" | "level" | "flow" | "screen" | "seq">;
+} {
+  const latest = buffer[buffer.length - 1];
+  return {
+    sessionId,
+    currentScreen,
+    inMemoryCount: buffer.length,
+    latestEvent: latest
+      ? {
+          event: latest.event,
+          ts: latest.ts,
+          level: latest.level,
+          flow: latest.flow,
+          screen: latest.screen,
+          seq: latest.seq,
+        }
+      : undefined,
+  };
+}

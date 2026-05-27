@@ -1,5 +1,5 @@
 import { StatusBar } from "expo-status-bar";
-import { SafeAreaView, StyleSheet, Text } from "react-native";
+import { Pressable, SafeAreaView, StyleSheet, Text } from "react-native";
 import Animated, {
   FadeIn,
   useAnimatedStyle,
@@ -17,11 +17,15 @@ import { GridBackground } from "./GridBackground";
 type BootScreenProps = {
   title?: string;
   detail?: string;
+  actionLabel?: string;
+  onActionPress?: () => void;
 };
 
 export function BootScreen({
   title = "Loading your workspace...",
   detail,
+  actionLabel,
+  onActionPress,
 }: BootScreenProps) {
   const glow = useSharedValue(0.9);
   const reducedMotion = useReducedMotion();
@@ -54,6 +58,14 @@ export function BootScreen({
         <Text style={styles.wordmark}>Pravah</Text>
         <Text style={styles.title}>{title}</Text>
         {detail ? <Text style={styles.detail}>{detail}</Text> : null}
+        {actionLabel && onActionPress ? (
+          <Pressable
+            onPress={onActionPress}
+            style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.75 }]}
+          >
+            <Text style={styles.actionText}>{actionLabel}</Text>
+          </Pressable>
+        ) : null}
         <Text style={styles.progress}>Preparing your timeline, inbox, and assistant.</Text>
       </Animated.View>
     </SafeAreaView>
@@ -95,5 +107,18 @@ const styles = StyleSheet.create({
     ...typography.micro,
     textAlign: "center",
     maxWidth: 340,
+  },
+  actionButton: {
+    marginTop: spacing.xs,
+    borderRadius: 9999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.accent,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  actionText: {
+    color: colors.accent,
+    ...typography.bodyMd,
+    fontWeight: "600",
   },
 });

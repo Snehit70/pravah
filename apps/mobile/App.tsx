@@ -149,6 +149,8 @@ function MobileApp() {
     isKairoActive,
     setIsKairoActive,
     isDataBootstrapReady,
+    bootstrapError,
+    retryBootstrap,
     hasCachedSessionHint,
   } = useWorkspaceState();
 
@@ -438,10 +440,27 @@ function MobileApp() {
 
   useEffect(() => {
     void initializeDiagnostics();
+    mobileLogger.info("launch_gate_start");
     return () => {
       void shutdownDiagnostics();
     };
   }, []);
+
+  useEffect(() => {
+    if (sessionLoading) {
+      mobileLogger.info("session_query_start");
+    }
+  }, [sessionLoading]);
+
+  useEffect(() => {
+    if (session) {
+      mobileLogger.info("session_ready");
+      return;
+    }
+    if (!sessionLoading) {
+      mobileLogger.info("session_absent");
+    }
+  }, [session, sessionLoading]);
 
   useEffect(() => {
     if (sessionLoading || session) return;
@@ -485,6 +504,16 @@ function MobileApp() {
     isDataBootstrapReady,
     session,
   ]);
+
+  useEffect(() => {
+    if (!session) return;
+    mobileLogger.debug("tab_render_start", { tab: activeTab });
+  }, [activeTab, session]);
+
+  useEffect(() => {
+    if (!session || !isDataBootstrapReady || !isAllTasksReady) return;
+    mobileLogger.info("tab_interactive_ready", { tab: activeTab });
+  }, [activeTab, isAllTasksReady, isDataBootstrapReady, session]);
 
   useEffect(() => {
     if (!session || !isDataBootstrapReady || !isAllTasksReady) return;
@@ -847,6 +876,18 @@ function MobileApp() {
         canGoogleSignIn={canGoogleSignIn}
         isSigningIn={isSigningIn}
         onGoogleSignIn={() => void handleGoogleSignIn()}
+        onOpenDiagnostics={() => void handleShareDiagnostics()}
+      />
+    );
+  }
+
+  if (session && bootstrapError) {
+    return (
+      <BootScreen
+        title="Could not load your workspace"
+        detail={bootstrapError}
+        actionLabel="Retry"
+        onActionPress={retryBootstrap}
       />
     );
   }
@@ -1160,12 +1201,20 @@ function LaunchGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
     authStorageReady.finally(() => {
-      if (mounted) setStorageReady(true);
+      if (mounted) {
+        mobileLogger.info("auth_storage_ready");
+        setStorageReady(true);
+      }
     });
     return () => {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!fontsLoaded) return;
+    mobileLogger.info("fonts_ready");
+  }, [fontsLoaded]);
 
   useEffect(() => {
     if (!launchReady) return;

@@ -18,12 +18,14 @@ type MobileAuthScreenProps = {
   canGoogleSignIn: boolean;
   isSigningIn: boolean;
   onGoogleSignIn: () => void;
+  onOpenDiagnostics?: () => void;
 };
 
 export function MobileAuthScreen({
   canGoogleSignIn,
   isSigningIn,
   onGoogleSignIn,
+  onOpenDiagnostics,
 }: MobileAuthScreenProps) {
   return (
     <ImageBackground source={authBg} resizeMode="cover" style={styles.bg}>
@@ -37,7 +39,9 @@ export function MobileAuthScreen({
 
         <Animated.View entering={FadeInDown.duration(500).delay(80)} style={styles.brandZone}>
           <BrandMark size={64} />
-          <Text style={styles.wordmark}>Pravah</Text>
+          <Pressable onLongPress={onOpenDiagnostics} delayLongPress={450} hitSlop={10}>
+            <Text style={styles.wordmark}>Pravah</Text>
+          </Pressable>
         </Animated.View>
 
         <Animated.View entering={FadeInUp.duration(500).delay(160)} style={styles.actionZone}>
