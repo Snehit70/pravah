@@ -30,8 +30,14 @@ import { cn } from "../lib/utils";
 import { Button } from "./Button";
 import { useToast } from "./useToast";
 import { authClient } from "../lib/auth-client";
-import { clearKairoConfig, getKairoProviderLabel, getKairoConfig, saveKairoConfig } from "../lib/kairoConfig";
-import type { KairoProviderFormat } from "../lib/kairoConfig";
+import {
+  clearKairoConfig,
+  getKairoProviderLabel,
+  getKairoSettings,
+  saveKairoSettings,
+  type KairoProviderFormat,
+  type KairoSettings,
+} from "../lib/kairoConfig";
 
 interface SettingsProps {
   onClose: () => void;
@@ -70,21 +76,23 @@ const modalVariants = {
 
 const CALENDAR_SELECTION_STORAGE_KEY = "pravah_google_calendar_selection";
 
-function getKairoConfigSignature(config: ReturnType<typeof getKairoConfig>) {
+const KAIRO_PROVIDERS: KairoProviderFormat[] = ["openai", "anthropic", "gemini"];
+
+function getKairoSettingsSignature(settings: KairoSettings) {
   return [
-    config.providerFormat,
-    config.apiKey.trim(),
-    config.baseUrl.trim(),
-    config.model.trim(),
+    settings.defaultProvider,
+    ...KAIRO_PROVIDERS.flatMap((provider) => {
+      const profile = settings.profiles[provider];
+      return [provider, profile.apiKey.trim(), profile.baseUrl.trim(), profile.model.trim()];
+    }),
   ].join("\n");
 }
 
 export function Settings({ onClose }: SettingsProps) {
   const [signingOut, setSigningOut] = useState(false);
-  const [kairoConfig, setKairoConfig] = useState(() => getKairoConfig());
-  const [savedKairoSignature, setSavedKairoSignature] = useState(() =>
-    getKairoConfigSignature(getKairoConfig())
-  );
+  const [kairoSettings, setKairoSettings] = useState<KairoSettings>(() => getKairoSettings());
+  const [activeProvider, setActiveProvider] = useState<KairoProviderFormat>(() => getKairoSettings().defaultProvider);
+  const [savedKairoSignature, setSavedKairoSignature] = useState(() => getKairoSettingsSignature(getKairoSettings()));
   const [savedKairoAt, setSavedKairoAt] = useState<Date | null>(null);
   const [googleConnected, setGoogleConnected] = useState(() => {
     const storedTokens = getGoogleTokens();
@@ -128,11 +136,23 @@ export function Settings({ onClose }: SettingsProps) {
   const currentUser = useQuery(api.auth.getCurrentUser, {});
   const googleAccountEmail = calendarIntegrationStatus?.integration?.accountEmail;
   const { showError, showSuccess } = useToast();
-  const kairoConfigSignature = useMemo(() => getKairoConfigSignature(kairoConfig), [kairoConfig]);
+  const kairoConfig = useMemo(() => {
+    const profile = kairoSettings.profiles[activeProvider];
+    return {
+      providerFormat: activeProvider,
+      apiKey: profile.apiKey,
+      baseUrl: profile.baseUrl,
+      model: profile.model,
+    };
+  }, [activeProvider, kairoSettings]);
+  const kairoConfigSignature = useMemo(() => getKairoSettingsSignature(kairoSettings), [kairoSettings]);
   const isKairoDirty = kairoConfigSignature !== savedKairoSignature;
-  const hasSavedKairoConfig = Boolean(
-    kairoConfig.apiKey.trim() && kairoConfig.baseUrl.trim() && kairoConfig.model.trim()
-  );
+  const hasSavedKairoConfig = useMemo(() => {
+    return KAIRO_PROVIDERS.some((provider) => {
+      const profile = kairoSettings.profiles[provider];
+      return Boolean(profile.apiKey.trim() && profile.baseUrl.trim() && profile.model.trim());
+    });
+  }, [kairoSettings]);
 
   const getSyncErrorMessage = (error: unknown): string => {
     const raw = getGoogleAuthErrorMessage(error, "Failed to sync with Google. Please try again.");
@@ -355,22 +375,29 @@ export function Settings({ onClose }: SettingsProps) {
       showError("Fill in the provider format, API key, endpoint URL, and model for Kairo.");
       return;
     }
-
-    saveKairoConfig(kairoConfig);
-    setSavedKairoSignature(getKairoConfigSignature(kairoConfig));
+    saveKairoSettings({
+      ...kairoSettings,
+      defaultProvider: activeProvider,
+      profiles: {
+        ...kairoSettings.profiles,
+        [activeProvider]: {
+          apiKey: kairoConfig.apiKey.trim(),
+          baseUrl: kairoConfig.baseUrl.trim(),
+          model: kairoConfig.model.trim(),
+        },
+      },
+    });
+    setSavedKairoSignature(getKairoSettingsSignature(getKairoSettings()));
     setSavedKairoAt(new Date());
     showSuccess("Kairo settings saved.");
   };
 
   const handleClearKairoConfig = () => {
     clearKairoConfig();
-    setKairoConfig({
-      apiKey: "",
-      baseUrl: "",
-      model: "",
-      providerFormat: "openai",
-    });
-    setSavedKairoSignature(getKairoConfigSignature(getKairoConfig()));
+    const cleared = getKairoSettings();
+    setKairoSettings(cleared);
+    setActiveProvider(cleared.defaultProvider);
+    setSavedKairoSignature(getKairoSettingsSignature(getKairoSettings()));
     setSavedKairoAt(new Date());
     showSuccess("Kairo settings cleared.");
   };
@@ -559,7 +586,7 @@ export function Settings({ onClose }: SettingsProps) {
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <p className="max-w-[34rem] text-sm text-zinc-300 leading-6">
-                    Kairo uses this exact {getKairoProviderLabel(kairoConfig.providerFormat)} config from your browser.
+                    Kairo uses your default provider profile from this browser.
                     Nothing is prefilled or rewritten.
                   </p>
                   <div
@@ -584,21 +611,20 @@ export function Settings({ onClose }: SettingsProps) {
 
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="md:col-span-2">
-                    <span className="mb-1.5 block text-[11px] uppercase tracking-[0.12em] text-zinc-500">
-                      Provider Format
-                    </span>
-                    <div className="grid grid-cols-2 gap-1 rounded-[3px] border border-white/[0.07] bg-black/20 p-1">
+                    <span className="mb-1.5 block text-[11px] uppercase tracking-[0.12em] text-zinc-500">Provider Profile</span>
+                    <div className="grid grid-cols-3 gap-1 rounded-[3px] border border-white/[0.07] bg-black/20 p-1">
                       {([
                         ["openai", "OpenAI Compatible"],
                         ["anthropic", "Anthropic Compatible"],
+                        ["gemini", "Google Gemini"],
                       ] as Array<[KairoProviderFormat, string]>).map(([format, label]) => (
                         <button
                           key={format}
                           type="button"
-                          onClick={() => setKairoConfig((prev) => ({ ...prev, providerFormat: format }))}
+                          onClick={() => setActiveProvider(format)}
                           className={cn(
                             "rounded-[2px] px-3 py-2 text-xs font-medium transition-colors",
-                            kairoConfig.providerFormat === format
+                            activeProvider === format
                               ? "bg-[oklch(0.72_0.16_260_/_0.22)] text-[oklch(0.78_0.14_260)]"
                               : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-300"
                           )}
@@ -606,6 +632,21 @@ export function Settings({ onClose }: SettingsProps) {
                           {label}
                         </button>
                       ))}
+                    </div>
+                    <div className="mt-2 flex items-center justify-between rounded-[3px] border border-white/[0.07] bg-black/20 px-3 py-2">
+                      <span className="text-xs text-zinc-400">Default provider</span>
+                      <button
+                        type="button"
+                        className={cn(
+                          "rounded-[3px] border px-2 py-1 text-[10px] uppercase tracking-[0.12em]",
+                          kairoSettings.defaultProvider === activeProvider
+                            ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
+                            : "border-white/[0.1] text-zinc-400 hover:text-zinc-200"
+                        )}
+                        onClick={() => setKairoSettings((prev) => ({ ...prev, defaultProvider: activeProvider }))}
+                      >
+                        {kairoSettings.defaultProvider === activeProvider ? "Default" : `Set ${getKairoProviderLabel(activeProvider)}`}
+                      </button>
                     </div>
                   </div>
 
@@ -625,7 +666,16 @@ export function Settings({ onClose }: SettingsProps) {
                       data-form-type="other"
                       spellCheck={false}
                       onChange={(e) =>
-                        setKairoConfig((prev) => ({ ...prev, apiKey: e.target.value }))
+                        setKairoSettings((prev) => ({
+                          ...prev,
+                          profiles: {
+                            ...prev.profiles,
+                            [activeProvider]: {
+                              ...prev.profiles[activeProvider],
+                              apiKey: e.target.value,
+                            },
+                          },
+                        }))
                       }
                       placeholder="Paste your provider key"
                       className="w-full rounded-[3px] border bg-black/20 px-3 py-2.5 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-[oklch(0.78_0.14_260_/_0.45)]"
@@ -649,11 +699,22 @@ export function Settings({ onClose }: SettingsProps) {
                       data-form-type="other"
                       spellCheck={false}
                       onChange={(e) =>
-                        setKairoConfig((prev) => ({ ...prev, baseUrl: e.target.value }))
+                        setKairoSettings((prev) => ({
+                          ...prev,
+                          profiles: {
+                            ...prev.profiles,
+                            [activeProvider]: {
+                              ...prev.profiles[activeProvider],
+                              baseUrl: e.target.value,
+                            },
+                          },
+                        }))
                       }
                       placeholder={
-                        kairoConfig.providerFormat === "anthropic"
+                        activeProvider === "anthropic"
                           ? "http://localhost:42424/v1/messages"
+                          : activeProvider === "gemini"
+                            ? "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
                           : "https://your-server/v1/chat/completions"
                       }
                       className="w-full rounded-[3px] border bg-black/20 px-3 py-2.5 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-[oklch(0.78_0.14_260_/_0.45)]"
@@ -677,7 +738,16 @@ export function Settings({ onClose }: SettingsProps) {
                       data-form-type="other"
                       spellCheck={false}
                       onChange={(e) =>
-                        setKairoConfig((prev) => ({ ...prev, model: e.target.value }))
+                        setKairoSettings((prev) => ({
+                          ...prev,
+                          profiles: {
+                            ...prev.profiles,
+                            [activeProvider]: {
+                              ...prev.profiles[activeProvider],
+                              model: e.target.value,
+                            },
+                          },
+                        }))
                       }
                       placeholder="Enter the exact model id"
                       className="w-full rounded-[3px] border bg-black/20 px-3 py-2.5 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-[oklch(0.78_0.14_260_/_0.45)]"
@@ -687,9 +757,11 @@ export function Settings({ onClose }: SettingsProps) {
                 </div>
 
                 <p className="text-xs text-zinc-500 leading-5">
-                  {kairoConfig.providerFormat === "anthropic"
+                  {activeProvider === "anthropic"
                     ? "Anthropic mode sends /v1/messages-style JSON with a top-level system prompt."
-                    : "OpenAI mode sends /v1/chat/completions-style JSON with a system message."}
+                    : activeProvider === "gemini"
+                      ? "Gemini mode sends generateContent-style JSON with a top-level system instruction."
+                      : "OpenAI mode sends /v1/chat/completions-style JSON with a system message."}
                   {" "}The endpoint URL is always used exactly as entered.
                 </p>
 
