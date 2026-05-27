@@ -27,6 +27,14 @@ import { GeistMono_500Medium } from "@expo-google-fonts/geist-mono";
 import { ConvexClientProvider } from "./src/lib/convex";
 import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
+import {
+  getDiagnosticsSnapshot,
+  initializeDiagnostics,
+  setDiagnosticScreen,
+  shutdownDiagnostics,
+  type DiagnosticEvent,
+} from "./src/lib/diagnostics";
+import { shareDiagnosticsBundle } from "./src/lib/diagnosticsExport";
 import { useGoalLinks, useGoals } from "./src/hooks/useGoals";
 import { useConvexGoalsSync } from "./src/hooks/useConvexGoalsSync";
 import { useGoalMutations } from "./src/hooks/useGoalMutations";
@@ -116,6 +124,8 @@ function MobileApp() {
   const kairoRef = useRef<KairoSheetRef>(null);
   const lastListStateLogMsRef = useRef<number>(0);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [diagnosticEvents, setDiagnosticEvents] = useState<DiagnosticEvent[]>([]);
+  const hasLoggedPostLoginRef = useRef(false);
 
   const {
     session,
@@ -409,12 +419,82 @@ function MobileApp() {
     }
   }, [displayCompletedTasks, displayInboxTasks, displayScheduledTasks, showToast]);
 
+  const handleShareDiagnostics = useCallback(async () => {
+    try {
+      const path = await shareDiagnosticsBundle();
+      mobileLogger.info("diagnostics_shared", { path });
+      if (path) {
+        showToast({ kind: "info", message: "Diagnostics exported." });
+      }
+    } catch (error) {
+      mobileLogger.error("diagnostics_share_failed", {
+        errorType: classifyError(error),
+      });
+      showToast({ kind: "error", message: "Could not export diagnostics." });
+    }
+  }, [showToast]);
+
   // ── Effects ─────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    void initializeDiagnostics();
+    return () => {
+      void shutdownDiagnostics();
+    };
+  }, []);
 
   useEffect(() => {
     if (sessionLoading || session) return;
     void clearSnapshot();
   }, [clearSnapshot, session, sessionLoading]);
+
+  useEffect(() => {
+    setDiagnosticScreen(session ? activeTab : "auth");
+    mobileLogger.info("screen_changed", {
+      screen: session ? activeTab : "auth",
+      sessionReady: Boolean(session),
+    });
+  }, [activeTab, session]);
+
+  useEffect(() => {
+    if (!showDiagnostics) return;
+    let active = true;
+    void getDiagnosticsSnapshot().then((events) => {
+      if (!active) return;
+      setDiagnosticEvents(events);
+    });
+    return () => {
+      active = false;
+    };
+  }, [showDiagnostics]);
+
+  useEffect(() => {
+    if (!session) return;
+    if (!isDataBootstrapReady) return;
+    if (!isAllTasksReady) return;
+    mobileLogger.info("app_interactive_ready", {
+      inboxCount: displayInboxTasks.length,
+      timelineCount: displayScheduledTasks.length,
+      completedCount: displayCompletedTasks.length,
+    });
+  }, [
+    displayCompletedTasks.length,
+    displayInboxTasks.length,
+    displayScheduledTasks.length,
+    isAllTasksReady,
+    isDataBootstrapReady,
+    session,
+  ]);
+
+  useEffect(() => {
+    if (!session || !isDataBootstrapReady || !isAllTasksReady) return;
+    if (hasLoggedPostLoginRef.current) return;
+    hasLoggedPostLoginRef.current = true;
+    mobileLogger.info("post_login_nav_done", {
+      landingTab: activeTab,
+      pendingMutations,
+    });
+  }, [activeTab, isAllTasksReady, isDataBootstrapReady, pendingMutations, session]);
 
   // ── Toast / retry ───────────────────────────────────────────────────
 
@@ -478,6 +558,7 @@ function MobileApp() {
     runRetryPayload,
     onRetryComplete: (message) => showToast({ kind: "info", message }),
   });
+  const retryQueueCount = retryQueue.length;
 
   useEffect(() => {
     if (!__DEV__) return;
@@ -1042,12 +1123,14 @@ function MobileApp() {
           timelineCount={displayScheduledTasks.length}
           completedCount={displayCompletedCount}
           pendingMutations={pendingMutations}
-          retryQueueCount={retryQueue.length}
+          retryQueueCount={retryQueueCount}
           isKairoActive={isKairoActive}
           isAllTasksReady={isAllTasksReady}
           usingSnapshot={shouldUseWorkspaceSnapshot}
           isDataBootstrapReady={isDataBootstrapReady}
           onToggle={() => setShowDiagnostics((visible) => !visible)}
+          onShareDiagnostics={() => void handleShareDiagnostics()}
+          events={diagnosticEvents}
         />
       ) : null}
     </SafeAreaView>

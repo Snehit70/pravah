@@ -41,6 +41,7 @@ export function useGoogleAuth({
     if (!googleWebClientId || isSigningIn) return;
     const actionId = createActionId("auth");
     const startedAt = Date.now();
+    mobileLogger.info("login_start", { actionId, provider: "google" });
     mobileLogger.info("google_signin_started", { actionId });
     setIsSigningIn(true);
     try {
@@ -60,6 +61,7 @@ export function useGoogleAuth({
         idToken: { token: idToken },
         callbackURL: "/",
       });
+      mobileLogger.info("login_success", { actionId, provider: "google", elapsedMs: Date.now() - startedAt });
       mobileLogger.info("google_signin_succeeded", { actionId, elapsedMs: Date.now() - startedAt });
     } catch (error) {
       const errorCode =
@@ -86,6 +88,12 @@ export function useGoogleAuth({
         errorCode,
         errorName,
         errorMessage,
+      });
+      mobileLogger.error("login_failed", {
+        actionId,
+        provider: "google",
+        elapsedMs: Date.now() - startedAt,
+        errorType: classifyError(error),
       });
     } finally {
       setIsSigningIn(false);
