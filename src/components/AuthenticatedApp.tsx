@@ -18,6 +18,7 @@ import { InboxSidebar } from "./InboxSidebar";
 import { LoadingSkeleton } from "./LoadingSkeleton";
 import { GoogleCallback } from "./GoogleCallback";
 import { LongTermGoalsPage } from "./LongTermGoalsPage";
+import { InsightsPage } from "./InsightsPage";
 import { Kairo } from "./Kairo";
 import { useTaskBoardData } from "../hooks/useTaskBoardData";
 import { useTaskDragHandlers } from "../hooks/useTaskDragHandlers";
@@ -42,7 +43,8 @@ const Settings = lazy(() =>
 export function AuthenticatedApp() {
   const [activePage, setActivePage] = useState<AppPage>(() => {
     const saved = window.sessionStorage.getItem("pravah_active_page");
-    return saved === "goals" ? "goals" : "timeline";
+    if (saved === "goals" || saved === "insights") return saved;
+    return "timeline";
   });
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [kairoActive, setKairoActive] = useState(false);
@@ -159,8 +161,10 @@ export function AuthenticatedApp() {
                 onTaskClick={openTaskPopup}
                 onOpenQuickAdd={openQuickAdd}
               />
-            ) : (
+            ) : activePage === "goals" ? (
               <LongTermGoalsPage />
+            ) : (
+              <InsightsPage tasks={allTasksForStats} />
             )}
           </main>
           <InboxSidebar
