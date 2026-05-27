@@ -21,6 +21,7 @@ import BottomSheet, {
   BottomSheetTextInput,
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
+import * as Clipboard from "expo-clipboard";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -84,6 +85,7 @@ type KairoProps = {
   onActiveChange?: (active: boolean) => void;
   /** Called when the user taps "Configure" on the unconfigured empty state. */
   onOpenSettings?: () => void;
+  onToast?: (next: { kind: "error" | "info"; message: string }) => void;
 };
 
 const DEFERRED_LOADING_TEXT = "Loading your workspace... one moment.";
@@ -181,7 +183,7 @@ type KairoChatRow =
  * expo-secure-store via `lib/kairoConfig.ts`, never sent to our servers.
  */
 export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
-  { tasks, inboxTasks, isAllTasksReady, onActiveChange, onOpenSettings },
+  { tasks, inboxTasks, isAllTasksReady, onActiveChange, onOpenSettings, onToast },
   ref
 ) {
   const sheetRef = useRef<BottomSheet>(null);
@@ -366,6 +368,30 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     [setMsgs]
   );
 
+  const handleCopyMessage = useCallback(
+    async (message: KairoMessage) => {
+      const text = message.text.trim();
+      if (!text) return;
+      try {
+        await Clipboard.setStringAsync(text);
+        haptic.success();
+        onToast?.({ kind: "info", message: "Copied" });
+        mobileLogger.info("kairo_message_copied", {
+          from: message.from,
+          length: text.length,
+        });
+      } catch (error) {
+        haptic.error();
+        onToast?.({ kind: "error", message: "Could not copy message." });
+        mobileLogger.warn("kairo_copy_failed", {
+          errorType: classifyError(error),
+          from: message.from,
+        });
+      }
+    },
+    [onToast]
+  );
+
   const renderChatRow = useCallback(
     ({ item }: { item: KairoChatRow }) => {
       if (item.kind === "thinking") return <Thinking />;
@@ -375,10 +401,11 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           onRetry={handleRetry}
           onUndo={handleUndo}
           isUndoable={(id) => undoMap.current.has(id)}
+          onCopyMessage={handleCopyMessage}
         />
       );
     },
-    [handleRetry, handleUndo]
+    [handleCopyMessage, handleRetry, handleUndo]
   );
 
   const handleSheetChange = useCallback((index: number) => {
@@ -943,15 +970,27 @@ function Bubble({
   onRetry,
   onUndo,
   isUndoable,
+  onCopyMessage,
 }: {
   message: KairoMessage;
   onRetry?: (prompt: string) => void;
   onUndo?: (chipId: string) => void;
   isUndoable?: (id: string) => boolean;
+  onCopyMessage?: (message: KairoMessage) => void;
 }) {
   const isMe = message.from === "me";
   return (
-    <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleKairo]}>
+    <Pressable
+      onLongPress={() => onCopyMessage?.(message)}
+      delayLongPress={280}
+      accessibilityRole="button"
+      accessibilityLabel="Copy message"
+      style={({ pressed }) => [
+        styles.bubble,
+        isMe ? styles.bubbleMe : styles.bubbleKairo,
+        pressed && { opacity: 0.9 },
+      ]}
+    >
       {isMe ? (
         <Text style={[styles.bubbleText, styles.bubbleTextMe]}>{message.text}</Text>
       ) : (
@@ -984,7 +1023,7 @@ function Bubble({
           <Text style={styles.retryButtonText}>Try again</Text>
         </Pressable>
       ) : null}
-    </View>
+    </Pressable>
   );
 }
 

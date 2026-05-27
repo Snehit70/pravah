@@ -1073,6 +1073,7 @@ function MobileApp() {
         isAllTasksReady={isAllTasksReady}
         onActiveChange={setIsKairoActive}
         onOpenSettings={openSettingsModal}
+        onToast={showToast}
       />
 
       <SettingsSheet
