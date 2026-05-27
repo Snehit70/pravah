@@ -1,44 +1,40 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import {
   KAIRO_DEFAULTS,
   clearKairoConfig,
-  getKairoConfig,
   getKairoProviderLabel,
+  getKairoSettings,
   hasCustomKairoEndpoint,
-  isKairoConfigured,
-  saveKairoConfig,
+  saveKairoSettings,
   type KairoConfig,
   type KairoProviderFormat,
+  type KairoSettings,
 } from "../lib/kairoConfig";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { KairoSettingsSkeleton } from "./LoadingSkeleton";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { classifyError, mobileLogger } from "../lib/logger";
 
-const EMPTY: KairoConfig = {
-  apiKey: "",
-  baseUrl: "",
-  model: "",
-  providerFormat: "anthropic",
-};
-
-function getProviderDraft(providerFormat: KairoProviderFormat, apiKey: string): KairoConfig {
-  const defaults = KAIRO_DEFAULTS[providerFormat];
-  return {
-    apiKey,
-    providerFormat,
-    baseUrl: defaults.baseUrl,
-    model: defaults.model,
-  };
-}
+const PROVIDERS: KairoProviderFormat[] = ["anthropic", "openai", "gemini"];
 
 type SaveState = "idle" | "saving" | "saved" | "cleared";
 
+function toConfig(settings: KairoSettings, provider: KairoProviderFormat): KairoConfig {
+  const profile = settings.profiles[provider];
+  return {
+    providerFormat: provider,
+    apiKey: profile.apiKey,
+    baseUrl: profile.baseUrl,
+    model: profile.model,
+  };
+}
+
 export function KairoSettingsSection() {
-  const [draft, setDraft] = useState<KairoConfig>(EMPTY);
+  const [settings, setSettings] = useState<KairoSettings | null>(null);
+  const [activeProvider, setActiveProvider] = useState<KairoProviderFormat>("anthropic");
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -48,16 +44,13 @@ export function KairoSettingsSection() {
 
   useEffect(() => {
     let cancelled = false;
-    void getKairoConfig()
-      .then((c) => {
-        if (!cancelled) {
-          setDraft(c);
-          // Decide initial advanced visibility once, off the persisted config
-          // — not every keystroke. This avoids the section springing open the
-          // moment a user clears the URL field.
-          setShowAdvanced(hasCustomKairoEndpoint(c));
-          setLoaded(true);
-        }
+    void getKairoSettings()
+      .then((next) => {
+        if (cancelled) return;
+        setSettings(next);
+        setActiveProvider(next.defaultProvider);
+        setShowAdvanced(hasCustomKairoEndpoint(toConfig(next, next.defaultProvider)));
+        setLoaded(true);
       })
       .catch((error) => {
         mobileLogger.warn("kairo_settings_load_failed", { errorType: classifyError(error) });
@@ -68,9 +61,25 @@ export function KairoSettingsSection() {
     };
   }, []);
 
-  const setProvider = (p: KairoProviderFormat) => {
-    setDraft((d) => getProviderDraft(p, d.apiKey));
-  };
+  const activeProfile = useMemo(() => {
+    if (!settings) {
+      return {
+        apiKey: "",
+        baseUrl: KAIRO_DEFAULTS[activeProvider].baseUrl,
+        model: KAIRO_DEFAULTS[activeProvider].model,
+      };
+    }
+    return settings.profiles[activeProvider];
+  }, [activeProvider, settings]);
+
+  const status = useMemo(() => {
+    if (!settings) return "Not configured";
+    const isAnyConfigured = PROVIDERS.some((provider) => {
+      const profile = settings.profiles[provider];
+      return Boolean(profile.apiKey && profile.baseUrl && profile.model);
+    });
+    return isAnyConfigured ? "Configured" : "Not configured";
+  }, [settings]);
 
   const flashState = (next: "saved" | "cleared") => {
     setSaveState(next);
@@ -79,12 +88,32 @@ export function KairoSettingsSection() {
     }, 1800);
   };
 
+  const updateActiveProfile = (patch: Partial<(typeof activeProfile)>) => {
+    setSettings((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        profiles: {
+          ...prev.profiles,
+          [activeProvider]: {
+            ...prev.profiles[activeProvider],
+            ...patch,
+          },
+        },
+      };
+    });
+  };
+
+  const handleSetDefault = () => {
+    setSettings((prev) => (prev ? { ...prev, defaultProvider: activeProvider } : prev));
+  };
+
   const handleSave = async () => {
-    if (!loaded || saveState === "saving") return;
+    if (!loaded || saveState === "saving" || !settings) return;
     setErrorMessage(null);
     setSaveState("saving");
     try {
-      await saveKairoConfig(draft);
+      await saveKairoSettings(settings);
       flashState("saved");
     } catch (error) {
       mobileLogger.warn("kairo_settings_save_failed", { errorType: classifyError(error) });
@@ -99,7 +128,10 @@ export function KairoSettingsSection() {
     setSaveState("saving");
     try {
       await clearKairoConfig();
-      setDraft(getProviderDraft("anthropic", ""));
+      const cleared = await getKairoSettings();
+      setSettings(cleared);
+      setActiveProvider(cleared.defaultProvider);
+      setShowAdvanced(false);
       flashState("cleared");
     } catch (error) {
       mobileLogger.warn("kairo_settings_clear_failed", { errorType: classifyError(error) });
@@ -108,55 +140,65 @@ export function KairoSettingsSection() {
     }
   };
 
-  const placeholders = KAIRO_DEFAULTS[draft.providerFormat];
-  const status = isKairoConfigured(draft) ? "Configured" : "Not configured";
-
-  // Show a minimal loading state while SecureStore resolves on cold start.
-  // Previously all inputs rendered as disabled/empty which looked broken.
   if (!loaded) {
     return <KairoSettingsSkeleton />;
   }
 
+  const placeholders = KAIRO_DEFAULTS[activeProvider];
+  const providerMeta =
+    activeProvider === "anthropic"
+      ? "Anthropic format"
+      : activeProvider === "gemini"
+        ? "Gemini native format"
+        : "OpenAI-compatible format";
+
   return (
     <View style={styles.block}>
       <Text style={styles.label}>Kairo assistant</Text>
-      <Text style={styles.help}>
-        Bring your own API key. Stored in the device keychain — never sent to Pravah.
-      </Text>
-      <Text style={[styles.status, { color: isKairoConfigured(draft) ? colors.primary : colors.textMuted }]}> 
+      <Text style={styles.help}>Bring your own API key. Stored in the device keychain.</Text>
+      <Text style={[styles.status, { color: status === "Configured" ? colors.primary : colors.textMuted }]}>
         {status}
       </Text>
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
       <View style={styles.providerRow}>
-        {(["anthropic", "openai"] as KairoProviderFormat[]).map((p) => {
-          const active = draft.providerFormat === p;
+        {PROVIDERS.map((provider) => {
+          const active = provider === activeProvider;
+          const isDefault = settings?.defaultProvider === provider;
           return (
             <Pressable
-              key={p}
-              onPress={() => setProvider(p)}
+              key={provider}
+              onPress={() => setActiveProvider(provider)}
               style={({ pressed }) => [
                 styles.providerChip,
                 active && styles.providerChipActive,
                 pressed && { opacity: 0.7 },
               ]}
               accessibilityRole="button"
-              accessibilityLabel={`Use ${getKairoProviderLabel(p)} format`}
+              accessibilityLabel={`Use ${getKairoProviderLabel(provider)} profile`}
             >
               <Text style={[styles.providerChipText, active && styles.providerChipTextActive]}>
-                {getKairoProviderLabel(p)}
+                {getKairoProviderLabel(provider)}{isDefault ? " · Default" : ""}
               </Text>
             </Pressable>
           );
         })}
       </View>
 
-      {/* API key row: input + show/hide toggle so the user can verify what
-          is stored. The key sits in expo-secure-store (device keychain). */}
+      <Pressable
+        onPress={handleSetDefault}
+        hitSlop={12}
+        accessibilityRole="button"
+        accessibilityLabel="Set active provider as default"
+        style={({ pressed }) => [styles.defaultAction, pressed && { opacity: 0.7 }]}
+      >
+        <Text style={styles.defaultActionText}>Set {getKairoProviderLabel(activeProvider)} as default</Text>
+      </Pressable>
+
       <View style={styles.apiKeyRow}>
         <BottomSheetTextInput
-          value={draft.apiKey}
-          onChangeText={(v) => setDraft((d) => ({ ...d, apiKey: v }))}
+          value={activeProfile.apiKey}
+          onChangeText={(v) => updateActiveProfile({ apiKey: v })}
           placeholder="API key"
           placeholderTextColor={colors.textMuted}
           autoCapitalize="none"
@@ -177,9 +219,7 @@ export function KairoSettingsSection() {
       </View>
 
       <View style={styles.metaRow}>
-        <Text style={styles.metaText}>
-          {draft.providerFormat === "anthropic" ? "Anthropic format" : "OpenAI-compatible format"}
-        </Text>
+        <Text style={styles.metaText}>{providerMeta}</Text>
         <Pressable
           onPress={() => setShowAdvanced((v) => !v)}
           hitSlop={12}
@@ -199,8 +239,8 @@ export function KairoSettingsSection() {
         >
           <Text style={styles.advancedLabel}>Endpoint URL</Text>
           <BottomSheetTextInput
-            value={draft.baseUrl}
-            onChangeText={(v) => setDraft((d) => ({ ...d, baseUrl: v }))}
+            value={activeProfile.baseUrl}
+            onChangeText={(v) => updateActiveProfile({ baseUrl: v })}
             placeholder={placeholders.baseUrl}
             placeholderTextColor={colors.textMuted}
             autoCapitalize="none"
@@ -210,8 +250,8 @@ export function KairoSettingsSection() {
           />
           <Text style={styles.advancedLabel}>Model</Text>
           <BottomSheetTextInput
-            value={draft.model}
-            onChangeText={(v) => setDraft((d) => ({ ...d, model: v }))}
+            value={activeProfile.model}
+            onChangeText={(v) => updateActiveProfile({ model: v })}
             placeholder={placeholders.model}
             placeholderTextColor={colors.textMuted}
             autoCapitalize="none"
@@ -228,25 +268,16 @@ export function KairoSettingsSection() {
           hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel="Save Kairo configuration"
-          disabled={!loaded || saveState === "saving"}
+          disabled={!loaded || saveState === "saving" || !settings}
           style={({ pressed }) => [
             styles.saveButton,
             saveState === "saved" && styles.saveButtonSaved,
             pressed && { opacity: 0.7 },
-            (!loaded || saveState === "saving") && { opacity: 0.5 },
+            (!loaded || saveState === "saving" || !settings) && { opacity: 0.5 },
           ]}
         >
-          <Text
-            style={[
-              styles.saveButtonText,
-              saveState === "saved" && styles.saveButtonTextSaved,
-            ]}
-          >
-            {saveState === "saving"
-              ? "Saving…"
-              : saveState === "saved"
-                ? "Saved"
-                : "Save"}
+          <Text style={[styles.saveButtonText, saveState === "saved" && styles.saveButtonTextSaved]}>
+            {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : "Save"}
           </Text>
         </Pressable>
         <Pressable
@@ -257,9 +288,7 @@ export function KairoSettingsSection() {
           disabled={saveState === "saving"}
           style={({ pressed }) => [pressed && { opacity: 0.6 }]}
         >
-          <Text style={styles.clearText}>
-            {saveState === "cleared" ? "Cleared" : "Clear"}
-          </Text>
+          <Text style={styles.clearText}>{saveState === "cleared" ? "Cleared" : "Clear"}</Text>
         </Pressable>
       </View>
     </View>
@@ -267,29 +296,12 @@ export function KairoSettingsSection() {
 }
 
 const styles = StyleSheet.create({
-  block: {
-    gap: spacing.sm,
-  },
-  label: {
-    color: colors.textPrimary,
-    ...typography.title,
-  },
-  help: {
-    color: colors.textSecondary,
-    ...typography.bodyMd,
-  },
-  status: {
-    ...typography.micro,
-  },
-  errorText: {
-    color: colors.error,
-    ...typography.micro,
-  },
-  providerRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.xs,
-  },
+  block: { gap: spacing.sm },
+  label: { color: colors.textPrimary, ...typography.title },
+  help: { color: colors.textSecondary, ...typography.bodyMd },
+  status: { ...typography.micro },
+  errorText: { color: colors.error, ...typography.micro },
+  providerRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.xs, flexWrap: "wrap" },
   providerChip: {
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
@@ -298,17 +310,11 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.bgCard,
   },
-  providerChipActive: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accentSoft,
-  },
-  providerChipText: {
-    ...typography.micro,
-    color: colors.textSecondary,
-  },
-  providerChipTextActive: {
-    color: colors.accent,
-  },
+  providerChipActive: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+  providerChipText: { ...typography.micro, color: colors.textSecondary },
+  providerChipTextActive: { color: colors.accent },
+  defaultAction: { paddingVertical: spacing.xs },
+  defaultActionText: { ...typography.micro, color: colors.accent },
   input: {
     backgroundColor: colors.bgCard,
     borderWidth: StyleSheet.hairlineWidth,
@@ -319,75 +325,27 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     ...typography.bodyMd,
   },
-  apiKeyRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  apiKeyInput: {
-    flex: 1,
-  },
-  apiKeyToggle: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
-  },
-  apiKeyToggleText: {
-    ...typography.micro,
-    color: colors.accent,
-  },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.md,
-  },
-  metaText: {
-    flex: 1,
-    color: colors.textMuted,
-    ...typography.micro,
-  },
-  advancedToggle: {
-    paddingVertical: spacing.xs,
-  },
-  advancedToggleText: {
-    color: colors.accent,
-    ...typography.micro,
-  },
-  advancedWrap: {
-    gap: spacing.sm,
-    paddingTop: spacing.xs,
-  },
-  advancedLabel: {
-    color: colors.textMuted,
-    ...typography.micro,
-  },
-  actions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.lg,
-    marginTop: spacing.xs,
-  },
+  apiKeyRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  apiKeyInput: { flex: 1 },
+  apiKeyToggle: { paddingVertical: spacing.sm, paddingHorizontal: spacing.sm },
+  apiKeyToggleText: { ...typography.micro, color: colors.accent },
+  metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
+  metaText: { flex: 1, color: colors.textMuted, ...typography.micro },
+  advancedToggle: { paddingVertical: spacing.xs },
+  advancedToggleText: { color: colors.accent, ...typography.micro },
+  advancedWrap: { gap: spacing.sm, paddingTop: spacing.xs },
+  advancedLabel: { color: colors.textMuted, ...typography.micro },
+  actions: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingTop: spacing.xs },
   saveButton: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.md,
-    backgroundColor: colors.accentSoft,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.accent,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    backgroundColor: "transparent",
   },
-  saveButtonSaved: {
-    backgroundColor: colors.successMuted,
-    borderColor: colors.success,
-  },
-  saveButtonText: {
-    ...typography.micro,
-    color: colors.accent,
-  },
-  saveButtonTextSaved: {
-    color: colors.success,
-  },
-  clearText: {
-    ...typography.micro,
-    color: colors.textMuted,
-  },
+  saveButtonSaved: { borderColor: colors.primary, backgroundColor: colors.accentSoft },
+  saveButtonText: { color: colors.accent, ...typography.micro },
+  saveButtonTextSaved: { color: colors.primary },
+  clearText: { color: colors.textMuted, ...typography.micro },
 });

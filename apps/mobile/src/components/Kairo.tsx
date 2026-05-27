@@ -44,6 +44,7 @@ import {
 import {
   KAIRO_SYSTEM_PROMPT,
   buildAnthropicRequestBody,
+  buildGeminiRequestBody,
   buildKairoContext,
   buildKairoStarters,
   buildOpenAIRequestBody,
@@ -89,6 +90,13 @@ type KairoProps = {
 };
 
 const DEFERRED_LOADING_TEXT = "Loading your workspace... one moment.";
+
+function buildGeminiRequestUrl(baseUrl: string, model: string, apiKey: string): string {
+  const modelName = encodeURIComponent(model.trim());
+  const expandedBase = baseUrl.includes("{model}") ? baseUrl.replace("{model}", modelName) : baseUrl;
+  const separator = expandedBase.includes("?") ? "&" : "?";
+  return `${expandedBase}${separator}key=${encodeURIComponent(apiKey.trim())}`;
+}
 
 /** Render a short human-readable label for an applied action chip. The
  *  before-state lookup gives us the original title for reference actions
@@ -503,17 +511,24 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         const body =
           nextConfig.providerFormat === "anthropic"
             ? buildAnthropicRequestBody(nextConfig, systemPrompt, history, trimmed)
-            : buildOpenAIRequestBody(nextConfig, systemPrompt, history, trimmed);
+            : nextConfig.providerFormat === "gemini"
+              ? buildGeminiRequestBody(nextConfig, systemPrompt, history, trimmed)
+              : buildOpenAIRequestBody(nextConfig, systemPrompt, history, trimmed);
 
         const headers: Record<string, string> = { "Content-Type": "application/json" };
         if (nextConfig.providerFormat === "anthropic") {
           headers["x-api-key"] = nextConfig.apiKey;
           headers["anthropic-version"] = "2023-06-01";
-        } else {
+        } else if (nextConfig.providerFormat === "openai") {
           headers["Authorization"] = `Bearer ${nextConfig.apiKey}`;
         }
 
-        const res = await fetch(nextConfig.baseUrl, {
+        const requestUrl =
+          nextConfig.providerFormat === "gemini"
+            ? buildGeminiRequestUrl(nextConfig.baseUrl, nextConfig.model, nextConfig.apiKey)
+            : nextConfig.baseUrl;
+
+        const res = await fetch(requestUrl, {
           method: "POST",
           headers,
           body: JSON.stringify(body),
