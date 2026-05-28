@@ -52,10 +52,10 @@ type PersistedPayload = {
   }[];
 };
 
-let sessionId = `sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const sessionId = `sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 let seq = 0;
 let currentScreen = "unknown";
-let buffer: DiagnosticEvent[] = [];
+const buffer: DiagnosticEvent[] = [];
 let priorSessions: PersistedPayload["sessions"] = [];
 let flushTimer: ReturnType<typeof setInterval> | null = null;
 let appStateSubscription: NativeEventSubscription | null = null;

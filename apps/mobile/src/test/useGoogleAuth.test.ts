@@ -2,6 +2,8 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+(globalThis as { __DEV__?: boolean }).__DEV__ = false;
+
 const googleConfigureMock = vi.fn();
 const googleHasPlayServicesMock = vi.fn();
 const googleSignInMock = vi.fn();
@@ -125,8 +127,10 @@ describe("useGoogleAuth", () => {
       })
     );
 
-    const signOutPromise = act(async () => {
-      await result.current.handleSignOut();
+    let signOutPromise: Promise<void> | null = null;
+    await act(async () => {
+      signOutPromise = result.current.handleSignOut();
+      await Promise.resolve();
     });
 
     await waitFor(() => {
@@ -140,5 +144,6 @@ describe("useGoogleAuth", () => {
 
     resolveSignOut?.();
     await signOutPromise;
+    expect(signOutPromise).not.toBeNull();
   });
 });

@@ -10,6 +10,8 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+(globalThis as { __DEV__?: boolean }).__DEV__ = false;
+
 // ─── AsyncStorage mock ────────────────────────────────────────────────────────
 // useKairoChats persists chats to AsyncStorage. We back the mock with an
 // in-memory map so the hook hydrates immediately and writes are observable.

@@ -36,6 +36,25 @@ export function DiagnosticsPanel({
   onShareDiagnostics,
   events = [],
 }: DiagnosticsPanelProps) {
+  const [enabledFilters, setEnabledFilters] = useState<Record<string, boolean>>({
+    issue: true,
+    auth: true,
+    network: true,
+    ui: true,
+  });
+  const toggleFilter = (key: "issue" | "auth" | "network" | "ui") =>
+    setEnabledFilters((prev) => ({ ...prev, [key]: !prev[key] }));
+  const timeline = useMemo(() => {
+    const filtered = events.filter((item) => {
+      if (enabledFilters.issue && (item.level === "error" || item.level === "warn")) return true;
+      if (enabledFilters.auth && item.flow === "auth") return true;
+      if (enabledFilters.network && item.flow === "network") return true;
+      if (enabledFilters.ui && item.flow === "ui") return true;
+      return false;
+    });
+    return filtered.slice(-200).reverse();
+  }, [enabledFilters, events]);
+
   if (!visible) {
     return (
       <Pressable
@@ -58,24 +77,6 @@ export function DiagnosticsPanel({
     ["snapshot", usingSnapshot ? "yes" : "no"],
     ["bootstrap", isDataBootstrapReady ? "ready" : "syncing"],
   ];
-  const [enabledFilters, setEnabledFilters] = useState<Record<string, boolean>>({
-    issue: true,
-    auth: true,
-    network: true,
-    ui: true,
-  });
-  const toggleFilter = (key: "issue" | "auth" | "network" | "ui") =>
-    setEnabledFilters((prev) => ({ ...prev, [key]: !prev[key] }));
-  const timeline = useMemo(() => {
-    const filtered = events.filter((item) => {
-      if (enabledFilters.issue && (item.level === "error" || item.level === "warn")) return true;
-      if (enabledFilters.auth && item.flow === "auth") return true;
-      if (enabledFilters.network && item.flow === "network") return true;
-      if (enabledFilters.ui && item.flow === "ui") return true;
-      return false;
-    });
-    return filtered.slice(-200).reverse();
-  }, [enabledFilters, events]);
 
   return (
     <View style={styles.panel} pointerEvents="box-none">

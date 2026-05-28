@@ -12,7 +12,7 @@ type ToastState = {
 };
 
 export function useWorkspaceState() {
-  const appStartMsRef = useRef<number>(Date.now());
+  const appStartMsRef = useRef<number | null>(null);
 
   const [activeTab, setActiveTab] = useState<TabKey>("inbox");
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -38,6 +38,12 @@ export function useWorkspaceState() {
   const showToast = useCallback((next: ToastState) => setToast(next), []);
 
   useEffect(() => {
+    if (appStartMsRef.current == null) {
+      appStartMsRef.current = Date.now();
+    }
+  }, []);
+
+  useEffect(() => {
     if (!toast) return;
     const timeout = setTimeout(() => setToast(null), 3200);
     return () => clearTimeout(timeout);
@@ -49,8 +55,9 @@ export function useWorkspaceState() {
 
   useEffect(() => {
     if (!session) return;
+    const startedAt = appStartMsRef.current ?? Date.now();
     mobileLogger.info("session_ready", {
-      elapsedMs: Date.now() - appStartMsRef.current,
+      elapsedMs: Date.now() - startedAt,
     });
   }, [session]);
 
