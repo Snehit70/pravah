@@ -15,6 +15,22 @@ The current mobile architecture is optimized for four things:
 3. Clear ownership boundaries between session state, query state, and mutation state
 4. Android-safe bottom-sheet editing for settings and task sheets
 
+## Auth and Session Model
+
+Auth is intentionally split into two layers:
+
+1. `useGoogleAuth` handles sign-in/sign-out transactions and user-facing auth actions.
+2. `useWorkspaceState` consumes resolved Better Auth session state and drives shell transitions.
+
+Recent hardening (May 2026):
+
+- sign-out retries with bounded attempts
+- timeout guard per sign-out attempt
+- sign-in blocked while sign-out is in-flight
+- structured diagnostics events for auth success/failure paths
+
+See `auth-flow.md` for the exact transaction sequence and diagnostics event map.
+
 ## Top-Level Structure
 
 ```text
