@@ -936,7 +936,7 @@ function MobileApp() {
   // ── Main layout ─────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.container}>
       <StatusBar style="light" />
 
       {/* Web-parity grid vignette behind everything. */}
