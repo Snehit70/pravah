@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { tx } from "../lib/motion";
 import { cn } from "../lib/utils";
 
-export type AppPage = "timeline" | "goals";
+export type AppPage = "timeline" | "goals" | "insights";
 
 interface TopNavbarProps {
   activePage: AppPage;
@@ -79,6 +79,9 @@ export function TopNavbar({
         </NavTab>
         <NavTab active={activePage === "goals"} onClick={() => onNavigate("goals")}>
           Long-term Goals
+        </NavTab>
+        <NavTab active={activePage === "insights"} onClick={() => onNavigate("insights")}>
+          Insights
         </NavTab>
       </div>
 

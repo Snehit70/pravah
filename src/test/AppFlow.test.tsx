@@ -73,6 +73,12 @@ vi.mock("../../convex/_generated/api", () => ({
       reorderInboxTasks: "tasks.reorderInboxTasks",
       addTask: "tasks.addTask",
     },
+    goals: {
+      list: "goals.list",
+      listLinks: "goals.listLinks",
+      upsert: "goals.upsert",
+      remove: "goals.remove",
+    },
     sync: {
       upsertIntegration: "sync.upsertIntegration",
     },
@@ -114,6 +120,7 @@ function makeTask(overrides: Partial<Task>): Task {
 
 describe("App task flow integration", () => {
   beforeEach(() => {
+    localStorage.removeItem("pravah:ff:web-goals-linking");
     useQueryMock.mockReset();
     useMutationMock.mockReset();
 
@@ -168,4 +175,5 @@ describe("App task flow integration", () => {
       expect(screen.getAllByText("Pravah").length).toBeGreaterThan(0);
     });
   });
+
 });

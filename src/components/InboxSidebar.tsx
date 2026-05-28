@@ -11,6 +11,7 @@ interface InboxSidebarProps {
   tasks: Task[];
   onTaskClick: (task: Task) => void;
   onOpenQuickAdd?: () => void;
+  goalNameByTaskId?: Record<string, string>;
 }
 
 
@@ -34,7 +35,15 @@ function formatTaskAge(createdAt: number): string {
   return `${mo}mo`;
 }
 
-function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void }) {
+function InboxTaskComponent({
+  task,
+  onClick,
+  goalName,
+}: {
+  task: Task;
+  onClick: () => void;
+  goalName?: string;
+}) {
   const { setNodeRef, attributes, listeners, transform, transition: dndTransition, isDragging } = useSortable({
     id: task._id,
   });
@@ -122,6 +131,23 @@ function InboxTaskComponent({ task, onClick }: { task: Task; onClick: () => void
         <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {task.title}
         </span>
+        {goalName && (
+          <span
+            title={`Goal: ${goalName}`}
+            style={{
+              fontSize: 9,
+              color: "oklch(0.78 0.14 260 / 0.9)",
+              fontFamily: "var(--font-mono)",
+              letterSpacing: 0.4,
+              maxWidth: 92,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            ◈ {goalName}
+          </span>
+        )}
         {isAgentAdded && (
           <span
             title="Added by Kairo"
@@ -164,6 +190,7 @@ function InboxSidebarComponent({
   tasks,
   onTaskClick,
   onOpenQuickAdd,
+  goalNameByTaskId,
 }: InboxSidebarProps) {
   const { setNodeRef, isOver } = useDroppable({ id: INBOX_DROP_ID });
   const [query, setQuery] = useState("");
@@ -331,6 +358,7 @@ function InboxSidebarComponent({
               <InboxTask
                 key={task._id}
                 task={task}
+                goalName={goalNameByTaskId?.[String(task._id)]}
                 onClick={() => onTaskClick(task)}
               />
             ))}

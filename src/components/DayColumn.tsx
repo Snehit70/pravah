@@ -16,9 +16,18 @@ interface GridDayColumnProps {
   hoverDate: string | null;
   onHoverDate: (date: string | null) => void;
   isDeadlineLane?: boolean;
+  goalNameByTaskId?: Record<string, string>;
 }
 
-function GridTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
+function GridTaskRow({
+  task,
+  onClick,
+  goalName,
+}: {
+  task: Task;
+  onClick: () => void;
+  goalName?: string;
+}) {
   const { setNodeRef, attributes, listeners, transform, isDragging } = useSortable({
     id: task._id,
   });
@@ -145,6 +154,23 @@ function GridTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
       <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {task.title}
       </span>
+      {goalName && !hover && (
+        <span
+          title={`Goal: ${goalName}`}
+          style={{
+            fontSize: 9,
+            color: "oklch(0.78 0.14 260 / 0.9)",
+            fontFamily: "var(--font-mono)",
+            letterSpacing: 0.4,
+            maxWidth: 104,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          ◈ {goalName}
+        </span>
+      )}
       {task.priority && !hover && !isCompleted && (
         <span
           style={{
@@ -179,6 +205,7 @@ function GridDayColumnComponent({
   onTaskClick,
   today,
   isDeadlineLane = false,
+  goalNameByTaskId,
 }: GridDayColumnProps) {
   const droppableId = isDeadlineLane ? `deadline:${date}` : date;
   const { setNodeRef, isOver } = useDroppable({ id: droppableId });
@@ -246,6 +273,7 @@ function GridDayColumnComponent({
             <GridTaskRow
               key={task._id}
               task={task}
+              goalName={goalNameByTaskId?.[String(task._id)]}
               onClick={() => onTaskClick(task)}
             />
           ))}

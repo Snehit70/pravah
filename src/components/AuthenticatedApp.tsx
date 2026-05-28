@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { flushSync } from "react-dom";
 import {
   DndContext,
@@ -18,6 +18,7 @@ import { InboxSidebar } from "./InboxSidebar";
 import { LoadingSkeleton } from "./LoadingSkeleton";
 import { GoogleCallback } from "./GoogleCallback";
 import { LongTermGoalsPage } from "./LongTermGoalsPage";
+import { InsightsPage } from "./InsightsPage";
 import { Kairo } from "./Kairo";
 import { useTaskBoardData } from "../hooks/useTaskBoardData";
 import { useTaskDragHandlers } from "../hooks/useTaskDragHandlers";
@@ -28,6 +29,7 @@ import { useBootstrapUser } from "../hooks/useBootstrapUser";
 import { useToast } from "./useToast";
 import { TopNavbar } from "./TopNavbar";
 import { getLocalDateString } from "../lib/utils";
+import { isWebGoalsLinkingEnabled } from "../lib/featureFlags";
 
 const TaskPopup = lazy(() =>
   import("./TaskPopup").then((module) => ({ default: module.TaskPopup }))
@@ -40,9 +42,11 @@ const Settings = lazy(() =>
 );
 
 export function AuthenticatedApp() {
+  const webGoalsLinkingEnabled = isWebGoalsLinkingEnabled();
   const [activePage, setActivePage] = useState<AppPage>(() => {
     const saved = window.sessionStorage.getItem("pravah_active_page");
-    return saved === "goals" ? "goals" : "timeline";
+    if (saved === "goals" || saved === "insights") return saved;
+    return "timeline";
   });
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [kairoActive, setKairoActive] = useState(false);
@@ -66,6 +70,10 @@ export function AuthenticatedApp() {
     clientDate: getLocalDateString(),
   });
   const kairoTasks = useQuery(api.tasks.listTasks, kairoActive ? {} : "skip");
+  const goals = useQuery(api.goals.list, webGoalsLinkingEnabled ? {} : "skip");
+  const goalLinks = useQuery(api.goals.listLinks, webGoalsLinkingEnabled ? {} : "skip");
+  const upsertGoal = useMutation(api.goals.upsert);
+  const removeGoal = useMutation(api.goals.remove);
   const moveTask = useMutation(api.tasks.moveTask);
   const unscheduleTask = useMutation(api.tasks.unscheduleTask);
   const reorderTasks = useMutation(api.tasks.reorderTasks);
@@ -123,6 +131,57 @@ export function AuthenticatedApp() {
     ...(todayCompletedTasks ?? []),
   ];
 
+  const goalNameByTaskId = useMemo(() => {
+    if (!webGoalsLinkingEnabled || !goals || !goalLinks) return {};
+    const byId = new Map(goals.map((goal) => [goal.id, goal.text]));
+    const mapped: Record<string, string> = {};
+    for (const [taskId, goalId] of Object.entries(goalLinks)) {
+      const goalName = byId.get(goalId);
+      if (goalName) {
+        mapped[taskId] = goalName;
+      } else {
+        console.warn("web_goals_missing_goal_for_link", { taskId, goalId });
+      }
+    }
+    return mapped;
+  }, [goalLinks, goals, webGoalsLinkingEnabled]);
+
+  const progressByGoalId = useMemo(() => {
+    if (!webGoalsLinkingEnabled || !goals || !goalLinks || !boardTasks) return {};
+    const taskById = new Map(boardTasks.map((task) => [String(task._id), task]));
+    const initial: Record<string, { total: number; done: number }> = {};
+    for (const goal of goals) initial[goal.id] = { total: 0, done: 0 };
+    for (const [taskId, goalId] of Object.entries(goalLinks)) {
+      const task = taskById.get(taskId);
+      if (!task || !initial[goalId]) continue;
+      initial[goalId].total += 1;
+      if (task.status === "completed") initial[goalId].done += 1;
+    }
+    return initial;
+  }, [boardTasks, goalLinks, goals, webGoalsLinkingEnabled]);
+
+  const handleCreateGoal = useCallback(
+    async (text: string) => {
+      const goalId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      await upsertGoal({
+        clientId: goalId,
+        text,
+        createdAt: Date.now(),
+      });
+    },
+    [upsertGoal]
+  );
+
+  const handleDeleteGoal = useCallback(
+    async (goalId: string) => {
+      await removeGoal({ clientId: goalId });
+    },
+    [removeGoal]
+  );
+
   if (!bootstrapReady || boardTasks === undefined) {
     return <LoadingSkeleton />;
   }
@@ -156,15 +215,26 @@ export function AuthenticatedApp() {
               <Timeline
                 tasksByDate={tasksByDate}
                 allTasks={allTasksForStats}
+                goalNameByTaskId={goalNameByTaskId}
                 onTaskClick={openTaskPopup}
                 onOpenQuickAdd={openQuickAdd}
               />
+            ) : activePage === "goals" ? (
+              <LongTermGoalsPage
+                readOnly={false}
+                serverBacked={webGoalsLinkingEnabled}
+                serverGoals={goals ?? undefined}
+                progressByGoalId={progressByGoalId}
+                onCreateServerGoal={handleCreateGoal}
+                onDeleteServerGoal={handleDeleteGoal}
+              />
             ) : (
-              <LongTermGoalsPage />
+              <InsightsPage tasks={allTasksForStats} />
             )}
           </main>
           <InboxSidebar
             tasks={inboxTasks}
+            goalNameByTaskId={goalNameByTaskId}
             onTaskClick={openTaskPopup}
             onOpenQuickAdd={openQuickAdd}
           />

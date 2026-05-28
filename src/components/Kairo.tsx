@@ -12,6 +12,13 @@ import {
   getKairoConfig,
   isKairoConfigured,
 } from "../lib/kairoConfig";
+import {
+  buildAnthropicRequestBody,
+  buildGeminiRequestBody,
+  buildGeminiRequestUrl,
+  buildOpenAIRequestBody,
+  readKairoResponseText,
+} from "../lib/kairoProviderRuntime";
 
 const ACCENT = "oklch(0.78 0.14 260)";
 const ACCENT_SOFT = "oklch(0.72 0.16 260 / 0.2)";
@@ -423,67 +430,6 @@ function KairoMarkdown({ text }: { text: string }) {
   return <>{blocks}</>;
 }
 
-function readAssistantText(content: unknown): string {
-  if (typeof content === "string") {
-    return content;
-  }
-
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => {
-        if (typeof part === "string") return part;
-        if (
-          part &&
-          typeof part === "object" &&
-          "type" in part &&
-          "text" in part &&
-          (part as { type?: string }).type === "text"
-        ) {
-          return String((part as { text: unknown }).text ?? "");
-        }
-        return "";
-      })
-      .join("")
-      .trim();
-  }
-
-  return "";
-}
-
-function buildOpenAIRequestBody(config: ReturnType<typeof getKairoConfig>, systemPrompt: string, history: Array<{ role: string; content: string }>, text: string) {
-  return {
-    model: config.model,
-    max_tokens: 1024,
-    messages: [
-      { role: "system", content: systemPrompt },
-      ...history,
-      { role: "user", content: text },
-    ],
-  };
-}
-
-function buildAnthropicRequestBody(config: ReturnType<typeof getKairoConfig>, systemPrompt: string, history: Array<{ role: string; content: string }>, text: string) {
-  return {
-    model: config.model,
-    max_tokens: 1024,
-    system: systemPrompt,
-    messages: [
-      ...history.filter((message) => message.role === "user" || message.role === "assistant"),
-      { role: "user", content: text },
-    ],
-  };
-}
-
-function readKairoResponseText(data: unknown, providerFormat: ReturnType<typeof getKairoConfig>["providerFormat"]): string {
-  if (!data || typeof data !== "object") return "";
-
-  if (providerFormat === "anthropic" && "content" in data) {
-    return readAssistantText((data as { content?: unknown }).content);
-  }
-
-  return readAssistantText((data as { choices?: Array<{ message?: { content?: unknown } }> }).choices?.[0]?.message?.content);
-}
-
 export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: KairoProps) {
   const [open, setOpen] = useState(false);
   const [val, setVal] = useState("");
@@ -567,7 +513,9 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
 
       const requestBody = nextConfig.providerFormat === "anthropic"
         ? buildAnthropicRequestBody(nextConfig, systemPrompt, history, text)
-        : buildOpenAIRequestBody(nextConfig, systemPrompt, history, text);
+        : nextConfig.providerFormat === "gemini"
+          ? buildGeminiRequestBody(nextConfig, systemPrompt, history, text)
+          : buildOpenAIRequestBody(nextConfig, systemPrompt, history, text);
 
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
@@ -576,11 +524,16 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
       if (nextConfig.providerFormat === "anthropic") {
         headers["x-api-key"] = nextConfig.apiKey;
         headers["anthropic-version"] = "2023-06-01";
-      } else {
+      } else if (nextConfig.providerFormat === "openai") {
         headers["Authorization"] = `Bearer ${nextConfig.apiKey}`;
       }
 
-      const res = await fetch(nextConfig.baseUrl, {
+      const requestUrl =
+        nextConfig.providerFormat === "gemini"
+          ? buildGeminiRequestUrl(nextConfig.baseUrl, nextConfig.model, nextConfig.apiKey)
+          : nextConfig.baseUrl;
+
+      const res = await fetch(requestUrl, {
         method: "POST",
         headers,
         body: JSON.stringify(requestBody),

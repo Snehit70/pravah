@@ -12,6 +12,7 @@ const DAY_NAMES = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
 interface TimelineProps {
   tasksByDate: Record<string, Task[]>;
   allTasks?: Task[];
+  goalNameByTaskId?: Record<string, string>;
   onTaskClick: (task: Task) => void;
   onOpenQuickAdd?: () => void;
   mcpConnected?: boolean;
@@ -45,6 +46,7 @@ function formatAge(ms: number): string {
 export function Timeline({
   tasksByDate,
   allTasks,
+  goalNameByTaskId,
   onTaskClick,
   onOpenQuickAdd,
   mcpConnected = true,
@@ -327,6 +329,7 @@ export function Timeline({
                   key={date}
                   date={date}
                   tasks={(tasksByDate[date] ?? []).filter(t => t.type === "open")}
+                  goalNameByTaskId={goalNameByTaskId}
                   onTaskClick={onTaskClick}
                   today={today}
                   hoverDate={hoverDate}
@@ -345,6 +348,7 @@ export function Timeline({
                   key={date}
                   date={date}
                   tasks={(tasksByDate[date] ?? []).filter(t => t.type === "deadline")}
+                  goalNameByTaskId={goalNameByTaskId}
                   onTaskClick={onTaskClick}
                   today={today}
                   hoverDate={hoverDate}
