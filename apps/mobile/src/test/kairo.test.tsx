@@ -40,6 +40,11 @@ vi.mock("expo-haptics", () => ({
   NotificationFeedbackType: { Success: "success", Error: "error" },
 }));
 
+vi.mock("expo-clipboard", () => ({
+  setStringAsync: vi.fn(async () => undefined),
+  getStringAsync: vi.fn(async () => ""),
+}));
+
 // ─── react-native mock ────────────────────────────────────────────────────────
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
