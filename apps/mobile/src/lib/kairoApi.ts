@@ -303,7 +303,6 @@ export function buildGeminiRequestBody(
       parts: [{ text: systemPrompt }],
     },
     contents,
-    model: config.model,
   };
 }
 

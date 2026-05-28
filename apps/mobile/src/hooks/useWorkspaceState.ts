@@ -50,6 +50,11 @@ export function useWorkspaceState() {
   }, [toast]);
 
   useEffect(() => {
+    if (pendingMutations !== 0) return;
+    queueMicrotask(() => setOptimisticTasks(null));
+  }, [pendingMutations]);
+
+  useEffect(() => {
     if (!session) return;
     const startedAt = appStartMsRef.current ?? Date.now();
     mobileLogger.info("session_ready", {
@@ -64,12 +69,17 @@ export function useWorkspaceState() {
 
     void (async () => {
       try {
+        if (!cancelled) {
+          setBootstrapReadyInternal(false);
+          setBootstrapErrorInternal(null);
+        }
         mobileLogger.info("bootstrap_start", { attempt: bootstrapRetryNonce + 1 });
         await storeUserMutation({});
         mobileLogger.info("bootstrap_store_user_done");
         await claimLegacyDataMutation({});
         mobileLogger.info("bootstrap_claim_legacy_done");
         if (!cancelled) {
+          setBootstrapErrorInternal(null);
           setBootstrapReadyInternal(true);
           mobileLogger.info("bootstrap_ready");
         }
@@ -101,6 +111,8 @@ export function useWorkspaceState() {
 
   const retryBootstrap = useCallback(() => {
     if (!session) return;
+    setBootstrapReadyInternal(false);
+    setBootstrapErrorInternal(null);
     setBootstrapRetryNonce((n) => n + 1);
   }, [session]);
 
