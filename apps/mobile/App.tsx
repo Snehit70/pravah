@@ -344,6 +344,7 @@ function MobileApp() {
 
   const {
     isSigningIn,
+    isSigningOut,
     canGoogleSignIn,
     handleGoogleSignIn,
     handleSignOut: googleSignOut,
@@ -391,10 +392,10 @@ function MobileApp() {
     enableAndSyncGoogleCalendar,
   } = useIntegrationsSettings({ isAuthenticated: Boolean(session), showToast });
 
-  const handleSignOut = useCallback(() => {
+  const handleSignOut = useCallback(async () => {
     setIsSettingsModalOpen(false);
-    void clearSnapshot();
-    googleSignOut();
+    await clearSnapshot();
+    await googleSignOut();
   }, [clearSnapshot, googleSignOut, setIsSettingsModalOpen]);
 
   const handleWipeLocalData = useCallback(async () => {
@@ -404,8 +405,8 @@ function MobileApp() {
     resetPreferencesStore();
     resetDailyReminderState();
     setIsSettingsModalOpen(false);
-    void clearSnapshot();
-    googleSignOut();
+    await clearSnapshot();
+    await googleSignOut();
   }, [clearAllGoals, clearSnapshot, googleSignOut, resetDailyReminderState, setIsSettingsModalOpen]);
 
   const handleExportTasks = useCallback(async () => {
@@ -874,7 +875,7 @@ function MobileApp() {
     return (
       <MobileAuthScreen
         canGoogleSignIn={canGoogleSignIn}
-        isSigningIn={isSigningIn}
+        isSigningIn={isSigningIn || isSigningOut}
         onGoogleSignIn={() => void handleGoogleSignIn()}
         onOpenDiagnostics={() => void handleShareDiagnostics()}
       />
@@ -1141,7 +1142,7 @@ function MobileApp() {
         onRequestNotificationsAccess={() => void requestNotificationsAccess()}
         onToggleDailyReminder={() => void toggleDailyReminder()}
         onSendTestNotification={() => void sendTestNotification()}
-        onSignOut={handleSignOut}
+        onSignOut={() => void handleSignOut()}
         onExportTasks={() => void handleExportTasks()}
         onWipeLocalData={handleWipeLocalData}
         showToast={showToast}

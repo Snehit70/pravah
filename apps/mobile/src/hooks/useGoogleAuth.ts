@@ -15,9 +15,10 @@ type UseGoogleAuthOptions = {
 
 type UseGoogleAuthReturn = {
   isSigningIn: boolean;
+  isSigningOut: boolean;
   canGoogleSignIn: boolean;
   handleGoogleSignIn: () => Promise<void>;
-  handleSignOut: () => void;
+  handleSignOut: () => Promise<void>;
 };
 
 export function useGoogleAuth({
@@ -26,6 +27,7 @@ export function useGoogleAuth({
   showToast,
 }: UseGoogleAuthOptions): UseGoogleAuthReturn {
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const canGoogleSignIn = Boolean(googleWebClientId);
 
   useEffect(() => {
@@ -38,7 +40,7 @@ export function useGoogleAuth({
   }, [googleWebClientId, googleIosClientId]);
 
   const handleGoogleSignIn = useCallback(async () => {
-    if (!googleWebClientId || isSigningIn) return;
+    if (!googleWebClientId || isSigningIn || isSigningOut) return;
     const actionId = createActionId("auth");
     const startedAt = Date.now();
     mobileLogger.info("login_start", { actionId, provider: "google" });
@@ -98,16 +100,81 @@ export function useGoogleAuth({
     } finally {
       setIsSigningIn(false);
     }
-  }, [googleWebClientId, isSigningIn, showToast]);
+  }, [googleWebClientId, isSigningIn, isSigningOut, showToast]);
 
-  const handleSignOut = useCallback(() => {
-    mobileLogger.info("signout_confirmed");
+  const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`${label}_timeout`)), timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
+  const handleSignOut = useCallback(async () => {
+    if (isSigningOut) return;
+    const actionId = createActionId("auth");
+    const startedAt = Date.now();
+    mobileLogger.info("signout_confirmed", { actionId });
+    mobileLogger.info("signout_started", { actionId });
     haptic.warning();
-    void authClient.signOut();
-    // Clear the native Google account so the next sign-in prompts account
-    // selection rather than silently reusing the cached account.
-    void GoogleSignin.signOut().catch(() => undefined);
-  }, []);
+    setIsSigningOut(true);
+    let signedOut = false;
+    let lastError: unknown = null;
+    const maxAttempts = 3;
 
-  return { isSigningIn, canGoogleSignIn, handleGoogleSignIn, handleSignOut };
+    try {
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+          await withTimeout(authClient.signOut(), 10_000, "auth_signout");
+          signedOut = true;
+          mobileLogger.info("signout_succeeded", {
+            actionId,
+            attempt,
+            elapsedMs: Date.now() - startedAt,
+          });
+          break;
+        } catch (error) {
+          lastError = error;
+          mobileLogger.warn("signout_retry", {
+            actionId,
+            attempt,
+            maxAttempts,
+            errorType: classifyError(error),
+          });
+        }
+      }
+
+      if (!signedOut) {
+        showToast({
+          kind: "error",
+          message: "Sign-out may be incomplete due to network. You can sign in again.",
+        });
+        mobileLogger.error("signout_failed", {
+          actionId,
+          elapsedMs: Date.now() - startedAt,
+          errorType: classifyError(lastError),
+        });
+      }
+    } finally {
+      // Clear the native Google account so the next sign-in prompts account
+      // selection rather than silently reusing the cached account.
+      try {
+        await GoogleSignin.signOut();
+      } catch (error) {
+        mobileLogger.warn("google_native_signout_failed", {
+          actionId,
+          errorType: classifyError(error),
+        });
+      }
+      setIsSigningOut(false);
+    }
+  }, [isSigningOut, showToast]);
+
+  return { isSigningIn, isSigningOut, canGoogleSignIn, handleGoogleSignIn, handleSignOut };
 }
