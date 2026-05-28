@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.12.1](https://github.com/Snehit70/pravah/compare/web-v1.12.0...web-v1.12.1) (2026-05-28)
+
+
+### Bug Fixes
+
+* **mobile:** expose diagnostics export and stabilize sign-out flow ([cfce174](https://github.com/Snehit70/pravah/commit/cfce174b9c975a73bad77409c676ff8cd5706aae))
+* **mobile:** lift Kairo input above keyboard and dedupe auth telemetry ([cee63a6](https://github.com/Snehit70/pravah/commit/cee63a6007c0b77eed48d102922337a9d9e70f75))
+
 ## [1.12.0](https://github.com/Snehit70/pravah/compare/web-v1.11.0...web-v1.12.0) (2026-05-28)
 
 
