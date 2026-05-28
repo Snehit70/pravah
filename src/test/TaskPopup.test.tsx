@@ -6,6 +6,7 @@ import type { Task } from "../types";
 import { TaskPopup } from "../components/TaskPopup";
 
 const updateTaskMock = vi.fn();
+const setGoalLinkMock = vi.fn();
 const completeTaskMock = vi.fn();
 const reopenTaskMock = vi.fn();
 const unscheduleTaskMock = vi.fn();
@@ -15,6 +16,7 @@ const showSuccessMock = vi.fn();
 
 const mutationMocks: Record<string, ReturnType<typeof vi.fn>> = {
   "tasks.updateTask": updateTaskMock,
+  "goals.setLink": setGoalLinkMock,
   "tasks.completeTask": completeTaskMock,
   "tasks.reopenTask": reopenTaskMock,
   "tasks.unscheduleTask": unscheduleTaskMock,
@@ -22,6 +24,11 @@ const mutationMocks: Record<string, ReturnType<typeof vi.fn>> = {
 };
 
 vi.mock("convex/react", () => ({
+  useQuery: (ref: string) => {
+    if (ref === "goals.list") return [{ id: "g1", text: "Goal Alpha" }];
+    if (ref === "goals.listLinks") return { task_1: "g1" };
+    return undefined;
+  },
   useMutation: (ref: string) => {
     const mock = mutationMocks[ref];
     if (!mock) throw new Error(`Unexpected useMutation target: ${ref}`);
@@ -37,6 +44,11 @@ vi.mock("../../convex/_generated/api", () => ({
       reopenTask: "tasks.reopenTask",
       unscheduleTask: "tasks.unscheduleTask",
       deleteTask: "tasks.deleteTask",
+    },
+    goals: {
+      list: "goals.list",
+      listLinks: "goals.listLinks",
+      setLink: "goals.setLink",
     },
   },
 }));
@@ -64,7 +76,9 @@ function makeTask(overrides: Partial<Task> = {}): Task {
 
 describe("TaskPopup", () => {
   beforeEach(() => {
+    localStorage.setItem("pravah:ff:web-goals-linking", "1");
     updateTaskMock.mockReset();
+    setGoalLinkMock.mockReset();
     completeTaskMock.mockReset();
     reopenTaskMock.mockReset();
     unscheduleTaskMock.mockReset();
@@ -72,7 +86,43 @@ describe("TaskPopup", () => {
     showErrorMock.mockReset();
     showSuccessMock.mockReset();
     updateTaskMock.mockResolvedValue(undefined);
+    setGoalLinkMock.mockResolvedValue(undefined);
     deleteTaskMock.mockResolvedValue(undefined);
+  });
+
+  it("saves changed goal link with task update", async () => {
+    const onClose = vi.fn();
+    render(<TaskPopup task={makeTask()} onClose={onClose} />);
+
+    fireEvent.change(screen.getByLabelText("Linked Goal"), {
+      target: { value: "" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(setGoalLinkMock).toHaveBeenCalledWith({
+        taskId: "task_1",
+        goalClientId: null,
+      });
+    });
+    expect(showSuccessMock).toHaveBeenCalledWith("Task updated successfully");
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("shows partial success when task saves but goal link fails", async () => {
+    const onClose = vi.fn();
+    setGoalLinkMock.mockRejectedValueOnce(new Error("link failed"));
+    render(<TaskPopup task={makeTask()} onClose={onClose} />);
+
+    fireEvent.change(screen.getByLabelText("Linked Goal"), {
+      target: { value: "" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(showErrorMock).toHaveBeenCalledWith("Task saved, but goal link failed. Try Save again.");
+    });
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("validates required title and saves trimmed values", async () => {

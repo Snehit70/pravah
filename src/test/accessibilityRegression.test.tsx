@@ -13,6 +13,7 @@ const completeTaskMock = vi.fn();
 const reopenTaskMock = vi.fn();
 const unscheduleTaskMock = vi.fn();
 const deleteTaskMock = vi.fn();
+const setGoalLinkMock = vi.fn();
 
 const mutationMocks: Record<string, ReturnType<typeof vi.fn>> = {
   "tasks.addTask": addTaskMock,
@@ -21,9 +22,11 @@ const mutationMocks: Record<string, ReturnType<typeof vi.fn>> = {
   "tasks.reopenTask": reopenTaskMock,
   "tasks.unscheduleTask": unscheduleTaskMock,
   "tasks.deleteTask": deleteTaskMock,
+  "goals.setLink": setGoalLinkMock,
 };
 
 vi.mock("convex/react", () => ({
+  useQuery: () => undefined,
   useMutation: (ref: string) => {
     const mock = mutationMocks[ref];
     if (!mock) throw new Error(`Unexpected useMutation target: ${ref}`);
@@ -40,6 +43,11 @@ vi.mock("../../convex/_generated/api", () => ({
       reopenTask: "tasks.reopenTask",
       unscheduleTask: "tasks.unscheduleTask",
       deleteTask: "tasks.deleteTask",
+    },
+    goals: {
+      list: "goals.list",
+      listLinks: "goals.listLinks",
+      setLink: "goals.setLink",
     },
   },
 }));
@@ -66,6 +74,7 @@ describe("accessibility regressions", () => {
     reopenTaskMock.mockReset();
     unscheduleTaskMock.mockReset();
     deleteTaskMock.mockReset();
+    setGoalLinkMock.mockReset();
 
     addTaskMock.mockResolvedValue(undefined);
     updateTaskMock.mockResolvedValue(undefined);
@@ -73,6 +82,7 @@ describe("accessibility regressions", () => {
     reopenTaskMock.mockResolvedValue(undefined);
     unscheduleTaskMock.mockResolvedValue(undefined);
     deleteTaskMock.mockResolvedValue(undefined);
+    setGoalLinkMock.mockResolvedValue(undefined);
   });
 
   it("focuses quick-add title input on open and supports Escape close", async () => {

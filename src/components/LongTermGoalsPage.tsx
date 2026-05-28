@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Reorder } from "framer-motion";
 import { ArrowUpRight, GripVertical, Plus, Target, Trash2 } from "lucide-react";
 import { cn } from "../lib/utils";
@@ -10,7 +10,28 @@ interface GoalItem {
   text: string;
 }
 
-export function LongTermGoalsPage() {
+interface GoalReadModel {
+  id: string;
+  text: string;
+  createdAt?: number;
+}
+
+interface GoalProgress {
+  total: number;
+  done: number;
+}
+
+interface LongTermGoalsPageProps {
+  readOnly?: boolean;
+  serverGoals?: GoalReadModel[];
+  progressByGoalId?: Record<string, GoalProgress>;
+}
+
+export function LongTermGoalsPage({
+  readOnly = false,
+  serverGoals,
+  progressByGoalId,
+}: LongTermGoalsPageProps = {}) {
   const [draft, setDraft] = useState("");
   const [goals, setGoals] = useState<GoalItem[]>(() => {
     try {
@@ -33,6 +54,13 @@ export function LongTermGoalsPage() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(goals));
   }, [goals]);
+
+  const displayGoals = useMemo(() => {
+    if (readOnly && serverGoals) {
+      return [...serverGoals].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+    }
+    return goals;
+  }, [goals, readOnly, serverGoals]);
 
   const addGoal = () => {
     const text = draft.trim();
@@ -67,47 +95,82 @@ export function LongTermGoalsPage() {
               <h1 className="text-2xl font-semibold text-zinc-100">Long-term Goals</h1>
             </div>
             <div className="tabular rounded-[6px] border border-white/[0.07] bg-white/[0.03] px-3 py-2 text-xs text-zinc-400">
-              {goals.length} active
+              {displayGoals.length} active
             </div>
           </div>
+          {readOnly && (
+            <p className="mt-3 text-xs text-zinc-500">
+              Goals and task links are server-backed in this phase. Editing and linking controls land next.
+            </p>
+          )}
         </section>
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px]">
           <section className="rounded-lg border border-white/[0.07] bg-white/[0.025] p-4">
-            <div className="mb-4 flex items-center gap-2">
-              <input
-                type="text"
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") addGoal();
-                }}
-                placeholder="Add a long-term goal..."
-                className={cn(
-                  "min-w-0 flex-1 rounded-[6px] border border-white/[0.09] bg-black/25",
-                  "px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500",
-                  "outline-none transition-colors focus:border-[oklch(0.78_0.14_260_/_0.45)]"
-                )}
-              />
-              <button
-                type="button"
-                onClick={addGoal}
-                className={cn(
-                  "grid h-10 w-10 place-items-center rounded-[6px]",
-                  "border border-[oklch(0.78_0.14_260_/_0.4)]",
-                  "bg-[oklch(0.72_0.16_260_/_0.2)] text-[oklch(0.78_0.14_260)]",
-                  "transition-colors hover:bg-[oklch(0.72_0.16_260_/_0.28)]"
-                )}
-                aria-label="Add long-term goal"
-              >
-                <Plus size={14} />
-              </button>
-            </div>
+            {!readOnly && (
+              <div className="mb-4 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") addGoal();
+                  }}
+                  placeholder="Add a long-term goal..."
+                  className={cn(
+                    "min-w-0 flex-1 rounded-[6px] border border-white/[0.09] bg-black/25",
+                    "px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500",
+                    "outline-none transition-colors focus:border-[oklch(0.78_0.14_260_/_0.45)]"
+                  )}
+                />
+                <button
+                  type="button"
+                  onClick={addGoal}
+                  className={cn(
+                    "grid h-10 w-10 place-items-center rounded-[6px]",
+                    "border border-[oklch(0.78_0.14_260_/_0.4)]",
+                    "bg-[oklch(0.72_0.16_260_/_0.2)] text-[oklch(0.78_0.14_260)]",
+                    "transition-colors hover:bg-[oklch(0.72_0.16_260_/_0.28)]"
+                  )}
+                  aria-label="Add long-term goal"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+            )}
 
-            {goals.length === 0 ? (
+            {displayGoals.length === 0 ? (
               <div className="rounded-[6px] border border-dashed border-white/[0.09] bg-black/20 px-4 py-10 text-center">
                 <p className="text-sm text-zinc-400">No goals yet.</p>
-                <p className="mt-1 text-xs text-zinc-600">Add one above, then drag to reorder.</p>
+                <p className="mt-1 text-xs text-zinc-600">
+                  {readOnly ? "Create a goal in mobile for now. Web editing comes next." : "Add one above, then drag to reorder."}
+                </p>
+              </div>
+            ) : readOnly ? (
+              <div className="space-y-2">
+                {displayGoals.map((goal) => {
+                  const progress = progressByGoalId?.[goal.id] ?? { total: 0, done: 0 };
+                  const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+                  return (
+                    <div
+                      key={goal.id}
+                      className="rounded-[6px] border border-white/[0.07] bg-[#101013] px-3 py-3"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="min-w-0 flex-1 text-sm text-zinc-200 break-words">{goal.text}</span>
+                        <span className="tabular text-xs text-zinc-500">
+                          {progress.done}/{progress.total} done
+                        </span>
+                      </div>
+                      <div className="mt-2 h-1.5 rounded-full bg-white/[0.06]">
+                        <div
+                          className="h-full rounded-full bg-[oklch(0.78_0.14_260)]"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <Reorder.Group axis="y" values={goals} onReorder={setGoals} className="space-y-2">
@@ -142,7 +205,9 @@ export function LongTermGoalsPage() {
               </Reorder.Group>
             )}
 
-            <p className="mt-4 text-xs text-zinc-600">Saved locally in this browser.</p>
+            <p className="mt-4 text-xs text-zinc-600">
+              {readOnly ? "Source of truth: Convex goals + goal links." : "Saved locally in this browser."}
+            </p>
           </section>
 
           <aside className="rounded-lg border border-white/[0.07] bg-white/[0.025] p-4">
@@ -159,3 +224,4 @@ export function LongTermGoalsPage() {
     </div>
   );
 }
+
