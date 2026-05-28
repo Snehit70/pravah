@@ -72,6 +72,8 @@ export function AuthenticatedApp() {
   const kairoTasks = useQuery(api.tasks.listTasks, kairoActive ? {} : "skip");
   const goals = useQuery(api.goals.list, webGoalsLinkingEnabled ? {} : "skip");
   const goalLinks = useQuery(api.goals.listLinks, webGoalsLinkingEnabled ? {} : "skip");
+  const upsertGoal = useMutation(api.goals.upsert);
+  const removeGoal = useMutation(api.goals.remove);
   const moveTask = useMutation(api.tasks.moveTask);
   const unscheduleTask = useMutation(api.tasks.unscheduleTask);
   const reorderTasks = useMutation(api.tasks.reorderTasks);
@@ -158,6 +160,28 @@ export function AuthenticatedApp() {
     return initial;
   }, [boardTasks, goalLinks, goals, webGoalsLinkingEnabled]);
 
+  const handleCreateGoal = useCallback(
+    async (text: string) => {
+      const goalId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      await upsertGoal({
+        clientId: goalId,
+        text,
+        createdAt: Date.now(),
+      });
+    },
+    [upsertGoal]
+  );
+
+  const handleDeleteGoal = useCallback(
+    async (goalId: string) => {
+      await removeGoal({ clientId: goalId });
+    },
+    [removeGoal]
+  );
+
   if (!bootstrapReady || boardTasks === undefined) {
     return <LoadingSkeleton />;
   }
@@ -197,9 +221,12 @@ export function AuthenticatedApp() {
               />
             ) : activePage === "goals" ? (
               <LongTermGoalsPage
-                readOnly={webGoalsLinkingEnabled}
+                readOnly={false}
+                serverBacked={webGoalsLinkingEnabled}
                 serverGoals={goals ?? undefined}
                 progressByGoalId={progressByGoalId}
+                onCreateServerGoal={handleCreateGoal}
+                onDeleteServerGoal={handleDeleteGoal}
               />
             ) : (
               <InsightsPage tasks={allTasksForStats} />

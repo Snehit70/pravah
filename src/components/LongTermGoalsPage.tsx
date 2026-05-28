@@ -23,16 +23,24 @@ interface GoalProgress {
 
 interface LongTermGoalsPageProps {
   readOnly?: boolean;
+  serverBacked?: boolean;
   serverGoals?: GoalReadModel[];
   progressByGoalId?: Record<string, GoalProgress>;
+  onCreateServerGoal?: (text: string) => Promise<void>;
+  onDeleteServerGoal?: (goalId: string) => Promise<void>;
 }
 
 export function LongTermGoalsPage({
   readOnly = false,
+  serverBacked = false,
   serverGoals,
   progressByGoalId,
+  onCreateServerGoal,
+  onDeleteServerGoal,
 }: LongTermGoalsPageProps = {}) {
   const [draft, setDraft] = useState("");
+  const [serverBusy, setServerBusy] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
   const [goals, setGoals] = useState<GoalItem[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -52,19 +60,34 @@ export function LongTermGoalsPage({
   });
 
   useEffect(() => {
+    if (serverBacked) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(goals));
-  }, [goals]);
+  }, [goals, serverBacked]);
 
   const displayGoals = useMemo(() => {
-    if (readOnly && serverGoals) {
+    if (serverBacked && serverGoals) {
       return [...serverGoals].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
     }
     return goals;
-  }, [goals, readOnly, serverGoals]);
+  }, [goals, serverBacked, serverGoals]);
 
-  const addGoal = () => {
+  const addGoal = async () => {
     const text = draft.trim();
     if (!text) return;
+    if (serverBacked) {
+      if (!onCreateServerGoal) return;
+      setServerBusy(true);
+      setServerError(null);
+      try {
+        await onCreateServerGoal(text);
+        setDraft("");
+      } catch {
+        setServerError("Could not create goal. Try again.");
+      } finally {
+        setServerBusy(false);
+      }
+      return;
+    }
     setGoals((prev) => [
       ...prev,
       {
@@ -78,7 +101,20 @@ export function LongTermGoalsPage({
     setDraft("");
   };
 
-  const removeGoal = (goalId: string) => {
+  const removeGoal = async (goalId: string) => {
+    if (serverBacked) {
+      if (!onDeleteServerGoal) return;
+      setServerBusy(true);
+      setServerError(null);
+      try {
+        await onDeleteServerGoal(goalId);
+      } catch {
+        setServerError("Could not delete goal. Try again.");
+      } finally {
+        setServerBusy(false);
+      }
+      return;
+    }
     setGoals((prev) => prev.filter((goal) => goal.id !== goalId));
   };
 
@@ -98,9 +134,9 @@ export function LongTermGoalsPage({
               {displayGoals.length} active
             </div>
           </div>
-          {readOnly && (
+          {serverBacked && (
             <p className="mt-3 text-xs text-zinc-500">
-              Goals and task links are server-backed in this phase. Editing and linking controls land next.
+              Goals and task links are server-backed.
             </p>
           )}
         </section>
@@ -114,9 +150,10 @@ export function LongTermGoalsPage({
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter") addGoal();
+                    if (event.key === "Enter") void addGoal();
                   }}
                   placeholder="Add a long-term goal..."
+                  disabled={serverBusy}
                   className={cn(
                     "min-w-0 flex-1 rounded-[6px] border border-white/[0.09] bg-black/25",
                     "px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500",
@@ -125,7 +162,8 @@ export function LongTermGoalsPage({
                 />
                 <button
                   type="button"
-                  onClick={addGoal}
+                  onClick={() => void addGoal()}
+                  disabled={serverBusy}
                   className={cn(
                     "grid h-10 w-10 place-items-center rounded-[6px]",
                     "border border-[oklch(0.78_0.14_260_/_0.4)]",
@@ -138,15 +176,16 @@ export function LongTermGoalsPage({
                 </button>
               </div>
             )}
+            {serverError && <p className="mb-3 text-xs text-red-300">{serverError}</p>}
 
             {displayGoals.length === 0 ? (
               <div className="rounded-[6px] border border-dashed border-white/[0.09] bg-black/20 px-4 py-10 text-center">
                 <p className="text-sm text-zinc-400">No goals yet.</p>
                 <p className="mt-1 text-xs text-zinc-600">
-                  {readOnly ? "Create a goal in mobile for now. Web editing comes next." : "Add one above, then drag to reorder."}
+                  {serverBacked ? "Add one above to start linking tasks." : "Add one above, then drag to reorder."}
                 </p>
               </div>
-            ) : readOnly ? (
+            ) : serverBacked ? (
               <div className="space-y-2">
                 {displayGoals.map((goal) => {
                   const progress = progressByGoalId?.[goal.id] ?? { total: 0, done: 0 };
@@ -161,6 +200,19 @@ export function LongTermGoalsPage({
                         <span className="tabular text-xs text-zinc-500">
                           {progress.done}/{progress.total} done
                         </span>
+                        <button
+                          type="button"
+                          onClick={() => void removeGoal(goal.id)}
+                          disabled={serverBusy}
+                          aria-label={`Delete goal: ${goal.text}`}
+                          className={cn(
+                            "flex-shrink-0 rounded-[5px] p-1.5",
+                            "text-zinc-600 hover:text-red-300 hover:bg-red-500/10",
+                            "transition-opacity"
+                          )}
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       </div>
                       <div className="mt-2 h-1.5 rounded-full bg-white/[0.06]">
                         <div
@@ -190,7 +242,7 @@ export function LongTermGoalsPage({
                     <button
                       type="button"
                       onPointerDown={(event) => event.stopPropagation()}
-                      onClick={() => removeGoal(goal.id)}
+                      onClick={() => void removeGoal(goal.id)}
                       aria-label={`Delete goal: ${goal.text}`}
                       className={cn(
                         "flex-shrink-0 rounded-[5px] p-1.5",
@@ -206,7 +258,7 @@ export function LongTermGoalsPage({
             )}
 
             <p className="mt-4 text-xs text-zinc-600">
-              {readOnly ? "Source of truth: Convex goals + goal links." : "Saved locally in this browser."}
+              {serverBacked ? "Source of truth: Convex goals + goal links." : "Saved locally in this browser."}
             </p>
           </section>
 
@@ -224,4 +276,3 @@ export function LongTermGoalsPage({
     </div>
   );
 }
-
