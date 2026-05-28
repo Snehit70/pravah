@@ -1,3 +1,1 @@
-import "@testing-library/jest-dom/vitest";
-
 (globalThis as { __DEV__?: boolean }).__DEV__ = false;

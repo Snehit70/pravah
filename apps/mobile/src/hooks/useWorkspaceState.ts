@@ -23,8 +23,8 @@ export function useWorkspaceState() {
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isKairoActive, setIsKairoActive] = useState(false);
-  const [isDataBootstrapReady, setIsDataBootstrapReady] = useState(false);
-  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const [bootstrapReadyInternal, setBootstrapReadyInternal] = useState(false);
+  const [bootstrapErrorInternal, setBootstrapErrorInternal] = useState<string | null>(null);
   const [bootstrapRetryNonce, setBootstrapRetryNonce] = useState(0);
 
   const sessionResult = authClient.useSession();
@@ -50,10 +50,6 @@ export function useWorkspaceState() {
   }, [toast]);
 
   useEffect(() => {
-    if (pendingMutations === 0) setOptimisticTasks(null);
-  }, [pendingMutations]);
-
-  useEffect(() => {
     if (!session) return;
     const startedAt = appStartMsRef.current ?? Date.now();
     mobileLogger.info("session_ready", {
@@ -62,15 +58,9 @@ export function useWorkspaceState() {
   }, [session]);
 
   useEffect(() => {
-    if (!session) {
-      setIsDataBootstrapReady(false);
-      setBootstrapError(null);
-      return;
-    }
+    if (!session) return;
 
     let cancelled = false;
-    setIsDataBootstrapReady(false);
-    setBootstrapError(null);
 
     void (async () => {
       try {
@@ -80,7 +70,7 @@ export function useWorkspaceState() {
         await claimLegacyDataMutation({});
         mobileLogger.info("bootstrap_claim_legacy_done");
         if (!cancelled) {
-          setIsDataBootstrapReady(true);
+          setBootstrapReadyInternal(true);
           mobileLogger.info("bootstrap_ready");
         }
       } catch (error) {
@@ -94,8 +84,8 @@ export function useWorkspaceState() {
           message,
         });
         if (!cancelled) {
-          setIsDataBootstrapReady(false);
-          setBootstrapError(message);
+          setBootstrapReadyInternal(false);
+          setBootstrapErrorInternal(message);
         }
       }
     })();
@@ -104,6 +94,10 @@ export function useWorkspaceState() {
       cancelled = true;
     };
   }, [session, storeUserMutation, claimLegacyDataMutation, showToast, bootstrapRetryNonce]);
+
+  const isDataBootstrapReady = session ? bootstrapReadyInternal : false;
+  const bootstrapError = session ? bootstrapErrorInternal : null;
+  const effectiveOptimisticTasks = pendingMutations === 0 ? null : optimisticTasks;
 
   const retryBootstrap = useCallback(() => {
     if (!session) return;
@@ -121,7 +115,7 @@ export function useWorkspaceState() {
     setPendingMutations,
     toast,
     showToast,
-    optimisticTasks,
+    optimisticTasks: effectiveOptimisticTasks,
     setOptimisticTasks,
     isAddSheetOpen,
     setIsAddSheetOpen,
