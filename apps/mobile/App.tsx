@@ -287,7 +287,7 @@ function MobileApp() {
   const unscheduleTaskMutation = useMutation(api.tasks.unscheduleTask);
   const reopenTaskMutation = useMutation(api.tasks.reopenTask);
 
-  useConvexGoalsSync();
+  useConvexGoalsSync(Boolean(session));
   const { setGoalLink, clearAll: clearAllGoals } = useGoalMutations();
 
   // ── Derived data ────────────────────────────────────────────────────
@@ -871,6 +871,10 @@ function MobileApp() {
     return <BootScreen />;
   }
 
+  if (isSigningOut) {
+    return <BootScreen title="Signing out" detail="Clearing your session on this device." />;
+  }
+
   if (!session && !shouldRenderOptimisticShell) {
     return (
       <MobileAuthScreen
@@ -1144,6 +1148,7 @@ function MobileApp() {
         onSendTestNotification={() => void sendTestNotification()}
         onSignOut={() => void handleSignOut()}
         onExportTasks={() => void handleExportTasks()}
+        onExportDiagnostics={() => void handleShareDiagnostics()}
         onWipeLocalData={handleWipeLocalData}
         showToast={showToast}
         calendarAccountEmail={calendarAccountEmail}

@@ -151,6 +151,7 @@ type SettingsSheetProps = {
   onSendTestNotification: () => void;
   onSignOut: () => void;
   onExportTasks: () => void;
+  onExportDiagnostics: () => void;
   onWipeLocalData: () => Promise<void> | void;
   showToast: (next: { kind: "error" | "info"; message: string }) => void;
   calendarAccountEmail?: string;
@@ -191,6 +192,7 @@ export function SettingsSheet({
   onSendTestNotification,
   onSignOut,
   onExportTasks,
+  onExportDiagnostics,
   onWipeLocalData,
   showToast,
   calendarAccountEmail,
@@ -1069,6 +1071,22 @@ export function SettingsSheet({
                     <Text style={styles.copyButtonText}>Copy</Text>
                   </Pressable>
                 </View>
+              </View>
+
+              <View style={[styles.settingBlock, styles.sectionCard]}>
+                <Text style={styles.settingLabel}>Diagnostics bundle</Text>
+                <Text style={styles.settingHelp}>
+                  Export recent app events, device metadata, and sync state as a JSON file.
+                </Text>
+                <Pressable
+                  onPress={onExportDiagnostics}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel="Export diagnostics"
+                  style={({ pressed }) => [styles.softButton, pressed && { opacity: 0.6 }]}
+                >
+                  <Text style={styles.softButtonText}>Export diagnostics</Text>
+                </Pressable>
               </View>
 
               <View style={[styles.settingBlock, styles.sectionCard]}>

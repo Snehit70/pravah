@@ -142,8 +142,10 @@ describe("useGoogleAuth", () => {
     });
     expect(authSignInSocialMock).not.toHaveBeenCalled();
 
-    resolveSignOut?.();
-    await signOutPromise;
     expect(signOutPromise).not.toBeNull();
+    expect(resolveSignOut).not.toBeNull();
+    const finishSignOut = resolveSignOut as (() => void) | null;
+    finishSignOut?.();
+    await signOutPromise;
   });
 });

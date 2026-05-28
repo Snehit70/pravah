@@ -4,9 +4,9 @@ import { api } from "../../../../convex/_generated/api";
 import { goalsStore } from "../lib/goalsStorage";
 import { goalLinksStore } from "../lib/goalLinks";
 
-export function useConvexGoalsSync() {
-  const serverGoals = useQuery(api.goals.list);
-  const serverLinks = useQuery(api.goals.listLinks);
+export function useConvexGoalsSync(isAuthenticated: boolean) {
+  const serverGoals = useQuery(api.goals.list, isAuthenticated ? {} : "skip");
+  const serverLinks = useQuery(api.goals.listLinks, isAuthenticated ? {} : "skip");
   const upsertGoal = useMutation(api.goals.upsert);
   const migratedRef = useRef(false);
 

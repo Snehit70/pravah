@@ -209,7 +209,7 @@ export function recordDiagnosticEvent(
 export async function getDiagnosticsSnapshot(): Promise<DiagnosticEvent[]> {
   await loadPersisted();
   const merged = priorSessions
-    .filter((session) => session.id !== sessionId)
+    .filter((session) => session.sessionId !== sessionId)
     .flatMap((session) => session.events)
     .concat(buffer);
   return pruneEvents(merged);

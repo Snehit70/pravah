@@ -31,6 +31,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -67,6 +68,7 @@ import { useGoalLinks, useGoals } from "../hooks/useGoals";
 import { KairoChatList } from "./KairoChatList";
 import { KairoMarkdown } from "./KairoMarkdown";
 import { haptic } from "../lib/haptic";
+import { useKeyboardInset } from "../hooks/useKeyboardInset";
 
 export type KairoSheetRef = {
   open: () => void;
@@ -195,10 +197,13 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   ref
 ) {
   const sheetRef = useRef<BottomSheet>(null);
+  const insets = useSafeAreaInsets();
+  const bottomInset = useKeyboardInset(insets.bottom);
   const [open, setOpen] = useState(false);
   const [val, setVal] = useState("");
   const [thinking, setThinking] = useState(false);
   const [config, setConfig] = useState<KairoConfig | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<string | null>(null);
   const [deferredPromptPreview, setDeferredPromptPreview] = useState<string | null>(null);
   // "chat" shows the active conversation, "list" shows the chat picker.
@@ -227,6 +232,12 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     () => activeChat?.messages ?? [],
     [activeChat?.messages]
   );
+
+  useEffect(() => {
+    if (!copyFeedback) return;
+    const timeout = setTimeout(() => setCopyFeedback(null), 1600);
+    return () => clearTimeout(timeout);
+  }, [copyFeedback]);
 
   const addTaskMutation = useMutation(api.tasks.addTask);
   const moveTaskMutation = useMutation(api.tasks.moveTask);
@@ -383,6 +394,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       try {
         await Clipboard.setStringAsync(text);
         haptic.success();
+        setCopyFeedback("Copied to clipboard");
         onToast?.({ kind: "info", message: "Copied" });
         mobileLogger.info("kairo_message_copied", {
           from: message.from,
@@ -390,6 +402,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         });
       } catch (error) {
         haptic.error();
+        setCopyFeedback("Could not copy message");
         onToast?.({ kind: "error", message: "Could not copy message." });
         mobileLogger.warn("kairo_copy_failed", {
           errorType: classifyError(error),
@@ -824,6 +837,9 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       backdropComponent={renderBackdrop}
       handleIndicatorStyle={styles.indicator}
       backgroundStyle={styles.sheetBg}
+      keyboardBehavior="extend"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
     >
       {view === "list" ? (
         <KairoChatList
@@ -943,7 +959,13 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         ) : null}
       </BottomSheetScrollView>
 
-      <View style={styles.inputBar}>
+      {copyFeedback ? (
+        <View style={styles.feedbackBanner} pointerEvents="none">
+          <Text style={styles.feedbackText}>{copyFeedback}</Text>
+        </View>
+      ) : null}
+
+      <View style={[styles.inputBar, { paddingBottom: bottomInset }]}>
         <BottomSheetTextInput
           style={styles.input}
           value={val}
@@ -1453,6 +1475,20 @@ const styles = StyleSheet.create({
   configBannerText: {
     color: colors.textPrimary,
     ...typography.bodyMd,
+  },
+  feedbackBanner: {
+    alignSelf: "center",
+    marginBottom: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: radii.sm,
+    backgroundColor: colors.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  feedbackText: {
+    color: colors.textPrimary,
+    ...typography.micro,
   },
   inputBar: {
     flexDirection: "row",

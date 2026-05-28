@@ -45,6 +45,10 @@ vi.mock("expo-clipboard", () => ({
   getStringAsync: vi.fn(async () => ""),
 }));
 
+vi.mock("react-native-safe-area-context", () => ({
+  useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
+}));
+
 // ─── react-native mock ────────────────────────────────────────────────────────
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
@@ -107,7 +111,10 @@ vi.mock("react-native", () => {
     }
   );
   const ActivityIndicator = () => React.createElement("div", { "data-testid": "activity-indicator" });
-  const Keyboard = { dismiss: vi.fn() };
+  const Keyboard = {
+    dismiss: vi.fn(),
+    addListener: vi.fn(() => ({ remove: vi.fn() })),
+  };
   const Platform = {
     OS: "web",
     select: <T,>(spec: { web?: T; default?: T; ios?: T; android?: T }) =>

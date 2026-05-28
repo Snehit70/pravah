@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { classifyError, mobileLogger } from "../lib/logger";
 import { getDiagnosticsRuntimeState } from "../lib/diagnostics";
+import { shareDiagnosticsBundle } from "../lib/diagnosticsExport";
 
 type RootErrorBoundaryProps = {
   children: ReactNode;
@@ -10,15 +11,19 @@ type RootErrorBoundaryProps = {
 
 type RootErrorBoundaryState = {
   hasError: boolean;
+  exportMessage: string | null;
+  isExporting: boolean;
 };
 
 export class RootErrorBoundary extends Component<RootErrorBoundaryProps, RootErrorBoundaryState> {
   state: RootErrorBoundaryState = {
     hasError: false,
+    exportMessage: null,
+    isExporting: false,
   };
 
   static getDerivedStateFromError(): RootErrorBoundaryState {
-    return { hasError: true };
+    return { hasError: true, exportMessage: null, isExporting: false };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -33,7 +38,21 @@ export class RootErrorBoundary extends Component<RootErrorBoundaryProps, RootErr
   }
 
   private handleRetry = () => {
-    this.setState({ hasError: false });
+    this.setState({ hasError: false, exportMessage: null, isExporting: false });
+  };
+
+  private handleExportDiagnostics = async () => {
+    if (this.state.isExporting) return;
+    this.setState({ isExporting: true, exportMessage: null });
+    try {
+      const path = await shareDiagnosticsBundle();
+      this.setState({ exportMessage: path ? "Diagnostics exported." : "Diagnostics ready.", isExporting: false });
+    } catch (error) {
+      mobileLogger.error("root_fallback_diagnostics_export_failed", {
+        errorType: classifyError(error),
+      });
+      this.setState({ exportMessage: "Could not export diagnostics.", isExporting: false });
+    }
   };
 
   render() {
@@ -47,9 +66,25 @@ export class RootErrorBoundary extends Component<RootErrorBoundaryProps, RootErr
         <Text style={styles.kicker}>Mobile fallback</Text>
         <Text style={styles.title}>Something slipped out of view.</Text>
         <Text style={styles.body}>Try restoring the workspace. If this keeps happening, we should inspect the latest logs.</Text>
-        <Pressable onPress={this.handleRetry} style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}>
-          <Text style={styles.buttonText}>Try again</Text>
-        </Pressable>
+        <View style={styles.buttonRow}>
+          <Pressable onPress={this.handleRetry} style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}>
+            <Text style={styles.buttonText}>Try again</Text>
+          </Pressable>
+          <Pressable
+            onPress={this.handleExportDiagnostics}
+            disabled={this.state.isExporting}
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              pressed && styles.buttonPressed,
+              this.state.isExporting && styles.buttonDisabled,
+            ]}
+          >
+            <Text style={styles.secondaryButtonText}>
+              {this.state.isExporting ? "Exporting..." : "Export diagnostics"}
+            </Text>
+          </Pressable>
+        </View>
+        {this.state.exportMessage ? <Text style={styles.statusText}>{this.state.exportMessage}</Text> : null}
       </View>
     );
   }
@@ -95,5 +130,30 @@ const styles = StyleSheet.create({
   buttonText: {
     ...typography.title,
     color: colors.bg,
+  },
+  buttonRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  secondaryButton: {
+    alignSelf: "flex-start",
+    borderRadius: radii.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.lg,
+  },
+  secondaryButtonText: {
+    ...typography.micro,
+    color: colors.textPrimary,
+  },
+  buttonDisabled: {
+    opacity: 0.45,
+  },
+  statusText: {
+    ...typography.micro,
+    color: colors.textSecondary,
   },
 });
