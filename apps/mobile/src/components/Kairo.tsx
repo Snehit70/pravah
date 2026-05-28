@@ -199,6 +199,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   const sheetRef = useRef<BottomSheet>(null);
   const insets = useSafeAreaInsets();
   const bottomInset = useKeyboardInset(insets.bottom);
+  const keyboardLift = Math.max(0, bottomInset - spacing.lg);
   const [open, setOpen] = useState(false);
   const [val, setVal] = useState("");
   const [thinking, setThinking] = useState(false);
@@ -923,7 +924,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       <BottomSheetScrollView
         ref={listRef}
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset + spacing.xl }]}
         keyboardShouldPersistTaps="handled"
       >
         {chatRows.map((item) => (
@@ -965,7 +966,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         </View>
       ) : null}
 
-      <View style={[styles.inputBar, { paddingBottom: bottomInset }]}>
+      <View style={[styles.inputBar, { marginBottom: keyboardLift }]}>
         <BottomSheetTextInput
           style={styles.input}
           value={val}

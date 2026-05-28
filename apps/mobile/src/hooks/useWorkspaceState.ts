@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { authClient, hasCachedAuthSessionHint } from "../lib/auth-client";
@@ -12,8 +12,6 @@ type ToastState = {
 };
 
 export function useWorkspaceState() {
-  const appStartMsRef = useRef<number | null>(null);
-
   const [activeTab, setActiveTab] = useState<TabKey>("inbox");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pendingMutations, setPendingMutations] = useState(0);
@@ -38,12 +36,6 @@ export function useWorkspaceState() {
   const showToast = useCallback((next: ToastState) => setToast(next), []);
 
   useEffect(() => {
-    if (appStartMsRef.current == null) {
-      appStartMsRef.current = Date.now();
-    }
-  }, []);
-
-  useEffect(() => {
     if (!toast) return;
     const timeout = setTimeout(() => setToast(null), 3200);
     return () => clearTimeout(timeout);
@@ -53,14 +45,6 @@ export function useWorkspaceState() {
     if (pendingMutations !== 0) return;
     queueMicrotask(() => setOptimisticTasks(null));
   }, [pendingMutations]);
-
-  useEffect(() => {
-    if (!session) return;
-    const startedAt = appStartMsRef.current ?? Date.now();
-    mobileLogger.info("session_ready", {
-      elapsedMs: Date.now() - startedAt,
-    });
-  }, [session]);
 
   useEffect(() => {
     if (!session) return;
