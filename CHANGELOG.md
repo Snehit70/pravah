@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.12.0](https://github.com/Snehit70/pravah/compare/web-v1.11.0...web-v1.12.0) (2026-05-28)
+
+
+### Features
+
+* **mobile:** add kairo chat long-press copy to clipboard ([82926a0](https://github.com/Snehit70/pravah/commit/82926a082cf7f4efd3924173494f056d93ecf201))
+* **mobile:** add persistent diagnostics logging and export ([e6733f8](https://github.com/Snehit70/pravah/commit/e6733f85bef419022b93e20970c9c7d1ae3eabd6))
+* **mobile:** add provider profiles and gemini request handling ([e7a596d](https://github.com/Snehit70/pravah/commit/e7a596d6f78538fcdb01c8a993411fe478a967ff))
+* **mobile:** auth hardening, nav-safe-area fixes, and docs refresh ([dfb809c](https://github.com/Snehit70/pravah/commit/dfb809cd8dec4e3319adcc0cc24dd9b5a1bf8c06))
+* **mobile:** confirm before unlinking tasks from goals ([ba765be](https://github.com/Snehit70/pravah/commit/ba765bed9385b0002273a1a19ff2e399a0d04dd4))
+* **mobile:** expand Kairo goal actions and squircle controls ([66a323c](https://github.com/Snehit70/pravah/commit/66a323c5d41086a05a629eb60829f2112a5d1b55))
+* **mobile:** harden auth bootstrap flow and crash diagnostics ([7ee2db4](https://github.com/Snehit70/pravah/commit/7ee2db47b86cc0fe946947798a4a4f3ca4df29ed))
+* **mobile:** polish UI round and freeze OTA mobile version ([e90c6e2](https://github.com/Snehit70/pravah/commit/e90c6e2e880d27943f0e10917a34827677960fae))
+* **mobile:** polish ui round and lock ota version workflow ([95b495d](https://github.com/Snehit70/pravah/commit/95b495d25227786dfd565f37ad7e7d590a2a710a))
+* **web:** add insights page parity with stats and completed tabs ([b3d6b97](https://github.com/Snehit70/pravah/commit/b3d6b974e3b0db5ec682167b7a818d3e3d2ae6a7))
+* **web:** add kairo provider profiles and gemini runtime parity ([550bd1a](https://github.com/Snehit70/pravah/commit/550bd1ac68551bdc9b776a857bd07968e7e6d0aa))
+* **web:** add server-backed goals linking UI and task-goal editing flow ([1814330](https://github.com/Snehit70/pravah/commit/181433091f326c485f88117912205130f7125bce))
+* **web:** enable server-backed goals CRUD on long-term goals page ([66028a4](https://github.com/Snehit70/pravah/commit/66028a4205028451eee0af5edf2abd83e7b8f6e1))
+* **web:** improve web parity for insights, goals linking, and server-backed goals ([7f0bb06](https://github.com/Snehit70/pravah/commit/7f0bb0610aa8d32f42223d25ca527c443ae6334a))
+
+
+### Bug Fixes
+
+* **ci:** address lint and auth test failures ([01b538e](https://github.com/Snehit70/pravah/commit/01b538e5924d06b7d686a4fb09705267b89d0891))
+* **ci:** resolve remaining lint and vitest env failures ([95bd4eb](https://github.com/Snehit70/pravah/commit/95bd4eb1f7c426c995a3c5527ab22aa33693bcdb))
+* **mobile:** harden sign-out flow with retries timeout and race guards ([ade6bac](https://github.com/Snehit70/pravah/commit/ade6bacb149125f960900b4a851c37ee20bb041c))
+* **mobile:** normalize safe-area behavior for button and gesture navigation ([78219f4](https://github.com/Snehit70/pravah/commit/78219f46146b9397b3077b1b859081f8a8ccfd6d))
+* **mobile:** satisfy goals sheet lint rule ([8695981](https://github.com/Snehit70/pravah/commit/8695981ecd4d18d1342a9880f78a32a0dee39dea))
+* **review:** address codex findings for kairo, diagnostics, and bootstrap state ([925921b](https://github.com/Snehit70/pravah/commit/925921baa904cdefe58c4f371340460b93052b40))
+
 ## [1.11.0](https://github.com/Snehit70/pravah/compare/web-v1.10.0...web-v1.11.0) (2026-05-25)
 
 
