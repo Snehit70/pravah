@@ -1,3 +1,5 @@
+import { recordDiagnosticEvent, type DiagnosticLevel } from "./diagnostics";
+
 type LogLevel = "debug" | "info" | "warn" | "error";
 export type ErrorKind = "network" | "auth" | "validation" | "unexpected" | "unknown";
 
@@ -21,6 +23,7 @@ function safeStringify(context?: LogContext): string {
 
 function writeLog(level: LogLevel, event: string, context?: LogContext): void {
   if (!isDevRuntime() && level === "debug") return;
+  recordDiagnosticEvent(event, level as DiagnosticLevel, context);
 
   const line = `${LOG_PREFIX} ${level.toUpperCase()} ${event}${safeStringify(context)}`;
   if (level === "error") {

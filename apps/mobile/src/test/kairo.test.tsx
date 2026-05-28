@@ -10,6 +10,8 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+(globalThis as { __DEV__?: boolean }).__DEV__ = false;
+
 // ─── AsyncStorage mock ────────────────────────────────────────────────────────
 // useKairoChats persists chats to AsyncStorage. We back the mock with an
 // in-memory map so the hook hydrates immediately and writes are observable.
@@ -36,6 +38,11 @@ vi.mock("expo-haptics", () => ({
   notificationAsync: vi.fn(async () => undefined),
   ImpactFeedbackStyle: { Light: "light", Medium: "medium" },
   NotificationFeedbackType: { Success: "success", Error: "error" },
+}));
+
+vi.mock("expo-clipboard", () => ({
+  setStringAsync: vi.fn(async () => undefined),
+  getStringAsync: vi.fn(async () => ""),
 }));
 
 // ─── react-native mock ────────────────────────────────────────────────────────
@@ -101,6 +108,15 @@ vi.mock("react-native", () => {
   );
   const ActivityIndicator = () => React.createElement("div", { "data-testid": "activity-indicator" });
   const Keyboard = { dismiss: vi.fn() };
+  const Platform = {
+    OS: "web",
+    select: <T,>(spec: { web?: T; default?: T; ios?: T; android?: T }) =>
+      spec.web ?? spec.default ?? spec.ios ?? spec.android,
+  };
+  const TurboModuleRegistry = {
+    get: vi.fn(),
+    getEnforcing: vi.fn(),
+  };
   return {
     View,
     Text,
@@ -108,6 +124,8 @@ vi.mock("react-native", () => {
     FlatList,
     ActivityIndicator,
     Keyboard,
+    Platform,
+    TurboModuleRegistry,
     StyleSheet: { create: <T,>(s: T) => s, hairlineWidth: 1 },
   };
 });

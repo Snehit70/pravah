@@ -1,58 +1,80 @@
 # Web Version Upgrade (May 2026)
 
-This document summarizes the current web improvements on branch `feat/web-version-improvements` and how they relate to mobile work.
+Status: merged to `main` via PR #54.
 
-## Scope Added On Web
+This document is the source of truth for what changed in the web client during
+the May 2026 parity push and what remains open.
 
-1. Insights parity page
-- Added `Insights` page with `Stats` and `Completed` tabs.
-- Includes backlog health metrics and completion visibility in web shell.
+## Delivered Scope
 
-2. Kairo provider runtime parity
-- Added provider-profile based Kairo config (`openai`, `anthropic`, `gemini`) on web.
-- Added Gemini request/response runtime support in web.
-- Added migration path from legacy single-provider config.
+1. Insights parity
+- Added a first-class `Insights` page to the web shell.
+- Added `Stats` and `Completed` modes for backlog/completion visibility.
+- Wired through existing task data in `AuthenticatedApp`.
 
-3. Goals and task-linking parity
-- Added server-backed goals/linking read model on web.
-- Shows linked-goal badges in Timeline and Inbox.
-- Added TaskPopup goal selection and link-save flow.
-- Added resilient partial-failure handling when task save succeeds but goal-link save fails.
+2. Kairo provider/runtime parity
+- Added provider-profile based Kairo config (`openai`, `anthropic`, `gemini`).
+- Added migration from legacy single-provider settings.
+- Added Gemini runtime request/response handling parity.
 
-4. Server-backed goals CRUD in web
-- Long-term Goals page now supports backend create/delete.
-- Goal progress bars use goal-link and task status data.
+3. Goals and linking parity
+- Added server-backed goals + goal-link read model in web.
+- Added linked-goal badge rendering in Timeline and Inbox task rows.
+- Added TaskPopup goal picker and save flow.
+- Added partial-failure behavior when task update succeeds but goal-link save fails.
 
-## Feature Flag
+4. Server-backed web goals CRUD
+- Long-term Goals page now supports backend create/delete in web.
+- Goal progress bars are derived from task-link state and completion status.
 
-Web goals-linking server mode is controlled by:
+## Runtime Flags
+
+Server-backed goals/linking mode on web is controlled by:
+
 - Env: `VITE_FF_WEB_GOALS_LINKING=1`
-- Local override key: `localStorage['pravah:ff:web-goals-linking']`
+- Local override: `localStorage['pravah:ff:web-goals-linking']`
+
+When disabled:
+- Web falls back to legacy local goals behavior.
 
 When enabled:
-- Goals/links source of truth is Convex.
-- Long-term Goals page runs in server-backed mode.
+- Convex goals + goalLinks are the source of truth.
+- Long-term goals page uses server-backed read/write mode.
 
-## Branch and Overlap Note
+## Key Files (Web)
 
-- Web branch: `feat/web-version-improvements`
-- Mobile branch: `feat/mobile-ui-round-2`
+- `src/components/AuthenticatedApp.tsx`
+- `src/components/InsightsPage.tsx`
+- `src/components/LongTermGoalsPage.tsx`
+- `src/components/TaskPopup.tsx`
+- `src/components/Timeline.tsx`
+- `src/components/DayColumn.tsx`
+- `src/components/InboxSidebar.tsx`
+- `src/lib/kairoConfig.ts`
+- `src/lib/kairoProviderRuntime.ts`
+- `src/lib/featureFlags.ts`
 
-These are separate branch lines off `main` with non-overlapping commit sets.
-Any thematic overlap (for example provider-profile parity) was implemented per-platform in platform-specific codepaths.
+## Validation Coverage
 
-## Validation Summary
+Added or updated tests:
 
-Targeted tests were added/updated for:
-- `LongTermGoalsPage`
-- `TaskPopup`
-- `InboxSidebar`
-- `AppFlow`
-- Accessibility regression coverage for popup interactions
+- `src/test/InsightsPage.test.tsx`
+- `src/test/kairoConfig.test.ts`
+- `src/test/kairoProviderRuntime.test.ts`
+- `src/test/LongTermGoalsPage.test.tsx`
+- `src/test/TaskPopup.test.tsx`
+- `src/test/InboxSidebar.test.tsx`
+- `src/test/AppFlow.test.tsx`
+- `src/test/accessibilityRegression.test.tsx`
 
-## Recommended Next Step
+## Known Follow-Ups
 
-Before performance work, run a short cross-client correctness pass:
-- Edit a goal link on web.
-- Verify same link state is reflected on mobile.
-- Delete a goal and verify linked-task badge removal in both clients.
+1. Add richer server-backed goal editing fields (description/deadline/priority) in web UI.
+2. Add e2e cross-client consistency checks (web action -> mobile reflects change).
+3. Add structured frontend telemetry for goal-link failure paths.
+
+## Mobile Relationship
+
+Web and mobile were implemented on separate branches with non-overlapping
+commit stacks. Shared backend concepts (goals, links, providers) were mapped
+through platform-specific codepaths.

@@ -27,6 +27,14 @@ import { GeistMono_500Medium } from "@expo-google-fonts/geist-mono";
 import { ConvexClientProvider } from "./src/lib/convex";
 import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
+import {
+  getDiagnosticsSnapshot,
+  initializeDiagnostics,
+  setDiagnosticScreen,
+  shutdownDiagnostics,
+  type DiagnosticEvent,
+} from "./src/lib/diagnostics";
+import { shareDiagnosticsBundle } from "./src/lib/diagnosticsExport";
 import { useGoalLinks, useGoals } from "./src/hooks/useGoals";
 import { useConvexGoalsSync } from "./src/hooks/useConvexGoalsSync";
 import { useGoalMutations } from "./src/hooks/useGoalMutations";
@@ -116,6 +124,8 @@ function MobileApp() {
   const kairoRef = useRef<KairoSheetRef>(null);
   const lastListStateLogMsRef = useRef<number>(0);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [diagnosticEvents, setDiagnosticEvents] = useState<DiagnosticEvent[]>([]);
+  const hasLoggedPostLoginRef = useRef(false);
 
   const {
     session,
@@ -139,6 +149,8 @@ function MobileApp() {
     isKairoActive,
     setIsKairoActive,
     isDataBootstrapReady,
+    bootstrapError,
+    retryBootstrap,
     hasCachedSessionHint,
   } = useWorkspaceState();
 
@@ -332,6 +344,7 @@ function MobileApp() {
 
   const {
     isSigningIn,
+    isSigningOut,
     canGoogleSignIn,
     handleGoogleSignIn,
     handleSignOut: googleSignOut,
@@ -379,10 +392,10 @@ function MobileApp() {
     enableAndSyncGoogleCalendar,
   } = useIntegrationsSettings({ isAuthenticated: Boolean(session), showToast });
 
-  const handleSignOut = useCallback(() => {
+  const handleSignOut = useCallback(async () => {
     setIsSettingsModalOpen(false);
-    void clearSnapshot();
-    googleSignOut();
+    await clearSnapshot();
+    await googleSignOut();
   }, [clearSnapshot, googleSignOut, setIsSettingsModalOpen]);
 
   const handleWipeLocalData = useCallback(async () => {
@@ -392,8 +405,8 @@ function MobileApp() {
     resetPreferencesStore();
     resetDailyReminderState();
     setIsSettingsModalOpen(false);
-    void clearSnapshot();
-    googleSignOut();
+    await clearSnapshot();
+    await googleSignOut();
   }, [clearAllGoals, clearSnapshot, googleSignOut, resetDailyReminderState, setIsSettingsModalOpen]);
 
   const handleExportTasks = useCallback(async () => {
@@ -409,12 +422,109 @@ function MobileApp() {
     }
   }, [displayCompletedTasks, displayInboxTasks, displayScheduledTasks, showToast]);
 
+  const handleShareDiagnostics = useCallback(async () => {
+    try {
+      const path = await shareDiagnosticsBundle();
+      mobileLogger.info("diagnostics_shared", { path });
+      if (path) {
+        showToast({ kind: "info", message: "Diagnostics exported." });
+      }
+    } catch (error) {
+      mobileLogger.error("diagnostics_share_failed", {
+        errorType: classifyError(error),
+      });
+      showToast({ kind: "error", message: "Could not export diagnostics." });
+    }
+  }, [showToast]);
+
   // ── Effects ─────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    void initializeDiagnostics();
+    mobileLogger.info("launch_gate_start");
+    return () => {
+      void shutdownDiagnostics();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (sessionLoading) {
+      mobileLogger.info("session_query_start");
+    }
+  }, [sessionLoading]);
+
+  useEffect(() => {
+    if (session) {
+      mobileLogger.info("session_ready");
+      return;
+    }
+    if (!sessionLoading) {
+      mobileLogger.info("session_absent");
+    }
+  }, [session, sessionLoading]);
 
   useEffect(() => {
     if (sessionLoading || session) return;
     void clearSnapshot();
   }, [clearSnapshot, session, sessionLoading]);
+
+  useEffect(() => {
+    setDiagnosticScreen(session ? activeTab : "auth");
+    mobileLogger.info("screen_changed", {
+      screen: session ? activeTab : "auth",
+      sessionReady: Boolean(session),
+    });
+  }, [activeTab, session]);
+
+  useEffect(() => {
+    if (!showDiagnostics) return;
+    let active = true;
+    void getDiagnosticsSnapshot().then((events) => {
+      if (!active) return;
+      setDiagnosticEvents(events);
+    });
+    return () => {
+      active = false;
+    };
+  }, [showDiagnostics]);
+
+  useEffect(() => {
+    if (!session) return;
+    if (!isDataBootstrapReady) return;
+    if (!isAllTasksReady) return;
+    mobileLogger.info("app_interactive_ready", {
+      inboxCount: displayInboxTasks.length,
+      timelineCount: displayScheduledTasks.length,
+      completedCount: displayCompletedTasks.length,
+    });
+  }, [
+    displayCompletedTasks.length,
+    displayInboxTasks.length,
+    displayScheduledTasks.length,
+    isAllTasksReady,
+    isDataBootstrapReady,
+    session,
+  ]);
+
+  useEffect(() => {
+    if (!session) return;
+    mobileLogger.debug("tab_render_start", { tab: activeTab });
+  }, [activeTab, session]);
+
+  useEffect(() => {
+    if (!session || !isDataBootstrapReady || !isAllTasksReady) return;
+    mobileLogger.info("tab_interactive_ready", { tab: activeTab });
+  }, [activeTab, isAllTasksReady, isDataBootstrapReady, session]);
+
+  useEffect(() => {
+    if (!session || !isDataBootstrapReady || !isAllTasksReady) return;
+    if (hasLoggedPostLoginRef.current) return;
+    hasLoggedPostLoginRef.current = true;
+    mobileLogger.info("post_login_nav_done", {
+      landingTab: activeTab,
+      pendingMutations,
+    });
+  }, [activeTab, isAllTasksReady, isDataBootstrapReady, pendingMutations, session]);
 
   // ── Toast / retry ───────────────────────────────────────────────────
 
@@ -478,6 +588,7 @@ function MobileApp() {
     runRetryPayload,
     onRetryComplete: (message) => showToast({ kind: "info", message }),
   });
+  const retryQueueCount = retryQueue.length;
 
   useEffect(() => {
     if (!__DEV__) return;
@@ -764,8 +875,20 @@ function MobileApp() {
     return (
       <MobileAuthScreen
         canGoogleSignIn={canGoogleSignIn}
-        isSigningIn={isSigningIn}
+        isSigningIn={isSigningIn || isSigningOut}
         onGoogleSignIn={() => void handleGoogleSignIn()}
+        onOpenDiagnostics={() => void handleShareDiagnostics()}
+      />
+    );
+  }
+
+  if (session && bootstrapError) {
+    return (
+      <BootScreen
+        title="Could not load your workspace"
+        detail={bootstrapError}
+        actionLabel="Retry"
+        onActionPress={retryBootstrap}
       />
     );
   }
@@ -813,7 +936,7 @@ function MobileApp() {
   // ── Main layout ─────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.container}>
       <StatusBar style="light" />
 
       {/* Web-parity grid vignette behind everything. */}
@@ -992,6 +1115,7 @@ function MobileApp() {
         isAllTasksReady={isAllTasksReady}
         onActiveChange={setIsKairoActive}
         onOpenSettings={openSettingsModal}
+        onToast={showToast}
       />
 
       <SettingsSheet
@@ -1018,7 +1142,7 @@ function MobileApp() {
         onRequestNotificationsAccess={() => void requestNotificationsAccess()}
         onToggleDailyReminder={() => void toggleDailyReminder()}
         onSendTestNotification={() => void sendTestNotification()}
-        onSignOut={handleSignOut}
+        onSignOut={() => void handleSignOut()}
         onExportTasks={() => void handleExportTasks()}
         onWipeLocalData={handleWipeLocalData}
         showToast={showToast}
@@ -1042,12 +1166,14 @@ function MobileApp() {
           timelineCount={displayScheduledTasks.length}
           completedCount={displayCompletedCount}
           pendingMutations={pendingMutations}
-          retryQueueCount={retryQueue.length}
+          retryQueueCount={retryQueueCount}
           isKairoActive={isKairoActive}
           isAllTasksReady={isAllTasksReady}
           usingSnapshot={shouldUseWorkspaceSnapshot}
           isDataBootstrapReady={isDataBootstrapReady}
           onToggle={() => setShowDiagnostics((visible) => !visible)}
+          onShareDiagnostics={() => void handleShareDiagnostics()}
+          events={diagnosticEvents}
         />
       ) : null}
     </SafeAreaView>
@@ -1076,12 +1202,20 @@ function LaunchGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
     authStorageReady.finally(() => {
-      if (mounted) setStorageReady(true);
+      if (mounted) {
+        mobileLogger.info("auth_storage_ready");
+        setStorageReady(true);
+      }
     });
     return () => {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!fontsLoaded) return;
+    mobileLogger.info("fonts_ready");
+  }, [fontsLoaded]);
 
   useEffect(() => {
     if (!launchReady) return;

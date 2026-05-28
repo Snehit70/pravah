@@ -12,7 +12,7 @@ type ToastState = {
 };
 
 export function useWorkspaceState() {
-  const appStartMsRef = useRef<number>(Date.now());
+  const appStartMsRef = useRef<number | null>(null);
 
   const [activeTab, setActiveTab] = useState<TabKey>("inbox");
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -23,7 +23,9 @@ export function useWorkspaceState() {
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isKairoActive, setIsKairoActive] = useState(false);
-  const [isDataBootstrapReady, setIsDataBootstrapReady] = useState(false);
+  const [bootstrapReadyInternal, setBootstrapReadyInternal] = useState(false);
+  const [bootstrapErrorInternal, setBootstrapErrorInternal] = useState<string | null>(null);
+  const [bootstrapRetryNonce, setBootstrapRetryNonce] = useState(0);
 
   const sessionResult = authClient.useSession();
   const session = sessionResult.data;
@@ -36,46 +38,64 @@ export function useWorkspaceState() {
   const showToast = useCallback((next: ToastState) => setToast(next), []);
 
   useEffect(() => {
+    if (appStartMsRef.current == null) {
+      appStartMsRef.current = Date.now();
+    }
+  }, []);
+
+  useEffect(() => {
     if (!toast) return;
     const timeout = setTimeout(() => setToast(null), 3200);
     return () => clearTimeout(timeout);
   }, [toast]);
 
   useEffect(() => {
-    if (pendingMutations === 0) setOptimisticTasks(null);
+    if (pendingMutations !== 0) return;
+    queueMicrotask(() => setOptimisticTasks(null));
   }, [pendingMutations]);
 
   useEffect(() => {
     if (!session) return;
+    const startedAt = appStartMsRef.current ?? Date.now();
     mobileLogger.info("session_ready", {
-      elapsedMs: Date.now() - appStartMsRef.current,
+      elapsedMs: Date.now() - startedAt,
     });
   }, [session]);
 
   useEffect(() => {
-    if (!session) {
-      setIsDataBootstrapReady(false);
-      return;
-    }
+    if (!session) return;
 
     let cancelled = false;
-    setIsDataBootstrapReady(false);
 
     void (async () => {
       try {
+        if (!cancelled) {
+          setBootstrapReadyInternal(false);
+          setBootstrapErrorInternal(null);
+        }
+        mobileLogger.info("bootstrap_start", { attempt: bootstrapRetryNonce + 1 });
         await storeUserMutation({});
+        mobileLogger.info("bootstrap_store_user_done");
         await claimLegacyDataMutation({});
+        mobileLogger.info("bootstrap_claim_legacy_done");
+        if (!cancelled) {
+          setBootstrapErrorInternal(null);
+          setBootstrapReadyInternal(true);
+          mobileLogger.info("bootstrap_ready");
+        }
       } catch (error) {
+        const message = "Could not finish loading your workspace.";
         mobileLogger.warn("data_bootstrap_failed", {
           errorType: classifyError(error),
+          attempt: bootstrapRetryNonce + 1,
         });
         showToast({
           kind: "error",
-          message: "Could not finish loading your workspace.",
+          message,
         });
-      } finally {
         if (!cancelled) {
-          setIsDataBootstrapReady(true);
+          setBootstrapReadyInternal(false);
+          setBootstrapErrorInternal(message);
         }
       }
     })();
@@ -83,7 +103,18 @@ export function useWorkspaceState() {
     return () => {
       cancelled = true;
     };
-  }, [session, storeUserMutation, claimLegacyDataMutation, showToast]);
+  }, [session, storeUserMutation, claimLegacyDataMutation, showToast, bootstrapRetryNonce]);
+
+  const isDataBootstrapReady = session ? bootstrapReadyInternal : false;
+  const bootstrapError = session ? bootstrapErrorInternal : null;
+  const effectiveOptimisticTasks = pendingMutations === 0 ? null : optimisticTasks;
+
+  const retryBootstrap = useCallback(() => {
+    if (!session) return;
+    setBootstrapReadyInternal(false);
+    setBootstrapErrorInternal(null);
+    setBootstrapRetryNonce((n) => n + 1);
+  }, [session]);
 
   return {
     session,
@@ -96,7 +127,7 @@ export function useWorkspaceState() {
     setPendingMutations,
     toast,
     showToast,
-    optimisticTasks,
+    optimisticTasks: effectiveOptimisticTasks,
     setOptimisticTasks,
     isAddSheetOpen,
     setIsAddSheetOpen,
@@ -107,6 +138,8 @@ export function useWorkspaceState() {
     isKairoActive,
     setIsKairoActive,
     isDataBootstrapReady,
+    bootstrapError,
+    retryBootstrap,
     hasCachedSessionHint,
   };
 }

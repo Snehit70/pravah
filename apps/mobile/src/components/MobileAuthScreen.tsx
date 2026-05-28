@@ -3,12 +3,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import {
   ImageBackground,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, shadow, spacing, typography } from "../theme/tokens";
 import { BrandMark } from "./BrandMark";
 
@@ -18,13 +18,17 @@ type MobileAuthScreenProps = {
   canGoogleSignIn: boolean;
   isSigningIn: boolean;
   onGoogleSignIn: () => void;
+  onOpenDiagnostics?: () => void;
 };
 
 export function MobileAuthScreen({
   canGoogleSignIn,
   isSigningIn,
   onGoogleSignIn,
+  onOpenDiagnostics,
 }: MobileAuthScreenProps) {
+  const insets = useSafeAreaInsets();
+
   return (
     <ImageBackground source={authBg} resizeMode="cover" style={styles.bg}>
       <LinearGradient
@@ -32,12 +36,23 @@ export function MobileAuthScreen({
         locations={[0, 0.5, 1]}
         style={StyleSheet.absoluteFill}
       />
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView
+        edges={["top", "left", "right", "bottom"]}
+        style={[
+          styles.container,
+          {
+            paddingTop: insets.top + spacing.section,
+            paddingBottom: Math.max(insets.bottom, spacing.section),
+          },
+        ]}
+      >
         <StatusBar style="light" />
 
         <Animated.View entering={FadeInDown.duration(500).delay(80)} style={styles.brandZone}>
           <BrandMark size={64} />
-          <Text style={styles.wordmark}>Pravah</Text>
+          <Pressable onLongPress={onOpenDiagnostics} delayLongPress={450} hitSlop={10}>
+            <Text style={styles.wordmark}>Pravah</Text>
+          </Pressable>
         </Animated.View>
 
         <Animated.View entering={FadeInUp.duration(500).delay(160)} style={styles.actionZone}>
@@ -80,8 +95,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "space-between",
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.section * 2,
-    paddingBottom: spacing.section,
   },
   brandZone: {
     alignItems: "center",

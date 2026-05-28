@@ -137,20 +137,29 @@ bun run mobile:env   # generates apps/mobile/.env.local from root env
 GitHub Actions runs on pull requests and pushes to `main`:
 - **Lint** — ESLint
 - **Build** — Vite production build + TypeScript check
-- **Release Please** — automated version bump + release PR/tag flow for web and mobile (on `main`)
+- **Release Please** — automated release PR/tag flow for web (on `main`)
 
-### Release flow (web + mobile)
+### Release flow (web)
 
-Versioning and GitHub Releases are managed by `release-please`:
+Versioning and GitHub Releases for web are managed by `release-please`:
 
-- On every push to `main`, it scans Conventional Commits since the last release tag.
-- If releasable changes exist, it opens/updates a single release PR that bumps root (`web`) and `apps/mobile` package versions.
-- When that release PR merges, it creates component tags and GitHub Releases.
+- On every push to `main`, it scans Conventional Commits since the last `web` tag.
+- If releasable changes exist, it opens/updates a release PR that bumps root (`web`) version only.
+- When that release PR merges, it creates `web` tags and GitHub Releases.
 
 Tag format:
 
 - `web-vX.Y.Z`
-- `mobile-vX.Y.Z`
+
+### Mobile release / OTA policy
+
+Mobile is intentionally decoupled from release-please version bumps.
+
+- `apps/mobile/app.json` `expo.version` is kept stable during JS-only UI rounds.
+- Publish JS-only changes with EAS Update (`--platform android`) to branch `preview`.
+- Bump mobile version only when intentionally rolling out a new APK/runtime.
+
+See [apps/mobile/build.md](apps/mobile/build.md) for the runtime-matching OTA playbook.
 
 ## Documentation
 

@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { classifyError, mobileLogger } from "../lib/logger";
+import { getDiagnosticsRuntimeState } from "../lib/diagnostics";
 
 type RootErrorBoundaryProps = {
   children: ReactNode;
@@ -21,10 +22,13 @@ export class RootErrorBoundary extends Component<RootErrorBoundaryProps, RootErr
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    const runtime = getDiagnosticsRuntimeState();
     mobileLogger.error("root_error_boundary_caught", {
       errorType: classifyError(error),
       errorMessage: error.message,
+      errorStack: error.stack,
       componentStack: errorInfo.componentStack,
+      runtime,
     });
   }
 

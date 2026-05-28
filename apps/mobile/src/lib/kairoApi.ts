@@ -282,6 +282,30 @@ export function buildAnthropicRequestBody(
   };
 }
 
+export function buildGeminiRequestBody(
+  config: KairoConfig,
+  systemPrompt: string,
+  history: ChatTurn[],
+  text: string
+) {
+  const contents = [
+    ...history.map((turn) => ({
+      role: turn.role === "assistant" ? "model" : "user",
+      parts: [{ text: turn.content }],
+    })),
+    { role: "user", parts: [{ text }] },
+  ];
+  return {
+    generationConfig: {
+      maxOutputTokens: 1024,
+    },
+    systemInstruction: {
+      parts: [{ text: systemPrompt }],
+    },
+    contents,
+  };
+}
+
 function readAssistantText(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
@@ -291,9 +315,8 @@ function readAssistantText(content: unknown): string {
         if (
           part &&
           typeof part === "object" &&
-          "type" in part &&
           "text" in part &&
-          (part as { type?: string }).type === "text"
+          ((!("type" in part)) || (part as { type?: string }).type === "text")
         ) {
           return String((part as { text: unknown }).text ?? "");
         }
@@ -307,6 +330,11 @@ function readAssistantText(content: unknown): string {
 
 export function readKairoResponseText(data: unknown, providerFormat: KairoProviderFormat): string {
   if (!data || typeof data !== "object") return "";
+  if (providerFormat === "gemini") {
+    const candidates = (data as { candidates?: Array<{ content?: { parts?: unknown[] } }> }).candidates ?? [];
+    const parts = candidates[0]?.content?.parts ?? [];
+    return readAssistantText(parts);
+  }
   if (providerFormat === "anthropic" && "content" in data) {
     return readAssistantText((data as { content?: unknown }).content);
   }
