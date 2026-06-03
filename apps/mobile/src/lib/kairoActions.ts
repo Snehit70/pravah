@@ -1,10 +1,10 @@
 /**
  * Kairo action executor
  *
- * Pure (i.e. UI-free) glue that takes the parsed action list from
- * `extractKairoActions` plus the per-turn idMap from `buildKairoContext` and
- * dispatches each action to the right Convex mutation. We pass mutations in
- * as a struct rather than importing them so the module stays unit-testable.
+ * Pure (i.e. UI-free) glue that takes the parsed `KairoAction` list (from the
+ * tool-call mapper) plus the per-send handle registry and dispatches each
+ * action to the right Convex mutation. We pass mutations in as a struct rather
+ * than importing them so the module stays unit-testable.
  *
  * Error policy: failures are *per-action*, not all-or-nothing. A malformed
  * handle skips that action with `{ status: "skipped" }`; a mutation throw
