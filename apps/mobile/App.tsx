@@ -1069,6 +1069,7 @@ function MobileApp() {
               tabBarHeight={tabBarHeight}
               tasks={workspaceTaskCorpus}
               isTaskDataLoading={isGoalsTaskDataLoading}
+              onOpenTask={canUseWorkspaceActions ? handleEditTask : undefined}
             />
           </ScreenErrorBoundary>
         </Animated.View>
