@@ -18,6 +18,7 @@
 import {
   parseAction,
   type KairoAction,
+  type KairoGoalInput,
   type KairoIdMap,
   type KairoTaskInput,
 } from "./kairoApi";
@@ -274,6 +275,74 @@ export function createHandleRegistry(): HandleRegistry {
       return handle;
     },
   };
+}
+
+// ─── Thin context ─────────────────────────────────────────────────────────────
+
+export interface KairoThinContextEnv {
+  /** All loaded tasks across tabs. */
+  tasks: KairoTaskInput[];
+  /** Inbox tasks (for the count). */
+  inboxTasks: KairoTaskInput[];
+  goals: KairoGoalInput[];
+  /** taskId → goalId. */
+  goalLinks: Record<string, string>;
+  registry: HandleRegistry;
+  today: string;
+}
+
+/** Build the slim always-on context injected into the agent system prompt:
+ *  today's tasks, goals, and counts — with handles seeded into the registry.
+ *  Everything else is reachable through read tools, so the prompt stays small
+ *  and the per-round token cost stays bounded regardless of corpus size. */
+export function buildThinContext(env: KairoThinContextEnv): string {
+  const { tasks, inboxTasks, goals, goalLinks, registry, today } = env;
+  const scheduled = tasks.filter((t) => t.status === "scheduled");
+  const todayTasks = scheduled.filter((t) => t.scheduledDate === today);
+  const overdueCount = scheduled.filter(
+    (t) => t.scheduledDate !== undefined && t.scheduledDate < today
+  ).length;
+
+  const todayLines = todayTasks.length
+    ? todayTasks
+        .map(
+          (t) =>
+            `  - [${registry.handleForTask(t._id)}] "${t.title}"${
+              t.type === "deadline" ? " [DEADLINE]" : ""
+            }${t.priority ? ` [${t.priority.toUpperCase()}]` : ""}`
+        )
+        .join("\n")
+    : "  (none)";
+
+  const sortedGoals = [...goals].sort(
+    (a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0) || a.text.localeCompare(b.text)
+  );
+  const goalLines = sortedGoals.length
+    ? sortedGoals
+        .map((g) => {
+          const handle = registry.handleForGoal(g.id);
+          const linkedTaskId = Object.entries(goalLinks).find(([, gid]) => gid === g.id)?.[0];
+          const linkedLabel = linkedTaskId
+            ? ` [LINKED:${registry.handleForTask(linkedTaskId)}]`
+            : "";
+          return `  - [${handle}] "${g.text}"${g.priority ? ` [${g.priority.toUpperCase()}]` : ""}${
+            g.deadline ? ` [DUE:${g.deadline}]` : ""
+          }${linkedLabel}`;
+        })
+        .join("\n")
+    : "  (none)";
+
+  return [
+    `Today: ${today}`,
+    "",
+    "Today's scheduled tasks:",
+    todayLines,
+    "",
+    "Goals:",
+    goalLines,
+    "",
+    `Counts: inbox ${inboxTasks.length}, overdue ${overdueCount}, scheduled total ${scheduled.length}.`,
+  ].join("\n");
 }
 
 // ─── Read-tool execution ──────────────────────────────────────────────────────

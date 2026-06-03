@@ -90,6 +90,9 @@ export type KairoActionResult =
       action: KairoAction;
       status: "applied";
       taskId?: string;
+      /** New goal client id for an applied `addGoal`. Lets the caller mint a
+       *  handle so the model can reference a goal it just created. */
+      goalId?: string;
       /** Inverse mutation. Null when no meaningful undo exists (e.g. the
        *  before-state was lost). Idempotent — calling twice is harmless. */
       undo: (() => Promise<void>) | null;
@@ -212,7 +215,7 @@ export async function applyKairoActions(
         const undo = async () => {
           await mutations.deleteGoal({ goalId });
         };
-        results.push({ action, status: "applied", undo });
+        results.push({ action, status: "applied", goalId, undo });
         continue;
       }
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { KairoTaskInput } from "../lib/kairoApi";
 import {
   KAIRO_ALL_TOOLS,
+  buildThinContext,
   buildToolDefs,
   createHandleRegistry,
   isMutationTool,
@@ -133,6 +134,43 @@ describe("runReadTool", () => {
 
   it("reports an unknown read tool", () => {
     expect(runReadTool("nope", {}, makeEnv())).toMatchObject({ ok: false });
+  });
+});
+
+describe("buildThinContext", () => {
+  it("lists today's tasks, goals with handles, and counts", () => {
+    const registry = createHandleRegistry();
+    const text = buildThinContext({
+      tasks: [overdue, todayTask, future, done],
+      inboxTasks: [inboxItem],
+      goals: [{ id: "g1", text: "Ship beta", priority: "p1", deadline: "2026-06-20", createdAt: 1 }],
+      goalLinks: { t1: "g1" },
+      registry,
+      today,
+    });
+    expect(text).toMatch(/Today: 2026-06-03/);
+    // Today's task is listed with a handle and priority.
+    expect(text).toMatch(/\[T1\] "Today thing" \[P1\]/);
+    // Goal listed with handle, priority, deadline, and the linked task handle.
+    expect(text).toMatch(/\[G1\] "Ship beta" \[P1\] \[DUE:2026-06-20\] \[LINKED:T1\]/);
+    // Counts reflect inbox size, overdue, and total scheduled.
+    expect(text).toMatch(/Counts: inbox 1, overdue 1, scheduled total 3\./);
+    // The linked task ("t1" = todayTask) shares the same handle it got above.
+    expect(registry.taskIdMap.T1).toBe("t1");
+  });
+
+  it("renders empty sections gracefully", () => {
+    const text = buildThinContext({
+      tasks: [],
+      inboxTasks: [],
+      goals: [],
+      goalLinks: {},
+      registry: createHandleRegistry(),
+      today,
+    });
+    expect(text).toMatch(/Today's scheduled tasks:\n {2}\(none\)/);
+    expect(text).toMatch(/Goals:\n {2}\(none\)/);
+    expect(text).toMatch(/Counts: inbox 0, overdue 0, scheduled total 0\./);
   });
 });
 
