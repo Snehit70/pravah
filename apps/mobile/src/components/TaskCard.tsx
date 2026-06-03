@@ -58,6 +58,8 @@ type TaskCardProps = {
   onDragHandlePress?: () => void;
   /** Name of the goal this task is linked to, if any. */
   linkedGoalName?: string;
+  /** Hide priority metadata when a parent group already carries that encoding. */
+  hidePriorityBadge?: boolean;
 };
 
 const TASK_CARD_RADIUS = radii.lg;
@@ -112,6 +114,7 @@ function TaskCardInner({
   onEdit,
   onDragHandlePress,
   linkedGoalName,
+  hidePriorityBadge,
 }: TaskCardProps) {
   const isCompleted = task.status === "completed";
   const isInboxTask = task.status === "inbox";
@@ -260,30 +263,34 @@ function TaskCardInner({
     [handleMoveToday, handleSendToInbox, isCompleted, isInboxTask, onRightActionTrigger]
   );
 
-  // Web parity (src/components/TaskCard.tsx:46-58): the left accent rail color
-  // shows status, not priority. Completed = success, overdue = error, due-soon
-  // = warning, otherwise indigo accent. Mobile follows the same rule so cards
-  // read identically across surfaces.
+  // The left rail is priority-only for active rows. Date state stays in the
+  // right metadata column so overdue does not borrow the priority signal.
   const today = getLocalDateString();
   const isOverdue = !!task.deadline && task.deadline < today && !isCompleted;
   const railColor = isCompleted
     ? colors.success
-    : isOverdue
-      ? colors.error
-      : task.priority === "p1"
-        ? colors.priorityP1
-        : colors.accent;
+    : task.priority === "p1"
+      ? colors.priorityP1
+      : task.priority === "p2"
+        ? colors.priorityP2
+        : task.priority === "p3"
+          ? colors.priorityP3
+          : colors.borderSubtle;
 
   // Stacked metadata column on the right. Each line is its own micro entry so
   // the column reads like a small log table rather than a row of pills.
   const metaLines: { key: string; text: string; tone?: "muted" | "error" | "accent" }[] = [];
   if (dateLabelText && !isCompleted) {
-    metaLines.push({ key: "date", text: dateLabelText.toUpperCase(), tone: "muted" });
+    metaLines.push({
+      key: "date",
+      text: dateLabelText.toUpperCase(),
+      tone: dateLabelText.toLowerCase() === "overdue" ? "error" : "muted",
+    });
   }
   if (task.deadline && !isCompleted) {
-    metaLines.push({ key: "due", text: `Due ${task.deadline}`, tone: "muted" });
+    metaLines.push({ key: "due", text: `Due ${task.deadline}`, tone: isOverdue ? "error" : "muted" });
   }
-  if (task.priority && !isCompleted) {
+  if (task.priority && !isCompleted && !hidePriorityBadge) {
     metaLines.push({
       key: "prio",
       text: task.priority.toUpperCase(),

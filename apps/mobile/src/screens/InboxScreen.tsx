@@ -44,7 +44,7 @@ type InboxScreenProps = {
   tabBarHeight: number;
   onRefresh: () => Promise<void>;
   onCapture: () => void;
-  renderItem: (params: RenderItemParams<MobileTask>) => JSX.Element;
+  renderItem: (params: RenderItemParams<MobileTask> & { hidePriorityBadge?: boolean }) => JSX.Element;
 };
 
 const noopDrag = () => {};
@@ -324,6 +324,7 @@ export function InboxScreen({
           drag: noopDrag,
           isActive: false,
           getIndex: () => index,
+          hidePriorityBadge: !isFiltering,
         });
       }}
       showsVerticalScrollIndicator={false}

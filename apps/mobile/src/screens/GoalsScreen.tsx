@@ -539,7 +539,7 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false, on
                           : hasTasks
                           ? isComplete
                             ? "All done"
-                            : `${progress.total - progress.done} open`
+                            : "In progress"
                           : "No tasks linked"}
                       </Text>
                     </View>
