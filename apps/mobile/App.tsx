@@ -167,6 +167,12 @@ function MobileApp() {
 
   // ── Data ────────────────────────────────────────────────────────────
 
+  const needsFullWorkspaceCorpus =
+    isKairoActive ||
+    activeTab === "timeline" ||
+    activeTab === "insights" ||
+    activeTab === "goals";
+
   const {
     today,
     tomorrow,
@@ -182,7 +188,7 @@ function MobileApp() {
     isAllTasksReady,
   } = useTaskQueries({
     isAuthenticated: Boolean(session),
-    includeAllTasks: isKairoActive || activeTab === "insights" || activeTab === "goals",
+    includeAllTasks: needsFullWorkspaceCorpus,
   });
 
   const hasLiveWorkspaceData = !isInboxLoading && !isTimelineLoading && !isCompletedLoading;

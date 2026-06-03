@@ -11,6 +11,7 @@ function makeMutations(overrides: Partial<KairoMutations> = {}): KairoMutations 
   return {
     addTask: vi.fn(async () => "new-id"),
     moveTask: vi.fn(async () => undefined),
+    rescheduleTasks: vi.fn(async () => undefined),
     completeTask: vi.fn(async () => undefined),
     reopenTask: vi.fn(async () => undefined),
     unscheduleTask: vi.fn(async () => undefined),
@@ -106,6 +107,39 @@ describe("applyKairoActions", () => {
     if (results[0].status !== "applied") throw new Error("unreachable");
     await results[0].undo?.();
     expect(m.unscheduleTask).toHaveBeenCalledWith({ taskId: "r1" });
+  });
+
+  it("uses the bulk reschedule mutation for batched reflow moves", async () => {
+    const m = makeMutations();
+    const env = envFrom(m, {
+      r1: { _id: "r1", title: "one", status: "scheduled", type: "open", scheduledDate: "2026-05-10" },
+      r2: { _id: "r2", title: "two", status: "inbox", type: "open" },
+    });
+    const results = await applyKairoActions(
+      [
+        { kind: "reschedule", handle: "T1", scheduledDate: "2026-06-03", batchId: "reflow:g1" },
+        { kind: "reschedule", handle: "T2", scheduledDate: "2026-06-04", batchId: "reflow:g1" },
+      ],
+      { taskIdMap: { T1: "r1", T2: "r2" }, goalIdMap: {} },
+      env
+    );
+
+    expect(m.rescheduleTasks).toHaveBeenCalledWith({
+      updates: [
+        { taskId: "r1", scheduledDate: "2026-06-03" },
+        { taskId: "r2", scheduledDate: "2026-06-04" },
+      ],
+    });
+    expect(m.moveTask).not.toHaveBeenCalled();
+    expect(results.map((result) => result.status)).toEqual(["applied", "applied"]);
+
+    if (results[0]?.status !== "applied" || results[1]?.status !== "applied") {
+      throw new Error("unreachable");
+    }
+    await results[0].undo?.();
+    await results[1].undo?.();
+    expect(m.moveTask).toHaveBeenCalledWith({ taskId: "r1", targetDate: "2026-05-10" });
+    expect(m.unscheduleTask).toHaveBeenCalledWith({ taskId: "r2" });
   });
 
   it("complete + undo reopens the task and restores its scheduled placement", async () => {

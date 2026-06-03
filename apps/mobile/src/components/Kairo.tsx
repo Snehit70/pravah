@@ -261,6 +261,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
 
   const addTaskMutation = useMutation(api.tasks.addTask);
   const moveTaskMutation = useMutation(api.tasks.moveTask);
+  const rescheduleTasksMutation = useMutation(api.tasks.rescheduleTasks);
   const completeTaskMutation = useMutation(api.tasks.completeTask);
   const reopenTaskMutation = useMutation(api.tasks.reopenTask);
   const unscheduleTaskMutation = useMutation(api.tasks.unscheduleTask);
@@ -613,6 +614,15 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           addTask: (args: Parameters<typeof addTaskMutation>[0]) => addTaskMutation(args),
           moveTask: (args: { taskId: string; targetDate: string }) =>
             moveTaskMutation({ taskId: args.taskId as Id<"tasks">, targetDate: args.targetDate }),
+          rescheduleTasks: (args: {
+            updates: Array<{ taskId: string; scheduledDate: string }>;
+          }) =>
+            rescheduleTasksMutation({
+              updates: args.updates.map((update) => ({
+                taskId: update.taskId as Id<"tasks">,
+                scheduledDate: update.scheduledDate,
+              })),
+            }),
           completeTask: (args: { taskId: string }) =>
             completeTaskMutation({ taskId: args.taskId as Id<"tasks"> }),
           reopenTask: (args: { taskId: string }) =>

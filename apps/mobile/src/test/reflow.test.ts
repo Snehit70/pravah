@@ -78,6 +78,24 @@ describe("bucketOverdue", () => {
     expect(g1.overdueCount).toBe(2);
   });
 
+  it("sorts a plan chronologically before using same-day positions", () => {
+    const scrambled = bucketOverdue(
+      [
+        task({ id: "x1", scheduledDate: "2026-06-10", position: 0 }),
+        task({ id: "x2", scheduledDate: "2026-05-28", position: 4 }),
+        task({ id: "x3", scheduledDate: "2026-05-29", position: 1 }),
+      ],
+      { x1: "g1", x2: "g1", x3: "g1" },
+      [goalPassed],
+      TODAY
+    );
+    expect(scrambled.groups[0]?.planTasks.map((t) => String(t._id))).toEqual([
+      "x2",
+      "x3",
+      "x1",
+    ]);
+  });
+
   it("routes no-goal and no-deadline-goal overdue tasks to orphans", () => {
     expect(buckets.orphans.map((t) => String(t._id)).sort()).toEqual(["a4", "a5"]);
   });

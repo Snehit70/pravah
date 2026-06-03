@@ -140,6 +140,7 @@ export function buildReflowActions(
   for (const group of groups) {
     const result = computeReflow(group, today);
     const oldById = new Map(group.planTasks.map((t) => [String(t._id), t.scheduledDate]));
+    const batchId = `reflow:${group.goal.id}`;
 
     let rescheduleCount = 0;
     for (const a of result.assignments) {
@@ -148,6 +149,7 @@ export function buildReflowActions(
         kind: "reschedule",
         handle: registry.handleForTask(a.taskId),
         scheduledDate: a.scheduledDate,
+        batchId,
       });
       rescheduleCount += 1;
     }

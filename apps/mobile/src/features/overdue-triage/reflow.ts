@@ -64,10 +64,10 @@ export function daysBetween(a: string, b: string): number {
 const PRIORITY_RANK: Record<string, number> = { p1: 0, p2: 1, p3: 2 };
 
 function comparePlan(a: MobileTask, b: MobileTask): number {
-  if (a.position !== b.position) return a.position - b.position;
   const ad = a.scheduledDate ?? "";
   const bd = b.scheduledDate ?? "";
   if (ad !== bd) return ad < bd ? -1 : 1;
+  if (a.position !== b.position) return a.position - b.position;
   return String(a._id) < String(b._id) ? -1 : 1;
 }
 

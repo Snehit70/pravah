@@ -182,7 +182,12 @@ export type KairoAction =
       scheduledDate: string | null;
       type: "open" | "deadline";
     }
-  | { kind: "reschedule"; handle: string; scheduledDate: string }
+  | {
+      kind: "reschedule";
+      handle: string;
+      scheduledDate: string;
+      batchId?: string;
+    }
   | { kind: "complete"; handle: string }
   | { kind: "unschedule"; handle: string }
   | {
