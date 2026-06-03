@@ -60,10 +60,6 @@ import { InboxScreen } from "./src/screens/InboxScreen";
 import { TimelineScreen } from "./src/screens/TimelineScreen";
 import { InsightsScreen } from "./src/screens/InsightsScreen";
 import { GoalsScreen } from "./src/screens/GoalsScreen";
-import { OverdueSheet, type ReflowCommitItem } from "./src/components/OverdueSheet";
-import { bucketOverdue } from "./src/lib/reflow";
-import type { GoalDraft } from "./src/lib/goalsStorage";
-import type { Id } from "../../convex/_generated/dataModel";
 import { useRetryQueue, type RetryPayload } from "./src/hooks/useRetryQueue";
 import { useTaskMutations } from "./src/hooks/useTaskMutations";
 import { useTaskQueries } from "./src/hooks/useTaskQueries";
@@ -74,6 +70,8 @@ import { useNotificationsSettings } from "./src/hooks/useNotificationsSettings";
 import { useIntegrationsSettings } from "./src/hooks/useIntegrationsSettings";
 import { useReducedMotion } from "./src/hooks/useReducedMotion";
 import { resetPreferencesStore } from "./src/hooks/useUserPreferences";
+import { OverdueSheet } from "./src/features/overdue-triage/OverdueSheet";
+import { useOverdueTriageController } from "./src/features/overdue-triage/controller";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -128,7 +126,6 @@ function MobileApp() {
   const lastListStateLogMsRef = useRef<number>(0);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [diagnosticEvents, setDiagnosticEvents] = useState<DiagnosticEvent[]>([]);
-  const [isOverdueSheetOpen, setIsOverdueSheetOpen] = useState(false);
   const hasLoggedPostLoginRef = useRef(false);
 
   const {
@@ -344,11 +341,6 @@ function MobileApp() {
   const kairoInboxTasks = useMemo(
     () => kairoTasks.filter((task) => task.status === "inbox"),
     [kairoTasks]
-  );
-  // Overdue triage buckets: per-goal reflow groups + manual-triage orphans.
-  const overdueBuckets = useMemo(
-    () => bucketOverdue(workspaceTaskCorpus, goalLinks, goals, today),
-    [workspaceTaskCorpus, goalLinks, goals, today]
   );
   const tabBarBottomPadding = Math.max(insets.bottom, spacing.md);
   const tabBarHeight = 62 + tabBarBottomPadding;
@@ -648,126 +640,35 @@ function MobileApp() {
     hasPriorityBoundaryViolation,
   });
 
-  // ── Overdue reflow + manual triage ──────────────────────────────────
-
-  const openOverdue = useCallback(() => {
-    mobileLogger.info("overdue_sheet_opened", { totalOverdue: overdueBuckets.totalOverdue });
-    setIsOverdueSheetOpen(true);
-  }, [overdueBuckets.totalOverdue]);
-
-  // Apply one or more goal reflows as a single atomic batch, with a snapshot
-  // for one-shot undo (dates + any goal deadlines we move).
-  const handleCommitReflow = useCallback(
-    (items: ReflowCommitItem[]) => {
-      const assignments = items.flatMap((item) => item.assignments);
-      if (assignments.length === 0) {
-        setIsOverdueSheetOpen(false);
-        return;
-      }
-      const dateById = new Map(
-        workspaceTaskCorpus.map((t) => [String(t._id), t.scheduledDate])
-      );
-      const updates = assignments.map((a) => ({
-        taskId: a.taskId as Id<"tasks">,
-        scheduledDate: a.scheduledDate,
-      }));
-      const undoUpdates = assignments
-        .filter((a) => dateById.get(a.taskId))
-        .map((a) => ({
-          taskId: a.taskId as Id<"tasks">,
-          scheduledDate: dateById.get(a.taskId) as string,
-        }));
-
-      // Capture deadline edits for post-success apply + undo.
-      const deadlineUpdates: { id: string; draft: GoalDraft }[] = [];
-      const deadlineUndo: { id: string; draft: GoalDraft }[] = [];
-      for (const item of items) {
-        if (!item.newDeadline) continue;
-        const goal = goals.find((g) => g.id === item.goalId);
-        if (!goal) continue;
-        const baseDraft: GoalDraft = {
-          text: goal.text,
-          description: goal.description,
-          deadline: goal.deadline,
-          priority: goal.priority,
-        };
-        deadlineUndo.push({ id: goal.id, draft: baseDraft });
-        deadlineUpdates.push({ id: goal.id, draft: { ...baseDraft, deadline: item.newDeadline } });
-      }
-
-      const actionId = createActionId("reflow");
-      mobileLogger.info("reflow_commit", { actionId, taskCount: updates.length, goals: items.length });
-      setIsOverdueSheetOpen(false);
-
-      void (async () => {
-        try {
-          await rescheduleTasksMutation({ updates });
-          for (const item of deadlineUpdates) updateGoal(item.id, item.draft);
-          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          showToast({
-            kind: "info",
-            message: `Rescheduled ${updates.length} task${updates.length === 1 ? "" : "s"}`,
-            action: {
-              label: "Undo",
-              run: () => {
-                if (undoUpdates.length) void rescheduleTasksMutation({ updates: undoUpdates });
-                for (const d of deadlineUndo) updateGoal(d.id, d.draft);
-              },
-            },
-          });
-        } catch (error) {
-          if (classifyError(error) === "network") {
-            enqueueRetry({
-              label: `Reschedule ${updates.length} tasks`,
-              payload: { type: "rescheduleTasks", updates },
-            });
-            showToast({ kind: "error", message: "Offline. Reschedule queued for retry." });
-          } else {
-            showToast({ kind: "error", message: "Could not reschedule. Please try again." });
-          }
-          mobileLogger.error("reflow_commit_failed", { actionId, errorType: classifyError(error) });
-        }
-      })();
-    },
-    [workspaceTaskCorpus, goals, updateGoal, rescheduleTasksMutation, showToast, enqueueRetry]
-  );
-
-  const handleManualTriage = useCallback(
-    (taskId: string, target: "today" | "tomorrow" | "week" | "drop") => {
-      const id = taskId as Id<"tasks">;
-      if (target === "drop") {
-        void (async () => {
-          try {
-            await softDeleteTaskMutation({ taskId: id });
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            showToast({
-              kind: "info",
-              message: "Task dropped",
-              action: { label: "Undo", run: () => void restoreTaskMutation({ taskId: id }) },
-            });
-          } catch {
-            showToast({ kind: "error", message: "Could not drop task." });
-          }
-        })();
-        return;
-      }
-      const targetDate = target === "today" ? today : target === "tomorrow" ? tomorrow : weekEnd;
-      void (async () => {
-        try {
-          await moveTaskMutation({ taskId: id, targetDate });
-          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        } catch (error) {
-          if (classifyError(error) === "network") {
-            enqueueRetry({ label: "Move task", payload: { type: "moveTask", taskId: id, targetDate } });
-            showToast({ kind: "error", message: "Offline. Move queued for retry." });
-          } else {
-            showToast({ kind: "error", message: "Could not move task." });
-          }
-        }
-      })();
-    },
-    [today, tomorrow, weekEnd, moveTaskMutation, softDeleteTaskMutation, restoreTaskMutation, showToast, enqueueRetry]
-  );
+  const {
+    isOverdueSheetOpen,
+    overdueBuckets,
+    previewGroups,
+    selectedPreview,
+    applyDeadline,
+    setApplyDeadline,
+    openOverdue,
+    closeOverdue,
+    openPreview,
+    closePreview,
+    confirmPreview,
+    rescheduleAll,
+    handleManualTriage,
+  } = useOverdueTriageController({
+    workspaceTaskCorpus,
+    goalLinks,
+    goals,
+    today,
+    tomorrow,
+    weekEnd,
+    rescheduleTasksMutation,
+    moveTaskMutation,
+    softDeleteTaskMutation,
+    restoreTaskMutation,
+    updateGoal,
+    showToast,
+    enqueueRetry,
+  });
 
   // ── Add task handler (from sheet) ───────────────────────────────────
 
@@ -914,7 +815,7 @@ function MobileApp() {
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
       if (isOverdueSheetOpen) {
-        setIsOverdueSheetOpen(false);
+        closeOverdue();
         return true;
       }
       if (isSettingsModalOpen) {
@@ -947,6 +848,7 @@ function MobileApp() {
     isSettingsModalOpen,
     isKairoActive,
     isOverdueSheetOpen,
+    closeOverdue,
     setIsSettingsModalOpen,
   ]);
 
@@ -1281,13 +1183,19 @@ function MobileApp() {
 
       <OverdueSheet
         visible={isOverdueSheetOpen}
-        onClose={() => setIsOverdueSheetOpen(false)}
-        groups={overdueBuckets.groups}
+        onClose={closeOverdue}
+        groups={previewGroups}
         orphans={overdueBuckets.orphans}
+        selectedPreview={selectedPreview}
+        applyDeadline={applyDeadline}
         today={today}
         tomorrow={tomorrow}
         weekEnd={weekEnd}
-        onCommitReflow={handleCommitReflow}
+        onOpenPreview={openPreview}
+        onClosePreview={closePreview}
+        onSetApplyDeadline={setApplyDeadline}
+        onConfirmPreview={confirmPreview}
+        onRescheduleAll={rescheduleAll}
         onManualTriage={handleManualTriage}
       />
 

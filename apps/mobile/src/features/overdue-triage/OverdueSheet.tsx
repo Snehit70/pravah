@@ -1,4 +1,3 @@
-import { useMemo, useState } from "react";
 import {
   Modal,
   Pressable,
@@ -10,39 +9,30 @@ import {
 } from "react-native";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, radii, spacing, typography } from "../theme/tokens";
-import { dateLabel } from "../lib/dates";
-import {
-  computeReflow,
-  type ReflowAssignment,
-  type ReflowGroup,
-} from "../lib/reflow";
-import type { MobileTask } from "./TaskCard";
-
-export type ReflowCommitItem = {
-  goalId: string;
-  goalText: string;
-  assignments: ReflowAssignment[];
-  /** When set, the caller should also move the goal's deadline here. */
-  newDeadline?: string;
-};
+import { colors, radii, spacing, typography } from "../../theme/tokens";
+import { dateLabel } from "../../lib/dates";
+import type { MobileTask } from "../../components/TaskCard";
+import type { ManualTriageTarget, OverduePreviewGroup } from "./types";
 
 type OverdueSheetProps = {
   visible: boolean;
   onClose: () => void;
-  groups: ReflowGroup[];
+  groups: OverduePreviewGroup[];
   orphans: MobileTask[];
+  selectedPreview: OverduePreviewGroup | null;
+  applyDeadline: boolean;
   today: string;
   tomorrow: string;
   weekEnd: string;
-  onCommitReflow: (items: ReflowCommitItem[]) => void;
-  onManualTriage: (
-    taskId: string,
-    target: "today" | "tomorrow" | "week" | "drop"
-  ) => void;
+  onOpenPreview: (goalId: string) => void;
+  onClosePreview: () => void;
+  onSetApplyDeadline: (next: boolean) => void;
+  onConfirmPreview: () => void;
+  onRescheduleAll: () => void;
+  onManualTriage: (taskId: string, target: ManualTriageTarget) => void;
 };
 
-const MANUAL_ACTIONS: { key: "today" | "tomorrow" | "week" | "drop"; label: string }[] = [
+const MANUAL_ACTIONS: { key: ManualTriageTarget; label: string }[] = [
   { key: "today", label: "Today" },
   { key: "tomorrow", label: "Tomorrow" },
   { key: "week", label: "This week" },
@@ -54,73 +44,22 @@ export function OverdueSheet({
   onClose,
   groups,
   orphans,
+  selectedPreview,
+  applyDeadline,
   today,
   tomorrow,
   weekEnd,
-  onCommitReflow,
+  onOpenPreview,
+  onClosePreview,
+  onSetApplyDeadline,
+  onConfirmPreview,
+  onRescheduleAll,
   onManualTriage,
 }: OverdueSheetProps) {
   const insets = useSafeAreaInsets();
-  // null = list view; otherwise we're previewing one goal's reflow.
-  const [previewGoalId, setPreviewGoalId] = useState<string | null>(null);
-  const [applyDeadline, setApplyDeadline] = useState(false);
-
-  const previewGroup = useMemo(
-    () => groups.find((g) => g.goal.id === previewGoalId) ?? null,
-    [groups, previewGoalId]
-  );
-  const previewResult = useMemo(
-    () => (previewGroup ? computeReflow(previewGroup, today) : null),
-    [previewGroup, today]
-  );
-
   const friendly = (iso: string) => dateLabel(iso, today, tomorrow, weekEnd);
-
-  const openPreview = (group: ReflowGroup) => {
-    const result = computeReflow(group, today);
-    // Default the deadline toggle on only when the existing deadline has
-    // already passed (it's meaningless), off when it's still in the future.
-    const passed = !!group.goal.deadline && group.goal.deadline < today;
-    setApplyDeadline(passed && !!result.suggestedDeadline);
-    setPreviewGoalId(group.goal.id);
-  };
-
-  const confirmPreview = () => {
-    if (!previewGroup || !previewResult) return;
-    onCommitReflow([
-      {
-        goalId: previewGroup.goal.id,
-        goalText: previewGroup.goal.text,
-        assignments: previewResult.assignments,
-        newDeadline:
-          applyDeadline && previewResult.suggestedDeadline
-            ? previewResult.suggestedDeadline
-            : undefined,
-      },
-    ]);
-    setPreviewGoalId(null);
-    onClose();
-  };
-
-  const rescheduleAll = () => {
-    const items: ReflowCommitItem[] = groups.map((group) => {
-      const result = computeReflow(group, today);
-      const passed = !!group.goal.deadline && group.goal.deadline < today;
-      return {
-        goalId: group.goal.id,
-        goalText: group.goal.text,
-        assignments: result.assignments,
-        // For the bulk path, auto-adopt a new deadline only when the old one
-        // has already lapsed (no per-goal toggle in this shortcut).
-        newDeadline: passed ? result.suggestedDeadline : undefined,
-      };
-    });
-    onCommitReflow(items);
-    onClose();
-  };
-
   const totalOverdue =
-    groups.reduce((sum, g) => sum + g.overdueCount, 0) + orphans.length;
+    groups.reduce((sum, group) => sum + group.overdueCount, 0) + orphans.length;
 
   return (
     <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
@@ -132,47 +71,46 @@ export function OverdueSheet({
         <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
           <View style={styles.handle} />
 
-          {previewGroup && previewResult ? (
-            // ── Preview view ──────────────────────────────────────────────
+          {selectedPreview ? (
             <>
               <View style={styles.headerRow}>
-                <Pressable onPress={() => setPreviewGoalId(null)} hitSlop={12} accessibilityRole="button" accessibilityLabel="Back">
+                <Pressable onPress={onClosePreview} hitSlop={12} accessibilityRole="button" accessibilityLabel="Back">
                   <Text style={styles.backLink}>‹ Back</Text>
                 </Pressable>
-                <Text style={styles.headerTitle} numberOfLines={1}>{previewGroup.goal.text}</Text>
+                <Text style={styles.headerTitle} numberOfLines={1}>{selectedPreview.goalText}</Text>
               </View>
 
               <View style={styles.summaryBlock}>
                 <Text style={styles.summaryLine}>
-                  {previewResult.movedCount} task{previewResult.movedCount === 1 ? "" : "s"} rescheduled
+                  {selectedPreview.movedCount} task{selectedPreview.movedCount === 1 ? "" : "s"} rescheduled
                 </Text>
                 <Text style={styles.summarySub}>
-                  {previewResult.mode === "spread"
-                    ? `Spread evenly through ${friendly(previewResult.projectedEnd)}`
-                    : `One per day · finishes ${friendly(previewResult.projectedEnd)}`}
+                  {selectedPreview.mode === "spread"
+                    ? `Spread evenly through ${friendly(selectedPreview.projectedEnd)}`
+                    : `One per day · finishes ${friendly(selectedPreview.projectedEnd)}`}
                 </Text>
-                {previewResult.futureMovedCount > 0 ? (
+                {selectedPreview.futureMovedCount > 0 ? (
                   <Text style={styles.summaryWarn}>
-                    {previewResult.futureMovedCount} future task
-                    {previewResult.futureMovedCount === 1 ? "" : "s"} also moved
+                    {selectedPreview.futureMovedCount} future task
+                    {selectedPreview.futureMovedCount === 1 ? "" : "s"} also moved
                   </Text>
                 ) : null}
-                {previewResult.suggestedDeadline ? (
+                {selectedPreview.suggestedDeadline ? (
                   <Text style={styles.summaryWarn}>
-                    Finishes {previewResult.projectedEnd}
-                    {previewGroup.goal.deadline ? ` · past deadline ${previewGroup.goal.deadline}` : ""}
+                    Finishes {selectedPreview.projectedEnd}
+                    {selectedPreview.goalDeadline ? ` · past deadline ${selectedPreview.goalDeadline}` : ""}
                   </Text>
                 ) : null}
               </View>
 
-              {previewResult.suggestedDeadline ? (
+              {selectedPreview.suggestedDeadline ? (
                 <View style={styles.toggleRow}>
                   <Text style={styles.toggleLabel}>
-                    Also move goal deadline to {previewResult.suggestedDeadline}
+                    Also move goal deadline to {selectedPreview.suggestedDeadline}
                   </Text>
                   <Switch
                     value={applyDeadline}
-                    onValueChange={setApplyDeadline}
+                    onValueChange={onSetApplyDeadline}
                     trackColor={{ false: colors.border, true: colors.accent }}
                     thumbColor={colors.textPrimary}
                   />
@@ -181,26 +119,23 @@ export function OverdueSheet({
 
               <Text style={styles.sectionLabel}>Schedule</Text>
               <ScrollView style={styles.previewList} showsVerticalScrollIndicator={false}>
-                {previewGroup.planTasks.map((t) => {
-                  const next = previewResult.assignments.find((a) => a.taskId === String(t._id));
-                  const changed = next && next.scheduledDate !== t.scheduledDate;
-                  return (
-                    <View key={String(t._id)} style={styles.previewItem}>
-                      <Text style={styles.previewTitle} numberOfLines={1}>{t.title}</Text>
-                      <Text style={[styles.previewDate, changed && styles.previewDateChanged]}>
-                        {next ? friendly(next.scheduledDate) : friendly(t.scheduledDate ?? today)}
-                      </Text>
-                    </View>
-                  );
-                })}
+                {selectedPreview.tasks.map((task) => (
+                  <View key={task.taskId} style={styles.previewItem}>
+                    <Text style={styles.previewTitle} numberOfLines={1}>{task.title}</Text>
+                    <Text style={[styles.previewDate, task.changed && styles.previewDateChanged]}>
+                      {friendly(task.nextDate)}
+                    </Text>
+                  </View>
+                ))}
               </ScrollView>
 
-              <Pressable onPress={confirmPreview} style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Confirm reschedule">
-                <Text style={styles.primaryBtnText}>Reschedule {previewResult.movedCount} task{previewResult.movedCount === 1 ? "" : "s"}</Text>
+              <Pressable onPress={onConfirmPreview} style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Confirm reschedule">
+                <Text style={styles.primaryBtnText}>
+                  Reschedule {selectedPreview.movedCount} task{selectedPreview.movedCount === 1 ? "" : "s"}
+                </Text>
               </Pressable>
             </>
           ) : (
-            // ── List view ─────────────────────────────────────────────────
             <>
               <View style={styles.headerRow}>
                 <Text style={styles.headerTitle}>Overdue · {totalOverdue}</Text>
@@ -211,7 +146,7 @@ export function OverdueSheet({
 
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.listContent}>
                 {groups.length > 1 ? (
-                  <Pressable onPress={rescheduleAll} style={({ pressed }) => [styles.allBtn, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Reschedule all goals">
+                  <Pressable onPress={onRescheduleAll} style={({ pressed }) => [styles.allBtn, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Reschedule all goals">
                     <Text style={styles.allBtnText}>Reschedule all goals</Text>
                   </Pressable>
                 ) : null}
@@ -219,17 +154,17 @@ export function OverdueSheet({
                 {groups.length > 0 ? <Text style={styles.sectionLabel}>By goal</Text> : null}
                 {groups.map((group) => (
                   <Pressable
-                    key={group.goal.id}
-                    onPress={() => openPreview(group)}
+                    key={group.goalId}
+                    onPress={() => onOpenPreview(group.goalId)}
                     style={({ pressed }) => [styles.goalRow, pressed && styles.pressed]}
                     accessibilityRole="button"
-                    accessibilityLabel={`Reschedule ${group.goal.text}, ${group.overdueCount} overdue`}
+                    accessibilityLabel={`Reschedule ${group.goalText}, ${group.overdueCount} overdue`}
                   >
                     <View style={styles.goalRowText}>
-                      <Text style={styles.goalName} numberOfLines={1}>{group.goal.text}</Text>
+                      <Text style={styles.goalName} numberOfLines={1}>{group.goalText}</Text>
                       <Text style={styles.goalMeta}>
                         {group.overdueCount} overdue
-                        {group.goal.deadline ? ` · due ${group.goal.deadline}` : ""}
+                        {group.goalDeadline ? ` · due ${group.goalDeadline}` : ""}
                       </Text>
                     </View>
                     <Text style={styles.goalCta}>Reschedule ›</Text>
@@ -237,14 +172,14 @@ export function OverdueSheet({
                 ))}
 
                 {orphans.length > 0 ? <Text style={styles.sectionLabel}>Loose ends</Text> : null}
-                {orphans.map((t) => (
-                  <View key={String(t._id)} style={styles.orphanRow}>
-                    <Text style={styles.orphanTitle} numberOfLines={2}>{t.title}</Text>
+                {orphans.map((task) => (
+                  <View key={String(task._id)} style={styles.orphanRow}>
+                    <Text style={styles.orphanTitle} numberOfLines={2}>{task.title}</Text>
                     <View style={styles.chipRow}>
                       {MANUAL_ACTIONS.map((action) => (
                         <Pressable
                           key={action.key}
-                          onPress={() => onManualTriage(String(t._id), action.key)}
+                          onPress={() => onManualTriage(String(task._id), action.key)}
                           hitSlop={8}
                           style={({ pressed }) => [
                             styles.chip,
@@ -252,7 +187,7 @@ export function OverdueSheet({
                             pressed && styles.pressed,
                           ]}
                           accessibilityRole="button"
-                          accessibilityLabel={`${action.label} — ${t.title}`}
+                          accessibilityLabel={`${action.label} — ${task.title}`}
                         >
                           <Text style={[styles.chipText, action.key === "drop" && styles.chipDropText]}>
                             {action.label}

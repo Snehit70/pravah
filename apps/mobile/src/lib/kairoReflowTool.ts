@@ -23,7 +23,7 @@ import type { MobileTask } from "../components/TaskCard";
 import type { GoalItem } from "./goalsStorage";
 import type { KairoAction } from "./kairoApi";
 import type { HandleRegistry } from "./kairoTools";
-import { bucketOverdue, computeReflow } from "./reflow";
+import { bucketOverdue, computeReflow } from "../features/overdue-triage/reflow";
 
 export interface KairoReflowEnv {
   /** The full MobileTask corpus (with `position`) — same data the timeline
