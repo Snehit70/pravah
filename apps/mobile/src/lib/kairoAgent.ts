@@ -23,6 +23,7 @@ import {
   extractToolCalls,
   type AgentTurn,
   type KairoAction,
+  type KairoTaskInput,
   type NormalizedToolCall,
   type ToolResultEntry,
 } from "./kairoApi";
@@ -102,6 +103,121 @@ function jsonResult(payload: unknown): string {
   }
 }
 
+function cloneTask(task: KairoTaskInput): KairoTaskInput {
+  return { ...task };
+}
+
+function reconcileTaskSnapshot(
+  env: KairoReadEnv,
+  action: KairoAction,
+  result: KairoActionResult
+) {
+  if (result.status !== "applied") return;
+
+  const upsertTask = (next: KairoTaskInput) => {
+    const tasks = env.tasks.filter((task) => task._id !== next._id);
+    const inboxTasks = env.inboxTasks.filter((task) => task._id !== next._id);
+    if (next.status === "inbox") {
+      env.tasks = tasks;
+      env.inboxTasks = [...inboxTasks, next];
+      return;
+    }
+    env.tasks = [...tasks, next];
+    env.inboxTasks = inboxTasks;
+  };
+
+  const removeTask = (taskId: string) => {
+    env.tasks = env.tasks.filter((task) => task._id !== taskId);
+    env.inboxTasks = env.inboxTasks.filter((task) => task._id !== taskId);
+  };
+
+  const resolveTaskId = (): string | undefined => {
+    if (result.taskId) return result.taskId;
+    if ("handle" in action) return env.registry.taskIdMap[action.handle];
+    return undefined;
+  };
+
+  if (action.kind === "add") {
+    if (!result.taskId) return;
+    upsertTask({
+      _id: result.taskId,
+      title: action.title,
+      status: action.scheduledDate ? "scheduled" : "inbox",
+      scheduledDate: action.scheduledDate ?? undefined,
+      type: action.type,
+      deadline: action.type === "deadline" ? action.scheduledDate ?? undefined : undefined,
+    });
+    return;
+  }
+
+  const taskId = resolveTaskId();
+  if (!taskId) return;
+  const current =
+    env.tasks.find((task) => task._id === taskId) ??
+    env.inboxTasks.find((task) => task._id === taskId);
+  if (!current) return;
+
+  switch (action.kind) {
+    case "reschedule":
+      upsertTask({
+        ...cloneTask(current),
+        status: "scheduled",
+        scheduledDate: action.scheduledDate,
+      });
+      return;
+    case "complete":
+      upsertTask({
+        ...cloneTask(current),
+        status: "completed",
+      });
+      return;
+    case "unschedule":
+      upsertTask({
+        ...cloneTask(current),
+        status: "inbox",
+        scheduledDate: undefined,
+      });
+      return;
+    case "update": {
+      const next = cloneTask(current);
+      if (action.title !== undefined) next.title = action.title;
+      if (action.priority !== undefined) next.priority = action.priority;
+      if (action.deadline !== undefined) {
+        next.deadline = action.deadline ?? undefined;
+        if (action.deadline) {
+          const preservesInboxOpenTask =
+            current.status === "inbox" &&
+            (current.type ?? "open") === "open" &&
+            !current.scheduledDate;
+          if (!preservesInboxOpenTask) {
+            next.type = "deadline";
+            next.status = "scheduled";
+            next.scheduledDate = action.deadline;
+          }
+        } else {
+          next.type = "open";
+          const wasAutoScheduledByDeadline =
+            current.status === "scheduled" &&
+            current.type === "deadline" &&
+            !!current.deadline &&
+            current.scheduledDate === current.deadline;
+          if (wasAutoScheduledByDeadline) {
+            next.status = "inbox";
+            next.scheduledDate = undefined;
+          }
+        }
+      }
+      upsertTask(next);
+      return;
+    }
+    case "delete":
+      removeTask(taskId);
+      return;
+    default:
+      return;
+  }
+}
+
 export async function runKairoAgent(
   initialTurns: AgentTurn[],
   deps: KairoAgentDeps
@@ -121,6 +237,11 @@ export async function runKairoAgent(
 
   const turns: AgentTurn[] = [...initialTurns];
   const outcomes: AgentMutationOutcome[] = [];
+  const currentReadEnv: KairoReadEnv = {
+    ...readEnv,
+    tasks: readEnv.tasks.map(cloneTask),
+    inboxTasks: readEnv.inboxTasks.map(cloneTask),
+  };
   let finalText = "";
 
   for (let round = 0; round < maxRounds; round++) {
@@ -169,7 +290,7 @@ export async function runKairoAgent(
     for (const tc of toolCalls) {
       if (isReadTool(tc.name)) {
         onProgress?.(READ_PROGRESS[tc.name] ?? "Thinking…");
-        const read = runReadTool(tc.name, tc.args, readEnv);
+        const read = runReadTool(tc.name, tc.args, currentReadEnv);
         resultById.set(tc.id, {
           id: tc.id,
           name: tc.name,
@@ -194,7 +315,9 @@ export async function runKairoAgent(
       const { results, beforeTitles } = await applyActions(mutationCalls.map((m) => m.action));
       results.forEach((res, i) => {
         const tc = mutationCalls[i].call;
+        const action = mutationCalls[i].action;
         outcomes.push({ result: res, beforeTitle: beforeTitles[i] ?? null });
+        reconcileTaskSnapshot(currentReadEnv, action, res);
         // Echo a handle for created entities so the model can chain on them.
         let handle: string | undefined;
         if (res.status === "applied") {

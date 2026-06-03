@@ -162,4 +162,41 @@ describe("runKairoAgent", () => {
     expect(labels).toContain("Checking your inbox…");
     expect(labels).toContain("Updating your tasks…");
   });
+
+  it("updates later read tools with tasks created earlier in the same agent loop", async () => {
+    const call = queuedCaller([
+      toolUse([{ id: "a1", name: "add_task", input: { title: "Gym" } }]),
+      toolUse([{ id: "a2", name: "get_inbox" }]),
+      textOnly("Added it to your inbox."),
+    ]);
+    const applyActions = vi.fn(async (actions: KairoAction[]) => ({
+      results: actions.map((a) => applied(a, { taskId: "new-task-id" })),
+      beforeTitles: [null],
+    }));
+
+    await runKairoAgent(
+      [{ role: "user", text: "add gym then show inbox" }],
+      makeDeps({ call, applyActions })
+    );
+
+    const thirdBody = call.mock.calls[2]?.[0] as {
+      messages: Array<{ role: string; content: unknown }>;
+    };
+    const toolMessage = [...thirdBody.messages].reverse().find(
+      (message) => message.role === "user" && Array.isArray(message.content)
+    ) as { content: Array<{ type: string; content?: string }> } | undefined;
+    const inboxResult = toolMessage?.content.find((part) => part.type === "tool_result")?.content;
+
+    expect(inboxResult).toBeDefined();
+    expect(JSON.parse(inboxResult!)).toEqual({
+      tasks: [
+        {
+          handle: "T1",
+          title: "Gym",
+          status: "inbox",
+          type: "open",
+        },
+      ],
+    });
+  });
 });
