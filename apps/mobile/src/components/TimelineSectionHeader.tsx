@@ -11,6 +11,7 @@ import { colors, motion, spacing, typography } from "../theme/tokens";
 
 type Props = {
   label: string;
+  count?: number;
   /** When true, draws an accent underline that reveals on mount with a brief
    *  overshoot — the mobile port of web's todayAccentReveal keyframe. */
   isToday: boolean;
@@ -21,7 +22,7 @@ type Props = {
  * one-shot accent underline that scales from 0→1 with a 1.08 overshoot, then
  * settles. Other dates render a flat label only.
  */
-export function TimelineSectionHeader({ label, isToday }: Props) {
+export function TimelineSectionHeader({ label, count, isToday }: Props) {
   const scale = useSharedValue(0);
   const opacity = useSharedValue(0);
 
@@ -59,7 +60,10 @@ export function TimelineSectionHeader({ label, isToday }: Props) {
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label}>
+        {label}
+        {typeof count === "number" ? ` · ${count}` : ""}
+      </Text>
       {isToday ? <Animated.View style={[styles.underline, underlineStyle]} /> : null}
     </View>
   );

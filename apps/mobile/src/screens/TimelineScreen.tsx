@@ -18,7 +18,7 @@ import { dateLabel } from "../lib/dates";
 import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
 
 type TimelineRow =
-  | { kind: "header"; dateKey: string; label: string; isToday: boolean }
+  | { kind: "header"; dateKey: string; label: string; isToday: boolean; count: number }
   | { kind: "task"; dateKey: string; task: MobileTask };
 
 type TimelineScreenProps = {
@@ -41,6 +41,21 @@ function countTimelineRows(sections: [string, MobileTask[]][]) {
   return count;
 }
 
+function collapseOverdueSections(sections: [string, MobileTask[]][], today: string): [string, MobileTask[]][] {
+  const overdueTasks: MobileTask[] = [];
+  const rest: [string, MobileTask[]][] = [];
+
+  for (const [dateKey, tasks] of sections) {
+    if (dateKey === "overdue" || dateKey < today) {
+      overdueTasks.push(...tasks);
+    } else {
+      rest.push([dateKey, tasks]);
+    }
+  }
+
+  return overdueTasks.length > 0 ? [["overdue", overdueTasks], ...rest] : rest;
+}
+
 function buildTimelineRows(
   sections: [string, MobileTask[]][],
   today: string,
@@ -52,11 +67,13 @@ function buildTimelineRows(
 
   for (const [dateKey, tasks] of sections) {
     if (rows.length >= maxRows) break;
+    const isOverdueSection = dateKey === "overdue";
     rows.push({
       kind: "header",
       dateKey,
-      label: dateLabel(dateKey, today, tomorrow, weekEnd),
+      label: isOverdueSection ? "Overdue" : dateLabel(dateKey, today, tomorrow, weekEnd),
       isToday: dateKey === today,
+      count: tasks.length,
     });
 
     for (const task of tasks) {
@@ -79,7 +96,8 @@ export function TimelineScreen({
   onRefresh,
   renderItem,
 }: TimelineScreenProps) {
-  const totalRows = countTimelineRows(sections);
+  const displaySections = collapseOverdueSections(sections, today);
+  const totalRows = countTimelineRows(displaySections);
   const visibleRowCount = useIncrementalRowCount(totalRows);
 
   // Build only the rows currently released to FlatList. Large timelines still
@@ -87,7 +105,7 @@ export function TimelineScreen({
   // useIncrementalRowCount already clamps to totalRows and floors to the
   // initial budget, so visibleRowCount is the final paint size.
   const rows = buildTimelineRows(
-    sections,
+    displaySections,
     today,
     tomorrow,
     weekEnd,
@@ -124,7 +142,7 @@ export function TimelineScreen({
         if (row.kind === "header") {
           return (
             <View pointerEvents="box-none">
-              <TimelineSectionHeader label={row.label} isToday={row.isToday} />
+              <TimelineSectionHeader label={row.label} count={row.count} isToday={row.isToday} />
             </View>
           );
         }
