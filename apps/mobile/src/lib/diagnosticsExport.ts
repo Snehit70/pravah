@@ -42,7 +42,7 @@ export async function writeDiagnosticsBundle(): Promise<string> {
   return path;
 }
 
-export async function shareDiagnosticsBundle(): Promise<string | null> {
+export async function shareDiagnosticsBundle(): Promise<string> {
   const path = await writeDiagnosticsBundle();
   const canShare = await Sharing.isAvailableAsync();
   if (!canShare) return path;

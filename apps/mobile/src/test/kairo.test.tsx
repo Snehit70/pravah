@@ -147,9 +147,11 @@ vi.mock("@gorhom/bottom-sheet", () => {
       {
         children,
         onChange,
+        footerComponent: FooterComponent,
       }: {
         children?: React.ReactNode;
         onChange?: (index: number) => void;
+        footerComponent?: (props: Record<string, unknown>) => React.ReactNode;
         [key: string]: unknown;
       },
       ref: React.Ref<{ expand: () => void; close: () => void }>
@@ -164,13 +166,20 @@ vi.mock("@gorhom/bottom-sheet", () => {
           onChange?.(-1);
         },
       }));
-      return React.createElement("div", { "data-testid": "bottom-sheet" }, children);
+      return React.createElement(
+        "div",
+        { "data-testid": "bottom-sheet" },
+        children,
+        FooterComponent ? FooterComponent({}) : null
+      );
     }
   );
   return {
     default: BottomSheet,
     BottomSheetBackdrop: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
       React.createElement("div", { "data-testid": "backdrop" }, children),
+    BottomSheetFooter: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
+      React.createElement("div", { "data-testid": "bottom-sheet-footer" }, children),
     BottomSheetTextInput: ({
       value,
       onChangeText,

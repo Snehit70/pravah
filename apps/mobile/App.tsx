@@ -426,9 +426,7 @@ function MobileApp() {
     try {
       const path = await shareDiagnosticsBundle();
       mobileLogger.info("diagnostics_shared", { path });
-      if (path) {
-        showToast({ kind: "info", message: "Diagnostics exported." });
-      }
+      showToast({ kind: "info", message: "Diagnostics exported." });
     } catch (error) {
       mobileLogger.error("diagnostics_share_failed", {
         errorType: classifyError(error),
@@ -1119,7 +1117,6 @@ function MobileApp() {
         isAllTasksReady={isAllTasksReady}
         onActiveChange={setIsKairoActive}
         onOpenSettings={openSettingsModal}
-        onToast={showToast}
       />
 
       <SettingsSheet
