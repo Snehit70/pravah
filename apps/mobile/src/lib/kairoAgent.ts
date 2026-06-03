@@ -33,6 +33,8 @@ import {
   isReadTool,
   runReadTool,
   toolCallToAction,
+  REFLOW_PLAN_TOOL,
+  REFLOW_APPLY_TOOL,
   type HandleRegistry,
   type KairoReadEnv,
 } from "./kairoTools";
@@ -56,6 +58,17 @@ export interface AgentMutationOutcome {
   beforeTitle: string | null;
 }
 
+/** Optional overdue-reflow runtime. When supplied, exposes two tools to the
+ *  model: a read-only plan preview and a deterministic apply. Bound by the
+ *  caller to the real MobileTask corpus + goal links, since the engine needs
+ *  plan-order/position data the thin read env doesn't carry. */
+export interface KairoReflowRuntime {
+  /** Read-only preview payload (per-goal plan + orphans). */
+  plan: () => unknown;
+  /** Expand a reflow request into actions to apply, plus a plan summary. */
+  buildActions: (args: Record<string, unknown>) => { actions: KairoAction[]; plan: unknown };
+}
+
 export interface KairoAgentDeps {
   config: KairoConfig;
   /** System prompt with the thin context already injected. */
@@ -66,6 +79,8 @@ export interface KairoAgentDeps {
   readEnv: KairoReadEnv;
   registry: HandleRegistry;
   applyActions: ApplyAgentActions;
+  /** Overdue-reflow tools. Omitted leaves the model to reschedule by hand. */
+  reflow?: KairoReflowRuntime;
   /** Surface a short status label for the currently running tool. */
   onProgress?: (label: string) => void;
   /** Checked between rounds; true halts the loop without firing pending calls. */
@@ -101,6 +116,46 @@ function jsonResult(payload: unknown): string {
   } catch {
     return "{}";
   }
+}
+
+/** Tool-result payload for a 1:1 mutation tool. Echoes a fresh handle for
+ *  created entities so the model can chain on them in a later round. */
+function singleActionPayload(
+  res: KairoActionResult | undefined,
+  registry: HandleRegistry
+): unknown {
+  if (!res) return { ok: false };
+  if (res.status === "applied") {
+    let handle: string | undefined;
+    if (res.action.kind === "add" && res.taskId) {
+      handle = registry.handleForTask(res.taskId);
+    } else if (res.action.kind === "addGoal" && res.goalId) {
+      handle = registry.handleForGoal(res.goalId);
+    }
+    return { ok: true, status: "applied", ...(handle ? { handle } : {}) };
+  }
+  if (res.status === "skipped") return { ok: false, status: "skipped", detail: res.reason };
+  return { ok: false, status: "failed", detail: res.error };
+}
+
+/** Aggregate tool-result payload for a reflow_overdue call, which expands to a
+ *  whole batch. Folds the pre-apply plan summary together with applied counts. */
+function reflowPayload(results: KairoActionResult[], plan: unknown): unknown {
+  let rescheduled = 0;
+  let deadlinesMoved = 0;
+  let skipped = 0;
+  let failed = 0;
+  for (const res of results) {
+    if (res.status === "applied") {
+      if (res.action.kind === "reschedule") rescheduled += 1;
+      else if (res.action.kind === "updateGoal") deadlinesMoved += 1;
+    } else if (res.status === "skipped") {
+      skipped += 1;
+    } else {
+      failed += 1;
+    }
+  }
+  return { ok: failed === 0, status: "reflowed", rescheduled, deadlinesMoved, skipped, failed, plan };
 }
 
 function cloneTask(task: KairoTaskInput): KairoTaskInput {
@@ -230,6 +285,7 @@ export async function runKairoAgent(
     readEnv,
     registry,
     applyActions,
+    reflow,
     onProgress,
     shouldCancel,
   } = deps;
@@ -284,8 +340,16 @@ export async function runKairoAgent(
     // Resolve every call to a result, preserving 1:1 order/count (Anthropic
     // requires a tool_result for every tool_use). Reads run inline; mutations
     // are collected and batched so the executor's snapshot cache is correct.
+    // Most mutation tools map to one action; reflow_overdue expands to a whole
+    // deterministic batch, so calls are tracked as groups (one tool call → its
+    // action(s)) and the per-call tool result aggregates the group's outcomes.
     const resultById = new Map<string, ToolResultEntry>();
-    const mutationCalls: { call: NormalizedToolCall; action: KairoAction }[] = [];
+    const mutationGroups: {
+      call: NormalizedToolCall;
+      actions: KairoAction[];
+      reflow: boolean;
+      reflowPlan?: unknown;
+    }[] = [];
 
     for (const tc of toolCalls) {
       if (isReadTool(tc.name)) {
@@ -298,6 +362,43 @@ export async function runKairoAgent(
         });
         continue;
       }
+
+      if (tc.name === REFLOW_PLAN_TOOL) {
+        onProgress?.("Planning your reschedule…");
+        const payload = reflow
+          ? reflow.plan()
+          : { error: "Overdue reflow is unavailable right now." };
+        resultById.set(tc.id, { id: tc.id, name: tc.name, content: jsonResult(payload) });
+        continue;
+      }
+
+      if (tc.name === REFLOW_APPLY_TOOL) {
+        if (!reflow) {
+          resultById.set(tc.id, {
+            id: tc.id,
+            name: tc.name,
+            content: jsonResult({ ok: false, error: "Overdue reflow is unavailable right now." }),
+          });
+          continue;
+        }
+        const { actions, plan } = reflow.buildActions(tc.args);
+        if (!actions.length) {
+          resultById.set(tc.id, {
+            id: tc.id,
+            name: tc.name,
+            content: jsonResult({
+              ok: true,
+              status: "noop",
+              detail: "No overdue work needed rescheduling.",
+              plan,
+            }),
+          });
+          continue;
+        }
+        mutationGroups.push({ call: tc, actions, reflow: true, reflowPlan: plan });
+        continue;
+      }
+
       const action = toolCallToAction(tc.name, tc.args);
       if (!action) {
         resultById.set(tc.id, {
@@ -307,34 +408,38 @@ export async function runKairoAgent(
         });
         continue;
       }
-      mutationCalls.push({ call: tc, action });
+      mutationGroups.push({ call: tc, actions: [action], reflow: false });
     }
 
-    if (mutationCalls.length) {
-      onProgress?.("Updating your tasks…");
-      const { results, beforeTitles } = await applyActions(mutationCalls.map((m) => m.action));
-      results.forEach((res, i) => {
-        const tc = mutationCalls[i].call;
-        const action = mutationCalls[i].action;
-        outcomes.push({ result: res, beforeTitle: beforeTitles[i] ?? null });
-        reconcileTaskSnapshot(currentReadEnv, action, res);
-        // Echo a handle for created entities so the model can chain on them.
-        let handle: string | undefined;
-        if (res.status === "applied") {
-          if (res.action.kind === "add" && res.taskId) {
-            handle = registry.handleForTask(res.taskId);
-          } else if (res.action.kind === "addGoal" && res.goalId) {
-            handle = registry.handleForGoal(res.goalId);
-          }
+    if (mutationGroups.length) {
+      onProgress?.(
+        mutationGroups.some((g) => g.reflow) ? "Rescheduling overdue work…" : "Updating your tasks…"
+      );
+      const flatActions = mutationGroups.flatMap((g) => g.actions);
+      const { results, beforeTitles } = await applyActions(flatActions);
+
+      let cursor = 0;
+      for (const group of mutationGroups) {
+        const groupResults: KairoActionResult[] = [];
+        for (let k = 0; k < group.actions.length; k += 1) {
+          const res = results[cursor];
+          const beforeTitle = beforeTitles[cursor] ?? null;
+          cursor += 1;
+          if (!res) continue;
+          outcomes.push({ result: res, beforeTitle });
+          reconcileTaskSnapshot(currentReadEnv, group.actions[k], res);
+          groupResults.push(res);
         }
-        const payload =
-          res.status === "applied"
-            ? { ok: true, status: "applied", ...(handle ? { handle } : {}) }
-            : res.status === "skipped"
-              ? { ok: false, status: "skipped", detail: res.reason }
-              : { ok: false, status: "failed", detail: res.error };
-        resultById.set(tc.id, { id: tc.id, name: tc.name, content: jsonResult(payload) });
-      });
+        resultById.set(group.call.id, {
+          id: group.call.id,
+          name: group.call.name,
+          content: jsonResult(
+            group.reflow
+              ? reflowPayload(groupResults, group.reflowPlan)
+              : singleActionPayload(groupResults[0], registry)
+          ),
+        });
+      }
     }
 
     const results: ToolResultEntry[] = toolCalls.map(

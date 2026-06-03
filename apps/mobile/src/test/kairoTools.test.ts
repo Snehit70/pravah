@@ -54,7 +54,8 @@ describe("buildToolDefs", () => {
   it("exposes every read + mutation tool", () => {
     expect(KAIRO_ALL_TOOLS.map((t) => t.name)).toContain("get_inbox");
     expect(KAIRO_ALL_TOOLS.map((t) => t.name)).toContain("reschedule_task");
-    expect(KAIRO_ALL_TOOLS).toHaveLength(16);
+    expect(KAIRO_ALL_TOOLS.map((t) => t.name)).toContain("reflow_overdue");
+    expect(KAIRO_ALL_TOOLS).toHaveLength(18);
   });
 
   it("wraps schemas in the Anthropic shape", () => {
@@ -71,7 +72,7 @@ describe("buildToolDefs", () => {
   it("nests all declarations under a single Gemini functionDeclarations entry", () => {
     const defs = buildToolDefs("gemini") as Array<{ functionDeclarations: unknown[] }>;
     expect(defs).toHaveLength(1);
-    expect(defs[0].functionDeclarations).toHaveLength(16);
+    expect(defs[0].functionDeclarations).toHaveLength(18);
   });
 });
 

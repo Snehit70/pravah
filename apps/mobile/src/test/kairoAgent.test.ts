@@ -163,6 +163,80 @@ describe("runKairoAgent", () => {
     expect(labels).toContain("Updating your tasks…");
   });
 
+  it("serves the reflow preview as a read and applies a reflow batch atomically", async () => {
+    const call = queuedCaller([
+      toolUse([{ id: "p1", name: "plan_overdue_reflow" }]),
+      toolUse([{ id: "r1", name: "reflow_overdue", input: { extendDeadlines: true } }]),
+      textOnly("Re-spread your overdue work."),
+    ]);
+    // The runtime expands one reflow_overdue call into a deterministic batch.
+    const reflowActions: KairoAction[] = [
+      { kind: "reschedule", handle: "T1", scheduledDate: "2026-06-03" },
+      { kind: "reschedule", handle: "T2", scheduledDate: "2026-06-04" },
+      { kind: "updateGoal", handle: "G1", deadline: "2026-06-04" },
+    ];
+    const reflow = {
+      plan: vi.fn(() => ({ totalOverdue: 2, goals: [{ goal: "Ship" }], orphans: [] })),
+      buildActions: vi.fn(() => ({ actions: reflowActions, plan: { totalRescheduled: 2 } })),
+    };
+    const applyActions = vi.fn(async (actions: KairoAction[]) => ({
+      results: actions.map((a) => applied(a)),
+      beforeTitles: actions.map(() => null),
+    }));
+
+    const result = await runKairoAgent(
+      [{ role: "user", text: "fix my overdue" }],
+      makeDeps({ call, applyActions, reflow })
+    );
+
+    expect(reflow.plan).toHaveBeenCalledTimes(1);
+    expect(reflow.buildActions).toHaveBeenCalledWith({ extendDeadlines: true });
+    // The whole batch goes through one applyActions call (atomic snapshot cache).
+    expect(applyActions).toHaveBeenCalledTimes(1);
+    expect(applyActions.mock.calls[0][0]).toHaveLength(3);
+    // Every expanded action surfaces as its own outcome/chip.
+    expect(result.outcomes).toHaveLength(3);
+    expect(result.text).toBe("Re-spread your overdue work.");
+  });
+
+  it("reports a noop when reflow_overdue produces no changes, without applying", async () => {
+    const call = queuedCaller([
+      toolUse([{ id: "r1", name: "reflow_overdue" }]),
+      textOnly("Nothing overdue to move."),
+    ]);
+    const reflow = {
+      plan: vi.fn(),
+      buildActions: vi.fn(() => ({ actions: [] as KairoAction[], plan: { totalRescheduled: 0 } })),
+    };
+    const applyActions = vi.fn(async () => ({ results: [], beforeTitles: [] }));
+
+    const result = await runKairoAgent(
+      [{ role: "user", text: "fix overdue" }],
+      makeDeps({ call, applyActions, reflow })
+    );
+
+    expect(applyActions).not.toHaveBeenCalled();
+    expect(result.outcomes).toHaveLength(0);
+    expect(result.text).toBe("Nothing overdue to move.");
+  });
+
+  it("feeds back an error when a reflow tool is called but no runtime is wired", async () => {
+    const call = queuedCaller([
+      toolUse([{ id: "r1", name: "reflow_overdue" }]),
+      textOnly("I can't reschedule right now."),
+    ]);
+    const applyActions = vi.fn(async () => ({ results: [], beforeTitles: [] }));
+
+    const result = await runKairoAgent(
+      [{ role: "user", text: "fix overdue" }],
+      makeDeps({ call, applyActions }) // no reflow dep
+    );
+
+    expect(applyActions).not.toHaveBeenCalled();
+    expect(result.outcomes).toHaveLength(0);
+    expect(result.text).toBe("I can't reschedule right now.");
+  });
+
   it("updates later read tools with tasks created earlier in the same agent loop", async () => {
     const call = queuedCaller([
       toolUse([{ id: "a1", name: "add_task", input: { title: "Gym" } }]),
