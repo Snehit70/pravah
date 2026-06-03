@@ -1,13 +1,8 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import { memo, useCallback, type JSX } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
+import Svg, { Circle, Path, Polyline, Rect } from "react-native-svg";
 import { haptic } from "../lib/haptic";
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
-import { colors, fonts, spacing } from "../theme/tokens";
+import { colors, spacing } from "../theme/tokens";
 
 export type TabKey = "inbox" | "timeline" | "goals" | "insights";
 
@@ -19,14 +14,83 @@ type BottomTabBarProps = {
   bottomInset?: number;
 };
 
-const tabs: { key: TabKey; label: string }[] = [
-  { key: "inbox", label: "Inbox" },
-  { key: "timeline", label: "Timeline" },
-  { key: "goals", label: "Goals" },
-  { key: "insights", label: "Progress" },
-];
+type IconProps = { color: string; size?: number };
 
-type TabLayout = { x: number; width: number };
+// ── Icons ──────────────────────────────────────────────────────────────
+// Ported 1:1 from Lucide (stroke-width 2, round caps/joins). `currentColor`
+// maps to the `color` prop so active/inactive tint is a single value.
+
+const STROKE = 2;
+
+function svgProps(color: string, size: number) {
+  return {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none" as const,
+    stroke: color,
+    strokeWidth: STROKE,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+}
+
+function InboxIcon({ color, size = 24 }: IconProps) {
+  return (
+    <Svg {...svgProps(color, size)}>
+      <Polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+      <Path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+    </Svg>
+  );
+}
+
+function CalendarIcon({ color, size = 24 }: IconProps) {
+  return (
+    <Svg {...svgProps(color, size)}>
+      <Path d="M8 2v4" />
+      <Path d="M16 2v4" />
+      <Rect width={18} height={18} x={3} y={4} rx={2} />
+      <Path d="M3 10h18" />
+    </Svg>
+  );
+}
+
+function PlusIcon({ color, size = 24 }: IconProps) {
+  return (
+    <Svg {...svgProps(color, size)}>
+      <Path d="M5 12h14" />
+      <Path d="M12 5v14" />
+    </Svg>
+  );
+}
+
+function TargetIcon({ color, size = 24 }: IconProps) {
+  return (
+    <Svg {...svgProps(color, size)}>
+      <Circle cx={12} cy={12} r={10} />
+      <Circle cx={12} cy={12} r={6} />
+      <Circle cx={12} cy={12} r={2} />
+    </Svg>
+  );
+}
+
+function TrendingUpIcon({ color, size = 24 }: IconProps) {
+  return (
+    <Svg {...svgProps(color, size)}>
+      <Path d="M16 7h6v6" />
+      <Path d="m22 7-8.5 8.5-5-5L2 17" />
+    </Svg>
+  );
+}
+
+// ── Tabs ───────────────────────────────────────────────────────────────
+
+const NAV_TABS: { key: TabKey; label: string; Icon: (p: IconProps) => JSX.Element }[] = [
+  { key: "inbox", label: "Inbox", Icon: InboxIcon },
+  { key: "timeline", label: "Timeline", Icon: CalendarIcon },
+  { key: "goals", label: "Goals", Icon: TargetIcon },
+  { key: "insights", label: "Progress", Icon: TrendingUpIcon },
+];
 
 function BottomTabBarInner({
   active,
@@ -35,49 +99,6 @@ function BottomTabBarInner({
   canCapture = true,
   bottomInset = spacing.md,
 }: BottomTabBarProps) {
-  // Per-tab layout populated by onLayout. The underline can only animate to a
-  // tab once that tab has reported its position; in practice this happens on
-  // the first frame so the underline is in the right place on mount.
-  const [layouts, setLayouts] = useState<Partial<Record<TabKey, TabLayout>>>({});
-  const indicatorX = useSharedValue(0);
-  const indicatorW = useSharedValue(0);
-  // Mark whether the indicator has ever been positioned so we skip the
-  // animation on the very first paint (no slide-in from x=0).
-  const hasPositioned = useRef(false);
-
-  useEffect(() => {
-    const layout = layouts[active];
-    if (!layout) return;
-    if (!hasPositioned.current) {
-      indicatorX.value = layout.x;
-      indicatorW.value = layout.width;
-      hasPositioned.current = true;
-      return;
-    }
-    indicatorX.value = withTiming(layout.x, {
-      duration: 220,
-      easing: Easing.bezier(0.22, 1, 0.36, 1),
-    });
-    indicatorW.value = withTiming(layout.width, {
-      duration: 220,
-      easing: Easing.bezier(0.22, 1, 0.36, 1),
-    });
-  }, [active, layouts, indicatorX, indicatorW]);
-
-  const indicatorStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: indicatorX.value }],
-    width: indicatorW.value,
-  }));
-
-  const handleLayout = useCallback((key: TabKey, e: LayoutChangeEvent) => {
-    const { x, width } = e.nativeEvent.layout;
-    setLayouts((prev) => {
-      const existing = prev[key];
-      if (existing && existing.x === x && existing.width === width) return prev;
-      return { ...prev, [key]: { x, width } };
-    });
-  }, []);
-
   const handlePress = useCallback(
     (tab: TabKey) => {
       if (tab !== active) {
@@ -88,25 +109,32 @@ function BottomTabBarInner({
     [active, onChange]
   );
 
+  const renderTab = (tab: (typeof NAV_TABS)[number]) => {
+    const selected = active === tab.key;
+    const { Icon } = tab;
+    return (
+      <Pressable
+        key={tab.key}
+        onPress={() => handlePress(tab.key)}
+        style={({ pressed }) => [styles.tabItem, pressed && styles.pressed]}
+        hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+        accessibilityRole="tab"
+        accessibilityState={{ selected }}
+        accessibilityLabel={tab.label}
+      >
+        <Icon color={selected ? colors.textPrimary : colors.textMuted} size={24} />
+      </Pressable>
+    );
+  };
+
   return (
     <View style={[styles.container, { paddingBottom: bottomInset }]}>
       <View style={styles.bar} accessibilityRole="tablist">
-        {tabs.map((tab) => (
-          <Pressable
-            key={tab.key}
-            onPress={() => handlePress(tab.key)}
-            onLayout={(e) => handleLayout(tab.key, e)}
-            style={({ pressed }) => [styles.tabItem, pressed && styles.tabItemPressed]}
-            hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: active === tab.key }}
-            accessibilityLabel={tab.label}
-          >
-            <Text style={[styles.tabLabel, active === tab.key && styles.tabLabelActive]}>
-              {tab.label}
-            </Text>
-          </Pressable>
-        ))}
+        {renderTab(NAV_TABS[0])}
+        {renderTab(NAV_TABS[1])}
+
+        {/* Center capture — the one primary action. Accent tint + center slot
+            mark it as a verb, not a destination. */}
         <Pressable
           onPress={() => {
             haptic.medium();
@@ -114,20 +142,19 @@ function BottomTabBarInner({
           }}
           disabled={!canCapture}
           style={({ pressed }) => [
-            styles.captureButton,
-            !canCapture && styles.captureButtonDisabled,
-            pressed && styles.captureButtonPressed,
+            styles.captureItem,
+            !canCapture && styles.captureDisabled,
+            pressed && styles.pressed,
           ]}
           hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
           accessibilityRole="button"
           accessibilityLabel="Capture a new task"
         >
-          <Text style={styles.capturePlus}>+</Text>
-          <Text style={styles.captureLabel}>Capture</Text>
+          <PlusIcon color={colors.accent} size={28} />
         </Pressable>
-        {/* Animated copper underline. Sits absolutely positioned at the
-            bottom of the bar and slides between tabs via Reanimated. */}
-        <Animated.View style={[styles.indicator, indicatorStyle]} />
+
+        {renderTab(NAV_TABS[2])}
+        {renderTab(NAV_TABS[3])}
       </View>
     </View>
   );
@@ -136,7 +163,7 @@ function BottomTabBarInner({
 export const BottomTabBar = memo(BottomTabBarInner);
 
 const styles = StyleSheet.create({
-  // Container draws a single hairline divider on top \u2014 no enclosing pill.
+  // Container draws a single hairline divider on top — no enclosing pill.
   container: {
     position: "absolute",
     left: 0,
@@ -150,12 +177,9 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.borderSubtle,
   },
-  // The bar uses position: relative so the absolute indicator anchors to it.
   bar: {
     flexDirection: "row",
-    position: "relative",
     alignItems: "center",
-    gap: spacing.xs,
   },
   tabItem: {
     flex: 1,
@@ -164,55 +188,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: spacing.sm,
   },
-  tabItemPressed: {
-    opacity: 0.6,
-  },
-  tabLabel: {
-    color: colors.textMuted,
-    fontFamily: fonts.sansSemibold,
-    fontSize: 13,
-    letterSpacing: 0.4,
-  },
-  tabLabelActive: {
-    color: colors.textPrimary,
-  },
-  captureButton: {
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
-    flexDirection: "row",
+  captureItem: {
+    flex: 1,
+    minHeight: 48,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xs,
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: colors.borderSubtle,
+    paddingVertical: spacing.sm,
   },
-  captureButtonPressed: {
-    opacity: 0.7,
-  },
-  captureButtonDisabled: {
+  captureDisabled: {
     opacity: 0.45,
   },
-  capturePlus: {
-    color: colors.textPrimary,
-    fontFamily: fonts.sansBold,
-    fontSize: 16,
-    lineHeight: 18,
-  },
-  captureLabel: {
-    color: colors.textPrimary,
-    fontFamily: fonts.sansSemibold,
-    fontSize: 12,
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-  },
-  // 2px copper underline. Anchored to the bottom of the bar and animated
-  // between tabs by translateX + width. Width is set dynamically via the
-  // animated style; height stays at 2.
-  indicator: {
-    position: "absolute",
-    left: 0,
-    bottom: 0,
-    height: 2,
-    backgroundColor: colors.accent,
+  pressed: {
+    opacity: 0.6,
   },
 });
