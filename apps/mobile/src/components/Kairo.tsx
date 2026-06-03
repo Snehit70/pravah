@@ -1350,7 +1350,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingHorizontal: spacing.sm,
     paddingVertical: 7,
-    borderRadius: radii.full,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.accent,
     backgroundColor: "rgba(167, 139, 250, 0.12)",
@@ -1368,7 +1368,7 @@ const styles = StyleSheet.create({
   headerNewButton: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 7,
-    borderRadius: radii.full,
+    borderRadius: radii.lg,
     backgroundColor: colors.accent,
   },
   headerNewText: {
