@@ -344,6 +344,7 @@ describe("Kairo", () => {
         ref={ref}
         tasks={sampleTasks}
         inboxTasks={[sampleTasks[0]]}
+        reflowTasks={[]}
         isAllTasksReady={true}
       />
     );
@@ -361,6 +362,7 @@ describe("Kairo", () => {
         ref={ref}
         tasks={sampleTasks}
         inboxTasks={[sampleTasks[0]]}
+        reflowTasks={[]}
         isAllTasksReady={true}
         onActiveChange={onActiveChange}
       />
@@ -389,6 +391,7 @@ describe("Kairo", () => {
         ref={ref}
         tasks={[]}
         inboxTasks={[]}
+        reflowTasks={[]}
         isAllTasksReady={false}
       />
     );
@@ -428,6 +431,7 @@ describe("Kairo", () => {
         ref={ref}
         tasks={[]}
         inboxTasks={[]}
+        reflowTasks={[]}
         isAllTasksReady={false}
       />
     );
@@ -451,6 +455,7 @@ describe("Kairo", () => {
         ref={ref}
         tasks={sampleTasks}
         inboxTasks={[sampleTasks[0]]}
+        reflowTasks={[]}
         isAllTasksReady={true}
       />
     );
@@ -477,6 +482,7 @@ describe("Kairo", () => {
         ref={ref}
         tasks={sampleTasks}
         inboxTasks={[sampleTasks[0]]}
+        reflowTasks={[]}
         isAllTasksReady={true}
       />
     );
@@ -510,6 +516,7 @@ describe("Kairo", () => {
         ref={ref}
         tasks={sampleTasks}
         inboxTasks={[sampleTasks[0]]}
+        reflowTasks={[]}
         isAllTasksReady={true}
       />
     );
@@ -569,6 +576,7 @@ describe("Kairo", () => {
         ref={ref}
         tasks={sampleTasks}
         inboxTasks={[sampleTasks[0]]}
+        reflowTasks={[]}
         isAllTasksReady={true}
       />
     );
@@ -618,6 +626,7 @@ describe("Kairo", () => {
         ref={ref}
         tasks={sampleTasks}
         inboxTasks={[sampleTasks[0]]}
+        reflowTasks={[]}
         isAllTasksReady={true}
       />
     );
@@ -651,6 +660,7 @@ describe("Kairo", () => {
         ref={ref}
         tasks={sampleTasks}
         inboxTasks={[sampleTasks[0]]}
+        reflowTasks={[]}
         isAllTasksReady={true}
       />
     );

@@ -58,11 +58,13 @@ import {
   buildToolDefs,
   createHandleRegistry,
 } from "../lib/kairoTools";
+import { buildReflowActions, planOverdueReflow } from "../lib/kairoReflowTool";
 import {
   runKairoAgent,
   type ApplyAgentActions,
   type KairoAgentCaller,
 } from "../lib/kairoAgent";
+import type { MobileTask } from "./TaskCard";
 import {
   applyKairoActions,
   type KairoActionResult,
@@ -87,6 +89,9 @@ type KairoProps = {
   tasks: KairoTaskInput[];
   /** Inbox tasks specifically (sometimes a separate query in the parent). */
   inboxTasks: KairoTaskInput[];
+  /** The full MobileTask corpus (with `position`) — powers the overdue-reflow
+   *  engine, which needs plan order the thin context doesn't carry. */
+  reflowTasks: MobileTask[];
   /** True when the full-corpus query has resolved. Prevents sending messages
    *  with an empty or partial workspace snapshot on cold start. */
   isAllTasksReady: boolean;
@@ -199,7 +204,7 @@ type KairoChatRow =
  * expo-secure-store via `lib/kairoConfig.ts`, never sent to our servers.
  */
 export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
-  { tasks, inboxTasks, isAllTasksReady, onActiveChange, onOpenSettings },
+  { tasks, inboxTasks, reflowTasks, isAllTasksReady, onActiveChange, onOpenSettings },
   ref
 ) {
   const sheetRef = useRef<BottomSheet>(null);
@@ -751,6 +756,20 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           return res.json();
         };
 
+      // Overdue-reflow runtime, bound to the real corpus (with plan order) +
+      // goal links. The agent drives the deterministic engine through it.
+      const reflowEnv = {
+        tasks: reflowTasks,
+        goals,
+        goalLinks,
+        today: todayStr,
+        registry,
+      };
+      const reflow = {
+        plan: () => planOverdueReflow(reflowEnv),
+        buildActions: (args: Record<string, unknown>) => buildReflowActions(reflowEnv, args),
+      };
+
       try {
         const result = await runKairoAgent([...history, { role: "user", text: trimmed }], {
           config: nextConfig,
@@ -760,6 +779,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           readEnv: { tasks, inboxTasks, registry, today: todayStr },
           registry,
           applyActions,
+          reflow,
           onProgress: (label) => setStatusLabel(label),
           shouldCancel: () => cancelledRef.current,
         });
@@ -866,6 +886,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       inboxTasks,
       isAllTasksReady,
       msgs,
+      reflowTasks,
       setMsgs,
       tasks,
       thinking,
