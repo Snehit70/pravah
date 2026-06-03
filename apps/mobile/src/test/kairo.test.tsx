@@ -349,7 +349,7 @@ describe("Kairo", () => {
     );
 
     // Hook hydrates asynchronously; wait for the seeded greeting to land.
-    await screen.findByText(/Hey, I'm Kairo/i);
+    await screen.findByText(/Hi, I'm Kairo/i);
   });
 
   it("calls onActiveChange when sheet opens and closes", async () => {
@@ -393,7 +393,7 @@ describe("Kairo", () => {
       />
     );
 
-    await screen.findByText(/Hey, I'm Kairo/i);
+    await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
     const sendBtn = screen.getByRole("button", { name: /send message/i });
@@ -432,7 +432,7 @@ describe("Kairo", () => {
       />
     );
 
-    await screen.findByText(/Hey, I'm Kairo/i);
+    await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
     const sendBtn = screen.getByRole("button", { name: /send message/i });
@@ -481,7 +481,7 @@ describe("Kairo", () => {
       />
     );
 
-    await screen.findByText(/Hey, I'm Kairo/i);
+    await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
     const sendBtn = screen.getByRole("button", { name: /send message/i });
@@ -514,7 +514,7 @@ describe("Kairo", () => {
       />
     );
 
-    await screen.findByText(/Hey, I'm Kairo/i);
+    await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
     const sendBtn = screen.getByRole("button", { name: /send message/i });
@@ -573,7 +573,7 @@ describe("Kairo", () => {
       />
     );
 
-    await screen.findByText(/Hey, I'm Kairo/i);
+    await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
     const sendBtn = screen.getByRole("button", { name: /send message/i });
@@ -622,7 +622,7 @@ describe("Kairo", () => {
       />
     );
 
-    await screen.findByText(/Hey, I'm Kairo/i);
+    await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
     const sendBtn = screen.getByRole("button", { name: /send message/i });
@@ -655,7 +655,7 @@ describe("Kairo", () => {
       />
     );
 
-    await screen.findByText(/Hey, I'm Kairo/i);
+    await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
     const sendBtn = screen.getByRole("button", { name: /send message/i });
