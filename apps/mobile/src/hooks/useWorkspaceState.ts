@@ -6,9 +6,13 @@ import { classifyError, mobileLogger } from "../lib/logger";
 import type { MobileTask } from "../components/TaskCard";
 import type { TabKey } from "../components/BottomTabBar";
 
-type ToastState = {
+export type ToastAction = { label: string; run: () => void };
+
+export type ToastState = {
   kind: "error" | "info";
   message: string;
+  /** Optional inline action, e.g. "Undo" after a swipe. */
+  action?: ToastAction;
 };
 
 export function useWorkspaceState() {
@@ -34,10 +38,12 @@ export function useWorkspaceState() {
   const claimLegacyDataMutation = useMutation(api.users.claimLegacyData);
 
   const showToast = useCallback((next: ToastState) => setToast(next), []);
+  const dismissToast = useCallback(() => setToast(null), []);
 
   useEffect(() => {
     if (!toast) return;
-    const timeout = setTimeout(() => setToast(null), 3200);
+    // Undo toasts linger a little longer so the action stays reachable.
+    const timeout = setTimeout(() => setToast(null), toast.action ? 5000 : 3200);
     return () => clearTimeout(timeout);
   }, [toast]);
 
@@ -111,6 +117,7 @@ export function useWorkspaceState() {
     setPendingMutations,
     toast,
     showToast,
+    dismissToast,
     optimisticTasks: effectiveOptimisticTasks,
     setOptimisticTasks,
     isAddSheetOpen,
