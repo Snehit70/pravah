@@ -21,6 +21,25 @@ vi.mock("react-native", () => {
     const { style: _, ...safe } = rest;
     return React.createElement("span", safe, children);
   };
+  const Pressable = ({ children, ...rest }: AnyProps) => {
+    const { onPress, style: _, hitSlop: __, accessibilityLabel, accessibilityRole: ___, ...safe } =
+      rest as {
+        onPress?: () => void;
+        hitSlop?: unknown;
+        accessibilityLabel?: string;
+        accessibilityRole?: string;
+      } & AnyProps;
+    const resolved =
+      typeof children === "function"
+        ? (children as (s: { pressed: boolean }) => React.ReactNode)({ pressed: false })
+        : children;
+    return React.createElement(
+      "button",
+      { ...safe, onClick: onPress, type: "button", "aria-label": accessibilityLabel },
+      resolved
+    );
+  };
+  const StyleSheet = { create: (s: Record<string, unknown>) => s, hairlineWidth: 1 };
   const RefreshControl = () => React.createElement("div", { "data-testid": "refresh-control" });
   const FlatList = ({
     data,
@@ -28,20 +47,28 @@ vi.mock("react-native", () => {
     keyExtractor,
     ListEmptyComponent,
     ListFooterComponent,
+    ListHeaderComponent,
   }: {
     data: unknown[];
     renderItem: (params: { item: unknown; index: number }) => React.ReactNode;
     keyExtractor: (item: unknown) => string;
     ListEmptyComponent?: React.ReactNode;
     ListFooterComponent?: React.ReactNode;
+    ListHeaderComponent?: React.ReactNode;
     [key: string]: unknown;
   }) => {
     if (data.length === 0 && ListEmptyComponent) {
-      return React.createElement("div", { "data-testid": "flat-list" }, ListEmptyComponent);
+      return React.createElement(
+        "div",
+        { "data-testid": "flat-list" },
+        ListHeaderComponent,
+        ListEmptyComponent
+      );
     }
     return React.createElement(
       "div",
       { "data-testid": "flat-list" },
+      ListHeaderComponent,
       data.map((item, index) =>
         React.createElement(
           "div",
@@ -55,6 +82,8 @@ vi.mock("react-native", () => {
   return {
     View,
     Text,
+    Pressable,
+    StyleSheet,
     RefreshControl,
     FlatList,
   };
@@ -285,6 +314,50 @@ describe("TimelineScreen", () => {
 
     expect(screen.queryByText("An open day.")).toBeNull();
     expect(screen.getByTestId("skeleton-timeline")).toBeTruthy();
+  });
+
+  it("collapses overdue into a tappable header and keeps it out of the list", () => {
+    const onOpenOverdue = vi.fn();
+    const overdueSections: [string, MobileTask[]][] = [
+      [
+        "2026-05-01",
+        [
+          {
+            _id: "od1" as Id<"tasks">,
+            title: "Late task",
+            status: "scheduled",
+            scheduledDate: "2026-05-01",
+            position: 0,
+            updatedAt: 1,
+          },
+        ],
+      ],
+      ...sampleSections,
+    ];
+
+    render(
+      <TimelineScreen
+        sections={overdueSections}
+        today="2026-05-04"
+        tomorrow="2026-05-05"
+        weekEnd="2026-05-10"
+        isLoading={false}
+        isRefreshing={false}
+        tabBarHeight={60}
+        onRefresh={mockOnRefresh}
+        renderItem={mockRenderItem}
+        overdueCount={1}
+        onOpenOverdue={onOpenOverdue}
+      />
+    );
+
+    // The overdue task is not rendered inline...
+    expect(screen.queryByTestId("task-od1")).toBeNull();
+    // ...but the collapsed header is, and it opens the triage sheet on press.
+    const header = screen.getByText("Overdue · 1");
+    expect(header).toBeTruthy();
+    header.click();
+    expect(onOpenOverdue).toHaveBeenCalledTimes(1);
   });
 
   it("releases large timelines in small batches after the first paint", () => {

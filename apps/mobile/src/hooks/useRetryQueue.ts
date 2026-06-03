@@ -42,6 +42,10 @@ export type RetryPayload =
   | {
       type: "reopenTask";
       taskId: Id<"tasks">;
+    }
+  | {
+      type: "rescheduleTasks";
+      updates: { taskId: Id<"tasks">; scheduledDate: string }[];
     };
 
 export type RetryQueueItem = {

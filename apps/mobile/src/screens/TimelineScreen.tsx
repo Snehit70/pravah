@@ -1,14 +1,16 @@
 /**
  * TimelineScreen
  *
- * Renders the timeline tab: date-grouped sections. Drag-to-reorder is
- * currently disabled — see InboxScreen for the same constraint
- * (RNDFL@4 / Reanimated@4 incompatibility).
+ * Renders the timeline tab: date-grouped sections for today and beyond.
+ * Overdue tasks are NOT listed inline — they collapse into a single muted,
+ * tappable "Overdue · N" header that opens the triage sheet, so the timeline
+ * opens on what's actionable instead of a wall of backlog. Drag-to-reorder is
+ * currently disabled (RNDFL@4 / Reanimated@4 incompatibility).
  */
 
 import type { JSX } from "react";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { FlatList, RefreshControl, Text, View } from "react-native";
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import type { RenderItemParams } from "react-native-draggable-flatlist";
 import { colors, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
@@ -31,6 +33,11 @@ type TimelineScreenProps = {
   tabBarHeight: number;
   onRefresh: () => Promise<void>;
   renderItem: (dateKey: string, params: RenderItemParams<MobileTask>) => JSX.Element;
+  /** Total overdue count (from the workspace buckets). Falls back to a local
+   *  count of the dropped sections when not supplied. */
+  overdueCount?: number;
+  /** Opens the overdue triage sheet. Omitted while actions are unavailable. */
+  onOpenOverdue?: () => void;
 };
 
 const noopDrag = () => {};
@@ -41,19 +48,22 @@ function countTimelineRows(sections: [string, MobileTask[]][]) {
   return count;
 }
 
-function collapseOverdueSections(sections: [string, MobileTask[]][], today: string): [string, MobileTask[]][] {
-  const overdueTasks: MobileTask[] = [];
-  const rest: [string, MobileTask[]][] = [];
-
+/** Drop overdue out of the listed sections; return the rest plus how many
+ *  overdue tasks were removed. Overdue lives in the collapsed header instead. */
+function splitOverdue(
+  sections: [string, MobileTask[]][],
+  today: string
+): { future: [string, MobileTask[]][]; overdueCount: number } {
+  const future: [string, MobileTask[]][] = [];
+  let overdueCount = 0;
   for (const [dateKey, tasks] of sections) {
     if (dateKey === "overdue" || dateKey < today) {
-      overdueTasks.push(...tasks);
+      overdueCount += tasks.length;
     } else {
-      rest.push([dateKey, tasks]);
+      future.push([dateKey, tasks]);
     }
   }
-
-  return overdueTasks.length > 0 ? [["overdue", overdueTasks], ...rest] : rest;
+  return { future, overdueCount };
 }
 
 function buildTimelineRows(
@@ -67,11 +77,10 @@ function buildTimelineRows(
 
   for (const [dateKey, tasks] of sections) {
     if (rows.length >= maxRows) break;
-    const isOverdueSection = dateKey === "overdue";
     rows.push({
       kind: "header",
       dateKey,
-      label: isOverdueSection ? "Overdue" : dateLabel(dateKey, today, tomorrow, weekEnd),
+      label: dateLabel(dateKey, today, tomorrow, weekEnd),
       isToday: dateKey === today,
       count: tasks.length,
     });
@@ -95,23 +104,32 @@ export function TimelineScreen({
   tabBarHeight,
   onRefresh,
   renderItem,
+  overdueCount,
+  onOpenOverdue,
 }: TimelineScreenProps) {
-  const displaySections = collapseOverdueSections(sections, today);
-  const totalRows = countTimelineRows(displaySections);
+  const { future, overdueCount: localOverdue } = splitOverdue(sections, today);
+  const effectiveOverdue = overdueCount ?? localOverdue;
+
+  const totalRows = countTimelineRows(future);
   const visibleRowCount = useIncrementalRowCount(totalRows);
 
   // Build only the rows currently released to FlatList. Large timelines still
   // hydrate quickly, but the first paint avoids handing every row to React.
-  // useIncrementalRowCount already clamps to totalRows and floors to the
-  // initial budget, so visibleRowCount is the final paint size.
-  const rows = buildTimelineRows(
-    displaySections,
-    today,
-    tomorrow,
-    weekEnd,
-    visibleRowCount
-  );
+  const rows = buildTimelineRows(future, today, tomorrow, weekEnd, visibleRowCount);
   const hasPendingRows = rows.length < totalRows;
+
+  const overdueHeader =
+    effectiveOverdue > 0 && onOpenOverdue ? (
+      <Pressable
+        onPress={onOpenOverdue}
+        style={({ pressed }) => [styles.overdueBar, pressed && styles.overdueBarPressed]}
+        accessibilityRole="button"
+        accessibilityLabel={`${effectiveOverdue} overdue. Open triage.`}
+      >
+        <Text style={styles.overdueLabel}>Overdue · {effectiveOverdue}</Text>
+        <Text style={styles.overdueChevron}>›</Text>
+      </Pressable>
+    ) : null;
 
   const emptyBlock = (
     <Animated.View entering={FadeIn.duration(400)} style={styles.emptyWrap}>
@@ -163,6 +181,7 @@ export function TimelineScreen({
           progressBackgroundColor={colors.bgCard}
         />
       }
+      ListHeaderComponent={overdueHeader}
       ListFooterComponent={
         hasPendingRows ? <Text style={styles.loadingMore}>Preparing more tasks...</Text> : null
       }
@@ -171,27 +190,42 @@ export function TimelineScreen({
   );
 }
 
-const styles = {
+const styles = StyleSheet.create({
+  // Muted, tappable doorway to the triage sheet — count + chevron only, no
+  // alarm color (per the overdue-handling design: tone fixed by behavior).
+  overdueBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
+  },
+  overdueBarPressed: { opacity: 0.6 },
+  overdueLabel: { color: colors.textMuted, ...typography.micro },
+  overdueChevron: { color: colors.textMuted, ...typography.micro },
   emptyWrap: {
     paddingTop: spacing.section * 2,
     paddingHorizontal: spacing.xxl,
     gap: spacing.sm,
-    alignItems: "center" as const,
+    alignItems: "center",
   },
   emptyTitle: {
     color: colors.textPrimary,
     ...typography.headline,
-    textAlign: "center" as const,
+    textAlign: "center",
   },
   emptyText: {
     color: colors.textSecondary,
     ...typography.bodyMd,
-    textAlign: "center" as const,
+    textAlign: "center",
   },
   loadingMore: {
     color: colors.textSecondary,
     ...typography.micro,
-    textAlign: "center" as const,
+    textAlign: "center",
     paddingTop: spacing.md,
   },
-};
+});
