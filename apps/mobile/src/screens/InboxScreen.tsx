@@ -14,13 +14,18 @@
  */
 
 import { useMemo, useState, type JSX } from "react";
-import Animated, { FadeIn } from "react-native-reanimated";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
 import type { RenderItemParams } from "react-native-draggable-flatlist";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
+import { useGoalLinks, useGoals } from "../hooks/useGoals";
+
+// Goal filter sentinels. Real goal ids never collide with these.
+const GOAL_ALL = "all";
+const GOAL_NONE = "none";
 
 type FilterValue = "all" | "p1" | "p2" | "p3" | "none";
 
@@ -94,6 +99,28 @@ export function InboxScreen({
 }: InboxScreenProps) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterValue>("all");
+  // "all" | "none" (unlinked) | a goal id.
+  const [goalFilter, setGoalFilter] = useState<string>(GOAL_ALL);
+  const [showGoalPicker, setShowGoalPicker] = useState(false);
+
+  const { goals } = useGoals();
+  const goalLinks = useGoalLinks();
+
+  const selectedGoal = useMemo(
+    () => goals.find((g) => g.id === goalFilter),
+    [goals, goalFilter]
+  );
+  // A previously-selected goal can be deleted out from under us; fall back to
+  // "all" so we never filter against a goal that no longer exists.
+  const activeGoalFilter =
+    goalFilter === GOAL_ALL || goalFilter === GOAL_NONE || selectedGoal ? goalFilter : GOAL_ALL;
+
+  const resetFilters = () => {
+    setQuery("");
+    setFilter("all");
+    setGoalFilter(GOAL_ALL);
+    setShowGoalPicker(false);
+  };
 
   const filteredTasks = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -102,24 +129,34 @@ export function InboxScreen({
         const bucket = task.priority ?? "none";
         if (bucket !== filter) return false;
       }
+      if (activeGoalFilter !== GOAL_ALL) {
+        const linkedGoalId = goalLinks[String(task._id)];
+        if (activeGoalFilter === GOAL_NONE ? Boolean(linkedGoalId) : linkedGoalId !== activeGoalFilter) {
+          return false;
+        }
+      }
       if (!q) return true;
       const inTitle = task.title.toLowerCase().includes(q);
       const inDescription = task.description?.toLowerCase().includes(q) ?? false;
       return inTitle || inDescription;
     });
-  }, [tasks, query, filter]);
+  }, [tasks, query, filter, activeGoalFilter, goalLinks]);
 
-  const isFiltering = query.trim() !== "" || filter !== "all";
+  const goalFilterLabel =
+    activeGoalFilter === GOAL_ALL
+      ? "All goals"
+      : activeGoalFilter === GOAL_NONE
+        ? "No goal"
+        : selectedGoal?.text ?? "All goals";
+
+  const isFiltering = query.trim() !== "" || filter !== "all" || activeGoalFilter !== GOAL_ALL;
 
   const emptyBlock = isFiltering ? (
     <Animated.View entering={FadeIn.duration(400)} style={styles.emptyWrap}>
       <Text style={styles.emptyTitle}>No matches.</Text>
       <Text style={styles.emptyText}>Try a different word or clear filters.</Text>
       <Pressable
-        onPress={() => {
-          setQuery("");
-          setFilter("all");
-        }}
+        onPress={resetFilters}
         hitSlop={12}
         accessibilityRole="button"
         accessibilityLabel="Clear filters"
@@ -187,6 +224,74 @@ export function InboxScreen({
           );
         })}
       </View>
+
+      {goals.length > 0 ? (
+        <View>
+          <Pressable
+            onPress={() => setShowGoalPicker((s) => !s)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`Goal filter: ${goalFilterLabel}. Tap to change.`}
+            style={({ pressed }) => [
+              styles.goalChip,
+              activeGoalFilter !== GOAL_ALL && styles.goalChipActive,
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Text style={styles.goalChipKicker}>Goal</Text>
+            <Text
+              style={[
+                styles.goalChipValue,
+                activeGoalFilter !== GOAL_ALL && styles.goalChipValueActive,
+              ]}
+              numberOfLines={1}
+            >
+              {goalFilterLabel}
+            </Text>
+            <Text style={styles.goalChipCaret}>{showGoalPicker ? "▾" : "▸"}</Text>
+          </Pressable>
+
+          {showGoalPicker ? (
+            <Animated.View
+              entering={FadeIn.duration(150)}
+              exiting={FadeOut.duration(120)}
+              style={styles.goalPicker}
+            >
+              {[
+                { id: GOAL_ALL, text: "All goals" },
+                { id: GOAL_NONE, text: "No goal" },
+                ...goals,
+              ].map((option) => {
+                const active = activeGoalFilter === option.id;
+                return (
+                  <Pressable
+                    key={option.id}
+                    onPress={() => {
+                      setGoalFilter(option.id);
+                      setShowGoalPicker(false);
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    style={({ pressed }) => [
+                      styles.goalOption,
+                      active && styles.goalOptionActive,
+                      pressed && { opacity: 0.7 },
+                    ]}
+                  >
+                    <Text
+                      style={[styles.goalOptionText, active && styles.goalOptionTextActive]}
+                      numberOfLines={2}
+                    >
+                      {option.text}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </Animated.View>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 
@@ -283,6 +388,66 @@ const styles = StyleSheet.create({
   },
   filterChipTextActive: {
     color: colors.bg,
+  },
+  goalChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+  },
+  goalChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+  },
+  goalChipKicker: {
+    ...typography.micro,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  goalChipValue: {
+    flex: 1,
+    ...typography.bodyMd,
+    color: colors.textMuted,
+  },
+  goalChipValueActive: {
+    color: colors.accent,
+    fontWeight: "600",
+  },
+  goalChipCaret: {
+    ...typography.micro,
+    color: colors.textMuted,
+  },
+  goalPicker: {
+    marginTop: spacing.xs,
+    gap: 2,
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  goalOption: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+  },
+  goalOptionActive: {
+    backgroundColor: colors.accentSoft,
+  },
+  goalOptionText: {
+    ...typography.bodyMd,
+    color: colors.textSecondary,
+  },
+  goalOptionTextActive: {
+    color: colors.accent,
+    fontWeight: "600",
   },
   emptyWrap: {
     paddingTop: spacing.section * 2,

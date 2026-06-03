@@ -279,24 +279,15 @@ vi.mock("../lib/kairoConfig", () => ({
   isKairoConfigured: (cfg: unknown) => mockIsKairoConfigured(cfg),
 }));
 
-// ─── kairoApi mock ────────────────────────────────────────────────────────────
-vi.mock("../lib/kairoApi", () => ({
-  KAIRO_SYSTEM_PROMPT: "You are Kairo. {CONTEXT}",
-  buildKairoContext: vi.fn(() => ({ text: "mocked context", idMap: {} })),
-  buildKairoStarters: vi.fn(() => ["Plan my week", "What's overdue?"]),
-  buildAnthropicRequestBody: vi.fn(() => ({ model: "claude", messages: [] })),
-  buildOpenAIRequestBody: vi.fn(() => ({ model: "gpt-4", messages: [] })),
-  extractKairoActions: vi.fn((text: string) => ({ cleanText: text, actions: [] as Array<Record<string, unknown>> })),
-  readKairoResponseText: vi.fn(() => "mocked response"),
-}));
+// kairoApi / kairoTools / kairoAgent are NOT mocked — they're pure and already
+// unit-tested, so we drive the real tool-calling loop against a mocked `fetch`.
+// That exercises the actual request shaping, response parsing, and action
+// application end-to-end.
 
 vi.mock("../hooks/useGoals", () => ({
   useGoals: () => ({ goals: [], isHydrated: true }),
   useGoalLinks: () => ({}),
 }));
-
-// Import the mocked module *after* vi.mock so we get the spy references.
-import * as KairoApi from "../lib/kairoApi";
 
 // Import component after all mocks are set up.
 import { Kairo, type KairoSheetRef } from "../components/Kairo";
@@ -358,7 +349,7 @@ describe("Kairo", () => {
     );
 
     // Hook hydrates asynchronously; wait for the seeded greeting to land.
-    await screen.findByText(/Hey, I'm Kairo/i);
+    await screen.findByText(/Hi, I'm Kairo/i);
   });
 
   it("calls onActiveChange when sheet opens and closes", async () => {
@@ -402,7 +393,7 @@ describe("Kairo", () => {
       />
     );
 
-    await screen.findByText(/Hey, I'm Kairo/i);
+    await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
     const sendBtn = screen.getByRole("button", { name: /send message/i });
@@ -426,12 +417,10 @@ describe("Kairo", () => {
 
   it("replays deferred message once isAllTasksReady becomes true", async () => {
     useConfiguredKairo();
-    vi.mocked(KairoApi.readKairoResponseText).mockReturnValue("Here's your plan");
-    vi.mocked(KairoApi.extractKairoActions).mockReturnValue({ cleanText: "Here's your plan", actions: [] });
 
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
-      json: async () => ({ content: [{ text: "Here's your plan" }] }),
+      json: async () => ({ content: [{ type: "text", text: "Here's your plan" }] }),
     });
 
     const { rerender } = render(
@@ -443,7 +432,7 @@ describe("Kairo", () => {
       />
     );
 
-    await screen.findByText(/Hey, I'm Kairo/i);
+    await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
     const sendBtn = screen.getByRole("button", { name: /send message/i });
@@ -473,22 +462,14 @@ describe("Kairo", () => {
     // After replay: user bubble + auto-derived header title both show the text.
     expect(screen.getAllByText("Plan my week").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText(/Loading your workspace/i)).toBeNull();
-    expect(vi.mocked(KairoApi.buildAnthropicRequestBody)).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.any(String),
-      [],
-      "Plan my week"
-    );
   });
 
   it("sends message successfully when workspace is ready", async () => {
     useConfiguredKairo();
-    vi.mocked(KairoApi.readKairoResponseText).mockReturnValue("Got it!");
-    vi.mocked(KairoApi.extractKairoActions).mockReturnValue({ cleanText: "Got it!", actions: [] });
 
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
-      json: async () => ({ content: [{ text: "Got it!" }] }),
+      json: async () => ({ content: [{ type: "text", text: "Got it!" }] }),
     });
 
     render(
@@ -500,7 +481,7 @@ describe("Kairo", () => {
       />
     );
 
-    await screen.findByText(/Hey, I'm Kairo/i);
+    await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
     const sendBtn = screen.getByRole("button", { name: /send message/i });
@@ -533,7 +514,7 @@ describe("Kairo", () => {
       />
     );
 
-    await screen.findByText(/Hey, I'm Kairo/i);
+    await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
     const sendBtn = screen.getByRole("button", { name: /send message/i });
@@ -553,21 +534,35 @@ describe("Kairo", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("extracts and creates tasks from response with task blocks", async () => {
+  it("creates tasks from add_task tool calls in the response", async () => {
     useConfiguredKairo();
-    vi.mocked(KairoApi.readKairoResponseText).mockReturnValue("I've added these tasks");
-    vi.mocked(KairoApi.extractKairoActions).mockReturnValue({
-      cleanText: "I've added these tasks",
-      actions: [
-        { kind: "add", title: "Review PR", scheduledDate: "2026-05-05", type: "open" },
-        { kind: "add", title: "Write tests", scheduledDate: null, type: "open" },
-      ],
-    });
 
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      json: async () => ({ content: [{ text: "I've added these tasks" }] }),
-    });
+    // Round 1: the model emits two add_task tool calls. Round 2: it finishes
+    // with prose. The real loop maps the calls to actions and applies them.
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          content: [
+            {
+              type: "tool_use",
+              id: "t1",
+              name: "add_task",
+              input: { title: "Review PR", scheduledDate: "2026-05-05", type: "open" },
+            },
+            {
+              type: "tool_use",
+              id: "t2",
+              name: "add_task",
+              input: { title: "Write tests", type: "open" },
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ content: [{ type: "text", text: "I've added these tasks" }] }),
+      });
 
     render(
       <Kairo
@@ -578,7 +573,7 @@ describe("Kairo", () => {
       />
     );
 
-    await screen.findByText(/Hey, I'm Kairo/i);
+    await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
     const sendBtn = screen.getByRole("button", { name: /send message/i });
@@ -627,7 +622,7 @@ describe("Kairo", () => {
       />
     );
 
-    await screen.findByText(/Hey, I'm Kairo/i);
+    await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
     const sendBtn = screen.getByRole("button", { name: /send message/i });
@@ -660,7 +655,7 @@ describe("Kairo", () => {
       />
     );
 
-    await screen.findByText(/Hey, I'm Kairo/i);
+    await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
     const sendBtn = screen.getByRole("button", { name: /send message/i });

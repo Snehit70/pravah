@@ -1,10 +1,10 @@
 /**
  * Kairo action executor
  *
- * Pure (i.e. UI-free) glue that takes the parsed action list from
- * `extractKairoActions` plus the per-turn idMap from `buildKairoContext` and
- * dispatches each action to the right Convex mutation. We pass mutations in
- * as a struct rather than importing them so the module stays unit-testable.
+ * Pure (i.e. UI-free) glue that takes the parsed `KairoAction` list (from the
+ * tool-call mapper) plus the per-send handle registry and dispatches each
+ * action to the right Convex mutation. We pass mutations in as a struct rather
+ * than importing them so the module stays unit-testable.
  *
  * Error policy: failures are *per-action*, not all-or-nothing. A malformed
  * handle skips that action with `{ status: "skipped" }`; a mutation throw
@@ -90,6 +90,9 @@ export type KairoActionResult =
       action: KairoAction;
       status: "applied";
       taskId?: string;
+      /** New goal client id for an applied `addGoal`. Lets the caller mint a
+       *  handle so the model can reference a goal it just created. */
+      goalId?: string;
       /** Inverse mutation. Null when no meaningful undo exists (e.g. the
        *  before-state was lost). Idempotent — calling twice is harmless. */
       undo: (() => Promise<void>) | null;
@@ -212,7 +215,7 @@ export async function applyKairoActions(
         const undo = async () => {
           await mutations.deleteGoal({ goalId });
         };
-        results.push({ action, status: "applied", undo });
+        results.push({ action, status: "applied", goalId, undo });
         continue;
       }
 

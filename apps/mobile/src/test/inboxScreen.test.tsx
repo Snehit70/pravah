@@ -52,20 +52,28 @@ vi.mock("react-native", () => {
     keyExtractor,
     ListEmptyComponent,
     ListFooterComponent,
+    ListHeaderComponent,
   }: {
     data: unknown[];
     renderItem: (params: { item: unknown; index: number }) => React.ReactNode;
     keyExtractor: (item: unknown) => string;
     ListEmptyComponent?: React.ReactNode;
     ListFooterComponent?: React.ReactNode;
+    ListHeaderComponent?: React.ReactNode;
     [key: string]: unknown;
   }) => {
     if (data.length === 0 && ListEmptyComponent) {
-      return React.createElement("div", { "data-testid": "flat-list" }, ListEmptyComponent);
+      return React.createElement(
+        "div",
+        { "data-testid": "flat-list" },
+        ListHeaderComponent,
+        ListEmptyComponent
+      );
     }
     return React.createElement(
       "div",
       { "data-testid": "flat-list" },
+      ListHeaderComponent,
       data.map((item, index) =>
         React.createElement(
           "div",
@@ -111,6 +119,20 @@ vi.mock("react-native-reanimated", () => ({
       React.createElement("div", {}, children),
   },
   FadeIn: { duration: () => undefined },
+  FadeOut: { duration: () => undefined },
+}));
+
+// ─── goals hooks mock ─────────────────────────────────────────────────────────
+vi.mock("../hooks/useGoals", () => ({
+  useGoals: () => ({
+    goals: [
+      { id: "g1", text: "Blog" },
+      { id: "g2", text: "Fitness" },
+    ],
+    isHydrated: true,
+  }),
+  // task1 → Blog; task2 is unlinked.
+  useGoalLinks: () => ({ task1: "g1" }),
 }));
 
 // ─── theme tokens mock ────────────────────────────────────────────────────────
@@ -268,6 +290,49 @@ describe("InboxScreen", () => {
 
     expect(screen.queryByText("Nothing to carry forward.")).toBeNull();
     expect(screen.getByTestId("skeleton-inbox")).toBeTruthy();
+  });
+
+  it("filters to tasks linked to the selected goal", () => {
+    render(
+      <InboxScreen
+        tasks={sampleTasks}
+        isLoading={false}
+        isRefreshing={false}
+        tabBarHeight={60}
+        onRefresh={mockOnRefresh}
+        onCapture={mockOnCapture}
+        renderItem={mockRenderItem}
+      />
+    );
+
+    // Open the goal dropdown, then pick "Blog".
+    fireEvent.click(screen.getByRole("button", { name: /goal filter/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Blog" }));
+
+    // task1 is linked to Blog; task2 (unlinked) is filtered out.
+    expect(screen.getByTestId("task-task1")).toBeTruthy();
+    expect(screen.queryByTestId("task-task2")).toBeNull();
+  });
+
+  it("filters to unlinked tasks with the No goal option", () => {
+    render(
+      <InboxScreen
+        tasks={sampleTasks}
+        isLoading={false}
+        isRefreshing={false}
+        tabBarHeight={60}
+        onRefresh={mockOnRefresh}
+        onCapture={mockOnCapture}
+        renderItem={mockRenderItem}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /goal filter/i }));
+    fireEvent.click(screen.getByRole("button", { name: "No goal" }));
+
+    // task2 has no goal link; task1 (linked to Blog) is filtered out.
+    expect(screen.getByTestId("task-task2")).toBeTruthy();
+    expect(screen.queryByTestId("task-task1")).toBeNull();
   });
 
   it("releases large inboxes in small batches after the first paint", () => {

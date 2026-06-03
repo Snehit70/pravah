@@ -38,7 +38,7 @@ const SAVE_DEBOUNCE_MS = 500;
 
 export const KAIRO_GREETING: KairoMessage = {
   from: "kairo",
-  text: "Hey, I'm Kairo. I can help you plan your week, prioritize tasks, or analyze your schedule. What do you need?",
+  text: "Hi, I'm Kairo. I can help you plan your week, sort priorities, and make sense of your schedule. What's on your mind?",
 };
 
 function makeFreshChat(): StoredChat {

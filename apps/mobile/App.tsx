@@ -138,6 +138,7 @@ function MobileApp() {
     setPendingMutations,
     toast,
     showToast,
+    dismissToast,
     optimisticTasks,
     setOptimisticTasks,
     isAddSheetOpen,
@@ -426,9 +427,7 @@ function MobileApp() {
     try {
       const path = await shareDiagnosticsBundle();
       mobileLogger.info("diagnostics_shared", { path });
-      if (path) {
-        showToast({ kind: "info", message: "Diagnostics exported." });
-      }
+      showToast({ kind: "info", message: "Diagnostics exported." });
     } catch (error) {
       mobileLogger.error("diagnostics_share_failed", {
         errorType: classifyError(error),
@@ -993,6 +992,20 @@ function MobileApp() {
           style={[styles.toast, toast.kind === "error" ? styles.toastError : styles.toastInfo]}
         >
           <Text style={styles.toastText}>{toast.message}</Text>
+          {toast.action ? (
+            <Pressable
+              onPress={() => {
+                toast.action?.run();
+                dismissToast();
+              }}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel={toast.action.label}
+              style={({ pressed }) => [styles.toastAction, pressed && { opacity: 0.6 }]}
+            >
+              <Text style={styles.toastActionText}>{toast.action.label}</Text>
+            </Pressable>
+          ) : null}
         </Animated.View>
       ) : null}
 
@@ -1056,6 +1069,7 @@ function MobileApp() {
               tabBarHeight={tabBarHeight}
               tasks={workspaceTaskCorpus}
               isTaskDataLoading={isGoalsTaskDataLoading}
+              onOpenTask={canUseWorkspaceActions ? handleEditTask : undefined}
             />
           </ScreenErrorBoundary>
         </Animated.View>
@@ -1119,7 +1133,6 @@ function MobileApp() {
         isAllTasksReady={isAllTasksReady}
         onActiveChange={setIsKairoActive}
         onOpenSettings={openSettingsModal}
-        onToast={showToast}
       />
 
       <SettingsSheet
@@ -1373,6 +1386,9 @@ const styles = StyleSheet.create({
   // Toast — unenclosed: a thin 2px rule on the left + a line of copy. Error
   // tone uses the rust accent, info uses copper. No border, no radius, no fill.
   toast: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
     paddingLeft: spacing.md,
@@ -1386,8 +1402,18 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.accent,
   },
   toastText: {
+    flex: 1,
     color: colors.textPrimary,
     ...typography.bodyMd,
+  },
+  toastAction: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+  },
+  toastActionText: {
+    ...typography.micro,
+    color: colors.accent,
+    fontWeight: "600",
   },
 
   // Retry banner + sync indicator — same left-rule language as the toast so

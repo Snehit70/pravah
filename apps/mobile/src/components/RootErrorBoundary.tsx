@@ -45,8 +45,8 @@ export class RootErrorBoundary extends Component<RootErrorBoundaryProps, RootErr
     if (this.state.isExporting) return;
     this.setState({ isExporting: true, exportMessage: null });
     try {
-      const path = await shareDiagnosticsBundle();
-      this.setState({ exportMessage: path ? "Diagnostics exported." : "Diagnostics ready.", isExporting: false });
+      await shareDiagnosticsBundle();
+      this.setState({ exportMessage: "Diagnostics exported.", isExporting: false });
     } catch (error) {
       mobileLogger.error("root_fallback_diagnostics_export_failed", {
         errorType: classifyError(error),

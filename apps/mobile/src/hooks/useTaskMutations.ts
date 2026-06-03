@@ -12,8 +12,9 @@ import {
   shiftTaskWithinScopedOptimisticView,
 } from "../lib/task-optimistic";
 import type { RetryPayload } from "./useRetryQueue";
+import type { ToastState } from "./useWorkspaceState";
 
-type ToastState = { kind: "error" | "info"; message: string };
+type UndoSpec = { message: string; run: () => void };
 
 type UseTaskMutationsOptions = {
   serverTasks: MobileTask[];
@@ -26,6 +27,19 @@ type UseTaskMutationsOptions = {
 };
 
 type SuccessHaptic = "notification" | "light" | "medium";
+
+/** Config for one optimistic mutation. The same builder feeds both an action
+ *  and its inverse, so a swipe and its Undo never drift out of sync. */
+type RunConfig = {
+  optimistic: (current: MobileTask[]) => MobileTask[];
+  mutation: () => Promise<void>;
+  errorMessage: string;
+  actionName: string;
+  retryLabel?: string;
+  retryPayload?: RetryPayload;
+  successHaptic?: SuccessHaptic;
+  taskId?: Id<"tasks">;
+};
 
 export function useTaskMutations({
   serverTasks,
@@ -77,16 +91,8 @@ export function useTaskMutations({
       retryPayload,
       successHaptic = "notification",
       taskId,
-    }: {
-      optimistic: (current: MobileTask[]) => MobileTask[];
-      mutation: () => Promise<void>;
-      errorMessage: string;
-      actionName: string;
-      retryLabel?: string;
-      retryPayload?: RetryPayload;
-      successHaptic?: SuccessHaptic;
-      taskId?: Id<"tasks">;
-    }): Promise<boolean> => {
+      undo,
+    }: RunConfig & { undo?: UndoSpec }): Promise<boolean> => {
       if (taskId && busyTaskIdsRef.current.has(taskId)) {
         mobileLogger.warn("mutation_ignored_busy_task", { actionName, taskId });
         return false;
@@ -107,6 +113,13 @@ export function useTaskMutations({
       try {
         await mutation();
         triggerSuccessHaptic(successHaptic);
+        if (undo) {
+          showToast({
+            kind: "info",
+            message: undo.message,
+            action: { label: "Undo", run: undo.run },
+          });
+        }
         mobileLogger.info("mutation_succeeded", {
           actionId,
           actionName,
@@ -131,78 +144,142 @@ export function useTaskMutations({
         setPendingMutations((count) => Math.max(0, count - 1));
       }
     },
-    [serverTasks, enqueueRetry, setOptimisticTasks, setPendingMutations, showToastWithHaptic, triggerSuccessHaptic]
+    [serverTasks, enqueueRetry, setOptimisticTasks, setPendingMutations, showToast, showToastWithHaptic, triggerSuccessHaptic]
+  );
+
+  // Reusable per-operation configs. Each swipe action below pairs one of these
+  // with its inverse so the Undo replays the exact opposite mutation.
+  const completeConfig = useCallback(
+    (taskId: Id<"tasks">): RunConfig => ({
+      actionName: "complete_task",
+      optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
+      mutation: async () => {
+        await completeTaskMutation({ taskId });
+      },
+      errorMessage: "Could not mark task as done.",
+      retryLabel: "Retry done",
+      retryPayload: { type: "completeTask", taskId },
+      taskId,
+    }),
+    [completeTaskMutation]
+  );
+
+  const reopenConfig = useCallback(
+    (taskId: Id<"tasks">): RunConfig => ({
+      actionName: "reopen_task",
+      optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
+      mutation: async () => {
+        await reopenTaskMutation({ taskId });
+      },
+      errorMessage: "Could not reopen task.",
+      retryLabel: "Retry reopen",
+      retryPayload: { type: "reopenTask", taskId },
+      successHaptic: "light",
+      taskId,
+    }),
+    [reopenTaskMutation]
+  );
+
+  const todayConfig = useCallback(
+    (taskId: Id<"tasks">): RunConfig => ({
+      actionName: "move_task_today",
+      optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
+      mutation: async () => {
+        await moveTaskMutation({ taskId, targetDate: today });
+      },
+      errorMessage: "Could not move task to today.",
+      retryLabel: "Retry move to today",
+      retryPayload: { type: "moveTask", taskId, targetDate: today },
+      successHaptic: "light",
+      taskId,
+    }),
+    [moveTaskMutation, today]
+  );
+
+  const unscheduleConfig = useCallback(
+    (taskId: Id<"tasks">): RunConfig => ({
+      actionName: "move_task_inbox",
+      optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
+      mutation: async () => {
+        await unscheduleTaskMutation({ taskId });
+      },
+      errorMessage: "Could not move task back to inbox.",
+      retryLabel: "Retry move to inbox",
+      retryPayload: { type: "unscheduleTask", taskId },
+      successHaptic: "light",
+      taskId,
+    }),
+    [unscheduleTaskMutation]
   );
 
   const markDone = useCallback(
     (taskId: Id<"tasks">) => {
+      const priorDate = serverTasks.find((task) => task._id === taskId)?.scheduledDate;
       void runOptimisticMutation({
-        actionName: "complete_task",
-        optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
-        mutation: async () => {
-          await completeTaskMutation({ taskId });
+        ...completeConfig(taskId),
+        undo: {
+          message: "Marked done",
+          run: () =>
+            void runOptimisticMutation({
+              ...reopenConfig(taskId),
+              mutation: async () => {
+                await reopenTaskMutation({ taskId });
+                if (priorDate) {
+                  await moveTaskMutation({ taskId, targetDate: priorDate });
+                }
+              },
+            }),
         },
-        errorMessage: "Could not mark task as done.",
-        retryLabel: "Retry done",
-        retryPayload: { type: "completeTask", taskId },
-        taskId,
       });
     },
-    [runOptimisticMutation, completeTaskMutation]
+    [runOptimisticMutation, completeConfig, reopenConfig, serverTasks, reopenTaskMutation, moveTaskMutation]
   );
 
   const moveToToday = useCallback(
     (taskId: Id<"tasks">) => {
       void runOptimisticMutation({
-        actionName: "move_task_today",
-        optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
-        mutation: async () => {
-          await moveTaskMutation({ taskId, targetDate: today });
-        },
-        errorMessage: "Could not move task to today.",
-        retryLabel: "Retry move to today",
-        retryPayload: { type: "moveTask", taskId, targetDate: today },
-        successHaptic: "light",
-        taskId,
+        ...todayConfig(taskId),
+        undo: { message: "Moved to Today", run: () => void runOptimisticMutation(unscheduleConfig(taskId)) },
       });
     },
-    [runOptimisticMutation, moveTaskMutation, today]
+    [runOptimisticMutation, todayConfig, unscheduleConfig]
   );
 
   const sendToInbox = useCallback(
     (taskId: Id<"tasks">) => {
+      // Capture the date the task is leaving so Undo can put it back there.
+      const priorDate = serverTasks.find((t) => t._id === taskId)?.scheduledDate;
       void runOptimisticMutation({
-        actionName: "move_task_inbox",
-        optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
-        mutation: async () => {
-          await unscheduleTaskMutation({ taskId });
-        },
-        errorMessage: "Could not move task back to inbox.",
-        retryLabel: "Retry move to inbox",
-        retryPayload: { type: "unscheduleTask", taskId },
-        successHaptic: "light",
-        taskId,
+        ...unscheduleConfig(taskId),
+        undo: priorDate
+          ? {
+              message: "Moved to Inbox",
+              run: () =>
+                void runOptimisticMutation({
+                  actionName: "move_task_date",
+                  optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
+                  mutation: async () => {
+                    await moveTaskMutation({ taskId, targetDate: priorDate });
+                  },
+                  errorMessage: "Could not undo.",
+                  successHaptic: "light",
+                  taskId,
+                }),
+            }
+          : undefined,
       });
     },
-    [runOptimisticMutation, unscheduleTaskMutation]
+    [runOptimisticMutation, unscheduleConfig, serverTasks, moveTaskMutation]
   );
 
   const reopenToInbox = useCallback(
     (taskId: Id<"tasks">) => {
       void runOptimisticMutation({
-        actionName: "reopen_task",
-        optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
-        mutation: async () => {
-          await reopenTaskMutation({ taskId });
-        },
-        errorMessage: "Could not reopen task.",
-        retryLabel: "Retry reopen",
-        retryPayload: { type: "reopenTask", taskId },
-        successHaptic: "light",
-        taskId,
+        ...reopenConfig(taskId),
+        undo: { message: "Task reopened", run: () => void runOptimisticMutation(completeConfig(taskId)) },
       });
     },
-    [runOptimisticMutation, reopenTaskMutation]
+    [runOptimisticMutation, reopenConfig, completeConfig]
   );
 
   const deleteTask = useCallback(

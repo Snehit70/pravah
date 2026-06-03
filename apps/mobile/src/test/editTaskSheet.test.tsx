@@ -162,11 +162,6 @@ vi.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
-// ─── useKeyboardInset mock ────────────────────────────────────────────────────
-vi.mock("../hooks/useKeyboardInset", () => ({
-  useKeyboardInset: (bottom: number) => bottom,
-}));
-
 // ─── theme tokens mock ────────────────────────────────────────────────────────
 vi.mock("../theme/tokens", () => ({
   colors: {

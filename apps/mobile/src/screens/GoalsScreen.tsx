@@ -106,9 +106,10 @@ type GoalDetailSheetProps = {
   linked: MobileTask[];
   onDelete: () => void;
   onClose: () => void;
+  onOpenTask: (task: MobileTask) => void;
 };
 
-function GoalDetailSheet({ goal, progress, linked, onDelete, onClose }: GoalDetailSheetProps) {
+function GoalDetailSheet({ goal, progress, linked, onDelete, onClose, onOpenTask }: GoalDetailSheetProps) {
   const confirm = useConfirm();
   const { setGoalLink, updateGoal } = useGoalMutations();
   const [editing, setEditing] = useState(false);
@@ -306,10 +307,18 @@ function GoalDetailSheet({ goal, progress, linked, onDelete, onClose }: GoalDeta
                   const done = t.status === "completed";
                   return (
                     <View key={String(t._id)} style={detailStyles.taskRow}>
-                      <View style={[detailStyles.taskDot, done ? detailStyles.taskDotDone : detailStyles.taskDotOpen]} />
-                      <Text style={[detailStyles.taskTitle, done && detailStyles.taskTitleDone]} numberOfLines={2}>
-                        {t.title}
-                      </Text>
+                      <Pressable
+                        onPress={() => onOpenTask(t)}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open task ${t.title}`}
+                        style={({ pressed }) => [detailStyles.taskMain, pressed && { opacity: 0.6 }]}
+                      >
+                        <View style={[detailStyles.taskDot, done ? detailStyles.taskDotDone : detailStyles.taskDotOpen]} />
+                        <Text style={[detailStyles.taskTitle, done && detailStyles.taskTitleDone]} numberOfLines={2}>
+                          {t.title}
+                        </Text>
+                      </Pressable>
                       <Pressable
                         onPress={() => {
                           void handleUnlinkTask(t);
@@ -347,6 +356,8 @@ type GoalsScreenProps = {
   tabBarHeight: number;
   tasks: MobileTask[];
   isTaskDataLoading?: boolean;
+  /** Open a linked task in the shared editor (edit / complete / delete). */
+  onOpenTask?: (task: MobileTask) => void;
 };
 
 type GoalProgress = {
@@ -355,12 +366,23 @@ type GoalProgress = {
   ratio: number;
 };
 
-export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false }: GoalsScreenProps) {
+export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false, onOpenTask }: GoalsScreenProps) {
   const confirm = useConfirm();
   const { deleteGoal } = useGoalMutations();
   const { goals, isHydrated } = useGoals();
   const links = useGoalLinks();
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
+
+  // The goal detail is a native Modal that stacks above the bottom-sheet
+  // editor, so close it first and let it dismiss before opening the task.
+  const handleOpenTask = useCallback(
+    (task: MobileTask) => {
+      if (!onOpenTask) return;
+      setSelectedGoalId(null);
+      setTimeout(() => onOpenTask(task), 280);
+    },
+    [onOpenTask]
+  );
 
   // Map goalId -> linked MobileTask[] (newest first), filtered by current
   // task list so orphan links (task deleted) silently drop out.
@@ -537,6 +559,7 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false }: 
         linked={selectedLinked}
         onDelete={() => selectedGoal && void handleDelete(selectedGoal)}
         onClose={() => setSelectedGoalId(null)}
+        onOpenTask={handleOpenTask}
       />
     </View>
   );
@@ -899,6 +922,12 @@ const detailStyles = StyleSheet.create({
     paddingVertical: spacing.xs,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderSubtle,
+  },
+  taskMain: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
   },
   taskDot: {
     width: 8,

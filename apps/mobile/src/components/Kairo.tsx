@@ -43,19 +43,26 @@ import {
   type KairoConfig,
 } from "../lib/kairoConfig";
 import {
-  KAIRO_SYSTEM_PROMPT,
-  buildAnthropicRequestBody,
-  buildGeminiRequestBody,
-  buildKairoContext,
+  KAIRO_AGENT_SYSTEM_PROMPT,
   buildKairoStarters,
-  buildOpenAIRequestBody,
-  extractKairoActions,
-  readKairoResponseText,
+  contextWindowForModel,
+  estimateTokens,
+  type AgentTurn,
   type KairoAction,
   type KairoMessage,
   type KairoMessageAction,
   type KairoTaskInput,
 } from "../lib/kairoApi";
+import {
+  buildThinContext,
+  buildToolDefs,
+  createHandleRegistry,
+} from "../lib/kairoTools";
+import {
+  runKairoAgent,
+  type ApplyAgentActions,
+  type KairoAgentCaller,
+} from "../lib/kairoAgent";
 import {
   applyKairoActions,
   type KairoActionResult,
@@ -88,7 +95,6 @@ type KairoProps = {
   onActiveChange?: (active: boolean) => void;
   /** Called when the user taps "Configure" on the unconfigured empty state. */
   onOpenSettings?: () => void;
-  onToast?: (next: { kind: "error" | "info"; message: string }) => void;
 };
 
 const DEFERRED_LOADING_TEXT = "Loading your workspace... one moment.";
@@ -193,7 +199,7 @@ type KairoChatRow =
  * expo-secure-store via `lib/kairoConfig.ts`, never sent to our servers.
  */
 export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
-  { tasks, inboxTasks, isAllTasksReady, onActiveChange, onOpenSettings, onToast },
+  { tasks, inboxTasks, isAllTasksReady, onActiveChange, onOpenSettings },
   ref
 ) {
   const sheetRef = useRef<BottomSheet>(null);
@@ -205,6 +211,14 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   const [thinking, setThinking] = useState(false);
   const [config, setConfig] = useState<KairoConfig | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  // Live status line shown in the thinking skeleton, driven by the agent's
+  // onProgress callback ("Checking your inbox…", "Updating your tasks…").
+  const [statusLabel, setStatusLabel] = useState<string | null>(null);
+  // Two-tap Stop guard: the first tap arms, the second (within 3s) confirms.
+  const [stopArmed, setStopArmed] = useState(false);
+  const cancelledRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<string | null>(null);
   const [deferredPromptPreview, setDeferredPromptPreview] = useState<string | null>(null);
   // "chat" shows the active conversation, "list" shows the chat picker.
@@ -335,6 +349,34 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     [tasks, inboxTasks, today]
   );
 
+  // Live context meter. The base — system prompt + thin workspace context +
+  // visible history — only changes when the workspace or conversation does, so
+  // it's memoized; only the draft tokens recompute on each keystroke. Mirrors
+  // exactly what `sendMessage` assembles, so the number reflects the real turn.
+  const baseContextTokens = useMemo(() => {
+    const registry = createHandleRegistry();
+    const ctx = buildThinContext({ tasks, inboxTasks, goals, goalLinks, registry, today });
+    const systemPrompt = KAIRO_AGENT_SYSTEM_PROMPT.replace("{CONTEXT}", ctx);
+    const historyText = msgs.map((m) => m.text).join("\n");
+    return estimateTokens(systemPrompt) + estimateTokens(historyText);
+  }, [tasks, inboxTasks, goals, goalLinks, today, msgs]);
+
+  const totalTokens = baseContextTokens + estimateTokens(val);
+  const contextWindow = contextWindowForModel(config?.model);
+  const contextPct = Math.min(100, (totalTokens / contextWindow) * 100);
+
+  // Direction of travel vs the previous render, for the up/down arrow.
+  const prevTokensRef = useRef(0);
+  const tokenTrend: "up" | "down" | "flat" =
+    totalTokens > prevTokensRef.current
+      ? "up"
+      : totalTokens < prevTokensRef.current
+        ? "down"
+        : "flat";
+  useEffect(() => {
+    prevTokensRef.current = totalTokens;
+  }, [totalTokens]);
+
   const sendMessageRef = useRef<(text: string, options?: { replayDeferred?: boolean }) => void>(
     () => {}
   );
@@ -395,8 +437,9 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       try {
         await Clipboard.setStringAsync(text);
         haptic.success();
+        // In-sheet banner is the only feedback channel visible while the
+        // Kairo sheet covers the screen; a toast would render behind it.
         setCopyFeedback("Copied to clipboard");
-        onToast?.({ kind: "info", message: "Copied" });
         mobileLogger.info("kairo_message_copied", {
           from: message.from,
           length: text.length,
@@ -404,19 +447,18 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       } catch (error) {
         haptic.error();
         setCopyFeedback("Could not copy message");
-        onToast?.({ kind: "error", message: "Could not copy message." });
         mobileLogger.warn("kairo_copy_failed", {
           errorType: classifyError(error),
           from: message.from,
         });
       }
     },
-    [onToast]
+    []
   );
 
   const renderChatRow = useCallback(
     ({ item }: { item: KairoChatRow }) => {
-      if (item.kind === "thinking") return <Thinking />;
+      if (item.kind === "thinking") return <Thinking label={statusLabel} />;
       return (
         <Bubble
           message={item.message}
@@ -427,8 +469,29 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         />
       );
     },
-    [handleCopyMessage, handleRetry, handleUndo]
+    [handleCopyMessage, handleRetry, handleUndo, statusLabel]
   );
+
+  // Two-tap Stop: first tap arms (auto-disarms after 3s), second confirms by
+  // flagging cancellation and aborting the in-flight request. Mutations already
+  // applied stay (with their undo chips); we never interrupt one mid-flight.
+  const handleStopPress = useCallback(() => {
+    if (!thinking) return;
+    if (stopArmed) {
+      cancelledRef.current = true;
+      abortRef.current?.abort();
+      setStopArmed(false);
+      if (stopTimerRef.current) {
+        clearTimeout(stopTimerRef.current);
+        stopTimerRef.current = null;
+      }
+    } else {
+      haptic.light();
+      setStopArmed(true);
+      if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+      stopTimerRef.current = setTimeout(() => setStopArmed(false), 3000);
+    }
+  }, [stopArmed, thinking]);
 
   const handleSheetChange = useCallback((index: number) => {
     setOpen(index >= 0);
@@ -480,25 +543,27 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         historyTurns: Math.max(msgs.length - 1, 0),
       });
 
-      // Snapshot history *before* the optimistic user-message append, since
-      // the API expects the assistant's prior turns paired with their
-      // matching user prompts. We start from the first user message so the
-      // greeting (or any leading assistant-only turns) never lands in
-      // context — a positional `slice(1)` would mis-fire on chats where
-      // front-trimming has already removed the greeting.
+      // Text-only history from the first user message (skip the greeting). The
+      // agent rebuilds fresh workspace context each turn, so prior tool calls
+      // are never replayed — only the visible conversation carries over.
       const firstUserIdx = msgs.findIndex((m) => m.from === "me");
-      const history =
+      const history: AgentTurn[] =
         firstUserIdx === -1
           ? []
-          : msgs.slice(firstUserIdx).map((m): { role: "user" | "assistant"; content: string } => ({
-              role: m.from === "me" ? "user" : "assistant",
-              content: m.text,
-            }));
+          : msgs.slice(firstUserIdx).map((m): AgentTurn =>
+              m.from === "me"
+                ? { role: "user", text: m.text }
+                : { role: "assistant", text: m.text, toolCalls: [] }
+            );
 
       setDeferredPromptPreview(null);
       setMsgs((prev) => [...prev, { from: "me", text: trimmed }]);
       setVal("");
       Keyboard.dismiss();
+      cancelledRef.current = false;
+      const abortController = new AbortController();
+      abortRef.current = abortController;
+      setStatusLabel(null);
       setThinking(true);
 
       if (!isKairoConfigured(nextConfig)) {
@@ -511,95 +576,35 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           },
         ]);
         setThinking(false);
+        abortRef.current = null;
         return;
       }
 
-      try {
-        const { text: contextText, taskIdMap, goalIdMap } = buildKairoContext(
-          tasks,
-          inboxTasks,
-          goals,
-          goalLinks
-        );
-        const systemPrompt = KAIRO_SYSTEM_PROMPT.replace("{CONTEXT}", contextText);
-        const body =
-          nextConfig.providerFormat === "anthropic"
-            ? buildAnthropicRequestBody(nextConfig, systemPrompt, history, trimmed)
-            : nextConfig.providerFormat === "gemini"
-              ? buildGeminiRequestBody(nextConfig, systemPrompt, history, trimmed)
-              : buildOpenAIRequestBody(nextConfig, systemPrompt, history, trimmed);
+      // Thin always-on context + read tools; handles are seeded into a per-send
+      // registry that read-tool results append to as the loop runs.
+      const registry = createHandleRegistry();
+      const todayStr = getLocalDateString();
+      const systemPrompt = KAIRO_AGENT_SYSTEM_PROMPT.replace(
+        "{CONTEXT}",
+        buildThinContext({ tasks, inboxTasks, goals, goalLinks, registry, today: todayStr })
+      );
+      const tools = buildToolDefs(nextConfig.providerFormat);
 
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (nextConfig.providerFormat === "anthropic") {
-          headers["x-api-key"] = nextConfig.apiKey;
-          headers["anthropic-version"] = "2023-06-01";
-        } else if (nextConfig.providerFormat === "openai") {
-          headers["Authorization"] = `Bearer ${nextConfig.apiKey}`;
-        }
-
-        const requestUrl =
-          nextConfig.providerFormat === "gemini"
-            ? buildGeminiRequestUrl(nextConfig.baseUrl, nextConfig.model, nextConfig.apiKey)
-            : nextConfig.baseUrl;
-
-        const res = await fetch(requestUrl, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(body),
-        });
-
-        if (!res.ok) {
-          const errPayload = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-          const inner = errPayload.error;
-          const message =
-            inner && typeof inner === "object" && "message" in inner
-              ? String((inner as Record<string, unknown>).message)
-              : `API error ${res.status}`;
-          setMsgs((prev) => [
-            ...prev,
-            { from: "kairo", text: `⚠ ${message}`, retryPrompt: trimmed },
-          ]);
-          mobileLogger.warn("kairo_provider_failed", {
-            actionId,
-            providerFormat: nextConfig.providerFormat,
-            status: res.status,
-          });
-          return;
-        }
-
-        const data = await res.json();
-        const rawText = readKairoResponseText(data, nextConfig.providerFormat);
-        const { cleanText, actions } = extractKairoActions(rawText);
-
-        // Snapshot the title for each referenced task *before* mutations run —
-        // after applyKairoActions the task may be deleted or renamed, but the
-        // chip label still needs the original.
-        const lookupTask = (taskId: string): TaskSnapshot | null => {
-          const t = tasks.find((x) => x._id === taskId) ?? inboxTasks.find((x) => x._id === taskId);
-          if (!t) return null;
-          return {
-            _id: t._id,
-            title: t.title,
-            status: t.status,
-            type: t.type ?? "open",
-            scheduledDate: t.scheduledDate,
-            priority: t.priority,
-            deadline: t.deadline,
-          };
+      const lookupTask = (taskId: string): TaskSnapshot | null => {
+        const t = tasks.find((x) => x._id === taskId) ?? inboxTasks.find((x) => x._id === taskId);
+        if (!t) return null;
+        return {
+          _id: t._id,
+          title: t.title,
+          status: t.status,
+          type: t.type ?? "open",
+          scheduledDate: t.scheduledDate,
+          priority: t.priority,
+          deadline: t.deadline,
         };
-        const beforeTitles = actions.map((a) => {
-          if (a.kind === "add" || a.kind === "addGoal" || a.kind === "linkTaskGoal" || a.kind === "unlinkTaskGoal") {
-            return null;
-          }
-          if (a.kind === "updateGoal" || a.kind === "deleteGoal") {
-            const goalId = goalIdMap[a.handle];
-            return goalId ? goals.find((g) => g.id === goalId)?.text ?? null : null;
-          }
-          const taskId = taskIdMap[a.handle];
-          return taskId ? lookupTask(taskId)?.title ?? null : null;
-        });
+      };
 
-        const mutations = {
+      const mutations = {
           addTask: (args: Parameters<typeof addTaskMutation>[0]) => addTaskMutation(args),
           moveTask: (args: { taskId: string; targetDate: string }) =>
             moveTaskMutation({ taskId: args.taskId as Id<"tasks">, targetDate: args.targetDate }),
@@ -684,51 +689,142 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
             setGoalLinkMutation({ taskId: args.taskId, goalClientId: args.goalId }),
         };
 
-        const results = await applyKairoActions(actions, { taskIdMap, goalIdMap }, {
-          mutations,
-          lookupTask,
-          lookupGoal: (goalId: string) => goals.find((g) => g.id === goalId) ?? null,
-          lookupTaskGoalLink: (taskId: string) => goalLinks[taskId] ?? null,
+        const applyActions: ApplyAgentActions = async (actions) => {
+          // Snapshot titles before mutation so chip labels survive renames and
+          // deletes, then run the executor (undo system untouched).
+          const beforeTitles = actions.map((a) => {
+            if (
+              a.kind === "add" ||
+              a.kind === "addGoal" ||
+              a.kind === "linkTaskGoal" ||
+              a.kind === "unlinkTaskGoal"
+            ) {
+              return null;
+            }
+            if (a.kind === "updateGoal" || a.kind === "deleteGoal") {
+              const goalId = registry.goalIdMap[a.handle];
+              return goalId ? goals.find((g) => g.id === goalId)?.text ?? null : null;
+            }
+            const taskId = registry.taskIdMap[a.handle];
+            return taskId ? lookupTask(taskId)?.title ?? null : null;
+          });
+          const results = await applyKairoActions(
+            actions,
+            { taskIdMap: registry.taskIdMap, goalIdMap: registry.goalIdMap },
+            {
+              mutations,
+              lookupTask,
+              lookupGoal: (goalId: string) => goals.find((g) => g.id === goalId) ?? null,
+              lookupTaskGoalLink: (taskId: string) => goalLinks[taskId] ?? null,
+            }
+          );
+          return { results, beforeTitles };
+        };
+
+        const call: KairoAgentCaller = async (body) => {
+          const headers: Record<string, string> = { "Content-Type": "application/json" };
+          if (nextConfig.providerFormat === "anthropic") {
+            headers["x-api-key"] = nextConfig.apiKey;
+            headers["anthropic-version"] = "2023-06-01";
+          } else if (nextConfig.providerFormat === "openai") {
+            headers["Authorization"] = `Bearer ${nextConfig.apiKey}`;
+          }
+          const requestUrl =
+            nextConfig.providerFormat === "gemini"
+              ? buildGeminiRequestUrl(nextConfig.baseUrl, nextConfig.model, nextConfig.apiKey)
+              : nextConfig.baseUrl;
+          const res = await fetch(requestUrl, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(body),
+            signal: abortController.signal,
+          });
+          if (!res.ok) {
+            const errPayload = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+            const inner = errPayload.error;
+            const message =
+              inner && typeof inner === "object" && "message" in inner
+                ? String((inner as Record<string, unknown>).message)
+                : `API error ${res.status}`;
+            throw new Error(message);
+          }
+          return res.json();
+        };
+
+      try {
+        const result = await runKairoAgent([...history, { role: "user", text: trimmed }], {
+          config: nextConfig,
+          systemPrompt,
+          tools,
+          call,
+          readEnv: { tasks, inboxTasks, registry, today: todayStr },
+          registry,
+          applyActions,
+          onProgress: (label) => setStatusLabel(label),
+          shouldCancel: () => cancelledRef.current,
         });
 
+        const wasCancelled = cancelledRef.current;
         const chips: KairoMessageAction[] = [];
-        results.forEach((result, i) => {
-          const { chip, undo } = actionResultToMessageAction(result, beforeTitles[i] ?? null);
+        result.outcomes.forEach(({ result: res, beforeTitle }) => {
+          const { chip, undo } = actionResultToMessageAction(res, beforeTitle);
           chips.push(chip);
           if (undo) undoMap.current.set(chip.id, undo);
         });
+        const appliedCount = result.outcomes.filter((o) => o.result.status === "applied").length;
+        const skippedCount = result.outcomes.filter((o) => o.result.status === "skipped").length;
+        const failedCount = result.outcomes.filter((o) => o.result.status === "failed").length;
 
-        const failedCount = results.filter((r) => r.status === "failed").length;
-        const appliedCount = results.filter((r) => r.status === "applied").length;
-        const skippedCount = results.filter((r) => r.status === "skipped").length;
-        let displayText =
-          cleanText ||
-          (appliedCount > 0
-            ? appliedCount === 1
-              ? "Done. I made that change."
-              : `Done. I made ${appliedCount} changes.`
-            : skippedCount > 0
-              ? "I could not apply that change. Check the action status below."
-              : "I did not receive a readable response. Try again in a moment.");
-        if (failedCount > 0) {
-          displayText += `\n\n⚠ ${failedCount} action${failedCount > 1 ? "s" : ""} failed to apply.`;
+        if (result.error && !wasCancelled) {
+          let errorText = `⚠ ${result.error}`;
+          if (/tool/i.test(result.error)) {
+            errorText +=
+              "\n\nThis model may not support tool calling — try another in Settings → Kairo.";
+          }
+          setMsgs((prev) => [
+            ...prev,
+            {
+              from: "kairo",
+              text: errorText,
+              retryPrompt: trimmed,
+              actions: chips.length ? chips : undefined,
+            },
+          ]);
+          mobileLogger.warn("kairo_agent_failed", {
+            actionId,
+            providerFormat: nextConfig.providerFormat,
+          });
+        } else {
+          let displayText =
+            result.text ||
+            (appliedCount > 0
+              ? appliedCount === 1
+                ? "Done. I made that change."
+                : `Done. I made ${appliedCount} changes.`
+              : skippedCount > 0
+                ? "I could not apply that change. Check the action status below."
+                : "I did not receive a readable response. Try again in a moment.");
+          if (failedCount > 0) {
+            displayText += `\n\n⚠ ${failedCount} action${failedCount > 1 ? "s" : ""} failed to apply.`;
+          }
+          if (wasCancelled) {
+            displayText += "\n\n(Stopped.)";
+          } else if (result.stopped && result.stopReason === "max_rounds") {
+            displayText += "\n\n(Paused after several steps — ask me to continue if you need more.)";
+          }
+          setMsgs((prev) => [
+            ...prev,
+            { from: "kairo", text: displayText, actions: chips.length ? chips : undefined },
+          ]);
+          mobileLogger.info("kairo_send_succeeded", {
+            actionId,
+            providerFormat: nextConfig.providerFormat,
+            actionsApplied: appliedCount,
+            actionsSkipped: skippedCount,
+            actionsFailed: failedCount,
+            stopped: result.stopped,
+          });
         }
-
-        setMsgs((prev) => [
-          ...prev,
-          {
-            from: "kairo",
-            text: displayText,
-            actions: chips.length ? chips : undefined,
-          },
-        ]);
-        mobileLogger.info("kairo_send_succeeded", {
-          actionId,
-          providerFormat: nextConfig.providerFormat,
-          actionsApplied: results.filter((r) => r.status === "applied").length,
-          actionsSkipped: results.filter((r) => r.status === "skipped").length,
-          actionsFailed: results.filter((r) => r.status === "failed").length,
-        });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Network error";
         setMsgs((prev) => [
@@ -742,6 +838,13 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         });
       } finally {
         setThinking(false);
+        setStatusLabel(null);
+        setStopArmed(false);
+        if (stopTimerRef.current) {
+          clearTimeout(stopTimerRef.current);
+          stopTimerRef.current = null;
+        }
+        abortRef.current = null;
       }
     },
     [
@@ -966,36 +1069,89 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         </View>
       ) : null}
 
-      <View style={[styles.inputBar, { marginBottom: keyboardLift }]}>
-        <BottomSheetTextInput
-          style={styles.input}
-          value={val}
-          onChangeText={setVal}
-          placeholder="Ask Kairo anything…"
-          placeholderTextColor={colors.textMuted}
-          editable={!thinking}
-          onSubmitEditing={() => void sendMessage(val)}
-          returnKeyType="send"
-          blurOnSubmit
-        />
-        <Pressable
-          onPress={() => void sendMessage(val)}
-          disabled={!val.trim() || thinking || !!deferredPrompt || !activeChat}
-          hitSlop={12}
-          style={({ pressed }) => [
-            styles.sendButton,
-            (!val.trim() || thinking || !!deferredPrompt || !activeChat) && styles.sendButtonDisabled,
-            pressed && { opacity: 0.8 },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Send message"
-        >
+      <View style={[styles.inputDock, { marginBottom: keyboardLift }]}>
+        <View style={styles.inputBar}>
+          <BottomSheetTextInput
+            style={styles.input}
+            value={val}
+            onChangeText={setVal}
+            placeholder="Ask Kairo anything…"
+            placeholderTextColor={colors.textMuted}
+            editable={!thinking}
+            onSubmitEditing={() => void sendMessage(val)}
+            returnKeyType="send"
+            blurOnSubmit
+          />
           {thinking ? (
-            <ActivityIndicator color={colors.textInverse} size="small" />
+            <Pressable
+              onPress={handleStopPress}
+              hitSlop={12}
+              style={({ pressed }) => [
+                styles.sendButton,
+                stopArmed ? styles.stopButtonArmed : styles.stopButton,
+                pressed && { opacity: 0.8 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={stopArmed ? "Confirm stop" : "Stop"}
+            >
+              {stopArmed ? (
+                <Text style={styles.sendButtonText}>Tap again</Text>
+              ) : (
+                <View style={styles.stopInner}>
+                  <ActivityIndicator color={colors.textInverse} size="small" />
+                  <Text style={styles.sendButtonText}>Stop</Text>
+                </View>
+              )}
+            </Pressable>
           ) : (
-            <Text style={styles.sendButtonText}>Send</Text>
+            <Pressable
+              onPress={() => void sendMessage(val)}
+              disabled={!val.trim() || !!deferredPrompt || !activeChat}
+              hitSlop={12}
+              style={({ pressed }) => [
+                styles.sendButton,
+                (!val.trim() || !!deferredPrompt || !activeChat) && styles.sendButtonDisabled,
+                pressed && { opacity: 0.8 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Send message"
+            >
+              <Text style={styles.sendButtonText}>Send</Text>
+            </Pressable>
           )}
-        </Pressable>
+        </View>
+        <View
+          style={styles.tokenMeter}
+          pointerEvents="none"
+          accessibilityRole="text"
+          accessibilityLabel={`Estimated ${totalTokens} tokens, ${contextPct.toFixed(
+            1
+          )} percent of context window`}
+        >
+          <Text
+            style={[
+              styles.tokenMeterArrow,
+              tokenTrend === "down" && styles.tokenMeterArrowDown,
+            ]}
+          >
+            {tokenTrend === "down" ? "▾" : "▴"}
+          </Text>
+          <Text style={styles.tokenMeterCount}>~{totalTokens.toLocaleString()}</Text>
+          <Text style={styles.tokenMeterUnit}>tokens</Text>
+          <Text style={styles.tokenMeterDot}>·</Text>
+          <Text
+            style={[
+              styles.tokenMeterPct,
+              contextPct >= 90
+                ? styles.tokenMeterPctDanger
+                : contextPct >= 70
+                  ? styles.tokenMeterPctWarn
+                  : null,
+            ]}
+          >
+            {contextPct < 0.1 ? "<0.1" : contextPct.toFixed(1)}% context
+          </Text>
+        </View>
       </View>
       </>
       )}
@@ -1123,7 +1279,7 @@ const THINKING_BARS = [0.92, 0.74, 0.48];
 const BAR_STAGGER_MS = 130;
 const DOT_CYCLE_MS = 420;
 
-function Thinking() {
+function Thinking({ label }: { label?: string | null }) {
   // Each bar gets its own sweep value so stagger offsets work independently.
   const sweeps = [useSharedValue(0), useSharedValue(0), useSharedValue(0)];
 
@@ -1161,7 +1317,7 @@ function Thinking() {
 
   return (
     <View style={styles.thinkingCard}>
-      <Text style={styles.thinkingLabel}>{"thinking" + ".".repeat(dots)}</Text>
+      <Text style={styles.thinkingLabel}>{label ?? "thinking" + ".".repeat(dots)}</Text>
       {THINKING_BARS.map((w, i) => (
         <View key={i} style={[styles.thinkingBar, { width: `${w * 100}%` }]}>
           <Animated.View style={[styles.thinkingBarSweep, sweepStyles[i]]} />
@@ -1258,7 +1414,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingHorizontal: spacing.sm,
     paddingVertical: 7,
-    borderRadius: radii.full,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.accent,
     backgroundColor: "rgba(167, 139, 250, 0.12)",
@@ -1276,7 +1432,7 @@ const styles = StyleSheet.create({
   headerNewButton: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 7,
-    borderRadius: radii.full,
+    borderRadius: radii.lg,
     backgroundColor: colors.accent,
   },
   headerNewText: {
@@ -1491,16 +1647,59 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     ...typography.micro,
   },
-  inputBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
+  inputDock: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.lg,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.borderSubtle,
     backgroundColor: colors.bg,
+  },
+  inputBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  tokenMeter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.xs,
+  },
+  tokenMeterArrow: {
+    color: colors.success,
+    fontSize: 11,
+    lineHeight: 13,
+    fontFamily: fonts.sansSemibold,
+  },
+  tokenMeterArrowDown: {
+    color: colors.textMuted,
+  },
+  tokenMeterCount: {
+    color: colors.textSecondary,
+    ...typography.micro,
+    fontFamily: fonts.mono,
+    fontVariant: ["tabular-nums"],
+  },
+  tokenMeterUnit: {
+    color: colors.textMuted,
+    ...typography.micro,
+  },
+  tokenMeterDot: {
+    color: colors.textMuted,
+    ...typography.micro,
+  },
+  tokenMeterPct: {
+    color: colors.textMuted,
+    ...typography.micro,
+    fontVariant: ["tabular-nums"],
+  },
+  tokenMeterPctWarn: {
+    color: colors.warning,
+  },
+  tokenMeterPctDanger: {
+    color: colors.error,
   },
   input: {
     flex: 1,
@@ -1525,6 +1724,19 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     opacity: 0.5,
+  },
+  stopButton: {
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  stopButtonArmed: {
+    backgroundColor: colors.warning,
+  },
+  stopInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
   },
   sendButtonText: {
     color: colors.textInverse,
