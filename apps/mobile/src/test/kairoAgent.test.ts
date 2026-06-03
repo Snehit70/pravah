@@ -179,7 +179,7 @@ describe("runKairoAgent", () => {
       makeDeps({ call, applyActions })
     );
 
-    const thirdBody = call.mock.calls[2]?.[0] as {
+    const thirdBody = (call.mock.calls as unknown[][])[2]?.[0] as {
       messages: Array<{ role: string; content: unknown }>;
     };
     const toolMessage = [...thirdBody.messages].reverse().find(
