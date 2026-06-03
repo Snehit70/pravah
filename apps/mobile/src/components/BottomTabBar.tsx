@@ -14,6 +14,8 @@ export type TabKey = "inbox" | "timeline" | "goals" | "insights";
 type BottomTabBarProps = {
   active: TabKey;
   onChange: (tab: TabKey) => void;
+  onCapture: () => void;
+  canCapture?: boolean;
   bottomInset?: number;
 };
 
@@ -21,12 +23,18 @@ const tabs: { key: TabKey; label: string }[] = [
   { key: "inbox", label: "Inbox" },
   { key: "timeline", label: "Timeline" },
   { key: "goals", label: "Goals" },
-  { key: "insights", label: "Insights" },
+  { key: "insights", label: "Progress" },
 ];
 
 type TabLayout = { x: number; width: number };
 
-function BottomTabBarInner({ active, onChange, bottomInset = spacing.md }: BottomTabBarProps) {
+function BottomTabBarInner({
+  active,
+  onChange,
+  onCapture,
+  canCapture = true,
+  bottomInset = spacing.md,
+}: BottomTabBarProps) {
   // Per-tab layout populated by onLayout. The underline can only animate to a
   // tab once that tab has reported its position; in practice this happens on
   // the first frame so the underline is in the right place on mount.
@@ -99,6 +107,24 @@ function BottomTabBarInner({ active, onChange, bottomInset = spacing.md }: Botto
             </Text>
           </Pressable>
         ))}
+        <Pressable
+          onPress={() => {
+            haptic.medium();
+            onCapture();
+          }}
+          disabled={!canCapture}
+          style={({ pressed }) => [
+            styles.captureButton,
+            !canCapture && styles.captureButtonDisabled,
+            pressed && styles.captureButtonPressed,
+          ]}
+          hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Capture a new task"
+        >
+          <Text style={styles.capturePlus}>+</Text>
+          <Text style={styles.captureLabel}>Capture</Text>
+        </Pressable>
         {/* Animated copper underline. Sits absolutely positioned at the
             bottom of the bar and slides between tabs via Reanimated. */}
         <Animated.View style={[styles.indicator, indicatorStyle]} />
@@ -128,6 +154,8 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: "row",
     position: "relative",
+    alignItems: "center",
+    gap: spacing.xs,
   },
   tabItem: {
     flex: 1,
@@ -147,6 +175,35 @@ const styles = StyleSheet.create({
   },
   tabLabelActive: {
     color: colors.textPrimary,
+  },
+  captureButton: {
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: colors.borderSubtle,
+  },
+  captureButtonPressed: {
+    opacity: 0.7,
+  },
+  captureButtonDisabled: {
+    opacity: 0.45,
+  },
+  capturePlus: {
+    color: colors.textPrimary,
+    fontFamily: fonts.sansBold,
+    fontSize: 16,
+    lineHeight: 18,
+  },
+  captureLabel: {
+    color: colors.textPrimary,
+    fontFamily: fonts.sansSemibold,
+    fontSize: 12,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
   },
   // 2px copper underline. Anchored to the bottom of the bar and animated
   // between tabs by translateX + width. Width is set dynamically via the

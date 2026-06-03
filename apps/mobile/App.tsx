@@ -48,7 +48,6 @@ import { GridBackground } from "./src/components/GridBackground";
 import { Kairo, type KairoSheetRef } from "./src/components/Kairo";
 import { BootScreen } from "./src/components/BootScreen";
 import { BrandMark } from "./src/components/BrandMark";
-import { FAB } from "./src/components/FAB";
 import { AddTaskSheet, type AddTaskSheetRef } from "./src/components/AddTaskSheet";
 import { EditTaskSheet, type EditTaskSheetRef } from "./src/components/EditTaskSheet";
 import { MobileAuthScreen } from "./src/components/MobileAuthScreen";
@@ -231,13 +230,14 @@ function MobileApp() {
   const displayTimelineSections = useMemo<[string, MobileTask[]][]>(() => {
     const grouped = new Map<string, MobileTask[]>();
     for (const task of displayScheduledTasks) {
-      const key = task.scheduledDate ?? "unscheduled";
+      const scheduledDate = task.scheduledDate ?? "unscheduled";
+      const key = scheduledDate < today ? "overdue" : scheduledDate;
       const existing = grouped.get(key) ?? [];
       existing.push(task);
       grouped.set(key, existing);
     }
     return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [displayScheduledTasks]);
+  }, [displayScheduledTasks, today]);
 
   const { displayInboxCount, displayOverdueCount, displayThisWeekCount, displayCompletedCount } =
     useMemo(() => {
@@ -339,7 +339,6 @@ function MobileApp() {
   );
   const tabBarBottomPadding = Math.max(insets.bottom, spacing.md);
   const tabBarHeight = 62 + tabBarBottomPadding;
-  const fabBottom = tabBarHeight + spacing.xxl;
 
   // ── Auth ────────────────────────────────────────────────────────────
 
@@ -808,7 +807,7 @@ function MobileApp() {
   ]);
 
   const renderInboxTaskItem = useCallback(
-    ({ item, drag }: RenderItemParams<MobileTask>) => (
+    ({ item, drag, hidePriorityBadge }: RenderItemParams<MobileTask> & { hidePriorityBadge?: boolean }) => (
       <TaskCard
         task={item}
         onDone={canUseWorkspaceActions ? markDone : () => undefined}
@@ -816,6 +815,7 @@ function MobileApp() {
         onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
         onDragHandlePress={canUseWorkspaceActions ? drag : undefined}
         linkedGoalName={taskGoalNames.get(String(item._id))}
+        hidePriorityBadge={hidePriorityBadge}
       />
     ),
     [canUseWorkspaceActions, handleEditTask, markDone, moveToToday, taskGoalNames]
@@ -825,7 +825,7 @@ function MobileApp() {
     (dateKey: string, { item, drag }: RenderItemParams<MobileTask>) => (
       <TaskCard
         task={item}
-        dateLabel={dateLabel(dateKey, today, tomorrow, weekEnd)}
+        dateLabel={dateKey === "overdue" && item.scheduledDate ? item.scheduledDate : dateLabel(dateKey, today, tomorrow, weekEnd)}
         onDone={canUseWorkspaceActions ? markDone : () => undefined}
         onSendToInbox={canUseWorkspaceActions ? sendToInbox : undefined}
         onReorder={
@@ -905,7 +905,7 @@ function MobileApp() {
     activeTab === "timeline"
       ? "Timeline"
       : activeTab === "insights"
-        ? "Insights"
+        ? "Progress"
         : activeTab === "goals"
           ? "Goals"
           : "Inbox";
@@ -949,14 +949,15 @@ function MobileApp() {
         style={[styles.chrome, chromeAnimStyle]}
         pointerEvents={isKairoActive ? "none" : "auto"}
       >
-      {/* Header — wordmark + view title (Fraunces) with mono subtitle. The
-          Settings affordance is a hairline-underlined text link, not a button
-          box: nothing is enclosed unless enclosure is earned. */}
+      {/* Compact header: one title line, Kairo promoted, settings quiet. */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
-        <View style={styles.headerTop}>
-          <View style={styles.brandLockup}>
+        <View style={styles.headerMain}>
+          <View style={styles.titleLockup}>
             <BrandMark size={24} />
-            <Text style={styles.wordmark}>Pravah</Text>
+            <View style={styles.titleTextBlock}>
+              <Text style={styles.wordmark}>Pravah</Text>
+              <Text style={styles.headerTitle}>{headerViewName}</Text>
+            </View>
           </View>
           <View style={styles.headerLinks}>
             <Pressable
@@ -977,11 +978,10 @@ function MobileApp() {
               accessibilityRole="button"
               accessibilityLabel="Open settings"
             >
-              <Text style={styles.settingsLink}>Settings</Text>
+              <Text style={styles.settingsLink}>•••</Text>
             </Pressable>
           </View>
         </View>
-        <Text style={styles.headerTitle}>{headerViewName}</Text>
         <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>
       </View>
 
@@ -1091,15 +1091,12 @@ function MobileApp() {
         </Animated.View>
       ) : null}
 
-      {/* FAB */}
-      {canUseWorkspaceActions && !isAddSheetOpen && !isEditSheetOpen ? (
-        <FAB bottom={fabBottom} onPress={() => addTaskSheetRef.current?.open()} />
-      ) : null}
-
       {/* Bottom tab bar \u2014 no counts; the header subtitle carries those. */}
       <BottomTabBar
         active={activeTab}
         onChange={setActiveTab}
+        onCapture={() => addTaskSheetRef.current?.open()}
+        canCapture={canUseWorkspaceActions && !isAddSheetOpen && !isEditSheetOpen}
         bottomInset={tabBarBottomPadding}
       />
 
@@ -1312,76 +1309,87 @@ const styles = StyleSheet.create({
   chrome: {
     flex: 1,
   },
-  // Header — typography-first, no enclosing card. The trailing 24px gap
-  // (paddingBottom) is the only thing separating the header from the list,
-  // doing the work of a divider line without drawing one.
+  // Header — typography-first, no enclosing card. Previous vertical footprint:
+  // top inset + 4 + 24 + 16 + 34 + 4 + 14 = top inset + 96px.
+  // Compact footprint: top inset + 4 + 34 + 2 + 14 + 12 = top inset + 62px.
   header: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
-    paddingBottom: spacing.xxl,
+    paddingBottom: spacing.md,
   },
-  headerTop: {
+  headerMain: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "baseline",
-    marginBottom: spacing.lg,
+    alignItems: "center",
+    gap: spacing.md,
   },
   // Lowercase wordmark in Fraunces — the brand voice, not a brand badge.
   // Slightly lowered baseline relative to the Settings link via a small
   // negative letterSpacing nudge handled in tokens.
   wordmark: {
-    color: colors.textPrimary,
+    color: colors.textMuted,
     fontFamily: fonts.sansSemibold,
-    fontSize: 18,
-    letterSpacing: -0.3,
+    fontSize: 11,
+    letterSpacing: 1.1,
+    textTransform: "uppercase",
   },
-  brandLockup: {
+  titleLockup: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
+    flex: 1,
+    minWidth: 0,
+  },
+  titleTextBlock: {
+    flex: 1,
+    minWidth: 0,
   },
   // View name lives on its own line below the lockup so it can breathe.
   // Sentence case, not uppercase \u2014 sentence case + serif is what gives the
   // app its editorial register.
   headerTitle: {
     color: colors.textPrimary,
-    ...typography.display,
-    marginTop: spacing.xs,
+    fontFamily: fonts.sansSemibold,
+    fontSize: 22,
+    lineHeight: 26,
+    letterSpacing: -0.3,
   },
   // Mono uppercase log-line. Reads as metadata, never as a count badge.
   headerSubtitle: {
     color: colors.textMuted,
     ...typography.micro,
-    marginTop: spacing.xs,
+    marginTop: 2,
+    paddingLeft: 24 + spacing.sm,
   },
   // Header links sit in a row so additional affordances (Kairo, Settings)
   // line up with the same visual weight rather than competing for spot.
   headerLinks: {
     flexDirection: "row",
-    alignItems: "baseline",
-    gap: spacing.lg,
+    alignItems: "center",
+    gap: spacing.md,
   },
   // Settings is a hairline-underlined word, not a button shape.
   settingsLinkWrap: {
+    minHeight: 32,
+    justifyContent: "center",
     paddingVertical: spacing.xs,
   },
   settingsLink: {
-    color: colors.textSecondary,
+    color: colors.textMuted,
     fontFamily: fonts.sansSemibold,
-    fontSize: 12,
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-    textDecorationLine: "underline",
-    textDecorationColor: colors.borderSubtle,
+    fontSize: 18,
+    letterSpacing: 1,
   },
   // Kairo entry point: same micro-link dialect as Settings but tinted in the
   // accent so it reads as the AI affordance without needing iconography.
   kairoLink: {
-    color: colors.accent,
+    color: colors.textPrimary,
     fontFamily: fonts.sansSemibold,
-    fontSize: 12,
-    letterSpacing: 1.4,
+    fontSize: 13,
+    letterSpacing: 1,
     textTransform: "uppercase",
+    textDecorationLine: "underline",
+    textDecorationColor: colors.accent,
   },
   // Toast — unenclosed: a thin 2px rule on the left + a line of copy. Error
   // tone uses the rust accent, info uses copper. No border, no radius, no fill.
