@@ -191,6 +191,73 @@ describe("useTaskMutations", () => {
     });
   });
 
+  it("restores the original scheduled date when undoing markDone for a scheduled task", async () => {
+    const completeTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const moveTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const unscheduleTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const reopenTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const updateTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const reorderTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const reorderInboxTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const shiftScheduledTaskPositionMutation = vi.fn().mockResolvedValue(undefined);
+
+    const mutationOrder = [
+      completeTaskMutation,
+      moveTaskMutation,
+      unscheduleTaskMutation,
+      reopenTaskMutation,
+      updateTaskMutation,
+      reorderTasksMutation,
+      reorderInboxTasksMutation,
+      shiftScheduledTaskPositionMutation,
+    ];
+    let mutationIndex = 0;
+    useMutationMock.mockImplementation(() => {
+      const next = mutationOrder[mutationIndex % mutationOrder.length];
+      mutationIndex += 1;
+      return next;
+    });
+
+    const showToast = vi.fn();
+    const { result } = renderHook(() =>
+      useTaskMutations({
+        serverTasks: [makeTask({ scheduledDate: "2026-04-24", status: "scheduled" })],
+        setOptimisticTasks: vi.fn(),
+        setPendingMutations: vi.fn(),
+        enqueueRetry: vi.fn(),
+        showToast,
+        today: "2026-04-24",
+        hasPriorityBoundaryViolation: () => false,
+      })
+    );
+
+    act(() => {
+      result.current.markDone(makeId("task-1"));
+    });
+
+    await waitFor(() => {
+      expect(completeTaskMutation).toHaveBeenCalledWith({ taskId: makeId("task-1") });
+    });
+
+    const toastArg = showToast.mock.calls.at(-1)?.[0] as {
+      action?: { label: string; run: () => void };
+    };
+
+    act(() => {
+      toastArg.action?.run();
+    });
+
+    await waitFor(() => {
+      expect(reopenTaskMutation).toHaveBeenCalledWith({ taskId: makeId("task-1") });
+    });
+    await waitFor(() => {
+      expect(moveTaskMutation).toHaveBeenLastCalledWith({
+        taskId: makeId("task-1"),
+        targetDate: "2026-04-24",
+      });
+    });
+  });
+
   it("rolls back optimistic state when timeline shift mutation fails", async () => {
     const completeTaskMutation = vi.fn().mockResolvedValue(undefined);
     const moveTaskMutation = vi.fn().mockResolvedValue(undefined);

@@ -214,12 +214,25 @@ export function useTaskMutations({
 
   const markDone = useCallback(
     (taskId: Id<"tasks">) => {
+      const priorDate = serverTasks.find((task) => task._id === taskId)?.scheduledDate;
       void runOptimisticMutation({
         ...completeConfig(taskId),
-        undo: { message: "Marked done", run: () => void runOptimisticMutation(reopenConfig(taskId)) },
+        undo: {
+          message: "Marked done",
+          run: () =>
+            void runOptimisticMutation({
+              ...reopenConfig(taskId),
+              mutation: async () => {
+                await reopenTaskMutation({ taskId });
+                if (priorDate) {
+                  await moveTaskMutation({ taskId, targetDate: priorDate });
+                }
+              },
+            }),
+        },
       });
     },
-    [runOptimisticMutation, completeConfig, reopenConfig]
+    [runOptimisticMutation, completeConfig, reopenConfig, serverTasks, reopenTaskMutation, moveTaskMutation]
   );
 
   const moveToToday = useCallback(
