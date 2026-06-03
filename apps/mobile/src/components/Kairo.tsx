@@ -17,11 +17,9 @@ import {
 } from "react-native";
 import BottomSheet, {
   BottomSheetBackdrop,
-  BottomSheetFooter,
   BottomSheetScrollView,
   BottomSheetTextInput,
   type BottomSheetBackdropProps,
-  type BottomSheetFooterProps,
 } from "@gorhom/bottom-sheet";
 import * as Clipboard from "expo-clipboard";
 import Animated, {
@@ -70,6 +68,7 @@ import { useGoalLinks, useGoals } from "../hooks/useGoals";
 import { KairoChatList } from "./KairoChatList";
 import { KairoMarkdown } from "./KairoMarkdown";
 import { haptic } from "../lib/haptic";
+import { useKeyboardInset } from "../hooks/useKeyboardInset";
 
 export type KairoSheetRef = {
   open: () => void;
@@ -198,10 +197,8 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
 ) {
   const sheetRef = useRef<BottomSheet>(null);
   const insets = useSafeAreaInsets();
-  // The input bar lives in a BottomSheetFooter, which gorhom pins above the
-  // keyboard for us. We measure its height so the scroll content can pad
-  // itself clear of the pinned footer.
-  const [footerHeight, setFooterHeight] = useState(0);
+  const bottomInset = useKeyboardInset(insets.bottom);
+  const keyboardLift = Math.max(0, bottomInset - spacing.lg);
   const [open, setOpen] = useState(false);
   const [val, setVal] = useState("");
   const [thinking, setThinking] = useState(false);
@@ -825,58 +822,6 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     [activeChat?.id, clearDeferred, deleteChat, thinking]
   );
 
-  // Pinned composer. gorhom's BottomSheetFooter keeps this above the keyboard
-  // on both platforms, so we don't hand-roll a keyboard listener or margin.
-  const renderFooter = useCallback(
-    (props: BottomSheetFooterProps) => {
-      if (view === "list") return null;
-      return (
-        <BottomSheetFooter {...props} bottomInset={insets.bottom}>
-          {copyFeedback ? (
-            <View style={styles.feedbackBanner} pointerEvents="none">
-              <Text style={styles.feedbackText}>{copyFeedback}</Text>
-            </View>
-          ) : null}
-          <View
-            style={styles.inputBar}
-            onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}
-          >
-            <BottomSheetTextInput
-              style={styles.input}
-              value={val}
-              onChangeText={setVal}
-              placeholder="Ask Kairo anything…"
-              placeholderTextColor={colors.textMuted}
-              editable={!thinking}
-              onSubmitEditing={() => void sendMessage(val)}
-              returnKeyType="send"
-              blurOnSubmit
-            />
-            <Pressable
-              onPress={() => void sendMessage(val)}
-              disabled={!val.trim() || thinking || !!deferredPrompt || !activeChat}
-              hitSlop={12}
-              style={({ pressed }) => [
-                styles.sendButton,
-                (!val.trim() || thinking || !!deferredPrompt || !activeChat) && styles.sendButtonDisabled,
-                pressed && { opacity: 0.8 },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Send message"
-            >
-              {thinking ? (
-                <ActivityIndicator color={colors.textInverse} size="small" />
-              ) : (
-                <Text style={styles.sendButtonText}>Send</Text>
-              )}
-            </Pressable>
-          </View>
-        </BottomSheetFooter>
-      );
-    },
-    [view, insets.bottom, copyFeedback, val, thinking, deferredPrompt, activeChat, sendMessage]
-  );
-
   return (
     <BottomSheet
       ref={sheetRef}
@@ -890,7 +835,6 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       enablePanDownToClose
       onChange={handleSheetChange}
       backdropComponent={renderBackdrop}
-      footerComponent={renderFooter}
       handleIndicatorStyle={styles.indicator}
       backgroundStyle={styles.sheetBg}
       keyboardBehavior="extend"
@@ -979,10 +923,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       <BottomSheetScrollView
         ref={listRef}
         style={styles.scroll}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: footerHeight + insets.bottom + spacing.lg },
-        ]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset + spacing.xl }]}
         keyboardShouldPersistTaps="handled"
       >
         {chatRows.map((item) => (
@@ -1017,6 +958,44 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           </Pressable>
         ) : null}
       </BottomSheetScrollView>
+
+      {copyFeedback ? (
+        <View style={styles.feedbackBanner} pointerEvents="none">
+          <Text style={styles.feedbackText}>{copyFeedback}</Text>
+        </View>
+      ) : null}
+
+      <View style={[styles.inputBar, { marginBottom: keyboardLift }]}>
+        <BottomSheetTextInput
+          style={styles.input}
+          value={val}
+          onChangeText={setVal}
+          placeholder="Ask Kairo anything…"
+          placeholderTextColor={colors.textMuted}
+          editable={!thinking}
+          onSubmitEditing={() => void sendMessage(val)}
+          returnKeyType="send"
+          blurOnSubmit
+        />
+        <Pressable
+          onPress={() => void sendMessage(val)}
+          disabled={!val.trim() || thinking || !!deferredPrompt || !activeChat}
+          hitSlop={12}
+          style={({ pressed }) => [
+            styles.sendButton,
+            (!val.trim() || thinking || !!deferredPrompt || !activeChat) && styles.sendButtonDisabled,
+            pressed && { opacity: 0.8 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Send message"
+        >
+          {thinking ? (
+            <ActivityIndicator color={colors.textInverse} size="small" />
+          ) : (
+            <Text style={styles.sendButtonText}>Send</Text>
+          )}
+        </Pressable>
+      </View>
       </>
       )}
     </BottomSheet>
