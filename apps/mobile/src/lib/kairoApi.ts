@@ -119,6 +119,33 @@ export function buildKairoStarters(
   return starters.slice(0, 4);
 }
 
+/** Cheap, dependency-free token estimate (~4 chars/token, the common rule of
+ *  thumb for English). Deliberately approximate — it powers the composer's live
+ *  context meter, where directional feedback matters more than exactness. */
+export function estimateTokens(text: string): number {
+  if (!text) return 0;
+  return Math.ceil(text.length / 4);
+}
+
+/** Best-effort context-window size (in tokens) for a configured model id, used
+ *  to render "% of context" in the composer meter. Falls back to a 128k default
+ *  for unrecognized ids so the meter still shows a sane percentage. */
+export function contextWindowForModel(model: string | undefined | null): number {
+  const m = (model ?? "").toLowerCase();
+  if (m.includes("claude")) return 200_000;
+  if (m.includes("gemini")) return 1_000_000;
+  if (
+    m.includes("gpt-5") ||
+    m.includes("gpt-4.1") ||
+    m.includes("gpt-4o") ||
+    m.includes("o1") ||
+    m.includes("o3")
+  ) {
+    return 128_000;
+  }
+  return 128_000;
+}
+
 function readAssistantText(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {

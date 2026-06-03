@@ -45,6 +45,8 @@ import {
 import {
   KAIRO_AGENT_SYSTEM_PROMPT,
   buildKairoStarters,
+  contextWindowForModel,
+  estimateTokens,
   type AgentTurn,
   type KairoAction,
   type KairoMessage,
@@ -346,6 +348,34 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     () => buildKairoStarters(tasks, inboxTasks, today),
     [tasks, inboxTasks, today]
   );
+
+  // Live context meter. The base — system prompt + thin workspace context +
+  // visible history — only changes when the workspace or conversation does, so
+  // it's memoized; only the draft tokens recompute on each keystroke. Mirrors
+  // exactly what `sendMessage` assembles, so the number reflects the real turn.
+  const baseContextTokens = useMemo(() => {
+    const registry = createHandleRegistry();
+    const ctx = buildThinContext({ tasks, inboxTasks, goals, goalLinks, registry, today });
+    const systemPrompt = KAIRO_AGENT_SYSTEM_PROMPT.replace("{CONTEXT}", ctx);
+    const historyText = msgs.map((m) => m.text).join("\n");
+    return estimateTokens(systemPrompt) + estimateTokens(historyText);
+  }, [tasks, inboxTasks, goals, goalLinks, today, msgs]);
+
+  const totalTokens = baseContextTokens + estimateTokens(val);
+  const contextWindow = contextWindowForModel(config?.model);
+  const contextPct = Math.min(100, (totalTokens / contextWindow) * 100);
+
+  // Direction of travel vs the previous render, for the up/down arrow.
+  const prevTokensRef = useRef(0);
+  const tokenTrend: "up" | "down" | "flat" =
+    totalTokens > prevTokensRef.current
+      ? "up"
+      : totalTokens < prevTokensRef.current
+        ? "down"
+        : "flat";
+  useEffect(() => {
+    prevTokensRef.current = totalTokens;
+  }, [totalTokens]);
 
   const sendMessageRef = useRef<(text: string, options?: { replayDeferred?: boolean }) => void>(
     () => {}
@@ -1039,55 +1069,89 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         </View>
       ) : null}
 
-      <View style={[styles.inputBar, { marginBottom: keyboardLift }]}>
-        <BottomSheetTextInput
-          style={styles.input}
-          value={val}
-          onChangeText={setVal}
-          placeholder="Ask Kairo anything…"
-          placeholderTextColor={colors.textMuted}
-          editable={!thinking}
-          onSubmitEditing={() => void sendMessage(val)}
-          returnKeyType="send"
-          blurOnSubmit
-        />
-        {thinking ? (
-          <Pressable
-            onPress={handleStopPress}
-            hitSlop={12}
-            style={({ pressed }) => [
-              styles.sendButton,
-              stopArmed ? styles.stopButtonArmed : styles.stopButton,
-              pressed && { opacity: 0.8 },
+      <View style={[styles.inputDock, { marginBottom: keyboardLift }]}>
+        <View style={styles.inputBar}>
+          <BottomSheetTextInput
+            style={styles.input}
+            value={val}
+            onChangeText={setVal}
+            placeholder="Ask Kairo anything…"
+            placeholderTextColor={colors.textMuted}
+            editable={!thinking}
+            onSubmitEditing={() => void sendMessage(val)}
+            returnKeyType="send"
+            blurOnSubmit
+          />
+          {thinking ? (
+            <Pressable
+              onPress={handleStopPress}
+              hitSlop={12}
+              style={({ pressed }) => [
+                styles.sendButton,
+                stopArmed ? styles.stopButtonArmed : styles.stopButton,
+                pressed && { opacity: 0.8 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={stopArmed ? "Confirm stop" : "Stop"}
+            >
+              {stopArmed ? (
+                <Text style={styles.sendButtonText}>Tap again</Text>
+              ) : (
+                <View style={styles.stopInner}>
+                  <ActivityIndicator color={colors.textInverse} size="small" />
+                  <Text style={styles.sendButtonText}>Stop</Text>
+                </View>
+              )}
+            </Pressable>
+          ) : (
+            <Pressable
+              onPress={() => void sendMessage(val)}
+              disabled={!val.trim() || !!deferredPrompt || !activeChat}
+              hitSlop={12}
+              style={({ pressed }) => [
+                styles.sendButton,
+                (!val.trim() || !!deferredPrompt || !activeChat) && styles.sendButtonDisabled,
+                pressed && { opacity: 0.8 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Send message"
+            >
+              <Text style={styles.sendButtonText}>Send</Text>
+            </Pressable>
+          )}
+        </View>
+        <View
+          style={styles.tokenMeter}
+          pointerEvents="none"
+          accessibilityRole="text"
+          accessibilityLabel={`Estimated ${totalTokens} tokens, ${contextPct.toFixed(
+            1
+          )} percent of context window`}
+        >
+          <Text
+            style={[
+              styles.tokenMeterArrow,
+              tokenTrend === "down" && styles.tokenMeterArrowDown,
             ]}
-            accessibilityRole="button"
-            accessibilityLabel={stopArmed ? "Confirm stop" : "Stop"}
           >
-            {stopArmed ? (
-              <Text style={styles.sendButtonText}>Tap again</Text>
-            ) : (
-              <View style={styles.stopInner}>
-                <ActivityIndicator color={colors.textInverse} size="small" />
-                <Text style={styles.sendButtonText}>Stop</Text>
-              </View>
-            )}
-          </Pressable>
-        ) : (
-          <Pressable
-            onPress={() => void sendMessage(val)}
-            disabled={!val.trim() || !!deferredPrompt || !activeChat}
-            hitSlop={12}
-            style={({ pressed }) => [
-              styles.sendButton,
-              (!val.trim() || !!deferredPrompt || !activeChat) && styles.sendButtonDisabled,
-              pressed && { opacity: 0.8 },
+            {tokenTrend === "down" ? "▾" : "▴"}
+          </Text>
+          <Text style={styles.tokenMeterCount}>~{totalTokens.toLocaleString()}</Text>
+          <Text style={styles.tokenMeterUnit}>tokens</Text>
+          <Text style={styles.tokenMeterDot}>·</Text>
+          <Text
+            style={[
+              styles.tokenMeterPct,
+              contextPct >= 90
+                ? styles.tokenMeterPctDanger
+                : contextPct >= 70
+                  ? styles.tokenMeterPctWarn
+                  : null,
             ]}
-            accessibilityRole="button"
-            accessibilityLabel="Send message"
           >
-            <Text style={styles.sendButtonText}>Send</Text>
-          </Pressable>
-        )}
+            {contextPct < 0.1 ? "<0.1" : contextPct.toFixed(1)}% context
+          </Text>
+        </View>
       </View>
       </>
       )}
@@ -1583,16 +1647,59 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     ...typography.micro,
   },
-  inputBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
+  inputDock: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.lg,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.borderSubtle,
     backgroundColor: colors.bg,
+  },
+  inputBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  tokenMeter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.xs,
+  },
+  tokenMeterArrow: {
+    color: colors.success,
+    fontSize: 11,
+    lineHeight: 13,
+    fontFamily: fonts.sansSemibold,
+  },
+  tokenMeterArrowDown: {
+    color: colors.textMuted,
+  },
+  tokenMeterCount: {
+    color: colors.textSecondary,
+    ...typography.micro,
+    fontFamily: fonts.mono,
+    fontVariant: ["tabular-nums"],
+  },
+  tokenMeterUnit: {
+    color: colors.textMuted,
+    ...typography.micro,
+  },
+  tokenMeterDot: {
+    color: colors.textMuted,
+    ...typography.micro,
+  },
+  tokenMeterPct: {
+    color: colors.textMuted,
+    ...typography.micro,
+    fontVariant: ["tabular-nums"],
+  },
+  tokenMeterPctWarn: {
+    color: colors.warning,
+  },
+  tokenMeterPctDanger: {
+    color: colors.error,
   },
   input: {
     flex: 1,
