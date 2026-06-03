@@ -432,7 +432,7 @@ function asPriority(v: unknown): "p1" | "p2" | "p3" | undefined {
   return v === "p1" || v === "p2" || v === "p3" ? v : undefined;
 }
 
-function parseAction(kind: string, parsed: ParsedJson): KairoAction | null {
+export function parseAction(kind: string, parsed: ParsedJson): KairoAction | null {
   switch (kind) {
     case "add": {
       const title = asString(parsed.title);
@@ -590,4 +590,224 @@ export function extractKairoActions(rawText: string): {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
   return { cleanText, actions };
+}
+
+// ─── Native tool calling ──────────────────────────────────────────────────────
+//
+// Provider-agnostic conversation model + per-provider serializers. The agentic
+// loop (kairoAgent.ts) keeps a neutral list of turns and re-serializes it each
+// round, which is what lets the loop itself stay free of provider branching.
+// The three providers differ in tool-call shape, tool-result feedback, and
+// message envelope — those differences are isolated entirely to this section.
+
+export interface NormalizedToolCall {
+  /** Provider-assigned call id (Anthropic `tool_use.id`, OpenAI
+   *  `tool_calls[].id`). Gemini has none, so we synthesize `${name}-${index}`.
+   *  Echoed back in the matching tool result so providers can pair call↔result. */
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+}
+
+export interface ToolResultEntry {
+  /** Matches the originating NormalizedToolCall.id. */
+  id: string;
+  /** Tool name — Gemini pairs results by name rather than id. */
+  name: string;
+  /** JSON-serialized result payload fed back to the model. */
+  content: string;
+}
+
+export type AgentTurn =
+  | { role: "user"; text: string }
+  | { role: "assistant"; text: string; toolCalls: NormalizedToolCall[] }
+  | { role: "tool"; results: ToolResultEntry[] };
+
+export interface ToolCallExtraction {
+  /** Assistant prose accompanying this turn — may be empty when the model
+   *  emitted only tool calls. */
+  text: string;
+  toolCalls: NormalizedToolCall[];
+}
+
+const MAX_TOOL_TOKENS = 1024;
+
+function coerceArgs(raw: unknown): Record<string, unknown> {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  // OpenAI serializes function arguments as a JSON string.
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      /* fall through to empty */
+    }
+  }
+  return {};
+}
+
+/** Read both the assistant prose and any tool calls out of a provider response.
+ *  Shapes differ per provider; everything downstream sees the normalized form. */
+export function extractToolCalls(
+  data: unknown,
+  providerFormat: KairoProviderFormat
+): ToolCallExtraction {
+  if (!data || typeof data !== "object") return { text: "", toolCalls: [] };
+
+  if (providerFormat === "anthropic") {
+    const content = (data as { content?: unknown }).content;
+    const blocks = Array.isArray(content) ? content : [];
+    const toolCalls: NormalizedToolCall[] = [];
+    blocks.forEach((b) => {
+      if (b && typeof b === "object" && (b as { type?: string }).type === "tool_use") {
+        const block = b as { id?: unknown; name?: unknown; input?: unknown };
+        if (typeof block.name === "string") {
+          toolCalls.push({
+            id: typeof block.id === "string" ? block.id : `${block.name}-${toolCalls.length}`,
+            name: block.name,
+            args: coerceArgs(block.input),
+          });
+        }
+      }
+    });
+    return { text: readAssistantText(blocks), toolCalls };
+  }
+
+  if (providerFormat === "gemini") {
+    const candidates =
+      (data as { candidates?: Array<{ content?: { parts?: unknown[] } }> }).candidates ?? [];
+    const parts = candidates[0]?.content?.parts ?? [];
+    const toolCalls: NormalizedToolCall[] = [];
+    parts.forEach((p) => {
+      if (p && typeof p === "object" && "functionCall" in p) {
+        const fc = (p as { functionCall?: { name?: unknown; args?: unknown } }).functionCall;
+        if (fc && typeof fc.name === "string") {
+          toolCalls.push({
+            id: `${fc.name}-${toolCalls.length}`,
+            name: fc.name,
+            args: coerceArgs(fc.args),
+          });
+        }
+      }
+    });
+    return { text: readAssistantText(parts), toolCalls };
+  }
+
+  // openai
+  const message = (
+    data as { choices?: Array<{ message?: { content?: unknown; tool_calls?: unknown } }> }
+  ).choices?.[0]?.message;
+  const rawCalls = Array.isArray(message?.tool_calls) ? (message?.tool_calls as unknown[]) : [];
+  const toolCalls: NormalizedToolCall[] = [];
+  rawCalls.forEach((c, i) => {
+    if (c && typeof c === "object") {
+      const call = c as { id?: unknown; function?: { name?: unknown; arguments?: unknown } };
+      const name = call.function?.name;
+      if (typeof name === "string") {
+        toolCalls.push({
+          id: typeof call.id === "string" ? call.id : `${name}-${i}`,
+          name,
+          args: coerceArgs(call.function?.arguments),
+        });
+      }
+    }
+  });
+  return { text: message ? readAssistantText(message.content) : "", toolCalls };
+}
+
+/** Serialize the neutral turn list into a provider request body, with tools
+ *  attached. `tools` is the already-provider-shaped array from buildToolDefs. */
+export function buildToolRequestBody(
+  config: KairoConfig,
+  systemPrompt: string,
+  tools: unknown[],
+  turns: AgentTurn[]
+): Record<string, unknown> {
+  if (config.providerFormat === "anthropic") {
+    const messages = turns.map((turn) => {
+      if (turn.role === "user") return { role: "user", content: turn.text };
+      if (turn.role === "assistant") {
+        const content: unknown[] = [];
+        if (turn.text) content.push({ type: "text", text: turn.text });
+        for (const tc of turn.toolCalls) {
+          content.push({ type: "tool_use", id: tc.id, name: tc.name, input: tc.args });
+        }
+        return { role: "assistant", content };
+      }
+      return {
+        role: "user",
+        content: turn.results.map((r) => ({
+          type: "tool_result",
+          tool_use_id: r.id,
+          content: r.content,
+        })),
+      };
+    });
+    return {
+      model: config.model,
+      max_tokens: MAX_TOOL_TOKENS,
+      system: systemPrompt,
+      tools,
+      messages,
+    };
+  }
+
+  if (config.providerFormat === "gemini") {
+    const contents = turns.map((turn) => {
+      if (turn.role === "user") return { role: "user", parts: [{ text: turn.text }] };
+      if (turn.role === "assistant") {
+        const parts: unknown[] = [];
+        if (turn.text) parts.push({ text: turn.text });
+        for (const tc of turn.toolCalls) {
+          parts.push({ functionCall: { name: tc.name, args: tc.args } });
+        }
+        return { role: "model", parts };
+      }
+      return {
+        role: "user",
+        parts: turn.results.map((r) => ({
+          functionResponse: { name: r.name, response: { result: r.content } },
+        })),
+      };
+    });
+    return {
+      generationConfig: { maxOutputTokens: MAX_TOOL_TOKENS },
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      tools,
+      contents,
+    };
+  }
+
+  // openai
+  const messages: unknown[] = [{ role: "system", content: systemPrompt }];
+  for (const turn of turns) {
+    if (turn.role === "user") {
+      messages.push({ role: "user", content: turn.text });
+    } else if (turn.role === "assistant") {
+      const msg: Record<string, unknown> = { role: "assistant", content: turn.text || null };
+      if (turn.toolCalls.length) {
+        msg.tool_calls = turn.toolCalls.map((tc) => ({
+          id: tc.id,
+          type: "function",
+          function: { name: tc.name, arguments: JSON.stringify(tc.args) },
+        }));
+      }
+      messages.push(msg);
+    } else {
+      // Each tool result is its own `role:"tool"` message in the OpenAI shape.
+      for (const r of turn.results) {
+        messages.push({ role: "tool", tool_call_id: r.id, content: r.content });
+      }
+    }
+  }
+  return {
+    model: config.model,
+    max_completion_tokens: MAX_TOOL_TOKENS,
+    messages,
+    tools,
+  };
 }

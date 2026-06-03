@@ -1,0 +1,447 @@
+/**
+ * Kairo tool catalog
+ *
+ * The provider-agnostic tool surface for the agentic loop:
+ *   - JSON-schema definitions for every read + mutation tool
+ *   - `buildToolDefs` wraps those schemas in each provider's tool shape
+ *   - a per-send handle registry (`[T#]`/`[G#]`) that read tools append to
+ *   - `runReadTool` — local, synchronous executors that filter the in-memory
+ *     workspace (no Convex round-trip; the full corpus is already loaded)
+ *   - `toolCallToAction` — maps a mutation tool call onto the canonical
+ *     `KairoAction`, reusing `parseAction` so validation stays single-sourced
+ *
+ * Mutation tools are NOT executed here — they map to `KairoAction`s and run
+ * through the existing `applyKairoActions` executor, keeping the undo system
+ * untouched.
+ */
+
+import {
+  parseAction,
+  type KairoAction,
+  type KairoIdMap,
+  type KairoTaskInput,
+} from "./kairoApi";
+import type { KairoProviderFormat } from "./kairoConfig";
+
+// ─── Schemas ──────────────────────────────────────────────────────────────────
+
+export interface KairoToolSchema {
+  name: string;
+  description: string;
+  parameters: {
+    type: "object";
+    properties: Record<string, unknown>;
+    required?: string[];
+  };
+}
+
+const str = (description: string) => ({ type: "string", description });
+const priorityProp = {
+  type: "string",
+  enum: ["p1", "p2", "p3"],
+  description: "Priority bucket (p1 highest)",
+};
+
+export const KAIRO_READ_TOOLS: KairoToolSchema[] = [
+  {
+    name: "get_inbox",
+    description: "List all unscheduled inbox tasks with their handles.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    name: "get_tasks_in_range",
+    description:
+      "List scheduled tasks between two dates inclusive. Use the same date for both to get a single day; spans cover week views.",
+    parameters: {
+      type: "object",
+      properties: {
+        startDate: str("Start date, YYYY-MM-DD"),
+        endDate: str("End date, YYYY-MM-DD"),
+      },
+      required: ["startDate", "endDate"],
+    },
+  },
+  {
+    name: "get_overdue",
+    description: "List scheduled tasks dated before today.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    name: "search_tasks",
+    description:
+      "Find tasks whose title contains the query (case-insensitive), across all dates and the inbox.",
+    parameters: {
+      type: "object",
+      properties: { query: str("Text to match in task titles") },
+      required: ["query"],
+    },
+  },
+  {
+    name: "get_completed",
+    description:
+      "List completed tasks, optionally filtered to those scheduled within a date range (YYYY-MM-DD). Useful for progress summaries.",
+    parameters: {
+      type: "object",
+      properties: {
+        startDate: str("Optional start date, YYYY-MM-DD"),
+        endDate: str("Optional end date, YYYY-MM-DD"),
+      },
+    },
+  },
+];
+
+export const KAIRO_MUTATION_TOOLS: KairoToolSchema[] = [
+  {
+    name: "add_task",
+    description: "Create a task. Omit scheduledDate to put it in the inbox.",
+    parameters: {
+      type: "object",
+      properties: {
+        title: str("Task title"),
+        scheduledDate: str("Date YYYY-MM-DD, or omit for inbox"),
+        type: { type: "string", enum: ["open", "deadline"], description: "Task type" },
+      },
+      required: ["title"],
+    },
+  },
+  {
+    name: "reschedule_task",
+    description: "Move a task to a different date.",
+    parameters: {
+      type: "object",
+      properties: {
+        handle: str("Task handle, e.g. T3"),
+        scheduledDate: str("New date, YYYY-MM-DD"),
+      },
+      required: ["handle", "scheduledDate"],
+    },
+  },
+  {
+    name: "complete_task",
+    description: "Mark a task done.",
+    parameters: { type: "object", properties: { handle: str("Task handle") }, required: ["handle"] },
+  },
+  {
+    name: "unschedule_task",
+    description: "Send a scheduled task back to the inbox.",
+    parameters: { type: "object", properties: { handle: str("Task handle") }, required: ["handle"] },
+  },
+  {
+    name: "update_task",
+    description:
+      "Change a task's title, priority, or deadline. Pass deadline:null to clear an existing deadline.",
+    parameters: {
+      type: "object",
+      properties: {
+        handle: str("Task handle"),
+        title: str("New title"),
+        priority: priorityProp,
+        deadline: str("Deadline YYYY-MM-DD, or null to clear"),
+      },
+      required: ["handle"],
+    },
+  },
+  {
+    name: "delete_task",
+    description: "Delete a task (soft delete — the user can undo it).",
+    parameters: { type: "object", properties: { handle: str("Task handle") }, required: ["handle"] },
+  },
+  {
+    name: "add_goal",
+    description: "Create a goal.",
+    parameters: {
+      type: "object",
+      properties: {
+        text: str("Goal text"),
+        description: str("Optional description"),
+        deadline: str("Optional deadline, YYYY-MM-DD"),
+        priority: priorityProp,
+      },
+      required: ["text"],
+    },
+  },
+  {
+    name: "update_goal",
+    description:
+      "Change a goal's text, description, deadline, or priority. Pass null to clear an optional field.",
+    parameters: {
+      type: "object",
+      properties: {
+        handle: str("Goal handle, e.g. G1"),
+        text: str("New text"),
+        description: str("Description, or null to clear"),
+        deadline: str("Deadline YYYY-MM-DD, or null to clear"),
+        priority: priorityProp,
+      },
+      required: ["handle"],
+    },
+  },
+  {
+    name: "delete_goal",
+    description: "Delete a goal.",
+    parameters: { type: "object", properties: { handle: str("Goal handle") }, required: ["handle"] },
+  },
+  {
+    name: "link_task_goal",
+    description: "Link a task to a goal.",
+    parameters: {
+      type: "object",
+      properties: {
+        taskHandle: str("Task handle"),
+        goalHandle: str("Goal handle"),
+      },
+      required: ["taskHandle", "goalHandle"],
+    },
+  },
+  {
+    name: "unlink_task_goal",
+    description: "Remove a task's goal link.",
+    parameters: {
+      type: "object",
+      properties: { taskHandle: str("Task handle") },
+      required: ["taskHandle"],
+    },
+  },
+];
+
+export const KAIRO_ALL_TOOLS: KairoToolSchema[] = [...KAIRO_READ_TOOLS, ...KAIRO_MUTATION_TOOLS];
+
+/** Wrap the shared schemas in each provider's tool-definition shape. Gemini
+ *  nests every declaration under a single `functionDeclarations` entry; the
+ *  others expose a flat array of tool objects. */
+export function buildToolDefs(providerFormat: KairoProviderFormat): unknown[] {
+  if (providerFormat === "anthropic") {
+    return KAIRO_ALL_TOOLS.map((t) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.parameters,
+    }));
+  }
+  if (providerFormat === "gemini") {
+    return [
+      {
+        functionDeclarations: KAIRO_ALL_TOOLS.map((t) => ({
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters,
+        })),
+      },
+    ];
+  }
+  return KAIRO_ALL_TOOLS.map((t) => ({
+    type: "function",
+    function: { name: t.name, description: t.description, parameters: t.parameters },
+  }));
+}
+
+// ─── Handle registry ──────────────────────────────────────────────────────────
+
+export interface HandleRegistry {
+  /** handle → real Convex task id (consumed by applyKairoActions). */
+  taskIdMap: KairoIdMap;
+  /** handle → real goal client id. */
+  goalIdMap: KairoIdMap;
+  /** Mint or reuse a `[T#]` handle for a task id. Stable within a send. */
+  handleForTask: (taskId: string) => string;
+  /** Mint or reuse a `[G#]` handle for a goal id. */
+  handleForGoal: (goalId: string) => string;
+}
+
+export function createHandleRegistry(): HandleRegistry {
+  const taskIdMap: KairoIdMap = {};
+  const goalIdMap: KairoIdMap = {};
+  const taskHandleById = new Map<string, string>();
+  const goalHandleById = new Map<string, string>();
+  let nextTask = 1;
+  let nextGoal = 1;
+  return {
+    taskIdMap,
+    goalIdMap,
+    handleForTask(taskId) {
+      const existing = taskHandleById.get(taskId);
+      if (existing) return existing;
+      const handle = `T${nextTask++}`;
+      taskHandleById.set(taskId, handle);
+      taskIdMap[handle] = taskId;
+      return handle;
+    },
+    handleForGoal(goalId) {
+      const existing = goalHandleById.get(goalId);
+      if (existing) return existing;
+      const handle = `G${nextGoal++}`;
+      goalHandleById.set(goalId, handle);
+      goalIdMap[handle] = goalId;
+      return handle;
+    },
+  };
+}
+
+// ─── Read-tool execution ──────────────────────────────────────────────────────
+
+export interface KairoReadEnv {
+  /** All loaded tasks across tabs (scheduled + completed live here). */
+  tasks: KairoTaskInput[];
+  /** Inbox tasks (a separate query in the parent). */
+  inboxTasks: KairoTaskInput[];
+  registry: HandleRegistry;
+  /** Local-date string for overdue comparisons. */
+  today: string;
+}
+
+interface TaskSummary {
+  handle: string;
+  title: string;
+  status: KairoTaskInput["status"];
+  scheduledDate?: string;
+  priority?: "p1" | "p2" | "p3";
+  type?: "open" | "deadline";
+  deadline?: string;
+}
+
+export interface ReadToolResult {
+  /** True when the tool name was recognized and ran. */
+  ok: boolean;
+  /** Serializable payload fed back to the model. */
+  data?: unknown;
+  error?: string;
+}
+
+const SEARCH_LIMIT = 25;
+
+function summarize(task: KairoTaskInput, registry: HandleRegistry): TaskSummary {
+  const summary: TaskSummary = {
+    handle: registry.handleForTask(task._id),
+    title: task.title,
+    status: task.status,
+  };
+  if (task.scheduledDate) summary.scheduledDate = task.scheduledDate;
+  if (task.priority) summary.priority = task.priority;
+  if (task.type) summary.type = task.type;
+  if (task.deadline) summary.deadline = task.deadline;
+  return summary;
+}
+
+function dedupeById(tasks: KairoTaskInput[]): KairoTaskInput[] {
+  const seen = new Set<string>();
+  const out: KairoTaskInput[] = [];
+  for (const t of tasks) {
+    if (seen.has(t._id)) continue;
+    seen.add(t._id);
+    out.push(t);
+  }
+  return out;
+}
+
+const asDate = (v: unknown): string | undefined =>
+  typeof v === "string" && v.trim() ? v.trim() : undefined;
+
+/** Run a read tool against the in-memory workspace. Pure and synchronous —
+ *  every returned task is registered into the handle map so the model can act
+ *  on what it read in a later round. */
+export function runReadTool(
+  name: string,
+  args: Record<string, unknown>,
+  env: KairoReadEnv
+): ReadToolResult {
+  const { tasks, inboxTasks, registry, today } = env;
+  const toSummaries = (list: KairoTaskInput[]) => list.map((t) => summarize(t, registry));
+
+  switch (name) {
+    case "get_inbox":
+      return { ok: true, data: { tasks: toSummaries(inboxTasks) } };
+
+    case "get_tasks_in_range": {
+      const start = asDate(args.startDate);
+      const end = asDate(args.endDate);
+      if (!start || !end) {
+        return { ok: false, error: "startDate and endDate are required (YYYY-MM-DD)." };
+      }
+      const [lo, hi] = start <= end ? [start, end] : [end, start];
+      const matched = tasks
+        .filter(
+          (t) =>
+            t.status === "scheduled" &&
+            t.scheduledDate !== undefined &&
+            t.scheduledDate >= lo &&
+            t.scheduledDate <= hi
+        )
+        .sort((a, b) => (a.scheduledDate ?? "").localeCompare(b.scheduledDate ?? ""));
+      return { ok: true, data: { tasks: toSummaries(matched) } };
+    }
+
+    case "get_overdue": {
+      const matched = tasks
+        .filter(
+          (t) =>
+            t.status === "scheduled" && t.scheduledDate !== undefined && t.scheduledDate < today
+        )
+        .sort((a, b) => (a.scheduledDate ?? "").localeCompare(b.scheduledDate ?? ""));
+      return { ok: true, data: { tasks: toSummaries(matched) } };
+    }
+
+    case "search_tasks": {
+      const query = typeof args.query === "string" ? args.query.trim().toLowerCase() : "";
+      if (!query) return { ok: false, error: "query is required." };
+      const matched = dedupeById([...tasks, ...inboxTasks])
+        .filter((t) => t.title.toLowerCase().includes(query))
+        .slice(0, SEARCH_LIMIT);
+      return {
+        ok: true,
+        data: { tasks: toSummaries(matched), truncated: matched.length === SEARCH_LIMIT },
+      };
+    }
+
+    case "get_completed": {
+      const start = asDate(args.startDate);
+      const end = asDate(args.endDate);
+      const matched = tasks.filter((t) => {
+        if (t.status !== "completed") return false;
+        if (start && (t.scheduledDate === undefined || t.scheduledDate < start)) return false;
+        if (end && (t.scheduledDate === undefined || t.scheduledDate > end)) return false;
+        return true;
+      });
+      return { ok: true, data: { tasks: toSummaries(matched) } };
+    }
+
+    default:
+      return { ok: false, error: `Unknown read tool "${name}".` };
+  }
+}
+
+// ─── Mutation tool → KairoAction ──────────────────────────────────────────────
+
+const MUTATION_TOOL_TO_KIND: Record<string, string> = {
+  add_task: "add",
+  reschedule_task: "reschedule",
+  complete_task: "complete",
+  unschedule_task: "unschedule",
+  update_task: "update",
+  delete_task: "delete",
+  add_goal: "add-goal",
+  update_goal: "update-goal",
+  delete_goal: "delete-goal",
+  link_task_goal: "link-task-goal",
+  unlink_task_goal: "unlink-task-goal",
+};
+
+export function isReadTool(name: string): boolean {
+  return KAIRO_READ_TOOLS.some((t) => t.name === name);
+}
+
+export function isMutationTool(name: string): boolean {
+  return name in MUTATION_TOOL_TO_KIND;
+}
+
+/** Convert a mutation tool call into the canonical KairoAction, reusing the
+ *  same validation as the legacy XML parser. Returns null for unknown or
+ *  malformed calls — the caller surfaces a skipped result. The schema field
+ *  names (`handle`, `taskHandle`, `goalHandle`) line up with the aliases
+ *  `parseAction` already accepts. */
+export function toolCallToAction(
+  name: string,
+  args: Record<string, unknown>
+): KairoAction | null {
+  const kind = MUTATION_TOOL_TO_KIND[name];
+  if (!kind) return null;
+  return parseAction(kind, args);
+}
