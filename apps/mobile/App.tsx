@@ -678,7 +678,8 @@ function MobileApp() {
           scheduledDate: dateById.get(a.taskId) as string,
         }));
 
-      // Apply deadline moves now; remember the old drafts for undo.
+      // Capture deadline edits for post-success apply + undo.
+      const deadlineUpdates: { id: string; draft: GoalDraft }[] = [];
       const deadlineUndo: { id: string; draft: GoalDraft }[] = [];
       for (const item of items) {
         if (!item.newDeadline) continue;
@@ -691,7 +692,7 @@ function MobileApp() {
           priority: goal.priority,
         };
         deadlineUndo.push({ id: goal.id, draft: baseDraft });
-        updateGoal(goal.id, { ...baseDraft, deadline: item.newDeadline });
+        deadlineUpdates.push({ id: goal.id, draft: { ...baseDraft, deadline: item.newDeadline } });
       }
 
       const actionId = createActionId("reflow");
@@ -701,6 +702,7 @@ function MobileApp() {
       void (async () => {
         try {
           await rescheduleTasksMutation({ updates });
+          for (const item of deadlineUpdates) updateGoal(item.id, item.draft);
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           showToast({
             kind: "info",

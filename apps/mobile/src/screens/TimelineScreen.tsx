@@ -109,13 +109,14 @@ export function TimelineScreen({
 }: TimelineScreenProps) {
   const { future, overdueCount: localOverdue } = splitOverdue(sections, today);
   const effectiveOverdue = overdueCount ?? localOverdue;
+  const visibleSections = onOpenOverdue ? future : sections;
 
-  const totalRows = countTimelineRows(future);
+  const totalRows = countTimelineRows(visibleSections);
   const visibleRowCount = useIncrementalRowCount(totalRows);
 
   // Build only the rows currently released to FlatList. Large timelines still
   // hydrate quickly, but the first paint avoids handing every row to React.
-  const rows = buildTimelineRows(future, today, tomorrow, weekEnd, visibleRowCount);
+  const rows = buildTimelineRows(visibleSections, today, tomorrow, weekEnd, visibleRowCount);
   const hasPendingRows = rows.length < totalRows;
 
   const overdueHeader =

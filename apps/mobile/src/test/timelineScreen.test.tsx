@@ -360,6 +360,43 @@ describe("TimelineScreen", () => {
     expect(onOpenOverdue).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps overdue tasks visible inline when triage is unavailable", () => {
+    const overdueSections: [string, MobileTask[]][] = [
+      [
+        "2026-05-01",
+        [
+          {
+            _id: "od1" as Id<"tasks">,
+            title: "Late task",
+            status: "scheduled",
+            scheduledDate: "2026-05-01",
+            position: 0,
+            updatedAt: 1,
+          },
+        ],
+      ],
+      ...sampleSections,
+    ];
+
+    render(
+      <TimelineScreen
+        sections={overdueSections}
+        today="2026-05-04"
+        tomorrow="2026-05-05"
+        weekEnd="2026-05-10"
+        isLoading={false}
+        isRefreshing={false}
+        tabBarHeight={60}
+        onRefresh={mockOnRefresh}
+        renderItem={mockRenderItem}
+        overdueCount={1}
+      />
+    );
+
+    expect(screen.getByTestId("task-od1")).toBeTruthy();
+    expect(screen.queryByText("Overdue · 1")).toBeNull();
+  });
+
   it("releases large timelines in small batches after the first paint", () => {
     vi.useFakeTimers();
     const tasks = Array.from({ length: 30 }, (_, index) => ({

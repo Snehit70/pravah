@@ -287,6 +287,10 @@ export const rescheduleTasks = mutation({
         target = task.deadline;
       }
 
+      if (task.status === "scheduled" && task.scheduledDate === target) {
+        continue;
+      }
+
       let position = positionByDate.get(target);
       if (position === undefined) {
         position = await getNextPositionForStatus(
