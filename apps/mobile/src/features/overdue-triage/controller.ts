@@ -204,7 +204,14 @@ export function useOverdueTriageController({
           if (classifyError(error) === "network") {
             enqueueRetry({
               label: `Reschedule ${updates.length} tasks`,
-              payload: { type: "rescheduleTasks", updates },
+              payload: {
+                type: "rescheduleTasks",
+                updates,
+                goalUpdates: deadlineUpdates.map((item) => ({
+                  goalId: item.id,
+                  draft: item.draft,
+                })),
+              },
             });
             showToast({ kind: "error", message: "Offline. Reschedule queued for retry." });
           } else {

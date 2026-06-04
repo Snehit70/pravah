@@ -582,6 +582,9 @@ function MobileApp() {
         }
         case "rescheduleTasks": {
           await rescheduleTasksMutation({ updates: payload.updates });
+          for (const goalUpdate of payload.goalUpdates ?? []) {
+            updateGoal(goalUpdate.goalId, goalUpdate.draft);
+          }
           return;
         }
       }
@@ -595,6 +598,7 @@ function MobileApp() {
       reopenTaskMutation,
       rescheduleTasksMutation,
       setGoalLink,
+      updateGoal,
     ]
   );
 
