@@ -298,6 +298,11 @@ vi.mock("../hooks/useGoals", () => ({
   useGoalLinks: () => ({}),
 }));
 
+const mockConfirm = vi.fn(async () => true);
+vi.mock("../hooks/useConfirm", () => ({
+  useConfirm: () => mockConfirm,
+}));
+
 // Import component after all mocks are set up.
 import { Kairo, type KairoSheetRef } from "../components/Kairo";
 import type { KairoTaskInput } from "../lib/kairoApi";
@@ -353,7 +358,6 @@ describe("Kairo", () => {
         ref={ref}
         tasks={sampleTasks}
         inboxTasks={[sampleTasks[0]]}
-        reflowTasks={[]}
         isAllTasksReady={true}
       />
     );
@@ -371,7 +375,6 @@ describe("Kairo", () => {
         ref={ref}
         tasks={sampleTasks}
         inboxTasks={[sampleTasks[0]]}
-        reflowTasks={[]}
         isAllTasksReady={true}
         onActiveChange={onActiveChange}
       />
@@ -400,7 +403,6 @@ describe("Kairo", () => {
         ref={ref}
         tasks={[]}
         inboxTasks={[]}
-        reflowTasks={[]}
         isAllTasksReady={false}
       />
     );
@@ -440,7 +442,6 @@ describe("Kairo", () => {
         ref={ref}
         tasks={[]}
         inboxTasks={[]}
-        reflowTasks={[]}
         isAllTasksReady={false}
       />
     );
@@ -464,7 +465,6 @@ describe("Kairo", () => {
         ref={ref}
         tasks={sampleTasks}
         inboxTasks={[sampleTasks[0]]}
-        reflowTasks={[]}
         isAllTasksReady={true}
       />
     );
@@ -491,7 +491,6 @@ describe("Kairo", () => {
         ref={ref}
         tasks={sampleTasks}
         inboxTasks={[sampleTasks[0]]}
-        reflowTasks={[]}
         isAllTasksReady={true}
       />
     );
@@ -525,7 +524,6 @@ describe("Kairo", () => {
         ref={ref}
         tasks={sampleTasks}
         inboxTasks={[sampleTasks[0]]}
-        reflowTasks={[]}
         isAllTasksReady={true}
       />
     );
@@ -585,7 +583,6 @@ describe("Kairo", () => {
         ref={ref}
         tasks={sampleTasks}
         inboxTasks={[sampleTasks[0]]}
-        reflowTasks={[]}
         isAllTasksReady={true}
       />
     );
@@ -603,6 +600,7 @@ describe("Kairo", () => {
 
     // Should call addTask mutation twice
     await waitFor(() => expect(mockAddTask).toHaveBeenCalledTimes(2));
+    expect(mockConfirm).toHaveBeenCalledTimes(2);
     
     expect(mockAddTask).toHaveBeenCalledWith({
       title: "Review PR",
@@ -621,6 +619,48 @@ describe("Kairo", () => {
     });
   });
 
+  it("does not apply a task mutation when confirmation is declined", async () => {
+    useConfiguredKairo();
+    mockConfirm.mockResolvedValueOnce(false);
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          content: [
+            {
+              type: "tool_use",
+              id: "t1",
+              name: "add_task",
+              input: { title: "Review PR", type: "open" },
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ content: [{ type: "text", text: "I left it unchanged." }] }),
+      });
+
+    render(
+      <Kairo
+        ref={ref}
+        tasks={sampleTasks}
+        inboxTasks={[sampleTasks[0]]}
+        isAllTasksReady={true}
+      />
+    );
+
+    await screen.findByText(/Hi, I'm Kairo/i);
+    fireEvent.change(screen.getByTestId("kairo-input"), { target: { value: "Add a task" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+    });
+
+    await waitFor(() => expect(screen.getByText("I left it unchanged.")).toBeTruthy());
+    expect(mockConfirm).toHaveBeenCalledTimes(1);
+    expect(mockAddTask).not.toHaveBeenCalled();
+  });
+
   it("handles API errors gracefully", async () => {
     useConfiguredKairo();
 
@@ -635,7 +675,6 @@ describe("Kairo", () => {
         ref={ref}
         tasks={sampleTasks}
         inboxTasks={[sampleTasks[0]]}
-        reflowTasks={[]}
         isAllTasksReady={true}
       />
     );
@@ -669,7 +708,6 @@ describe("Kairo", () => {
         ref={ref}
         tasks={sampleTasks}
         inboxTasks={[sampleTasks[0]]}
-        reflowTasks={[]}
         isAllTasksReady={true}
       />
     );
