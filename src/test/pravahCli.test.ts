@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -174,6 +174,7 @@ describe("pravah CLI", () => {
       { HOME: home }
     );
     expect(importResult.status).toBe(0);
+    expect(JSON.parse(importResult.stdout).data.source).toBe("credential-file");
 
     const whoamiResult = runCli(["auth", "whoami", "--json"], { HOME: home });
     expect(whoamiResult.status).toBe(0);
@@ -184,6 +185,37 @@ describe("pravah CLI", () => {
       siteUrl: "https://pravah.example.com",
       source: "local",
     });
+  });
+
+  it("requires exactly one credential import source", () => {
+    const result = runCli(
+      [
+        "auth",
+        "import",
+        "--bootstrap-token",
+        "pravah_bootstrap_demo",
+        "--credential-json",
+        "{}",
+        "--json",
+      ],
+      { PRAVAH_CLI_MOCK: "0" }
+    );
+
+    expect(result.status).toBe(1);
+    expect(JSON.parse(result.stdout).error.message).toContain("exactly one");
+  });
+
+  it("writes the local audit log under XDG state with private permissions", () => {
+    const stateHome = mkdtempSync(join(tmpdir(), "pravah-cli-state-"));
+    const result = runCli(["tasks", "list", "--json"], {
+      XDG_STATE_HOME: stateHome,
+    });
+
+    expect(result.status).toBe(0);
+    expect(statSync(join(stateHome, "pravah")).mode & 0o777).toBe(0o700);
+    expect(statSync(join(stateHome, "pravah", "cli-audit.log")).mode & 0o777).toBe(
+      0o600
+    );
   });
 
   it("exchanges a bootstrap token over HTTP and stores the returned credential", async () => {
@@ -221,6 +253,15 @@ describe("pravah CLI", () => {
           request.headers["idempotency-key"].startsWith("cli_");
         response.writeHead(200, { "Content-Type": "application/json" });
         response.end(JSON.stringify({ success: true, replayed: false }));
+        return;
+      }
+
+      if (
+        request.method === "POST" &&
+        request.url === "/tasks/unschedule"
+      ) {
+        response.writeHead(503, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ error: "Unknown commit state" }));
         return;
       }
 
@@ -284,6 +325,21 @@ describe("pravah CLI", () => {
       });
       expect(sawBearerWrite).toBe(true);
       expect(sawIdempotencyKey).toBe(true);
+
+      const failedWriteResult = await runCliAsync(
+        ["tasks", "unschedule", "--task-id", "task_live_1", "--json"],
+        { HOME: home, PRAVAH_CLI_MOCK: "0" }
+      );
+      expect(failedWriteResult.status).toBe(1);
+      const failedWritePayload = JSON.parse(failedWriteResult.stdout);
+      expect(failedWritePayload.error).toMatchObject({
+        code: "write_failed",
+        details: {
+          action: "tasks.unschedule",
+          idempotencyKey: expect.stringMatching(/^cli_/),
+          retryExactRequestWithSameIdempotencyKey: true,
+        },
+      });
     } finally {
       await new Promise<void>((resolvePromise, rejectPromise) => {
         server.close((error) => {

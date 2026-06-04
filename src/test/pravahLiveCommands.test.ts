@@ -187,4 +187,47 @@ describe("pravah live commands", () => {
       })
     );
   });
+
+  it("preserves the idempotency key when a live write fails", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 503,
+      text: async () => "Unknown commit state",
+    } as Response);
+
+    await expect(
+      executeCommand(
+        { command: "tasks complete", json: true },
+        makeArgs(["tasks", "complete"], {
+          "task-id": "task_live_1",
+          "idempotency-key": "complete-safe-retry",
+        })
+      )
+    ).rejects.toMatchObject({
+      code: "write_failed",
+      details: {
+        action: "tasks.complete",
+        idempotencyKey: "complete-safe-retry",
+        retryExactRequestWithSameIdempotencyKey: true,
+      },
+    });
+  });
+
+  it("rejects invalid task filters and oversized review limits before network calls", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    await expect(
+      executeCommand(
+        { command: "tasks list", json: true },
+        makeArgs(["tasks", "list"], { status: "typo" })
+      )
+    ).rejects.toThrow("--status must be one of");
+    await expect(
+      executeCommand(
+        { command: "review list", json: true },
+        makeArgs(["review", "list"], { limit: "201" })
+      )
+    ).rejects.toThrow("--limit must be an integer between 1 and 200");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
 });

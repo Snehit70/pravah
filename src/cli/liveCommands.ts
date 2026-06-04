@@ -1,5 +1,11 @@
 import { readOption } from "./args";
-import { getWriteMetadata, requireOption } from "./commandUtils";
+import {
+  getWriteMetadata,
+  readReviewListOptions,
+  readTaskListFilters,
+  requireOption,
+} from "./commandUtils";
+import { CliCommandError } from "./errors";
 import type { LiveCliClient } from "./liveClient";
 import type { ParsedArgs } from "./types";
 
@@ -63,16 +69,6 @@ function readCreatedTaskId(value: unknown) {
     : null;
 }
 
-function readLimit(args: ParsedArgs) {
-  const raw = readOption(args.options, "limit");
-  if (!raw) return undefined;
-  const limit = Number(raw);
-  if (!Number.isInteger(limit) || limit <= 0) {
-    throw new Error("--limit must be a positive integer");
-  }
-  return limit;
-}
-
 function requireScopes(client: LiveCliClient, requiredScopes: string[]) {
   const missingScopes = requiredScopes.filter(
     (scope) => !client.scopes.includes(scope)
@@ -82,20 +78,39 @@ function requireScopes(client: LiveCliClient, requiredScopes: string[]) {
   }
 }
 
+async function executeLiveWrite<T>(
+  action: string,
+  idempotencyKey: string,
+  execute: () => Promise<T>
+) {
+  try {
+    return await execute();
+  } catch (error: unknown) {
+    throw new CliCommandError(
+      "write_failed",
+      error instanceof Error ? error.message : `Failed to execute ${action}`,
+      {
+        action,
+        idempotencyKey,
+        retryExactRequestWithSameIdempotencyKey: true,
+      }
+    );
+  }
+}
+
 export async function executeLiveCommand(
   client: LiveCliClient,
   command: string,
   args: ParsedArgs
 ): Promise<unknown | null> {
   switch (command) {
-    case "tasks list":
+    case "tasks list": {
+      const filters = readTaskListFilters(args);
       return {
-        tasks: await client.listTasks({
-          status: readOption(args.options, "status"),
-          date: readOption(args.options, "date"),
-        }),
+        tasks: await client.listTasks(filters),
         source: "live",
       };
+    }
     case "tasks inbox":
       return { tasks: await client.getInbox(), source: "live" };
     case "tasks timeline": {
@@ -106,14 +121,13 @@ export async function executeLiveCommand(
         source: "live",
       };
     }
-    case "review list":
+    case "review list": {
+      const options = readReviewListOptions(args);
       return {
-        items: await client.getReviewQueue(
-          readOption(args.options, "status"),
-          readLimit(args)
-        ),
+        items: await client.getReviewQueue(options.status, options.limit),
         source: "live",
       };
+    }
     case "sync status":
       return {
         status: await client.getSyncStatus(readOption(args.options, "provider")),
@@ -202,9 +216,14 @@ export async function executeLiveCommand(
       const scheduledDate = readOption(args.options, "scheduled-date");
       const description = readOption(args.options, "description");
       const metadata = getWriteMetadata(args);
-      const result = await client.addTask(
-        { title, scheduledDate, description },
-        metadata.idempotencyKey
+      const result = await executeLiveWrite(
+        "tasks.add",
+        metadata.idempotencyKey,
+        () =>
+          client.addTask(
+            { title, scheduledDate, description },
+            metadata.idempotencyKey
+          )
       );
       return {
         action: "tasks.add",
@@ -220,9 +239,10 @@ export async function executeLiveCommand(
       const taskId = requireOption(args, "task-id", command);
       const targetDate = requireOption(args, "target-date", command);
       const metadata = getWriteMetadata(args);
-      const result = await client.moveTask(
-        { taskId, targetDate },
-        metadata.idempotencyKey
+      const result = await executeLiveWrite(
+        "tasks.move",
+        metadata.idempotencyKey,
+        () => client.moveTask({ taskId, targetDate }, metadata.idempotencyKey)
       );
       return {
         action: "tasks.move",
@@ -244,9 +264,12 @@ export async function executeLiveCommand(
           : command === "tasks reopen"
             ? client.reopenTask
             : client.unscheduleTask;
-      const result = await method({ taskId }, metadata.idempotencyKey);
+      const action = command.replace(" ", ".");
+      const result = await executeLiveWrite(action, metadata.idempotencyKey, () =>
+        method({ taskId }, metadata.idempotencyKey)
+      );
       return {
-        action: command.replace(" ", "."),
+        action,
         task: { id: taskId },
         ...metadata,
         replayed: readReplayStatus(result),

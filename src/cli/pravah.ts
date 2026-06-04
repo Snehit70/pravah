@@ -3,6 +3,7 @@
 import { parseArgs } from "./args";
 import { executeCommand } from "./commands";
 import { emitError, emitSuccess } from "./envelope";
+import { toCliError } from "./errors";
 
 function printHelp() {
   process.stdout.write(`pravah CLI
@@ -46,14 +47,7 @@ async function main() {
     const data = await executeCommand({ command, json }, args);
     emitSuccess(command, data);
   } catch (error: unknown) {
-    emitError(
-      command,
-      {
-        code: "command_failed",
-        message: error instanceof Error ? error.message : "Unknown error",
-      },
-      json
-    );
+    emitError(command, toCliError(error), json);
   }
 }
 

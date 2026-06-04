@@ -1,13 +1,29 @@
 /// <reference types="node" />
-import { mkdirSync, appendFileSync } from "node:fs";
+import { appendFileSync, chmodSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { CLI_CONTRACT_VERSION, type CliError, type CliErrorEnvelope, type CliSuccessEnvelope } from "./types";
 
+export function getCliAuditLogPath() {
+  const stateHome =
+    process.env.XDG_STATE_HOME ??
+    join(process.env.HOME ?? homedir(), ".local", "state");
+  return join(stateHome, "pravah", "cli-audit.log");
+}
+
 function logAudit(entry: Record<string, unknown>) {
-  const path = join(homedir(), ".local", "state", "pravah", "cli-audit.log");
-  mkdirSync(dirname(path), { recursive: true });
-  appendFileSync(path, `${JSON.stringify(entry)}\n`, "utf8");
+  try {
+    const path = getCliAuditLogPath();
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+    chmodSync(dirname(path), 0o700);
+    appendFileSync(path, `${JSON.stringify(entry)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    chmodSync(path, 0o600);
+  } catch {
+    // A local audit write must not hide the result of a completed remote write.
+  }
 }
 
 export function successEnvelope<T>(

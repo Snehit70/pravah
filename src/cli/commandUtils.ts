@@ -3,6 +3,10 @@ import { randomUUID } from "node:crypto";
 import { hasFlag, readOption } from "./args";
 import type { ParsedArgs } from "./types";
 
+const TASK_STATUSES = ["inbox", "scheduled", "completed", "cancelled"] as const;
+const REVIEW_STATUSES = ["pending", "approved", "rejected"] as const;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 export function requireOption(
   args: ParsedArgs,
   key: string,
@@ -21,6 +25,33 @@ export function getWriteMetadata(args: ParsedArgs) {
     idempotencyKey:
       readOption(args.options, "idempotency-key") ?? `cli_${randomUUID()}`,
   };
+}
+
+export function readTaskListFilters(args: ParsedArgs) {
+  const status = readOption(args.options, "status");
+  const date = readOption(args.options, "date");
+  if (status && !TASK_STATUSES.includes(status as (typeof TASK_STATUSES)[number])) {
+    throw new Error(`--status must be one of: ${TASK_STATUSES.join(", ")}`);
+  }
+  if (date && !DATE_PATTERN.test(date)) {
+    throw new Error("--date must use YYYY-MM-DD format");
+  }
+  return { status, date };
+}
+
+export function readReviewListOptions(args: ParsedArgs) {
+  const status = readOption(args.options, "status");
+  if (status && !REVIEW_STATUSES.includes(status as (typeof REVIEW_STATUSES)[number])) {
+    throw new Error(`--status must be one of: ${REVIEW_STATUSES.join(", ")}`);
+  }
+
+  const rawLimit = readOption(args.options, "limit");
+  if (!rawLimit) return { status, limit: undefined };
+  const limit = Number(rawLimit);
+  if (!Number.isInteger(limit) || limit <= 0 || limit > 200) {
+    throw new Error("--limit must be an integer between 1 and 200");
+  }
+  return { status, limit };
 }
 
 export function executeDryRun(command: string, args: ParsedArgs) {

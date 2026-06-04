@@ -1,5 +1,10 @@
 import { readOption } from "./args";
-import { getWriteMetadata, requireOption } from "./commandUtils";
+import {
+  getWriteMetadata,
+  readReviewListOptions,
+  readTaskListFilters,
+  requireOption,
+} from "./commandUtils";
 import { mockCredential, mockReviewQueue, mockSyncStatus, mockTasks } from "./mockData";
 import type { MockTask, ParsedArgs } from "./types";
 
@@ -24,8 +29,7 @@ function buildTaskAction(action: string, taskId: string, args: ParsedArgs) {
 export function executeMockCommand(command: string, args: ParsedArgs) {
   switch (command) {
     case "tasks list": {
-      const status = readOption(args.options, "status");
-      const date = readOption(args.options, "date");
+      const { status, date } = readTaskListFilters(args);
       return {
         tasks: mockTasks.filter(
           (task) =>
@@ -89,8 +93,11 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
         requireOption(args, "task-id", command),
         args
       );
-    case "review list":
-      return { items: mockReviewQueue, source: "mock" };
+    case "review list": {
+      const { status, limit } = readReviewListOptions(args);
+      const items = mockReviewQueue.filter((item) => !status || item.status === status);
+      return { items: limit ? items.slice(0, limit) : items, source: "mock" };
+    }
     case "sync status":
       return {
         ...mockSyncStatus,

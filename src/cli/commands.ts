@@ -25,9 +25,14 @@ async function importCredential(args: ParsedArgs) {
   const credentialFile = readOption(args.options, "credential-file");
   const credentialJson = readOption(args.options, "credential-json");
   const bootstrapToken = readOption(args.options, "bootstrap-token");
-  if (!credentialFile && !credentialJson && !bootstrapToken) {
+  const sources = [
+    bootstrapToken ? "bootstrap-token" : null,
+    credentialFile ? "credential-file" : null,
+    credentialJson ? "credential-json" : null,
+  ].filter((source): source is string => source !== null);
+  if (sources.length !== 1) {
     throw new Error(
-      "Missing required option --bootstrap-token, --credential-file, or --credential-json"
+      "Provide exactly one of --bootstrap-token, --credential-file, or --credential-json"
     );
   }
 
@@ -51,7 +56,7 @@ async function importCredential(args: ParsedArgs) {
     scopes: imported.scopes,
     ownerTokenIdentifier: imported.ownerTokenIdentifier,
     siteUrl: imported.siteUrl ?? null,
-    source: bootstrapToken ? "bootstrap-token" : "credential-json",
+    source: sources[0],
   };
 }
 

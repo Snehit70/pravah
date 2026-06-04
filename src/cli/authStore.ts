@@ -21,21 +21,32 @@ export interface StoredCredential {
 
 function parseCredential(value: unknown, invalidMessage: string): StoredCredential {
   const parsed = value as Partial<StoredCredential>;
+  const scopes =
+    Array.isArray(parsed?.scopes) &&
+    parsed.scopes.every(
+      (scope) => typeof scope === "string" && scope.trim().length > 0
+    )
+      ? parsed.scopes
+      : null;
   if (
     !parsed ||
     typeof parsed !== "object" ||
     typeof parsed.secret !== "string" ||
+    parsed.secret.trim().length === 0 ||
     typeof parsed.label !== "string" ||
-    !Array.isArray(parsed.scopes) ||
-    typeof parsed.ownerTokenIdentifier !== "string"
+    parsed.label.trim().length === 0 ||
+    !scopes ||
+    scopes.length === 0 ||
+    typeof parsed.ownerTokenIdentifier !== "string" ||
+    parsed.ownerTokenIdentifier.trim().length === 0
   ) {
     throw new Error(invalidMessage);
   }
   return {
-    secret: parsed.secret,
-    label: parsed.label,
-    scopes: parsed.scopes.filter((scope): scope is string => typeof scope === "string"),
-    ownerTokenIdentifier: parsed.ownerTokenIdentifier,
+    secret: parsed.secret.trim(),
+    label: parsed.label.trim(),
+    scopes,
+    ownerTokenIdentifier: parsed.ownerTokenIdentifier.trim(),
     siteUrl: typeof parsed.siteUrl === "string" ? parsed.siteUrl : undefined,
     userId: typeof parsed.userId === "string" ? parsed.userId : undefined,
     email: typeof parsed.email === "string" ? parsed.email : undefined,
@@ -65,10 +76,18 @@ export function loadStoredCredential(): StoredCredential | null {
   if (!existsSync(path)) {
     return null;
   }
-  const raw = readFileSync(path, "utf8");
-  return parseCredential(JSON.parse(raw), "Stored credential file is invalid");
+  try {
+    const raw = readFileSync(path, "utf8");
+    return parseCredential(JSON.parse(raw), "Stored credential file is invalid");
+  } catch {
+    throw new Error("Stored credential file is invalid");
+  }
 }
 
 export function parseCredentialImport(value: string): StoredCredential {
-  return parseCredential(JSON.parse(value), "Credential import payload is invalid");
+  try {
+    return parseCredential(JSON.parse(value), "Credential import payload is invalid");
+  } catch {
+    throw new Error("Credential import payload is invalid");
+  }
 }
