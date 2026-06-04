@@ -6,6 +6,77 @@ import type { ParsedArgs } from "./types";
 const TASK_STATUSES = ["inbox", "scheduled", "completed", "cancelled"] as const;
 const REVIEW_STATUSES = ["pending", "approved", "rejected"] as const;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+type OptionKind = "flag" | "value";
+
+const GLOBAL_OPTIONS: Record<string, OptionKind> = {
+  json: "flag",
+};
+
+const COMMAND_OPTIONS: Record<string, Record<string, OptionKind>> = {
+  "auth import": {
+    "bootstrap-token": "value",
+    "credential-file": "value",
+    "credential-json": "value",
+  },
+  "auth whoami": {},
+  "auth list-scopes": {},
+  "tasks list": { status: "value", date: "value" },
+  "tasks inbox": {},
+  "tasks timeline": { "end-date": "value" },
+  "review list": { status: "value", limit: "value" },
+  "sync status": { provider: "value" },
+  "agent context": {},
+  "agent task": { "task-id": "value" },
+  "tasks add": {
+    title: "value",
+    description: "value",
+    "scheduled-date": "value",
+    "dry-run": "flag",
+    "idempotency-key": "value",
+  },
+  "tasks move": {
+    "task-id": "value",
+    "target-date": "value",
+    "dry-run": "flag",
+    "idempotency-key": "value",
+  },
+  "tasks complete": {
+    "task-id": "value",
+    "dry-run": "flag",
+    "idempotency-key": "value",
+  },
+  "tasks reopen": {
+    "task-id": "value",
+    "dry-run": "flag",
+    "idempotency-key": "value",
+  },
+  "tasks unschedule": {
+    "task-id": "value",
+    "dry-run": "flag",
+    "idempotency-key": "value",
+  },
+};
+
+export function validateCommandArgs(command: string, args: ParsedArgs) {
+  if (args.positionals.length !== 2) {
+    throw new Error(`Unexpected positional arguments for ${command}`);
+  }
+  const commandOptions = COMMAND_OPTIONS[command];
+  if (!commandOptions) return;
+
+  for (const [key, value] of Object.entries(args.options)) {
+    const kind = commandOptions[key] ?? GLOBAL_OPTIONS[key];
+    if (!kind) {
+      throw new Error(`Unknown option --${key} for ${command}`);
+    }
+    if (kind === "flag" && value !== true) {
+      throw new Error(`Option --${key} does not accept a value`);
+    }
+    if (kind === "value" && value === true) {
+      throw new Error(`Option --${key} requires a value`);
+    }
+  }
+}
 
 export function requireOption(
   args: ParsedArgs,
@@ -13,17 +84,21 @@ export function requireOption(
   command: string
 ): string {
   const value = readOption(args.options, key);
-  if (!value) {
+  const normalized = value?.trim();
+  if (!normalized) {
     throw new Error(`Missing required option --${key} for ${command}`);
   }
-  return value;
+  return normalized;
 }
 
 export function getWriteMetadata(args: ParsedArgs) {
+  const explicitIdempotencyKey = readOption(args.options, "idempotency-key")?.trim();
+  if (explicitIdempotencyKey && explicitIdempotencyKey.length > 200) {
+    throw new Error("--idempotency-key must be between 1 and 200 characters");
+  }
   return {
     dryRun: hasFlag(args.options, "dry-run"),
-    idempotencyKey:
-      readOption(args.options, "idempotency-key") ?? `cli_${randomUUID()}`,
+    idempotencyKey: explicitIdempotencyKey ?? `cli_${randomUUID()}`,
   };
 }
 

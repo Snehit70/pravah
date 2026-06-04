@@ -6,7 +6,7 @@ import {
   parseCredentialImport,
   saveStoredCredential,
 } from "./authStore";
-import { executeDryRun } from "./commandUtils";
+import { executeDryRun, validateCommandArgs } from "./commandUtils";
 import { executeLiveCommand } from "./liveCommands";
 import {
   createCliAuthClient,
@@ -109,6 +109,7 @@ function executeAuthCommand(command: string, args: ParsedArgs) {
 
 export async function executeCommand(context: CommandContext, args: ParsedArgs) {
   const command = args.positionals.slice(0, 2).join(" ");
+  validateCommandArgs(command, args);
   const authResult = executeAuthCommand(command, args);
   if (authResult) {
     return authResult;

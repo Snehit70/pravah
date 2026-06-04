@@ -133,6 +133,64 @@ describe("pravah CLI", () => {
     });
   });
 
+  it("fails closed on unknown options and malformed flags", () => {
+    const typoResult = runCli([
+      "tasks",
+      "complete",
+      "--task-id",
+      "task_1",
+      "--dryrun",
+      "--json",
+    ]);
+    expect(typoResult.status).toBe(1);
+    expect(JSON.parse(typoResult.stdout).error.message).toContain(
+      "Unknown option --dryrun"
+    );
+
+    const valuedFlagResult = runCli([
+      "tasks",
+      "complete",
+      "--task-id",
+      "task_1",
+      "--dry-run",
+      "false",
+      "--json",
+    ]);
+    expect(valuedFlagResult.status).toBe(1);
+    expect(JSON.parse(valuedFlagResult.stdout).error.message).toContain(
+      "--dry-run does not accept a value"
+    );
+  });
+
+  it("rejects extra positionals and malformed idempotency keys", () => {
+    const positionalResult = runCli([
+      "tasks",
+      "complete",
+      "unexpected",
+      "--task-id",
+      "task_1",
+      "--json",
+    ]);
+    expect(positionalResult.status).toBe(1);
+    expect(JSON.parse(positionalResult.stdout).error.message).toContain(
+      "Unexpected positional arguments"
+    );
+
+    const keyResult = runCli([
+      "tasks",
+      "complete",
+      "--task-id",
+      "task_1",
+      "--idempotency-key",
+      "x".repeat(201),
+      "--json",
+    ]);
+    expect(keyResult.status).toBe(1);
+    expect(JSON.parse(keyResult.stdout).error.message).toContain(
+      "--idempotency-key must be between 1 and 200 characters"
+    );
+  });
+
   it("returns bounded agent context", () => {
     const result = runCli(["agent", "context", "--json"]);
 
@@ -203,6 +261,22 @@ describe("pravah CLI", () => {
 
     expect(result.status).toBe(1);
     expect(JSON.parse(result.stdout).error.message).toContain("exactly one");
+
+    const missingValue = runCli(
+      [
+        "auth",
+        "import",
+        "--bootstrap-token",
+        "--credential-json",
+        "{}",
+        "--json",
+      ],
+      { PRAVAH_CLI_MOCK: "0" }
+    );
+    expect(missingValue.status).toBe(1);
+    expect(JSON.parse(missingValue.stdout).error.message).toContain(
+      "--bootstrap-token requires a value"
+    );
   });
 
   it("writes the local audit log under XDG state with private permissions", () => {
