@@ -1,6 +1,7 @@
 /// <reference types="node" />
 import { randomUUID } from "node:crypto";
 import { hasFlag, readOption } from "./args";
+import { createLiveReadClient, resolveCliHttpUrl } from "./liveReads";
 import { mockCredential, mockReviewQueue, mockSyncStatus, mockTasks } from "./mockData";
 import type { CommandContext, MockTask, ParsedArgs } from "./types";
 
@@ -62,8 +63,187 @@ function buildAgentTask(task: MockTask) {
   };
 }
 
+function isTaskLike(value: unknown): value is {
+  _id?: string;
+  id?: string;
+  title?: string;
+  status?: string;
+  scheduledDate?: string;
+  deadline?: string;
+} {
+  return typeof value === "object" && value !== null;
+}
+
+function toLiveTaskSummary(value: unknown) {
+  if (!isTaskLike(value)) {
+    return null;
+  }
+  const id =
+    typeof value._id === "string"
+      ? value._id
+      : typeof value.id === "string"
+        ? value.id
+        : undefined;
+  const title = typeof value.title === "string" ? value.title : undefined;
+  const status = typeof value.status === "string" ? value.status : undefined;
+  const scheduledDate =
+    typeof value.scheduledDate === "string" ? value.scheduledDate : undefined;
+  const deadline = typeof value.deadline === "string" ? value.deadline : undefined;
+  if (!id || !title || !status) {
+    return null;
+  }
+  return { id, title, status, scheduledDate, deadline };
+}
+
+function normalizeLiveTaskArray(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map(toLiveTaskSummary).filter((task) => task !== null);
+}
+
+async function executeLiveRead(command: string, args: ParsedArgs) {
+  const client = createLiveReadClient(process.env);
+  if (!client) {
+    return null;
+  }
+
+  switch (command) {
+    case "tasks list":
+      return {
+        tasks: await client.listTasks({
+          status: readOption(args.options, "status"),
+          date: readOption(args.options, "date"),
+        }),
+        source: "live",
+      };
+    case "tasks inbox":
+      return {
+        tasks: await client.getInbox(),
+        source: "live",
+      };
+    case "tasks timeline": {
+      const endDate = requireOption(args, "end-date", command);
+      return {
+        endDate,
+        timeline: await client.getTimeline(endDate),
+        source: "live",
+      };
+    }
+    case "review list": {
+      const status = readOption(args.options, "status");
+      const rawLimit = readOption(args.options, "limit");
+      const limit = rawLimit ? Number(rawLimit) : undefined;
+      return {
+        items: await client.getReviewQueue(
+          status,
+          Number.isFinite(limit) ? limit : undefined
+        ),
+        source: "live",
+      };
+    }
+    case "sync status":
+      return {
+        status: await client.getSyncStatus(readOption(args.options, "provider")),
+        source: "live",
+      };
+    case "agent context": {
+      const tasks = normalizeLiveTaskArray(await client.listTasks({}));
+      const reviewItemsRaw = await client.getReviewQueue("pending", 25);
+      const reviewItems = Array.isArray(reviewItemsRaw) ? reviewItemsRaw : [];
+      const syncStatus = await client.getSyncStatus("google_calendar");
+      const today = new Date().toISOString().slice(0, 10);
+      return {
+        today,
+        scheduled: tasks
+          .filter((task) => task.status === "scheduled")
+          .slice(0, 20)
+          .map((task) => ({
+            id: task.id,
+            title: task.title,
+            scheduledDate: task.scheduledDate,
+            deadline: task.deadline,
+          })),
+        inboxSummary: {
+          count: tasks.filter((task) => task.status === "inbox").length,
+        },
+        overdueSummary: {
+          count: tasks.filter(
+            (task) =>
+              task.status === "scheduled" &&
+              typeof task.scheduledDate === "string" &&
+              task.scheduledDate < today
+          ).length,
+        },
+        reviewQueueSummary: {
+          count: reviewItems.length,
+        },
+        syncStatusSummary: syncStatus,
+        automation: {
+          credentialLabel: "api-key-live-read",
+          scopes: ["tasks:read", "review:read", "sync:read", "agent:read"],
+          kairoAllowedWrites: [
+            "tasks.add",
+            "tasks.move",
+            "tasks.complete",
+            "tasks.reopen",
+            "tasks.unschedule",
+          ],
+        },
+        source: "live",
+      };
+    }
+    case "agent task": {
+      const taskId = requireOption(args, "task-id", command);
+      const tasks = normalizeLiveTaskArray(await client.listTasks({}));
+      const task = tasks.find((entry) => entry.id === taskId);
+      if (!task) {
+        throw new Error(`Task not found: ${taskId}`);
+      }
+      const neighbors = tasks
+        .filter(
+          (entry) =>
+            entry.id !== task.id &&
+            entry.scheduledDate &&
+            task.scheduledDate &&
+            entry.scheduledDate === task.scheduledDate
+        )
+        .slice(0, 5)
+        .map((entry) => ({
+          id: entry.id,
+          title: entry.title,
+          status: entry.status,
+        }));
+      return {
+        task,
+        goal: null,
+        neighbors,
+        source: "live",
+      };
+    }
+    case "auth whoami":
+      return {
+        userId: "live-read-api-key",
+        email: "unknown",
+        credentialLabel: "api-key-live-read",
+        siteUrl: resolveCliHttpUrl(process.env) ?? "unknown",
+      };
+    case "auth list-scopes":
+      return {
+        scopes: ["tasks:read", "review:read", "sync:read", "agent:read"],
+      };
+    default:
+      return null;
+  }
+}
+
 export async function executeCommand(context: CommandContext, args: ParsedArgs) {
   const [namespace, action] = args.positionals;
+  const command = `${namespace ?? ""} ${action ?? ""}`.trim();
+  const liveReadResult = await executeLiveRead(command, args);
+  if (liveReadResult) {
+    return liveReadResult;
+  }
 
   switch (`${namespace ?? ""}:${action ?? ""}`) {
     case "tasks:list":
