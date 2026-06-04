@@ -9,6 +9,8 @@ const enqueueGmailCandidateMock = vi.fn();
 const approveReviewItemMock = vi.fn();
 const rejectReviewItemMock = vi.fn();
 const importGoogleCalendarMock = vi.fn();
+const issueBootstrapTokenMock = vi.fn();
+const revokeCredentialMock = vi.fn();
 const showErrorMock = vi.fn();
 const showSuccessMock = vi.fn();
 
@@ -26,6 +28,8 @@ const mutationMocks: Record<string, ReturnType<typeof vi.fn>> = {
   "sync.enqueueGmailCandidate": enqueueGmailCandidateMock,
   "sync.approveReviewItem": approveReviewItemMock,
   "sync.rejectReviewItem": rejectReviewItemMock,
+  "automation.issueBootstrapToken": issueBootstrapTokenMock,
+  "automation.revokeCredential": revokeCredentialMock,
 };
 
 vi.mock("framer-motion", () => ({
@@ -47,7 +51,26 @@ vi.mock("convex/react", () => ({
     return mock;
   },
   useAction: () => importGoogleCalendarMock,
-  useQuery: (_query: unknown, args: unknown) => {
+  useQuery: (query: unknown, args: unknown) => {
+    if (query === "automation.listCredentials") {
+      return [
+        {
+          _id: "cred_1",
+          label: "Laptop",
+          credentialPreview: "pravah_cred_abcd...",
+          scopes: ["tasks:read", "agent:read"],
+          status: "active",
+          lastUsedAt: 1770000000000,
+        },
+      ];
+    }
+
+    if (query === "auth.getCurrentUser") {
+      return {
+        email: "user@example.com",
+      };
+    }
+
     if (args && typeof args === "object" && "provider" in args) {
       const provider = (args as { provider: string }).provider;
       if (provider === "google_calendar") {
@@ -77,6 +100,11 @@ vi.mock("convex/react", () => ({
 
 vi.mock("../../convex/_generated/api", () => ({
   api: {
+    automation: {
+      issueBootstrapToken: "automation.issueBootstrapToken",
+      revokeCredential: "automation.revokeCredential",
+      listCredentials: "automation.listCredentials",
+    },
     sync: {
       upsertIntegration: "sync.upsertIntegration",
       enqueueGmailCandidate: "sync.enqueueGmailCandidate",
@@ -98,6 +126,7 @@ vi.mock("../lib/google/api", () => ({
   getGoogleTokens: () => ({ accessToken: "token", expiresIn: 3600, expired: false }),
   saveGoogleTokens: vi.fn(),
   clearGoogleTokens: vi.fn(),
+  revokeGoogleToken: vi.fn(),
   fetchGoogleCalendars: vi.fn(async () => [
     { id: "primary", summary: "Primary", primary: true },
     { id: "team@example.com", summary: "Team", primary: false },
@@ -132,6 +161,15 @@ describe("Settings", () => {
     rejectReviewItemMock.mockResolvedValue(undefined);
     importGoogleCalendarMock.mockReset();
     importGoogleCalendarMock.mockResolvedValue(undefined);
+    issueBootstrapTokenMock.mockReset();
+    issueBootstrapTokenMock.mockResolvedValue({
+      bootstrapToken: "pravah_bootstrap_demo",
+      expiresAt: Date.now() + 15 * 60 * 1000,
+      label: "Codex local",
+      scopes: ["tasks:read", "tasks:write", "review:read", "sync:read", "agent:read"],
+    });
+    revokeCredentialMock.mockReset();
+    revokeCredentialMock.mockResolvedValue({ revoked: true });
     showErrorMock.mockReset();
     showSuccessMock.mockReset();
   });
@@ -219,6 +257,37 @@ describe("Settings", () => {
         accessToken: "token",
         calendarIds: ["team@example.com"],
         fullResync: true,
+      });
+    });
+  });
+
+  it("issues a bootstrap token and shows the one-time value", async () => {
+    render(<Settings onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Issue Bootstrap Token" }));
+
+    await waitFor(() => {
+      expect(issueBootstrapTokenMock).toHaveBeenCalledWith({
+        label: "Codex local",
+        scopes: ["tasks:read", "tasks:write", "review:read", "sync:read", "agent:read"],
+        ttlMinutes: 15,
+      });
+    });
+
+    expect(screen.getByTestId("automation-bootstrap-token")).toBeInTheDocument();
+    expect(screen.getByText("pravah_bootstrap_demo")).toBeInTheDocument();
+  });
+
+  it("revokes an existing automation credential", async () => {
+    render(<Settings onClose={vi.fn()} />);
+
+    const revokeButtons = screen.getAllByRole("button", { name: "Revoke" });
+    expect(revokeButtons[0]).toBeDefined();
+    fireEvent.click(revokeButtons[0] as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(revokeCredentialMock).toHaveBeenCalledWith({
+        credentialId: "cred_1",
       });
     });
   });
