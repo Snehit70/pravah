@@ -1,7 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { requireIdentity, requireTokenIdentifier } from "./authHelpers";
+import { requireTokenIdentifier } from "./authHelpers";
 
 const automationScope = v.union(
   v.literal("tasks:read"),
@@ -133,7 +133,7 @@ export const exchangeBootstrapToken = mutation({
     bootstrapToken: v.string(),
   },
   handler: async (ctx, args) => {
-    const identity = await requireIdentity(ctx);
+    const identity = await ctx.auth.getUserIdentity();
     const tokenHash = await sha256Hex(args.bootstrapToken);
     const record = await ctx.db
       .query("automationBootstrapTokens")
@@ -183,7 +183,7 @@ export const exchangeBootstrapToken = mutation({
       bootstrapTokenId: record._id,
       eventType: "bootstrap_exchanged",
       metadata: {
-        exchangedByTokenIdentifier: identity.tokenIdentifier,
+        exchangedByTokenIdentifier: identity?.tokenIdentifier,
         label: record.label,
       },
     });

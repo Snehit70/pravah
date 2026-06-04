@@ -163,6 +163,49 @@ describe("automation credential handlers", () => {
     );
   });
 
+  it("exchanges bootstrap token without an authenticated identity", async () => {
+    const bootstrapId = makeId("bootstrap_2");
+    const credentialId = makeId("cred_2") as Id<"automationCredentials">;
+    const db = {
+      query: vi.fn().mockReturnValue({
+        withIndex: vi.fn().mockReturnValue({
+          first: vi.fn().mockResolvedValue({
+            _id: bootstrapId,
+            ownerTokenIdentifier: "user-1",
+            label: "Codex local",
+            scopes: ["tasks:read"],
+            status: "active",
+            expiresAt: Date.now() + 60_000,
+          }),
+        }),
+      }),
+      insert: vi
+        .fn()
+        .mockResolvedValueOnce(credentialId)
+        .mockResolvedValueOnce(makeId("audit_2")),
+      patch: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const ctx = {
+      db,
+      auth: {
+        getUserIdentity: vi.fn().mockResolvedValue(null),
+      },
+    };
+    const result = await exchangeBootstrapTokenHandler(ctx, {
+      bootstrapToken: "pravah_bootstrap_demo",
+    });
+
+    expect(result.credentialId).toBe(credentialId);
+    expect(db.insert).toHaveBeenNthCalledWith(
+      2,
+      "automationAuditEvents",
+      expect.objectContaining({
+        eventType: "bootstrap_exchanged",
+      })
+    );
+  });
+
   it("revokes an active credential owned by the current user", async () => {
     const credentialId = makeId("cred_1") as Id<"automationCredentials">;
     const db = {

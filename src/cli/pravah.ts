@@ -14,6 +14,7 @@ Examples:
   pravah tasks list --status scheduled --json
   pravah tasks add --title "Draft CLI contract" --scheduled-date 2026-06-05 --dry-run --json
   pravah agent context --json
+  pravah auth import --bootstrap-token pravah_bootstrap_xxx --json
 `);
 }
 

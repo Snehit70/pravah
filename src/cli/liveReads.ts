@@ -1,5 +1,6 @@
 /// <reference types="node" />
 import { callConvexApi } from "../lib/mcpBridgeUtils";
+import type { StoredCredential } from "./authStore";
 
 interface CliEnv {
   PRAVAH_HTTP_URL?: string;
@@ -17,6 +18,11 @@ export interface LiveReadClient {
   getTimeline(endDate: string): Promise<unknown>;
   getReviewQueue(status?: string, limit?: number): Promise<unknown>;
   getSyncStatus(provider?: string): Promise<unknown>;
+}
+
+export interface CliAuthClient {
+  baseUrl: string;
+  exchangeBootstrapToken(bootstrapToken: string): Promise<StoredCredential>;
 }
 
 function normalizeHttpUrl(value?: string): string | undefined {
@@ -85,6 +91,55 @@ export function createLiveReadClient(env: CliEnv): LiveReadClient | null {
     getSyncStatus(provider = "google_calendar") {
       const query = new URLSearchParams({ provider });
       return get(`/sync/status?${query.toString()}`);
+    },
+  };
+}
+
+export function createCliAuthClient(env: CliEnv): CliAuthClient | null {
+  const baseUrl = resolveCliHttpUrl(env);
+  if (!baseUrl) {
+    return null;
+  }
+
+  return {
+    baseUrl,
+    async exchangeBootstrapToken(bootstrapToken) {
+      const response = await callConvexApi({
+        convexUrl: baseUrl,
+        endpoint: "/automation/bootstrap/exchange",
+        method: "POST",
+        body: { bootstrapToken },
+      });
+
+      if (
+        !response ||
+        typeof response !== "object" ||
+        !("credential" in response) ||
+        !response.credential ||
+        typeof response.credential !== "object"
+      ) {
+        throw new Error("Bootstrap exchange response is invalid");
+      }
+
+      const credential = response.credential as Partial<StoredCredential>;
+      if (
+        typeof credential.secret !== "string" ||
+        typeof credential.label !== "string" ||
+        !Array.isArray(credential.scopes) ||
+        typeof credential.ownerTokenIdentifier !== "string"
+      ) {
+        throw new Error("Bootstrap exchange response is invalid");
+      }
+
+      return {
+        secret: credential.secret,
+        label: credential.label,
+        scopes: credential.scopes.filter((scope): scope is string => typeof scope === "string"),
+        ownerTokenIdentifier: credential.ownerTokenIdentifier,
+        siteUrl: typeof credential.siteUrl === "string" ? credential.siteUrl : baseUrl,
+        userId: typeof credential.userId === "string" ? credential.userId : undefined,
+        email: typeof credential.email === "string" ? credential.email : undefined,
+      };
     },
   };
 }

@@ -4,6 +4,7 @@ import { api } from "./_generated/api";
 import { authComponent, createAuth } from "./auth";
 import { getAllowedWebOrigins } from "./origins";
 import {
+  automationBootstrapExchangeSchema,
   bulkRescheduleSchema,
   completeTaskSchema,
   createTaskSchema,
@@ -63,6 +64,48 @@ function googleJsonResponse(request: Request, payload: unknown, status = 200): R
     },
   });
 }
+
+function jsonResponse(payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+// POST /automation/bootstrap/exchange - Exchange one-time bootstrap token for CLI credential
+http.route({
+  path: "/automation/bootstrap/exchange",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const body = await request.json();
+    const validation = automationBootstrapExchangeSchema.safeParse(body);
+    if (!validation.success) {
+      return jsonResponse(
+        {
+          error: "Validation failed",
+          details: validation.error.issues,
+        },
+        400
+      );
+    }
+
+    try {
+      const result = await ctx.runMutation(api.automation.exchangeBootstrapToken, {
+        bootstrapToken: validation.data.bootstrapToken,
+      });
+      const url = new URL(request.url);
+      return jsonResponse({
+        credential: {
+          ...result.credential,
+          siteUrl: url.origin,
+        },
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to exchange bootstrap token";
+      return jsonResponse({ error: message }, 400);
+    }
+  }),
+});
 
 // GET /tasks - List all tasks
 http.route({

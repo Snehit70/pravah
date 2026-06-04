@@ -66,6 +66,10 @@ export const googleTokenExchangeSchema = z.object({
   redirectUri: z.string().url("Invalid redirect URI"),
 });
 
+export const automationBootstrapExchangeSchema = z.object({
+  bootstrapToken: z.string().min(1, "Bootstrap token is required"),
+});
+
 export const syncStatusSchema = z.object({
   provider: z.enum(["google_calendar", "gmail"]).default("google_calendar"),
 });

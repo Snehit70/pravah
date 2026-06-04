@@ -34,6 +34,9 @@ vi.mock("../../convex/_generated/api", () => ({
     betterAuth: "betterAuth",
   },
   api: {
+    automation: {
+      exchangeBootstrapToken: "automation.exchangeBootstrapToken",
+    },
     tasks: {
       listTasks: "tasks.listTasks",
       addTask: "tasks.addTask",
@@ -102,6 +105,44 @@ afterAll(() => {
 });
 
 describe("http route handlers", () => {
+  it("exchanges bootstrap token without requiring API key", async () => {
+    const handler = getHandler("/automation/bootstrap/exchange", "POST");
+    const ctx = createCtx();
+    ctx.runMutation.mockResolvedValue({
+      credential: {
+        secret: "pravah_cred_demo",
+        label: "Laptop",
+        scopes: ["tasks:read", "agent:read"],
+        ownerTokenIdentifier: "user-1",
+      },
+    });
+
+    const response = await handler(
+      ctx,
+      new Request("https://example.com/automation/bootstrap/exchange", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bootstrapToken: "pravah_bootstrap_demo",
+        }),
+      })
+    );
+
+    expect(ctx.runMutation).toHaveBeenCalledWith(api.automation.exchangeBootstrapToken, {
+      bootstrapToken: "pravah_bootstrap_demo",
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      credential: {
+        secret: "pravah_cred_demo",
+        label: "Laptop",
+        scopes: ["tasks:read", "agent:read"],
+        ownerTokenIdentifier: "user-1",
+        siteUrl: "https://example.com",
+      },
+    });
+  });
+
   it("returns 401 for protected routes without x-api-key", async () => {
     const handler = getHandler("/tasks", "GET");
     const ctx = createCtx();

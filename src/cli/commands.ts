@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { hasFlag, readOption } from "./args";
 import { loadStoredCredential, parseCredentialImport, saveStoredCredential } from "./authStore";
-import { createLiveReadClient, resolveCliHttpUrl } from "./liveReads";
+import { createCliAuthClient, createLiveReadClient, resolveCliHttpUrl } from "./liveReads";
 import { mockCredential, mockReviewQueue, mockSyncStatus, mockTasks } from "./mockData";
 import type { CommandContext, MockTask, ParsedArgs } from "./types";
 
@@ -367,13 +367,24 @@ export async function executeCommand(context: CommandContext, args: ParsedArgs) 
     case "auth:import": {
       const credentialFile = readOption(args.options, "credential-file");
       const credentialJson = readOption(args.options, "credential-json");
-      if (!credentialFile && !credentialJson) {
-        throw new Error("Missing required option --credential-file or --credential-json");
+      const bootstrapToken = readOption(args.options, "bootstrap-token");
+      if (!credentialFile && !credentialJson && !bootstrapToken) {
+        throw new Error(
+          "Missing required option --bootstrap-token, --credential-file, or --credential-json"
+        );
       }
 
-      const imported = parseCredentialImport(
-        credentialJson ?? readFileSync(credentialFile!, "utf8")
-      );
+      const imported = bootstrapToken
+        ? await (() => {
+            const authClient = createCliAuthClient(process.env);
+            if (!authClient) {
+              throw new Error(
+                "CLI HTTP URL is not configured. Set PRAVAH_HTTP_URL or CONVEX_SITE_URL before importing a bootstrap token."
+              );
+            }
+            return authClient.exchangeBootstrapToken(bootstrapToken);
+          })()
+        : parseCredentialImport(credentialJson ?? readFileSync(credentialFile!, "utf8"));
       saveStoredCredential(imported);
       return {
         imported: true,
@@ -381,6 +392,7 @@ export async function executeCommand(context: CommandContext, args: ParsedArgs) 
         scopes: imported.scopes,
         ownerTokenIdentifier: imported.ownerTokenIdentifier,
         siteUrl: imported.siteUrl ?? null,
+        source: bootstrapToken ? "bootstrap-token" : "credential-json",
       };
     }
     case "auth:whoami":
