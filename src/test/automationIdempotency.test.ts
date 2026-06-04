@@ -3,19 +3,31 @@ import type { MutationCtx } from "../../convex/_generated/server";
 import { runIdempotentMutation } from "../../convex/automationIdempotency";
 
 function createCtx(existing?: {
+  _id?: string;
   operation: string;
   requestJson: string;
   responseJson: string;
+  expiresAt?: number;
 }) {
-  const first = vi.fn().mockResolvedValue(existing ?? null);
+  const first = vi.fn().mockResolvedValue(
+    existing
+      ? {
+          _id: existing._id ?? "idempotency_existing",
+          expiresAt: existing.expiresAt ?? Date.now() + 60_000,
+          ...existing,
+        }
+      : null
+  );
   const withIndex = vi.fn().mockReturnValue({ first });
   const query = vi.fn().mockReturnValue({ withIndex });
   const insert = vi.fn().mockResolvedValue("idempotency_1");
+  const deleteRecord = vi.fn().mockResolvedValue(undefined);
 
   return {
-    ctx: { db: { query, insert } } as unknown as MutationCtx,
+    ctx: { db: { query, insert, delete: deleteRecord } } as unknown as MutationCtx,
     first,
     insert,
+    deleteRecord,
   };
 }
 
@@ -67,6 +79,24 @@ describe("runIdempotentMutation", () => {
     expect(insert).not.toHaveBeenCalled();
   });
 
+  it("treats equivalent object key order as the same request", async () => {
+    const { ctx } = createCtx({
+      operation: "tasks.move",
+      requestJson: JSON.stringify({ position: 0, taskId: "task-1" }),
+      responseJson: JSON.stringify({ success: true }),
+    });
+
+    await expect(
+      runIdempotentMutation(ctx, {
+        ownerTokenIdentifier: "user-1",
+        idempotencyKey: "move-1",
+        operation: "tasks.move",
+        request: { taskId: "task-1", position: 0 },
+        execute: vi.fn(),
+      })
+    ).resolves.toEqual({ result: { success: true }, replayed: true });
+  });
+
   it("rejects reuse of a key for different input", async () => {
     const { ctx } = createCtx({
       operation: "tasks.complete",
@@ -100,5 +130,29 @@ describe("runIdempotentMutation", () => {
 
     expect(first).not.toHaveBeenCalled();
     expect(insert).not.toHaveBeenCalled();
+  });
+
+  it("reuses an expired key as a new request", async () => {
+    const { ctx, deleteRecord, insert } = createCtx({
+      _id: "expired-1",
+      operation: "tasks.complete",
+      requestJson: JSON.stringify({ taskId: "task-1" }),
+      responseJson: JSON.stringify({ success: true }),
+      expiresAt: Date.now() - 1,
+    });
+    const execute = vi.fn().mockResolvedValue({ success: true });
+
+    await expect(
+      runIdempotentMutation(ctx, {
+        ownerTokenIdentifier: "user-1",
+        idempotencyKey: "complete-1",
+        operation: "tasks.complete",
+        request: { taskId: "task-1" },
+        execute,
+      })
+    ).resolves.toEqual({ result: { success: true }, replayed: false });
+
+    expect(deleteRecord).toHaveBeenCalledWith("expired-1");
+    expect(insert).toHaveBeenCalledOnce();
   });
 });

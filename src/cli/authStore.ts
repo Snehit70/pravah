@@ -19,6 +19,29 @@ export interface StoredCredential {
   email?: string;
 }
 
+function parseCredential(value: unknown, invalidMessage: string): StoredCredential {
+  const parsed = value as Partial<StoredCredential>;
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    typeof parsed.secret !== "string" ||
+    typeof parsed.label !== "string" ||
+    !Array.isArray(parsed.scopes) ||
+    typeof parsed.ownerTokenIdentifier !== "string"
+  ) {
+    throw new Error(invalidMessage);
+  }
+  return {
+    secret: parsed.secret,
+    label: parsed.label,
+    scopes: parsed.scopes.filter((scope): scope is string => typeof scope === "string"),
+    ownerTokenIdentifier: parsed.ownerTokenIdentifier,
+    siteUrl: typeof parsed.siteUrl === "string" ? parsed.siteUrl : undefined,
+    userId: typeof parsed.userId === "string" ? parsed.userId : undefined,
+    email: typeof parsed.email === "string" ? parsed.email : undefined,
+  };
+}
+
 export function getCredentialStorePath() {
   const configHome =
     process.env.XDG_CONFIG_HOME ??
@@ -43,43 +66,9 @@ export function loadStoredCredential(): StoredCredential | null {
     return null;
   }
   const raw = readFileSync(path, "utf8");
-  const parsed = JSON.parse(raw) as Partial<StoredCredential>;
-  if (
-    typeof parsed.secret !== "string" ||
-    typeof parsed.label !== "string" ||
-    !Array.isArray(parsed.scopes) ||
-    typeof parsed.ownerTokenIdentifier !== "string"
-  ) {
-    throw new Error("Stored credential file is invalid");
-  }
-  return {
-    secret: parsed.secret,
-    label: parsed.label,
-    scopes: parsed.scopes.filter((scope): scope is string => typeof scope === "string"),
-    ownerTokenIdentifier: parsed.ownerTokenIdentifier,
-    siteUrl: typeof parsed.siteUrl === "string" ? parsed.siteUrl : undefined,
-    userId: typeof parsed.userId === "string" ? parsed.userId : undefined,
-    email: typeof parsed.email === "string" ? parsed.email : undefined,
-  };
+  return parseCredential(JSON.parse(raw), "Stored credential file is invalid");
 }
 
 export function parseCredentialImport(value: string): StoredCredential {
-  const parsed = JSON.parse(value) as Partial<StoredCredential>;
-  if (
-    typeof parsed.secret !== "string" ||
-    typeof parsed.label !== "string" ||
-    !Array.isArray(parsed.scopes) ||
-    typeof parsed.ownerTokenIdentifier !== "string"
-  ) {
-    throw new Error("Credential import payload is invalid");
-  }
-  return {
-    secret: parsed.secret,
-    label: parsed.label,
-    scopes: parsed.scopes.filter((scope): scope is string => typeof scope === "string"),
-    ownerTokenIdentifier: parsed.ownerTokenIdentifier,
-    siteUrl: typeof parsed.siteUrl === "string" ? parsed.siteUrl : undefined,
-    userId: typeof parsed.userId === "string" ? parsed.userId : undefined,
-    email: typeof parsed.email === "string" ? parsed.email : undefined,
-  };
+  return parseCredential(JSON.parse(value), "Credential import payload is invalid");
 }

@@ -24,7 +24,7 @@ Every bearer-authenticated task write requires:
 Idempotency-Key: <unique key, 1-200 characters>
 ```
 
-Exact retries replay the stored response. Reusing a key for a different operation or payload fails.
+Exact retries replay the stored response for 30 days. Reusing a retained key for a different operation or payload fails.
 
 ## Automation Routes
 

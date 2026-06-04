@@ -55,18 +55,21 @@ async function importCredential(args: ParsedArgs) {
   };
 }
 
-function getCredentialOrMock() {
+function getCredentialContext() {
   const stored = loadStoredCredential();
-  if (stored) return stored;
+  if (stored) return { credential: stored, source: "local" as const };
   if (isMockEnabled()) {
     return {
-      secret: "mock",
-      label: mockCredential.credentialLabel,
-      scopes: mockCredential.scopes,
-      ownerTokenIdentifier: "mock-user",
-      userId: mockCredential.userId,
-      email: mockCredential.email,
-      siteUrl: mockCredential.siteUrl,
+      credential: {
+        secret: "mock",
+        label: mockCredential.credentialLabel,
+        scopes: mockCredential.scopes,
+        ownerTokenIdentifier: "mock-user",
+        userId: mockCredential.userId,
+        email: mockCredential.email,
+        siteUrl: mockCredential.siteUrl,
+      },
+      source: "mock" as const,
     };
   }
   throw new Error(
@@ -79,21 +82,21 @@ function executeAuthCommand(command: string, args: ParsedArgs) {
     return importCredential(args);
   }
   if (command === "auth whoami") {
-    const credential = getCredentialOrMock();
+    const { credential, source } = getCredentialContext();
     return {
       userId: credential.userId ?? credential.ownerTokenIdentifier,
       email: credential.email ?? null,
       credentialLabel: credential.label,
       siteUrl: credential.siteUrl ?? resolveCliHttpUrl(process.env) ?? null,
       ownerTokenIdentifier: credential.ownerTokenIdentifier,
-      source: credential.secret === "mock" ? "mock" : "local",
+      source,
     };
   }
   if (command === "auth list-scopes") {
-    const credential = getCredentialOrMock();
+    const { credential, source } = getCredentialContext();
     return {
       scopes: credential.scopes,
-      source: credential.secret === "mock" ? "mock" : "local",
+      source,
     };
   }
   return null;

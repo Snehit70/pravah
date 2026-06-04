@@ -159,7 +159,10 @@ export default defineSchema({
     requestJson: v.string(),
     responseJson: v.string(),
     createdAt: v.number(),
-  }).index("by_owner_key", ["ownerTokenIdentifier", "key"]),
+    expiresAt: v.number(),
+  })
+    .index("by_owner_key", ["ownerTokenIdentifier", "key"])
+    .index("by_expires_at", ["expiresAt"]),
   tasks: defineTable({
     title: v.string(),
     description: v.optional(v.string()),

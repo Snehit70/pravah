@@ -1,5 +1,5 @@
 import { httpRouter } from "convex/server";
-import { httpAction, type ActionCtx } from "./_generated/server";
+import { httpAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { authComponent, createAuth } from "./auth";
 import { getAllowedWebOrigins } from "./origins";
@@ -15,7 +15,6 @@ import {
   moveTaskSchema,
   reorderTaskSchema,
   reopenTaskSchema,
-  requireApiKeyAuth,
   reviewApproveSchema,
   reviewQueueListSchema,
   reviewRejectSchema,
@@ -23,195 +22,19 @@ import {
   unscheduleTaskSchema,
   updateTaskSchema,
 } from "./httpContracts";
+import {
+  requireIdempotencyKey,
+  requireLegacyAuth,
+  requireReviewReadAuth,
+  requireSyncReadAuth,
+  requireTaskReadAuth,
+  requireTaskWriteAuth,
+} from "./automationHttpAuth";
+import { jsonResponse } from "./httpResponses";
 
 const http = httpRouter();
 
 authComponent.registerRoutes(http, createAuth, { cors: true });
-
-type AutomationScope =
-  | "tasks:read"
-  | "tasks:write"
-  | "review:read"
-  | "review:write"
-  | "sync:read"
-  | "sync:run"
-  | "agent:read";
-
-interface AuthorizedRequest {
-  kind: "admin" | "automation";
-  scopes: AutomationScope[];
-  ownerTokenIdentifier: string;
-  credentialLabel?: string;
-}
-
-type AuthRouteCtx = Pick<ActionCtx, "runMutation">;
-
-function getEnv() {
-  return (
-    globalThis as typeof globalThis & {
-      process?: { env?: Record<string, string | undefined> };
-    }
-  ).process?.env;
-}
-
-function parseBearerToken(request: Request) {
-  const header = request.headers.get("authorization");
-  if (!header) return null;
-  const [scheme, token] = header.split(/\s+/, 2);
-  if (scheme?.toLowerCase() !== "bearer" || !token) {
-    return null;
-  }
-  return token;
-}
-
-function forbiddenResponse(missingScopes: AutomationScope[]) {
-  return jsonResponse(
-    {
-      error: "Forbidden",
-      missingScopes,
-    },
-    403
-  );
-}
-
-function ownerFromAuth(auth: AuthorizedRequest | undefined) {
-  if (!auth) {
-    throw new Error("Authorized request context missing");
-  }
-  return auth.ownerTokenIdentifier;
-}
-
-function requireIdempotencyKey(
-  request: Request,
-  auth: AuthorizedRequest | undefined
-): { key?: string; response: Response | null } {
-  if (!auth) {
-    throw new Error("Authorized request context missing");
-  }
-  if (auth.kind === "admin") {
-    return { response: null };
-  }
-
-  const key = request.headers.get("idempotency-key")?.trim();
-  if (!key || key.length > 200) {
-    return {
-      response: jsonResponse(
-        { error: "Idempotency-Key header must be between 1 and 200 characters" },
-        400
-      ),
-    };
-  }
-  return { key, response: null };
-}
-
-async function requireAuth(
-  ctx: AuthRouteCtx,
-  request: Request,
-  requiredScopes: AutomationScope[]
-): Promise<{ response: Response | null; auth?: AuthorizedRequest }> {
-  const bearerToken = parseBearerToken(request);
-  if (bearerToken) {
-    try {
-      const authResult = await ctx.runMutation(api.automation.markCredentialUsed, {
-        credentialSecret: bearerToken,
-      });
-      if (
-        !authResult ||
-        typeof authResult !== "object" ||
-        !("scopes" in authResult) ||
-        !Array.isArray(authResult.scopes) ||
-        !("ownerTokenIdentifier" in authResult) ||
-        typeof authResult.ownerTokenIdentifier !== "string"
-      ) {
-        return { response: jsonResponse({ error: "Unauthorized" }, 401) };
-      }
-      const scopes = authResult.scopes.filter(
-        (scope): scope is AutomationScope => typeof scope === "string"
-      );
-      const missingScopes = requiredScopes.filter((scope) => !scopes.includes(scope));
-      if (missingScopes.length > 0) {
-        return { response: forbiddenResponse(missingScopes) };
-      }
-
-      return {
-        response: null,
-        auth: {
-          kind: "automation",
-          scopes,
-          ownerTokenIdentifier: authResult.ownerTokenIdentifier,
-          credentialLabel:
-            "label" in authResult && typeof authResult.label === "string"
-              ? authResult.label
-              : undefined,
-        },
-      };
-    } catch {
-      return { response: jsonResponse({ error: "Unauthorized" }, 401) };
-    }
-  }
-
-  const env = getEnv();
-  const apiKey = request.headers.get("x-api-key");
-  if (apiKey) {
-    const authError = requireApiKeyAuth({
-      request,
-      envKey: env?.CONVEX_HTTP_API_KEY,
-    });
-    if (authError) {
-      return { response: authError };
-    }
-    const ownerTokenIdentifier = env?.PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER;
-    if (!ownerTokenIdentifier) {
-      return {
-        response: jsonResponse(
-          {
-            error:
-              "Server configuration error: PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER is required for API key auth",
-          },
-          500
-        ),
-      };
-    }
-    return {
-      response: null,
-      auth: {
-        kind: "admin",
-        scopes: requiredScopes,
-        ownerTokenIdentifier,
-      },
-    };
-  }
-
-  return { response: jsonResponse({ error: "Unauthorized" }, 401) };
-}
-
-async function requireTaskReadAuth(ctx: AuthRouteCtx, request: Request) {
-  return requireAuth(ctx, request, ["tasks:read"]);
-}
-
-async function requireTaskWriteAuth(ctx: AuthRouteCtx, request: Request) {
-  return requireAuth(ctx, request, ["tasks:write"]);
-}
-
-async function requireReviewReadAuth(ctx: AuthRouteCtx, request: Request) {
-  return requireAuth(ctx, request, ["review:read"]);
-}
-
-async function requireSyncReadAuth(ctx: AuthRouteCtx, request: Request) {
-  return requireAuth(ctx, request, ["sync:read"]);
-}
-
-function requireLegacyAuth(request: Request): Response | null {
-  const env = (
-    globalThis as typeof globalThis & {
-      process?: { env?: Record<string, string | undefined> };
-    }
-  ).process?.env;
-  return requireApiKeyAuth({
-    request,
-    envKey: env?.CONVEX_HTTP_API_KEY,
-  });
-}
 
 function getGoogleCorsHeaders(request: Request): HeadersInit {
   const origin = request.headers.get("origin");
@@ -235,13 +58,6 @@ function googleJsonResponse(request: Request, payload: unknown, status = 200): R
       "Content-Type": "application/json",
       ...getGoogleCorsHeaders(request),
     },
-  });
-}
-
-function jsonResponse(payload: unknown, status = 200): Response {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { "Content-Type": "application/json" },
   });
 }
 
@@ -285,8 +101,9 @@ http.route({
   path: "/tasks",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const { response, auth } = await requireTaskReadAuth(ctx, request);
-    if (response) return response;
+    const authCheck = await requireTaskReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
 
     const url = new URL(request.url);
     const date = url.searchParams.get("date") || undefined;
@@ -300,7 +117,7 @@ http.route({
         : undefined;
 
     const tasks = await ctx.runQuery(internal.automationTools.listTasks, {
-      ownerTokenIdentifier: ownerFromAuth(auth),
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
       date,
       status,
     });
@@ -316,8 +133,9 @@ http.route({
   path: "/tasks",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const { response, auth } = await requireTaskWriteAuth(ctx, request);
-    if (response) return response;
+    const authCheck = await requireTaskWriteAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
     const idempotency = requireIdempotencyKey(request, auth);
     if (idempotency.response) return idempotency.response;
 
@@ -338,7 +156,7 @@ http.route({
     const data = validation.data;
 
     const mutationResult = await ctx.runMutation(internal.automationTools.addTask, {
-      ownerTokenIdentifier: ownerFromAuth(auth),
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
       idempotencyKey: idempotency.key,
       title: data.title,
       description: data.description,
@@ -363,8 +181,9 @@ http.route({
   path: "/tasks/move",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const { response, auth } = await requireTaskWriteAuth(ctx, request);
-    if (response) return response;
+    const authCheck = await requireTaskWriteAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
     const idempotency = requireIdempotencyKey(request, auth);
     if (idempotency.response) return idempotency.response;
 
@@ -384,7 +203,7 @@ http.route({
 
     try {
       const mutationResult = await ctx.runMutation(internal.automationTools.moveTask, {
-        ownerTokenIdentifier: ownerFromAuth(auth),
+        ownerTokenIdentifier: auth.ownerTokenIdentifier,
         idempotencyKey: idempotency.key,
         taskId,
         targetDate,
@@ -440,8 +259,9 @@ http.route({
   path: "/tasks/complete",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const { response, auth } = await requireTaskWriteAuth(ctx, request);
-    if (response) return response;
+    const authCheck = await requireTaskWriteAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
     const idempotency = requireIdempotencyKey(request, auth);
     if (idempotency.response) return idempotency.response;
 
@@ -460,7 +280,7 @@ http.route({
     const { taskId } = validation.data;
 
     const mutationResult = await ctx.runMutation(internal.automationTools.completeTask, {
-      ownerTokenIdentifier: ownerFromAuth(auth),
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
       idempotencyKey: idempotency.key,
       taskId,
     });
@@ -509,8 +329,9 @@ http.route({
   path: "/tasks/reopen",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const { response, auth } = await requireTaskWriteAuth(ctx, request);
-    if (response) return response;
+    const authCheck = await requireTaskWriteAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
     const idempotency = requireIdempotencyKey(request, auth);
     if (idempotency.response) return idempotency.response;
 
@@ -527,7 +348,7 @@ http.route({
     }
 
     const mutationResult = await ctx.runMutation(internal.automationTools.reopenTask, {
-      ownerTokenIdentifier: ownerFromAuth(auth),
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
       idempotencyKey: idempotency.key,
       ...validation.data,
     });
@@ -543,8 +364,9 @@ http.route({
   path: "/tasks/unschedule",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const { response, auth } = await requireTaskWriteAuth(ctx, request);
-    if (response) return response;
+    const authCheck = await requireTaskWriteAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
     const idempotency = requireIdempotencyKey(request, auth);
     if (idempotency.response) return idempotency.response;
 
@@ -561,7 +383,7 @@ http.route({
     }
 
     const mutationResult = await ctx.runMutation(internal.automationTools.unscheduleTask, {
-      ownerTokenIdentifier: ownerFromAuth(auth),
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
       idempotencyKey: idempotency.key,
       ...validation.data,
     });
@@ -634,8 +456,9 @@ http.route({
   path: "/timeline",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const { response, auth } = await requireTaskReadAuth(ctx, request);
-    if (response) return response;
+    const authCheck = await requireTaskReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
 
     const url = new URL(request.url);
     const endDate = url.searchParams.get("endDate");
@@ -648,7 +471,7 @@ http.route({
     }
 
     const timeline = await ctx.runQuery(internal.automationTools.getTimeline, {
-      ownerTokenIdentifier: ownerFromAuth(auth),
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
       endDate,
     });
     
@@ -663,11 +486,12 @@ http.route({
   path: "/inbox",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const { response, auth } = await requireTaskReadAuth(ctx, request);
-    if (response) return response;
+    const authCheck = await requireTaskReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
 
     const tasks = await ctx.runQuery(internal.automationTools.listTasks, {
-      ownerTokenIdentifier: ownerFromAuth(auth),
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
       status: "inbox",
     });
     
@@ -752,8 +576,9 @@ http.route({
   path: "/sync/status",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const { response, auth } = await requireSyncReadAuth(ctx, request);
-    if (response) return response;
+    const authCheck = await requireSyncReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
 
     const url = new URL(request.url);
     const validation = syncStatusSchema.safeParse({
@@ -771,7 +596,7 @@ http.route({
 
     const { provider } = validation.data;
     const status = await ctx.runQuery(internal.automationTools.getIntegrationStatus, {
-      ownerTokenIdentifier: ownerFromAuth(auth),
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
       provider,
     });
     return new Response(JSON.stringify(status), {
@@ -821,8 +646,9 @@ http.route({
   path: "/review-queue",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const { response, auth } = await requireReviewReadAuth(ctx, request);
-    if (response) return response;
+    const authCheck = await requireReviewReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
 
     const url = new URL(request.url);
     const validation = reviewQueueListSchema.safeParse({
@@ -840,7 +666,7 @@ http.route({
     }
 
     const queue = await ctx.runQuery(internal.automationTools.listReviewQueue, {
-      ownerTokenIdentifier: ownerFromAuth(auth),
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
       ...validation.data,
     });
     return new Response(JSON.stringify(queue), {
