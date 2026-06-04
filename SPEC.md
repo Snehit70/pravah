@@ -43,7 +43,7 @@
 
 6. **API Endpoints**
    - HTTP actions for CRUD via Convex
-   - MCP server compatible tools
+   - Scoped automation credentials and JSON CLI commands
 
 ## Data Schema
 
@@ -80,6 +80,6 @@
 | Phase | Features |
 |-------|----------|
 | 1 (Core) | Timeline, cards, drag-drop, inbox, popup, Convex backend |
-| 2 (API) | HTTP endpoints, MCP server |
+| 2 (API) | HTTP endpoints, authenticated automation CLI |
 | 3 (Integrations) | Google Calendar, Gmail |
 | 4 (Polish) | Zoom, animations, focus mode |

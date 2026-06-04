@@ -6,6 +6,9 @@
   "workspaces": [
     "apps/*"
   ],
+  "bin": {
+    "pravah": "./src/cli/pravah.ts"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -16,7 +19,6 @@
     "test:run": "vitest run",
     "test:ui": "vitest --ui",
     "pravah": "bun run src/cli/pravah.ts",
-    "mcp": "bun run mcp-server.ts",
     "mobile:env": "bun scripts/sync-mobile-env.mjs",
     "mobile:start": "bun run mobile:env && bun run --cwd apps/mobile start",
     "mobile:android": "bun run mobile:env && bun scripts/run-mobile-android.mjs",
@@ -31,8 +33,6 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@fontsource-variable/geist": "^5.2.8",
     "@fontsource-variable/geist-mono": "^5.2.7",
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "@modelcontextprotocol/server": "^2.0.0-alpha.2",
     "@tailwindcss/vite": "^4.2.2",
     "better-auth": "1.5.3",
     "clsx": "^2.1.1",

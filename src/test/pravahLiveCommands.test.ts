@@ -140,6 +140,25 @@ describe("pravah live commands", () => {
     });
   });
 
+  it("rejects agent context before network calls when aggregate scopes are missing", async () => {
+    saveStoredCredential({
+      secret: "pravah_cred_limited",
+      label: "Limited",
+      scopes: ["tasks:read", "agent:read"],
+      ownerTokenIdentifier: "user-1",
+      siteUrl: "https://pravah.example.com",
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    await expect(
+      executeCommand(
+        { command: "agent context", json: true },
+        makeArgs(["agent", "context"])
+      )
+    ).rejects.toThrow("review:read, sync:read");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("uses live writes for allowed task mutations with stored credential", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,

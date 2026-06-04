@@ -1,4 +1,4 @@
-export type JsonValue =
+type JsonValue =
   | string
   | number
   | boolean
@@ -7,21 +7,6 @@ export type JsonValue =
   | { [key: string]: JsonValue };
 
 export type ToolArguments = Record<string, JsonValue>;
-
-export function toToolArguments(value: unknown): ToolArguments {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-  return value as ToolArguments;
-}
-
-export function readStringArg(
-  args: ToolArguments,
-  key: string
-): string | undefined {
-  const value = args[key];
-  return typeof value === "string" ? value : undefined;
-}
 
 interface CallConvexApiOptions {
   convexUrl: string | undefined;

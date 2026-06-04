@@ -15,7 +15,6 @@ interface TimelineProps {
   goalNameByTaskId?: Record<string, string>;
   onTaskClick: (task: Task) => void;
   onOpenQuickAdd?: () => void;
-  mcpConnected?: boolean;
 }
 
 function PulsingDot({ color, size = 7, pulseKey }: { color: string; size?: number; pulseKey?: number | string }) {
@@ -49,7 +48,6 @@ export function Timeline({
   goalNameByTaskId,
   onTaskClick,
   onOpenQuickAdd,
-  mcpConnected = true,
 }: TimelineProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [hoverDate, setHoverDate] = useState<string | null>(null);
@@ -75,7 +73,6 @@ export function Timeline({
   const convexColor = convexConnection.isWebSocketConnected
     ? "oklch(0.78 0.18 150)"
     : "oklch(0.72 0.2 25)";
-  const mcpColor = mcpConnected ? "oklch(0.78 0.18 150)" : "oklch(0.72 0.2 25)";
 
   const dates = useMemo(() => generateDateRange(14, 28), []);
 
@@ -375,10 +372,6 @@ export function Timeline({
           letterSpacing: 0.3,
         }}
       >
-        <span className="flex items-center gap-1.5">
-          <PulsingDot color={mcpColor} size={6} />
-          mcp · {mcpConnected ? "connected" : "offline"}
-        </span>
         <span className="flex items-center gap-1.5">
           <PulsingDot color={convexColor} size={6} pulseKey={syncTick} />
           convex · {formatAge(syncAge)}

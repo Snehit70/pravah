@@ -73,6 +73,15 @@ function readLimit(args: ParsedArgs) {
   return limit;
 }
 
+function requireScopes(client: LiveCliClient, requiredScopes: string[]) {
+  const missingScopes = requiredScopes.filter(
+    (scope) => !client.scopes.includes(scope)
+  );
+  if (missingScopes.length > 0) {
+    throw new Error(`Credential is missing required scopes: ${missingScopes.join(", ")}`);
+  }
+}
+
 export async function executeLiveCommand(
   client: LiveCliClient,
   command: string,
@@ -111,6 +120,12 @@ export async function executeLiveCommand(
         source: "live",
       };
     case "agent context": {
+      requireScopes(client, [
+        "tasks:read",
+        "review:read",
+        "sync:read",
+        "agent:read",
+      ]);
       const tasks = normalizeLiveTaskArray(await client.listTasks({}));
       const reviewItemsRaw = await client.getReviewQueue("pending", 25);
       const reviewItems = Array.isArray(reviewItemsRaw) ? reviewItemsRaw : [];
@@ -155,6 +170,7 @@ export async function executeLiveCommand(
       };
     }
     case "agent task": {
+      requireScopes(client, ["tasks:read", "agent:read"]);
       const taskId = requireOption(args, "task-id", command);
       const tasks = normalizeLiveTaskArray(await client.listTasks({}));
       const task = tasks.find((entry) => entry.id === taskId);

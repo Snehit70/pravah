@@ -22,7 +22,7 @@ Stack:
 - **Web** — Vite + React (`src/`), Geist fonts, Framer Motion, dnd-kit
 - **Backend** — Convex (`convex/`) with Better Auth
 - **Mobile** — Expo React Native (`apps/mobile/`)
-- **MCP bridge** — `mcp-server.ts` exposes task tools over stdio
+- **Automation CLI** — authenticated JSON commands for agents and local workflows
 
 ## Quick Start
 
@@ -64,11 +64,13 @@ you move on to mobile or backend debugging.
 | `bun run build` | Type-check + production build |
 | `bun run lint` | ESLint |
 | `bun run test:run` | Vitest suite |
-| `bun run mcp` | MCP server over stdio |
+| `bun run pravah -- --help` | Pravah automation CLI |
 | `bun run mobile:start` | Start Expo |
 | `bun run mobile:android` | Android native build (auto-syncs env) |
 | `bun run mobile:ios` | iOS native build |
 | `bun run mobile:web` | Expo web |
+
+Run `bun link` once when you want the package bin available directly as `pravah`. Use `bun run pravah -- <namespace> <command>` inside the checkout without linking.
 
 ## Project Structure
 
@@ -80,7 +82,7 @@ src/                  React web client
 convex/               Backend: schema, queries, mutations, HTTP routes
 apps/mobile/          Expo React Native app
 docs/                 Technical documentation
-mcp-server.ts         MCP bridge
+.agents/skills/       Repo-local agent skills
 ```
 
 ## Product Scope
@@ -119,6 +121,8 @@ GOOGLE_OAUTH_CLIENT_ID=your-google-web-client-id
 GOOGLE_OAUTH_CLIENT_SECRET=your-google-web-client-secret
 MOBILE_APP_SCHEME=pravah://
 CONVEX_HTTP_API_KEY=your-http-api-key
+# Required only for legacy API-key automation routes
+PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER=your-auth-token-identifier
 # Optional: additional comma-separated web origins trusted for Better Auth
 # session routes and `/google/token` preflights (use for staging/preview deploys).
 ALLOWED_CORS_ORIGINS=https://staging.example.com,https://preview.example.com
@@ -165,7 +169,7 @@ See [apps/mobile/build.md](apps/mobile/build.md) for the runtime-matching OTA pl
 
 - `docs/architecture.md` — system architecture and module map
 - `docs/development.md` — local setup, environment, and workflows
-- `docs/api.md` — HTTP routes and MCP tools
+- `docs/api.md` — HTTP routes and CLI automation
 - `docs/google-oauth.md` — Google OAuth setup and troubleshooting
 - `apps/mobile/docs/README.md` — mobile documentation index
 - `apps/mobile/docs/architecture.md` — detailed mobile architecture and state/query ownership
@@ -178,3 +182,4 @@ See [apps/mobile/build.md](apps/mobile/build.md) for the runtime-matching OTA pl
 - Never expose `GOOGLE_OAUTH_CLIENT_SECRET` via `VITE_` variables.
 - Keep secrets in deployment/server env only.
 - Do not commit `.env.local` or real credentials.
+- CLI credentials are stored at `$XDG_CONFIG_HOME/pravah/credentials.json` (or `~/.config/pravah/credentials.json`) with user-only permissions.

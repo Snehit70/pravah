@@ -27,7 +27,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['mcp-server.ts', 'scripts/**/*.{js,mjs,ts}', 'convex/**/*.ts', 'vite.config.ts'],
+    files: ['scripts/**/*.{js,mjs,ts}', 'convex/**/*.ts', 'vite.config.ts'],
     languageOptions: {
       globals: globals.node,
     },

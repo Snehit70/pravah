@@ -1,25 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  callConvexApi,
-  readStringArg,
-  toToolArguments,
-} from "../lib/automationHttpClient";
+import { callConvexApi } from "../lib/automationHttpClient";
 
 describe("automationHttpClient", () => {
-  it("normalizes unknown tool arguments safely", () => {
-    expect(toToolArguments(null)).toEqual({});
-    expect(toToolArguments("text")).toEqual({});
-    expect(toToolArguments([1, 2, 3])).toEqual({});
-    expect(toToolArguments({ a: 1, b: "x" })).toEqual({ a: 1, b: "x" });
-  });
-
-  it("reads string args only when values are strings", () => {
-    const args = { name: "task", count: 3, nested: { ok: true } };
-    expect(readStringArg(args, "name")).toBe("task");
-    expect(readStringArg(args, "count")).toBeUndefined();
-    expect(readStringArg(args, "missing")).toBeUndefined();
-  });
-
   it("throws when convex url is missing", async () => {
     await expect(
       callConvexApi({
