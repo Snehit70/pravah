@@ -12,7 +12,7 @@ import {
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { type RenderItemParams } from "react-native-draggable-flatlist";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import * as Haptics from "expo-haptics";
 import { authStorageReady } from "./src/lib/auth-client";
@@ -295,12 +295,14 @@ function MobileApp() {
   const moveTaskMutation = useMutation(api.tasks.moveTask);
   const unscheduleTaskMutation = useMutation(api.tasks.unscheduleTask);
   const reopenTaskMutation = useMutation(api.tasks.reopenTask);
-  const rescheduleTasksMutation = useMutation(api.tasks.rescheduleTasks);
   const softDeleteTaskMutation = useMutation(api.tasks.softDeleteTask);
   const restoreTaskMutation = useMutation(api.tasks.restoreTask);
+  const applyOverdueReflowMutation = useMutation(api.overdueReflow.apply);
+  const undoOverdueReflowMutation = useMutation(api.overdueReflow.undo);
+  const overduePreviewData = useQuery(api.overdueReflow.preview, session ? { today } : "skip");
 
   useConvexGoalsSync(Boolean(session));
-  const { setGoalLink, clearAll: clearAllGoals, updateGoal } = useGoalMutations();
+  const { setGoalLink, clearAll: clearAllGoals } = useGoalMutations();
 
   // ── Derived data ────────────────────────────────────────────────────
 
@@ -581,13 +583,6 @@ function MobileApp() {
           await reopenTaskMutation({ taskId: payload.taskId });
           return;
         }
-        case "rescheduleTasks": {
-          await rescheduleTasksMutation({ updates: payload.updates });
-          for (const goalUpdate of payload.goalUpdates ?? []) {
-            updateGoal(goalUpdate.goalId, goalUpdate.draft);
-          }
-          return;
-        }
       }
     },
     [
@@ -597,9 +592,7 @@ function MobileApp() {
       moveTaskMutation,
       unscheduleTaskMutation,
       reopenTaskMutation,
-      rescheduleTasksMutation,
       setGoalLink,
-      updateGoal,
     ]
   );
 
@@ -666,17 +659,15 @@ function MobileApp() {
     rescheduleAll,
     handleManualTriage,
   } = useOverdueTriageController({
-    workspaceTaskCorpus,
-    goalLinks,
-    goals,
+    previewData: overduePreviewData,
     today,
     tomorrow,
     weekEnd,
-    rescheduleTasksMutation,
+    applyReflowMutation: applyOverdueReflowMutation,
+    undoReflowMutation: undoOverdueReflowMutation,
     moveTaskMutation,
     softDeleteTaskMutation,
     restoreTaskMutation,
-    updateGoal,
     showToast,
     enqueueRetry,
   });

@@ -169,15 +169,19 @@ describe("runKairoAgent", () => {
       toolUse([{ id: "r1", name: "reflow_overdue", input: { extendDeadlines: true } }]),
       textOnly("Re-spread your overdue work."),
     ]);
-    // The runtime expands one reflow_overdue call into a deterministic batch.
-    const reflowActions: KairoAction[] = [
-      { kind: "reschedule", handle: "T1", scheduledDate: "2026-06-03" },
-      { kind: "reschedule", handle: "T2", scheduledDate: "2026-06-04" },
-      { kind: "updateGoal", handle: "G1", deadline: "2026-06-04" },
-    ];
     const reflow = {
       plan: vi.fn(() => ({ totalOverdue: 2, goals: [{ goal: "Ship" }], orphans: [] })),
-      buildActions: vi.fn(() => ({ actions: reflowActions, plan: { totalRescheduled: 2 } })),
+      apply: vi.fn(async () => ({
+        payload: { ok: true, status: "reflowed", rescheduled: 2, deadlinesMoved: 1 },
+        outcome: {
+          beforeTitle: null,
+          result: {
+            action: { kind: "reflow" as const, label: "Reflowed Ship" },
+            status: "applied" as const,
+            undo: async () => undefined,
+          },
+        },
+      })),
     };
     const applyActions = vi.fn(async (actions: KairoAction[]) => ({
       results: actions.map((a) => applied(a)),
@@ -190,12 +194,10 @@ describe("runKairoAgent", () => {
     );
 
     expect(reflow.plan).toHaveBeenCalledTimes(1);
-    expect(reflow.buildActions).toHaveBeenCalledWith({ extendDeadlines: true });
-    // The whole batch goes through one applyActions call (atomic snapshot cache).
-    expect(applyActions).toHaveBeenCalledTimes(1);
-    expect(applyActions.mock.calls[0][0]).toHaveLength(3);
-    // Every expanded action surfaces as its own outcome/chip.
-    expect(result.outcomes).toHaveLength(3);
+    expect(reflow.apply).toHaveBeenCalledWith({ extendDeadlines: true });
+    expect(applyActions).not.toHaveBeenCalled();
+    expect(result.outcomes).toHaveLength(1);
+    expect(result.outcomes[0]?.result.action.kind).toBe("reflow");
     expect(result.text).toBe("Re-spread your overdue work.");
   });
 
@@ -206,7 +208,14 @@ describe("runKairoAgent", () => {
     ]);
     const reflow = {
       plan: vi.fn(),
-      buildActions: vi.fn(() => ({ actions: [] as KairoAction[], plan: { totalRescheduled: 0 } })),
+      apply: vi.fn(async () => ({
+        payload: {
+          ok: true,
+          status: "noop",
+          detail: "No overdue work needed rescheduling.",
+          plan: { totalRescheduled: 0 },
+        },
+      })),
     };
     const applyActions = vi.fn(async () => ({ results: [], beforeTitles: [] }));
 
@@ -216,6 +225,7 @@ describe("runKairoAgent", () => {
     );
 
     expect(applyActions).not.toHaveBeenCalled();
+    expect(reflow.apply).toHaveBeenCalledTimes(1);
     expect(result.outcomes).toHaveLength(0);
     expect(result.text).toBe("Nothing overdue to move.");
   });

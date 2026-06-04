@@ -1,28 +1,24 @@
 import { useCallback, useMemo, useState } from "react";
 import * as Haptics from "expo-haptics";
-import type { Id } from "../../../../../convex/_generated/dataModel";
 import { classifyError, createActionId, mobileLogger } from "../../lib/logger";
-import type { GoalDraft, GoalItem } from "../../lib/goalsStorage";
-import type { MobileTask } from "../../components/TaskCard";
-import type { RetryPayload } from "../../hooks/useRetryQueue";
+import type { Id } from "../../../../../convex/_generated/dataModel";
 import type { ToastState } from "../../hooks/useWorkspaceState";
 import type {
   ManualTriageTarget,
+  OverduePreviewData,
   OverduePreviewGroup,
-  ReflowCommitItem,
 } from "./types";
-import { bucketOverdue, computeReflow } from "./reflow";
 
-type GoalLinks = Record<string, string>;
-
-type RetryEnqueue = (item: { label: string; payload: RetryPayload }) => void;
 type ShowToast = (next: ToastState) => void;
 
-type UpdateGoal = (id: string, draft: GoalDraft) => GoalItem | null;
+type ApplyReflowMutation = (args: {
+  planToken: string;
+  goalIdsToMoveDeadlines?: string[];
+}) => Promise<{ operationId: string; taskCount: number; goalDeadlineCount: number }>;
 
-type RescheduleTasksMutation = (args: {
-  updates: { taskId: Id<"tasks">; scheduledDate: string }[];
-}) => Promise<unknown>;
+type UndoReflowMutation = (args: {
+  operationId: string;
+}) => Promise<{ taskCount: number; goalDeadlineCount: number }>;
 
 type MoveTaskMutation = (args: {
   taskId: Id<"tasks">;
@@ -32,34 +28,39 @@ type MoveTaskMutation = (args: {
 type SoftDeleteTaskMutation = (args: { taskId: Id<"tasks"> }) => Promise<unknown>;
 type RestoreTaskMutation = (args: { taskId: Id<"tasks"> }) => Promise<unknown>;
 
+type RetryEnqueue = (item: {
+  label: string;
+  payload: {
+    type: "moveTask";
+    taskId: Id<"tasks">;
+    targetDate: string;
+  };
+}) => void;
+
 type UseOverdueTriageControllerOptions = {
-  workspaceTaskCorpus: MobileTask[];
-  goalLinks: GoalLinks;
-  goals: GoalItem[];
+  previewData: OverduePreviewData | undefined;
   today: string;
   tomorrow: string;
   weekEnd: string;
-  rescheduleTasksMutation: RescheduleTasksMutation;
+  applyReflowMutation: ApplyReflowMutation;
+  undoReflowMutation: UndoReflowMutation;
   moveTaskMutation: MoveTaskMutation;
   softDeleteTaskMutation: SoftDeleteTaskMutation;
   restoreTaskMutation: RestoreTaskMutation;
-  updateGoal: UpdateGoal;
   showToast: ShowToast;
   enqueueRetry: RetryEnqueue;
 };
 
 export function useOverdueTriageController({
-  workspaceTaskCorpus,
-  goalLinks,
-  goals,
+  previewData,
   today,
   tomorrow,
   weekEnd,
-  rescheduleTasksMutation,
+  applyReflowMutation,
+  undoReflowMutation,
   moveTaskMutation,
   softDeleteTaskMutation,
   restoreTaskMutation,
-  updateGoal,
   showToast,
   enqueueRetry,
 }: UseOverdueTriageControllerOptions) {
@@ -67,54 +68,27 @@ export function useOverdueTriageController({
   const [previewGoalId, setPreviewGoalId] = useState<string | null>(null);
   const [applyDeadline, setApplyDeadline] = useState(false);
 
+  const previewGroups = previewData?.groups ?? [];
   const overdueBuckets = useMemo(
-    () => bucketOverdue(workspaceTaskCorpus, goalLinks, goals, today),
-    [workspaceTaskCorpus, goalLinks, goals, today]
+    () => ({
+      totalOverdue: previewData?.totalOverdue ?? 0,
+      groups: previewGroups,
+      orphans: previewData?.orphans ?? [],
+    }),
+    [previewData, previewGroups]
   );
 
-  const previewGroups = useMemo<OverduePreviewGroup[]>(
-    () =>
-      overdueBuckets.groups.map((group) => {
-        const result = computeReflow(group, today);
-        const defaultApplyDeadline =
-          Boolean(group.goal.deadline && group.goal.deadline < today && result.suggestedDeadline);
-        return {
-          goalId: group.goal.id,
-          goalText: group.goal.text,
-          goalDeadline: group.goal.deadline,
-          overdueCount: group.overdueCount,
-          movedCount: result.movedCount,
-          futureMovedCount: result.futureMovedCount,
-          mode: result.mode,
-          projectedEnd: result.projectedEnd,
-          suggestedDeadline: result.suggestedDeadline,
-          defaultApplyDeadline,
-          assignments: result.assignments,
-          tasks: group.planTasks.map((task) => {
-            const next = result.assignments.find((assignment) => assignment.taskId === String(task._id));
-            const nextDate = next?.scheduledDate ?? task.scheduledDate ?? today;
-            return {
-              taskId: String(task._id),
-              title: task.title,
-              currentDate: task.scheduledDate,
-              nextDate,
-              changed: nextDate !== task.scheduledDate,
-            };
-          }),
-        };
-      }),
-    [overdueBuckets.groups, today]
-  );
-
-  const selectedPreview = useMemo(
+  const selectedPreview = useMemo<OverduePreviewGroup | null>(
     () => previewGroups.find((group) => group.goalId === previewGoalId) ?? null,
     [previewGoalId, previewGroups]
   );
 
   const openOverdue = useCallback(() => {
-    mobileLogger.info("overdue_sheet_opened", { totalOverdue: overdueBuckets.totalOverdue });
+    mobileLogger.info("overdue_sheet_opened", {
+      totalOverdue: previewData?.totalOverdue ?? 0,
+    });
     setIsOverdueSheetOpen(true);
-  }, [overdueBuckets.totalOverdue]);
+  }, [previewData?.totalOverdue]);
 
   const closeOverdue = useCallback(() => {
     setIsOverdueSheetOpen(false);
@@ -135,96 +109,63 @@ export function useOverdueTriageController({
     setPreviewGoalId(null);
   }, []);
 
-  const handleCommitReflow = useCallback(
-    (items: ReflowCommitItem[]) => {
-      const assignments = items.flatMap((item) => item.assignments);
-      if (assignments.length === 0) {
-        closeOverdue();
-        return;
-      }
-
-      const dateById = new Map(
-        workspaceTaskCorpus.map((task) => [String(task._id), task.scheduledDate])
-      );
-      const updates = assignments.map((assignment) => ({
-        taskId: assignment.taskId as Id<"tasks">,
-        scheduledDate: assignment.scheduledDate,
-      }));
-      const undoUpdates = assignments
-        .filter((assignment) => dateById.get(assignment.taskId))
-        .map((assignment) => ({
-          taskId: assignment.taskId as Id<"tasks">,
-          scheduledDate: dateById.get(assignment.taskId) as string,
-        }));
-
-      const deadlineUpdates: { id: string; draft: GoalDraft }[] = [];
-      const deadlineUndo: { id: string; draft: GoalDraft }[] = [];
-      for (const item of items) {
-        if (!item.newDeadline) continue;
-        const goal = goals.find((entry) => entry.id === item.goalId);
-        if (!goal) continue;
-        const baseDraft: GoalDraft = {
-          text: goal.text,
-          description: goal.description,
-          deadline: goal.deadline,
-          priority: goal.priority,
-        };
-        deadlineUndo.push({ id: goal.id, draft: baseDraft });
-        deadlineUpdates.push({
-          id: goal.id,
-          draft: { ...baseDraft, deadline: item.newDeadline },
-        });
-      }
-
+  const runApply = useCallback(
+    async (group: OverduePreviewGroup | null, planToken: string, goalIdsToMoveDeadlines: string[]) => {
       const actionId = createActionId("reflow");
       mobileLogger.info("reflow_commit", {
         actionId,
-        taskCount: updates.length,
-        goals: items.length,
+        taskCount: group?.movedCount ?? previewGroups.reduce((sum, entry) => sum + entry.movedCount, 0),
+        goals: group ? 1 : previewGroups.length,
       });
       closeOverdue();
 
-      void (async () => {
-        try {
-          await rescheduleTasksMutation({ updates });
-          for (const item of deadlineUpdates) updateGoal(item.id, item.draft);
-          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          showToast({
-            kind: "info",
-            message: `Rescheduled ${updates.length} task${updates.length === 1 ? "" : "s"}`,
-            action: {
-              label: "Undo",
-              run: () => {
-                if (undoUpdates.length) void rescheduleTasksMutation({ updates: undoUpdates });
-                for (const item of deadlineUndo) updateGoal(item.id, item.draft);
-              },
+      try {
+        const applied = await applyReflowMutation({
+          planToken,
+          goalIdsToMoveDeadlines,
+        });
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        showToast({
+          kind: "info",
+          message: `Rescheduled ${applied.taskCount} task${applied.taskCount === 1 ? "" : "s"}`,
+          action: {
+            label: "Undo last reflow",
+            run: () => {
+              void undoReflowMutation({ operationId: applied.operationId }).then(() => {
+                showToast({ kind: "info", message: "Reflow undone" });
+              }).catch((error: unknown) => {
+                const errorType = classifyError(error);
+                showToast({
+                  kind: "error",
+                  message:
+                    errorType === "network"
+                      ? "Reconnect to undo this reflow."
+                      : error instanceof Error
+                        ? error.message
+                        : "Could not undo this reflow.",
+                });
+              });
             },
-          });
-        } catch (error) {
-          if (classifyError(error) === "network") {
-            enqueueRetry({
-              label: `Reschedule ${updates.length} tasks`,
-              payload: {
-                type: "rescheduleTasks",
-                updates,
-                goalUpdates: deadlineUpdates.map((item) => ({
-                  goalId: item.id,
-                  draft: item.draft,
-                })),
-              },
-            });
-            showToast({ kind: "error", message: "Offline. Reschedule queued for retry." });
-          } else {
-            showToast({ kind: "error", message: "Could not reschedule. Please try again." });
-          }
-          mobileLogger.error("reflow_commit_failed", {
-            actionId,
-            errorType: classifyError(error),
-          });
-        }
-      })();
+          },
+        });
+      } catch (error) {
+        const errorType = classifyError(error);
+        showToast({
+          kind: "error",
+          message:
+            errorType === "network"
+              ? "Reconnect to apply this plan."
+              : error instanceof Error
+                ? error.message
+                : "Could not reschedule. Please try again.",
+        });
+        mobileLogger.error("reflow_commit_failed", {
+          actionId,
+          errorType,
+        });
+      }
     },
-    [workspaceTaskCorpus, goals, rescheduleTasksMutation, updateGoal, showToast, enqueueRetry, closeOverdue]
+    [applyReflowMutation, closeOverdue, previewGroups, showToast, undoReflowMutation]
   );
 
   const handleManualTriage = useCallback(
@@ -269,42 +210,33 @@ export function useOverdueTriageController({
       })();
     },
     [
+      enqueueRetry,
+      moveTaskMutation,
+      restoreTaskMutation,
+      showToast,
+      softDeleteTaskMutation,
       today,
       tomorrow,
       weekEnd,
-      moveTaskMutation,
-      softDeleteTaskMutation,
-      restoreTaskMutation,
-      showToast,
-      enqueueRetry,
     ]
   );
 
   const confirmPreview = useCallback(() => {
     if (!selectedPreview) return;
-    handleCommitReflow([
-      {
-        goalId: selectedPreview.goalId,
-        goalText: selectedPreview.goalText,
-        assignments: selectedPreview.assignments,
-        newDeadline:
-          applyDeadline && selectedPreview.suggestedDeadline
-            ? selectedPreview.suggestedDeadline
-            : undefined,
-      },
-    ]);
-  }, [selectedPreview, applyDeadline, handleCommitReflow]);
+    void runApply(
+      selectedPreview,
+      selectedPreview.planToken,
+      applyDeadline && selectedPreview.suggestedDeadline ? [selectedPreview.goalId] : []
+    );
+  }, [applyDeadline, runApply, selectedPreview]);
 
   const rescheduleAll = useCallback(() => {
-    handleCommitReflow(
-      previewGroups.map((group) => ({
-        goalId: group.goalId,
-        goalText: group.goalText,
-        assignments: group.assignments,
-        newDeadline: group.defaultApplyDeadline ? group.suggestedDeadline : undefined,
-      }))
-    );
-  }, [previewGroups, handleCommitReflow]);
+    if (!previewData?.planToken) return;
+    const goalIdsToMoveDeadlines = previewGroups
+      .filter((group) => group.defaultApplyDeadline && group.suggestedDeadline)
+      .map((group) => group.goalId);
+    void runApply(null, previewData.planToken, goalIdsToMoveDeadlines);
+  }, [previewData?.planToken, previewGroups, runApply]);
 
   return {
     isOverdueSheetOpen,

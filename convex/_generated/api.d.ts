@@ -16,6 +16,7 @@ import type * as http from "../http.js";
 import type * as httpContracts from "../httpContracts.js";
 import type * as index from "../index.js";
 import type * as origins from "../origins.js";
+import type * as overdueReflow from "../overdueReflow.js";
 import type * as sync from "../sync.js";
 import type * as syncActions from "../syncActions.js";
 import type * as tasks from "../tasks.js";
@@ -36,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   httpContracts: typeof httpContracts;
   index: typeof index;
   origins: typeof origins;
+  overdueReflow: typeof overdueReflow;
   sync: typeof sync;
   syncActions: typeof syncActions;
   tasks: typeof tasks;

@@ -182,6 +182,7 @@ export type KairoAction =
       scheduledDate: string | null;
       type: "open" | "deadline";
     }
+  | { kind: "reflow"; label: string }
   | {
       kind: "reschedule";
       handle: string;

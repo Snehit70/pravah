@@ -65,8 +65,12 @@ export interface AgentMutationOutcome {
 export interface KairoReflowRuntime {
   /** Read-only preview payload (per-goal plan + orphans). */
   plan: () => unknown;
-  /** Expand a reflow request into actions to apply, plus a plan summary. */
-  buildActions: (args: Record<string, unknown>) => { actions: KairoAction[]; plan: unknown };
+  /** Apply the canonical backend reflow and optionally return a single
+   *  synthetic outcome for UI chips/undo. */
+  apply: (args: Record<string, unknown>) => Promise<{
+    payload: unknown;
+    outcome?: AgentMutationOutcome;
+  }>;
 }
 
 export interface KairoAgentDeps {
@@ -136,26 +140,6 @@ function singleActionPayload(
   }
   if (res.status === "skipped") return { ok: false, status: "skipped", detail: res.reason };
   return { ok: false, status: "failed", detail: res.error };
-}
-
-/** Aggregate tool-result payload for a reflow_overdue call, which expands to a
- *  whole batch. Folds the pre-apply plan summary together with applied counts. */
-function reflowPayload(results: KairoActionResult[], plan: unknown): unknown {
-  let rescheduled = 0;
-  let deadlinesMoved = 0;
-  let skipped = 0;
-  let failed = 0;
-  for (const res of results) {
-    if (res.status === "applied") {
-      if (res.action.kind === "reschedule") rescheduled += 1;
-      else if (res.action.kind === "updateGoal") deadlinesMoved += 1;
-    } else if (res.status === "skipped") {
-      skipped += 1;
-    } else {
-      failed += 1;
-    }
-  }
-  return { ok: failed === 0, status: "reflowed", rescheduled, deadlinesMoved, skipped, failed, plan };
 }
 
 function cloneTask(task: KairoTaskInput): KairoTaskInput {
@@ -338,17 +322,14 @@ export async function runKairoAgent(
     turns.push({ role: "assistant", text, toolCalls });
 
     // Resolve every call to a result, preserving 1:1 order/count (Anthropic
-    // requires a tool_result for every tool_use). Reads run inline; mutations
-    // are collected and batched so the executor's snapshot cache is correct.
-    // Most mutation tools map to one action; reflow_overdue expands to a whole
-    // deterministic batch, so calls are tracked as groups (one tool call → its
-    // action(s)) and the per-call tool result aggregates the group's outcomes.
+    // requires a tool_result for every tool_use). Reads run inline; standard
+    // mutations are collected and batched so the executor's snapshot cache is
+    // correct. Canonical overdue reflow now executes directly through its own
+    // backend contract instead of expanding into generic task mutations here.
     const resultById = new Map<string, ToolResultEntry>();
     const mutationGroups: {
       call: NormalizedToolCall;
       actions: KairoAction[];
-      reflow: boolean;
-      reflowPlan?: unknown;
     }[] = [];
 
     for (const tc of toolCalls) {
@@ -381,21 +362,14 @@ export async function runKairoAgent(
           });
           continue;
         }
-        const { actions, plan } = reflow.buildActions(tc.args);
-        if (!actions.length) {
-          resultById.set(tc.id, {
-            id: tc.id,
-            name: tc.name,
-            content: jsonResult({
-              ok: true,
-              status: "noop",
-              detail: "No overdue work needed rescheduling.",
-              plan,
-            }),
-          });
-          continue;
-        }
-        mutationGroups.push({ call: tc, actions, reflow: true, reflowPlan: plan });
+        onProgress?.("Rescheduling overdue work…");
+        const applied = await reflow.apply(tc.args);
+        if (applied.outcome) outcomes.push(applied.outcome);
+        resultById.set(tc.id, {
+          id: tc.id,
+          name: tc.name,
+          content: jsonResult(applied.payload),
+        });
         continue;
       }
 
@@ -408,13 +382,11 @@ export async function runKairoAgent(
         });
         continue;
       }
-      mutationGroups.push({ call: tc, actions: [action], reflow: false });
+      mutationGroups.push({ call: tc, actions: [action] });
     }
 
     if (mutationGroups.length) {
-      onProgress?.(
-        mutationGroups.some((g) => g.reflow) ? "Rescheduling overdue work…" : "Updating your tasks…"
-      );
+      onProgress?.("Updating your tasks…");
       const flatActions = mutationGroups.flatMap((g) => g.actions);
       const { results, beforeTitles } = await applyActions(flatActions);
 
@@ -433,11 +405,7 @@ export async function runKairoAgent(
         resultById.set(group.call.id, {
           id: group.call.id,
           name: group.call.name,
-          content: jsonResult(
-            group.reflow
-              ? reflowPayload(groupResults, group.reflowPlan)
-              : singleActionPayload(groupResults[0], registry)
-          ),
+          content: jsonResult(singleActionPayload(groupResults[0], registry)),
         });
       }
     }

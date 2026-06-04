@@ -2,14 +2,6 @@ import type { ReflowAssignment } from "./reflow";
 
 export type ManualTriageTarget = "today" | "tomorrow" | "week" | "drop";
 
-export type ReflowCommitItem = {
-  goalId: string;
-  goalText: string;
-  assignments: ReflowAssignment[];
-  /** When set, the caller should also move the goal's deadline here. */
-  newDeadline?: string;
-};
-
 export type OverduePreviewTask = {
   taskId: string;
   title: string;
@@ -30,5 +22,19 @@ export type OverduePreviewGroup = {
   suggestedDeadline?: string;
   defaultApplyDeadline: boolean;
   assignments: ReflowAssignment[];
+  planToken: string;
   tasks: OverduePreviewTask[];
+};
+
+export type OverduePreviewOrphan = {
+  taskId: string;
+  title: string;
+  scheduledDate?: string;
+};
+
+export type OverduePreviewData = {
+  totalOverdue: number;
+  groups: OverduePreviewGroup[];
+  orphans: OverduePreviewOrphan[];
+  planToken: string;
 };

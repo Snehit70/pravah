@@ -11,14 +11,17 @@ import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, radii, spacing, typography } from "../../theme/tokens";
 import { dateLabel } from "../../lib/dates";
-import type { MobileTask } from "../../components/TaskCard";
-import type { ManualTriageTarget, OverduePreviewGroup } from "./types";
+import type {
+  ManualTriageTarget,
+  OverduePreviewGroup,
+  OverduePreviewOrphan,
+} from "./types";
 
 type OverdueSheetProps = {
   visible: boolean;
   onClose: () => void;
   groups: OverduePreviewGroup[];
-  orphans: MobileTask[];
+  orphans: OverduePreviewOrphan[];
   selectedPreview: OverduePreviewGroup | null;
   applyDeadline: boolean;
   today: string;
@@ -173,13 +176,13 @@ export function OverdueSheet({
 
                 {orphans.length > 0 ? <Text style={styles.sectionLabel}>Loose ends</Text> : null}
                 {orphans.map((task) => (
-                  <View key={String(task._id)} style={styles.orphanRow}>
+                  <View key={task.taskId} style={styles.orphanRow}>
                     <Text style={styles.orphanTitle} numberOfLines={2}>{task.title}</Text>
                     <View style={styles.chipRow}>
                       {MANUAL_ACTIONS.map((action) => (
                         <Pressable
                           key={action.key}
-                          onPress={() => onManualTriage(String(task._id), action.key)}
+                          onPress={() => onManualTriage(task.taskId, action.key)}
                           hitSlop={8}
                           style={({ pressed }) => [
                             styles.chip,

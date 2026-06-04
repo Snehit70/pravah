@@ -4,7 +4,6 @@ import { classifyError, createActionId, mobileLogger } from "../lib/logger";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
 import { hydrateRetryQueue, prepareRetryQueueForPersist } from "../lib/retry-queue-utils";
 import type { Id } from "../../../../convex/_generated/dataModel";
-import type { GoalDraft } from "../lib/goalsStorage";
 
 const RETRY_QUEUE_STORAGE_KEY = "pravah_mobile_retry_queue_v1";
 const MAX_RETRY_ATTEMPTS = 5;
@@ -43,11 +42,6 @@ export type RetryPayload =
   | {
       type: "reopenTask";
       taskId: Id<"tasks">;
-    }
-  | {
-      type: "rescheduleTasks";
-      updates: { taskId: Id<"tasks">; scheduledDate: string }[];
-      goalUpdates?: { goalId: string; draft: GoalDraft }[];
     };
 
 export type RetryQueueItem = {

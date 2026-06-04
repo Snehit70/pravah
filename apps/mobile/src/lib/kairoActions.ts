@@ -338,6 +338,15 @@ export async function applyKairoActions(
         continue;
       }
 
+      if (action.kind === "reflow") {
+        results.push({
+          action,
+          status: "skipped",
+          reason: "Reflow runs through the dedicated overdue workflow.",
+        });
+        continue;
+      }
+
       const taskId = resolveHandle(action.handle, maps.taskIdMap);
       if (!taskId) {
         results.push({
