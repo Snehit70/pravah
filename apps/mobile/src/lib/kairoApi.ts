@@ -191,32 +191,49 @@ export type KairoAction =
 
 type ParsedJson = Record<string, unknown>;
 
-function asString(v: unknown): string | undefined {
-  return typeof v === "string" ? v : undefined;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_TASK_TITLE_LENGTH = 500;
+
+function asNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized || undefined;
+}
+
+function asTaskTitle(value: unknown): string | undefined {
+  const title = asNonEmptyString(value);
+  return title && title.length <= MAX_TASK_TITLE_LENGTH ? title : undefined;
+}
+
+function asOptionalDate(value: unknown): string | null | undefined {
+  if (value === undefined || value === null) return null;
+  const date = asNonEmptyString(value);
+  return date && DATE_PATTERN.test(date) ? date : undefined;
 }
 
 export function parseAction(kind: string, parsed: ParsedJson): KairoAction | null {
   switch (kind) {
     case "add": {
-      const title = asString(parsed.title);
-      if (!title) return null;
+      const title = asTaskTitle(parsed.title);
+      const scheduledDate = asOptionalDate(parsed.scheduledDate);
+      if (!title || scheduledDate === undefined) return null;
       return {
         kind: "add",
         title,
-        scheduledDate: typeof parsed.scheduledDate === "string" ? parsed.scheduledDate : null,
+        scheduledDate,
         type: parsed.type === "deadline" ? "deadline" : "open",
       };
     }
     case "reschedule": {
-      const handle = asString(parsed.id ?? parsed.handle);
-      const scheduledDate = asString(parsed.scheduledDate);
+      const handle = asNonEmptyString(parsed.id ?? parsed.handle);
+      const scheduledDate = asOptionalDate(parsed.scheduledDate);
       if (!handle || !scheduledDate) return null;
       return { kind: "reschedule", handle, scheduledDate };
     }
     case "complete":
     case "reopen":
     case "unschedule": {
-      const handle = asString(parsed.id ?? parsed.handle);
+      const handle = asNonEmptyString(parsed.id ?? parsed.handle);
       if (!handle) return null;
       return { kind, handle };
     }

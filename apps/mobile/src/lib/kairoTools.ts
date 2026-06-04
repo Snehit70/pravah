@@ -37,6 +37,11 @@ export interface KairoToolSchema {
 }
 
 const str = (description: string) => ({ type: "string", description });
+const date = (description: string) => ({
+  type: "string",
+  pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+  description,
+});
 export const KAIRO_READ_TOOLS: KairoToolSchema[] = [
   {
     name: "get_inbox",
@@ -50,8 +55,8 @@ export const KAIRO_READ_TOOLS: KairoToolSchema[] = [
     parameters: {
       type: "object",
       properties: {
-        startDate: str("Start date, YYYY-MM-DD"),
-        endDate: str("End date, YYYY-MM-DD"),
+        startDate: date("Start date, YYYY-MM-DD"),
+        endDate: date("End date, YYYY-MM-DD"),
       },
       required: ["startDate", "endDate"],
     },
@@ -78,8 +83,8 @@ export const KAIRO_READ_TOOLS: KairoToolSchema[] = [
     parameters: {
       type: "object",
       properties: {
-        startDate: str("Optional start date, YYYY-MM-DD"),
-        endDate: str("Optional end date, YYYY-MM-DD"),
+        startDate: date("Optional start date, YYYY-MM-DD"),
+        endDate: date("Optional end date, YYYY-MM-DD"),
       },
     },
   },
@@ -92,8 +97,8 @@ export const KAIRO_MUTATION_TOOLS: KairoToolSchema[] = [
     parameters: {
       type: "object",
       properties: {
-        title: str("Task title"),
-        scheduledDate: str("Date YYYY-MM-DD, or omit for inbox"),
+        title: { ...str("Task title"), maxLength: 500 },
+        scheduledDate: date("Date YYYY-MM-DD, or omit for inbox"),
         type: { type: "string", enum: ["open", "deadline"], description: "Task type" },
       },
       required: ["title"],
@@ -106,7 +111,7 @@ export const KAIRO_MUTATION_TOOLS: KairoToolSchema[] = [
       type: "object",
       properties: {
         handle: str("Task handle, e.g. T3"),
-        scheduledDate: str("New date, YYYY-MM-DD"),
+        scheduledDate: date("New date, YYYY-MM-DD"),
       },
       required: ["handle", "scheduledDate"],
     },

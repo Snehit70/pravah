@@ -50,10 +50,15 @@ describe("httpContracts", () => {
 
   describe("schemas", () => {
     it("applies defaults for task creation", () => {
-      const parsed = createTaskSchema.parse({ title: "Write docs" });
+      const parsed = createTaskSchema.parse({ title: "  Write docs  " });
 
+      expect(parsed.title).toBe("Write docs");
       expect(parsed.type).toBe("open");
       expect(parsed.source).toBe("ai-agent");
+    });
+
+    it("rejects whitespace-only task titles", () => {
+      expect(createTaskSchema.safeParse({ title: "   " }).success).toBe(false);
     });
 
     it("rejects task creation with invalid date format", () => {

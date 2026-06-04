@@ -217,5 +217,13 @@ describe("toolCallToAction", () => {
 
   it("returns null for a malformed mutation call (missing required field)", () => {
     expect(toolCallToAction("reschedule_task", { handle: "T1" })).toBeNull();
+    expect(
+      toolCallToAction("reschedule_task", {
+        handle: "T1",
+        scheduledDate: "not-a-date",
+      })
+    ).toBeNull();
+    expect(toolCallToAction("add_task", { title: "   " })).toBeNull();
+    expect(toolCallToAction("add_task", { title: "x".repeat(501) })).toBeNull();
   });
 });

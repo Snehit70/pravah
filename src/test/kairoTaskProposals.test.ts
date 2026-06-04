@@ -29,6 +29,15 @@ describe("parseKairoTaskProposals", () => {
     expect(result).toEqual({ text: "Keep this", proposals: [] });
   });
 
+  it("ignores proposals with unsafe task fields", () => {
+    const result = parseKairoTaskProposals(
+      `<add-task>{"title":"Valid","scheduledDate":"not-a-date"}</add-task>` +
+        `<add-task>{"title":"${"x".repeat(501)}"}</add-task>`
+    );
+
+    expect(result.proposals).toEqual([]);
+  });
+
   it("updates exactly one proposal status", () => {
     const proposals = parseKairoTaskProposals(
       '<add-task>{"title":"One"}</add-task><add-task>{"title":"Two"}</add-task>'

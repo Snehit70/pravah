@@ -18,6 +18,22 @@ export interface ParsedKairoTaskProposals {
   proposals: KairoTaskProposal[];
 }
 
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_TASK_TITLE_LENGTH = 500;
+
+function readTaskTitle(value: unknown) {
+  if (typeof value !== "string") return null;
+  const title = value.trim();
+  return title && title.length <= MAX_TASK_TITLE_LENGTH ? title : null;
+}
+
+function readScheduledDate(value: unknown): string | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const date = value.trim();
+  return DATE_PATTERN.test(date) ? date : undefined;
+}
+
 export function updateKairoTaskProposal(
   proposals: KairoTaskProposal[],
   proposalIndex: number,
@@ -38,13 +54,13 @@ export function parseKairoTaskProposals(rawText: string): ParsedKairoTaskProposa
           scheduledDate?: unknown;
           type?: unknown;
         };
-        const title = typeof parsed.title === "string" ? parsed.title.trim() : "";
-        if (!title) return "";
+        const title = readTaskTitle(parsed.title);
+        const scheduledDate = readScheduledDate(parsed.scheduledDate);
+        if (!title || scheduledDate === undefined) return "";
 
         proposals.push({
           title,
-          scheduledDate:
-            typeof parsed.scheduledDate === "string" ? parsed.scheduledDate : null,
+          scheduledDate,
           type: parsed.type === "deadline" ? "deadline" : "open",
           status: "pending",
         });
