@@ -14,6 +14,7 @@ function buildCliEnv(env?: Record<string, string>) {
   return {
     ...process.env,
     HOME: env?.HOME ?? mkdtempSync(join(tmpdir(), "pravah-cli-test-home-")),
+    PRAVAH_CLI_MOCK: env?.PRAVAH_CLI_MOCK ?? "1",
     ...env,
   };
 }
@@ -71,6 +72,16 @@ describe("pravah CLI", () => {
     });
     expect(payload.data.tasks).toBeInstanceOf(Array);
     expect(result.stderr).toBe("");
+  });
+
+  it("fails clearly instead of silently using mock data without auth", () => {
+    const result = runCli(["tasks", "list", "--json"], {
+      PRAVAH_CLI_MOCK: "0",
+    });
+
+    expect(result.status).toBe(1);
+    const payload = JSON.parse(result.stdout);
+    expect(payload.error.message).toContain("not authenticated");
   });
 
   it("returns structured JSON errors on stdout in json mode", () => {
@@ -178,6 +189,7 @@ describe("pravah CLI", () => {
   it("exchanges a bootstrap token over HTTP and stores the returned credential", async () => {
     const home = mkdtempSync(join(tmpdir(), "pravah-cli-home-"));
     let sawBearerWrite = false;
+    let sawIdempotencyKey = false;
     const server = createServer((request, response) => {
       if (
         request.method === "POST" &&
@@ -204,8 +216,11 @@ describe("pravah CLI", () => {
         request.url === "/tasks/complete"
       ) {
         sawBearerWrite = request.headers.authorization === "Bearer pravah_cred_live";
+        sawIdempotencyKey =
+          typeof request.headers["idempotency-key"] === "string" &&
+          request.headers["idempotency-key"].startsWith("cli_");
         response.writeHead(200, { "Content-Type": "application/json" });
-        response.end(JSON.stringify({ success: true }));
+        response.end(JSON.stringify({ success: true, replayed: false }));
         return;
       }
 
@@ -230,6 +245,7 @@ describe("pravah CLI", () => {
         {
           HOME: home,
           PRAVAH_HTTP_URL: baseUrl,
+          PRAVAH_CLI_MOCK: "0",
         }
       );
       expect(importResult.status).toBe(0);
@@ -242,7 +258,10 @@ describe("pravah CLI", () => {
         source: "bootstrap-token",
       });
 
-      const whoamiResult = await runCliAsync(["auth", "whoami", "--json"], { HOME: home });
+      const whoamiResult = await runCliAsync(["auth", "whoami", "--json"], {
+        HOME: home,
+        PRAVAH_CLI_MOCK: "0",
+      });
       expect(whoamiResult.status).toBe(0);
       const whoamiPayload = JSON.parse(whoamiResult.stdout);
       expect(whoamiPayload.data).toMatchObject({
@@ -254,7 +273,7 @@ describe("pravah CLI", () => {
 
       const completeResult = await runCliAsync(
         ["tasks", "complete", "--task-id", "task_live_1", "--json"],
-        { HOME: home }
+        { HOME: home, PRAVAH_CLI_MOCK: "0" }
       );
       expect(completeResult.status).toBe(0);
       const completePayload = JSON.parse(completeResult.stdout);
@@ -264,6 +283,7 @@ describe("pravah CLI", () => {
         task: { id: "task_live_1" },
       });
       expect(sawBearerWrite).toBe(true);
+      expect(sawIdempotencyKey).toBe(true);
     } finally {
       await new Promise<void>((resolvePromise, rejectPromise) => {
         server.close((error) => {

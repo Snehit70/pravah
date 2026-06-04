@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -54,6 +54,8 @@ describe("authStore", () => {
     const path = getCredentialStorePath();
     const raw = JSON.parse(readFileSync(path, "utf8")) as { label: string };
     expect(raw.label).toBe("Desktop");
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expect(statSync(join(home, ".config", "pravah")).mode & 0o777).toBe(0o700);
 
     expect(loadStoredCredential()).toMatchObject({
       label: "Desktop",

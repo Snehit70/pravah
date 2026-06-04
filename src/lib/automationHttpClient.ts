@@ -30,6 +30,7 @@ interface CallConvexApiOptions {
   body?: ToolArguments;
   apiKey?: string;
   bearerToken?: string;
+  idempotencyKey?: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -40,6 +41,7 @@ export async function callConvexApi({
   body,
   apiKey,
   bearerToken,
+  idempotencyKey,
   fetchImpl = fetch,
 }: CallConvexApiOptions) {
   if (!convexUrl) {
@@ -52,6 +54,9 @@ export async function callConvexApi({
   }
   if (bearerToken) {
     headers.Authorization = `Bearer ${bearerToken}`;
+  }
+  if (idempotencyKey) {
+    headers["Idempotency-Key"] = idempotencyKey;
   }
 
   const response = await fetchImpl(`${convexUrl}${endpoint}`, {

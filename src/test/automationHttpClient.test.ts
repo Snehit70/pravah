@@ -3,9 +3,9 @@ import {
   callConvexApi,
   readStringArg,
   toToolArguments,
-} from "../lib/mcpBridgeUtils";
+} from "../lib/automationHttpClient";
 
-describe("mcpBridgeUtils", () => {
+describe("automationHttpClient", () => {
   it("normalizes unknown tool arguments safely", () => {
     expect(toToolArguments(null)).toEqual({});
     expect(toToolArguments("text")).toEqual({});
@@ -54,6 +54,33 @@ describe("mcpBridgeUtils", () => {
       body: JSON.stringify({ title: "Task" }),
     });
     expect(response).toEqual({ success: true });
+  });
+
+  it("sends bearer and idempotency headers for automation writes", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, replayed: false }),
+    });
+
+    await callConvexApi({
+      convexUrl: "https://example.convex.site",
+      endpoint: "/tasks/complete",
+      method: "POST",
+      body: { taskId: "task-1" },
+      bearerToken: "pravah_cred_demo",
+      idempotencyKey: "complete-1",
+      fetchImpl,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://example.convex.site/tasks/complete",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": "complete-1",
+        }),
+      })
+    );
   });
 
   it("throws a descriptive error for non-ok responses", async () => {

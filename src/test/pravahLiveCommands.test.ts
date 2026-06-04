@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { saveStoredCredential } from "../cli/authStore";
 import { executeCommand } from "../cli/commands";
-import { resolveCliHttpUrl } from "../cli/liveReads";
+import { resolveCliHttpUrl } from "../cli/liveClient";
 import type { ParsedArgs } from "../cli/types";
 
 const env = process.env;
@@ -18,7 +18,7 @@ function makeArgs(positionals: string[], options: Record<string, string | boolea
   return { positionals, options };
 }
 
-describe("pravah live reads", () => {
+describe("pravah live commands", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     env.PRAVAH_HTTP_URL = "https://pravah.example.com";
@@ -163,6 +163,7 @@ describe("pravah live reads", () => {
         method: "POST",
         headers: expect.objectContaining({
           Authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": expect.stringMatching(/^cli_/),
         }),
       })
     );

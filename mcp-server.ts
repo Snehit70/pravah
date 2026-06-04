@@ -9,7 +9,7 @@ import {
   readStringArg,
   toToolArguments,
   type ToolArguments,
-} from "./src/lib/mcpBridgeUtils";
+} from "./src/lib/automationHttpClient";
 
 const env = (
   globalThis as typeof globalThis & {

@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { callConvexApi } from "../lib/mcpBridgeUtils";
+import { callConvexApi } from "../lib/automationHttpClient";
 import { loadStoredCredential, type StoredCredential } from "./authStore";
 
 interface CliEnv {
@@ -11,8 +11,10 @@ interface CliEnv {
   CONVEX_HTTP_API_KEY?: string;
 }
 
-export interface LiveReadClient {
+export interface LiveCliClient {
   mode: "live";
+  credentialLabel: string;
+  scopes: string[];
   listTasks(filters: { status?: string; date?: string }): Promise<unknown>;
   getInbox(): Promise<unknown>;
   getTimeline(endDate: string): Promise<unknown>;
@@ -22,11 +24,11 @@ export interface LiveReadClient {
     title: string;
     scheduledDate?: string;
     description?: string;
-  }): Promise<unknown>;
-  moveTask(input: { taskId: string; targetDate: string }): Promise<unknown>;
-  completeTask(input: { taskId: string }): Promise<unknown>;
-  reopenTask(input: { taskId: string }): Promise<unknown>;
-  unscheduleTask(input: { taskId: string }): Promise<unknown>;
+  }, idempotencyKey: string): Promise<unknown>;
+  moveTask(input: { taskId: string; targetDate: string }, idempotencyKey: string): Promise<unknown>;
+  completeTask(input: { taskId: string }, idempotencyKey: string): Promise<unknown>;
+  reopenTask(input: { taskId: string }, idempotencyKey: string): Promise<unknown>;
+  unscheduleTask(input: { taskId: string }, idempotencyKey: string): Promise<unknown>;
 }
 
 export interface CliAuthClient {
@@ -58,7 +60,7 @@ export function resolveCliHttpUrl(env: CliEnv): string | undefined {
   );
 }
 
-export function createLiveReadClient(env: CliEnv): LiveReadClient | null {
+export function createLiveClient(env: CliEnv): LiveCliClient | null {
   const storedCredential = loadStoredCredential();
   const baseUrl =
     normalizeHttpUrl(env.PRAVAH_HTTP_URL) ??
@@ -83,7 +85,11 @@ export function createLiveReadClient(env: CliEnv): LiveReadClient | null {
     });
   }
 
-  async function post(endpoint: string, body: Record<string, string | number | boolean | undefined>) {
+  async function post(
+    endpoint: string,
+    body: Record<string, string | number | boolean | undefined>,
+    idempotencyKey: string
+  ) {
     const payload = Object.fromEntries(
       Object.entries(body).filter(([, value]) => value !== undefined)
     ) as Record<string, string | number | boolean>;
@@ -94,11 +100,22 @@ export function createLiveReadClient(env: CliEnv): LiveReadClient | null {
       body: payload,
       apiKey,
       bearerToken,
+      idempotencyKey,
     });
   }
 
   return {
     mode: "live",
+    credentialLabel: storedCredential?.label ?? "admin-api-key",
+    scopes: storedCredential?.scopes ?? [
+      "tasks:read",
+      "tasks:write",
+      "review:read",
+      "review:write",
+      "sync:read",
+      "sync:run",
+      "agent:read",
+    ],
     listTasks(filters) {
       const query = new URLSearchParams();
       if (filters.status) query.set("status", filters.status);
@@ -124,24 +141,24 @@ export function createLiveReadClient(env: CliEnv): LiveReadClient | null {
       const query = new URLSearchParams({ provider });
       return get(`/sync/status?${query.toString()}`);
     },
-    addTask(input) {
+    addTask(input, idempotencyKey) {
       return post("/tasks", {
         title: input.title,
         description: input.description,
         scheduledDate: input.scheduledDate,
-      });
+      }, idempotencyKey);
     },
-    moveTask(input) {
-      return post("/tasks/move", input);
+    moveTask(input, idempotencyKey) {
+      return post("/tasks/move", input, idempotencyKey);
     },
-    completeTask(input) {
-      return post("/tasks/complete", input);
+    completeTask(input, idempotencyKey) {
+      return post("/tasks/complete", input, idempotencyKey);
     },
-    reopenTask(input) {
-      return post("/tasks/reopen", input);
+    reopenTask(input, idempotencyKey) {
+      return post("/tasks/reopen", input, idempotencyKey);
     },
-    unscheduleTask(input) {
-      return post("/tasks/unschedule", input);
+    unscheduleTask(input, idempotencyKey) {
+      return post("/tasks/unschedule", input, idempotencyKey);
     },
   };
 }

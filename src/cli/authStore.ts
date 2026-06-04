@@ -1,5 +1,11 @@
 /// <reference types="node" />
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -14,13 +20,21 @@ export interface StoredCredential {
 }
 
 export function getCredentialStorePath() {
-  return join(homedir(), ".config", "pravah", "credentials.json");
+  const configHome =
+    process.env.XDG_CONFIG_HOME ??
+    join(process.env.HOME ?? homedir(), ".config");
+  return join(configHome, "pravah", "credentials.json");
 }
 
 export function saveStoredCredential(credential: StoredCredential) {
   const path = getCredentialStorePath();
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(credential, null, 2), "utf8");
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  chmodSync(dirname(path), 0o700);
+  writeFileSync(path, JSON.stringify(credential, null, 2), {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  chmodSync(path, 0o600);
 }
 
 export function loadStoredCredential(): StoredCredential | null {
