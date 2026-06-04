@@ -32,8 +32,8 @@ pravah agent task --task-id <id> --json
 Required scopes:
 
 - Task reads: `tasks:read`.
-- `agent context`: `tasks:read`, `review:read`, `sync:read`, and `agent:read`.
-- `agent task`: `tasks:read` and `agent:read`.
+- `agent context`: `tasks:read`, `review:read`, and `sync:read`.
+- `agent task`: `tasks:read`.
 - Review queue reads: `review:read`.
 - Sync status reads: `sync:read`.
 

@@ -2,25 +2,10 @@ import { mutation, query, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { requireTokenIdentifier } from "./authHelpers";
-
-const automationScope = v.union(
-  v.literal("tasks:read"),
-  v.literal("tasks:write"),
-  v.literal("review:read"),
-  v.literal("review:write"),
-  v.literal("sync:read"),
-  v.literal("sync:run"),
-  v.literal("agent:read")
-);
-
-type AutomationScope =
-  | "tasks:read"
-  | "tasks:write"
-  | "review:read"
-  | "review:write"
-  | "sync:read"
-  | "sync:run"
-  | "agent:read";
+import {
+  automationScopeValidator,
+  type AutomationScope,
+} from "./automationScopes";
 
 const CREDENTIAL_USAGE_WRITE_INTERVAL_MS = 5 * 60 * 1000;
 const MAX_CREDENTIAL_LABEL_LENGTH = 100;
@@ -89,7 +74,7 @@ export const listCredentials = query({
 export const issueBootstrapToken = mutation({
   args: {
     label: v.string(),
-    scopes: v.array(automationScope),
+    scopes: v.array(automationScopeValidator),
     ttlMinutes: v.optional(v.number()),
   },
   handler: async (ctx, args) => {

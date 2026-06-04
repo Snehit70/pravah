@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { automationScopeValidator } from "./automationScopes";
 
 export default defineSchema({
   goals: defineTable({
@@ -90,17 +91,7 @@ export default defineSchema({
     label: v.string(),
     credentialHash: v.string(),
     credentialPreview: v.string(),
-    scopes: v.array(
-      v.union(
-        v.literal("tasks:read"),
-        v.literal("tasks:write"),
-        v.literal("review:read"),
-        v.literal("review:write"),
-        v.literal("sync:read"),
-        v.literal("sync:run"),
-        v.literal("agent:read")
-      )
-    ),
+    scopes: v.array(automationScopeValidator),
     status: v.union(v.literal("active"), v.literal("revoked")),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -115,17 +106,7 @@ export default defineSchema({
     ownerTokenIdentifier: v.string(),
     label: v.string(),
     tokenHash: v.string(),
-    scopes: v.array(
-      v.union(
-        v.literal("tasks:read"),
-        v.literal("tasks:write"),
-        v.literal("review:read"),
-        v.literal("review:write"),
-        v.literal("sync:read"),
-        v.literal("sync:run"),
-        v.literal("agent:read")
-      )
-    ),
+    scopes: v.array(automationScopeValidator),
     status: v.union(v.literal("active"), v.literal("used"), v.literal("expired"), v.literal("revoked")),
     expiresAt: v.number(),
     createdAt: v.number(),

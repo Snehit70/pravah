@@ -58,7 +58,7 @@ vi.mock("convex/react", () => ({
           _id: "cred_1",
           label: "Laptop",
           credentialPreview: "pravah_cred_abcd...",
-          scopes: ["tasks:read", "agent:read"],
+          scopes: ["tasks:read"],
           status: "active",
           lastUsedAt: 1770000000000,
         },
@@ -166,7 +166,7 @@ describe("Settings", () => {
       bootstrapToken: "pravah_bootstrap_demo",
       expiresAt: Date.now() + 15 * 60 * 1000,
       label: "Codex local",
-      scopes: ["tasks:read", "tasks:write", "review:read", "sync:read", "agent:read"],
+      scopes: ["tasks:read", "review:read", "sync:read"],
     });
     revokeCredentialMock.mockReset();
     revokeCredentialMock.mockResolvedValue({ revoked: true });
@@ -269,13 +269,28 @@ describe("Settings", () => {
     await waitFor(() => {
       expect(issueBootstrapTokenMock).toHaveBeenCalledWith({
         label: "Codex local",
-        scopes: ["tasks:read", "tasks:write", "review:read", "sync:read", "agent:read"],
+        scopes: ["tasks:read", "review:read", "sync:read"],
         ttlMinutes: 15,
       });
     });
 
     expect(screen.getByTestId("automation-bootstrap-token")).toBeInTheDocument();
     expect(screen.getByText("pravah_bootstrap_demo")).toBeInTheDocument();
+  });
+
+  it("requires explicit opt-in before issuing task write scope", async () => {
+    render(<Settings onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /Allow task writes/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Issue Bootstrap Token" }));
+
+    await waitFor(() => {
+      expect(issueBootstrapTokenMock).toHaveBeenCalledWith({
+        label: "Codex local",
+        scopes: ["tasks:read", "review:read", "sync:read", "tasks:write"],
+        ttlMinutes: 15,
+      });
+    });
   });
 
   it("revokes an existing automation credential", async () => {

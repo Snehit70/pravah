@@ -232,7 +232,7 @@ describe("pravah CLI", () => {
       JSON.stringify({
         secret: "pravah_cred_imported",
         label: "Laptop",
-        scopes: ["tasks:read", "agent:read"],
+        scopes: ["tasks:read"],
         ownerTokenIdentifier: "user-1",
         userId: "user-1",
         email: "user@example.com",
@@ -331,7 +331,7 @@ describe("pravah CLI", () => {
             credential: {
               secret: "pravah_cred_live",
               label: "Codex local",
-              scopes: ["tasks:read", "tasks:write", "agent:read"],
+              scopes: ["tasks:read", "tasks:write"],
               ownerTokenIdentifier: "user-1",
               siteUrl: host ? `http://${host}` : undefined,
             },

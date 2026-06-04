@@ -4,7 +4,7 @@ export const mockCredential: CredentialSummary = {
   userId: "user_01",
   email: "snehit@example.com",
   credentialLabel: "local-dev",
-  scopes: ["tasks:read", "tasks:write", "review:read", "sync:read", "agent:read"],
+  scopes: ["tasks:read", "tasks:write", "review:read", "sync:read"],
   siteUrl: "https://pravah.local",
 };
 

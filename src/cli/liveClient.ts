@@ -111,10 +111,7 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
       "tasks:read",
       "tasks:write",
       "review:read",
-      "review:write",
       "sync:read",
-      "sync:run",
-      "agent:read",
     ],
     listTasks(filters) {
       const query = new URLSearchParams();

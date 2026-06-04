@@ -5,12 +5,10 @@ import type { Id } from "../../convex/_generated/dataModel";
 import { Button } from "./Button";
 import { useToast } from "./useToast";
 
-const DEFAULT_AUTOMATION_SCOPES = [
+const READ_ONLY_AUTOMATION_SCOPES = [
   "tasks:read",
-  "tasks:write",
   "review:read",
   "sync:read",
-  "agent:read",
 ] as const;
 
 function errorMessage(error: unknown, fallback: string) {
@@ -19,6 +17,7 @@ function errorMessage(error: unknown, fallback: string) {
 
 export function AutomationSettingsSection() {
   const [label, setLabel] = useState("Codex local");
+  const [allowTaskWrites, setAllowTaskWrites] = useState(false);
   const [issuing, setIssuing] = useState(false);
   const [revokingCredentialId, setRevokingCredentialId] =
     useState<Id<"automationCredentials"> | null>(null);
@@ -40,9 +39,12 @@ export function AutomationSettingsSection() {
 
     setIssuing(true);
     try {
+      const scopes = allowTaskWrites
+        ? [...READ_ONLY_AUTOMATION_SCOPES, "tasks:write" as const]
+        : [...READ_ONLY_AUTOMATION_SCOPES];
       const result = await issueBootstrapToken({
         label: trimmedLabel,
-        scopes: [...DEFAULT_AUTOMATION_SCOPES],
+        scopes,
         ttlMinutes: 15,
       });
       setIssuedBootstrapToken({
@@ -121,11 +123,29 @@ export function AutomationSettingsSection() {
 
         <div className="rounded-[3px] border border-white/[0.07] bg-black/20 px-3 py-3">
           <p className="text-[11px] uppercase tracking-[0.12em] text-zinc-500">
-            Default Scopes
+            Credential Scopes
           </p>
           <p className="mt-2 text-xs leading-5 text-zinc-400">
-            {DEFAULT_AUTOMATION_SCOPES.join(" · ")}
+            {[
+              ...READ_ONLY_AUTOMATION_SCOPES,
+              ...(allowTaskWrites ? (["tasks:write"] as const) : []),
+            ].join(" · ")}
           </p>
+          <label className="mt-3 flex cursor-pointer items-start gap-2.5 border-t border-white/[0.06] pt-3">
+            <input
+              type="checkbox"
+              checked={allowTaskWrites}
+              onChange={(event) => setAllowTaskWrites(event.target.checked)}
+              className="mt-0.5 accent-[oklch(0.78_0.14_260)]"
+            />
+            <span>
+              <span className="block text-xs text-zinc-300">Allow task writes</span>
+              <span className="mt-0.5 block text-[11px] leading-4 text-zinc-500">
+                Off by default. Enable only for trusted workflows that need add,
+                move, complete, reopen, or unschedule commands.
+              </span>
+            </span>
+          </label>
         </div>
 
         {issuedBootstrapToken && (

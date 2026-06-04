@@ -28,7 +28,7 @@ describe("pravah live commands", () => {
     saveStoredCredential({
       secret: "pravah_cred_demo",
       label: "Laptop",
-      scopes: ["tasks:read", "tasks:write", "review:read", "sync:read", "agent:read"],
+      scopes: ["tasks:read", "tasks:write", "review:read", "sync:read"],
       ownerTokenIdentifier: "user-1",
       siteUrl: "https://pravah.example.com",
     });
@@ -144,7 +144,7 @@ describe("pravah live commands", () => {
     saveStoredCredential({
       secret: "pravah_cred_limited",
       label: "Limited",
-      scopes: ["tasks:read", "agent:read"],
+      scopes: ["tasks:read"],
       ownerTokenIdentifier: "user-1",
       siteUrl: "https://pravah.example.com",
     });

@@ -1,16 +1,8 @@
 import { api } from "./_generated/api";
 import type { ActionCtx } from "./_generated/server";
+import type { AutomationScope } from "./automationScopes";
 import { requireApiKeyAuth } from "./httpContracts";
 import { jsonResponse } from "./httpResponses";
-
-type AutomationScope =
-  | "tasks:read"
-  | "tasks:write"
-  | "review:read"
-  | "review:write"
-  | "sync:read"
-  | "sync:run"
-  | "agent:read";
 
 export interface AuthorizedRequest {
   kind: "admin" | "automation";

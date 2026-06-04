@@ -130,7 +130,7 @@ describe("http route handlers", () => {
       credential: {
         secret: "pravah_cred_demo",
         label: "Laptop",
-        scopes: ["tasks:read", "agent:read"],
+        scopes: ["tasks:read"],
         ownerTokenIdentifier: "user-1",
       },
     });
@@ -154,7 +154,7 @@ describe("http route handlers", () => {
       credential: {
         secret: "pravah_cred_demo",
         label: "Laptop",
-        scopes: ["tasks:read", "agent:read"],
+        scopes: ["tasks:read"],
         ownerTokenIdentifier: "user-1",
         siteUrl: "https://example.com",
       },
@@ -178,7 +178,7 @@ describe("http route handlers", () => {
     ctx.runMutation.mockResolvedValue({
       label: "Laptop",
       ownerTokenIdentifier: "user-1",
-      scopes: ["tasks:read", "agent:read"],
+      scopes: ["tasks:read"],
     });
     ctx.runQuery.mockResolvedValue([{ _id: "task1", title: "A" }]);
 

@@ -16,6 +16,9 @@ Bearer credentials are issued by exchanging a short-lived, one-time bootstrap to
 pravah auth import --bootstrap-token pravah_bootstrap_... --json
 ```
 
+Settings issues read-only credentials by default. Enable **Allow task writes**
+only for trusted workflows that need the accepted task mutation commands.
+
 Legacy/admin integrations may use `x-api-key: <CONVEX_HTTP_API_KEY>`. Admin API-key routes require `PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER` for owner-bound operations.
 
 Every bearer-authenticated task write requires:

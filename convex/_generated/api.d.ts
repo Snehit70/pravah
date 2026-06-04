@@ -13,6 +13,7 @@ import type * as authHelpers from "../authHelpers.js";
 import type * as automation from "../automation.js";
 import type * as automationHttpAuth from "../automationHttpAuth.js";
 import type * as automationIdempotency from "../automationIdempotency.js";
+import type * as automationScopes from "../automationScopes.js";
 import type * as automationTools from "../automationTools.js";
 import type * as crons from "../crons.js";
 import type * as goals from "../goals.js";
@@ -39,6 +40,7 @@ declare const fullApi: ApiFromModules<{
   automation: typeof automation;
   automationHttpAuth: typeof automationHttpAuth;
   automationIdempotency: typeof automationIdempotency;
+  automationScopes: typeof automationScopes;
   automationTools: typeof automationTools;
   crons: typeof crons;
   goals: typeof goals;

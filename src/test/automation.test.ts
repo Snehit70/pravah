@@ -286,7 +286,7 @@ describe("automation credential handlers", () => {
             _id: credentialId,
             ownerTokenIdentifier: "user-1",
             label: "Laptop",
-            scopes: ["tasks:read", "agent:read"],
+            scopes: ["tasks:read"],
             status: "active",
           }),
         }),
@@ -303,7 +303,7 @@ describe("automation credential handlers", () => {
     expect(result).toMatchObject({
       label: "Laptop",
       ownerTokenIdentifier: "user-1",
-      scopes: ["tasks:read", "agent:read"],
+      scopes: ["tasks:read"],
     });
     expect(db.patch).toHaveBeenCalledWith(
       credentialId,

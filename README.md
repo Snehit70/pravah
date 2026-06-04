@@ -183,3 +183,4 @@ See [apps/mobile/build.md](apps/mobile/build.md) for the runtime-matching OTA pl
 - Keep secrets in deployment/server env only.
 - Do not commit `.env.local` or real credentials.
 - CLI credentials are stored at `$XDG_CONFIG_HOME/pravah/credentials.json` (or `~/.config/pravah/credentials.json`) with user-only permissions.
+- Automation credentials are read-only by default; enable task-write scope only for trusted workflows.
