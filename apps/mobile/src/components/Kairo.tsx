@@ -32,7 +32,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { colors, fonts, motion, radii, spacing, typography } from "../theme/tokens";
@@ -206,7 +206,7 @@ type KairoChatRow =
  * expo-secure-store via `lib/kairoConfig.ts`, never sent to our servers.
  */
 export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
-  { tasks, inboxTasks, reflowTasks, isAllTasksReady, onActiveChange, onOpenSettings },
+  { tasks, inboxTasks, reflowTasks: _reflowTasks, isAllTasksReady, onActiveChange, onOpenSettings },
   ref
 ) {
   const sheetRef = useRef<BottomSheet>(null);
@@ -270,6 +270,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   const updateTaskMutation = useMutation(api.tasks.updateTask);
   const softDeleteTaskMutation = useMutation(api.tasks.softDeleteTask);
   const restoreTaskMutation = useMutation(api.tasks.restoreTask);
+  const convex = useConvex();
   const applyOverdueReflowMutation = useMutation(api.overdueReflow.apply);
   const undoOverdueReflowMutation = useMutation(api.overdueReflow.undo);
   const upsertGoalMutation = useMutation(api.goals.upsert);
@@ -277,7 +278,6 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   const setGoalLinkMutation = useMutation(api.goals.setLink);
   const { goals } = useGoals();
   const goalLinks = useGoalLinks();
-  const overduePreviewData = useQuery(api.overdueReflow.preview, { today });
 
   // Single snap point at 92% — leaves a sliver of the dimmed app visible at
   // the top as a peek, the same affordance the web overlay leaves.
@@ -394,6 +394,11 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   const handleRetry = useCallback((prompt: string) => {
     sendMessageRef.current(prompt);
   }, []);
+
+  const fetchReflowPreview = useCallback(
+    (todayDate: string) => convex.query(api.overdueReflow.preview, { today: todayDate }),
+    [convex]
+  );
 
   const handleUndo = useCallback(
     async (chipId: string) => {
@@ -775,16 +780,16 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       // Overdue-reflow runtime, bound to the real corpus (with plan order) +
       // goal links. The agent drives the deterministic engine through it.
       const reflowEnv = {
-        preview: overduePreviewData,
         today: todayStr,
         registry,
       };
       const reflow = {
-        plan: () => planOverdueReflow(reflowEnv),
+        plan: async () => planOverdueReflow({ ...reflowEnv, preview: await fetchReflowPreview(todayStr) }),
         apply: async (args: Record<string, unknown>) => {
+          const preview = await fetchReflowPreview(todayStr);
           let request;
           try {
-            request = buildReflowApply(reflowEnv, args);
+            request = buildReflowApply({ ...reflowEnv, preview }, args);
           } catch (error) {
             return {
               payload: {
@@ -808,6 +813,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
 
           const applied = await applyOverdueReflowMutation({
             planToken,
+            today: todayStr,
             goalIdsToMoveDeadlines,
           });
           return {
@@ -958,7 +964,8 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       inboxTasks,
       isAllTasksReady,
       msgs,
-      overduePreviewData,
+      fetchReflowPreview,
+      rescheduleTasksMutation,
       setMsgs,
       tasks,
       thinking,

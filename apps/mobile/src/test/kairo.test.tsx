@@ -267,8 +267,17 @@ vi.mock("../theme/tokens", () => ({
 
 // ─── convex/react mock ────────────────────────────────────────────────────────
 const mockAddTask = vi.fn(async () => undefined);
+const mockConvexQuery = vi.fn(async (..._args: unknown[]) => ({
+  totalOverdue: 0,
+  groups: [],
+  orphans: [],
+  planToken: "preview-token",
+}));
 vi.mock("convex/react", () => ({
   useMutation: () => mockAddTask,
+  useConvex: () => ({
+    query: (queryRef: unknown, args: unknown) => mockConvexQuery(queryRef, args),
+  }),
 }));
 
 // ─── kairoConfig mock ─────────────────────────────────────────────────────────

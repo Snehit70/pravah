@@ -64,7 +64,7 @@ export interface AgentMutationOutcome {
  *  plan-order/position data the thin read env doesn't carry. */
 export interface KairoReflowRuntime {
   /** Read-only preview payload (per-goal plan + orphans). */
-  plan: () => unknown;
+  plan: () => unknown | Promise<unknown>;
   /** Apply the canonical backend reflow and optionally return a single
    *  synthetic outcome for UI chips/undo. */
   apply: (args: Record<string, unknown>) => Promise<{
@@ -347,7 +347,7 @@ export async function runKairoAgent(
       if (tc.name === REFLOW_PLAN_TOOL) {
         onProgress?.("Planning your reschedule…");
         const payload = reflow
-          ? reflow.plan()
+          ? await reflow.plan()
           : { error: "Overdue reflow is unavailable right now." };
         resultById.set(tc.id, { id: tc.id, name: tc.name, content: jsonResult(payload) });
         continue;

@@ -1,7 +1,6 @@
 /** @vitest-environment happy-dom */
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Id } from "../../../../convex/_generated/dataModel";
 import { useOverdueTriageController } from "../features/overdue-triage/controller";
 
 vi.mock("expo-haptics", () => ({
@@ -27,10 +26,6 @@ vi.mock("../lib/logger", () => ({
     debug: vi.fn(),
   },
 }));
-
-function makeId(value: string) {
-  return value as Id<"tasks">;
-}
 
 describe("useOverdueTriageController", () => {
   beforeEach(() => {
@@ -115,6 +110,7 @@ describe("useOverdueTriageController", () => {
     await waitFor(() => {
       expect(applyReflowMutation).toHaveBeenCalledWith({
         planToken: "g1-token",
+        today: "2026-06-03",
         goalIdsToMoveDeadlines: ["g1"],
       });
     });

@@ -13,6 +13,7 @@ type ShowToast = (next: ToastState) => void;
 
 type ApplyReflowMutation = (args: {
   planToken: string;
+  today: string;
   goalIdsToMoveDeadlines?: string[];
 }) => Promise<{ operationId: string; taskCount: number; goalDeadlineCount: number }>;
 
@@ -68,7 +69,7 @@ export function useOverdueTriageController({
   const [previewGoalId, setPreviewGoalId] = useState<string | null>(null);
   const [applyDeadline, setApplyDeadline] = useState(false);
 
-  const previewGroups = previewData?.groups ?? [];
+  const previewGroups = useMemo(() => previewData?.groups ?? [], [previewData]);
   const overdueBuckets = useMemo(
     () => ({
       totalOverdue: previewData?.totalOverdue ?? 0,
@@ -122,6 +123,7 @@ export function useOverdueTriageController({
       try {
         const applied = await applyReflowMutation({
           planToken,
+          today,
           goalIdsToMoveDeadlines,
         });
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -165,7 +167,7 @@ export function useOverdueTriageController({
         });
       }
     },
-    [applyReflowMutation, closeOverdue, previewGroups, showToast, undoReflowMutation]
+    [applyReflowMutation, closeOverdue, previewGroups, showToast, today, undoReflowMutation]
   );
 
   const handleManualTriage = useCallback(
@@ -231,12 +233,12 @@ export function useOverdueTriageController({
   }, [applyDeadline, runApply, selectedPreview]);
 
   const rescheduleAll = useCallback(() => {
-    if (!previewData?.planToken) return;
+    if (!previewData) return;
     const goalIdsToMoveDeadlines = previewGroups
       .filter((group) => group.defaultApplyDeadline && group.suggestedDeadline)
       .map((group) => group.goalId);
     void runApply(null, previewData.planToken, goalIdsToMoveDeadlines);
-  }, [previewData?.planToken, previewGroups, runApply]);
+  }, [previewData, previewGroups, runApply]);
 
   return {
     isOverdueSheetOpen,

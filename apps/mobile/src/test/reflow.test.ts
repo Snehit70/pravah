@@ -223,4 +223,31 @@ describe("computeReflow — task deadline clamping", () => {
     ]);
     expect(r.projectedEnd).toBe("2026-06-30");
   });
+
+  it("computes projectedEnd from the maximum assigned date, not the final array slot", () => {
+    const group: ReflowGroup = {
+      goal: goalFuture,
+      overdueCount: 2,
+      planTasks: [
+        task({ id: "f1", scheduledDate: "2026-05-28", position: 0 }),
+        task({ id: "f2", scheduledDate: "2026-05-29", position: 1 }),
+        task({
+          id: "f3",
+          scheduledDate: "2026-05-30",
+          position: 2,
+          type: "deadline",
+          deadline: "2026-06-10",
+        }),
+      ],
+    };
+
+    const r = computeReflow(group, TODAY);
+
+    expect(r.assignments).toEqual([
+      { taskId: "f1", scheduledDate: "2026-06-03" },
+      { taskId: "f2", scheduledDate: "2026-06-17" },
+      { taskId: "f3", scheduledDate: "2026-06-10" },
+    ]);
+    expect(r.projectedEnd).toBe("2026-06-17");
+  });
 });

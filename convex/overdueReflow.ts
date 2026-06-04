@@ -57,6 +57,7 @@ type DateLaneSnapshot = {
 type EncodedPlan = {
   ownerTokenIdentifier: string;
   createdAt: number;
+  planningDate: string;
   goals: GoalSummaryForToken[];
   tasks: TaskSummaryForToken[];
   dateStatesBefore: DateLaneSnapshot[];
@@ -401,6 +402,7 @@ function validateTaskEligibility(task: TaskDoc | null): asserts task is TaskDoc 
 
 function buildPlanPayload(
   tokenIdentifier: string,
+  planningDate: string,
   goals: GoalSummaryForToken[],
   tasks: TaskSummaryForToken[],
   dateStatesBefore: DateLaneSnapshot[]
@@ -408,6 +410,7 @@ function buildPlanPayload(
   return encodePlan({
     ownerTokenIdentifier: tokenIdentifier,
     createdAt: Date.now(),
+    planningDate,
     goals,
     tasks,
     dateStatesBefore,
@@ -487,6 +490,7 @@ function summarizeGroup(
     }),
     planToken: buildPlanPayload(
       tokenIdentifier,
+      today,
       tokenGoals,
       tokenTasks,
       buildDateState(allTasks, touchedDates)
@@ -555,6 +559,7 @@ export const preview = query({
       })),
       planToken: buildPlanPayload(
         tokenIdentifier,
+        args.today,
         allTokenGoals,
         allTokenTasks,
         buildDateState(tasks, allTouchedDates)
@@ -566,6 +571,7 @@ export const preview = query({
 export const apply = mutation({
   args: {
     planToken: v.string(),
+    today: v.string(),
     goalIdsToMoveDeadlines: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
@@ -573,6 +579,9 @@ export const apply = mutation({
     const plan = decodePlan(args.planToken);
     if (plan.ownerTokenIdentifier !== tokenIdentifier) {
       throw new Error("This reflow preview is no longer valid");
+    }
+    if (plan.planningDate !== args.today) {
+      throw new Error("This reflow preview expired. Refresh the plan and try again.");
     }
 
     const moveDeadlineGoalIds = new Set(args.goalIdsToMoveDeadlines ?? []);

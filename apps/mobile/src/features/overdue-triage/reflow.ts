@@ -166,9 +166,10 @@ export function computeReflow(group: ReflowGroup, today: string): ReflowResult {
     }
   }
 
-  const projectedEnd = assignments.length
-    ? assignments[assignments.length - 1].scheduledDate
-    : today;
+  const projectedEnd = assignments.reduce(
+    (max, assignment) => (assignment.scheduledDate > max ? assignment.scheduledDate : max),
+    today
+  );
   const exceedsDeadline = projectedEnd > deadline;
   const suggestedDeadline = deadline < today || exceedsDeadline ? projectedEnd : undefined;
 
