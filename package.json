@@ -15,6 +15,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:ui": "vitest --ui",
+    "pravah": "bun run src/cli/pravah.ts",
     "mcp": "bun run mcp-server.ts",
     "mobile:env": "bun scripts/sync-mobile-env.mjs",
     "mobile:start": "bun run mobile:env && bun run --cwd apps/mobile start",
