@@ -29,6 +29,7 @@ export type MobileTask = {
   _id: Id<"tasks">;
   title: string;
   description?: string;
+  type?: "open" | "deadline";
   deadline?: string;
   priority?: "p1" | "p2" | "p3";
   status: "inbox" | "scheduled" | "completed" | "cancelled";

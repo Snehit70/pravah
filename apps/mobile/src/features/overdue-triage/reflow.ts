@@ -75,6 +75,18 @@ function isOverdue(task: MobileTask, today: string): boolean {
   return task.status === "scheduled" && !!task.scheduledDate && task.scheduledDate < today;
 }
 
+function clampAssignmentDate(task: MobileTask, scheduledDate: string, today: string): string {
+  if (
+    task.type === "deadline" &&
+    task.deadline &&
+    scheduledDate > task.deadline &&
+    task.deadline >= today
+  ) {
+    return task.deadline;
+  }
+  return scheduledDate;
+}
+
 export function bucketOverdue(
   tasks: MobileTask[],
   goalLinks: GoalLinks,
@@ -137,17 +149,19 @@ export function computeReflow(group: ReflowGroup, today: string): ReflowResult {
     const span = daysAvailable - 1;
     for (let i = 0; i < n; i += 1) {
       const offset = n === 1 ? 0 : Math.round((i * span) / (n - 1));
+      const scheduledDate = clampAssignmentDate(tasks[i], addIso(today, offset), today);
       assignments.push({
         taskId: String(tasks[i]._id),
-        scheduledDate: addIso(today, offset),
+        scheduledDate,
       });
     }
   } else {
     mode = "march";
     for (let i = 0; i < n; i += 1) {
+      const scheduledDate = clampAssignmentDate(tasks[i], addIso(today, i), today);
       assignments.push({
         taskId: String(tasks[i]._id),
-        scheduledDate: addIso(today, i),
+        scheduledDate,
       });
     }
   }

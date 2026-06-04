@@ -195,3 +195,32 @@ describe("computeReflow — single task", () => {
     expect(r.assignments).toEqual([{ taskId: "d1", scheduledDate: "2026-06-03" }]);
   });
 });
+
+describe("computeReflow — task deadline clamping", () => {
+  it("clamps a deadline task in the preview when the computed slot lands after its deadline", () => {
+    const group: ReflowGroup = {
+      goal: goalFuture,
+      overdueCount: 2,
+      planTasks: [
+        task({ id: "e1", scheduledDate: "2026-05-28", position: 0 }),
+        task({
+          id: "e2",
+          scheduledDate: "2026-05-29",
+          position: 1,
+          type: "deadline",
+          deadline: "2026-06-10",
+        }),
+        task({ id: "e3", scheduledDate: "2026-05-30", position: 2 }),
+      ],
+    };
+
+    const r = computeReflow(group, TODAY);
+
+    expect(r.assignments).toEqual([
+      { taskId: "e1", scheduledDate: "2026-06-03" },
+      { taskId: "e2", scheduledDate: "2026-06-10" },
+      { taskId: "e3", scheduledDate: "2026-06-30" },
+    ]);
+    expect(r.projectedEnd).toBe("2026-06-30");
+  });
+});

@@ -328,6 +328,7 @@ function MobileApp() {
 
   const isGoalsTaskDataLoading =
     activeTab === "goals" && !shouldUseWorkspaceSnapshot && !isAllTasksReady;
+  const isTimelineTriageReady = shouldUseWorkspaceSnapshot || isAllTasksReady;
 
   const isBootShellLoading = shouldRenderOptimisticShell && !shouldUseWorkspaceSnapshot && !session;
 
@@ -1113,8 +1114,10 @@ function MobileApp() {
               tabBarHeight={tabBarHeight}
               onRefresh={handleRefresh}
               renderItem={renderTimelineTaskItem}
-              overdueCount={overdueBuckets.totalOverdue}
-              onOpenOverdue={canUseWorkspaceActions ? openOverdue : undefined}
+              overdueCount={isTimelineTriageReady ? overdueBuckets.totalOverdue : undefined}
+              onOpenOverdue={
+                canUseWorkspaceActions && isTimelineTriageReady ? openOverdue : undefined
+              }
             />
           </ScreenErrorBoundary>
         </Animated.View>

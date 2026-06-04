@@ -68,6 +68,7 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
       _id: task._id,
       title: task.title,
       description: task.description,
+      type: task.type,
       deadline: task.deadline,
       priority: task.priority,
       status: task.status,
