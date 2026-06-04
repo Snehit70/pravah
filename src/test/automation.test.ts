@@ -268,4 +268,32 @@ describe("automation credential handlers", () => {
       })
     );
   });
+
+  it("does not write another usage event within the throttle window", async () => {
+    const credentialId = makeId("cred_1");
+    const db = {
+      query: vi.fn().mockReturnValue({
+        withIndex: vi.fn().mockReturnValue({
+          first: vi.fn().mockResolvedValue({
+            _id: credentialId,
+            ownerTokenIdentifier: "user-1",
+            label: "Laptop",
+            scopes: ["tasks:read"],
+            status: "active",
+            lastUsedAt: Date.now(),
+          }),
+        }),
+      }),
+      patch: vi.fn(),
+      insert: vi.fn(),
+    };
+
+    const ctx = createAuthedCtx(db);
+    await markCredentialUsedHandler(ctx, {
+      credentialSecret: "pravah_cred_demo",
+    });
+
+    expect(db.patch).not.toHaveBeenCalled();
+    expect(db.insert).not.toHaveBeenCalled();
+  });
 });

@@ -230,6 +230,73 @@ describe("http route handlers", () => {
     });
   });
 
+  it("requires an idempotency key for bearer task writes", async () => {
+    const handler = getHandler("/tasks/complete", "POST");
+    const ctx = createCtx();
+    ctx.runMutation.mockResolvedValueOnce({
+      label: "Laptop",
+      ownerTokenIdentifier: "user-1",
+      scopes: ["tasks:write"],
+    });
+
+    const response = await handler(
+      ctx,
+      new Request("https://example.com/tasks/complete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: "Bearer pravah_cred_demo",
+        },
+        body: JSON.stringify({ taskId: "task_abc" }),
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect(ctx.runMutation).toHaveBeenCalledTimes(1);
+    await expect(response.json()).resolves.toEqual({
+      error: "Idempotency-Key header must be between 1 and 200 characters",
+    });
+  });
+
+  it("passes a bearer idempotency key to task writes", async () => {
+    const handler = getHandler("/tasks/complete", "POST");
+    const ctx = createCtx();
+    ctx.runMutation
+      .mockResolvedValueOnce({
+        label: "Laptop",
+        ownerTokenIdentifier: "user-1",
+        scopes: ["tasks:write"],
+      })
+      .mockResolvedValueOnce({ result: { success: true }, replayed: false });
+
+    const response = await handler(
+      ctx,
+      new Request("https://example.com/tasks/complete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": "complete-123",
+        },
+        body: JSON.stringify({ taskId: "task_abc" }),
+      })
+    );
+
+    expect(ctx.runMutation).toHaveBeenNthCalledWith(
+      2,
+      internal.automationTools.completeTask,
+      {
+        ownerTokenIdentifier: "user-1",
+        idempotencyKey: "complete-123",
+        taskId: "task_abc",
+      }
+    );
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      replayed: false,
+    });
+  });
+
   it("handles GET /tasks with query params and auth", async () => {
     const handler = getHandler("/tasks", "GET");
     const ctx = createCtx();
@@ -276,7 +343,7 @@ describe("http route handlers", () => {
   it("applies defaults and calls addTask for valid POST /tasks", async () => {
     const handler = getHandler("/tasks", "POST");
     const ctx = createCtx();
-    ctx.runMutation.mockResolvedValue("task_123");
+    ctx.runMutation.mockResolvedValue({ result: "task_123", replayed: false });
 
     const response = await handler(
       ctx,
@@ -295,6 +362,7 @@ describe("http route handlers", () => {
 
     expect(ctx.runMutation).toHaveBeenCalledWith(internal.automationTools.addTask, {
       ownerTokenIdentifier: "admin-owner",
+      idempotencyKey: undefined,
       title: "Ship tests",
       description: undefined,
       type: "open",
@@ -303,8 +371,12 @@ describe("http route handlers", () => {
       source: "ai-agent",
       estimatedMinutes: undefined,
       tags: undefined,
+      priority: undefined,
     });
-    await expect(response.json()).resolves.toEqual({ taskId: "task_123" });
+    await expect(response.json()).resolves.toEqual({
+      taskId: "task_123",
+      replayed: false,
+    });
   });
 
   it("returns mutation error when POST /tasks/move fails", async () => {

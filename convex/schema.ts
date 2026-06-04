@@ -152,6 +152,14 @@ export default defineSchema({
   })
     .index("by_owner_created_at", ["ownerTokenIdentifier", "createdAt"])
     .index("by_credential_created_at", ["credentialId", "createdAt"]),
+  automationIdempotencyKeys: defineTable({
+    ownerTokenIdentifier: v.string(),
+    key: v.string(),
+    operation: v.string(),
+    requestJson: v.string(),
+    responseJson: v.string(),
+    createdAt: v.number(),
+  }).index("by_owner_key", ["ownerTokenIdentifier", "key"]),
   tasks: defineTable({
     title: v.string(),
     description: v.optional(v.string()),

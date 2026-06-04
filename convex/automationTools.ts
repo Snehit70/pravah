@@ -13,6 +13,7 @@ import {
   getIntegrationStatusForOwner,
   listReviewQueueForOwner,
 } from "./sync";
+import { runIdempotentMutation } from "./automationIdempotency";
 
 const taskStatus = v.union(
   v.literal("inbox"),
@@ -68,6 +69,7 @@ export const listReviewQueue = internalQuery({
 export const addTask = internalMutation({
   args: {
     ownerTokenIdentifier: v.string(),
+    idempotencyKey: v.optional(v.string()),
     title: v.string(),
     description: v.optional(v.string()),
     type: v.union(v.literal("open"), v.literal("deadline")),
@@ -85,44 +87,90 @@ export const addTask = internalMutation({
     tags: v.optional(v.array(v.string())),
     priority: v.optional(v.union(v.literal("p1"), v.literal("p2"), v.literal("p3"))),
   },
-  handler: (ctx, { ownerTokenIdentifier, ...args }) =>
-    addTaskForOwner(ctx, ownerTokenIdentifier, args),
+  handler: (ctx, { ownerTokenIdentifier, idempotencyKey, ...args }) =>
+    runIdempotentMutation(ctx, {
+      ownerTokenIdentifier,
+      idempotencyKey,
+      operation: "tasks.add",
+      request: args,
+      execute: () => addTaskForOwner(ctx, ownerTokenIdentifier, args),
+    }),
 });
 
 export const moveTask = internalMutation({
   args: {
     ownerTokenIdentifier: v.string(),
+    idempotencyKey: v.optional(v.string()),
     taskId: v.id("tasks"),
     targetDate: v.string(),
     position: v.optional(v.number()),
   },
-  handler: (ctx, { ownerTokenIdentifier, ...args }) =>
-    moveTaskForOwner(ctx, ownerTokenIdentifier, args),
+  handler: (ctx, { ownerTokenIdentifier, idempotencyKey, ...args }) =>
+    runIdempotentMutation(ctx, {
+      ownerTokenIdentifier,
+      idempotencyKey,
+      operation: "tasks.move",
+      request: args,
+      execute: async () => {
+        await moveTaskForOwner(ctx, ownerTokenIdentifier, args);
+        return { success: true };
+      },
+    }),
 });
 
 export const completeTask = internalMutation({
   args: {
     ownerTokenIdentifier: v.string(),
+    idempotencyKey: v.optional(v.string()),
     taskId: v.id("tasks"),
   },
   handler: (ctx, args) =>
-    completeTaskForOwner(ctx, args.ownerTokenIdentifier, args.taskId),
+    runIdempotentMutation(ctx, {
+      ownerTokenIdentifier: args.ownerTokenIdentifier,
+      idempotencyKey: args.idempotencyKey,
+      operation: "tasks.complete",
+      request: { taskId: args.taskId },
+      execute: async () => {
+        await completeTaskForOwner(ctx, args.ownerTokenIdentifier, args.taskId);
+        return { success: true };
+      },
+    }),
 });
 
 export const reopenTask = internalMutation({
   args: {
     ownerTokenIdentifier: v.string(),
+    idempotencyKey: v.optional(v.string()),
     taskId: v.id("tasks"),
   },
   handler: (ctx, args) =>
-    reopenTaskForOwner(ctx, args.ownerTokenIdentifier, args.taskId),
+    runIdempotentMutation(ctx, {
+      ownerTokenIdentifier: args.ownerTokenIdentifier,
+      idempotencyKey: args.idempotencyKey,
+      operation: "tasks.reopen",
+      request: { taskId: args.taskId },
+      execute: async () => {
+        await reopenTaskForOwner(ctx, args.ownerTokenIdentifier, args.taskId);
+        return { success: true };
+      },
+    }),
 });
 
 export const unscheduleTask = internalMutation({
   args: {
     ownerTokenIdentifier: v.string(),
+    idempotencyKey: v.optional(v.string()),
     taskId: v.id("tasks"),
   },
   handler: (ctx, args) =>
-    unscheduleTaskForOwner(ctx, args.ownerTokenIdentifier, args.taskId),
+    runIdempotentMutation(ctx, {
+      ownerTokenIdentifier: args.ownerTokenIdentifier,
+      idempotencyKey: args.idempotencyKey,
+      operation: "tasks.unschedule",
+      request: { taskId: args.taskId },
+      execute: async () => {
+        await unscheduleTaskForOwner(ctx, args.ownerTokenIdentifier, args.taskId);
+        return { success: true };
+      },
+    }),
 });

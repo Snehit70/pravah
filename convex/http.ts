@@ -81,6 +81,29 @@ function ownerFromAuth(auth: AuthorizedRequest | undefined) {
   return auth.ownerTokenIdentifier;
 }
 
+function requireIdempotencyKey(
+  request: Request,
+  auth: AuthorizedRequest | undefined
+): { key?: string; response: Response | null } {
+  if (!auth) {
+    throw new Error("Authorized request context missing");
+  }
+  if (auth.kind === "admin") {
+    return { response: null };
+  }
+
+  const key = request.headers.get("idempotency-key")?.trim();
+  if (!key || key.length > 200) {
+    return {
+      response: jsonResponse(
+        { error: "Idempotency-Key header must be between 1 and 200 characters" },
+        400
+      ),
+    };
+  }
+  return { key, response: null };
+}
+
 async function requireAuth(
   ctx: AuthRouteCtx,
   request: Request,
@@ -295,6 +318,8 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const { response, auth } = await requireTaskWriteAuth(ctx, request);
     if (response) return response;
+    const idempotency = requireIdempotencyKey(request, auth);
+    if (idempotency.response) return idempotency.response;
 
     const body = await request.json();
 
@@ -312,8 +337,9 @@ http.route({
 
     const data = validation.data;
 
-    const taskId = await ctx.runMutation(internal.automationTools.addTask, {
+    const mutationResult = await ctx.runMutation(internal.automationTools.addTask, {
       ownerTokenIdentifier: ownerFromAuth(auth),
+      idempotencyKey: idempotency.key,
       title: data.title,
       description: data.description,
       type: data.type,
@@ -322,10 +348,12 @@ http.route({
       source: data.source,
       estimatedMinutes: data.estimatedMinutes,
       tags: data.tags,
+      priority: data.priority,
     });
 
-    return new Response(JSON.stringify({ taskId }), {
-      headers: { "Content-Type": "application/json" },
+    return jsonResponse({
+      taskId: mutationResult.result,
+      replayed: mutationResult.replayed,
     });
   }),
 });
@@ -337,6 +365,8 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const { response, auth } = await requireTaskWriteAuth(ctx, request);
     if (response) return response;
+    const idempotency = requireIdempotencyKey(request, auth);
+    if (idempotency.response) return idempotency.response;
 
     const body = await request.json();
     const validation = moveTaskSchema.safeParse(body);
@@ -353,15 +383,17 @@ http.route({
     const { taskId, targetDate, position } = validation.data;
 
     try {
-      await ctx.runMutation(internal.automationTools.moveTask, {
+      const mutationResult = await ctx.runMutation(internal.automationTools.moveTask, {
         ownerTokenIdentifier: ownerFromAuth(auth),
+        idempotencyKey: idempotency.key,
         taskId,
         targetDate,
         position,
       });
       
-      return new Response(JSON.stringify({ success: true }), {
-        headers: { "Content-Type": "application/json" },
+      return jsonResponse({
+        ...mutationResult.result,
+        replayed: mutationResult.replayed,
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to move task";
@@ -410,6 +442,8 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const { response, auth } = await requireTaskWriteAuth(ctx, request);
     if (response) return response;
+    const idempotency = requireIdempotencyKey(request, auth);
+    if (idempotency.response) return idempotency.response;
 
     const body = await request.json();
     const validation = completeTaskSchema.safeParse(body);
@@ -425,13 +459,15 @@ http.route({
 
     const { taskId } = validation.data;
 
-    await ctx.runMutation(internal.automationTools.completeTask, {
+    const mutationResult = await ctx.runMutation(internal.automationTools.completeTask, {
       ownerTokenIdentifier: ownerFromAuth(auth),
+      idempotencyKey: idempotency.key,
       taskId,
     });
     
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" },
+    return jsonResponse({
+      ...mutationResult.result,
+      replayed: mutationResult.replayed,
     });
   }),
 });
@@ -475,6 +511,8 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const { response, auth } = await requireTaskWriteAuth(ctx, request);
     if (response) return response;
+    const idempotency = requireIdempotencyKey(request, auth);
+    if (idempotency.response) return idempotency.response;
 
     const body = await request.json();
     const validation = reopenTaskSchema.safeParse(body);
@@ -488,12 +526,14 @@ http.route({
       });
     }
 
-    await ctx.runMutation(internal.automationTools.reopenTask, {
+    const mutationResult = await ctx.runMutation(internal.automationTools.reopenTask, {
       ownerTokenIdentifier: ownerFromAuth(auth),
+      idempotencyKey: idempotency.key,
       ...validation.data,
     });
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" },
+    return jsonResponse({
+      ...mutationResult.result,
+      replayed: mutationResult.replayed,
     });
   }),
 });
@@ -505,6 +545,8 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const { response, auth } = await requireTaskWriteAuth(ctx, request);
     if (response) return response;
+    const idempotency = requireIdempotencyKey(request, auth);
+    if (idempotency.response) return idempotency.response;
 
     const body = await request.json();
     const validation = unscheduleTaskSchema.safeParse(body);
@@ -518,12 +560,14 @@ http.route({
       });
     }
 
-    await ctx.runMutation(internal.automationTools.unscheduleTask, {
+    const mutationResult = await ctx.runMutation(internal.automationTools.unscheduleTask, {
       ownerTokenIdentifier: ownerFromAuth(auth),
+      idempotencyKey: idempotency.key,
       ...validation.data,
     });
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" },
+    return jsonResponse({
+      ...mutationResult.result,
+      replayed: mutationResult.replayed,
     });
   }),
 });

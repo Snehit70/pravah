@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { requireTokenIdentifier } from "./authHelpers";
@@ -22,6 +22,8 @@ type AutomationScope =
   | "sync:run"
   | "agent:read";
 
+const CREDENTIAL_USAGE_WRITE_INTERVAL_MS = 5 * 60 * 1000;
+
 async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), (part) => part.toString(16).padStart(2, "0")).join("");
@@ -32,7 +34,7 @@ function createSecret(prefix: string) {
 }
 
 async function insertAuditEvent(
-  ctx: unknown,
+  ctx: MutationCtx,
   input: {
     ownerTokenIdentifier: string;
     credentialId?: Id<"automationCredentials">;
@@ -41,24 +43,7 @@ async function insertAuditEvent(
     metadata?: Record<string, unknown>;
   }
 ) {
-  const db = (
-    ctx as {
-      db: {
-        insert: (
-          table: "automationAuditEvents",
-          value: {
-            ownerTokenIdentifier: string;
-            credentialId?: Id<"automationCredentials">;
-            bootstrapTokenId?: Id<"automationBootstrapTokens">;
-            eventType: "bootstrap_issued" | "bootstrap_exchanged" | "credential_revoked" | "credential_used";
-            metadataJson?: string;
-            createdAt: number;
-          }
-        ) => Promise<unknown>;
-      };
-    }
-  ).db;
-  await db.insert("automationAuditEvents", {
+  await ctx.db.insert("automationAuditEvents", {
     ownerTokenIdentifier: input.ownerTokenIdentifier,
     credentialId: input.credentialId,
     bootstrapTokenId: input.bootstrapTokenId,
@@ -250,19 +235,24 @@ export const markCredentialUsed = mutation({
     }
 
     const now = Date.now();
-    await ctx.db.patch(credential._id, {
-      lastUsedAt: now,
-      updatedAt: now,
-    });
+    if (
+      credential.lastUsedAt === undefined ||
+      now - credential.lastUsedAt >= CREDENTIAL_USAGE_WRITE_INTERVAL_MS
+    ) {
+      await ctx.db.patch(credential._id, {
+        lastUsedAt: now,
+        updatedAt: now,
+      });
 
-    await insertAuditEvent(ctx, {
-      ownerTokenIdentifier: credential.ownerTokenIdentifier,
-      credentialId: credential._id,
-      eventType: "credential_used",
-      metadata: {
-        label: credential.label,
-      },
-    });
+      await insertAuditEvent(ctx, {
+        ownerTokenIdentifier: credential.ownerTokenIdentifier,
+        credentialId: credential._id,
+        eventType: "credential_used",
+        metadata: {
+          label: credential.label,
+        },
+      });
+    }
 
     return {
       credentialId: credential._id,
