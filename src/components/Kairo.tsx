@@ -19,6 +19,12 @@ import {
   buildOpenAIRequestBody,
   readKairoResponseText,
 } from "../lib/kairoProviderRuntime";
+import {
+  parseKairoTaskProposals,
+  type KairoTaskProposal,
+  updateKairoTaskProposal,
+} from "../lib/kairoTaskProposals";
+import { KairoTaskProposalList } from "./KairoTaskProposalList";
 
 const ACCENT = "oklch(0.78 0.14 260)";
 const ACCENT_SOFT = "oklch(0.72 0.16 260 / 0.2)";
@@ -53,7 +59,7 @@ Guidelines:
 interface Message {
   from: "me" | "kairo";
   text: string;
-  tasks?: Array<{ title: string; scheduledDate: string | null; type: "open" | "deadline" }>;
+  tasks?: KairoTaskProposal[];
 }
 
 interface KairoProps {
@@ -442,8 +448,53 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
 
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const applyingProposals = useRef(new Set<string>());
 
   const addTask = useMutation(api.tasks.addTask);
+
+  const decideTaskProposal = async (
+    messageIndex: number,
+    proposalIndex: number,
+    decision: "apply" | "decline"
+  ) => {
+    const proposal = msgs[messageIndex]?.tasks?.[proposalIndex];
+    if (!proposal || proposal.status !== "pending") return;
+
+    const proposalKey = `${messageIndex}:${proposalIndex}`;
+    if (decision === "decline") {
+      setMsgs((current) =>
+        updateTaskProposal(current, messageIndex, proposalIndex, { status: "declined" })
+      );
+      return;
+    }
+    if (applyingProposals.current.has(proposalKey)) return;
+    applyingProposals.current.add(proposalKey);
+    setMsgs((current) =>
+      updateTaskProposal(current, messageIndex, proposalIndex, { status: "applying" })
+    );
+
+    try {
+      await addTask({
+        title: proposal.title,
+        type: proposal.type,
+        scheduledDate: proposal.scheduledDate ?? undefined,
+        deadline: proposal.type === "deadline" ? (proposal.scheduledDate ?? undefined) : undefined,
+        source: "ai-agent",
+      });
+      setMsgs((current) =>
+        updateTaskProposal(current, messageIndex, proposalIndex, { status: "applied" })
+      );
+    } catch (error) {
+      setMsgs((current) =>
+        updateTaskProposal(current, messageIndex, proposalIndex, {
+          status: "failed",
+          error: error instanceof Error ? error.message : "Could not add task",
+        })
+      );
+    } finally {
+      applyingProposals.current.delete(proposalKey);
+    }
+  };
 
   useEffect(() => { onActiveChange?.(open); }, [open, onActiveChange]);
   useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 200); }, [open]);
@@ -552,34 +603,11 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
       const data = await res.json();
       const rawText = readKairoResponseText(data, nextConfig.providerFormat);
 
-      // Parse <add-task> blocks
-      const taskBlocks: Array<{ title: string; scheduledDate: string | null; type: "open" | "deadline" }> = [];
-      const cleanText = rawText.replace(/<add-task>([\s\S]*?)<\/add-task>/g, (_, json: string) => {
-        try {
-          const parsed = JSON.parse(json) as { title?: string; scheduledDate?: string | null; type?: string };
-          if (parsed.title) {
-            taskBlocks.push({
-              title: parsed.title,
-              scheduledDate: parsed.scheduledDate ?? null,
-              type: parsed.type === "deadline" ? "deadline" : "open",
-            });
-          }
-        } catch { /* skip malformed */ }
-        return "";
-      }).trim();
-
-      // Auto-add parsed tasks
-      for (const t of taskBlocks) {
-        await addTask({
-          title: t.title,
-          type: t.type,
-          scheduledDate: t.scheduledDate ?? undefined,
-          deadline: t.type === "deadline" ? (t.scheduledDate ?? undefined) : undefined,
-          source: "ai-agent",
-        });
-      }
-
-      setMsgs(m => [...m, { from: "kairo", text: cleanText, tasks: taskBlocks.length ? taskBlocks : undefined }]);
+      const { text: cleanText, proposals } = parseKairoTaskProposals(rawText);
+      setMsgs(m => [
+        ...m,
+        { from: "kairo", text: cleanText, tasks: proposals.length ? proposals : undefined },
+      ]);
     } catch {
       setMsgs(m => [...m, { from: "kairo", text: "Something went wrong reaching your configured AI endpoint. Check the format toggle, key, URL, model, and server compatibility." }]);
     } finally {
@@ -767,7 +795,14 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
                 style={{ position: "relative", maxHeight: 430, overflowY: "auto", padding: "18px 22px 16px 24px", display: "flex", flexDirection: "column", gap: 14 }}
               >
                 {msgs.map((m, i) => (
-                  <KairoMsg key={i} m={m} animate={m.from === "kairo" && i === msgs.length - 1 && !thinking} />
+                  <KairoMsg
+                    key={i}
+                    m={m}
+                    animate={m.from === "kairo" && i === msgs.length - 1 && !thinking}
+                    onTaskDecision={(proposalIndex, decision) =>
+                      void decideTaskProposal(i, proposalIndex, decision)
+                    }
+                  />
                 ))}
                 {thinking && <KairoThinking />}
               </div>
@@ -901,7 +936,15 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
   );
 }
 
-function KairoMsg({ m, animate = false }: { m: Message; animate?: boolean }) {
+function KairoMsg({
+  m,
+  animate = false,
+  onTaskDecision,
+}: {
+  m: Message;
+  animate?: boolean;
+  onTaskDecision: (proposalIndex: number, decision: "apply" | "decline") => void;
+}) {
   const visibleText = useRevealText(m.text, animate);
 
   if (m.from === "me") {
@@ -935,16 +978,22 @@ function KairoMsg({ m, animate = false }: { m: Message; animate?: boolean }) {
           )}
         </div>
         {m.tasks && m.tasks.length > 0 && (
-          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
-            {m.tasks.map((t, i) => (
-              <div key={i} style={{ padding: "5px 10px", background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderLeft: `2px solid ${ACCENT}`, borderRadius: 3, fontSize: 12, color: "#c2c2c8", fontFamily: "var(--font-mono)" }}>
-                ✦ {t.title} {t.scheduledDate ? `→ ${t.scheduledDate}` : "→ inbox"}
-              </div>
-            ))}
-            <div style={{ fontSize: 11, color: "#6b6b72", marginTop: 2 }}>Added to your timeline</div>
-          </div>
+          <KairoTaskProposalList proposals={m.tasks} onDecision={onTaskDecision} />
         )}
       </div>
     </div>
+  );
+}
+
+function updateTaskProposal(
+  messages: Message[],
+  messageIndex: number,
+  proposalIndex: number,
+  patch: Partial<KairoTaskProposal>
+) {
+  return messages.map((message, index) =>
+    index === messageIndex && message.tasks
+      ? { ...message, tasks: updateKairoTaskProposal(message.tasks, proposalIndex, patch) }
+      : message
   );
 }
