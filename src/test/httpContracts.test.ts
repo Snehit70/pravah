@@ -6,6 +6,7 @@ import {
   googleTokenExchangeSchema,
   requireApiKeyAuth,
   reviewQueueListSchema,
+  taskListSchema,
 } from "../../convex/httpContracts";
 
 describe("httpContracts", () => {
@@ -84,6 +85,11 @@ describe("httpContracts", () => {
       const parsed = reviewQueueListSchema.parse({ limit: "25" });
 
       expect(parsed.limit).toBe(25);
+    });
+
+    it("rejects invalid task list filters", () => {
+      expect(taskListSchema.safeParse({ status: "typo" }).success).toBe(false);
+      expect(taskListSchema.safeParse({ date: "2026/06/04" }).success).toBe(false);
     });
 
     it("requires at least one task id for bulk reschedule", () => {

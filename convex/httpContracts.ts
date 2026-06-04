@@ -15,6 +15,11 @@ export const createTaskSchema = z.object({
   priority: z.enum(["p1", "p2", "p3"]).optional(),
 });
 
+export const taskListSchema = z.object({
+  date: z.string().regex(dateRegex, "Invalid date format (YYYY-MM-DD)").optional(),
+  status: z.enum(["inbox", "scheduled", "completed", "cancelled"]).optional(),
+});
+
 export const updateTaskSchema = z.object({
   taskId: z
     .string()

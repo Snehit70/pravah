@@ -23,6 +23,7 @@ type AutomationScope =
   | "agent:read";
 
 const CREDENTIAL_USAGE_WRITE_INTERVAL_MS = 5 * 60 * 1000;
+const MAX_CREDENTIAL_LABEL_LENGTH = 100;
 
 async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
@@ -31,6 +32,23 @@ async function sha256Hex(value: string): Promise<string> {
 
 function createSecret(prefix: string) {
   return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
+}
+
+function normalizeBootstrapInput(label: string, scopes: AutomationScope[]) {
+  const normalizedLabel = label.trim();
+  if (!normalizedLabel) {
+    throw new Error("Credential label is required");
+  }
+  if (normalizedLabel.length > MAX_CREDENTIAL_LABEL_LENGTH) {
+    throw new Error(
+      `Credential label must be at most ${MAX_CREDENTIAL_LABEL_LENGTH} characters`
+    );
+  }
+  const normalizedScopes = [...new Set(scopes)];
+  if (normalizedScopes.length === 0) {
+    throw new Error("At least one automation scope is required");
+  }
+  return { label: normalizedLabel, scopes: normalizedScopes };
 }
 
 async function insertAuditEvent(
@@ -76,6 +94,7 @@ export const issueBootstrapToken = mutation({
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
+    const normalized = normalizeBootstrapInput(args.label, args.scopes);
     const bootstrapToken = createSecret("pravah_bootstrap");
     const tokenHash = await sha256Hex(bootstrapToken);
     const now = Date.now();
@@ -83,9 +102,9 @@ export const issueBootstrapToken = mutation({
 
     const bootstrapTokenId = await ctx.db.insert("automationBootstrapTokens", {
       ownerTokenIdentifier: tokenIdentifier,
-      label: args.label.trim(),
+      label: normalized.label,
       tokenHash,
-      scopes: args.scopes,
+      scopes: normalized.scopes,
       status: "active",
       expiresAt,
       createdAt: now,
@@ -97,8 +116,8 @@ export const issueBootstrapToken = mutation({
       bootstrapTokenId,
       eventType: "bootstrap_issued",
       metadata: {
-        label: args.label.trim(),
-        scopes: args.scopes,
+        label: normalized.label,
+        scopes: normalized.scopes,
         expiresAt,
       },
     });
@@ -107,8 +126,8 @@ export const issueBootstrapToken = mutation({
       bootstrapTokenId,
       bootstrapToken,
       expiresAt,
-      label: args.label.trim(),
-      scopes: args.scopes,
+      label: normalized.label,
+      scopes: normalized.scopes,
     };
   },
 });

@@ -318,6 +318,47 @@ describe("http route handlers", () => {
     await expect(response.json()).resolves.toEqual([{ _id: "task1", title: "A" }]);
   });
 
+  it("rejects invalid GET /tasks filters instead of returning all tasks", async () => {
+    const handler = getHandler("/tasks", "GET");
+    const ctx = createCtx();
+
+    const response = await handler(
+      ctx,
+      new Request("https://example.com/tasks?status=typo", {
+        headers: { "x-api-key": "secret" },
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect(ctx.runQuery).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Validation failed",
+    });
+  });
+
+  it("rejects malformed JSON for CLI-supported task writes", async () => {
+    const handler = getHandler("/tasks", "POST");
+    const ctx = createCtx();
+
+    const response = await handler(
+      ctx,
+      new Request("https://example.com/tasks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": "secret",
+        },
+        body: "{broken",
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect(ctx.runMutation).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({
+      error: "Request body must be valid JSON",
+    });
+  });
+
   it("rejects invalid payload for POST /tasks", async () => {
     const handler = getHandler("/tasks", "POST");
     const ctx = createCtx();
@@ -402,6 +443,34 @@ describe("http route handlers", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       error: "Cannot move task across locked date",
+    });
+  });
+
+  it.each([
+    ["/tasks", { title: "Rejected task" }],
+    ["/tasks/complete", { taskId: "task_abc" }],
+    ["/tasks/reopen", { taskId: "task_abc" }],
+    ["/tasks/unschedule", { taskId: "task_abc" }],
+  ])("returns a 400 domain error when POST %s fails", async (path, body) => {
+    const handler = getHandler(path, "POST");
+    const ctx = createCtx();
+    ctx.runMutation.mockRejectedValue(new Error("Domain rejected request"));
+
+    const response = await handler(
+      ctx,
+      new Request(`https://example.com${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": "secret",
+        },
+        body: JSON.stringify(body),
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Domain rejected request",
     });
   });
 

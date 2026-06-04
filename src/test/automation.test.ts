@@ -93,6 +93,50 @@ describe("automation credential handlers", () => {
     );
   });
 
+  it("normalizes duplicate bootstrap scopes", async () => {
+    const db = {
+      insert: vi
+        .fn()
+        .mockResolvedValueOnce(makeId("bootstrap_1"))
+        .mockResolvedValueOnce(makeId("audit_1")),
+    };
+
+    const result = await issueBootstrapTokenHandler(createAuthedCtx(db), {
+      label: "  Codex local  ",
+      scopes: ["tasks:read", "tasks:read"],
+    });
+
+    expect(result).toMatchObject({
+      label: "Codex local",
+      scopes: ["tasks:read"],
+    });
+  });
+
+  it("rejects empty bootstrap labels and scope sets", async () => {
+    const db = { insert: vi.fn() };
+    const ctx = createAuthedCtx(db);
+
+    await expect(
+      issueBootstrapTokenHandler(ctx, {
+        label: "   ",
+        scopes: ["tasks:read"],
+      })
+    ).rejects.toThrow("Credential label is required");
+    await expect(
+      issueBootstrapTokenHandler(ctx, {
+        label: "Codex local",
+        scopes: [],
+      })
+    ).rejects.toThrow("At least one automation scope is required");
+    await expect(
+      issueBootstrapTokenHandler(ctx, {
+        label: "x".repeat(101),
+        scopes: ["tasks:read"],
+      })
+    ).rejects.toThrow("Credential label must be at most 100 characters");
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
   it("lists credentials without exposing credential hashes", async () => {
     const db = {
       query: vi.fn().mockReturnValue({
