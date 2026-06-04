@@ -1,16 +1,22 @@
 /// <reference types="node" />
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const cliEntry = resolve(repoRoot, "src/cli/pravah.ts");
 
-function runCli(args: string[]) {
+function runCli(args: string[], env?: Record<string, string>) {
   return spawnSync("bun", ["run", cliEntry, ...args], {
     cwd: repoRoot,
     encoding: "utf8",
+    env: {
+      ...process.env,
+      ...env,
+    },
   });
 }
 
@@ -94,6 +100,40 @@ describe("pravah CLI", () => {
       automation: {
         credentialLabel: expect.any(String),
       },
+    });
+  });
+
+  it("imports a credential file into local CLI storage", () => {
+    const home = mkdtempSync(join(tmpdir(), "pravah-cli-home-"));
+    const credentialPath = join(home, "credential.json");
+    writeFileSync(
+      credentialPath,
+      JSON.stringify({
+        secret: "pravah_cred_imported",
+        label: "Laptop",
+        scopes: ["tasks:read", "agent:read"],
+        ownerTokenIdentifier: "user-1",
+        userId: "user-1",
+        email: "user@example.com",
+        siteUrl: "https://pravah.example.com",
+      }),
+      "utf8"
+    );
+
+    const importResult = runCli(
+      ["auth", "import", "--credential-file", credentialPath, "--json"],
+      { HOME: home }
+    );
+    expect(importResult.status).toBe(0);
+
+    const whoamiResult = runCli(["auth", "whoami", "--json"], { HOME: home });
+    expect(whoamiResult.status).toBe(0);
+    const payload = JSON.parse(whoamiResult.stdout);
+    expect(payload.data).toMatchObject({
+      credentialLabel: "Laptop",
+      ownerTokenIdentifier: "user-1",
+      siteUrl: "https://pravah.example.com",
+      source: "local",
     });
   });
 });

@@ -1,6 +1,8 @@
 /// <reference types="node" />
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { hasFlag, readOption } from "./args";
+import { loadStoredCredential, parseCredentialImport, saveStoredCredential } from "./authStore";
 import { createLiveReadClient, resolveCliHttpUrl } from "./liveReads";
 import { mockCredential, mockReviewQueue, mockSyncStatus, mockTasks } from "./mockData";
 import type { CommandContext, MockTask, ParsedArgs } from "./types";
@@ -222,16 +224,9 @@ async function executeLiveRead(command: string, args: ParsedArgs) {
       };
     }
     case "auth whoami":
-      return {
-        userId: "live-read-api-key",
-        email: "unknown",
-        credentialLabel: "api-key-live-read",
-        siteUrl: resolveCliHttpUrl(process.env) ?? "unknown",
-      };
+      return null;
     case "auth list-scopes":
-      return {
-        scopes: ["tasks:read", "review:read", "sync:read", "agent:read"],
-      };
+      return null;
     default:
       return null;
   }
@@ -369,17 +364,55 @@ export async function executeCommand(context: CommandContext, args: ParsedArgs) 
       const taskId = requireOption(args, "task-id", context.command);
       return buildAgentTask(findTask(taskId));
     }
+    case "auth:import": {
+      const credentialFile = readOption(args.options, "credential-file");
+      const credentialJson = readOption(args.options, "credential-json");
+      if (!credentialFile && !credentialJson) {
+        throw new Error("Missing required option --credential-file or --credential-json");
+      }
+
+      const imported = parseCredentialImport(
+        credentialJson ?? readFileSync(credentialFile!, "utf8")
+      );
+      saveStoredCredential(imported);
+      return {
+        imported: true,
+        credentialLabel: imported.label,
+        scopes: imported.scopes,
+        ownerTokenIdentifier: imported.ownerTokenIdentifier,
+        siteUrl: imported.siteUrl ?? null,
+      };
+    }
     case "auth:whoami":
-      return {
-        userId: mockCredential.userId,
-        email: mockCredential.email,
-        credentialLabel: mockCredential.credentialLabel,
-        siteUrl: mockCredential.siteUrl,
-      };
+      return (() => {
+        const stored = loadStoredCredential();
+        if (stored) {
+          return {
+            userId: stored.userId ?? stored.ownerTokenIdentifier,
+            email: stored.email ?? null,
+            credentialLabel: stored.label,
+            siteUrl: stored.siteUrl ?? resolveCliHttpUrl(process.env) ?? null,
+            ownerTokenIdentifier: stored.ownerTokenIdentifier,
+            source: "local",
+          };
+        }
+        return {
+          userId: mockCredential.userId,
+          email: mockCredential.email,
+          credentialLabel: mockCredential.credentialLabel,
+          siteUrl: mockCredential.siteUrl,
+          ownerTokenIdentifier: "mock-user",
+          source: "mock",
+        };
+      })();
     case "auth:list-scopes":
-      return {
-        scopes: mockCredential.scopes,
-      };
+      return (() => {
+        const stored = loadStoredCredential();
+        return {
+          scopes: stored?.scopes ?? mockCredential.scopes,
+          source: stored ? "local" : "mock",
+        };
+      })();
     default:
       throw new Error(`Unknown command: ${context.command}`);
   }
