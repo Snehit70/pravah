@@ -1,6 +1,6 @@
 import { httpRouter } from "convex/server";
 import { httpAction, type ActionCtx } from "./_generated/server";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { authComponent, createAuth } from "./auth";
 import { getAllowedWebOrigins } from "./origins";
 import {
@@ -40,7 +40,7 @@ type AutomationScope =
 interface AuthorizedRequest {
   kind: "admin" | "automation";
   scopes: AutomationScope[];
-  ownerTokenIdentifier?: string;
+  ownerTokenIdentifier: string;
   credentialLabel?: string;
 }
 
@@ -74,6 +74,13 @@ function forbiddenResponse(missingScopes: AutomationScope[]) {
   );
 }
 
+function ownerFromAuth(auth: AuthorizedRequest | undefined) {
+  if (!auth) {
+    throw new Error("Authorized request context missing");
+  }
+  return auth.ownerTokenIdentifier;
+}
+
 async function requireAuth(
   ctx: AuthRouteCtx,
   request: Request,
@@ -89,7 +96,9 @@ async function requireAuth(
         !authResult ||
         typeof authResult !== "object" ||
         !("scopes" in authResult) ||
-        !Array.isArray(authResult.scopes)
+        !Array.isArray(authResult.scopes) ||
+        !("ownerTokenIdentifier" in authResult) ||
+        typeof authResult.ownerTokenIdentifier !== "string"
       ) {
         return { response: jsonResponse({ error: "Unauthorized" }, 401) };
       }
@@ -106,10 +115,7 @@ async function requireAuth(
         auth: {
           kind: "automation",
           scopes,
-          ownerTokenIdentifier:
-            "ownerTokenIdentifier" in authResult && typeof authResult.ownerTokenIdentifier === "string"
-              ? authResult.ownerTokenIdentifier
-              : undefined,
+          ownerTokenIdentifier: authResult.ownerTokenIdentifier,
           credentialLabel:
             "label" in authResult && typeof authResult.label === "string"
               ? authResult.label
@@ -131,11 +137,24 @@ async function requireAuth(
     if (authError) {
       return { response: authError };
     }
+    const ownerTokenIdentifier = env?.PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER;
+    if (!ownerTokenIdentifier) {
+      return {
+        response: jsonResponse(
+          {
+            error:
+              "Server configuration error: PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER is required for API key auth",
+          },
+          500
+        ),
+      };
+    }
     return {
       response: null,
       auth: {
         kind: "admin",
         scopes: requiredScopes,
+        ownerTokenIdentifier,
       },
     };
   }
@@ -155,16 +174,8 @@ async function requireReviewReadAuth(ctx: AuthRouteCtx, request: Request) {
   return requireAuth(ctx, request, ["review:read"]);
 }
 
-async function requireReviewWriteAuth(ctx: AuthRouteCtx, request: Request) {
-  return requireAuth(ctx, request, ["review:write"]);
-}
-
 async function requireSyncReadAuth(ctx: AuthRouteCtx, request: Request) {
   return requireAuth(ctx, request, ["sync:read"]);
-}
-
-async function requireSyncRunAuth(ctx: AuthRouteCtx, request: Request) {
-  return requireAuth(ctx, request, ["sync:run"]);
 }
 
 function requireLegacyAuth(request: Request): Response | null {
@@ -251,7 +262,7 @@ http.route({
   path: "/tasks",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const { response } = await requireTaskReadAuth(ctx, request);
+    const { response, auth } = await requireTaskReadAuth(ctx, request);
     if (response) return response;
 
     const url = new URL(request.url);
@@ -265,7 +276,11 @@ http.route({
         ? rawStatus
         : undefined;
 
-    const tasks = await ctx.runQuery(api.tasks.listTasks, { date, status });
+    const tasks = await ctx.runQuery(internal.automationTools.listTasks, {
+      ownerTokenIdentifier: ownerFromAuth(auth),
+      date,
+      status,
+    });
     
     return new Response(JSON.stringify(tasks), {
       headers: { "Content-Type": "application/json" },
@@ -278,7 +293,7 @@ http.route({
   path: "/tasks",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const { response } = await requireTaskWriteAuth(ctx, request);
+    const { response, auth } = await requireTaskWriteAuth(ctx, request);
     if (response) return response;
 
     const body = await request.json();
@@ -297,7 +312,8 @@ http.route({
 
     const data = validation.data;
 
-    const taskId = await ctx.runMutation(api.tasks.addTask, {
+    const taskId = await ctx.runMutation(internal.automationTools.addTask, {
+      ownerTokenIdentifier: ownerFromAuth(auth),
       title: data.title,
       description: data.description,
       type: data.type,
@@ -319,7 +335,7 @@ http.route({
   path: "/tasks/move",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const { response } = await requireTaskWriteAuth(ctx, request);
+    const { response, auth } = await requireTaskWriteAuth(ctx, request);
     if (response) return response;
 
     const body = await request.json();
@@ -337,7 +353,8 @@ http.route({
     const { taskId, targetDate, position } = validation.data;
 
     try {
-      await ctx.runMutation(api.tasks.moveTask, {
+      await ctx.runMutation(internal.automationTools.moveTask, {
+        ownerTokenIdentifier: ownerFromAuth(auth),
         taskId,
         targetDate,
         position,
@@ -361,8 +378,8 @@ http.route({
   path: "/tasks/reorder",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const { response } = await requireTaskWriteAuth(ctx, request);
-    if (response) return response;
+    const authError = requireLegacyAuth(request);
+    if (authError) return authError;
 
     const body = await request.json();
     const validation = reorderTaskSchema.safeParse(body);
@@ -391,7 +408,7 @@ http.route({
   path: "/tasks/complete",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const { response } = await requireTaskWriteAuth(ctx, request);
+    const { response, auth } = await requireTaskWriteAuth(ctx, request);
     if (response) return response;
 
     const body = await request.json();
@@ -408,7 +425,10 @@ http.route({
 
     const { taskId } = validation.data;
 
-    await ctx.runMutation(api.tasks.completeTask, { taskId });
+    await ctx.runMutation(internal.automationTools.completeTask, {
+      ownerTokenIdentifier: ownerFromAuth(auth),
+      taskId,
+    });
     
     return new Response(JSON.stringify({ success: true }), {
       headers: { "Content-Type": "application/json" },
@@ -421,8 +441,8 @@ http.route({
   path: "/tasks/update",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const { response } = await requireTaskWriteAuth(ctx, request);
-    if (response) return response;
+    const authError = requireLegacyAuth(request);
+    if (authError) return authError;
 
     const body = await request.json();
 
@@ -453,7 +473,7 @@ http.route({
   path: "/tasks/reopen",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const { response } = await requireTaskWriteAuth(ctx, request);
+    const { response, auth } = await requireTaskWriteAuth(ctx, request);
     if (response) return response;
 
     const body = await request.json();
@@ -468,7 +488,10 @@ http.route({
       });
     }
 
-    await ctx.runMutation(api.tasks.reopenTask, validation.data);
+    await ctx.runMutation(internal.automationTools.reopenTask, {
+      ownerTokenIdentifier: ownerFromAuth(auth),
+      ...validation.data,
+    });
     return new Response(JSON.stringify({ success: true }), {
       headers: { "Content-Type": "application/json" },
     });
@@ -480,7 +503,7 @@ http.route({
   path: "/tasks/unschedule",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const { response } = await requireTaskWriteAuth(ctx, request);
+    const { response, auth } = await requireTaskWriteAuth(ctx, request);
     if (response) return response;
 
     const body = await request.json();
@@ -495,7 +518,10 @@ http.route({
       });
     }
 
-    await ctx.runMutation(api.tasks.unscheduleTask, validation.data);
+    await ctx.runMutation(internal.automationTools.unscheduleTask, {
+      ownerTokenIdentifier: ownerFromAuth(auth),
+      ...validation.data,
+    });
     return new Response(JSON.stringify({ success: true }), {
       headers: { "Content-Type": "application/json" },
     });
@@ -507,8 +533,8 @@ http.route({
   path: "/tasks/bulk-reschedule",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const { response } = await requireTaskWriteAuth(ctx, request);
-    if (response) return response;
+    const authError = requireLegacyAuth(request);
+    if (authError) return authError;
 
     const body = await request.json();
     const validation = bulkRescheduleSchema.safeParse(body);
@@ -534,8 +560,8 @@ http.route({
   path: "/tasks/delete",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const { response } = await requireTaskWriteAuth(ctx, request);
-    if (response) return response;
+    const authError = requireLegacyAuth(request);
+    if (authError) return authError;
 
     const body = await request.json();
     const validation = deleteTaskSchema.safeParse(body);
@@ -564,7 +590,7 @@ http.route({
   path: "/timeline",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const { response } = await requireTaskReadAuth(ctx, request);
+    const { response, auth } = await requireTaskReadAuth(ctx, request);
     if (response) return response;
 
     const url = new URL(request.url);
@@ -577,7 +603,10 @@ http.route({
       });
     }
 
-    const timeline = await ctx.runQuery(api.tasks.getTimeline, { endDate });
+    const timeline = await ctx.runQuery(internal.automationTools.getTimeline, {
+      ownerTokenIdentifier: ownerFromAuth(auth),
+      endDate,
+    });
     
     return new Response(JSON.stringify(timeline), {
       headers: { "Content-Type": "application/json" },
@@ -590,10 +619,13 @@ http.route({
   path: "/inbox",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const { response } = await requireTaskReadAuth(ctx, request);
+    const { response, auth } = await requireTaskReadAuth(ctx, request);
     if (response) return response;
 
-    const tasks = await ctx.runQuery(api.tasks.listTasks, { status: "inbox" });
+    const tasks = await ctx.runQuery(internal.automationTools.listTasks, {
+      ownerTokenIdentifier: ownerFromAuth(auth),
+      status: "inbox",
+    });
     
     return new Response(JSON.stringify(tasks), {
       headers: { "Content-Type": "application/json" },
@@ -676,7 +708,7 @@ http.route({
   path: "/sync/status",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const { response } = await requireSyncReadAuth(ctx, request);
+    const { response, auth } = await requireSyncReadAuth(ctx, request);
     if (response) return response;
 
     const url = new URL(request.url);
@@ -694,7 +726,10 @@ http.route({
     }
 
     const { provider } = validation.data;
-    const status = await ctx.runQuery(api.sync.getIntegrationStatus, { provider });
+    const status = await ctx.runQuery(internal.automationTools.getIntegrationStatus, {
+      ownerTokenIdentifier: ownerFromAuth(auth),
+      provider,
+    });
     return new Response(JSON.stringify(status), {
       headers: { "Content-Type": "application/json" },
     });
@@ -706,8 +741,8 @@ http.route({
   path: "/sync/google-calendar/import",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const { response } = await requireSyncRunAuth(ctx, request);
-    if (response) return response;
+    const authError = requireLegacyAuth(request);
+    if (authError) return authError;
 
     const body = await request.json();
     const validation = googleCalendarImportSchema.safeParse(body);
@@ -742,7 +777,7 @@ http.route({
   path: "/review-queue",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const { response } = await requireReviewReadAuth(ctx, request);
+    const { response, auth } = await requireReviewReadAuth(ctx, request);
     if (response) return response;
 
     const url = new URL(request.url);
@@ -760,7 +795,10 @@ http.route({
       });
     }
 
-    const queue = await ctx.runQuery(api.sync.listReviewQueue, validation.data);
+    const queue = await ctx.runQuery(internal.automationTools.listReviewQueue, {
+      ownerTokenIdentifier: ownerFromAuth(auth),
+      ...validation.data,
+    });
     return new Response(JSON.stringify(queue), {
       headers: { "Content-Type": "application/json" },
     });
@@ -772,8 +810,8 @@ http.route({
   path: "/review-queue/approve",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const { response } = await requireReviewWriteAuth(ctx, request);
-    if (response) return response;
+    const authError = requireLegacyAuth(request);
+    if (authError) return authError;
 
     const body = await request.json();
     const validation = reviewApproveSchema.safeParse(body);
@@ -799,8 +837,8 @@ http.route({
   path: "/review-queue/reject",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const { response } = await requireReviewWriteAuth(ctx, request);
-    if (response) return response;
+    const authError = requireLegacyAuth(request);
+    if (authError) return authError;
 
     const body = await request.json();
     const validation = reviewRejectSchema.safeParse(body);

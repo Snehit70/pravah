@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import type { MutationCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireTokenIdentifier } from "./authHelpers";
 
 const providerValidator = v.union(v.literal("google_calendar"), v.literal("gmail"));
@@ -49,40 +49,46 @@ export const getIntegrationStatus = query({
   args: { provider: providerValidator },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    const integration = await ctx.db
-      .query("integrations")
-      .withIndex("by_owner_provider", (q) =>
-        q.eq("ownerTokenIdentifier", tokenIdentifier).eq("provider", args.provider)
-      )
-      .first();
-
-    const lastRun = await ctx.db
-      .query("syncRuns")
-      .withIndex("by_owner_provider_started_at", (q) =>
-        q.eq("ownerTokenIdentifier", tokenIdentifier).eq("provider", args.provider)
-      )
-      .order("desc")
-      .first();
-
-    const pendingReviewItems = (
-      await ctx.db
-        .query("reviewQueue")
-        .withIndex("by_owner_status", (q) =>
-          q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "pending")
-        )
-        .collect()
-    );
-    const pendingReviewCount = pendingReviewItems.filter(
-      (item) => item.provider === args.provider
-    ).length;
-
-    return {
-      integration,
-      lastRun,
-      pendingReviewCount,
-    };
+    return getIntegrationStatusForOwner(ctx, tokenIdentifier, args.provider);
   },
 });
+
+export async function getIntegrationStatusForOwner(
+  ctx: QueryCtx,
+  tokenIdentifier: string,
+  provider: "google_calendar" | "gmail"
+) {
+  const integration = await ctx.db
+    .query("integrations")
+    .withIndex("by_owner_provider", (q) =>
+      q.eq("ownerTokenIdentifier", tokenIdentifier).eq("provider", provider)
+    )
+    .first();
+
+  const lastRun = await ctx.db
+    .query("syncRuns")
+    .withIndex("by_owner_provider_started_at", (q) =>
+      q.eq("ownerTokenIdentifier", tokenIdentifier).eq("provider", provider)
+    )
+    .order("desc")
+    .first();
+
+  const pendingReviewItems = await ctx.db
+    .query("reviewQueue")
+    .withIndex("by_owner_status", (q) =>
+      q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "pending")
+    )
+    .collect();
+  const pendingReviewCount = pendingReviewItems.filter(
+    (item) => item.provider === provider
+  ).length;
+
+  return {
+    integration,
+    lastRun,
+    pendingReviewCount,
+  };
+}
 
 export const upsertIntegration = mutation({
   args: {
@@ -253,32 +259,44 @@ export const listReviewQueue = query({
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    const limit = args.limit ?? 100;
-    if (args.status) {
-      let q = ctx.db
-        .query("reviewQueue")
-        .withIndex("by_owner_status", (ix) =>
-          ix.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", args.status!)
-        );
-      // Filter by provider before take() so the row cap applies to
-      // provider-matching rows. Without this, a queue of mixed providers
-      // could push provider-specific items past the limit and hide them
-      // from a provider-specific panel.
-      if (args.provider) {
-        q = q.filter((f) => f.eq(f.field("provider"), args.provider!));
-      }
-      return await q.order("desc").take(limit);
-    }
+    return listReviewQueueForOwner(ctx, tokenIdentifier, args);
+  },
+});
 
+export async function listReviewQueueForOwner(
+  ctx: QueryCtx,
+  tokenIdentifier: string,
+  args: {
+    status?: "pending" | "approved" | "rejected";
+    provider?: "gmail" | "google_calendar";
+    limit?: number;
+  }
+) {
+  const limit = args.limit ?? 100;
+  if (args.status) {
     let q = ctx.db
       .query("reviewQueue")
-      .filter((f) => f.eq(f.field("ownerTokenIdentifier"), tokenIdentifier));
+      .withIndex("by_owner_status", (ix) =>
+        ix.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", args.status!)
+      );
+    // Filter by provider before take() so the row cap applies to
+    // provider-matching rows. Without this, a queue of mixed providers
+    // could push provider-specific items past the limit and hide them
+    // from a provider-specific panel.
     if (args.provider) {
       q = q.filter((f) => f.eq(f.field("provider"), args.provider!));
     }
     return await q.order("desc").take(limit);
-  },
-});
+  }
+
+  let q = ctx.db
+    .query("reviewQueue")
+    .filter((f) => f.eq(f.field("ownerTokenIdentifier"), tokenIdentifier));
+  if (args.provider) {
+    q = q.filter((f) => f.eq(f.field("provider"), args.provider!));
+  }
+  return await q.order("desc").take(limit);
+}
 
 export const approveReviewItem = mutation({
   args: {

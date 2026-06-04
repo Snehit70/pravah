@@ -5,6 +5,27 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireTokenIdentifier } from "./authHelpers";
 
 type TaskCtx = QueryCtx | MutationCtx;
+type TaskStatus = "inbox" | "scheduled" | "completed" | "cancelled";
+type ListTasksArgs = {
+  date?: string;
+  status?: TaskStatus;
+};
+type AddTaskArgs = {
+  title: string;
+  description?: string;
+  type: "open" | "deadline";
+  scheduledDate?: string;
+  deadline?: string;
+  source?: "manual" | "ai-agent" | "gmail" | "gcal";
+  estimatedMinutes?: number;
+  tags?: string[];
+  priority?: "p1" | "p2" | "p3";
+};
+type MoveTaskArgs = {
+  taskId: Id<"tasks">;
+  targetDate: string;
+  position?: number;
+};
 
 function getTodayDateString() {
   const now = new Date();
@@ -77,42 +98,49 @@ export const listTasks = query({
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-
-    if (args.date && args.status) {
-      return await ctx.db
-        .query("tasks")
-        .withIndex("by_owner_status_date", (q) =>
-          q.eq("ownerTokenIdentifier", tokenIdentifier)
-            .eq("status", args.status!)
-            .eq("scheduledDate", args.date!)
-        )
-        .collect();
-    }
-
-    if (args.status) {
-      return await ctx.db
-        .query("tasks")
-        .withIndex("by_owner_status", (q) =>
-          q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", args.status!)
-        )
-        .collect();
-    }
-
-    const tasks = await ctx.db
-      .query("tasks")
-      .withIndex("by_owner", (q) => q.eq("ownerTokenIdentifier", tokenIdentifier))
-      .collect();
-
-    // Hide soft-deleted tasks from the default (unfiltered) view so the
-    // 30-minute undo grace window doesn't leak ghost rows into the UI.
-    // Callers that explicitly want cancelled tasks must pass status:"cancelled".
-    const visible = tasks.filter((task) => task.status !== "cancelled");
-
-    return args.date
-      ? visible.filter((task) => task.scheduledDate === args.date)
-      : visible;
+    return listTasksForOwner(ctx, tokenIdentifier, args);
   },
 });
+
+export async function listTasksForOwner(
+  ctx: QueryCtx,
+  tokenIdentifier: string,
+  args: ListTasksArgs
+) {
+  if (args.date && args.status) {
+    return await ctx.db
+      .query("tasks")
+      .withIndex("by_owner_status_date", (q) =>
+        q.eq("ownerTokenIdentifier", tokenIdentifier)
+          .eq("status", args.status!)
+          .eq("scheduledDate", args.date!)
+      )
+      .collect();
+  }
+
+  if (args.status) {
+    return await ctx.db
+      .query("tasks")
+      .withIndex("by_owner_status", (q) =>
+        q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", args.status!)
+      )
+      .collect();
+  }
+
+  const tasks = await ctx.db
+    .query("tasks")
+    .withIndex("by_owner", (q) => q.eq("ownerTokenIdentifier", tokenIdentifier))
+    .collect();
+
+  // Hide soft-deleted tasks from the default (unfiltered) view so the
+  // 30-minute undo grace window doesn't leak ghost rows into the UI.
+  // Callers that explicitly want cancelled tasks must pass status:"cancelled".
+  const visible = tasks.filter((task) => task.status !== "cancelled");
+
+  return args.date
+    ? visible.filter((task) => task.scheduledDate === args.date)
+    : visible;
+}
 
 export const listBoardTasks = query({
   args: {},
@@ -184,36 +212,44 @@ export const addTask = mutation({
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    const scheduledDate =
-      args.scheduledDate ??
-      (args.type === "deadline" ? args.deadline : undefined);
-
-    const position = await getNextPositionForStatus(
-      ctx,
-      tokenIdentifier,
-      scheduledDate ? "scheduled" : "inbox",
-      scheduledDate
-    );
-
-    return await ctx.db.insert("tasks", {
-      title: args.title,
-      description: args.description,
-      type: args.type,
-      scheduledDate,
-      deadline: args.deadline,
-      position,
-      status: scheduledDate ? "scheduled" : "inbox",
-      source: args.source || "manual",
-      estimatedMinutes: args.estimatedMinutes,
-      tags: args.tags,
-      priority: args.priority,
-      createdBy: tokenIdentifier,
-      ownerTokenIdentifier: tokenIdentifier,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
+    return addTaskForOwner(ctx, tokenIdentifier, args);
   },
 });
+
+export async function addTaskForOwner(
+  ctx: MutationCtx,
+  tokenIdentifier: string,
+  args: AddTaskArgs
+) {
+  const scheduledDate =
+    args.scheduledDate ??
+    (args.type === "deadline" ? args.deadline : undefined);
+
+  const position = await getNextPositionForStatus(
+    ctx,
+    tokenIdentifier,
+    scheduledDate ? "scheduled" : "inbox",
+    scheduledDate
+  );
+
+  return await ctx.db.insert("tasks", {
+    title: args.title,
+    description: args.description,
+    type: args.type,
+    scheduledDate,
+    deadline: args.deadline,
+    position,
+    status: scheduledDate ? "scheduled" : "inbox",
+    source: args.source || "manual",
+    estimatedMinutes: args.estimatedMinutes,
+    tags: args.tags,
+    priority: args.priority,
+    createdBy: tokenIdentifier,
+    ownerTokenIdentifier: tokenIdentifier,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+}
 
 export const moveTask = mutation({
   args: {
@@ -223,28 +259,36 @@ export const moveTask = mutation({
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
-
-    if (task.type === "deadline" && task.deadline && args.targetDate > task.deadline) {
-      const today = getTodayDateString();
-      const canCarryForwardOverdueDeadline = task.deadline < today;
-      if (!canCarryForwardOverdueDeadline) {
-        throw new Error("Cannot move task past its deadline");
-      }
-    }
-
-    const newPosition =
-      args.position ??
-      (await getNextPositionForStatus(ctx, tokenIdentifier, "scheduled", args.targetDate));
-
-    await ctx.db.patch(args.taskId, {
-      scheduledDate: args.targetDate,
-      position: newPosition,
-      status: "scheduled",
-      updatedAt: Date.now(),
-    });
+    await moveTaskForOwner(ctx, tokenIdentifier, args);
   },
 });
+
+export async function moveTaskForOwner(
+  ctx: MutationCtx,
+  tokenIdentifier: string,
+  args: MoveTaskArgs
+) {
+  const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
+
+  if (task.type === "deadline" && task.deadline && args.targetDate > task.deadline) {
+    const today = getTodayDateString();
+    const canCarryForwardOverdueDeadline = task.deadline < today;
+    if (!canCarryForwardOverdueDeadline) {
+      throw new Error("Cannot move task past its deadline");
+    }
+  }
+
+  const newPosition =
+    args.position ??
+    (await getNextPositionForStatus(ctx, tokenIdentifier, "scheduled", args.targetDate));
+
+  await ctx.db.patch(args.taskId, {
+    scheduledDate: args.targetDate,
+    position: newPosition,
+    status: "scheduled",
+    updatedAt: Date.now(),
+  });
+}
 
 /** Atomic bulk reschedule used by the overdue reflow. Applies many
  *  scheduledDate moves in a single transaction so a network drop can never
@@ -410,53 +454,77 @@ export const completeTask = mutation({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    await getOwnedTask(ctx, args.taskId, tokenIdentifier);
-    await ctx.db.patch(args.taskId, {
-      status: "completed",
-      updatedAt: Date.now(),
-    });
+    await completeTaskForOwner(ctx, tokenIdentifier, args.taskId);
   },
 });
+
+export async function completeTaskForOwner(
+  ctx: MutationCtx,
+  tokenIdentifier: string,
+  taskId: Id<"tasks">
+) {
+  await getOwnedTask(ctx, taskId, tokenIdentifier);
+  await ctx.db.patch(taskId, {
+    status: "completed",
+    updatedAt: Date.now(),
+  });
+}
 
 export const reopenTask = mutation({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
-    if (task.status !== "completed") {
-      throw new Error("Task is not completed");
-    }
-
-    const position = await getNextPositionForStatus(ctx, tokenIdentifier, "inbox");
-
-    await ctx.db.patch(args.taskId, {
-      status: "inbox",
-      scheduledDate: undefined,
-      position,
-      updatedAt: Date.now(),
-    });
+    await reopenTaskForOwner(ctx, tokenIdentifier, args.taskId);
   },
 });
+
+export async function reopenTaskForOwner(
+  ctx: MutationCtx,
+  tokenIdentifier: string,
+  taskId: Id<"tasks">
+) {
+  const task = await getOwnedTask(ctx, taskId, tokenIdentifier);
+  if (task.status !== "completed") {
+    throw new Error("Task is not completed");
+  }
+
+  const position = await getNextPositionForStatus(ctx, tokenIdentifier, "inbox");
+
+  await ctx.db.patch(taskId, {
+    status: "inbox",
+    scheduledDate: undefined,
+    position,
+    updatedAt: Date.now(),
+  });
+}
 
 export const unscheduleTask = mutation({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
-    if (task.status !== "scheduled") {
-      throw new Error("Task is not scheduled");
-    }
-
-    const position = await getNextPositionForStatus(ctx, tokenIdentifier, "inbox");
-
-    await ctx.db.patch(args.taskId, {
-      status: "inbox",
-      scheduledDate: undefined,
-      position,
-      updatedAt: Date.now(),
-    });
+    await unscheduleTaskForOwner(ctx, tokenIdentifier, args.taskId);
   },
 });
+
+export async function unscheduleTaskForOwner(
+  ctx: MutationCtx,
+  tokenIdentifier: string,
+  taskId: Id<"tasks">
+) {
+  const task = await getOwnedTask(ctx, taskId, tokenIdentifier);
+  if (task.status !== "scheduled") {
+    throw new Error("Task is not scheduled");
+  }
+
+  const position = await getNextPositionForStatus(ctx, tokenIdentifier, "inbox");
+
+  await ctx.db.patch(taskId, {
+    status: "inbox",
+    scheduledDate: undefined,
+    position,
+    updatedAt: Date.now(),
+  });
+}
 
 export const backfillDeadlineTasksToDeadlineDate = mutation({
   args: {},
@@ -734,35 +802,43 @@ export const getTimeline = query({
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    const tasks = await ctx.db
-      .query("tasks")
-      .withIndex("by_owner_status_date_position", (q) => {
-        const base = q
-          .eq("ownerTokenIdentifier", tokenIdentifier)
-          .eq("status", "scheduled");
-        // Apply the lower bound only when startDate is provided so callers
-        // that omit it still get the old behaviour.
-        return args.startDate
-          ? base.gte("scheduledDate", args.startDate).lte("scheduledDate", args.endDate)
-          : base.lte("scheduledDate", args.endDate);
-      })
-      .collect();
-
-    const grouped: Record<string, typeof tasks> = {};
-    for (const task of tasks) {
-      const date = task.scheduledDate;
-      if (!date) continue;
-      if (!grouped[date]) grouped[date] = [];
-      grouped[date].push(task);
-    }
-
-    for (const date of Object.keys(grouped)) {
-      grouped[date].sort((a, b) => a.position - b.position);
-    }
-
-    return grouped;
+    return getTimelineForOwner(ctx, tokenIdentifier, args);
   },
 });
+
+export async function getTimelineForOwner(
+  ctx: QueryCtx,
+  tokenIdentifier: string,
+  args: { startDate?: string; endDate: string }
+) {
+  const tasks = await ctx.db
+    .query("tasks")
+    .withIndex("by_owner_status_date_position", (q) => {
+      const base = q
+        .eq("ownerTokenIdentifier", tokenIdentifier)
+        .eq("status", "scheduled");
+      // Apply the lower bound only when startDate is provided so callers
+      // that omit it still get the old behaviour.
+      return args.startDate
+        ? base.gte("scheduledDate", args.startDate).lte("scheduledDate", args.endDate)
+        : base.lte("scheduledDate", args.endDate);
+    })
+    .collect();
+
+  const grouped: Record<string, typeof tasks> = {};
+  for (const task of tasks) {
+    const date = task.scheduledDate;
+    if (!date) continue;
+    if (!grouped[date]) grouped[date] = [];
+    grouped[date].push(task);
+  }
+
+  for (const date of Object.keys(grouped)) {
+    grouped[date].sort((a, b) => a.position - b.position);
+  }
+
+  return grouped;
+}
 
 export const getTaskCounts = query({
   args: {},

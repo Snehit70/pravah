@@ -33,6 +33,19 @@ vi.mock("../../convex/_generated/api", () => ({
   components: {
     betterAuth: "betterAuth",
   },
+  internal: {
+    automationTools: {
+      listTasks: "automationTools.listTasks",
+      addTask: "automationTools.addTask",
+      moveTask: "automationTools.moveTask",
+      completeTask: "automationTools.completeTask",
+      reopenTask: "automationTools.reopenTask",
+      unscheduleTask: "automationTools.unscheduleTask",
+      getTimeline: "automationTools.getTimeline",
+      getIntegrationStatus: "automationTools.getIntegrationStatus",
+      listReviewQueue: "automationTools.listReviewQueue",
+    },
+  },
   api: {
     automation: {
       exchangeBootstrapToken: "automation.exchangeBootstrapToken",
@@ -57,7 +70,7 @@ vi.mock("../../convex/auth", () => ({
 }));
 
 import "../../convex/http";
-import { api } from "../../convex/_generated/api";
+import { api, internal } from "../../convex/_generated/api";
 
 const env = (
   globalThis as typeof globalThis & {
@@ -65,6 +78,7 @@ const env = (
   }
 ).process?.env;
 const originalApiKey = env?.CONVEX_HTTP_API_KEY;
+const originalHttpOwner = env?.PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER;
 const originalGoogleClientId = env?.GOOGLE_OAUTH_CLIENT_ID;
 
 function getHandler(path: string, method: string) {
@@ -86,6 +100,7 @@ function createCtx(): MockCtx {
 beforeAll(() => {
   if (env) {
     env.CONVEX_HTTP_API_KEY = "secret";
+    env.PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER = "admin-owner";
     env.GOOGLE_OAUTH_CLIENT_ID = "client-id";
   }
 });
@@ -94,6 +109,7 @@ beforeEach(() => {
   vi.restoreAllMocks();
   if (env) {
     env.CONVEX_HTTP_API_KEY = "secret";
+    env.PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER = "admin-owner";
     env.GOOGLE_OAUTH_CLIENT_ID = "client-id";
   }
 });
@@ -101,6 +117,7 @@ beforeEach(() => {
 afterAll(() => {
   if (env) {
     env.CONVEX_HTTP_API_KEY = originalApiKey;
+    env.PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER = originalHttpOwner;
     env.GOOGLE_OAUTH_CLIENT_ID = originalGoogleClientId;
   }
 });
@@ -175,7 +192,8 @@ describe("http route handlers", () => {
     expect(ctx.runMutation).toHaveBeenCalledWith(api.automation.markCredentialUsed, {
       credentialSecret: "pravah_cred_demo",
     });
-    expect(ctx.runQuery).toHaveBeenCalledWith(api.tasks.listTasks, {
+    expect(ctx.runQuery).toHaveBeenCalledWith(internal.automationTools.listTasks, {
+      ownerTokenIdentifier: "user-1",
       date: undefined,
       status: "scheduled",
     });
@@ -224,7 +242,8 @@ describe("http route handlers", () => {
       })
     );
 
-    expect(ctx.runQuery).toHaveBeenCalledWith(api.tasks.listTasks, {
+    expect(ctx.runQuery).toHaveBeenCalledWith(internal.automationTools.listTasks, {
+      ownerTokenIdentifier: "admin-owner",
       date: "2026-04-09",
       status: "scheduled",
     });
@@ -274,7 +293,8 @@ describe("http route handlers", () => {
       })
     );
 
-    expect(ctx.runMutation).toHaveBeenCalledWith(api.tasks.addTask, {
+    expect(ctx.runMutation).toHaveBeenCalledWith(internal.automationTools.addTask, {
+      ownerTokenIdentifier: "admin-owner",
       title: "Ship tests",
       description: undefined,
       type: "open",
