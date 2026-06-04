@@ -11,8 +11,7 @@
  *     `KairoAction`, reusing `parseAction` so validation stays single-sourced
  *
  * Mutation tools are NOT executed here — they map to `KairoAction`s and run
- * through the existing `applyKairoActions` executor, keeping the undo system
- * untouched.
+ * through the stateful action executor, keeping the undo system untouched.
  */
 
 import {
@@ -169,7 +168,7 @@ export function buildToolDefs(providerFormat: KairoProviderFormat): unknown[] {
 // ─── Handle registry ──────────────────────────────────────────────────────────
 
 export interface HandleRegistry {
-  /** handle → real Convex task id (consumed by applyKairoActions). */
+  /** handle → real Convex task id (consumed by the action executor). */
   taskIdMap: KairoIdMap;
   /** handle → real goal client id. */
   goalIdMap: KairoIdMap;

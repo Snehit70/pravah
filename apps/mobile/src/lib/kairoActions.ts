@@ -180,16 +180,3 @@ export function createKairoActionExecutor(
     },
   };
 }
-
-export async function applyKairoActions(
-  actions: KairoAction[],
-  maps: { taskIdMap: KairoIdMap },
-  env: KairoActionEnv
-): Promise<KairoActionResult[]> {
-  const executor = createKairoActionExecutor(maps, env);
-  const results: KairoActionResult[] = [];
-  for (const action of actions) {
-    results.push(await executor.apply(action));
-  }
-  return results;
-}

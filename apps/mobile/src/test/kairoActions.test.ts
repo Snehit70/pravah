@@ -1,12 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  applyKairoActions,
   createKairoActionExecutor,
   type KairoActionEnv,
   type KairoMutations,
   type TaskSnapshot,
 } from "../lib/kairoActions";
 import type { KairoAction } from "../lib/kairoApi";
+
+async function applyActions(
+  actions: KairoAction[],
+  maps: { taskIdMap: Record<string, string> },
+  env: KairoActionEnv
+) {
+  const executor = createKairoActionExecutor(maps, env);
+  const results = [];
+  for (const action of actions) {
+    results.push(await executor.apply(action));
+  }
+  return results;
+}
 
 function makeMutations(overrides: Partial<KairoMutations> = {}): KairoMutations {
   return {
@@ -30,10 +42,10 @@ function envFrom(
   };
 }
 
-describe("applyKairoActions", () => {
+describe("createKairoActionExecutor", () => {
   it("adds a task and returns a soft-delete undo", async () => {
     const mutations = makeMutations();
-    const results = await applyKairoActions(
+    const results = await applyActions(
       [{ kind: "add", title: "Plan launch", scheduledDate: "2026-06-08", type: "deadline" }],
       { taskIdMap: {} },
       envFrom(mutations)
@@ -54,7 +66,7 @@ describe("applyKairoActions", () => {
 
   it("reschedules a task and restores its prior placement on undo", async () => {
     const mutations = makeMutations();
-    const results = await applyKairoActions(
+    const results = await applyActions(
       [{ kind: "reschedule", handle: "T1", scheduledDate: "2026-06-10" }],
       { taskIdMap: { T1: "task-1" } },
       envFrom(mutations, {
@@ -82,7 +94,7 @@ describe("applyKairoActions", () => {
 
   it("completes a task and undo reopens its prior scheduled placement", async () => {
     const mutations = makeMutations();
-    const results = await applyKairoActions(
+    const results = await applyActions(
       [{ kind: "complete", handle: "T1" }],
       { taskIdMap: { T1: "task-1" } },
       envFrom(mutations, {
@@ -107,7 +119,7 @@ describe("applyKairoActions", () => {
 
   it("reopens a completed task and undo completes it again", async () => {
     const mutations = makeMutations();
-    const results = await applyKairoActions(
+    const results = await applyActions(
       [{ kind: "reopen", handle: "T1" }],
       { taskIdMap: { T1: "task-1" } },
       envFrom(mutations, {
@@ -123,7 +135,7 @@ describe("applyKairoActions", () => {
 
   it("unschedules a task and restores the date on undo", async () => {
     const mutations = makeMutations();
-    const results = await applyKairoActions(
+    const results = await applyActions(
       [{ kind: "unschedule", handle: "T1" }],
       { taskIdMap: { T1: "task-1" } },
       envFrom(mutations, {
@@ -157,7 +169,7 @@ describe("applyKairoActions", () => {
       { kind: "unschedule", handle: "T2" },
       { kind: "reopen", handle: "T99" },
     ];
-    const results = await applyKairoActions(
+    const results = await applyActions(
       actions,
       { taskIdMap: { T1: "task-1", T2: "task-2" } },
       envFrom(mutations)
