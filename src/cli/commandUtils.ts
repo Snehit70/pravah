@@ -11,6 +11,14 @@ type OptionKind = "flag" | "value";
 const GLOBAL_OPTIONS: Record<string, OptionKind> = {
   json: "flag",
 };
+const WRITE_OPTIONS: Record<string, OptionKind> = {
+  "dry-run": "flag",
+  "idempotency-key": "value",
+};
+const TASK_ID_WRITE_OPTIONS: Record<string, OptionKind> = {
+  "task-id": "value",
+  ...WRITE_OPTIONS,
+};
 
 const COMMAND_OPTIONS: Record<string, Record<string, OptionKind>> = {
   "auth import": {
@@ -31,30 +39,15 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionKind>> = {
     title: "value",
     description: "value",
     "scheduled-date": "value",
-    "dry-run": "flag",
-    "idempotency-key": "value",
+    ...WRITE_OPTIONS,
   },
   "tasks move": {
-    "task-id": "value",
     "target-date": "value",
-    "dry-run": "flag",
-    "idempotency-key": "value",
+    ...TASK_ID_WRITE_OPTIONS,
   },
-  "tasks complete": {
-    "task-id": "value",
-    "dry-run": "flag",
-    "idempotency-key": "value",
-  },
-  "tasks reopen": {
-    "task-id": "value",
-    "dry-run": "flag",
-    "idempotency-key": "value",
-  },
-  "tasks unschedule": {
-    "task-id": "value",
-    "dry-run": "flag",
-    "idempotency-key": "value",
-  },
+  "tasks complete": TASK_ID_WRITE_OPTIONS,
+  "tasks reopen": TASK_ID_WRITE_OPTIONS,
+  "tasks unschedule": TASK_ID_WRITE_OPTIONS,
 };
 
 export function validateCommandArgs(command: string, args: ParsedArgs) {
@@ -92,13 +85,17 @@ export function requireOption(
 }
 
 export function getWriteMetadata(args: ParsedArgs) {
-  const explicitIdempotencyKey = readOption(args.options, "idempotency-key")?.trim();
-  if (explicitIdempotencyKey && explicitIdempotencyKey.length > 200) {
-    throw new Error("--idempotency-key must be between 1 and 200 characters");
+  const rawIdempotencyKey = readOption(args.options, "idempotency-key");
+  let idempotencyKey = `cli_${randomUUID()}`;
+  if (rawIdempotencyKey !== undefined) {
+    idempotencyKey = rawIdempotencyKey.trim();
+    if (!idempotencyKey || idempotencyKey.length > 200) {
+      throw new Error("--idempotency-key must be between 1 and 200 characters");
+    }
   }
   return {
     dryRun: hasFlag(args.options, "dry-run"),
-    idempotencyKey: explicitIdempotencyKey ?? `cli_${randomUUID()}`,
+    idempotencyKey,
   };
 }
 

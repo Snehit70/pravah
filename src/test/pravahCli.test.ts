@@ -189,6 +189,20 @@ describe("pravah CLI", () => {
     expect(JSON.parse(keyResult.stdout).error.message).toContain(
       "--idempotency-key must be between 1 and 200 characters"
     );
+
+    const blankKeyResult = runCli([
+      "tasks",
+      "complete",
+      "--task-id",
+      "task_1",
+      "--idempotency-key",
+      "   ",
+      "--json",
+    ]);
+    expect(blankKeyResult.status).toBe(1);
+    expect(JSON.parse(blankKeyResult.stdout).error.message).toContain(
+      "--idempotency-key must be between 1 and 200 characters"
+    );
   });
 
   it("returns bounded agent context", () => {
