@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import { callConvexApi } from "../lib/mcpBridgeUtils";
-import type { StoredCredential } from "./authStore";
+import { loadStoredCredential, type StoredCredential } from "./authStore";
 
 interface CliEnv {
   PRAVAH_HTTP_URL?: string;
@@ -18,6 +18,15 @@ export interface LiveReadClient {
   getTimeline(endDate: string): Promise<unknown>;
   getReviewQueue(status?: string, limit?: number): Promise<unknown>;
   getSyncStatus(provider?: string): Promise<unknown>;
+  addTask(input: {
+    title: string;
+    scheduledDate?: string;
+    description?: string;
+  }): Promise<unknown>;
+  moveTask(input: { taskId: string; targetDate: string }): Promise<unknown>;
+  completeTask(input: { taskId: string }): Promise<unknown>;
+  reopenTask(input: { taskId: string }): Promise<unknown>;
+  unscheduleTask(input: { taskId: string }): Promise<unknown>;
 }
 
 export interface CliAuthClient {
@@ -50,9 +59,17 @@ export function resolveCliHttpUrl(env: CliEnv): string | undefined {
 }
 
 export function createLiveReadClient(env: CliEnv): LiveReadClient | null {
-  const baseUrl = resolveCliHttpUrl(env);
+  const storedCredential = loadStoredCredential();
+  const baseUrl =
+    normalizeHttpUrl(env.PRAVAH_HTTP_URL) ??
+    storedCredential?.siteUrl ??
+    normalizeHttpUrl(env.CONVEX_SITE_URL) ??
+    normalizeHttpUrl(env.VITE_CONVEX_SITE_URL) ??
+    deriveSiteUrl(env.CONVEX_URL) ??
+    deriveSiteUrl(env.VITE_CONVEX_URL);
   const apiKey = env.CONVEX_HTTP_API_KEY;
-  if (!baseUrl || !apiKey) {
+  const bearerToken = storedCredential?.secret;
+  if (!baseUrl || (!apiKey && !bearerToken)) {
     return null;
   }
 
@@ -62,6 +79,21 @@ export function createLiveReadClient(env: CliEnv): LiveReadClient | null {
       endpoint,
       method: "GET",
       apiKey,
+      bearerToken,
+    });
+  }
+
+  async function post(endpoint: string, body: Record<string, string | number | boolean | undefined>) {
+    const payload = Object.fromEntries(
+      Object.entries(body).filter(([, value]) => value !== undefined)
+    ) as Record<string, string | number | boolean>;
+    return callConvexApi({
+      convexUrl: baseUrl,
+      endpoint,
+      method: "POST",
+      body: payload,
+      apiKey,
+      bearerToken,
     });
   }
 
@@ -91,6 +123,25 @@ export function createLiveReadClient(env: CliEnv): LiveReadClient | null {
     getSyncStatus(provider = "google_calendar") {
       const query = new URLSearchParams({ provider });
       return get(`/sync/status?${query.toString()}`);
+    },
+    addTask(input) {
+      return post("/tasks", {
+        title: input.title,
+        description: input.description,
+        scheduledDate: input.scheduledDate,
+      });
+    },
+    moveTask(input) {
+      return post("/tasks/move", input);
+    },
+    completeTask(input) {
+      return post("/tasks/complete", input);
+    },
+    reopenTask(input) {
+      return post("/tasks/reopen", input);
+    },
+    unscheduleTask(input) {
+      return post("/tasks/unschedule", input);
     },
   };
 }

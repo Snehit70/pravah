@@ -227,6 +227,85 @@ async function executeLiveRead(command: string, args: ParsedArgs) {
       return null;
     case "auth list-scopes":
       return null;
+    case "tasks add": {
+      if (hasFlag(args.options, "dry-run")) {
+        return null;
+      }
+      const title = requireOption(args, "title", command);
+      const scheduledDate = readOption(args.options, "scheduled-date");
+      const description = readOption(args.options, "description");
+      const result = await client.addTask({ title, scheduledDate, description });
+      return {
+        action: "tasks.add",
+        title,
+        scheduledDate,
+        createdTaskId:
+          result && typeof result === "object" && "taskId" in result && typeof result.taskId === "string"
+            ? result.taskId
+            : null,
+        dryRun: false,
+        idempotencyKey: readOption(args.options, "idempotency-key") ?? `cli_${randomUUID()}`,
+        source: "live",
+      };
+    }
+    case "tasks move": {
+      if (hasFlag(args.options, "dry-run")) {
+        return null;
+      }
+      const taskId = requireOption(args, "task-id", command);
+      const targetDate = requireOption(args, "target-date", command);
+      await client.moveTask({ taskId, targetDate });
+      return {
+        action: "tasks.move",
+        task: { id: taskId },
+        targetDate,
+        dryRun: false,
+        idempotencyKey: readOption(args.options, "idempotency-key") ?? `cli_${randomUUID()}`,
+        source: "live",
+      };
+    }
+    case "tasks complete": {
+      if (hasFlag(args.options, "dry-run")) {
+        return null;
+      }
+      const taskId = requireOption(args, "task-id", command);
+      await client.completeTask({ taskId });
+      return {
+        action: "tasks.complete",
+        task: { id: taskId },
+        dryRun: false,
+        idempotencyKey: readOption(args.options, "idempotency-key") ?? `cli_${randomUUID()}`,
+        source: "live",
+      };
+    }
+    case "tasks reopen": {
+      if (hasFlag(args.options, "dry-run")) {
+        return null;
+      }
+      const taskId = requireOption(args, "task-id", command);
+      await client.reopenTask({ taskId });
+      return {
+        action: "tasks.reopen",
+        task: { id: taskId },
+        dryRun: false,
+        idempotencyKey: readOption(args.options, "idempotency-key") ?? `cli_${randomUUID()}`,
+        source: "live",
+      };
+    }
+    case "tasks unschedule": {
+      if (hasFlag(args.options, "dry-run")) {
+        return null;
+      }
+      const taskId = requireOption(args, "task-id", command);
+      await client.unscheduleTask({ taskId });
+      return {
+        action: "tasks.unschedule",
+        task: { id: taskId },
+        dryRun: false,
+        idempotencyKey: readOption(args.options, "idempotency-key") ?? `cli_${randomUUID()}`,
+        source: "live",
+      };
+    }
     default:
       return null;
   }

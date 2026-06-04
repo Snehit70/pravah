@@ -36,6 +36,7 @@ vi.mock("../../convex/_generated/api", () => ({
   api: {
     automation: {
       exchangeBootstrapToken: "automation.exchangeBootstrapToken",
+      markCredentialUsed: "automation.markCredentialUsed",
     },
     tasks: {
       listTasks: "tasks.listTasks",
@@ -152,6 +153,63 @@ describe("http route handlers", () => {
     expect(response.status).toBe(401);
     expect(ctx.runQuery).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({ error: "Unauthorized" });
+  });
+
+  it("accepts bearer automation credential for task reads", async () => {
+    const handler = getHandler("/tasks", "GET");
+    const ctx = createCtx();
+    ctx.runMutation.mockResolvedValue({
+      label: "Laptop",
+      ownerTokenIdentifier: "user-1",
+      scopes: ["tasks:read", "agent:read"],
+    });
+    ctx.runQuery.mockResolvedValue([{ _id: "task1", title: "A" }]);
+
+    const response = await handler(
+      ctx,
+      new Request("https://example.com/tasks?status=scheduled", {
+        headers: { authorization: "Bearer pravah_cred_demo" },
+      })
+    );
+
+    expect(ctx.runMutation).toHaveBeenCalledWith(api.automation.markCredentialUsed, {
+      credentialSecret: "pravah_cred_demo",
+    });
+    expect(ctx.runQuery).toHaveBeenCalledWith(api.tasks.listTasks, {
+      date: undefined,
+      status: "scheduled",
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it("rejects bearer credential missing required write scope", async () => {
+    const handler = getHandler("/tasks/complete", "POST");
+    const ctx = createCtx();
+    ctx.runMutation.mockResolvedValueOnce({
+      label: "Laptop",
+      ownerTokenIdentifier: "user-1",
+      scopes: ["tasks:read"],
+    });
+
+    const response = await handler(
+      ctx,
+      new Request("https://example.com/tasks/complete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: "Bearer pravah_cred_demo",
+        },
+        body: JSON.stringify({
+          taskId: "task_abc",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "Forbidden",
+      missingScopes: ["tasks:write"],
+    });
   });
 
   it("handles GET /tasks with query params and auth", async () => {

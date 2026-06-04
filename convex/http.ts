@@ -1,5 +1,5 @@
 import { httpRouter } from "convex/server";
-import { httpAction } from "./_generated/server";
+import { httpAction, type ActionCtx } from "./_generated/server";
 import { api } from "./_generated/api";
 import { authComponent, createAuth } from "./auth";
 import { getAllowedWebOrigins } from "./origins";
@@ -28,7 +28,146 @@ const http = httpRouter();
 
 authComponent.registerRoutes(http, createAuth, { cors: true });
 
-function requireAuth(request: Request): Response | null {
+type AutomationScope =
+  | "tasks:read"
+  | "tasks:write"
+  | "review:read"
+  | "review:write"
+  | "sync:read"
+  | "sync:run"
+  | "agent:read";
+
+interface AuthorizedRequest {
+  kind: "admin" | "automation";
+  scopes: AutomationScope[];
+  ownerTokenIdentifier?: string;
+  credentialLabel?: string;
+}
+
+type AuthRouteCtx = Pick<ActionCtx, "runMutation">;
+
+function getEnv() {
+  return (
+    globalThis as typeof globalThis & {
+      process?: { env?: Record<string, string | undefined> };
+    }
+  ).process?.env;
+}
+
+function parseBearerToken(request: Request) {
+  const header = request.headers.get("authorization");
+  if (!header) return null;
+  const [scheme, token] = header.split(/\s+/, 2);
+  if (scheme?.toLowerCase() !== "bearer" || !token) {
+    return null;
+  }
+  return token;
+}
+
+function forbiddenResponse(missingScopes: AutomationScope[]) {
+  return jsonResponse(
+    {
+      error: "Forbidden",
+      missingScopes,
+    },
+    403
+  );
+}
+
+async function requireAuth(
+  ctx: AuthRouteCtx,
+  request: Request,
+  requiredScopes: AutomationScope[]
+): Promise<{ response: Response | null; auth?: AuthorizedRequest }> {
+  const bearerToken = parseBearerToken(request);
+  if (bearerToken) {
+    try {
+      const authResult = await ctx.runMutation(api.automation.markCredentialUsed, {
+        credentialSecret: bearerToken,
+      });
+      if (
+        !authResult ||
+        typeof authResult !== "object" ||
+        !("scopes" in authResult) ||
+        !Array.isArray(authResult.scopes)
+      ) {
+        return { response: jsonResponse({ error: "Unauthorized" }, 401) };
+      }
+      const scopes = authResult.scopes.filter(
+        (scope): scope is AutomationScope => typeof scope === "string"
+      );
+      const missingScopes = requiredScopes.filter((scope) => !scopes.includes(scope));
+      if (missingScopes.length > 0) {
+        return { response: forbiddenResponse(missingScopes) };
+      }
+
+      return {
+        response: null,
+        auth: {
+          kind: "automation",
+          scopes,
+          ownerTokenIdentifier:
+            "ownerTokenIdentifier" in authResult && typeof authResult.ownerTokenIdentifier === "string"
+              ? authResult.ownerTokenIdentifier
+              : undefined,
+          credentialLabel:
+            "label" in authResult && typeof authResult.label === "string"
+              ? authResult.label
+              : undefined,
+        },
+      };
+    } catch {
+      return { response: jsonResponse({ error: "Unauthorized" }, 401) };
+    }
+  }
+
+  const env = getEnv();
+  const apiKey = request.headers.get("x-api-key");
+  if (apiKey) {
+    const authError = requireApiKeyAuth({
+      request,
+      envKey: env?.CONVEX_HTTP_API_KEY,
+    });
+    if (authError) {
+      return { response: authError };
+    }
+    return {
+      response: null,
+      auth: {
+        kind: "admin",
+        scopes: requiredScopes,
+      },
+    };
+  }
+
+  return { response: jsonResponse({ error: "Unauthorized" }, 401) };
+}
+
+async function requireTaskReadAuth(ctx: AuthRouteCtx, request: Request) {
+  return requireAuth(ctx, request, ["tasks:read"]);
+}
+
+async function requireTaskWriteAuth(ctx: AuthRouteCtx, request: Request) {
+  return requireAuth(ctx, request, ["tasks:write"]);
+}
+
+async function requireReviewReadAuth(ctx: AuthRouteCtx, request: Request) {
+  return requireAuth(ctx, request, ["review:read"]);
+}
+
+async function requireReviewWriteAuth(ctx: AuthRouteCtx, request: Request) {
+  return requireAuth(ctx, request, ["review:write"]);
+}
+
+async function requireSyncReadAuth(ctx: AuthRouteCtx, request: Request) {
+  return requireAuth(ctx, request, ["sync:read"]);
+}
+
+async function requireSyncRunAuth(ctx: AuthRouteCtx, request: Request) {
+  return requireAuth(ctx, request, ["sync:run"]);
+}
+
+function requireLegacyAuth(request: Request): Response | null {
   const env = (
     globalThis as typeof globalThis & {
       process?: { env?: Record<string, string | undefined> };
@@ -112,8 +251,8 @@ http.route({
   path: "/tasks",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const { response } = await requireTaskReadAuth(ctx, request);
+    if (response) return response;
 
     const url = new URL(request.url);
     const date = url.searchParams.get("date") || undefined;
@@ -139,8 +278,8 @@ http.route({
   path: "/tasks",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const { response } = await requireTaskWriteAuth(ctx, request);
+    if (response) return response;
 
     const body = await request.json();
 
@@ -180,8 +319,8 @@ http.route({
   path: "/tasks/move",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const { response } = await requireTaskWriteAuth(ctx, request);
+    if (response) return response;
 
     const body = await request.json();
     const validation = moveTaskSchema.safeParse(body);
@@ -222,8 +361,8 @@ http.route({
   path: "/tasks/reorder",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const { response } = await requireTaskWriteAuth(ctx, request);
+    if (response) return response;
 
     const body = await request.json();
     const validation = reorderTaskSchema.safeParse(body);
@@ -252,8 +391,8 @@ http.route({
   path: "/tasks/complete",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const { response } = await requireTaskWriteAuth(ctx, request);
+    if (response) return response;
 
     const body = await request.json();
     const validation = completeTaskSchema.safeParse(body);
@@ -282,8 +421,8 @@ http.route({
   path: "/tasks/update",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const { response } = await requireTaskWriteAuth(ctx, request);
+    if (response) return response;
 
     const body = await request.json();
 
@@ -314,8 +453,8 @@ http.route({
   path: "/tasks/reopen",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const { response } = await requireTaskWriteAuth(ctx, request);
+    if (response) return response;
 
     const body = await request.json();
     const validation = reopenTaskSchema.safeParse(body);
@@ -341,8 +480,8 @@ http.route({
   path: "/tasks/unschedule",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const { response } = await requireTaskWriteAuth(ctx, request);
+    if (response) return response;
 
     const body = await request.json();
     const validation = unscheduleTaskSchema.safeParse(body);
@@ -368,8 +507,8 @@ http.route({
   path: "/tasks/bulk-reschedule",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const { response } = await requireTaskWriteAuth(ctx, request);
+    if (response) return response;
 
     const body = await request.json();
     const validation = bulkRescheduleSchema.safeParse(body);
@@ -395,8 +534,8 @@ http.route({
   path: "/tasks/delete",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const { response } = await requireTaskWriteAuth(ctx, request);
+    if (response) return response;
 
     const body = await request.json();
     const validation = deleteTaskSchema.safeParse(body);
@@ -425,8 +564,8 @@ http.route({
   path: "/timeline",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const { response } = await requireTaskReadAuth(ctx, request);
+    if (response) return response;
 
     const url = new URL(request.url);
     const endDate = url.searchParams.get("endDate");
@@ -451,8 +590,8 @@ http.route({
   path: "/inbox",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const { response } = await requireTaskReadAuth(ctx, request);
+    if (response) return response;
 
     const tasks = await ctx.runQuery(api.tasks.listTasks, { status: "inbox" });
     
@@ -537,8 +676,8 @@ http.route({
   path: "/sync/status",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const { response } = await requireSyncReadAuth(ctx, request);
+    if (response) return response;
 
     const url = new URL(request.url);
     const validation = syncStatusSchema.safeParse({
@@ -567,8 +706,8 @@ http.route({
   path: "/sync/google-calendar/import",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const { response } = await requireSyncRunAuth(ctx, request);
+    if (response) return response;
 
     const body = await request.json();
     const validation = googleCalendarImportSchema.safeParse(body);
@@ -603,8 +742,8 @@ http.route({
   path: "/review-queue",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const { response } = await requireReviewReadAuth(ctx, request);
+    if (response) return response;
 
     const url = new URL(request.url);
     const validation = reviewQueueListSchema.safeParse({
@@ -633,8 +772,8 @@ http.route({
   path: "/review-queue/approve",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const { response } = await requireReviewWriteAuth(ctx, request);
+    if (response) return response;
 
     const body = await request.json();
     const validation = reviewApproveSchema.safeParse(body);
@@ -660,8 +799,8 @@ http.route({
   path: "/review-queue/reject",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const { response } = await requireReviewWriteAuth(ctx, request);
+    if (response) return response;
 
     const body = await request.json();
     const validation = reviewRejectSchema.safeParse(body);
@@ -687,7 +826,7 @@ http.route({
   path: "/gmail/candidates",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
+    const authError = requireLegacyAuth(request);
     if (authError) return authError;
 
     const body = await request.json();

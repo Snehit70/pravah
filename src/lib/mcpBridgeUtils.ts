@@ -29,6 +29,7 @@ interface CallConvexApiOptions {
   method: string;
   body?: ToolArguments;
   apiKey?: string;
+  bearerToken?: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -38,6 +39,7 @@ export async function callConvexApi({
   method,
   body,
   apiKey,
+  bearerToken,
   fetchImpl = fetch,
 }: CallConvexApiOptions) {
   if (!convexUrl) {
@@ -47,6 +49,9 @@ export async function callConvexApi({
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (apiKey) {
     headers["x-api-key"] = apiKey;
+  }
+  if (bearerToken) {
+    headers.Authorization = `Bearer ${bearerToken}`;
   }
 
   const response = await fetchImpl(`${convexUrl}${endpoint}`, {

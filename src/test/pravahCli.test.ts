@@ -10,14 +10,19 @@ import { describe, expect, it } from "vitest";
 const repoRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const cliEntry = resolve(repoRoot, "src/cli/pravah.ts");
 
+function buildCliEnv(env?: Record<string, string>) {
+  return {
+    ...process.env,
+    HOME: env?.HOME ?? mkdtempSync(join(tmpdir(), "pravah-cli-test-home-")),
+    ...env,
+  };
+}
+
 function runCli(args: string[], env?: Record<string, string>) {
   return spawnSync("bun", ["run", cliEntry, ...args], {
     cwd: repoRoot,
     encoding: "utf8",
-    env: {
-      ...process.env,
-      ...env,
-    },
+    env: buildCliEnv(env),
   });
 }
 
@@ -29,10 +34,7 @@ function runCliAsync(args: string[], env?: Record<string, string>) {
   }>((resolvePromise, rejectPromise) => {
     const child = spawn("bun", ["run", cliEntry, ...args], {
       cwd: repoRoot,
-      env: {
-        ...process.env,
-        ...env,
-      },
+      env: buildCliEnv(env),
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -175,6 +177,7 @@ describe("pravah CLI", () => {
 
   it("exchanges a bootstrap token over HTTP and stores the returned credential", async () => {
     const home = mkdtempSync(join(tmpdir(), "pravah-cli-home-"));
+    let sawBearerWrite = false;
     const server = createServer((request, response) => {
       if (
         request.method === "POST" &&
@@ -193,6 +196,16 @@ describe("pravah CLI", () => {
             },
           })
         );
+        return;
+      }
+
+      if (
+        request.method === "POST" &&
+        request.url === "/tasks/complete"
+      ) {
+        sawBearerWrite = request.headers.authorization === "Bearer pravah_cred_live";
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ success: true }));
         return;
       }
 
@@ -238,6 +251,19 @@ describe("pravah CLI", () => {
         siteUrl: baseUrl,
         source: "local",
       });
+
+      const completeResult = await runCliAsync(
+        ["tasks", "complete", "--task-id", "task_live_1", "--json"],
+        { HOME: home }
+      );
+      expect(completeResult.status).toBe(0);
+      const completePayload = JSON.parse(completeResult.stdout);
+      expect(completePayload.data).toMatchObject({
+        action: "tasks.complete",
+        source: "live",
+        task: { id: "task_live_1" },
+      });
+      expect(sawBearerWrite).toBe(true);
     } finally {
       await new Promise<void>((resolvePromise, rejectPromise) => {
         server.close((error) => {
