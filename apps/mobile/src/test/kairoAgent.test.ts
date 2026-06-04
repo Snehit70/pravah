@@ -163,6 +163,90 @@ describe("runKairoAgent", () => {
     expect(labels).toContain("Updating your tasks…");
   });
 
+  it("serves the reflow preview as a read and applies a reflow batch atomically", async () => {
+    const call = queuedCaller([
+      toolUse([{ id: "p1", name: "plan_overdue_reflow" }]),
+      toolUse([{ id: "r1", name: "reflow_overdue", input: { extendDeadlines: true } }]),
+      textOnly("Re-spread your overdue work."),
+    ]);
+    const reflow = {
+      plan: vi.fn(() => ({ totalOverdue: 2, goals: [{ goal: "Ship" }], orphans: [] })),
+      apply: vi.fn(async () => ({
+        payload: { ok: true, status: "reflowed", rescheduled: 2, deadlinesMoved: 1 },
+        outcome: {
+          beforeTitle: null,
+          result: {
+            action: { kind: "reflow" as const, label: "Reflowed Ship" },
+            status: "applied" as const,
+            undo: async () => undefined,
+          },
+        },
+      })),
+    };
+    const applyActions = vi.fn(async (actions: KairoAction[]) => ({
+      results: actions.map((a) => applied(a)),
+      beforeTitles: actions.map(() => null),
+    }));
+
+    const result = await runKairoAgent(
+      [{ role: "user", text: "fix my overdue" }],
+      makeDeps({ call, applyActions, reflow })
+    );
+
+    expect(reflow.plan).toHaveBeenCalledTimes(1);
+    expect(reflow.apply).toHaveBeenCalledWith({ extendDeadlines: true });
+    expect(applyActions).not.toHaveBeenCalled();
+    expect(result.outcomes).toHaveLength(1);
+    expect(result.outcomes[0]?.result.action.kind).toBe("reflow");
+    expect(result.text).toBe("Re-spread your overdue work.");
+  });
+
+  it("reports a noop when reflow_overdue produces no changes, without applying", async () => {
+    const call = queuedCaller([
+      toolUse([{ id: "r1", name: "reflow_overdue" }]),
+      textOnly("Nothing overdue to move."),
+    ]);
+    const reflow = {
+      plan: vi.fn(),
+      apply: vi.fn(async () => ({
+        payload: {
+          ok: true,
+          status: "noop",
+          detail: "No overdue work needed rescheduling.",
+          plan: { totalRescheduled: 0 },
+        },
+      })),
+    };
+    const applyActions = vi.fn(async () => ({ results: [], beforeTitles: [] }));
+
+    const result = await runKairoAgent(
+      [{ role: "user", text: "fix overdue" }],
+      makeDeps({ call, applyActions, reflow })
+    );
+
+    expect(applyActions).not.toHaveBeenCalled();
+    expect(reflow.apply).toHaveBeenCalledTimes(1);
+    expect(result.outcomes).toHaveLength(0);
+    expect(result.text).toBe("Nothing overdue to move.");
+  });
+
+  it("feeds back an error when a reflow tool is called but no runtime is wired", async () => {
+    const call = queuedCaller([
+      toolUse([{ id: "r1", name: "reflow_overdue" }]),
+      textOnly("I can't reschedule right now."),
+    ]);
+    const applyActions = vi.fn(async () => ({ results: [], beforeTitles: [] }));
+
+    const result = await runKairoAgent(
+      [{ role: "user", text: "fix overdue" }],
+      makeDeps({ call, applyActions }) // no reflow dep
+    );
+
+    expect(applyActions).not.toHaveBeenCalled();
+    expect(result.outcomes).toHaveLength(0);
+    expect(result.text).toBe("I can't reschedule right now.");
+  });
+
   it("updates later read tools with tasks created earlier in the same agent loop", async () => {
     const call = queuedCaller([
       toolUse([{ id: "a1", name: "add_task", input: { title: "Gym" } }]),
@@ -179,7 +263,7 @@ describe("runKairoAgent", () => {
       makeDeps({ call, applyActions })
     );
 
-    const thirdBody = call.mock.calls[2]?.[0] as {
+    const thirdBody = (call.mock.calls as unknown[][])[2]?.[0] as {
       messages: Array<{ role: string; content: unknown }>;
     };
     const toolMessage = [...thirdBody.messages].reverse().find(

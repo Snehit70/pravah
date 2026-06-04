@@ -32,7 +32,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useMutation } from "convex/react";
+import { useConvex, useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { colors, fonts, motion, radii, spacing, typography } from "../theme/tokens";
@@ -58,11 +58,13 @@ import {
   buildToolDefs,
   createHandleRegistry,
 } from "../lib/kairoTools";
+import { buildReflowApply, planOverdueReflow } from "../lib/kairoReflowTool";
 import {
   runKairoAgent,
   type ApplyAgentActions,
   type KairoAgentCaller,
 } from "../lib/kairoAgent";
+import type { MobileTask } from "./TaskCard";
 import {
   applyKairoActions,
   type KairoActionResult,
@@ -87,6 +89,9 @@ type KairoProps = {
   tasks: KairoTaskInput[];
   /** Inbox tasks specifically (sometimes a separate query in the parent). */
   inboxTasks: KairoTaskInput[];
+  /** The full MobileTask corpus (with `position`) — powers the overdue-reflow
+   *  engine, which needs plan order the thin context doesn't carry. */
+  reflowTasks: MobileTask[];
   /** True when the full-corpus query has resolved. Prevents sending messages
    *  with an empty or partial workspace snapshot on cold start. */
   isAllTasksReady: boolean;
@@ -119,6 +124,8 @@ function labelForAction(
       return action.scheduledDate
         ? `Added "${action.title}" → ${action.scheduledDate}`
         : `Added "${action.title}" to inbox`;
+    case "reflow":
+      return action.label;
     case "reschedule":
       return beforeTitle
         ? `Rescheduled "${beforeTitle}" → ${action.scheduledDate}`
@@ -199,7 +206,7 @@ type KairoChatRow =
  * expo-secure-store via `lib/kairoConfig.ts`, never sent to our servers.
  */
 export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
-  { tasks, inboxTasks, isAllTasksReady, onActiveChange, onOpenSettings },
+  { tasks, inboxTasks, reflowTasks: _reflowTasks, isAllTasksReady, onActiveChange, onOpenSettings },
   ref
 ) {
   const sheetRef = useRef<BottomSheet>(null);
@@ -256,12 +263,16 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
 
   const addTaskMutation = useMutation(api.tasks.addTask);
   const moveTaskMutation = useMutation(api.tasks.moveTask);
+  const rescheduleTasksMutation = useMutation(api.tasks.rescheduleTasks);
   const completeTaskMutation = useMutation(api.tasks.completeTask);
   const reopenTaskMutation = useMutation(api.tasks.reopenTask);
   const unscheduleTaskMutation = useMutation(api.tasks.unscheduleTask);
   const updateTaskMutation = useMutation(api.tasks.updateTask);
   const softDeleteTaskMutation = useMutation(api.tasks.softDeleteTask);
   const restoreTaskMutation = useMutation(api.tasks.restoreTask);
+  const convex = useConvex();
+  const applyOverdueReflowMutation = useMutation(api.overdueReflow.apply);
+  const undoOverdueReflowMutation = useMutation(api.overdueReflow.undo);
   const upsertGoalMutation = useMutation(api.goals.upsert);
   const removeGoalMutation = useMutation(api.goals.remove);
   const setGoalLinkMutation = useMutation(api.goals.setLink);
@@ -383,6 +394,11 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   const handleRetry = useCallback((prompt: string) => {
     sendMessageRef.current(prompt);
   }, []);
+
+  const fetchReflowPreview = useCallback(
+    (todayDate: string) => convex.query(api.overdueReflow.preview, { today: todayDate }),
+    [convex]
+  );
 
   const handleUndo = useCallback(
     async (chipId: string) => {
@@ -608,6 +624,15 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           addTask: (args: Parameters<typeof addTaskMutation>[0]) => addTaskMutation(args),
           moveTask: (args: { taskId: string; targetDate: string }) =>
             moveTaskMutation({ taskId: args.taskId as Id<"tasks">, targetDate: args.targetDate }),
+          rescheduleTasks: (args: {
+            updates: Array<{ taskId: string; scheduledDate: string }>;
+          }) =>
+            rescheduleTasksMutation({
+              updates: args.updates.map((update) => ({
+                taskId: update.taskId as Id<"tasks">,
+                scheduledDate: update.scheduledDate,
+              })),
+            }),
           completeTask: (args: { taskId: string }) =>
             completeTaskMutation({ taskId: args.taskId as Id<"tasks"> }),
           reopenTask: (args: { taskId: string }) =>
@@ -695,6 +720,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           const beforeTitles = actions.map((a) => {
             if (
               a.kind === "add" ||
+              a.kind === "reflow" ||
               a.kind === "addGoal" ||
               a.kind === "linkTaskGoal" ||
               a.kind === "unlinkTaskGoal"
@@ -751,6 +777,75 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           return res.json();
         };
 
+      // Overdue-reflow runtime, bound to the real corpus (with plan order) +
+      // goal links. The agent drives the deterministic engine through it.
+      const reflowEnv = {
+        today: todayStr,
+        registry,
+      };
+      const reflow = {
+        plan: async () => planOverdueReflow({ ...reflowEnv, preview: await fetchReflowPreview(todayStr) }),
+        apply: async (args: Record<string, unknown>) => {
+          const preview = await fetchReflowPreview(todayStr);
+          let request;
+          try {
+            request = buildReflowApply({ ...reflowEnv, preview }, args);
+          } catch (error) {
+            return {
+              payload: {
+                ok: false,
+                error: error instanceof Error ? error.message : "Overdue reflow is unavailable right now.",
+              },
+            };
+          }
+
+          const { planToken, goalIdsToMoveDeadlines, plan } = request;
+          if (plan.totalRescheduled === 0) {
+            return {
+              payload: {
+                ok: true,
+                status: "noop",
+                detail: "No overdue work needed rescheduling.",
+                plan,
+              },
+            };
+          }
+
+          const applied = await applyOverdueReflowMutation({
+            planToken,
+            today: todayStr,
+            goalIdsToMoveDeadlines,
+          });
+          return {
+            payload: {
+              ok: true,
+              status: "reflowed",
+              rescheduled: applied.taskCount,
+              deadlinesMoved: applied.goalDeadlineCount,
+              skipped: 0,
+              failed: 0,
+              plan,
+            },
+            outcome: {
+              beforeTitle: null,
+              result: {
+                action: {
+                  kind: "reflow" as const,
+                  label:
+                    plan.goals.length === 1
+                      ? `Reflowed "${plan.goals[0]?.goal ?? "goal"}"`
+                      : `Reflowed ${plan.goals.length} goals`,
+                },
+                status: "applied" as const,
+                undo: async () => {
+                  await undoOverdueReflowMutation({ operationId: applied.operationId });
+                },
+              },
+            },
+          };
+        },
+      };
+
       try {
         const result = await runKairoAgent([...history, { role: "user", text: trimmed }], {
           config: nextConfig,
@@ -760,6 +855,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           readEnv: { tasks, inboxTasks, registry, today: todayStr },
           registry,
           applyActions,
+          reflow,
           onProgress: (label) => setStatusLabel(label),
           shouldCancel: () => cancelledRef.current,
         });
@@ -856,6 +952,8 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       updateTaskMutation,
       softDeleteTaskMutation,
       restoreTaskMutation,
+      applyOverdueReflowMutation,
+      undoOverdueReflowMutation,
       upsertGoalMutation,
       removeGoalMutation,
       setGoalLinkMutation,
@@ -866,6 +964,8 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       inboxTasks,
       isAllTasksReady,
       msgs,
+      fetchReflowPreview,
+      rescheduleTasksMutation,
       setMsgs,
       tasks,
       thinking,

@@ -205,7 +205,47 @@ export const KAIRO_MUTATION_TOOLS: KairoToolSchema[] = [
   },
 ];
 
-export const KAIRO_ALL_TOOLS: KairoToolSchema[] = [...KAIRO_READ_TOOLS, ...KAIRO_MUTATION_TOOLS];
+// ─── Reflow tools ───────────────────────────────────────────────────────────
+//
+// These don't map 1:1 onto a KairoAction (the apply tool expands into a whole
+// deterministic batch) and need the timeline corpus the thin read env lacks, so
+// the agent loop handles them specially via an injected reflow runtime — they
+// go through neither runReadTool nor toolCallToAction. They still appear in the
+// provider tool list so the model can call them.
+
+export const REFLOW_PLAN_TOOL = "plan_overdue_reflow";
+export const REFLOW_APPLY_TOOL = "reflow_overdue";
+
+export const KAIRO_REFLOW_TOOLS: KairoToolSchema[] = [
+  {
+    name: REFLOW_PLAN_TOOL,
+    description:
+      "Preview a goal-aware reschedule of overdue work WITHOUT changing anything. For each goal that has a deadline, returns how its whole remaining plan would be re-spread across the calendar (mode, projected end, suggested new deadline, per-task before→after). Also lists overdue tasks with no goal or no deadline as 'orphans' for you to triage manually.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    name: REFLOW_APPLY_TOOL,
+    description:
+      "Reschedule overdue work for goals that have a deadline, re-spreading each goal's whole remaining plan deterministically. Applies immediately (the user can undo). Orphan tasks (no goal / no deadline) are NOT touched — handle those with reschedule_task or unschedule_task.",
+    parameters: {
+      type: "object",
+      properties: {
+        goalHandle: str("Limit the reflow to one goal, e.g. G2. Omit to reflow every overdue goal."),
+        extendDeadlines: {
+          type: "boolean",
+          description:
+            "Move each goal's deadline to its new projected end. Omit to move only already-passed deadlines; false to never change a deadline.",
+        },
+      },
+    },
+  },
+];
+
+export const KAIRO_ALL_TOOLS: KairoToolSchema[] = [
+  ...KAIRO_READ_TOOLS,
+  ...KAIRO_MUTATION_TOOLS,
+  ...KAIRO_REFLOW_TOOLS,
+];
 
 /** Wrap the shared schemas in each provider's tool-definition shape. Gemini
  *  nests every declaration under a single `functionDeclarations` entry; the

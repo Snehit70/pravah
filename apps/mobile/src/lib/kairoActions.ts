@@ -35,6 +35,9 @@ export interface KairoMutations {
     source: "ai-agent";
   }) => Promise<unknown>;
   moveTask: (args: { taskId: string; targetDate: string }) => Promise<unknown>;
+  rescheduleTasks: (args: {
+    updates: Array<{ taskId: string; scheduledDate: string }>;
+  }) => Promise<unknown>;
   completeTask: (args: { taskId: string }) => Promise<unknown>;
   reopenTask: (args: { taskId: string }) => Promise<unknown>;
   unscheduleTask: (args: { taskId: string }) => Promise<unknown>;
@@ -174,7 +177,8 @@ export async function applyKairoActions(
   const lookupCurrentLink = (taskId: string): string | null =>
     localLinks.has(taskId) ? localLinks.get(taskId) ?? null : lookupTaskGoalLink(taskId);
 
-  for (const action of actions) {
+  for (let index = 0; index < actions.length; index += 1) {
+    const action = actions[index];
     try {
       if (action.kind === "add") {
         const taskId = (await mutations.addTask({
@@ -334,6 +338,15 @@ export async function applyKairoActions(
         continue;
       }
 
+      if (action.kind === "reflow") {
+        results.push({
+          action,
+          status: "skipped",
+          reason: "Reflow runs through the dedicated overdue workflow.",
+        });
+        continue;
+      }
+
       const taskId = resolveHandle(action.handle, maps.taskIdMap);
       if (!taskId) {
         results.push({
@@ -348,11 +361,88 @@ export async function applyKairoActions(
       let undo: (() => Promise<void>) | null = null;
 
       switch (action.kind) {
-        case "reschedule":
+        case "reschedule": {
+          if (action.batchId) {
+            const batchId = action.batchId;
+            const batch: Extract<KairoAction, { kind: "reschedule" }>[] = [action];
+            while (index + batch.length < actions.length) {
+              const next = actions[index + batch.length];
+              if (next.kind !== "reschedule" || next.batchId !== batchId) break;
+              batch.push(next);
+            }
+            index += batch.length - 1;
+
+            const prepared = batch.map((batchAction) => {
+              const batchTaskId = resolveHandle(batchAction.handle, maps.taskIdMap);
+              return {
+                action: batchAction,
+                taskId: batchTaskId,
+                before: batchTaskId ? lookupCurrent(batchTaskId) : null,
+              };
+            });
+
+            for (const entry of prepared) {
+              if (entry.taskId !== null) continue;
+              results.push({
+                action: entry.action,
+                status: "skipped",
+                reason: `Unknown task handle "${entry.action.handle}"`,
+              });
+            }
+
+            const valid = prepared.filter(
+              (entry): entry is {
+                action: Extract<KairoAction, { kind: "reschedule" }>;
+                taskId: string;
+                before: TaskSnapshot | null;
+              } => entry.taskId !== null
+            );
+
+            if (valid.length > 0) {
+              try {
+                await mutations.rescheduleTasks({
+                  updates: valid.map(({ taskId, action: batchAction }) => ({
+                    taskId,
+                    scheduledDate: batchAction.scheduledDate,
+                  })),
+                });
+
+                for (const entry of valid) {
+                  const batchUndo = entry.before
+                    ? buildRescheduleUndo(entry.before, entry.taskId, mutations)
+                    : null;
+                  if (entry.before) {
+                    localSnapshots.set(entry.taskId, {
+                      ...entry.before,
+                      status: "scheduled",
+                      scheduledDate: entry.action.scheduledDate,
+                    });
+                  }
+                  results.push({
+                    action: entry.action,
+                    status: "applied",
+                    taskId: entry.taskId,
+                    undo: batchUndo,
+                  });
+                }
+              } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                for (const entry of valid) {
+                  results.push({
+                    action: entry.action,
+                    status: "failed",
+                    error: message,
+                  });
+                }
+              }
+            }
+            continue;
+          }
           await mutations.moveTask({ taskId, targetDate: action.scheduledDate });
           if (before) undo = buildRescheduleUndo(before, taskId, mutations);
           if (before) localSnapshots.set(taskId, { ...before, status: "scheduled", scheduledDate: action.scheduledDate });
           break;
+        }
         case "complete":
           await mutations.completeTask({ taskId });
           undo = async () => {

@@ -246,6 +246,75 @@ export const moveTask = mutation({
   },
 });
 
+/** Atomic bulk reschedule used by the overdue reflow. Applies many
+ *  scheduledDate moves in a single transaction so a network drop can never
+ *  leave a half-reflowed schedule. Skips tasks that no longer exist, aren't
+ *  owned, or are already completed/cancelled, and clamps a move that would
+ *  land past a still-future per-task deadline. Returns the ids that actually
+ *  changed so the client optimistic layer can reconcile. */
+export const rescheduleTasks = mutation({
+  args: {
+    updates: v.array(
+      v.object({ taskId: v.id("tasks"), scheduledDate: v.string() })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    const today = getTodayDateString();
+    // Seed one position counter per distinct target date, then increment
+    // locally so multiple tasks landing on the same day stack in order.
+    const positionByDate = new Map<string, number>();
+    const changed: Id<"tasks">[] = [];
+
+    for (const { taskId, scheduledDate } of args.updates) {
+      let task;
+      try {
+        task = await getOwnedTask(ctx, taskId, tokenIdentifier);
+      } catch {
+        continue; // missing or not owned — skip silently
+      }
+      if (task.status === "completed" || task.status === "cancelled") continue;
+
+      let target = scheduledDate;
+      // A task with its own future deadline must not be pushed past it; clamp
+      // onto the deadline. Open tasks (the common reflow case) have none.
+      if (
+        task.type === "deadline" &&
+        task.deadline &&
+        target > task.deadline &&
+        task.deadline >= today
+      ) {
+        target = task.deadline;
+      }
+
+      if (task.status === "scheduled" && task.scheduledDate === target) {
+        continue;
+      }
+
+      let position = positionByDate.get(target);
+      if (position === undefined) {
+        position = await getNextPositionForStatus(
+          ctx,
+          tokenIdentifier,
+          "scheduled",
+          target
+        );
+      }
+
+      await ctx.db.patch(taskId, {
+        scheduledDate: target,
+        position,
+        status: "scheduled",
+        updatedAt: Date.now(),
+      });
+      positionByDate.set(target, position + 1);
+      changed.push(taskId);
+    }
+
+    return { changed };
+  },
+});
+
 export const reorderTasks = mutation({
   args: {
     date: v.string(),

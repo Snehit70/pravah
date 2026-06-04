@@ -22,6 +22,63 @@ export default defineSchema({
     .index("by_owner", ["ownerTokenIdentifier"])
     .index("by_owner_task", ["ownerTokenIdentifier", "taskId"])
     .index("by_owner_goal", ["ownerTokenIdentifier", "goalClientId"]),
+  overdueReflowOperations: defineTable({
+    ownerTokenIdentifier: v.string(),
+    operationId: v.string(),
+    status: v.union(v.literal("applied"), v.literal("undone")),
+    appliedAt: v.number(),
+    undoneAt: v.optional(v.number()),
+    taskBefore: v.array(
+      v.object({
+        taskId: v.id("tasks"),
+        scheduledDate: v.string(),
+        position: v.number(),
+      })
+    ),
+    taskAfter: v.array(
+      v.object({
+        taskId: v.id("tasks"),
+        scheduledDate: v.string(),
+        position: v.number(),
+      })
+    ),
+    goalBefore: v.array(
+      v.object({
+        goalClientId: v.string(),
+        deadline: v.optional(v.string()),
+      })
+    ),
+    goalAfter: v.array(
+      v.object({
+        goalClientId: v.string(),
+        deadline: v.optional(v.string()),
+      })
+    ),
+    dateStatesBefore: v.array(
+      v.object({
+        date: v.string(),
+        entries: v.array(
+          v.object({
+            taskId: v.id("tasks"),
+            position: v.number(),
+          })
+        ),
+      })
+    ),
+    dateStatesAfter: v.array(
+      v.object({
+        date: v.string(),
+        entries: v.array(
+          v.object({
+            taskId: v.id("tasks"),
+            position: v.number(),
+          })
+        ),
+      })
+    ),
+  })
+    .index("by_owner_operation_id", ["ownerTokenIdentifier", "operationId"])
+    .index("by_owner_applied_at", ["ownerTokenIdentifier", "appliedAt"]),
   users: defineTable({
     name: v.optional(v.string()),
     email: v.optional(v.string()),
