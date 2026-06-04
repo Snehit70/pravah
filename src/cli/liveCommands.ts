@@ -1,4 +1,5 @@
 import { readOption } from "./args";
+import { getLocalDateString } from "../lib/utils";
 import {
   getWriteMetadata,
   readReviewListOptions,
@@ -144,7 +145,7 @@ export async function executeLiveCommand(
       const reviewItemsRaw = await client.getReviewQueue("pending", 25);
       const reviewItems = Array.isArray(reviewItemsRaw) ? reviewItemsRaw : [];
       const syncStatus = await client.getSyncStatus("google_calendar");
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getLocalDateString();
       return {
         today,
         scheduled: tasks

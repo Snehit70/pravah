@@ -23,32 +23,31 @@ function isMockEnabled() {
 
 async function importCredential(args: ParsedArgs) {
   const credentialFile = readOption(args.options, "credential-file");
-  const credentialJson = readOption(args.options, "credential-json");
   const bootstrapToken = readOption(args.options, "bootstrap-token");
   const sources = [
     bootstrapToken ? "bootstrap-token" : null,
     credentialFile ? "credential-file" : null,
-    credentialJson ? "credential-json" : null,
   ].filter((source): source is string => source !== null);
   if (sources.length !== 1) {
     throw new Error(
-      "Provide exactly one of --bootstrap-token, --credential-file, or --credential-json"
+      "Provide exactly one of --bootstrap-token or --credential-file"
     );
   }
 
-  const imported = bootstrapToken
-    ? await (() => {
-        const authClient = createCliAuthClient(process.env);
-        if (!authClient) {
-          throw new Error(
-            "CLI HTTP URL is not configured. Set PRAVAH_HTTP_URL or CONVEX_SITE_URL before importing a bootstrap token."
-          );
-        }
-        return authClient.exchangeBootstrapToken(bootstrapToken);
-      })()
-    : parseCredentialImport(
-        credentialJson ?? readFileSync(credentialFile!, "utf8")
+  let imported;
+  if (bootstrapToken) {
+    const authClient = createCliAuthClient(process.env);
+    if (!authClient) {
+      throw new Error(
+        "CLI HTTP URL is not configured. Set PRAVAH_HTTP_URL or CONVEX_SITE_URL before importing a bootstrap token."
       );
+    }
+    imported = await authClient.exchangeBootstrapToken(bootstrapToken);
+  } else if (credentialFile) {
+    imported = parseCredentialImport(readFileSync(credentialFile, "utf8"));
+  } else {
+    throw new Error("Credential import source is missing");
+  }
   saveStoredCredential(imported);
   return {
     imported: true,

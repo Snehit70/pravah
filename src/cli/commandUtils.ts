@@ -24,7 +24,6 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionKind>> = {
   "auth import": {
     "bootstrap-token": "value",
     "credential-file": "value",
-    "credential-json": "value",
   },
   "auth whoami": {},
   "auth list-scopes": {},

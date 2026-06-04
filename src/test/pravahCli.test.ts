@@ -266,8 +266,8 @@ describe("pravah CLI", () => {
         "import",
         "--bootstrap-token",
         "pravah_bootstrap_demo",
-        "--credential-json",
-        "{}",
+        "--credential-file",
+        "/tmp/unused-credential.json",
         "--json",
       ],
       { PRAVAH_CLI_MOCK: "0" }
@@ -281,8 +281,8 @@ describe("pravah CLI", () => {
         "auth",
         "import",
         "--bootstrap-token",
-        "--credential-json",
-        "{}",
+        "--credential-file",
+        "/tmp/unused-credential.json",
         "--json",
       ],
       { PRAVAH_CLI_MOCK: "0" }
@@ -290,6 +290,15 @@ describe("pravah CLI", () => {
     expect(missingValue.status).toBe(1);
     expect(JSON.parse(missingValue.stdout).error.message).toContain(
       "--bootstrap-token requires a value"
+    );
+
+    const inlineSecret = runCli(
+      ["auth", "import", "--credential-json", "{}", "--json"],
+      { PRAVAH_CLI_MOCK: "0" }
+    );
+    expect(inlineSecret.status).toBe(1);
+    expect(JSON.parse(inlineSecret.stdout).error.message).toContain(
+      "Unknown option --credential-json"
     );
   });
 
