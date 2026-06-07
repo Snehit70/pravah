@@ -8,8 +8,10 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   View,
 } from "react-native";
+import { useMutation, useQuery } from "convex/react";
 import appJson from "../../app.json";
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -33,6 +35,8 @@ import { isWithinQuietHours, type NotificationPermissionState } from "../lib/not
 import { KairoSettingsSection } from "./KairoSettingsSection";
 import { GmailReviewSection } from "./GmailReviewSection";
 import type { GoogleCalendarOption, IntegrationLastRunSummary } from "../hooks/useIntegrationsSettings";
+import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
 
 type QuietPickerKind = "reminder" | "quietStart" | "quietEnd";
 
@@ -102,6 +106,8 @@ function statusTextColor(status: string): string {
 }
 
 type SectionKey = "assistant" | "sync" | "alerts" | "timeline" | "more";
+
+const READ_ONLY_AUTOMATION_SCOPES = ["tasks:read", "review:read", "sync:read"] as const;
 
 const APP_VERSION = appJson.expo?.version ?? "—";
 const REPO_URL = "https://github.com/Snehit70/pravah";
@@ -224,6 +230,18 @@ export function SettingsSheet({
   const [isClearingRetryQueue, setIsClearingRetryQueue] = useState(false);
   const [dangerArmed, setDangerArmed] = useState<"wipe" | null>(null);
   const [isWiping, setIsWiping] = useState(false);
+  const [automationLabel, setAutomationLabel] = useState("Codex local");
+  const [allowTaskWrites, setAllowTaskWrites] = useState(false);
+  const [issuedBootstrapToken, setIssuedBootstrapToken] = useState<{
+    token: string;
+    expiresAt: number;
+  } | null>(null);
+  const [isIssuingBootstrapToken, setIsIssuingBootstrapToken] = useState(false);
+  const [revokingCredentialId, setRevokingCredentialId] =
+    useState<Id<"automationCredentials"> | null>(null);
+  const issueBootstrapToken = useMutation(api.automation.issueBootstrapToken);
+  const revokeCredential = useMutation(api.automation.revokeCredential);
+  const automationCredentials = useQuery(api.automation.listCredentials, {}) ?? [];
 
   // Disarm the danger button after a few seconds so a stray re-tap doesn't
   // execute a destructive action long after the user moved on.
@@ -287,6 +305,52 @@ export function SettingsSheet({
       setIsClearingRetryQueue(false);
     }
   }, [isClearingRetryQueue, showToast]);
+
+  const handleIssueBootstrapToken = useCallback(async () => {
+    const trimmedLabel = automationLabel.trim();
+    if (!trimmedLabel) {
+      showToast({ kind: "error", message: "Enter a credential label." });
+      return;
+    }
+
+    setIsIssuingBootstrapToken(true);
+    try {
+      const scopes = allowTaskWrites
+        ? [...READ_ONLY_AUTOMATION_SCOPES, "tasks:write" as const]
+        : [...READ_ONLY_AUTOMATION_SCOPES];
+      const result = await issueBootstrapToken({
+        label: trimmedLabel,
+        scopes,
+        ttlMinutes: 15,
+      });
+      setIssuedBootstrapToken({ token: result.bootstrapToken, expiresAt: result.expiresAt });
+      await Clipboard.setStringAsync(result.bootstrapToken);
+      showToast({ kind: "info", message: "Bootstrap token issued and copied." });
+    } catch (error) {
+      mobileLogger.warn("automation_bootstrap_issue_failed", { errorType: classifyError(error) });
+      showToast({ kind: "error", message: "Could not issue bootstrap token." });
+    } finally {
+      setIsIssuingBootstrapToken(false);
+    }
+  }, [allowTaskWrites, automationLabel, issueBootstrapToken, showToast]);
+
+  const handleRevokeCredential = useCallback(
+    async (credentialId: Id<"automationCredentials">) => {
+      setRevokingCredentialId(credentialId);
+      try {
+        await revokeCredential({ credentialId });
+        showToast({ kind: "info", message: "Automation credential revoked." });
+      } catch (error) {
+        mobileLogger.warn("automation_credential_revoke_failed", {
+          errorType: classifyError(error),
+        });
+        showToast({ kind: "error", message: "Could not revoke credential." });
+      } finally {
+        setRevokingCredentialId(null);
+      }
+    },
+    [revokeCredential, showToast]
+  );
 
   const handleTimePicked = useCallback(
     (kind: QuietPickerKind) => (_event: DateTimePickerEvent, picked?: Date) => {
@@ -558,6 +622,157 @@ export function SettingsSheet({
                     })}
                   </View>
                 </View>
+              </View>
+
+              <View style={[styles.settingBlock, styles.sectionCard]}>
+                <View style={styles.settingRow}>
+                  <View style={styles.settingCopy}>
+                    <Text style={styles.settingLabel}>CLI Credentials</Text>
+                    <Text style={styles.settingHelp}>
+                      Issue a short-lived bootstrap token for `pravah auth import`.
+                    </Text>
+                    <Text style={styles.settingMeta}>
+                      {automationCredentials.length} recorded
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.fieldStack}>
+                  <Text style={styles.fieldLabel}>Credential label</Text>
+                  <TextInput
+                    value={automationLabel}
+                    onChangeText={setAutomationLabel}
+                    placeholder="Codex local"
+                    placeholderTextColor={colors.textDim}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    style={styles.textInput}
+                    accessibilityLabel="Automation credential label"
+                  />
+                </View>
+
+                <View style={styles.behaviorRow}>
+                  <View style={styles.settingCopy}>
+                    <Text style={styles.settingMeta}>Allow task writes</Text>
+                    <Text style={styles.settingHelp}>
+                      Off by default. Enable only when the CLI should add, move,
+                      complete, reopen, or unschedule tasks.
+                    </Text>
+                  </View>
+                  <Switch
+                    value={allowTaskWrites}
+                    onValueChange={setAllowTaskWrites}
+                    trackColor={{ false: colors.border, true: colors.accentSoft }}
+                    thumbColor={allowTaskWrites ? colors.accent : colors.textMuted}
+                  />
+                </View>
+
+                <Text style={styles.settingMeta}>
+                  Scopes · {[
+                    ...READ_ONLY_AUTOMATION_SCOPES,
+                    ...(allowTaskWrites ? (["tasks:write"] as const) : []),
+                  ].join(" · ")}
+                </Text>
+
+                <Pressable
+                  onPress={() => void handleIssueBootstrapToken()}
+                  disabled={isIssuingBootstrapToken}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel="Issue bootstrap token"
+                  style={({ pressed }) => [
+                    styles.softButton,
+                    pressed && { opacity: 0.6 },
+                    isIssuingBootstrapToken && styles.softButtonDisabled,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.softButtonText,
+                      isIssuingBootstrapToken && styles.inlineActionDisabled,
+                    ]}
+                  >
+                    {isIssuingBootstrapToken ? "Issuing…" : "Issue bootstrap token"}
+                  </Text>
+                </Pressable>
+
+                {issuedBootstrapToken ? (
+                  <View style={styles.tokenBlock}>
+                    <Text style={styles.fieldLabel}>Bootstrap token</Text>
+                    <Text style={styles.settingHelp}>
+                      Copied to clipboard. It expires at{" "}
+                      {new Date(issuedBootstrapToken.expiresAt).toLocaleString()}.
+                    </Text>
+                    <View style={styles.copyRow}>
+                      <View style={[styles.codePill, styles.copyRowPill]}>
+                        <Text selectable style={styles.codePillText} numberOfLines={1}>
+                          {issuedBootstrapToken.token}
+                        </Text>
+                      </View>
+                      <Pressable
+                        onPress={() =>
+                          void handleCopy(issuedBootstrapToken.token, "Bootstrap token")
+                        }
+                        hitSlop={12}
+                        accessibilityRole="button"
+                        accessibilityLabel="Copy bootstrap token"
+                        style={({ pressed }) => [
+                          styles.copyButton,
+                          pressed && { opacity: 0.6 },
+                        ]}
+                      >
+                        <Text style={styles.copyButtonText}>Copy</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : null}
+
+                {automationCredentials.length === 0 ? (
+                  <Text style={styles.settingMeta}>No automation credentials issued yet.</Text>
+                ) : (
+                  <View style={styles.credentialList}>
+                    {automationCredentials.map((credential) => (
+                      <View key={credential._id} style={styles.credentialRow}>
+                        <View style={styles.settingCopy}>
+                          <Text style={styles.settingLabel} numberOfLines={1}>
+                            {credential.label}
+                          </Text>
+                          <Text style={styles.settingMeta}>
+                            {credential.credentialPreview} · {credential.status}
+                          </Text>
+                          <Text style={styles.settingMeta} numberOfLines={1}>
+                            {credential.scopes.join(" · ")}
+                          </Text>
+                        </View>
+                        <Pressable
+                          onPress={() => void handleRevokeCredential(credential._id)}
+                          disabled={
+                            credential.status === "revoked" ||
+                            revokingCredentialId === credential._id
+                          }
+                          hitSlop={12}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Revoke ${credential.label}`}
+                          style={({ pressed }) => [
+                            styles.copyChip,
+                            pressed && { opacity: 0.6 },
+                            (credential.status === "revoked" ||
+                              revokingCredentialId === credential._id) &&
+                              styles.softButtonDisabled,
+                          ]}
+                        >
+                          <Text style={styles.copyChipText}>
+                            {credential.status === "revoked"
+                              ? "Revoked"
+                              : revokingCredentialId === credential._id
+                                ? "Revoking…"
+                                : "Revoke"}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    ))}
+                  </View>
+                )}
               </View>
             </View>
           ) : null}
@@ -1543,6 +1758,16 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.6,
   },
+  textInput: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+    backgroundColor: colors.bgInput,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
   segmented: {
     flexDirection: "row",
     backgroundColor: colors.bgCard,
@@ -1733,6 +1958,25 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
     lineHeight: 16,
+  },
+  tokenBlock: {
+    backgroundColor: colors.accentDim,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderFocus,
+    padding: spacing.sm,
+    gap: spacing.xs,
+  },
+  credentialList: {
+    gap: spacing.xs,
+  },
+  credentialRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
   },
   softButton: {
     alignSelf: "flex-start",
