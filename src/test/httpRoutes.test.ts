@@ -36,6 +36,8 @@ vi.mock("../../convex/_generated/api", () => ({
   internal: {
     automationTools: {
       listTasks: "automationTools.listTasks",
+      listGoals: "automationTools.listGoals",
+      listGoalLinks: "automationTools.listGoalLinks",
       addTask: "automationTools.addTask",
       moveTask: "automationTools.moveTask",
       completeTask: "automationTools.completeTask",
@@ -198,6 +200,57 @@ describe("http route handlers", () => {
       status: "scheduled",
     });
     expect(response.status).toBe(200);
+  });
+
+  it("accepts bearer automation credential for goal reads", async () => {
+    const handler = getHandler("/goals", "GET");
+    const ctx = createCtx();
+    ctx.runMutation.mockResolvedValue({
+      label: "Laptop",
+      ownerTokenIdentifier: "user-1",
+      scopes: ["tasks:read"],
+    });
+    ctx.runQuery.mockResolvedValue([{ id: "goal_1", text: "Planning" }]);
+
+    const response = await handler(
+      ctx,
+      new Request("https://example.com/goals", {
+        headers: { authorization: "Bearer pravah_cred_demo" },
+      })
+    );
+
+    expect(ctx.runMutation).toHaveBeenCalledWith(api.automation.markCredentialUsed, {
+      credentialSecret: "pravah_cred_demo",
+    });
+    expect(ctx.runQuery).toHaveBeenCalledWith(internal.automationTools.listGoals, {
+      ownerTokenIdentifier: "user-1",
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual([{ id: "goal_1", text: "Planning" }]);
+  });
+
+  it("accepts bearer automation credential for goal link reads", async () => {
+    const handler = getHandler("/goal-links", "GET");
+    const ctx = createCtx();
+    ctx.runMutation.mockResolvedValue({
+      label: "Laptop",
+      ownerTokenIdentifier: "user-1",
+      scopes: ["tasks:read"],
+    });
+    ctx.runQuery.mockResolvedValue({ task_1: "goal_1" });
+
+    const response = await handler(
+      ctx,
+      new Request("https://example.com/goal-links", {
+        headers: { authorization: "Bearer pravah_cred_demo" },
+      })
+    );
+
+    expect(ctx.runQuery).toHaveBeenCalledWith(internal.automationTools.listGoalLinks, {
+      ownerTokenIdentifier: "user-1",
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ task_1: "goal_1" });
   });
 
   it("rejects bearer credential missing required write scope", async () => {

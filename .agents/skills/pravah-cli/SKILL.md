@@ -21,6 +21,7 @@ If `pravah` is not installed and the current checkout is Pravah, use `bun run pr
 
 ```bash
 pravah tasks list --json
+pravah goals list --json
 pravah tasks inbox --json
 pravah tasks timeline --end-date YYYY-MM-DD --json
 pravah review list --status pending --limit 25 --json
@@ -32,6 +33,7 @@ pravah agent task --task-id <id> --json
 Required scopes:
 
 - Task reads: `tasks:read`.
+- Goal reads: `tasks:read`.
 - `agent context`: `tasks:read`, `review:read`, and `sync:read`.
 - `agent task`: `tasks:read`.
 - Review queue reads: `review:read`.

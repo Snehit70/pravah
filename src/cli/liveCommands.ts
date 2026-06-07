@@ -18,6 +18,15 @@ interface LiveTaskSummary {
   deadline?: string;
 }
 
+interface LiveGoalSummary {
+  id: string;
+  text: string;
+  description?: string;
+  deadline?: string;
+  priority?: "p1" | "p2" | "p3";
+  createdAt?: number;
+}
+
 function toLiveTaskSummary(value: unknown): LiveTaskSummary | null {
   if (!value || typeof value !== "object") {
     return null;
@@ -46,10 +55,49 @@ function toLiveTaskSummary(value: unknown): LiveTaskSummary | null {
   };
 }
 
+function toLiveGoalSummary(value: unknown): LiveGoalSummary | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const goal = value as Record<string, unknown>;
+  if (typeof goal.id !== "string" || typeof goal.text !== "string") {
+    return null;
+  }
+  const priority =
+    goal.priority === "p1" || goal.priority === "p2" || goal.priority === "p3"
+      ? goal.priority
+      : undefined;
+  return {
+    id: goal.id,
+    text: goal.text,
+    description: typeof goal.description === "string" ? goal.description : undefined,
+    deadline: typeof goal.deadline === "string" ? goal.deadline : undefined,
+    priority,
+    createdAt: typeof goal.createdAt === "number" ? goal.createdAt : undefined,
+  };
+}
+
 function normalizeLiveTaskArray(value: unknown) {
   return Array.isArray(value)
     ? value.map(toLiveTaskSummary).filter((task) => task !== null)
     : [];
+}
+
+function normalizeLiveGoalArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.map(toLiveGoalSummary).filter((goal) => goal !== null)
+    : [];
+}
+
+function normalizeGoalLinks(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string"
+    )
+  );
 }
 
 function readReplayStatus(value: unknown) {
@@ -114,6 +162,13 @@ export async function executeLiveCommand(
     }
     case "tasks inbox":
       return { tasks: await client.getInbox(), source: "live" };
+    case "goals list":
+      requireScopes(client, ["tasks:read"]);
+      return {
+        goals: await client.listGoals(),
+        links: await client.listGoalLinks(),
+        source: "live",
+      };
     case "tasks timeline": {
       const endDate = requireOption(args, "end-date", command);
       return {
@@ -141,6 +196,8 @@ export async function executeLiveCommand(
         "sync:read",
       ]);
       const tasks = normalizeLiveTaskArray(await client.listTasks({}));
+      const goals = normalizeLiveGoalArray(await client.listGoals());
+      const goalLinks = normalizeGoalLinks(await client.listGoalLinks());
       const reviewItemsRaw = await client.getReviewQueue("pending", 25);
       const reviewItems = Array.isArray(reviewItemsRaw) ? reviewItemsRaw : [];
       const syncStatus = await client.getSyncStatus("google_calendar");
@@ -158,6 +215,10 @@ export async function executeLiveCommand(
           })),
         inboxSummary: {
           count: tasks.filter((task) => task.status === "inbox").length,
+        },
+        goals,
+        goalLinksSummary: {
+          count: Object.keys(goalLinks).length,
         },
         overdueSummary: {
           count: tasks.filter(
@@ -191,9 +252,16 @@ export async function executeLiveCommand(
       if (!task) {
         throw new Error(`Task not found: ${taskId}`);
       }
+      const [goals, goalLinks] = await Promise.all([
+        client.listGoals().then(normalizeLiveGoalArray),
+        client.listGoalLinks().then(normalizeGoalLinks),
+      ]);
+      const linkedGoalId = goalLinks[task.id];
       return {
         task,
-        goal: null,
+        goal: linkedGoalId
+          ? goals.find((goal) => goal.id === linkedGoalId) ?? null
+          : null,
         neighbors: tasks
           .filter(
             (entry) =>

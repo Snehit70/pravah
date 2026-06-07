@@ -126,6 +126,40 @@ http.route({
   }),
 });
 
+// GET /goals - List long-term goals for the authenticated owner
+http.route({
+  path: "/goals",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const authCheck = await requireTaskReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
+
+    const goals = await ctx.runQuery(internal.automationTools.listGoals, {
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
+    });
+
+    return jsonResponse(goals);
+  }),
+});
+
+// GET /goal-links - List task-to-goal links for the authenticated owner
+http.route({
+  path: "/goal-links",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const authCheck = await requireTaskReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
+
+    const links = await ctx.runQuery(internal.automationTools.listGoalLinks, {
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
+    });
+
+    return jsonResponse(links);
+  }),
+});
+
 // POST /tasks - Add a task
 http.route({
   path: "/tasks",

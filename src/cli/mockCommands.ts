@@ -5,7 +5,14 @@ import {
   readTaskListFilters,
   requireOption,
 } from "./commandUtils";
-import { mockCredential, mockReviewQueue, mockSyncStatus, mockTasks } from "./mockData";
+import {
+  mockCredential,
+  mockGoalLinks,
+  mockGoals,
+  mockReviewQueue,
+  mockSyncStatus,
+  mockTasks,
+} from "./mockData";
 import type { MockTask, ParsedArgs } from "./types";
 
 function findTask(taskId: string): MockTask {
@@ -42,6 +49,12 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
     case "tasks inbox":
       return {
         tasks: mockTasks.filter((task) => task.status === "inbox"),
+        source: "mock",
+      };
+    case "goals list":
+      return {
+        goals: mockGoals,
+        links: mockGoalLinks,
         source: "mock",
       };
     case "tasks timeline": {
@@ -117,6 +130,10 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
         inboxSummary: {
           count: mockTasks.filter((task) => task.status === "inbox").length,
         },
+        goals: mockGoals,
+        goalLinksSummary: {
+          count: Object.keys(mockGoalLinks).length,
+        },
         overdueSummary: {
           count: mockTasks.filter(
             (task) => task.deadline && task.deadline < "2026-06-04"
@@ -143,9 +160,10 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
       };
     case "agent task": {
       const task = findTask(requireOption(args, "task-id", command));
+      const goalId = task.goal?.id;
       return {
         task,
-        goal: task.goal ?? null,
+        goal: goalId ? mockGoals.find((goal) => goal.id === goalId) ?? null : null,
         neighbors: task.scheduledDate
           ? mockTasks
               .filter(

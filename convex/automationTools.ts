@@ -34,6 +34,43 @@ export const listTasks = internalQuery({
     listTasksForOwner(ctx, ownerTokenIdentifier, args),
 });
 
+export const listGoals = internalQuery({
+  args: {
+    ownerTokenIdentifier: v.string(),
+  },
+  handler: async (ctx, { ownerTokenIdentifier }) => {
+    const rows = await ctx.db
+      .query("goals")
+      .withIndex("by_owner", (q) => q.eq("ownerTokenIdentifier", ownerTokenIdentifier))
+      .collect();
+
+    return rows
+      .sort((left, right) => right.createdAt - left.createdAt)
+      .map((goal) => ({
+        id: goal.clientId,
+        text: goal.text,
+        description: goal.description,
+        deadline: goal.deadline,
+        priority: goal.priority,
+        createdAt: goal.createdAt,
+      }));
+  },
+});
+
+export const listGoalLinks = internalQuery({
+  args: {
+    ownerTokenIdentifier: v.string(),
+  },
+  handler: async (ctx, { ownerTokenIdentifier }) => {
+    const links = await ctx.db
+      .query("goalLinks")
+      .withIndex("by_owner", (q) => q.eq("ownerTokenIdentifier", ownerTokenIdentifier))
+      .collect();
+
+    return Object.fromEntries(links.map((link) => [link.taskId, link.goalClientId]));
+  },
+});
+
 export const getTimeline = internalQuery({
   args: {
     ownerTokenIdentifier: v.string(),

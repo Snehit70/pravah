@@ -1,4 +1,4 @@
-import type { CredentialSummary, MockTask } from "./types";
+import type { CredentialSummary, MockGoal, MockTask } from "./types";
 
 export const mockCredential: CredentialSummary = {
   userId: "user_01",
@@ -32,6 +32,27 @@ export const mockTasks: MockTask[] = [
     goal: { id: "goal_2", title: "Automation" },
   },
 ];
+
+export const mockGoals: MockGoal[] = [
+  {
+    id: "goal_1",
+    text: "Planning",
+    description: "Keep planning loops tight and visible.",
+    priority: "p1",
+    createdAt: 1780000000000,
+  },
+  {
+    id: "goal_2",
+    text: "Automation",
+    description: "Make Pravah useful to local agents.",
+    priority: "p1",
+    createdAt: 1780000100000,
+  },
+];
+
+export const mockGoalLinks = Object.fromEntries(
+  mockTasks.flatMap((task) => (task.goal ? [[task.id, task.goal.id]] : []))
+);
 
 export const mockReviewQueue = [
   { id: "review_1", title: "Reply to recruiter", status: "pending", source: "gmail" },

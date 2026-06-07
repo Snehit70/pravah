@@ -27,6 +27,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionKind>> = {
   },
   "auth whoami": {},
   "auth list-scopes": {},
+  "goals list": {},
   "tasks list": { status: "value", date: "value" },
   "tasks inbox": {},
   "tasks timeline": { "end-date": "value" },

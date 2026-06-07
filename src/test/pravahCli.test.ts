@@ -74,6 +74,25 @@ describe("pravah CLI", () => {
     expect(result.stderr).toBe("");
   });
 
+  it("returns goals through the mock CLI surface", () => {
+    const result = runCli(["goals", "list", "--json"]);
+
+    expect(result.status).toBe(0);
+    const payload = JSON.parse(result.stdout);
+    expect(payload).toMatchObject({
+      ok: true,
+      version: "v1",
+      command: "goals list",
+    });
+    expect(payload.data.goals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "goal_1", text: "Planning" }),
+      ])
+    );
+    expect(payload.data.links).toMatchObject({ task_1: "goal_1" });
+  });
+
+
   it("fails clearly instead of silently using mock data without auth", () => {
     const result = runCli(["tasks", "list", "--json"], {
       PRAVAH_CLI_MOCK: "0",

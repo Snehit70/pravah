@@ -51,3 +51,12 @@ export interface MockTask {
     title: string;
   };
 }
+
+export interface MockGoal {
+  id: string;
+  text: string;
+  description?: string;
+  deadline?: string;
+  priority?: "p1" | "p2" | "p3";
+  createdAt: number;
+}

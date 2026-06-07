@@ -82,6 +82,44 @@ describe("pravah live commands", () => {
     );
   });
 
+  it("uses live reads for goals list when env is configured", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/goals")) {
+        return {
+          ok: true,
+          json: async () => [{ id: "goal_1", text: "Planning", priority: "p1" }],
+        } as Response;
+      }
+      if (url.endsWith("/goal-links")) {
+        return {
+          ok: true,
+          json: async () => ({ live_1: "goal_1" }),
+        } as Response;
+      }
+      throw new Error(`Unexpected url: ${url}`);
+    });
+
+    const result = await executeCommand(
+      { command: "goals list", json: true },
+      makeArgs(["goals", "list"])
+    );
+
+    expect(result).toMatchObject({
+      goals: [{ id: "goal_1", text: "Planning", priority: "p1" }],
+      links: { live_1: "goal_1" },
+      source: "live",
+    });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://pravah.example.com/goals",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer pravah_cred_demo",
+        }),
+      })
+    );
+  });
+
   it("builds live agent context from primitive read routes", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
@@ -109,6 +147,18 @@ describe("pravah live commands", () => {
           json: async () => [{ _id: "review_1", title: "Review me", status: "pending" }],
         } as Response;
       }
+      if (url.endsWith("/goals")) {
+        return {
+          ok: true,
+          json: async () => [{ id: "goal_1", text: "Planning" }],
+        } as Response;
+      }
+      if (url.endsWith("/goal-links")) {
+        return {
+          ok: true,
+          json: async () => ({ live_1: "goal_1" }),
+        } as Response;
+      }
       if (url.includes("/sync/status")) {
         return {
           ok: true,
@@ -130,8 +180,12 @@ describe("pravah live commands", () => {
     expect(result).toMatchObject({
       source: "live",
       inboxSummary: { count: 1 },
+      goalLinksSummary: { count: 1 },
       reviewQueueSummary: { count: 1 },
     });
+    expect((result as { goals: Array<{ id: string; text: string }> }).goals).toEqual([
+      { id: "goal_1", text: "Planning" },
+    ]);
     expect(
       (result as { scheduled: Array<{ id: string; title: string }> }).scheduled[0]
     ).toMatchObject({
@@ -157,6 +211,49 @@ describe("pravah live commands", () => {
       )
     ).rejects.toThrow("review:read, sync:read");
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("resolves linked goals for live agent task detail", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/tasks")) {
+        return {
+          ok: true,
+          json: async () => [
+            {
+              _id: "live_1",
+              title: "Live scheduled",
+              status: "scheduled",
+              scheduledDate: "2026-06-05",
+            },
+          ],
+        } as Response;
+      }
+      if (url.endsWith("/goals")) {
+        return {
+          ok: true,
+          json: async () => [{ id: "goal_1", text: "Planning" }],
+        } as Response;
+      }
+      if (url.endsWith("/goal-links")) {
+        return {
+          ok: true,
+          json: async () => ({ live_1: "goal_1" }),
+        } as Response;
+      }
+      throw new Error(`Unexpected url: ${url}`);
+    });
+
+    const result = await executeCommand(
+      { command: "agent task", json: true },
+      makeArgs(["agent", "task"], { "task-id": "live_1" })
+    );
+
+    expect(result).toMatchObject({
+      task: { id: "live_1", title: "Live scheduled" },
+      goal: { id: "goal_1", text: "Planning" },
+      source: "live",
+    });
   });
 
   it("uses live writes for allowed task mutations with stored credential", async () => {

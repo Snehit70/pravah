@@ -16,6 +16,8 @@ export interface LiveCliClient {
   credentialLabel: string;
   scopes: string[];
   listTasks(filters: { status?: string; date?: string }): Promise<unknown>;
+  listGoals(): Promise<unknown>;
+  listGoalLinks(): Promise<unknown>;
   getInbox(): Promise<unknown>;
   getTimeline(endDate: string): Promise<unknown>;
   getReviewQueue(status?: string, limit?: number): Promise<unknown>;
@@ -119,6 +121,12 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
       if (filters.date) query.set("date", filters.date);
       const qs = query.toString();
       return get(`/tasks${qs ? `?${qs}` : ""}`);
+    },
+    listGoals() {
+      return get("/goals");
+    },
+    listGoalLinks() {
+      return get("/goal-links");
     },
     getInbox() {
       return get("/inbox");
