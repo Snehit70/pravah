@@ -31,6 +31,12 @@ export interface LiveCliClient {
   completeTask(input: { taskId: string }, idempotencyKey: string): Promise<unknown>;
   reopenTask(input: { taskId: string }, idempotencyKey: string): Promise<unknown>;
   unscheduleTask(input: { taskId: string }, idempotencyKey: string): Promise<unknown>;
+  updateGoal(input: {
+    goalId: string;
+    description?: string;
+    deadline?: string | null;
+    priority?: "p1" | "p2" | "p3" | null;
+  }, idempotencyKey: string): Promise<unknown>;
 }
 
 export interface CliAuthClient {
@@ -164,6 +170,14 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
     },
     unscheduleTask(input, idempotencyKey) {
       return post("/tasks/unschedule", input, idempotencyKey);
+    },
+    updateGoal(input, idempotencyKey) {
+      return post("/goals/update", {
+        goalId: input.goalId,
+        description: input.description,
+        deadline: input.deadline ?? undefined,
+        priority: input.priority ?? undefined,
+      }, idempotencyKey);
     },
   };
 }

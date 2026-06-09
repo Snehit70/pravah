@@ -15,6 +15,7 @@ Examples:
   pravah auth import --bootstrap-token pravah_bootstrap_xxx --json
   pravah auth whoami --json
   pravah goals list --json
+  pravah goals update --goal-id <id> --description "My goal description" --json
   pravah tasks list --status scheduled --json
   pravah tasks add --title "Draft CLI contract" --scheduled-date 2026-06-05 --dry-run --json
   pravah agent context --json

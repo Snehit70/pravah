@@ -28,6 +28,13 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionKind>> = {
   "auth whoami": {},
   "auth list-scopes": {},
   "goals list": {},
+  "goals update": {
+    "goal-id": "value",
+    description: "value",
+    deadline: "value",
+    priority: "value",
+    ...WRITE_OPTIONS,
+  },
   "tasks list": { status: "value", date: "value" },
   "tasks inbox": {},
   "tasks timeline": { "end-date": "value" },
@@ -133,6 +140,16 @@ export function executeDryRun(command: string, args: ParsedArgs) {
 
   const metadata = getWriteMetadata(args);
   switch (command) {
+    case "goals update":
+      return {
+        action: "goals.update",
+        goal: { id: requireOption(args, "goal-id", command) },
+        description: readOption(args.options, "description"),
+        deadline: readOption(args.options, "deadline"),
+        priority: readOption(args.options, "priority"),
+        ...metadata,
+        source: "dry-run",
+      };
     case "tasks add":
       return {
         action: "tasks.add",

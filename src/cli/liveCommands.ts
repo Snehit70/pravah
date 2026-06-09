@@ -279,6 +279,36 @@ export async function executeLiveCommand(
         source: "live",
       };
     }
+    case "goals update": {
+      requireScopes(client, ["tasks:write"]);
+      const goalId = requireOption(args, "goal-id", command);
+      const description = readOption(args.options, "description");
+      const deadline = readOption(args.options, "deadline");
+      const priority = readOption(args.options, "priority") as "p1" | "p2" | "p3" | undefined;
+      if (priority && !["p1", "p2", "p3"].includes(priority)) {
+        throw new Error("--priority must be one of: p1, p2, p3");
+      }
+      const metadata = getWriteMetadata(args);
+      const result = await executeLiveWrite(
+        "goals.update",
+        metadata.idempotencyKey,
+        () =>
+          client.updateGoal(
+            { goalId, description, deadline, priority },
+            metadata.idempotencyKey
+          )
+      );
+      return {
+        action: "goals.update",
+        goal: { id: goalId },
+        description,
+        deadline,
+        priority,
+        ...metadata,
+        result,
+        source: "live",
+      };
+    }
     case "tasks add": {
       const title = requireOption(args, "title", command);
       const scheduledDate = readOption(args.options, "scheduled-date");
