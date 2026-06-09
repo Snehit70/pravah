@@ -1,4 +1,4 @@
-export type JsonValue =
+type JsonValue =
   | string
   | number
   | boolean
@@ -8,27 +8,14 @@ export type JsonValue =
 
 export type ToolArguments = Record<string, JsonValue>;
 
-export function toToolArguments(value: unknown): ToolArguments {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-  return value as ToolArguments;
-}
-
-export function readStringArg(
-  args: ToolArguments,
-  key: string
-): string | undefined {
-  const value = args[key];
-  return typeof value === "string" ? value : undefined;
-}
-
 interface CallConvexApiOptions {
   convexUrl: string | undefined;
   endpoint: string;
   method: string;
   body?: ToolArguments;
   apiKey?: string;
+  bearerToken?: string;
+  idempotencyKey?: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -38,6 +25,8 @@ export async function callConvexApi({
   method,
   body,
   apiKey,
+  bearerToken,
+  idempotencyKey,
   fetchImpl = fetch,
 }: CallConvexApiOptions) {
   if (!convexUrl) {
@@ -47,6 +36,12 @@ export async function callConvexApi({
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (apiKey) {
     headers["x-api-key"] = apiKey;
+  }
+  if (bearerToken) {
+    headers.Authorization = `Bearer ${bearerToken}`;
+  }
+  if (idempotencyKey) {
+    headers["Idempotency-Key"] = idempotencyKey;
   }
 
   const response = await fetchImpl(`${convexUrl}${endpoint}`, {

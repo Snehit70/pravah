@@ -1,9 +1,10 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { authComponent, createAuth } from "./auth";
 import { getAllowedWebOrigins } from "./origins";
 import {
+  automationBootstrapExchangeSchema,
   bulkRescheduleSchema,
   completeTaskSchema,
   createTaskSchema,
@@ -14,30 +15,33 @@ import {
   moveTaskSchema,
   reorderTaskSchema,
   reopenTaskSchema,
-  requireApiKeyAuth,
   reviewApproveSchema,
   reviewQueueListSchema,
   reviewRejectSchema,
   syncStatusSchema,
+  taskListSchema,
   unscheduleTaskSchema,
+  updateGoalSchema,
   updateTaskSchema,
 } from "./httpContracts";
+import {
+  requireIdempotencyKey,
+  requireLegacyAuth,
+  requireReviewReadAuth,
+  requireSyncReadAuth,
+  requireTaskReadAuth,
+  requireTaskWriteAuth,
+} from "./automationHttpAuth";
+import {
+  jsonResponse,
+  parseJsonBody,
+  runWithBadRequest,
+  validationError,
+} from "./httpResponses";
 
 const http = httpRouter();
 
 authComponent.registerRoutes(http, createAuth, { cors: true });
-
-function requireAuth(request: Request): Response | null {
-  const env = (
-    globalThis as typeof globalThis & {
-      process?: { env?: Record<string, string | undefined> };
-    }
-  ).process?.env;
-  return requireApiKeyAuth({
-    request,
-    envKey: env?.CONVEX_HTTP_API_KEY,
-  });
-}
 
 function getGoogleCorsHeaders(request: Request): HeadersInit {
   const origin = request.headers.get("origin");
@@ -64,30 +68,131 @@ function googleJsonResponse(request: Request, payload: unknown, status = 200): R
   });
 }
 
+// POST /automation/bootstrap/exchange - Exchange one-time bootstrap token for CLI credential
+http.route({
+  path: "/automation/bootstrap/exchange",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const body = await parseJsonBody(request);
+    if (body.response) return body.response;
+    const validation = automationBootstrapExchangeSchema.safeParse(body.data);
+    if (!validation.success) {
+      return validationError(validation.error.issues);
+    }
+
+    const exchange = await runWithBadRequest(
+      () =>
+        ctx.runMutation(api.automation.exchangeBootstrapToken, {
+          bootstrapToken: validation.data.bootstrapToken,
+        }),
+      "Failed to exchange bootstrap token"
+    );
+    if (exchange.response) return exchange.response;
+    const url = new URL(request.url);
+    return jsonResponse({
+      credential: {
+        ...exchange.data.credential,
+        siteUrl: url.origin,
+      },
+    });
+  }),
+});
+
 // GET /tasks - List all tasks
 http.route({
   path: "/tasks",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const authCheck = await requireTaskReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
 
     const url = new URL(request.url);
-    const date = url.searchParams.get("date") || undefined;
-    const rawStatus = url.searchParams.get("status") || undefined;
-    const status =
-      rawStatus === "inbox" ||
-      rawStatus === "scheduled" ||
-      rawStatus === "completed" ||
-      rawStatus === "cancelled"
-        ? rawStatus
-        : undefined;
+    const validation = taskListSchema.safeParse({
+      date: url.searchParams.get("date") || undefined,
+      status: url.searchParams.get("status") || undefined,
+    });
+    if (!validation.success) {
+      return validationError(validation.error.issues);
+    }
 
-    const tasks = await ctx.runQuery(api.tasks.listTasks, { date, status });
+    const tasks = await ctx.runQuery(internal.automationTools.listTasks, {
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
+      ...validation.data,
+    });
     
     return new Response(JSON.stringify(tasks), {
       headers: { "Content-Type": "application/json" },
     });
+  }),
+});
+
+// GET /goals - List long-term goals for the authenticated owner
+http.route({
+  path: "/goals",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const authCheck = await requireTaskReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
+
+    const goals = await ctx.runQuery(internal.automationTools.listGoals, {
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
+    });
+
+    return jsonResponse(goals);
+  }),
+});
+
+// GET /goal-links - List task-to-goal links for the authenticated owner
+http.route({
+  path: "/goal-links",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const authCheck = await requireTaskReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
+
+    const links = await ctx.runQuery(internal.automationTools.listGoalLinks, {
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
+    });
+
+    return jsonResponse(links);
+  }),
+});
+
+// POST /goals/update - Update an existing goal's description, deadline, or priority
+http.route({
+  path: "/goals/update",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const authCheck = await requireTaskWriteAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
+
+    const body = await parseJsonBody(request);
+    if (body.response) return body.response;
+
+    const validation = updateGoalSchema.safeParse(body.data);
+    if (!validation.success) {
+      return validationError(validation.error.issues);
+    }
+
+    const { goalId, description, deadline, priority } = validation.data;
+
+    const result = await ctx.runMutation(internal.automationTools.updateGoal, {
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
+      goalClientId: goalId,
+      description,
+      deadline,
+      priority,
+    });
+
+    if (!result.updated) {
+      return jsonResponse({ error: "Goal not found", goalId }, 404);
+    }
+
+    return jsonResponse({ updated: true, goalId });
   }),
 });
 
@@ -96,38 +201,45 @@ http.route({
   path: "/tasks",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const authCheck = await requireTaskWriteAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
+    const idempotency = requireIdempotencyKey(request, auth);
+    if (idempotency.response) return idempotency.response;
 
-    const body = await request.json();
+    const body = await parseJsonBody(request);
+    if (body.response) return body.response;
 
     // Validate request body
-    const validation = createTaskSchema.safeParse(body);
+    const validation = createTaskSchema.safeParse(body.data);
     if (!validation.success) {
-      return new Response(JSON.stringify({
-        error: "Validation failed",
-        details: validation.error.issues
-      }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return validationError(validation.error.issues);
     }
 
     const data = validation.data;
 
-    const taskId = await ctx.runMutation(api.tasks.addTask, {
-      title: data.title,
-      description: data.description,
-      type: data.type,
-      scheduledDate: data.scheduledDate,
-      deadline: data.deadline,
-      source: data.source,
-      estimatedMinutes: data.estimatedMinutes,
-      tags: data.tags,
-    });
+    const mutation = await runWithBadRequest(
+      () =>
+        ctx.runMutation(internal.automationTools.addTask, {
+          ownerTokenIdentifier: auth.ownerTokenIdentifier,
+          idempotencyKey: idempotency.key,
+          title: data.title,
+          description: data.description,
+          type: data.type,
+          scheduledDate: data.scheduledDate,
+          deadline: data.deadline,
+          source: data.source,
+          estimatedMinutes: data.estimatedMinutes,
+          tags: data.tags,
+          priority: data.priority,
+        }),
+      "Failed to add task"
+    );
+    if (mutation.response) return mutation.response;
 
-    return new Response(JSON.stringify({ taskId }), {
-      headers: { "Content-Type": "application/json" },
+    return jsonResponse({
+      taskId: mutation.data.result,
+      replayed: mutation.data.replayed,
     });
   }),
 });
@@ -137,40 +249,37 @@ http.route({
   path: "/tasks/move",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const authCheck = await requireTaskWriteAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
+    const idempotency = requireIdempotencyKey(request, auth);
+    if (idempotency.response) return idempotency.response;
 
-    const body = await request.json();
-    const validation = moveTaskSchema.safeParse(body);
+    const body = await parseJsonBody(request);
+    if (body.response) return body.response;
+    const validation = moveTaskSchema.safeParse(body.data);
     if (!validation.success) {
-      return new Response(JSON.stringify({
-        error: "Validation failed",
-        details: validation.error.issues
-      }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return validationError(validation.error.issues);
     }
 
     const { taskId, targetDate, position } = validation.data;
 
-    try {
-      await ctx.runMutation(api.tasks.moveTask, {
-        taskId,
-        targetDate,
-        position,
-      });
-      
-      return new Response(JSON.stringify({ success: true }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Failed to move task";
-      return new Response(JSON.stringify({ error: message }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    const mutation = await runWithBadRequest(
+      () =>
+        ctx.runMutation(internal.automationTools.moveTask, {
+          ownerTokenIdentifier: auth.ownerTokenIdentifier,
+          idempotencyKey: idempotency.key,
+          taskId,
+          targetDate,
+          position,
+        }),
+      "Failed to move task"
+    );
+    if (mutation.response) return mutation.response;
+    return jsonResponse({
+      ...mutation.data.result,
+      replayed: mutation.data.replayed,
+    });
   }),
 });
 
@@ -179,7 +288,7 @@ http.route({
   path: "/tasks/reorder",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
+    const authError = requireLegacyAuth(request);
     if (authError) return authError;
 
     const body = await request.json();
@@ -209,27 +318,35 @@ http.route({
   path: "/tasks/complete",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const authCheck = await requireTaskWriteAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
+    const idempotency = requireIdempotencyKey(request, auth);
+    if (idempotency.response) return idempotency.response;
 
-    const body = await request.json();
-    const validation = completeTaskSchema.safeParse(body);
+    const body = await parseJsonBody(request);
+    if (body.response) return body.response;
+    const validation = completeTaskSchema.safeParse(body.data);
     if (!validation.success) {
-      return new Response(JSON.stringify({
-        error: "Validation failed",
-        details: validation.error.issues
-      }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return validationError(validation.error.issues);
     }
 
     const { taskId } = validation.data;
 
-    await ctx.runMutation(api.tasks.completeTask, { taskId });
+    const mutation = await runWithBadRequest(
+      () =>
+        ctx.runMutation(internal.automationTools.completeTask, {
+          ownerTokenIdentifier: auth.ownerTokenIdentifier,
+          idempotencyKey: idempotency.key,
+          taskId,
+        }),
+      "Failed to complete task"
+    );
+    if (mutation.response) return mutation.response;
     
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" },
+    return jsonResponse({
+      ...mutation.data.result,
+      replayed: mutation.data.replayed,
     });
   }),
 });
@@ -239,7 +356,7 @@ http.route({
   path: "/tasks/update",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
+    const authError = requireLegacyAuth(request);
     if (authError) return authError;
 
     const body = await request.json();
@@ -271,24 +388,32 @@ http.route({
   path: "/tasks/reopen",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const authCheck = await requireTaskWriteAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
+    const idempotency = requireIdempotencyKey(request, auth);
+    if (idempotency.response) return idempotency.response;
 
-    const body = await request.json();
-    const validation = reopenTaskSchema.safeParse(body);
+    const body = await parseJsonBody(request);
+    if (body.response) return body.response;
+    const validation = reopenTaskSchema.safeParse(body.data);
     if (!validation.success) {
-      return new Response(JSON.stringify({
-        error: "Validation failed",
-        details: validation.error.issues
-      }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return validationError(validation.error.issues);
     }
 
-    await ctx.runMutation(api.tasks.reopenTask, validation.data);
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" },
+    const mutation = await runWithBadRequest(
+      () =>
+        ctx.runMutation(internal.automationTools.reopenTask, {
+          ownerTokenIdentifier: auth.ownerTokenIdentifier,
+          idempotencyKey: idempotency.key,
+          ...validation.data,
+        }),
+      "Failed to reopen task"
+    );
+    if (mutation.response) return mutation.response;
+    return jsonResponse({
+      ...mutation.data.result,
+      replayed: mutation.data.replayed,
     });
   }),
 });
@@ -298,24 +423,32 @@ http.route({
   path: "/tasks/unschedule",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const authCheck = await requireTaskWriteAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
+    const idempotency = requireIdempotencyKey(request, auth);
+    if (idempotency.response) return idempotency.response;
 
-    const body = await request.json();
-    const validation = unscheduleTaskSchema.safeParse(body);
+    const body = await parseJsonBody(request);
+    if (body.response) return body.response;
+    const validation = unscheduleTaskSchema.safeParse(body.data);
     if (!validation.success) {
-      return new Response(JSON.stringify({
-        error: "Validation failed",
-        details: validation.error.issues
-      }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return validationError(validation.error.issues);
     }
 
-    await ctx.runMutation(api.tasks.unscheduleTask, validation.data);
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" },
+    const mutation = await runWithBadRequest(
+      () =>
+        ctx.runMutation(internal.automationTools.unscheduleTask, {
+          ownerTokenIdentifier: auth.ownerTokenIdentifier,
+          idempotencyKey: idempotency.key,
+          ...validation.data,
+        }),
+      "Failed to unschedule task"
+    );
+    if (mutation.response) return mutation.response;
+    return jsonResponse({
+      ...mutation.data.result,
+      replayed: mutation.data.replayed,
     });
   }),
 });
@@ -325,7 +458,7 @@ http.route({
   path: "/tasks/bulk-reschedule",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
+    const authError = requireLegacyAuth(request);
     if (authError) return authError;
 
     const body = await request.json();
@@ -352,7 +485,7 @@ http.route({
   path: "/tasks/delete",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
+    const authError = requireLegacyAuth(request);
     if (authError) return authError;
 
     const body = await request.json();
@@ -382,8 +515,9 @@ http.route({
   path: "/timeline",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const authCheck = await requireTaskReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
 
     const url = new URL(request.url);
     const endDate = url.searchParams.get("endDate");
@@ -395,7 +529,10 @@ http.route({
       });
     }
 
-    const timeline = await ctx.runQuery(api.tasks.getTimeline, { endDate });
+    const timeline = await ctx.runQuery(internal.automationTools.getTimeline, {
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
+      endDate,
+    });
     
     return new Response(JSON.stringify(timeline), {
       headers: { "Content-Type": "application/json" },
@@ -408,10 +545,14 @@ http.route({
   path: "/inbox",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const authCheck = await requireTaskReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
 
-    const tasks = await ctx.runQuery(api.tasks.listTasks, { status: "inbox" });
+    const tasks = await ctx.runQuery(internal.automationTools.listTasks, {
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
+      status: "inbox",
+    });
     
     return new Response(JSON.stringify(tasks), {
       headers: { "Content-Type": "application/json" },
@@ -494,8 +635,9 @@ http.route({
   path: "/sync/status",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const authCheck = await requireSyncReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
 
     const url = new URL(request.url);
     const validation = syncStatusSchema.safeParse({
@@ -512,7 +654,10 @@ http.route({
     }
 
     const { provider } = validation.data;
-    const status = await ctx.runQuery(api.sync.getIntegrationStatus, { provider });
+    const status = await ctx.runQuery(internal.automationTools.getIntegrationStatus, {
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
+      provider,
+    });
     return new Response(JSON.stringify(status), {
       headers: { "Content-Type": "application/json" },
     });
@@ -524,7 +669,7 @@ http.route({
   path: "/sync/google-calendar/import",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
+    const authError = requireLegacyAuth(request);
     if (authError) return authError;
 
     const body = await request.json();
@@ -560,8 +705,9 @@ http.route({
   path: "/review-queue",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
-    if (authError) return authError;
+    const authCheck = await requireReviewReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
 
     const url = new URL(request.url);
     const validation = reviewQueueListSchema.safeParse({
@@ -578,7 +724,10 @@ http.route({
       });
     }
 
-    const queue = await ctx.runQuery(api.sync.listReviewQueue, validation.data);
+    const queue = await ctx.runQuery(internal.automationTools.listReviewQueue, {
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
+      ...validation.data,
+    });
     return new Response(JSON.stringify(queue), {
       headers: { "Content-Type": "application/json" },
     });
@@ -590,7 +739,7 @@ http.route({
   path: "/review-queue/approve",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
+    const authError = requireLegacyAuth(request);
     if (authError) return authError;
 
     const body = await request.json();
@@ -617,7 +766,7 @@ http.route({
   path: "/review-queue/reject",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
+    const authError = requireLegacyAuth(request);
     if (authError) return authError;
 
     const body = await request.json();
@@ -644,7 +793,7 @@ http.route({
   path: "/gmail/candidates",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireAuth(request);
+    const authError = requireLegacyAuth(request);
     if (authError) return authError;
 
     const body = await request.json();

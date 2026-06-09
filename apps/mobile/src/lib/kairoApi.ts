@@ -57,10 +57,9 @@ You can read and modify the user's workspace through the provided tools. The sum
 {CONTEXT}
 
 How to work:
-- Use read tools (get_inbox, get_tasks_in_range, get_overdue, search_tasks, get_completed) to gather what you need before acting. Handles like T3 and G1 are stable for this turn — pass them to tools exactly as shown.
-- Use mutation tools (add_task, reschedule_task, complete_task, unschedule_task, update_task, delete_task, add_goal, update_goal, delete_goal, link_task_goal, unlink_task_goal) to act on the user's behalf. Every change applies immediately and the user can undo it, so don't ask for confirmation — just act, then briefly confirm.
-- For overdue backlogs, prefer the reflow tools over moving tasks one at a time. plan_overdue_reflow previews a goal-aware reschedule (it changes nothing); reflow_overdue applies it, re-spreading each goal's whole remaining plan deterministically. By default it moves only already-passed deadlines — pass extendDeadlines:true to also push a goal's deadline to its new projected end, or scope to one goal with goalHandle. Reflow only touches tasks linked to a goal that has a deadline; the preview's "orphans" (no goal or no deadline) you reschedule by hand with reschedule_task or unschedule_task.
-- When you create a task or goal, the tool result returns its new handle. Use that handle to act on it further (e.g. link a just-created task to a goal).
+- Use read tools (get_inbox, get_tasks_in_range, get_overdue, search_tasks, get_completed) to gather what you need before acting. Task handles like T3 are stable for this turn — pass them to tools exactly as shown.
+- Use mutation tools only when the user asked for a concrete change. Pravah shows a command-specific confirmation before every write. If the user declines or a write fails, do not retry it automatically.
+- When you create a task, the tool result returns its new handle. Use that handle if a later read or write needs to reference it.
 - When finished, reply with a short natural-language summary. Never mention tool names or handles to the user — they are internal.
 
 Style:
@@ -171,9 +170,8 @@ function readAssistantText(content: unknown): string {
 
 // ─── Action blocks ────────────────────────────────────────────────────────────
 //
-// Kairo's full task-control surface. Each action mirrors a Convex mutation
-// 1:1; the parser converts <verb-task>{...}</verb-task> XML blobs into this
-// discriminated union, and the executor in `kairoActions.ts` runs them.
+// Kairo's intentionally narrow write surface. Every action is confirmed in the
+// UI before the executor in `kairoActions.ts` can run it.
 
 export type KairoAction =
   | {
@@ -182,161 +180,62 @@ export type KairoAction =
       scheduledDate: string | null;
       type: "open" | "deadline";
     }
-  | { kind: "reflow"; label: string }
   | {
       kind: "reschedule";
       handle: string;
       scheduledDate: string;
-      batchId?: string;
     }
   | { kind: "complete"; handle: string }
-  | { kind: "unschedule"; handle: string }
-  | {
-      kind: "update";
-      handle: string;
-      title?: string;
-      priority?: "p1" | "p2" | "p3";
-      deadline?: string | null;
-    }
-  | { kind: "delete"; handle: string }
-  | {
-      kind: "addGoal";
-      text: string;
-      description?: string;
-      deadline?: string;
-      priority?: "p1" | "p2" | "p3";
-    }
-  | {
-      kind: "updateGoal";
-      handle: string;
-      text?: string;
-      description?: string | null;
-      deadline?: string | null;
-      priority?: "p1" | "p2" | "p3" | null;
-    }
-  | { kind: "deleteGoal"; handle: string }
-  | { kind: "linkTaskGoal"; taskHandle: string; goalHandle: string }
-  | { kind: "unlinkTaskGoal"; taskHandle: string };
+  | { kind: "reopen"; handle: string }
+  | { kind: "unschedule"; handle: string };
 
 type ParsedJson = Record<string, unknown>;
 
-function asString(v: unknown): string | undefined {
-  return typeof v === "string" ? v : undefined;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_TASK_TITLE_LENGTH = 500;
+
+function asNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized || undefined;
 }
 
-function asPriority(v: unknown): "p1" | "p2" | "p3" | undefined {
-  return v === "p1" || v === "p2" || v === "p3" ? v : undefined;
+function asTaskTitle(value: unknown): string | undefined {
+  const title = asNonEmptyString(value);
+  return title && title.length <= MAX_TASK_TITLE_LENGTH ? title : undefined;
+}
+
+function asOptionalDate(value: unknown): string | null | undefined {
+  if (value === undefined || value === null) return null;
+  const date = asNonEmptyString(value);
+  return date && DATE_PATTERN.test(date) ? date : undefined;
 }
 
 export function parseAction(kind: string, parsed: ParsedJson): KairoAction | null {
   switch (kind) {
     case "add": {
-      const title = asString(parsed.title);
-      if (!title) return null;
+      const title = asTaskTitle(parsed.title);
+      const scheduledDate = asOptionalDate(parsed.scheduledDate);
+      if (!title || scheduledDate === undefined) return null;
       return {
         kind: "add",
         title,
-        scheduledDate: typeof parsed.scheduledDate === "string" ? parsed.scheduledDate : null,
+        scheduledDate,
         type: parsed.type === "deadline" ? "deadline" : "open",
       };
     }
     case "reschedule": {
-      const handle = asString(parsed.id ?? parsed.handle);
-      const scheduledDate = asString(parsed.scheduledDate);
+      const handle = asNonEmptyString(parsed.id ?? parsed.handle);
+      const scheduledDate = asOptionalDate(parsed.scheduledDate);
       if (!handle || !scheduledDate) return null;
       return { kind: "reschedule", handle, scheduledDate };
     }
     case "complete":
-    case "unschedule":
-    case "delete": {
-      const handle = asString(parsed.id ?? parsed.handle);
+    case "reopen":
+    case "unschedule": {
+      const handle = asNonEmptyString(parsed.id ?? parsed.handle);
       if (!handle) return null;
       return { kind, handle };
-    }
-    case "update": {
-      const handle = asString(parsed.id ?? parsed.handle);
-      if (!handle) return null;
-      const title = asString(parsed.title);
-      const priority = asPriority(parsed.priority);
-      // deadline:null is meaningful ("clear the deadline"), so distinguish
-      // between absent, explicitly null, and a string value. Any other type
-      // (number, boolean, object) is malformed — treat as absent so a bad
-      // value can't silently clear an existing deadline.
-      const hasDeadline = Object.prototype.hasOwnProperty.call(parsed, "deadline");
-      let deadline: string | null | undefined;
-      if (!hasDeadline) {
-        deadline = undefined;
-      } else if (parsed.deadline === null) {
-        deadline = null;
-      } else if (typeof parsed.deadline === "string") {
-        deadline = parsed.deadline;
-      } else {
-        deadline = undefined;
-      }
-      if (title === undefined && priority === undefined && deadline === undefined) {
-        return null;
-      }
-      return { kind: "update", handle, title, priority, deadline };
-    }
-    case "add-goal": {
-      const text = asString(parsed.text)?.trim();
-      if (!text) return null;
-      const description = typeof parsed.description === "string" ? parsed.description.trim() : undefined;
-      const deadline = typeof parsed.deadline === "string" ? parsed.deadline : undefined;
-      const priority = asPriority(parsed.priority);
-      return { kind: "addGoal", text, description, deadline, priority };
-    }
-    case "update-goal": {
-      const handle = asString(parsed.id ?? parsed.handle);
-      if (!handle) return null;
-      const text = typeof parsed.text === "string" ? parsed.text.trim() : undefined;
-      const hasDescription = Object.prototype.hasOwnProperty.call(parsed, "description");
-      const description = hasDescription
-        ? parsed.description === null
-          ? null
-          : typeof parsed.description === "string"
-            ? parsed.description.trim()
-            : undefined
-        : undefined;
-      const hasDeadline = Object.prototype.hasOwnProperty.call(parsed, "deadline");
-      const deadline = hasDeadline
-        ? parsed.deadline === null
-          ? null
-          : typeof parsed.deadline === "string"
-            ? parsed.deadline
-            : undefined
-        : undefined;
-      const hasPriority = Object.prototype.hasOwnProperty.call(parsed, "priority");
-      const priority = hasPriority
-        ? parsed.priority === null
-          ? null
-          : asPriority(parsed.priority)
-        : undefined;
-      if (
-        text === undefined &&
-        description === undefined &&
-        deadline === undefined &&
-        priority === undefined
-      ) {
-        return null;
-      }
-      return { kind: "updateGoal", handle, text, description, deadline, priority };
-    }
-    case "delete-goal": {
-      const handle = asString(parsed.id ?? parsed.handle);
-      if (!handle) return null;
-      return { kind: "deleteGoal", handle };
-    }
-    case "link-task-goal": {
-      const taskHandle = asString(parsed.taskId ?? parsed.taskHandle);
-      const goalHandle = asString(parsed.goalId ?? parsed.goalHandle);
-      if (!taskHandle || !goalHandle) return null;
-      return { kind: "linkTaskGoal", taskHandle, goalHandle };
-    }
-    case "unlink-task-goal": {
-      const taskHandle = asString(parsed.taskId ?? parsed.taskHandle);
-      if (!taskHandle) return null;
-      return { kind: "unlinkTaskGoal", taskHandle };
     }
     default:
       return null;

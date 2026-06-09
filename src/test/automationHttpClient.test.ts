@@ -1,25 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  callConvexApi,
-  readStringArg,
-  toToolArguments,
-} from "../lib/mcpBridgeUtils";
+import { callConvexApi } from "../lib/automationHttpClient";
 
-describe("mcpBridgeUtils", () => {
-  it("normalizes unknown tool arguments safely", () => {
-    expect(toToolArguments(null)).toEqual({});
-    expect(toToolArguments("text")).toEqual({});
-    expect(toToolArguments([1, 2, 3])).toEqual({});
-    expect(toToolArguments({ a: 1, b: "x" })).toEqual({ a: 1, b: "x" });
-  });
-
-  it("reads string args only when values are strings", () => {
-    const args = { name: "task", count: 3, nested: { ok: true } };
-    expect(readStringArg(args, "name")).toBe("task");
-    expect(readStringArg(args, "count")).toBeUndefined();
-    expect(readStringArg(args, "missing")).toBeUndefined();
-  });
-
+describe("automationHttpClient", () => {
   it("throws when convex url is missing", async () => {
     await expect(
       callConvexApi({
@@ -54,6 +36,33 @@ describe("mcpBridgeUtils", () => {
       body: JSON.stringify({ title: "Task" }),
     });
     expect(response).toEqual({ success: true });
+  });
+
+  it("sends bearer and idempotency headers for automation writes", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, replayed: false }),
+    });
+
+    await callConvexApi({
+      convexUrl: "https://example.convex.site",
+      endpoint: "/tasks/complete",
+      method: "POST",
+      body: { taskId: "task-1" },
+      bearerToken: "pravah_cred_demo",
+      idempotencyKey: "complete-1",
+      fetchImpl,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://example.convex.site/tasks/complete",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": "complete-1",
+        }),
+      })
+    );
   });
 
   it("throws a descriptive error for non-ok responses", async () => {

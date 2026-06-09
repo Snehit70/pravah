@@ -1,138 +1,97 @@
-# API and MCP Reference
+# HTTP API and CLI Reference
 
-Pravah exposes a Convex HTTP API plus an MCP server bridge for agent-driven automation.
-
-## Base URL
-
-Use your deployed Convex site URL:
-
-```text
-https://<your-deployment>.convex.site
-```
+Pravah exposes owner-bound Convex HTTP routes. External agents should use the authenticated `pravah` CLI rather than calling routes directly.
 
 ## Authentication
 
-Most HTTP routes require an API key header:
+Automation credentials use:
 
 ```http
-x-api-key: <CONVEX_HTTP_API_KEY>
+Authorization: Bearer pravah_cred_...
 ```
 
-Route exception:
+Bearer credentials are issued by exchanging a short-lived, one-time bootstrap token:
 
-- `POST /google/token` (used for OAuth token exchange) does not require API key.
+```bash
+pravah auth import --bootstrap-token pravah_bootstrap_... --json
+```
 
-## HTTP Routes
+Settings issues read-only credentials by default. Enable **Allow task writes**
+only for trusted workflows that need the accepted task mutation commands.
 
-### Tasks
+Legacy/admin integrations may use `x-api-key: <CONVEX_HTTP_API_KEY>`. Admin API-key routes require `PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER` for owner-bound operations.
 
-- `GET /tasks` - list tasks, optional query: `date`, `status`
-- `POST /tasks` - create task
-- `POST /tasks/move` - move task to date
-- `POST /tasks/reorder` - reorder tasks within a date
-- `POST /tasks/complete` - mark completed
-- `POST /tasks/reopen` - reopen to inbox
-- `POST /tasks/unschedule` - move scheduled task to inbox
-- `POST /tasks/update` - update task fields
-- `POST /tasks/delete` - delete task
-- `POST /tasks/bulk-reschedule` - move multiple tasks to one date
+Every bearer-authenticated task write requires:
 
-### Timeline and Inbox
+```http
+Idempotency-Key: <unique key, 1-200 characters>
+```
 
-- `GET /timeline?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD`
-- `GET /inbox`
+Exact retries replay the stored response for 30 days. Reusing a retained key for a different operation or payload fails.
 
-### Google OAuth and Sync
+## Automation Routes
 
-- `OPTIONS /google/token`
-- `POST /google/token` - exchange OAuth auth code + PKCE verifier
-- `GET /sync/status?provider=google_calendar|gmail`
-- `POST /sync/google-calendar/import`
+Bearer scopes protect the routes available to the CLI:
 
-### Review Queue
+| Route | Scope |
+|---|---|
+| `GET /tasks`, `GET /inbox`, `GET /timeline` | `tasks:read` |
+| `POST /tasks`, `/tasks/move`, `/tasks/complete`, `/tasks/reopen`, `/tasks/unschedule` | `tasks:write` |
+| `GET /review-queue` | `review:read` |
+| `GET /sync/status` | `sync:read` |
 
-- `GET /review-queue?status=pending|approved|rejected&limit=100`
-- `POST /review-queue/approve`
-- `POST /review-queue/reject`
-- `POST /gmail/candidates`
+High-risk or broad operations remain admin API-key only, including task update/delete/reorder/bulk-reschedule, sync imports, and review-queue decisions.
 
-## Important Request Shapes
+`POST /automation/bootstrap/exchange` accepts a one-time bootstrap token and does not require an existing credential.
 
-### Create task
+## CLI
+
+The CLI always emits a versioned JSON envelope when `--json` is used. Agents should check `ok` and the process exit code before reading `data`.
+
+```bash
+pravah auth whoami --json
+pravah auth list-scopes --json
+pravah tasks list --status scheduled --json
+pravah tasks timeline --end-date 2026-06-10 --json
+pravah agent context --json
+```
+
+Allowed idempotent writes:
+
+```bash
+pravah tasks add --title "Prepare brief" --idempotency-key brief-2026-06-04 --json
+pravah tasks move --task-id <id> --target-date 2026-06-06 --idempotency-key move-<id>-2026-06-06 --json
+pravah tasks complete --task-id <id> --idempotency-key complete-<id> --json
+pravah tasks reopen --task-id <id> --idempotency-key reopen-<id> --json
+pravah tasks unschedule --task-id <id> --idempotency-key unschedule-<id> --json
+```
+
+Use `--dry-run` to validate and preview a write without authentication or a network request.
+
+## Request Shapes
+
+Create task:
 
 ```json
 {
   "title": "Task title",
   "description": "Optional description",
   "type": "open",
-  "scheduledDate": "2026-04-15",
-  "deadline": "2026-04-20",
-  "source": "manual",
+  "scheduledDate": "2026-06-05",
+  "deadline": "2026-06-10",
+  "source": "ai-agent",
   "estimatedMinutes": 30,
-  "tags": ["project"]
+  "tags": ["project"],
+  "priority": "p2"
 }
 ```
 
-### Move task
+Move task:
 
 ```json
 {
   "taskId": "<task-id>",
-  "targetDate": "2026-04-16",
+  "targetDate": "2026-06-06",
   "position": 0
 }
 ```
-
-### Google token exchange
-
-```json
-{
-  "code": "<auth-code>",
-  "codeVerifier": "<pkce-verifier>",
-  "redirectUri": "http://localhost:5173/google-callback"
-}
-```
-
-### Import calendar
-
-```json
-{
-  "accessToken": "<google-access-token>",
-  "tokenExpiresAt": 1770000000000,
-  "calendarIds": ["primary"],
-  "fullResync": false,
-  "timeMin": "2026-04-01T00:00:00Z",
-  "timeMax": "2026-04-30T23:59:59Z"
-}
-```
-
-## MCP Server
-
-Run:
-
-```bash
-bun run mcp
-```
-
-MCP server is implemented in `mcp-server.ts` and proxies to Convex HTTP routes.
-
-### MCP tools
-
-- `list_tasks`
-- `add_task`
-- `move_task`
-- `reorder_tasks`
-- `complete_task`
-- `reopen_task`
-- `unschedule_task`
-- `bulk_reschedule`
-- `update_task`
-- `delete_task`
-- `get_timeline`
-- `get_inbox`
-- `get_sync_status`
-- `import_google_calendar`
-- `list_review_queue`
-- `approve_review_item`
-- `reject_review_item`
-- `enqueue_gmail_candidate`

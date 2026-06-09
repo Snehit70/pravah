@@ -1179,7 +1179,6 @@ function MobileApp() {
         ref={kairoRef}
         tasks={kairoTasks}
         inboxTasks={kairoInboxTasks}
-        reflowTasks={workspaceTaskCorpus}
         isAllTasksReady={isAllTasksReady}
         onActiveChange={setIsKairoActive}
         onOpenSettings={openSettingsModal}

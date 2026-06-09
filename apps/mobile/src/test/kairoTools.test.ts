@@ -54,8 +54,8 @@ describe("buildToolDefs", () => {
   it("exposes every read + mutation tool", () => {
     expect(KAIRO_ALL_TOOLS.map((t) => t.name)).toContain("get_inbox");
     expect(KAIRO_ALL_TOOLS.map((t) => t.name)).toContain("reschedule_task");
-    expect(KAIRO_ALL_TOOLS.map((t) => t.name)).toContain("reflow_overdue");
-    expect(KAIRO_ALL_TOOLS).toHaveLength(18);
+    expect(KAIRO_ALL_TOOLS.map((t) => t.name)).toContain("reopen_task");
+    expect(KAIRO_ALL_TOOLS).toHaveLength(10);
   });
 
   it("wraps schemas in the Anthropic shape", () => {
@@ -72,7 +72,7 @@ describe("buildToolDefs", () => {
   it("nests all declarations under a single Gemini functionDeclarations entry", () => {
     const defs = buildToolDefs("gemini") as Array<{ functionDeclarations: unknown[] }>;
     expect(defs).toHaveLength(1);
-    expect(defs[0].functionDeclarations).toHaveLength(18);
+    expect(defs[0].functionDeclarations).toHaveLength(10);
   });
 });
 
@@ -196,6 +196,7 @@ describe("toolCallToAction", () => {
 
   it("maps reference tools by handle", () => {
     expect(toolCallToAction("complete_task", { handle: "T2" })).toEqual({ kind: "complete", handle: "T2" });
+    expect(toolCallToAction("reopen_task", { handle: "T3" })).toEqual({ kind: "reopen", handle: "T3" });
     expect(toolCallToAction("reschedule_task", { handle: "T1", scheduledDate: "2026-06-06" })).toEqual({
       kind: "reschedule",
       handle: "T1",
@@ -203,12 +204,10 @@ describe("toolCallToAction", () => {
     });
   });
 
-  it("maps link_task_goal handles through parseAction aliases", () => {
-    expect(toolCallToAction("link_task_goal", { taskHandle: "T1", goalHandle: "G2" })).toEqual({
-      kind: "linkTaskGoal",
-      taskHandle: "T1",
-      goalHandle: "G2",
-    });
+  it("does not expose high-risk or bulk mutation tools", () => {
+    expect(toolCallToAction("delete_task", { handle: "T1" })).toBeNull();
+    expect(toolCallToAction("update_task", { handle: "T1", title: "Changed" })).toBeNull();
+    expect(toolCallToAction("reflow_overdue", {})).toBeNull();
   });
 
   it("returns null for a read tool or unknown name", () => {
@@ -218,5 +217,13 @@ describe("toolCallToAction", () => {
 
   it("returns null for a malformed mutation call (missing required field)", () => {
     expect(toolCallToAction("reschedule_task", { handle: "T1" })).toBeNull();
+    expect(
+      toolCallToAction("reschedule_task", {
+        handle: "T1",
+        scheduledDate: "not-a-date",
+      })
+    ).toBeNull();
+    expect(toolCallToAction("add_task", { title: "   " })).toBeNull();
+    expect(toolCallToAction("add_task", { title: "x".repeat(501) })).toBeNull();
   });
 });

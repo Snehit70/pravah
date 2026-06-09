@@ -10,10 +10,16 @@
 
 import type * as auth from "../auth.js";
 import type * as authHelpers from "../authHelpers.js";
+import type * as automation from "../automation.js";
+import type * as automationHttpAuth from "../automationHttpAuth.js";
+import type * as automationIdempotency from "../automationIdempotency.js";
+import type * as automationScopes from "../automationScopes.js";
+import type * as automationTools from "../automationTools.js";
 import type * as crons from "../crons.js";
 import type * as goals from "../goals.js";
 import type * as http from "../http.js";
 import type * as httpContracts from "../httpContracts.js";
+import type * as httpResponses from "../httpResponses.js";
 import type * as index from "../index.js";
 import type * as origins from "../origins.js";
 import type * as overdueReflow from "../overdueReflow.js";
@@ -31,10 +37,16 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   authHelpers: typeof authHelpers;
+  automation: typeof automation;
+  automationHttpAuth: typeof automationHttpAuth;
+  automationIdempotency: typeof automationIdempotency;
+  automationScopes: typeof automationScopes;
+  automationTools: typeof automationTools;
   crons: typeof crons;
   goals: typeof goals;
   http: typeof http;
   httpContracts: typeof httpContracts;
+  httpResponses: typeof httpResponses;
   index: typeof index;
   origins: typeof origins;
   overdueReflow: typeof overdueReflow;

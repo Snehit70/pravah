@@ -6,6 +6,7 @@ import {
   googleTokenExchangeSchema,
   requireApiKeyAuth,
   reviewQueueListSchema,
+  taskListSchema,
 } from "../../convex/httpContracts";
 
 describe("httpContracts", () => {
@@ -49,10 +50,15 @@ describe("httpContracts", () => {
 
   describe("schemas", () => {
     it("applies defaults for task creation", () => {
-      const parsed = createTaskSchema.parse({ title: "Write docs" });
+      const parsed = createTaskSchema.parse({ title: "  Write docs  " });
 
+      expect(parsed.title).toBe("Write docs");
       expect(parsed.type).toBe("open");
       expect(parsed.source).toBe("ai-agent");
+    });
+
+    it("rejects whitespace-only task titles", () => {
+      expect(createTaskSchema.safeParse({ title: "   " }).success).toBe(false);
     });
 
     it("rejects task creation with invalid date format", () => {
@@ -84,6 +90,11 @@ describe("httpContracts", () => {
       const parsed = reviewQueueListSchema.parse({ limit: "25" });
 
       expect(parsed.limit).toBe(25);
+    });
+
+    it("rejects invalid task list filters", () => {
+      expect(taskListSchema.safeParse({ status: "typo" }).success).toBe(false);
+      expect(taskListSchema.safeParse({ date: "2026/06/04" }).success).toBe(false);
     });
 
     it("requires at least one task id for bulk reschedule", () => {

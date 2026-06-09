@@ -45,7 +45,7 @@
         <div class="pulse-dot"></div>
         <h1>Pravah Architecture</h1>
       </div>
-      <p class="subtitle">Timeline-first task manager: React web, Expo mobile, Convex backend, Google sync, Kairo AI copilot, and MCP bridge.</p>
+      <p class="subtitle">Timeline-first task manager: React web, Expo mobile, Convex backend, Google sync, Kairo AI copilot, and authenticated automation CLI.</p>
     </div>
 
     <div class="diagram-container">
@@ -98,9 +98,9 @@
         <line x1="270" y1="610" x2="420" y2="610" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)" />
         <text x="345" y="600" fill="#94a3b8" font-size="9" text-anchor="middle">persist task</text>
         <line x1="130" y1="610" x2="70" y2="610" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)" />
-        <text x="100" y="600" fill="#94a3b8" font-size="8" text-anchor="middle">direct API</text>
+        <text x="100" y="600" fill="#94a3b8" font-size="8" text-anchor="middle">LLM API</text>
         <line x1="100" y1="680" x2="420" y2="650" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead-emerald)" />
-        <text x="245" y="688" fill="#94a3b8" font-size="8" text-anchor="middle">stdio tools → Convex mutations</text>
+        <text x="245" y="688" fill="#94a3b8" font-size="8" text-anchor="middle">scoped CLI → HTTP routes</text>
 
         <!-- User entry points -->
         <rect x="30" y="135" width="100" height="70" rx="6" fill="#0f172a" />
@@ -177,7 +177,7 @@
         <text x="952" y="514" fill="white" font-size="10" font-weight="600" text-anchor="middle">Google APIs</text>
         <text x="952" y="529" fill="#94a3b8" font-size="8" text-anchor="middle">Calendar / Gmail</text>
 
-        <!-- AI and MCP layer -->
+        <!-- AI and automation layer -->
         <rect x="30" y="575" width="580" height="130" rx="12" fill="rgba(6, 78, 59, 0.06)" stroke="#34d399" stroke-width="1" stroke-dasharray="8,4" />
         <text x="45" y="595" fill="#34d399" font-size="10" font-weight="600">Automation + AI Layer</text>
 
@@ -195,10 +195,10 @@
 
         <rect x="420" y="575" width="145" height="90" rx="6" fill="#0f172a" />
         <rect x="420" y="575" width="145" height="90" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5" />
-        <text x="492" y="602" fill="white" font-size="11" font-weight="600" text-anchor="middle">MCP Bridge</text>
-        <text x="492" y="620" fill="#94a3b8" font-size="8" text-anchor="middle">mcp-server.ts</text>
-        <text x="492" y="634" fill="#94a3b8" font-size="8" text-anchor="middle">stdio task tools</text>
-        <text x="492" y="648" fill="#34d399" font-size="8" text-anchor="middle">bun run mcp</text>
+        <text x="492" y="602" fill="white" font-size="11" font-weight="600" text-anchor="middle">Pravah CLI</text>
+        <text x="492" y="620" fill="#94a3b8" font-size="8" text-anchor="middle">src/cli/</text>
+        <text x="492" y="634" fill="#94a3b8" font-size="8" text-anchor="middle">scoped JSON commands</text>
+        <text x="492" y="648" fill="#34d399" font-size="8" text-anchor="middle">bun run pravah</text>
 
         <!-- Legend below lowest boundary -->
         <text x="690" y="640" fill="white" font-size="10" font-weight="600">Legend</text>
@@ -233,7 +233,7 @@
           <li>• Convex queries, mutations, actions, and HTTP routes</li>
           <li>• Better Auth sessions enforce per-user ownership</li>
           <li>• Core tables: tasks, users, integrations, sync state</li>
-          <li>• MCP stdio bridge exposes task tools to agents</li>
+          <li>• Scoped CLI exposes versioned JSON commands to agents</li>
         </ul>
       </div>
       <div class="card">

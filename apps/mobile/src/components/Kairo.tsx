@@ -32,7 +32,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useConvex, useMutation } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { colors, fonts, motion, radii, spacing, typography } from "../theme/tokens";
@@ -58,18 +58,17 @@ import {
   buildToolDefs,
   createHandleRegistry,
 } from "../lib/kairoTools";
-import { buildReflowApply, planOverdueReflow } from "../lib/kairoReflowTool";
 import {
   runKairoAgent,
   type ApplyAgentActions,
   type KairoAgentCaller,
 } from "../lib/kairoAgent";
-import type { MobileTask } from "./TaskCard";
 import {
-  applyKairoActions,
+  createKairoActionExecutor,
   type KairoActionResult,
   type TaskSnapshot,
 } from "../lib/kairoActions";
+import { applyConfirmedKairoActions } from "../lib/kairoPolicy";
 import { getLocalDateString } from "../lib/dates";
 import { useKairoChats } from "../hooks/useKairoChats";
 import { useUserPreferences } from "../hooks/useUserPreferences";
@@ -78,6 +77,7 @@ import { KairoChatList } from "./KairoChatList";
 import { KairoMarkdown } from "./KairoMarkdown";
 import { haptic } from "../lib/haptic";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
+import { useConfirm } from "../hooks/useConfirm";
 
 export type KairoSheetRef = {
   open: () => void;
@@ -89,9 +89,6 @@ type KairoProps = {
   tasks: KairoTaskInput[];
   /** Inbox tasks specifically (sometimes a separate query in the parent). */
   inboxTasks: KairoTaskInput[];
-  /** The full MobileTask corpus (with `position`) — powers the overdue-reflow
-   *  engine, which needs plan order the thin context doesn't carry. */
-  reflowTasks: MobileTask[];
   /** True when the full-corpus query has resolved. Prevents sending messages
    *  with an empty or partial workspace snapshot on cold start. */
   isAllTasksReady: boolean;
@@ -124,30 +121,16 @@ function labelForAction(
       return action.scheduledDate
         ? `Added "${action.title}" → ${action.scheduledDate}`
         : `Added "${action.title}" to inbox`;
-    case "reflow":
-      return action.label;
     case "reschedule":
       return beforeTitle
         ? `Rescheduled "${beforeTitle}" → ${action.scheduledDate}`
         : `Rescheduled task → ${action.scheduledDate}`;
     case "complete":
       return beforeTitle ? `Completed "${beforeTitle}"` : "Completed task";
+    case "reopen":
+      return beforeTitle ? `Reopened "${beforeTitle}"` : "Reopened task";
     case "unschedule":
       return beforeTitle ? `Sent "${beforeTitle}" to inbox` : "Sent task to inbox";
-    case "update":
-      return beforeTitle ? `Updated "${beforeTitle}"` : "Updated task";
-    case "delete":
-      return beforeTitle ? `Deleted "${beforeTitle}"` : "Deleted task";
-    case "addGoal":
-      return `Added goal "${action.text}"`;
-    case "updateGoal":
-      return beforeTitle ? `Updated goal "${beforeTitle}"` : "Updated goal";
-    case "deleteGoal":
-      return beforeTitle ? `Deleted goal "${beforeTitle}"` : "Deleted goal";
-    case "linkTaskGoal":
-      return "Linked task to goal";
-    case "unlinkTaskGoal":
-      return "Unlinked task from goal";
   }
 }
 
@@ -206,7 +189,7 @@ type KairoChatRow =
  * expo-secure-store via `lib/kairoConfig.ts`, never sent to our servers.
  */
 export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
-  { tasks, inboxTasks, reflowTasks: _reflowTasks, isAllTasksReady, onActiveChange, onOpenSettings },
+  { tasks, inboxTasks, isAllTasksReady, onActiveChange, onOpenSettings },
   ref
 ) {
   const sheetRef = useRef<BottomSheet>(null);
@@ -241,6 +224,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   // chip state and reference back into this map by id.
   const undoMap = useRef<Map<string, () => Promise<void>>>(new Map());
   const { prefs } = useUserPreferences();
+  const confirm = useConfirm();
 
   const {
     chats,
@@ -263,19 +247,10 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
 
   const addTaskMutation = useMutation(api.tasks.addTask);
   const moveTaskMutation = useMutation(api.tasks.moveTask);
-  const rescheduleTasksMutation = useMutation(api.tasks.rescheduleTasks);
   const completeTaskMutation = useMutation(api.tasks.completeTask);
   const reopenTaskMutation = useMutation(api.tasks.reopenTask);
   const unscheduleTaskMutation = useMutation(api.tasks.unscheduleTask);
-  const updateTaskMutation = useMutation(api.tasks.updateTask);
   const softDeleteTaskMutation = useMutation(api.tasks.softDeleteTask);
-  const restoreTaskMutation = useMutation(api.tasks.restoreTask);
-  const convex = useConvex();
-  const applyOverdueReflowMutation = useMutation(api.overdueReflow.apply);
-  const undoOverdueReflowMutation = useMutation(api.overdueReflow.undo);
-  const upsertGoalMutation = useMutation(api.goals.upsert);
-  const removeGoalMutation = useMutation(api.goals.remove);
-  const setGoalLinkMutation = useMutation(api.goals.setLink);
   const { goals } = useGoals();
   const goalLinks = useGoalLinks();
 
@@ -394,11 +369,6 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   const handleRetry = useCallback((prompt: string) => {
     sendMessageRef.current(prompt);
   }, []);
-
-  const fetchReflowPreview = useCallback(
-    (todayDate: string) => convex.query(api.overdueReflow.preview, { today: todayDate }),
-    [convex]
-  );
 
   const handleUndo = useCallback(
     async (chipId: string) => {
@@ -615,139 +585,49 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           status: t.status,
           type: t.type ?? "open",
           scheduledDate: t.scheduledDate,
-          priority: t.priority,
-          deadline: t.deadline,
         };
       };
 
       const mutations = {
-          addTask: (args: Parameters<typeof addTaskMutation>[0]) => addTaskMutation(args),
-          moveTask: (args: { taskId: string; targetDate: string }) =>
-            moveTaskMutation({ taskId: args.taskId as Id<"tasks">, targetDate: args.targetDate }),
-          rescheduleTasks: (args: {
-            updates: Array<{ taskId: string; scheduledDate: string }>;
-          }) =>
-            rescheduleTasksMutation({
-              updates: args.updates.map((update) => ({
-                taskId: update.taskId as Id<"tasks">,
-                scheduledDate: update.scheduledDate,
-              })),
-            }),
-          completeTask: (args: { taskId: string }) =>
-            completeTaskMutation({ taskId: args.taskId as Id<"tasks"> }),
-          reopenTask: (args: { taskId: string }) =>
-            reopenTaskMutation({ taskId: args.taskId as Id<"tasks"> }),
-          unscheduleTask: (args: { taskId: string }) =>
-            unscheduleTaskMutation({ taskId: args.taskId as Id<"tasks"> }),
-          updateTask: (args: {
-            taskId: string;
-            title?: string;
-            priority?: "p1" | "p2" | "p3";
-            deadline?: string;
-          }) => {
-            // Only forward keys that were explicitly set. Convex's updateTask
-            // uses hasOwnProperty for title, priority, and deadline, so a
-            // present-but-undefined key clears that field.
-            const mutArgs: Parameters<typeof updateTaskMutation>[0] = {
-              taskId: args.taskId as Id<"tasks">,
-            };
-            if (Object.prototype.hasOwnProperty.call(args, "title")) mutArgs.title = args.title;
-            if (Object.prototype.hasOwnProperty.call(args, "priority")) mutArgs.priority = args.priority;
-            if (Object.prototype.hasOwnProperty.call(args, "deadline")) mutArgs.deadline = args.deadline;
-            return updateTaskMutation(mutArgs);
+        addTask: (args: Parameters<typeof addTaskMutation>[0]) => addTaskMutation(args),
+        moveTask: (args: { taskId: string; targetDate: string }) =>
+          moveTaskMutation({ taskId: args.taskId as Id<"tasks">, targetDate: args.targetDate }),
+        completeTask: (args: { taskId: string }) =>
+          completeTaskMutation({ taskId: args.taskId as Id<"tasks"> }),
+        reopenTask: (args: { taskId: string }) =>
+          reopenTaskMutation({ taskId: args.taskId as Id<"tasks"> }),
+        unscheduleTask: (args: { taskId: string }) =>
+          unscheduleTaskMutation({ taskId: args.taskId as Id<"tasks"> }),
+        softDeleteTask: (args: { taskId: string }) =>
+          softDeleteTaskMutation({ taskId: args.taskId as Id<"tasks"> }),
+      };
+      const actionExecutor = createKairoActionExecutor(
+        { taskIdMap: registry.taskIdMap },
+        { mutations, lookupTask }
+      );
+      const taskTitles = new Map(
+        [...tasks, ...inboxTasks].map((task) => [task._id, task.title] as const)
+      );
+      const attemptedActionKeys = new Set<string>();
+      const applyActions: ApplyAgentActions = (actions) =>
+        applyConfirmedKairoActions(actions, {
+          confirm,
+          attemptedActionKeys,
+          beforeTitleFor: (action) => {
+            if (action.kind === "add") return null;
+            const taskId = registry.taskIdMap[action.handle];
+            return taskId ? taskTitles.get(taskId) ?? null : null;
           },
-          softDeleteTask: (args: { taskId: string }) =>
-            softDeleteTaskMutation({ taskId: args.taskId as Id<"tasks"> }),
-          restoreTask: (args: { taskId: string }) =>
-            restoreTaskMutation({ taskId: args.taskId as Id<"tasks"> }),
-          addGoal: async (args: {
-            text: string;
-            description?: string;
-            deadline?: string;
-            priority?: "p1" | "p2" | "p3";
-          }) => {
-            const trimmed = args.text.trim();
-            if (!trimmed) return null;
-            const existing = goals.find((g) => g.text.toLowerCase() === trimmed.toLowerCase());
-            if (existing) return null;
-            const goalId =
-              (globalThis as { crypto?: { randomUUID?: () => string } }).crypto?.randomUUID?.() ??
-              `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-            await upsertGoalMutation({
-              clientId: goalId,
-              text: trimmed,
-              description: args.description?.trim() || undefined,
-              deadline: args.deadline,
-              priority: args.priority,
-              createdAt: Date.now(),
-            });
-            return goalId;
+          apply: async (action) => {
+            const result = await actionExecutor.apply(action);
+            if (result.status === "applied" && action.kind === "add" && result.taskId) {
+              taskTitles.set(result.taskId, action.title);
+            }
+            return result;
           },
-          updateGoal: async (args: {
-            goalId: string;
-            text?: string;
-            description?: string;
-            deadline?: string;
-            priority?: "p1" | "p2" | "p3";
-          }) => {
-            const goal = goals.find((g) => g.id === args.goalId);
-            if (!goal) throw new Error("Goal not found");
-            await upsertGoalMutation({
-              clientId: goal.id,
-              text: Object.prototype.hasOwnProperty.call(args, "text")
-                ? (args.text ?? "").trim()
-                : goal.text,
-              description: Object.prototype.hasOwnProperty.call(args, "description")
-                ? args.description
-                : goal.description,
-              deadline: Object.prototype.hasOwnProperty.call(args, "deadline")
-                ? args.deadline
-                : goal.deadline,
-              priority: Object.prototype.hasOwnProperty.call(args, "priority")
-                ? args.priority
-                : goal.priority,
-              createdAt: goal.createdAt ?? Date.now(),
-            });
-          },
-          deleteGoal: (args: { goalId: string }) => removeGoalMutation({ clientId: args.goalId }),
-          setGoalLink: (args: { taskId: string; goalId: string | null }) =>
-            setGoalLinkMutation({ taskId: args.taskId, goalClientId: args.goalId }),
-        };
+        });
 
-        const applyActions: ApplyAgentActions = async (actions) => {
-          // Snapshot titles before mutation so chip labels survive renames and
-          // deletes, then run the executor (undo system untouched).
-          const beforeTitles = actions.map((a) => {
-            if (
-              a.kind === "add" ||
-              a.kind === "reflow" ||
-              a.kind === "addGoal" ||
-              a.kind === "linkTaskGoal" ||
-              a.kind === "unlinkTaskGoal"
-            ) {
-              return null;
-            }
-            if (a.kind === "updateGoal" || a.kind === "deleteGoal") {
-              const goalId = registry.goalIdMap[a.handle];
-              return goalId ? goals.find((g) => g.id === goalId)?.text ?? null : null;
-            }
-            const taskId = registry.taskIdMap[a.handle];
-            return taskId ? lookupTask(taskId)?.title ?? null : null;
-          });
-          const results = await applyKairoActions(
-            actions,
-            { taskIdMap: registry.taskIdMap, goalIdMap: registry.goalIdMap },
-            {
-              mutations,
-              lookupTask,
-              lookupGoal: (goalId: string) => goals.find((g) => g.id === goalId) ?? null,
-              lookupTaskGoalLink: (taskId: string) => goalLinks[taskId] ?? null,
-            }
-          );
-          return { results, beforeTitles };
-        };
-
-        const call: KairoAgentCaller = async (body) => {
+      const call: KairoAgentCaller = async (body) => {
           const headers: Record<string, string> = { "Content-Type": "application/json" };
           if (nextConfig.providerFormat === "anthropic") {
             headers["x-api-key"] = nextConfig.apiKey;
@@ -777,75 +657,6 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           return res.json();
         };
 
-      // Overdue-reflow runtime, bound to the real corpus (with plan order) +
-      // goal links. The agent drives the deterministic engine through it.
-      const reflowEnv = {
-        today: todayStr,
-        registry,
-      };
-      const reflow = {
-        plan: async () => planOverdueReflow({ ...reflowEnv, preview: await fetchReflowPreview(todayStr) }),
-        apply: async (args: Record<string, unknown>) => {
-          const preview = await fetchReflowPreview(todayStr);
-          let request;
-          try {
-            request = buildReflowApply({ ...reflowEnv, preview }, args);
-          } catch (error) {
-            return {
-              payload: {
-                ok: false,
-                error: error instanceof Error ? error.message : "Overdue reflow is unavailable right now.",
-              },
-            };
-          }
-
-          const { planToken, goalIdsToMoveDeadlines, plan } = request;
-          if (plan.totalRescheduled === 0) {
-            return {
-              payload: {
-                ok: true,
-                status: "noop",
-                detail: "No overdue work needed rescheduling.",
-                plan,
-              },
-            };
-          }
-
-          const applied = await applyOverdueReflowMutation({
-            planToken,
-            today: todayStr,
-            goalIdsToMoveDeadlines,
-          });
-          return {
-            payload: {
-              ok: true,
-              status: "reflowed",
-              rescheduled: applied.taskCount,
-              deadlinesMoved: applied.goalDeadlineCount,
-              skipped: 0,
-              failed: 0,
-              plan,
-            },
-            outcome: {
-              beforeTitle: null,
-              result: {
-                action: {
-                  kind: "reflow" as const,
-                  label:
-                    plan.goals.length === 1
-                      ? `Reflowed "${plan.goals[0]?.goal ?? "goal"}"`
-                      : `Reflowed ${plan.goals.length} goals`,
-                },
-                status: "applied" as const,
-                undo: async () => {
-                  await undoOverdueReflowMutation({ operationId: applied.operationId });
-                },
-              },
-            },
-          };
-        },
-      };
-
       try {
         const result = await runKairoAgent([...history, { role: "user", text: trimmed }], {
           config: nextConfig,
@@ -855,7 +666,6 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           readEnv: { tasks, inboxTasks, registry, today: todayStr },
           registry,
           applyActions,
-          reflow,
           onProgress: (label) => setStatusLabel(label),
           shouldCancel: () => cancelledRef.current,
         });
@@ -949,14 +759,8 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       completeTaskMutation,
       reopenTaskMutation,
       unscheduleTaskMutation,
-      updateTaskMutation,
       softDeleteTaskMutation,
-      restoreTaskMutation,
-      applyOverdueReflowMutation,
-      undoOverdueReflowMutation,
-      upsertGoalMutation,
-      removeGoalMutation,
-      setGoalLinkMutation,
+      confirm,
       config,
       deferredPrompt,
       goalLinks,
@@ -964,8 +768,6 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       inboxTasks,
       isAllTasksReady,
       msgs,
-      fetchReflowPreview,
-      rescheduleTasksMutation,
       setMsgs,
       tasks,
       thinking,

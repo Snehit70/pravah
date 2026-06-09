@@ -13,4 +13,11 @@ crons.interval(
   {}
 );
 
+crons.interval(
+  "purge expired automation idempotency keys",
+  { hours: 1 },
+  internal.automationIdempotency.purgeExpired,
+  {}
+);
+
 export default crons;

@@ -9,9 +9,8 @@
  * Design notes:
  *   - The loop holds a neutral `AgentTurn[]` and re-serializes it each round
  *     via `buildToolRequestBody`, so this file has zero provider branching.
- *   - Read tools run inline (local in-memory filters); mutation tools are
- *     batched through the injected `applyActions` so the executor's per-turn
- *     snapshot cache stays correct across actions on the same task.
+ *   - Read tools run inline (local in-memory filters); mutation tools pass
+ *     through the injected confirmation boundary before execution.
  *   - Mutation errors are fed back as tool results (not thrown) so the model
  *     can adapt; the loop only aborts on a transport/provider failure.
  *   - Nothing here touches Convex, React, or storage — it's unit-testable with
@@ -33,8 +32,6 @@ import {
   isReadTool,
   runReadTool,
   toolCallToAction,
-  REFLOW_PLAN_TOOL,
-  REFLOW_APPLY_TOOL,
   type HandleRegistry,
   type KairoReadEnv,
 } from "./kairoTools";
@@ -46,9 +43,9 @@ export const KAIRO_MAX_ROUNDS = 6;
  *  fetch, URLs, and headers (and is trivially mockable in tests). */
 export type KairoAgentCaller = (body: Record<string, unknown>) => Promise<unknown>;
 
-/** Runs a batch of mutation actions through the real executor and returns the
- *  results plus the before-title for each (used for chip labels). Injected so
- *  the loop never imports Convex mutations directly. */
+/** Runs requested mutation actions through the confirmation-aware executor and
+ *  returns the results plus the before-title for each (used for chip labels).
+ *  Injected so the loop never imports UI or Convex mutations directly. */
 export type ApplyAgentActions = (
   actions: KairoAction[]
 ) => Promise<{ results: KairoActionResult[]; beforeTitles: (string | null)[] }>;
@@ -56,21 +53,6 @@ export type ApplyAgentActions = (
 export interface AgentMutationOutcome {
   result: KairoActionResult;
   beforeTitle: string | null;
-}
-
-/** Optional overdue-reflow runtime. When supplied, exposes two tools to the
- *  model: a read-only plan preview and a deterministic apply. Bound by the
- *  caller to the real MobileTask corpus + goal links, since the engine needs
- *  plan-order/position data the thin read env doesn't carry. */
-export interface KairoReflowRuntime {
-  /** Read-only preview payload (per-goal plan + orphans). */
-  plan: () => unknown | Promise<unknown>;
-  /** Apply the canonical backend reflow and optionally return a single
-   *  synthetic outcome for UI chips/undo. */
-  apply: (args: Record<string, unknown>) => Promise<{
-    payload: unknown;
-    outcome?: AgentMutationOutcome;
-  }>;
 }
 
 export interface KairoAgentDeps {
@@ -83,8 +65,6 @@ export interface KairoAgentDeps {
   readEnv: KairoReadEnv;
   registry: HandleRegistry;
   applyActions: ApplyAgentActions;
-  /** Overdue-reflow tools. Omitted leaves the model to reschedule by hand. */
-  reflow?: KairoReflowRuntime;
   /** Surface a short status label for the currently running tool. */
   onProgress?: (label: string) => void;
   /** Checked between rounds; true halts the loop without firing pending calls. */
@@ -133,8 +113,6 @@ function singleActionPayload(
     let handle: string | undefined;
     if (res.action.kind === "add" && res.taskId) {
       handle = registry.handleForTask(res.taskId);
-    } else if (res.action.kind === "addGoal" && res.goalId) {
-      handle = registry.handleForGoal(res.goalId);
     }
     return { ok: true, status: "applied", ...(handle ? { handle } : {}) };
   }
@@ -163,11 +141,6 @@ function reconcileTaskSnapshot(
     }
     env.tasks = [...tasks, next];
     env.inboxTasks = inboxTasks;
-  };
-
-  const removeTask = (taskId: string) => {
-    env.tasks = env.tasks.filter((task) => task._id !== taskId);
-    env.inboxTasks = env.inboxTasks.filter((task) => task._id !== taskId);
   };
 
   const resolveTaskId = (): string | undefined => {
@@ -210,49 +183,13 @@ function reconcileTaskSnapshot(
         status: "completed",
       });
       return;
+    case "reopen":
     case "unschedule":
       upsertTask({
         ...cloneTask(current),
         status: "inbox",
         scheduledDate: undefined,
       });
-      return;
-    case "update": {
-      const next = cloneTask(current);
-      if (action.title !== undefined) next.title = action.title;
-      if (action.priority !== undefined) next.priority = action.priority;
-      if (action.deadline !== undefined) {
-        next.deadline = action.deadline ?? undefined;
-        if (action.deadline) {
-          const preservesInboxOpenTask =
-            current.status === "inbox" &&
-            (current.type ?? "open") === "open" &&
-            !current.scheduledDate;
-          if (!preservesInboxOpenTask) {
-            next.type = "deadline";
-            next.status = "scheduled";
-            next.scheduledDate = action.deadline;
-          }
-        } else {
-          next.type = "open";
-          const wasAutoScheduledByDeadline =
-            current.status === "scheduled" &&
-            current.type === "deadline" &&
-            !!current.deadline &&
-            current.scheduledDate === current.deadline;
-          if (wasAutoScheduledByDeadline) {
-            next.status = "inbox";
-            next.scheduledDate = undefined;
-          }
-        }
-      }
-      upsertTask(next);
-      return;
-    }
-    case "delete":
-      removeTask(taskId);
-      return;
-    default:
       return;
   }
 }
@@ -269,7 +206,6 @@ export async function runKairoAgent(
     readEnv,
     registry,
     applyActions,
-    reflow,
     onProgress,
     shouldCancel,
   } = deps;
@@ -322,10 +258,8 @@ export async function runKairoAgent(
     turns.push({ role: "assistant", text, toolCalls });
 
     // Resolve every call to a result, preserving 1:1 order/count (Anthropic
-    // requires a tool_result for every tool_use). Reads run inline; standard
-    // mutations are collected and batched so the executor's snapshot cache is
-    // correct. Canonical overdue reflow now executes directly through its own
-    // backend contract instead of expanding into generic task mutations here.
+    // requires a tool_result for every tool_use). Reads run inline; mutations
+    // are collected and passed through the injected confirmation boundary.
     const resultById = new Map<string, ToolResultEntry>();
     const mutationGroups: {
       call: NormalizedToolCall;
@@ -340,35 +274,6 @@ export async function runKairoAgent(
           id: tc.id,
           name: tc.name,
           content: jsonResult(read.ok ? read.data : { error: read.error }),
-        });
-        continue;
-      }
-
-      if (tc.name === REFLOW_PLAN_TOOL) {
-        onProgress?.("Planning your reschedule…");
-        const payload = reflow
-          ? await reflow.plan()
-          : { error: "Overdue reflow is unavailable right now." };
-        resultById.set(tc.id, { id: tc.id, name: tc.name, content: jsonResult(payload) });
-        continue;
-      }
-
-      if (tc.name === REFLOW_APPLY_TOOL) {
-        if (!reflow) {
-          resultById.set(tc.id, {
-            id: tc.id,
-            name: tc.name,
-            content: jsonResult({ ok: false, error: "Overdue reflow is unavailable right now." }),
-          });
-          continue;
-        }
-        onProgress?.("Rescheduling overdue work…");
-        const applied = await reflow.apply(tc.args);
-        if (applied.outcome) outcomes.push(applied.outcome);
-        resultById.set(tc.id, {
-          id: tc.id,
-          name: tc.name,
-          content: jsonResult(applied.payload),
         });
         continue;
       }

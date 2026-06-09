@@ -28,6 +28,7 @@ import {
 import type { GoogleCalendarListEntry } from "../lib/google/types";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
+import { AutomationSettingsSection } from "./AutomationSettingsSection";
 import { useToast } from "./useToast";
 import { authClient } from "../lib/auth-client";
 import {
@@ -153,7 +154,6 @@ export function Settings({ onClose }: SettingsProps) {
       return Boolean(profile.apiKey.trim() && profile.baseUrl.trim() && profile.model.trim());
     });
   }, [kairoSettings]);
-
   const getSyncErrorMessage = (error: unknown): string => {
     const raw = getGoogleAuthErrorMessage(error, "Failed to sync with Google. Please try again.");
     if (raw.includes("SERVICE_DISABLED") || raw.includes("accessNotConfigured")) {
@@ -821,6 +821,8 @@ export function Settings({ onClose }: SettingsProps) {
                 </Button>
               </div>
             </section>
+
+            <AutomationSettingsSection />
 
             <section>
               <h3 className={cn(

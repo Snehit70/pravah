@@ -1,6 +1,46 @@
 import { mutation, query } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { requireTokenIdentifier } from "./authHelpers";
+
+export async function updateGoalForOwner(
+  ctx: MutationCtx,
+  ownerTokenIdentifier: string,
+  goalClientId: string,
+  patch: {
+    description?: string | null;
+    deadline?: string | null;
+    priority?: "p1" | "p2" | "p3" | null;
+  }
+): Promise<{ updated: boolean }> {
+  const existing = await ctx.db
+    .query("goals")
+    .withIndex("by_owner_client_id", (q) =>
+      q.eq("ownerTokenIdentifier", ownerTokenIdentifier).eq("clientId", goalClientId),
+    )
+    .first();
+  if (!existing) return { updated: false };
+
+  const updates: Partial<{
+    description: string | undefined;
+    deadline: string | undefined;
+    priority: "p1" | "p2" | "p3" | undefined;
+    updatedAt: number;
+  }> = {};
+
+  if (Object.prototype.hasOwnProperty.call(patch, "description")) {
+    updates.description = patch.description ?? undefined;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "deadline")) {
+    updates.deadline = patch.deadline ?? undefined;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "priority")) {
+    updates.priority = patch.priority ?? undefined;
+  }
+
+  await ctx.db.patch(existing._id, { ...updates, updatedAt: Date.now() });
+  return { updated: true };
+}
 
 export const list = query({
   args: {},

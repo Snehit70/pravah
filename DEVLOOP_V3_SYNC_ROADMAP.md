@@ -87,11 +87,11 @@ Exit criteria:
 - No Gmail item becomes an active task without approval.
 - Approval decisions are auditable.
 
-## Phase 5 - API + MCP Sync Surface
+## Phase 5 - API + CLI Sync Surface
 
 Goal: expose sync and approval operations for agents/tools.
 
-- Expand HTTP + MCP tools for:
+- Expand HTTP routes and CLI commands for:
   - sync status
   - trigger sync
   - list review queue
@@ -141,4 +141,3 @@ Goal: production-grade confidence.
 Exit criteria:
 
 - Core sync and approval flows are test-covered and observable.
-

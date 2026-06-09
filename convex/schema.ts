@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { automationScopeValidator } from "./automationScopes";
 
 export default defineSchema({
   goals: defineTable({
@@ -85,6 +86,64 @@ export default defineSchema({
     image: v.optional(v.string()),
     tokenIdentifier: v.string(),
   }).index("by_token", ["tokenIdentifier"]),
+  automationCredentials: defineTable({
+    ownerTokenIdentifier: v.string(),
+    label: v.string(),
+    credentialHash: v.string(),
+    credentialPreview: v.string(),
+    scopes: v.array(automationScopeValidator),
+    status: v.union(v.literal("active"), v.literal("revoked")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastUsedAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+  })
+    .index("by_owner", ["ownerTokenIdentifier"])
+    .index("by_owner_label", ["ownerTokenIdentifier", "label"])
+    .index("by_owner_status", ["ownerTokenIdentifier", "status"])
+    .index("by_credential_hash", ["credentialHash"]),
+  automationBootstrapTokens: defineTable({
+    ownerTokenIdentifier: v.string(),
+    label: v.string(),
+    tokenHash: v.string(),
+    scopes: v.array(automationScopeValidator),
+    status: v.union(v.literal("active"), v.literal("used"), v.literal("expired"), v.literal("revoked")),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    usedAt: v.optional(v.number()),
+    exchangedCredentialId: v.optional(v.id("automationCredentials")),
+    revokedAt: v.optional(v.number()),
+  })
+    .index("by_owner", ["ownerTokenIdentifier"])
+    .index("by_owner_status", ["ownerTokenIdentifier", "status"])
+    .index("by_token_hash", ["tokenHash"]),
+  automationAuditEvents: defineTable({
+    ownerTokenIdentifier: v.string(),
+    credentialId: v.optional(v.id("automationCredentials")),
+    bootstrapTokenId: v.optional(v.id("automationBootstrapTokens")),
+    eventType: v.union(
+      v.literal("bootstrap_issued"),
+      v.literal("bootstrap_exchanged"),
+      v.literal("credential_revoked"),
+      v.literal("credential_used")
+    ),
+    metadataJson: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_owner_created_at", ["ownerTokenIdentifier", "createdAt"])
+    .index("by_credential_created_at", ["credentialId", "createdAt"]),
+  automationIdempotencyKeys: defineTable({
+    ownerTokenIdentifier: v.string(),
+    key: v.string(),
+    operation: v.string(),
+    requestJson: v.string(),
+    responseJson: v.string(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_owner_key", ["ownerTokenIdentifier", "key"])
+    .index("by_expires_at", ["expiresAt"]),
   tasks: defineTable({
     title: v.string(),
     description: v.optional(v.string()),

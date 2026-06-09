@@ -2,7 +2,7 @@
 
 ## Overview
 
-Pravah is a Bun-based monorepo with a React web client, Convex backend, MCP bridge, and Expo mobile app.
+Pravah is a Bun-based monorepo with a React web client, Convex backend, authenticated automation CLI, and Expo mobile app.
 
 ## Repository Layout
 
@@ -37,7 +37,8 @@ convex/                     Backend
   auth.ts                   Better Auth integration
 apps/mobile/                Expo React Native client
   docs/                     Mobile-specific architecture and UX docs
-mcp-server.ts               MCP stdio bridge
+src/cli/                    Authenticated JSON automation CLI
+.agents/skills/pravah-cli/  Read-only agent workflow
 ```
 
 ## Web UI Design System
@@ -68,6 +69,10 @@ mcp-server.ts               MCP stdio bridge
 | `reviewQueue` | Gmail candidate items pending review |
 | `syncRuns` | Sync execution history |
 | `users` | Bootstrapped user records |
+| `automationCredentials` | Revocable scoped CLI credentials |
+| `automationBootstrapTokens` | One-time CLI credential bootstrap |
+| `automationIdempotencyKeys` | Atomic retry protection for automation writes |
+| `automationAuditEvents` | Credential lifecycle and usage audit |
 
 See `convex/schema.ts` for canonical field definitions and indexes.
 
@@ -85,7 +90,15 @@ See `convex/schema.ts` for canonical field definitions and indexes.
 - Config (provider format, API key, endpoint URL, model) lives in `localStorage` via `src/lib/kairoConfig.ts`.
 - Requests are made **browser-side** directly to the configured endpoint — the key never leaves the client.
 - Supports OpenAI-compatible endpoints (`Authorization: Bearer`) and Anthropic (`x-api-key` + `anthropic-version`).
-- Can emit `<add-task>` blocks that the UI parses and persists via Convex mutation.
+- Can emit `<add-task>` blocks that the UI presents for explicit confirmation before persisting via Convex mutation.
+
+## Automation CLI
+
+- External agents use the `pravah` CLI and versioned JSON envelopes.
+- CLI credentials are revocable, owner-bound, and scope-limited.
+- Accepted task writes are add, move, complete, reopen, and unschedule.
+- Bearer-authenticated writes require idempotency keys and replay exact retries atomically.
+- The repo-local `pravah-cli` skill is intentionally read-only.
 
 ## Inbox Drag Reorder — Optimistic Flow
 

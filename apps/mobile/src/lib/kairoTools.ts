@@ -11,8 +11,7 @@
  *     `KairoAction`, reusing `parseAction` so validation stays single-sourced
  *
  * Mutation tools are NOT executed here — they map to `KairoAction`s and run
- * through the existing `applyKairoActions` executor, keeping the undo system
- * untouched.
+ * through the stateful action executor, keeping the undo system untouched.
  */
 
 import {
@@ -37,12 +36,11 @@ export interface KairoToolSchema {
 }
 
 const str = (description: string) => ({ type: "string", description });
-const priorityProp = {
+const date = (description: string) => ({
   type: "string",
-  enum: ["p1", "p2", "p3"],
-  description: "Priority bucket (p1 highest)",
-};
-
+  pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+  description,
+});
 export const KAIRO_READ_TOOLS: KairoToolSchema[] = [
   {
     name: "get_inbox",
@@ -56,8 +54,8 @@ export const KAIRO_READ_TOOLS: KairoToolSchema[] = [
     parameters: {
       type: "object",
       properties: {
-        startDate: str("Start date, YYYY-MM-DD"),
-        endDate: str("End date, YYYY-MM-DD"),
+        startDate: date("Start date, YYYY-MM-DD"),
+        endDate: date("End date, YYYY-MM-DD"),
       },
       required: ["startDate", "endDate"],
     },
@@ -84,8 +82,8 @@ export const KAIRO_READ_TOOLS: KairoToolSchema[] = [
     parameters: {
       type: "object",
       properties: {
-        startDate: str("Optional start date, YYYY-MM-DD"),
-        endDate: str("Optional end date, YYYY-MM-DD"),
+        startDate: date("Optional start date, YYYY-MM-DD"),
+        endDate: date("Optional end date, YYYY-MM-DD"),
       },
     },
   },
@@ -98,8 +96,8 @@ export const KAIRO_MUTATION_TOOLS: KairoToolSchema[] = [
     parameters: {
       type: "object",
       properties: {
-        title: str("Task title"),
-        scheduledDate: str("Date YYYY-MM-DD, or omit for inbox"),
+        title: { ...str("Task title"), maxLength: 500 },
+        scheduledDate: date("Date YYYY-MM-DD, or omit for inbox"),
         type: { type: "string", enum: ["open", "deadline"], description: "Task type" },
       },
       required: ["title"],
@@ -112,7 +110,7 @@ export const KAIRO_MUTATION_TOOLS: KairoToolSchema[] = [
       type: "object",
       properties: {
         handle: str("Task handle, e.g. T3"),
-        scheduledDate: str("New date, YYYY-MM-DD"),
+        scheduledDate: date("New date, YYYY-MM-DD"),
       },
       required: ["handle", "scheduledDate"],
     },
@@ -123,128 +121,20 @@ export const KAIRO_MUTATION_TOOLS: KairoToolSchema[] = [
     parameters: { type: "object", properties: { handle: str("Task handle") }, required: ["handle"] },
   },
   {
+    name: "reopen_task",
+    description: "Reopen a completed task and send it to the inbox.",
+    parameters: { type: "object", properties: { handle: str("Task handle") }, required: ["handle"] },
+  },
+  {
     name: "unschedule_task",
     description: "Send a scheduled task back to the inbox.",
     parameters: { type: "object", properties: { handle: str("Task handle") }, required: ["handle"] },
-  },
-  {
-    name: "update_task",
-    description:
-      "Change a task's title, priority, or deadline. Pass deadline:null to clear an existing deadline.",
-    parameters: {
-      type: "object",
-      properties: {
-        handle: str("Task handle"),
-        title: str("New title"),
-        priority: priorityProp,
-        deadline: str("Deadline YYYY-MM-DD, or null to clear"),
-      },
-      required: ["handle"],
-    },
-  },
-  {
-    name: "delete_task",
-    description: "Delete a task (soft delete — the user can undo it).",
-    parameters: { type: "object", properties: { handle: str("Task handle") }, required: ["handle"] },
-  },
-  {
-    name: "add_goal",
-    description: "Create a goal.",
-    parameters: {
-      type: "object",
-      properties: {
-        text: str("Goal text"),
-        description: str("Optional description"),
-        deadline: str("Optional deadline, YYYY-MM-DD"),
-        priority: priorityProp,
-      },
-      required: ["text"],
-    },
-  },
-  {
-    name: "update_goal",
-    description:
-      "Change a goal's text, description, deadline, or priority. Pass null to clear an optional field.",
-    parameters: {
-      type: "object",
-      properties: {
-        handle: str("Goal handle, e.g. G1"),
-        text: str("New text"),
-        description: str("Description, or null to clear"),
-        deadline: str("Deadline YYYY-MM-DD, or null to clear"),
-        priority: priorityProp,
-      },
-      required: ["handle"],
-    },
-  },
-  {
-    name: "delete_goal",
-    description: "Delete a goal.",
-    parameters: { type: "object", properties: { handle: str("Goal handle") }, required: ["handle"] },
-  },
-  {
-    name: "link_task_goal",
-    description: "Link a task to a goal.",
-    parameters: {
-      type: "object",
-      properties: {
-        taskHandle: str("Task handle"),
-        goalHandle: str("Goal handle"),
-      },
-      required: ["taskHandle", "goalHandle"],
-    },
-  },
-  {
-    name: "unlink_task_goal",
-    description: "Remove a task's goal link.",
-    parameters: {
-      type: "object",
-      properties: { taskHandle: str("Task handle") },
-      required: ["taskHandle"],
-    },
-  },
-];
-
-// ─── Reflow tools ───────────────────────────────────────────────────────────
-//
-// These don't map 1:1 onto a KairoAction (the apply tool expands into a whole
-// deterministic batch) and need the timeline corpus the thin read env lacks, so
-// the agent loop handles them specially via an injected reflow runtime — they
-// go through neither runReadTool nor toolCallToAction. They still appear in the
-// provider tool list so the model can call them.
-
-export const REFLOW_PLAN_TOOL = "plan_overdue_reflow";
-export const REFLOW_APPLY_TOOL = "reflow_overdue";
-
-export const KAIRO_REFLOW_TOOLS: KairoToolSchema[] = [
-  {
-    name: REFLOW_PLAN_TOOL,
-    description:
-      "Preview a goal-aware reschedule of overdue work WITHOUT changing anything. For each goal that has a deadline, returns how its whole remaining plan would be re-spread across the calendar (mode, projected end, suggested new deadline, per-task before→after). Also lists overdue tasks with no goal or no deadline as 'orphans' for you to triage manually.",
-    parameters: { type: "object", properties: {} },
-  },
-  {
-    name: REFLOW_APPLY_TOOL,
-    description:
-      "Reschedule overdue work for goals that have a deadline, re-spreading each goal's whole remaining plan deterministically. Applies immediately (the user can undo). Orphan tasks (no goal / no deadline) are NOT touched — handle those with reschedule_task or unschedule_task.",
-    parameters: {
-      type: "object",
-      properties: {
-        goalHandle: str("Limit the reflow to one goal, e.g. G2. Omit to reflow every overdue goal."),
-        extendDeadlines: {
-          type: "boolean",
-          description:
-            "Move each goal's deadline to its new projected end. Omit to move only already-passed deadlines; false to never change a deadline.",
-        },
-      },
-    },
   },
 ];
 
 export const KAIRO_ALL_TOOLS: KairoToolSchema[] = [
   ...KAIRO_READ_TOOLS,
   ...KAIRO_MUTATION_TOOLS,
-  ...KAIRO_REFLOW_TOOLS,
 ];
 
 /** Wrap the shared schemas in each provider's tool-definition shape. Gemini
@@ -278,7 +168,7 @@ export function buildToolDefs(providerFormat: KairoProviderFormat): unknown[] {
 // ─── Handle registry ──────────────────────────────────────────────────────────
 
 export interface HandleRegistry {
-  /** handle → real Convex task id (consumed by applyKairoActions). */
+  /** handle → real Convex task id (consumed by the action executor). */
   taskIdMap: KairoIdMap;
   /** handle → real goal client id. */
   goalIdMap: KairoIdMap;
@@ -523,14 +413,8 @@ const MUTATION_TOOL_TO_KIND: Record<string, string> = {
   add_task: "add",
   reschedule_task: "reschedule",
   complete_task: "complete",
+  reopen_task: "reopen",
   unschedule_task: "unschedule",
-  update_task: "update",
-  delete_task: "delete",
-  add_goal: "add-goal",
-  update_goal: "update-goal",
-  delete_goal: "delete-goal",
-  link_task_goal: "link-task-goal",
-  unlink_task_goal: "unlink-task-goal",
 };
 
 export function isReadTool(name: string): boolean {
@@ -541,11 +425,8 @@ export function isMutationTool(name: string): boolean {
   return name in MUTATION_TOOL_TO_KIND;
 }
 
-/** Convert a mutation tool call into the canonical KairoAction, reusing the
- *  same validation as the legacy XML parser. Returns null for unknown or
- *  malformed calls — the caller surfaces a skipped result. The schema field
- *  names (`handle`, `taskHandle`, `goalHandle`) line up with the aliases
- *  `parseAction` already accepts. */
+/** Convert a mutation tool call into the canonical KairoAction. Returns null
+ *  for unknown or malformed calls so the caller can surface a skipped result. */
 export function toolCallToAction(
   name: string,
   args: Record<string, unknown>

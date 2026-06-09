@@ -153,10 +153,6 @@ function InboxSkeleton() {
           </div>
         </div>
         <div className="flex-1" />
-        <div className="mt-1 flex items-center gap-1.5">
-          <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.78_0.18_150)]" />
-          <span className="font-mono text-[9px] tracking-[0.06em] text-zinc-500">MCP</span>
-        </div>
       </div>
 
       <div className="px-2.5 py-2" style={{ borderBottom: "1px solid rgba(255,255,255,.07)" }}>
@@ -254,10 +250,6 @@ export function LoadingSkeleton() {
               className="flex h-7 shrink-0 items-center gap-4 border-t px-4 font-mono text-[11px] tracking-[0.03em] text-zinc-500"
               style={{ background: "#101013", borderColor: "rgba(255,255,255,.07)" }}
             >
-              <span className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.78_0.18_150)]" />
-                mcp · connecting
-              </span>
               <span className="flex items-center gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.78_0.15_60)]" />
                 convex · syncing

@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { useMutation } from "convex/react";
-import { api } from "../../convex/_generated/api";
 import { T_FAST, T_SLOW, T_EXIT_FAST, tx } from "../lib/motion";
 import { getLocalDateString } from "../lib/utils";
 import type { Task } from "../types";
@@ -19,6 +17,14 @@ import {
   buildOpenAIRequestBody,
   readKairoResponseText,
 } from "../lib/kairoProviderRuntime";
+import {
+  parseKairoTaskProposals,
+} from "../lib/kairoTaskProposals";
+import {
+  type WebKairoMessage,
+  useKairoTaskProposalDecisions,
+} from "../hooks/useKairoTaskProposalDecisions";
+import { KairoTaskProposalList } from "./KairoTaskProposalList";
 
 const ACCENT = "oklch(0.78 0.14 260)";
 const ACCENT_SOFT = "oklch(0.72 0.16 260 / 0.2)";
@@ -49,12 +55,6 @@ Guidelines:
 - For schedule analysis, use this shape: one sentence summary, then bullets starting with **Now**, **Risk**, or **Next**
 - Keep responses short — 2-4 sentences for simple questions, 3-5 bullets max for analysis
 - Never make up tasks or details not present in the context`;
-
-interface Message {
-  from: "me" | "kairo";
-  text: string;
-  tasks?: Array<{ title: string; scheduledDate: string | null; type: "open" | "deadline" }>;
-}
 
 interface KairoProps {
   onActiveChange?: (active: boolean) => void;
@@ -433,7 +433,7 @@ function KairoMarkdown({ text }: { text: string }) {
 export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: KairoProps) {
   const [open, setOpen] = useState(false);
   const [val, setVal] = useState("");
-  const [msgs, setMsgs] = useState<Message[]>([
+  const [msgs, setMsgs] = useState<WebKairoMessage[]>([
     { from: "kairo", text: "Hey, I'm Kairo. I can help you plan your week, prioritize tasks, or analyze your schedule. What do you need?" },
   ]);
   const [thinking, setThinking] = useState(false);
@@ -442,8 +442,7 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
 
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  const addTask = useMutation(api.tasks.addTask);
+  const decideTaskProposal = useKairoTaskProposalDecisions(msgs, setMsgs);
 
   useEffect(() => { onActiveChange?.(open); }, [open, onActiveChange]);
   useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 200); }, [open]);
@@ -552,34 +551,11 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
       const data = await res.json();
       const rawText = readKairoResponseText(data, nextConfig.providerFormat);
 
-      // Parse <add-task> blocks
-      const taskBlocks: Array<{ title: string; scheduledDate: string | null; type: "open" | "deadline" }> = [];
-      const cleanText = rawText.replace(/<add-task>([\s\S]*?)<\/add-task>/g, (_, json: string) => {
-        try {
-          const parsed = JSON.parse(json) as { title?: string; scheduledDate?: string | null; type?: string };
-          if (parsed.title) {
-            taskBlocks.push({
-              title: parsed.title,
-              scheduledDate: parsed.scheduledDate ?? null,
-              type: parsed.type === "deadline" ? "deadline" : "open",
-            });
-          }
-        } catch { /* skip malformed */ }
-        return "";
-      }).trim();
-
-      // Auto-add parsed tasks
-      for (const t of taskBlocks) {
-        await addTask({
-          title: t.title,
-          type: t.type,
-          scheduledDate: t.scheduledDate ?? undefined,
-          deadline: t.type === "deadline" ? (t.scheduledDate ?? undefined) : undefined,
-          source: "ai-agent",
-        });
-      }
-
-      setMsgs(m => [...m, { from: "kairo", text: cleanText, tasks: taskBlocks.length ? taskBlocks : undefined }]);
+      const { text: cleanText, proposals } = parseKairoTaskProposals(rawText);
+      setMsgs(m => [
+        ...m,
+        { from: "kairo", text: cleanText, tasks: proposals.length ? proposals : undefined },
+      ]);
     } catch {
       setMsgs(m => [...m, { from: "kairo", text: "Something went wrong reaching your configured AI endpoint. Check the format toggle, key, URL, model, and server compatibility." }]);
     } finally {
@@ -767,7 +743,14 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
                 style={{ position: "relative", maxHeight: 430, overflowY: "auto", padding: "18px 22px 16px 24px", display: "flex", flexDirection: "column", gap: 14 }}
               >
                 {msgs.map((m, i) => (
-                  <KairoMsg key={i} m={m} animate={m.from === "kairo" && i === msgs.length - 1 && !thinking} />
+                  <KairoMsg
+                    key={i}
+                    m={m}
+                    animate={m.from === "kairo" && i === msgs.length - 1 && !thinking}
+                    onTaskDecision={(proposalIndex, decision) =>
+                      void decideTaskProposal(i, proposalIndex, decision)
+                    }
+                  />
                 ))}
                 {thinking && <KairoThinking />}
               </div>
@@ -901,7 +884,15 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
   );
 }
 
-function KairoMsg({ m, animate = false }: { m: Message; animate?: boolean }) {
+function KairoMsg({
+  m,
+  animate = false,
+  onTaskDecision,
+}: {
+  m: WebKairoMessage;
+  animate?: boolean;
+  onTaskDecision: (proposalIndex: number, decision: "apply" | "decline") => void;
+}) {
   const visibleText = useRevealText(m.text, animate);
 
   if (m.from === "me") {
@@ -935,14 +926,7 @@ function KairoMsg({ m, animate = false }: { m: Message; animate?: boolean }) {
           )}
         </div>
         {m.tasks && m.tasks.length > 0 && (
-          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
-            {m.tasks.map((t, i) => (
-              <div key={i} style={{ padding: "5px 10px", background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderLeft: `2px solid ${ACCENT}`, borderRadius: 3, fontSize: 12, color: "#c2c2c8", fontFamily: "var(--font-mono)" }}>
-                ✦ {t.title} {t.scheduledDate ? `→ ${t.scheduledDate}` : "→ inbox"}
-              </div>
-            ))}
-            <div style={{ fontSize: 11, color: "#6b6b72", marginTop: 2 }}>Added to your timeline</div>
-          </div>
+          <KairoTaskProposalList proposals={m.tasks} onDecision={onTaskDecision} />
         )}
       </div>
     </div>
