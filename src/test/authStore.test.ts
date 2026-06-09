@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getCredentialStorePath,
@@ -11,12 +11,18 @@ import {
 } from "../cli/authStore";
 
 const originalHome = process.env.HOME;
+const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
 
 afterEach(() => {
   if (originalHome === undefined) {
     delete process.env.HOME;
   } else {
     process.env.HOME = originalHome;
+  }
+  if (originalXdgConfigHome === undefined) {
+    delete process.env.XDG_CONFIG_HOME;
+  } else {
+    process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
   }
   vi.restoreAllMocks();
 });
@@ -58,6 +64,7 @@ describe("authStore", () => {
   it("saves and reloads a stored credential under the user config dir", () => {
     const home = mkdtempSync(join(tmpdir(), "pravah-auth-store-"));
     process.env.HOME = home;
+    delete process.env.XDG_CONFIG_HOME;
 
     saveStoredCredential({
       secret: "pravah_cred_saved",
@@ -68,10 +75,11 @@ describe("authStore", () => {
     });
 
     const path = getCredentialStorePath();
+    const configDir = dirname(path);
     const raw = JSON.parse(readFileSync(path, "utf8")) as { label: string };
     expect(raw.label).toBe("Desktop");
     expect(statSync(path).mode & 0o777).toBe(0o600);
-    expect(statSync(join(home, ".config", "pravah")).mode & 0o777).toBe(0o700);
+    expect(statSync(configDir).mode & 0o777).toBe(0o700);
 
     expect(loadStoredCredential()).toMatchObject({
       label: "Desktop",
@@ -83,6 +91,7 @@ describe("authStore", () => {
   it("rejects malformed stored credential JSON consistently", () => {
     const home = mkdtempSync(join(tmpdir(), "pravah-auth-store-"));
     process.env.HOME = home;
+    delete process.env.XDG_CONFIG_HOME;
     const path = getCredentialStorePath();
     saveStoredCredential({
       secret: "pravah_cred_saved",

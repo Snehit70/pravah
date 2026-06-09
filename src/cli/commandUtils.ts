@@ -202,7 +202,7 @@ export function executeDryRun(command: string, args: ParsedArgs) {
 
   const metadata = getWriteMetadata(args);
   switch (command) {
-    case "goals update":
+    case "goals update": {
       const goalPatch = readGoalUpdateOptions(args);
       return {
         action: "goals.update",
@@ -211,6 +211,7 @@ export function executeDryRun(command: string, args: ParsedArgs) {
         ...metadata,
         source: "dry-run",
       };
+    }
     case "tasks add":
       return {
         action: "tasks.add",
