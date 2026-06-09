@@ -20,7 +20,7 @@ type PlanGoalSummary = {
   projectedEnd: string;
   suggestedDeadline?: string;
   defaultApplyDeadline: boolean;
-  assignments: Array<{ taskId: string; scheduledDate: string }>;
+  assignments: Array<{ taskId: string; deadline: string }>;
   tasks: Array<{
     taskId: string;
     title: string;
@@ -41,8 +41,6 @@ type GoalSummaryForToken = {
 type TaskSummaryForToken = {
   taskId: Id<"tasks">;
   title: string;
-  type: "open" | "deadline";
-  deadline?: string;
   beforeDate: string;
   beforePosition: number;
   afterDate: string;
@@ -80,7 +78,7 @@ type AppliedTaskSnapshot = {
 };
 
 type ReflowResult = {
-  assignments: Array<{ taskId: string; scheduledDate: string }>;
+  assignments: Array<{ taskId: string; deadline: string }>;
   movedCount: number;
   futureMovedCount: number;
   projectedEnd: string;
@@ -132,8 +130,8 @@ function daysBetween(a: string, b: string): number {
 }
 
 function comparePlan(a: TaskDoc, b: TaskDoc): number {
-  const ad = a.scheduledDate ?? "";
-  const bd = b.scheduledDate ?? "";
+  const ad = getPlanningDeadline(a) ?? "";
+  const bd = getPlanningDeadline(b) ?? "";
   if (ad !== bd) return ad < bd ? -1 : 1;
   if (a.position !== b.position) return a.position - b.position;
   return String(a._id) < String(b._id) ? -1 : 1;
@@ -144,20 +142,23 @@ function compareLane(a: { position: number; taskId: string }, b: { position: num
   return a.taskId < b.taskId ? -1 : a.taskId > b.taskId ? 1 : 0;
 }
 
-function isOverdue(task: TaskDoc, today: string): boolean {
-  return task.status === "scheduled" && !!task.scheduledDate && task.scheduledDate < today;
+function getPlanningDeadline(task: TaskDoc): string | undefined {
+  return task.deadline ?? task.scheduledDate;
 }
 
-function clampAssignmentDate(task: TaskDoc, scheduledDate: string, today: string): string {
-  if (
-    task.type === "deadline" &&
-    task.deadline &&
-    scheduledDate > task.deadline &&
-    task.deadline >= today
-  ) {
-    return task.deadline;
-  }
-  return scheduledDate;
+function isNativeTask(task: TaskDoc): boolean {
+  return task.source !== "gmail" && task.source !== "gcal";
+}
+
+function isActiveTask(task: TaskDoc): boolean {
+  const completed = task.completedAt !== undefined || task.status === "completed";
+  const cancelled = task.cancelledAt !== undefined || task.status === "cancelled";
+  return !completed && !cancelled;
+}
+
+function isOverdue(task: TaskDoc, today: string): boolean {
+  const deadline = getPlanningDeadline(task);
+  return isNativeTask(task) && isActiveTask(task) && !!deadline && deadline < today;
 }
 
 async function loadOwnedState(ctx: ReflowCtx, tokenIdentifier: string) {
@@ -217,8 +218,9 @@ function bucketOverdue(
       .filter(
         (task) =>
           goalLinkByTaskId.get(String(task._id)) === goalId &&
-          task.status === "scheduled" &&
-          !!task.scheduledDate
+          isNativeTask(task) &&
+          isActiveTask(task) &&
+          !!getPlanningDeadline(task)
       )
       .sort(comparePlan);
     const overdueCount = planTasks.filter((task) => isOverdue(task, today)).length;
@@ -244,7 +246,7 @@ function computeReflow(group: ReflowGroup, today: string): ReflowResult {
   const daysAvailable = daysBetween(today, deadline) + 1;
   const deadlineUsable = deadline >= today && n > 0 && n <= daysAvailable;
 
-  const assignments: Array<{ taskId: string; scheduledDate: string }> = [];
+  const assignments: Array<{ taskId: string; deadline: string }> = [];
   let mode: "spread" | "march";
 
   if (deadlineUsable) {
@@ -254,7 +256,7 @@ function computeReflow(group: ReflowGroup, today: string): ReflowResult {
       const offset = n === 1 ? 0 : Math.round((i * span) / (n - 1));
       assignments.push({
         taskId: String(tasks[i]._id),
-        scheduledDate: clampAssignmentDate(tasks[i], addIso(today, offset), today),
+        deadline: addIso(today, offset),
       });
     }
   } else {
@@ -262,24 +264,24 @@ function computeReflow(group: ReflowGroup, today: string): ReflowResult {
     for (let i = 0; i < n; i += 1) {
       assignments.push({
         taskId: String(tasks[i]._id),
-        scheduledDate: clampAssignmentDate(tasks[i], addIso(today, i), today),
+        deadline: addIso(today, i),
       });
     }
   }
 
   const projectedEnd = assignments.reduce(
-    (max, assignment) => (assignment.scheduledDate > max ? assignment.scheduledDate : max),
+    (max, assignment) => (assignment.deadline > max ? assignment.deadline : max),
     today
   );
   const exceedsDeadline = projectedEnd > deadline;
   const suggestedDeadline = deadline < today || exceedsDeadline ? projectedEnd : undefined;
 
-  const oldById = new Map(tasks.map((task) => [String(task._id), task.scheduledDate]));
+  const oldById = new Map(tasks.map((task) => [String(task._id), getPlanningDeadline(task)]));
   let movedCount = 0;
   let futureMovedCount = 0;
   for (const assignment of assignments) {
     const old = oldById.get(assignment.taskId);
-    if (old !== assignment.scheduledDate) {
+    if (old !== assignment.deadline) {
       movedCount += 1;
       if (old && old >= today) futureMovedCount += 1;
     }
@@ -304,8 +306,8 @@ function buildDateState(tasks: TaskDoc[], dates: Set<string>): DateLaneSnapshot[
       entries: tasks
         .filter(
           (task) =>
-            task.status === "scheduled" &&
-            task.scheduledDate === date &&
+            isActiveTask(task) &&
+            getPlanningDeadline(task) === date &&
             typeof task.position === "number"
         )
         .map((task) => ({ taskId: task._id, position: task.position }))
@@ -315,38 +317,40 @@ function buildDateState(tasks: TaskDoc[], dates: Set<string>): DateLaneSnapshot[
 
 function buildAfterTasks(
   allTasks: TaskDoc[],
-  assignmentRows: Array<{ taskId: Id<"tasks">; scheduledDate: string }>
-): Map<string, { scheduledDate: string; position: number }> {
+  assignmentRows: Array<{ taskId: Id<"tasks">; deadline: string }>
+): Map<string, { deadline: string; position: number }> {
   const affectedIds = new Set(assignmentRows.map((row) => String(row.taskId)));
   const assignmentsByDate = new Map<string, Array<{ taskId: Id<"tasks">; order: number }>>();
 
   assignmentRows.forEach((row, order) => {
-    const bucket = assignmentsByDate.get(row.scheduledDate) ?? [];
+    const bucket = assignmentsByDate.get(row.deadline) ?? [];
     bucket.push({ taskId: row.taskId, order });
-    assignmentsByDate.set(row.scheduledDate, bucket);
+    assignmentsByDate.set(row.deadline, bucket);
   });
 
   const unaffectedMaxPositionByDate = new Map<string, number>();
   for (const task of allTasks) {
     if (
-      task.status !== "scheduled" ||
-      !task.scheduledDate ||
+      !isActiveTask(task) ||
+      !getPlanningDeadline(task) ||
       affectedIds.has(String(task._id))
     ) {
       continue;
     }
-    const current = unaffectedMaxPositionByDate.get(task.scheduledDate) ?? -1;
-    if (task.position > current) unaffectedMaxPositionByDate.set(task.scheduledDate, task.position);
+    const deadline = getPlanningDeadline(task);
+    if (!deadline) continue;
+    const current = unaffectedMaxPositionByDate.get(deadline) ?? -1;
+    if (task.position > current) unaffectedMaxPositionByDate.set(deadline, task.position);
   }
 
-  const afterByTaskId = new Map<string, { scheduledDate: string; position: number }>();
+  const afterByTaskId = new Map<string, { deadline: string; position: number }>();
   for (const [date, rows] of assignmentsByDate) {
     const start = (unaffectedMaxPositionByDate.get(date) ?? -1) + 1;
     rows
       .sort((a, b) => a.order - b.order)
       .forEach((row, index) => {
         afterByTaskId.set(String(row.taskId), {
-          scheduledDate: date,
+          deadline: date,
           position: start + index,
         });
       });
@@ -365,10 +369,11 @@ function decodePlan(planToken: string): EncodedPlan {
 function assertDateStateMatches(currentTasks: TaskDoc[], expected: DateLaneSnapshot[], label: string) {
   const currentByDate = new Map<string, Array<{ taskId: string; position: number }>>();
   for (const task of currentTasks) {
-    if (task.status !== "scheduled" || !task.scheduledDate) continue;
-    const bucket = currentByDate.get(task.scheduledDate) ?? [];
+    const deadline = getPlanningDeadline(task);
+    if (!isActiveTask(task) || !deadline) continue;
+    const bucket = currentByDate.get(deadline) ?? [];
     bucket.push({ taskId: String(task._id), position: task.position });
-    currentByDate.set(task.scheduledDate, bucket);
+    currentByDate.set(deadline, bucket);
   }
 
   for (const snapshot of expected) {
@@ -392,10 +397,10 @@ function assertDateStateMatches(currentTasks: TaskDoc[], expected: DateLaneSnaps
 
 function validateTaskEligibility(task: TaskDoc | null): asserts task is TaskDoc {
   if (!task) throw new Error("A task no longer exists");
-  if (task.status === "completed" || task.status === "cancelled") {
+  if (!isNativeTask(task) || !isActiveTask(task)) {
     throw new Error("A task is no longer eligible for reflow");
   }
-  if (task.status !== "scheduled" || !task.scheduledDate) {
+  if (!getPlanningDeadline(task)) {
     throw new Error("A task is no longer scheduled");
   }
 }
@@ -426,7 +431,7 @@ function summarizeGroup(
 ): PlanGoalSummary {
   const assignmentRows = result.assignments.map((assignment) => ({
     taskId: assignment.taskId as Id<"tasks">,
-    scheduledDate: assignment.scheduledDate,
+    deadline: assignment.deadline,
   }));
   const relevantTasks = group.planTasks;
   const afterByTaskId = buildAfterTasks(
@@ -437,19 +442,18 @@ function summarizeGroup(
   const touchedDates = new Set<string>();
   const tokenTasks: TaskSummaryForToken[] = relevantTasks.map((task) => {
     const after = afterByTaskId.get(String(task._id));
-    if (!after || !task.scheduledDate) {
+    const beforeDeadline = getPlanningDeadline(task);
+    if (!after || !beforeDeadline) {
       throw new Error("Could not build reflow preview");
     }
-    touchedDates.add(task.scheduledDate);
-    touchedDates.add(after.scheduledDate);
+    touchedDates.add(beforeDeadline);
+    touchedDates.add(after.deadline);
     return {
       taskId: task._id,
       title: task.title,
-      type: task.type,
-      deadline: task.deadline,
-      beforeDate: task.scheduledDate,
+      beforeDate: beforeDeadline,
       beforePosition: task.position,
-      afterDate: after.scheduledDate,
+      afterDate: after.deadline,
       afterPosition: after.position,
     };
   });
@@ -479,13 +483,14 @@ function summarizeGroup(
     assignments: result.assignments,
     tasks: group.planTasks.map((task) => {
       const next = result.assignments.find((assignment) => assignment.taskId === String(task._id));
-      const nextDate = next?.scheduledDate ?? task.scheduledDate ?? "";
+      const currentDate = getPlanningDeadline(task);
+      const nextDate = next?.deadline ?? currentDate ?? "";
       return {
         taskId: String(task._id),
         title: task.title,
-        currentDate: task.scheduledDate,
+        currentDate,
         nextDate,
-        changed: nextDate !== task.scheduledDate,
+        changed: nextDate !== currentDate,
       };
     }),
     planToken: buildPlanPayload(
@@ -514,7 +519,7 @@ export const preview = query({
     const allAssignments = groups.flatMap((group) =>
       group.assignments.map((assignment) => ({
         taskId: assignment.taskId as Id<"tasks">,
-        scheduledDate: assignment.scheduledDate,
+        deadline: assignment.deadline,
       }))
     );
 
@@ -525,19 +530,18 @@ export const preview = query({
     const allTouchedDates = new Set<string>();
     const allTokenTasks: TaskSummaryForToken[] = allTouchedTasks.map((task) => {
       const after = allAfterByTaskId.get(String(task._id));
-      if (!after || !task.scheduledDate) {
+      const beforeDeadline = getPlanningDeadline(task);
+      if (!after || !beforeDeadline) {
         throw new Error("Could not build reflow preview");
       }
-      allTouchedDates.add(task.scheduledDate);
-      allTouchedDates.add(after.scheduledDate);
+      allTouchedDates.add(beforeDeadline);
+      allTouchedDates.add(after.deadline);
       return {
         taskId: task._id,
         title: task.title,
-        type: task.type,
-        deadline: task.deadline,
-        beforeDate: task.scheduledDate,
+        beforeDate: beforeDeadline,
         beforePosition: task.position,
-        afterDate: after.scheduledDate,
+        afterDate: after.deadline,
         afterPosition: after.position,
       };
     });
@@ -555,7 +559,7 @@ export const preview = query({
       orphans: buckets.orphans.map((task) => ({
         taskId: String(task._id),
         title: task.title,
-        scheduledDate: task.scheduledDate,
+        deadline: getPlanningDeadline(task),
       })),
       planToken: buildPlanPayload(
         tokenIdentifier,
@@ -605,10 +609,7 @@ export const apply = mutation({
     for (const taskPlan of plan.tasks) {
       const task = taskById.get(String(taskPlan.taskId)) ?? null;
       validateTaskEligibility(task);
-      if (task.scheduledDate !== taskPlan.beforeDate || task.position !== taskPlan.beforePosition) {
-        throw new Error("A task changed after preview");
-      }
-      if (task.type !== taskPlan.type || (task.deadline ?? undefined) !== taskPlan.deadline) {
+      if (getPlanningDeadline(task) !== taskPlan.beforeDate || task.position !== taskPlan.beforePosition) {
         throw new Error("A task changed after preview");
       }
     }
@@ -616,9 +617,12 @@ export const apply = mutation({
     const appliedTasks: AppliedTaskSnapshot[] = [];
     for (const taskPlan of plan.tasks) {
       await ctx.db.patch(taskPlan.taskId, {
-        scheduledDate: taskPlan.afterDate,
+        deadline: taskPlan.afterDate,
+        scheduledAt: taskById.get(String(taskPlan.taskId))?.scheduledAt ?? taskById.get(String(taskPlan.taskId))?.createdAt,
+        scheduledDate: undefined,
+        status: undefined,
+        type: undefined,
         position: taskPlan.afterPosition,
-        status: "scheduled",
         updatedAt: Date.now(),
       });
       appliedTasks.push({
@@ -738,7 +742,7 @@ export const undo = mutation({
     for (const taskState of operation.taskAfter) {
       const task = taskById.get(String(taskState.taskId)) ?? null;
       validateTaskEligibility(task);
-      if (task.scheduledDate !== taskState.scheduledDate || task.position !== taskState.position) {
+      if (getPlanningDeadline(task) !== taskState.scheduledDate || task.position !== taskState.position) {
         throw new Error("Plan changed after reflow");
       }
     }
@@ -752,9 +756,11 @@ export const undo = mutation({
 
     for (const taskState of operation.taskBefore) {
       await ctx.db.patch(taskState.taskId, {
-        scheduledDate: taskState.scheduledDate,
+        deadline: taskState.scheduledDate,
+        scheduledDate: undefined,
+        status: undefined,
+        type: undefined,
         position: taskState.position,
-        status: "scheduled",
         updatedAt: Date.now(),
       });
     }

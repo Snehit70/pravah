@@ -28,8 +28,9 @@ import type { AppPage } from "./TopNavbar";
 import { useBootstrapUser } from "../hooks/useBootstrapUser";
 import { useToast } from "./useToast";
 import { TopNavbar } from "./TopNavbar";
-import { getLocalDateString } from "../lib/utils";
+import { getLocalDayBounds } from "../lib/utils";
 import { isWebGoalsLinkingEnabled } from "../lib/featureFlags";
+import { isTaskCompleted } from "../lib/taskState";
 
 const TaskPopup = lazy(() =>
   import("./TaskPopup").then((module) => ({ default: module.TaskPopup }))
@@ -66,9 +67,10 @@ export function AuthenticatedApp() {
   const { showError } = useToast();
 
   const boardTasks = useQuery(api.tasks.listBoardTasks, {});
-  const todayCompletedTasks = useQuery(api.tasks.listTodayCompletedTasks, {
-    clientDate: getLocalDateString(),
-  });
+  const todayCompletedTasks = useQuery(
+    api.tasks.listTodayCompletedTasks,
+    getLocalDayBounds()
+  );
   const kairoTasks = useQuery(api.tasks.listTasks, kairoActive ? {} : "skip");
   const goals = useQuery(api.goals.list, webGoalsLinkingEnabled ? {} : "skip");
   const goalLinks = useQuery(api.goals.listLinks, webGoalsLinkingEnabled ? {} : "skip");
@@ -155,7 +157,9 @@ export function AuthenticatedApp() {
       const task = taskById.get(taskId);
       if (!task || !initial[goalId]) continue;
       initial[goalId].total += 1;
-      if (task.status === "completed") initial[goalId].done += 1;
+      if (isTaskCompleted(task)) {
+        initial[goalId].done += 1;
+      }
     }
     return initial;
   }, [boardTasks, goalLinks, goals, webGoalsLinkingEnabled]);

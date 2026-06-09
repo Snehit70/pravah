@@ -25,6 +25,7 @@ import {
   useKairoTaskProposalDecisions,
 } from "../hooks/useKairoTaskProposalDecisions";
 import { KairoTaskProposalList } from "./KairoTaskProposalList";
+import { isTaskCompleted, isTaskOnTimeline } from "../lib/taskState";
 
 const ACCENT = "oklch(0.78 0.14 260)";
 const ACCENT_SOFT = "oklch(0.72 0.16 260 / 0.2)";
@@ -44,7 +45,7 @@ Your capabilities:
 - Answer schedule questions ("What's happening Thursday?", "Am I free Friday?")
 
 When you decide to add a task, include a structured block in your response — one per task:
-<add-task>{"title":"<title>","scheduledDate":"<YYYY-MM-DD or null for inbox>","type":"open"}</add-task>
+<add-task>{"title":"<title>","deadline":"<YYYY-MM-DD or null for inbox>"}</add-task>
 
 Guidelines:
 - Be direct and warm, not corporate or verbose
@@ -65,13 +66,14 @@ interface KairoProps {
 
 function buildContext(tasks: Task[], inboxTasks: Task[]): string {
   const today = getLocalDateString();
-  const scheduled = tasks.filter(t => t.status === "scheduled");
-  const completed = tasks.filter(t => t.status === "completed");
+  const scheduled = tasks.filter(isTaskOnTimeline);
+  const completed = tasks.filter(isTaskCompleted);
 
   const byDate: Record<string, Task[]> = {};
   for (const t of scheduled) {
-    if (!t.scheduledDate) continue;
-    (byDate[t.scheduledDate] ||= []).push(t);
+    const date = t.deadline;
+    if (!date) continue;
+    (byDate[date] ||= []).push(t);
   }
 
   const dateLines = Object.entries(byDate)
@@ -79,7 +81,7 @@ function buildContext(tasks: Task[], inboxTasks: Task[]): string {
     .map(([date, ts]) => {
       const label = date === today ? `${date} (TODAY)` : date;
       const taskList = ts.map(t =>
-        `  - "${t.title}"${t.type === "deadline" ? " [DEADLINE]" : ""}${t.priority ? ` [${t.priority.toUpperCase()}]` : ""}`
+        `  - "${t.title}"${t.deadline ? " [DEADLINE]" : ""}${t.priority ? ` [${t.priority.toUpperCase()}]` : ""}`
       ).join("\n");
       return `${label}:\n${taskList}`;
     })

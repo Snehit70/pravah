@@ -27,6 +27,7 @@ import { TaskMetaFields } from "./TaskMetaFields";
 import { type TaskPriority } from "../lib/task-form";
 import { useGoals } from "../hooks/useGoals";
 import { useGoalMutations } from "../hooks/useGoalMutations";
+import { addDays, toIsoDate } from "../lib/dates";
 
 type ComposerMode = "inbox" | "today" | "tomorrow" | "nextweek";
 
@@ -49,7 +50,6 @@ type AddTaskSheetProps = {
     title: string;
     description?: string;
     deadline?: string;
-    mode: ComposerMode;
     priority?: TaskPriority;
     goalId?: string;
   }) => Promise<boolean>;
@@ -64,7 +64,6 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [deadline, setDeadline] = useState("");
-    const [mode, setMode] = useState<ComposerMode>("inbox");
     const [priority, setPriority] = useState<TaskPriority>(undefined);
     const [kind, setKind] = useState<"task" | "goal">("task");
     const [goalId, setGoalId] = useState<string | undefined>(undefined);
@@ -83,9 +82,18 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         description.trim() ||
         deadline.trim() ||
         priority ||
-        goalId ||
-        mode !== "inbox"
+        goalId
     );
+
+    const presetDeadlines: Record<ComposerMode, string> = {
+      inbox: "",
+      today: toIsoDate(new Date()),
+      tomorrow: toIsoDate(addDays(new Date(), 1)),
+      nextweek: toIsoDate(addDays(new Date(), 7)),
+    };
+    const selectedMode = MODE_OPTIONS.find(
+      (option) => presetDeadlines[option.mode] === deadline
+    )?.mode;
 
     const closeModal = useCallback(
       (notify = true) => {
@@ -167,7 +175,6 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         title: trimmed,
         description: description.trim() || undefined,
         deadline: deadlineResult.value,
-        mode,
         priority,
         goalId,
       });
@@ -178,7 +185,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         reset();
         closeModal();
       }
-    }, [title, description, deadline, mode, priority, goalId, kind, saving, onAdd, isValidDeadline, closeModal, addGoal]);
+    }, [title, description, deadline, priority, goalId, kind, saving, onAdd, isValidDeadline, closeModal, addGoal]);
 
     const canSubmit = useMemo(() => Boolean(title.trim()) && !saving, [title, saving]);
 
@@ -272,17 +279,24 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                   {MODE_OPTIONS.map((option) => (
                     <Pressable
                       key={option.mode}
-                      onPress={() => setMode(option.mode)}
+                      onPress={() => {
+                        setDeadline(presetDeadlines[option.mode]);
+                        setError(null);
+                      }}
                       style={({ pressed }) => [styles.modeItem, pressed && { opacity: 0.6 }]}
                       hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
                       accessibilityRole="button"
-                      accessibilityState={{ selected: mode === option.mode }}
-                      accessibilityLabel={`Schedule ${option.label}`}
+                      accessibilityState={{ selected: selectedMode === option.mode }}
+                      accessibilityLabel={
+                        option.mode === "inbox"
+                          ? "Clear deadline and move to Inbox"
+                          : `Set deadline ${option.label}`
+                      }
                     >
-                      <Text style={[styles.modeText, mode === option.mode && styles.modeTextActive]}>
+                      <Text style={[styles.modeText, selectedMode === option.mode && styles.modeTextActive]}>
                         {option.label}
                       </Text>
-                      <View style={[styles.modeRule, mode === option.mode && styles.modeRuleActive]} />
+                      <View style={[styles.modeRule, selectedMode === option.mode && styles.modeRuleActive]} />
                     </Pressable>
                   ))}
 

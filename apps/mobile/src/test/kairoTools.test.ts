@@ -17,29 +17,25 @@ const today = "2026-06-03";
 const overdue: KairoTaskInput = {
   _id: "o1",
   title: "Overdue thing",
-  status: "scheduled",
-  scheduledDate: "2026-06-01",
+  deadline: "2026-06-01",
 };
 const todayTask: KairoTaskInput = {
   _id: "t1",
   title: "Today thing",
-  status: "scheduled",
-  scheduledDate: today,
+  deadline: today,
   priority: "p1",
 };
 const future: KairoTaskInput = {
   _id: "f1",
   title: "Future Dentist",
-  status: "scheduled",
-  scheduledDate: "2026-06-10",
+  deadline: "2026-06-10",
 };
 const done: KairoTaskInput = {
   _id: "d1",
   title: "Finished",
-  status: "completed",
-  scheduledDate: "2026-06-02",
+  completedAt: Date.UTC(2026, 5, 2, 12),
 };
-const inboxItem: KairoTaskInput = { _id: "i1", title: "Inbox dentist note", status: "inbox" };
+const inboxItem: KairoTaskInput = { _id: "i1", title: "Inbox dentist note" };
 
 function makeEnv(): KairoReadEnv {
   return {
@@ -93,7 +89,7 @@ describe("runReadTool", () => {
     const env = makeEnv();
     const res = runReadTool("get_inbox", {}, env);
     expect(res.ok).toBe(true);
-    expect(res.data).toEqual({ tasks: [{ handle: "T1", title: "Inbox dentist note", status: "inbox" }] });
+    expect(res.data).toEqual({ tasks: [{ handle: "T1", title: "Inbox dentist note", state: "inbox" }] });
     expect(env.registry.taskIdMap).toEqual({ T1: "i1" });
   });
 
@@ -126,7 +122,7 @@ describe("runReadTool", () => {
     expect(runReadTool("search_tasks", { query: "  " }, makeEnv()).ok).toBe(false);
   });
 
-  it("get_completed returns completed tasks, filterable by scheduled-date range", () => {
+  it("get_completed returns completed tasks, filterable by completion-date range", () => {
     const all = runReadTool("get_completed", {}, makeEnv());
     expect((all.data as { tasks: Array<{ title: string }> }).tasks.map((t) => t.title)).toEqual(["Finished"]);
     const outOfRange = runReadTool("get_completed", { startDate: today, endDate: "2026-06-30" }, makeEnv());
@@ -186,21 +182,20 @@ describe("tool classification", () => {
 
 describe("toolCallToAction", () => {
   it("maps add_task onto the canonical add action", () => {
-    expect(toolCallToAction("add_task", { title: "Gym", scheduledDate: "2026-06-05", type: "open" })).toEqual({
+    expect(toolCallToAction("add_task", { title: "Gym", deadline: "2026-06-05" })).toEqual({
       kind: "add",
       title: "Gym",
-      scheduledDate: "2026-06-05",
-      type: "open",
+      deadline: "2026-06-05",
     });
   });
 
   it("maps reference tools by handle", () => {
     expect(toolCallToAction("complete_task", { handle: "T2" })).toEqual({ kind: "complete", handle: "T2" });
     expect(toolCallToAction("reopen_task", { handle: "T3" })).toEqual({ kind: "reopen", handle: "T3" });
-    expect(toolCallToAction("reschedule_task", { handle: "T1", scheduledDate: "2026-06-06" })).toEqual({
+    expect(toolCallToAction("reschedule_task", { handle: "T1", deadline: "2026-06-06" })).toEqual({
       kind: "reschedule",
       handle: "T1",
-      scheduledDate: "2026-06-06",
+      deadline: "2026-06-06",
     });
   });
 
@@ -220,7 +215,7 @@ describe("toolCallToAction", () => {
     expect(
       toolCallToAction("reschedule_task", {
         handle: "T1",
-        scheduledDate: "not-a-date",
+        deadline: "not-a-date",
       })
     ).toBeNull();
     expect(toolCallToAction("add_task", { title: "   " })).toBeNull();

@@ -6,7 +6,7 @@ describe("buildKairoConfirmation", () => {
   it("builds command-specific copy with task context", () => {
     expect(
       buildKairoConfirmation(
-        { kind: "reschedule", handle: "T1", scheduledDate: "2026-06-10" },
+        { kind: "reschedule", handle: "T1", deadline: "2026-06-10" },
         "Review launch"
       )
     ).toEqual({
@@ -29,7 +29,7 @@ describe("applyConfirmedKairoActions", () => {
 
     const result = await applyConfirmedKairoActions(
       [
-        { kind: "add", title: "One", scheduledDate: null, type: "open" },
+        { kind: "add", title: "One", deadline: null },
         { kind: "complete", handle: "T1" },
       ],
       {

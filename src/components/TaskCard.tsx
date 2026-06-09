@@ -6,6 +6,7 @@ import { memo } from "react";
 import { TRANSITION_FAST } from "../lib/motion";
 import type { Task } from "../types";
 import { cn, getLocalDateString, daysBetween, formatDeadline, DUE_SOON_DAYS } from "../lib/utils";
+import { isTaskCompleted } from "../lib/taskState";
 
 interface TaskCardProps {
   task: Task;
@@ -29,18 +30,20 @@ function TaskCardComponent({ task, onClick, isDragOverlay }: TaskCardProps) {
   };
 
   const today = getLocalDateString();
-  const isCompleted = task.status === "completed";
+  const isCompleted = isTaskCompleted(task);
+  const taskDeadline = task.deadline;
+  const hasDeadline = Boolean(taskDeadline);
   const isOverdue =
-    task.type === "deadline" &&
-    !!task.deadline &&
-    task.deadline < today &&
+    hasDeadline &&
+    !!taskDeadline &&
+    taskDeadline < today &&
     !isCompleted;
   const isDueSoon =
-    task.type === "deadline" &&
-    !!task.deadline &&
+    hasDeadline &&
+    !!taskDeadline &&
     !isOverdue &&
     !isCompleted &&
-    daysBetween(today, task.deadline) <= DUE_SOON_DAYS;
+    daysBetween(today, taskDeadline) <= DUE_SOON_DAYS;
 
   // Determine the accent color based on status
   const getAccentColor = () => {
@@ -117,7 +120,7 @@ function TaskCardComponent({ task, onClick, isDragOverlay }: TaskCardProps) {
             <Check size={10} strokeWidth={3} />
           ) : isOverdue ? (
             <AlertTriangle size={9} strokeWidth={2.5} />
-          ) : task.type === "deadline" ? (
+          ) : hasDeadline ? (
             <Clock size={9} strokeWidth={2.5} />
           ) : (
             <div
@@ -139,7 +142,7 @@ function TaskCardComponent({ task, onClick, isDragOverlay }: TaskCardProps) {
             {task.title}
           </p>
 
-          {task.deadline && !isCompleted && (
+          {taskDeadline && !isCompleted && (
             <p
               className="text-[11px] mt-1 font-medium"
               style={{
@@ -150,7 +153,7 @@ function TaskCardComponent({ task, onClick, isDragOverlay }: TaskCardProps) {
                     : "#a1a1aa"
               }}
             >
-              {formatDeadline(task.deadline, today)}
+              {formatDeadline(taskDeadline, today)}
             </p>
           )}
 

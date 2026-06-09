@@ -14,9 +14,10 @@ function makeTask(overrides: Partial<MobileTask> = {}): MobileTask {
   return {
     _id: makeId("task-1"),
     title: "Task",
-    status: "inbox",
+    scheduledAt: 50,
     position: 0,
     updatedAt: 100,
+    createdAt: 50,
     ...overrides,
   };
 }
@@ -27,8 +28,8 @@ describe("workspace snapshot utils", () => {
       JSON.stringify({
         capturedAt: 123,
         inboxTasks: [makeTask()],
-        scheduledTasks: [makeTask({ _id: makeId("task-2"), status: "scheduled", scheduledDate: "2026-05-12" })],
-        completedTasks: [makeTask({ _id: makeId("task-3"), status: "completed" })],
+        scheduledTasks: [makeTask({ _id: makeId("task-2"), deadline: "2026-05-12" })],
+        completedTasks: [makeTask({ _id: makeId("task-3"), completedAt: 100 })],
       })
     );
 
@@ -44,7 +45,7 @@ describe("workspace snapshot utils", () => {
         capturedAt: 123,
         inboxTasks: [makeTask(), { bad: true }],
         scheduledTasks: "wrong",
-        completedTasks: [makeTask({ _id: makeId("task-3"), status: "completed" })],
+        completedTasks: [makeTask({ _id: makeId("task-3"), completedAt: 100 })],
       })
     );
 
@@ -58,10 +59,10 @@ describe("workspace snapshot utils", () => {
       capturedAt: 123,
       inboxTasks: Array.from({ length: 140 }, (_, index) => makeTask({ _id: makeId(`inbox-${index}`) })),
       scheduledTasks: Array.from({ length: 180 }, (_, index) =>
-        makeTask({ _id: makeId(`scheduled-${index}`), status: "scheduled", scheduledDate: "2026-05-12" })
+        makeTask({ _id: makeId(`scheduled-${index}`), deadline: "2026-05-12" })
       ),
       completedTasks: Array.from({ length: 150 }, (_, index) =>
-        makeTask({ _id: makeId(`completed-${index}`), status: "completed" })
+        makeTask({ _id: makeId(`completed-${index}`), completedAt: 100 })
       ),
     });
 

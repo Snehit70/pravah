@@ -108,9 +108,8 @@ function makeTask(overrides: Partial<Task>): Task {
   return {
     _id: "task_1" as Id<"tasks">,
     title: "Task",
-    type: "open",
     position: 0,
-    status: "scheduled",
+    scheduledAt: 1,
     createdBy: "user",
     createdAt: 1,
     updatedAt: 1,
@@ -130,12 +129,11 @@ describe("App task flow integration", () => {
   it("renders authenticated app shell", () => {
     const today = getLocalDateString();
     useQueryMock.mockReturnValue([
-      makeTask({ _id: "inbox_1" as Id<"tasks">, title: "Inbox Task", status: "inbox" }),
+      makeTask({ _id: "inbox_1" as Id<"tasks">, title: "Inbox Task" }),
       makeTask({
         _id: "scheduled_1" as Id<"tasks">,
         title: "Scheduled Task",
-        scheduledDate: today,
-        status: "scheduled",
+        deadline: today,
       }),
     ]);
 
@@ -164,8 +162,7 @@ describe("App task flow integration", () => {
       makeTask({
         _id: "scheduled_1" as Id<"tasks">,
         title: "Click Me",
-        scheduledDate: today,
-        status: "scheduled",
+        deadline: today,
       }),
     ]);
 

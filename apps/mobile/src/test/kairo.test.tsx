@@ -310,8 +310,8 @@ import type { KairoTaskInput } from "../lib/kairoApi";
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 const sampleTasks: KairoTaskInput[] = [
-  { _id: "task1", title: "Task 1", status: "inbox" },
-  { _id: "task2", title: "Task 2", scheduledDate: "2026-05-05", status: "scheduled" },
+  { _id: "task1", title: "Task 1" },
+  { _id: "task2", title: "Task 2", deadline: "2026-05-05" },
 ];
 
 function useConfiguredKairo() {
@@ -562,13 +562,13 @@ describe("Kairo", () => {
               type: "tool_use",
               id: "t1",
               name: "add_task",
-              input: { title: "Review PR", scheduledDate: "2026-05-05", type: "open" },
+              input: { title: "Review PR", deadline: "2026-05-05" },
             },
             {
               type: "tool_use",
               id: "t2",
               name: "add_task",
-              input: { title: "Write tests", type: "open" },
+              input: { title: "Write tests" },
             },
           ],
         }),
@@ -604,16 +604,12 @@ describe("Kairo", () => {
     
     expect(mockAddTask).toHaveBeenCalledWith({
       title: "Review PR",
-      type: "open",
-      scheduledDate: "2026-05-05",
-      deadline: undefined,
+      deadline: "2026-05-05",
       source: "ai-agent",
     });
     
     expect(mockAddTask).toHaveBeenCalledWith({
       title: "Write tests",
-      type: "open",
-      scheduledDate: undefined,
       deadline: undefined,
       source: "ai-agent",
     });
@@ -631,7 +627,7 @@ describe("Kairo", () => {
               type: "tool_use",
               id: "t1",
               name: "add_task",
-              input: { title: "Review PR", type: "open" },
+              input: { title: "Review PR" },
             },
           ],
         }),

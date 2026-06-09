@@ -5,6 +5,7 @@ import type { Task } from "../types";
 import { generateDateRange, getLocalDateString } from "../lib/utils";
 import { TIMELINE_COL_WIDTH } from "../lib/timelineLayout";
 import { tx } from "../lib/motion";
+import { isTaskCompleted } from "../lib/taskState";
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const DAY_NAMES = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
@@ -193,10 +194,8 @@ export function Timeline({
   }, [scrollToToday]);
 
   const allScheduled = Object.values(tasksByDate).flat();
-  const openCount = allScheduled.filter(t => t.type === "open" && t.status !== "completed").length;
-  const deadlineCount = allScheduled.filter(t => t.type === "deadline" && t.status !== "completed").length;
-  const allTodayTasks = (allTasks ?? []).filter(t => t.scheduledDate === today);
-  const doneTodayCount = allTodayTasks.filter(t => t.status === "completed").length;
+  const allTodayTasks = (allTasks ?? []).filter((task) => task.deadline === today);
+  const doneTodayCount = allTodayTasks.filter(isTaskCompleted).length;
   const todayTotalCount = allTodayTasks.length;
 
   return (
@@ -245,8 +244,7 @@ export function Timeline({
             </button>
           </div>
 
-          <LaneLabel name="OPEN" count={openCount} color="oklch(0.78 0.14 260)" />
-          <LaneLabel name="DEADLINE" count={deadlineCount} color="oklch(0.72 0.16 30)" />
+          <LaneLabel name="TIMELINE" count={allScheduled.length} color="oklch(0.72 0.16 30)" />
 
           {/* Stats */}
           <div
@@ -316,41 +314,20 @@ export function Timeline({
               ))}
             </div>
 
-            {/* OPEN lane row */}
             <div
               className="flex"
-              style={{ borderBottom: "1px solid rgba(255,255,255,.07)", minHeight: 240 }}
+              style={{ minHeight: 240 }}
             >
               {dates.map((date) => (
                 <GridDayColumn
                   key={date}
                   date={date}
-                  tasks={(tasksByDate[date] ?? []).filter(t => t.type === "open")}
+                  tasks={tasksByDate[date] ?? []}
                   goalNameByTaskId={goalNameByTaskId}
                   onTaskClick={onTaskClick}
                   today={today}
                   hoverDate={hoverDate}
                   onHoverDate={setHoverDate}
-                />
-              ))}
-            </div>
-
-            {/* DEADLINE lane row */}
-            <div
-              className="flex"
-              style={{ minHeight: 180 }}
-            >
-              {dates.map((date) => (
-                <GridDayColumn
-                  key={date}
-                  date={date}
-                  tasks={(tasksByDate[date] ?? []).filter(t => t.type === "deadline")}
-                  goalNameByTaskId={goalNameByTaskId}
-                  onTaskClick={onTaskClick}
-                  today={today}
-                  hoverDate={hoverDate}
-                  onHoverDate={setHoverDate}
-                  isDeadlineLane
                 />
               ))}
             </div>

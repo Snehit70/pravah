@@ -110,8 +110,6 @@ export const addTask = internalMutation({
     idempotencyKey: v.optional(v.string()),
     title: v.string(),
     description: v.optional(v.string()),
-    type: v.union(v.literal("open"), v.literal("deadline")),
-    scheduledDate: v.optional(v.string()),
     deadline: v.optional(v.string()),
     source: v.optional(
       v.union(

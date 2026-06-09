@@ -39,7 +39,6 @@ describe("QuickAdd", () => {
     await waitFor(() => {
       expect(addTaskMock).toHaveBeenCalledWith({
         title: "Write tests",
-        type: "open",
         deadline: undefined,
         priority: undefined,
       });
@@ -48,11 +47,10 @@ describe("QuickAdd", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("submits deadline tasks with selected date and local minimum", async () => {
+  it("submits today tasks with deadline preset", async () => {
     const onClose = vi.fn();
     render(<QuickAdd onClose={onClose} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Deadline" }));
     fireEvent.click(screen.getByRole("button", { name: "Today" }));
 
     fireEvent.change(screen.getByPlaceholderText("What needs doing?"), {
@@ -63,9 +61,7 @@ describe("QuickAdd", () => {
     await waitFor(() => {
       expect(addTaskMock).toHaveBeenCalledWith({
         title: "Submit PR",
-        type: "deadline",
         deadline: getLocalDateString(),
-        scheduledDate: getLocalDateString(),
         priority: undefined,
       });
     });
@@ -73,11 +69,10 @@ describe("QuickAdd", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("uses tomorrow deadline when deadline type and tomorrow are selected", async () => {
+  it("uses tomorrow deadline when tomorrow preset is selected", async () => {
     const onClose = vi.fn();
     render(<QuickAdd onClose={onClose} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Deadline" }));
     fireEvent.click(screen.getByRole("button", { name: "Tomorrow" }));
     fireEvent.change(screen.getByPlaceholderText("What needs doing?"), {
       target: { value: "Tomorrow deadline" },
@@ -87,28 +82,9 @@ describe("QuickAdd", () => {
     await waitFor(() => {
       expect(addTaskMock).toHaveBeenCalledWith({
         title: "Tomorrow deadline",
-        type: "deadline",
         deadline: getTomorrowDateString(),
-        scheduledDate: getTomorrowDateString(),
         priority: undefined,
       });
     });
-  });
-
-  it("shows error when deadline task is submitted without date", async () => {
-    const onClose = vi.fn();
-    render(<QuickAdd onClose={onClose} />);
-
-    fireEvent.change(screen.getByPlaceholderText("What needs doing?"), {
-      target: { value: "Due soon" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Deadline" }));
-
-    fireEvent.click(screen.getByRole("button", { name: "Add task" }));
-
-    await waitFor(() => {
-      expect(showErrorMock).toHaveBeenCalledWith("Deadline tasks need a due date");
-    });
-    expect(addTaskMock).not.toHaveBeenCalled();
   });
 });

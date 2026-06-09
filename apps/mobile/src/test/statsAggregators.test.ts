@@ -25,9 +25,10 @@ function makeTask(overrides: TaskOverrides): MobileTask {
   return {
     _id: (_id ?? "t1") as Id<"tasks">,
     title: "task",
-    status: "inbox",
+    scheduledAt: NOW - 1_000,
     position: 0,
     updatedAt: NOW,
+    createdAt: NOW - 1_000,
     ...rest,
   };
 }
@@ -51,10 +52,10 @@ describe("completionsByDay", () => {
 
   it("buckets completions by local day, ignoring non-completed", () => {
     const tasks = [
-      makeTask({ _id: "a", status: "completed", updatedAt: daysAgo(0) }),
-      makeTask({ _id: "b", status: "completed", updatedAt: daysAgo(0, 18) }),
-      makeTask({ _id: "c", status: "completed", updatedAt: daysAgo(2) }),
-      makeTask({ _id: "d", status: "inbox", updatedAt: daysAgo(0) }),
+      makeTask({ _id: "a", completedAt: daysAgo(0), updatedAt: daysAgo(4) }),
+      makeTask({ _id: "b", completedAt: daysAgo(0, 18), updatedAt: daysAgo(4) }),
+      makeTask({ _id: "c", completedAt: daysAgo(2), updatedAt: daysAgo(4) }),
+      makeTask({ _id: "d", updatedAt: daysAgo(0) }),
     ];
     const out = completionsByDay(tasks, NOW, 7);
     const byDate = Object.fromEntries(out.map((p) => [p.date, p.count]));
@@ -65,8 +66,8 @@ describe("completionsByDay", () => {
 
   it("excludes completions older than the window", () => {
     const tasks = [
-      makeTask({ _id: "old", status: "completed", updatedAt: daysAgo(10) }),
-      makeTask({ _id: "in", status: "completed", updatedAt: daysAgo(3) }),
+      makeTask({ _id: "old", completedAt: daysAgo(10) }),
+      makeTask({ _id: "in", completedAt: daysAgo(3) }),
     ];
     const out = completionsByDay(tasks, NOW, 7);
     const total = out.reduce((s, p) => s + p.count, 0);
@@ -97,21 +98,21 @@ describe("currentStreak", () => {
 
   it("counts consecutive days ending today", () => {
     const tasks = [0, 1, 2].map((n) =>
-      makeTask({ _id: `t${n}`, status: "completed", updatedAt: daysAgo(n) }),
+      makeTask({ _id: `t${n}`, completedAt: daysAgo(n) }),
     );
     expect(currentStreak(tasks, NOW)).toBe(3);
   });
 
   it("looks back from yesterday if today is empty", () => {
     const tasks = [1, 2].map((n) =>
-      makeTask({ _id: `t${n}`, status: "completed", updatedAt: daysAgo(n) }),
+      makeTask({ _id: `t${n}`, completedAt: daysAgo(n) }),
     );
     expect(currentStreak(tasks, NOW)).toBe(2);
   });
 
   it("breaks on a missing day", () => {
     const tasks = [0, 2].map((n) =>
-      makeTask({ _id: `t${n}`, status: "completed", updatedAt: daysAgo(n) }),
+      makeTask({ _id: `t${n}`, completedAt: daysAgo(n) }),
     );
     expect(currentStreak(tasks, NOW)).toBe(1);
   });
@@ -122,29 +123,26 @@ describe("kpis", () => {
     const todayKey = "2025-06-15";
     const yesterdayKey = "2025-06-14";
     const tasks: MobileTask[] = [
-      makeTask({ _id: "i1", status: "inbox" }),
-      makeTask({ _id: "i2", status: "inbox" }),
-      makeTask({ _id: "c1", status: "completed", updatedAt: daysAgo(0) }),
-      makeTask({ _id: "c2", status: "completed", updatedAt: daysAgo(6) }),
-      makeTask({ _id: "c3", status: "completed", updatedAt: daysAgo(8) }),
+      makeTask({ _id: "i1" }),
+      makeTask({ _id: "i2" }),
+      makeTask({ _id: "c1", completedAt: daysAgo(0) }),
+      makeTask({ _id: "c2", completedAt: daysAgo(6) }),
+      makeTask({ _id: "c3", completedAt: daysAgo(8) }),
       makeTask({
         _id: "od1",
-        status: "scheduled",
-        scheduledDate: yesterdayKey,
+        deadline: yesterdayKey,
       }),
       makeTask({
         _id: "od2",
-        status: "scheduled",
         deadline: yesterdayKey,
       }),
       // Same-day scheduled — not overdue.
-      makeTask({ _id: "ok1", status: "scheduled", scheduledDate: todayKey }),
+      makeTask({ _id: "ok1", deadline: todayKey }),
       // Completed yesterday — not overdue even though deadline is past.
       makeTask({
         _id: "done-old",
-        status: "completed",
         deadline: yesterdayKey,
-        updatedAt: daysAgo(0),
+        completedAt: daysAgo(0),
       }),
     ];
     const k = kpis(tasks, NOW);

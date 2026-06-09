@@ -64,9 +64,8 @@ function makeTask(overrides: Partial<Task> = {}): Task {
   return {
     _id: "task_1" as Id<"tasks">,
     title: "Existing task",
-    type: "open",
     position: 0,
-    status: "scheduled",
+    scheduledAt: 1,
     createdBy: "user",
     createdAt: 1,
     updatedAt: 1,
@@ -176,7 +175,7 @@ describe("TaskPopup", () => {
       new Error("Could not find public function for 'tasks:unscheduleTask'")
     );
 
-    render(<TaskPopup task={makeTask({ status: "scheduled" })} onClose={onClose} />);
+    render(<TaskPopup task={makeTask({ deadline: "2026-04-10" })} onClose={onClose} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Unschedule" }));
 

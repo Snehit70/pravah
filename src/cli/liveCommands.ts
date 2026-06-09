@@ -15,8 +15,10 @@ interface LiveTaskSummary {
   id: string;
   title: string;
   status: string;
-  scheduledDate?: string;
   deadline?: string;
+  scheduledAt?: number;
+  completedAt?: number;
+  cancelledAt?: number;
 }
 
 interface LiveGoalSummary {
@@ -41,18 +43,22 @@ function toLiveTaskSummary(value: unknown): LiveTaskSummary | null {
         : undefined;
   if (
     !id ||
-    typeof task.title !== "string" ||
-    typeof task.status !== "string"
+    typeof task.title !== "string"
   ) {
     return null;
   }
+  const deadline = typeof task.deadline === "string" ? task.deadline : undefined;
+  const scheduledAt = typeof task.scheduledAt === "number" ? task.scheduledAt : undefined;
+  const completedAt = typeof task.completedAt === "number" ? task.completedAt : undefined;
+  const cancelledAt = typeof task.cancelledAt === "number" ? task.cancelledAt : undefined;
   return {
     id,
     title: task.title,
-    status: task.status,
-    scheduledDate:
-      typeof task.scheduledDate === "string" ? task.scheduledDate : undefined,
-    deadline: typeof task.deadline === "string" ? task.deadline : undefined,
+    status: cancelledAt ? "cancelled" : completedAt ? "completed" : deadline ? "scheduled" : "inbox",
+    deadline,
+    scheduledAt,
+    completedAt,
+    cancelledAt,
   };
 }
 
@@ -211,7 +217,6 @@ export async function executeLiveCommand(
           .map((task) => ({
             id: task.id,
             title: task.title,
-            scheduledDate: task.scheduledDate,
             deadline: task.deadline,
           })),
         inboxSummary: {
@@ -225,8 +230,8 @@ export async function executeLiveCommand(
           count: tasks.filter(
             (task) =>
               task.status === "scheduled" &&
-              typeof task.scheduledDate === "string" &&
-              task.scheduledDate < today
+              typeof task.deadline === "string" &&
+              task.deadline < today
           ).length,
         },
         reviewQueueSummary: { count: reviewItems.length },
@@ -267,9 +272,9 @@ export async function executeLiveCommand(
           .filter(
             (entry) =>
               entry.id !== task.id &&
-              entry.scheduledDate &&
-              task.scheduledDate &&
-              entry.scheduledDate === task.scheduledDate
+              entry.deadline &&
+              task.deadline &&
+              entry.deadline === task.deadline
           )
           .slice(0, 5)
           .map((entry) => ({
@@ -312,7 +317,7 @@ export async function executeLiveCommand(
     }
     case "tasks add": {
       const title = requireOption(args, "title", command);
-      const scheduledDate = readOption(args.options, "scheduled-date");
+      const deadline = readOption(args.options, "deadline");
       const description = readOption(args.options, "description");
       const metadata = getWriteMetadata(args);
       const result = await executeLiveWrite(
@@ -320,14 +325,14 @@ export async function executeLiveCommand(
         metadata.idempotencyKey,
         () =>
           client.addTask(
-            { title, scheduledDate, description },
+            { title, deadline, description },
             metadata.idempotencyKey
           )
       );
       return {
         action: "tasks.add",
         title,
-        scheduledDate,
+        deadline,
         createdTaskId: readCreatedTaskId(result),
         ...metadata,
         replayed: readReplayStatus(result),

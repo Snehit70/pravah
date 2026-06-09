@@ -54,8 +54,8 @@ describe("useOverdueTriageController", () => {
           suggestedDeadline: "2026-06-04",
           defaultApplyDeadline: true,
           assignments: [
-            { taskId: "t1", scheduledDate: "2026-06-03" },
-            { taskId: "t2", scheduledDate: "2026-06-04" },
+            { taskId: "t1", deadline: "2026-06-03" },
+            { taskId: "t2", deadline: "2026-06-04" },
           ],
           planToken: "g1-token",
           tasks: [

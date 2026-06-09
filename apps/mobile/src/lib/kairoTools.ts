@@ -78,7 +78,7 @@ export const KAIRO_READ_TOOLS: KairoToolSchema[] = [
   {
     name: "get_completed",
     description:
-      "List completed tasks, optionally filtered to those scheduled within a date range (YYYY-MM-DD). Useful for progress summaries.",
+      "List completed tasks, optionally filtered by completion date (YYYY-MM-DD). Useful for progress summaries.",
     parameters: {
       type: "object",
       properties: {
@@ -92,13 +92,12 @@ export const KAIRO_READ_TOOLS: KairoToolSchema[] = [
 export const KAIRO_MUTATION_TOOLS: KairoToolSchema[] = [
   {
     name: "add_task",
-    description: "Create a task. Omit scheduledDate to put it in the inbox.",
+    description: "Create a task. Omit deadline to put it in the inbox.",
     parameters: {
       type: "object",
       properties: {
         title: { ...str("Task title"), maxLength: 500 },
-        scheduledDate: date("Date YYYY-MM-DD, or omit for inbox"),
-        type: { type: "string", enum: ["open", "deadline"], description: "Task type" },
+        deadline: date("Deadline YYYY-MM-DD, or omit for inbox"),
       },
       required: ["title"],
     },
@@ -110,9 +109,9 @@ export const KAIRO_MUTATION_TOOLS: KairoToolSchema[] = [
       type: "object",
       properties: {
         handle: str("Task handle, e.g. T3"),
-        scheduledDate: date("New date, YYYY-MM-DD"),
+        deadline: date("New deadline, YYYY-MM-DD"),
       },
-      required: ["handle", "scheduledDate"],
+      required: ["handle", "deadline"],
     },
   },
   {
@@ -122,7 +121,7 @@ export const KAIRO_MUTATION_TOOLS: KairoToolSchema[] = [
   },
   {
     name: "reopen_task",
-    description: "Reopen a completed task and send it to the inbox.",
+    description: "Reopen a completed task, preserving its deadline when present.",
     parameters: { type: "object", properties: { handle: str("Task handle") }, required: ["handle"] },
   },
   {
@@ -227,10 +226,15 @@ export interface KairoThinContextEnv {
  *  and the per-round token cost stays bounded regardless of corpus size. */
 export function buildThinContext(env: KairoThinContextEnv): string {
   const { tasks, inboxTasks, goals, goalLinks, registry, today } = env;
-  const scheduled = tasks.filter((t) => t.status === "scheduled");
-  const todayTasks = scheduled.filter((t) => t.scheduledDate === today);
+  const scheduled = tasks.filter(
+    (task) =>
+      task.completedAt === undefined &&
+      task.cancelledAt === undefined &&
+      !!task.deadline
+  );
+  const todayTasks = scheduled.filter((t) => t.deadline === today);
   const overdueCount = scheduled.filter(
-    (t) => t.scheduledDate !== undefined && t.scheduledDate < today
+    (t) => t.deadline !== undefined && t.deadline < today
   ).length;
 
   const todayLines = todayTasks.length
@@ -238,8 +242,8 @@ export function buildThinContext(env: KairoThinContextEnv): string {
         .map(
           (t) =>
             `  - [${registry.handleForTask(t._id)}] "${t.title}"${
-              t.type === "deadline" ? " [DEADLINE]" : ""
-            }${t.priority ? ` [${t.priority.toUpperCase()}]` : ""}`
+              t.priority ? ` [${t.priority.toUpperCase()}]` : ""
+            }`
         )
         .join("\n")
     : "  (none)";
@@ -290,10 +294,8 @@ export interface KairoReadEnv {
 interface TaskSummary {
   handle: string;
   title: string;
-  status: KairoTaskInput["status"];
-  scheduledDate?: string;
+  state: "inbox" | "timeline" | "completed" | "cancelled";
   priority?: "p1" | "p2" | "p3";
-  type?: "open" | "deadline";
   deadline?: string;
 }
 
@@ -311,11 +313,15 @@ function summarize(task: KairoTaskInput, registry: HandleRegistry): TaskSummary 
   const summary: TaskSummary = {
     handle: registry.handleForTask(task._id),
     title: task.title,
-    status: task.status,
+    state: task.cancelledAt !== undefined
+      ? "cancelled"
+      : task.completedAt !== undefined
+        ? "completed"
+        : task.deadline
+          ? "timeline"
+          : "inbox",
   };
-  if (task.scheduledDate) summary.scheduledDate = task.scheduledDate;
   if (task.priority) summary.priority = task.priority;
-  if (task.type) summary.type = task.type;
   if (task.deadline) summary.deadline = task.deadline;
   return summary;
 }
@@ -333,6 +339,13 @@ function dedupeById(tasks: KairoTaskInput[]): KairoTaskInput[] {
 
 const asDate = (v: unknown): string | undefined =>
   typeof v === "string" && v.trim() ? v.trim() : undefined;
+
+const timestampDate = (value: number): string => {
+  const date = new Date(value);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
+};
 
 /** Run a read tool against the in-memory workspace. Pure and synchronous —
  *  every returned task is registered into the handle map so the model can act
@@ -359,12 +372,13 @@ export function runReadTool(
       const matched = tasks
         .filter(
           (t) =>
-            t.status === "scheduled" &&
-            t.scheduledDate !== undefined &&
-            t.scheduledDate >= lo &&
-            t.scheduledDate <= hi
+            t.completedAt === undefined &&
+            t.cancelledAt === undefined &&
+            t.deadline !== undefined &&
+            t.deadline >= lo &&
+            t.deadline <= hi
         )
-        .sort((a, b) => (a.scheduledDate ?? "").localeCompare(b.scheduledDate ?? ""));
+        .sort((a, b) => (a.deadline ?? "").localeCompare(b.deadline ?? ""));
       return { ok: true, data: { tasks: toSummaries(matched) } };
     }
 
@@ -372,9 +386,12 @@ export function runReadTool(
       const matched = tasks
         .filter(
           (t) =>
-            t.status === "scheduled" && t.scheduledDate !== undefined && t.scheduledDate < today
+            t.completedAt === undefined &&
+            t.cancelledAt === undefined &&
+            t.deadline !== undefined &&
+            t.deadline < today
         )
-        .sort((a, b) => (a.scheduledDate ?? "").localeCompare(b.scheduledDate ?? ""));
+        .sort((a, b) => (a.deadline ?? "").localeCompare(b.deadline ?? ""));
       return { ok: true, data: { tasks: toSummaries(matched) } };
     }
 
@@ -394,9 +411,10 @@ export function runReadTool(
       const start = asDate(args.startDate);
       const end = asDate(args.endDate);
       const matched = tasks.filter((t) => {
-        if (t.status !== "completed") return false;
-        if (start && (t.scheduledDate === undefined || t.scheduledDate < start)) return false;
-        if (end && (t.scheduledDate === undefined || t.scheduledDate > end)) return false;
+        if (t.completedAt === undefined || t.cancelledAt !== undefined) return false;
+        const completedDate = timestampDate(t.completedAt);
+        if (start && completedDate < start) return false;
+        if (end && completedDate > end) return false;
         return true;
       });
       return { ok: true, data: { tasks: toSummaries(matched) } };

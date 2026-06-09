@@ -118,13 +118,13 @@ function labelForAction(
 ): string {
   switch (action.kind) {
     case "add":
-      return action.scheduledDate
-        ? `Added "${action.title}" → ${action.scheduledDate}`
+      return action.deadline
+        ? `Added "${action.title}" → ${action.deadline}`
         : `Added "${action.title}" to inbox`;
     case "reschedule":
       return beforeTitle
-        ? `Rescheduled "${beforeTitle}" → ${action.scheduledDate}`
-        : `Rescheduled task → ${action.scheduledDate}`;
+        ? `Rescheduled "${beforeTitle}" → ${action.deadline}`
+        : `Rescheduled task → ${action.deadline}`;
     case "complete":
       return beforeTitle ? `Completed "${beforeTitle}"` : "Completed task";
     case "reopen":
@@ -582,9 +582,9 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         return {
           _id: t._id,
           title: t.title,
-          status: t.status,
-          type: t.type ?? "open",
-          scheduledDate: t.scheduledDate,
+          deadline: t.deadline,
+          completedAt: t.completedAt,
+          cancelledAt: t.cancelledAt,
         };
       };
 
@@ -1104,7 +1104,7 @@ function Bubble({
           {message.tasks.map((t, i) => (
             <Text key={i} style={styles.taskAddedItem}>
               + {t.title}
-              {t.scheduledDate ? `  ·  ${t.scheduledDate}` : "  ·  inbox"}
+              {t.deadline ? `  ·  ${t.deadline}` : "  ·  inbox"}
             </Text>
           ))}
         </View>

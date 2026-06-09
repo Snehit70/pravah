@@ -10,9 +10,8 @@ function makeTask(overrides: Partial<Task>): Task {
   return {
     _id: "task_1" as Id<"tasks">,
     title: "Task",
-    type: "open",
     position: 0,
-    status: "scheduled",
+    scheduledAt: 1,
     createdBy: "user",
     createdAt: 1,
     updatedAt: 1,
@@ -28,15 +27,14 @@ describe("InsightsPage", () => {
     render(
       <InsightsPage
         tasks={[
-          makeTask({ _id: "a" as Id<"tasks">, status: "inbox", title: "Inbox" }),
-          makeTask({ _id: "b" as Id<"tasks">, status: "completed", title: "Done", updatedAt: 40 }),
+          makeTask({ _id: "a" as Id<"tasks">, title: "Inbox" }),
+          makeTask({ _id: "b" as Id<"tasks">, completedAt: 40, title: "Done", updatedAt: 40 }),
           makeTask({
             _id: "c" as Id<"tasks">,
-            status: "scheduled",
             title: "Overdue",
-            scheduledDate: yesterday < today ? yesterday : "2000-01-01",
+            deadline: yesterday < today ? yesterday : "2000-01-01",
           }),
-          makeTask({ _id: "d" as Id<"tasks">, status: "scheduled", title: "Upcoming", scheduledDate: tomorrow }),
+          makeTask({ _id: "d" as Id<"tasks">, title: "Upcoming", deadline: tomorrow }),
         ]}
       />
     );
@@ -55,9 +53,9 @@ describe("InsightsPage", () => {
     render(
       <InsightsPage
         tasks={[
-          makeTask({ _id: "a" as Id<"tasks">, title: "Complete me", status: "completed", updatedAt: 20 }),
-          makeTask({ _id: "b" as Id<"tasks">, title: "Still open", status: "scheduled", scheduledDate: "2099-01-01" }),
-          makeTask({ _id: "c" as Id<"tasks">, title: "Another done", status: "completed", updatedAt: 30 }),
+          makeTask({ _id: "a" as Id<"tasks">, title: "Complete me", completedAt: 20, updatedAt: 20 }),
+          makeTask({ _id: "b" as Id<"tasks">, title: "Still open", deadline: "2099-01-01" }),
+          makeTask({ _id: "c" as Id<"tasks">, title: "Another done", completedAt: 30, updatedAt: 30 }),
         ]}
       />
     );

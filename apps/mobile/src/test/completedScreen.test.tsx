@@ -98,18 +98,22 @@ const sampleTasks: MobileTask[] = [
   {
     _id: "task1" as Id<"tasks">,
     title: "Completed Task 1",
-    status: "completed",
+    scheduledAt: 100,
+    completedAt: 1000,
     priority: "p1",
     position: 0,
     updatedAt: 1000,
+    createdAt: 100,
   },
   {
     _id: "task2" as Id<"tasks">,
     title: "Completed Task 2",
-    status: "completed",
+    scheduledAt: 200,
+    completedAt: 2000,
     priority: "p2",
     position: 1,
     updatedAt: 2000,
+    createdAt: 200,
   },
 ];
 
@@ -202,10 +206,12 @@ describe("CompletedScreen", () => {
     const tasks = Array.from({ length: 30 }, (_, index) => ({
       _id: `bulk-${index}` as Id<"tasks">,
       title: `Bulk completed ${index}`,
-      status: "completed" as const,
+      scheduledAt: index,
+      completedAt: index,
       priority: "p2" as const,
       position: index,
       updatedAt: index,
+      createdAt: index,
     }));
 
     render(

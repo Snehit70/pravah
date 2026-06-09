@@ -7,10 +7,6 @@ export type WorkspaceSnapshot = {
   completedTasks: MobileTask[];
 };
 
-function isTaskStatus(value: unknown): value is MobileTask["status"] {
-  return value === "inbox" || value === "scheduled" || value === "completed" || value === "cancelled";
-}
-
 function isTaskPriority(value: unknown): value is MobileTask["priority"] {
   return value === undefined || value === "p1" || value === "p2" || value === "p3";
 }
@@ -21,13 +17,15 @@ function isMobileTask(value: unknown): value is MobileTask {
   return (
     typeof task._id === "string" &&
     typeof task.title === "string" &&
-    isTaskStatus(task.status) &&
     typeof task.position === "number" &&
+    typeof task.scheduledAt === "number" &&
+    typeof task.createdAt === "number" &&
     typeof task.updatedAt === "number" &&
     (task.description === undefined || typeof task.description === "string") &&
     (task.deadline === undefined || typeof task.deadline === "string") &&
-    isTaskPriority(task.priority) &&
-    (task.scheduledDate === undefined || typeof task.scheduledDate === "string")
+    (task.completedAt === undefined || typeof task.completedAt === "number") &&
+    (task.cancelledAt === undefined || typeof task.cancelledAt === "number") &&
+    isTaskPriority(task.priority)
   );
 }
 

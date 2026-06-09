@@ -20,8 +20,9 @@
 import type { MobileTask } from "../../components/TaskCard";
 import type { GoalItem } from "../../lib/goalsStorage";
 import { addDays, toIsoDate } from "../../lib/dates";
+import { isTaskOnTimeline } from "../../lib/taskState";
 
-export type ReflowAssignment = { taskId: string; scheduledDate: string };
+export type ReflowAssignment = { taskId: string; deadline: string };
 
 export type ReflowResult = {
   assignments: ReflowAssignment[];
@@ -64,27 +65,15 @@ export function daysBetween(a: string, b: string): number {
 const PRIORITY_RANK: Record<string, number> = { p1: 0, p2: 1, p3: 2 };
 
 function comparePlan(a: MobileTask, b: MobileTask): number {
-  const ad = a.scheduledDate ?? "";
-  const bd = b.scheduledDate ?? "";
+  const ad = a.deadline ?? "";
+  const bd = b.deadline ?? "";
   if (ad !== bd) return ad < bd ? -1 : 1;
   if (a.position !== b.position) return a.position - b.position;
   return String(a._id) < String(b._id) ? -1 : 1;
 }
 
 function isOverdue(task: MobileTask, today: string): boolean {
-  return task.status === "scheduled" && !!task.scheduledDate && task.scheduledDate < today;
-}
-
-function clampAssignmentDate(task: MobileTask, scheduledDate: string, today: string): string {
-  if (
-    task.type === "deadline" &&
-    task.deadline &&
-    scheduledDate > task.deadline &&
-    task.deadline >= today
-  ) {
-    return task.deadline;
-  }
-  return scheduledDate;
+  return isTaskOnTimeline(task) && !!task.deadline && task.deadline < today;
 }
 
 export function bucketOverdue(
@@ -114,8 +103,7 @@ export function bucketOverdue(
       .filter(
         (task) =>
           goalLinks[String(task._id)] === goalId &&
-          task.status === "scheduled" &&
-          !!task.scheduledDate
+          isTaskOnTimeline(task)
       )
       .sort(comparePlan);
     const overdueCount = planTasks.filter((task) => isOverdue(task, today)).length;
@@ -149,36 +137,34 @@ export function computeReflow(group: ReflowGroup, today: string): ReflowResult {
     const span = daysAvailable - 1;
     for (let i = 0; i < n; i += 1) {
       const offset = n === 1 ? 0 : Math.round((i * span) / (n - 1));
-      const scheduledDate = clampAssignmentDate(tasks[i], addIso(today, offset), today);
       assignments.push({
         taskId: String(tasks[i]._id),
-        scheduledDate,
+        deadline: addIso(today, offset),
       });
     }
   } else {
     mode = "march";
     for (let i = 0; i < n; i += 1) {
-      const scheduledDate = clampAssignmentDate(tasks[i], addIso(today, i), today);
       assignments.push({
         taskId: String(tasks[i]._id),
-        scheduledDate,
+        deadline: addIso(today, i),
       });
     }
   }
 
   const projectedEnd = assignments.reduce(
-    (max, assignment) => (assignment.scheduledDate > max ? assignment.scheduledDate : max),
+    (max, assignment) => (assignment.deadline > max ? assignment.deadline : max),
     today
   );
   const exceedsDeadline = projectedEnd > deadline;
   const suggestedDeadline = deadline < today || exceedsDeadline ? projectedEnd : undefined;
 
-  const oldById = new Map(tasks.map((task) => [String(task._id), task.scheduledDate]));
+  const oldById = new Map(tasks.map((task) => [String(task._id), task.deadline]));
   let movedCount = 0;
   let futureMovedCount = 0;
   for (const assignment of assignments) {
     const old = oldById.get(assignment.taskId);
-    if (old !== assignment.scheduledDate) {
+    if (old !== assignment.deadline) {
       movedCount += 1;
       if (old && old >= today) futureMovedCount += 1;
     }

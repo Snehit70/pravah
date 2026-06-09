@@ -23,6 +23,7 @@ import { BlurView } from "expo-blur";
 import { haptic } from "../lib/haptic";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "./TaskCard";
+import { isTaskCompleted, isTaskOnTimeline } from "../lib/taskState";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { TaskMetaFields } from "./TaskMetaFields";
 import { type TaskPriority } from "../lib/task-form";
@@ -66,7 +67,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
 
     const [visible, setVisible] = useState(false);
     const [taskId, setTaskId] = useState<Id<"tasks"> | null>(null);
-    const [taskStatus, setTaskStatus] = useState<MobileTask["status"] | null>(null);
+    const [taskState, setTaskState] = useState<"inbox" | "timeline" | "completed" | null>(null);
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [deadline, setDeadline] = useState("");
@@ -88,7 +89,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         Keyboard.dismiss();
         setVisible(false);
         setTaskId(null);
-        setTaskStatus(null);
+        setTaskState(null);
         setInitialDraft(null);
         setDraftGoalId(null);
         setShowGoalPicker(false);
@@ -105,7 +106,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           if (openSeqRef.current !== seq) return;
           const currentGoalId = goalLinksStore.goalFor(String(task._id)) ?? null;
           setTaskId(task._id);
-          setTaskStatus(task.status);
+          setTaskState(isTaskCompleted(task) ? "completed" : isTaskOnTimeline(task) ? "timeline" : "inbox");
           setTitle(task.title);
           setDescription(task.description ?? "");
           setDeadline(task.deadline ?? "");
@@ -356,7 +357,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
 
               {taskId ? (
                 <View style={styles.quickActions}>
-                  {taskStatus === "completed" ? (
+                  {taskState === "completed" ? (
                     onReopen ? (
                       <Pressable
                         onPress={() => {
@@ -383,7 +384,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                           <Text style={styles.quickActionText}>Complete</Text>
                         </Pressable>
                       ) : null}
-                      {taskStatus === "scheduled" && onUnschedule ? (
+                      {taskState === "timeline" && onUnschedule ? (
                         <Pressable
                           onPress={() => {
                             onUnschedule(taskId);

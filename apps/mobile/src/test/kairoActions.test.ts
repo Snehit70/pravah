@@ -46,15 +46,13 @@ describe("createKairoActionExecutor", () => {
   it("adds a task and returns a soft-delete undo", async () => {
     const mutations = makeMutations();
     const results = await applyActions(
-      [{ kind: "add", title: "Plan launch", scheduledDate: "2026-06-08", type: "deadline" }],
+      [{ kind: "add", title: "Plan launch", deadline: "2026-06-08" }],
       { taskIdMap: {} },
       envFrom(mutations)
     );
 
     expect(mutations.addTask).toHaveBeenCalledWith({
       title: "Plan launch",
-      type: "deadline",
-      scheduledDate: "2026-06-08",
       deadline: "2026-06-08",
       source: "ai-agent",
     });
@@ -67,15 +65,13 @@ describe("createKairoActionExecutor", () => {
   it("reschedules a task and restores its prior placement on undo", async () => {
     const mutations = makeMutations();
     const results = await applyActions(
-      [{ kind: "reschedule", handle: "T1", scheduledDate: "2026-06-10" }],
+      [{ kind: "reschedule", handle: "T1", deadline: "2026-06-10" }],
       { taskIdMap: { T1: "task-1" } },
       envFrom(mutations, {
         "task-1": {
           _id: "task-1",
           title: "Review",
-          status: "scheduled",
-          type: "open",
-          scheduledDate: "2026-06-05",
+          deadline: "2026-06-05",
         },
       })
     );
@@ -92,7 +88,7 @@ describe("createKairoActionExecutor", () => {
     });
   });
 
-  it("completes a task and undo reopens its prior scheduled placement", async () => {
+  it("completes a task and undo reopens it with its deadline preserved", async () => {
     const mutations = makeMutations();
     const results = await applyActions(
       [{ kind: "complete", handle: "T1" }],
@@ -101,9 +97,7 @@ describe("createKairoActionExecutor", () => {
         "task-1": {
           _id: "task-1",
           title: "Review",
-          status: "scheduled",
-          type: "open",
-          scheduledDate: "2026-06-05",
+          deadline: "2026-06-05",
         },
       })
     );
@@ -111,10 +105,7 @@ describe("createKairoActionExecutor", () => {
     if (results[0]?.status !== "applied") throw new Error("unreachable");
     await results[0].undo?.();
     expect(mutations.reopenTask).toHaveBeenCalledWith({ taskId: "task-1" });
-    expect(mutations.moveTask).toHaveBeenCalledWith({
-      taskId: "task-1",
-      targetDate: "2026-06-05",
-    });
+    expect(mutations.moveTask).not.toHaveBeenCalled();
   });
 
   it("reopens a completed task and undo completes it again", async () => {
@@ -123,7 +114,7 @@ describe("createKairoActionExecutor", () => {
       [{ kind: "reopen", handle: "T1" }],
       { taskIdMap: { T1: "task-1" } },
       envFrom(mutations, {
-        "task-1": { _id: "task-1", title: "Review", status: "completed", type: "open" },
+        "task-1": { _id: "task-1", title: "Review", completedAt: 1 },
       })
     );
 
@@ -142,9 +133,7 @@ describe("createKairoActionExecutor", () => {
         "task-1": {
           _id: "task-1",
           title: "Review",
-          status: "scheduled",
-          type: "open",
-          scheduledDate: "2026-06-05",
+          deadline: "2026-06-05",
         },
       })
     );
@@ -188,9 +177,7 @@ describe("createKairoActionExecutor", () => {
         "task-1": {
           _id: "task-1",
           title: "Review",
-          status: "scheduled",
-          type: "open",
-          scheduledDate: "2026-06-05",
+          deadline: "2026-06-05",
         },
       })
     );

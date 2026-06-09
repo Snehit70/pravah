@@ -2,13 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import type { Id } from "../../convex/_generated/dataModel";
 import {
   addTask,
-  backfillDeadlineTasksToDeadlineDate,
   bulkReschedule,
+  completeTask,
   getTimeline,
+  listTodayCompletedTasks,
+  migrateAllNativeTasksToDeadlineModel,
+  migrateNativeTasksToDeadlineModel,
   moveTask,
-  reorderInboxTasks,
-  reorderTasks,
-  shiftScheduledTaskPosition,
+  reopenTask,
   updateTask,
 } from "../../convex/tasks";
 
@@ -20,61 +21,25 @@ type InternalHandler<TArgs, TResult> = {
   _handler: (ctx: unknown, args: TArgs) => Promise<TResult>;
 };
 
-const moveTaskHandler = (
-  moveTask as unknown as InternalHandler<
-    { taskId: Id<"tasks">; targetDate: string; position?: number },
-    void
-  >
-)._handler;
-
-const reorderTasksHandler = (
-  reorderTasks as unknown as InternalHandler<
-    { date: string; taskIds: Id<"tasks">[] },
-    void
-  >
-)._handler;
-
-const reorderInboxTasksHandler = (
-  reorderInboxTasks as unknown as InternalHandler<
-    { taskIds: Id<"tasks">[] },
-    void
-  >
-)._handler;
-
-const bulkRescheduleHandler = (
-  bulkReschedule as unknown as InternalHandler<
-    { taskIds: Id<"tasks">[]; targetDate: string },
-    { movedCount: number; skippedTaskIds: Id<"tasks">[] }
-  >
-)._handler;
-
-const getTimelineHandler = (
-  getTimeline as unknown as InternalHandler<
-    { endDate: string },
-    Record<string, Array<{ _id: Id<"tasks">; scheduledDate?: string; position: number }>>
-  >
-)._handler;
-
-const shiftScheduledTaskPositionHandler = (
-  shiftScheduledTaskPosition as unknown as InternalHandler<
-    { taskId: Id<"tasks">; direction: "up" | "down" },
-    void
-  >
-)._handler;
-
 const addTaskHandler = (
   addTask as unknown as InternalHandler<
     {
       title: string;
       description?: string;
-      type: "open" | "deadline";
-      scheduledDate?: string;
       deadline?: string;
       source?: "manual" | "ai-agent" | "gmail" | "gcal";
       estimatedMinutes?: number;
       tags?: string[];
+      priority?: "p1" | "p2" | "p3";
     },
     Id<"tasks">
+  >
+)._handler;
+
+const moveTaskHandler = (
+  moveTask as unknown as InternalHandler<
+    { taskId: Id<"tasks">; targetDate: string; position?: number },
+    void
   >
 )._handler;
 
@@ -93,10 +58,46 @@ const updateTaskHandler = (
   >
 )._handler;
 
-const backfillDeadlineTasksHandler = (
-  backfillDeadlineTasksToDeadlineDate as unknown as InternalHandler<
+const getTimelineHandler = (
+  getTimeline as unknown as InternalHandler<
+    { startDate?: string; endDate: string },
+    Record<string, Array<{ _id: Id<"tasks">; deadline?: string; position: number }>>
+  >
+)._handler;
+
+const listTodayCompletedTasksHandler = (
+  listTodayCompletedTasks as unknown as InternalHandler<
+    { dayStartMs: number; dayEndMs: number },
+    Array<{ _id: Id<"tasks">; completedAt?: number }>
+  >
+)._handler;
+
+const completeTaskHandler = (
+  completeTask as unknown as InternalHandler<{ taskId: Id<"tasks"> }, void>
+)._handler;
+
+const reopenTaskHandler = (
+  reopenTask as unknown as InternalHandler<{ taskId: Id<"tasks"> }, void>
+)._handler;
+
+const bulkRescheduleHandler = (
+  bulkReschedule as unknown as InternalHandler<
+    { taskIds: Id<"tasks">[]; targetDate: string },
+    { movedCount: number; skippedTaskIds: Id<"tasks">[] }
+  >
+)._handler;
+
+const migrateNativeTasksHandler = (
+  migrateNativeTasksToDeadlineModel as unknown as InternalHandler<
     Record<string, never>,
-    { updatedCount: number; updatedTaskIds: Id<"tasks">[] }
+    { migratedCount: number; migratedTaskIds: Id<"tasks">[] }
+  >
+)._handler;
+
+const migrateAllNativeTasksHandler = (
+  migrateAllNativeTasksToDeadlineModel as unknown as InternalHandler<
+    Record<string, never>,
+    { migratedCount: number; migratedTaskIds: Id<"tasks">[] }
   >
 )._handler;
 
@@ -110,60 +111,47 @@ function createAuthedCtx(db: unknown) {
 }
 
 describe("convex/tasks handlers", () => {
-  it("backfills existing deadline tasks onto their deadline date", async () => {
-    const updateA = makeId("deadline-a");
-    const updateB = makeId("deadline-b");
-    const unchanged = makeId("deadline-ok");
-    const completed = makeId("deadline-done");
+  it("migrates native tasks onto deadline/scheduledAt/completedAt and strips legacy fields", async () => {
+    const nativeScheduled = makeId("native-scheduled");
+    const nativeCompleted = makeId("native-completed");
+    const externalTask = makeId("external-task");
 
     const db = {
       query: vi.fn().mockReturnValue({
         withIndex: vi.fn().mockReturnValue({
           collect: vi.fn().mockResolvedValue([
             {
-              _id: updateA,
-              type: "deadline",
-              deadline: "2026-04-16",
-              scheduledDate: "2026-04-11",
+              _id: nativeScheduled,
+              ownerTokenIdentifier: "user-1",
+              source: "manual",
+              deadline: "2026-04-20",
+              scheduledDate: "2026-04-12",
               status: "scheduled",
-              position: 0,
-              createdAt: 1,
+              type: "deadline",
+              createdAt: 100,
+              updatedAt: 150,
             },
             {
-              _id: updateB,
-              type: "deadline",
-              deadline: "2026-04-17",
-              scheduledDate: undefined,
-              status: "inbox",
-              position: 2,
-              createdAt: 2,
-            },
-            {
-              _id: unchanged,
-              type: "deadline",
-              deadline: "2026-04-18",
-              scheduledDate: "2026-04-18",
-              status: "scheduled",
-              position: 3,
-              createdAt: 3,
-            },
-            {
-              _id: completed,
-              type: "deadline",
-              deadline: "2026-04-19",
+              _id: nativeCompleted,
+              ownerTokenIdentifier: "user-1",
+              source: "ai-agent",
+              deadline: "2026-04-10",
               scheduledDate: "2026-04-10",
               status: "completed",
-              position: 1,
-              createdAt: 4,
+              type: "deadline",
+              createdAt: 200,
+              updatedAt: 260,
             },
             {
-              _id: makeId("open-task"),
-              type: "open",
-              deadline: undefined,
-              scheduledDate: "2026-04-16",
+              _id: externalTask,
+              ownerTokenIdentifier: "user-1",
+              source: "gcal",
+              deadline: "2026-04-14",
+              scheduledDate: "2026-04-14",
               status: "scheduled",
-              position: 4,
-              createdAt: 5,
+              type: "deadline",
+              createdAt: 300,
+              updatedAt: 320,
             },
           ]),
         }),
@@ -172,29 +160,81 @@ describe("convex/tasks handlers", () => {
     };
 
     const ctx = createAuthedCtx(db);
+    const result = await migrateNativeTasksHandler(ctx, {});
 
-    const result = await backfillDeadlineTasksHandler(ctx, {});
-
-    expect(result).toEqual({
-      updatedCount: 2,
-      updatedTaskIds: [updateA, updateB],
+    expect(result).toMatchObject({
+      migratedCount: 2,
+      migratedTaskIds: [nativeScheduled, nativeCompleted],
     });
-    expect(db.patch).toHaveBeenCalledTimes(2);
-    expect(db.patch).toHaveBeenNthCalledWith(1, updateA, {
-      scheduledDate: "2026-04-16",
-      status: "scheduled",
-      position: 5,
-      updatedAt: expect.any(Number),
+    expect(db.patch).toHaveBeenNthCalledWith(1, nativeScheduled, {
+      deadline: "2026-04-12",
+      scheduledAt: 100,
+      completedAt: undefined,
+      cancelledAt: undefined,
+      scheduledDate: undefined,
+      status: undefined,
+      type: undefined,
+      updatedAt: 150,
     });
-    expect(db.patch).toHaveBeenNthCalledWith(2, updateB, {
-      scheduledDate: "2026-04-17",
-      status: "scheduled",
-      position: 0,
-      updatedAt: expect.any(Number),
+    expect(db.patch).toHaveBeenNthCalledWith(2, nativeCompleted, {
+      deadline: "2026-04-10",
+      scheduledAt: 200,
+      completedAt: 260,
+      cancelledAt: undefined,
+      scheduledDate: undefined,
+      status: undefined,
+      type: undefined,
+      updatedAt: 260,
     });
   });
 
-  it("addTask schedules deadline tasks on their deadline by default", async () => {
+  it("migrates native tasks across every owner from the internal rollout entry point", async () => {
+    const nativeTask = makeId("native-other-owner");
+    const externalTask = makeId("external-other-owner");
+    const collect = vi.fn().mockResolvedValue([
+      {
+        _id: nativeTask,
+        ownerTokenIdentifier: "user-2",
+        source: "manual",
+        scheduledDate: "2026-05-01",
+        createdAt: 10,
+        updatedAt: 20,
+      },
+      {
+        _id: externalTask,
+        ownerTokenIdentifier: "user-3",
+        source: "gcal",
+        scheduledDate: "2026-05-02",
+        createdAt: 30,
+        updatedAt: 40,
+      },
+    ]);
+    const db = {
+      query: vi.fn().mockReturnValue({ collect }),
+      patch: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const result = await migrateAllNativeTasksHandler({ db }, {});
+
+    expect(db.query).toHaveBeenCalledWith("tasks");
+    expect(result).toEqual({ migratedCount: 1, migratedTaskIds: [nativeTask] });
+    expect(db.patch).toHaveBeenCalledTimes(1);
+    expect(db.patch).toHaveBeenCalledWith(
+      nativeTask,
+      expect.objectContaining({
+        deadline: "2026-05-01",
+        scheduledAt: 10,
+        scheduledDate: undefined,
+        status: undefined,
+        type: undefined,
+      })
+    );
+  });
+
+  it("adds tasks with deadline as the single planning date and scheduledAt as creation history", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-15T09:30:00.000Z"));
+
     const db = {
       query: vi.fn().mockReturnValue({
         withIndex: vi.fn().mockReturnValue({
@@ -207,106 +247,38 @@ describe("convex/tasks handlers", () => {
     };
 
     const ctx = createAuthedCtx(db);
-
     await addTaskHandler(ctx, {
       title: "Ship report",
-      type: "deadline",
       deadline: "2026-04-15",
     });
 
     expect(db.insert).toHaveBeenCalledWith("tasks", {
       title: "Ship report",
       description: undefined,
-      type: "deadline",
-      scheduledDate: "2026-04-15",
       deadline: "2026-04-15",
+      scheduledAt: 1776245400000,
+      completedAt: undefined,
       position: 3,
-      status: "scheduled",
       source: "manual",
       estimatedMinutes: undefined,
-        tags: undefined,
-        createdBy: "user-1",
-        ownerTokenIdentifier: "user-1",
-        createdAt: expect.any(Number),
-        updatedAt: expect.any(Number),
-      });
+      tags: undefined,
+      priority: undefined,
+      createdBy: "user-1",
+      ownerTokenIdentifier: "user-1",
+      createdAt: 1776245400000,
+      updatedAt: 1776245400000,
+      cancelledAt: undefined,
+    });
   });
 
-  it("moveTask rejects moves past deadline", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-04-09T12:00:00.000Z"));
-
+  it("moves active tasks by rewriting deadline", async () => {
     const db = {
       get: vi.fn().mockResolvedValue({
         _id: makeId("task-1"),
-        type: "deadline",
+        ownerTokenIdentifier: "user-1",
         deadline: "2026-04-10",
-        ownerTokenIdentifier: "user-1",
-      }),
-      query: vi.fn(),
-      patch: vi.fn(),
-    };
-
-    const ctx = createAuthedCtx(db);
-
-    await expect(
-      moveTaskHandler(ctx, {
-        taskId: makeId("task-1"),
-        targetDate: "2026-04-11",
-      })
-    ).rejects.toThrow("Cannot move task past its deadline");
-
-    expect(db.patch).not.toHaveBeenCalled();
-
-    vi.useRealTimers();
-  });
-
-  it("moveTask allows overdue deadline tasks to be carried forward", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-04-15T12:00:00.000Z"));
-
-    const db = {
-      get: vi.fn().mockResolvedValue({
-        _id: makeId("task-overdue"),
-        type: "deadline",
-        deadline: "2026-04-10",
-        status: "scheduled",
-        ownerTokenIdentifier: "user-1",
-      }),
-      query: vi.fn().mockReturnValue({
-        withIndex: vi.fn().mockReturnValue({
-          order: vi.fn().mockReturnValue({
-            first: vi.fn().mockResolvedValue({ position: 2 }),
-          }),
-        }),
-      }),
-      patch: vi.fn().mockResolvedValue(undefined),
-    };
-
-    const ctx = createAuthedCtx(db);
-
-    await moveTaskHandler(ctx, {
-      taskId: makeId("task-overdue"),
-      targetDate: "2026-04-12",
-    });
-
-    expect(db.patch).toHaveBeenCalledWith(makeId("task-overdue"), {
-      scheduledDate: "2026-04-12",
-      position: 3,
-      status: "scheduled",
-      updatedAt: expect.any(Number),
-    });
-
-    vi.useRealTimers();
-  });
-
-  it("moveTask appends to end of target day when position is omitted", async () => {
-    const db = {
-      get: vi.fn().mockResolvedValue({
-        _id: makeId("task-2"),
-        type: "open",
-        status: "inbox",
-        ownerTokenIdentifier: "user-1",
+        createdAt: 1,
+        updatedAt: 2,
       }),
       query: vi.fn().mockReturnValue({
         withIndex: vi.fn().mockReturnValue({
@@ -319,39 +291,179 @@ describe("convex/tasks handlers", () => {
     };
 
     const ctx = createAuthedCtx(db);
-
     await moveTaskHandler(ctx, {
-      taskId: makeId("task-2"),
+      taskId: makeId("task-1"),
       targetDate: "2026-04-12",
     });
 
-    expect(db.patch).toHaveBeenCalledWith(makeId("task-2"), {
-      scheduledDate: "2026-04-12",
+    expect(db.patch).toHaveBeenCalledWith(makeId("task-1"), {
+      deadline: "2026-04-12",
       position: 5,
-      status: "scheduled",
       updatedAt: expect.any(Number),
     });
   });
 
-  it("getTimeline includes all overdue scheduled tasks through the requested end date", async () => {
+  it("clears deadline on active tasks and moves them into inbox ordering", async () => {
+    const taskId = makeId("task-inbox");
+    const db = {
+      get: vi.fn().mockResolvedValue({
+        _id: taskId,
+        ownerTokenIdentifier: "user-1",
+        deadline: "2026-04-12",
+        scheduledAt: 111,
+        createdAt: 111,
+        updatedAt: 222,
+      }),
+      query: vi.fn().mockReturnValue({
+        withIndex: vi.fn().mockReturnValue({
+          collect: vi.fn().mockResolvedValue([
+            {
+              _id: makeId("other-inbox"),
+              ownerTokenIdentifier: "user-1",
+              deadline: undefined,
+              createdAt: 1,
+              updatedAt: 1,
+              position: 2,
+            },
+          ]),
+        }),
+      }),
+      patch: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const ctx = createAuthedCtx(db);
+    await updateTaskHandler(ctx, {
+      taskId,
+      deadline: undefined,
+      title: "Retitle",
+    });
+
+    expect(db.patch).toHaveBeenCalledWith(taskId, {
+      title: "Retitle",
+      deadline: undefined,
+      position: 3,
+      updatedAt: expect.any(Number),
+    });
+  });
+
+  it("writes completedAt on complete and clears it on reopen", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-20T08:00:00.000Z"));
+
+    const completeDb = {
+      get: vi.fn().mockResolvedValue({
+        _id: makeId("task-complete"),
+        ownerTokenIdentifier: "user-1",
+        deadline: "2026-04-20",
+        createdAt: 1,
+        updatedAt: 2,
+      }),
+      patch: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await completeTaskHandler(createAuthedCtx(completeDb), {
+      taskId: makeId("task-complete"),
+    });
+
+    expect(completeDb.patch).toHaveBeenCalledWith(makeId("task-complete"), {
+      completedAt: 1776672000000,
+      updatedAt: 1776672000000,
+    });
+
+    const reopenDb = {
+      get: vi.fn().mockResolvedValue({
+        _id: makeId("task-complete"),
+        ownerTokenIdentifier: "user-1",
+        deadline: undefined,
+        completedAt: 1776672000000,
+        createdAt: 1,
+        updatedAt: 1776672000000,
+      }),
+      query: vi.fn().mockReturnValue({
+        withIndex: vi.fn().mockReturnValue({
+          collect: vi.fn().mockResolvedValue([
+            {
+              _id: makeId("other-inbox"),
+              ownerTokenIdentifier: "user-1",
+              deadline: undefined,
+              createdAt: 1,
+              updatedAt: 1,
+              position: 1,
+            },
+          ]),
+        }),
+      }),
+      patch: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await reopenTaskHandler(createAuthedCtx(reopenDb), {
+      taskId: makeId("task-complete"),
+    });
+
+    expect(reopenDb.patch).toHaveBeenCalledWith(makeId("task-complete"), {
+      completedAt: undefined,
+      position: 2,
+      updatedAt: 1776672000000,
+    });
+  });
+
+  it("does not rewrite completedAt when completion is repeated", async () => {
+    const db = {
+      get: vi.fn().mockResolvedValue({
+        _id: makeId("task-complete"),
+        ownerTokenIdentifier: "user-1",
+        completedAt: 123,
+        createdAt: 1,
+        updatedAt: 123,
+      }),
+      patch: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await completeTaskHandler(createAuthedCtx(db), {
+      taskId: makeId("task-complete"),
+    });
+
+    expect(db.patch).not.toHaveBeenCalled();
+  });
+
+  it("groups timeline tasks by deadline and excludes completed/cancelled tasks", async () => {
     const db = {
       query: vi.fn().mockReturnValue({
         withIndex: vi.fn().mockReturnValue({
           collect: vi.fn().mockResolvedValue([
             {
-              _id: makeId("task-overdue-old"),
-              scheduledDate: "2026-04-01",
+              _id: makeId("task-overdue"),
+              ownerTokenIdentifier: "user-1",
+              deadline: "2026-04-01",
+              createdAt: 1,
+              updatedAt: 1,
               position: 1,
             },
             {
-              _id: makeId("task-this-week"),
-              scheduledDate: "2026-04-24",
+              _id: makeId("task-completed"),
+              ownerTokenIdentifier: "user-1",
+              deadline: "2026-04-20",
+              completedAt: 1000,
+              createdAt: 1,
+              updatedAt: 1000,
               position: 0,
             },
             {
-              _id: makeId("task-overdue-newer"),
-              scheduledDate: "2026-04-20",
+              _id: makeId("task-this-week"),
+              ownerTokenIdentifier: "user-1",
+              deadline: "2026-04-24",
+              createdAt: 1,
+              updatedAt: 1,
               position: 0,
+            },
+            {
+              _id: makeId("task-cancelled"),
+              ownerTokenIdentifier: "user-1",
+              deadline: "2026-04-22",
+              cancelledAt: 123,
+              createdAt: 1,
+              updatedAt: 123,
+              position: 2,
             },
           ]),
         }),
@@ -359,293 +471,171 @@ describe("convex/tasks handlers", () => {
     };
 
     const ctx = createAuthedCtx(db);
-
     const result = await getTimelineHandler(ctx, {
-      endDate: "2026-04-30",
+      endDate: "2026-04-24",
     });
 
     expect(result).toEqual({
       "2026-04-01": [
         {
-          _id: makeId("task-overdue-old"),
-          scheduledDate: "2026-04-01",
+          _id: makeId("task-overdue"),
+          ownerTokenIdentifier: "user-1",
+          deadline: "2026-04-01",
+          createdAt: 1,
+          updatedAt: 1,
           position: 1,
-        },
-      ],
-      "2026-04-20": [
-        {
-          _id: makeId("task-overdue-newer"),
-          scheduledDate: "2026-04-20",
-          position: 0,
+          scheduledAt: 1,
+          completedAt: undefined,
         },
       ],
       "2026-04-24": [
         {
           _id: makeId("task-this-week"),
-          scheduledDate: "2026-04-24",
+          ownerTokenIdentifier: "user-1",
+          deadline: "2026-04-24",
+          createdAt: 1,
+          updatedAt: 1,
           position: 0,
+          scheduledAt: 1,
+          completedAt: undefined,
         },
       ],
     });
   });
 
-  it("updateTask keeps inbox open tasks in inbox when they gain or keep a deadline", async () => {
-    const taskId = makeId("task-inbox-deadline");
+  it("filters today's completions using client-local timestamp boundaries", async () => {
     const db = {
-      get: vi.fn().mockResolvedValue({
-        _id: taskId,
-        status: "inbox",
-        type: "open",
-        deadline: "2026-04-12",
-        scheduledDate: undefined,
-        ownerTokenIdentifier: "user-1",
-      }),
-      query: vi.fn(),
-      patch: vi.fn().mockResolvedValue(undefined),
-    };
-
-    const ctx = createAuthedCtx(db);
-
-    await updateTaskHandler(ctx, {
-      taskId,
-      title: "Updated title",
-      deadline: "2026-04-12",
-    });
-
-    expect(db.query).not.toHaveBeenCalled();
-    expect(db.patch).toHaveBeenCalledWith(taskId, {
-      title: "Updated title",
-      deadline: "2026-04-12",
-      type: "open",
-      status: "inbox",
-      scheduledDate: undefined,
-      updatedAt: expect.any(Number),
-    });
-  });
-
-  it("updateTask still auto-schedules deadline tasks when they are deadline-based", async () => {
-    const taskId = makeId("task-scheduled-deadline");
-    const db = {
-      get: vi.fn().mockResolvedValue({
-        _id: taskId,
-        status: "scheduled",
-        type: "deadline",
-        deadline: "2026-04-12",
-        scheduledDate: "2026-04-12",
-        position: 2,
-        ownerTokenIdentifier: "user-1",
-      }),
-      query: vi.fn().mockReturnValue({
-        withIndex: vi.fn().mockReturnValue({
-          order: vi.fn().mockReturnValue({
-            first: vi.fn().mockResolvedValue({ position: 4 }),
-          }),
-        }),
-      }),
-      patch: vi.fn().mockResolvedValue(undefined),
-    };
-
-    const ctx = createAuthedCtx(db);
-
-    await updateTaskHandler(ctx, {
-      taskId,
-      deadline: "2026-04-15",
-    });
-
-    expect(db.patch).toHaveBeenCalledWith(taskId, {
-      deadline: "2026-04-15",
-      type: "deadline",
-      status: "scheduled",
-      scheduledDate: "2026-04-15",
-      position: 5,
-      updatedAt: expect.any(Number),
-    });
-  });
-
-  it("reorderTasks rejects ids that do not belong to the specified day", async () => {
-    const db = {
-      get: vi.fn().mockResolvedValue({
-        _id: makeId("task-3"),
-        scheduledDate: "2026-04-09",
-        ownerTokenIdentifier: "user-1",
-      }),
-      patch: vi.fn(),
-    };
-
-    const ctx = createAuthedCtx(db);
-
-    await expect(
-      reorderTasksHandler(ctx, {
-        date: "2026-04-10",
-        taskIds: [makeId("task-3")],
-      })
-    ).rejects.toThrow("does not belong to date 2026-04-10");
-  });
-
-  it("shiftScheduledTaskPosition swaps with the adjacent scheduled task", async () => {
-    const taskId = makeId("task-1");
-    const adjacentTaskId = makeId("task-2");
-    const db = {
-      get: vi.fn().mockResolvedValue({
-        _id: taskId,
-        status: "scheduled",
-        scheduledDate: "2026-04-24",
-        position: 0,
-        ownerTokenIdentifier: "user-1",
-      }),
       query: vi.fn().mockReturnValue({
         withIndex: vi.fn().mockReturnValue({
           collect: vi.fn().mockResolvedValue([
             {
-              _id: taskId,
-              status: "scheduled",
-              scheduledDate: "2026-04-24",
+              _id: makeId("before"),
+              title: "Before",
+              ownerTokenIdentifier: "user-1",
+              completedAt: 99,
+              scheduledAt: 1,
               position: 0,
+              createdBy: "user-1",
+              createdAt: 1,
+              updatedAt: 99,
             },
             {
-              _id: adjacentTaskId,
-              status: "scheduled",
-              scheduledDate: "2026-04-24",
-              position: 1,
+              _id: makeId("inside"),
+              title: "Inside",
+              ownerTokenIdentifier: "user-1",
+              completedAt: 150,
+              scheduledAt: 1,
+              position: 0,
+              createdBy: "user-1",
+              createdAt: 1,
+              updatedAt: 150,
+            },
+            {
+              _id: makeId("end"),
+              title: "End",
+              ownerTokenIdentifier: "user-1",
+              completedAt: 200,
+              scheduledAt: 1,
+              position: 0,
+              createdBy: "user-1",
+              createdAt: 1,
+              updatedAt: 200,
             },
           ]),
         }),
       }),
-      patch: vi.fn().mockResolvedValue(undefined),
     };
 
-    const ctx = createAuthedCtx(db);
-
-    await shiftScheduledTaskPositionHandler(ctx, {
-      taskId,
-      direction: "down",
+    const result = await listTodayCompletedTasksHandler(createAuthedCtx(db), {
+      dayStartMs: 100,
+      dayEndMs: 200,
     });
 
-    expect(db.patch).toHaveBeenNthCalledWith(1, taskId, {
-      position: 1,
-      updatedAt: expect.any(Number),
-    });
-    expect(db.patch).toHaveBeenNthCalledWith(2, adjacentTaskId, {
-      position: 0,
-      updatedAt: expect.any(Number),
-    });
+    expect(result.map((task) => task._id)).toEqual([makeId("inside")]);
   });
 
-  it("shiftScheduledTaskPosition no-ops when the task is already at the boundary", async () => {
-    const taskId = makeId("task-top");
-    const db = {
-      get: vi.fn().mockResolvedValue({
-        _id: taskId,
-        status: "scheduled",
-        scheduledDate: "2026-04-24",
-        position: 0,
-        ownerTokenIdentifier: "user-1",
-      }),
-      query: vi.fn().mockReturnValue({
-        withIndex: vi.fn().mockReturnValue({
-          collect: vi.fn().mockResolvedValue([
-            {
-              _id: taskId,
-              status: "scheduled",
-              scheduledDate: "2026-04-24",
-              position: 0,
-            },
-          ]),
-        }),
-      }),
-      patch: vi.fn().mockResolvedValue(undefined),
-    };
+  it("bulk-reschedules only active tasks and skips completed or cancelled ones", async () => {
+    const firstTask = makeId("task-1");
+    const secondTask = makeId("task-2");
+    const skippedCompleted = makeId("task-completed");
+    const skippedCancelled = makeId("task-cancelled");
 
-    const ctx = createAuthedCtx(db);
-
-    await shiftScheduledTaskPositionHandler(ctx, {
-      taskId,
-      direction: "up",
-    });
-
-    expect(db.patch).not.toHaveBeenCalled();
-  });
-
-  it("reorderInboxTasks rejects ids that are not inbox tasks", async () => {
-    const db = {
-      get: vi.fn().mockResolvedValue({
-        _id: makeId("task-4"),
-        status: "scheduled",
-        scheduledDate: "2026-04-10",
-        ownerTokenIdentifier: "user-1",
-      }),
-      patch: vi.fn(),
-    };
-
-    const ctx = createAuthedCtx(db);
-
-    await expect(
-      reorderInboxTasksHandler(ctx, {
-        taskIds: [makeId("task-4")],
-      })
-    ).rejects.toThrow("does not belong to inbox");
-  });
-
-  it("bulkReschedule moves only valid tasks and reports skipped ids", async () => {
-    const taskA = makeId("task-a");
-    const taskB = makeId("task-b");
-    const taskC = makeId("task-c");
+    const tasksById = new Map<Id<"tasks">, Record<string, unknown>>([
+      [
+        firstTask,
+        {
+          _id: firstTask,
+          ownerTokenIdentifier: "user-1",
+          deadline: undefined,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      [
+        secondTask,
+        {
+          _id: secondTask,
+          ownerTokenIdentifier: "user-1",
+          deadline: "2026-04-09",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      [
+        skippedCompleted,
+        {
+          _id: skippedCompleted,
+          ownerTokenIdentifier: "user-1",
+          deadline: "2026-04-08",
+          completedAt: 999,
+          createdAt: 1,
+          updatedAt: 999,
+        },
+      ],
+      [
+        skippedCancelled,
+        {
+          _id: skippedCancelled,
+          ownerTokenIdentifier: "user-1",
+          deadline: "2026-04-07",
+          cancelledAt: 888,
+          createdAt: 1,
+          updatedAt: 888,
+        },
+      ],
+    ]);
 
     const db = {
-      query: vi.fn().mockReturnValue({
-        withIndex: vi.fn().mockReturnValue({
-          order: vi.fn().mockReturnValue({
-            first: vi.fn().mockResolvedValue({ position: 2 }),
+      get: vi.fn(async (id: Id<"tasks">) => tasksById.get(id)),
+      query: vi.fn()
+        .mockReturnValueOnce({
+          withIndex: vi.fn().mockReturnValue({
+            order: vi.fn().mockReturnValue({
+              first: vi.fn().mockResolvedValue({ position: 4 }),
+            }),
           }),
         }),
-      }),
-      get: vi.fn().mockImplementation(async (id: Id<"tasks">) => {
-        if (id === taskA) {
-          return {
-            _id: taskA,
-            status: "inbox",
-            type: "open",
-            ownerTokenIdentifier: "user-1",
-          };
-        }
-        if (id === taskB) {
-          return {
-            _id: taskB,
-            status: "completed",
-            type: "open",
-            ownerTokenIdentifier: "user-1",
-          };
-        }
-        if (id === taskC) {
-          return {
-            _id: taskC,
-            status: "scheduled",
-            type: "deadline",
-            deadline: "2026-04-08",
-            ownerTokenIdentifier: "user-1",
-          };
-        }
-        return null;
-      }),
       patch: vi.fn().mockResolvedValue(undefined),
     };
 
     const ctx = createAuthedCtx(db);
-
     const result = await bulkRescheduleHandler(ctx, {
-      taskIds: [taskA, taskB, taskC],
-      targetDate: "2026-04-10",
+      taskIds: [firstTask, secondTask, skippedCompleted, skippedCancelled],
+      targetDate: "2026-04-12",
     });
 
     expect(result).toEqual({
-      movedCount: 1,
-      skippedTaskIds: [taskB, taskC],
+      movedCount: 2,
+      skippedTaskIds: [skippedCompleted, skippedCancelled],
     });
-    expect(db.patch).toHaveBeenCalledTimes(1);
-    expect(db.patch).toHaveBeenCalledWith(taskA, {
-      status: "scheduled",
-      scheduledDate: "2026-04-10",
-      position: 3,
+    expect(db.patch).toHaveBeenNthCalledWith(1, firstTask, {
+      deadline: "2026-04-12",
+      position: 5,
+      updatedAt: expect.any(Number),
+    });
+    expect(db.patch).toHaveBeenNthCalledWith(2, secondTask, {
+      deadline: "2026-04-12",
+      position: 6,
       updatedAt: expect.any(Number),
     });
   });

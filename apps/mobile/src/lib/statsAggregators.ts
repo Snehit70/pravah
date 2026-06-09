@@ -6,14 +6,11 @@
  * have in memory — no extra Convex queries. Functions are deliberately
  * stateless so they're trivial to memoize and to unit-test.
  *
- * Completion time proxy: we don't (yet) store a dedicated `completedAt`
- * field, so for tasks with status="completed" we treat `updatedAt` as the
- * completion timestamp. This is accurate for the common case where the
- * complete mutation is the task's final write; it can drift if a user
- * edits a completed task's title afterwards. Acceptable for v1.
+ * Historical metrics use immutable `scheduledAt` and `completedAt` timestamps.
  */
 
 import type { MobileTask } from "../components/TaskCard";
+import { isTaskCompleted, isTaskInInbox, isTaskOnTimeline } from "./taskState";
 
 /** Local-date YYYY-MM-DD key for a timestamp. */
 function localDateKey(ts: number): string {
@@ -53,9 +50,9 @@ export function completionsByDay(
   const cutoff = windowStart.getTime();
   const buckets = new Map<string, number>();
   for (const t of tasks) {
-    if (t.status !== "completed") continue;
-    if (t.updatedAt < cutoff) continue;
-    const key = localDateKey(t.updatedAt);
+    if (!isTaskCompleted(t) || t.completedAt === undefined) continue;
+    if (t.completedAt < cutoff) continue;
+    const key = localDateKey(t.completedAt);
     buckets.set(key, (buckets.get(key) ?? 0) + 1);
   }
   const out: DayPoint[] = [];
@@ -91,7 +88,7 @@ export function rollingAverage(series: DayPoint[], window: number): number[] {
 export function currentStreak(tasks: MobileTask[], now: number): number {
   const days = new Set<string>();
   for (const t of tasks) {
-    if (t.status === "completed") days.add(localDateKey(t.updatedAt));
+    if (isTaskCompleted(t) && t.completedAt !== undefined) days.add(localDateKey(t.completedAt));
   }
   if (days.size === 0) return 0;
 
@@ -127,13 +124,9 @@ export function kpis(tasks: MobileTask[], now: number): StatsKpis {
   let overdue = 0;
   let inbox = 0;
   for (const t of tasks) {
-    if (t.status === "completed" && t.updatedAt >= sevenDaysAgo) completed7d++;
-    if (t.status === "inbox") inbox++;
-    const isOverdue =
-      t.status !== "completed" &&
-      t.status !== "cancelled" &&
-      ((t.deadline && t.deadline < todayKey) ||
-        (t.scheduledDate && t.scheduledDate < todayKey));
+    if (isTaskCompleted(t) && (t.completedAt ?? 0) >= sevenDaysAgo) completed7d++;
+    if (isTaskInInbox(t)) inbox++;
+    const isOverdue = isTaskOnTimeline(t) && !!t.deadline && t.deadline < todayKey;
     if (isOverdue) overdue++;
   }
   return {
@@ -160,9 +153,9 @@ export function bestWeekday(
   const counts = [0, 0, 0, 0, 0, 0, 0];
   let total = 0;
   for (const t of tasks) {
-    if (t.status !== "completed") continue;
-    if (t.updatedAt < cutoff) continue;
-    const w = new Date(t.updatedAt).getDay();
+    if (!isTaskCompleted(t) || t.completedAt === undefined) continue;
+    if (t.completedAt < cutoff) continue;
+    const w = new Date(t.completedAt).getDay();
     counts[w]++;
     total++;
   }
@@ -187,9 +180,9 @@ export function peakHour(
   const buckets = new Array<number>(24).fill(0);
   let total = 0;
   for (const t of tasks) {
-    if (t.status !== "completed") continue;
-    if (t.updatedAt < cutoff) continue;
-    const h = new Date(t.updatedAt).getHours();
+    if (!isTaskCompleted(t) || t.completedAt === undefined) continue;
+    if (t.completedAt < cutoff) continue;
+    const h = new Date(t.completedAt).getHours();
     buckets[h]++;
     total++;
   }
@@ -200,8 +193,8 @@ export function peakHour(
 }
 
 /**
- * Median elapsed days from createdAt → updatedAt for tasks completed in
- * the window. Skips tasks without createdAt. Returns null when fewer than
+ * Median elapsed days from scheduledAt to completedAt for tasks completed in
+ * the window. Returns null when fewer than
  * 3 samples exist (median over 1–2 points is noise).
  */
 export function medianCycleTimeDays(
@@ -212,10 +205,9 @@ export function medianCycleTimeDays(
   const cutoff = addCalendarDays(startOfLocalDay(now), -(days - 1)).getTime();
   const elapsed: number[] = [];
   for (const t of tasks) {
-    if (t.status !== "completed") continue;
-    if (t.updatedAt < cutoff) continue;
-    if (!t.createdAt) continue;
-    const ms = t.updatedAt - t.createdAt;
+    if (!isTaskCompleted(t) || t.completedAt === undefined) continue;
+    if (t.completedAt < cutoff) continue;
+    const ms = t.completedAt - t.scheduledAt;
     if (ms < 0) continue;
     elapsed.push(ms / (1000 * 60 * 60 * 24));
   }
@@ -234,7 +226,7 @@ export function medianCycleTimeDays(
 export function longestStreak(tasks: MobileTask[]): number {
   const days = new Set<string>();
   for (const t of tasks) {
-    if (t.status === "completed") days.add(localDateKey(t.updatedAt));
+    if (isTaskCompleted(t) && t.completedAt !== undefined) days.add(localDateKey(t.completedAt));
   }
   if (days.size === 0) return 0;
   const sorted = Array.from(days).sort();
@@ -276,14 +268,14 @@ export function activeBreakdown(tasks: MobileTask[]): ActiveBreakdown {
     inbox: 0,
   };
   for (const t of tasks) {
-    if (t.status === "completed" || t.status === "cancelled") continue;
+    if (!isTaskInInbox(t) && !isTaskOnTimeline(t)) continue;
     out.totalActive++;
     if (t.priority === "p1") out.p1++;
     else if (t.priority === "p2") out.p2++;
     else if (t.priority === "p3") out.p3++;
     else out.unprioritized++;
-    if (t.status === "inbox") out.inbox++;
-    else if (t.status === "scheduled") out.scheduled++;
+    if (isTaskInInbox(t)) out.inbox++;
+    else if (isTaskOnTimeline(t)) out.scheduled++;
   }
   return out;
 }
@@ -304,9 +296,9 @@ export function weekOverWeek(
   let thisWeek = 0;
   let lastWeek = 0;
   for (const t of tasks) {
-    if (t.status !== "completed") continue;
-    if (t.updatedAt >= thisStart) thisWeek++;
-    else if (t.updatedAt >= lastStart && t.updatedAt < lastEnd) lastWeek++;
+    if (!isTaskCompleted(t) || t.completedAt === undefined) continue;
+    if (t.completedAt >= thisStart) thisWeek++;
+    else if (t.completedAt >= lastStart && t.completedAt < lastEnd) lastWeek++;
   }
   const deltaPct = lastWeek === 0 ? null : ((thisWeek - lastWeek) / lastWeek) * 100;
   return { thisWeek, lastWeek, deltaPct };

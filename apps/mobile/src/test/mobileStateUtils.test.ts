@@ -16,9 +16,10 @@ function makeTask(overrides: Partial<MobileTask> = {}): MobileTask {
   return {
     _id: makeId("task-1"),
     title: "Task",
-    status: "inbox",
+    scheduledAt: 50,
     position: 0,
     updatedAt: 100,
+    createdAt: 50,
     ...overrides,
   };
 }
@@ -85,34 +86,32 @@ describe("optimistic task utils", () => {
 
   it("reorders only tasks inside the scoped predicate", () => {
     const tasks = [
-      makeTask({ _id: makeId("task-1"), status: "scheduled", scheduledDate: "2026-04-24", position: 0 }),
-      makeTask({ _id: makeId("task-2"), status: "scheduled", scheduledDate: "2026-04-24", position: 1 }),
-      makeTask({ _id: makeId("task-3"), status: "inbox", position: 9 }),
+      makeTask({ _id: makeId("task-1"), deadline: "2026-04-24", position: 0 }),
+      makeTask({ _id: makeId("task-2"), deadline: "2026-04-24", position: 1 }),
+      makeTask({ _id: makeId("task-3"), position: 9 }),
     ];
 
     const reordered = reorderScopedTasksInOptimisticView(
       tasks,
       [makeId("task-2"), makeId("task-1")],
-      (task) => task.status === "scheduled" && task.scheduledDate === "2026-04-24",
+      (task) => task.deadline === "2026-04-24",
       900
     );
 
     expect(reordered).toEqual([
       makeTask({
         _id: makeId("task-1"),
-        status: "scheduled",
-        scheduledDate: "2026-04-24",
+        deadline: "2026-04-24",
         position: 1,
         updatedAt: 900,
       }),
       makeTask({
         _id: makeId("task-2"),
-        status: "scheduled",
-        scheduledDate: "2026-04-24",
+        deadline: "2026-04-24",
         position: 0,
         updatedAt: 900,
       }),
-      makeTask({ _id: makeId("task-3"), status: "inbox", position: 9 }),
+      makeTask({ _id: makeId("task-3"), position: 9 }),
     ]);
   });
 });

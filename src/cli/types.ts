@@ -44,8 +44,9 @@ export interface MockTask {
   id: string;
   title: string;
   status: "inbox" | "scheduled" | "completed";
-  scheduledDate?: string;
   deadline?: string;
+  scheduledAt: number;
+  completedAt?: number;
   goal?: {
     id: string;
     title: string;

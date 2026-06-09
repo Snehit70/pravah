@@ -147,15 +147,21 @@ export default defineSchema({
   tasks: defineTable({
     title: v.string(),
     description: v.optional(v.string()),
-    type: v.union(v.literal("open"), v.literal("deadline")),
+    // Legacy integration fields remain optional until Gmail/Calendar migrate.
+    // Native task APIs clear them during the deadline-model cutover.
+    type: v.optional(v.union(v.literal("open"), v.literal("deadline"))),
     scheduledDate: v.optional(v.string()),
     deadline: v.optional(v.string()),
+    scheduledAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
     position: v.number(),
-    status: v.union(
-      v.literal("inbox"),
-      v.literal("scheduled"),
-      v.literal("completed"),
-      v.literal("cancelled")
+    status: v.optional(
+      v.union(
+        v.literal("inbox"),
+        v.literal("scheduled"),
+        v.literal("completed"),
+        v.literal("cancelled")
+      )
     ),
     source: v.optional(
       v.union(
@@ -172,10 +178,8 @@ export default defineSchema({
     ownerTokenIdentifier: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
-    /** Set when a task is soft-deleted (status="cancelled"). A scheduled
-     *  cron purges these after a 30-minute grace window so the user can undo.
-     *  Older cancelled rows from before this column exists will be missing
-     *  this field — the purger ignores them. */
+    /** Set when a task is soft-deleted. A scheduled cron purges these after a
+     *  30-minute grace window so the user can undo. */
     cancelledAt: v.optional(v.number()),
   })
     .index("by_owner", ["ownerTokenIdentifier"])
@@ -187,7 +191,11 @@ export default defineSchema({
     .index("by_owner_status", ["ownerTokenIdentifier", "status"])
     .index("by_owner_status_date", ["ownerTokenIdentifier", "status", "scheduledDate"])
     .index("by_owner_status_date_position", ["ownerTokenIdentifier", "status", "scheduledDate", "position"])
-    .index("by_owner_status_position", ["ownerTokenIdentifier", "status", "position"]),
+    .index("by_owner_status_position", ["ownerTokenIdentifier", "status", "position"])
+    .index("by_owner_deadline", ["ownerTokenIdentifier", "deadline"])
+    .index("by_owner_deadline_position", ["ownerTokenIdentifier", "deadline", "position"])
+    .index("by_owner_completed_at", ["ownerTokenIdentifier", "completedAt"])
+    .index("by_owner_position", ["ownerTokenIdentifier", "position"]),
   integrations: defineTable({
     provider: v.union(v.literal("google_calendar"), v.literal("gmail")),
     status: v.union(

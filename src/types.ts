@@ -4,11 +4,11 @@ export interface Task {
   _id: Id<"tasks">;
   title: string;
   description?: string;
-  type: "open" | "deadline";
-  scheduledDate?: string;
   deadline?: string;
+  scheduledAt: number;
+  completedAt?: number;
+  cancelledAt?: number;
   position: number;
-  status: "inbox" | "scheduled" | "completed" | "cancelled";
   source?: "manual" | "ai-agent" | "gmail" | "gcal";
   estimatedMinutes?: number;
   tags?: string[];

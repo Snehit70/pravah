@@ -168,18 +168,20 @@ const sampleTasks: MobileTask[] = [
   {
     _id: "task1" as Id<"tasks">,
     title: "Task 1",
-    status: "inbox",
+    scheduledAt: 100,
     priority: "p1",
     position: 0,
     updatedAt: 1000,
+    createdAt: 100,
   },
   {
     _id: "task2" as Id<"tasks">,
     title: "Task 2",
-    status: "inbox",
+    scheduledAt: 200,
     priority: "p2",
     position: 1,
     updatedAt: 2000,
+    createdAt: 200,
   },
 ];
 
@@ -340,10 +342,11 @@ describe("InboxScreen", () => {
     const tasks = Array.from({ length: 30 }, (_, index) => ({
       _id: `bulk-${index}` as Id<"tasks">,
       title: `Bulk task ${index}`,
-      status: "inbox" as const,
+      scheduledAt: index,
       priority: "p1" as const,
       position: index,
       updatedAt: index,
+      createdAt: index,
     }));
 
     render(

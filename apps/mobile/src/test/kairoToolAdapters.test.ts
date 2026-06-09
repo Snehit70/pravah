@@ -55,7 +55,7 @@ describe("extractToolCalls", () => {
           content: {
             parts: [
               { text: "On it." },
-              { functionCall: { name: "reschedule_task", args: { handle: "T1", scheduledDate: "2026-06-05" } } },
+              { functionCall: { name: "reschedule_task", args: { handle: "T1", deadline: "2026-06-05" } } },
             ],
           },
         },
@@ -64,7 +64,7 @@ describe("extractToolCalls", () => {
     const { text, toolCalls } = extractToolCalls(data, "gemini");
     expect(text).toBe("On it.");
     expect(toolCalls).toEqual([
-      { id: "reschedule_task-0", name: "reschedule_task", args: { handle: "T1", scheduledDate: "2026-06-05" } },
+      { id: "reschedule_task-0", name: "reschedule_task", args: { handle: "T1", deadline: "2026-06-05" } },
     ]);
   });
 

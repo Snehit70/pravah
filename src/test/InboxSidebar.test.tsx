@@ -37,9 +37,8 @@ function makeTask(overrides: Partial<Task>): Task {
   return {
     _id: "task_1" as Id<"tasks">,
     title: "Inbox Task",
-    type: "open",
     position: 0,
-    status: "inbox",
+    scheduledAt: Date.now(),
     createdBy: "user",
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -60,4 +59,3 @@ describe("InboxSidebar", () => {
     expect(screen.getByText(/Deep Work Goal/)).toBeInTheDocument();
   });
 });
-

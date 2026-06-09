@@ -14,7 +14,6 @@ export type RetryPayload =
       title: string;
       description?: string;
       deadline?: string;
-      scheduledDate?: string;
       priority?: "p1" | "p2" | "p3";
       goalId?: string;
     }

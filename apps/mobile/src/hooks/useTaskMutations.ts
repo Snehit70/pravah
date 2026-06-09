@@ -5,6 +5,7 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { classifyError, createActionId, mobileLogger } from "../lib/logger";
 import type { MobileTask } from "../components/TaskCard";
+import { isTaskInInbox, isTaskOnTimeline } from "../lib/taskState";
 import {
   patchTaskInOptimisticView,
   removeTaskFromOptimisticView,
@@ -214,25 +215,15 @@ export function useTaskMutations({
 
   const markDone = useCallback(
     (taskId: Id<"tasks">) => {
-      const priorDate = serverTasks.find((task) => task._id === taskId)?.scheduledDate;
       void runOptimisticMutation({
         ...completeConfig(taskId),
         undo: {
           message: "Marked done",
-          run: () =>
-            void runOptimisticMutation({
-              ...reopenConfig(taskId),
-              mutation: async () => {
-                await reopenTaskMutation({ taskId });
-                if (priorDate) {
-                  await moveTaskMutation({ taskId, targetDate: priorDate });
-                }
-              },
-            }),
+          run: () => void runOptimisticMutation(reopenConfig(taskId)),
         },
       });
     },
-    [runOptimisticMutation, completeConfig, reopenConfig, serverTasks, reopenTaskMutation, moveTaskMutation]
+    [runOptimisticMutation, completeConfig, reopenConfig]
   );
 
   const moveToToday = useCallback(
@@ -248,7 +239,7 @@ export function useTaskMutations({
   const sendToInbox = useCallback(
     (taskId: Id<"tasks">) => {
       // Capture the date the task is leaving so Undo can put it back there.
-      const priorDate = serverTasks.find((t) => t._id === taskId)?.scheduledDate;
+      const priorDate = serverTasks.find((t) => t._id === taskId)?.deadline;
       void runOptimisticMutation({
         ...unscheduleConfig(taskId),
         undo: priorDate
@@ -272,7 +263,7 @@ export function useTaskMutations({
     [runOptimisticMutation, unscheduleConfig, serverTasks, moveTaskMutation]
   );
 
-  const reopenToInbox = useCallback(
+  const reopenTask = useCallback(
     (taskId: Id<"tasks">) => {
       void runOptimisticMutation({
         ...reopenConfig(taskId),
@@ -358,7 +349,7 @@ export function useTaskMutations({
           return reorderScopedTasksInOptimisticView(
             current ?? serverTasks,
             taskIds,
-            (task) => task.status === "scheduled" && task.scheduledDate === dateKey,
+            (task) => isTaskOnTimeline(task) && task.deadline === dateKey,
             now
           );
         }
@@ -393,7 +384,7 @@ export function useTaskMutations({
         return reorderScopedTasksInOptimisticView(
           current ?? serverTasks,
           taskIds,
-          (task) => task.status === "inbox" && !task.scheduledDate,
+          isTaskInInbox,
           now
         );
       });
@@ -419,9 +410,9 @@ export function useTaskMutations({
   );
 
   const shiftTimelineTask = useCallback(
-    (taskId: Id<"tasks">, scheduledDate: string, direction: "up" | "down") => {
+    (taskId: Id<"tasks">, deadline: string, direction: "up" | "down") => {
       const scopePredicate = (task: MobileTask) =>
-        task.status === "scheduled" && task.scheduledDate === scheduledDate;
+        isTaskOnTimeline(task) && task.deadline === deadline;
       const scoped = serverTasks.filter(scopePredicate).slice().sort((a, b) => a.position - b.position);
       const idx = scoped.findIndex((t) => t._id === taskId);
       const neighborIdx = direction === "up" ? idx - 1 : idx + 1;
@@ -461,7 +452,7 @@ export function useTaskMutations({
     markDone,
     moveToToday,
     sendToInbox,
-    reopenToInbox,
+    reopenTask,
     deleteTask,
     handleSaveEdits,
     handleInboxDragEnd,

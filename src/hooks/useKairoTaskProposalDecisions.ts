@@ -61,12 +61,7 @@ export function useKairoTaskProposalDecisions(
     try {
       await addTask({
         title: proposal.title,
-        type: proposal.type,
-        scheduledDate: proposal.scheduledDate ?? undefined,
-        deadline:
-          proposal.type === "deadline"
-            ? (proposal.scheduledDate ?? undefined)
-            : undefined,
+        deadline: proposal.deadline ?? undefined,
         source: "ai-agent",
       });
       setMessages((current) =>

@@ -45,10 +45,11 @@ function makeTask(overrides: Partial<MobileTask> = {}): MobileTask {
   return {
     _id: makeId("task-1"),
     title: "Task",
-    status: "scheduled",
-    scheduledDate: "2026-04-24",
+    deadline: "2026-04-24",
+    scheduledAt: 50,
     position: 0,
     updatedAt: 100,
+    createdAt: 50,
     ...overrides,
   };
 }
@@ -191,7 +192,7 @@ describe("useTaskMutations", () => {
     });
   });
 
-  it("restores the original scheduled date when undoing markDone for a scheduled task", async () => {
+  it("reopens a completed timeline task without rewriting its preserved deadline", async () => {
     const completeTaskMutation = vi.fn().mockResolvedValue(undefined);
     const moveTaskMutation = vi.fn().mockResolvedValue(undefined);
     const unscheduleTaskMutation = vi.fn().mockResolvedValue(undefined);
@@ -221,7 +222,7 @@ describe("useTaskMutations", () => {
     const showToast = vi.fn();
     const { result } = renderHook(() =>
       useTaskMutations({
-        serverTasks: [makeTask({ scheduledDate: "2026-04-24", status: "scheduled" })],
+        serverTasks: [makeTask({ deadline: "2026-04-24" })],
         setOptimisticTasks: vi.fn(),
         setPendingMutations: vi.fn(),
         enqueueRetry: vi.fn(),
@@ -250,12 +251,7 @@ describe("useTaskMutations", () => {
     await waitFor(() => {
       expect(reopenTaskMutation).toHaveBeenCalledWith({ taskId: makeId("task-1") });
     });
-    await waitFor(() => {
-      expect(moveTaskMutation).toHaveBeenLastCalledWith({
-        taskId: makeId("task-1"),
-        targetDate: "2026-04-24",
-      });
-    });
+    expect(moveTaskMutation).not.toHaveBeenCalled();
   });
 
   it("rolls back optimistic state when timeline shift mutation fails", async () => {

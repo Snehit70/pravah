@@ -9,6 +9,7 @@ import { Modal } from "./Modal";
 import { useToast } from "./useToast";
 import { cn, getLocalDateString } from "../lib/utils";
 import { isWebGoalsLinkingEnabled } from "../lib/featureFlags";
+import { getTaskState, isTaskCompleted } from "../lib/taskState";
 
 interface TaskPopupProps {
   task: Task;
@@ -96,10 +97,14 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
     }
   };
 
+  const hasDeadline = Boolean(task.deadline);
+  const isCompleted = isTaskCompleted(task);
+  const isScheduled = hasDeadline && !isCompleted;
+
   const handleReopen = async () => {
     try {
       await reopenTask({ taskId: task._id });
-      showSuccess("Task reopened to inbox");
+      showSuccess(hasDeadline ? "Task reopened to timeline" : "Task reopened to inbox");
       onClose();
     } catch {
       showError("Failed to reopen task");
@@ -120,9 +125,6 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
       showError("Failed to unschedule task");
     }
   };
-
-  const isCompleted = task.status === "completed";
-  const isScheduled = task.status === "scheduled";
 
   return (
     <Modal isOpen={true} onClose={onClose} title="Edit Task" viewTransitionName="task-morph">
@@ -149,15 +151,13 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
         />
 
         {/* Deadline */}
-        {task.type === "deadline" && (
-          <Input
-            label="Deadline"
-            type="date"
-            value={deadline}
-            onChange={(e) => setDeadline(e.target.value)}
-            min={minDate}
-          />
-        )}
+        <Input
+          label="Deadline"
+          type="date"
+          value={deadline}
+          onChange={(e) => setDeadline(e.target.value)}
+          min={minDate}
+        />
 
         <div>
           <p className="block text-[10px] text-zinc-500 uppercase tracking-[0.12em] font-medium mb-2">
@@ -206,19 +206,19 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
             className="px-1.5 py-0.5 rounded-[3px]"
             style={{
               background:
-                task.type === "deadline"
+                hasDeadline
                   ? "oklch(0.78 0.16 80 / 0.12)"
                   : "oklch(0.78 0.14 260 / 0.14)",
               color:
-                task.type === "deadline"
+                hasDeadline
                   ? "oklch(0.85 0.14 80)"
                   : "oklch(0.85 0.12 260)",
               letterSpacing: "0.08em",
             }}
           >
-            {task.type === "deadline" ? "Deadline" : "Open"}
+            {hasDeadline ? "Deadline" : "Open"}
           </span>
-          <span>{task.status}</span>
+          <span>{getTaskState(task)}</span>
           {task.source && task.source !== "manual" && (
             <span>· {task.source}</span>
           )}

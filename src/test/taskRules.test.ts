@@ -13,9 +13,8 @@ function makeTask(overrides: Partial<Task>): Task {
   return {
     _id: "task_id" as Id<"tasks">,
     title: "Task",
-    type: "open",
     position: 0,
-    status: "scheduled",
+    scheduledAt: 1,
     createdBy: "user",
     createdAt: 1,
     updatedAt: 1,
@@ -30,45 +29,18 @@ describe("taskRules", () => {
     expect(isDateDropId("task_123")).toBe(false);
   });
 
-  it("enforces deadline scheduling boundary", () => {
-    const deadlineTask = makeTask({
-      type: "deadline",
-      deadline: "2026-04-10",
-    });
+  it("allows a task deadline to move to any valid date", () => {
+    const task = makeTask({ deadline: "2026-04-10" });
 
-    expect(canScheduleTaskOnDate(deadlineTask, "2026-04-09")).toBe(true);
-    expect(canScheduleTaskOnDate(deadlineTask, "2026-04-10")).toBe(true);
-    expect(canScheduleTaskOnDate(deadlineTask, "2026-04-11")).toBe(false);
+    expect(canScheduleTaskOnDate(task, "2026-04-09")).toBe(true);
+    expect(canScheduleTaskOnDate(task, "2026-04-10")).toBe(true);
+    expect(canScheduleTaskOnDate(task, "2026-04-11")).toBe(true);
+    expect(canScheduleTaskOnDate(task, "invalid")).toBe(false);
   });
 
-  it("allows carry-forward only for overdue deadlines", () => {
-    const overdueTask = makeTask({
-      type: "deadline",
-      deadline: "2026-04-10",
-    });
-    const upcomingTask = makeTask({
-      type: "deadline",
-      deadline: "2026-04-20",
-    });
-
-    expect(
-      canScheduleTaskOnDate(overdueTask, "2026-04-12", {
-        allowOverdueCarryForward: true,
-        currentDate: "2026-04-15",
-      })
-    ).toBe(true);
-
-    expect(
-      canScheduleTaskOnDate(upcomingTask, "2026-04-22", {
-        allowOverdueCarryForward: true,
-        currentDate: "2026-04-15",
-      })
-    ).toBe(false);
-  });
-
-  it("always allows open tasks to be scheduled", () => {
-    const openTask = makeTask({ type: "open" });
-    expect(canScheduleTaskOnDate(openTask, "2026-12-31")).toBe(true);
+  it("allows inbox tasks to receive a deadline", () => {
+    const inboxTask = makeTask({});
+    expect(canScheduleTaskOnDate(inboxTask, "2026-12-31")).toBe(true);
   });
 
   it("returns stable reorder IDs for same-day drag", () => {
