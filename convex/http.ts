@@ -183,9 +183,9 @@ http.route({
     const result = await ctx.runMutation(internal.automationTools.updateGoal, {
       ownerTokenIdentifier: auth.ownerTokenIdentifier,
       goalClientId: goalId,
-      description: description ?? undefined,
-      deadline: deadline ?? undefined,
-      priority: priority ?? undefined,
+      description,
+      deadline,
+      priority,
     });
 
     if (!result.updated) {

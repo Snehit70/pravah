@@ -33,7 +33,7 @@ export interface LiveCliClient {
   unscheduleTask(input: { taskId: string }, idempotencyKey: string): Promise<unknown>;
   updateGoal(input: {
     goalId: string;
-    description?: string;
+    description?: string | null;
     deadline?: string | null;
     priority?: "p1" | "p2" | "p3" | null;
   }, idempotencyKey: string): Promise<unknown>;
@@ -95,12 +95,12 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
 
   async function post(
     endpoint: string,
-    body: Record<string, string | number | boolean | undefined>,
+    body: Record<string, string | number | boolean | null | undefined>,
     idempotencyKey: string
   ) {
     const payload = Object.fromEntries(
       Object.entries(body).filter(([, value]) => value !== undefined)
-    ) as Record<string, string | number | boolean>;
+    ) as Record<string, string | number | boolean | null>;
     return callConvexApi({
       convexUrl: baseUrl,
       endpoint,
@@ -175,8 +175,8 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
       return post("/goals/update", {
         goalId: input.goalId,
         description: input.description,
-        deadline: input.deadline ?? undefined,
-        priority: input.priority ?? undefined,
+        deadline: input.deadline,
+        priority: input.priority,
       }, idempotencyKey);
     },
   };

@@ -106,6 +106,68 @@ export function getWriteMetadata(args: ParsedArgs) {
   };
 }
 
+function normalizeGoalUpdateValue(
+  value: string | undefined,
+  {
+    fieldName,
+    allowClear = false,
+  }: { fieldName: string; allowClear?: boolean }
+) {
+  if (value === undefined) return undefined;
+  const normalized = value.trim();
+  if (!normalized) {
+    throw new Error(`--${fieldName} requires a value`);
+  }
+  if (allowClear && ["clear", "none", "null"].includes(normalized.toLowerCase())) {
+    return null;
+  }
+  return normalized;
+}
+
+export function readGoalUpdateOptions(args: ParsedArgs) {
+  const description = normalizeGoalUpdateValue(readOption(args.options, "description"), {
+    fieldName: "description",
+    allowClear: true,
+  });
+  const deadline = normalizeGoalUpdateValue(readOption(args.options, "deadline"), {
+    fieldName: "deadline",
+    allowClear: true,
+  });
+  if (deadline !== undefined && deadline !== null && !DATE_PATTERN.test(deadline)) {
+    throw new Error("--deadline must use YYYY-MM-DD format, or `clear`");
+  }
+
+  const rawPriority = normalizeGoalUpdateValue(readOption(args.options, "priority"), {
+    fieldName: "priority",
+    allowClear: true,
+  });
+  const priority: "p1" | "p2" | "p3" | null | undefined =
+    rawPriority === null || rawPriority === undefined
+      ? rawPriority
+      : rawPriority === "p1" || rawPriority === "p2" || rawPriority === "p3"
+        ? rawPriority
+        : undefined;
+  if (
+    rawPriority !== undefined &&
+    rawPriority !== null &&
+    priority === undefined
+  ) {
+    throw new Error("--priority must be one of: p1, p2, p3, or `clear`");
+  }
+
+  if (description === undefined && deadline === undefined && priority === undefined) {
+    throw new Error(
+      "goals update requires at least one of --description, --deadline, or --priority"
+    );
+  }
+
+  return {
+    description,
+    deadline,
+    priority,
+  };
+}
+
 export function readTaskListFilters(args: ParsedArgs) {
   const status = readOption(args.options, "status");
   const date = readOption(args.options, "date");
@@ -141,12 +203,11 @@ export function executeDryRun(command: string, args: ParsedArgs) {
   const metadata = getWriteMetadata(args);
   switch (command) {
     case "goals update":
+      const goalPatch = readGoalUpdateOptions(args);
       return {
         action: "goals.update",
         goal: { id: requireOption(args, "goal-id", command) },
-        description: readOption(args.options, "description"),
-        deadline: readOption(args.options, "deadline"),
-        priority: readOption(args.options, "priority"),
+        ...goalPatch,
         ...metadata,
         source: "dry-run",
       };

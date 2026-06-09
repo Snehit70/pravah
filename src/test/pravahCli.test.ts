@@ -92,6 +92,38 @@ describe("pravah CLI", () => {
     expect(payload.data.links).toMatchObject({ task_1: "goal_1" });
   });
 
+  it("supports mock goal updates and explicit clear values", () => {
+    const result = runCli([
+      "goals",
+      "update",
+      "--goal-id",
+      "goal_1",
+      "--description",
+      "clear",
+      "--deadline",
+      "clear",
+      "--priority",
+      "clear",
+      "--json",
+    ]);
+
+    expect(result.status).toBe(0);
+    const payload = JSON.parse(result.stdout);
+    expect(payload).toMatchObject({
+      ok: true,
+      version: "v1",
+      command: "goals update",
+      data: {
+        action: "goals.update",
+        goal: { id: "goal_1" },
+        description: null,
+        deadline: null,
+        priority: null,
+        source: "mock",
+      },
+    });
+  });
+
 
   it("fails clearly instead of silently using mock data without auth", () => {
     const result = runCli(["tasks", "list", "--json"], {

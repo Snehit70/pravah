@@ -67,7 +67,7 @@ export const deleteTaskSchema = z.object({
 
 export const updateGoalSchema = z.object({
   goalId: z.string().min(1, "Goal ID is required"),
-  description: z.string().max(1000).optional(),
+  description: z.string().max(1000).optional().nullable(),
   deadline: z.string().regex(dateRegex, "Invalid date format (YYYY-MM-DD)").optional().nullable(),
   priority: z.enum(["p1", "p2", "p3"]).optional().nullable(),
 });

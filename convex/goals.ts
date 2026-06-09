@@ -8,9 +8,9 @@ export async function updateGoalForOwner(
   ownerTokenIdentifier: string,
   goalClientId: string,
   patch: {
-    description?: string;
-    deadline?: string;
-    priority?: "p1" | "p2" | "p3";
+    description?: string | null;
+    deadline?: string | null;
+    priority?: "p1" | "p2" | "p3" | null;
   }
 ): Promise<{ updated: boolean }> {
   const existing = await ctx.db
@@ -20,7 +20,25 @@ export async function updateGoalForOwner(
     )
     .first();
   if (!existing) return { updated: false };
-  await ctx.db.patch(existing._id, { ...patch, updatedAt: Date.now() });
+
+  const updates: Partial<{
+    description: string | undefined;
+    deadline: string | undefined;
+    priority: "p1" | "p2" | "p3" | undefined;
+    updatedAt: number;
+  }> = {};
+
+  if (Object.prototype.hasOwnProperty.call(patch, "description")) {
+    updates.description = patch.description ?? undefined;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "deadline")) {
+    updates.deadline = patch.deadline ?? undefined;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "priority")) {
+    updates.priority = patch.priority ?? undefined;
+  }
+
+  await ctx.db.patch(existing._id, { ...updates, updatedAt: Date.now() });
   return { updated: true };
 }
 

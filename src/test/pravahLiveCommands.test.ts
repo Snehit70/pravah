@@ -310,6 +310,49 @@ describe("pravah live commands", () => {
     });
   });
 
+  it("uses live writes for goal updates and preserves explicit clears", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ updated: true, goalId: "goal_1" }),
+    } as Response);
+
+    const result = await executeCommand(
+      { command: "goals update", json: true },
+      makeArgs(["goals", "update"], {
+        "goal-id": "goal_1",
+        description: "clear",
+        deadline: "clear",
+        priority: "clear",
+        "idempotency-key": "goal-update-123",
+      })
+    );
+
+    expect(result).toMatchObject({
+      action: "goals.update",
+      goal: { id: "goal_1" },
+      description: null,
+      deadline: null,
+      priority: null,
+      source: "live",
+    });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://pravah.example.com/goals/update",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": "goal-update-123",
+        }),
+        body: JSON.stringify({
+          goalId: "goal_1",
+          description: null,
+          deadline: null,
+          priority: null,
+        }),
+      })
+    );
+  });
+
   it("rejects invalid task filters and oversized review limits before network calls", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 

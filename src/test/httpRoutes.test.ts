@@ -38,6 +38,7 @@ vi.mock("../../convex/_generated/api", () => ({
       listTasks: "automationTools.listTasks",
       listGoals: "automationTools.listGoals",
       listGoalLinks: "automationTools.listGoalLinks",
+      updateGoal: "automationTools.updateGoal",
       addTask: "automationTools.addTask",
       moveTask: "automationTools.moveTask",
       completeTask: "automationTools.completeTask",
@@ -251,6 +252,53 @@ describe("http route handlers", () => {
     });
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ task_1: "goal_1" });
+  });
+
+  it("passes nullable goal clears through goal updates", async () => {
+    const handler = getHandler("/goals/update", "POST");
+    const ctx = createCtx();
+    ctx.runMutation
+      .mockResolvedValueOnce({
+        label: "Laptop",
+        ownerTokenIdentifier: "user-1",
+        scopes: ["tasks:write"],
+      })
+      .mockResolvedValueOnce({ updated: true });
+
+    const response = await handler(
+      ctx,
+      new Request("https://example.com/goals/update", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": "goal-update-123",
+        },
+        body: JSON.stringify({
+          goalId: "goal_1",
+          description: null,
+          deadline: null,
+          priority: null,
+        }),
+      })
+    );
+
+    expect(ctx.runMutation).toHaveBeenNthCalledWith(
+      2,
+      internal.automationTools.updateGoal,
+      {
+        ownerTokenIdentifier: "user-1",
+        goalClientId: "goal_1",
+        description: null,
+        deadline: null,
+        priority: null,
+      }
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      updated: true,
+      goalId: "goal_1",
+    });
   });
 
   it("rejects bearer credential missing required write scope", async () => {

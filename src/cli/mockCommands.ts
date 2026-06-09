@@ -1,6 +1,7 @@
 import { readOption } from "./args";
 import {
   getWriteMetadata,
+  readGoalUpdateOptions,
   readReviewListOptions,
   readTaskListFilters,
   requireOption,
@@ -55,6 +56,14 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
       return {
         goals: mockGoals,
         links: mockGoalLinks,
+        source: "mock",
+      };
+    case "goals update":
+      return {
+        action: "goals.update",
+        goal: { id: requireOption(args, "goal-id", command) },
+        ...readGoalUpdateOptions(args),
+        ...getWriteMetadata(args),
         source: "mock",
       };
     case "tasks timeline": {

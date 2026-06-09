@@ -217,9 +217,11 @@ export const updateGoal = internalMutation({
   args: {
     ownerTokenIdentifier: v.string(),
     goalClientId: v.string(),
-    description: v.optional(v.string()),
-    deadline: v.optional(v.string()),
-    priority: v.optional(v.union(v.literal("p1"), v.literal("p2"), v.literal("p3"))),
+    description: v.optional(v.union(v.string(), v.null())),
+    deadline: v.optional(v.union(v.string(), v.null())),
+    priority: v.optional(
+      v.union(v.literal("p1"), v.literal("p2"), v.literal("p3"), v.null())
+    ),
   },
   handler: (ctx, { ownerTokenIdentifier, goalClientId, description, deadline, priority }) =>
     updateGoalForOwner(ctx, ownerTokenIdentifier, goalClientId, {
