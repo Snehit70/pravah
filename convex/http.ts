@@ -21,6 +21,7 @@ import {
   syncStatusSchema,
   taskListSchema,
   unscheduleTaskSchema,
+  updateGoalSchema,
   updateTaskSchema,
 } from "./httpContracts";
 import {
@@ -157,6 +158,41 @@ http.route({
     });
 
     return jsonResponse(links);
+  }),
+});
+
+// POST /goals/update - Update an existing goal's description, deadline, or priority
+http.route({
+  path: "/goals/update",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const authCheck = await requireTaskWriteAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
+
+    const body = await parseJsonBody(request);
+    if (body.response) return body.response;
+
+    const validation = updateGoalSchema.safeParse(body.data);
+    if (!validation.success) {
+      return validationError(validation.error.issues);
+    }
+
+    const { goalId, description, deadline, priority } = validation.data;
+
+    const result = await ctx.runMutation(internal.automationTools.updateGoal, {
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
+      goalClientId: goalId,
+      description: description ?? undefined,
+      deadline: deadline ?? undefined,
+      priority: priority ?? undefined,
+    });
+
+    if (!result.updated) {
+      return jsonResponse({ error: "Goal not found", goalId }, 404);
+    }
+
+    return jsonResponse({ updated: true, goalId });
   }),
 });
 

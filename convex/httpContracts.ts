@@ -65,6 +65,13 @@ export const deleteTaskSchema = z.object({
   taskId: z.string().min(1, "Task ID is required").transform((v) => v as Id<"tasks">),
 });
 
+export const updateGoalSchema = z.object({
+  goalId: z.string().min(1, "Goal ID is required"),
+  description: z.string().max(1000).optional(),
+  deadline: z.string().regex(dateRegex, "Invalid date format (YYYY-MM-DD)").optional().nullable(),
+  priority: z.enum(["p1", "p2", "p3"]).optional().nullable(),
+});
+
 export const googleTokenExchangeSchema = z.object({
   code: z.string().min(1, "Authorization code is required"),
   codeVerifier: z.string().min(1, "PKCE code verifier is required"),
