@@ -29,7 +29,7 @@ export type OverduePreviewGroup = {
 export type OverduePreviewOrphan = {
   taskId: string;
   title: string;
-  scheduledDate?: string;
+  deadline?: string;
 };
 
 export type OverduePreviewData = {

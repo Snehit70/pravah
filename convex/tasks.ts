@@ -1,20 +1,18 @@
 import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireTokenIdentifier } from "./authHelpers";
 
 type TaskCtx = QueryCtx | MutationCtx;
-type TaskStatus = "inbox" | "scheduled" | "completed" | "cancelled";
+type LegacyTaskStatus = "inbox" | "scheduled" | "completed" | "cancelled";
 type ListTasksArgs = {
   date?: string;
-  status?: TaskStatus;
+  status?: LegacyTaskStatus;
 };
 type AddTaskArgs = {
   title: string;
   description?: string;
-  type: "open" | "deadline";
-  scheduledDate?: string;
   deadline?: string;
   source?: "manual" | "ai-agent" | "gmail" | "gcal";
   estimatedMinutes?: number;
@@ -27,19 +25,118 @@ type MoveTaskArgs = {
   position?: number;
 };
 
-function getTodayDateString() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 function getPriorityRank(priority?: string): number {
   if (priority === "p1") return 0;
   if (priority === "p2") return 1;
   if (priority === "p3") return 2;
   return 3;
+}
+
+function isNativeTask(task: {
+  source?: "manual" | "ai-agent" | "gmail" | "gcal";
+}) {
+  return task.source !== "gmail" && task.source !== "gcal";
+}
+
+function getTaskDeadline(task: {
+  deadline?: string;
+  scheduledDate?: string;
+}) {
+  return task.deadline ?? task.scheduledDate;
+}
+
+function getTaskCompletedAt(task: {
+  completedAt?: number;
+  status?: string;
+  updatedAt: number;
+}) {
+  if (typeof task.completedAt === "number") return task.completedAt;
+  if (task.status === "completed") return task.updatedAt;
+  return undefined;
+}
+
+function getTaskCancelledAt(task: {
+  cancelledAt?: number;
+  status?: string;
+  updatedAt: number;
+}) {
+  if (typeof task.cancelledAt === "number") return task.cancelledAt;
+  if (task.status === "cancelled") return task.updatedAt;
+  return undefined;
+}
+
+function isCancelledTask(task: {
+  cancelledAt?: number;
+  status?: string;
+  updatedAt: number;
+}) {
+  return typeof getTaskCancelledAt(task) === "number";
+}
+
+function isCompletedTask(task: {
+  completedAt?: number;
+  status?: string;
+  updatedAt: number;
+  cancelledAt?: number;
+}) {
+  return !isCancelledTask(task) && typeof getTaskCompletedAt(task) === "number";
+}
+
+function isTimelineTask(task: {
+  deadline?: string;
+  scheduledDate?: string;
+  completedAt?: number;
+  status?: string;
+  updatedAt: number;
+  cancelledAt?: number;
+}) {
+  return !isCancelledTask(task) && !isCompletedTask(task) && !!getTaskDeadline(task);
+}
+
+function isInboxTask(task: {
+  deadline?: string;
+  scheduledDate?: string;
+  completedAt?: number;
+  status?: string;
+  updatedAt: number;
+  cancelledAt?: number;
+}) {
+  return !isCancelledTask(task) && !isCompletedTask(task) && !getTaskDeadline(task);
+}
+
+function getTaskState(task: {
+  deadline?: string;
+  scheduledDate?: string;
+  completedAt?: number;
+  status?: string;
+  updatedAt: number;
+  cancelledAt?: number;
+}): LegacyTaskStatus {
+  if (isCancelledTask(task)) return "cancelled";
+  if (isCompletedTask(task)) return "completed";
+  return getTaskDeadline(task) ? "scheduled" : "inbox";
+}
+
+function toCanonicalTaskShape(task: Doc<"tasks">) {
+  return {
+    _id: task._id,
+    _creationTime: task._creationTime,
+    title: task.title,
+    description: task.description,
+    deadline: getTaskDeadline(task),
+    scheduledAt: task.scheduledAt ?? task.createdAt,
+    completedAt: getTaskCompletedAt(task),
+    cancelledAt: getTaskCancelledAt(task),
+    position: task.position,
+    source: task.source,
+    estimatedMinutes: task.estimatedMinutes,
+    tags: task.tags,
+    priority: task.priority,
+    createdBy: task.createdBy,
+    ownerTokenIdentifier: task.ownerTokenIdentifier,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+  };
 }
 
 async function getOwnedTask(
@@ -54,34 +151,155 @@ async function getOwnedTask(
   return task;
 }
 
-async function getNextPositionForStatus(
+async function listOwnedTasks(ctx: TaskCtx, tokenIdentifier: string) {
+  return await ctx.db
+    .query("tasks")
+    .withIndex("by_owner", (q) => q.eq("ownerTokenIdentifier", tokenIdentifier))
+    .collect();
+}
+
+async function listTasksByExactDeadline(
   ctx: TaskCtx,
   tokenIdentifier: string,
-  status: "inbox" | "scheduled",
-  scheduledDate?: string
+  deadline: string | undefined
 ) {
-  if (status === "scheduled" && scheduledDate) {
-    const latestTask = await ctx.db
-      .query("tasks")
-      .withIndex("by_owner_status_date_position", (q) =>
-        q.eq("ownerTokenIdentifier", tokenIdentifier)
-          .eq("status", "scheduled")
-          .eq("scheduledDate", scheduledDate)
-      )
-      .order("desc")
-      .first();
+  return await ctx.db
+    .query("tasks")
+    .withIndex("by_owner_deadline_position", (q) =>
+      q.eq("ownerTokenIdentifier", tokenIdentifier).eq("deadline", deadline)
+    )
+    .collect();
+}
+
+async function listTasksByDeadlineRange(
+  ctx: TaskCtx,
+  tokenIdentifier: string,
+  args: { startDate?: string; endDate?: string } = {}
+) {
+  const startDate = args.startDate ?? "";
+  const endDate = args.endDate ?? "\uffff";
+  return await ctx.db
+    .query("tasks")
+    .withIndex("by_owner_deadline_position", (q) =>
+      q.eq("ownerTokenIdentifier", tokenIdentifier)
+        .gte("deadline", startDate)
+        .lte("deadline", endDate)
+    )
+    .collect();
+}
+
+async function listTasksByLegacyStatus(
+  ctx: TaskCtx,
+  tokenIdentifier: string,
+  status: LegacyTaskStatus
+) {
+  return await ctx.db
+    .query("tasks")
+    .withIndex("by_owner_status", (q) =>
+      q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", status)
+    )
+    .collect();
+}
+
+async function listTasksByCompletedAtRange(
+  ctx: TaskCtx,
+  tokenIdentifier: string,
+  args: { startMs?: number; endMs?: number } = {}
+) {
+  const startMs = args.startMs ?? 0;
+  const endMs = args.endMs;
+  return await ctx.db
+    .query("tasks")
+    .withIndex("by_owner_completed_at", (q) => {
+      const byOwner = q
+        .eq("ownerTokenIdentifier", tokenIdentifier)
+        .gte("completedAt", startMs);
+      return endMs === undefined ? byOwner : byOwner.lt("completedAt", endMs);
+    })
+    .collect();
+}
+
+function dedupeTasks(tasks: Doc<"tasks">[]) {
+  const seen = new Set<string>();
+  return tasks.filter((task) => {
+    const key = String(task._id);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function getNextPositionForLane(
+  ctx: TaskCtx,
+  tokenIdentifier: string,
+  deadline?: string
+) {
+  const deadlineIndex = deadline
+    ? ctx.db
+        .query("tasks")
+        .withIndex("by_owner_deadline_position", (q) =>
+          q.eq("ownerTokenIdentifier", tokenIdentifier).eq("deadline", deadline)
+        )
+    : null;
+  if (
+    deadlineIndex &&
+    "order" in deadlineIndex &&
+    typeof deadlineIndex.order === "function"
+  ) {
+    const latestTask = await deadlineIndex.order("desc").first();
     return (latestTask?.position ?? -1) + 1;
   }
 
-  const latestTask = await ctx.db
-    .query("tasks")
-    .withIndex("by_owner_status_position", (q) =>
-      q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "inbox")
-    )
-    .order("desc")
-    .first();
+  const tasks = await listOwnedTasks(ctx, tokenIdentifier);
+  let maxPosition = -1;
+  for (const task of tasks) {
+    if (isCancelledTask(task) || isCompletedTask(task)) continue;
+    if (deadline) {
+      if (getTaskDeadline(task) !== deadline) continue;
+    } else if (!isInboxTask(task)) {
+      continue;
+    }
+    maxPosition = Math.max(maxPosition, task.position);
+  }
+  return maxPosition + 1;
+}
 
-  return (latestTask?.position ?? -1) + 1;
+async function migrateNativeTaskRows(
+  ctx: MutationCtx,
+  tasks: Doc<"tasks">[]
+) {
+  const migratedTaskIds: Id<"tasks">[] = [];
+
+  for (const task of tasks) {
+    if (!isNativeTask(task)) continue;
+    const nextDeadline = task.scheduledDate ?? task.deadline;
+    const nextCompletedAt = getTaskCompletedAt(task);
+    const nextCancelledAt = getTaskCancelledAt(task);
+
+    await ctx.db.patch(task._id, {
+      deadline: nextDeadline,
+      scheduledAt: task.scheduledAt ?? task.createdAt,
+      completedAt: nextCompletedAt,
+      cancelledAt: nextCancelledAt,
+      scheduledDate: undefined,
+      status: undefined,
+      type: undefined,
+      updatedAt: task.updatedAt,
+    });
+    migratedTaskIds.push(task._id);
+  }
+
+  return {
+    migratedCount: migratedTaskIds.length,
+    migratedTaskIds,
+  };
+}
+
+async function migrateNativeTasksForOwner(
+  ctx: MutationCtx,
+  tokenIdentifier: string
+) {
+  return migrateNativeTaskRows(ctx, await listOwnedTasks(ctx, tokenIdentifier));
 }
 
 export const listTasks = query({
@@ -107,87 +325,84 @@ export async function listTasksForOwner(
   tokenIdentifier: string,
   args: ListTasksArgs
 ) {
-  if (args.date && args.status) {
-    return await ctx.db
-      .query("tasks")
-      .withIndex("by_owner_status_date", (q) =>
-        q.eq("ownerTokenIdentifier", tokenIdentifier)
-          .eq("status", args.status!)
-          .eq("scheduledDate", args.date!)
-      )
-      .collect();
+  const tasks = await listOwnedTasks(ctx, tokenIdentifier);
+  const visible = tasks
+    .filter((task) => {
+      const state = getTaskState(task);
+      if (args.status && state !== args.status) return false;
+      if (args.date && getTaskDeadline(task) !== args.date) return false;
+      if (!args.status && state === "cancelled") return false;
+      return true;
+    })
+    .map(toCanonicalTaskShape);
+
+  if (args.status === "completed") {
+    visible.sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0));
+    return visible;
   }
 
-  if (args.status) {
-    return await ctx.db
-      .query("tasks")
-      .withIndex("by_owner_status", (q) =>
-        q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", args.status!)
-      )
-      .collect();
-  }
-
-  const tasks = await ctx.db
-    .query("tasks")
-    .withIndex("by_owner", (q) => q.eq("ownerTokenIdentifier", tokenIdentifier))
-    .collect();
-
-  // Hide soft-deleted tasks from the default (unfiltered) view so the
-  // 30-minute undo grace window doesn't leak ghost rows into the UI.
-  // Callers that explicitly want cancelled tasks must pass status:"cancelled".
-  const visible = tasks.filter((task) => task.status !== "cancelled");
-
-  return args.date
-    ? visible.filter((task) => task.scheduledDate === args.date)
-    : visible;
+  visible.sort(
+    (a, b) =>
+      (a.deadline ?? "").localeCompare(b.deadline ?? "") ||
+      getPriorityRank(a.priority) - getPriorityRank(b.priority) ||
+      a.position - b.position
+  );
+  return visible;
 }
 
 export const listBoardTasks = query({
   args: {},
   handler: async (ctx) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
+    const [inboxCandidates, deadlineTasks, legacyScheduledTasks] = await Promise.all([
+      listTasksByExactDeadline(ctx, tokenIdentifier, undefined),
+      listTasksByDeadlineRange(ctx, tokenIdentifier),
+      listTasksByLegacyStatus(ctx, tokenIdentifier, "scheduled"),
+    ]);
 
-    const inboxTasks = await ctx.db
-      .query("tasks")
-      .withIndex("by_owner_status_position", (q) =>
-        q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "inbox")
-      )
-      .collect();
-
-    const scheduledTasks = await ctx.db
-      .query("tasks")
-      .withIndex("by_owner_status", (q) =>
-        q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "scheduled")
-      )
-      .collect();
-
-    return [...inboxTasks, ...scheduledTasks];
+    return dedupeTasks([
+      ...inboxCandidates.filter(isInboxTask),
+      ...deadlineTasks.filter(isTimelineTask),
+      ...legacyScheduledTasks.filter(
+        (task) => task.deadline === undefined && isTimelineTask(task)
+      ),
+    ])
+      .filter((task) => isInboxTask(task) || isTimelineTask(task))
+      .map(toCanonicalTaskShape);
   },
 });
 
-/**
- * Returns completed tasks whose scheduledDate matches today (local time on
- * the server). Used by the "done today" counter in the Timeline header without
- * pulling all tasks into the board query.
- */
 export const listTodayCompletedTasks = query({
   args: {
-    // Client passes its local date string (YYYY-MM-DD) so results are
-    // consistent with task dates written by the frontend, even when the
-    // Convex server clock is in a different timezone or crosses midnight.
-    clientDate: v.string(),
+    dayStartMs: v.number(),
+    dayEndMs: v.number(),
   },
-  handler: async (ctx, { clientDate }) => {
+  handler: async (ctx, { dayStartMs, dayEndMs }) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    return await ctx.db
-      .query("tasks")
-      .withIndex("by_owner_status_date", (q) =>
-        q
-          .eq("ownerTokenIdentifier", tokenIdentifier)
-          .eq("status", "completed")
-          .eq("scheduledDate", clientDate)
-      )
-      .collect();
+    const [completedTasks, legacyCompletedTasks] = await Promise.all([
+      listTasksByCompletedAtRange(ctx, tokenIdentifier, {
+        startMs: dayStartMs,
+        endMs: dayEndMs,
+      }),
+      listTasksByLegacyStatus(ctx, tokenIdentifier, "completed"),
+    ]);
+
+    return dedupeTasks([
+      ...completedTasks.filter(isCompletedTask),
+      ...legacyCompletedTasks.filter(
+        (task) =>
+          task.completedAt === undefined &&
+          isCompletedTask(task) &&
+          (getTaskCompletedAt(task) ?? -1) >= dayStartMs &&
+          (getTaskCompletedAt(task) ?? -1) < dayEndMs
+      ),
+    ])
+      .filter((task) => {
+        const completedAt = getTaskCompletedAt(task);
+        if (!isCompletedTask(task) || completedAt === undefined) return false;
+        return completedAt >= dayStartMs && completedAt < dayEndMs;
+      })
+      .map(toCanonicalTaskShape);
   },
 });
 
@@ -195,8 +410,6 @@ export const addTask = mutation({
   args: {
     title: v.string(),
     description: v.optional(v.string()),
-    type: v.union(v.literal("open"), v.literal("deadline")),
-    scheduledDate: v.optional(v.string()),
     deadline: v.optional(v.string()),
     source: v.optional(
       v.union(
@@ -221,33 +434,26 @@ export async function addTaskForOwner(
   tokenIdentifier: string,
   args: AddTaskArgs
 ) {
-  const scheduledDate =
-    args.scheduledDate ??
-    (args.type === "deadline" ? args.deadline : undefined);
-
-  const position = await getNextPositionForStatus(
-    ctx,
-    tokenIdentifier,
-    scheduledDate ? "scheduled" : "inbox",
-    scheduledDate
-  );
+  const deadline = args.deadline;
+  const position = await getNextPositionForLane(ctx, tokenIdentifier, deadline);
+  const now = Date.now();
 
   return await ctx.db.insert("tasks", {
     title: args.title,
     description: args.description,
-    type: args.type,
-    scheduledDate,
-    deadline: args.deadline,
+    deadline,
+    scheduledAt: now,
+    completedAt: undefined,
     position,
-    status: scheduledDate ? "scheduled" : "inbox",
     source: args.source || "manual",
     estimatedMinutes: args.estimatedMinutes,
     tags: args.tags,
     priority: args.priority,
     createdBy: tokenIdentifier,
     ownerTokenIdentifier: tokenIdentifier,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    createdAt: now,
+    updatedAt: now,
+    cancelledAt: undefined,
   });
 }
 
@@ -270,85 +476,57 @@ export async function moveTaskForOwner(
 ) {
   const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
 
-  if (task.type === "deadline" && task.deadline && args.targetDate > task.deadline) {
-    const today = getTodayDateString();
-    const canCarryForwardOverdueDeadline = task.deadline < today;
-    if (!canCarryForwardOverdueDeadline) {
-      throw new Error("Cannot move task past its deadline");
-    }
+  if (isCancelledTask(task)) {
+    throw new Error("Task is cancelled");
+  }
+  if (isCompletedTask(task)) {
+    throw new Error("Task is completed");
   }
 
   const newPosition =
     args.position ??
-    (await getNextPositionForStatus(ctx, tokenIdentifier, "scheduled", args.targetDate));
+    (await getNextPositionForLane(ctx, tokenIdentifier, args.targetDate));
 
   await ctx.db.patch(args.taskId, {
-    scheduledDate: args.targetDate,
+    deadline: args.targetDate,
     position: newPosition,
-    status: "scheduled",
     updatedAt: Date.now(),
   });
 }
 
-/** Atomic bulk reschedule used by the overdue reflow. Applies many
- *  scheduledDate moves in a single transaction so a network drop can never
- *  leave a half-reflowed schedule. Skips tasks that no longer exist, aren't
- *  owned, or are already completed/cancelled, and clamps a move that would
- *  land past a still-future per-task deadline. Returns the ids that actually
- *  changed so the client optimistic layer can reconcile. */
 export const rescheduleTasks = mutation({
   args: {
     updates: v.array(
-      v.object({ taskId: v.id("tasks"), scheduledDate: v.string() })
+      v.object({ taskId: v.id("tasks"), deadline: v.string() })
     ),
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    const today = getTodayDateString();
-    // Seed one position counter per distinct target date, then increment
-    // locally so multiple tasks landing on the same day stack in order.
     const positionByDate = new Map<string, number>();
     const changed: Id<"tasks">[] = [];
 
-    for (const { taskId, scheduledDate } of args.updates) {
+    for (const { taskId, deadline } of args.updates) {
       let task;
       try {
         task = await getOwnedTask(ctx, taskId, tokenIdentifier);
       } catch {
-        continue; // missing or not owned — skip silently
+        continue;
       }
-      if (task.status === "completed" || task.status === "cancelled") continue;
+      if (isCompletedTask(task) || isCancelledTask(task)) continue;
 
-      let target = scheduledDate;
-      // A task with its own future deadline must not be pushed past it; clamp
-      // onto the deadline. Open tasks (the common reflow case) have none.
-      if (
-        task.type === "deadline" &&
-        task.deadline &&
-        target > task.deadline &&
-        task.deadline >= today
-      ) {
-        target = task.deadline;
-      }
-
-      if (task.status === "scheduled" && task.scheduledDate === target) {
+      const target = deadline;
+      if (getTaskDeadline(task) === target) {
         continue;
       }
 
       let position = positionByDate.get(target);
       if (position === undefined) {
-        position = await getNextPositionForStatus(
-          ctx,
-          tokenIdentifier,
-          "scheduled",
-          target
-        );
+        position = await getNextPositionForLane(ctx, tokenIdentifier, target);
       }
 
       await ctx.db.patch(taskId, {
-        scheduledDate: target,
+        deadline: target,
         position,
-        status: "scheduled",
         updatedAt: Date.now(),
       });
       positionByDate.set(target, position + 1);
@@ -369,7 +547,7 @@ export const reorderTasks = mutation({
 
     for (const [position, taskId] of args.taskIds.entries()) {
       const task = await getOwnedTask(ctx, taskId, tokenIdentifier);
-      if (task.scheduledDate !== args.date) {
+      if (getTaskDeadline(task) !== args.date || isCompletedTask(task) || isCancelledTask(task)) {
         throw new Error(`Task ${taskId} does not belong to date ${args.date}`);
       }
       await ctx.db.patch(taskId, {
@@ -388,22 +566,24 @@ export const shiftScheduledTaskPosition = mutation({
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
     const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
+    const deadline = getTaskDeadline(task);
 
-    if (task.status !== "scheduled" || !task.scheduledDate) {
+    if (!deadline || isCompletedTask(task) || isCancelledTask(task)) {
       throw new Error("Task is not scheduled");
     }
 
-    const tasksForDate = await ctx.db
-      .query("tasks")
-      .withIndex("by_owner_status_date_position", (q) =>
-        q
-          .eq("ownerTokenIdentifier", tokenIdentifier)
-          .eq("status", "scheduled")
-          .eq("scheduledDate", task.scheduledDate)
+    const tasksForDate = (await listOwnedTasks(ctx, tokenIdentifier))
+      .filter(
+        (candidate) =>
+          !isCompletedTask(candidate) &&
+          !isCancelledTask(candidate) &&
+          getTaskDeadline(candidate) === deadline
       )
-      .collect();
-
-    tasksForDate.sort((a, b) => getPriorityRank(a.priority) - getPriorityRank(b.priority) || a.position - b.position);
+      .sort(
+        (a, b) =>
+          getPriorityRank(a.priority) - getPriorityRank(b.priority) ||
+          a.position - b.position
+      );
 
     const currentIndex = tasksForDate.findIndex((candidate) => candidate._id === task._id);
     if (currentIndex === -1) {
@@ -439,7 +619,7 @@ export const reorderInboxTasks = mutation({
 
     for (const [position, taskId] of args.taskIds.entries()) {
       const task = await getOwnedTask(ctx, taskId, tokenIdentifier);
-      if (task.status !== "inbox" || task.scheduledDate) {
+      if (!isInboxTask(task)) {
         throw new Error(`Task ${taskId} does not belong to inbox`);
       }
       await ctx.db.patch(taskId, {
@@ -463,10 +643,17 @@ export async function completeTaskForOwner(
   tokenIdentifier: string,
   taskId: Id<"tasks">
 ) {
-  await getOwnedTask(ctx, taskId, tokenIdentifier);
+  const task = await getOwnedTask(ctx, taskId, tokenIdentifier);
+  if (isCancelledTask(task)) {
+    throw new Error("Task is cancelled");
+  }
+  if (isCompletedTask(task)) {
+    return;
+  }
+  const now = Date.now();
   await ctx.db.patch(taskId, {
-    status: "completed",
-    updatedAt: Date.now(),
+    completedAt: now,
+    updatedAt: now,
   });
 }
 
@@ -484,18 +671,25 @@ export async function reopenTaskForOwner(
   taskId: Id<"tasks">
 ) {
   const task = await getOwnedTask(ctx, taskId, tokenIdentifier);
-  if (task.status !== "completed") {
+  if (!isCompletedTask(task)) {
     throw new Error("Task is not completed");
   }
 
-  const position = await getNextPositionForStatus(ctx, tokenIdentifier, "inbox");
-
-  await ctx.db.patch(taskId, {
-    status: "inbox",
-    scheduledDate: undefined,
-    position,
+  const deadline = getTaskDeadline(task);
+  const updates: {
+    completedAt: undefined;
+    position?: number;
+    updatedAt: number;
+  } = {
+    completedAt: undefined,
     updatedAt: Date.now(),
-  });
+  };
+
+  if (!deadline) {
+    updates.position = await getNextPositionForLane(ctx, tokenIdentifier, undefined);
+  }
+
+  await ctx.db.patch(taskId, updates);
 }
 
 export const unscheduleTask = mutation({
@@ -512,68 +706,31 @@ export async function unscheduleTaskForOwner(
   taskId: Id<"tasks">
 ) {
   const task = await getOwnedTask(ctx, taskId, tokenIdentifier);
-  if (task.status !== "scheduled") {
+  if (!isTimelineTask(task)) {
     throw new Error("Task is not scheduled");
   }
 
-  const position = await getNextPositionForStatus(ctx, tokenIdentifier, "inbox");
+  const position = await getNextPositionForLane(ctx, tokenIdentifier, undefined);
 
   await ctx.db.patch(taskId, {
-    status: "inbox",
-    scheduledDate: undefined,
+    deadline: undefined,
     position,
     updatedAt: Date.now(),
   });
 }
 
-export const backfillDeadlineTasksToDeadlineDate = mutation({
+export const migrateNativeTasksToDeadlineModel = mutation({
   args: {},
   handler: async (ctx) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    const allTasks = await ctx.db
-      .query("tasks")
-      .withIndex("by_owner", (q) => q.eq("ownerTokenIdentifier", tokenIdentifier))
-      .collect();
-    const positionByDate = new Map<string, number>();
+    return await migrateNativeTasksForOwner(ctx, tokenIdentifier);
+  },
+});
 
-    for (const task of allTasks) {
-      if (task.status !== "scheduled" || !task.scheduledDate) continue;
-      const currentMax = positionByDate.get(task.scheduledDate) ?? -1;
-      positionByDate.set(task.scheduledDate, Math.max(currentMax, task.position));
-    }
-
-    const candidates = allTasks
-      .filter(
-        (task) =>
-          task.type === "deadline" &&
-          !!task.deadline &&
-          task.status !== "completed" &&
-          task.status !== "cancelled" &&
-          (task.scheduledDate !== task.deadline || task.status !== "scheduled")
-      )
-      .sort((a, b) => a.createdAt - b.createdAt);
-
-    const updatedTaskIds: Id<"tasks">[] = [];
-    const now = Date.now();
-
-    for (const task of candidates) {
-      const targetDate = task.deadline!;
-      const nextPosition = (positionByDate.get(targetDate) ?? -1) + 1;
-      positionByDate.set(targetDate, nextPosition);
-
-      await ctx.db.patch(task._id, {
-        scheduledDate: targetDate,
-        status: "scheduled",
-        position: nextPosition,
-        updatedAt: now,
-      });
-      updatedTaskIds.push(task._id);
-    }
-
-    return {
-      updatedCount: updatedTaskIds.length,
-      updatedTaskIds,
-    };
+export const migrateAllNativeTasksToDeadlineModel = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    return migrateNativeTaskRows(ctx, await ctx.db.query("tasks").collect());
   },
 });
 
@@ -589,8 +746,7 @@ export const updateTask = mutation({
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    const { taskId } = args;
-    const task = await getOwnedTask(ctx, taskId, tokenIdentifier);
+    const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
 
     const updates: Partial<{
       title: string;
@@ -599,9 +755,6 @@ export const updateTask = mutation({
       estimatedMinutes: number | undefined;
       tags: string[] | undefined;
       priority: "p1" | "p2" | "p3" | undefined;
-      type: "open" | "deadline";
-      scheduledDate: string | undefined;
-      status: "inbox" | "scheduled" | "completed" | "cancelled";
       position: number;
       updatedAt: number;
     }> = {};
@@ -611,10 +764,6 @@ export const updateTask = mutation({
     }
     if (Object.prototype.hasOwnProperty.call(args, "description")) {
       updates.description = args.description;
-    }
-    const deadlineProvided = Object.prototype.hasOwnProperty.call(args, "deadline");
-    if (deadlineProvided) {
-      updates.deadline = args.deadline;
     }
     if (Object.prototype.hasOwnProperty.call(args, "estimatedMinutes")) {
       updates.estimatedMinutes = args.estimatedMinutes;
@@ -626,47 +775,25 @@ export const updateTask = mutation({
       updates.priority = args.priority;
     }
 
-    const nextDeadline = args.deadline;
-    const shouldPreserveInboxOpenTask =
-      task.status === "inbox" &&
-      task.type === "open" &&
-      !task.scheduledDate;
+    const deadlineProvided = Object.prototype.hasOwnProperty.call(args, "deadline");
+    if (deadlineProvided) {
+      const previousDeadline = getTaskDeadline(task);
+      const nextDeadline = args.deadline;
+      updates.deadline = nextDeadline;
 
-    if (nextDeadline) {
-      if (shouldPreserveInboxOpenTask) {
-        updates.type = "open";
-        updates.status = "inbox";
-        updates.scheduledDate = undefined;
-      } else {
-        updates.type = "deadline";
-      }
-
-      if (!shouldPreserveInboxOpenTask && task.status !== "completed" && task.status !== "cancelled") {
-        const staysInSameSlot =
-          task.status === "scheduled" && task.scheduledDate === nextDeadline;
-        updates.status = "scheduled";
-        updates.scheduledDate = nextDeadline;
-        updates.position = staysInSameSlot
-          ? task.position
-          : await getNextPositionForStatus(ctx, tokenIdentifier, "scheduled", nextDeadline);
-      }
-    } else if (deadlineProvided) {
-      updates.type = "open";
-
-      const wasAutoScheduledByDeadline =
-        task.status === "scheduled" &&
-        task.type === "deadline" &&
-        !!task.deadline &&
-        task.scheduledDate === task.deadline;
-
-      if (wasAutoScheduledByDeadline) {
-        updates.status = "inbox";
-        updates.scheduledDate = undefined;
-        updates.position = await getNextPositionForStatus(ctx, tokenIdentifier, "inbox");
+      if (!isCompletedTask(task) && !isCancelledTask(task)) {
+        if (nextDeadline) {
+          const staysInSameSlot = previousDeadline === nextDeadline;
+          updates.position = staysInSameSlot
+            ? task.position
+            : await getNextPositionForLane(ctx, tokenIdentifier, nextDeadline);
+        } else if (previousDeadline) {
+          updates.position = await getNextPositionForLane(ctx, tokenIdentifier, undefined);
+        }
       }
     }
 
-    await ctx.db.patch(taskId, {
+    await ctx.db.patch(args.taskId, {
       ...updates,
       updatedAt: Date.now(),
     });
@@ -682,63 +809,48 @@ export const deleteTask = mutation({
   },
 });
 
-/** Soft-delete a task: flip status to "cancelled" and stamp cancelledAt so
- *  the scheduled purger can hard-delete it after the 30-minute grace window.
- *  The default listTasks query already hides cancelled rows, so the task
- *  disappears from the UI immediately while remaining undoable.
- *  Used by Kairo so the user can undo an unintended delete; the UI's direct
- *  delete buttons still call hard `deleteTask` for now. */
 export const softDeleteTask = mutation({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
     await getOwnedTask(ctx, args.taskId, tokenIdentifier);
     await ctx.db.patch(args.taskId, {
-      status: "cancelled",
       cancelledAt: Date.now(),
+      completedAt: undefined,
       updatedAt: Date.now(),
     });
   },
 });
 
-/** Undo a soft-delete. Restores the task to the inbox rather than its prior
- *  scheduled slot — reconstructing the old position/date is fiddly and the
- *  user can re-schedule with one tap. Errors if the task was already purged
- *  (i.e. the undo window expired). */
 export const restoreTask = mutation({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
     const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
-    if (task.status !== "cancelled") {
+    if (!isCancelledTask(task)) {
       throw new Error("Task is not pending deletion");
     }
-    const position = await getNextPositionForStatus(ctx, tokenIdentifier, "inbox");
+    const deadline = getTaskDeadline(task);
+    const position = await getNextPositionForLane(ctx, tokenIdentifier, deadline);
     await ctx.db.patch(args.taskId, {
-      status: "inbox",
-      scheduledDate: undefined,
-      position,
       cancelledAt: undefined,
+      position,
       updatedAt: Date.now(),
     });
   },
 });
 
-/** Cron job: hard-delete cancelled tasks past the 30-minute undo window.
- *  Internal — invoked by convex/crons.ts only. */
 const PURGE_GRACE_MS = 30 * 60 * 1000;
 export const purgeExpiredCancelledTasks = internalMutation({
   args: {},
   handler: async (ctx) => {
     const cutoff = Date.now() - PURGE_GRACE_MS;
-    const cancelled = await ctx.db
-      .query("tasks")
-      .withIndex("by_status", (q) => q.eq("status", "cancelled"))
-      .collect();
+    const tasks = await ctx.db.query("tasks").collect();
 
     let purged = 0;
-    for (const task of cancelled) {
-      if (task.cancelledAt !== undefined && task.cancelledAt < cutoff) {
+    for (const task of tasks) {
+      const cancelledAt = getTaskCancelledAt(task);
+      if (cancelledAt !== undefined && cancelledAt < cutoff) {
         await ctx.db.delete(task._id);
         purged += 1;
       }
@@ -754,10 +866,9 @@ export const bulkReschedule = mutation({
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    let nextPosition = await getNextPositionForStatus(
+    let nextPosition = await getNextPositionForLane(
       ctx,
       tokenIdentifier,
-      "scheduled",
       args.targetDate
     );
     const skippedTaskIds: Id<"tasks">[] = [];
@@ -768,18 +879,13 @@ export const bulkReschedule = mutation({
         skippedTaskIds.push(taskId);
         continue;
       }
-      if (task.status !== "inbox" && task.status !== "scheduled") {
-        skippedTaskIds.push(taskId);
-        continue;
-      }
-      if (task.type === "deadline" && task.deadline && args.targetDate > task.deadline) {
+      if (!isInboxTask(task) && !isTimelineTask(task)) {
         skippedTaskIds.push(taskId);
         continue;
       }
 
       await ctx.db.patch(taskId, {
-        status: "scheduled",
-        scheduledDate: args.targetDate,
+        deadline: args.targetDate,
         position: nextPosition,
         updatedAt: Date.now(),
       });
@@ -795,8 +901,6 @@ export const bulkReschedule = mutation({
 
 export const getTimeline = query({
   args: {
-    // Client passes its local today string so tasks from previous days are
-    // excluded. Defaults to no lower bound if omitted (backward compat).
     startDate: v.optional(v.string()),
     endDate: v.string(),
   },
@@ -811,23 +915,27 @@ export async function getTimelineForOwner(
   tokenIdentifier: string,
   args: { startDate?: string; endDate: string }
 ) {
-  const tasks = await ctx.db
-    .query("tasks")
-    .withIndex("by_owner_status_date_position", (q) => {
-      const base = q
-        .eq("ownerTokenIdentifier", tokenIdentifier)
-        .eq("status", "scheduled");
-      // Apply the lower bound only when startDate is provided so callers
-      // that omit it still get the old behaviour.
-      return args.startDate
-        ? base.gte("scheduledDate", args.startDate).lte("scheduledDate", args.endDate)
-        : base.lte("scheduledDate", args.endDate);
-    })
-    .collect();
+  const [deadlineTasks, legacyScheduledTasks] = await Promise.all([
+    listTasksByDeadlineRange(ctx, tokenIdentifier, {
+      startDate: args.startDate,
+      endDate: args.endDate,
+    }),
+    listTasksByLegacyStatus(ctx, tokenIdentifier, "scheduled"),
+  ]);
+
+  const tasks = dedupeTasks([
+    ...deadlineTasks.filter(isTimelineTask),
+    ...legacyScheduledTasks.filter((task) => {
+      const deadline = getTaskDeadline(task);
+      if (task.deadline !== undefined || !isTimelineTask(task) || !deadline) return false;
+      if (args.startDate && deadline < args.startDate) return false;
+      return deadline <= args.endDate;
+    }),
+  ]).map(toCanonicalTaskShape);
 
   const grouped: Record<string, typeof tasks> = {};
   for (const task of tasks) {
-    const date = task.scheduledDate;
+    const date = task.deadline;
     if (!date) continue;
     if (!grouped[date]) grouped[date] = [];
     grouped[date].push(task);
@@ -844,32 +952,34 @@ export const getTaskCounts = query({
   args: {},
   handler: async (ctx) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-
-    const [inbox, scheduled, completed] = await Promise.all([
-      ctx.db
-        .query("tasks")
-        .withIndex("by_owner_status", (q) =>
-          q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "inbox")
-        )
-        .collect(),
-      ctx.db
-        .query("tasks")
-        .withIndex("by_owner_status", (q) =>
-          q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "scheduled")
-        )
-        .collect(),
-      ctx.db
-        .query("tasks")
-        .withIndex("by_owner_status", (q) =>
-          q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", "completed")
-        )
-        .collect(),
+    const [
+      inboxCandidates,
+      deadlineTasks,
+      completedTasks,
+      legacyScheduledTasks,
+      legacyCompletedTasks,
+    ] = await Promise.all([
+      listTasksByExactDeadline(ctx, tokenIdentifier, undefined),
+      listTasksByDeadlineRange(ctx, tokenIdentifier),
+      listTasksByCompletedAtRange(ctx, tokenIdentifier),
+      listTasksByLegacyStatus(ctx, tokenIdentifier, "scheduled"),
+      listTasksByLegacyStatus(ctx, tokenIdentifier, "completed"),
     ]);
 
     return {
-      inboxCount: inbox.length,
-      timelineCount: scheduled.length,
-      completedCount: completed.length,
+      inboxCount: inboxCandidates.filter(isInboxTask).length,
+      timelineCount: dedupeTasks([
+        ...deadlineTasks.filter(isTimelineTask),
+        ...legacyScheduledTasks.filter(
+          (task) => task.deadline === undefined && isTimelineTask(task)
+        ),
+      ]).length,
+      completedCount: dedupeTasks([
+        ...completedTasks.filter(isCompletedTask),
+        ...legacyCompletedTasks.filter(
+          (task) => task.completedAt === undefined && isCompletedTask(task)
+        ),
+      ]).length,
     };
   },
 });

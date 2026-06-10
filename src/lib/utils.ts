@@ -11,6 +11,14 @@ export function getLocalDateString(date: Date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+export function getLocalDayBounds(date: Date = new Date()) {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 1);
+  return { dayStartMs: start.getTime(), dayEndMs: end.getTime() };
+}
+
 /** Generate array of date strings centered around today */
 export function generateDateRange(pastDays: number = 7, futureDays: number = 14): string[] {
   const today = new Date();

@@ -225,8 +225,6 @@ http.route({
           idempotencyKey: idempotency.key,
           title: data.title,
           description: data.description,
-          type: data.type,
-          scheduledDate: data.scheduledDate,
           deadline: data.deadline,
           source: data.source,
           estimatedMinutes: data.estimatedMinutes,

@@ -32,6 +32,7 @@ import { useGoalMutations } from "../hooks/useGoalMutations";
 import { useConfirm } from "../hooks/useConfirm";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import type { MobileTask } from "../components/TaskCard";
+import { isTaskCompleted } from "../lib/taskState";
 
 const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function formatDeadline(iso: string): string {
@@ -304,7 +305,7 @@ function GoalDetailSheet({ goal, progress, linked, onDelete, onClose, onOpenTask
               <View style={detailStyles.tasksSection}>
                 <Text style={detailStyles.sectionLabel}>Linked tasks</Text>
                 {hasTasks ? linked.map((t) => {
-                  const done = t.status === "completed";
+                  const done = isTaskCompleted(t);
                   return (
                     <View key={String(t._id)} style={detailStyles.taskRow}>
                       <Pressable
@@ -415,7 +416,7 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false, on
     for (const g of goals) {
       const list = tasksByGoal.get(g.id) ?? [];
       const total = list.length;
-      const done = list.filter((t) => t.status === "completed").length;
+      const done = list.filter(isTaskCompleted).length;
       const ratio = total === 0 ? 0 : done / total;
       out.set(g.id, { total, done, ratio });
     }

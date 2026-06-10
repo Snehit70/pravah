@@ -59,7 +59,6 @@ export function QuickAdd({ onClose }: QuickAddProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [showDesc, setShowDesc] = useState(false);
-  const [type, setType] = useState<"open" | "deadline">("open");
   const [when, setWhen] = useState<"inbox" | "today" | "tomorrow" | "nextweek">("inbox");
   const [priority, setPriority] = useState<"p1" | "p2" | "p3" | undefined>(undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -84,18 +83,6 @@ export function QuickAdd({ onClose }: QuickAddProps) {
   }, [onClose]);
 
   const getDeadline = (): string | undefined => {
-    if (type !== "deadline") return undefined;
-    if (when === "today") return today;
-    if (when === "tomorrow") return tomorrow;
-    if (when === "nextweek") {
-      const d = new Date();
-      d.setDate(d.getDate() + 7);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    }
-    return undefined;
-  };
-
-  const getScheduledDate = (): string | undefined => {
     if (when === "inbox") return undefined;
     if (when === "today") return today;
     if (when === "tomorrow") return tomorrow;
@@ -110,27 +97,14 @@ export function QuickAdd({ onClose }: QuickAddProps) {
   const handleSubmit = async () => {
     if (!title.trim() || isSubmitting) return;
     const deadline = getDeadline();
-    const scheduledDate = getScheduledDate();
-
-    if (type === "deadline" && !deadline) {
-      showError("Deadline tasks need a due date");
-      return;
-    }
-
-    if (type === "deadline" && deadline && scheduledDate && scheduledDate > deadline) {
-      showError("Scheduled date cannot be after deadline");
-      return;
-    }
 
     try {
       setIsSubmitting(true);
       await addTask({
         title: title.trim(),
         description: description.trim() || undefined,
-        type,
         deadline,
         priority,
-        scheduledDate,
       });
       onClose();
     } catch {
@@ -188,8 +162,8 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                 width: 7,
                 height: 7,
                 borderRadius: 5,
-                background: type === "deadline" ? DEADLINE_COLOR : ACCENT,
-                boxShadow: `0 0 8px ${type === "deadline" ? DEADLINE_COLOR : ACCENT}`,
+                background: when === "inbox" ? ACCENT : DEADLINE_COLOR,
+                boxShadow: `0 0 8px ${when === "inbox" ? ACCENT : DEADLINE_COLOR}`,
               }}
             />
             <span
@@ -201,7 +175,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
                 textTransform: "uppercase",
               }}
             >
-              New {type === "deadline" ? "deadline" : "task"}
+              New task
             </span>
             <div className="flex-1" />
             <button
@@ -292,15 +266,12 @@ export function QuickAdd({ onClose }: QuickAddProps) {
 
           <div style={{ height: 1, background: "rgba(255,255,255,.07)", margin: "14px 0 12px" }} />
 
-          {/* Type + When */}
+          {/* Planning preset */}
           <div className="flex gap-1.5 flex-wrap">
-            <Pill label="Open" active={type === "open"} onClick={() => setType("open")} dot dotColor={ACCENT} />
-            <Pill label="Deadline" active={type === "deadline"} onClick={() => setType("deadline")} dot dotColor={DEADLINE_COLOR} />
-            <span style={{ width: 1, background: "rgba(255,255,255,.07)", margin: "0 4px" }} />
-            <Pill label="Inbox" active={when === "inbox"} onClick={() => setWhen("inbox")} />
-            <Pill label="Today" active={when === "today"} onClick={() => setWhen("today")} />
-            <Pill label="Tomorrow" active={when === "tomorrow"} onClick={() => setWhen("tomorrow")} />
-            <Pill label="+1w" active={when === "nextweek"} onClick={() => setWhen("nextweek")} />
+            <Pill label="Inbox" active={when === "inbox"} onClick={() => setWhen("inbox")} dot dotColor={ACCENT} />
+            <Pill label="Today" active={when === "today"} onClick={() => setWhen("today")} dot dotColor={DEADLINE_COLOR} />
+            <Pill label="Tomorrow" active={when === "tomorrow"} onClick={() => setWhen("tomorrow")} dot dotColor={DEADLINE_COLOR} />
+            <Pill label="+1w" active={when === "nextweek"} onClick={() => setWhen("nextweek")} dot dotColor={DEADLINE_COLOR} />
           </div>
 
           {/* Priority */}

@@ -32,7 +32,7 @@ export function KairoTaskProposalList({
         const status = statusText(proposal);
         return (
           <div
-            key={`${proposal.title}-${proposal.scheduledDate ?? "inbox"}-${index}`}
+            key={`${proposal.title}-${proposal.deadline ?? "inbox"}-${index}`}
             style={{
               padding: "8px 10px",
               background: "rgba(255,255,255,.03)",
@@ -45,7 +45,7 @@ export function KairoTaskProposalList({
             }}
           >
             <div>
-              {proposal.title} {proposal.scheduledDate ? `→ ${proposal.scheduledDate}` : "→ inbox"}
+              {proposal.title} {proposal.deadline ? `→ ${proposal.deadline}` : "→ inbox"}
             </div>
             {proposal.status === "pending" ? (
               <div style={{ display: "flex", gap: 6, marginTop: 7 }}>

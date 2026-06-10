@@ -34,8 +34,7 @@ export interface KairoMessageAction {
 
 export interface KairoTaskBlock {
   title: string;
-  scheduledDate: string | null;
-  type: "open" | "deadline";
+  deadline: string | null;
 }
 
 export type KairoGoalInput = {
@@ -74,11 +73,10 @@ export type KairoTaskInput = {
    *  the model can use to reference the task in action blocks. */
   _id: string;
   title: string;
-  scheduledDate?: string;
-  status: "inbox" | "scheduled" | "completed" | "cancelled";
-  priority?: "p1" | "p2" | "p3";
-  type?: "open" | "deadline";
   deadline?: string;
+  completedAt?: number;
+  cancelledAt?: number;
+  priority?: "p1" | "p2" | "p3";
 };
 
 /** Maps short handles surfaced to the model (e.g. "T12") back to real Convex
@@ -95,11 +93,16 @@ export function buildKairoStarters(
   today: string
 ): string[] {
   const starters: string[] = [];
-  const scheduled = allTasks.filter((t) => t.status === "scheduled");
-  const overdue = scheduled.filter(
-    (t) => t.scheduledDate && t.scheduledDate < today
+  const scheduled = allTasks.filter(
+    (task) =>
+      task.completedAt === undefined &&
+      task.cancelledAt === undefined &&
+      !!task.deadline
   );
-  const dueToday = scheduled.filter((t) => t.scheduledDate === today);
+  const overdue = scheduled.filter(
+    (t) => t.deadline && t.deadline < today
+  );
+  const dueToday = scheduled.filter((t) => t.deadline === today);
 
   if (overdue.length) starters.push(`What's overdue? (${overdue.length})`);
   if (dueToday.length) starters.push("What's on today?");
@@ -177,13 +180,12 @@ export type KairoAction =
   | {
       kind: "add";
       title: string;
-      scheduledDate: string | null;
-      type: "open" | "deadline";
+      deadline: string | null;
     }
   | {
       kind: "reschedule";
       handle: string;
-      scheduledDate: string;
+      deadline: string;
     }
   | { kind: "complete"; handle: string }
   | { kind: "reopen"; handle: string }
@@ -215,20 +217,19 @@ export function parseAction(kind: string, parsed: ParsedJson): KairoAction | nul
   switch (kind) {
     case "add": {
       const title = asTaskTitle(parsed.title);
-      const scheduledDate = asOptionalDate(parsed.scheduledDate);
-      if (!title || scheduledDate === undefined) return null;
+      const deadline = asOptionalDate(parsed.deadline);
+      if (!title || deadline === undefined) return null;
       return {
         kind: "add",
         title,
-        scheduledDate,
-        type: parsed.type === "deadline" ? "deadline" : "open",
+        deadline,
       };
     }
     case "reschedule": {
       const handle = asNonEmptyString(parsed.id ?? parsed.handle);
-      const scheduledDate = asOptionalDate(parsed.scheduledDate);
-      if (!handle || !scheduledDate) return null;
-      return { kind: "reschedule", handle, scheduledDate };
+      const deadline = asOptionalDate(parsed.deadline);
+      if (!handle || !deadline) return null;
+      return { kind: "reschedule", handle, deadline };
     }
     case "complete":
     case "reopen":

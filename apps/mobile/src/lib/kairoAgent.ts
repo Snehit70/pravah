@@ -134,7 +134,11 @@ function reconcileTaskSnapshot(
   const upsertTask = (next: KairoTaskInput) => {
     const tasks = env.tasks.filter((task) => task._id !== next._id);
     const inboxTasks = env.inboxTasks.filter((task) => task._id !== next._id);
-    if (next.status === "inbox") {
+    if (
+      !next.deadline &&
+      next.completedAt === undefined &&
+      next.cancelledAt === undefined
+    ) {
       env.tasks = tasks;
       env.inboxTasks = [...inboxTasks, next];
       return;
@@ -154,10 +158,7 @@ function reconcileTaskSnapshot(
     upsertTask({
       _id: result.taskId,
       title: action.title,
-      status: action.scheduledDate ? "scheduled" : "inbox",
-      scheduledDate: action.scheduledDate ?? undefined,
-      type: action.type,
-      deadline: action.type === "deadline" ? action.scheduledDate ?? undefined : undefined,
+      deadline: action.deadline ?? undefined,
     });
     return;
   }
@@ -173,22 +174,25 @@ function reconcileTaskSnapshot(
     case "reschedule":
       upsertTask({
         ...cloneTask(current),
-        status: "scheduled",
-        scheduledDate: action.scheduledDate,
+        deadline: action.deadline,
       });
       return;
     case "complete":
       upsertTask({
         ...cloneTask(current),
-        status: "completed",
+        completedAt: Date.now(),
       });
       return;
     case "reopen":
+      upsertTask({
+        ...cloneTask(current),
+        completedAt: undefined,
+      });
+      return;
     case "unschedule":
       upsertTask({
         ...cloneTask(current),
-        status: "inbox",
-        scheduledDate: undefined,
+        deadline: undefined,
       });
       return;
   }

@@ -10,6 +10,7 @@ import {
   isDateDropId,
 } from "../lib/taskRules";
 import { getLocalDateString } from "../lib/utils";
+import { isTaskInInbox, isTaskOnTimeline } from "../lib/taskState";
 
 type MoveTaskMutation = (args: {
   taskId: Id<"tasks">;
@@ -42,49 +43,35 @@ interface UseTaskDragHandlersOptions {
   onInvalidReorder?: (message: string) => void;
 }
 
+function getTaskDate(task: Task): string | undefined {
+  return task.deadline;
+}
+
 export function resolveDropTargetDate(
   sourceTask: Task,
   overId: string,
   tasks: Task[] | undefined,
-  currentDate: string
+  _currentDate: string
 ): string | null {
-  // Support both plain date IDs ("YYYY-MM-DD") and deadline-lane IDs ("deadline:YYYY-MM-DD")
-  const dateFromId = isDateDropId(overId)
-    ? overId
-    : overId.startsWith("deadline:")
-    ? overId.slice("deadline:".length)
-    : null;
-
-  if (dateFromId && isDateDropId(dateFromId)) {
-    // Same-day drop onto a deadline-lane container: the source is already on
-    // this date, so treat it as a no-op instead of triggering moveTask.
-    const isDeadlineLaneDrop = overId.startsWith("deadline:");
-    if (isDeadlineLaneDrop && dateFromId === sourceTask.scheduledDate) {
+  if (isDateDropId(overId)) {
+    const dateFromId = overId;
+    if (dateFromId === getTaskDate(sourceTask)) {
       return null;
     }
-    return canScheduleTaskOnDate(sourceTask, dateFromId, {
-      allowOverdueCarryForward: true,
-      currentDate,
-    })
-      ? dateFromId
-      : null;
+    return canScheduleTaskOnDate(sourceTask, dateFromId) ? dateFromId : null;
   }
 
   const overTask = tasks?.find((t) => t._id === overId);
-  if (!overTask?.scheduledDate) {
+  const overTaskDate = overTask ? getTaskDate(overTask) : undefined;
+  if (!overTaskDate) {
     return null;
   }
 
-  if (overTask.scheduledDate === sourceTask.scheduledDate) {
+  if (overTaskDate === getTaskDate(sourceTask)) {
     return null;
   }
 
-  return canScheduleTaskOnDate(sourceTask, overTask.scheduledDate, {
-    allowOverdueCarryForward: true,
-    currentDate,
-  })
-    ? overTask.scheduledDate
-    : null;
+  return canScheduleTaskOnDate(sourceTask, overTaskDate) ? overTaskDate : null;
 }
 
 export function useTaskDragHandlers({
@@ -135,14 +122,14 @@ export function useTaskDragHandlers({
 
         const overTask = tasks?.find((t) => t._id === overId);
         if (
-          sourceTask.status === "scheduled" &&
-          (isInboxDropId(overId) || overTask?.status === "inbox")
+          isTaskOnTimeline(sourceTask) &&
+          (isInboxDropId(overId) || (overTask && isTaskInInbox(overTask)))
         ) {
           await unscheduleTask({ taskId: activeId });
           return;
         }
 
-        if (sourceTask.status === "inbox") {
+        if (isTaskInInbox(sourceTask)) {
           const reorderedInboxTaskIds = getReorderedTaskIdsForDay(inboxTasks, activeId, overId);
           if (!reorderedInboxTaskIds) {
             return;
@@ -160,21 +147,12 @@ export function useTaskDragHandlers({
           return;
         }
 
-        if (!sourceTask.scheduledDate) {
+        const sourceTaskDate = getTaskDate(sourceTask);
+        if (!sourceTaskDate) {
           return;
         }
 
-        // Guard: cross-lane drops (open ↔ deadline on the same day) are no-ops.
-        // overTask may sit in the deadline lane while sourceTask is open (or vice
-        // versa).  Without this check the mixed tasksByDate list gets reordered
-        // unexpectedly when the user drags across lanes.
-        if (overTask && overTask.scheduledDate === sourceTask.scheduledDate) {
-          const srcIsDeadline = sourceTask.type === "deadline";
-          const dstIsDeadline = overTask.type === "deadline";
-          if (srcIsDeadline !== dstIsDeadline) return;
-        }
-
-        const dayTasks = tasksByDate[sourceTask.scheduledDate] ?? [];
+        const dayTasks = tasksByDate[sourceTaskDate] ?? [];
         const reorderedTaskIds = getReorderedTaskIdsForDay(dayTasks, activeId, overId);
         if (!reorderedTaskIds) {
           return;
@@ -189,7 +167,7 @@ export function useTaskDragHandlers({
         }
 
         await reorderTasks({
-          date: sourceTask.scheduledDate,
+          date: sourceTaskDate,
           taskIds: reorderedTaskIds,
         });
       } catch (error) {

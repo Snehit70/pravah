@@ -25,7 +25,7 @@ import {
 } from "@expo-google-fonts/geist";
 import { GeistMono_500Medium } from "@expo-google-fonts/geist-mono";
 import { ConvexClientProvider } from "./src/lib/convex";
-import { addDays, dateLabel, isIsoDate, toIsoDate } from "./src/lib/dates";
+import { dateLabel, isIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
 import {
   getDiagnosticsSnapshot,
@@ -72,6 +72,7 @@ import { useReducedMotion } from "./src/hooks/useReducedMotion";
 import { resetPreferencesStore } from "./src/hooks/useUserPreferences";
 import { OverdueSheet } from "./src/features/overdue-triage/OverdueSheet";
 import { useOverdueTriageController } from "./src/features/overdue-triage/controller";
+import { isTaskInInbox } from "./src/lib/taskState";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -238,8 +239,8 @@ function MobileApp() {
   const displayTimelineSections = useMemo<[string, MobileTask[]][]>(() => {
     const grouped = new Map<string, MobileTask[]>();
     for (const task of displayScheduledTasks) {
-      const scheduledDate = task.scheduledDate ?? "unscheduled";
-      const key = scheduledDate < today ? "overdue" : scheduledDate;
+      const deadline = task.deadline ?? "unscheduled";
+      const key = deadline < today ? "overdue" : deadline;
       const existing = grouped.get(key) ?? [];
       existing.push(task);
       grouped.set(key, existing);
@@ -252,7 +253,7 @@ function MobileApp() {
       let overdue = 0;
       let thisWeek = 0;
       for (const task of displayScheduledTasks) {
-        const date = task.scheduledDate;
+        const date = task.deadline;
         if (!date) continue;
         if (date < today) overdue += 1;
         // Cap "this week" at weekEnd (today+6) so tasks scheduled at today+7
@@ -348,7 +349,7 @@ function MobileApp() {
     return out;
   }, [goalLinks, goals]);
   const kairoInboxTasks = useMemo(
-    () => kairoTasks.filter((task) => task.status === "inbox"),
+    () => kairoTasks.filter(isTaskInInbox),
     [kairoTasks]
   );
   const tabBarBottomPadding = Math.max(insets.bottom, spacing.md);
@@ -548,8 +549,6 @@ function MobileApp() {
             title: payload.title,
             description: payload.description,
             deadline: payload.deadline,
-            type: payload.deadline && payload.scheduledDate ? "deadline" : "open",
-            scheduledDate: payload.scheduledDate,
             priority: payload.priority,
           });
           if (payload.goalId && retriedId) {
@@ -630,7 +629,7 @@ function MobileApp() {
     markDone,
     moveToToday,
     sendToInbox,
-    reopenToInbox,
+    reopenTask,
     deleteTask,
     handleSaveEdits,
     shiftTimelineTask,
@@ -679,7 +678,6 @@ function MobileApp() {
       title: string;
       description?: string;
       deadline?: string;
-      mode: "inbox" | "today" | "tomorrow" | "nextweek";
       priority?: "p1" | "p2" | "p3";
       goalId?: string;
     }) => {
@@ -687,32 +685,13 @@ function MobileApp() {
       const startedAt = Date.now();
       mobileLogger.info("add_task_started", {
         actionId,
-        mode: data.mode,
         hasDeadline: Boolean(data.deadline),
       });
-      const scheduledDate =
-        data.mode === "today"
-          ? today
-          : data.mode === "tomorrow"
-            ? toIsoDate(addDays(new Date(), 1))
-            : data.mode === "nextweek"
-              ? toIsoDate(addDays(new Date(), 7))
-              : undefined;
-      if (data.deadline && scheduledDate && scheduledDate > data.deadline) {
-        showToast({ kind: "error", message: "Scheduled date cannot be after deadline." });
-        mobileLogger.warn("add_task_rejected_schedule_after_deadline", {
-          actionId,
-          mode: data.mode,
-        });
-        return false;
-      }
       try {
         const newTaskId = await addTaskMutation({
           title: data.title,
           description: data.description,
           deadline: data.deadline,
-          type: data.deadline && scheduledDate ? "deadline" : "open",
-          scheduledDate,
           priority: data.priority,
         });
         if (data.goalId && newTaskId) {
@@ -731,7 +710,6 @@ function MobileApp() {
               title: data.title,
               description: data.description,
               deadline: data.deadline,
-              scheduledDate,
               priority: data.priority,
               goalId: data.goalId,
             },
@@ -750,7 +728,7 @@ function MobileApp() {
         return false;
       }
     },
-    [addTaskMutation, today, enqueueRetry, setGoalLink, showToast]
+    [addTaskMutation, enqueueRetry, setGoalLink, showToast]
   );
 
   const handleRefresh = async () => {
@@ -873,7 +851,7 @@ function MobileApp() {
     (dateKey: string, { item, drag }: RenderItemParams<MobileTask>) => (
       <TaskCard
         task={item}
-        dateLabel={dateKey === "overdue" && item.scheduledDate ? item.scheduledDate : dateLabel(dateKey, today, tomorrow, weekEnd)}
+        dateLabel={dateKey === "overdue" && item.deadline ? item.deadline : dateLabel(dateKey, today, tomorrow, weekEnd)}
         onDone={canUseWorkspaceActions ? markDone : () => undefined}
         onSendToInbox={canUseWorkspaceActions ? sendToInbox : undefined}
         onReorder={
@@ -904,12 +882,12 @@ function MobileApp() {
       <TaskCard
         task={item}
         onDone={canUseWorkspaceActions ? markDone : () => undefined}
-        onReopen={canUseWorkspaceActions ? reopenToInbox : undefined}
+        onReopen={canUseWorkspaceActions ? reopenTask : undefined}
         onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
         linkedGoalName={taskGoalNames.get(String(item._id))}
       />
     ),
-    [canUseWorkspaceActions, handleEditTask, markDone, reopenToInbox, taskGoalNames]
+    [canUseWorkspaceActions, handleEditTask, markDone, reopenTask, taskGoalNames]
   );
 
   // ── Loading / Auth screens ──────────────────────────────────────────
@@ -1167,7 +1145,7 @@ function MobileApp() {
         isValidDeadline={normalizeDeadlineInput}
         onSheetChange={setIsEditSheetOpen}
         onComplete={markDone}
-        onReopen={reopenToInbox}
+        onReopen={reopenTask}
         onUnschedule={sendToInbox}
         onDelete={deleteTask}
       />

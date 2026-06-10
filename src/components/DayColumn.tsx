@@ -7,6 +7,7 @@ import type { Task } from "../types";
 import { getLocalDateString, daysBetween, DUE_SOON_DAYS } from "../lib/utils";
 import { TIMELINE_COL_WIDTH } from "../lib/timelineLayout";
 import { tx, T_FAST, EASE_OUT_EXPO } from "../lib/motion";
+import { isTaskCompleted } from "../lib/taskState";
 
 interface GridDayColumnProps {
   date: string;
@@ -15,7 +16,6 @@ interface GridDayColumnProps {
   today: string;
   hoverDate: string | null;
   onHoverDate: (date: string | null) => void;
-  isDeadlineLane?: boolean;
   goalNameByTaskId?: Record<string, string>;
 }
 
@@ -34,11 +34,10 @@ function GridTaskRow({
   const [hover, setHover] = useState(false);
 
   const today = getLocalDateString();
-  const isCompleted = task.status === "completed";
+  const isCompleted = isTaskCompleted(task);
   const isOverdue =
-    task.type === "deadline" && !!task.deadline && task.deadline < today && !isCompleted;
+    !!task.deadline && task.deadline < today && !isCompleted;
   const isDueSoon =
-    task.type === "deadline" &&
     !!task.deadline &&
     !isOverdue &&
     !isCompleted &&
@@ -50,7 +49,7 @@ function GridTaskRow({
     ? "oklch(0.72 0.2 25)"
     : isDueSoon
     ? "oklch(0.78 0.15 60)"
-    : task.type === "deadline"
+    : task.deadline
     ? "oklch(0.72 0.16 30)"
     : task.priority === "p1"
     ? "oklch(0.7 0.2 25)"
@@ -91,7 +90,7 @@ function GridTaskRow({
         borderRadius: 5,
         fontSize: 12,
         fontFamily: "var(--font-sans)",
-        fontWeight: task.type === "deadline" ? 500 : 400,
+        fontWeight: task.deadline ? 500 : 400,
         color: isCompleted ? "#6b6b72" : "#ededef",
         textDecoration: isCompleted ? "line-through" : "none",
         cursor: "grab",
@@ -204,10 +203,9 @@ function GridDayColumnComponent({
   tasks,
   onTaskClick,
   today,
-  isDeadlineLane = false,
   goalNameByTaskId,
 }: GridDayColumnProps) {
-  const droppableId = isDeadlineLane ? `deadline:${date}` : date;
+  const droppableId = date;
   const { setNodeRef, isOver } = useDroppable({ id: droppableId });
   const isToday = date === today;
   const d = new Date(date + "T12:00:00");
@@ -226,7 +224,7 @@ function GridDayColumnComponent({
         display: "flex",
         flexDirection: "column",
         gap: 5,
-        minHeight: isDeadlineLane ? 140 : 240,
+        minHeight: 240,
         background: isOver
           ? "oklch(0.72 0.16 260 / 0.18)"
           : isToday

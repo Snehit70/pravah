@@ -282,8 +282,39 @@ describe("AddTaskSheet", () => {
       title: "New task",
       description: undefined,
       deadline: undefined,
-      mode: "inbox",
       priority: undefined,
+    });
+  });
+
+  it("uses timeline shortcuts to set the single deadline field", async () => {
+    render(
+      <AddTaskSheet
+        ref={ref}
+        onAdd={mockOnAdd}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+      />
+    );
+
+    act(() => {
+      ref.current?.open();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Set deadline Today" }));
+    fireEvent.change(screen.getByTestId("title-input"), { target: { value: "Today task" } });
+    fireEvent.click(screen.getByText("Add task"));
+
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+      now.getDate()
+    ).padStart(2, "0")}`;
+    await waitFor(() => {
+      expect(mockOnAdd).toHaveBeenCalledWith({
+        title: "Today task",
+        description: undefined,
+        deadline: today,
+        priority: undefined,
+      });
     });
   });
 

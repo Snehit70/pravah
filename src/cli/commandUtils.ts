@@ -45,7 +45,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionKind>> = {
   "tasks add": {
     title: "value",
     description: "value",
-    "scheduled-date": "value",
+    deadline: "value",
     ...WRITE_OPTIONS,
   },
   "tasks move": {
@@ -216,7 +216,7 @@ export function executeDryRun(command: string, args: ParsedArgs) {
       return {
         action: "tasks.add",
         title: requireOption(args, "title", command),
-        scheduledDate: readOption(args.options, "scheduled-date"),
+        deadline: readOption(args.options, "deadline"),
         description: readOption(args.options, "description"),
         createdTaskId: null,
         ...metadata,

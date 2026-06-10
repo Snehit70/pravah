@@ -5,11 +5,11 @@ const TODAY = "2026-05-18";
 
 let nextId = 0;
 function scheduled(date: string, title = "t"): KairoTaskInput {
-  return { _id: `t${++nextId}`, title, status: "scheduled", scheduledDate: date };
+  return { _id: `t${++nextId}`, title, deadline: date };
 }
 
 function inbox(title = "t"): KairoTaskInput {
-  return { _id: `t${++nextId}`, title, status: "inbox" };
+  return { _id: `t${++nextId}`, title };
 }
 
 describe("buildKairoStarters", () => {

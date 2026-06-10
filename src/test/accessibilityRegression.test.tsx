@@ -56,9 +56,8 @@ function makeTask(overrides: Partial<Task> = {}): Task {
   return {
     _id: "task_1" as Id<"tasks">,
     title: "Accessibility Task",
-    type: "open",
     position: 0,
-    status: "scheduled",
+    scheduledAt: 1,
     createdBy: "user",
     createdAt: 1,
     updatedAt: 1,
@@ -112,9 +111,9 @@ describe("accessibility regressions", () => {
     await waitFor(() => {
       expect(addTaskMock).toHaveBeenCalledWith({
         title: "Announced task",
-        type: "open",
+        description: undefined,
         deadline: undefined,
-        scheduledDate: undefined,
+        priority: undefined,
       });
     });
     expect(onClose).toHaveBeenCalled();

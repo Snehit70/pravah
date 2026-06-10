@@ -29,8 +29,8 @@ export function buildKairoConfirmation(
     case "add":
       return {
         title: "Add task?",
-        message: action.scheduledDate
-          ? `Add "${action.title}" on ${action.scheduledDate}?`
+        message: action.deadline
+          ? `Add "${action.title}" on ${action.deadline}?`
           : `Add "${action.title}" to the inbox?`,
         confirmLabel: "Add",
         cancelLabel: "Cancel",
@@ -38,7 +38,7 @@ export function buildKairoConfirmation(
     case "reschedule":
       return {
         title: "Move task?",
-        message: `Move ${taskLabel(beforeTitle)} to ${action.scheduledDate}?`,
+        message: `Move ${taskLabel(beforeTitle)} to ${action.deadline}?`,
         confirmLabel: "Move",
         cancelLabel: "Cancel",
       };
@@ -52,7 +52,7 @@ export function buildKairoConfirmation(
     case "reopen":
       return {
         title: "Reopen task?",
-        message: `Reopen ${taskLabel(beforeTitle)} to the inbox?`,
+        message: `Reopen ${taskLabel(beforeTitle)}?`,
         confirmLabel: "Reopen",
         cancelLabel: "Cancel",
       };
@@ -69,9 +69,9 @@ export function buildKairoConfirmation(
 export function kairoActionKey(action: KairoAction): string {
   switch (action.kind) {
     case "add":
-      return ["add", action.title, action.scheduledDate ?? "", action.type].join("\u0000");
+      return ["add", action.title, action.deadline ?? ""].join("\u0000");
     case "reschedule":
-      return ["reschedule", action.handle, action.scheduledDate].join("\u0000");
+      return ["reschedule", action.handle, action.deadline].join("\u0000");
     case "complete":
     case "reopen":
     case "unschedule":

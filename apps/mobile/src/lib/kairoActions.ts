@@ -3,16 +3,14 @@ import type { KairoAction, KairoIdMap } from "./kairoApi";
 export interface TaskSnapshot {
   _id: string;
   title: string;
-  status: "inbox" | "scheduled" | "completed" | "cancelled";
-  type: "open" | "deadline";
-  scheduledDate?: string;
+  deadline?: string;
+  completedAt?: number;
+  cancelledAt?: number;
 }
 
 export interface KairoMutations {
   addTask: (args: {
     title: string;
-    type: "open" | "deadline";
-    scheduledDate?: string;
     deadline?: string;
     source: "ai-agent";
   }) => Promise<unknown>;
@@ -47,12 +45,17 @@ function buildPlacementUndo(
   taskId: string,
   mutations: KairoMutations
 ): (() => Promise<void>) | null {
-  if (before?.status === "scheduled" && before.scheduledDate) {
+  if (before?.deadline) {
     return async () => {
-      await mutations.moveTask({ taskId, targetDate: before.scheduledDate! });
+      await mutations.moveTask({ taskId, targetDate: before.deadline! });
     };
   }
-  if (before?.status === "inbox") {
+  if (
+    before &&
+    !before.deadline &&
+    before.completedAt === undefined &&
+    before.cancelledAt === undefined
+  ) {
     return async () => {
       await mutations.unscheduleTask({ taskId });
     };
@@ -74,18 +77,14 @@ export function createKairoActionExecutor(
         if (action.kind === "add") {
           const taskId = (await mutations.addTask({
             title: action.title,
-            type: action.type,
-            scheduledDate: action.scheduledDate ?? undefined,
-            deadline: action.type === "deadline" ? action.scheduledDate ?? undefined : undefined,
+            deadline: action.deadline ?? undefined,
             source: "ai-agent",
           })) as string | undefined;
           if (taskId) {
             snapshots.set(taskId, {
               _id: taskId,
               title: action.title,
-              status: action.scheduledDate ? "scheduled" : "inbox",
-              type: action.type,
-              scheduledDate: action.scheduledDate ?? undefined,
+              deadline: action.deadline ?? undefined,
             });
           }
           return {
@@ -112,12 +111,11 @@ export function createKairoActionExecutor(
         const before = lookupCurrent(taskId);
         switch (action.kind) {
           case "reschedule":
-            await mutations.moveTask({ taskId, targetDate: action.scheduledDate });
+            await mutations.moveTask({ taskId, targetDate: action.deadline });
             if (before) {
               snapshots.set(taskId, {
                 ...before,
-                status: "scheduled",
-                scheduledDate: action.scheduledDate,
+                deadline: action.deadline,
               });
             }
             return {
@@ -128,22 +126,19 @@ export function createKairoActionExecutor(
             };
           case "complete":
             await mutations.completeTask({ taskId });
-            if (before) snapshots.set(taskId, { ...before, status: "completed" });
+            if (before) snapshots.set(taskId, { ...before, completedAt: Date.now() });
             return {
               action,
               status: "applied",
               taskId,
               undo: async () => {
                 await mutations.reopenTask({ taskId });
-                if (before?.status === "scheduled" && before.scheduledDate) {
-                  await mutations.moveTask({ taskId, targetDate: before.scheduledDate });
-                }
               },
             };
           case "reopen":
             await mutations.reopenTask({ taskId });
             if (before) {
-              snapshots.set(taskId, { ...before, status: "inbox", scheduledDate: undefined });
+              snapshots.set(taskId, { ...before, completedAt: undefined });
             }
             return {
               action,
@@ -156,16 +151,16 @@ export function createKairoActionExecutor(
           case "unschedule":
             await mutations.unscheduleTask({ taskId });
             if (before) {
-              snapshots.set(taskId, { ...before, status: "inbox", scheduledDate: undefined });
+              snapshots.set(taskId, { ...before, deadline: undefined });
             }
             return {
               action,
               status: "applied",
               taskId,
               undo:
-                before?.status === "scheduled" && before.scheduledDate
+                before?.deadline
                   ? async () => {
-                      await mutations.moveTask({ taskId, targetDate: before.scheduledDate! });
+                      await mutations.moveTask({ taskId, targetDate: before.deadline! });
                     }
                   : null,
             };

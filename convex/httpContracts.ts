@@ -6,8 +6,6 @@ export const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
 export const createTaskSchema = z.object({
   title: z.string().trim().min(1, "Title is required").max(500, "Title too long"),
   description: z.string().max(5000, "Description too long").optional(),
-  type: z.enum(["open", "deadline"]).default("open"),
-  scheduledDate: z.string().regex(dateRegex, "Invalid date format (YYYY-MM-DD)").optional(),
   deadline: z.string().regex(dateRegex, "Invalid date format (YYYY-MM-DD)").optional(),
   source: z.enum(["manual", "ai-agent", "gmail", "gcal"]).default("ai-agent"),
   estimatedMinutes: z.number().int().positive("Estimated minutes must be positive").optional(),

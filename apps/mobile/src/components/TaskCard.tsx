@@ -24,19 +24,20 @@ import Animated, {
 import { colors, fonts, motion, radii, shadow, spacing, typography } from "../theme/tokens";
 import { getLocalDateString } from "../lib/dates";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import { isTaskCompleted, isTaskInInbox, isTaskOnTimeline } from "../lib/taskState";
 
 export type MobileTask = {
   _id: Id<"tasks">;
   title: string;
   description?: string;
-  type?: "open" | "deadline";
   deadline?: string;
+  scheduledAt: number;
+  completedAt?: number;
+  cancelledAt?: number;
   priority?: "p1" | "p2" | "p3";
-  status: "inbox" | "scheduled" | "completed" | "cancelled";
-  scheduledDate?: string;
   position: number;
   updatedAt: number;
-  createdAt?: number;
+  createdAt: number;
 };
 
 type TaskCardProps = {
@@ -117,8 +118,8 @@ function TaskCardInner({
   linkedGoalName,
   hidePriorityBadge,
 }: TaskCardProps) {
-  const isCompleted = task.status === "completed";
-  const isInboxTask = task.status === "inbox";
+  const isCompleted = isTaskCompleted(task);
+  const isInboxTask = isTaskInInbox(task);
   const swipeRef = useRef<SwipeableMethods>(null);
 
   // Web parity (src/index.css:228-233): when a task flips to completed, a 1px
@@ -129,9 +130,9 @@ function TaskCardInner({
   const sweepProgress = useSharedValue(0);
   const sweepOpacity = useSharedValue(0);
   const checkboxScale = useSharedValue(1);
-  const prevStatus = useRef(task.status);
+  const wasCompleted = useRef(isCompleted);
   useEffect(() => {
-    if (prevStatus.current !== "completed" && task.status === "completed") {
+    if (!wasCompleted.current && isCompleted) {
       void AccessibilityInfo.isReduceMotionEnabled().then((reduceMotion) => {
         if (reduceMotion) return;
         sweepOpacity.value = 1;
@@ -152,8 +153,8 @@ function TaskCardInner({
         );
       });
     }
-    prevStatus.current = task.status;
-  }, [task.status, sweepOpacity, sweepProgress, checkboxScale]);
+    wasCompleted.current = isCompleted;
+  }, [isCompleted, sweepOpacity, sweepProgress, checkboxScale]);
   const checkboxStyle = useAnimatedStyle(() => ({
     transform: [{ scale: checkboxScale.value }],
   }));
@@ -315,8 +316,8 @@ function TaskCardInner({
     isCompleted ? { name: "reopen", label: "Reopen task" } : { name: "complete", label: "Mark done" },
     !isCompleted && isInboxTask ? { name: "move_today", label: "Move to today" } : null,
     !isCompleted && !isInboxTask ? { name: "move_to_inbox", label: "Move to inbox" } : null,
-    task.status === "scheduled" && onReorder ? { name: "increment", label: "Move down" } : null,
-    task.status === "scheduled" && onReorder ? { name: "decrement", label: "Move up" } : null,
+    isTaskOnTimeline(task) && onReorder ? { name: "increment", label: "Move down" } : null,
+    isTaskOnTimeline(task) && onReorder ? { name: "decrement", label: "Move up" } : null,
   ].filter(Boolean) as Array<{ name: string; label: string }>;
 
   return (

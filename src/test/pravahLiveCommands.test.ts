@@ -58,7 +58,7 @@ describe("pravah live commands", () => {
   it("uses live reads for tasks list when env is configured", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => [{ _id: "live_1", title: "Live scheduled", status: "scheduled" }],
+      json: async () => [{ _id: "live_1", title: "Live scheduled", deadline: "2026-06-05" }],
     } as Response);
 
     const result = await executeCommand(
@@ -130,13 +130,11 @@ describe("pravah live commands", () => {
             {
               _id: "live_1",
               title: "Live scheduled",
-              status: "scheduled",
-              scheduledDate: "2026-06-05",
+              deadline: "2026-06-05",
             },
             {
               _id: "live_2",
               title: "Live inbox",
-              status: "inbox",
             },
           ],
         } as Response;
@@ -223,8 +221,7 @@ describe("pravah live commands", () => {
             {
               _id: "live_1",
               title: "Live scheduled",
-              status: "scheduled",
-              scheduledDate: "2026-06-05",
+              deadline: "2026-06-05",
             },
           ],
         } as Response;

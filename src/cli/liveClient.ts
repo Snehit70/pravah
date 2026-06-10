@@ -24,7 +24,7 @@ export interface LiveCliClient {
   getSyncStatus(provider?: string): Promise<unknown>;
   addTask(input: {
     title: string;
-    scheduledDate?: string;
+    deadline?: string;
     description?: string;
   }, idempotencyKey: string): Promise<unknown>;
   moveTask(input: { taskId: string; targetDate: string }, idempotencyKey: string): Promise<unknown>;
@@ -156,7 +156,7 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
       return post("/tasks", {
         title: input.title,
         description: input.description,
-        scheduledDate: input.scheduledDate,
+        deadline: input.deadline,
       }, idempotencyKey);
     },
     moveTask(input, idempotencyKey) {

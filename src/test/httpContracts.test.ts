@@ -53,7 +53,7 @@ describe("httpContracts", () => {
       const parsed = createTaskSchema.parse({ title: "  Write docs  " });
 
       expect(parsed.title).toBe("Write docs");
-      expect(parsed.type).toBe("open");
+      expect(parsed.deadline).toBeUndefined();
       expect(parsed.source).toBe("ai-agent");
     });
 
@@ -64,7 +64,7 @@ describe("httpContracts", () => {
     it("rejects task creation with invalid date format", () => {
       const result = createTaskSchema.safeParse({
         title: "Bad date",
-        scheduledDate: "2026/04/09",
+        deadline: "2026/04/09",
       });
 
       expect(result.success).toBe(false);

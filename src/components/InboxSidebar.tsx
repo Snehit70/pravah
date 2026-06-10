@@ -49,7 +49,7 @@ function InboxTaskComponent({
   });
   const [hover, setHover] = useState(false);
 
-  const barColor = task.type === "deadline" ? "oklch(0.72 0.16 30)" : "oklch(0.78 0.14 260)";
+  const barColor = task.deadline ? "oklch(0.72 0.16 30)" : "oklch(0.78 0.14 260)";
   const isAgentAdded = task.source === "ai-agent";
   const sourceLabel = task.source ? SOURCE_LABEL[task.source] : null;
   const age = formatTaskAge(task.createdAt);

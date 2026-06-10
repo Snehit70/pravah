@@ -46,7 +46,7 @@ describe("runKairoAgent", () => {
   it("loops read → mutate → finish, accumulating outcomes", async () => {
     const call = queuedCaller([
       toolUse([{ id: "c1", name: "get_overdue" }]),
-      toolUse([{ id: "c2", name: "reschedule_task", input: { handle: "T1", scheduledDate: "2026-06-05" } }]),
+      toolUse([{ id: "c2", name: "reschedule_task", input: { handle: "T1", deadline: "2026-06-05" } }]),
       textOnly("Rescheduled it."),
     ]);
     const applyActions = vi.fn(async (actions: KairoAction[]) => ({
@@ -61,7 +61,7 @@ describe("runKairoAgent", () => {
     expect(call).toHaveBeenCalledTimes(3);
     expect(applyActions).toHaveBeenCalledTimes(1);
     expect(applyActions.mock.calls[0][0]).toEqual([
-      { kind: "reschedule", handle: "T1", scheduledDate: "2026-06-05" },
+      { kind: "reschedule", handle: "T1", deadline: "2026-06-05" },
     ]);
     expect(result.outcomes).toHaveLength(1);
     expect(result.outcomes[0].beforeTitle).toBe("Dentist");
@@ -132,7 +132,7 @@ describe("runKairoAgent", () => {
 
   it("feeds an invalid mutation call back without applying it", async () => {
     const call = queuedCaller([
-      toolUse([{ id: "c1", name: "reschedule_task", input: { handle: "T1" } }]), // no scheduledDate
+      toolUse([{ id: "c1", name: "reschedule_task", input: { handle: "T1" } }]), // no deadline
       textOnly("I need a date for that."),
     ]);
     const applyActions = vi.fn(async () => ({ results: [], beforeTitles: [] }));
@@ -193,8 +193,7 @@ describe("runKairoAgent", () => {
         {
           handle: "T1",
           title: "Gym",
-          status: "inbox",
-          type: "open",
+          state: "inbox",
         },
       ],
     });

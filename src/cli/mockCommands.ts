@@ -42,7 +42,7 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
         tasks: mockTasks.filter(
           (task) =>
             (!status || task.status === status) &&
-            (!date || task.scheduledDate === date)
+            (!date || task.deadline === date)
         ),
         source: "mock",
       };
@@ -73,8 +73,8 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
         tasks: mockTasks.filter(
           (task) =>
             task.status === "scheduled" &&
-            task.scheduledDate &&
-            task.scheduledDate <= endDate
+            task.deadline &&
+            task.deadline <= endDate
         ),
         source: "mock",
       };
@@ -83,7 +83,7 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
       return {
         action: "tasks.add",
         title: requireOption(args, "title", command),
-        scheduledDate: readOption(args.options, "scheduled-date"),
+        deadline: readOption(args.options, "deadline"),
         createdTaskId: "mock_task_new",
         ...getWriteMetadata(args),
         source: "mock",
@@ -134,7 +134,7 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
           .map((task) => ({
             id: task.id,
             title: task.title,
-            scheduledDate: task.scheduledDate,
+            deadline: task.deadline,
           })),
         inboxSummary: {
           count: mockTasks.filter((task) => task.status === "inbox").length,
@@ -173,12 +173,12 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
       return {
         task,
         goal: goalId ? mockGoals.find((goal) => goal.id === goalId) ?? null : null,
-        neighbors: task.scheduledDate
+        neighbors: task.deadline
           ? mockTasks
               .filter(
                 (candidate) =>
                   candidate.id !== task.id &&
-                  candidate.scheduledDate === task.scheduledDate
+                  candidate.deadline === task.deadline
               )
               .map((neighbor) => ({
                 id: neighbor.id,

@@ -16,9 +16,10 @@ function task(partial: Partial<MobileTask> & { id: string }): MobileTask {
   return {
     _id: id as unknown as Id<"tasks">,
     title: rest.title ?? id,
-    status: rest.status ?? "scheduled",
+    scheduledAt: rest.scheduledAt ?? 0,
     position: rest.position ?? 0,
     updatedAt: 0,
+    createdAt: rest.createdAt ?? 0,
     ...rest,
   } as MobileTask;
 }
@@ -47,13 +48,13 @@ describe("daysBetween", () => {
 
 describe("bucketOverdue", () => {
   const tasks = [
-    task({ id: "a1", scheduledDate: "2026-05-28", position: 1 }), // g1 overdue
-    task({ id: "a2", scheduledDate: "2026-05-30", position: 2 }), // g1 overdue
-    task({ id: "a3", scheduledDate: "2026-06-20", position: 3 }), // g1 future (in plan, not overdue)
-    task({ id: "a4", scheduledDate: "2026-05-29" }), // g3 (no deadline) -> orphan
-    task({ id: "a5", scheduledDate: "2026-05-29" }), // no goal -> orphan
-    task({ id: "a6", scheduledDate: "2026-05-10", status: "completed" }), // ignored
-    task({ id: "a7", scheduledDate: "2026-06-25" }), // g2 future, not overdue -> no group
+    task({ id: "a1", deadline: "2026-05-28", position: 1 }), // g1 overdue
+    task({ id: "a2", deadline: "2026-05-30", position: 2 }), // g1 overdue
+    task({ id: "a3", deadline: "2026-06-20", position: 3 }), // g1 future (in plan, not overdue)
+    task({ id: "a4", deadline: "2026-05-29" }), // g3 (no deadline) -> orphan
+    task({ id: "a5", deadline: "2026-05-29" }), // no goal -> orphan
+    task({ id: "a6", deadline: "2026-05-10", completedAt: 1 }), // ignored
+    task({ id: "a7", deadline: "2026-06-25" }), // g2 future, not overdue -> no group
   ];
   const links: Record<string, string> = {
     a1: "g1",
@@ -81,9 +82,9 @@ describe("bucketOverdue", () => {
   it("sorts a plan chronologically before using same-day positions", () => {
     const scrambled = bucketOverdue(
       [
-        task({ id: "x1", scheduledDate: "2026-06-10", position: 0 }),
-        task({ id: "x2", scheduledDate: "2026-05-28", position: 4 }),
-        task({ id: "x3", scheduledDate: "2026-05-29", position: 1 }),
+        task({ id: "x1", deadline: "2026-06-10", position: 0 }),
+        task({ id: "x2", deadline: "2026-05-28", position: 4 }),
+        task({ id: "x3", deadline: "2026-05-29", position: 1 }),
       ],
       { x1: "g1", x2: "g1", x3: "g1" },
       [goalPassed],
@@ -106,9 +107,9 @@ describe("computeReflow — march (deadline passed)", () => {
     goal: goalPassed,
     overdueCount: 3,
     planTasks: [
-      task({ id: "a1", scheduledDate: "2026-05-20", position: 1 }),
-      task({ id: "a2", scheduledDate: "2026-05-21", position: 2 }),
-      task({ id: "a3", scheduledDate: "2026-05-22", position: 3 }),
+      task({ id: "a1", deadline: "2026-05-20", position: 1 }),
+      task({ id: "a2", deadline: "2026-05-21", position: 2 }),
+      task({ id: "a3", deadline: "2026-05-22", position: 3 }),
     ],
   };
   const r = computeReflow(group, TODAY);
@@ -116,9 +117,9 @@ describe("computeReflow — march (deadline passed)", () => {
   it("lays tasks consecutively 1/day from today in position order", () => {
     expect(r.mode).toBe("march");
     expect(r.assignments).toEqual([
-      { taskId: "a1", scheduledDate: "2026-06-03" },
-      { taskId: "a2", scheduledDate: "2026-06-04" },
-      { taskId: "a3", scheduledDate: "2026-06-05" },
+      { taskId: "a1", deadline: "2026-06-03" },
+      { taskId: "a2", deadline: "2026-06-04" },
+      { taskId: "a3", deadline: "2026-06-05" },
     ]);
   });
 
@@ -139,17 +140,17 @@ describe("computeReflow — spread (future deadline, fits)", () => {
     goal: goalFuture,
     overdueCount: 1,
     planTasks: [
-      task({ id: "b1", scheduledDate: "2026-05-30", position: 1 }), // overdue
-      task({ id: "b2", scheduledDate: "2026-06-10", position: 2 }), // future, will move to 06-17
-      task({ id: "b3", scheduledDate: "2026-06-30", position: 3 }), // future, already on deadline
+      task({ id: "b1", deadline: "2026-05-30", position: 1 }), // overdue
+      task({ id: "b2", deadline: "2026-06-10", position: 2 }), // future, will move to 06-17
+      task({ id: "b3", deadline: "2026-06-30", position: 3 }), // future, already on deadline
     ],
   };
   const r = computeReflow(group, TODAY);
 
   it("spreads evenly with first task today and last on the deadline", () => {
     expect(r.mode).toBe("spread");
-    expect(r.assignments[0]).toEqual({ taskId: "b1", scheduledDate: "2026-06-03" });
-    expect(r.assignments[2]).toEqual({ taskId: "b3", scheduledDate: "2026-06-30" });
+    expect(r.assignments[0]).toEqual({ taskId: "b1", deadline: "2026-06-03" });
+    expect(r.assignments[2]).toEqual({ taskId: "b3", deadline: "2026-06-30" });
   });
 
   it("does not exceed or re-suggest the still-valid deadline", () => {
@@ -167,7 +168,7 @@ describe("computeReflow — spread (future deadline, fits)", () => {
 describe("computeReflow — march (future deadline but too many tasks)", () => {
   // 5 tasks but only 3 days until the deadline -> doesn't fit -> march.
   const planTasks = Array.from({ length: 5 }, (_, i) =>
-    task({ id: `c${i}`, scheduledDate: "2026-05-25", position: i })
+    task({ id: `c${i}`, deadline: "2026-05-25", position: i })
   );
   const group: ReflowGroup = {
     goal: { id: "g4", text: "Crunch", deadline: "2026-06-05" },
@@ -189,65 +190,32 @@ describe("computeReflow — single task", () => {
     const group: ReflowGroup = {
       goal: goalFuture,
       overdueCount: 1,
-      planTasks: [task({ id: "d1", scheduledDate: "2026-05-01", position: 0 })],
+      planTasks: [task({ id: "d1", deadline: "2026-05-01", position: 0 })],
     };
     const r = computeReflow(group, TODAY);
-    expect(r.assignments).toEqual([{ taskId: "d1", scheduledDate: "2026-06-03" }]);
+    expect(r.assignments).toEqual([{ taskId: "d1", deadline: "2026-06-03" }]);
   });
 });
 
-describe("computeReflow — task deadline clamping", () => {
-  it("clamps a deadline task in the preview when the computed slot lands after its deadline", () => {
+describe("computeReflow — single deadline model", () => {
+  it("uses the goal deadline as the plan cap without per-task scheduling caps", () => {
     const group: ReflowGroup = {
       goal: goalFuture,
       overdueCount: 2,
       planTasks: [
-        task({ id: "e1", scheduledDate: "2026-05-28", position: 0 }),
-        task({
-          id: "e2",
-          scheduledDate: "2026-05-29",
-          position: 1,
-          type: "deadline",
-          deadline: "2026-06-10",
-        }),
-        task({ id: "e3", scheduledDate: "2026-05-30", position: 2 }),
+        task({ id: "e1", deadline: "2026-05-28", position: 0 }),
+        task({ id: "e2", deadline: "2026-05-29", position: 1 }),
+        task({ id: "e3", deadline: "2026-05-30", position: 2 }),
       ],
     };
 
     const r = computeReflow(group, TODAY);
 
     expect(r.assignments).toEqual([
-      { taskId: "e1", scheduledDate: "2026-06-03" },
-      { taskId: "e2", scheduledDate: "2026-06-10" },
-      { taskId: "e3", scheduledDate: "2026-06-30" },
+      { taskId: "e1", deadline: "2026-06-03" },
+      { taskId: "e2", deadline: "2026-06-17" },
+      { taskId: "e3", deadline: "2026-06-30" },
     ]);
     expect(r.projectedEnd).toBe("2026-06-30");
-  });
-
-  it("computes projectedEnd from the maximum assigned date, not the final array slot", () => {
-    const group: ReflowGroup = {
-      goal: goalFuture,
-      overdueCount: 2,
-      planTasks: [
-        task({ id: "f1", scheduledDate: "2026-05-28", position: 0 }),
-        task({ id: "f2", scheduledDate: "2026-05-29", position: 1 }),
-        task({
-          id: "f3",
-          scheduledDate: "2026-05-30",
-          position: 2,
-          type: "deadline",
-          deadline: "2026-06-10",
-        }),
-      ],
-    };
-
-    const r = computeReflow(group, TODAY);
-
-    expect(r.assignments).toEqual([
-      { taskId: "f1", scheduledDate: "2026-06-03" },
-      { taskId: "f2", scheduledDate: "2026-06-17" },
-      { taskId: "f3", scheduledDate: "2026-06-10" },
-    ]);
-    expect(r.projectedEnd).toBe("2026-06-17");
   });
 });

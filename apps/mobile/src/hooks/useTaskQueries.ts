@@ -11,7 +11,6 @@
 import { useMemo, useCallback } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
-import type { Doc } from "../../../../convex/_generated/dataModel";
 import type { MobileTask } from "../components/TaskCard";
 import { addDays, toIsoDate } from "../lib/dates";
 
@@ -39,7 +38,7 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
 
   const timelineQuery = useQuery(
     api.tasks.getTimeline,
-    // Omit startDate so overdue scheduled tasks (scheduledDate < today) are
+    // Omit startDate so overdue timeline tasks (deadline < today) are
     // still surfaced in the mobile timeline. Bounding only by endDate keeps
     // the upper edge of the planning window without hiding backlog items the
     // user still needs to act on. queryEndDate (today+7) is wider than the
@@ -64,15 +63,15 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
   );
 
   const mapTaskDoc = useCallback(
-    (task: Doc<"tasks">): MobileTask => ({
+    (task: MobileTask): MobileTask => ({
       _id: task._id,
       title: task.title,
       description: task.description,
-      type: task.type,
       deadline: task.deadline,
+      scheduledAt: task.scheduledAt,
+      completedAt: task.completedAt,
+      cancelledAt: task.cancelledAt,
       priority: task.priority,
-      status: task.status,
-      scheduledDate: task.scheduledDate,
       position: task.position,
       updatedAt: task.updatedAt,
       createdAt: task.createdAt,
@@ -82,7 +81,7 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
 
   const inboxTasks = useMemo<MobileTask[]>(() => {
     return (
-      (inboxQuery as Doc<"tasks">[] | undefined)
+      (inboxQuery as MobileTask[] | undefined)
         ?.map(mapTaskDoc)
         .sort(
           (a, b) =>
@@ -93,12 +92,12 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
   }, [inboxQuery, mapTaskDoc]);
 
   const scheduledTasks = useMemo<MobileTask[]>(() => {
-    const flat = Object.values(timelineQuery ?? {}).flat() as Doc<"tasks">[];
+    const flat = Object.values(timelineQuery ?? {}).flat() as MobileTask[];
     return flat
       .map(mapTaskDoc)
       .sort(
         (a, b) =>
-          (a.scheduledDate ?? "").localeCompare(b.scheduledDate ?? "") ||
+          (a.deadline ?? "").localeCompare(b.deadline ?? "") ||
           getPriorityRank(a.priority) - getPriorityRank(b.priority) ||
           a.position - b.position
       );
@@ -106,22 +105,22 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
 
   const completedTasks = useMemo<MobileTask[]>(() => {
     return (
-      (completedQuery as Doc<"tasks">[] | undefined)
+      (completedQuery as MobileTask[] | undefined)
         ?.map(mapTaskDoc)
-        .sort((a, b) => b.updatedAt - a.updatedAt) ?? []
+        .sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0)) ?? []
     );
   }, [completedQuery, mapTaskDoc]);
 
   const allWorkspaceTasks = useMemo<MobileTask[]>(
     () =>
-      (allTasksQuery as Doc<"tasks">[] | undefined)?.map(mapTaskDoc) ?? [],
+      (allTasksQuery as MobileTask[] | undefined)?.map(mapTaskDoc) ?? [],
     [allTasksQuery, mapTaskDoc]
   );
 
   const timelineSections = useMemo<[string, MobileTask[]][]>(() => {
     const grouped = new Map<string, MobileTask[]>();
     for (const task of scheduledTasks) {
-      const key = task.scheduledDate ?? "unscheduled";
+      const key = task.deadline ?? "unscheduled";
       const existing = grouped.get(key) ?? [];
       existing.push(task);
       grouped.set(key, existing);
@@ -140,7 +139,7 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
     let overdue = 0;
     let thisWeek = 0;
     for (const task of scheduledTasks) {
-      const date = task.scheduledDate;
+      const date = task.deadline;
       if (!date) continue;
       if (date < today) overdue += 1;
       // Bound thisWeek by the labelled "this week" boundary (today+6). Tasks

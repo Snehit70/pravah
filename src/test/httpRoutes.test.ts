@@ -497,7 +497,7 @@ describe("http route handlers", () => {
         },
         body: JSON.stringify({
           title: "Ship tests",
-          scheduledDate: "2026-04-09",
+          deadline: "2026-04-09",
         }),
       })
     );
@@ -507,9 +507,7 @@ describe("http route handlers", () => {
       idempotencyKey: undefined,
       title: "Ship tests",
       description: undefined,
-      type: "open",
-      scheduledDate: "2026-04-09",
-      deadline: undefined,
+      deadline: "2026-04-09",
       source: "ai-agent",
       estimatedMinutes: undefined,
       tags: undefined,

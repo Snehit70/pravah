@@ -7,8 +7,7 @@ export type KairoTaskProposalStatus =
 
 export interface KairoTaskProposal {
   title: string;
-  scheduledDate: string | null;
-  type: "open" | "deadline";
+  deadline: string | null;
   status: KairoTaskProposalStatus;
   error?: string;
 }
@@ -27,7 +26,7 @@ function readTaskTitle(value: unknown) {
   return title && title.length <= MAX_TASK_TITLE_LENGTH ? title : null;
 }
 
-function readScheduledDate(value: unknown): string | null | undefined {
+function readDeadline(value: unknown): string | null | undefined {
   if (value === undefined || value === null) return null;
   if (typeof value !== "string") return undefined;
   const date = value.trim();
@@ -51,17 +50,15 @@ export function parseKairoTaskProposals(rawText: string): ParsedKairoTaskProposa
       try {
         const parsed = JSON.parse(json) as {
           title?: unknown;
-          scheduledDate?: unknown;
-          type?: unknown;
+          deadline?: unknown;
         };
         const title = readTaskTitle(parsed.title);
-        const scheduledDate = readScheduledDate(parsed.scheduledDate);
-        if (!title || scheduledDate === undefined) return "";
+        const deadline = readDeadline(parsed.deadline);
+        if (!title || deadline === undefined) return "";
 
         proposals.push({
           title,
-          scheduledDate,
-          type: parsed.type === "deadline" ? "deadline" : "open",
+          deadline,
           status: "pending",
         });
       } catch {

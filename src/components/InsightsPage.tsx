@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { Task } from "../types";
 import { cn, getLocalDateString } from "../lib/utils";
+import { isTaskCompleted, isTaskOnTimeline } from "../lib/taskState";
 
 type InsightsTab = "stats" | "completed";
 
@@ -24,10 +25,13 @@ export function InsightsPage({ tasks }: InsightsPageProps) {
   const stats = useMemo(() => {
     const today = getLocalDateString();
     const totalTasks = tasks.length;
-    const completedTasks = tasks.filter((task) => task.status === "completed").length;
-    const scheduledTasks = tasks.filter((task) => task.status === "scheduled");
+    const completedTasks = tasks.filter(isTaskCompleted).length;
+    const scheduledTasks = tasks.filter(isTaskOnTimeline);
     const overdueTasks = scheduledTasks.filter(
-      (task) => typeof task.scheduledDate === "string" && task.scheduledDate < today
+      (task) => {
+        const date = task.deadline;
+        return typeof date === "string" && date < today;
+      }
     ).length;
     const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
@@ -37,8 +41,8 @@ export function InsightsPage({ tasks }: InsightsPageProps) {
   const completed = useMemo(
     () =>
       tasks
-        .filter((task) => task.status === "completed")
-        .sort((a, b) => b.updatedAt - a.updatedAt),
+        .filter(isTaskCompleted)
+        .sort((a, b) => (b.completedAt ?? b.updatedAt) - (a.completedAt ?? a.updatedAt)),
     [tasks]
   );
 

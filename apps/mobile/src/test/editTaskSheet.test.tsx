@@ -226,10 +226,11 @@ const sampleTask: MobileTask = {
   _id: "task1" as Id<"tasks">,
   title: "Original task",
   description: "Original description",
-  status: "inbox",
+  scheduledAt: 500,
   priority: "p1",
   position: 0,
   updatedAt: 1000,
+  createdAt: 500,
 };
 
 // ─── tests ────────────────────────────────────────────────────────────────────
