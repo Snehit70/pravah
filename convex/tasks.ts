@@ -152,13 +152,81 @@ async function getOwnedTask(
 }
 
 async function listOwnedTasks(ctx: TaskCtx, tokenIdentifier: string) {
-  const byOwner = ctx.db
+  return await ctx.db
     .query("tasks")
-    .withIndex("by_owner", (q) => q.eq("ownerTokenIdentifier", tokenIdentifier));
-  if ("collect" in byOwner && typeof byOwner.collect === "function") {
-    return await byOwner.collect();
-  }
-  return [];
+    .withIndex("by_owner", (q) => q.eq("ownerTokenIdentifier", tokenIdentifier))
+    .collect();
+}
+
+async function listTasksByExactDeadline(
+  ctx: TaskCtx,
+  tokenIdentifier: string,
+  deadline: string | undefined
+) {
+  return await ctx.db
+    .query("tasks")
+    .withIndex("by_owner_deadline_position", (q) =>
+      q.eq("ownerTokenIdentifier", tokenIdentifier).eq("deadline", deadline)
+    )
+    .collect();
+}
+
+async function listTasksByDeadlineRange(
+  ctx: TaskCtx,
+  tokenIdentifier: string,
+  args: { startDate?: string; endDate?: string } = {}
+) {
+  const startDate = args.startDate ?? "";
+  const endDate = args.endDate ?? "\uffff";
+  return await ctx.db
+    .query("tasks")
+    .withIndex("by_owner_deadline_position", (q) =>
+      q.eq("ownerTokenIdentifier", tokenIdentifier)
+        .gte("deadline", startDate)
+        .lte("deadline", endDate)
+    )
+    .collect();
+}
+
+async function listTasksByLegacyStatus(
+  ctx: TaskCtx,
+  tokenIdentifier: string,
+  status: LegacyTaskStatus
+) {
+  return await ctx.db
+    .query("tasks")
+    .withIndex("by_owner_status", (q) =>
+      q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", status)
+    )
+    .collect();
+}
+
+async function listTasksByCompletedAtRange(
+  ctx: TaskCtx,
+  tokenIdentifier: string,
+  args: { startMs?: number; endMs?: number } = {}
+) {
+  const startMs = args.startMs ?? 0;
+  const endMs = args.endMs;
+  return await ctx.db
+    .query("tasks")
+    .withIndex("by_owner_completed_at", (q) => {
+      const byOwner = q
+        .eq("ownerTokenIdentifier", tokenIdentifier)
+        .gte("completedAt", startMs);
+      return endMs === undefined ? byOwner : byOwner.lt("completedAt", endMs);
+    })
+    .collect();
+}
+
+function dedupeTasks(tasks: Doc<"tasks">[]) {
+  const seen = new Set<string>();
+  return tasks.filter((task) => {
+    const key = String(task._id);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 async function getNextPositionForLane(
@@ -286,8 +354,19 @@ export const listBoardTasks = query({
   args: {},
   handler: async (ctx) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    const tasks = await listOwnedTasks(ctx, tokenIdentifier);
-    return tasks
+    const [inboxCandidates, deadlineTasks, legacyScheduledTasks] = await Promise.all([
+      listTasksByExactDeadline(ctx, tokenIdentifier, undefined),
+      listTasksByDeadlineRange(ctx, tokenIdentifier),
+      listTasksByLegacyStatus(ctx, tokenIdentifier, "scheduled"),
+    ]);
+
+    return dedupeTasks([
+      ...inboxCandidates.filter(isInboxTask),
+      ...deadlineTasks.filter(isTimelineTask),
+      ...legacyScheduledTasks.filter(
+        (task) => task.deadline === undefined && isTimelineTask(task)
+      ),
+    ])
       .filter((task) => isInboxTask(task) || isTimelineTask(task))
       .map(toCanonicalTaskShape);
   },
@@ -300,8 +379,24 @@ export const listTodayCompletedTasks = query({
   },
   handler: async (ctx, { dayStartMs, dayEndMs }) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    const tasks = await listOwnedTasks(ctx, tokenIdentifier);
-    return tasks
+    const [completedTasks, legacyCompletedTasks] = await Promise.all([
+      listTasksByCompletedAtRange(ctx, tokenIdentifier, {
+        startMs: dayStartMs,
+        endMs: dayEndMs,
+      }),
+      listTasksByLegacyStatus(ctx, tokenIdentifier, "completed"),
+    ]);
+
+    return dedupeTasks([
+      ...completedTasks.filter(isCompletedTask),
+      ...legacyCompletedTasks.filter(
+        (task) =>
+          task.completedAt === undefined &&
+          isCompletedTask(task) &&
+          (getTaskCompletedAt(task) ?? -1) >= dayStartMs &&
+          (getTaskCompletedAt(task) ?? -1) < dayEndMs
+      ),
+    ])
       .filter((task) => {
         const completedAt = getTaskCompletedAt(task);
         if (!isCompletedTask(task) || completedAt === undefined) return false;
@@ -820,14 +915,23 @@ export async function getTimelineForOwner(
   tokenIdentifier: string,
   args: { startDate?: string; endDate: string }
 ) {
-  const tasks = (await listOwnedTasks(ctx, tokenIdentifier))
-    .filter((task) => {
+  const [deadlineTasks, legacyScheduledTasks] = await Promise.all([
+    listTasksByDeadlineRange(ctx, tokenIdentifier, {
+      startDate: args.startDate,
+      endDate: args.endDate,
+    }),
+    listTasksByLegacyStatus(ctx, tokenIdentifier, "scheduled"),
+  ]);
+
+  const tasks = dedupeTasks([
+    ...deadlineTasks.filter(isTimelineTask),
+    ...legacyScheduledTasks.filter((task) => {
       const deadline = getTaskDeadline(task);
-      if (!isTimelineTask(task) || !deadline) return false;
+      if (task.deadline !== undefined || !isTimelineTask(task) || !deadline) return false;
       if (args.startDate && deadline < args.startDate) return false;
       return deadline <= args.endDate;
-    })
-    .map(toCanonicalTaskShape);
+    }),
+  ]).map(toCanonicalTaskShape);
 
   const grouped: Record<string, typeof tasks> = {};
   for (const task of tasks) {
@@ -848,12 +952,34 @@ export const getTaskCounts = query({
   args: {},
   handler: async (ctx) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    const tasks = await listOwnedTasks(ctx, tokenIdentifier);
+    const [
+      inboxCandidates,
+      deadlineTasks,
+      completedTasks,
+      legacyScheduledTasks,
+      legacyCompletedTasks,
+    ] = await Promise.all([
+      listTasksByExactDeadline(ctx, tokenIdentifier, undefined),
+      listTasksByDeadlineRange(ctx, tokenIdentifier),
+      listTasksByCompletedAtRange(ctx, tokenIdentifier),
+      listTasksByLegacyStatus(ctx, tokenIdentifier, "scheduled"),
+      listTasksByLegacyStatus(ctx, tokenIdentifier, "completed"),
+    ]);
 
     return {
-      inboxCount: tasks.filter(isInboxTask).length,
-      timelineCount: tasks.filter(isTimelineTask).length,
-      completedCount: tasks.filter(isCompletedTask).length,
+      inboxCount: inboxCandidates.filter(isInboxTask).length,
+      timelineCount: dedupeTasks([
+        ...deadlineTasks.filter(isTimelineTask),
+        ...legacyScheduledTasks.filter(
+          (task) => task.deadline === undefined && isTimelineTask(task)
+        ),
+      ]).length,
+      completedCount: dedupeTasks([
+        ...completedTasks.filter(isCompletedTask),
+        ...legacyCompletedTasks.filter(
+          (task) => task.completedAt === undefined && isCompletedTask(task)
+        ),
+      ]).length,
     };
   },
 });

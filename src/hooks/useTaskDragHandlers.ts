@@ -53,18 +53,9 @@ export function resolveDropTargetDate(
   tasks: Task[] | undefined,
   _currentDate: string
 ): string | null {
-  // Support both plain date IDs ("YYYY-MM-DD") and deadline-lane IDs ("deadline:YYYY-MM-DD")
-  const dateFromId = isDateDropId(overId)
-    ? overId
-    : overId.startsWith("deadline:")
-    ? overId.slice("deadline:".length)
-    : null;
-
-  if (dateFromId && isDateDropId(dateFromId)) {
-    // Same-day drop onto a deadline-lane container: the source is already on
-    // this date, so treat it as a no-op instead of triggering moveTask.
-    const isDeadlineLaneDrop = overId.startsWith("deadline:");
-    if (isDeadlineLaneDrop && dateFromId === getTaskDate(sourceTask)) {
+  if (isDateDropId(overId)) {
+    const dateFromId = overId;
+    if (dateFromId === getTaskDate(sourceTask)) {
       return null;
     }
     return canScheduleTaskOnDate(sourceTask, dateFromId) ? dateFromId : null;

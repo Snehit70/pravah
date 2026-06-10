@@ -147,8 +147,9 @@ export default defineSchema({
   tasks: defineTable({
     title: v.string(),
     description: v.optional(v.string()),
-    // Legacy integration fields remain optional until Gmail/Calendar migrate.
-    // Native task APIs clear them during the deadline-model cutover.
+    // Legacy fields are cleared for native tasks during the deadline-model cutover.
+    // Gmail/Calendar integration tasks may still retain them until those
+    // integrations move to the same canonical deadline/timestamp model.
     type: v.optional(v.union(v.literal("open"), v.literal("deadline"))),
     scheduledDate: v.optional(v.string()),
     deadline: v.optional(v.string()),
