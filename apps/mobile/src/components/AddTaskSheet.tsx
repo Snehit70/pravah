@@ -28,6 +28,8 @@ import { type TaskPriority } from "../lib/task-form";
 import { useGoals } from "../hooks/useGoals";
 import { useGoalMutations } from "../hooks/useGoalMutations";
 import { addDays, toIsoDate } from "../lib/dates";
+import { expandBulkTasks, MAX_BULK_TASKS, type BulkTaskInput } from "../lib/bulkTaskCapture";
+import { useUserPreferences } from "../hooks/useUserPreferences";
 
 type ComposerMode = "inbox" | "today" | "tomorrow" | "nextweek";
 
@@ -53,12 +55,13 @@ type AddTaskSheetProps = {
     priority?: TaskPriority;
     goalId?: string;
   }) => Promise<boolean>;
+  onBulkAdd?: (tasks: BulkTaskInput[]) => Promise<boolean>;
   isValidDeadline: (raw: string) => { value?: string; error?: string };
   onSheetChange?: (isOpen: boolean) => void;
 };
 
 export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
-  function AddTaskSheet({ onAdd, isValidDeadline, onSheetChange }, ref) {
+  function AddTaskSheet({ onAdd, onBulkAdd, isValidDeadline, onSheetChange }, ref) {
     const titleInputRef = useRef<TextInput>(null);
     const [visible, setVisible] = useState(false);
     const [title, setTitle] = useState("");
@@ -67,11 +70,16 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [priority, setPriority] = useState<TaskPriority>(undefined);
     const [kind, setKind] = useState<"task" | "goal">("task");
     const [goalId, setGoalId] = useState<string | undefined>(undefined);
+    const [goalIds, setGoalIds] = useState<string[]>([]);
+    const [seriesEnabled, setSeriesEnabled] = useState(false);
+    const [seriesStart, setSeriesStart] = useState("1");
+    const [seriesEnd, setSeriesEnd] = useState("2");
     const [showGoalPicker, setShowGoalPicker] = useState(false);
     const [saving, setSaving] = useState(false);
     const [showDetails, setShowDetails] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const { goals } = useGoals();
+    const { prefs } = useUserPreferences();
     const { addGoal } = useGoalMutations();
     const selectedGoal = useMemo(
       () => goals.find((g) => g.id === goalId),
@@ -83,6 +91,8 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         deadline.trim() ||
         priority ||
         goalId
+        || goalIds.length > 0
+        || seriesEnabled
     );
 
     const presetDeadlines: Record<ComposerMode, string> = {
@@ -110,6 +120,10 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setDeadline("");
       setPriority(undefined);
       setGoalId(undefined);
+      setGoalIds([]);
+      setSeriesEnabled(false);
+      setSeriesStart("1");
+      setSeriesEnd("2");
       setShowGoalPicker(false);
       setShowDetails(false);
       setKind("task");
@@ -171,12 +185,40 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         return;
       }
 
+      const start = Number(seriesStart);
+      const end = Number(seriesEnd);
+      const useBulk = prefs.bulkTaskCaptureEnabled && (seriesEnabled || goalIds.length > 1);
+      if (useBulk) {
+        try {
+          if (!onBulkAdd) throw new Error("Bulk task capture is unavailable");
+          const tasks = expandBulkTasks({
+            baseTitle: trimmed,
+            seriesEnabled,
+            start,
+            end,
+            goalIds,
+            description: description.trim() || undefined,
+            deadline: deadlineResult.value,
+            priority,
+          });
+          const success = await onBulkAdd(tasks);
+          setSaving(false);
+          if (success) { reset(); closeModal(); }
+          return;
+        } catch (bulkError) {
+          setSaving(false);
+          setError(bulkError instanceof Error ? bulkError.message : "Invalid bulk capture");
+          haptic.error();
+          return;
+        }
+      }
+
       const success = await onAdd({
         title: trimmed,
         description: description.trim() || undefined,
         deadline: deadlineResult.value,
         priority,
-        goalId,
+        goalId: prefs.bulkTaskCaptureEnabled ? goalIds[0] : goalId,
       });
 
       setSaving(false);
@@ -185,7 +227,22 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         reset();
         closeModal();
       }
-    }, [title, description, deadline, priority, goalId, kind, saving, onAdd, isValidDeadline, closeModal, addGoal]);
+    }, [title, description, deadline, priority, goalId, goalIds, seriesEnabled, seriesStart, seriesEnd, kind, saving, onAdd, onBulkAdd, isValidDeadline, closeModal, addGoal, prefs.bulkTaskCaptureEnabled]);
+
+    const bulkPreview = useMemo(() => {
+      if (!prefs.bulkTaskCaptureEnabled || kind !== "task" || (!seriesEnabled && goalIds.length < 2)) return null;
+      try {
+        return expandBulkTasks({
+          baseTitle: title,
+          seriesEnabled,
+          start: Number(seriesStart),
+          end: Number(seriesEnd),
+          goalIds,
+        });
+      } catch {
+        return null;
+      }
+    }, [goalIds, kind, prefs.bulkTaskCaptureEnabled, seriesEnabled, seriesEnd, seriesStart, title]);
 
     const canSubmit = useMemo(() => Boolean(title.trim()) && !saving, [title, saving]);
 
@@ -334,7 +391,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                     }
                     style={({ pressed }) => [
                       styles.goalChip,
-                      selectedGoal && styles.goalChipActive,
+                      (prefs.bulkTaskCaptureEnabled ? goalIds.length > 0 : selectedGoal) && styles.goalChipActive,
                       pressed && { opacity: 0.7 },
                     ]}
                   >
@@ -346,7 +403,9 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                       ]}
                       numberOfLines={1}
                     >
-                      {selectedGoal ? selectedGoal.text : "None"}
+                      {prefs.bulkTaskCaptureEnabled
+                        ? goalIds.length > 0 ? `${goalIds.length} selected` : "None"
+                        : selectedGoal ? selectedGoal.text : "None"}
                     </Text>
                     <Text style={styles.goalChipCaret}>{showGoalPicker ? "▾" : "▸"}</Text>
                   </Pressable>
@@ -359,28 +418,31 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                     >
                       <Pressable
                         onPress={() => {
-                          setGoalId(undefined);
-                          setShowGoalPicker(false);
+                          if (prefs.bulkTaskCaptureEnabled) setGoalIds([]); else setGoalId(undefined);
                         }}
                         hitSlop={8}
                         style={({ pressed }) => [
                           styles.goalOption,
-                          !goalId && styles.goalOptionActive,
+                          (prefs.bulkTaskCaptureEnabled ? goalIds.length === 0 : !goalId) && styles.goalOptionActive,
                           pressed && { opacity: 0.7 },
                         ]}
                       >
-                        <Text style={[styles.goalOptionText, !goalId && styles.goalOptionTextActive]}>
+                        <Text style={[styles.goalOptionText, (prefs.bulkTaskCaptureEnabled ? goalIds.length === 0 : !goalId) && styles.goalOptionTextActive]}>
                           No goal
                         </Text>
                       </Pressable>
                       {goals.map((g) => {
-                        const active = g.id === goalId;
+                        const active = prefs.bulkTaskCaptureEnabled ? goalIds.includes(g.id) : g.id === goalId;
                         return (
                           <Pressable
                             key={g.id}
                             onPress={() => {
-                              setGoalId(g.id);
-                              setShowGoalPicker(false);
+                              if (prefs.bulkTaskCaptureEnabled) {
+                                setGoalIds((current) => current.includes(g.id) ? current.filter((id) => id !== g.id) : [...current, g.id]);
+                              } else {
+                                setGoalId(g.id);
+                                setShowGoalPicker(false);
+                              }
                             }}
                             hitSlop={8}
                             style={({ pressed }) => [
@@ -399,6 +461,32 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                         );
                       })}
                     </Animated.View>
+                  ) : null}
+                </View>
+              ) : null}
+
+              {kind === "task" && prefs.bulkTaskCaptureEnabled ? (
+                <View style={styles.bulkSection}>
+                  <Pressable
+                    onPress={() => setSeriesEnabled((current) => !current)}
+                    accessibilityRole="switch"
+                    accessibilityState={{ checked: seriesEnabled }}
+                    style={styles.bulkToggle}
+                  >
+                    <Text style={styles.goalOptionText}>Create series</Text>
+                    <Text style={styles.goalChipValueActive}>{seriesEnabled ? "On" : "Off"}</Text>
+                  </Pressable>
+                  {seriesEnabled ? (
+                    <View style={styles.rangeRow}>
+                      <TextInput value={seriesStart} onChangeText={setSeriesStart} keyboardType="number-pad" accessibilityLabel="Series start" style={styles.rangeInput} />
+                      <Text style={styles.goalOptionText}>to</Text>
+                      <TextInput value={seriesEnd} onChangeText={setSeriesEnd} keyboardType="number-pad" accessibilityLabel="Series end" style={styles.rangeInput} />
+                    </View>
+                  ) : null}
+                  {bulkPreview ? (
+                    <Text accessibilityLiveRegion="polite" style={styles.previewText}>
+                      {bulkPreview.length} tasks will be created{bulkPreview.length === MAX_BULK_TASKS ? " (maximum)" : ""}.
+                    </Text>
                   ) : null}
                 </View>
               ) : null}
@@ -492,6 +580,11 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
     gap: spacing.lg,
   },
+  bulkSection: { gap: spacing.sm, paddingVertical: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  bulkToggle: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  rangeRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  rangeInput: { minWidth: 72, color: colors.textPrimary, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, paddingVertical: spacing.sm, textAlign: "center" },
+  previewText: { ...typography.micro, color: colors.textMuted },
 
   sheetKicker: {
     ...typography.micro,
