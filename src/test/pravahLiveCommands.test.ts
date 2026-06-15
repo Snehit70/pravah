@@ -69,8 +69,9 @@ describe("pravah live commands", () => {
     expect(result).toMatchObject({
       source: "live",
     });
-    expect((result as { tasks: Array<{ _id: string }> }).tasks[0]).toMatchObject({
-      _id: "live_1",
+    expect((result as { tasks: Array<{ id: string; status: string }> }).tasks[0]).toMatchObject({
+      id: "live_1",
+      status: "timeline",
     });
     expect(fetchSpy).toHaveBeenCalledWith(
       "https://pravah.example.com/tasks",
@@ -185,7 +186,7 @@ describe("pravah live commands", () => {
       { id: "goal_1", text: "Planning" },
     ]);
     expect(
-      (result as { scheduled: Array<{ id: string; title: string }> }).scheduled[0]
+      (result as { timeline: Array<{ id: string; title: string }> }).timeline[0]
     ).toMatchObject({
       id: "live_1",
       title: "Live scheduled",

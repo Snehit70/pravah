@@ -123,7 +123,12 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
     ],
     listTasks(filters) {
       const query = new URLSearchParams();
-      if (filters.status) query.set("status", filters.status);
+      if (filters.status) {
+        query.set(
+          "status",
+          filters.status === "timeline" ? "scheduled" : filters.status
+        );
+      }
       if (filters.date) query.set("date", filters.date);
       const qs = query.toString();
       return get(`/tasks${qs ? `?${qs}` : ""}`);

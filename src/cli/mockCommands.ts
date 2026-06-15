@@ -68,14 +68,17 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
       };
     case "tasks timeline": {
       const endDate = requireOption(args, "end-date", command);
+      const timeline: Record<string, typeof mockTasks> = {};
+      for (const task of mockTasks) {
+        if (task.status !== "timeline" || !task.deadline || task.deadline > endDate) {
+          continue;
+        }
+        timeline[task.deadline] ??= [];
+        timeline[task.deadline].push(task);
+      }
       return {
         endDate,
-        tasks: mockTasks.filter(
-          (task) =>
-            task.status === "scheduled" &&
-            task.deadline &&
-            task.deadline <= endDate
-        ),
+        timeline,
         source: "mock",
       };
     }
@@ -129,8 +132,8 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
     case "agent context":
       return {
         today: "2026-06-04",
-        scheduled: mockTasks
-          .filter((task) => task.status === "scheduled")
+        timeline: mockTasks
+          .filter((task) => task.status === "timeline")
           .map((task) => ({
             id: task.id,
             title: task.title,
@@ -145,7 +148,10 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
         },
         overdueSummary: {
           count: mockTasks.filter(
-            (task) => task.deadline && task.deadline < "2026-06-04"
+            (task) =>
+              task.status === "timeline" &&
+              task.deadline &&
+              task.deadline < "2026-06-04"
           ).length,
         },
         reviewQueueSummary: { count: mockReviewQueue.length },

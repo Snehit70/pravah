@@ -3,7 +3,13 @@ import { randomUUID } from "node:crypto";
 import { hasFlag, readOption } from "./args";
 import type { ParsedArgs } from "./types";
 
-const TASK_STATUSES = ["inbox", "scheduled", "completed", "cancelled"] as const;
+const TASK_STATUSES = [
+  "inbox",
+  "timeline",
+  "completed",
+  "cancelled",
+  "scheduled",
+] as const;
 const REVIEW_STATUSES = ["pending", "approved", "rejected"] as const;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 type OptionKind = "flag" | "value";
@@ -169,14 +175,23 @@ export function readGoalUpdateOptions(args: ParsedArgs) {
 }
 
 export function readTaskListFilters(args: ParsedArgs) {
-  const status = readOption(args.options, "status");
+  const rawStatus = readOption(args.options, "status");
   const date = readOption(args.options, "date");
-  if (status && !TASK_STATUSES.includes(status as (typeof TASK_STATUSES)[number])) {
+  if (
+    rawStatus &&
+    !TASK_STATUSES.includes(rawStatus as (typeof TASK_STATUSES)[number])
+  ) {
     throw new Error(`--status must be one of: ${TASK_STATUSES.join(", ")}`);
   }
   if (date && !DATE_PATTERN.test(date)) {
     throw new Error("--date must use YYYY-MM-DD format");
   }
+  const status =
+    rawStatus === undefined
+      ? undefined
+      : rawStatus === "scheduled"
+        ? "timeline"
+        : rawStatus;
   return { status, date };
 }
 

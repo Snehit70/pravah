@@ -61,7 +61,7 @@ function runCliAsync(args: string[], env?: Record<string, string>) {
 
 describe("pravah CLI", () => {
   it("returns a uniform JSON envelope for successful reads", () => {
-    const result = runCli(["tasks", "list", "--status", "scheduled", "--json"]);
+    const result = runCli(["tasks", "list", "--status", "timeline", "--json"]);
 
     expect(result.status).toBe(0);
     const payload = JSON.parse(result.stdout);

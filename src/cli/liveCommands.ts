@@ -9,13 +9,19 @@ import {
 } from "./commandUtils";
 import { CliCommandError } from "./errors";
 import type { LiveCliClient } from "./liveClient";
-import type { ParsedArgs } from "./types";
+import type { CliTaskStatus, ParsedArgs } from "./types";
 
-interface LiveTaskSummary {
+interface CliTaskSummary {
   id: string;
   title: string;
-  status: string;
+  description?: string;
+  status: CliTaskStatus;
   deadline?: string;
+  priority?: "p1" | "p2" | "p3";
+  source?: "manual" | "ai-agent" | "gmail" | "gcal";
+  createdAt?: number;
+  updatedAt?: number;
+  position?: number;
   scheduledAt?: number;
   completedAt?: number;
   cancelledAt?: number;
@@ -30,7 +36,65 @@ interface LiveGoalSummary {
   createdAt?: number;
 }
 
-function toLiveTaskSummary(value: unknown): LiveTaskSummary | null {
+interface CliReviewItem {
+  id: string;
+  title: string;
+  status: "pending" | "approved" | "rejected";
+  provider?: string;
+  sourceType?: string;
+  externalId?: string;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+interface CliSyncStatusSummary {
+  provider: string;
+  connected: boolean;
+  healthy: boolean;
+  syncEnabled?: boolean;
+  accountEmail?: string;
+  lastRunAt?: string;
+  lastRunStatus?: string;
+  lastError?: string;
+  pendingReviewCount: number;
+}
+
+function readDateString(value: unknown) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? value
+    : undefined;
+}
+
+function readNumber(value: unknown) {
+  return typeof value === "number" ? value : undefined;
+}
+
+function readPriority(value: unknown) {
+  return value === "p1" || value === "p2" || value === "p3" ? value : undefined;
+}
+
+function readSource(value: unknown) {
+  return value === "manual" ||
+    value === "ai-agent" ||
+    value === "gmail" ||
+    value === "gcal"
+    ? value
+    : undefined;
+}
+
+function deriveTaskStatus(task: Record<string, unknown>): CliTaskStatus {
+  const cancelledAt = readNumber(task.cancelledAt);
+  const completedAt = readNumber(task.completedAt);
+  const deadline = readDateString(task.deadline) ?? readDateString(task.scheduledDate);
+  const legacyStatus = typeof task.status === "string" ? task.status : undefined;
+
+  if (cancelledAt !== undefined || legacyStatus === "cancelled") return "cancelled";
+  if (completedAt !== undefined || legacyStatus === "completed") return "completed";
+  if (deadline) return "timeline";
+  return "inbox";
+}
+
+function toCliTaskSummary(value: unknown): CliTaskSummary | null {
   if (!value || typeof value !== "object") {
     return null;
   }
@@ -47,15 +111,28 @@ function toLiveTaskSummary(value: unknown): LiveTaskSummary | null {
   ) {
     return null;
   }
-  const deadline = typeof task.deadline === "string" ? task.deadline : undefined;
-  const scheduledAt = typeof task.scheduledAt === "number" ? task.scheduledAt : undefined;
-  const completedAt = typeof task.completedAt === "number" ? task.completedAt : undefined;
-  const cancelledAt = typeof task.cancelledAt === "number" ? task.cancelledAt : undefined;
+  const deadline = readDateString(task.deadline) ?? readDateString(task.scheduledDate);
+  const createdAt = readNumber(task.createdAt);
+  const updatedAt = readNumber(task.updatedAt);
+  const scheduledAt = readNumber(task.scheduledAt) ?? createdAt;
+  const completedAt =
+    readNumber(task.completedAt) ??
+    (task.status === "completed" ? updatedAt : undefined);
+  const cancelledAt =
+    readNumber(task.cancelledAt) ??
+    (task.status === "cancelled" ? updatedAt : undefined);
   return {
     id,
     title: task.title,
-    status: cancelledAt ? "cancelled" : completedAt ? "completed" : deadline ? "scheduled" : "inbox",
+    description:
+      typeof task.description === "string" ? task.description : undefined,
+    status: deriveTaskStatus(task),
     deadline,
+    priority: readPriority(task.priority),
+    source: readSource(task.source),
+    createdAt,
+    updatedAt,
+    position: readNumber(task.position),
     scheduledAt,
     completedAt,
     cancelledAt,
@@ -84,9 +161,9 @@ function toLiveGoalSummary(value: unknown): LiveGoalSummary | null {
   };
 }
 
-function normalizeLiveTaskArray(value: unknown) {
+function normalizeTaskArray(value: unknown) {
   return Array.isArray(value)
-    ? value.map(toLiveTaskSummary).filter((task) => task !== null)
+    ? value.map(toCliTaskSummary).filter((task) => task !== null)
     : [];
 }
 
@@ -94,6 +171,18 @@ function normalizeLiveGoalArray(value: unknown) {
   return Array.isArray(value)
     ? value.map(toLiveGoalSummary).filter((goal) => goal !== null)
     : [];
+}
+
+function normalizeTimeline(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {} as Record<string, CliTaskSummary[]>;
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([date, tasks]) => [
+      date,
+      normalizeTaskArray(tasks),
+    ])
+  ) as Record<string, CliTaskSummary[]>;
 }
 
 function normalizeGoalLinks(value: unknown): Record<string, string> {
@@ -105,6 +194,118 @@ function normalizeGoalLinks(value: unknown): Record<string, string> {
       (entry): entry is [string, string] => typeof entry[1] === "string"
     )
   );
+}
+
+function normalizeReviewItem(value: unknown): CliReviewItem | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const item = value as Record<string, unknown>;
+  const id =
+    typeof item._id === "string"
+      ? item._id
+      : typeof item.id === "string"
+        ? item.id
+        : undefined;
+  const status =
+    item.status === "pending" ||
+    item.status === "approved" ||
+    item.status === "rejected"
+      ? item.status
+      : undefined;
+  if (!id || typeof item.title !== "string" || !status) {
+    return null;
+  }
+  return {
+    id,
+    title: item.title,
+    status,
+    provider: typeof item.provider === "string" ? item.provider : undefined,
+    sourceType: typeof item.sourceType === "string" ? item.sourceType : undefined,
+    externalId: typeof item.externalId === "string" ? item.externalId : undefined,
+    createdAt: readNumber(item.createdAt),
+    updatedAt: readNumber(item.updatedAt),
+  };
+}
+
+function normalizeReviewItems(value: unknown) {
+  return Array.isArray(value)
+    ? value.map(normalizeReviewItem).filter((item) => item !== null)
+    : [];
+}
+
+function normalizeSyncStatus(value: unknown): CliSyncStatusSummary | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const status = value as Record<string, unknown>;
+  const integration =
+    status.integration && typeof status.integration === "object"
+      ? (status.integration as Record<string, unknown>)
+      : null;
+  const lastRun =
+    status.lastRun && typeof status.lastRun === "object"
+      ? (status.lastRun as Record<string, unknown>)
+      : null;
+  const provider =
+    typeof status.provider === "string"
+      ? status.provider
+      : typeof integration?.provider === "string"
+        ? integration.provider
+        : "unknown";
+  const connected =
+    typeof status.connected === "boolean"
+      ? status.connected
+      : integration?.status === "connected";
+  const healthy =
+    typeof status.healthy === "boolean"
+      ? status.healthy
+      : connected && typeof integration?.lastError !== "string";
+  const lastRunAt =
+    typeof status.lastRunAt === "string"
+      ? status.lastRunAt
+      : typeof lastRun?.finishedAt === "number"
+        ? new Date(lastRun.finishedAt).toISOString()
+        : undefined;
+  const lastRunStatus =
+    typeof status.lastRunStatus === "string"
+      ? status.lastRunStatus
+      : typeof lastRun?.status === "string"
+        ? lastRun.status
+        : undefined;
+  const pendingReviewCount =
+    typeof status.pendingReviewCount === "number"
+      ? status.pendingReviewCount
+      : typeof status.pendingReviewItems === "number"
+        ? status.pendingReviewItems
+        : 0;
+
+  return {
+    provider,
+    connected,
+    healthy,
+    syncEnabled:
+      typeof status.syncEnabled === "boolean"
+        ? status.syncEnabled
+        : typeof integration?.syncEnabled === "boolean"
+          ? integration.syncEnabled
+          : undefined,
+    accountEmail:
+      typeof status.accountEmail === "string"
+        ? status.accountEmail
+        : typeof integration?.accountEmail === "string"
+          ? integration.accountEmail
+          : undefined,
+    lastRunAt,
+    lastRunStatus,
+    lastError:
+      typeof status.lastError === "string"
+        ? status.lastError
+        : typeof integration?.lastError === "string"
+          ? integration.lastError
+          : undefined,
+    pendingReviewCount,
+  };
 }
 
 function readReplayStatus(value: unknown) {
@@ -163,16 +364,16 @@ export async function executeLiveCommand(
     case "tasks list": {
       const filters = readTaskListFilters(args);
       return {
-        tasks: await client.listTasks(filters),
+        tasks: normalizeTaskArray(await client.listTasks(filters)),
         source: "live",
       };
     }
     case "tasks inbox":
-      return { tasks: await client.getInbox(), source: "live" };
+      return { tasks: normalizeTaskArray(await client.getInbox()), source: "live" };
     case "goals list":
       requireScopes(client, ["tasks:read"]);
       return {
-        goals: await client.listGoals(),
+        goals: normalizeLiveGoalArray(await client.listGoals()),
         links: await client.listGoalLinks(),
         source: "live",
       };
@@ -180,20 +381,24 @@ export async function executeLiveCommand(
       const endDate = requireOption(args, "end-date", command);
       return {
         endDate,
-        timeline: await client.getTimeline(endDate),
+        timeline: normalizeTimeline(await client.getTimeline(endDate)),
         source: "live",
       };
     }
     case "review list": {
       const options = readReviewListOptions(args);
       return {
-        items: await client.getReviewQueue(options.status, options.limit),
+        items: normalizeReviewItems(
+          await client.getReviewQueue(options.status, options.limit)
+        ),
         source: "live",
       };
     }
     case "sync status":
       return {
-        status: await client.getSyncStatus(readOption(args.options, "provider")),
+        status: normalizeSyncStatus(
+          await client.getSyncStatus(readOption(args.options, "provider"))
+        ),
         source: "live",
       };
     case "agent context": {
@@ -202,17 +407,20 @@ export async function executeLiveCommand(
         "review:read",
         "sync:read",
       ]);
-      const tasks = normalizeLiveTaskArray(await client.listTasks({}));
+      const tasks = normalizeTaskArray(await client.listTasks({}));
       const goals = normalizeLiveGoalArray(await client.listGoals());
       const goalLinks = normalizeGoalLinks(await client.listGoalLinks());
-      const reviewItemsRaw = await client.getReviewQueue("pending", 25);
-      const reviewItems = Array.isArray(reviewItemsRaw) ? reviewItemsRaw : [];
-      const syncStatus = await client.getSyncStatus("google_calendar");
+      const reviewItems = normalizeReviewItems(
+        await client.getReviewQueue("pending", 25)
+      );
+      const syncStatus = normalizeSyncStatus(
+        await client.getSyncStatus("google_calendar")
+      );
       const today = getLocalDateString();
       return {
         today,
-        scheduled: tasks
-          .filter((task) => task.status === "scheduled")
+        timeline: tasks
+          .filter((task) => task.status === "timeline")
           .slice(0, 20)
           .map((task) => ({
             id: task.id,
@@ -229,7 +437,7 @@ export async function executeLiveCommand(
         overdueSummary: {
           count: tasks.filter(
             (task) =>
-              task.status === "scheduled" &&
+              task.status === "timeline" &&
               typeof task.deadline === "string" &&
               task.deadline < today
           ).length,
@@ -253,7 +461,7 @@ export async function executeLiveCommand(
     case "agent task": {
       requireScopes(client, ["tasks:read"]);
       const taskId = requireOption(args, "task-id", command);
-      const tasks = normalizeLiveTaskArray(await client.listTasks({}));
+      const tasks = normalizeTaskArray(await client.listTasks({}));
       const task = tasks.find((entry) => entry.id === taskId);
       if (!task) {
         throw new Error(`Task not found: ${taskId}`);

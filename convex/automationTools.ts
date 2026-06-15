@@ -18,6 +18,7 @@ import { runIdempotentMutation } from "./automationIdempotency";
 
 const taskStatus = v.union(
   v.literal("inbox"),
+  v.literal("timeline"),
   v.literal("scheduled"),
   v.literal("completed"),
   v.literal("cancelled")
@@ -31,8 +32,11 @@ export const listTasks = internalQuery({
     date: v.optional(v.string()),
     status: v.optional(taskStatus),
   },
-  handler: (ctx, { ownerTokenIdentifier, ...args }) =>
-    listTasksForOwner(ctx, ownerTokenIdentifier, args),
+  handler: (ctx, { ownerTokenIdentifier, status, ...args }) =>
+    listTasksForOwner(ctx, ownerTokenIdentifier, {
+      ...args,
+      status: status === "timeline" ? "scheduled" : status,
+    }),
 });
 
 export const listGoals = internalQuery({

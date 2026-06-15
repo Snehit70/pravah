@@ -40,13 +40,22 @@ export interface CredentialSummary {
   siteUrl: string;
 }
 
+export type CliTaskStatus = "inbox" | "timeline" | "completed" | "cancelled";
+
 export interface MockTask {
   id: string;
   title: string;
-  status: "inbox" | "scheduled" | "completed";
+  status: CliTaskStatus;
+  description?: string;
   deadline?: string;
   scheduledAt: number;
   completedAt?: number;
+  cancelledAt?: number;
+  priority?: "p1" | "p2" | "p3";
+  source?: "manual" | "ai-agent" | "gmail" | "gcal";
+  createdAt?: number;
+  updatedAt?: number;
+  position?: number;
   goal?: {
     id: string;
     title: string;
