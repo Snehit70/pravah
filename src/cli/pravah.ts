@@ -16,7 +16,7 @@ Examples:
   pravah auth whoami --json
   pravah goals list --json
   pravah goals update --goal-id <id> --description "My goal description" --deadline clear --json
-  pravah tasks list --status scheduled --json
+  pravah tasks list --status timeline --json
   pravah tasks add --title "Draft CLI contract" --deadline 2026-06-05 --dry-run --json
   pravah agent context --json
 `);

@@ -79,10 +79,10 @@ See `convex/schema.ts` for canonical field definitions and indexes.
 ## Task Lifecycle
 
 1. User creates a task via QuickAdd (`N`) or Kairo.
-2. Tasks start as `inbox` (no `scheduledDate`) or `scheduled` (with date).
+2. Tasks start in the `inbox` when they have no `deadline`, or on the `timeline` when they do.
 3. Drag from inbox → timeline column calls `moveTask`.
 4. Drag within timeline or inbox calls `reorderTasks` / `reorderInboxTasks`.
-5. Completing a task sets `status: "completed"`.
+5. Completing a task sets `completedAt`; reopening clears `completedAt` and returns the task to the inbox or timeline based on whether a deadline remains.
 
 ## Kairo Copilot
 
