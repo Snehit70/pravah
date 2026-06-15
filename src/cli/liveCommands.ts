@@ -4,6 +4,7 @@ import {
   getWriteMetadata,
   readGoalUpdateOptions,
   readReviewListOptions,
+  readTaskAddOptions,
   readTaskListFilters,
   requireOption,
 } from "./commandUtils";
@@ -524,23 +525,20 @@ export async function executeLiveCommand(
       };
     }
     case "tasks add": {
-      const title = requireOption(args, "title", command);
-      const deadline = readOption(args.options, "deadline");
-      const description = readOption(args.options, "description");
+      const task = readTaskAddOptions(args, command);
       const metadata = getWriteMetadata(args);
       const result = await executeLiveWrite(
         "tasks.add",
         metadata.idempotencyKey,
         () =>
           client.addTask(
-            { title, deadline, description },
+            task,
             metadata.idempotencyKey
           )
       );
       return {
         action: "tasks.add",
-        title,
-        deadline,
+        ...task,
         createdTaskId: readCreatedTaskId(result),
         ...metadata,
         replayed: readReplayStatus(result),

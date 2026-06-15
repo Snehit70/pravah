@@ -11,6 +11,7 @@ const TASK_STATUSES = [
   "scheduled",
 ] as const;
 const REVIEW_STATUSES = ["pending", "approved", "rejected"] as const;
+const TASK_PRIORITIES = ["p1", "p2", "p3"] as const;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 type OptionKind = "flag" | "value";
 
@@ -52,6 +53,9 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionKind>> = {
     title: "value",
     description: "value",
     deadline: "value",
+    priority: "value",
+    tags: "value",
+    "estimated-minutes": "value",
     ...WRITE_OPTIONS,
   },
   "tasks move": {
@@ -210,6 +214,64 @@ export function readReviewListOptions(args: ParsedArgs) {
   return { status, limit };
 }
 
+export function readTaskAddOptions(args: ParsedArgs, command: string) {
+  const title = requireOption(args, "title", command);
+  const description = readOption(args.options, "description")?.trim() || undefined;
+  const deadline = readOption(args.options, "deadline");
+  if (deadline && !DATE_PATTERN.test(deadline)) {
+    throw new Error("--deadline must use YYYY-MM-DD format");
+  }
+
+  const rawPriority = readOption(args.options, "priority")?.trim();
+  if (
+    rawPriority !== undefined &&
+    !TASK_PRIORITIES.includes(rawPriority as (typeof TASK_PRIORITIES)[number])
+  ) {
+    throw new Error("--priority must be one of: p1, p2, p3");
+  }
+  const priority: (typeof TASK_PRIORITIES)[number] | undefined =
+    rawPriority === "p1" || rawPriority === "p2" || rawPriority === "p3"
+      ? rawPriority
+      : undefined;
+
+  const rawEstimatedMinutes = readOption(args.options, "estimated-minutes")?.trim();
+  let estimatedMinutes: number | undefined;
+  if (rawEstimatedMinutes !== undefined) {
+    estimatedMinutes = Number(rawEstimatedMinutes);
+    if (!Number.isInteger(estimatedMinutes) || estimatedMinutes <= 0) {
+      throw new Error("--estimated-minutes must be a positive integer");
+    }
+  }
+
+  const rawTags = readOption(args.options, "tags");
+  let tags: string[] | undefined;
+  if (rawTags !== undefined) {
+    tags = rawTags
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
+    if (tags.length === 0) {
+      throw new Error("--tags must include at least one non-empty tag");
+    }
+    if (tags.length > 20) {
+      throw new Error("--tags must contain at most 20 tags");
+    }
+    const tooLong = tags.find((tag) => tag.length > 50);
+    if (tooLong) {
+      throw new Error("--tags entries must be 50 characters or fewer");
+    }
+  }
+
+  return {
+    title,
+    description,
+    deadline,
+    priority,
+    estimatedMinutes,
+    tags,
+  };
+}
+
 export function executeDryRun(command: string, args: ParsedArgs) {
   if (!hasFlag(args.options, "dry-run")) {
     return null;
@@ -228,15 +290,16 @@ export function executeDryRun(command: string, args: ParsedArgs) {
       };
     }
     case "tasks add":
+      {
+        const task = readTaskAddOptions(args, command);
       return {
         action: "tasks.add",
-        title: requireOption(args, "title", command),
-        deadline: readOption(args.options, "deadline"),
-        description: readOption(args.options, "description"),
+        ...task,
         createdTaskId: null,
         ...metadata,
         source: "dry-run",
       };
+      }
     case "tasks move":
       return {
         action: "tasks.move",

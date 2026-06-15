@@ -26,6 +26,9 @@ export interface LiveCliClient {
     title: string;
     deadline?: string;
     description?: string;
+    priority?: "p1" | "p2" | "p3";
+    estimatedMinutes?: number;
+    tags?: string[];
   }, idempotencyKey: string): Promise<unknown>;
   moveTask(input: { taskId: string; targetDate: string }, idempotencyKey: string): Promise<unknown>;
   completeTask(input: { taskId: string }, idempotencyKey: string): Promise<unknown>;
@@ -95,12 +98,15 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
 
   async function post(
     endpoint: string,
-    body: Record<string, string | number | boolean | null | undefined>,
+    body: Record<
+      string,
+      string | number | boolean | null | string[] | undefined
+    >,
     idempotencyKey: string
   ) {
     const payload = Object.fromEntries(
       Object.entries(body).filter(([, value]) => value !== undefined)
-    ) as Record<string, string | number | boolean | null>;
+    ) as Record<string, string | number | boolean | null | string[]>;
     return callConvexApi({
       convexUrl: baseUrl,
       endpoint,
@@ -162,6 +168,9 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
         title: input.title,
         description: input.description,
         deadline: input.deadline,
+        priority: input.priority,
+        estimatedMinutes: input.estimatedMinutes,
+        tags: input.tags,
       }, idempotencyKey);
     },
     moveTask(input, idempotencyKey) {

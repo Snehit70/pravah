@@ -283,6 +283,56 @@ describe("pravah live commands", () => {
     );
   });
 
+  it("sends richer task add fields through the live write path", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ taskId: "task_live_2", replayed: false }),
+    } as Response);
+
+    const result = await executeCommand(
+      { command: "tasks add", json: true },
+      makeArgs(["tasks", "add"], {
+        title: "Draft CLI contract",
+        description: "Add missing task add fields",
+        deadline: "2026-06-21",
+        priority: "p2",
+        "estimated-minutes": "30",
+        tags: "cli,automation",
+        "idempotency-key": "task-add-123",
+      })
+    );
+
+    expect(result).toMatchObject({
+      action: "tasks.add",
+      title: "Draft CLI contract",
+      description: "Add missing task add fields",
+      deadline: "2026-06-21",
+      priority: "p2",
+      estimatedMinutes: 30,
+      tags: ["cli", "automation"],
+      createdTaskId: "task_live_2",
+      source: "live",
+    });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://pravah.example.com/tasks",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": "task-add-123",
+        }),
+        body: JSON.stringify({
+          title: "Draft CLI contract",
+          description: "Add missing task add fields",
+          deadline: "2026-06-21",
+          priority: "p2",
+          estimatedMinutes: 30,
+          tags: ["cli", "automation"],
+        }),
+      })
+    );
+  });
+
   it("preserves the idempotency key when a live write fails", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: false,

@@ -3,6 +3,7 @@ import {
   getWriteMetadata,
   readGoalUpdateOptions,
   readReviewListOptions,
+  readTaskAddOptions,
   readTaskListFilters,
   requireOption,
 } from "./commandUtils";
@@ -83,14 +84,16 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
       };
     }
     case "tasks add":
+      {
+        const task = readTaskAddOptions(args, command);
       return {
         action: "tasks.add",
-        title: requireOption(args, "title", command),
-        deadline: readOption(args.options, "deadline"),
+        ...task,
         createdTaskId: "mock_task_new",
         ...getWriteMetadata(args),
         source: "mock",
       };
+      }
     case "tasks move":
       return {
         ...buildTaskAction(

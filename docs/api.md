@@ -118,7 +118,7 @@ pravah agent task --task-id <task-id> --json
 Allowed idempotent writes:
 
 ```bash
-pravah tasks add --title "Prepare brief" --deadline 2026-06-06 --idempotency-key brief-2026-06-04 --json
+pravah tasks add --title "Prepare brief" --description "Include rollout notes" --deadline 2026-06-06 --priority p2 --estimated-minutes 30 --tags cli,brief --idempotency-key brief-2026-06-04 --json
 pravah tasks move --task-id <id> --target-date 2026-06-06 --idempotency-key move-<id>-2026-06-06 --json
 pravah tasks complete --task-id <id> --idempotency-key complete-<id> --json
 pravah tasks reopen --task-id <id> --idempotency-key reopen-<id> --json
@@ -135,7 +135,7 @@ Use one reversible write to validate auth, routing, idempotency, and cleanup:
 ```bash
 pravah auth whoami --json
 pravah agent context --json
-pravah tasks add --title "CLI smoke test" --deadline 2026-06-20 --idempotency-key smoke-add-2026-06-20 --json
+pravah tasks add --title "CLI smoke test" --description "Verify add fields" --deadline 2026-06-20 --priority p2 --estimated-minutes 15 --tags smoke,cli --idempotency-key smoke-add-2026-06-20 --json
 pravah tasks list --date 2026-06-20 --json
 pravah tasks unschedule --task-id <created-task-id> --idempotency-key smoke-unschedule-<created-task-id> --json
 pravah tasks inbox --json
