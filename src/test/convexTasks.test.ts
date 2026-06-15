@@ -346,6 +346,37 @@ describe("convex/tasks handlers", () => {
     });
   });
 
+  it("does not clear omitted task update fields", async () => {
+    const taskId = makeId("task-update-omit");
+    const db = {
+      get: vi.fn().mockResolvedValue({
+        _id: taskId,
+        ownerTokenIdentifier: "user-1",
+        deadline: "2026-04-12",
+        description: "Keep me",
+        estimatedMinutes: 25,
+        tags: ["cli"],
+        priority: "p2",
+        position: 5,
+        scheduledAt: 111,
+        createdAt: 111,
+        updatedAt: 222,
+      }),
+      patch: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const ctx = createAuthedCtx(db);
+    await updateTaskHandler(ctx, {
+      taskId,
+      title: "Retitle only",
+    });
+
+    expect(db.patch).toHaveBeenCalledWith(taskId, {
+      title: "Retitle only",
+      updatedAt: expect.any(Number),
+    });
+  });
+
   it("writes completedAt on complete and clears it on reopen", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-20T08:00:00.000Z"));

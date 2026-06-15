@@ -451,6 +451,7 @@ export async function executeLiveCommand(
           scopes: client.scopes,
           kairoAllowedWrites: [
             "tasks.add",
+            "tasks.update",
             "tasks.move",
             "tasks.complete",
             "tasks.reopen",

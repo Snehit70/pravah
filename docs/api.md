@@ -36,11 +36,11 @@ Bearer scopes protect the routes available to the CLI:
 | Route | Scope |
 |---|---|
 | `GET /tasks`, `GET /inbox`, `GET /timeline` | `tasks:read` |
-| `POST /tasks`, `/tasks/move`, `/tasks/complete`, `/tasks/reopen`, `/tasks/unschedule` | `tasks:write` |
+| `POST /tasks`, `/tasks/move`, `/tasks/update`, `/tasks/complete`, `/tasks/reopen`, `/tasks/unschedule` | `tasks:write` |
 | `GET /review-queue` | `review:read` |
 | `GET /sync/status` | `sync:read` |
 
-High-risk or broad operations remain admin API-key only, including task update/delete/reorder/bulk-reschedule, sync imports, and review-queue decisions.
+Admin API-key only routes remain for high-risk or broad operations: task delete, reorder, bulk-reschedule, sync imports, and review-queue decisions. `POST /tasks/update` is available on the bearer-authenticated automation path with idempotency keys.
 
 `POST /automation/bootstrap/exchange` accepts a one-time bootstrap token and does not require an existing credential.
 

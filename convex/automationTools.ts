@@ -237,13 +237,29 @@ export const updateTask = internalMutation({
       operation: "tasks.update",
       request: args,
       execute: async () => {
+        const patch: Parameters<typeof updateTaskForOwner>[2] = {
+          taskId: args.taskId,
+        };
+        if (Object.prototype.hasOwnProperty.call(args, "title")) {
+          patch.title = args.title;
+        }
+        if (Object.prototype.hasOwnProperty.call(args, "description")) {
+          patch.description = args.description ?? undefined;
+        }
+        if (Object.prototype.hasOwnProperty.call(args, "deadline")) {
+          patch.deadline = args.deadline ?? undefined;
+        }
+        if (Object.prototype.hasOwnProperty.call(args, "estimatedMinutes")) {
+          patch.estimatedMinutes = args.estimatedMinutes ?? undefined;
+        }
+        if (Object.prototype.hasOwnProperty.call(args, "tags")) {
+          patch.tags = args.tags ?? undefined;
+        }
+        if (Object.prototype.hasOwnProperty.call(args, "priority")) {
+          patch.priority = args.priority ?? undefined;
+        }
         await updateTaskForOwner(ctx, ownerTokenIdentifier, {
-          ...args,
-          description: args.description ?? undefined,
-          deadline: args.deadline ?? undefined,
-          estimatedMinutes: args.estimatedMinutes ?? undefined,
-          tags: args.tags ?? undefined,
-          priority: args.priority ?? undefined,
+          ...patch,
         });
         return { success: true };
       },

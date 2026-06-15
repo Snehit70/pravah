@@ -105,6 +105,7 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
         targetDate: requireOption(args, "target-date", command),
       };
     case "tasks update":
+      findTask(requireOption(args, "task-id", command));
       return {
         action: "tasks.update",
         ...readTaskUpdateOptions(args, command),
@@ -176,6 +177,7 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
           scopes: mockCredential.scopes,
           kairoAllowedWrites: [
             "tasks.add",
+            "tasks.update",
             "tasks.move",
             "tasks.complete",
             "tasks.reopen",
