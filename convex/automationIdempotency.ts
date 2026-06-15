@@ -9,7 +9,8 @@ type AutomationOperation =
   | "tasks.complete"
   | "tasks.reopen"
   | "tasks.unschedule"
-  | "tasks.update";
+  | "tasks.update"
+  | "tasks.bulkCreate";
 
 export interface IdempotentMutationResult<TResult> {
   result: TResult;
