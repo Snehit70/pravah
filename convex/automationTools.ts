@@ -8,6 +8,7 @@ import {
   moveTaskForOwner,
   reopenTaskForOwner,
   unscheduleTaskForOwner,
+  updateTaskForOwner,
 } from "./tasks";
 import { updateGoalForOwner } from "./goals";
 import {
@@ -18,6 +19,7 @@ import { runIdempotentMutation } from "./automationIdempotency";
 
 const taskStatus = v.union(
   v.literal("inbox"),
+  v.literal("timeline"),
   v.literal("scheduled"),
   v.literal("completed"),
   v.literal("cancelled")
@@ -31,8 +33,11 @@ export const listTasks = internalQuery({
     date: v.optional(v.string()),
     status: v.optional(taskStatus),
   },
-  handler: (ctx, { ownerTokenIdentifier, ...args }) =>
-    listTasksForOwner(ctx, ownerTokenIdentifier, args),
+  handler: (ctx, { ownerTokenIdentifier, status, ...args }) =>
+    listTasksForOwner(ctx, ownerTokenIdentifier, {
+      ...args,
+      status: status === "timeline" ? "scheduled" : status,
+    }),
 });
 
 export const listGoals = internalQuery({
@@ -206,6 +211,56 @@ export const unscheduleTask = internalMutation({
       request: { taskId: args.taskId },
       execute: async () => {
         await unscheduleTaskForOwner(ctx, args.ownerTokenIdentifier, args.taskId);
+        return { success: true };
+      },
+    }),
+});
+
+export const updateTask = internalMutation({
+  args: {
+    ownerTokenIdentifier: v.string(),
+    idempotencyKey: v.optional(v.string()),
+    taskId: v.id("tasks"),
+    title: v.optional(v.string()),
+    description: v.optional(v.union(v.string(), v.null())),
+    deadline: v.optional(v.union(v.string(), v.null())),
+    estimatedMinutes: v.optional(v.union(v.number(), v.null())),
+    tags: v.optional(v.union(v.array(v.string()), v.null())),
+    priority: v.optional(
+      v.union(v.literal("p1"), v.literal("p2"), v.literal("p3"), v.null())
+    ),
+  },
+  handler: (ctx, { ownerTokenIdentifier, idempotencyKey, ...args }) =>
+    runIdempotentMutation(ctx, {
+      ownerTokenIdentifier,
+      idempotencyKey,
+      operation: "tasks.update",
+      request: args,
+      execute: async () => {
+        const patch: Parameters<typeof updateTaskForOwner>[2] = {
+          taskId: args.taskId,
+        };
+        if (Object.prototype.hasOwnProperty.call(args, "title")) {
+          patch.title = args.title;
+        }
+        if (Object.prototype.hasOwnProperty.call(args, "description")) {
+          patch.description = args.description ?? undefined;
+        }
+        if (Object.prototype.hasOwnProperty.call(args, "deadline")) {
+          patch.deadline = args.deadline ?? undefined;
+        }
+        if (Object.prototype.hasOwnProperty.call(args, "estimatedMinutes")) {
+          patch.estimatedMinutes = args.estimatedMinutes ?? undefined;
+        }
+        if (Object.prototype.hasOwnProperty.call(args, "tags")) {
+          patch.tags = args.tags ?? undefined;
+        }
+        if (Object.prototype.hasOwnProperty.call(args, "priority")) {
+          patch.priority = args.priority ?? undefined;
+        }
+        await updateTaskForOwner(ctx, ownerTokenIdentifier, {
+          ...patch,
+        });
         return { success: true };
       },
     }),

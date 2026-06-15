@@ -7,6 +7,7 @@ import {
   requireApiKeyAuth,
   reviewQueueListSchema,
   taskListSchema,
+  updateTaskSchema,
 } from "../../convex/httpContracts";
 
 describe("httpContracts", () => {
@@ -95,6 +96,26 @@ describe("httpContracts", () => {
     it("rejects invalid task list filters", () => {
       expect(taskListSchema.safeParse({ status: "typo" }).success).toBe(false);
       expect(taskListSchema.safeParse({ date: "2026/06/04" }).success).toBe(false);
+    });
+
+    it("accepts nullable fields for bounded task updates", () => {
+      const parsed = updateTaskSchema.parse({
+        taskId: "task_1",
+        description: null,
+        deadline: null,
+        estimatedMinutes: null,
+        tags: null,
+        priority: null,
+      });
+
+      expect(parsed).toMatchObject({
+        taskId: "task_1",
+        description: null,
+        deadline: null,
+        estimatedMinutes: null,
+        tags: null,
+        priority: null,
+      });
     });
 
     it("requires at least one task id for bulk reschedule", () => {

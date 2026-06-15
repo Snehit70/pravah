@@ -3,7 +3,9 @@ import {
   getWriteMetadata,
   readGoalUpdateOptions,
   readReviewListOptions,
+  readTaskAddOptions,
   readTaskListFilters,
+  readTaskUpdateOptions,
   requireOption,
 } from "./commandUtils";
 import {
@@ -68,26 +70,31 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
       };
     case "tasks timeline": {
       const endDate = requireOption(args, "end-date", command);
+      const timeline: Record<string, typeof mockTasks> = {};
+      for (const task of mockTasks) {
+        if (task.status !== "timeline" || !task.deadline || task.deadline > endDate) {
+          continue;
+        }
+        timeline[task.deadline] ??= [];
+        timeline[task.deadline].push(task);
+      }
       return {
         endDate,
-        tasks: mockTasks.filter(
-          (task) =>
-            task.status === "scheduled" &&
-            task.deadline &&
-            task.deadline <= endDate
-        ),
+        timeline,
         source: "mock",
       };
     }
     case "tasks add":
+      {
+        const task = readTaskAddOptions(args, command);
       return {
         action: "tasks.add",
-        title: requireOption(args, "title", command),
-        deadline: readOption(args.options, "deadline"),
+        ...task,
         createdTaskId: "mock_task_new",
         ...getWriteMetadata(args),
         source: "mock",
       };
+      }
     case "tasks move":
       return {
         ...buildTaskAction(
@@ -96,6 +103,14 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
           args
         ),
         targetDate: requireOption(args, "target-date", command),
+      };
+    case "tasks update":
+      findTask(requireOption(args, "task-id", command));
+      return {
+        action: "tasks.update",
+        ...readTaskUpdateOptions(args, command),
+        ...getWriteMetadata(args),
+        source: "mock",
       };
     case "tasks complete":
       return buildTaskAction(
@@ -129,8 +144,8 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
     case "agent context":
       return {
         today: "2026-06-04",
-        scheduled: mockTasks
-          .filter((task) => task.status === "scheduled")
+        timeline: mockTasks
+          .filter((task) => task.status === "timeline")
           .map((task) => ({
             id: task.id,
             title: task.title,
@@ -145,7 +160,10 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
         },
         overdueSummary: {
           count: mockTasks.filter(
-            (task) => task.deadline && task.deadline < "2026-06-04"
+            (task) =>
+              task.status === "timeline" &&
+              task.deadline &&
+              task.deadline < "2026-06-04"
           ).length,
         },
         reviewQueueSummary: { count: mockReviewQueue.length },
@@ -159,6 +177,7 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
           scopes: mockCredential.scopes,
           kairoAllowedWrites: [
             "tasks.add",
+            "tasks.update",
             "tasks.move",
             "tasks.complete",
             "tasks.reopen",

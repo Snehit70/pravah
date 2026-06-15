@@ -3,8 +3,15 @@ import { randomUUID } from "node:crypto";
 import { hasFlag, readOption } from "./args";
 import type { ParsedArgs } from "./types";
 
-const TASK_STATUSES = ["inbox", "scheduled", "completed", "cancelled"] as const;
+const TASK_STATUSES = [
+  "inbox",
+  "timeline",
+  "completed",
+  "cancelled",
+  "scheduled",
+] as const;
 const REVIEW_STATUSES = ["pending", "approved", "rejected"] as const;
+const TASK_PRIORITIES = ["p1", "p2", "p3"] as const;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 type OptionKind = "flag" | "value";
 
@@ -46,11 +53,23 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionKind>> = {
     title: "value",
     description: "value",
     deadline: "value",
+    priority: "value",
+    tags: "value",
+    "estimated-minutes": "value",
     ...WRITE_OPTIONS,
   },
   "tasks move": {
     "target-date": "value",
     ...TASK_ID_WRITE_OPTIONS,
+  },
+  "tasks update": {
+    ...TASK_ID_WRITE_OPTIONS,
+    title: "value",
+    description: "value",
+    deadline: "value",
+    priority: "value",
+    tags: "value",
+    "estimated-minutes": "value",
   },
   "tasks complete": TASK_ID_WRITE_OPTIONS,
   "tasks reopen": TASK_ID_WRITE_OPTIONS,
@@ -169,14 +188,23 @@ export function readGoalUpdateOptions(args: ParsedArgs) {
 }
 
 export function readTaskListFilters(args: ParsedArgs) {
-  const status = readOption(args.options, "status");
+  const rawStatus = readOption(args.options, "status");
   const date = readOption(args.options, "date");
-  if (status && !TASK_STATUSES.includes(status as (typeof TASK_STATUSES)[number])) {
+  if (
+    rawStatus &&
+    !TASK_STATUSES.includes(rawStatus as (typeof TASK_STATUSES)[number])
+  ) {
     throw new Error(`--status must be one of: ${TASK_STATUSES.join(", ")}`);
   }
   if (date && !DATE_PATTERN.test(date)) {
     throw new Error("--date must use YYYY-MM-DD format");
   }
+  const status =
+    rawStatus === undefined
+      ? undefined
+      : rawStatus === "scheduled"
+        ? "timeline"
+        : rawStatus;
   return { status, date };
 }
 
@@ -193,6 +221,183 @@ export function readReviewListOptions(args: ParsedArgs) {
     throw new Error("--limit must be an integer between 1 and 200");
   }
   return { status, limit };
+}
+
+export function readTaskAddOptions(args: ParsedArgs, command: string) {
+  const title = requireOption(args, "title", command);
+  const description = readOption(args.options, "description")?.trim() || undefined;
+  const deadline = readOption(args.options, "deadline");
+  if (deadline && !DATE_PATTERN.test(deadline)) {
+    throw new Error("--deadline must use YYYY-MM-DD format");
+  }
+
+  const rawPriority = readOption(args.options, "priority")?.trim();
+  if (
+    rawPriority !== undefined &&
+    !TASK_PRIORITIES.includes(rawPriority as (typeof TASK_PRIORITIES)[number])
+  ) {
+    throw new Error("--priority must be one of: p1, p2, p3");
+  }
+  const priority: (typeof TASK_PRIORITIES)[number] | undefined =
+    rawPriority === "p1" || rawPriority === "p2" || rawPriority === "p3"
+      ? rawPriority
+      : undefined;
+
+  const rawEstimatedMinutes = readOption(args.options, "estimated-minutes")?.trim();
+  let estimatedMinutes: number | undefined;
+  if (rawEstimatedMinutes !== undefined) {
+    estimatedMinutes = Number(rawEstimatedMinutes);
+    if (!Number.isInteger(estimatedMinutes) || estimatedMinutes <= 0) {
+      throw new Error("--estimated-minutes must be a positive integer");
+    }
+  }
+
+  const rawTags = readOption(args.options, "tags");
+  let tags: string[] | undefined;
+  if (rawTags !== undefined) {
+    tags = rawTags
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
+    if (tags.length === 0) {
+      throw new Error("--tags must include at least one non-empty tag");
+    }
+    if (tags.length > 20) {
+      throw new Error("--tags must contain at most 20 tags");
+    }
+    const tooLong = tags.find((tag) => tag.length > 50);
+    if (tooLong) {
+      throw new Error("--tags entries must be 50 characters or fewer");
+    }
+  }
+
+  return {
+    title,
+    description,
+    deadline,
+    priority,
+    estimatedMinutes,
+    tags,
+  };
+}
+
+function normalizeClearableValue(
+  value: string | undefined,
+  {
+    fieldName,
+    allowClear = false,
+  }: { fieldName: string; allowClear?: boolean }
+) {
+  if (value === undefined) return undefined;
+  const normalized = value.trim();
+  if (!normalized) {
+    throw new Error(`--${fieldName} requires a value`);
+  }
+  if (allowClear && ["clear", "none", "null"].includes(normalized.toLowerCase())) {
+    return null;
+  }
+  return normalized;
+}
+
+export function readTaskUpdateOptions(args: ParsedArgs, command: string) {
+  const taskId = requireOption(args, "task-id", command);
+  const rawTitle = readOption(args.options, "title");
+  let title: string | undefined;
+  if (rawTitle !== undefined) {
+    title = rawTitle.trim();
+    if (!title) {
+      throw new Error("--title requires a value");
+    }
+  }
+  const description = normalizeClearableValue(readOption(args.options, "description"), {
+    fieldName: "description",
+    allowClear: true,
+  });
+  const deadline = normalizeClearableValue(readOption(args.options, "deadline"), {
+    fieldName: "deadline",
+    allowClear: true,
+  });
+  if (deadline !== undefined && deadline !== null && !DATE_PATTERN.test(deadline)) {
+    throw new Error("--deadline must use YYYY-MM-DD format, or `clear`");
+  }
+
+  const rawPriority = normalizeClearableValue(readOption(args.options, "priority"), {
+    fieldName: "priority",
+    allowClear: true,
+  });
+  const priority: (typeof TASK_PRIORITIES)[number] | null | undefined =
+    rawPriority === null || rawPriority === undefined
+      ? rawPriority
+      : rawPriority === "p1" || rawPriority === "p2" || rawPriority === "p3"
+        ? rawPriority
+        : undefined;
+  if (rawPriority !== undefined && rawPriority !== null && priority === undefined) {
+    throw new Error("--priority must be one of: p1, p2, p3, or `clear`");
+  }
+
+  const rawEstimatedMinutes = normalizeClearableValue(
+    readOption(args.options, "estimated-minutes"),
+    {
+      fieldName: "estimated-minutes",
+      allowClear: true,
+    }
+  );
+  let estimatedMinutes: number | null | undefined;
+  if (rawEstimatedMinutes === null) {
+    estimatedMinutes = null;
+  } else if (rawEstimatedMinutes !== undefined) {
+    estimatedMinutes = Number(rawEstimatedMinutes);
+    if (!Number.isInteger(estimatedMinutes) || estimatedMinutes <= 0) {
+      throw new Error("--estimated-minutes must be a positive integer, or `clear`");
+    }
+  }
+
+  const rawTags = normalizeClearableValue(readOption(args.options, "tags"), {
+    fieldName: "tags",
+    allowClear: true,
+  });
+  let tags: string[] | null | undefined;
+  if (rawTags === null) {
+    tags = null;
+  } else if (rawTags !== undefined) {
+    tags = rawTags
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
+    if (tags.length === 0) {
+      throw new Error("--tags must include at least one non-empty tag, or `clear`");
+    }
+    if (tags.length > 20) {
+      throw new Error("--tags must contain at most 20 tags");
+    }
+    const tooLong = tags.find((tag) => tag.length > 50);
+    if (tooLong) {
+      throw new Error("--tags entries must be 50 characters or fewer");
+    }
+  }
+
+  if (
+    title === undefined &&
+    description === undefined &&
+    deadline === undefined &&
+    priority === undefined &&
+    estimatedMinutes === undefined &&
+    tags === undefined
+  ) {
+    throw new Error(
+      "tasks update requires at least one of --title, --description, --deadline, --priority, --estimated-minutes, or --tags"
+    );
+  }
+
+  return {
+    taskId,
+    title,
+    description,
+    deadline,
+    priority,
+    estimatedMinutes,
+    tags,
+  };
 }
 
 export function executeDryRun(command: string, args: ParsedArgs) {
@@ -213,20 +418,28 @@ export function executeDryRun(command: string, args: ParsedArgs) {
       };
     }
     case "tasks add":
+      {
+        const task = readTaskAddOptions(args, command);
       return {
         action: "tasks.add",
-        title: requireOption(args, "title", command),
-        deadline: readOption(args.options, "deadline"),
-        description: readOption(args.options, "description"),
+        ...task,
         createdTaskId: null,
         ...metadata,
         source: "dry-run",
       };
+      }
     case "tasks move":
       return {
         action: "tasks.move",
         task: { id: requireOption(args, "task-id", command) },
         targetDate: requireOption(args, "target-date", command),
+        ...metadata,
+        source: "dry-run",
+      };
+    case "tasks update":
+      return {
+        action: "tasks.update",
+        ...readTaskUpdateOptions(args, command),
         ...metadata,
         source: "dry-run",
       };

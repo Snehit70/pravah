@@ -12,9 +12,10 @@ export const mockTasks: MockTask[] = [
   {
     id: "task_1",
     title: "Review overdue goals",
-    status: "scheduled",
+    status: "timeline",
     deadline: "2026-06-04",
     scheduledAt: 1780000000000,
+    source: "ai-agent",
     goal: { id: "goal_1", title: "Planning" },
   },
   {
@@ -22,14 +23,16 @@ export const mockTasks: MockTask[] = [
     title: "Draft CLI contract",
     status: "inbox",
     scheduledAt: 1780000100000,
+    source: "manual",
     goal: { id: "goal_1", title: "Planning" },
   },
   {
     id: "task_3",
     title: "Ship auth settings UI",
-    status: "scheduled",
+    status: "timeline",
     deadline: "2026-06-05",
     scheduledAt: 1780000200000,
+    source: "manual",
     goal: { id: "goal_2", title: "Automation" },
   },
 ];

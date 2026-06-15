@@ -69,8 +69,9 @@ describe("pravah live commands", () => {
     expect(result).toMatchObject({
       source: "live",
     });
-    expect((result as { tasks: Array<{ _id: string }> }).tasks[0]).toMatchObject({
-      _id: "live_1",
+    expect((result as { tasks: Array<{ id: string; status: string }> }).tasks[0]).toMatchObject({
+      id: "live_1",
+      status: "timeline",
     });
     expect(fetchSpy).toHaveBeenCalledWith(
       "https://pravah.example.com/tasks",
@@ -185,7 +186,7 @@ describe("pravah live commands", () => {
       { id: "goal_1", text: "Planning" },
     ]);
     expect(
-      (result as { scheduled: Array<{ id: string; title: string }> }).scheduled[0]
+      (result as { timeline: Array<{ id: string; title: string }> }).timeline[0]
     ).toMatchObject({
       id: "live_1",
       title: "Live scheduled",
@@ -277,6 +278,105 @@ describe("pravah live commands", () => {
         headers: expect.objectContaining({
           Authorization: "Bearer pravah_cred_demo",
           "Idempotency-Key": expect.stringMatching(/^cli_/),
+        }),
+      })
+    );
+  });
+
+  it("sends richer task add fields through the live write path", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ taskId: "task_live_2", replayed: false }),
+    } as Response);
+
+    const result = await executeCommand(
+      { command: "tasks add", json: true },
+      makeArgs(["tasks", "add"], {
+        title: "Draft CLI contract",
+        description: "Add missing task add fields",
+        deadline: "2026-06-21",
+        priority: "p2",
+        "estimated-minutes": "30",
+        tags: "cli,automation",
+        "idempotency-key": "task-add-123",
+      })
+    );
+
+    expect(result).toMatchObject({
+      action: "tasks.add",
+      title: "Draft CLI contract",
+      description: "Add missing task add fields",
+      deadline: "2026-06-21",
+      priority: "p2",
+      estimatedMinutes: 30,
+      tags: ["cli", "automation"],
+      createdTaskId: "task_live_2",
+      source: "live",
+    });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://pravah.example.com/tasks",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": "task-add-123",
+        }),
+        body: JSON.stringify({
+          title: "Draft CLI contract",
+          description: "Add missing task add fields",
+          deadline: "2026-06-21",
+          priority: "p2",
+          estimatedMinutes: 30,
+          tags: ["cli", "automation"],
+        }),
+      })
+    );
+  });
+
+  it("sends bounded task updates through the live write path", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, replayed: false }),
+    } as Response);
+
+    const result = await executeCommand(
+      { command: "tasks update", json: true },
+      makeArgs(["tasks", "update"], {
+        "task-id": "task_live_2",
+        description: "clear",
+        deadline: "2026-06-22",
+        priority: "p1",
+        "estimated-minutes": "clear",
+        tags: "cli,shipping",
+        "idempotency-key": "task-update-123",
+      })
+    );
+
+    expect(result).toMatchObject({
+      action: "tasks.update",
+      taskId: "task_live_2",
+      description: null,
+      deadline: "2026-06-22",
+      priority: "p1",
+      estimatedMinutes: null,
+      tags: ["cli", "shipping"],
+      source: "live",
+    });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://pravah.example.com/tasks/update",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": "task-update-123",
+        }),
+        body: JSON.stringify({
+          taskId: "task_live_2",
+          description: null,
+          deadline: "2026-06-22",
+          priority: "p1",
+          estimatedMinutes: null,
+          tags: ["cli", "shipping"],
         }),
       })
     );

@@ -746,59 +746,75 @@ export const updateTask = mutation({
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
-
-    const updates: Partial<{
-      title: string;
-      description: string | undefined;
-      deadline: string | undefined;
-      estimatedMinutes: number | undefined;
-      tags: string[] | undefined;
-      priority: "p1" | "p2" | "p3" | undefined;
-      position: number;
-      updatedAt: number;
-    }> = {};
-
-    if (Object.prototype.hasOwnProperty.call(args, "title")) {
-      updates.title = args.title;
-    }
-    if (Object.prototype.hasOwnProperty.call(args, "description")) {
-      updates.description = args.description;
-    }
-    if (Object.prototype.hasOwnProperty.call(args, "estimatedMinutes")) {
-      updates.estimatedMinutes = args.estimatedMinutes;
-    }
-    if (Object.prototype.hasOwnProperty.call(args, "tags")) {
-      updates.tags = args.tags;
-    }
-    if (Object.prototype.hasOwnProperty.call(args, "priority")) {
-      updates.priority = args.priority;
-    }
-
-    const deadlineProvided = Object.prototype.hasOwnProperty.call(args, "deadline");
-    if (deadlineProvided) {
-      const previousDeadline = getTaskDeadline(task);
-      const nextDeadline = args.deadline;
-      updates.deadline = nextDeadline;
-
-      if (!isCompletedTask(task) && !isCancelledTask(task)) {
-        if (nextDeadline) {
-          const staysInSameSlot = previousDeadline === nextDeadline;
-          updates.position = staysInSameSlot
-            ? task.position
-            : await getNextPositionForLane(ctx, tokenIdentifier, nextDeadline);
-        } else if (previousDeadline) {
-          updates.position = await getNextPositionForLane(ctx, tokenIdentifier, undefined);
-        }
-      }
-    }
-
-    await ctx.db.patch(args.taskId, {
-      ...updates,
-      updatedAt: Date.now(),
-    });
+    await updateTaskForOwner(ctx, tokenIdentifier, args);
   },
 });
+
+export async function updateTaskForOwner(
+  ctx: MutationCtx,
+  tokenIdentifier: string,
+  args: {
+    taskId: Id<"tasks">;
+    title?: string;
+    description?: string | undefined;
+    deadline?: string | undefined;
+    estimatedMinutes?: number | undefined;
+    tags?: string[] | undefined;
+    priority?: "p1" | "p2" | "p3" | undefined;
+  }
+) {
+  const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
+
+  const updates: Partial<{
+    title: string;
+    description: string | undefined;
+    deadline: string | undefined;
+    estimatedMinutes: number | undefined;
+    tags: string[] | undefined;
+    priority: "p1" | "p2" | "p3" | undefined;
+    position: number;
+    updatedAt: number;
+  }> = {};
+
+  if (Object.prototype.hasOwnProperty.call(args, "title")) {
+    updates.title = args.title;
+  }
+  if (Object.prototype.hasOwnProperty.call(args, "description")) {
+    updates.description = args.description;
+  }
+  if (Object.prototype.hasOwnProperty.call(args, "estimatedMinutes")) {
+    updates.estimatedMinutes = args.estimatedMinutes;
+  }
+  if (Object.prototype.hasOwnProperty.call(args, "tags")) {
+    updates.tags = args.tags;
+  }
+  if (Object.prototype.hasOwnProperty.call(args, "priority")) {
+    updates.priority = args.priority;
+  }
+
+  const deadlineProvided = Object.prototype.hasOwnProperty.call(args, "deadline");
+  if (deadlineProvided) {
+    const previousDeadline = getTaskDeadline(task);
+    const nextDeadline = args.deadline;
+    updates.deadline = nextDeadline;
+
+    if (!isCompletedTask(task) && !isCancelledTask(task)) {
+      if (nextDeadline) {
+        const staysInSameSlot = previousDeadline === nextDeadline;
+        updates.position = staysInSameSlot
+          ? task.position
+          : await getNextPositionForLane(ctx, tokenIdentifier, nextDeadline);
+      } else if (previousDeadline) {
+        updates.position = await getNextPositionForLane(ctx, tokenIdentifier, undefined);
+      }
+    }
+  }
+
+  await ctx.db.patch(args.taskId, {
+    ...updates,
+    updatedAt: Date.now(),
+  });
+}
 
 export const deleteTask = mutation({
   args: { taskId: v.id("tasks") },

@@ -61,7 +61,7 @@ function runCliAsync(args: string[], env?: Record<string, string>) {
 
 describe("pravah CLI", () => {
   it("returns a uniform JSON envelope for successful reads", () => {
-    const result = runCli(["tasks", "list", "--status", "scheduled", "--json"]);
+    const result = runCli(["tasks", "list", "--status", "timeline", "--json"]);
 
     expect(result.status).toBe(0);
     const payload = JSON.parse(result.stdout);
@@ -158,6 +158,146 @@ describe("pravah CLI", () => {
     const payload = JSON.parse(result.stdout);
     expect(payload.data.action).toBe("tasks.add");
     expect(payload.data.idempotencyKey).toMatch(/^cli_/);
+  });
+
+  it("accepts richer task add fields in dry-run mode", () => {
+    const result = runCli([
+      "tasks",
+      "add",
+      "--title",
+      "Draft CLI contract",
+      "--description",
+      "Add the missing fields",
+      "--deadline",
+      "2026-06-21",
+      "--priority",
+      "p2",
+      "--estimated-minutes",
+      "30",
+      "--tags",
+      "cli,automation",
+      "--dry-run",
+      "--json",
+    ]);
+
+    expect(result.status).toBe(0);
+    const payload = JSON.parse(result.stdout);
+    expect(payload.data).toMatchObject({
+      action: "tasks.add",
+      title: "Draft CLI contract",
+      description: "Add the missing fields",
+      deadline: "2026-06-21",
+      priority: "p2",
+      estimatedMinutes: 30,
+      tags: ["cli", "automation"],
+      dryRun: true,
+    });
+  });
+
+  it("supports bounded task updates in dry-run mode", () => {
+    const result = runCli([
+      "tasks",
+      "update",
+      "--task-id",
+      "task_1",
+      "--description",
+      "clear",
+      "--deadline",
+      "2026-06-22",
+      "--priority",
+      "p1",
+      "--estimated-minutes",
+      "clear",
+      "--tags",
+      "cli,shipping",
+      "--dry-run",
+      "--json",
+    ]);
+
+    expect(result.status).toBe(0);
+    const payload = JSON.parse(result.stdout);
+    expect(payload.data).toMatchObject({
+      action: "tasks.update",
+      taskId: "task_1",
+      description: null,
+      deadline: "2026-06-22",
+      priority: "p1",
+      estimatedMinutes: null,
+      tags: ["cli", "shipping"],
+      dryRun: true,
+    });
+  });
+
+  it("rejects invalid richer task add fields before execution", () => {
+    const badPriority = runCli([
+      "tasks",
+      "add",
+      "--title",
+      "Draft CLI contract",
+      "--priority",
+      "p4",
+      "--json",
+    ]);
+    expect(badPriority.status).toBe(1);
+    expect(JSON.parse(badPriority.stdout).error.message).toContain(
+      "--priority must be one of: p1, p2, p3"
+    );
+
+    const badEstimate = runCli([
+      "tasks",
+      "add",
+      "--title",
+      "Draft CLI contract",
+      "--estimated-minutes",
+      "0",
+      "--json",
+    ]);
+    expect(badEstimate.status).toBe(1);
+    expect(JSON.parse(badEstimate.stdout).error.message).toContain(
+      "--estimated-minutes must be a positive integer"
+    );
+
+    const badTags = runCli([
+      "tasks",
+      "add",
+      "--title",
+      "Draft CLI contract",
+      "--tags",
+      " , ",
+      "--json",
+    ]);
+    expect(badTags.status).toBe(1);
+    expect(JSON.parse(badTags.stdout).error.message).toContain(
+      "--tags must include at least one non-empty tag"
+    );
+  });
+
+  it("rejects invalid task update payloads before execution", () => {
+    const noFields = runCli([
+      "tasks",
+      "update",
+      "--task-id",
+      "task_1",
+      "--json",
+    ]);
+    expect(noFields.status).toBe(1);
+    expect(JSON.parse(noFields.stdout).error.message).toContain(
+      "tasks update requires at least one of"
+    );
+
+    const badPriority = runCli([
+      "tasks",
+      "update",
+      "--task-id",
+      "task_1",
+      "--priority",
+      "p4",
+      "--json",
+    ]);
+    expect(badPriority.status).toBe(1);
+    expect(JSON.parse(badPriority.stdout).error.message).toContain(
+      "--priority must be one of: p1, p2, p3, or `clear`"
+    );
   });
 
   it("preserves dry-run on fake writes", () => {
