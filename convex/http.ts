@@ -354,29 +354,32 @@ http.route({
   path: "/tasks/update",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireLegacyAuth(request);
-    if (authError) return authError;
+    const authCheck = await requireTaskWriteAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
+    const idempotency = requireIdempotencyKey(request, auth);
+    if (idempotency.response) return idempotency.response;
 
-    const body = await request.json();
-
-    // Validate request body
-    const validation = updateTaskSchema.safeParse(body);
+    const body = await parseJsonBody(request);
+    if (body.response) return body.response;
+    const validation = updateTaskSchema.safeParse(body.data);
     if (!validation.success) {
-      return new Response(JSON.stringify({
-        error: "Validation failed",
-        details: validation.error.issues
-      }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return validationError(validation.error.issues);
     }
 
-    const { taskId, ...updates } = validation.data;
-
-    await ctx.runMutation(api.tasks.updateTask, { taskId, ...updates });
-
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" },
+    const mutation = await runWithBadRequest(
+      () =>
+        ctx.runMutation(internal.automationTools.updateTask, {
+          ownerTokenIdentifier: auth.ownerTokenIdentifier,
+          idempotencyKey: idempotency.key,
+          ...validation.data,
+        }),
+      "Failed to update task"
+    );
+    if (mutation.response) return mutation.response;
+    return jsonResponse({
+      ...mutation.data.result,
+      replayed: mutation.data.replayed,
     });
   }),
 });

@@ -24,11 +24,11 @@ export const updateTaskSchema = z.object({
     .min(1, "Task ID is required")
     .transform((value) => value as Id<"tasks">),
   title: z.string().min(1, "Title cannot be empty").max(500, "Title too long").optional(),
-  description: z.string().max(5000, "Description too long").optional(),
-  deadline: z.string().regex(dateRegex, "Invalid date format (YYYY-MM-DD)").optional(),
-  estimatedMinutes: z.number().int().positive("Estimated minutes must be positive").optional(),
-  tags: z.array(z.string().max(50)).max(20, "Too many tags").optional(),
-  priority: z.enum(["p1", "p2", "p3"]).optional(),
+  description: z.string().max(5000, "Description too long").optional().nullable(),
+  deadline: z.string().regex(dateRegex, "Invalid date format (YYYY-MM-DD)").optional().nullable(),
+  estimatedMinutes: z.number().int().positive("Estimated minutes must be positive").optional().nullable(),
+  tags: z.array(z.string().max(50)).max(20, "Too many tags").optional().nullable(),
+  priority: z.enum(["p1", "p2", "p3"]).optional().nullable(),
 });
 
 export const moveTaskSchema = z.object({

@@ -5,6 +5,7 @@ import {
   readReviewListOptions,
   readTaskAddOptions,
   readTaskListFilters,
+  readTaskUpdateOptions,
   requireOption,
 } from "./commandUtils";
 import {
@@ -102,6 +103,13 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
           args
         ),
         targetDate: requireOption(args, "target-date", command),
+      };
+    case "tasks update":
+      return {
+        action: "tasks.update",
+        ...readTaskUpdateOptions(args, command),
+        ...getWriteMetadata(args),
+        source: "mock",
       };
     case "tasks complete":
       return buildTaskAction(

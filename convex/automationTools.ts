@@ -8,6 +8,7 @@ import {
   moveTaskForOwner,
   reopenTaskForOwner,
   unscheduleTaskForOwner,
+  updateTaskForOwner,
 } from "./tasks";
 import { updateGoalForOwner } from "./goals";
 import {
@@ -210,6 +211,40 @@ export const unscheduleTask = internalMutation({
       request: { taskId: args.taskId },
       execute: async () => {
         await unscheduleTaskForOwner(ctx, args.ownerTokenIdentifier, args.taskId);
+        return { success: true };
+      },
+    }),
+});
+
+export const updateTask = internalMutation({
+  args: {
+    ownerTokenIdentifier: v.string(),
+    idempotencyKey: v.optional(v.string()),
+    taskId: v.id("tasks"),
+    title: v.optional(v.string()),
+    description: v.optional(v.union(v.string(), v.null())),
+    deadline: v.optional(v.union(v.string(), v.null())),
+    estimatedMinutes: v.optional(v.union(v.number(), v.null())),
+    tags: v.optional(v.union(v.array(v.string()), v.null())),
+    priority: v.optional(
+      v.union(v.literal("p1"), v.literal("p2"), v.literal("p3"), v.null())
+    ),
+  },
+  handler: (ctx, { ownerTokenIdentifier, idempotencyKey, ...args }) =>
+    runIdempotentMutation(ctx, {
+      ownerTokenIdentifier,
+      idempotencyKey,
+      operation: "tasks.update",
+      request: args,
+      execute: async () => {
+        await updateTaskForOwner(ctx, ownerTokenIdentifier, {
+          ...args,
+          description: args.description ?? undefined,
+          deadline: args.deadline ?? undefined,
+          estimatedMinutes: args.estimatedMinutes ?? undefined,
+          tags: args.tags ?? undefined,
+          priority: args.priority ?? undefined,
+        });
         return { success: true };
       },
     }),

@@ -41,6 +41,7 @@ vi.mock("../../convex/_generated/api", () => ({
       updateGoal: "automationTools.updateGoal",
       addTask: "automationTools.addTask",
       moveTask: "automationTools.moveTask",
+      updateTask: "automationTools.updateTask",
       completeTask: "automationTools.completeTask",
       reopenTask: "automationTools.reopenTask",
       unscheduleTask: "automationTools.unscheduleTask",
@@ -545,6 +546,54 @@ describe("http route handlers", () => {
     });
   });
 
+  it("accepts bearer automation credential for bounded task updates", async () => {
+    const handler = getHandler("/tasks/update", "POST");
+    const ctx = createCtx();
+    ctx.runMutation
+      .mockResolvedValueOnce({
+        label: "Laptop",
+        ownerTokenIdentifier: "user-1",
+        scopes: ["tasks:write"],
+      })
+      .mockResolvedValueOnce({
+        result: { success: true },
+        replayed: false,
+      });
+
+    const response = await handler(
+      ctx,
+      new Request("https://example.com/tasks/update", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": "task-update-123",
+        },
+        body: JSON.stringify({
+          taskId: "task_abc",
+          description: null,
+          priority: "p1",
+        }),
+      })
+    );
+
+    expect(ctx.runMutation).toHaveBeenNthCalledWith(1, api.automation.markCredentialUsed, {
+      credentialSecret: "pravah_cred_demo",
+    });
+    expect(ctx.runMutation).toHaveBeenNthCalledWith(2, internal.automationTools.updateTask, {
+      ownerTokenIdentifier: "user-1",
+      idempotencyKey: "task-update-123",
+      taskId: "task_abc",
+      description: null,
+      priority: "p1",
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      replayed: false,
+    });
+  });
+
   it.each([
     ["/tasks", { title: "Rejected task" }],
     ["/tasks/complete", { taskId: "task_abc" }],
@@ -564,6 +613,39 @@ describe("http route handlers", () => {
           "x-api-key": "secret",
         },
         body: JSON.stringify(body),
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Domain rejected request",
+    });
+  });
+
+  it("returns a 400 domain error when POST /tasks/update fails", async () => {
+    const handler = getHandler("/tasks/update", "POST");
+    const ctx = createCtx();
+    ctx.runMutation
+      .mockResolvedValueOnce({
+        label: "Laptop",
+        ownerTokenIdentifier: "user-1",
+        scopes: ["tasks:write"],
+      })
+      .mockRejectedValueOnce(new Error("Domain rejected request"));
+
+    const response = await handler(
+      ctx,
+      new Request("https://example.com/tasks/update", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": "domain-error-123",
+        },
+        body: JSON.stringify({
+          taskId: "task_abc",
+          description: "Updated",
+        }),
       })
     );
 

@@ -8,7 +8,8 @@ type AutomationOperation =
   | "tasks.move"
   | "tasks.complete"
   | "tasks.reopen"
-  | "tasks.unschedule";
+  | "tasks.unschedule"
+  | "tasks.update";
 
 export interface IdempotentMutationResult<TResult> {
   result: TResult;

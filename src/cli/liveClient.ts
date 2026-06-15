@@ -31,6 +31,15 @@ export interface LiveCliClient {
     tags?: string[];
   }, idempotencyKey: string): Promise<unknown>;
   moveTask(input: { taskId: string; targetDate: string }, idempotencyKey: string): Promise<unknown>;
+  updateTask(input: {
+    taskId: string;
+    title?: string;
+    description?: string | null;
+    deadline?: string | null;
+    priority?: "p1" | "p2" | "p3" | null;
+    estimatedMinutes?: number | null;
+    tags?: string[] | null;
+  }, idempotencyKey: string): Promise<unknown>;
   completeTask(input: { taskId: string }, idempotencyKey: string): Promise<unknown>;
   reopenTask(input: { taskId: string }, idempotencyKey: string): Promise<unknown>;
   unscheduleTask(input: { taskId: string }, idempotencyKey: string): Promise<unknown>;
@@ -175,6 +184,9 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
     },
     moveTask(input, idempotencyKey) {
       return post("/tasks/move", input, idempotencyKey);
+    },
+    updateTask(input, idempotencyKey) {
+      return post("/tasks/update", input, idempotencyKey);
     },
     completeTask(input, idempotencyKey) {
       return post("/tasks/complete", input, idempotencyKey);

@@ -119,6 +119,7 @@ Allowed idempotent writes:
 
 ```bash
 pravah tasks add --title "Prepare brief" --description "Include rollout notes" --deadline 2026-06-06 --priority p2 --estimated-minutes 30 --tags cli,brief --idempotency-key brief-2026-06-04 --json
+pravah tasks update --task-id <id> --description "Refined brief" --priority p1 --estimated-minutes clear --tags cli,shipping --idempotency-key update-<id> --json
 pravah tasks move --task-id <id> --target-date 2026-06-06 --idempotency-key move-<id>-2026-06-06 --json
 pravah tasks complete --task-id <id> --idempotency-key complete-<id> --json
 pravah tasks reopen --task-id <id> --idempotency-key reopen-<id> --json
@@ -175,5 +176,18 @@ Move task:
   "taskId": "<task-id>",
   "targetDate": "2026-06-06",
   "position": 0
+}
+```
+
+Update task:
+
+```json
+{
+  "taskId": "<task-id>",
+  "description": "Refined brief",
+  "deadline": null,
+  "estimatedMinutes": null,
+  "tags": ["cli", "shipping"],
+  "priority": "p1"
 }
 ```

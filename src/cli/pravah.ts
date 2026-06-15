@@ -18,6 +18,7 @@ Examples:
   pravah goals update --goal-id <id> --description "My goal description" --deadline clear --json
   pravah tasks list --status timeline --json
   pravah tasks add --title "Draft CLI contract" --deadline 2026-06-05 --priority p2 --estimated-minutes 30 --tags cli,automation --dry-run --json
+  pravah tasks update --task-id <id> --priority p1 --estimated-minutes clear --tags shipping,docs --json
   pravah agent context --json
 `);
 }

@@ -333,6 +333,55 @@ describe("pravah live commands", () => {
     );
   });
 
+  it("sends bounded task updates through the live write path", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, replayed: false }),
+    } as Response);
+
+    const result = await executeCommand(
+      { command: "tasks update", json: true },
+      makeArgs(["tasks", "update"], {
+        "task-id": "task_live_2",
+        description: "clear",
+        deadline: "2026-06-22",
+        priority: "p1",
+        "estimated-minutes": "clear",
+        tags: "cli,shipping",
+        "idempotency-key": "task-update-123",
+      })
+    );
+
+    expect(result).toMatchObject({
+      action: "tasks.update",
+      taskId: "task_live_2",
+      description: null,
+      deadline: "2026-06-22",
+      priority: "p1",
+      estimatedMinutes: null,
+      tags: ["cli", "shipping"],
+      source: "live",
+    });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://pravah.example.com/tasks/update",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": "task-update-123",
+        }),
+        body: JSON.stringify({
+          taskId: "task_live_2",
+          description: null,
+          deadline: "2026-06-22",
+          priority: "p1",
+          estimatedMinutes: null,
+          tags: ["cli", "shipping"],
+        }),
+      })
+    );
+  });
+
   it("preserves the idempotency key when a live write fails", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: false,

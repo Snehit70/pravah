@@ -6,6 +6,7 @@ import {
   readReviewListOptions,
   readTaskAddOptions,
   readTaskListFilters,
+  readTaskUpdateOptions,
   requireOption,
 } from "./commandUtils";
 import { CliCommandError } from "./errors";
@@ -558,6 +559,22 @@ export async function executeLiveCommand(
         action: "tasks.move",
         task: { id: taskId },
         targetDate,
+        ...metadata,
+        replayed: readReplayStatus(result),
+        source: "live",
+      };
+    }
+    case "tasks update": {
+      const patch = readTaskUpdateOptions(args, command);
+      const metadata = getWriteMetadata(args);
+      const result = await executeLiveWrite(
+        "tasks.update",
+        metadata.idempotencyKey,
+        () => client.updateTask(patch, metadata.idempotencyKey)
+      );
+      return {
+        action: "tasks.update",
+        ...patch,
         ...metadata,
         replayed: readReplayStatus(result),
         source: "live",

@@ -194,6 +194,40 @@ describe("pravah CLI", () => {
     });
   });
 
+  it("supports bounded task updates in dry-run mode", () => {
+    const result = runCli([
+      "tasks",
+      "update",
+      "--task-id",
+      "task_1",
+      "--description",
+      "clear",
+      "--deadline",
+      "2026-06-22",
+      "--priority",
+      "p1",
+      "--estimated-minutes",
+      "clear",
+      "--tags",
+      "cli,shipping",
+      "--dry-run",
+      "--json",
+    ]);
+
+    expect(result.status).toBe(0);
+    const payload = JSON.parse(result.stdout);
+    expect(payload.data).toMatchObject({
+      action: "tasks.update",
+      taskId: "task_1",
+      description: null,
+      deadline: "2026-06-22",
+      priority: "p1",
+      estimatedMinutes: null,
+      tags: ["cli", "shipping"],
+      dryRun: true,
+    });
+  });
+
   it("rejects invalid richer task add fields before execution", () => {
     const badPriority = runCli([
       "tasks",
@@ -235,6 +269,34 @@ describe("pravah CLI", () => {
     expect(badTags.status).toBe(1);
     expect(JSON.parse(badTags.stdout).error.message).toContain(
       "--tags must include at least one non-empty tag"
+    );
+  });
+
+  it("rejects invalid task update payloads before execution", () => {
+    const noFields = runCli([
+      "tasks",
+      "update",
+      "--task-id",
+      "task_1",
+      "--json",
+    ]);
+    expect(noFields.status).toBe(1);
+    expect(JSON.parse(noFields.stdout).error.message).toContain(
+      "tasks update requires at least one of"
+    );
+
+    const badPriority = runCli([
+      "tasks",
+      "update",
+      "--task-id",
+      "task_1",
+      "--priority",
+      "p4",
+      "--json",
+    ]);
+    expect(badPriority.status).toBe(1);
+    expect(JSON.parse(badPriority.stdout).error.message).toContain(
+      "--priority must be one of: p1, p2, p3, or `clear`"
     );
   });
 
