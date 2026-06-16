@@ -1,4 +1,5 @@
 import { StatusBar } from "expo-status-bar";
+import { ObserveRoot, useObserve } from "expo-observe";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Animated as LegacyAnimated,
@@ -119,6 +120,7 @@ function hasPriorityBoundaryViolation(original: MobileTask[], reordered: MobileT
 // ── Main App ───────────────────────────────────────────────────────────
 
 function MobileApp() {
+  const { markInteractive } = useObserve();
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
   const tabEnterAnimation = reducedMotion ? undefined : tabEnter;
@@ -129,6 +131,7 @@ function MobileApp() {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [diagnosticEvents, setDiagnosticEvents] = useState<DiagnosticEvent[]>([]);
   const hasLoggedPostLoginRef = useRef(false);
+  const didMarkInteractiveRef = useRef(false);
 
   const {
     session,
@@ -507,6 +510,10 @@ function MobileApp() {
     if (!session) return;
     if (!isDataBootstrapReady) return;
     if (!isAllTasksReady) return;
+    if (!didMarkInteractiveRef.current) {
+      didMarkInteractiveRef.current = true;
+      markInteractive();
+    }
     mobileLogger.info("app_interactive_ready", {
       inboxCount: displayInboxTasks.length,
       timelineCount: displayScheduledTasks.length,
@@ -518,8 +525,15 @@ function MobileApp() {
     displayScheduledTasks.length,
     isAllTasksReady,
     isDataBootstrapReady,
+    markInteractive,
     session,
   ]);
+
+  useEffect(() => {
+    if (session || sessionLoading || didMarkInteractiveRef.current) return;
+    didMarkInteractiveRef.current = true;
+    markInteractive();
+  }, [markInteractive, session, sessionLoading]);
 
   useEffect(() => {
     if (!session) return;
@@ -1386,9 +1400,10 @@ function LaunchGate({ children }: { children: ReactNode }) {
 
 export default function App() {
   return (
-    <SafeAreaProvider>
+    <ObserveRoot>
+      <SafeAreaProvider>
         <GestureHandlerRootView style={{ flex: 1 }}>
-        <LaunchGate>
+          <LaunchGate>
             <ConvexClientProvider>
               <RootErrorBoundary>
                 <ConfirmProvider>
@@ -1396,9 +1411,10 @@ export default function App() {
                 </ConfirmProvider>
               </RootErrorBoundary>
             </ConvexClientProvider>
-        </LaunchGate>
-      </GestureHandlerRootView>
-    </SafeAreaProvider>
+          </LaunchGate>
+        </GestureHandlerRootView>
+      </SafeAreaProvider>
+    </ObserveRoot>
   );
 }
 
@@ -1601,6 +1617,6 @@ const launchStyles = StyleSheet.create({
     flex: 1,
   },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
 });
