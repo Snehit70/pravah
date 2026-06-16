@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { T_FAST, T_SLOW, T_EXIT_FAST, tx } from "../lib/motion";
-import { getLocalDateString } from "../lib/utils";
 import type { Task } from "../types";
 import {
   KAIRO_CONFIG_EVENT,
@@ -18,90 +17,25 @@ import {
   readKairoResponseText,
 } from "../lib/kairoProviderRuntime";
 import {
+  buildKairoHistory,
+  buildKairoSystemPrompt,
   parseKairoTaskProposals,
-} from "../lib/kairoTaskProposals";
+} from "../lib/kairoCapability";
 import {
   type WebKairoMessage,
   useKairoTaskProposalDecisions,
 } from "../hooks/useKairoTaskProposalDecisions";
 import { KairoTaskProposalList } from "./KairoTaskProposalList";
-import { isTaskCompleted, isTaskOnTimeline } from "../lib/taskState";
 
 const ACCENT = "oklch(0.78 0.14 260)";
 const ACCENT_SOFT = "oklch(0.72 0.16 260 / 0.2)";
 const ACCENT_GLOW = "oklch(0.78 0.14 260 / 0.35)";
-
-const SYSTEM_PROMPT = `You are Kairo, an intelligent work orchestration assistant embedded in Pravah — a timeline-first task management tool. Your role is to help the user manage their schedule, think through priorities, and keep their week intentional.
-
-You have the following information about the user's current state:
-{CONTEXT}
-
-Your capabilities:
-- Analyze the schedule and surface overdue items, conflicts, or overloaded days
-- Suggest tasks for specific days based on what you know about workload and goals
-- Help the user prioritize by reasoning about deadlines and importance
-- Summarize recent progress and forward-looking pressure
-- Move tasks around or help the user triage the inbox
-- Answer schedule questions ("What's happening Thursday?", "Am I free Friday?")
-
-When you decide to add a task, include a structured block in your response — one per task:
-<add-task>{"title":"<title>","deadline":"<YYYY-MM-DD or null for inbox>"}</add-task>
-
-Guidelines:
-- Be direct and warm, not corporate or verbose
-- Give one clear recommendation before listing alternatives
-- Acknowledge what's already done before suggesting more work
-- Flag honestly when a day looks overloaded ("Tuesday already has 4 tasks")
-- Format answers as compact Markdown that this UI can render: short paragraphs, **bold** labels, \`inline code\` for dates/times/model names, and bullet lists only when there are 2-5 concrete items
-- For schedule analysis, use this shape: one sentence summary, then bullets starting with **Now**, **Risk**, or **Next**
-- Keep responses short — 2-4 sentences for simple questions, 3-5 bullets max for analysis
-- Never make up tasks or details not present in the context`;
 
 interface KairoProps {
   onActiveChange?: (active: boolean) => void;
   tasks: Task[];
   inboxTasks: Task[];
   onOpenSettings?: () => void;
-}
-
-function buildContext(tasks: Task[], inboxTasks: Task[]): string {
-  const today = getLocalDateString();
-  const scheduled = tasks.filter(isTaskOnTimeline);
-  const completed = tasks.filter(isTaskCompleted);
-
-  const byDate: Record<string, Task[]> = {};
-  for (const t of scheduled) {
-    const date = t.deadline;
-    if (!date) continue;
-    (byDate[date] ||= []).push(t);
-  }
-
-  const dateLines = Object.entries(byDate)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, ts]) => {
-      const label = date === today ? `${date} (TODAY)` : date;
-      const taskList = ts.map(t =>
-        `  - "${t.title}"${t.deadline ? " [DEADLINE]" : ""}${t.priority ? ` [${t.priority.toUpperCase()}]` : ""}`
-      ).join("\n");
-      return `${label}:\n${taskList}`;
-    })
-    .join("\n\n");
-
-  const inboxLines = inboxTasks.length
-    ? inboxTasks.map(t => `  - "${t.title}"`).join("\n")
-    : "  (empty)";
-
-  return [
-    `Today: ${today}`,
-    "",
-    "Scheduled tasks:",
-    dateLines || "  (none)",
-    "",
-    `Inbox (${inboxTasks.length} items):`,
-    inboxLines,
-    "",
-    `Completed this session: ${completed.length} tasks`,
-  ].join("\n");
 }
 
 function KairoMark({ size = 24 }: { size?: number }) {
@@ -505,12 +439,8 @@ export function Kairo({ onActiveChange, tasks, inboxTasks, onOpenSettings }: Kai
     }
 
     try {
-      const context = buildContext(tasks, inboxTasks);
-      const systemPrompt = SYSTEM_PROMPT.replace("{CONTEXT}", context);
-
-      const history = msgs
-        .slice(1)
-        .map(m => ({ role: m.from === "me" ? "user" : "assistant", content: m.text }));
+      const systemPrompt = buildKairoSystemPrompt(tasks, inboxTasks);
+      const history = buildKairoHistory(msgs);
 
       const requestBody = nextConfig.providerFormat === "anthropic"
         ? buildAnthropicRequestBody(nextConfig, systemPrompt, history, text)

@@ -4,13 +4,10 @@ import { api } from "../../convex/_generated/api";
 import {
   type KairoTaskProposal,
   updateKairoTaskProposal,
-} from "../lib/kairoTaskProposals";
+  type KairoCapabilityMessage,
+} from "../lib/kairoCapability";
 
-export interface WebKairoMessage {
-  from: "me" | "kairo";
-  text: string;
-  tasks?: KairoTaskProposal[];
-}
+export type WebKairoMessage = KairoCapabilityMessage;
 
 function updateMessageProposal(
   messages: WebKairoMessage[],
