@@ -4,9 +4,21 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireTokenIdentifier } from "./authHelpers";
 import { runIdempotentMutation } from "./automationIdempotency";
+import {
+  getPriorityRank,
+  getTaskCancelledAt,
+  getTaskCompletedAt,
+  getTaskDeadline,
+  getTaskState,
+  isCancelledTask,
+  isCompletedTask,
+  isInboxTask,
+  isTimelineTask,
+  type LegacyTaskStatus,
+  toCanonicalTaskShape,
+} from "./taskLifecycle";
 
 type TaskCtx = QueryCtx | MutationCtx;
-type LegacyTaskStatus = "inbox" | "scheduled" | "completed" | "cancelled";
 type ListTasksArgs = {
   date?: string;
   status?: LegacyTaskStatus;
@@ -26,118 +38,10 @@ type MoveTaskArgs = {
   position?: number;
 };
 
-function getPriorityRank(priority?: string): number {
-  if (priority === "p1") return 0;
-  if (priority === "p2") return 1;
-  if (priority === "p3") return 2;
-  return 3;
-}
-
 function isNativeTask(task: {
   source?: "manual" | "ai-agent" | "gmail" | "gcal";
 }) {
   return task.source !== "gmail" && task.source !== "gcal";
-}
-
-function getTaskDeadline(task: {
-  deadline?: string;
-  scheduledDate?: string;
-}) {
-  return task.deadline ?? task.scheduledDate;
-}
-
-function getTaskCompletedAt(task: {
-  completedAt?: number;
-  status?: string;
-  updatedAt: number;
-}) {
-  if (typeof task.completedAt === "number") return task.completedAt;
-  if (task.status === "completed") return task.updatedAt;
-  return undefined;
-}
-
-function getTaskCancelledAt(task: {
-  cancelledAt?: number;
-  status?: string;
-  updatedAt: number;
-}) {
-  if (typeof task.cancelledAt === "number") return task.cancelledAt;
-  if (task.status === "cancelled") return task.updatedAt;
-  return undefined;
-}
-
-function isCancelledTask(task: {
-  cancelledAt?: number;
-  status?: string;
-  updatedAt: number;
-}) {
-  return typeof getTaskCancelledAt(task) === "number";
-}
-
-function isCompletedTask(task: {
-  completedAt?: number;
-  status?: string;
-  updatedAt: number;
-  cancelledAt?: number;
-}) {
-  return !isCancelledTask(task) && typeof getTaskCompletedAt(task) === "number";
-}
-
-function isTimelineTask(task: {
-  deadline?: string;
-  scheduledDate?: string;
-  completedAt?: number;
-  status?: string;
-  updatedAt: number;
-  cancelledAt?: number;
-}) {
-  return !isCancelledTask(task) && !isCompletedTask(task) && !!getTaskDeadline(task);
-}
-
-function isInboxTask(task: {
-  deadline?: string;
-  scheduledDate?: string;
-  completedAt?: number;
-  status?: string;
-  updatedAt: number;
-  cancelledAt?: number;
-}) {
-  return !isCancelledTask(task) && !isCompletedTask(task) && !getTaskDeadline(task);
-}
-
-function getTaskState(task: {
-  deadline?: string;
-  scheduledDate?: string;
-  completedAt?: number;
-  status?: string;
-  updatedAt: number;
-  cancelledAt?: number;
-}): LegacyTaskStatus {
-  if (isCancelledTask(task)) return "cancelled";
-  if (isCompletedTask(task)) return "completed";
-  return getTaskDeadline(task) ? "scheduled" : "inbox";
-}
-
-function toCanonicalTaskShape(task: Doc<"tasks">) {
-  return {
-    _id: task._id,
-    _creationTime: task._creationTime,
-    title: task.title,
-    description: task.description,
-    deadline: getTaskDeadline(task),
-    scheduledAt: task.scheduledAt ?? task.createdAt,
-    completedAt: getTaskCompletedAt(task),
-    cancelledAt: getTaskCancelledAt(task),
-    position: task.position,
-    source: task.source,
-    estimatedMinutes: task.estimatedMinutes,
-    tags: task.tags,
-    priority: task.priority,
-    createdBy: task.createdBy,
-    ownerTokenIdentifier: task.ownerTokenIdentifier,
-    createdAt: task.createdAt,
-    updatedAt: task.updatedAt,
-  };
 }
 
 async function getOwnedTask(

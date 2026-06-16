@@ -1,12 +1,10 @@
 import { useMemo } from "react";
 import type { Task } from "../types";
-import { getPriorityRank } from "../lib/taskRules";
+import { compareTaskOrder } from "../lib/taskLifecycle";
 import { isTaskInInbox, isTaskOnTimeline } from "../lib/taskState";
 
 export function deriveTaskBoardData(tasks: Task[] | undefined) {
-  const inboxTasks = (tasks?.filter(isTaskInInbox) ?? []).sort(
-    (a, b) => getPriorityRank(a.priority) - getPriorityRank(b.priority) || a.position - b.position
-  );
+  const inboxTasks = (tasks?.filter(isTaskInInbox) ?? []).sort(compareTaskOrder);
 
   const grouped: Record<string, Task[]> = {};
   const scheduledTasks = tasks?.filter(isTaskOnTimeline) ?? [];
@@ -19,9 +17,7 @@ export function deriveTaskBoardData(tasks: Task[] | undefined) {
   }
 
   for (const date of Object.keys(grouped)) {
-    grouped[date].sort(
-      (a, b) => getPriorityRank(a.priority) - getPriorityRank(b.priority) || a.position - b.position
-    );
+    grouped[date].sort(compareTaskOrder);
   }
 
   return {

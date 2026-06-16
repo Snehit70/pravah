@@ -74,6 +74,7 @@ import { resetPreferencesStore } from "./src/hooks/useUserPreferences";
 import { OverdueSheet } from "./src/features/overdue-triage/OverdueSheet";
 import { useOverdueTriageController } from "./src/features/overdue-triage/controller";
 import { isTaskInInbox } from "./src/lib/taskState";
+import { hasPriorityBoundaryViolation } from "./src/lib/taskLifecycle";
 import type { BulkTaskInput } from "./src/lib/bulkTaskCapture";
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -87,13 +88,6 @@ function normalizeDeadlineInput(raw: string): { value?: string; error?: string }
   return { value: trimmed };
 }
 
-function getPriorityRank(priority?: "p1" | "p2" | "p3"): number {
-  if (priority === "p1") return 0;
-  if (priority === "p2") return 1;
-  if (priority === "p3") return 2;
-  return 3;
-}
-
 // Custom entering animation for tab screens — 8px upward reveal + fade.
 // Defined outside the component so it's a stable worklet reference.
 function tabEnter() {
@@ -105,16 +99,6 @@ function tabEnter() {
       transform: [{ translateY: withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) }) }],
     },
   };
-}
-
-function hasPriorityBoundaryViolation(original: MobileTask[], reordered: MobileTask[]): boolean {
-  if (original.length !== reordered.length) return true;
-  for (let index = 0; index < original.length; index += 1) {
-    if (getPriorityRank(original[index]?.priority) !== getPriorityRank(reordered[index]?.priority)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 // ── Main App ───────────────────────────────────────────────────────────

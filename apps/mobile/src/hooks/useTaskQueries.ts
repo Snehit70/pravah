@@ -13,13 +13,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { MobileTask } from "../components/TaskCard";
 import { addDays, toIsoDate } from "../lib/dates";
-
-function getPriorityRank(priority?: "p1" | "p2" | "p3"): number {
-  if (priority === "p1") return 0;
-  if (priority === "p2") return 1;
-  if (priority === "p3") return 2;
-  return 3;
-}
+import { compareTaskOrder } from "../lib/taskLifecycle";
 
 type UseTaskQueriesOptions = {
   /** Pass null/undefined when the session is not yet available — all queries skip. */
@@ -80,11 +74,7 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
     return (
       (inboxQuery as MobileTask[] | undefined)
         ?.map(mapTaskDoc)
-        .sort(
-          (a, b) =>
-            getPriorityRank(a.priority) - getPriorityRank(b.priority) ||
-            a.position - b.position
-        ) ?? []
+        .sort(compareTaskOrder) ?? []
     );
   }, [inboxQuery, mapTaskDoc]);
 
@@ -95,8 +85,7 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
       .sort(
         (a, b) =>
           (a.deadline ?? "").localeCompare(b.deadline ?? "") ||
-          getPriorityRank(a.priority) - getPriorityRank(b.priority) ||
-          a.position - b.position
+          compareTaskOrder(a, b)
       );
   }, [timelineQuery, mapTaskDoc]);
 
