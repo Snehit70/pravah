@@ -5,8 +5,13 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { classifyError, mobileLogger } from "../lib/logger";
 
+import { deriveSyncHealth, summarizeSyncError, type SyncHealth } from "../lib/syncHealth";
+
 type ShowToast = (next: { kind: "error" | "info"; message: string }) => void;
 type IntegrationProvider = "google_calendar" | "gmail";
+
+// Re-exported so existing importers (SettingsSheet) keep their import path.
+export { summarizeSyncError, type SyncHealth };
 
 const CALENDAR_SELECTION_STORAGE_KEY = "pravah_mobile_google_calendar_selection_v1";
 const CALENDAR_SYNCED_IDS_STORAGE_KEY = "pravah_mobile_google_calendar_synced_ids_v1";
@@ -37,6 +42,8 @@ type UseIntegrationsSettingsReturn = {
   gmailSyncEnabled: boolean;
   calendarSyncStatus: string;
   gmailSyncStatus: string;
+  calendarSyncHealth: SyncHealth;
+  calendarErrorSummary?: string;
   canToggleGmailSync: boolean;
   pendingGmailReviewCount: number;
   syncSettingsBusy: boolean;
@@ -88,6 +95,15 @@ export function useIntegrationsSettings({
   const pendingGmailReviewCount = gmailIntegrationStatus?.pendingReviewCount ?? 0;
   const calendarSyncStatus = calendarIntegrationStatus?.integration?.status ?? "disconnected";
   const gmailSyncStatus = gmailIntegrationStatus?.integration?.status ?? "disconnected";
+  const calendarSyncHealth = deriveSyncHealth({
+    status: calendarSyncStatus,
+    syncEnabled: googleSyncEnabled,
+    hasAccount: Boolean(calendarIntegrationStatus?.integration?.accountEmail),
+    lastError: calendarIntegrationStatus?.integration?.lastError,
+  });
+  const calendarErrorSummary = summarizeSyncError(
+    calendarIntegrationStatus?.integration?.lastError
+  );
   const canToggleGmailSync = gmailSyncStatus === "connected" || gmailSyncEnabled;
   const syncSettingsBusy = isCalendarSyncing || isGoogleToggleSaving || isGmailToggleSaving;
 
@@ -377,6 +393,8 @@ export function useIntegrationsSettings({
     gmailSyncEnabled,
     calendarSyncStatus,
     gmailSyncStatus,
+    calendarSyncHealth,
+    calendarErrorSummary,
     canToggleGmailSync,
     pendingGmailReviewCount,
     syncSettingsBusy,

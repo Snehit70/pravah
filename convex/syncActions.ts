@@ -343,6 +343,10 @@ export const importGoogleCalendarAction = action({
           status: "connected",
           syncEnabled: true,
           tokenExpiresAt: args.tokenExpiresAt,
+          // Clear any prior failure so a recovered sync stops reporting as
+          // broken. Without this, a one-time error sticks around forever and
+          // the status UI can never return to healthy.
+          lastError: undefined,
         });
       } catch (error) {
         postImportError =

@@ -387,8 +387,9 @@ function MobileApp() {
     isGmailToggleSaving,
     googleSyncEnabled,
     gmailSyncEnabled,
-    calendarSyncStatus,
     gmailSyncStatus,
+    calendarSyncHealth,
+    calendarErrorSummary,
     canToggleGmailSync,
     pendingGmailReviewCount,
     syncSettingsBusy,
@@ -1116,6 +1117,20 @@ function MobileApp() {
 
       {activeTab === "timeline" ? (
         <Animated.View entering={tabEnterAnimation} style={styles.tabScreen}>
+          {/* Ambient, silent-when-healthy sync indicator. The timeline is the
+              surface calendar sync feeds, so a broken sync surfaces here where
+              it's actually missing events — not buried in Settings. */}
+          {calendarSyncHealth === "error" ? (
+            <Pressable
+              onPress={openSettingsModal}
+              style={({ pressed }) => [styles.syncBrokenBanner, pressed && { opacity: 0.6 }]}
+              accessibilityRole="button"
+              accessibilityLabel="Calendar sync paused after an error. Open settings to reconnect."
+            >
+              <Text style={styles.syncBrokenText}>Calendar sync paused</Text>
+              <Text style={styles.syncBrokenAction}>Reconnect</Text>
+            </Pressable>
+          ) : null}
           <ScreenErrorBoundary screenName="Timeline">
             <TimelineScreen
               sections={shouldUseWorkspaceSnapshot ? displayTimelineSections : timelineSections}
@@ -1227,8 +1242,9 @@ function MobileApp() {
         visible={isSettingsModalOpen}
         calendarSyncEnabled={googleSyncEnabled}
         gmailSyncEnabled={gmailSyncEnabled}
-        calendarSyncStatus={calendarSyncStatus}
         gmailSyncStatus={gmailSyncStatus}
+        calendarSyncHealth={calendarSyncHealth}
+        calendarErrorSummary={calendarErrorSummary}
         canToggleGmailSync={canToggleGmailSync}
         pendingGmailReviewCount={pendingGmailReviewCount}
         notificationPermissionState={notificationPermissionState}
@@ -1544,6 +1560,30 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
     paddingLeft: spacing.md,
+  },
+  // Broken-sync banner — same left-rule idiom as the retry/sync surfaces, in
+  // the error tone. Only rendered while calendar sync is in an error state.
+  syncBrokenBanner: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+    paddingLeft: spacing.md,
+    paddingVertical: spacing.xs,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.error,
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  syncBrokenText: {
+    color: colors.textPrimary,
+    ...typography.bodyMd,
+    flex: 1,
+  },
+  syncBrokenAction: {
+    color: colors.error,
+    ...typography.micro,
   },
 
   // Shared
