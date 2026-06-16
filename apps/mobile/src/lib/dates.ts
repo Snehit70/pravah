@@ -15,12 +15,56 @@ export function addDays(base: Date, days: number): Date {
   return next;
 }
 
-export function dateLabel(date: string, today: string, tomorrow: string, weekEnd: string): string {
+const SHORT_MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+const SHORT_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function parseIsoParts(iso: string): { year: number; month: number; day: number } | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return null;
+  return { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) };
+}
+
+/** Canonical app-wide human date, e.g. "Jun 18, 2026". Use this everywhere a
+ *  full date is shown — never a raw ISO string. Returns the input unchanged if
+ *  it isn't a valid ISO date. */
+export function humanDate(iso: string): string {
+  const p = parseIsoParts(iso);
+  if (!p) return iso;
+  const month = SHORT_MONTHS[p.month - 1] ?? String(p.month);
+  return `${month} ${p.day}, ${p.year}`;
+}
+
+/** Compact human date without the year, e.g. "Jun 18" — for dense chrome like
+ *  timeline day headers where the year is implicit in the near-term horizon. */
+export function shortDate(iso: string): string {
+  const p = parseIsoParts(iso);
+  if (!p) return iso;
+  const month = SHORT_MONTHS[p.month - 1] ?? String(p.month);
+  return `${month} ${p.day}`;
+}
+
+function weekdayShort(iso: string): string {
+  const p = parseIsoParts(iso);
+  if (!p) return "";
+  // Local construction (not UTC) so the weekday matches the user's calendar day.
+  return SHORT_WEEKDAYS[new Date(p.year, p.month - 1, p.day).getDay()] ?? "";
+}
+
+/**
+ * Timeline section header label. Today/Tomorrow stay relative; everything from
+ * today+2 onward gets a distinct day-named header ("Thu · Jun 18") so days are
+ * never indistinguishable. Overdue dates collapse to a single "Overdue" label
+ * (the timeline lists them in a triage banner, not inline).
+ */
+export function dateLabel(date: string, today: string, tomorrow: string): string {
   if (date === today) return "Today";
   if (date === tomorrow) return "Tomorrow";
-  if (date > today && date <= weekEnd) return "This week";
   if (date < today) return "Overdue";
-  return date;
+  const weekday = weekdayShort(date);
+  return weekday ? `${weekday} · ${shortDate(date)}` : shortDate(date);
 }
 
 export function isIsoDate(value: string): boolean {

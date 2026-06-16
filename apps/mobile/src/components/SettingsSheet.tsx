@@ -1090,34 +1090,8 @@ export function SettingsSheet({
               <View style={[styles.settingBlock, styles.sectionCard]}>
                 <Text style={styles.settingLabel}>Defaults</Text>
                 <Text style={styles.settingHelp}>
-                  Control how the timeline plans your week and sizes new tasks.
+                  Control how new tasks are sized and colored.
                 </Text>
-
-                <View style={styles.fieldStack}>
-                  <Text style={styles.fieldLabel}>Week starts on</Text>
-                  <View style={styles.segmented}>
-                    {(["monday", "sunday"] as const).map((day) => {
-                      const active = prefs.weekStart === day;
-                      return (
-                        <Pressable
-                          key={day}
-                          onPress={() => void setPreference("weekStart", day)}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: active }}
-                          style={({ pressed }) => [
-                            styles.segment,
-                            active && styles.segmentActive,
-                            pressed && { opacity: 0.7 },
-                          ]}
-                        >
-                          <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                            {day === "monday" ? "Monday" : "Sunday"}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
 
                 <View style={styles.behaviorRow}>
                   <Text style={styles.settingMeta}>Default task duration</Text>

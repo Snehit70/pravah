@@ -26,7 +26,6 @@ type OverdueSheetProps = {
   applyDeadline: boolean;
   today: string;
   tomorrow: string;
-  weekEnd: string;
   onOpenPreview: (goalId: string) => void;
   onClosePreview: () => void;
   onSetApplyDeadline: (next: boolean) => void;
@@ -51,7 +50,6 @@ export function OverdueSheet({
   applyDeadline,
   today,
   tomorrow,
-  weekEnd,
   onOpenPreview,
   onClosePreview,
   onSetApplyDeadline,
@@ -60,7 +58,7 @@ export function OverdueSheet({
   onManualTriage,
 }: OverdueSheetProps) {
   const insets = useSafeAreaInsets();
-  const friendly = (iso: string) => dateLabel(iso, today, tomorrow, weekEnd);
+  const friendly = (iso: string) => dateLabel(iso, today, tomorrow);
   const totalOverdue =
     groups.reduce((sum, group) => sum + group.overdueCount, 0) + orphans.length;
 

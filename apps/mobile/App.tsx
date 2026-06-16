@@ -25,7 +25,7 @@ import {
 } from "@expo-google-fonts/geist";
 import { GeistMono_500Medium } from "@expo-google-fonts/geist-mono";
 import { ConvexClientProvider } from "./src/lib/convex";
-import { dateLabel, isIsoDate } from "./src/lib/dates";
+import { humanDate, isIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
 import {
   getDiagnosticsSnapshot,
@@ -249,26 +249,26 @@ function MobileApp() {
     return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [displayScheduledTasks, today]);
 
-  const { displayInboxCount, displayOverdueCount, displayThisWeekCount, displayCompletedCount } =
+  const { displayInboxCount, displayOverdueCount, displayUpcomingCount, displayCompletedCount } =
     useMemo(() => {
       let overdue = 0;
-      let thisWeek = 0;
+      let upcoming = 0;
       for (const task of displayScheduledTasks) {
         const date = task.deadline;
         if (!date) continue;
+        // The timeline shows the full forward horizon (no week cap), so the
+        // header count is "everything still ahead of you", split only by
+        // overdue vs upcoming.
         if (date < today) overdue += 1;
-        // Cap "this week" at weekEnd (today+6) so tasks scheduled at today+7
-        // via the +1w quickadd aren't double-labelled under a week-bounded
-        // header even though they're fetched inside the wider query window.
-        else if (date <= weekEnd) thisWeek += 1;
+        else upcoming += 1;
       }
       return {
         displayInboxCount: displayInboxTasks.length,
         displayOverdueCount: overdue,
-        displayThisWeekCount: thisWeek,
+        displayUpcomingCount: upcoming,
         displayCompletedCount: displayCompletedTasks.length,
       };
-    }, [displayCompletedTasks.length, displayInboxTasks.length, displayScheduledTasks, today, weekEnd]);
+    }, [displayCompletedTasks.length, displayInboxTasks.length, displayScheduledTasks, today]);
 
   // Mutations still operate on the currently visible list. This keeps
   // optimistic updates scoped to what the user sees while query subscriptions
@@ -879,8 +879,10 @@ function MobileApp() {
 
   const renderInboxTaskItem = useCallback(
     ({ item, drag, hidePriorityBadge }: RenderItemParams<MobileTask> & { hidePriorityBadge?: boolean }) => (
+      // Inbox has no day-section header, so a dated task self-describes its date.
       <TaskCard
         task={item}
+        dateLabel={item.deadline ? humanDate(item.deadline) : undefined}
         onDone={canUseWorkspaceActions ? markDone : () => undefined}
         onMoveToday={canUseWorkspaceActions ? moveToToday : undefined}
         onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
@@ -894,9 +896,9 @@ function MobileApp() {
 
   const renderTimelineTaskItem = useCallback(
     (dateKey: string, { item, drag }: RenderItemParams<MobileTask>) => (
+      // No date on timeline cards: the day-named section header owns the date.
       <TaskCard
         task={item}
-        dateLabel={dateKey === "overdue" && item.deadline ? item.deadline : dateLabel(dateKey, today, tomorrow, weekEnd)}
         onDone={canUseWorkspaceActions ? markDone : () => undefined}
         onSendToInbox={canUseWorkspaceActions ? sendToInbox : undefined}
         onReorder={
@@ -911,9 +913,6 @@ function MobileApp() {
     ),
     [
       canUseWorkspaceActions,
-      today,
-      tomorrow,
-      weekEnd,
       markDone,
       sendToInbox,
       shiftTimelineTask,
@@ -984,8 +983,8 @@ function MobileApp() {
   const padCount = (n: number) => (n < 10 ? `0${n}` : `${n}`);
   const timelineSubtitle =
     displayOverdueCount > 0
-      ? `${padCount(displayOverdueCount)} overdue · ${padCount(displayThisWeekCount)} this week`
-      : `${padCount(displayThisWeekCount)} through this week`;
+      ? `${padCount(displayOverdueCount)} overdue · ${padCount(displayUpcomingCount)} upcoming`
+      : `${padCount(displayUpcomingCount)} upcoming`;
   const headerSubtitle =
     shouldRenderOptimisticShell
       ? "Restoring your session"
@@ -1122,7 +1121,6 @@ function MobileApp() {
               sections={shouldUseWorkspaceSnapshot ? displayTimelineSections : timelineSections}
               today={today}
               tomorrow={tomorrow}
-              weekEnd={weekEnd}
               isLoading={isActiveListLoading || isBootShellLoading}
               isRefreshing={isRefreshing}
               tabBarHeight={tabBarHeight}
@@ -1217,7 +1215,6 @@ function MobileApp() {
         applyDeadline={applyDeadline}
         today={today}
         tomorrow={tomorrow}
-        weekEnd={weekEnd}
         onOpenPreview={openPreview}
         onClosePreview={closePreview}
         onSetApplyDeadline={setApplyDeadline}

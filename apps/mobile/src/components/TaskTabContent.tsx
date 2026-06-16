@@ -20,7 +20,6 @@ type TaskTabContentProps = {
   completedTasks: MobileTask[];
   today: string;
   tomorrow: string;
-  weekEnd: string;
   isRefreshing: boolean;
   isActiveListLoading: boolean;
   tabBarHeight: number;
@@ -41,7 +40,6 @@ export function TaskTabContent({
   completedTasks,
   today,
   tomorrow,
-  weekEnd,
   isRefreshing,
   isActiveListLoading,
   tabBarHeight,
@@ -77,7 +75,7 @@ export function TaskTabContent({
       rows.push({
         kind: "header",
         dateKey,
-        label: dateLabel(dateKey, today, tomorrow, weekEnd),
+        label: dateLabel(dateKey, today, tomorrow),
         isToday: dateKey === today,
       });
       for (const task of tasksForDate) {
@@ -85,7 +83,7 @@ export function TaskTabContent({
       }
     }
     return rows;
-  }, [timelineSections, today, tomorrow, weekEnd]);
+  }, [timelineSections, today, tomorrow]);
 
   if (activeTab === "inbox") {
     return (

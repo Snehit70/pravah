@@ -17,6 +17,7 @@ import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, Vi
 import { BlurView } from "expo-blur";
 
 import { haptic } from "../lib/haptic";
+import { humanDate } from "../lib/dates";
 import Animated, {
   Easing,
   FadeIn,
@@ -33,14 +34,6 @@ import { useConfirm } from "../hooks/useConfirm";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import type { MobileTask } from "../components/TaskCard";
 import { isTaskCompleted } from "../lib/taskState";
-
-const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-function formatDeadline(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (!m) return iso;
-  const month = SHORT_MONTHS[Number(m[2]) - 1] ?? m[2];
-  return `${month} ${Number(m[3])}, ${m[1]}`;
-}
 
 type DeadlineStatus = "overdue" | "soon" | "normal";
 function deadlineStatus(iso: string): DeadlineStatus {
@@ -283,7 +276,7 @@ function GoalDetailSheet({ goal, progress, linked, onDelete, onClose, onOpenTask
                     const dlColor = ds === "overdue" ? colors.error : ds === "soon" ? "#d3a04b" : colors.textMuted;
                     return (
                       <Text style={[detailStyles.metaText, { color: dlColor }]}>
-                        {ds === "overdue" ? `Overdue · ${formatDeadline(goal.deadline)}` : formatDeadline(goal.deadline)}
+                        {ds === "overdue" ? `Overdue · ${humanDate(goal.deadline)}` : humanDate(goal.deadline)}
                       </Text>
                     );
                   })() : null}
@@ -530,7 +523,7 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false, on
                         const dlColor = ds === "overdue" ? colors.error : ds === "soon" ? "#d3a04b" : undefined;
                         return (
                           <Text style={[styles.goalMeta, dlColor ? { color: dlColor } : null]}>
-                            {ds === "overdue" ? `Overdue · ${formatDeadline(item.deadline)}` : formatDeadline(item.deadline)}
+                            {ds === "overdue" ? `Overdue · ${humanDate(item.deadline)}` : humanDate(item.deadline)}
                           </Text>
                         );
                       })() : null}

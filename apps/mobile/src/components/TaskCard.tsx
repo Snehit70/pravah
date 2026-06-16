@@ -282,15 +282,16 @@ function TaskCardInner({
   // Stacked metadata column on the right. Each line is its own micro entry so
   // the column reads like a small log table rather than a row of pills.
   const metaLines: { key: string; text: string; tone?: "muted" | "error" | "accent" }[] = [];
+  // A single humanized date line, supplied by the caller. On the timeline the
+  // day-named section header owns the date, so no date is passed (and none
+  // renders); surfaces without a header (e.g. Inbox) pass a humanized date so
+  // the card self-describes. No raw ISO, no duplicate relative pill.
   if (dateLabelText && !isCompleted) {
     metaLines.push({
       key: "date",
       text: dateLabelText.toUpperCase(),
-      tone: dateLabelText.toLowerCase() === "overdue" ? "error" : "muted",
+      tone: isOverdue ? "error" : "muted",
     });
-  }
-  if (task.deadline && !isCompleted) {
-    metaLines.push({ key: "due", text: `Due ${task.deadline}`, tone: isOverdue ? "error" : "muted" });
   }
   if (task.priority && !isCompleted && !hidePriorityBadge) {
     metaLines.push({

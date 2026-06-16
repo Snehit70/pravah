@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, dateLabel, isIsoDate, toIsoDate } from "./dates";
+import { addDays, dateLabel, humanDate, isIsoDate, shortDate, toIsoDate } from "../lib/dates";
 
 describe("mobile dates helpers", () => {
   it("formats Date to YYYY-MM-DD", () => {
@@ -15,16 +15,22 @@ describe("mobile dates helpers", () => {
     expect(toIsoDate(shifted)).toBe("2026-04-17");
   });
 
-  it("labels overdue, today, tomorrow, this week, and later dates", () => {
+  it("labels overdue/today/tomorrow relatively and later dates by named day", () => {
     const today = "2026-04-14";
     const tomorrow = "2026-04-15";
-    const weekEnd = "2026-04-21";
 
-    expect(dateLabel("2026-04-13", today, tomorrow, weekEnd)).toBe("Overdue");
-    expect(dateLabel("2026-04-14", today, tomorrow, weekEnd)).toBe("Today");
-    expect(dateLabel("2026-04-15", today, tomorrow, weekEnd)).toBe("Tomorrow");
-    expect(dateLabel("2026-04-20", today, tomorrow, weekEnd)).toBe("This week");
-    expect(dateLabel("2026-04-28", today, tomorrow, weekEnd)).toBe("2026-04-28");
+    expect(dateLabel("2026-04-13", today, tomorrow)).toBe("Overdue");
+    expect(dateLabel("2026-04-14", today, tomorrow)).toBe("Today");
+    expect(dateLabel("2026-04-15", today, tomorrow)).toBe("Tomorrow");
+    // From today+2 onward, every day gets a distinct named-day header.
+    expect(dateLabel("2026-04-20", today, tomorrow)).toBe("Mon · Apr 20");
+    expect(dateLabel("2026-04-28", today, tomorrow)).toBe("Tue · Apr 28");
+  });
+
+  it("formats canonical human dates and short dates", () => {
+    expect(humanDate("2026-04-20")).toBe("Apr 20, 2026");
+    expect(shortDate("2026-04-20")).toBe("Apr 20");
+    expect(humanDate("not-a-date")).toBe("not-a-date");
   });
 
   it("validates strict ISO dates", () => {
