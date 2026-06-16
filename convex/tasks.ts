@@ -500,6 +500,7 @@ export const undoBulkCreateTasks = mutation({
       const task = await ctx.db.get(taskId);
       if (task && task.ownerTokenIdentifier !== tokenIdentifier) throw new Error("Task not found");
     }
+    let removed = 0;
     for (const taskId of args.taskIds) {
       const link = await ctx.db
         .query("goalLinks")
@@ -509,9 +510,12 @@ export const undoBulkCreateTasks = mutation({
         .first();
       if (link) await ctx.db.delete(link._id);
       const task = await ctx.db.get(taskId);
-      if (task) await ctx.db.delete(taskId);
+      if (task) {
+        await ctx.db.delete(taskId);
+        removed += 1;
+      }
     }
-    return { removed: args.taskIds.length };
+    return { removed };
   },
 });
 

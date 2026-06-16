@@ -185,8 +185,8 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         return;
       }
 
-      const start = Number(seriesStart);
-      const end = Number(seriesEnd);
+      const start = seriesEnabled ? Number(seriesStart) : 1;
+      const end = seriesEnabled ? Number(seriesEnd) : 1;
       const useBulk = prefs.bulkTaskCaptureEnabled && (seriesEnabled || goalIds.length > 1);
       if (useBulk) {
         try {
@@ -235,8 +235,8 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         return expandBulkTasks({
           baseTitle: title,
           seriesEnabled,
-          start: Number(seriesStart),
-          end: Number(seriesEnd),
+          start: seriesEnabled ? Number(seriesStart) : 1,
+          end: seriesEnabled ? Number(seriesEnd) : 1,
           goalIds,
         });
       } catch {

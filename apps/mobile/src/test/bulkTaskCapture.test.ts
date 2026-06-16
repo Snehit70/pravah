@@ -43,4 +43,17 @@ describe("expandBulkTasks", () => {
       goalIds: ["a", "b"],
     })).toThrow("Maximum is 100 tasks");
   });
+
+  it("ignores stale series values when series mode is off", () => {
+    expect(expandBulkTasks({
+      baseTitle: "Week",
+      seriesEnabled: false,
+      start: Number.NaN,
+      end: 0,
+      goalIds: ["goal-a", "goal-b"],
+    })).toEqual([
+      { title: "Week", goalClientId: "goal-a" },
+      { title: "Week", goalClientId: "goal-b" },
+    ]);
+  });
 });

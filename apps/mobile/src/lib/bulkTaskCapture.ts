@@ -19,11 +19,13 @@ type ExpandBulkTasksInput = Omit<BulkTaskInput, "title" | "goalClientId"> & {
 export function expandBulkTasks(input: ExpandBulkTasksInput): BulkTaskInput[] {
   const baseTitle = input.baseTitle.trim();
   if (!baseTitle) throw new Error("Title is required");
-  if (!Number.isInteger(input.start) || !Number.isInteger(input.end)) {
-    throw new Error("Series values must be whole numbers");
-  }
-  if (input.start < 1 || input.end < input.start || input.end > 9999) {
-    throw new Error("Series range must be between 1 and 9999");
+  if (input.seriesEnabled) {
+    if (!Number.isInteger(input.start) || !Number.isInteger(input.end)) {
+      throw new Error("Series values must be whole numbers");
+    }
+    if (input.start < 1 || input.end < input.start || input.end > 9999) {
+      throw new Error("Series range must be between 1 and 9999");
+    }
   }
 
   const titles = input.seriesEnabled
