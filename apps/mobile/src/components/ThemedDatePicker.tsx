@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { BlurView } from "expo-blur";
 import { haptic } from "../lib/haptic";
@@ -40,12 +40,6 @@ export function ThemedDatePicker({ visible, value, onSelect, onClose }: ThemedDa
 
   const [viewYear, setViewYear] = useState(initial.year);
   const [viewMonth, setViewMonth] = useState(initial.month);
-
-  useEffect(() => {
-    if (!visible) return;
-    setViewYear(initial.year);
-    setViewMonth(initial.month);
-  }, [initial.month, initial.year, visible]);
 
   const weeks = useMemo(() => buildMonthGrid(viewYear, viewMonth), [viewYear, viewMonth]);
 

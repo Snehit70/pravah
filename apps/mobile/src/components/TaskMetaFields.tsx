@@ -74,15 +74,18 @@ export function TaskMetaFields({
         </Pressable>
       </View>
 
-      <ThemedDatePicker
-        visible={showDatePicker}
-        value={deadline || undefined}
-        onSelect={(iso) => {
-          onDeadlineChange(iso);
-          onClearError();
-        }}
-        onClose={() => setShowDatePicker(false)}
-      />
+      {showDatePicker ? (
+        <ThemedDatePicker
+          key={deadline || "today"}
+          visible
+          value={deadline || undefined}
+          onSelect={(iso) => {
+            onDeadlineChange(iso);
+            onClearError();
+          }}
+          onClose={() => setShowDatePicker(false)}
+        />
+      ) : null}
     </>
   );
 }
