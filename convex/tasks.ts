@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireTokenIdentifier } from "./authHelpers";
+import { runIdempotentMutation } from "./automationIdempotency";
 
 type TaskCtx = QueryCtx | MutationCtx;
 type LegacyTaskStatus = "inbox" | "scheduled" | "completed" | "cancelled";
@@ -426,6 +427,95 @@ export const addTask = mutation({
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
     return addTaskForOwner(ctx, tokenIdentifier, args);
+  },
+});
+
+const bulkTaskInputValidator = v.object({
+  title: v.string(),
+  description: v.optional(v.string()),
+  deadline: v.optional(v.string()),
+  priority: v.optional(v.union(v.literal("p1"), v.literal("p2"), v.literal("p3"))),
+  goalClientId: v.optional(v.string()),
+});
+
+export const bulkCreateTasks = mutation({
+  args: {
+    idempotencyKey: v.string(),
+    tasks: v.array(bulkTaskInputValidator),
+  },
+  handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    if (args.tasks.length < 1 || args.tasks.length > 100) {
+      throw new Error("Bulk task creation requires between 1 and 100 tasks");
+    }
+    return (
+      await runIdempotentMutation(ctx, {
+        ownerTokenIdentifier: tokenIdentifier,
+        idempotencyKey: args.idempotencyKey,
+        operation: "tasks.bulkCreate",
+        request: args.tasks,
+        execute: async () => {
+          const goalIds = new Set(args.tasks.flatMap((task) => task.goalClientId ? [task.goalClientId] : []));
+          for (const goalClientId of goalIds) {
+            const goal = await ctx.db
+              .query("goals")
+              .withIndex("by_owner_client_id", (q) =>
+                q.eq("ownerTokenIdentifier", tokenIdentifier).eq("clientId", goalClientId)
+              )
+              .first();
+            if (!goal) throw new Error("A selected goal no longer exists");
+          }
+
+          const taskIds: Id<"tasks">[] = [];
+          for (const task of args.tasks) {
+            const taskId = await addTaskForOwner(ctx, tokenIdentifier, {
+              title: task.title,
+              description: task.description,
+              deadline: task.deadline,
+              priority: task.priority,
+              source: "manual",
+            });
+            taskIds.push(taskId);
+            if (task.goalClientId) {
+              await ctx.db.insert("goalLinks", {
+                taskId: String(taskId),
+                goalClientId: task.goalClientId,
+                ownerTokenIdentifier: tokenIdentifier,
+              });
+            }
+          }
+          return { taskIds };
+        },
+      })
+    ).result;
+  },
+});
+
+export const undoBulkCreateTasks = mutation({
+  args: { taskIds: v.array(v.id("tasks")) },
+  handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    if (args.taskIds.length > 100) throw new Error("Too many tasks to undo");
+    for (const taskId of args.taskIds) {
+      const task = await ctx.db.get(taskId);
+      if (task && task.ownerTokenIdentifier !== tokenIdentifier) throw new Error("Task not found");
+    }
+    let removed = 0;
+    for (const taskId of args.taskIds) {
+      const link = await ctx.db
+        .query("goalLinks")
+        .withIndex("by_owner_task", (q) =>
+          q.eq("ownerTokenIdentifier", tokenIdentifier).eq("taskId", String(taskId))
+        )
+        .first();
+      if (link) await ctx.db.delete(link._id);
+      const task = await ctx.db.get(taskId);
+      if (task) {
+        await ctx.db.delete(taskId);
+        removed += 1;
+      }
+    }
+    return { removed };
   },
 });
 

@@ -13,6 +13,7 @@ export type ToastState = {
   message: string;
   /** Optional inline action, e.g. "Undo" after a swipe. */
   action?: ToastAction;
+  durationMs?: number;
 };
 
 export function useWorkspaceState() {
@@ -43,7 +44,10 @@ export function useWorkspaceState() {
   useEffect(() => {
     if (!toast) return;
     // Undo toasts linger a little longer so the action stays reachable.
-    const timeout = setTimeout(() => setToast(null), toast.action ? 5000 : 3200);
+    const timeout = setTimeout(
+      () => setToast(null),
+      toast.durationMs ?? (toast.action ? 5000 : 3200),
+    );
     return () => clearTimeout(timeout);
   }, [toast]);
 

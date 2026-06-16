@@ -25,6 +25,7 @@ export interface UserPreferences {
   reducedMotionOverride: ReducedMotionOverride;
   accentColor: AccentColor;
   density: Density;
+  bulkTaskCaptureEnabled: boolean;
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
@@ -42,6 +43,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   reducedMotionOverride: "system",
   accentColor: "purple",
   density: "cozy",
+  bulkTaskCaptureEnabled: false,
 };
 
 const TIME_PATTERN = /^([01]?\d|2[0-3]):[0-5]\d$/;
@@ -115,6 +117,8 @@ function sanitize(raw: unknown): UserPreferences {
       ? r.accentColor
       : DEFAULT_PREFERENCES.accentColor,
     density: r.density === "compact" ? "compact" : "cozy",
+    bulkTaskCaptureEnabled:
+      typeof r.bulkTaskCaptureEnabled === "boolean" ? r.bulkTaskCaptureEnabled : false,
   };
 }
 

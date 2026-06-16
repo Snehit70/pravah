@@ -1069,6 +1069,23 @@ export function SettingsSheet({
           {activeSection === "timeline" ? (
             <View>
               <Text style={styles.sectionHeader}>Timeline</Text>
+              <View style={[styles.settingBlock, styles.sectionCard]}>
+                <View style={styles.settingRow}>
+                  <View style={styles.settingCopy}>
+                    <Text style={styles.settingLabel}>Bulk task capture</Text>
+                    <Text style={styles.settingHelp}>
+                      Create numbered task series and assign copies to multiple goals.
+                    </Text>
+                  </View>
+                  <Switch
+                    value={prefs.bulkTaskCaptureEnabled}
+                    onValueChange={(next) => void setPreference("bulkTaskCaptureEnabled", next)}
+                    trackColor={{ false: colors.border, true: colors.accentSoft }}
+                    thumbColor={prefs.bulkTaskCaptureEnabled ? colors.accent : colors.textMuted}
+                    accessibilityLabel="Bulk task capture"
+                  />
+                </View>
+              </View>
 
               <View style={[styles.settingBlock, styles.sectionCard]}>
                 <Text style={styles.settingLabel}>Defaults</Text>

@@ -17,6 +17,16 @@ _Avoid_: backlog, unscheduled list
 A unit of planned work that can live on the timeline, in the inbox, or be completed.
 _Avoid_: item, todo
 
+**Task Series**:
+A set of independent Tasks created together from one numbered title pattern.
+The series is a creation convenience and does not remain linked after creation.
+_Avoid_: recurring task, repeated task
+
+**Multi-Goal Capture**:
+A creation convenience that accepts several Goals and creates one independent Task for each selected Goal.
+The resulting Tasks do not synchronize completion, edits, or deletion.
+_Avoid_: multi-goal task, shared task
+
 **Deadline**:
 The single user-facing date that marks when a task is expected to be completed.
 Tasks with a deadline appear on the Timeline. Tasks without a deadline live in the Inbox. The Timeline is a single ordered lane keyed by deadline.

@@ -73,6 +73,7 @@ import { resetPreferencesStore } from "./src/hooks/useUserPreferences";
 import { OverdueSheet } from "./src/features/overdue-triage/OverdueSheet";
 import { useOverdueTriageController } from "./src/features/overdue-triage/controller";
 import { isTaskInInbox } from "./src/lib/taskState";
+import type { BulkTaskInput } from "./src/lib/bulkTaskCapture";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -643,6 +644,50 @@ function MobileApp() {
     hasPriorityBoundaryViolation,
   });
 
+  const bulkCreateTasksMutation = useMutation(api.tasks.bulkCreateTasks);
+  const undoBulkCreateTasksMutation = useMutation(api.tasks.undoBulkCreateTasks);
+
+  const handleBulkAddTasks = useCallback(
+    async (tasks: BulkTaskInput[]) => {
+      const actionId = createActionId("bulk-add");
+      try {
+        const result = await bulkCreateTasksMutation({
+          idempotencyKey: actionId,
+          tasks,
+        });
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        showToast({
+          kind: "info",
+          message: `${result.taskIds.length} tasks created`,
+          durationMs: 10_000,
+          action: {
+            label: "Undo",
+            run: () => {
+              void undoBulkCreateTasksMutation({ taskIds: result.taskIds })
+                .then(() => showToast({ kind: "info", message: "Bulk creation undone" }))
+                .catch(() => showToast({ kind: "error", message: "Could not undo bulk creation" }));
+            },
+          },
+        });
+        mobileLogger.info("bulk_task_capture_succeeded", {
+          actionId,
+          taskCount: result.taskIds.length,
+        });
+        return true;
+      } catch (error) {
+        showToast({ kind: "error", message: "Could not create tasks. Nothing was added." });
+        mobileLogger.error("bulk_task_capture_failed", {
+          actionId,
+          taskCount: tasks.length,
+          errorType: classifyError(error),
+        });
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        return false;
+      }
+    },
+    [bulkCreateTasksMutation, showToast, undoBulkCreateTasksMutation],
+  );
+
   const {
     isOverdueSheetOpen,
     overdueBuckets,
@@ -1136,6 +1181,7 @@ function MobileApp() {
       <AddTaskSheet
         ref={addTaskSheetRef}
         onAdd={handleAddTask}
+        onBulkAdd={handleBulkAddTasks}
         isValidDeadline={normalizeDeadlineInput}
         onSheetChange={setIsAddSheetOpen}
       />
