@@ -128,6 +128,12 @@ describe("pravah CLI", () => {
   it("fails clearly instead of silently using mock data without auth", () => {
     const result = runCli(["tasks", "list", "--json"], {
       PRAVAH_CLI_MOCK: "0",
+      PRAVAH_HTTP_URL: "",
+      CONVEX_HTTP_API_KEY: "",
+      CONVEX_SITE_URL: "",
+      VITE_CONVEX_SITE_URL: "",
+      CONVEX_URL: "",
+      VITE_CONVEX_URL: "",
     });
 
     expect(result.status).toBe(1);
