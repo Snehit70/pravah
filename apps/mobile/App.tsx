@@ -70,6 +70,7 @@ import { useGoogleAuth } from "./src/hooks/useGoogleAuth";
 import { useNotificationsSettings } from "./src/hooks/useNotificationsSettings";
 import { useIntegrationsSettings } from "./src/hooks/useIntegrationsSettings";
 import { useReducedMotion } from "./src/hooks/useReducedMotion";
+import { useDisplayWorkspace } from "./src/hooks/useDisplayWorkspace";
 import { resetPreferencesStore } from "./src/hooks/useUserPreferences";
 import { OverdueSheet } from "./src/features/overdue-triage/OverdueSheet";
 import { useOverdueTriageController } from "./src/features/overdue-triage/controller";
@@ -190,93 +191,45 @@ function MobileApp() {
       completedTasks,
     });
 
-  const shouldRenderOptimisticShell = sessionLoading && hasCachedSessionHint;
-  // Snapshot data is only rendered once useSession() has confirmed an
-  // authenticated session. A stale cached auth hint (expired/revoked cookie
-  // still in secure storage) must not surface previous workspace data to a
-  // viewer whose session has not yet resolved — the boot shell skeleton
-  // covers that window instead. The hydrated check still gates display so
-  // we never render a partially-populated snapshot.
-  const shouldUseWorkspaceSnapshot =
-    Boolean(session) &&
-    workspaceSnapshot !== null &&
-    isWorkspaceSnapshotHydrated &&
-    !hasLiveWorkspaceData;
-
-  const displayInboxTasks = shouldUseWorkspaceSnapshot ? workspaceSnapshot.inboxTasks : inboxTasks;
-  const displayScheduledTasks = shouldUseWorkspaceSnapshot
-    ? workspaceSnapshot.scheduledTasks
-    : scheduledTasks;
-  const displayCompletedTasks = shouldUseWorkspaceSnapshot
-    ? workspaceSnapshot.completedTasks
-    : completedTasks;
-
-  const workspaceTaskCorpus = useMemo<MobileTask[]>(() => {
-    if (shouldUseWorkspaceSnapshot) {
-      return [...displayInboxTasks, ...displayScheduledTasks, ...displayCompletedTasks];
-    }
-    return allWorkspaceTasks;
-  }, [
-    allWorkspaceTasks,
-    displayCompletedTasks,
+  const {
+    shouldRenderOptimisticShell,
+    shouldUseWorkspaceSnapshot,
     displayInboxTasks,
     displayScheduledTasks,
-    shouldUseWorkspaceSnapshot,
-  ]);
-
-  const displayTimelineSections = useMemo<[string, MobileTask[]][]>(() => {
-    const grouped = new Map<string, MobileTask[]>();
-    for (const task of displayScheduledTasks) {
-      const deadline = task.deadline ?? "unscheduled";
-      const key = deadline < today ? "overdue" : deadline;
-      const existing = grouped.get(key) ?? [];
-      existing.push(task);
-      grouped.set(key, existing);
-    }
-    return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [displayScheduledTasks, today]);
-
-  const { displayInboxCount, displayOverdueCount, displayUpcomingCount, displayCompletedCount } =
-    useMemo(() => {
-      let overdue = 0;
-      let upcoming = 0;
-      for (const task of displayScheduledTasks) {
-        const date = task.deadline;
-        if (!date) continue;
-        // The timeline shows the full forward horizon (no week cap), so the
-        // header count is "everything still ahead of you", split only by
-        // overdue vs upcoming.
-        if (date < today) overdue += 1;
-        else upcoming += 1;
-      }
-      return {
-        displayInboxCount: displayInboxTasks.length,
-        displayOverdueCount: overdue,
-        displayUpcomingCount: upcoming,
-        displayCompletedCount: displayCompletedTasks.length,
-      };
-    }, [displayCompletedTasks.length, displayInboxTasks.length, displayScheduledTasks, today]);
-
-  // Mutations still operate on the currently visible list. This keeps
-  // optimistic updates scoped to what the user sees while query subscriptions
-  // stay always-on in useTaskQueries.
-  const activeServerTasks =
-    activeTab === "timeline"
-      ? scheduledTasks
-      : activeTab === "inbox"
-        ? inboxTasks
-        : completedTasks;
-
-  const tasks = useMemo(
-    () =>
-      optimisticTasks ??
-      (activeTab === "timeline"
-        ? displayScheduledTasks
-        : activeTab === "inbox"
-          ? displayInboxTasks
-          : displayCompletedTasks),
-    [activeTab, displayCompletedTasks, displayInboxTasks, displayScheduledTasks, optimisticTasks]
-  );
+    displayCompletedTasks,
+    workspaceTaskCorpus,
+    displayTimelineSections,
+    displayInboxCount,
+    displayOverdueCount,
+    displayUpcomingCount,
+    displayCompletedCount,
+    activeServerTasks,
+    visibleTasks,
+    isActiveListLoading,
+    isGoalsTaskDataLoading,
+    isTimelineTriageReady,
+    isBootShellLoading,
+    kairoTasks,
+  } = useDisplayWorkspace({
+    activeTab,
+    sessionReady: Boolean(session),
+    sessionLoading,
+    hasCachedSessionHint,
+    today,
+    inboxTasks,
+    scheduledTasks,
+    completedTasks,
+    allWorkspaceTasks,
+    loading: {
+      inbox: isInboxLoading,
+      timeline: isTimelineLoading,
+      completed: isCompletedLoading,
+      allTasksReady: isAllTasksReady,
+    },
+    snapshot: workspaceSnapshot,
+    isSnapshotHydrated: isWorkspaceSnapshotHydrated,
+    optimisticTasks,
+  });
 
   const addTaskMutation = useMutation(api.tasks.addTask);
   const updateTaskMutation = useMutation(api.tasks.updateTask);
@@ -294,36 +247,6 @@ function MobileApp() {
   const { setGoalLink, clearAll: clearAllGoals } = useGoalMutations();
 
   // ── Derived data ────────────────────────────────────────────────────
-
-  const visibleTasks =
-    activeTab === "timeline"
-      ? (tasks as MobileTask[])
-      : activeTab === "inbox"
-        ? (tasks as MobileTask[])
-        : (tasks as MobileTask[]);
-
-  const isActiveListLoading =
-    activeTab === "timeline"
-      ? shouldUseWorkspaceSnapshot
-        ? false
-        : isTimelineLoading
-      : activeTab === "inbox"
-        ? shouldUseWorkspaceSnapshot
-          ? false
-          : isInboxLoading
-        : activeTab === "insights"
-          ? shouldUseWorkspaceSnapshot
-            ? false
-            : isCompletedLoading || !isAllTasksReady
-          : false;
-
-  const isGoalsTaskDataLoading =
-    activeTab === "goals" && !shouldUseWorkspaceSnapshot && !isAllTasksReady;
-  const isTimelineTriageReady = shouldUseWorkspaceSnapshot || isAllTasksReady;
-
-  const isBootShellLoading = shouldRenderOptimisticShell && !shouldUseWorkspaceSnapshot && !session;
-
-  const kairoTasks = allWorkspaceTasks;
 
   const goalLinks = useGoalLinks();
   const { goals } = useGoals();
