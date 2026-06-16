@@ -225,6 +225,12 @@ export function InboxScreen({
         })}
       </View>
 
+      {isFiltering ? (
+        <Text style={styles.filterCount}>
+          {filteredTasks.length} of {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
+        </Text>
+      ) : null}
+
       {goals.length > 0 ? (
         <View>
           <Pressable
@@ -368,6 +374,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.xs,
+  },
+  filterCount: {
+    ...typography.micro,
+    color: colors.textMuted,
   },
   filterChip: {
     paddingHorizontal: spacing.md,

@@ -1049,7 +1049,7 @@ function MobileApp() {
               accessibilityRole="button"
               accessibilityLabel="Open settings"
             >
-              <Text style={styles.settingsLink}>•••</Text>
+              <Text style={styles.settingsLink}>⚙︎</Text>
             </Pressable>
           </View>
         </View>
