@@ -75,6 +75,11 @@ export function dateLabel(date: string, today: string, tomorrow: string): string
   if (date === tomorrow) return "Tomorrow";
   if (date < today) return "Overdue";
   const weekday = weekdayShort(date);
+  const p = parseIsoParts(date);
+  const todayParts = parseIsoParts(today);
+  if (weekday && p && todayParts && p.year !== todayParts.year) {
+    return `${weekday} · ${humanDate(date)}`;
+  }
   return weekday ? `${weekday} · ${shortDate(date)}` : shortDate(date);
 }
 

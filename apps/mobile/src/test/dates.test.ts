@@ -25,6 +25,7 @@ describe("mobile dates helpers", () => {
     // From today+2 onward, every day gets a distinct named-day header.
     expect(dateLabel("2026-04-20", today, tomorrow)).toBe("Mon · Apr 20");
     expect(dateLabel("2026-04-28", today, tomorrow)).toBe("Tue · Apr 28");
+    expect(dateLabel("2027-01-05", today, tomorrow)).toBe("Tue · Jan 5, 2027");
   });
 
   it("formats canonical human dates and short dates", () => {
