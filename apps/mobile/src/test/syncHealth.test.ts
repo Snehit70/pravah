@@ -32,9 +32,12 @@ describe("deriveSyncHealth", () => {
     ).toBe("paused");
   });
 
-  it("reports disconnected only when the account was never linked", () => {
+  it("reports disconnected whenever the backend status is disconnected", () => {
     expect(
       deriveSyncHealth({ status: "disconnected", syncEnabled: false, hasAccount: false })
+    ).toBe("disconnected");
+    expect(
+      deriveSyncHealth({ status: "disconnected", syncEnabled: true, hasAccount: true })
     ).toBe("disconnected");
   });
 

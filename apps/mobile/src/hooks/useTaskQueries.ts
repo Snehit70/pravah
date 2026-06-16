@@ -139,10 +139,9 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
       const date = task.deadline;
       if (!date) continue;
       if (date < today) overdue += 1;
-      // Bound thisWeek by the labelled "this week" boundary (today+6). Tasks
-      // scheduled at today+7 via the +1w quickadd are fetched (queryEndDate
-      // is today+7) but fall outside the "through this week" header label,
-      // so we don't count them here to keep the metric honest.
+      // Bound thisWeek by the labelled "this week" boundary (today+6). The
+      // timeline fetches through TIMELINE_FAR_FUTURE, but tasks beyond this
+      // labelled window stay out of the "through this week" metric.
       else if (date <= weekEnd) thisWeek += 1;
     }
     return { overdueCount: overdue, thisWeekCount: thisWeek };

@@ -24,7 +24,18 @@ const SHORT_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 function parseIsoParts(iso: string): { year: number; month: number; day: number } | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   if (!m) return null;
-  return { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) };
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return { year, month, day };
 }
 
 /** Canonical app-wide human date, e.g. "Jun 18, 2026". Use this everywhere a
@@ -68,15 +79,5 @@ export function dateLabel(date: string, today: string, tomorrow: string): string
 }
 
 export function isIsoDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [yearRaw, monthRaw, dayRaw] = value.split("-");
-  const year = Number(yearRaw);
-  const month = Number(monthRaw);
-  const day = Number(dayRaw);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return (
-    date.getUTCFullYear() === year &&
-    date.getUTCMonth() === month - 1 &&
-    date.getUTCDate() === day
-  );
+  return parseIsoParts(value) !== null;
 }

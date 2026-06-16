@@ -31,6 +31,7 @@ describe("mobile dates helpers", () => {
     expect(humanDate("2026-04-20")).toBe("Apr 20, 2026");
     expect(shortDate("2026-04-20")).toBe("Apr 20");
     expect(humanDate("not-a-date")).toBe("not-a-date");
+    expect(humanDate("2026-13-40")).toBe("2026-13-40");
   });
 
   it("validates strict ISO dates", () => {

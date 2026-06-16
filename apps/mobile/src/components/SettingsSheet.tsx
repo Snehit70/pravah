@@ -902,7 +902,7 @@ export function SettingsSheet({
                   disabled={syncSettingsBusy}
                   hitSlop={12}
                   accessibilityRole="button"
-                  accessibilityLabel={`${calendarActionLabel(calendarSyncHealth, false)} Google Calendar`}
+                  accessibilityLabel={`${calendarActionLabel(calendarSyncHealth, isCalendarSyncing)} Google Calendar`}
                   style={({ pressed }) => [pressed && { opacity: 0.6 }]}
                 >
                   <Text style={[styles.inlineActionText, syncSettingsBusy && styles.inlineActionDisabled]}>

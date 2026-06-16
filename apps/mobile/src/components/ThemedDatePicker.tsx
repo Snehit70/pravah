@@ -58,10 +58,14 @@ export function ThemedDatePicker({ visible, value, onSelect, onClose }: ThemedDa
     setViewYear(y);
   };
 
-  const pick = (day: number) => {
+  const pickDate = (date: Date) => {
     haptic.light();
-    onSelect(toIsoDate(new Date(viewYear, viewMonth, day)));
+    onSelect(toIsoDate(date));
     onClose();
+  };
+
+  const pick = (day: number) => {
+    pickDate(new Date(viewYear, viewMonth, day));
   };
 
   const isSelected = (day: number) =>
@@ -151,7 +155,7 @@ export function ThemedDatePicker({ visible, value, onSelect, onClose }: ThemedDa
                 const now = new Date();
                 setViewYear(now.getFullYear());
                 setViewMonth(now.getMonth());
-                pick(now.getDate());
+                pickDate(now);
               }}
               hitSlop={12}
               accessibilityRole="button"

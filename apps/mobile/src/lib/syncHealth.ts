@@ -32,7 +32,7 @@ export function deriveSyncHealth(input: {
   lastError?: string;
 }): SyncHealth {
   if (input.lastError) return "error";
-  if (input.status === "disconnected" && !input.hasAccount) return "disconnected";
+  if (input.status === "disconnected") return "disconnected";
   if (!input.syncEnabled) return "paused";
   return "healthy";
 }
