@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildExternalId,
+  chunkArray,
   shouldRetryCalendarWithoutUpdatedMin,
 } from "../../convex/syncActions";
 
@@ -41,5 +42,16 @@ describe("syncActions helpers", () => {
     expect(buildExternalId("team-calendar@group.calendar.google.com", "abc123")).toBe(
       "team-calendar@group.calendar.google.com:abc123"
     );
+  });
+
+  it("chunks import events into bounded batches without dropping any", () => {
+    const items = Array.from({ length: 1100 }, (_, i) => i);
+    const chunks = chunkArray(items, 500);
+
+    expect(chunks.map((c) => c.length)).toEqual([500, 500, 100]);
+    expect(chunks.flat()).toEqual(items);
+    expect(chunkArray([], 500)).toEqual([]);
+    expect(chunkArray([1, 2], 500)).toEqual([[1, 2]]);
+    expect(() => chunkArray([1], 0)).toThrow();
   });
 });
