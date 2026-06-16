@@ -1,7 +1,6 @@
 import {
   forwardRef,
   useCallback,
-  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -24,6 +23,7 @@ import { haptic } from "../lib/haptic";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "./TaskCard";
 import { isTaskCompleted, isTaskOnTimeline } from "../lib/taskState";
+import { humanDate } from "../lib/dates";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { TaskMetaFields } from "./TaskMetaFields";
 import { type TaskPriority } from "../lib/task-form";
@@ -66,6 +66,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const { setGoalLink } = useGoalMutations();
 
     const [visible, setVisible] = useState(false);
+    // Tasks open read-only (like Goals); editing is an explicit, deliberate step.
+    const [mode, setMode] = useState<"view" | "edit">("view");
     const [taskId, setTaskId] = useState<Id<"tasks"> | null>(null);
     const [taskState, setTaskState] = useState<"inbox" | "timeline" | "completed" | null>(null);
     const [title, setTitle] = useState("");
@@ -88,6 +90,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       (notify = true) => {
         Keyboard.dismiss();
         setVisible(false);
+        setMode("view");
         setTaskId(null);
         setTaskState(null);
         setInitialDraft(null);
@@ -120,6 +123,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             goalId: currentGoalId,
           });
           setError(null);
+          setMode("view");
           setVisible(true);
           onSheetChange?.(true);
           haptic.light();
@@ -130,12 +134,6 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         closeModal();
       },
     }), [closeModal, onSheetChange]);
-
-    useEffect(() => {
-      if (!visible) return;
-      const t = setTimeout(() => titleInputRef.current?.focus(), 120);
-      return () => clearTimeout(t);
-    }, [visible]);
 
     const handleSave = useCallback(async () => {
       if (!taskId || !title.trim() || saving) return;
@@ -200,6 +198,38 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       if (discard) closeModal();
     }, [hasUnsavedChanges, confirm, closeModal]);
 
+    const enterEditMode = useCallback(() => {
+      setMode("edit");
+    }, []);
+
+    // Leaving edit mode returns to the read-only view, discarding edits (with a
+    // guard) rather than closing the whole sheet.
+    const exitEditMode = useCallback(async () => {
+      if (hasUnsavedChanges) {
+        const discard = await confirm({
+          title: "Discard changes?",
+          message: "You have unsaved edits in this task.",
+          confirmLabel: "Discard",
+          cancelLabel: "Keep editing",
+          destructive: true,
+        });
+        if (!discard) return;
+      }
+      if (initialDraft) {
+        setTitle(initialDraft.title);
+        setDescription(initialDraft.description);
+        setDeadline(initialDraft.deadline);
+        setPriority(initialDraft.priority);
+        setDraftGoalId(initialDraft.goalId);
+      }
+      setError(null);
+      setShowGoalPicker(false);
+      setMode("view");
+    }, [hasUnsavedChanges, confirm, initialDraft]);
+
+    const priorityLabel =
+      priority === "p1" ? "P1" : priority === "p2" ? "P2" : priority === "p3" ? "P3" : "None";
+
     return (
       <Modal
         visible={visible}
@@ -231,10 +261,32 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              <Text style={styles.sheetKicker}>Edit</Text>
-              <Text style={styles.sheetTitle}>Edit task</Text>
+              <Text style={styles.sheetKicker}>{mode === "view" ? "Task" : "Edit"}</Text>
+              <Text style={styles.sheetTitle}>{mode === "view" ? "Task" : "Edit task"}</Text>
 
-              {goals.length > 0 ? (
+              {mode === "view" ? (
+                <View style={styles.viewBlock}>
+                  {linkedGoal ? (
+                    <View style={styles.viewField}>
+                      <Text style={styles.viewFieldLabel}>Goal</Text>
+                      <Text style={styles.viewGoalValue}>{linkedGoal.text}</Text>
+                    </View>
+                  ) : null}
+                  <Text style={styles.viewTitle}>{title}</Text>
+                  {description.trim() ? (
+                    <Text style={styles.viewNotes}>{description.trim()}</Text>
+                  ) : null}
+                  <View style={styles.viewMetaRow}>
+                    <Text style={styles.viewMeta}>{deadline ? humanDate(deadline) : "No date"}</Text>
+                    <Text style={styles.viewMetaDot}>·</Text>
+                    <Text style={styles.viewMeta}>
+                      {priorityLabel === "None" ? "No priority" : priorityLabel}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+
+              {mode === "edit" && goals.length > 0 ? (
                 <View style={styles.goalSection}>
                   <Pressable
                     onPress={() => setShowGoalPicker((s) => !s)}
@@ -323,6 +375,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                 </View>
               ) : null}
 
+              {mode === "edit" ? (
+                <>
               <TextInput
                 ref={titleInputRef}
                 value={title}
@@ -354,8 +408,10 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
               />
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
+                </>
+              ) : null}
 
-              {taskId ? (
+              {mode === "view" && taskId ? (
                 <View style={styles.quickActions}>
                   {taskState === "completed" ? (
                     onReopen ? (
@@ -428,27 +484,50 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
               ) : null}
 
               <View style={styles.actions}>
-                <Pressable
-                  onPress={() => void requestClose()}
-                  style={({ pressed }) => [styles.cancelButton, pressed && { opacity: 0.6 }]}
-                  hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
-                >
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => void handleSave()}
-                  disabled={!canSave}
-                  hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
-                  style={({ pressed }) => [
-                    styles.primaryButton,
-                    !canSave && styles.primaryButtonDisabled,
-                    pressed && { opacity: 0.85 },
-                  ]}
-                >
-                  <Text style={[styles.primaryButtonText, !canSave && styles.primaryButtonTextDisabled]}>
-                    {saving ? "Saving…" : "Save"}
-                  </Text>
-                </Pressable>
+                {mode === "view" ? (
+                  <>
+                    <Pressable
+                      onPress={() => closeModal()}
+                      style={({ pressed }) => [styles.cancelButton, pressed && { opacity: 0.6 }]}
+                      hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+                    >
+                      <Text style={styles.cancelButtonText}>Close</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={enterEditMode}
+                      hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Edit task"
+                      style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.85 }]}
+                    >
+                      <Text style={styles.primaryButtonText}>Edit</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <Pressable
+                      onPress={() => void exitEditMode()}
+                      style={({ pressed }) => [styles.cancelButton, pressed && { opacity: 0.6 }]}
+                      hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+                    >
+                      <Text style={styles.cancelButtonText}>Cancel</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => void handleSave()}
+                      disabled={!canSave}
+                      hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+                      style={({ pressed }) => [
+                        styles.primaryButton,
+                        !canSave && styles.primaryButtonDisabled,
+                        pressed && { opacity: 0.85 },
+                      ]}
+                    >
+                      <Text style={[styles.primaryButtonText, !canSave && styles.primaryButtonTextDisabled]}>
+                        {saving ? "Saving…" : "Save"}
+                      </Text>
+                    </Pressable>
+                  </>
+                )}
               </View>
             </ScrollView>
           </View>
@@ -493,6 +572,43 @@ const styles = StyleSheet.create({
     ...typography.headline,
     color: colors.textPrimary,
     marginTop: -spacing.sm,
+  },
+  viewBlock: {
+    gap: spacing.md,
+  },
+  viewField: {
+    gap: 2,
+  },
+  viewFieldLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  viewGoalValue: {
+    ...typography.bodyMd,
+    color: colors.accent,
+    fontWeight: "600",
+  },
+  viewTitle: {
+    ...typography.headline,
+    color: colors.textPrimary,
+  },
+  viewNotes: {
+    ...typography.bodyMd,
+    color: colors.textSecondary,
+  },
+  viewMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  viewMeta: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+  },
+  viewMetaDot: {
+    color: colors.textMuted,
   },
   goalSection: {
     gap: spacing.sm,

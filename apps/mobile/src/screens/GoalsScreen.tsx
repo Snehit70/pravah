@@ -485,7 +485,9 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false, on
                 onLongPress={() => void handleDelete(item)}
                 hitSlop={8}
                 accessibilityRole="button"
-                accessibilityLabel={`Goal: ${item.text}. Long-press to delete.`}
+                // Tap opens the detail, which carries the visible "Delete goal"
+                // action; long-press stays as a power-user shortcut.
+                accessibilityLabel={`Goal: ${item.text}. Tap to open, edit, or delete.`}
                 style={({ pressed }) => [
                   styles.goalCard,
                   isComplete && styles.goalCardComplete,

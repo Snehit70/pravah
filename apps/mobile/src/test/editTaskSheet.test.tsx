@@ -274,8 +274,8 @@ describe("EditTaskSheet", () => {
 
     expect(mockOnSheetChange).toHaveBeenCalledWith(true);
 
-    const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
-    expect(titleInput.value).toBe("Original task");
+    // Tasks now open read-only (like Goals); the title renders as text.
+    expect(screen.getByText("Original task")).toBeTruthy();
   });
 
   it("updates task title", async () => {
@@ -291,6 +291,10 @@ describe("EditTaskSheet", () => {
     await act(async () => {
       ref.current?.open(sampleTask);
       await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Edit"));
     });
 
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
@@ -351,6 +355,10 @@ describe("EditTaskSheet", () => {
       await Promise.resolve();
     });
 
+    await act(async () => {
+      fireEvent.click(screen.getByText("Edit"));
+    });
+
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
     fireEvent.change(titleInput, { target: { value: "Updated" } });
 
@@ -379,6 +387,10 @@ describe("EditTaskSheet", () => {
     await act(async () => {
       ref.current?.open(sampleTask);
       await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Edit"));
     });
 
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
