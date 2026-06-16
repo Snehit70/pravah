@@ -189,9 +189,9 @@ export function StatsScreen({ tasks, tabBarHeight }: StatsScreenProps) {
         )}
 
         <View style={styles.workloadRow}>
-          <WorkloadStat label="P1" value={workload.p1} tint="#e87a90" />
-          <WorkloadStat label="P2" value={workload.p2} tint="#d3a04b" />
-          <WorkloadStat label="P3" value={workload.p3} tint="#4ec9b0" />
+          <WorkloadStat label="P1" value={workload.p1} tint={colors.priorityP1} />
+          <WorkloadStat label="P2" value={workload.p2} tint={colors.priorityP2} />
+          <WorkloadStat label="P3" value={workload.p3} tint={colors.priorityP3} />
           <WorkloadStat label="None" value={workload.unprioritized} tint={colors.textMuted} />
         </View>
 
@@ -275,9 +275,9 @@ function PriorityBar({
   const total = p1 + p2 + p3 + unprioritized;
   if (total === 0) return null;
   const segments: Array<{ key: string; flex: number; color: string }> = [
-    { key: "p1", flex: p1, color: "#e87a90" },
-    { key: "p2", flex: p2, color: "#d3a04b" },
-    { key: "p3", flex: p3, color: "#4ec9b0" },
+    { key: "p1", flex: p1, color: colors.priorityP1 },
+    { key: "p2", flex: p2, color: colors.priorityP2 },
+    { key: "p3", flex: p3, color: colors.priorityP3 },
     { key: "none", flex: unprioritized, color: colors.borderSubtle },
   ].filter((s) => s.flex > 0);
   return (

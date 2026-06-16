@@ -51,9 +51,9 @@ function deadlineStatus(iso: string): DeadlineStatus {
 const PRIORITY_RANK: Record<string, number> = { p1: 0, p2: 1, p3: 2 };
 
 const PRIORITY_LABEL: Record<"p1" | "p2" | "p3", { label: string; color: string }> = {
-  p1: { label: "P1", color: "#e87a90" },
-  p2: { label: "P2", color: "#d3a04b" },
-  p3: { label: "P3", color: "#4ec9b0" },
+  p1: { label: "P1", color: colors.priorityP1 },
+  p2: { label: "P2", color: colors.priorityP2 },
+  p3: { label: "P3", color: colors.priorityP3 },
 };
 
 function GoalProgressBar({
