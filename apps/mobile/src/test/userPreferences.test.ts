@@ -29,14 +29,12 @@ describe("sanitize", () => {
       dailyReminderTime: "not a time",
       kairoTemperature: "hot",
       kairoUndoWindowMinutes: 17,
-      weekStart: "wednesday",
     });
     expect(result.dailyReminderTime).toBe(DEFAULT_PREFERENCES.dailyReminderTime);
     expect(result.kairoTemperature).toBe(DEFAULT_PREFERENCES.kairoTemperature);
     expect(result.kairoUndoWindowMinutes).toBe(
       DEFAULT_PREFERENCES.kairoUndoWindowMinutes,
     );
-    expect(result.weekStart).toBe("monday");
   });
 
   it("accepts valid values verbatim", () => {
@@ -45,7 +43,6 @@ describe("sanitize", () => {
       quietHoursEnabled: true,
       quietHoursStart: "23:15",
       quietHoursEnd: "06:00",
-      weekStart: "sunday",
       defaultTaskDurationMin: 45,
       taskColorScheme: "teal",
       kairoTemperature: 0.3,
@@ -59,7 +56,6 @@ describe("sanitize", () => {
     expect(result).toMatchObject({
       dailyReminderTime: "07:30",
       quietHoursEnabled: true,
-      weekStart: "sunday",
       taskColorScheme: "teal",
       kairoResponseStyle: "detailed",
       kairoUndoWindowMinutes: 15,

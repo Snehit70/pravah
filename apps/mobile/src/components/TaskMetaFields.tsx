@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { Keyboard, Platform, Pressable, StyleSheet, Text, View } from "react-native";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
 import { haptic } from "../lib/haptic";
 import { colors, spacing, typography } from "../theme/tokens";
+import { humanDate } from "../lib/dates";
+import { ThemedDatePicker } from "./ThemedDatePicker";
 import {
-  formatLocalDate,
   nextPriority,
-  parseIsoDate,
   priorityDotColor,
   priorityLabel,
   type TaskPriority,
@@ -41,7 +40,9 @@ export function TaskMetaFields({
           hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
         >
           <Text style={styles.metaLabel}>Due</Text>
-          <Text style={deadline ? styles.metaValue : styles.metaPlaceholder}>{deadline || "—"}</Text>
+          <Text style={deadline ? styles.metaValue : styles.metaPlaceholder}>
+            {deadline ? humanDate(deadline) : "—"}
+          </Text>
         </Pressable>
 
         {deadline ? (
@@ -74,19 +75,15 @@ export function TaskMetaFields({
       </View>
 
       {showDatePicker ? (
-        <DateTimePicker
-          value={parseIsoDate(deadline)}
-          mode="date"
-          display={Platform.OS === "ios" ? "spinner" : "default"}
-          onChange={(_event, selectedDate) => {
-            if (Platform.OS === "android") {
-              setShowDatePicker(false);
-            }
-            if (selectedDate) {
-              onDeadlineChange(formatLocalDate(selectedDate));
-              onClearError();
-            }
+        <ThemedDatePicker
+          key={deadline || "today"}
+          visible
+          value={deadline || undefined}
+          onSelect={(iso) => {
+            onDeadlineChange(iso);
+            onClearError();
           }}
+          onClose={() => setShowDatePicker(false)}
         />
       ) : null}
     </>

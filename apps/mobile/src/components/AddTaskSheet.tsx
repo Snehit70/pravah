@@ -281,6 +281,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
 
           <View style={styles.card}>
             <ScrollView
+              style={styles.scrollArea}
               contentContainerStyle={styles.content}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
@@ -518,7 +519,11 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               ) : null}
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            </ScrollView>
 
+            {/* Sticky footer: the primary action stays pinned above the keyboard
+                instead of scrolling behind it (the most common capture friction). */}
+            <View style={styles.footer}>
               <Pressable
                 onPress={() => void handleAdd()}
                 disabled={!canSubmit}
@@ -546,7 +551,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                   <Text style={styles.discardButtonText}>Discard</Text>
                 </Pressable>
               ) : null}
-            </ScrollView>
+            </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -577,8 +582,22 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingBottom: spacing.lg,
     gap: spacing.lg,
+  },
+  // flexShrink lets the scroll area give up space to the sticky footer so the
+  // footer never gets pushed below the card's (keyboard-avoided) bottom edge.
+  scrollArea: {
+    flexShrink: 1,
+  },
+  footer: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.bg,
+    gap: spacing.sm,
   },
   bulkSection: { gap: spacing.sm, paddingVertical: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   bulkToggle: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },

@@ -87,10 +87,15 @@ export const colors = {
   /** --color-accent-dim (~8% alpha) — barely-there wash */
   accentDim: "rgba(139,125,232,0.08)",
 
-  // ── Priority semantics — same colors as web TaskCard accent bar ─────
-  priorityP1: "#8b7de8",
-  priorityP2: "#c2c2c8",
-  priorityP3: "#6b6b72",
+  // ── Priority semantics ──────────────────────────────────────────────
+  // One canonical, fixed (accent-independent) muted hue ramp — red → amber →
+  // neutral — so P1/P2/P3 are distinguishable at a glance during triage. The
+  // previous values (accent purple + two near-identical grays) made P2 and P3
+  // indistinguishable and tied P1 to the themeable accent. Intentionally
+  // diverges from web here; mobile is the triage-heavy surface.
+  priorityP1: "#d06b5a",
+  priorityP2: "#d4ab66",
+  priorityP3: "#80828c",
 
   // ── Status semantics ────────────────────────────────────────────────
   /** --color-success — mossy mint (oklch 0.78 0.18 150) */

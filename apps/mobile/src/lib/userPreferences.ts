@@ -3,7 +3,6 @@ import { classifyError, mobileLogger } from "./logger";
 
 const STORAGE_KEY = "pravah_user_prefs_v1";
 
-export type WeekStart = "monday" | "sunday";
 export type KairoResponseStyle = "concise" | "detailed";
 export type ReducedMotionOverride = "system" | "always" | "never";
 export type AccentColor = "purple" | "copper" | "teal" | "rose";
@@ -15,7 +14,6 @@ export interface UserPreferences {
   quietHoursEnabled: boolean;
   quietHoursStart: string;
   quietHoursEnd: string;
-  weekStart: WeekStart;
   defaultTaskDurationMin: number;
   taskColorScheme: AccentColor;
   kairoTemperature: number;
@@ -33,7 +31,6 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   quietHoursEnabled: false,
   quietHoursStart: "22:00",
   quietHoursEnd: "07:00",
-  weekStart: "monday",
   defaultTaskDurationMin: 30,
   taskColorScheme: "purple",
   kairoTemperature: 0.7,
@@ -84,7 +81,6 @@ function sanitize(raw: unknown): UserPreferences {
     quietHoursEnd: isValidTime(r.quietHoursEnd)
       ? r.quietHoursEnd
       : DEFAULT_PREFERENCES.quietHoursEnd,
-    weekStart: r.weekStart === "sunday" ? "sunday" : "monday",
     defaultTaskDurationMin: clampNumber(
       r.defaultTaskDurationMin,
       5,

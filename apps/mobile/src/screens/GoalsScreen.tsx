@@ -17,6 +17,7 @@ import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, Vi
 import { BlurView } from "expo-blur";
 
 import { haptic } from "../lib/haptic";
+import { humanDate } from "../lib/dates";
 import Animated, {
   Easing,
   FadeIn,
@@ -34,14 +35,6 @@ import { useReducedMotion } from "../hooks/useReducedMotion";
 import type { MobileTask } from "../components/TaskCard";
 import { isTaskCompleted } from "../lib/taskState";
 
-const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-function formatDeadline(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (!m) return iso;
-  const month = SHORT_MONTHS[Number(m[2]) - 1] ?? m[2];
-  return `${month} ${Number(m[3])}, ${m[1]}`;
-}
-
 type DeadlineStatus = "overdue" | "soon" | "normal";
 function deadlineStatus(iso: string): DeadlineStatus {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
@@ -58,9 +51,9 @@ function deadlineStatus(iso: string): DeadlineStatus {
 const PRIORITY_RANK: Record<string, number> = { p1: 0, p2: 1, p3: 2 };
 
 const PRIORITY_LABEL: Record<"p1" | "p2" | "p3", { label: string; color: string }> = {
-  p1: { label: "P1", color: "#e87a90" },
-  p2: { label: "P2", color: "#d3a04b" },
-  p3: { label: "P3", color: "#4ec9b0" },
+  p1: { label: "P1", color: colors.priorityP1 },
+  p2: { label: "P2", color: colors.priorityP2 },
+  p3: { label: "P3", color: colors.priorityP3 },
 };
 
 function GoalProgressBar({
@@ -283,7 +276,7 @@ function GoalDetailSheet({ goal, progress, linked, onDelete, onClose, onOpenTask
                     const dlColor = ds === "overdue" ? colors.error : ds === "soon" ? "#d3a04b" : colors.textMuted;
                     return (
                       <Text style={[detailStyles.metaText, { color: dlColor }]}>
-                        {ds === "overdue" ? `Overdue · ${formatDeadline(goal.deadline)}` : formatDeadline(goal.deadline)}
+                        {ds === "overdue" ? `Overdue · ${humanDate(goal.deadline)}` : humanDate(goal.deadline)}
                       </Text>
                     );
                   })() : null}
@@ -492,7 +485,9 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false, on
                 onLongPress={() => void handleDelete(item)}
                 hitSlop={8}
                 accessibilityRole="button"
-                accessibilityLabel={`Goal: ${item.text}. Long-press to delete.`}
+                // Tap opens the detail, which carries the visible "Delete goal"
+                // action; long-press stays as a power-user shortcut.
+                accessibilityLabel={`Goal: ${item.text}. Tap to open, edit, or delete.`}
                 style={({ pressed }) => [
                   styles.goalCard,
                   isComplete && styles.goalCardComplete,
@@ -530,7 +525,7 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false, on
                         const dlColor = ds === "overdue" ? colors.error : ds === "soon" ? "#d3a04b" : undefined;
                         return (
                           <Text style={[styles.goalMeta, dlColor ? { color: dlColor } : null]}>
-                            {ds === "overdue" ? `Overdue · ${formatDeadline(item.deadline)}` : formatDeadline(item.deadline)}
+                            {ds === "overdue" ? `Overdue · ${humanDate(item.deadline)}` : humanDate(item.deadline)}
                           </Text>
                         );
                       })() : null}

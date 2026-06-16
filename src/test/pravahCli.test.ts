@@ -11,9 +11,11 @@ const repoRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const cliEntry = resolve(repoRoot, "src/cli/pravah.ts");
 
 function buildCliEnv(env?: Record<string, string>) {
+  const home = env?.HOME ?? mkdtempSync(join(tmpdir(), "pravah-cli-test-home-"));
   return {
     ...process.env,
-    HOME: env?.HOME ?? mkdtempSync(join(tmpdir(), "pravah-cli-test-home-")),
+    HOME: home,
+    XDG_CONFIG_HOME: env?.XDG_CONFIG_HOME ?? join(home, ".config"),
     PRAVAH_CLI_MOCK: env?.PRAVAH_CLI_MOCK ?? "1",
     ...env,
   };

@@ -27,7 +27,6 @@ type TimelineScreenProps = {
   sections: [string, MobileTask[]][];
   today: string;
   tomorrow: string;
-  weekEnd: string;
   isLoading: boolean;
   isRefreshing: boolean;
   tabBarHeight: number;
@@ -70,7 +69,6 @@ function buildTimelineRows(
   sections: [string, MobileTask[]][],
   today: string,
   tomorrow: string,
-  weekEnd: string,
   maxRows: number
 ) {
   const rows: TimelineRow[] = [];
@@ -80,7 +78,7 @@ function buildTimelineRows(
     rows.push({
       kind: "header",
       dateKey,
-      label: dateLabel(dateKey, today, tomorrow, weekEnd),
+      label: dateLabel(dateKey, today, tomorrow),
       isToday: dateKey === today,
       count: tasks.length,
     });
@@ -98,7 +96,6 @@ export function TimelineScreen({
   sections,
   today,
   tomorrow,
-  weekEnd,
   isLoading,
   isRefreshing,
   tabBarHeight,
@@ -116,7 +113,7 @@ export function TimelineScreen({
 
   // Build only the rows currently released to FlatList. Large timelines still
   // hydrate quickly, but the first paint avoids handing every row to React.
-  const rows = buildTimelineRows(visibleSections, today, tomorrow, weekEnd, visibleRowCount);
+  const rows = buildTimelineRows(visibleSections, today, tomorrow, visibleRowCount);
   const hasPendingRows = rows.length < totalRows;
 
   const overdueHeader =

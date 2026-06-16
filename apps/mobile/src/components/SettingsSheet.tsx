@@ -34,7 +34,8 @@ import { colors, radii, spacing, typography } from "../theme/tokens";
 import { isWithinQuietHours, type NotificationPermissionState } from "../lib/notifications";
 import { KairoSettingsSection } from "./KairoSettingsSection";
 import { GmailReviewSection } from "./GmailReviewSection";
-import type { GoogleCalendarOption, IntegrationLastRunSummary } from "../hooks/useIntegrationsSettings";
+import type { GoogleCalendarOption, IntegrationLastRunSummary, SyncHealth } from "../hooks/useIntegrationsSettings";
+import { summarizeSyncError } from "../hooks/useIntegrationsSettings";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 
@@ -105,6 +106,34 @@ function statusTextColor(status: string): string {
   return colors.textMuted;
 }
 
+function syncHealthLabel(health: SyncHealth): string {
+  switch (health) {
+    case "healthy":
+      return "Connected";
+    case "error":
+      return "Sync paused after an error";
+    case "paused":
+      return "Sync off";
+    case "disconnected":
+      return "Not connected";
+  }
+}
+
+function syncHealthColor(health: SyncHealth): string {
+  if (health === "healthy") return colors.primary;
+  if (health === "error") return colors.error;
+  return colors.textMuted;
+}
+
+// Context-aware primary action for the calendar block, replacing the old pair
+// of "Sync now" + "Enable and sync" rows.
+function calendarActionLabel(health: SyncHealth, isSyncing: boolean): string {
+  if (isSyncing) return "Syncing…";
+  if (health === "error") return "Reconnect";
+  if (health === "paused" || health === "disconnected") return "Enable and sync";
+  return "Sync now";
+}
+
 type SectionKey = "assistant" | "sync" | "alerts" | "timeline" | "more";
 
 const READ_ONLY_AUTOMATION_SCOPES = ["tasks:read", "review:read", "sync:read"] as const;
@@ -135,8 +164,9 @@ type SettingsSheetProps = {
   visible: boolean;
   calendarSyncEnabled: boolean;
   gmailSyncEnabled: boolean;
-  calendarSyncStatus: string;
   gmailSyncStatus: string;
+  calendarSyncHealth: SyncHealth;
+  calendarErrorSummary?: string;
   canToggleGmailSync: boolean;
   pendingGmailReviewCount: number;
   notificationPermissionState: NotificationPermissionState;
@@ -176,8 +206,9 @@ export function SettingsSheet({
   visible,
   calendarSyncEnabled,
   gmailSyncEnabled,
-  calendarSyncStatus,
   gmailSyncStatus,
+  calendarSyncHealth,
+  calendarErrorSummary,
   canToggleGmailSync,
   pendingGmailReviewCount,
   notificationPermissionState,
@@ -786,9 +817,14 @@ export function SettingsSheet({
                   <View style={styles.settingCopy}>
                     <Text style={styles.settingLabel}>Google Calendar</Text>
                     <Text style={styles.settingHelp}>Pull events and deadlines into Pravah.</Text>
-                    <Text style={[styles.settingStatus, { color: statusTextColor(calendarSyncStatus) }]}>
-                      {formatStatusLabel(calendarSyncStatus)}
+                    <Text style={[styles.settingStatus, { color: syncHealthColor(calendarSyncHealth) }]}>
+                      {syncHealthLabel(calendarSyncHealth)}
                     </Text>
+                    {calendarSyncHealth === "error" && calendarErrorSummary ? (
+                      <Text style={[styles.settingMeta, { color: colors.error }]}>
+                        {calendarErrorSummary}
+                      </Text>
+                    ) : null}
                     {calendarAccountEmail ? (
                       <Text style={styles.settingMeta}>{calendarAccountEmail.toLowerCase()}</Text>
                     ) : null}
@@ -860,15 +896,17 @@ export function SettingsSheet({
                   </View>
                 ) : null}
                 <Pressable
-                  onPress={onGoogleCalendarSync}
-                  disabled={isCalendarSyncing}
+                  onPress={
+                    calendarSyncHealth === "healthy" ? onGoogleCalendarSync : onEnableAndSyncGoogleCalendar
+                  }
+                  disabled={syncSettingsBusy}
                   hitSlop={12}
                   accessibilityRole="button"
-                  accessibilityLabel="Sync Google Calendar now"
+                  accessibilityLabel={`${calendarActionLabel(calendarSyncHealth, isCalendarSyncing)} Google Calendar`}
                   style={({ pressed }) => [pressed && { opacity: 0.6 }]}
                 >
-                  <Text style={[styles.inlineActionText, isCalendarSyncing && styles.inlineActionDisabled]}>
-                    {isCalendarSyncing ? "Syncing…" : "Sync now"}
+                  <Text style={[styles.inlineActionText, syncSettingsBusy && styles.inlineActionDisabled]}>
+                    {calendarActionLabel(calendarSyncHealth, isCalendarSyncing)}
                   </Text>
                 </Pressable>
               </View>
@@ -896,25 +934,17 @@ export function SettingsSheet({
                     thumbColor={gmailSyncEnabled ? colors.accent : colors.textMuted}
                   />
                 </View>
-                <Text style={styles.settingMeta}>Pending review · {pendingGmailReviewCount}</Text>
+                {pendingGmailReviewCount > 0 ? (
+                  <Text style={styles.settingMeta}>
+                    {pendingGmailReviewCount} captured{" "}
+                    {pendingGmailReviewCount === 1 ? "item" : "items"} waiting for review
+                  </Text>
+                ) : null}
                 {!canToggleGmailSync ? (
                   <Text style={styles.settingMeta}>Connect Gmail on web before enabling mobile sync.</Text>
                 ) : null}
                 <GmailReviewSection enabled={gmailSyncEnabled} showToast={showToast} />
               </View>
-
-              <Pressable
-                onPress={onEnableAndSyncGoogleCalendar}
-                disabled={syncSettingsBusy}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="Enable and sync Google Calendar"
-                style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
-              >
-                <Text style={[styles.inlineActionText, syncSettingsBusy && styles.inlineActionDisabled]}>
-                  Enable and sync Google Calendar
-                </Text>
-              </Pressable>
             </View>
           ) : null}
 
@@ -1090,34 +1120,8 @@ export function SettingsSheet({
               <View style={[styles.settingBlock, styles.sectionCard]}>
                 <Text style={styles.settingLabel}>Defaults</Text>
                 <Text style={styles.settingHelp}>
-                  Control how the timeline plans your week and sizes new tasks.
+                  Control how new tasks are sized and colored.
                 </Text>
-
-                <View style={styles.fieldStack}>
-                  <Text style={styles.fieldLabel}>Week starts on</Text>
-                  <View style={styles.segmented}>
-                    {(["monday", "sunday"] as const).map((day) => {
-                      const active = prefs.weekStart === day;
-                      return (
-                        <Pressable
-                          key={day}
-                          onPress={() => void setPreference("weekStart", day)}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: active }}
-                          style={({ pressed }) => [
-                            styles.segment,
-                            active && styles.segmentActive,
-                            pressed && { opacity: 0.7 },
-                          ]}
-                        >
-                          <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                            {day === "monday" ? "Monday" : "Sunday"}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
 
                 <View style={styles.behaviorRow}>
                   <Text style={styles.settingMeta}>Default task duration</Text>
@@ -1359,7 +1363,7 @@ export function SettingsSheet({
                   {calendarLastError ? (
                     <View style={styles.errorBlock}>
                       <Text selectable style={styles.errorBlockText}>
-                        {calendarLastError}
+                        {summarizeSyncError(calendarLastError)}
                       </Text>
                     </View>
                   ) : null}
@@ -1397,7 +1401,7 @@ export function SettingsSheet({
                   {gmailLastError ? (
                     <View style={styles.errorBlock}>
                       <Text selectable style={styles.errorBlockText}>
-                        {gmailLastError}
+                        {summarizeSyncError(gmailLastError)}
                       </Text>
                     </View>
                   ) : null}
@@ -1972,6 +1976,9 @@ const styles = StyleSheet.create({
   },
   errorBlockText: {
     ...typography.micro,
+    // Errors are human content, not chrome: keep them mixed-case and readable
+    // rather than the uppercase log-line treatment used elsewhere.
+    textTransform: "none",
     color: colors.textSecondary,
     fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
     lineHeight: 16,

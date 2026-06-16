@@ -25,7 +25,7 @@ import {
 } from "@expo-google-fonts/geist";
 import { GeistMono_500Medium } from "@expo-google-fonts/geist-mono";
 import { ConvexClientProvider } from "./src/lib/convex";
-import { dateLabel, isIsoDate } from "./src/lib/dates";
+import { humanDate, isIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
 import {
   getDiagnosticsSnapshot,
@@ -249,26 +249,26 @@ function MobileApp() {
     return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [displayScheduledTasks, today]);
 
-  const { displayInboxCount, displayOverdueCount, displayThisWeekCount, displayCompletedCount } =
+  const { displayInboxCount, displayOverdueCount, displayUpcomingCount, displayCompletedCount } =
     useMemo(() => {
       let overdue = 0;
-      let thisWeek = 0;
+      let upcoming = 0;
       for (const task of displayScheduledTasks) {
         const date = task.deadline;
         if (!date) continue;
+        // The timeline shows the full forward horizon (no week cap), so the
+        // header count is "everything still ahead of you", split only by
+        // overdue vs upcoming.
         if (date < today) overdue += 1;
-        // Cap "this week" at weekEnd (today+6) so tasks scheduled at today+7
-        // via the +1w quickadd aren't double-labelled under a week-bounded
-        // header even though they're fetched inside the wider query window.
-        else if (date <= weekEnd) thisWeek += 1;
+        else upcoming += 1;
       }
       return {
         displayInboxCount: displayInboxTasks.length,
         displayOverdueCount: overdue,
-        displayThisWeekCount: thisWeek,
+        displayUpcomingCount: upcoming,
         displayCompletedCount: displayCompletedTasks.length,
       };
-    }, [displayCompletedTasks.length, displayInboxTasks.length, displayScheduledTasks, today, weekEnd]);
+    }, [displayCompletedTasks.length, displayInboxTasks.length, displayScheduledTasks, today]);
 
   // Mutations still operate on the currently visible list. This keeps
   // optimistic updates scoped to what the user sees while query subscriptions
@@ -387,8 +387,9 @@ function MobileApp() {
     isGmailToggleSaving,
     googleSyncEnabled,
     gmailSyncEnabled,
-    calendarSyncStatus,
     gmailSyncStatus,
+    calendarSyncHealth,
+    calendarErrorSummary,
     canToggleGmailSync,
     pendingGmailReviewCount,
     syncSettingsBusy,
@@ -879,8 +880,10 @@ function MobileApp() {
 
   const renderInboxTaskItem = useCallback(
     ({ item, drag, hidePriorityBadge }: RenderItemParams<MobileTask> & { hidePriorityBadge?: boolean }) => (
+      // Inbox has no day-section header, so a dated task self-describes its date.
       <TaskCard
         task={item}
+        dateLabel={item.deadline ? humanDate(item.deadline) : undefined}
         onDone={canUseWorkspaceActions ? markDone : () => undefined}
         onMoveToday={canUseWorkspaceActions ? moveToToday : undefined}
         onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
@@ -894,9 +897,9 @@ function MobileApp() {
 
   const renderTimelineTaskItem = useCallback(
     (dateKey: string, { item, drag }: RenderItemParams<MobileTask>) => (
+      // No date on timeline cards: the day-named section header owns the date.
       <TaskCard
         task={item}
-        dateLabel={dateKey === "overdue" && item.deadline ? item.deadline : dateLabel(dateKey, today, tomorrow, weekEnd)}
         onDone={canUseWorkspaceActions ? markDone : () => undefined}
         onSendToInbox={canUseWorkspaceActions ? sendToInbox : undefined}
         onReorder={
@@ -911,9 +914,6 @@ function MobileApp() {
     ),
     [
       canUseWorkspaceActions,
-      today,
-      tomorrow,
-      weekEnd,
       markDone,
       sendToInbox,
       shiftTimelineTask,
@@ -984,8 +984,8 @@ function MobileApp() {
   const padCount = (n: number) => (n < 10 ? `0${n}` : `${n}`);
   const timelineSubtitle =
     displayOverdueCount > 0
-      ? `${padCount(displayOverdueCount)} overdue · ${padCount(displayThisWeekCount)} this week`
-      : `${padCount(displayThisWeekCount)} through this week`;
+      ? `${padCount(displayOverdueCount)} overdue · ${padCount(displayUpcomingCount)} upcoming`
+      : `${padCount(displayUpcomingCount)} upcoming`;
   const headerSubtitle =
     shouldRenderOptimisticShell
       ? "Restoring your session"
@@ -1049,7 +1049,7 @@ function MobileApp() {
               accessibilityRole="button"
               accessibilityLabel="Open settings"
             >
-              <Text style={styles.settingsLink}>•••</Text>
+              <Text style={styles.settingsLink}>⚙︎</Text>
             </Pressable>
           </View>
         </View>
@@ -1117,12 +1117,25 @@ function MobileApp() {
 
       {activeTab === "timeline" ? (
         <Animated.View entering={tabEnterAnimation} style={styles.tabScreen}>
+          {/* Ambient, silent-when-healthy sync indicator. The timeline is the
+              surface calendar sync feeds, so a broken sync surfaces here where
+              it's actually missing events — not buried in Settings. */}
+          {calendarSyncHealth === "error" ? (
+            <Pressable
+              onPress={openSettingsModal}
+              style={({ pressed }) => [styles.syncBrokenBanner, pressed && { opacity: 0.6 }]}
+              accessibilityRole="button"
+              accessibilityLabel="Calendar sync paused after an error. Open settings to reconnect."
+            >
+              <Text style={styles.syncBrokenText}>Calendar sync paused</Text>
+              <Text style={styles.syncBrokenAction}>Reconnect</Text>
+            </Pressable>
+          ) : null}
           <ScreenErrorBoundary screenName="Timeline">
             <TimelineScreen
               sections={shouldUseWorkspaceSnapshot ? displayTimelineSections : timelineSections}
               today={today}
               tomorrow={tomorrow}
-              weekEnd={weekEnd}
               isLoading={isActiveListLoading || isBootShellLoading}
               isRefreshing={isRefreshing}
               tabBarHeight={tabBarHeight}
@@ -1217,7 +1230,6 @@ function MobileApp() {
         applyDeadline={applyDeadline}
         today={today}
         tomorrow={tomorrow}
-        weekEnd={weekEnd}
         onOpenPreview={openPreview}
         onClosePreview={closePreview}
         onSetApplyDeadline={setApplyDeadline}
@@ -1230,8 +1242,9 @@ function MobileApp() {
         visible={isSettingsModalOpen}
         calendarSyncEnabled={googleSyncEnabled}
         gmailSyncEnabled={gmailSyncEnabled}
-        calendarSyncStatus={calendarSyncStatus}
         gmailSyncStatus={gmailSyncStatus}
+        calendarSyncHealth={calendarSyncHealth}
+        calendarErrorSummary={calendarErrorSummary}
         canToggleGmailSync={canToggleGmailSync}
         pendingGmailReviewCount={pendingGmailReviewCount}
         notificationPermissionState={notificationPermissionState}
@@ -1547,6 +1560,30 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
     paddingLeft: spacing.md,
+  },
+  // Broken-sync banner — same left-rule idiom as the retry/sync surfaces, in
+  // the error tone. Only rendered while calendar sync is in an error state.
+  syncBrokenBanner: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+    paddingLeft: spacing.md,
+    paddingVertical: spacing.xs,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.error,
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  syncBrokenText: {
+    color: colors.textPrimary,
+    ...typography.bodyMd,
+    flex: 1,
+  },
+  syncBrokenAction: {
+    color: colors.error,
+    ...typography.micro,
   },
 
   // Shared

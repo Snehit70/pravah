@@ -211,9 +211,7 @@ describe("TimelineScreen", () => {
       <TimelineScreen
         sections={[]}
         today="2026-05-04"
-        tomorrow="2026-05-05"
-        weekEnd="2026-05-10"
-        isLoading={true}
+        tomorrow="2026-05-05"        isLoading={true}
         isRefreshing={false}
         tabBarHeight={60}
         onRefresh={mockOnRefresh}
@@ -230,9 +228,7 @@ describe("TimelineScreen", () => {
       <TimelineScreen
         sections={[]}
         today="2026-05-04"
-        tomorrow="2026-05-05"
-        weekEnd="2026-05-10"
-        isLoading={false}
+        tomorrow="2026-05-05"        isLoading={false}
         isRefreshing={false}
         tabBarHeight={60}
         onRefresh={mockOnRefresh}
@@ -249,9 +245,7 @@ describe("TimelineScreen", () => {
       <TimelineScreen
         sections={sampleSections}
         today="2026-05-04"
-        tomorrow="2026-05-05"
-        weekEnd="2026-05-10"
-        isLoading={false}
+        tomorrow="2026-05-05"        isLoading={false}
         isRefreshing={false}
         tabBarHeight={60}
         onRefresh={mockOnRefresh}
@@ -284,9 +278,7 @@ describe("TimelineScreen", () => {
       <TimelineScreen
         sections={sampleSections}
         today="2026-05-04"
-        tomorrow="2026-05-05"
-        weekEnd="2026-05-10"
-        isLoading={false}
+        tomorrow="2026-05-05"        isLoading={false}
         isRefreshing={false}
         tabBarHeight={60}
         onRefresh={mockOnRefresh}
@@ -305,9 +297,7 @@ describe("TimelineScreen", () => {
       <TimelineScreen
         sections={[]}
         today="2026-05-04"
-        tomorrow="2026-05-05"
-        weekEnd="2026-05-10"
-        isLoading={true}
+        tomorrow="2026-05-05"        isLoading={true}
         isRefreshing={false}
         tabBarHeight={60}
         onRefresh={mockOnRefresh}
@@ -343,9 +333,7 @@ describe("TimelineScreen", () => {
       <TimelineScreen
         sections={overdueSections}
         today="2026-05-04"
-        tomorrow="2026-05-05"
-        weekEnd="2026-05-10"
-        isLoading={false}
+        tomorrow="2026-05-05"        isLoading={false}
         isRefreshing={false}
         tabBarHeight={60}
         onRefresh={mockOnRefresh}
@@ -387,9 +375,7 @@ describe("TimelineScreen", () => {
       <TimelineScreen
         sections={overdueSections}
         today="2026-05-04"
-        tomorrow="2026-05-05"
-        weekEnd="2026-05-10"
-        isLoading={false}
+        tomorrow="2026-05-05"        isLoading={false}
         isRefreshing={false}
         tabBarHeight={60}
         onRefresh={mockOnRefresh}
@@ -419,9 +405,7 @@ describe("TimelineScreen", () => {
       <TimelineScreen
         sections={[["2026-05-04", tasks]]}
         today="2026-05-04"
-        tomorrow="2026-05-05"
-        weekEnd="2026-05-10"
-        isLoading={false}
+        tomorrow="2026-05-05"        isLoading={false}
         isRefreshing={false}
         tabBarHeight={60}
         onRefresh={mockOnRefresh}

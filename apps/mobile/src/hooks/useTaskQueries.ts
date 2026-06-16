@@ -38,12 +38,9 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
 
   const timelineQuery = useQuery(
     api.tasks.getTimeline,
-    // Omit startDate so overdue timeline tasks (deadline < today) are
-    // still surfaced in the mobile timeline. Bounding only by endDate keeps
-    // the upper edge of the planning window without hiding backlog items the
-    // user still needs to act on. queryEndDate (today+7) is wider than the
-    // labelled "this week" boundary (today+6) so tasks scheduled via the
-    // +1w quickadd still appear in the fetched window.
+    // Omit startDate so overdue tasks (deadline < today) are still surfaced.
+    // queryEndDate is the far-future sentinel, so the full forward horizon is
+    // fetched — no task is dropped for being scheduled beyond the next week.
     isAuthenticated ? { endDate: queryEndDate } : "skip"
   );
 
@@ -142,10 +139,9 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
       const date = task.deadline;
       if (!date) continue;
       if (date < today) overdue += 1;
-      // Bound thisWeek by the labelled "this week" boundary (today+6). Tasks
-      // scheduled at today+7 via the +1w quickadd are fetched (queryEndDate
-      // is today+7) but fall outside the "through this week" header label,
-      // so we don't count them here to keep the metric honest.
+      // Bound thisWeek by the labelled "this week" boundary (today+6). The
+      // timeline fetches through TIMELINE_FAR_FUTURE, but tasks beyond this
+      // labelled window stay out of the "through this week" metric.
       else if (date <= weekEnd) thisWeek += 1;
     }
     return { overdueCount: overdue, thisWeekCount: thisWeek };
@@ -181,6 +177,11 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
   };
 }
 
+// Sentinel upper bound meaning "no horizon cap": the timeline fetches every
+// future-dated task, not just the next week. For a single-user workspace this
+// is a handful of indexed rows, and nothing further out is silently dropped.
+export const TIMELINE_FAR_FUTURE = "9999-12-31";
+
 export function buildTimelineWindow(baseDate: Date): {
   today: string;
   tomorrow: string;
@@ -190,10 +191,11 @@ export function buildTimelineWindow(baseDate: Date): {
   return {
     today: toIsoDate(baseDate),
     tomorrow: toIsoDate(addDays(baseDate, 1)),
-    // 7-day "this week" window; used for the dateLabel "This week" bucket.
+    // Retained only for the overdue-triage "this week" reschedule target (today+6);
+    // the timeline no longer buckets by "this week".
     weekEnd: toIsoDate(addDays(baseDate, 6)),
-    // 8-day fetch window so tasks scheduled via the +1w quickadd
-    // (today + 7) remain inside the queried range.
-    queryEndDate: toIsoDate(addDays(baseDate, 7)),
+    // No upper bound — surface the full forward horizon so far-future tasks
+    // (e.g. a multi-week study plan) are never hidden from the timeline.
+    queryEndDate: TIMELINE_FAR_FUTURE,
   };
 }

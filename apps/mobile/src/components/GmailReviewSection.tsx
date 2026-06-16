@@ -35,9 +35,12 @@ export function GmailReviewSection({ enabled, showToast }: Props) {
   // Filter server-side so the row cap applies to Gmail items; client-side
   // filtering after take() would let non-Gmail items push Gmail rows out of
   // the response and silently hide pending Gmail work.
+  // Fetch the backlog regardless of connection state: already-captured items
+  // are local work the user can clear even while Gmail sync is off/disconnected.
+  // Connection status and review backlog are independent facts.
   const pendingItems = useQuery(
     api.sync.listReviewQueue,
-    enabled ? { status: "pending", provider: "gmail", limit: 25 } : "skip"
+    { status: "pending", provider: "gmail", limit: 25 }
   );
   const approveReviewItem = useMutation(api.sync.approveReviewItem);
   const rejectReviewItem = useMutation(api.sync.rejectReviewItem);
@@ -110,26 +113,25 @@ export function GmailReviewSection({ enabled, showToast }: Props) {
     [markBusy, rejectReviewItem, showToast]
   );
 
-  if (!enabled) {
-    return null;
-  }
-
+  // While still loading or empty, only take up space when sync is enabled.
+  // A disconnected user with no backlog sees nothing; one with a backlog still
+  // gets the actionable queue below.
   if (pendingItems === undefined) {
-    return (
+    return enabled ? (
       <View style={styles.wrap}>
         <Text style={styles.heading}>Review queue</Text>
         <ActivityIndicator color={colors.accent} style={{ marginTop: spacing.sm }} />
       </View>
-    );
+    ) : null;
   }
 
   if (pendingItems.length === 0) {
-    return (
+    return enabled ? (
       <View style={styles.wrap}>
         <Text style={styles.heading}>Review queue</Text>
         <Text style={styles.emptyText}>No pending items.</Text>
       </View>
-    );
+    ) : null;
   }
 
   return (

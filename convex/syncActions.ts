@@ -37,6 +37,18 @@ export function buildExternalId(calendarId: string, eventId: string, isPrimaryCa
   return calendarId === "primary" || isPrimaryCalendar ? eventId : `${calendarId}:${eventId}`;
 }
 
+/** Split items into contiguous chunks of at most `size`. Used to bound how many
+ *  calendar events a single import mutation processes, keeping each transaction
+ *  under Convex's per-execution document-read limit. */
+export function chunkArray<T>(items: readonly T[], size: number): T[][] {
+  if (size <= 0) throw new Error("chunkArray size must be positive");
+  const chunks: T[][] = [];
+  for (let offset = 0; offset < items.length; offset += size) {
+    chunks.push(items.slice(offset, offset + size));
+  }
+  return chunks;
+}
+
 export function shouldRetryCalendarWithoutUpdatedMin(status: number, bodyText: string): boolean {
   if (status !== 410) return false;
   try {
@@ -288,10 +300,34 @@ export const importGoogleCalendarAction = action({
         }
       }
 
-      const result = await ctx.runMutation(api.sync.importGoogleCalendarEvents, {
-        runId,
-        events,
-      });
+      // Apply events in bounded chunks. A single mutation that imports every
+      // event reads 1-3 documents per event, so a large backfill (thousands of
+      // events across multiple calendars) exceeds Convex's 32000-document
+      // per-transaction read limit and the whole sync fails. Each chunk is its
+      // own transaction with its own budget; getNextPosition reads committed
+      // state, so task positions stay correct across chunk boundaries.
+      const IMPORT_CHUNK_SIZE = 500;
+      const result = {
+        importedCount: 0,
+        updatedCount: 0,
+        skippedCount: 0,
+        maxUpdatedAt: undefined as string | undefined,
+      };
+      for (const chunk of chunkArray(events, IMPORT_CHUNK_SIZE)) {
+        const chunkResult = await ctx.runMutation(api.sync.importGoogleCalendarEvents, {
+          runId,
+          events: chunk,
+        });
+        result.importedCount += chunkResult.importedCount;
+        result.updatedCount += chunkResult.updatedCount;
+        result.skippedCount += chunkResult.skippedCount;
+        if (
+          chunkResult.maxUpdatedAt &&
+          (!result.maxUpdatedAt || chunkResult.maxUpdatedAt > result.maxUpdatedAt)
+        ) {
+          result.maxUpdatedAt = chunkResult.maxUpdatedAt;
+        }
+      }
 
       let postImportError: string | undefined;
       try {
@@ -307,6 +343,10 @@ export const importGoogleCalendarAction = action({
           status: "connected",
           syncEnabled: true,
           tokenExpiresAt: args.tokenExpiresAt,
+          // Clear any prior failure so a recovered sync stops reporting as
+          // broken. Without this, a one-time error sticks around forever and
+          // the status UI can never return to healthy.
+          lastError: undefined,
         });
       } catch (error) {
         postImportError =
