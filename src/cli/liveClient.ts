@@ -22,6 +22,8 @@ export interface LiveCliClient {
   getTimeline(endDate: string): Promise<unknown>;
   getReviewQueue(status?: string, limit?: number): Promise<unknown>;
   getSyncStatus(provider?: string): Promise<unknown>;
+  listOperations(options: { limit?: number; operationGroupId?: string }): Promise<unknown>;
+  getOperation(operationId: string): Promise<unknown>;
   addTask(input: {
     title: string;
     deadline?: string;
@@ -29,8 +31,9 @@ export interface LiveCliClient {
     priority?: "p1" | "p2" | "p3";
     estimatedMinutes?: number;
     tags?: string[];
+    operationGroupId?: string;
   }, idempotencyKey: string): Promise<unknown>;
-  moveTask(input: { taskId: string; targetDate: string }, idempotencyKey: string): Promise<unknown>;
+  moveTask(input: { taskId: string; targetDate: string; operationGroupId?: string }, idempotencyKey: string): Promise<unknown>;
   updateTask(input: {
     taskId: string;
     title?: string;
@@ -39,15 +42,44 @@ export interface LiveCliClient {
     priority?: "p1" | "p2" | "p3" | null;
     estimatedMinutes?: number | null;
     tags?: string[] | null;
+    operationGroupId?: string;
   }, idempotencyKey: string): Promise<unknown>;
-  completeTask(input: { taskId: string }, idempotencyKey: string): Promise<unknown>;
-  reopenTask(input: { taskId: string }, idempotencyKey: string): Promise<unknown>;
-  unscheduleTask(input: { taskId: string }, idempotencyKey: string): Promise<unknown>;
+  completeTask(input: { taskId: string; operationGroupId?: string }, idempotencyKey: string): Promise<unknown>;
+  reopenTask(input: { taskId: string; operationGroupId?: string }, idempotencyKey: string): Promise<unknown>;
+  unscheduleTask(input: { taskId: string; operationGroupId?: string }, idempotencyKey: string): Promise<unknown>;
   updateGoal(input: {
     goalId: string;
     description?: string | null;
     deadline?: string | null;
     priority?: "p1" | "p2" | "p3" | null;
+    operationGroupId?: string;
+  }, idempotencyKey: string): Promise<unknown>;
+  createGoal(input: {
+    clientId?: string;
+    text: string;
+    description?: string;
+    deadline?: string;
+    priority?: "p1" | "p2" | "p3";
+    operationGroupId?: string;
+  }, idempotencyKey: string): Promise<unknown>;
+  deleteGoal(input: {
+    goalId: string;
+    confirmGoalDelete: boolean;
+    operationGroupId?: string;
+  }, idempotencyKey: string): Promise<unknown>;
+  setGoalLink(input: {
+    taskId: string;
+    goalId: string | null;
+    operationGroupId?: string;
+  }, idempotencyKey: string): Promise<unknown>;
+  deleteTask(input: {
+    taskId: string;
+    confirmTaskDelete: boolean;
+    operationGroupId?: string;
+  }, idempotencyKey: string): Promise<unknown>;
+  undoOperation(input: {
+    operationId?: string;
+    operationGroupId?: string;
   }, idempotencyKey: string): Promise<unknown>;
 }
 
@@ -172,6 +204,17 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
       const query = new URLSearchParams({ provider });
       return get(`/sync/status?${query.toString()}`);
     },
+    listOperations(options) {
+      const query = new URLSearchParams();
+      if (options.limit !== undefined) query.set("limit", String(options.limit));
+      if (options.operationGroupId) query.set("operationGroupId", options.operationGroupId);
+      const qs = query.toString();
+      return get(`/operations${qs ? `?${qs}` : ""}`);
+    },
+    getOperation(operationId) {
+      const query = new URLSearchParams({ operationId });
+      return get(`/operations/get?${query.toString()}`);
+    },
     addTask(input, idempotencyKey) {
       return post("/tasks", {
         title: input.title,
@@ -180,6 +223,7 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
         priority: input.priority,
         estimatedMinutes: input.estimatedMinutes,
         tags: input.tags,
+        operationGroupId: input.operationGroupId,
       }, idempotencyKey);
     },
     moveTask(input, idempotencyKey) {
@@ -203,7 +247,30 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
         description: input.description,
         deadline: input.deadline,
         priority: input.priority,
+        operationGroupId: input.operationGroupId,
       }, idempotencyKey);
+    },
+    createGoal(input, idempotencyKey) {
+      return post("/goals", {
+        clientId: input.clientId,
+        text: input.text,
+        description: input.description,
+        deadline: input.deadline,
+        priority: input.priority,
+        operationGroupId: input.operationGroupId,
+      }, idempotencyKey);
+    },
+    deleteGoal(input, idempotencyKey) {
+      return post("/goals/delete", input, idempotencyKey);
+    },
+    setGoalLink(input, idempotencyKey) {
+      return post("/goal-links/set", input, idempotencyKey);
+    },
+    deleteTask(input, idempotencyKey) {
+      return post("/tasks/delete", input, idempotencyKey);
+    },
+    undoOperation(input, idempotencyKey) {
+      return post("/operations/undo", input, idempotencyKey);
     },
   };
 }

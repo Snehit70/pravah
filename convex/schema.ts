@@ -144,6 +144,24 @@ export default defineSchema({
   })
     .index("by_owner_key", ["ownerTokenIdentifier", "key"])
     .index("by_expires_at", ["expiresAt"]),
+  automationOperations: defineTable({
+    ownerTokenIdentifier: v.string(),
+    operationId: v.string(),
+    operationGroupId: v.optional(v.string()),
+    operation: v.string(),
+    status: v.union(v.literal("applied"), v.literal("undone")),
+    targetType: v.optional(v.string()),
+    targetId: v.optional(v.string()),
+    idempotencyKey: v.optional(v.string()),
+    beforeJson: v.string(),
+    afterJson: v.string(),
+    undoExpiresAt: v.optional(v.number()),
+    createdAt: v.number(),
+    undoneAt: v.optional(v.number()),
+  })
+    .index("by_owner_operation_id", ["ownerTokenIdentifier", "operationId"])
+    .index("by_owner_created_at", ["ownerTokenIdentifier", "createdAt"])
+    .index("by_owner_group_created_at", ["ownerTokenIdentifier", "operationGroupId", "createdAt"]),
   tasks: defineTable({
     title: v.string(),
     description: v.optional(v.string()),

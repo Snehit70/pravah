@@ -7,18 +7,23 @@ import {
   automationBootstrapExchangeSchema,
   bulkRescheduleSchema,
   completeTaskSchema,
+  createGoalSchema,
   createTaskSchema,
+  deleteGoalSchema,
   deleteTaskSchema,
   gmailCandidateSchema,
   googleCalendarImportSchema,
   googleTokenExchangeSchema,
   moveTaskSchema,
+  operationListSchema,
+  operationUndoSchema,
   reorderTaskSchema,
   reopenTaskSchema,
   reviewApproveSchema,
   reviewQueueListSchema,
   reviewRejectSchema,
   syncStatusSchema,
+  setGoalLinkSchema,
   taskListSchema,
   unscheduleTaskSchema,
   updateGoalSchema,
@@ -66,6 +71,15 @@ function googleJsonResponse(request: Request, payload: unknown, status = 200): R
       ...getGoogleCorsHeaders(request),
     },
   });
+}
+
+function makeGoalClientIdFromIdempotencyKey(idempotencyKey: string) {
+  const normalized = idempotencyKey.trim().replace(/[^A-Za-z0-9_-]/g, "_");
+  return `goal_${normalized.slice(0, 195)}`;
+}
+
+function makeGeneratedGoalClientId() {
+  return `goal_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 // POST /automation/bootstrap/exchange - Exchange one-time bootstrap token for CLI credential
@@ -169,6 +183,8 @@ http.route({
     const authCheck = await requireTaskWriteAuth(ctx, request);
     if (authCheck.response) return authCheck.response;
     const { auth } = authCheck;
+    const idempotency = requireIdempotencyKey(request, auth);
+    if (idempotency.response) return idempotency.response;
 
     const body = await parseJsonBody(request);
     if (body.response) return body.response;
@@ -182,17 +198,129 @@ http.route({
 
     const result = await ctx.runMutation(internal.automationTools.updateGoal, {
       ownerTokenIdentifier: auth.ownerTokenIdentifier,
+      idempotencyKey: idempotency.key,
       goalClientId: goalId,
       description,
       deadline,
       priority,
+      operationGroupId: validation.data.operationGroupId,
     });
 
-    if (!result.updated) {
+    const goalUpdate = "result" in result ? result.result : result;
+    const replayed = "replayed" in result ? result.replayed : false;
+
+    if (!goalUpdate?.updated) {
       return jsonResponse({ error: "Goal not found", goalId }, 404);
     }
 
-    return jsonResponse({ updated: true, goalId });
+    return jsonResponse({ goalId, ...goalUpdate, replayed });
+  }),
+});
+
+// POST /goals - Create a goal
+http.route({
+  path: "/goals",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const authCheck = await requireTaskWriteAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
+    const idempotency = requireIdempotencyKey(request, auth);
+    if (idempotency.response) return idempotency.response;
+
+    const body = await parseJsonBody(request);
+    if (body.response) return body.response;
+    const validation = createGoalSchema.safeParse(body.data);
+    if (!validation.success) return validationError(validation.error.issues);
+
+    const data = validation.data;
+    const clientId =
+      data.clientId ??
+      (idempotency.key
+        ? makeGoalClientIdFromIdempotencyKey(idempotency.key)
+        : makeGeneratedGoalClientId());
+    const mutation = await runWithBadRequest(
+      () =>
+        ctx.runMutation(internal.automationTools.createGoal, {
+          ownerTokenIdentifier: auth.ownerTokenIdentifier,
+          idempotencyKey: idempotency.key,
+          clientId,
+          text: data.text,
+          description: data.description,
+          deadline: data.deadline,
+          priority: data.priority,
+          operationGroupId: data.operationGroupId,
+        }),
+      "Failed to create goal"
+    );
+    if (mutation.response) return mutation.response;
+    return jsonResponse({ ...mutation.data.result, replayed: mutation.data.replayed });
+  }),
+});
+
+// POST /goals/delete - Soft-delete a goal and unlink its tasks
+http.route({
+  path: "/goals/delete",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const authCheck = await requireTaskWriteAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
+    const idempotency = requireIdempotencyKey(request, auth);
+    if (idempotency.response) return idempotency.response;
+
+    const body = await parseJsonBody(request);
+    if (body.response) return body.response;
+    const validation = deleteGoalSchema.safeParse(body.data);
+    if (!validation.success) return validationError(validation.error.issues);
+    if (!validation.data.confirmGoalDelete) {
+      return jsonResponse({ error: "confirmGoalDelete is required" }, 400);
+    }
+
+    const mutation = await runWithBadRequest(
+      () =>
+        ctx.runMutation(internal.automationTools.deleteGoal, {
+          ownerTokenIdentifier: auth.ownerTokenIdentifier,
+          idempotencyKey: idempotency.key,
+          goalClientId: validation.data.goalId,
+          operationGroupId: validation.data.operationGroupId,
+        }),
+      "Failed to delete goal"
+    );
+    if (mutation.response) return mutation.response;
+    return jsonResponse({ ...mutation.data.result, replayed: mutation.data.replayed });
+  }),
+});
+
+// POST /goal-links/set - Link or unlink a task and goal
+http.route({
+  path: "/goal-links/set",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const authCheck = await requireTaskWriteAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
+    const idempotency = requireIdempotencyKey(request, auth);
+    if (idempotency.response) return idempotency.response;
+
+    const body = await parseJsonBody(request);
+    if (body.response) return body.response;
+    const validation = setGoalLinkSchema.safeParse(body.data);
+    if (!validation.success) return validationError(validation.error.issues);
+
+    const mutation = await runWithBadRequest(
+      () =>
+        ctx.runMutation(internal.automationTools.setGoalLink, {
+          ownerTokenIdentifier: auth.ownerTokenIdentifier,
+          idempotencyKey: idempotency.key,
+          taskId: validation.data.taskId,
+          goalClientId: validation.data.goalId,
+          operationGroupId: validation.data.operationGroupId,
+        }),
+      "Failed to update goal link"
+    );
+    if (mutation.response) return mutation.response;
+    return jsonResponse({ ...mutation.data.result, replayed: mutation.data.replayed });
   }),
 });
 
@@ -230,13 +358,14 @@ http.route({
           estimatedMinutes: data.estimatedMinutes,
           tags: data.tags,
           priority: data.priority,
+          operationGroupId: data.operationGroupId,
         }),
       "Failed to add task"
     );
     if (mutation.response) return mutation.response;
 
     return jsonResponse({
-      taskId: mutation.data.result,
+      ...mutation.data.result,
       replayed: mutation.data.replayed,
     });
   }),
@@ -260,7 +389,7 @@ http.route({
       return validationError(validation.error.issues);
     }
 
-    const { taskId, targetDate, position } = validation.data;
+    const { taskId, targetDate, position, operationGroupId } = validation.data;
 
     const mutation = await runWithBadRequest(
       () =>
@@ -270,6 +399,7 @@ http.route({
           taskId,
           targetDate,
           position,
+          operationGroupId,
         }),
       "Failed to move task"
     );
@@ -329,14 +459,12 @@ http.route({
       return validationError(validation.error.issues);
     }
 
-    const { taskId } = validation.data;
-
     const mutation = await runWithBadRequest(
       () =>
         ctx.runMutation(internal.automationTools.completeTask, {
           ownerTokenIdentifier: auth.ownerTokenIdentifier,
           idempotencyKey: idempotency.key,
-          taskId,
+          ...validation.data,
         }),
       "Failed to complete task"
     );
@@ -481,33 +609,122 @@ http.route({
   }),
 });
 
-// POST /tasks/delete - Delete a task
+// POST /tasks/delete - Soft-delete a task with operation-ledger undo
 http.route({
   path: "/tasks/delete",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authError = requireLegacyAuth(request);
-    if (authError) return authError;
+    const authCheck = await requireTaskWriteAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
+    const idempotency = requireIdempotencyKey(request, auth);
+    if (idempotency.response) return idempotency.response;
 
-    const body = await request.json();
-    const validation = deleteTaskSchema.safeParse(body);
-    if (!validation.success) {
-      return new Response(JSON.stringify({
-        error: "Validation failed",
-        details: validation.error.issues
-      }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+    const body = await parseJsonBody(request);
+    if (body.response) return body.response;
+    const validation = deleteTaskSchema.safeParse(body.data);
+    if (!validation.success) return validationError(validation.error.issues);
+    if (!validation.data.confirmTaskDelete) {
+      return jsonResponse({ error: "confirmTaskDelete is required" }, 400);
     }
 
     const { taskId } = validation.data;
 
-    await ctx.runMutation(api.tasks.deleteTask, { taskId });
-    
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" },
+    const mutation = await runWithBadRequest(
+      () =>
+        ctx.runMutation(internal.automationTools.deleteTask, {
+          ownerTokenIdentifier: auth.ownerTokenIdentifier,
+          idempotencyKey: idempotency.key,
+          taskId,
+          operationGroupId: validation.data.operationGroupId,
+        }),
+      "Failed to delete task"
+    );
+    if (mutation.response) return mutation.response;
+    return jsonResponse({ ...mutation.data.result, replayed: mutation.data.replayed });
+  }),
+});
+
+// GET /operations - List recent operation ledger records
+http.route({
+  path: "/operations",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const authCheck = await requireTaskReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
+    const url = new URL(request.url);
+    const validation = operationListSchema.safeParse({
+      limit: url.searchParams.get("limit") ?? undefined,
+      operationGroupId: url.searchParams.get("operationGroupId") ?? undefined,
     });
+    if (!validation.success) return validationError(validation.error.issues);
+    const operations = await ctx.runQuery(internal.automationOperations.list, {
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
+      limit: validation.data.limit,
+      operationGroupId: validation.data.operationGroupId,
+    });
+    return jsonResponse(operations);
+  }),
+});
+
+// GET /operations/get - Inspect one operation ledger record
+http.route({
+  path: "/operations/get",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const authCheck = await requireTaskReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
+    const url = new URL(request.url);
+    const operationId = url.searchParams.get("operationId");
+    if (!operationId) return jsonResponse({ error: "operationId is required" }, 400);
+    const operation = await ctx.runQuery(internal.automationOperations.get, {
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
+      operationId,
+    });
+    if (!operation) return jsonResponse({ error: "Operation not found", operationId }, 404);
+    return jsonResponse(operation);
+  }),
+});
+
+// POST /operations/undo - Undo one operation or a grouped set of operations
+http.route({
+  path: "/operations/undo",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const authCheck = await requireTaskWriteAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
+    const idempotency = requireIdempotencyKey(request, auth);
+    if (idempotency.response) return idempotency.response;
+
+    const body = await parseJsonBody(request);
+    if (body.response) return body.response;
+    const validation = operationUndoSchema.safeParse(body.data);
+    if (!validation.success) return validationError(validation.error.issues);
+    if (!validation.data.operationId && !validation.data.operationGroupId) {
+      return jsonResponse({ error: "operationId or operationGroupId is required" }, 400);
+    }
+    if (validation.data.operationId && validation.data.operationGroupId) {
+      return jsonResponse(
+        { error: "Provide only one of operationId or operationGroupId" },
+        400
+      );
+    }
+
+    const mutation = await runWithBadRequest(
+      () =>
+        ctx.runMutation(internal.automationOperations.undo, {
+          ownerTokenIdentifier: auth.ownerTokenIdentifier,
+          idempotencyKey: idempotency.key,
+          operationId: validation.data.operationId,
+          operationGroupId: validation.data.operationGroupId,
+        }),
+      "Failed to undo operation"
+    );
+    if (mutation.response) return mutation.response;
+    return jsonResponse({ ...mutation.data.result, replayed: mutation.data.replayed });
   }),
 });
 

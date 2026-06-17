@@ -14,11 +14,20 @@ Usage:
 Examples:
   pravah auth import --bootstrap-token pravah_bootstrap_xxx --json
   pravah auth whoami --json
+  pravah capabilities --json
   pravah goals list --json
+  pravah goals search --query "mobile beta" --json
+  pravah goals create --text "Ship mobile beta" --deadline 2026-07-01 --json
   pravah goals update --goal-id <id> --description "My goal description" --deadline clear --json
+  pravah goals delete --goal-id <id> --confirm-goal-delete --json
   pravah tasks list --status timeline --json
+  pravah tasks search --query "brief" --status timeline --json
   pravah tasks add --title "Draft CLI contract" --deadline 2026-06-05 --priority p2 --estimated-minutes 30 --tags cli,automation --dry-run --json
   pravah tasks update --task-id <id> --priority p1 --estimated-minutes clear --tags shipping,docs --json
+  pravah tasks delete --task-id <id> --confirm-task-delete --json
+  pravah tasks link-goal --task-id <id> --goal-id <goal-id> --json
+  pravah operations list --limit 20 --json
+  pravah operations undo --operation-id <operation-id> --json
   pravah agent context --json
 `);
 }
@@ -33,7 +42,7 @@ async function main() {
     process.exit(0);
   }
 
-  if (!action) {
+  if (!action && namespace !== "capabilities") {
     emitError(
       namespace,
       {
@@ -44,7 +53,7 @@ async function main() {
     );
   }
 
-  const command = `${namespace} ${action}`;
+  const command = action ? `${namespace} ${action}` : namespace;
 
   try {
     const data = await executeCommand({ command, json }, args);

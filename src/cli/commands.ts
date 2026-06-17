@@ -106,9 +106,156 @@ function executeAuthCommand(command: string, args: ParsedArgs) {
   return null;
 }
 
+function executeCapabilitiesCommand() {
+  const credentialContext = (() => {
+    try {
+      const stored = loadStoredCredential();
+      if (stored) return { scopes: stored.scopes, credentialSource: "local" };
+    } catch {
+      return { scopes: [], credentialSource: "invalid" };
+    }
+    if (isMockEnabled()) {
+      return { scopes: mockCredential.scopes, credentialSource: "mock" };
+    }
+    return { scopes: [], credentialSource: "none" };
+  })();
+
+  return {
+    contractVersion: "v1",
+    commands: [
+      { command: "auth import", kind: "auth", requiredScopes: [] },
+      { command: "auth whoami", kind: "auth", requiredScopes: [] },
+      { command: "auth list-scopes", kind: "auth", requiredScopes: [] },
+      { command: "capabilities", kind: "read", requiredScopes: [] },
+      { command: "tasks list", kind: "read", requiredScopes: ["tasks:read"] },
+      { command: "tasks get", kind: "read", requiredScopes: ["tasks:read"] },
+      { command: "tasks search", kind: "read", requiredScopes: ["tasks:read"] },
+      { command: "tasks inbox", kind: "read", requiredScopes: ["tasks:read"] },
+      { command: "tasks timeline", kind: "read", requiredScopes: ["tasks:read"] },
+      { command: "goals list", kind: "read", requiredScopes: ["tasks:read"] },
+      { command: "goals get", kind: "read", requiredScopes: ["tasks:read"] },
+      { command: "goals search", kind: "read", requiredScopes: ["tasks:read"] },
+      { command: "operations list", kind: "read", requiredScopes: ["tasks:read"] },
+      { command: "operations get", kind: "read", requiredScopes: ["tasks:read"] },
+      { command: "review list", kind: "read", requiredScopes: ["review:read"] },
+      { command: "sync status", kind: "read", requiredScopes: ["sync:read"] },
+      {
+        command: "agent context",
+        kind: "read",
+        requiredScopes: ["tasks:read", "review:read", "sync:read"],
+      },
+      { command: "agent task", kind: "read", requiredScopes: ["tasks:read"] },
+      {
+        command: "goals create",
+        kind: "write",
+        requiredScopes: ["tasks:write"],
+        requiresIdempotencyKey: true,
+        supportsDryRun: true,
+      },
+      {
+        command: "goals update",
+        kind: "write",
+        requiredScopes: ["tasks:write"],
+        requiresIdempotencyKey: true,
+        supportsDryRun: true,
+      },
+      {
+        command: "goals delete",
+        kind: "write",
+        requiredScopes: ["tasks:write"],
+        requiresIdempotencyKey: true,
+        requiresConfirmation: true,
+        supportsDryRun: true,
+      },
+      {
+        command: "tasks add",
+        kind: "write",
+        requiredScopes: ["tasks:write"],
+        requiresIdempotencyKey: true,
+        supportsDryRun: true,
+      },
+      {
+        command: "tasks move",
+        kind: "write",
+        requiredScopes: ["tasks:write"],
+        requiresIdempotencyKey: true,
+        supportsDryRun: true,
+      },
+      {
+        command: "tasks update",
+        kind: "write",
+        requiredScopes: ["tasks:write"],
+        requiresIdempotencyKey: true,
+        supportsDryRun: true,
+      },
+      {
+        command: "tasks delete",
+        kind: "write",
+        requiredScopes: ["tasks:write"],
+        requiresIdempotencyKey: true,
+        requiresConfirmation: true,
+        supportsDryRun: true,
+      },
+      {
+        command: "tasks link-goal",
+        kind: "write",
+        requiredScopes: ["tasks:write"],
+        requiresIdempotencyKey: true,
+        supportsDryRun: true,
+      },
+      {
+        command: "tasks unlink-goal",
+        kind: "write",
+        requiredScopes: ["tasks:write"],
+        requiresIdempotencyKey: true,
+        supportsDryRun: true,
+      },
+      {
+        command: "tasks complete",
+        kind: "write",
+        requiredScopes: ["tasks:write"],
+        requiresIdempotencyKey: true,
+        supportsDryRun: true,
+      },
+      {
+        command: "tasks reopen",
+        kind: "write",
+        requiredScopes: ["tasks:write"],
+        requiresIdempotencyKey: true,
+        supportsDryRun: true,
+      },
+      {
+        command: "tasks unschedule",
+        kind: "write",
+        requiredScopes: ["tasks:write"],
+        requiresIdempotencyKey: true,
+        supportsDryRun: true,
+      },
+      {
+        command: "operations undo",
+        kind: "write",
+        requiredScopes: ["tasks:write"],
+        requiresIdempotencyKey: true,
+        supportsDryRun: true,
+      },
+    ],
+    features: {
+      unconditionalJsonErrors: true,
+      operationLedger: true,
+      groupedOperations: true,
+      focusedSearch: true,
+    },
+    credential: credentialContext,
+    source: "local",
+  };
+}
+
 export async function executeCommand(context: CommandContext, args: ParsedArgs) {
   const command = args.positionals.slice(0, 2).join(" ");
   validateCommandArgs(command, args);
+  if (command === "capabilities") {
+    return executeCapabilitiesCommand();
+  }
   const authResult = executeAuthCommand(command, args);
   if (authResult) {
     return authResult;

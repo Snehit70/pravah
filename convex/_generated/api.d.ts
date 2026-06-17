@@ -13,6 +13,7 @@ import type * as authHelpers from "../authHelpers.js";
 import type * as automation from "../automation.js";
 import type * as automationHttpAuth from "../automationHttpAuth.js";
 import type * as automationIdempotency from "../automationIdempotency.js";
+import type * as automationOperations from "../automationOperations.js";
 import type * as automationScopes from "../automationScopes.js";
 import type * as automationTools from "../automationTools.js";
 import type * as crons from "../crons.js";
@@ -25,6 +26,7 @@ import type * as origins from "../origins.js";
 import type * as overdueReflow from "../overdueReflow.js";
 import type * as sync from "../sync.js";
 import type * as syncActions from "../syncActions.js";
+import type * as taskLifecycle from "../taskLifecycle.js";
 import type * as tasks from "../tasks.js";
 import type * as users from "../users.js";
 
@@ -40,6 +42,7 @@ declare const fullApi: ApiFromModules<{
   automation: typeof automation;
   automationHttpAuth: typeof automationHttpAuth;
   automationIdempotency: typeof automationIdempotency;
+  automationOperations: typeof automationOperations;
   automationScopes: typeof automationScopes;
   automationTools: typeof automationTools;
   crons: typeof crons;
@@ -52,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   overdueReflow: typeof overdueReflow;
   sync: typeof sync;
   syncActions: typeof syncActions;
+  taskLifecycle: typeof taskLifecycle;
   tasks: typeof tasks;
   users: typeof users;
 }>;

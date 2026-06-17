@@ -121,6 +121,36 @@ describe("pravah live commands", () => {
     );
   });
 
+  it("uses live list endpoints for focused search commands", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => [
+        { _id: "live_1", title: "Draft CLI contract", deadline: "2026-06-05" },
+        { _id: "live_2", title: "Ship settings" },
+      ],
+    } as Response);
+
+    const result = await executeCommand(
+      { command: "tasks search", json: true },
+      makeArgs(["tasks", "search"], { query: "cli", status: "timeline", limit: "5" })
+    );
+
+    expect(result).toMatchObject({
+      source: "live",
+      query: "cli",
+      limit: 5,
+      tasks: [expect.objectContaining({ id: "live_1" })],
+    });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://pravah.example.com/tasks?status=scheduled",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer pravah_cred_demo",
+        }),
+      })
+    );
+  });
+
   it("builds live agent context from primitive read routes", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
@@ -446,6 +476,102 @@ describe("pravah live commands", () => {
           deadline: null,
           priority: null,
         }),
+      })
+    );
+  });
+
+  it("uses live writes for goal create, task delete, goal links, and operation undo", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        operationId: "op_live_1",
+        undoAvailable: true,
+      }),
+    } as Response);
+
+    await executeCommand(
+      { command: "goals create", json: true },
+      makeArgs(["goals", "create"], {
+        text: "Ship beta",
+        "idempotency-key": "goal-create-1",
+        "operation-group-id": "group-1",
+      })
+    );
+    await executeCommand(
+      { command: "tasks delete", json: true },
+      makeArgs(["tasks", "delete"], {
+        "task-id": "task_live_1",
+        "confirm-task-delete": true,
+        "idempotency-key": "task-delete-1",
+      })
+    );
+    await executeCommand(
+      { command: "tasks link-goal", json: true },
+      makeArgs(["tasks", "link-goal"], {
+        "task-id": "task_live_1",
+        "goal-id": "goal_1",
+        "idempotency-key": "link-1",
+      })
+    );
+    await executeCommand(
+      { command: "operations undo", json: true },
+      makeArgs(["operations", "undo"], {
+        "operation-id": "op_live_1",
+        "idempotency-key": "undo-1",
+      })
+    );
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://pravah.example.com/goals",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": "goal-create-1",
+        }),
+        body: JSON.stringify({
+          text: "Ship beta",
+          operationGroupId: "group-1",
+        }),
+      })
+    );
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://pravah.example.com/tasks/delete",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": "task-delete-1",
+        }),
+        body: JSON.stringify({
+          taskId: "task_live_1",
+          confirmTaskDelete: true,
+        }),
+      })
+    );
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://pravah.example.com/goal-links/set",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer pravah_cred_demo",
+        }),
+        body: JSON.stringify({
+          taskId: "task_live_1",
+          goalId: "goal_1",
+        }),
+      })
+    );
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://pravah.example.com/operations/undo",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": "undo-1",
+        }),
+        body: JSON.stringify({ operationId: "op_live_1" }),
       })
     );
   });

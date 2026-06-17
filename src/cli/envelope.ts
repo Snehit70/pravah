@@ -65,7 +65,7 @@ export function emitSuccess<T>(command: string, data: T): never {
 export function emitError(
   command: string,
   error: CliError,
-  json = false
+  _json = false
 ): never {
   const envelope = errorEnvelope(command, error);
   logAudit({
@@ -74,11 +74,7 @@ export function emitError(
     ok: false,
     code: error.code,
   });
-  if (json) {
-    process.stdout.write(`${JSON.stringify(envelope)}\n`);
-  } else {
-    process.stderr.write(`pravah: ${error.message}\n`);
-  }
+  process.stdout.write(`${JSON.stringify(envelope)}\n`);
   process.exit(1);
   throw new Error("Unreachable");
 }
