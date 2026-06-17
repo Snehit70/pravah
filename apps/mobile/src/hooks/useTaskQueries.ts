@@ -13,7 +13,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { MobileTask } from "../components/TaskCard";
 import { addDays, toIsoDate } from "../lib/dates";
-import { compareTaskOrder } from "../lib/taskLifecycle";
+import { compareTaskOrder, compareTasksWithinDay } from "../lib/taskLifecycle";
 
 type UseTaskQueriesOptions = {
   /** Pass null/undefined when the session is not yet available — all queries skip. */
@@ -85,6 +85,7 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
       .sort(
         (a, b) =>
           (a.deadline ?? "").localeCompare(b.deadline ?? "") ||
+          compareTasksWithinDay(a, b) ||
           compareTaskOrder(a, b)
       );
   }, [timelineQuery, mapTaskDoc]);
