@@ -21,6 +21,8 @@ only for trusted workflows that need the accepted task mutation commands.
 
 Legacy/admin integrations may use `x-api-key: <CONVEX_HTTP_API_KEY>`. Admin API-key routes require `PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER` for owner-bound operations.
 
+Mock mode is an explicit local/testing opt-in through `PRAVAH_CLI_MOCK=1`. Real CLI execution should fail closed when authentication or routing is missing.
+
 Every bearer-authenticated task write requires:
 
 ```http
@@ -28,6 +30,19 @@ Idempotency-Key: <unique key, 1-200 characters>
 ```
 
 Exact retries replay the stored response for 30 days. Reusing a retained key for a different operation or payload fails.
+
+Delete-class writes also require explicit confirmation flags. Routine reversible writes rely on idempotency, scoped credentials, and operation-ledger undo rather than extra confirmation syntax.
+
+Agent writes should also record an operation ledger entry. Mutating CLI responses should include operation metadata; undoability is a property of the recorded operation:
+
+```json
+{
+  "operationId": "op_...",
+  "operationGroupId": "group_...",
+  "undoAvailable": true,
+  "undoExpiresAt": "2026-06-17T12:30:00.000Z"
+}
+```
 
 ## Automation Routes
 
@@ -42,15 +57,34 @@ Bearer scopes protect the routes available to the CLI:
 
 Admin API-key only routes remain for high-risk or broad operations: task delete, reorder, bulk-reschedule, sync imports, and review-queue decisions. `POST /tasks/update` is available on the bearer-authenticated automation path with idempotency keys.
 
+Planned write expansion should keep the existing coarse scopes initially. Task, Goal, Goal Link, delete, and operation undo commands may use `tasks:write` while `pravah capabilities` reports per-command `requiredScopes`, leaving room to split into narrower scopes later without changing command names.
+
 `POST /automation/bootstrap/exchange` accepts a one-time bootstrap token and does not require an existing credential.
 
 ## CLI
 
-The CLI always emits a versioned JSON envelope when `--json` is used. Agents should check `ok` and the process exit code before reading `data`.
+The CLI command contract is a versioned JSON envelope on stdout. Agents should check `ok` and the process exit code before reading `data`. The `--json` flag remains accepted for compatibility, but command success and failure should stay structured for agent callers.
+
+Stable error codes should be machine-readable and specific enough to avoid string matching:
+
+| Code | Meaning |
+|---|---|
+| `invalid_command` | Unknown or malformed command namespace/action |
+| `invalid_option` | Unknown option, malformed flag, or missing option value |
+| `validation_failed` | Recognized command with invalid payload semantics |
+| `unauthenticated` | Missing or invalid CLI credential |
+| `forbidden` | Credential lacks a required scope |
+| `not_found` | Referenced Task, Goal, Goal Link, or operation does not exist |
+| `conflict` | Idempotency, lifecycle, or state conflict |
+| `network_failed` | CLI could not reach the configured HTTP endpoint |
+| `write_failed` | Write outcome is unknown or failed after reaching the server |
+| `undo_unavailable` | Requested undo is expired, already undone, or lacks before-state |
+| `server_error` | Server returned an unexpected failure |
 
 ```bash
 pravah auth whoami --json
 pravah auth list-scopes --json
+pravah capabilities --json
 pravah tasks list --status timeline --json
 pravah tasks inbox --json
 pravah tasks timeline --end-date 2026-06-10 --json
@@ -98,6 +132,7 @@ Verify auth and scopes:
 ```bash
 pravah auth whoami --json
 pravah auth list-scopes --json
+pravah capabilities --json
 ```
 
 Read the current planning state:
@@ -115,6 +150,15 @@ Inspect one task with goal context:
 pravah agent task --task-id <task-id> --json
 ```
 
+Focused reads make agent writes safer by helping callers resolve IDs before mutation:
+
+```bash
+pravah tasks search --query "brief" --status timeline --limit 10 --json
+pravah tasks get --task-id <task-id> --json
+pravah goals search --query "mobile beta" --limit 10 --json
+pravah goals get --goal-id <goal-id> --json
+```
+
 Allowed idempotent writes:
 
 ```bash
@@ -126,6 +170,38 @@ pravah tasks reopen --task-id <id> --idempotency-key reopen-<id> --json
 pravah tasks unschedule --task-id <id> --idempotency-key unschedule-<id> --json
 pravah goals update --goal-id <goal-id> --deadline clear --json
 ```
+
+Delete writes use soft deletion with operation-ledger undo and the canonical 30-minute purge window, not immediate hard deletion:
+
+```bash
+pravah tasks delete --task-id <id> --confirm-task-delete --idempotency-key task-delete-<id> --json
+pravah goals delete --goal-id <goal-id> --confirm-goal-delete --idempotency-key goal-delete-<goal-id> --json
+```
+
+Goal Link writes use the same `tasks:write` scope and idempotency contract:
+
+```bash
+pravah tasks link-goal --task-id <id> --goal-id <goal-id> --idempotency-key link-goal-<id>-<goal-id> --json
+pravah tasks unlink-goal --task-id <id> --idempotency-key unlink-goal-<id> --json
+```
+
+Goal writes give agents the same Goal lifecycle control available in the apps:
+
+```bash
+pravah goals create --text "Ship mobile beta" --description "Release-ready scope" --deadline 2026-07-01 --priority p1 --idempotency-key goal-create-mobile-beta --json
+```
+
+Operation history and undo:
+
+```bash
+pravah operations list --limit 20 --json
+pravah operations get --operation-id <operation-id> --json
+pravah operations list --operation-group-id <operation-group-id> --json
+pravah operations undo --operation-id <operation-id> --idempotency-key undo-<operation-id> --json
+pravah operations undo --operation-group-id <operation-group-id> --idempotency-key undo-group-<operation-group-id> --json
+```
+
+Single-step operations are the default. Grouped workflows may pass `--operation-group-id <id>` on each write so related agent changes can be inspected and undone together.
 
 Use `--dry-run` to validate and preview a write without authentication or a network request.
 

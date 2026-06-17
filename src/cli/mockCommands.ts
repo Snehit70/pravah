@@ -1,8 +1,12 @@
 import { readOption } from "./args";
 import {
   getWriteMetadata,
+  readGoalCreateOptions,
   readGoalUpdateOptions,
+  readOperationListOptions,
+  readOperationUndoOptions,
   readReviewListOptions,
+  readSearchOptions,
   readTaskAddOptions,
   readTaskListFilters,
   readTaskUpdateOptions,
@@ -36,6 +40,10 @@ function buildTaskAction(action: string, taskId: string, args: ParsedArgs) {
   };
 }
 
+function textMatchesQuery(query: string, ...values: Array<string | undefined>) {
+  return values.some((value) => value?.toLowerCase().includes(query));
+}
+
 export function executeMockCommand(command: string, args: ParsedArgs) {
   switch (command) {
     case "tasks list": {
@@ -46,6 +54,26 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
             (!status || task.status === status) &&
             (!date || task.deadline === date)
         ),
+        source: "mock",
+      };
+    }
+    case "tasks get": {
+      const task = findTask(requireOption(args, "task-id", command));
+      return { task, source: "mock" };
+    }
+    case "tasks search": {
+      const { query, limit } = readSearchOptions(args, command);
+      const { status } = readTaskListFilters(args);
+      return {
+        tasks: mockTasks
+          .filter(
+            (task) =>
+              (!status || task.status === status) &&
+              textMatchesQuery(query, task.title, task.description)
+          )
+          .slice(0, limit),
+        query,
+        limit,
         source: "mock",
       };
     }
@@ -60,12 +88,55 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
         links: mockGoalLinks,
         source: "mock",
       };
+    case "goals get": {
+      const goalId = requireOption(args, "goal-id", command);
+      const goal = mockGoals.find((entry) => entry.id === goalId);
+      if (!goal) {
+        throw new Error(`Goal not found: ${goalId}`);
+      }
+      return { goal, source: "mock" };
+    }
+    case "goals search": {
+      const { query, limit } = readSearchOptions(args, command);
+      return {
+        goals: mockGoals
+          .filter((goal) => textMatchesQuery(query, goal.text, goal.description))
+          .slice(0, limit),
+        query,
+        limit,
+        source: "mock",
+      };
+    }
     case "goals update":
       return {
         action: "goals.update",
         goal: { id: requireOption(args, "goal-id", command) },
         ...readGoalUpdateOptions(args),
         ...getWriteMetadata(args),
+        source: "mock",
+      };
+    case "goals create": {
+      const goal = readGoalCreateOptions(args, command);
+      return {
+        action: "goals.create",
+        goal: {
+          id: goal.clientId ?? "mock_goal_new",
+          text: goal.text,
+        },
+        ...goal,
+        ...getWriteMetadata(args),
+        operationId: "op_mock_goal_create",
+        undoAvailable: true,
+        source: "mock",
+      };
+    }
+    case "goals delete":
+      return {
+        action: "goals.delete",
+        goal: { id: requireOption(args, "goal-id", command) },
+        ...getWriteMetadata(args),
+        operationId: "op_mock_goal_delete",
+        undoAvailable: true,
         source: "mock",
       };
     case "tasks timeline": {
@@ -112,6 +183,35 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
         ...getWriteMetadata(args),
         source: "mock",
       };
+    case "tasks delete":
+      return {
+        ...buildTaskAction(
+          "tasks.delete",
+          requireOption(args, "task-id", command),
+          args
+        ),
+        operationId: "op_mock_task_delete",
+        undoAvailable: true,
+      };
+    case "tasks link-goal":
+      return {
+        action: "tasks.linkGoal",
+        task: { id: requireOption(args, "task-id", command) },
+        goal: { id: requireOption(args, "goal-id", command) },
+        ...getWriteMetadata(args),
+        operationId: "op_mock_link_goal",
+        undoAvailable: true,
+        source: "mock",
+      };
+    case "tasks unlink-goal":
+      return {
+        action: "tasks.unlinkGoal",
+        task: { id: requireOption(args, "task-id", command) },
+        ...getWriteMetadata(args),
+        operationId: "op_mock_unlink_goal",
+        undoAvailable: true,
+        source: "mock",
+      };
     case "tasks complete":
       return buildTaskAction(
         "tasks.complete",
@@ -139,6 +239,40 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
       return {
         ...mockSyncStatus,
         provider: readOption(args.options, "provider") ?? mockSyncStatus.provider,
+        source: "mock",
+      };
+    case "operations list": {
+      const options = readOperationListOptions(args);
+      return {
+        operations: [
+          {
+            operationId: "op_mock_1",
+            operationGroupId: options.operationGroupId,
+            operation: "tasks.add",
+            status: "applied",
+            undoAvailable: true,
+          },
+        ],
+        ...options,
+        source: "mock",
+      };
+    }
+    case "operations get":
+      return {
+        operation: {
+          operationId: requireOption(args, "operation-id", command),
+          operation: "tasks.add",
+          status: "applied",
+          undoAvailable: true,
+        },
+        source: "mock",
+      };
+    case "operations undo":
+      return {
+        action: "operations.undo",
+        ...readOperationUndoOptions(args),
+        ...getWriteMetadata(args),
+        result: { undone: [readOption(args.options, "operation-id") ?? "op_mock_1"] },
         source: "mock",
       };
     case "agent context":

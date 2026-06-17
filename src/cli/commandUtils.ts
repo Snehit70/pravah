@@ -21,6 +21,7 @@ const GLOBAL_OPTIONS: Record<string, OptionKind> = {
 const WRITE_OPTIONS: Record<string, OptionKind> = {
   "dry-run": "flag",
   "idempotency-key": "value",
+  "operation-group-id": "value",
 };
 const TASK_ID_WRITE_OPTIONS: Record<string, OptionKind> = {
   "task-id": "value",
@@ -28,6 +29,7 @@ const TASK_ID_WRITE_OPTIONS: Record<string, OptionKind> = {
 };
 
 const COMMAND_OPTIONS: Record<string, Record<string, OptionKind>> = {
+  capabilities: {},
   "auth import": {
     "bootstrap-token": "value",
     "credential-file": "value",
@@ -35,6 +37,16 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionKind>> = {
   "auth whoami": {},
   "auth list-scopes": {},
   "goals list": {},
+  "goals get": { "goal-id": "value" },
+  "goals search": { query: "value", limit: "value" },
+  "goals create": {
+    "goal-id": "value",
+    text: "value",
+    description: "value",
+    deadline: "value",
+    priority: "value",
+    ...WRITE_OPTIONS,
+  },
   "goals update": {
     "goal-id": "value",
     description: "value",
@@ -42,7 +54,14 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionKind>> = {
     priority: "value",
     ...WRITE_OPTIONS,
   },
+  "goals delete": {
+    "goal-id": "value",
+    "confirm-goal-delete": "flag",
+    ...WRITE_OPTIONS,
+  },
   "tasks list": { status: "value", date: "value" },
+  "tasks get": { "task-id": "value" },
+  "tasks search": { query: "value", status: "value", limit: "value" },
   "tasks inbox": {},
   "tasks timeline": { "end-date": "value" },
   "review list": { status: "value", limit: "value" },
@@ -71,13 +90,29 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionKind>> = {
     tags: "value",
     "estimated-minutes": "value",
   },
+  "tasks delete": {
+    ...TASK_ID_WRITE_OPTIONS,
+    "confirm-task-delete": "flag",
+  },
+  "tasks link-goal": {
+    ...TASK_ID_WRITE_OPTIONS,
+    "goal-id": "value",
+  },
+  "tasks unlink-goal": TASK_ID_WRITE_OPTIONS,
   "tasks complete": TASK_ID_WRITE_OPTIONS,
   "tasks reopen": TASK_ID_WRITE_OPTIONS,
   "tasks unschedule": TASK_ID_WRITE_OPTIONS,
+  "operations list": { limit: "value", "operation-group-id": "value" },
+  "operations get": { "operation-id": "value" },
+  "operations undo": {
+    "operation-id": "value",
+    "operation-group-id": "value",
+    ...WRITE_OPTIONS,
+  },
 };
 
 export function validateCommandArgs(command: string, args: ParsedArgs) {
-  if (args.positionals.length !== 2) {
+  if (args.positionals.length !== (command === "capabilities" ? 1 : 2)) {
     throw new Error(`Unexpected positional arguments for ${command}`);
   }
   const commandOptions = COMMAND_OPTIONS[command];
@@ -112,6 +147,7 @@ export function requireOption(
 
 export function getWriteMetadata(args: ParsedArgs) {
   const rawIdempotencyKey = readOption(args.options, "idempotency-key");
+  const operationGroupId = readOption(args.options, "operation-group-id")?.trim();
   let idempotencyKey = `cli_${randomUUID()}`;
   if (rawIdempotencyKey !== undefined) {
     idempotencyKey = rawIdempotencyKey.trim();
@@ -122,6 +158,7 @@ export function getWriteMetadata(args: ParsedArgs) {
   return {
     dryRun: hasFlag(args.options, "dry-run"),
     idempotencyKey,
+    operationGroupId: operationGroupId || undefined,
   };
 }
 
@@ -221,6 +258,74 @@ export function readReviewListOptions(args: ParsedArgs) {
     throw new Error("--limit must be an integer between 1 and 200");
   }
   return { status, limit };
+}
+
+export function readSearchOptions(args: ParsedArgs, command: string) {
+  const query = requireOption(args, "query", command).toLowerCase();
+  const rawLimit = readOption(args.options, "limit");
+  let limit = 10;
+  if (rawLimit !== undefined) {
+    limit = Number(rawLimit);
+    if (!Number.isInteger(limit) || limit <= 0 || limit > 50) {
+      throw new Error("--limit must be an integer between 1 and 50");
+    }
+  }
+  return { query, limit };
+}
+
+export function readOperationListOptions(args: ParsedArgs) {
+  const rawLimit = readOption(args.options, "limit");
+  let limit = 20;
+  if (rawLimit !== undefined) {
+    limit = Number(rawLimit);
+    if (!Number.isInteger(limit) || limit <= 0 || limit > 100) {
+      throw new Error("--limit must be an integer between 1 and 100");
+    }
+  }
+  return {
+    limit,
+    operationGroupId: readOption(args.options, "operation-group-id")?.trim() || undefined,
+  };
+}
+
+export function readOperationUndoOptions(args: ParsedArgs) {
+  const operationId = readOption(args.options, "operation-id")?.trim();
+  const operationGroupId = readOption(args.options, "operation-group-id")?.trim();
+  if (!operationId && !operationGroupId) {
+    throw new Error("operations undo requires --operation-id or --operation-group-id");
+  }
+  if (operationId && operationGroupId) {
+    throw new Error("Provide only one of --operation-id or --operation-group-id");
+  }
+  return { operationId, operationGroupId };
+}
+
+export function readGoalCreateOptions(args: ParsedArgs, command: string) {
+  const text = requireOption(args, "text", command);
+  const clientId = readOption(args.options, "goal-id")?.trim() || undefined;
+  const description = readOption(args.options, "description")?.trim() || undefined;
+  const deadline = readOption(args.options, "deadline")?.trim() || undefined;
+  if (deadline && !DATE_PATTERN.test(deadline)) {
+    throw new Error("--deadline must use YYYY-MM-DD format");
+  }
+  const rawPriority = readOption(args.options, "priority")?.trim();
+  if (
+    rawPriority !== undefined &&
+    !TASK_PRIORITIES.includes(rawPriority as (typeof TASK_PRIORITIES)[number])
+  ) {
+    throw new Error("--priority must be one of: p1, p2, p3");
+  }
+  const priority: (typeof TASK_PRIORITIES)[number] | undefined =
+    rawPriority === "p1" || rawPriority === "p2" || rawPriority === "p3"
+      ? rawPriority
+      : undefined;
+  return {
+    clientId,
+    text,
+    description,
+    deadline,
+    priority,
+  };
 }
 
 export function readTaskAddOptions(args: ParsedArgs, command: string) {
@@ -417,6 +522,24 @@ export function executeDryRun(command: string, args: ParsedArgs) {
         source: "dry-run",
       };
     }
+    case "goals create": {
+      const goal = readGoalCreateOptions(args, command);
+      return {
+        action: "goals.create",
+        ...goal,
+        goalId: goal.clientId ?? null,
+        ...metadata,
+        source: "dry-run",
+      };
+    }
+    case "goals delete":
+      return {
+        action: "goals.delete",
+        goal: { id: requireOption(args, "goal-id", command) },
+        confirmGoalDelete: hasFlag(args.options, "confirm-goal-delete"),
+        ...metadata,
+        source: "dry-run",
+      };
     case "tasks add":
       {
         const task = readTaskAddOptions(args, command);
@@ -443,6 +566,29 @@ export function executeDryRun(command: string, args: ParsedArgs) {
         ...metadata,
         source: "dry-run",
       };
+    case "tasks delete":
+      return {
+        action: "tasks.delete",
+        task: { id: requireOption(args, "task-id", command) },
+        confirmTaskDelete: hasFlag(args.options, "confirm-task-delete"),
+        ...metadata,
+        source: "dry-run",
+      };
+    case "tasks link-goal":
+      return {
+        action: "tasks.linkGoal",
+        task: { id: requireOption(args, "task-id", command) },
+        goal: { id: requireOption(args, "goal-id", command) },
+        ...metadata,
+        source: "dry-run",
+      };
+    case "tasks unlink-goal":
+      return {
+        action: "tasks.unlinkGoal",
+        task: { id: requireOption(args, "task-id", command) },
+        ...metadata,
+        source: "dry-run",
+      };
     case "tasks complete":
       return {
         action: "tasks.complete",
@@ -461,6 +607,13 @@ export function executeDryRun(command: string, args: ParsedArgs) {
       return {
         action: "tasks.unschedule",
         task: { id: requireOption(args, "task-id", command) },
+        ...metadata,
+        source: "dry-run",
+      };
+    case "operations undo":
+      return {
+        action: "operations.undo",
+        ...readOperationUndoOptions(args),
         ...metadata,
         source: "dry-run",
       };

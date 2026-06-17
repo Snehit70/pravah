@@ -143,7 +143,7 @@ describe("pravah CLI", () => {
     expect(payload.error.message).toContain("not authenticated");
   });
 
-  it("returns structured JSON errors on stdout in json mode", () => {
+  it("returns structured JSON errors on stdout", () => {
     const result = runCli(["tasks", "move", "--task-id", "missing", "--target-date", "2026-06-05", "--json"]);
 
     expect(result.status).toBe(1);
@@ -153,10 +153,27 @@ describe("pravah CLI", () => {
       version: "v1",
       command: "tasks move",
       error: {
-        code: "command_failed",
+        code: "not_found",
       },
     });
     expect(payload.error.message).toContain("Task not found");
+    expect(result.stderr).toBe("");
+  });
+
+  it("returns structured JSON errors even without json mode", () => {
+    const result = runCli(["tasks", "move", "--task-id", "missing", "--target-date", "2026-06-05"]);
+
+    expect(result.status).toBe(1);
+    const payload = JSON.parse(result.stdout);
+    expect(payload).toMatchObject({
+      ok: false,
+      version: "v1",
+      command: "tasks move",
+      error: {
+        code: "not_found",
+      },
+    });
+    expect(result.stderr).toBe("");
   });
 
   it("auto-generates an idempotency key for write commands", () => {
@@ -421,6 +438,150 @@ describe("pravah CLI", () => {
         credentialLabel: expect.any(String),
       },
     });
+  });
+
+  it("supports focused task and goal reads through the mock CLI surface", () => {
+    const taskResult = runCli(["tasks", "get", "--task-id", "task_2", "--json"]);
+    expect(taskResult.status).toBe(0);
+    expect(JSON.parse(taskResult.stdout).data).toMatchObject({
+      task: { id: "task_2", title: "Draft CLI contract" },
+      source: "mock",
+    });
+
+    const taskSearchResult = runCli([
+      "tasks",
+      "search",
+      "--query",
+      "cli",
+      "--status",
+      "inbox",
+      "--limit",
+      "5",
+      "--json",
+    ]);
+    expect(taskSearchResult.status).toBe(0);
+    expect(JSON.parse(taskSearchResult.stdout).data.tasks).toEqual([
+      expect.objectContaining({ id: "task_2" }),
+    ]);
+
+    const goalSearchResult = runCli([
+      "goals",
+      "search",
+      "--query",
+      "agents",
+      "--json",
+    ]);
+    expect(goalSearchResult.status).toBe(0);
+    expect(JSON.parse(goalSearchResult.stdout).data.goals).toEqual([
+      expect.objectContaining({ id: "goal_2", text: "Automation" }),
+    ]);
+  });
+
+  it("supports new write and operation commands through the mock CLI surface", () => {
+    const goalCreate = runCli([
+      "goals",
+      "create",
+      "--text",
+      "Ship mobile beta",
+      "--deadline",
+      "2026-07-01",
+      "--operation-group-id",
+      "group-1",
+      "--json",
+    ]);
+    expect(goalCreate.status).toBe(0);
+    expect(JSON.parse(goalCreate.stdout).data).toMatchObject({
+      action: "goals.create",
+      text: "Ship mobile beta",
+      operationGroupId: "group-1",
+      undoAvailable: true,
+    });
+
+    const taskDelete = runCli([
+      "tasks",
+      "delete",
+      "--task-id",
+      "task_1",
+      "--confirm-task-delete",
+      "--json",
+    ]);
+    expect(taskDelete.status).toBe(0);
+    expect(JSON.parse(taskDelete.stdout).data).toMatchObject({
+      action: "tasks.delete",
+      task: { id: "task_1" },
+      undoAvailable: true,
+    });
+
+    const linkGoal = runCli([
+      "tasks",
+      "link-goal",
+      "--task-id",
+      "task_1",
+      "--goal-id",
+      "goal_1",
+      "--json",
+    ]);
+    expect(linkGoal.status).toBe(0);
+    expect(JSON.parse(linkGoal.stdout).data).toMatchObject({
+      action: "tasks.linkGoal",
+      task: { id: "task_1" },
+      goal: { id: "goal_1" },
+    });
+
+    const operationUndo = runCli([
+      "operations",
+      "undo",
+      "--operation-id",
+      "op_mock_1",
+      "--json",
+    ]);
+    expect(operationUndo.status).toBe(0);
+    expect(JSON.parse(operationUndo.stdout).data).toMatchObject({
+      action: "operations.undo",
+      operationId: "op_mock_1",
+    });
+  });
+
+  it("reports local command capabilities without requiring auth", () => {
+    const result = runCli(["capabilities", "--json"], {
+      PRAVAH_CLI_MOCK: "0",
+      PRAVAH_HTTP_URL: "",
+      CONVEX_HTTP_API_KEY: "",
+      CONVEX_SITE_URL: "",
+      VITE_CONVEX_SITE_URL: "",
+      CONVEX_URL: "",
+      VITE_CONVEX_URL: "",
+    });
+
+    expect(result.status).toBe(0);
+    const payload = JSON.parse(result.stdout);
+    expect(payload).toMatchObject({
+      ok: true,
+      version: "v1",
+      command: "capabilities",
+      data: {
+        contractVersion: "v1",
+        features: {
+          unconditionalJsonErrors: true,
+          focusedSearch: true,
+          operationLedger: true,
+          groupedOperations: true,
+        },
+        credential: {
+          credentialSource: "none",
+          scopes: [],
+        },
+      },
+    });
+    expect(payload.data.commands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ command: "tasks add", kind: "write" }),
+        expect.objectContaining({ command: "tasks delete", kind: "write" }),
+        expect.objectContaining({ command: "operations undo", kind: "write" }),
+        expect.objectContaining({ command: "tasks search", kind: "read" }),
+        expect.objectContaining({ command: "agent context", kind: "read" }),
+      ])
+    );
   });
 
   it("imports a credential file into local CLI storage", () => {

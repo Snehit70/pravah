@@ -50,6 +50,10 @@ _Avoid_: archived task
 A larger outcome that gives tasks strategic direction.
 _Avoid_: objective, target
 
+**Goal Link**:
+The association between one Task and one Goal. It gives the Task strategic context without changing the Task's lifecycle or placement.
+_Avoid_: task-goal mapping, goal assignment
+
 **Kairo**:
 The built-in AI copilot that reasons about schedule and task creation.
 _Avoid_: assistant, bot

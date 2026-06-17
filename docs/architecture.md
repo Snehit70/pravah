@@ -96,7 +96,11 @@ See `convex/schema.ts` for canonical field definitions and indexes.
 
 - External agents use the `pravah` CLI and versioned JSON envelopes.
 - CLI credentials are revocable, owner-bound, and scope-limited.
-- Accepted task writes are add, move, complete, reopen, and unschedule.
+- Accepted task writes are add, update, move, complete, reopen, and unschedule.
+- Planned automation coverage should reach phone feature parity, then extend into agent-native workflows.
+- Delete writes use soft deletion plus operation-ledger undo, with hard purge only after the canonical 30-minute undo window.
+- Goal writes are create, update, and delete, using scoped, idempotent automation paths.
+- Goal Link writes are link and unlink, using the same scoped, idempotent automation path.
 - Bearer-authenticated writes require idempotency keys and replay exact retries atomically.
 - The repo-local `pravah-cli` skill is intentionally read-only.
 

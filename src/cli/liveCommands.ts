@@ -1,9 +1,13 @@
-import { readOption } from "./args";
+import { hasFlag, readOption } from "./args";
 import { getLocalDateString } from "../lib/utils";
 import {
   getWriteMetadata,
+  readGoalCreateOptions,
   readGoalUpdateOptions,
+  readOperationListOptions,
+  readOperationUndoOptions,
   readReviewListOptions,
+  readSearchOptions,
   readTaskAddOptions,
   readTaskListFilters,
   readTaskUpdateOptions,
@@ -310,6 +314,45 @@ function normalizeSyncStatus(value: unknown): CliSyncStatusSummary | null {
   };
 }
 
+function normalizeOperation(value: unknown) {
+  if (!value || typeof value !== "object") return null;
+  const operation = value as Record<string, unknown>;
+  if (typeof operation.operationId !== "string") return null;
+  return {
+    operationId: operation.operationId,
+    operationGroupId:
+      typeof operation.operationGroupId === "string"
+        ? operation.operationGroupId
+        : undefined,
+    operation:
+      typeof operation.operation === "string" ? operation.operation : undefined,
+    status: typeof operation.status === "string" ? operation.status : undefined,
+    targetType:
+      typeof operation.targetType === "string" ? operation.targetType : undefined,
+    targetId: typeof operation.targetId === "string" ? operation.targetId : undefined,
+    undoAvailable:
+      typeof operation.undoAvailable === "boolean"
+        ? operation.undoAvailable
+        : undefined,
+    undoExpiresAt:
+      typeof operation.undoExpiresAt === "string"
+        ? operation.undoExpiresAt
+        : undefined,
+    createdAt: readNumber(operation.createdAt),
+    undoneAt: readNumber(operation.undoneAt),
+  };
+}
+
+function normalizeOperations(value: unknown) {
+  return Array.isArray(value)
+    ? value.map(normalizeOperation).filter((operation) => operation !== null)
+    : [];
+}
+
+function textMatchesQuery(query: string, ...values: Array<string | undefined>) {
+  return values.some((value) => value?.toLowerCase().includes(query));
+}
+
 function readReplayStatus(value: unknown) {
   return Boolean(
     value &&
@@ -370,6 +413,26 @@ export async function executeLiveCommand(
         source: "live",
       };
     }
+    case "tasks get": {
+      requireScopes(client, ["tasks:read"]);
+      const taskId = requireOption(args, "task-id", command);
+      const task = normalizeTaskArray(await client.listTasks({})).find(
+        (entry) => entry.id === taskId
+      );
+      if (!task) {
+        throw new Error(`Task not found: ${taskId}`);
+      }
+      return { task, source: "live" };
+    }
+    case "tasks search": {
+      requireScopes(client, ["tasks:read"]);
+      const { query, limit } = readSearchOptions(args, command);
+      const filters = readTaskListFilters(args);
+      const tasks = normalizeTaskArray(await client.listTasks(filters))
+        .filter((task) => textMatchesQuery(query, task.title, task.description))
+        .slice(0, limit);
+      return { tasks, query, limit, source: "live" };
+    }
     case "tasks inbox":
       return { tasks: normalizeTaskArray(await client.getInbox()), source: "live" };
     case "goals list":
@@ -379,6 +442,25 @@ export async function executeLiveCommand(
         links: await client.listGoalLinks(),
         source: "live",
       };
+    case "goals get": {
+      requireScopes(client, ["tasks:read"]);
+      const goalId = requireOption(args, "goal-id", command);
+      const goal = normalizeLiveGoalArray(await client.listGoals()).find(
+        (entry) => entry.id === goalId
+      );
+      if (!goal) {
+        throw new Error(`Goal not found: ${goalId}`);
+      }
+      return { goal, source: "live" };
+    }
+    case "goals search": {
+      requireScopes(client, ["tasks:read"]);
+      const { query, limit } = readSearchOptions(args, command);
+      const goals = normalizeLiveGoalArray(await client.listGoals())
+        .filter((goal) => textMatchesQuery(query, goal.text, goal.description))
+        .slice(0, limit);
+      return { goals, query, limit, source: "live" };
+    }
     case "tasks timeline": {
       const endDate = requireOption(args, "end-date", command);
       return {
@@ -403,6 +485,21 @@ export async function executeLiveCommand(
         ),
         source: "live",
       };
+    case "operations list": {
+      const options = readOperationListOptions(args);
+      return {
+        operations: normalizeOperations(await client.listOperations(options)),
+        ...options,
+        source: "live",
+      };
+    }
+    case "operations get": {
+      const operationId = requireOption(args, "operation-id", command);
+      return {
+        operation: normalizeOperation(await client.getOperation(operationId)),
+        source: "live",
+      };
+    }
     case "agent context": {
       requireScopes(client, [
         "tasks:read",
@@ -511,6 +608,7 @@ export async function executeLiveCommand(
               description,
               deadline,
               priority,
+              operationGroupId: metadata.operationGroupId,
             },
             metadata.idempotencyKey
           )
@@ -526,6 +624,55 @@ export async function executeLiveCommand(
         source: "live",
       };
     }
+    case "goals create": {
+      requireScopes(client, ["tasks:write"]);
+      const goal = readGoalCreateOptions(args, command);
+      const metadata = getWriteMetadata(args);
+      const result = await executeLiveWrite(
+        "goals.create",
+        metadata.idempotencyKey,
+        () =>
+          client.createGoal(
+            { ...goal, operationGroupId: metadata.operationGroupId },
+            metadata.idempotencyKey
+          )
+      );
+      return {
+        action: "goals.create",
+        ...goal,
+        ...metadata,
+        result,
+        source: "live",
+      };
+    }
+    case "goals delete": {
+      requireScopes(client, ["tasks:write"]);
+      const goalId = requireOption(args, "goal-id", command);
+      if (!hasFlag(args.options, "confirm-goal-delete")) {
+        throw new Error("--confirm-goal-delete is required for goals delete");
+      }
+      const metadata = getWriteMetadata(args);
+      const result = await executeLiveWrite(
+        "goals.delete",
+        metadata.idempotencyKey,
+        () =>
+          client.deleteGoal(
+            {
+              goalId,
+              confirmGoalDelete: true,
+              operationGroupId: metadata.operationGroupId,
+            },
+            metadata.idempotencyKey
+          )
+      );
+      return {
+        action: "goals.delete",
+        goal: { id: goalId },
+        ...metadata,
+        result,
+        source: "live",
+      };
+    }
     case "tasks add": {
       const task = readTaskAddOptions(args, command);
       const metadata = getWriteMetadata(args);
@@ -534,7 +681,7 @@ export async function executeLiveCommand(
         metadata.idempotencyKey,
         () =>
           client.addTask(
-            task,
+            { ...task, operationGroupId: metadata.operationGroupId },
             metadata.idempotencyKey
           )
       );
@@ -554,7 +701,11 @@ export async function executeLiveCommand(
       const result = await executeLiveWrite(
         "tasks.move",
         metadata.idempotencyKey,
-        () => client.moveTask({ taskId, targetDate }, metadata.idempotencyKey)
+        () =>
+          client.moveTask(
+            { taskId, targetDate, operationGroupId: metadata.operationGroupId },
+            metadata.idempotencyKey
+          )
       );
       return {
         action: "tasks.move",
@@ -571,13 +722,69 @@ export async function executeLiveCommand(
       const result = await executeLiveWrite(
         "tasks.update",
         metadata.idempotencyKey,
-        () => client.updateTask(patch, metadata.idempotencyKey)
+        () =>
+          client.updateTask(
+            { ...patch, operationGroupId: metadata.operationGroupId },
+            metadata.idempotencyKey
+          )
       );
       return {
         action: "tasks.update",
         ...patch,
         ...metadata,
         replayed: readReplayStatus(result),
+        source: "live",
+      };
+    }
+    case "tasks delete": {
+      const taskId = requireOption(args, "task-id", command);
+      if (!hasFlag(args.options, "confirm-task-delete")) {
+        throw new Error("--confirm-task-delete is required for tasks delete");
+      }
+      const metadata = getWriteMetadata(args);
+      const result = await executeLiveWrite("tasks.delete", metadata.idempotencyKey, () =>
+        client.deleteTask(
+          {
+            taskId,
+            confirmTaskDelete: true,
+            operationGroupId: metadata.operationGroupId,
+          },
+          metadata.idempotencyKey
+        )
+      );
+      return {
+        action: "tasks.delete",
+        task: { id: taskId },
+        ...metadata,
+        result,
+        source: "live",
+      };
+    }
+    case "tasks link-goal":
+    case "tasks unlink-goal": {
+      const taskId = requireOption(args, "task-id", command);
+      const goalId =
+        command === "tasks link-goal"
+          ? requireOption(args, "goal-id", command)
+          : null;
+      const metadata = getWriteMetadata(args);
+      const action = command === "tasks link-goal" ? "tasks.linkGoal" : "tasks.unlinkGoal";
+      const result = await executeLiveWrite(action, metadata.idempotencyKey, () =>
+        client.setGoalLink(
+          {
+            taskId,
+            goalId,
+            operationGroupId: metadata.operationGroupId,
+          },
+          metadata.idempotencyKey
+        )
+      );
+      return {
+        action,
+        task: { id: taskId },
+        goal: goalId ? { id: goalId } : null,
+        ...metadata,
+        result,
         source: "live",
       };
     }
@@ -594,13 +801,27 @@ export async function executeLiveCommand(
             : client.unscheduleTask;
       const action = command.replace(" ", ".");
       const result = await executeLiveWrite(action, metadata.idempotencyKey, () =>
-        method({ taskId }, metadata.idempotencyKey)
+        method({ taskId, operationGroupId: metadata.operationGroupId }, metadata.idempotencyKey)
       );
       return {
         action,
         task: { id: taskId },
         ...metadata,
         replayed: readReplayStatus(result),
+        source: "live",
+      };
+    }
+    case "operations undo": {
+      const options = readOperationUndoOptions(args);
+      const metadata = getWriteMetadata(args);
+      const result = await executeLiveWrite("operations.undo", metadata.idempotencyKey, () =>
+        client.undoOperation(options, metadata.idempotencyKey)
+      );
+      return {
+        action: "operations.undo",
+        ...options,
+        ...metadata,
+        result,
         source: "live",
       };
     }
