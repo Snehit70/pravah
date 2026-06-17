@@ -172,6 +172,9 @@ export default defineSchema({
     scheduledDate: v.optional(v.string()),
     deadline: v.optional(v.string()),
     scheduledAt: v.optional(v.number()),
+    /** Time-of-day for timed Tasks, in "HH:MM" 24-hour format. Only valid when
+     *  `deadline` is present. Inbox Tasks (no deadline) must not carry a time. */
+    time: v.optional(v.string()),
     completedAt: v.optional(v.number()),
     position: v.number(),
     status: v.optional(

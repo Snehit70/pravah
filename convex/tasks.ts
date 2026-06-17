@@ -27,6 +27,7 @@ type AddTaskArgs = {
   title: string;
   description?: string;
   deadline?: string;
+  time?: string;
   source?: "manual" | "ai-agent" | "gmail" | "gcal";
   estimatedMinutes?: number;
   tags?: string[];
@@ -316,6 +317,7 @@ export const addTask = mutation({
     title: v.string(),
     description: v.optional(v.string()),
     deadline: v.optional(v.string()),
+    time: v.optional(v.string()),
     source: v.optional(
       v.union(
         v.literal("manual"),
@@ -429,6 +431,7 @@ export async function addTaskForOwner(
   args: AddTaskArgs
 ) {
   const deadline = args.deadline;
+  const time = deadline ? args.time : undefined;
   const position = await getNextPositionForLane(ctx, tokenIdentifier, deadline);
   const now = Date.now();
 
@@ -436,6 +439,7 @@ export async function addTaskForOwner(
     title: args.title,
     description: args.description,
     deadline,
+    time,
     scheduledAt: now,
     completedAt: undefined,
     position,
@@ -734,6 +738,7 @@ export const updateTask = mutation({
     title: v.optional(v.string()),
     description: v.optional(v.string()),
     deadline: v.optional(v.string()),
+    time: v.optional(v.string()),
     estimatedMinutes: v.optional(v.number()),
     tags: v.optional(v.array(v.string())),
     priority: v.optional(v.union(v.literal("p1"), v.literal("p2"), v.literal("p3"))),
@@ -752,6 +757,7 @@ export async function updateTaskForOwner(
     title?: string;
     description?: string | undefined;
     deadline?: string | undefined;
+    time?: string | undefined;
     estimatedMinutes?: number | undefined;
     tags?: string[] | undefined;
     priority?: "p1" | "p2" | "p3" | undefined;
@@ -763,6 +769,7 @@ export async function updateTaskForOwner(
     title: string;
     description: string | undefined;
     deadline: string | undefined;
+    time: string | undefined;
     estimatedMinutes: number | undefined;
     tags: string[] | undefined;
     priority: "p1" | "p2" | "p3" | undefined;
@@ -791,6 +798,8 @@ export async function updateTaskForOwner(
     const previousDeadline = getTaskDeadline(task);
     const nextDeadline = args.deadline;
     updates.deadline = nextDeadline;
+    // Time is only valid when a deadline is present; clear it when deadline is removed.
+    updates.time = nextDeadline ? args.time : undefined;
 
     if (!isCompletedTask(task) && !isCancelledTask(task)) {
       if (nextDeadline) {
@@ -802,6 +811,9 @@ export async function updateTaskForOwner(
         updates.position = await getNextPositionForLane(ctx, tokenIdentifier, undefined);
       }
     }
+  } else if (Object.prototype.hasOwnProperty.call(args, "time")) {
+    // Time updated independently (deadline unchanged).
+    updates.time = args.time;
   }
 
   await ctx.db.patch(args.taskId, {

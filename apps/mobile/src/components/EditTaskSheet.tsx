@@ -26,7 +26,7 @@ import { isTaskCompleted, isTaskOnTimeline } from "../lib/taskState";
 import { humanDate } from "../lib/dates";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { TaskMetaFields } from "./TaskMetaFields";
-import { type TaskPriority } from "../lib/task-form";
+import { formatTime12h, type TaskPriority } from "../lib/task-form";
 import { useConfirm } from "../hooks/useConfirm";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useGoals } from "../hooks/useGoals";
@@ -44,6 +44,7 @@ type EditTaskSheetProps = {
     title: string;
     description?: string;
     deadline?: string;
+    time?: string;
     priority?: TaskPriority;
   }) => Promise<boolean>;
   isValidDeadline: (raw: string) => { value?: string; error?: string };
@@ -73,6 +74,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [deadline, setDeadline] = useState("");
+    const [time, setTime] = useState("");
     const [priority, setPriority] = useState<TaskPriority>(undefined);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -81,6 +83,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       title: string;
       description: string;
       deadline: string;
+      time: string;
       priority: TaskPriority;
       goalId: string | null;
     } | null>(null);
@@ -93,6 +96,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         setMode("view");
         setTaskId(null);
         setTaskState(null);
+        setTime("");
         setInitialDraft(null);
         setDraftGoalId(null);
         setShowGoalPicker(false);
@@ -113,12 +117,14 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           setTitle(task.title);
           setDescription(task.description ?? "");
           setDeadline(task.deadline ?? "");
+          setTime(task.time ?? "");
           setPriority(task.priority);
           setDraftGoalId(currentGoalId);
           setInitialDraft({
             title: task.title,
             description: task.description ?? "",
             deadline: task.deadline ?? "",
+            time: task.time ?? "",
             priority: task.priority,
             goalId: currentGoalId,
           });
@@ -153,6 +159,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         title: title.trim(),
         description: description.trim() || undefined,
         deadline: deadlineResult.value,
+        time: deadlineResult.value ? (time.trim() || undefined) : undefined,
         priority,
       });
 
@@ -164,7 +171,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         }
         closeModal();
       }
-    }, [taskId, title, description, deadline, priority, saving, onSave, isValidDeadline, initialDraft, draftGoalId, closeModal, setGoalLink]);
+    }, [taskId, title, description, deadline, time, priority, saving, onSave, isValidDeadline, initialDraft, draftGoalId, closeModal, setGoalLink]);
 
     const hasUnsavedChanges = useMemo(() => {
       const initial = initialDraft;
@@ -173,10 +180,11 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         title !== initial.title ||
         description !== initial.description ||
         deadline !== initial.deadline ||
+        time !== initial.time ||
         priority !== initial.priority ||
         draftGoalId !== initial.goalId
       );
-    }, [deadline, description, draftGoalId, initialDraft, priority, taskId, title]);
+    }, [deadline, description, draftGoalId, initialDraft, priority, taskId, time, title]);
 
     const canSave = useMemo(() => Boolean(title.trim()) && !saving, [title, saving]);
 
@@ -219,6 +227,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         setTitle(initialDraft.title);
         setDescription(initialDraft.description);
         setDeadline(initialDraft.deadline);
+        setTime(initialDraft.time);
         setPriority(initialDraft.priority);
         setDraftGoalId(initialDraft.goalId);
       }
@@ -277,7 +286,13 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                     <Text style={styles.viewNotes}>{description.trim()}</Text>
                   ) : null}
                   <View style={styles.viewMetaRow}>
-                    <Text style={styles.viewMeta}>{deadline ? humanDate(deadline) : "No date"}</Text>
+                    <Text style={styles.viewMeta}>
+                      {deadline
+                        ? time
+                          ? `${humanDate(deadline)} · ${formatTime12h(time)}`
+                          : humanDate(deadline)
+                        : "No date"}
+                    </Text>
                     <Text style={styles.viewMetaDot}>·</Text>
                     <Text style={styles.viewMeta}>
                       {priorityLabel === "None" ? "No priority" : priorityLabel}
@@ -401,8 +416,13 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
               <TaskMetaFields
                 key={taskId ?? "edit-task-meta-fields-closed"}
                 deadline={deadline}
+                time={time}
                 priority={priority}
-                onDeadlineChange={setDeadline}
+                onDeadlineChange={(v) => {
+                  setDeadline(v);
+                  if (!v) setTime("");
+                }}
+                onTimeChange={setTime}
                 onPriorityChange={setPriority}
                 onClearError={() => setError(null)}
               />
