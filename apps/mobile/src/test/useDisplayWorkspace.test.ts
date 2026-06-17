@@ -3,15 +3,18 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import type { MobileTask } from "../components/TaskCard";
 import { deriveDisplayWorkspace, type DisplayWorkspaceInput } from "../hooks/useDisplayWorkspace";
 
-function makeTask(overrides: Partial<MobileTask> = {}): MobileTask {
+type TaskOverrides = Omit<Partial<MobileTask>, "_id"> & { _id?: string };
+
+function makeTask(overrides: TaskOverrides = {}): MobileTask {
+  const { _id, ...rest } = overrides;
   return {
-    _id: (overrides._id ?? "task") as Id<"tasks">,
+    _id: (_id ?? "task") as Id<"tasks">,
     title: "Task",
     scheduledAt: 1,
     position: 0,
     updatedAt: 1,
     createdAt: 1,
-    ...overrides,
+    ...rest,
   };
 }
 
