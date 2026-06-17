@@ -526,7 +526,10 @@ describe("pravah live commands", () => {
       "https://pravah.example.com/goals",
       expect.objectContaining({
         method: "POST",
-        headers: expect.objectContaining({ "Idempotency-Key": "goal-create-1" }),
+        headers: expect.objectContaining({
+          Authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": "goal-create-1",
+        }),
         body: JSON.stringify({
           text: "Ship beta",
           operationGroupId: "group-1",
@@ -537,7 +540,10 @@ describe("pravah live commands", () => {
       "https://pravah.example.com/tasks/delete",
       expect.objectContaining({
         method: "POST",
-        headers: expect.objectContaining({ "Idempotency-Key": "task-delete-1" }),
+        headers: expect.objectContaining({
+          Authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": "task-delete-1",
+        }),
         body: JSON.stringify({
           taskId: "task_live_1",
           confirmTaskDelete: true,
@@ -548,6 +554,9 @@ describe("pravah live commands", () => {
       "https://pravah.example.com/goal-links/set",
       expect.objectContaining({
         method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer pravah_cred_demo",
+        }),
         body: JSON.stringify({
           taskId: "task_live_1",
           goalId: "goal_1",
@@ -558,7 +567,10 @@ describe("pravah live commands", () => {
       "https://pravah.example.com/operations/undo",
       expect.objectContaining({
         method: "POST",
-        headers: expect.objectContaining({ "Idempotency-Key": "undo-1" }),
+        headers: expect.objectContaining({
+          Authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": "undo-1",
+        }),
         body: JSON.stringify({ operationId: "op_live_1" }),
       })
     );

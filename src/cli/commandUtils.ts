@@ -130,6 +130,13 @@ export function validateCommandArgs(command: string, args: ParsedArgs) {
       throw new Error(`Option --${key} requires a value`);
     }
   }
+
+  if (command === "goals delete" && !hasFlag(args.options, "confirm-goal-delete")) {
+    throw new Error("--confirm-goal-delete is required for goals delete");
+  }
+  if (command === "tasks delete" && !hasFlag(args.options, "confirm-task-delete")) {
+    throw new Error("--confirm-task-delete is required for tasks delete");
+  }
 }
 
 export function requireOption(

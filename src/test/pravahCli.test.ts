@@ -542,6 +542,54 @@ describe("pravah CLI", () => {
     });
   });
 
+  it("requires explicit confirmation flags for destructive delete commands", () => {
+    const goalDelete = runCli(["goals", "delete", "--goal-id", "goal_1", "--json"]);
+    expect(goalDelete.status).toBe(1);
+    expect(JSON.parse(goalDelete.stdout)).toMatchObject({
+      error: {
+        code: "invalid_option",
+        message: "--confirm-goal-delete is required for goals delete",
+      },
+    });
+
+    const taskDelete = runCli(["tasks", "delete", "--task-id", "task_1", "--json"]);
+    expect(taskDelete.status).toBe(1);
+    expect(JSON.parse(taskDelete.stdout)).toMatchObject({
+      error: {
+        code: "invalid_option",
+        message: "--confirm-task-delete is required for tasks delete",
+      },
+    });
+  });
+
+  it("classifies operations undo argument errors as invalid options", () => {
+    const missingTarget = runCli(["operations", "undo", "--json"]);
+    expect(missingTarget.status).toBe(1);
+    expect(JSON.parse(missingTarget.stdout)).toMatchObject({
+      error: {
+        code: "invalid_option",
+        message: "operations undo requires --operation-id or --operation-group-id",
+      },
+    });
+
+    const conflictingTargets = runCli([
+      "operations",
+      "undo",
+      "--operation-id",
+      "op_mock_1",
+      "--operation-group-id",
+      "group-1",
+      "--json",
+    ]);
+    expect(conflictingTargets.status).toBe(1);
+    expect(JSON.parse(conflictingTargets.stdout)).toMatchObject({
+      error: {
+        code: "invalid_option",
+        message: "Provide only one of --operation-id or --operation-group-id",
+      },
+    });
+  });
+
   it("reports local command capabilities without requiring auth", () => {
     const result = runCli(["capabilities", "--json"], {
       PRAVAH_CLI_MOCK: "0",

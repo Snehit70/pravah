@@ -486,6 +486,7 @@ export async function executeLiveCommand(
         source: "live",
       };
     case "operations list": {
+      requireScopes(client, ["tasks:read"]);
       const options = readOperationListOptions(args);
       return {
         operations: normalizeOperations(await client.listOperations(options)),
@@ -494,6 +495,7 @@ export async function executeLiveCommand(
       };
     }
     case "operations get": {
+      requireScopes(client, ["tasks:read"]);
       const operationId = requireOption(args, "operation-id", command);
       return {
         operation: normalizeOperation(await client.getOperation(operationId)),
@@ -674,6 +676,7 @@ export async function executeLiveCommand(
       };
     }
     case "tasks add": {
+      requireScopes(client, ["tasks:write"]);
       const task = readTaskAddOptions(args, command);
       const metadata = getWriteMetadata(args);
       const result = await executeLiveWrite(
@@ -695,6 +698,7 @@ export async function executeLiveCommand(
       };
     }
     case "tasks move": {
+      requireScopes(client, ["tasks:write"]);
       const taskId = requireOption(args, "task-id", command);
       const targetDate = requireOption(args, "target-date", command);
       const metadata = getWriteMetadata(args);
@@ -717,6 +721,7 @@ export async function executeLiveCommand(
       };
     }
     case "tasks update": {
+      requireScopes(client, ["tasks:write"]);
       const patch = readTaskUpdateOptions(args, command);
       const metadata = getWriteMetadata(args);
       const result = await executeLiveWrite(
@@ -737,6 +742,7 @@ export async function executeLiveCommand(
       };
     }
     case "tasks delete": {
+      requireScopes(client, ["tasks:write"]);
       const taskId = requireOption(args, "task-id", command);
       if (!hasFlag(args.options, "confirm-task-delete")) {
         throw new Error("--confirm-task-delete is required for tasks delete");
@@ -762,6 +768,7 @@ export async function executeLiveCommand(
     }
     case "tasks link-goal":
     case "tasks unlink-goal": {
+      requireScopes(client, ["tasks:write"]);
       const taskId = requireOption(args, "task-id", command);
       const goalId =
         command === "tasks link-goal"
@@ -791,6 +798,7 @@ export async function executeLiveCommand(
     case "tasks complete":
     case "tasks reopen":
     case "tasks unschedule": {
+      requireScopes(client, ["tasks:write"]);
       const taskId = requireOption(args, "task-id", command);
       const metadata = getWriteMetadata(args);
       const method =
@@ -812,6 +820,7 @@ export async function executeLiveCommand(
       };
     }
     case "operations undo": {
+      requireScopes(client, ["tasks:write"]);
       const options = readOperationUndoOptions(args);
       const metadata = getWriteMetadata(args);
       const result = await executeLiveWrite("operations.undo", metadata.idempotencyKey, () =>

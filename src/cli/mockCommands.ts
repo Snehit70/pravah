@@ -30,6 +30,14 @@ function findTask(taskId: string): MockTask {
   return task;
 }
 
+function findGoal(goalId: string) {
+  const goal = mockGoals.find((entry) => entry.id === goalId);
+  if (!goal) {
+    throw new Error(`Goal not found: ${goalId}`);
+  }
+  return goal;
+}
+
 function buildTaskAction(action: string, taskId: string, args: ParsedArgs) {
   const task = findTask(taskId);
   return {
@@ -131,6 +139,7 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
       };
     }
     case "goals delete":
+      findGoal(requireOption(args, "goal-id", command));
       return {
         action: "goals.delete",
         goal: { id: requireOption(args, "goal-id", command) },
@@ -194,6 +203,8 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
         undoAvailable: true,
       };
     case "tasks link-goal":
+      findTask(requireOption(args, "task-id", command));
+      findGoal(requireOption(args, "goal-id", command));
       return {
         action: "tasks.linkGoal",
         task: { id: requireOption(args, "task-id", command) },
@@ -204,6 +215,7 @@ export function executeMockCommand(command: string, args: ParsedArgs) {
         source: "mock",
       };
     case "tasks unlink-goal":
+      findTask(requireOption(args, "task-id", command));
       return {
         action: "tasks.unlinkGoal",
         task: { id: requireOption(args, "task-id", command) },

@@ -57,17 +57,15 @@ function snapshotTask(task: Doc<"tasks"> | null) {
 
 function snapshotGoal(goal: Doc<"goals"> | null) {
   if (!goal) return null;
-  return goal
-    ? {
-        clientId: goal.clientId,
-        text: goal.text,
-        description: goal.description,
-        deadline: goal.deadline,
-        priority: goal.priority,
-        createdAt: goal.createdAt,
-        updatedAt: goal.updatedAt,
-      }
-    : null;
+  return {
+    clientId: goal.clientId,
+    text: goal.text,
+    description: goal.description,
+    deadline: goal.deadline,
+    priority: goal.priority,
+    createdAt: goal.createdAt,
+    updatedAt: goal.updatedAt,
+  };
 }
 
 function snapshotGoalLink(link: Doc<"goalLinks"> | null) {
