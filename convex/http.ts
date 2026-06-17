@@ -78,6 +78,10 @@ function makeGoalClientIdFromIdempotencyKey(idempotencyKey: string) {
   return `goal_${normalized.slice(0, 195)}`;
 }
 
+function makeGeneratedGoalClientId() {
+  return `goal_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 // POST /automation/bootstrap/exchange - Exchange one-time bootstrap token for CLI credential
 http.route({
   path: "/automation/bootstrap/exchange",
@@ -231,7 +235,10 @@ http.route({
 
     const data = validation.data;
     const clientId =
-      data.clientId ?? makeGoalClientIdFromIdempotencyKey(idempotency.key!);
+      data.clientId ??
+      (idempotency.key
+        ? makeGoalClientIdFromIdempotencyKey(idempotency.key)
+        : makeGeneratedGoalClientId());
     const mutation = await runWithBadRequest(
       () =>
         ctx.runMutation(internal.automationTools.createGoal, {

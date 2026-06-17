@@ -42,11 +42,10 @@ async function getRestorePositionForTask(
   ownerTokenIdentifier: string,
   task: Partial<Doc<"tasks">> & { _id?: string }
 ) {
-  const restoresActiveInboxTask =
-    !task.deadline &&
+  const restoresActiveTask =
     task.completedAt === undefined &&
     task.cancelledAt === undefined;
-  if (!restoresActiveInboxTask) {
+  if (!restoresActiveTask) {
     return task.position;
   }
 
@@ -58,11 +57,11 @@ async function getRestorePositionForTask(
     .collect();
   let maxPosition = -1;
   for (const existingTask of tasks) {
-    const isActiveInboxTask =
-      existingTask.deadline === undefined &&
+    const isActiveTaskInSameLane =
+      existingTask.deadline === task.deadline &&
       existingTask.completedAt === undefined &&
       existingTask.cancelledAt === undefined;
-    if (!isActiveInboxTask) continue;
+    if (!isActiveTaskInSameLane) continue;
     maxPosition = Math.max(maxPosition, existingTask.position);
   }
   return maxPosition + 1;

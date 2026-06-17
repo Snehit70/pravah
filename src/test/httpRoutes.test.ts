@@ -350,6 +350,45 @@ describe("http route handlers", () => {
     });
   });
 
+  it("falls back to a generated goal clientId for API-key goal creates without idempotency", async () => {
+    const handler = getHandler("/goals", "POST");
+    const ctx = createCtx();
+    ctx.runMutation.mockResolvedValue({
+      result: { goalId: "goal_generated" },
+      replayed: false,
+    });
+
+    const response = await handler(
+      ctx,
+      new Request("https://example.com/goals", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": "secret",
+        },
+        body: JSON.stringify({
+          text: "Ship admin goal",
+        }),
+      })
+    );
+
+    expect(ctx.runMutation).toHaveBeenCalledWith(internal.automationTools.createGoal, {
+      ownerTokenIdentifier: "admin-owner",
+      idempotencyKey: undefined,
+      clientId: expect.stringMatching(/^goal_/),
+      text: "Ship admin goal",
+      description: undefined,
+      deadline: undefined,
+      priority: undefined,
+      operationGroupId: undefined,
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      goalId: "goal_generated",
+      replayed: false,
+    });
+  });
+
   it("rejects ambiguous undo requests that provide both operation targets", async () => {
     const handler = getHandler("/operations/undo", "POST");
     const ctx = createCtx();
