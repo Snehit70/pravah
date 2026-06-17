@@ -295,6 +295,7 @@ export function useTaskMutations({
       title: string;
       description?: string;
       deadline?: string;
+      time?: string;
       priority?: "p1" | "p2" | "p3";
     }) => {
       return runOptimisticMutation({
@@ -304,6 +305,7 @@ export function useTaskMutations({
             title: data.title,
             description: data.description,
             deadline: data.deadline,
+            time: data.deadline ? data.time : undefined,
             priority: data.priority,
           }, Date.now()),
         mutation: async () => {
@@ -312,6 +314,7 @@ export function useTaskMutations({
             title: data.title,
             description: data.description,
             deadline: data.deadline,
+            time: data.deadline ? data.time : undefined,
             priority: data.priority,
           });
         },
@@ -323,6 +326,7 @@ export function useTaskMutations({
           title: data.title,
           description: data.description,
           deadline: data.deadline,
+          time: data.deadline ? data.time : undefined,
           priority: data.priority,
         },
         successHaptic: "medium",

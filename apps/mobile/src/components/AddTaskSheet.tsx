@@ -52,6 +52,7 @@ type AddTaskSheetProps = {
     title: string;
     description?: string;
     deadline?: string;
+    time?: string;
     priority?: TaskPriority;
     goalId?: string;
   }) => Promise<boolean>;
@@ -67,6 +68,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [deadline, setDeadline] = useState("");
+    const [time, setTime] = useState("");
     const [priority, setPriority] = useState<TaskPriority>(undefined);
     const [kind, setKind] = useState<"task" | "goal">("task");
     const [goalId, setGoalId] = useState<string | undefined>(undefined);
@@ -118,6 +120,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setTitle("");
       setDescription("");
       setDeadline("");
+      setTime("");
       setPriority(undefined);
       setGoalId(undefined);
       setGoalIds([]);
@@ -217,6 +220,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         title: trimmed,
         description: description.trim() || undefined,
         deadline: deadlineResult.value,
+        time: deadlineResult.value ? (time.trim() || undefined) : undefined,
         priority,
         goalId: prefs.bulkTaskCaptureEnabled ? goalIds[0] : goalId,
       });
@@ -339,6 +343,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                       key={option.mode}
                       onPress={() => {
                         setDeadline(presetDeadlines[option.mode]);
+                        if (!presetDeadlines[option.mode]) setTime("");
                         setError(null);
                       }}
                       style={({ pressed }) => [styles.modeItem, pressed && { opacity: 0.6 }]}
@@ -510,8 +515,13 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                   <TaskMetaFields
                     key="add-task-meta-fields"
                     deadline={deadline}
+                    time={time}
                     priority={priority}
-                    onDeadlineChange={setDeadline}
+                    onDeadlineChange={(v) => {
+                      setDeadline(v);
+                      if (!v) setTime("");
+                    }}
+                    onTimeChange={setTime}
                     onPriorityChange={setPriority}
                     onClearError={() => setError(null)}
                   />

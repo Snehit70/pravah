@@ -25,12 +25,15 @@ import { colors, fonts, motion, radii, shadow, spacing, typography } from "../th
 import { getLocalDateString } from "../lib/dates";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { isTaskCompleted, isTaskInInbox, isTaskOnTimeline } from "../lib/taskState";
+import { formatTime12h } from "../lib/task-form";
 
 export type MobileTask = {
   _id: Id<"tasks">;
   title: string;
   description?: string;
   deadline?: string;
+  /** Time-of-day in "HH:MM" 24-hour format. Only present when deadline is set. */
+  time?: string;
   scheduledAt: number;
   completedAt?: number;
   cancelledAt?: number;
@@ -291,6 +294,13 @@ function TaskCardInner({
       key: "date",
       text: dateLabelText.toUpperCase(),
       tone: isOverdue ? "error" : "muted",
+    });
+  }
+  if (task.time && !isCompleted) {
+    metaLines.push({
+      key: "time",
+      text: formatTime12h(task.time),
+      tone: "muted",
     });
   }
   if (task.priority && !isCompleted && !hidePriorityBadge) {

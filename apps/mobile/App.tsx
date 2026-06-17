@@ -472,6 +472,7 @@ function MobileApp() {
             title: payload.title,
             description: payload.description,
             deadline: payload.deadline,
+            time: payload.time,
             priority: payload.priority,
           });
           if (payload.goalId && retriedId) {
@@ -485,6 +486,7 @@ function MobileApp() {
             title: payload.title,
             description: payload.description,
             deadline: payload.deadline,
+            time: payload.time,
             priority: payload.priority,
           });
           return;
@@ -645,6 +647,7 @@ function MobileApp() {
       title: string;
       description?: string;
       deadline?: string;
+      time?: string;
       priority?: "p1" | "p2" | "p3";
       goalId?: string;
     }) => {
@@ -659,6 +662,7 @@ function MobileApp() {
           title: data.title,
           description: data.description,
           deadline: data.deadline,
+          time: data.deadline ? data.time : undefined,
           priority: data.priority,
         });
         if (data.goalId && newTaskId) {
@@ -677,6 +681,7 @@ function MobileApp() {
               title: data.title,
               description: data.description,
               deadline: data.deadline,
+              time: data.deadline ? data.time : undefined,
               priority: data.priority,
               goalId: data.goalId,
             },

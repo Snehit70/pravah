@@ -14,6 +14,7 @@ export type RetryPayload =
       title: string;
       description?: string;
       deadline?: string;
+      time?: string;
       priority?: "p1" | "p2" | "p3";
       goalId?: string;
     }
@@ -23,6 +24,7 @@ export type RetryPayload =
       title: string;
       description?: string;
       deadline?: string;
+      time?: string;
       priority?: "p1" | "p2" | "p3";
     }
   | {

@@ -4,7 +4,9 @@ import { haptic } from "../lib/haptic";
 import { colors, spacing, typography } from "../theme/tokens";
 import { humanDate } from "../lib/dates";
 import { ThemedDatePicker } from "./ThemedDatePicker";
+import { ThemedTimePicker } from "./ThemedTimePicker";
 import {
+  formatTime12h,
   nextPriority,
   priorityDotColor,
   priorityLabel,
@@ -13,20 +15,25 @@ import {
 
 type TaskMetaFieldsProps = {
   deadline: string;
+  time?: string;
   priority: TaskPriority;
   onDeadlineChange: (value: string) => void;
+  onTimeChange?: (value: string) => void;
   onPriorityChange: (priority: TaskPriority) => void;
   onClearError: () => void;
 };
 
 export function TaskMetaFields({
   deadline,
+  time,
   priority,
   onDeadlineChange,
+  onTimeChange,
   onPriorityChange,
   onClearError,
 }: TaskMetaFieldsProps) {
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
 
   return (
     <>
@@ -45,10 +52,27 @@ export function TaskMetaFields({
           </Text>
         </Pressable>
 
+        {deadline && onTimeChange ? (
+          <Pressable
+            onPress={() => {
+              Keyboard.dismiss();
+              setShowTimePicker(true);
+            }}
+            style={({ pressed }) => [styles.metaField, pressed && { opacity: 0.6 }]}
+            hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+          >
+            <Text style={styles.metaLabel}>Time</Text>
+            <Text style={time ? styles.metaValue : styles.metaPlaceholder}>
+              {time ? formatTime12h(time) : "—"}
+            </Text>
+          </Pressable>
+        ) : null}
+
         {deadline ? (
           <Pressable
             onPress={() => {
               onDeadlineChange("");
+              onTimeChange?.("");
               onClearError();
             }}
             style={({ pressed }) => [styles.clearAction, pressed && { opacity: 0.6 }]}
@@ -84,6 +108,20 @@ export function TaskMetaFields({
             onClearError();
           }}
           onClose={() => setShowDatePicker(false)}
+        />
+      ) : null}
+
+      {showTimePicker && onTimeChange ? (
+        <ThemedTimePicker
+          visible
+          value={time || undefined}
+          onSelect={(hhmm) => {
+            onTimeChange(hhmm);
+          }}
+          onClear={() => {
+            onTimeChange("");
+          }}
+          onClose={() => setShowTimePicker(false)}
         />
       ) : null}
     </>

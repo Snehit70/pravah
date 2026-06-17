@@ -80,6 +80,7 @@ export function toCanonicalTaskShape(task: Doc<"tasks">) {
     title: task.title,
     description: task.description,
     deadline: getTaskDeadline(task),
+    time: task.time,
     scheduledAt: task.scheduledAt ?? task.createdAt,
     completedAt: getTaskCompletedAt(task),
     cancelledAt: getTaskCancelledAt(task),
