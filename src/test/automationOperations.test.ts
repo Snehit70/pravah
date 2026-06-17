@@ -122,7 +122,8 @@ describe("automationOperations.undo", () => {
       },
     } as unknown as MutationCtx;
 
-    const result = await undo.handler(ctx, {
+    const undoFn = undo as unknown as { handler: (ctx: MutationCtx, args: { ownerTokenIdentifier: string; operationId?: string; operationGroupId?: string; idempotencyKey?: string }) => Promise<unknown> };
+    const result = await undoFn.handler(ctx, {
       ownerTokenIdentifier: "user-1",
       operationId: "op_1",
     });
