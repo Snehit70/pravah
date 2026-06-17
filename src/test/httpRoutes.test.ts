@@ -305,6 +305,51 @@ describe("http route handlers", () => {
     });
   });
 
+  it("derives a stable goal clientId from the idempotency key when one is not supplied", async () => {
+    const handler = getHandler("/goals", "POST");
+    const ctx = createCtx();
+    ctx.runMutation
+      .mockResolvedValueOnce({
+        label: "Laptop",
+        ownerTokenIdentifier: "user-1",
+        scopes: ["tasks:write"],
+      })
+      .mockResolvedValueOnce({
+        result: { goalId: "goal_goal-create-123" },
+        replayed: false,
+      });
+
+    const response = await handler(
+      ctx,
+      new Request("https://example.com/goals", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": "goal-create-123",
+        },
+        body: JSON.stringify({
+          text: "Ship beta",
+        }),
+      })
+    );
+
+    expect(ctx.runMutation).toHaveBeenNthCalledWith(2, internal.automationTools.createGoal, {
+      ownerTokenIdentifier: "user-1",
+      idempotencyKey: "goal-create-123",
+      clientId: "goal_goal-create-123",
+      text: "Ship beta",
+      description: undefined,
+      deadline: undefined,
+      priority: undefined,
+      operationGroupId: undefined,
+    });
+    await expect(response.json()).resolves.toEqual({
+      goalId: "goal_goal-create-123",
+      replayed: false,
+    });
+  });
+
   it("rejects ambiguous undo requests that provide both operation targets", async () => {
     const handler = getHandler("/operations/undo", "POST");
     const ctx = createCtx();
@@ -415,7 +460,7 @@ describe("http route handlers", () => {
           authorization: "Bearer pravah_cred_demo",
           "Idempotency-Key": "complete-123",
         },
-        body: JSON.stringify({ taskId: "task_abc" }),
+        body: JSON.stringify({ taskId: "task_abc", operationGroupId: "group_1" }),
       })
     );
 
@@ -426,6 +471,7 @@ describe("http route handlers", () => {
         ownerTokenIdentifier: "user-1",
         idempotencyKey: "complete-123",
         taskId: "task_abc",
+        operationGroupId: "group_1",
       }
     );
     await expect(response.json()).resolves.toEqual({
@@ -521,7 +567,14 @@ describe("http route handlers", () => {
   it("applies defaults and calls addTask for valid POST /tasks", async () => {
     const handler = getHandler("/tasks", "POST");
     const ctx = createCtx();
-    ctx.runMutation.mockResolvedValue({ result: "task_123", replayed: false });
+    ctx.runMutation.mockResolvedValue({
+      result: {
+        taskId: "task_123",
+        operationId: "op_task_123",
+        undoAvailable: true,
+      },
+      replayed: false,
+    });
 
     const response = await handler(
       ctx,
@@ -548,9 +601,12 @@ describe("http route handlers", () => {
       estimatedMinutes: undefined,
       tags: undefined,
       priority: undefined,
+      operationGroupId: undefined,
     });
     await expect(response.json()).resolves.toEqual({
       taskId: "task_123",
+      operationId: "op_task_123",
+      undoAvailable: true,
       replayed: false,
     });
   });
@@ -571,10 +627,19 @@ describe("http route handlers", () => {
         body: JSON.stringify({
           taskId: "task_abc",
           targetDate: "2026-04-10",
+          operationGroupId: "group_1",
         }),
       })
     );
 
+    expect(ctx.runMutation).toHaveBeenCalledWith(internal.automationTools.moveTask, {
+      ownerTokenIdentifier: "admin-owner",
+      idempotencyKey: undefined,
+      taskId: "task_abc",
+      targetDate: "2026-04-10",
+      position: undefined,
+      operationGroupId: "group_1",
+    });
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       error: "Cannot move task across locked date",

@@ -73,6 +73,11 @@ function googleJsonResponse(request: Request, payload: unknown, status = 200): R
   });
 }
 
+function makeGoalClientIdFromIdempotencyKey(idempotencyKey: string) {
+  const normalized = idempotencyKey.trim().replace(/[^A-Za-z0-9_-]/g, "_");
+  return `goal_${normalized.slice(0, 195)}`;
+}
+
 // POST /automation/bootstrap/exchange - Exchange one-time bootstrap token for CLI credential
 http.route({
   path: "/automation/bootstrap/exchange",
@@ -226,7 +231,7 @@ http.route({
 
     const data = validation.data;
     const clientId =
-      data.clientId ?? `goal_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      data.clientId ?? makeGoalClientIdFromIdempotencyKey(idempotency.key!);
     const mutation = await runWithBadRequest(
       () =>
         ctx.runMutation(internal.automationTools.createGoal, {
@@ -353,7 +358,7 @@ http.route({
     if (mutation.response) return mutation.response;
 
     return jsonResponse({
-      taskId: mutation.data.result,
+      ...mutation.data.result,
       replayed: mutation.data.replayed,
     });
   }),
@@ -377,7 +382,7 @@ http.route({
       return validationError(validation.error.issues);
     }
 
-    const { taskId, targetDate, position } = validation.data;
+    const { taskId, targetDate, position, operationGroupId } = validation.data;
 
     const mutation = await runWithBadRequest(
       () =>
@@ -387,6 +392,7 @@ http.route({
           taskId,
           targetDate,
           position,
+          operationGroupId,
         }),
       "Failed to move task"
     );
@@ -446,14 +452,12 @@ http.route({
       return validationError(validation.error.issues);
     }
 
-    const { taskId } = validation.data;
-
     const mutation = await runWithBadRequest(
       () =>
         ctx.runMutation(internal.automationTools.completeTask, {
           ownerTokenIdentifier: auth.ownerTokenIdentifier,
           idempotencyKey: idempotency.key,
-          taskId,
+          ...validation.data,
         }),
       "Failed to complete task"
     );
