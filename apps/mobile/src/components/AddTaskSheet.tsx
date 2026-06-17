@@ -231,7 +231,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         reset();
         closeModal();
       }
-    }, [title, description, deadline, priority, goalId, goalIds, seriesEnabled, seriesStart, seriesEnd, kind, saving, onAdd, onBulkAdd, isValidDeadline, closeModal, addGoal, prefs.bulkTaskCaptureEnabled]);
+    }, [title, description, deadline, time, priority, goalId, goalIds, seriesEnabled, seriesStart, seriesEnd, kind, saving, onAdd, onBulkAdd, isValidDeadline, closeModal, addGoal, prefs.bulkTaskCaptureEnabled]);
 
     const bulkPreview = useMemo(() => {
       if (!prefs.bulkTaskCaptureEnabled || kind !== "task" || (!seriesEnabled && goalIds.length < 2)) return null;
