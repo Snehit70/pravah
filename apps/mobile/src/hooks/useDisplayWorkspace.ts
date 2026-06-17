@@ -60,6 +60,25 @@ function groupTimelineSections(tasks: MobileTask[], today: string): [string, Mob
   return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
 }
 
+function computeIsActiveListLoading(
+  activeTab: TabKey,
+  shouldUseWorkspaceSnapshot: boolean,
+  loading: WorkspaceLoadingState,
+): boolean {
+  if (shouldUseWorkspaceSnapshot) return false;
+
+  switch (activeTab) {
+    case "timeline":
+      return loading.timeline;
+    case "inbox":
+      return loading.inbox;
+    case "insights":
+      return loading.completed || !loading.allTasksReady;
+    default:
+      return false;
+  }
+}
+
 export function deriveDisplayWorkspace(input: DisplayWorkspaceInput): DisplayWorkspace {
   const hasLiveWorkspaceData =
     !input.loading.inbox && !input.loading.timeline && !input.loading.completed;
@@ -109,20 +128,11 @@ export function deriveDisplayWorkspace(input: DisplayWorkspaceInput): DisplayWor
         : displayCompletedTasks;
   const tasks = input.optimisticTasks ?? tabTasks;
 
-  const isActiveListLoading =
-    input.activeTab === "timeline"
-      ? shouldUseWorkspaceSnapshot
-        ? false
-        : input.loading.timeline
-      : input.activeTab === "inbox"
-        ? shouldUseWorkspaceSnapshot
-          ? false
-          : input.loading.inbox
-        : input.activeTab === "insights"
-          ? shouldUseWorkspaceSnapshot
-            ? false
-            : input.loading.completed || !input.loading.allTasksReady
-          : false;
+  const isActiveListLoading = computeIsActiveListLoading(
+    input.activeTab,
+    shouldUseWorkspaceSnapshot,
+    input.loading,
+  );
 
   return {
     hasLiveWorkspaceData,
