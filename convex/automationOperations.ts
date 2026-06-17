@@ -37,6 +37,37 @@ function parseSnapshot(value: string): {
   return parsed && typeof parsed === "object" ? parsed : {};
 }
 
+async function getRestorePositionForTask(
+  ctx: MutationCtx,
+  ownerTokenIdentifier: string,
+  task: Partial<Doc<"tasks">> & { _id?: string }
+) {
+  const restoresActiveInboxTask =
+    !task.deadline &&
+    task.completedAt === undefined &&
+    task.cancelledAt === undefined;
+  if (!restoresActiveInboxTask) {
+    return task.position;
+  }
+
+  const tasks = await ctx.db
+    .query("tasks")
+    .withIndex("by_owner_position", (q) =>
+      q.eq("ownerTokenIdentifier", ownerTokenIdentifier)
+    )
+    .collect();
+  let maxPosition = -1;
+  for (const existingTask of tasks) {
+    const isActiveInboxTask =
+      existingTask.deadline === undefined &&
+      existingTask.completedAt === undefined &&
+      existingTask.cancelledAt === undefined;
+    if (!isActiveInboxTask) continue;
+    maxPosition = Math.max(maxPosition, existingTask.position);
+  }
+  return maxPosition + 1;
+}
+
 async function restoreSnapshot(
   ctx: MutationCtx,
   ownerTokenIdentifier: string,
@@ -48,13 +79,14 @@ async function restoreSnapshot(
     if (!task._id) continue;
     const existing = await ctx.db.get(task._id as Id<"tasks">);
     if (!existing || existing.ownerTokenIdentifier !== ownerTokenIdentifier) continue;
+    const position = await getRestorePositionForTask(ctx, ownerTokenIdentifier, task);
     await ctx.db.patch(task._id as Id<"tasks">, {
       title: task.title,
       description: task.description,
       deadline: task.deadline,
       scheduledAt: task.scheduledAt,
       completedAt: task.completedAt,
-      position: task.position ?? existing.position,
+      position: position ?? existing.position,
       source: task.source,
       estimatedMinutes: task.estimatedMinutes,
       tags: task.tags,

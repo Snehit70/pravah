@@ -197,11 +197,14 @@ http.route({
       operationGroupId: validation.data.operationGroupId,
     });
 
-    if (!result.result.updated) {
+    const goalUpdate = "result" in result ? result.result : result;
+    const replayed = "replayed" in result ? result.replayed : false;
+
+    if (!goalUpdate?.updated) {
       return jsonResponse({ error: "Goal not found", goalId }, 404);
     }
 
-    return jsonResponse({ goalId, ...result.result, replayed: result.replayed });
+    return jsonResponse({ goalId, ...goalUpdate, replayed });
   }),
 });
 
@@ -691,6 +694,12 @@ http.route({
     if (!validation.success) return validationError(validation.error.issues);
     if (!validation.data.operationId && !validation.data.operationGroupId) {
       return jsonResponse({ error: "operationId or operationGroupId is required" }, 400);
+    }
+    if (validation.data.operationId && validation.data.operationGroupId) {
+      return jsonResponse(
+        { error: "Provide only one of operationId or operationGroupId" },
+        400
+      );
     }
 
     const mutation = await runWithBadRequest(

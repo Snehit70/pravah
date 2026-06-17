@@ -289,16 +289,51 @@ describe("http route handlers", () => {
       internal.automationTools.updateGoal,
       {
         ownerTokenIdentifier: "user-1",
+        idempotencyKey: "goal-update-123",
         goalClientId: "goal_1",
         description: null,
         deadline: null,
         priority: null,
+        operationGroupId: undefined,
       }
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       updated: true,
       goalId: "goal_1",
+      replayed: false,
+    });
+  });
+
+  it("rejects ambiguous undo requests that provide both operation targets", async () => {
+    const handler = getHandler("/operations/undo", "POST");
+    const ctx = createCtx();
+    ctx.runMutation.mockResolvedValueOnce({
+      label: "Laptop",
+      ownerTokenIdentifier: "user-1",
+      scopes: ["tasks:write"],
+    });
+
+    const response = await handler(
+      ctx,
+      new Request("https://example.com/operations/undo", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": "undo-123",
+        },
+        body: JSON.stringify({
+          operationId: "op_1",
+          operationGroupId: "group_1",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect(ctx.runMutation).toHaveBeenCalledTimes(1);
+    await expect(response.json()).resolves.toEqual({
+      error: "Provide only one of operationId or operationGroupId",
     });
   });
 
