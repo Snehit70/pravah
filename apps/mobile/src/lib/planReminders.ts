@@ -1,3 +1,5 @@
+import type { ReminderLeadTimeMinutes } from "./userPreferences";
+
 export const REMINDER_ID_PREFIX = "pravah-reminder-";
 export const REMINDER_WINDOW_DAYS = 7;
 
@@ -18,6 +20,10 @@ type PlannerTask = {
   cancelledAt?: number;
 };
 
+type PlannerPreferences = {
+  reminderLeadTimeMinutes: ReminderLeadTimeMinutes;
+};
+
 function parseDeadlineTime(deadline: string, time: string): Date | null {
   const [hStr, mStr] = time.split(":");
   const h = Number(hStr);
@@ -34,15 +40,30 @@ function parseDeadlineTime(deadline: string, time: string): Date | null {
 /**
  * Pure planner: maps current Tasks to the desired set of Reminder specs.
  *
- * Rules for this slice (issue #78 — tracer bullet):
- *   - Timed Tasks (deadline + time, not completed/cancelled/inbox) → one at-time spec.
+ * Rules for this slice (issue #79):
+ *   - Timed Tasks (deadline + time, not completed/cancelled/inbox) → one lead-time
+ *     spec plus one at-time spec.
  *   - Specs must be strictly after `now` and within REMINDER_WINDOW_DAYS to respect
  *     the iOS 64 pending-notification ceiling.
  *   - No side effects.
  */
-export function planReminders(tasks: PlannerTask[], now: Date): ReminderSpec[] {
+export function planReminders(
+  tasks: PlannerTask[],
+  prefs: PlannerPreferences,
+  now: Date,
+): ReminderSpec[] {
   const windowEnd = new Date(now.getTime() + REMINDER_WINDOW_DAYS * 24 * 60 * 60 * 1000);
   const specs: ReminderSpec[] = [];
+
+  function maybePushSpec(task: PlannerTask, fireAt: Date, suffix: string, body: string): void {
+    if (fireAt <= now || fireAt > windowEnd) return;
+    specs.push({
+      id: `${REMINDER_ID_PREFIX}${task._id}-${suffix}-${fireAt.getTime()}`,
+      fireAt,
+      title: "Pravah",
+      body,
+    });
+  }
 
   for (const task of tasks) {
     if (!task.deadline || !task.time) continue;
@@ -51,15 +72,15 @@ export function planReminders(tasks: PlannerTask[], now: Date): ReminderSpec[] {
     const fireAt = parseDeadlineTime(task.deadline, task.time);
     if (!fireAt) continue;
 
-    if (fireAt <= now || fireAt > windowEnd) continue;
-
-    specs.push({
-      id: `${REMINDER_ID_PREFIX}${task._id}-${fireAt.getTime()}`,
-      fireAt,
-      title: "Pravah",
-      body: task.title,
-    });
+    const leadFireAt = new Date(fireAt.getTime() - prefs.reminderLeadTimeMinutes * 60 * 1000);
+    maybePushSpec(
+      task,
+      leadFireAt,
+      `lead-${prefs.reminderLeadTimeMinutes}`,
+      `Upcoming: ${task.title}`,
+    );
+    maybePushSpec(task, fireAt, "at", task.title);
   }
 
-  return specs;
+  return specs.sort((a, b) => a.fireAt.getTime() - b.fireAt.getTime());
 }

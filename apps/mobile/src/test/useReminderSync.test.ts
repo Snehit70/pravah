@@ -6,6 +6,23 @@ import type { MobileTask } from "../components/TaskCard";
 const addEventListener = vi.fn();
 const planReminders = vi.fn(() => []);
 const syncRemindersAsync = vi.fn(async () => undefined);
+const prefs = {
+  dailyReminderTime: "09:00",
+  reminderLeadTimeMinutes: 15,
+  quietHoursEnabled: false,
+  quietHoursStart: "22:00",
+  quietHoursEnd: "07:00",
+  defaultTaskDurationMin: 30,
+  taskColorScheme: "purple",
+  kairoTemperature: 0.7,
+  kairoResponseStyle: "concise",
+  kairoStarterPillsEnabled: true,
+  kairoUndoWindowMinutes: 30,
+  reducedMotionOverride: "system",
+  accentColor: "purple",
+  density: "cozy",
+  bulkTaskCaptureEnabled: false,
+} as const;
 
 vi.mock("react-native", () => ({
   AppState: { addEventListener },
@@ -62,15 +79,15 @@ describe("useReminderSync", () => {
   });
 
   it("syncs immediately on task changes when reminders are enabled", () => {
-    renderHook(() => useReminderSync(tasks, true));
+    renderHook(() => useReminderSync(tasks, prefs, true));
 
     expect(planReminders).toHaveBeenCalledTimes(1);
-    expect(planReminders).toHaveBeenCalledWith(tasks, expect.any(Date));
+    expect(planReminders).toHaveBeenCalledWith(tasks, prefs, expect.any(Date));
     expect(syncRemindersAsync).toHaveBeenCalledTimes(1);
   });
 
   it("re-syncs when the app returns to the foreground", () => {
-    renderHook(() => useReminderSync(tasks, true));
+    renderHook(() => useReminderSync(tasks, prefs, true));
 
     act(() => {
       appStateHandler?.("background");
@@ -83,11 +100,19 @@ describe("useReminderSync", () => {
 
   it("re-syncs when the task list changes", () => {
     const { rerender } = renderHook(
-      ({ currentTasks, enabled }) => useReminderSync(currentTasks, enabled),
-      { initialProps: { currentTasks: tasks, enabled: true } },
+      ({ currentTasks, currentPrefs, enabled }) =>
+        useReminderSync(currentTasks, currentPrefs, enabled),
+      {
+        initialProps: {
+          currentTasks: tasks,
+          currentPrefs: prefs,
+          enabled: true,
+        },
+      },
     );
 
     rerender({
+      currentPrefs: prefs,
       currentTasks: [
         {
           ...tasks[0],
@@ -102,7 +127,7 @@ describe("useReminderSync", () => {
   });
 
   it("does nothing when reminders are disabled", () => {
-    renderHook(() => useReminderSync(tasks, false));
+    renderHook(() => useReminderSync(tasks, prefs, false));
 
     expect(planReminders).not.toHaveBeenCalled();
     expect(syncRemindersAsync).not.toHaveBeenCalled();
@@ -110,7 +135,7 @@ describe("useReminderSync", () => {
   });
 
   it("removes the app-state subscription on unmount", () => {
-    const { unmount } = renderHook(() => useReminderSync(tasks, true));
+    const { unmount } = renderHook(() => useReminderSync(tasks, prefs, true));
     unmount();
     expect(remove).toHaveBeenCalledTimes(1);
   });

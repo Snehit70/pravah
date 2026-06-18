@@ -72,7 +72,7 @@ import { useIntegrationsSettings } from "./src/hooks/useIntegrationsSettings";
 import { useReminderSync } from "./src/hooks/useReminderSync";
 import { useReducedMotion } from "./src/hooks/useReducedMotion";
 import { useDisplayWorkspace } from "./src/hooks/useDisplayWorkspace";
-import { resetPreferencesStore } from "./src/hooks/useUserPreferences";
+import { resetPreferencesStore, useUserPreferences } from "./src/hooks/useUserPreferences";
 import { OverdueSheet } from "./src/features/overdue-triage/OverdueSheet";
 import { useOverdueTriageController } from "./src/features/overdue-triage/controller";
 import { isTaskInInbox } from "./src/lib/taskState";
@@ -155,6 +155,7 @@ function MobileApp() {
 
   const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
+  const { prefs } = useUserPreferences();
 
   // ── Auth ────────────────────────────────────────────────────────────
 
@@ -289,7 +290,7 @@ function MobileApp() {
   const tabBarHeight = 62 + tabBarBottomPadding;
 
   const shouldSyncReminders = Boolean(session) && notificationsEnabled && isAllTasksReady;
-  useReminderSync(allWorkspaceTasks, shouldSyncReminders);
+  useReminderSync(allWorkspaceTasks, prefs, shouldSyncReminders);
 
   // ── Integrations ────────────────────────────────────────────────────
 

@@ -135,6 +135,7 @@ function calendarActionLabel(health: SyncHealth, isSyncing: boolean): string {
 }
 
 type SectionKey = "assistant" | "sync" | "alerts" | "timeline" | "more";
+const REMINDER_LEAD_TIME_OPTIONS = [5, 15, 30, 60] as const;
 
 const READ_ONLY_AUTOMATION_SCOPES = ["tasks:read", "review:read", "sync:read"] as const;
 
@@ -943,7 +944,9 @@ export function SettingsSheet({
 
               <View style={[styles.settingBlock, styles.sectionCard]}>
                 <Text style={styles.settingLabel}>Notifications</Text>
-                <Text style={styles.settingHelp}>Task Reminders fire at a timed Task's Deadline.</Text>
+                <Text style={styles.settingHelp}>
+                  Timed Tasks notify at their Deadline and once again before it.
+                </Text>
                 <Text style={[styles.settingStatus, { color: statusTextColor(notificationPermissionState) }]}>
                   {formatStatusLabel(notificationPermissionState)}
                 </Text>
@@ -975,6 +978,33 @@ export function SettingsSheet({
                     Send a test
                   </Text>
                 </Pressable>
+
+                <View style={styles.behaviorRow}>
+                  <Text style={styles.settingMeta}>Heads-up lead time</Text>
+                  <View style={styles.chipRow}>
+                    {REMINDER_LEAD_TIME_OPTIONS.map((minutes) => {
+                      const active = prefs.reminderLeadTimeMinutes === minutes;
+                      return (
+                        <Pressable
+                          key={minutes}
+                          onPress={() => void setPreference("reminderLeadTimeMinutes", minutes)}
+                          hitSlop={6}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: active }}
+                          style={({ pressed }) => [
+                            styles.choiceChip,
+                            active && styles.choiceChipActive,
+                            pressed && { opacity: 0.6 },
+                          ]}
+                        >
+                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
+                            {minutes}m
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
               </View>
 
               <View style={[styles.settingBlock, styles.sectionCard]}>
