@@ -19,9 +19,6 @@ import BottomSheet, {
   type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
 import Animated, { SlideInLeft, SlideInRight } from "react-native-reanimated";
-import DateTimePicker, {
-  type DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useUserPreferences } from "../hooks/useUserPreferences";
@@ -44,19 +41,9 @@ import type { GoogleCalendarOption, IntegrationLastRunSummary, SyncHealth } from
 import { summarizeSyncError } from "../hooks/useIntegrationsSettings";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import { SnapWheelTimePicker } from "./SnapWheelTimePicker";
 
 type QuietPickerKind = "morningDigest" | "quietStart" | "quietEnd";
-
-function timeToDate(value: string): Date {
-  const [h, m] = value.split(":").map((n) => Number(n));
-  const d = new Date();
-  d.setHours(Number.isFinite(h) ? h : 9, Number.isFinite(m) ? m : 0, 0, 0);
-  return d;
-}
-
-function dateToTime(d: Date): string {
-  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
-}
 
 function formatClockLabel(value: string): string {
   const [hStr, mStr] = value.split(":");
@@ -129,6 +116,22 @@ function syncHealthColor(health: SyncHealth): string {
   if (health === "healthy") return colors.primary;
   if (health === "error") return colors.error;
   return colors.textMuted;
+}
+
+function pickerTitle(kind: QuietPickerKind): string {
+  if (kind === "morningDigest") return "Morning digest";
+  if (kind === "quietStart") return "Quiet hours start";
+  return "Quiet hours end";
+}
+
+function pickerValue(kind: QuietPickerKind, prefs: {
+  morningDigestTime: string;
+  quietHoursStart: string;
+  quietHoursEnd: string;
+}): string {
+  if (kind === "morningDigest") return prefs.morningDigestTime;
+  if (kind === "quietStart") return prefs.quietHoursStart;
+  return prefs.quietHoursEnd;
 }
 
 // Context-aware primary action for the calendar block, replacing the old pair
@@ -485,10 +488,7 @@ export function SettingsSheet({
   );
 
   const handleTimePicked = useCallback(
-    (kind: QuietPickerKind) => (_event: DateTimePickerEvent, picked?: Date) => {
-      if (Platform.OS === "android") setOpenPicker(null);
-      if (!picked) return;
-      const value = dateToTime(picked);
+    (kind: QuietPickerKind, value: string) => {
       if (kind === "morningDigest") void setPreference("morningDigestTime", value);
       else if (kind === "quietStart") void setPreference("quietHoursStart", value);
       else void setPreference("quietHoursEnd", value);
@@ -1185,18 +1185,12 @@ export function SettingsSheet({
               </View>
 
               {openPicker !== null ? (
-                <DateTimePicker
-                  value={timeToDate(
-                    openPicker === "morningDigest"
-                      ? prefs.morningDigestTime
-                      : openPicker === "quietStart"
-                        ? prefs.quietHoursStart
-                        : prefs.quietHoursEnd,
-                  )}
-                  mode="time"
-                  is24Hour={false}
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  onChange={handleTimePicked(openPicker)}
+                <SnapWheelTimePicker
+                  visible
+                  title={pickerTitle(openPicker)}
+                  value={pickerValue(openPicker, prefs)}
+                  onConfirm={(value) => handleTimePicked(openPicker, value)}
+                  onClose={() => setOpenPicker(null)}
                 />
               ) : null}
             </View>
