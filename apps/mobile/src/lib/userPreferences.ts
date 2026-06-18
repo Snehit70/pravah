@@ -8,9 +8,11 @@ export type ReducedMotionOverride = "system" | "always" | "never";
 export type AccentColor = "purple" | "copper" | "teal" | "rose";
 export type Density = "cozy" | "compact";
 export type UndoWindowMinutes = 5 | 15 | 30 | 60;
+export type ReminderLeadTimeMinutes = 5 | 15 | 30 | 60;
 
 export interface UserPreferences {
   dailyReminderTime: string;
+  reminderLeadTimeMinutes: ReminderLeadTimeMinutes;
   quietHoursEnabled: boolean;
   quietHoursStart: string;
   quietHoursEnd: string;
@@ -28,6 +30,7 @@ export interface UserPreferences {
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
   dailyReminderTime: "09:00",
+  reminderLeadTimeMinutes: 15,
   quietHoursEnabled: false,
   quietHoursStart: "22:00",
   quietHoursEnd: "07:00",
@@ -57,6 +60,10 @@ function isUndoWindow(value: unknown): value is UndoWindowMinutes {
   return value === 5 || value === 15 || value === 30 || value === 60;
 }
 
+function isReminderLeadTime(value: unknown): value is ReminderLeadTimeMinutes {
+  return value === 5 || value === 15 || value === 30 || value === 60;
+}
+
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== "number" || Number.isNaN(value)) return fallback;
   return Math.min(max, Math.max(min, value));
@@ -71,6 +78,9 @@ function sanitize(raw: unknown): UserPreferences {
     dailyReminderTime: isValidTime(r.dailyReminderTime)
       ? r.dailyReminderTime
       : DEFAULT_PREFERENCES.dailyReminderTime,
+    reminderLeadTimeMinutes: isReminderLeadTime(r.reminderLeadTimeMinutes)
+      ? r.reminderLeadTimeMinutes
+      : DEFAULT_PREFERENCES.reminderLeadTimeMinutes,
     quietHoursEnabled:
       typeof r.quietHoursEnabled === "boolean"
         ? r.quietHoursEnabled

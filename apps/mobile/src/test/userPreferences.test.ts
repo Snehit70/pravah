@@ -27,10 +27,14 @@ describe("sanitize", () => {
   it("falls back per-field when a value is the wrong shape", () => {
     const result = sanitize({
       dailyReminderTime: "not a time",
+      reminderLeadTimeMinutes: 17,
       kairoTemperature: "hot",
       kairoUndoWindowMinutes: 17,
     });
     expect(result.dailyReminderTime).toBe(DEFAULT_PREFERENCES.dailyReminderTime);
+    expect(result.reminderLeadTimeMinutes).toBe(
+      DEFAULT_PREFERENCES.reminderLeadTimeMinutes,
+    );
     expect(result.kairoTemperature).toBe(DEFAULT_PREFERENCES.kairoTemperature);
     expect(result.kairoUndoWindowMinutes).toBe(
       DEFAULT_PREFERENCES.kairoUndoWindowMinutes,
@@ -40,6 +44,7 @@ describe("sanitize", () => {
   it("accepts valid values verbatim", () => {
     const result = sanitize({
       dailyReminderTime: "07:30",
+      reminderLeadTimeMinutes: 30,
       quietHoursEnabled: true,
       quietHoursStart: "23:15",
       quietHoursEnd: "06:00",
@@ -55,6 +60,7 @@ describe("sanitize", () => {
     });
     expect(result).toMatchObject({
       dailyReminderTime: "07:30",
+      reminderLeadTimeMinutes: 30,
       quietHoursEnabled: true,
       taskColorScheme: "teal",
       kairoResponseStyle: "detailed",
