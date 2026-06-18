@@ -153,19 +153,10 @@ const REPO_URL = "https://github.com/Snehit70/pravah";
 const CHANGELOG_URL = `${REPO_URL}/blob/main/apps/mobile/CHANGELOG.md`;
 const ISSUES_URL = `${REPO_URL}/issues`;
 
-type ColorKey = "purple" | "copper" | "teal" | "rose";
-
-const COLOR_SWATCHES: ReadonlyArray<{ key: ColorKey; fill: string; label: string }> = [
-  { key: "purple", fill: "#a78bfa", label: "Purple" },
-  { key: "copper", fill: "#c0552d", label: "Copper" },
-  { key: "teal", fill: "#4ec9b0", label: "Teal" },
-  { key: "rose", fill: "#e87a90", label: "Rose" },
-];
-
 const SECTIONS: ReadonlyArray<{ key: SectionKey; label: string }> = [
   { key: "assistant", label: "Assistant" },
   { key: "sync", label: "Sync" },
-  { key: "alerts", label: "Alerts" },
+  { key: "alerts", label: "Reminders" },
   { key: "timeline", label: "Timeline" },
   { key: "more", label: "More" },
 ];
@@ -652,70 +643,11 @@ export function SettingsSheet({
               <View style={[styles.settingBlock, styles.sectionCard]}>
                 <Text style={styles.settingLabel}>Behavior</Text>
                 <Text style={styles.settingHelp}>
-                  Tune how Kairo responds and how long undo stays available.
+                  Control mobile assistance affordances.
                 </Text>
 
-                <View style={styles.behaviorRow}>
-                  <Text style={styles.settingMeta}>Temperature</Text>
-                  <View style={styles.stepperRow}>
-                    <Pressable
-                      onPress={() =>
-                        void setPreference(
-                          "kairoTemperature",
-                          Math.max(0, Math.round((prefs.kairoTemperature - 0.1) * 10) / 10),
-                        )
-                      }
-                      hitSlop={12}
-                      accessibilityRole="button"
-                      accessibilityLabel="Decrease Kairo temperature"
-                      style={({ pressed }) => [styles.stepperButton, pressed && { opacity: 0.6 }]}
-                    >
-                      <Text style={styles.stepperGlyph}>−</Text>
-                    </Pressable>
-                    <Text style={styles.stepperValue}>{prefs.kairoTemperature.toFixed(1)}</Text>
-                    <Pressable
-                      onPress={() =>
-                        void setPreference(
-                          "kairoTemperature",
-                          Math.min(1.5, Math.round((prefs.kairoTemperature + 0.1) * 10) / 10),
-                        )
-                      }
-                      hitSlop={12}
-                      accessibilityRole="button"
-                      accessibilityLabel="Increase Kairo temperature"
-                      style={({ pressed }) => [styles.stepperButton, pressed && { opacity: 0.6 }]}
-                    >
-                      <Text style={styles.stepperGlyph}>+</Text>
-                    </Pressable>
-                  </View>
-                </View>
-
-                <View style={styles.behaviorRow}>
-                  <Text style={styles.settingMeta}>Response style</Text>
-                  <View style={styles.chipRow}>
-                    {(["concise", "detailed"] as const).map((style) => {
-                      const active = prefs.kairoResponseStyle === style;
-                      return (
-                        <Pressable
-                          key={style}
-                          onPress={() => void setPreference("kairoResponseStyle", style)}
-                          hitSlop={6}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: active }}
-                          style={({ pressed }) => [
-                            styles.choiceChip,
-                            active && styles.choiceChipActive,
-                            pressed && { opacity: 0.6 },
-                          ]}
-                        >
-                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
-                            {style === "concise" ? "Concise" : "Detailed"}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
+                {/* TODO(wire-up): restore kairoTemperature control once the setting is live. */}
+                {/* TODO(wire-up): restore kairoResponseStyle control once the setting is live. */}
 
                 <View style={styles.behaviorRow}>
                   <View style={{ flex: 1 }}>
@@ -728,33 +660,7 @@ export function SettingsSheet({
                     thumbColor={prefs.kairoStarterPillsEnabled ? colors.accent : colors.textMuted}
                   />
                 </View>
-
-                <View style={styles.behaviorRow}>
-                  <Text style={styles.settingMeta}>Undo window</Text>
-                  <View style={styles.chipRow}>
-                    {([5, 15, 30, 60] as const).map((minutes) => {
-                      const active = prefs.kairoUndoWindowMinutes === minutes;
-                      return (
-                        <Pressable
-                          key={minutes}
-                          onPress={() => void setPreference("kairoUndoWindowMinutes", minutes)}
-                          hitSlop={6}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: active }}
-                          style={({ pressed }) => [
-                            styles.choiceChip,
-                            active && styles.choiceChipActive,
-                            pressed && { opacity: 0.6 },
-                          ]}
-                        >
-                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
-                            {minutes}m
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
+                {/* TODO(wire-up): restore kairoUndoWindowMinutes control once the setting is live. */}
               </View>
 
               <View style={[styles.settingBlock, styles.sectionCard]}>
@@ -1052,7 +958,7 @@ export function SettingsSheet({
 
           {activeSection === "alerts" ? (
             <View>
-              <Text style={styles.sectionHeader}>Alerts</Text>
+              <Text style={styles.sectionHeader}>Reminders</Text>
 
               <View style={[styles.settingBlock, styles.sectionCard]}>
                 <Text style={styles.settingLabel}>Notifications</Text>
@@ -1217,73 +1123,8 @@ export function SettingsSheet({
                 </View>
               </View>
 
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <Text style={styles.settingLabel}>Defaults</Text>
-                <Text style={styles.settingHelp}>
-                  Control how new tasks are sized and colored.
-                </Text>
-
-                <View style={styles.behaviorRow}>
-                  <Text style={styles.settingMeta}>Default task duration</Text>
-                  <View style={styles.stepperRow}>
-                    <Pressable
-                      onPress={() =>
-                        void setPreference(
-                          "defaultTaskDurationMin",
-                          Math.max(5, prefs.defaultTaskDurationMin - 5),
-                        )
-                      }
-                      hitSlop={12}
-                      accessibilityRole="button"
-                      accessibilityLabel="Decrease default task duration"
-                      style={({ pressed }) => [styles.stepperButton, pressed && { opacity: 0.6 }]}
-                    >
-                      <Text style={styles.stepperGlyph}>−</Text>
-                    </Pressable>
-                    <Text style={styles.stepperValue}>{prefs.defaultTaskDurationMin}m</Text>
-                    <Pressable
-                      onPress={() =>
-                        void setPreference(
-                          "defaultTaskDurationMin",
-                          Math.min(480, prefs.defaultTaskDurationMin + 5),
-                        )
-                      }
-                      hitSlop={12}
-                      accessibilityRole="button"
-                      accessibilityLabel="Increase default task duration"
-                      style={({ pressed }) => [styles.stepperButton, pressed && { opacity: 0.6 }]}
-                    >
-                      <Text style={styles.stepperGlyph}>+</Text>
-                    </Pressable>
-                  </View>
-                </View>
-
-                <View style={styles.fieldStack}>
-                  <Text style={styles.fieldLabel}>Task color scheme</Text>
-                  <View style={styles.swatchRow}>
-                    {COLOR_SWATCHES.map(({ key, fill, label }) => {
-                      const active = prefs.taskColorScheme === key;
-                      return (
-                        <Pressable
-                          key={key}
-                          onPress={() => void setPreference("taskColorScheme", key)}
-                          accessibilityRole="button"
-                          accessibilityLabel={`${label} task color`}
-                          accessibilityState={{ selected: active }}
-                          style={({ pressed }) => [styles.swatchItem, pressed && { opacity: 0.7 }]}
-                        >
-                          <View style={[styles.swatch, { backgroundColor: fill }, active && styles.swatchActive]}>
-                            {active ? <Text style={styles.swatchCheck}>✓</Text> : null}
-                          </View>
-                          <Text style={[styles.swatchLabel, active && styles.swatchLabelActive]}>
-                            {label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-              </View>
+              {/* TODO(wire-up): restore defaultTaskDurationMin control once the setting is live. */}
+              {/* TODO(wire-up): restore taskColorScheme control once the setting is live. */}
 
               <Text style={styles.sectionHeader}>Appearance</Text>
 
@@ -1355,34 +1196,7 @@ export function SettingsSheet({
                 <TabOrderEditor order={tabOrder} onMove={handleMoveTab} />
               </View>
 
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <Text style={styles.settingLabel}>Accent color</Text>
-                <Text style={styles.settingHelp}>
-                  Used for highlights, buttons, and active states.
-                </Text>
-                <View style={styles.swatchRow}>
-                  {COLOR_SWATCHES.map(({ key, fill, label }) => {
-                    const active = prefs.accentColor === key;
-                    return (
-                      <Pressable
-                        key={key}
-                        onPress={() => void setPreference("accentColor", key)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`${label} accent color`}
-                        accessibilityState={{ selected: active }}
-                        style={({ pressed }) => [styles.swatchItem, pressed && { opacity: 0.7 }]}
-                      >
-                        <View style={[styles.swatch, { backgroundColor: fill }, active && styles.swatchActive]}>
-                          {active ? <Text style={styles.swatchCheck}>✓</Text> : null}
-                        </View>
-                        <Text style={[styles.swatchLabel, active && styles.swatchLabelActive]}>
-                          {label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
+              {/* TODO(wire-up): restore accentColor control once the setting is live. */}
             </View>
           ) : null}
 
