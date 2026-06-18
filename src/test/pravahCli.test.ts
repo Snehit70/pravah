@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const cliEntry = resolve(repoRoot, "src/cli/pravah.ts");
+const cliEntry = resolve(repoRoot, "packages/cli/src/pravah.ts");
 
 function buildCliEnv(env?: Record<string, string>) {
   const home = env?.HOME ?? mkdtempSync(join(tmpdir(), "pravah-cli-test-home-"));

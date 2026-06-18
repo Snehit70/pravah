@@ -5,6 +5,13 @@ import { executeCommand } from "./commands";
 import { emitError, emitSuccess } from "./envelope";
 import { toCliError } from "./errors";
 
+function assertBunRuntime() {
+  if (!("Bun" in globalThis)) {
+    process.stderr.write("pravah CLI requires bun. Install bun and run this command with `bun`.\n");
+    process.exit(1);
+  }
+}
+
 function printHelp() {
   process.stdout.write(`pravah CLI
 
@@ -63,4 +70,5 @@ async function main() {
   }
 }
 
+assertBunRuntime();
 await main();

@@ -1,0 +1,30 @@
+{
+  "name": "pravah",
+  "version": "0.1.0",
+  "description": "Timeline-based task manager with AI agent API support",
+  "type": "module",
+  "bin": {
+    "pravah": "./dist/pravah.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "bun build ./src/pravah.ts --target=bun --outfile=./dist/pravah.js",
+    "pravah": "bun run ./src/pravah.ts"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "author": "Snehit70",
+  "license": "MIT",
+  "homepage": "https://github.com/Snehit70/pravah",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Snehit70/pravah.git",
+    "directory": "packages/cli"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

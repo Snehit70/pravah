@@ -37,7 +37,7 @@ convex/                     Backend
   auth.ts                   Better Auth integration
 apps/mobile/                Expo React Native client
   docs/                     Mobile-specific architecture and UX docs
-src/cli/                    Authenticated JSON automation CLI
+packages/cli/               Standalone bun-targeted authenticated automation CLI
 .agents/skills/pravah-cli/  Read-only agent workflow
 ```
 

@@ -22,7 +22,7 @@ Stack:
 - **Web** — Vite + React (`src/`), Geist fonts, Framer Motion, dnd-kit
 - **Backend** — Convex (`convex/`) with Better Auth
 - **Mobile** — Expo React Native (`apps/mobile/`)
-- **Automation CLI** — authenticated JSON commands for agents and local workflows
+- **Automation CLI** — bun-targeted package in `packages/cli` with authenticated JSON commands for agents and local workflows
 
 ## Quick Start
 
@@ -70,7 +70,7 @@ you move on to mobile or backend debugging.
 | `bun run mobile:ios` | iOS native build |
 | `bun run mobile:web` | Expo web |
 
-Run `bun link` once when you want the package bin available directly as `pravah`. Use `bun run pravah -- <namespace> <command>` inside the checkout without linking.
+Run `cd packages/cli && bun link` once when you want the package bin available directly as `pravah`. Use `bun run pravah -- <namespace> <command>` inside the checkout without linking.
 
 ## Project Structure
 
@@ -83,6 +83,7 @@ convex/               Backend: schema, queries, mutations, HTTP routes
 apps/mobile/          Expo React Native app
 docs/                 Technical documentation
 .agents/skills/       Repo-local agent skills
+packages/cli/         Standalone bun-targeted automation CLI package
 ```
 
 ## Product Scope

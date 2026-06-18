@@ -1,5 +1,5 @@
 import { hasFlag, readOption } from "./args";
-import { getLocalDateString } from "../lib/utils";
+import { getLocalDateString } from "./date";
 import {
   getWriteMetadata,
   readGoalCreateOptions,
