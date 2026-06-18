@@ -2,6 +2,20 @@
 import { readFileSync } from "node:fs";
 import { readOption } from "./args";
 import {
+  COMMAND_SPECS,
+  getCommandCapabilities,
+  getCommandName,
+  getCommandSpec,
+  getCommandSpecFromPositionals,
+  getNamespaceSpecs,
+  isKnownNamespace,
+  readCliPackageVersion,
+  renderCommandHelp,
+  renderNamespaceHelp,
+  renderTopLevelHelp,
+  suggestClosestCommand,
+} from "./commandSpec";
+import {
   loadStoredCredential,
   parseCredentialImport,
   saveStoredCredential,
@@ -15,10 +29,88 @@ import {
 } from "./liveClient";
 import { executeMockCommand } from "./mockCommands";
 import { mockCredential } from "./mockData";
-import type { CommandContext, ParsedArgs } from "./types";
+import { CLI_CONTRACT_VERSION, type CliTextResult, type CommandContext, type ParsedArgs } from "./types";
 
 function isMockEnabled() {
   return process.env.PRAVAH_CLI_MOCK === "1";
+}
+
+function buildTextResult(text: string): CliTextResult {
+  return { kind: "text", text };
+}
+
+export function isCliTextResult(value: unknown): value is CliTextResult {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "kind" in value &&
+    "text" in value &&
+    (value as { kind?: unknown }).kind === "text" &&
+    typeof (value as { text?: unknown }).text === "string"
+  );
+}
+
+function unknownCommandError(input: string, candidates?: readonly string[]) {
+  const suggestion = suggestClosestCommand(input, candidates);
+  return suggestion
+    ? new Error(`Unknown command: ${input}. Did you mean \`${suggestion}\`?`)
+    : new Error(`Unknown command: ${input}`);
+}
+
+function resolveHelpOutput(args: ParsedArgs): CliTextResult {
+  if (args.positionals.length === 0) {
+    return buildTextResult(renderTopLevelHelp());
+  }
+
+  if (args.positionals.length === 1) {
+    const [first] = args.positionals;
+    if (isKnownNamespace(first)) {
+      return buildTextResult(renderNamespaceHelp(first) ?? renderTopLevelHelp());
+    }
+    const spec = getCommandSpecFromPositionals([first]);
+    if (spec) {
+      return buildTextResult(renderCommandHelp(spec));
+    }
+    throw unknownCommandError(first, [
+      ...getNamespaceSpecs().map((spec) => spec.name),
+      ...COMMAND_SPECS.filter((spec) => spec.path.length === 1).map(getCommandName),
+    ]);
+  }
+
+  const command = args.positionals.slice(0, 2).join(" ");
+  const spec = getCommandSpec(command);
+  if (!spec) {
+    throw unknownCommandError(command, COMMAND_SPECS.map(getCommandName));
+  }
+  if (args.positionals.length !== spec.path.length) {
+    throw new Error(`Unexpected positional arguments for ${command}`);
+  }
+  return buildTextResult(renderCommandHelp(spec));
+}
+
+function resolveCommand(args: ParsedArgs) {
+  if (args.positionals.length === 0) {
+    return null;
+  }
+  if (args.positionals.length === 1) {
+    const [first] = args.positionals;
+    const spec = getCommandSpecFromPositionals([first]);
+    if (spec) return getCommandName(spec);
+    if (isKnownNamespace(first)) {
+      throw new Error("Missing command name");
+    }
+    throw unknownCommandError(first, [
+      ...getNamespaceSpecs().map((spec) => spec.name),
+      ...COMMAND_SPECS.filter((spec) => spec.path.length === 1).map(getCommandName),
+    ]);
+  }
+
+  const command = args.positionals.slice(0, 2).join(" ");
+  const spec = getCommandSpec(command);
+  if (!spec) {
+    throw unknownCommandError(command, COMMAND_SPECS.map(getCommandName));
+  }
+  return command;
 }
 
 async function importCredential(args: ParsedArgs) {
@@ -121,124 +213,8 @@ function executeCapabilitiesCommand() {
   })();
 
   return {
-    contractVersion: "v1",
-    commands: [
-      { command: "auth import", kind: "auth", requiredScopes: [] },
-      { command: "auth whoami", kind: "auth", requiredScopes: [] },
-      { command: "auth list-scopes", kind: "auth", requiredScopes: [] },
-      { command: "capabilities", kind: "read", requiredScopes: [] },
-      { command: "tasks list", kind: "read", requiredScopes: ["tasks:read"] },
-      { command: "tasks get", kind: "read", requiredScopes: ["tasks:read"] },
-      { command: "tasks search", kind: "read", requiredScopes: ["tasks:read"] },
-      { command: "tasks inbox", kind: "read", requiredScopes: ["tasks:read"] },
-      { command: "tasks timeline", kind: "read", requiredScopes: ["tasks:read"] },
-      { command: "goals list", kind: "read", requiredScopes: ["tasks:read"] },
-      { command: "goals get", kind: "read", requiredScopes: ["tasks:read"] },
-      { command: "goals search", kind: "read", requiredScopes: ["tasks:read"] },
-      { command: "operations list", kind: "read", requiredScopes: ["tasks:read"] },
-      { command: "operations get", kind: "read", requiredScopes: ["tasks:read"] },
-      { command: "review list", kind: "read", requiredScopes: ["review:read"] },
-      { command: "sync status", kind: "read", requiredScopes: ["sync:read"] },
-      {
-        command: "agent context",
-        kind: "read",
-        requiredScopes: ["tasks:read", "review:read", "sync:read"],
-      },
-      { command: "agent task", kind: "read", requiredScopes: ["tasks:read"] },
-      {
-        command: "goals create",
-        kind: "write",
-        requiredScopes: ["tasks:write"],
-        requiresIdempotencyKey: true,
-        supportsDryRun: true,
-      },
-      {
-        command: "goals update",
-        kind: "write",
-        requiredScopes: ["tasks:write"],
-        requiresIdempotencyKey: true,
-        supportsDryRun: true,
-      },
-      {
-        command: "goals delete",
-        kind: "write",
-        requiredScopes: ["tasks:write"],
-        requiresIdempotencyKey: true,
-        requiresConfirmation: true,
-        supportsDryRun: true,
-      },
-      {
-        command: "tasks add",
-        kind: "write",
-        requiredScopes: ["tasks:write"],
-        requiresIdempotencyKey: true,
-        supportsDryRun: true,
-      },
-      {
-        command: "tasks move",
-        kind: "write",
-        requiredScopes: ["tasks:write"],
-        requiresIdempotencyKey: true,
-        supportsDryRun: true,
-      },
-      {
-        command: "tasks update",
-        kind: "write",
-        requiredScopes: ["tasks:write"],
-        requiresIdempotencyKey: true,
-        supportsDryRun: true,
-      },
-      {
-        command: "tasks delete",
-        kind: "write",
-        requiredScopes: ["tasks:write"],
-        requiresIdempotencyKey: true,
-        requiresConfirmation: true,
-        supportsDryRun: true,
-      },
-      {
-        command: "tasks link-goal",
-        kind: "write",
-        requiredScopes: ["tasks:write"],
-        requiresIdempotencyKey: true,
-        supportsDryRun: true,
-      },
-      {
-        command: "tasks unlink-goal",
-        kind: "write",
-        requiredScopes: ["tasks:write"],
-        requiresIdempotencyKey: true,
-        supportsDryRun: true,
-      },
-      {
-        command: "tasks complete",
-        kind: "write",
-        requiredScopes: ["tasks:write"],
-        requiresIdempotencyKey: true,
-        supportsDryRun: true,
-      },
-      {
-        command: "tasks reopen",
-        kind: "write",
-        requiredScopes: ["tasks:write"],
-        requiresIdempotencyKey: true,
-        supportsDryRun: true,
-      },
-      {
-        command: "tasks unschedule",
-        kind: "write",
-        requiredScopes: ["tasks:write"],
-        requiresIdempotencyKey: true,
-        supportsDryRun: true,
-      },
-      {
-        command: "operations undo",
-        kind: "write",
-        requiredScopes: ["tasks:write"],
-        requiresIdempotencyKey: true,
-        supportsDryRun: true,
-      },
-    ],
+    contractVersion: CLI_CONTRACT_VERSION,
+    commands: getCommandCapabilities(),
     features: {
       unconditionalJsonErrors: true,
       operationLedger: true,
@@ -251,11 +227,24 @@ function executeCapabilitiesCommand() {
 }
 
 export async function executeCommand(context: CommandContext, args: ParsedArgs) {
-  const command = args.positionals.slice(0, 2).join(" ");
+  if (args.options.version === true) {
+    return buildTextResult(readCliPackageVersion());
+  }
+
+  if (args.options.help === true || args.positionals.length === 0) {
+    return resolveHelpOutput(args);
+  }
+
+  const command = resolveCommand(args);
+  if (!command) {
+    return buildTextResult(renderTopLevelHelp());
+  }
   validateCommandArgs(command, args);
+
   if (command === "capabilities") {
     return executeCapabilitiesCommand();
   }
+
   const authResult = executeAuthCommand(command, args);
   if (authResult) {
     return authResult;

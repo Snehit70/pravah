@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdtempSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -9,6 +9,9 @@ import { describe, expect, it } from "vitest";
 
 const repoRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const cliEntry = resolve(repoRoot, "packages/cli/src/pravah.ts");
+const cliPackageVersion = JSON.parse(
+  readFileSync(resolve(repoRoot, "packages/cli/package.json"), "utf8")
+) as { version: string };
 
 function buildCliEnv(env?: Record<string, string>) {
   const home = env?.HOME ?? mkdtempSync(join(tmpdir(), "pravah-cli-test-home-"));
@@ -62,6 +65,51 @@ function runCliAsync(args: string[], env?: Record<string, string>) {
 }
 
 describe("pravah CLI", () => {
+  it("generates top-level help from the command spec", () => {
+    const result = runCli(["--help"]);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Namespaces:");
+    expect(result.stdout).toContain("auth");
+    expect(result.stdout).toContain("tasks");
+    expect(result.stdout).toContain("Global commands:");
+    expect(result.stdout).toContain("capabilities");
+    expect(result.stderr).toBe("");
+  });
+
+  it("generates namespace and command help from the shared command spec", () => {
+    const namespaceResult = runCli(["tasks", "--help"]);
+    expect(namespaceResult.status).toBe(0);
+    expect(namespaceResult.stdout).toContain("pravah tasks");
+    expect(namespaceResult.stdout).toContain("update");
+    expect(namespaceResult.stdout).toContain("delete");
+
+    const commandResult = runCli(["tasks", "update", "--help"]);
+    expect(commandResult.status).toBe(0);
+    expect(commandResult.stdout).toContain("pravah tasks update");
+    expect(commandResult.stdout).toContain("--task-id <task-id>");
+    expect(commandResult.stdout).toContain("Required scopes: tasks:write");
+    expect(commandResult.stdout).toContain("Dry-run: supported");
+    expect(commandResult.stdout).toContain("Confirmation: not required");
+  });
+
+  it("prints the installed CLI package version", () => {
+    const result = runCli(["--version"]);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe(cliPackageVersion.version);
+    expect(result.stderr).toBe("");
+  });
+
+  it("suggests the closest valid command for typos", () => {
+    const result = runCli(["tasks", "udpate", "--json"]);
+
+    expect(result.status).toBe(1);
+    const payload = JSON.parse(result.stdout);
+    expect(payload.error.code).toBe("invalid_command");
+    expect(payload.error.message).toContain("Did you mean `tasks update`?");
+  });
+
   it("returns a uniform JSON envelope for successful reads", () => {
     const result = runCli(["tasks", "list", "--status", "timeline", "--json"]);
 
@@ -623,10 +671,23 @@ describe("pravah CLI", () => {
     });
     expect(payload.data.commands).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ command: "tasks add", kind: "write" }),
-        expect.objectContaining({ command: "tasks delete", kind: "write" }),
+        expect.objectContaining({
+          command: "tasks add",
+          kind: "write",
+          requiresIdempotencyKey: true,
+          supportsDryRun: true,
+        }),
+        expect.objectContaining({
+          command: "tasks delete",
+          kind: "write",
+          requiresConfirmation: true,
+        }),
         expect.objectContaining({ command: "operations undo", kind: "write" }),
-        expect.objectContaining({ command: "tasks search", kind: "read" }),
+        expect.objectContaining({
+          command: "tasks search",
+          kind: "read",
+          description: "Search tasks by query with optional status filtering.",
+        }),
         expect.objectContaining({ command: "agent context", kind: "read" }),
       ])
     );

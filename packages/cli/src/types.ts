@@ -22,6 +22,11 @@ export interface CliErrorEnvelope {
 
 export type CliEnvelope<T> = CliSuccessEnvelope<T> | CliErrorEnvelope;
 
+export interface CliTextResult {
+  kind: "text";
+  text: string;
+}
+
 export interface ParsedArgs {
   positionals: string[];
   options: Record<string, string | boolean>;
