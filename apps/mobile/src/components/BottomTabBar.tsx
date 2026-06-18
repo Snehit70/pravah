@@ -9,9 +9,10 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { haptic } from "../lib/haptic";
+import { resolveTabOrder, TAB_LABELS, type TabKey } from "../lib/tabOrder";
 import { colors, radii, shadow, spacing } from "../theme/tokens";
 
-export type TabKey = "inbox" | "timeline" | "goals" | "insights";
+export type { TabKey } from "../lib/tabOrder";
 
 type BottomTabBarProps = {
   active: TabKey;
@@ -19,6 +20,7 @@ type BottomTabBarProps = {
   onCapture: () => void;
   canCapture?: boolean;
   bottomInset?: number;
+  tabOrder?: readonly TabKey[];
 };
 
 type IconProps = { filled: boolean; color: string; size: number };
@@ -115,12 +117,12 @@ function CaptureIcon({ color, size }: { color: string; size: number }) {
 
 type NavIcon = (p: IconProps) => JSX.Element;
 
-const NAV_TABS: { key: TabKey; label: string; Icon: NavIcon }[] = [
-  { key: "inbox", label: "Inbox", Icon: LayersIcon },
-  { key: "timeline", label: "Timeline", Icon: AgendaIcon },
-  { key: "goals", label: "Goals", Icon: MountainIcon },
-  { key: "insights", label: "Progress", Icon: FlameIcon },
-];
+const NAV_TABS: Record<TabKey, { key: TabKey; label: string; Icon: NavIcon }> = {
+  inbox: { key: "inbox", label: TAB_LABELS.inbox, Icon: LayersIcon },
+  timeline: { key: "timeline", label: TAB_LABELS.timeline, Icon: AgendaIcon },
+  goals: { key: "goals", label: TAB_LABELS.goals, Icon: MountainIcon },
+  insights: { key: "insights", label: TAB_LABELS.insights, Icon: FlameIcon },
+};
 
 const ICON_SIZE = 22;
 const SPRING = { damping: 18, stiffness: 320 };
@@ -131,7 +133,7 @@ function NavTab({
   active,
   onPress,
 }: {
-  tab: (typeof NAV_TABS)[number];
+  tab: (typeof NAV_TABS)[TabKey];
   active: boolean;
   onPress: () => void;
 }) {
@@ -238,7 +240,11 @@ function BottomTabBarInner({
   onCapture,
   canCapture = true,
   bottomInset = spacing.md,
+  tabOrder,
 }: BottomTabBarProps) {
+  const resolvedOrder = resolveTabOrder(tabOrder);
+  const leftTabs = resolvedOrder.slice(0, 2);
+  const rightTabs = resolvedOrder.slice(2);
   const handlePress = useCallback(
     (tab: TabKey) => {
       if (tab !== active) {
@@ -252,13 +258,25 @@ function BottomTabBarInner({
   return (
     <View style={[styles.container, { paddingBottom: bottomInset }]}>
       <View style={styles.bar} accessibilityRole="tablist">
-        <NavTab tab={NAV_TABS[0]} active={active === "inbox"} onPress={() => handlePress("inbox")} />
-        <NavTab tab={NAV_TABS[1]} active={active === "timeline"} onPress={() => handlePress("timeline")} />
+        {leftTabs.map((tab) => (
+          <NavTab
+            key={tab}
+            tab={NAV_TABS[tab]}
+            active={active === tab}
+            onPress={() => handlePress(tab)}
+          />
+        ))}
 
         <CaptureButton onCapture={onCapture} canCapture={canCapture} />
 
-        <NavTab tab={NAV_TABS[2]} active={active === "goals"} onPress={() => handlePress("goals")} />
-        <NavTab tab={NAV_TABS[3]} active={active === "insights"} onPress={() => handlePress("insights")} />
+        {rightTabs.map((tab) => (
+          <NavTab
+            key={tab}
+            tab={NAV_TABS[tab]}
+            active={active === tab}
+            onPress={() => handlePress(tab)}
+          />
+        ))}
       </View>
     </View>
   );

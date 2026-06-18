@@ -27,6 +27,12 @@ import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { getOrCreateDeviceId } from "../lib/deviceIdentity";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
+import {
+  moveTabOrder,
+  resolveTabOrder,
+  TAB_LABELS,
+  type TabKey,
+} from "../lib/tabOrder";
 import * as SecureStore from "expo-secure-store";
 import * as Clipboard from "expo-clipboard";
 import { classifyError, mobileLogger } from "../lib/logger";
@@ -161,6 +167,103 @@ const SECTIONS: ReadonlyArray<{ key: SectionKey; label: string }> = [
   { key: "more", label: "More" },
 ];
 
+type TabOrderEditorProps = {
+  order: readonly TabKey[];
+  onMove: (key: TabKey, direction: "up" | "down") => void;
+};
+
+function TabOrderPreview({ order }: { order: readonly TabKey[] }) {
+  const left = order.slice(0, 2);
+  const right = order.slice(2);
+  return (
+    <View style={styles.tabOrderPreview} testID="tab-order-preview">
+      {left.map((key) => (
+        <View key={key} style={styles.tabPreviewItem}>
+          <Text style={styles.tabPreviewText}>{TAB_LABELS[key]}</Text>
+        </View>
+      ))}
+      <View style={styles.tabPreviewCapture}>
+        <Text style={styles.tabPreviewCaptureText}>Capture</Text>
+      </View>
+      {right.map((key) => (
+        <View key={key} style={styles.tabPreviewItem}>
+          <Text style={styles.tabPreviewText}>{TAB_LABELS[key]}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function TabOrderEditor({ order, onMove }: TabOrderEditorProps) {
+  return (
+    <View style={styles.tabOrderEditor}>
+      {order.map((key, index) => {
+        const isFirst = index === 0;
+        const isLast = index === order.length - 1;
+        return (
+          <View key={key} style={styles.tabOrderRow}>
+            <View style={styles.tabOrderIndex}>
+              <Text style={styles.tabOrderIndexText}>{index + 1}</Text>
+            </View>
+            <View style={styles.settingCopy}>
+              <Text style={styles.settingLabel}>{TAB_LABELS[key]}</Text>
+              <Text style={styles.settingMeta}>
+                {index < 2 ? "Left of Capture" : "Right of Capture"}
+              </Text>
+            </View>
+            <View style={styles.tabOrderControls}>
+              <Pressable
+                onPress={() => onMove(key, "up")}
+                disabled={isFirst}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Move ${TAB_LABELS[key]} up`}
+                accessibilityState={{ disabled: isFirst }}
+                style={({ pressed }) => [
+                  styles.tabOrderButton,
+                  isFirst && styles.tabOrderButtonDisabled,
+                  pressed && !isFirst && { opacity: 0.65 },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.tabOrderButtonText,
+                    isFirst && styles.tabOrderButtonTextDisabled,
+                  ]}
+                >
+                  ↑
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => onMove(key, "down")}
+                disabled={isLast}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Move ${TAB_LABELS[key]} down`}
+                accessibilityState={{ disabled: isLast }}
+                style={({ pressed }) => [
+                  styles.tabOrderButton,
+                  isLast && styles.tabOrderButtonDisabled,
+                  pressed && !isLast && { opacity: 0.65 },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.tabOrderButtonText,
+                    isLast && styles.tabOrderButtonTextDisabled,
+                  ]}
+                >
+                  ↓
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 type SettingsSheetProps = {
   visible: boolean;
   calendarSyncEnabled: boolean;
@@ -253,6 +356,7 @@ export function SettingsSheet({
   // from the side matching the user's spatial mental model of the tab bar.
   const [tabDirection, setTabDirection] = useState<"forward" | "backward">("forward");
   const { prefs, setPreference } = useUserPreferences();
+  const tabOrder = resolveTabOrder(prefs.tabOrder);
   const [openPicker, setOpenPicker] = useState<QuietPickerKind | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [isClearingRetryQueue, setIsClearingRetryQueue] = useState(false);
@@ -437,6 +541,13 @@ export function SettingsSheet({
       scrollRef.current?.scrollTo({ y: 0, animated: false });
     },
     [activeSection, reducedMotion],
+  );
+
+  const handleMoveTab = useCallback(
+    (key: TabKey, direction: "up" | "down") => {
+      void setPreference("tabOrder", moveTabOrder(tabOrder, key, direction));
+    },
+    [setPreference, tabOrder],
   );
 
   return (
@@ -1242,6 +1353,15 @@ export function SettingsSheet({
               </View>
 
               <View style={[styles.settingBlock, styles.sectionCard]}>
+                <Text style={styles.settingLabel}>Tab order</Text>
+                <Text style={styles.settingHelp}>
+                  Reorder Inbox, Timeline, Goals, and Progress. Capture stays fixed in the center.
+                </Text>
+                <TabOrderPreview order={tabOrder} />
+                <TabOrderEditor order={tabOrder} onMove={handleMoveTab} />
+              </View>
+
+              <View style={[styles.settingBlock, styles.sectionCard]}>
                 <Text style={styles.settingLabel}>Accent color</Text>
                 <Text style={styles.settingHelp}>
                   Used for highlights, buttons, and active states.
@@ -1811,6 +1931,94 @@ const styles = StyleSheet.create({
   segmentTextActive: {
     color: colors.accent,
     fontWeight: "600",
+  },
+  tabOrderPreview: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    backgroundColor: colors.bgCard,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    padding: spacing.xs,
+  },
+  tabPreviewItem: {
+    flex: 1,
+    minHeight: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radii.md,
+    backgroundColor: colors.bgInput,
+  },
+  tabPreviewText: {
+    ...typography.micro,
+    color: colors.textSecondary,
+  },
+  tabPreviewCapture: {
+    flex: 1,
+    minHeight: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radii.full,
+    backgroundColor: colors.accentSoft,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderFocus,
+  },
+  tabPreviewCaptureText: {
+    ...typography.micro,
+    color: colors.accent,
+    fontWeight: "600",
+  },
+  tabOrderEditor: {
+    gap: spacing.xs,
+  },
+  tabOrderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
+  },
+  tabOrderIndex: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  tabOrderIndexText: {
+    ...typography.micro,
+    color: colors.textMuted,
+    fontWeight: "600",
+  },
+  tabOrderControls: {
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  tabOrderButton: {
+    width: 34,
+    height: 34,
+    borderRadius: radii.md,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+  },
+  tabOrderButtonDisabled: {
+    opacity: 0.35,
+  },
+  tabOrderButtonText: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+    fontWeight: "700",
+  },
+  tabOrderButtonTextDisabled: {
+    color: colors.textMuted,
   },
   swatchRow: {
     flexDirection: "row",

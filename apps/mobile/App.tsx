@@ -1114,6 +1114,7 @@ function MobileApp() {
         onCapture={() => addTaskSheetRef.current?.open()}
         canCapture={canUseWorkspaceActions && !isAddSheetOpen && !isEditSheetOpen}
         bottomInset={tabBarBottomPadding}
+        tabOrder={prefs.tabOrder}
       />
 
       </Animated.View>
