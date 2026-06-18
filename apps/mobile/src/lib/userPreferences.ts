@@ -1,5 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { classifyError, mobileLogger } from "./logger";
+import {
+  DEFAULT_TAB_ORDER,
+  sanitizeTabOrder,
+  type TabOrder,
+} from "./tabOrder";
 
 const STORAGE_KEY = "pravah_user_prefs_v1";
 
@@ -26,6 +31,7 @@ export interface UserPreferences {
   accentColor: AccentColor;
   density: Density;
   bulkTaskCaptureEnabled: boolean;
+  tabOrder: TabOrder;
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
@@ -44,6 +50,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   accentColor: "purple",
   density: "cozy",
   bulkTaskCaptureEnabled: false,
+  tabOrder: [...DEFAULT_TAB_ORDER],
 };
 
 const TIME_PATTERN = /^([01]?\d|2[0-3]):[0-5]\d$/;
@@ -127,6 +134,7 @@ function sanitize(raw: unknown): UserPreferences {
     density: r.density === "compact" ? "compact" : "cozy",
     bulkTaskCaptureEnabled:
       typeof r.bulkTaskCaptureEnabled === "boolean" ? r.bulkTaskCaptureEnabled : false,
+    tabOrder: sanitizeTabOrder(r.tabOrder),
   };
 }
 

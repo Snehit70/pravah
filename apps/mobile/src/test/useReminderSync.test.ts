@@ -23,6 +23,7 @@ const prefs: UserPreferences = {
   accentColor: "purple",
   density: "cozy",
   bulkTaskCaptureEnabled: false,
+  tabOrder: ["inbox", "timeline", "goals", "insights"],
 };
 
 vi.mock("react-native", () => ({

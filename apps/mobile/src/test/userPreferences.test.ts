@@ -57,6 +57,7 @@ describe("sanitize", () => {
       reducedMotionOverride: "always",
       accentColor: "copper",
       density: "compact",
+      tabOrder: ["insights", "goals", "timeline", "inbox"],
     });
     expect(result).toMatchObject({
       morningDigestTime: "07:30",
@@ -67,7 +68,20 @@ describe("sanitize", () => {
       kairoUndoWindowMinutes: 15,
       reducedMotionOverride: "always",
       density: "compact",
+      tabOrder: ["insights", "goals", "timeline", "inbox"],
     });
+  });
+
+  it("falls back to the default tab order for corrupted saved orders", () => {
+    expect(sanitize({ tabOrder: ["inbox", "timeline", "goals"] }).tabOrder).toEqual(
+      DEFAULT_PREFERENCES.tabOrder,
+    );
+    expect(sanitize({ tabOrder: ["inbox", "timeline", "goals", "goals"] }).tabOrder).toEqual(
+      DEFAULT_PREFERENCES.tabOrder,
+    );
+    expect(sanitize({ tabOrder: ["inbox", "timeline", "capture", "goals"] }).tabOrder).toEqual(
+      DEFAULT_PREFERENCES.tabOrder,
+    );
   });
 
   it("clamps numeric values to the allowed range", () => {
