@@ -69,6 +69,7 @@ import { useWorkspaceState } from "./src/hooks/useWorkspaceState";
 import { useGoogleAuth } from "./src/hooks/useGoogleAuth";
 import { useNotificationsSettings } from "./src/hooks/useNotificationsSettings";
 import { useIntegrationsSettings } from "./src/hooks/useIntegrationsSettings";
+import { useReminderSync } from "./src/hooks/useReminderSync";
 import { useReducedMotion } from "./src/hooks/useReducedMotion";
 import { useDisplayWorkspace } from "./src/hooks/useDisplayWorkspace";
 import { resetPreferencesStore } from "./src/hooks/useUserPreferences";
@@ -155,13 +156,34 @@ function MobileApp() {
   const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
 
+  // ── Auth ────────────────────────────────────────────────────────────
+
+  const {
+    isSigningIn,
+    isSigningOut,
+    canGoogleSignIn,
+    handleGoogleSignIn,
+    handleSignOut: googleSignOut,
+  } = useGoogleAuth({ googleWebClientId, googleIosClientId, showToast });
+
+  // ── Notifications ────────────────────────────────────────────────────
+
+  const {
+    notificationPermissionState,
+    isNotificationsBusy,
+    notificationsEnabled,
+    requestNotificationsAccess,
+    sendTestNotification,
+  } = useNotificationsSettings(showToast);
+
   // ── Data ────────────────────────────────────────────────────────────
 
   const needsFullWorkspaceCorpus =
     isKairoActive ||
     activeTab === "timeline" ||
     activeTab === "insights" ||
-    activeTab === "goals";
+    activeTab === "goals" ||
+    notificationsEnabled;
 
   const {
     today,
@@ -266,28 +288,8 @@ function MobileApp() {
   const tabBarBottomPadding = Math.max(insets.bottom, spacing.md);
   const tabBarHeight = 62 + tabBarBottomPadding;
 
-  // ── Auth ────────────────────────────────────────────────────────────
-
-  const {
-    isSigningIn,
-    isSigningOut,
-    canGoogleSignIn,
-    handleGoogleSignIn,
-    handleSignOut: googleSignOut,
-  } = useGoogleAuth({ googleWebClientId, googleIosClientId, showToast });
-
-  // ── Notifications ────────────────────────────────────────────────────
-
-  const {
-    notificationPermissionState,
-    isDailyReminderEnabled,
-    isNotificationsBusy,
-    notificationsEnabled,
-    requestNotificationsAccess,
-    toggleDailyReminder,
-    sendTestNotification,
-    resetDailyReminderState,
-  } = useNotificationsSettings(showToast);
+  const shouldSyncReminders = Boolean(session) && notificationsEnabled && isAllTasksReady;
+  useReminderSync(allWorkspaceTasks, shouldSyncReminders);
 
   // ── Integrations ────────────────────────────────────────────────────
 
@@ -330,11 +332,10 @@ function MobileApp() {
     await wipeLocalAppData();
     clearAllGoals();
     resetPreferencesStore();
-    resetDailyReminderState();
     setIsSettingsModalOpen(false);
     await clearSnapshot();
     await googleSignOut();
-  }, [clearAllGoals, clearSnapshot, googleSignOut, resetDailyReminderState, setIsSettingsModalOpen]);
+  }, [clearAllGoals, clearSnapshot, googleSignOut, setIsSettingsModalOpen]);
 
   const handleExportTasks = useCallback(async () => {
     try {
@@ -1175,7 +1176,6 @@ function MobileApp() {
         pendingGmailReviewCount={pendingGmailReviewCount}
         notificationPermissionState={notificationPermissionState}
         notificationsEnabled={notificationsEnabled}
-        isDailyReminderEnabled={isDailyReminderEnabled}
         isCalendarSyncing={isCalendarSyncing}
         isGoogleToggleSaving={isGoogleToggleSaving}
         isGmailToggleSaving={isGmailToggleSaving}
@@ -1187,7 +1187,6 @@ function MobileApp() {
         onEnableAndSyncGoogleCalendar={() => void enableAndSyncGoogleCalendar()}
         onGmailToggle={() => void toggleGmailSync()}
         onRequestNotificationsAccess={() => void requestNotificationsAccess()}
-        onToggleDailyReminder={() => void toggleDailyReminder()}
         onSendTestNotification={() => void sendTestNotification()}
         onSignOut={() => void handleSignOut()}
         onExportTasks={() => void handleExportTasks()}

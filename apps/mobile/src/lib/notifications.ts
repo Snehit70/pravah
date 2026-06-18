@@ -1,11 +1,6 @@
 import * as Notifications from "expo-notifications";
-import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
-
-const DAILY_REMINDER_NOTIFICATION_ID_KEY = "pravah_daily_reminder_notification_id_v1";
-const DAILY_REMINDER_CHANNEL_ID = "daily-reminders";
-const DEFAULT_DAILY_REMINDER_HOUR = 9;
-const DEFAULT_DAILY_REMINDER_MINUTE = 0;
+import { REMINDERS_CHANNEL_ID } from "./syncReminders";
 
 export type NotificationPermissionState = "granted" | "denied" | "undetermined";
 
@@ -28,9 +23,9 @@ export async function initializeNotificationsAsync(): Promise<void> {
     lightColor: "#7dd3fc",
   });
 
-  await Notifications.setNotificationChannelAsync(DAILY_REMINDER_CHANNEL_ID, {
-    name: "Daily reminders",
-    description: "Daily planning reminder notifications",
+  await Notifications.setNotificationChannelAsync(REMINDERS_CHANNEL_ID, {
+    name: "Reminders",
+    description: "Task Reminder notifications",
     importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 200, 150, 200],
     lightColor: "#c88445",
@@ -50,45 +45,6 @@ export async function requestNotificationPermissionAsync(): Promise<Notification
   if (permissions.granted) return "granted";
   if (permissions.canAskAgain === false) return "denied";
   return "undetermined";
-}
-
-export async function isDailyReminderEnabledAsync(): Promise<boolean> {
-  const id = await SecureStore.getItemAsync(DAILY_REMINDER_NOTIFICATION_ID_KEY);
-  return Boolean(id);
-}
-
-export async function scheduleDailyReminderAsync({
-  hour = DEFAULT_DAILY_REMINDER_HOUR,
-  minute = DEFAULT_DAILY_REMINDER_MINUTE,
-}: {
-  hour?: number;
-  minute?: number;
-} = {}): Promise<void> {
-  await disableDailyReminderAsync();
-
-  const identifier = await Notifications.scheduleNotificationAsync({
-    content: {
-      title: "Pravah",
-      body: "Quick check-in: plan your timeline for today.",
-      sound: "default",
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DAILY,
-      hour,
-      minute,
-      channelId: DAILY_REMINDER_CHANNEL_ID,
-    },
-  });
-
-  await SecureStore.setItemAsync(DAILY_REMINDER_NOTIFICATION_ID_KEY, identifier);
-}
-
-export async function disableDailyReminderAsync(): Promise<void> {
-  const existingId = await SecureStore.getItemAsync(DAILY_REMINDER_NOTIFICATION_ID_KEY);
-  if (existingId) {
-    await Notifications.cancelScheduledNotificationAsync(existingId);
-    await SecureStore.deleteItemAsync(DAILY_REMINDER_NOTIFICATION_ID_KEY);
-  }
 }
 
 function parseHHMM(value: string): { hour: number; minute: number } | null {
