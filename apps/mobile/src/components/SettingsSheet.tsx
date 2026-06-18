@@ -39,7 +39,7 @@ import { summarizeSyncError } from "../hooks/useIntegrationsSettings";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 
-type QuietPickerKind = "quietStart" | "quietEnd";
+type QuietPickerKind = "morningDigest" | "quietStart" | "quietEnd";
 
 function timeToDate(value: string): Date {
   const [h, m] = value.split(":").map((n) => Number(n));
@@ -385,7 +385,8 @@ export function SettingsSheet({
       if (Platform.OS === "android") setOpenPicker(null);
       if (!picked) return;
       const value = dateToTime(picked);
-      if (kind === "quietStart") void setPreference("quietHoursStart", value);
+      if (kind === "morningDigest") void setPreference("morningDigestTime", value);
+      else if (kind === "quietStart") void setPreference("quietHoursStart", value);
       else void setPreference("quietHoursEnd", value);
     },
     [setPreference],
@@ -945,7 +946,7 @@ export function SettingsSheet({
               <View style={[styles.settingBlock, styles.sectionCard]}>
                 <Text style={styles.settingLabel}>Notifications</Text>
                 <Text style={styles.settingHelp}>
-                  Timed Tasks notify at their Deadline and once again before it.
+                  Timed Tasks notify at their Deadline and date-only Tasks roll into one morning digest.
                 </Text>
                 <Text style={[styles.settingStatus, { color: statusTextColor(notificationPermissionState) }]}>
                   {formatStatusLabel(notificationPermissionState)}
@@ -978,6 +979,21 @@ export function SettingsSheet({
                     Send a test
                   </Text>
                 </Pressable>
+
+                <View style={styles.behaviorRow}>
+                  <Text style={styles.settingMeta}>Morning digest time</Text>
+                  <Pressable
+                    onPress={() => setOpenPicker("morningDigest")}
+                    hitSlop={12}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Change morning digest time, currently ${formatClockLabel(prefs.morningDigestTime)}`}
+                    style={({ pressed }) => [styles.timeInlineButton, pressed && { opacity: 0.7 }]}
+                  >
+                    <Text style={styles.timeInlineButtonText}>
+                      {formatClockLabel(prefs.morningDigestTime)}
+                    </Text>
+                  </Pressable>
+                </View>
 
                 <View style={styles.behaviorRow}>
                   <Text style={styles.settingMeta}>Heads-up lead time</Text>
@@ -1060,7 +1076,11 @@ export function SettingsSheet({
               {openPicker !== null ? (
                 <DateTimePicker
                   value={timeToDate(
-                    openPicker === "quietStart" ? prefs.quietHoursStart : prefs.quietHoursEnd,
+                    openPicker === "morningDigest"
+                      ? prefs.morningDigestTime
+                      : openPicker === "quietStart"
+                        ? prefs.quietHoursStart
+                        : prefs.quietHoursEnd,
                   )}
                   mode="time"
                   is24Hour={false}
@@ -1877,6 +1897,17 @@ const styles = StyleSheet.create({
   timeRowValue: {
     ...typography.bodyMd,
     color: colors.accent,
+  },
+  timeInlineButton: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.md,
+    backgroundColor: colors.accentSoft,
+  },
+  timeInlineButtonText: {
+    ...typography.micro,
+    color: colors.accent,
+    fontWeight: "600",
   },
   signOutLink: {
     color: colors.error,

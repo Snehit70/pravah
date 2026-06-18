@@ -11,7 +11,7 @@ export type UndoWindowMinutes = 5 | 15 | 30 | 60;
 export type ReminderLeadTimeMinutes = 5 | 15 | 30 | 60;
 
 export interface UserPreferences {
-  dailyReminderTime: string;
+  morningDigestTime: string;
   reminderLeadTimeMinutes: ReminderLeadTimeMinutes;
   quietHoursEnabled: boolean;
   quietHoursStart: string;
@@ -29,7 +29,7 @@ export interface UserPreferences {
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
-  dailyReminderTime: "09:00",
+  morningDigestTime: "09:00",
   reminderLeadTimeMinutes: 15,
   quietHoursEnabled: false,
   quietHoursStart: "22:00",
@@ -73,11 +73,13 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
 // runtime. Anything missing or wrong falls back to the default for that key.
 function sanitize(raw: unknown): UserPreferences {
   if (!raw || typeof raw !== "object") return { ...DEFAULT_PREFERENCES };
-  const r = raw as Partial<Record<keyof UserPreferences, unknown>>;
+  const r = raw as Record<string, unknown>;
   return {
-    dailyReminderTime: isValidTime(r.dailyReminderTime)
-      ? r.dailyReminderTime
-      : DEFAULT_PREFERENCES.dailyReminderTime,
+    morningDigestTime: isValidTime(r.morningDigestTime)
+      ? r.morningDigestTime
+      : isValidTime(r.dailyReminderTime)
+        ? r.dailyReminderTime
+        : DEFAULT_PREFERENCES.morningDigestTime,
     reminderLeadTimeMinutes: isReminderLeadTime(r.reminderLeadTimeMinutes)
       ? r.reminderLeadTimeMinutes
       : DEFAULT_PREFERENCES.reminderLeadTimeMinutes,

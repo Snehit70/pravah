@@ -3,7 +3,7 @@ import { REMINDER_ID_PREFIX, REMINDER_WINDOW_DAYS, planReminders } from "../lib/
 
 describe("planReminders", () => {
   const now = new Date(2026, 5, 18, 9, 0, 0, 0);
-  const prefs = { reminderLeadTimeMinutes: 15 } as const;
+  const prefs = { reminderLeadTimeMinutes: 15, morningDigestTime: "09:00" } as const;
 
   it("emits a lead-time reminder and an at-time reminder for a timed task inside the rolling window", () => {
     const specs = planReminders(
@@ -89,5 +89,34 @@ describe("planReminders", () => {
     );
 
     expect(specs).toEqual([]);
+  });
+
+  it("groups date-only tasks due on the same day into one morning digest", () => {
+    const specs = planReminders(
+      [
+        { _id: "d1", title: "Plan sprint", deadline: "2026-06-19" },
+        { _id: "d2", title: "Write notes", deadline: "2026-06-19" },
+        { _id: "timed", title: "Call", deadline: "2026-06-19", time: "15:00" },
+      ],
+      prefs,
+      now,
+    );
+
+    const digest = specs.find((spec) => spec.id.includes("digest-2026-06-19"));
+    expect(digest).toMatchObject({
+      title: "Pravah",
+      body: "2 Tasks due today",
+    });
+    expect(digest?.fireAt.toISOString()).toBe(new Date(2026, 5, 19, 9, 0, 0, 0).toISOString());
+  });
+
+  it("emits no digest for a day with no date-only tasks", () => {
+    const specs = planReminders(
+      [{ _id: "timed", title: "Call", deadline: "2026-06-19", time: "15:00" }],
+      prefs,
+      now,
+    );
+
+    expect(specs.some((spec) => spec.id.includes("digest-"))).toBe(false);
   });
 });

@@ -2,12 +2,13 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MobileTask } from "../components/TaskCard";
+import type { UserPreferences } from "../lib/userPreferences";
 
 const addEventListener = vi.fn();
 const planReminders = vi.fn(() => []);
 const syncRemindersAsync = vi.fn(async () => undefined);
-const prefs = {
-  dailyReminderTime: "09:00",
+const prefs: UserPreferences = {
+  morningDigestTime: "09:00",
   reminderLeadTimeMinutes: 15,
   quietHoursEnabled: false,
   quietHoursStart: "22:00",
@@ -22,7 +23,7 @@ const prefs = {
   accentColor: "purple",
   density: "cozy",
   bulkTaskCaptureEnabled: false,
-} as const;
+};
 
 vi.mock("react-native", () => ({
   AppState: { addEventListener },
@@ -119,6 +120,32 @@ describe("useReminderSync", () => {
           time: "11:00",
         },
       ],
+      enabled: true,
+    });
+
+    expect(planReminders).toHaveBeenCalledTimes(2);
+    expect(syncRemindersAsync).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-syncs when reminder preferences change", () => {
+    const { rerender } = renderHook(
+      ({ currentTasks, currentPrefs, enabled }) =>
+        useReminderSync(currentTasks, currentPrefs, enabled),
+      {
+        initialProps: {
+          currentTasks: tasks,
+          currentPrefs: prefs,
+          enabled: true,
+        },
+      },
+    );
+
+    rerender({
+      currentTasks: tasks,
+      currentPrefs: {
+        ...prefs,
+        morningDigestTime: "08:30",
+      },
       enabled: true,
     });
 
