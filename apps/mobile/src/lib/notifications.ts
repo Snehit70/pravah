@@ -1,6 +1,6 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
-import { REMINDERS_CHANNEL_ID } from "./syncReminders";
+import { REMINDERS_CHANNEL_ID } from "./reminderConstants";
 
 export type NotificationPermissionState = "granted" | "denied" | "undetermined";
 

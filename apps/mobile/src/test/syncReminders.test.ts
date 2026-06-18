@@ -1,15 +1,22 @@
 /** @vitest-environment happy-dom */
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const getAllScheduledNotificationsAsync = vi.fn();
-const cancelScheduledNotificationAsync = vi.fn(async () => undefined);
-const scheduleNotificationAsync = vi.fn(async () => "scheduled");
+const {
+  getAllScheduledNotificationsAsync,
+  cancelScheduledNotificationAsync,
+  scheduleNotificationAsync,
+} = vi.hoisted(() => ({
+  getAllScheduledNotificationsAsync: vi.fn(),
+  cancelScheduledNotificationAsync: vi.fn(async () => undefined),
+  scheduleNotificationAsync: vi.fn(async () => "scheduled"),
+}));
 
 vi.mock("react-native", () => ({
   Platform: { OS: "ios" },
 }));
 
 vi.mock("expo-notifications", () => ({
+  setNotificationHandler: vi.fn(),
   getAllScheduledNotificationsAsync,
   cancelScheduledNotificationAsync,
   scheduleNotificationAsync,

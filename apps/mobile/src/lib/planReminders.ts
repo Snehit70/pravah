@@ -1,3 +1,4 @@
+import { isWithinQuietHours } from "./notifications";
 import type { ReminderLeadTimeMinutes } from "./userPreferences";
 
 export const REMINDER_ID_PREFIX = "pravah-reminder-";
@@ -23,7 +24,58 @@ type PlannerTask = {
 type PlannerPreferences = {
   morningDigestTime: string;
   reminderLeadTimeMinutes: ReminderLeadTimeMinutes;
+  quietHoursEnabled: boolean;
+  quietHoursStart: string;
+  quietHoursEnd: string;
 };
+
+function parseTimeToMinutes(value: string): number | null {
+  const [hStr, mStr] = value.split(":");
+  const h = Number(hStr);
+  const m = Number(mStr);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+}
+
+function minutesToTime(value: number): string {
+  const minutes = ((value % (24 * 60)) + 24 * 60) % (24 * 60);
+  const hour = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+  return `${`${hour}`.padStart(2, "0")}:${`${minute}`.padStart(2, "0")}`;
+}
+
+function clampDigestTimeOutsideQuietHours(prefs: PlannerPreferences): string {
+  if (
+    !isWithinQuietHours(prefs.morningDigestTime, {
+      enabled: prefs.quietHoursEnabled,
+      start: prefs.quietHoursStart,
+      end: prefs.quietHoursEnd,
+    })
+  ) {
+    return prefs.morningDigestTime;
+  }
+
+  const digestMin = parseTimeToMinutes(prefs.morningDigestTime);
+  const startMin = parseTimeToMinutes(prefs.quietHoursStart);
+  const endMin = parseTimeToMinutes(prefs.quietHoursEnd);
+  if (digestMin === null || startMin === null || endMin === null || startMin === endMin) {
+    return prefs.morningDigestTime;
+  }
+
+  if (startMin < endMin) {
+    const minutesToStart = digestMin - (startMin - 1);
+    const minutesToEnd = endMin - digestMin;
+    return minutesToEnd <= minutesToStart
+      ? minutesToTime(endMin)
+      : minutesToTime(startMin - 1);
+  }
+
+  if (digestMin < endMin) {
+    return minutesToTime(endMin);
+  }
+
+  return minutesToTime(startMin - 1);
+}
 
 function parseDeadlineTime(deadline: string, time: string): Date | null {
   const [hStr, mStr] = time.split(":");
@@ -96,7 +148,7 @@ export function planReminders(
   }
 
   for (const [deadline, count] of digestCounts) {
-    const fireAt = parseDeadlineTime(deadline, prefs.morningDigestTime);
+    const fireAt = parseDeadlineTime(deadline, clampDigestTimeOutsideQuietHours(prefs));
     if (!fireAt) continue;
     if (fireAt <= now || fireAt > windowEnd) continue;
     specs.push({

@@ -1,7 +1,8 @@
 import * as Notifications from "expo-notifications";
 import { REMINDER_ID_PREFIX, type ReminderSpec } from "./planReminders";
+import { REMINDERS_CHANNEL_ID } from "./reminderConstants";
 
-export const REMINDERS_CHANNEL_ID = "reminders";
+export { REMINDERS_CHANNEL_ID } from "./reminderConstants";
 
 /**
  * Sync layer: diffs planReminders output against currently-scheduled OS
