@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useState } from "react";
 import {
   Keyboard,
   Linking,
-  Platform,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,38 +12,95 @@ import {
   View,
 } from "react-native";
 import { useMutation, useQuery } from "convex/react";
-import appJson from "../../app.json";
-import BottomSheet, {
-  BottomSheetBackdrop,
-  BottomSheetScrollView,
-  type BottomSheetBackdropProps,
-} from "@gorhom/bottom-sheet";
 import Animated, { SlideInLeft, SlideInRight } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Clipboard from "expo-clipboard";
+import * as SecureStore from "expo-secure-store";
+import appJson from "../../app.json";
+import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
+import type { NotificationPermissionState } from "../lib/notifications";
+import { colors, radii, spacing, typography } from "../theme/tokens";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { getOrCreateDeviceId } from "../lib/deviceIdentity";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
+import { classifyError, mobileLogger } from "../lib/logger";
 import {
   moveTabOrder,
   resolveTabOrder,
   TAB_LABELS,
   type TabKey,
 } from "../lib/tabOrder";
-import * as SecureStore from "expo-secure-store";
-import * as Clipboard from "expo-clipboard";
-import { classifyError, mobileLogger } from "../lib/logger";
-import { colors, radii, spacing, typography } from "../theme/tokens";
-import type { NotificationPermissionState } from "../lib/notifications";
+import {
+  INITIAL_SETTINGS_NAVIGATION,
+  SETTINGS_CATEGORY_CONTROLS,
+  SETTINGS_CATEGORY_META,
+  SETTINGS_CATEGORY_ORDER,
+  settingsNavigationReducer,
+  type SettingsCategoryKey,
+  type SettingsNavigationState,
+} from "../lib/settingsNavigation";
 import { KairoSettingsSection } from "./KairoSettingsSection";
 import { GmailReviewSection } from "./GmailReviewSection";
-import type { GoogleCalendarOption, IntegrationLastRunSummary, SyncHealth } from "../hooks/useIntegrationsSettings";
-import { summarizeSyncError } from "../hooks/useIntegrationsSettings";
-import { api } from "../../../../convex/_generated/api";
-import type { Id } from "../../../../convex/_generated/dataModel";
 import { SnapWheelTimePicker } from "./SnapWheelTimePicker";
+import {
+  summarizeSyncError,
+  type GoogleCalendarOption,
+  type IntegrationLastRunSummary,
+  type SyncHealth,
+} from "../hooks/useIntegrationsSettings";
 
 type QuietPickerKind = "morningDigest" | "quietStart" | "quietEnd";
+
+type SettingsSheetProps = {
+  visible: boolean;
+  calendarSyncEnabled: boolean;
+  gmailSyncEnabled: boolean;
+  gmailSyncStatus: string;
+  calendarSyncHealth: SyncHealth;
+  calendarErrorSummary?: string;
+  canToggleGmailSync: boolean;
+  pendingGmailReviewCount: number;
+  notificationPermissionState: NotificationPermissionState;
+  notificationsEnabled: boolean;
+  isCalendarSyncing: boolean;
+  isGoogleToggleSaving: boolean;
+  isGmailToggleSaving: boolean;
+  isNotificationsBusy: boolean;
+  syncSettingsBusy: boolean;
+  onClose: () => void;
+  onGoogleCalendarToggle: () => void;
+  onGoogleCalendarSync: () => void;
+  onEnableAndSyncGoogleCalendar: () => void;
+  onGmailToggle: () => void;
+  onRequestNotificationsAccess: () => void;
+  onSendTestNotification: () => void;
+  onSignOut: () => void;
+  onExportTasks: () => void;
+  onExportDiagnostics: () => void;
+  onWipeLocalData: () => Promise<void> | void;
+  showToast: (next: { kind: "error" | "info"; message: string }) => void;
+  calendarAccountEmail?: string;
+  gmailAccountEmail?: string;
+  calendarLastRun?: IntegrationLastRunSummary;
+  gmailLastRun?: IntegrationLastRunSummary;
+  availableCalendars: GoogleCalendarOption[];
+  selectedCalendarIds: string[];
+  isLoadingCalendars: boolean;
+  onToggleCalendarSelected: (id: string) => void;
+  calendarLastError?: string;
+  gmailLastError?: string;
+};
+
+type NavDirection = "forward" | "backward";
+
+const REMINDER_LEAD_TIME_OPTIONS = [5, 15, 30, 60] as const;
+const READ_ONLY_AUTOMATION_SCOPES = ["tasks:read", "review:read", "sync:read"] as const;
+const APP_VERSION = appJson.expo?.version ?? "—";
+const REPO_URL = "https://github.com/Snehit70/pravah";
+const CHANGELOG_URL = `${REPO_URL}/blob/main/apps/mobile/CHANGELOG.md`;
+const ISSUES_URL = `${REPO_URL}/issues`;
 
 function formatClockLabel(value: string): string {
   const [hStr, mStr] = value.split(":");
@@ -68,11 +125,11 @@ function describeLastRun(run: IntegrationLastRunSummary | undefined): string | n
   if (!run) return null;
   const when = formatRelativeTime(run.finishedAt);
   if (run.status === "running") return "Syncing now…";
-  if (run.status === "failed") return when ? `Last sync failed · ${when}` : "Last sync failed";
+  if (run.status === "failed") return when ? `Last sync failed, ${when}` : "Last sync failed";
   if (!when) return null;
   const counts =
     (run.importedCount ?? 0) + (run.updatedCount ?? 0) > 0
-      ? ` · ${(run.importedCount ?? 0) + (run.updatedCount ?? 0)} items`
+      ? `, ${(run.importedCount ?? 0) + (run.updatedCount ?? 0)} items`
       : "";
   return `Last synced ${when}${counts}`;
 }
@@ -124,42 +181,21 @@ function pickerTitle(kind: QuietPickerKind): string {
   return "Quiet hours end";
 }
 
-function pickerValue(kind: QuietPickerKind, prefs: {
-  morningDigestTime: string;
-  quietHoursStart: string;
-  quietHoursEnd: string;
-}): string {
+function pickerValue(
+  kind: QuietPickerKind,
+  prefs: { morningDigestTime: string; quietHoursStart: string; quietHoursEnd: string },
+): string {
   if (kind === "morningDigest") return prefs.morningDigestTime;
   if (kind === "quietStart") return prefs.quietHoursStart;
   return prefs.quietHoursEnd;
 }
 
-// Context-aware primary action for the calendar block, replacing the old pair
-// of "Sync now" + "Enable and sync" rows.
 function calendarActionLabel(health: SyncHealth, isSyncing: boolean): string {
   if (isSyncing) return "Syncing…";
   if (health === "error") return "Reconnect";
   if (health === "paused" || health === "disconnected") return "Enable and sync";
   return "Sync now";
 }
-
-type SectionKey = "assistant" | "sync" | "alerts" | "timeline" | "more";
-const REMINDER_LEAD_TIME_OPTIONS = [5, 15, 30, 60] as const;
-
-const READ_ONLY_AUTOMATION_SCOPES = ["tasks:read", "review:read", "sync:read"] as const;
-
-const APP_VERSION = appJson.expo?.version ?? "—";
-const REPO_URL = "https://github.com/Snehit70/pravah";
-const CHANGELOG_URL = `${REPO_URL}/blob/main/apps/mobile/CHANGELOG.md`;
-const ISSUES_URL = `${REPO_URL}/issues`;
-
-const SECTIONS: ReadonlyArray<{ key: SectionKey; label: string }> = [
-  { key: "assistant", label: "Assistant" },
-  { key: "sync", label: "Sync" },
-  { key: "alerts", label: "Reminders" },
-  { key: "timeline", label: "Timeline" },
-  { key: "more", label: "More" },
-];
 
 type TabOrderEditorProps = {
   order: readonly TabKey[];
@@ -258,45 +294,1105 @@ function TabOrderEditor({ order, onMove }: TabOrderEditorProps) {
   );
 }
 
-type SettingsSheetProps = {
-  visible: boolean;
+function SettingsCategoryList({
+  onOpenCategory,
+}: {
+  onOpenCategory: (category: SettingsCategoryKey) => void;
+}) {
+  return (
+    <View style={styles.screenBody}>
+      <Text style={styles.leadText}>
+        Only one category at a time. Pick the surface you want to tune, then drill in.
+      </Text>
+      <View style={styles.categoryList}>
+        {SETTINGS_CATEGORY_ORDER.map((category) => {
+          const meta = SETTINGS_CATEGORY_META[category];
+          const controlCount = SETTINGS_CATEGORY_CONTROLS[category].length;
+          return (
+            <Pressable
+              key={category}
+              onPress={() => onOpenCategory(category)}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${meta.title} settings`}
+              style={({ pressed }) => [
+                styles.categoryCard,
+                pressed && { opacity: 0.72 },
+              ]}
+            >
+              <View style={styles.categoryCopy}>
+                <Text style={styles.categoryTitle}>{meta.title}</Text>
+                <Text style={styles.categorySummary}>{meta.summary}</Text>
+              </View>
+              <View style={styles.categoryMeta}>
+                <Text style={styles.categoryCount}>{controlCount}</Text>
+                <Text style={styles.categoryChevron}>›</Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+type AssistantAutomationSectionProps = {
+  prefs: ReturnType<typeof useUserPreferences>["prefs"];
+  setPreference: ReturnType<typeof useUserPreferences>["setPreference"];
+  automationCredentials: Array<{
+    _id: Id<"automationCredentials">;
+    label: string;
+    credentialPreview: string;
+    status: string;
+    scopes: string[];
+  }>;
+  automationLabel: string;
+  setAutomationLabel: (value: string) => void;
+  allowTaskWrites: boolean;
+  setAllowTaskWrites: (value: boolean) => void;
+  issuedBootstrapToken: { token: string; expiresAt: number } | null;
+  isIssuingBootstrapToken: boolean;
+  onIssueBootstrapToken: () => void;
+  onCopy: (value: string, label: string) => Promise<void>;
+  onRevokeCredential: (credentialId: Id<"automationCredentials">) => Promise<void>;
+  revokingCredentialId: Id<"automationCredentials"> | null;
+};
+
+function AssistantAutomationSection({
+  prefs,
+  setPreference,
+  automationCredentials,
+  automationLabel,
+  setAutomationLabel,
+  allowTaskWrites,
+  setAllowTaskWrites,
+  issuedBootstrapToken,
+  isIssuingBootstrapToken,
+  onIssueBootstrapToken,
+  onCopy,
+  onRevokeCredential,
+  revokingCredentialId,
+}: AssistantAutomationSectionProps) {
+  return (
+    <View style={styles.screenBody}>
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Kairo</Text>
+        <Text style={styles.settingHelp}>
+          Configure the provider, API key, endpoint, and model used for mobile AI assistance.
+        </Text>
+        <KairoSettingsSection />
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Behavior</Text>
+        <Text style={styles.settingHelp}>
+          Control the AI affordances that show up inside the task flow.
+        </Text>
+        <View style={styles.behaviorRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.settingMeta}>Starter pills</Text>
+          </View>
+          <Switch
+            value={prefs.kairoStarterPillsEnabled}
+            onValueChange={(next) => void setPreference("kairoStarterPillsEnabled", next)}
+            trackColor={{ false: colors.border, true: colors.accentSoft }}
+            thumbColor={prefs.kairoStarterPillsEnabled ? colors.accent : colors.textMuted}
+          />
+        </View>
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>CLI credentials</Text>
+        <Text style={styles.settingHelp}>
+          Issue a short-lived bootstrap token for `pravah setup` or `pravah auth import`.
+        </Text>
+        <Text style={styles.settingMeta}>{automationCredentials.length} recorded</Text>
+
+        <View style={styles.fieldStack}>
+          <Text style={styles.fieldLabel}>Credential label</Text>
+          <TextInput
+            value={automationLabel}
+            onChangeText={setAutomationLabel}
+            placeholder="Codex local"
+            placeholderTextColor={colors.textDim}
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={styles.textInput}
+            accessibilityLabel="Automation credential label"
+          />
+        </View>
+
+        <View style={styles.behaviorRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingMeta}>Allow task writes</Text>
+            <Text style={styles.settingHelp}>
+              Off by default. Enable only when the CLI should change tasks from this device.
+            </Text>
+          </View>
+          <Switch
+            value={allowTaskWrites}
+            onValueChange={setAllowTaskWrites}
+            trackColor={{ false: colors.border, true: colors.accentSoft }}
+            thumbColor={allowTaskWrites ? colors.accent : colors.textMuted}
+          />
+        </View>
+
+        <Text style={styles.settingMeta}>
+          Scopes · {[
+            ...READ_ONLY_AUTOMATION_SCOPES,
+            ...(allowTaskWrites ? (["tasks:write"] as const) : []),
+          ].join(" · ")}
+        </Text>
+
+        <Pressable
+          onPress={onIssueBootstrapToken}
+          disabled={isIssuingBootstrapToken}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Issue bootstrap token"
+          style={({ pressed }) => [
+            styles.softButton,
+            pressed && { opacity: 0.6 },
+            isIssuingBootstrapToken && styles.softButtonDisabled,
+          ]}
+        >
+          <Text
+            style={[
+              styles.softButtonText,
+              isIssuingBootstrapToken && styles.inlineActionDisabled,
+            ]}
+          >
+            {isIssuingBootstrapToken ? "Issuing…" : "Issue bootstrap token"}
+          </Text>
+        </Pressable>
+
+        {issuedBootstrapToken ? (
+          <View style={styles.tokenBlock}>
+            <Text style={styles.fieldLabel}>Bootstrap token</Text>
+            <Text style={styles.settingHelp}>
+              Copied to clipboard. It expires at{" "}
+              {new Date(issuedBootstrapToken.expiresAt).toLocaleString()}.
+            </Text>
+            <View style={styles.copyRow}>
+              <View style={[styles.codePill, styles.copyRowPill]}>
+                <Text selectable style={styles.codePillText} numberOfLines={1}>
+                  {issuedBootstrapToken.token}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => void onCopy(issuedBootstrapToken.token, "Bootstrap token")}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Copy bootstrap token"
+                style={({ pressed }) => [styles.copyButton, pressed && { opacity: 0.6 }]}
+              >
+                <Text style={styles.copyButtonText}>Copy</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
+        {automationCredentials.length === 0 ? (
+          <Text style={styles.settingMeta}>No automation credentials issued yet.</Text>
+        ) : (
+          <View style={styles.credentialList}>
+            {automationCredentials.map((credential) => (
+              <View key={credential._id} style={styles.credentialRow}>
+                <View style={styles.settingCopy}>
+                  <Text style={styles.settingLabel} numberOfLines={1}>
+                    {credential.label}
+                  </Text>
+                  <Text style={styles.settingMeta}>
+                    {credential.credentialPreview} · {credential.status}
+                  </Text>
+                  <Text style={styles.settingMeta} numberOfLines={1}>
+                    {credential.scopes.join(" · ")}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => void onRevokeCredential(credential._id)}
+                  disabled={
+                    credential.status === "revoked" ||
+                    revokingCredentialId === credential._id
+                  }
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Revoke ${credential.label}`}
+                  style={({ pressed }) => [
+                    styles.copyChip,
+                    pressed && { opacity: 0.6 },
+                    (credential.status === "revoked" ||
+                      revokingCredentialId === credential._id) &&
+                      styles.softButtonDisabled,
+                  ]}
+                >
+                  <Text style={styles.copyChipText}>
+                    {credential.status === "revoked"
+                      ? "Revoked"
+                      : revokingCredentialId === credential._id
+                        ? "Revoking…"
+                        : "Revoke"}
+                  </Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+type SyncSectionProps = {
   calendarSyncEnabled: boolean;
-  gmailSyncEnabled: boolean;
-  gmailSyncStatus: string;
   calendarSyncHealth: SyncHealth;
   calendarErrorSummary?: string;
-  canToggleGmailSync: boolean;
-  pendingGmailReviewCount: number;
-  notificationPermissionState: NotificationPermissionState;
-  notificationsEnabled: boolean;
-  isCalendarSyncing: boolean;
-  isGoogleToggleSaving: boolean;
-  isGmailToggleSaving: boolean;
-  isNotificationsBusy: boolean;
-  syncSettingsBusy: boolean;
-  onClose: () => void;
-  onGoogleCalendarToggle: () => void;
-  onGoogleCalendarSync: () => void;
-  onEnableAndSyncGoogleCalendar: () => void;
-  onGmailToggle: () => void;
-  onRequestNotificationsAccess: () => void;
-  onSendTestNotification: () => void;
-  onSignOut: () => void;
-  onExportTasks: () => void;
-  onExportDiagnostics: () => void;
-  onWipeLocalData: () => Promise<void> | void;
-  showToast: (next: { kind: "error" | "info"; message: string }) => void;
   calendarAccountEmail?: string;
-  gmailAccountEmail?: string;
   calendarLastRun?: IntegrationLastRunSummary;
-  gmailLastRun?: IntegrationLastRunSummary;
+  isGoogleToggleSaving: boolean;
   availableCalendars: GoogleCalendarOption[];
   selectedCalendarIds: string[];
   isLoadingCalendars: boolean;
   onToggleCalendarSelected: (id: string) => void;
+  syncSettingsBusy: boolean;
+  isCalendarSyncing: boolean;
+  onGoogleCalendarToggle: () => void;
+  onGoogleCalendarSync: () => void;
+  onEnableAndSyncGoogleCalendar: () => void;
+  gmailSyncEnabled: boolean;
+  gmailSyncStatus: string;
+  gmailAccountEmail?: string;
+  gmailLastRun?: IntegrationLastRunSummary;
+  pendingGmailReviewCount: number;
+  isGmailToggleSaving: boolean;
+  canToggleGmailSync: boolean;
+  onGmailToggle: () => void;
+  showToast: SettingsSheetProps["showToast"];
+};
+
+function SyncSection({
+  calendarSyncEnabled,
+  calendarSyncHealth,
+  calendarErrorSummary,
+  calendarAccountEmail,
+  calendarLastRun,
+  isGoogleToggleSaving,
+  availableCalendars,
+  selectedCalendarIds,
+  isLoadingCalendars,
+  onToggleCalendarSelected,
+  syncSettingsBusy,
+  isCalendarSyncing,
+  onGoogleCalendarToggle,
+  onGoogleCalendarSync,
+  onEnableAndSyncGoogleCalendar,
+  gmailSyncEnabled,
+  gmailSyncStatus,
+  gmailAccountEmail,
+  gmailLastRun,
+  pendingGmailReviewCount,
+  isGmailToggleSaving,
+  canToggleGmailSync,
+  onGmailToggle,
+  showToast,
+}: SyncSectionProps) {
+  return (
+    <View style={styles.screenBody}>
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Google Calendar</Text>
+            <Text style={styles.settingHelp}>Pull events and deadlines into Pravah.</Text>
+            <Text style={[styles.settingStatus, { color: syncHealthColor(calendarSyncHealth) }]}>
+              {syncHealthLabel(calendarSyncHealth)}
+            </Text>
+            {calendarSyncHealth === "error" && calendarErrorSummary ? (
+              <Text style={[styles.settingMeta, { color: colors.error }]}>
+                {calendarErrorSummary}
+              </Text>
+            ) : null}
+            {calendarAccountEmail ? (
+              <Text style={styles.settingMeta}>{calendarAccountEmail.toLowerCase()}</Text>
+            ) : null}
+            {describeLastRun(calendarLastRun) ? (
+              <Text style={styles.settingMeta}>{describeLastRun(calendarLastRun)}</Text>
+            ) : null}
+          </View>
+          <Switch
+            value={calendarSyncEnabled}
+            onValueChange={onGoogleCalendarToggle}
+            disabled={isGoogleToggleSaving}
+            trackColor={{ false: colors.border, true: colors.accentSoft }}
+            thumbColor={calendarSyncEnabled ? colors.accent : colors.textMuted}
+          />
+        </View>
+        {calendarSyncEnabled ? (
+          <View style={styles.calendarPickerBlock}>
+            <View style={styles.calendarPickerHeaderRow}>
+              <Text style={styles.settingMeta}>
+                Calendars
+                {availableCalendars.length > 0
+                  ? ` · ${selectedCalendarIds.length || availableCalendars.length}/${availableCalendars.length}`
+                  : ""}
+              </Text>
+              {isLoadingCalendars ? <Text style={styles.settingMeta}>Loading…</Text> : null}
+            </View>
+            {!isLoadingCalendars && availableCalendars.length === 0 ? (
+              <Text style={styles.settingMeta}>
+                Calendar list unavailable. All accessible calendars will be imported.
+              </Text>
+            ) : null}
+            {availableCalendars.map((calendar) => {
+              const checked =
+                selectedCalendarIds.length === 0 || selectedCalendarIds.includes(calendar.id);
+              return (
+                <Pressable
+                  key={calendar.id}
+                  onPress={() => onToggleCalendarSelected(calendar.id)}
+                  hitSlop={6}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked }}
+                  accessibilityLabel={`Sync ${calendar.summary}${calendar.primary ? ", primary" : ""}`}
+                  style={({ pressed }) => [
+                    styles.calendarPickerRow,
+                    pressed && { opacity: 0.6 },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.calendarCheckbox,
+                      checked && styles.calendarCheckboxChecked,
+                    ]}
+                  >
+                    {checked ? <Text style={styles.calendarCheckmark}>✓</Text> : null}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.settingLabel} numberOfLines={1}>
+                      {calendar.summary}
+                    </Text>
+                    {calendar.primary ? <Text style={styles.settingMeta}>Primary</Text> : null}
+                  </View>
+                </Pressable>
+              );
+            })}
+            {availableCalendars.length > 0 && selectedCalendarIds.length === 0 ? (
+              <Text style={styles.settingMeta}>
+                No calendars selected, sync will pull all of them.
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+        <Pressable
+          onPress={
+            calendarSyncHealth === "healthy"
+              ? onGoogleCalendarSync
+              : onEnableAndSyncGoogleCalendar
+          }
+          disabled={syncSettingsBusy}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel={`${calendarActionLabel(calendarSyncHealth, isCalendarSyncing)} Google Calendar`}
+          style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+        >
+          <Text style={[styles.inlineActionText, syncSettingsBusy && styles.inlineActionDisabled]}>
+            {calendarActionLabel(calendarSyncHealth, isCalendarSyncing)}
+          </Text>
+        </Pressable>
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Gmail</Text>
+            <Text style={styles.settingHelp}>Surface pending email follow-ups for review.</Text>
+            <Text style={[styles.settingStatus, { color: statusTextColor(gmailSyncStatus) }]}>
+              {formatStatusLabel(gmailSyncStatus)}
+            </Text>
+            {gmailAccountEmail ? (
+              <Text style={styles.settingMeta}>{gmailAccountEmail.toLowerCase()}</Text>
+            ) : null}
+            {describeLastRun(gmailLastRun) ? (
+              <Text style={styles.settingMeta}>{describeLastRun(gmailLastRun)}</Text>
+            ) : null}
+          </View>
+          <Switch
+            value={gmailSyncEnabled}
+            onValueChange={onGmailToggle}
+            disabled={isGmailToggleSaving || !canToggleGmailSync}
+            trackColor={{ false: colors.border, true: colors.accentSoft }}
+            thumbColor={gmailSyncEnabled ? colors.accent : colors.textMuted}
+          />
+        </View>
+        {pendingGmailReviewCount > 0 ? (
+          <Text style={styles.settingMeta}>
+            {pendingGmailReviewCount} captured{" "}
+            {pendingGmailReviewCount === 1 ? "item" : "items"} waiting for review
+          </Text>
+        ) : null}
+        {!canToggleGmailSync ? (
+          <Text style={styles.settingMeta}>
+            Connect Gmail on web before enabling mobile sync.
+          </Text>
+        ) : null}
+        <GmailReviewSection enabled={gmailSyncEnabled} showToast={showToast} />
+      </View>
+    </View>
+  );
+}
+
+type RemindersSectionProps = {
+  prefs: ReturnType<typeof useUserPreferences>["prefs"];
+  setPreference: ReturnType<typeof useUserPreferences>["setPreference"];
+  notificationPermissionState: NotificationPermissionState;
+  notificationsEnabled: boolean;
+  isNotificationsBusy: boolean;
+  onRequestNotificationsAccess: () => void;
+  onSendTestNotification: () => void;
+  openPicker: QuietPickerKind | null;
+  onOpenPicker: (kind: QuietPickerKind) => void;
+  onTimePicked: (kind: QuietPickerKind, value: string) => void;
+  onClosePicker: () => void;
+};
+
+function RemindersSection({
+  prefs,
+  setPreference,
+  notificationPermissionState,
+  notificationsEnabled,
+  isNotificationsBusy,
+  onRequestNotificationsAccess,
+  onSendTestNotification,
+  openPicker,
+  onOpenPicker,
+  onTimePicked,
+  onClosePicker,
+}: RemindersSectionProps) {
+  return (
+    <View style={styles.screenBody}>
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Notifications</Text>
+        <Text style={styles.settingHelp}>
+          Timed tasks notify at their deadline, and date-only tasks roll into one morning digest.
+        </Text>
+        <Text style={[styles.settingStatus, { color: statusTextColor(notificationPermissionState) }]}>
+          {formatStatusLabel(notificationPermissionState)}
+        </Text>
+
+        {!notificationsEnabled ? (
+          <Pressable
+            onPress={onRequestNotificationsAccess}
+            disabled={isNotificationsBusy}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Enable notifications"
+            style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+          >
+            <Text style={[styles.inlineActionText, isNotificationsBusy && styles.inlineActionDisabled]}>
+              Enable notifications
+            </Text>
+          </Pressable>
+        ) : null}
+
+        <Pressable
+          onPress={onSendTestNotification}
+          disabled={isNotificationsBusy}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Send a test notification"
+          style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+        >
+          <Text style={[styles.inlineActionText, isNotificationsBusy && styles.inlineActionDisabled]}>
+            Send a test
+          </Text>
+        </Pressable>
+
+        <View style={styles.behaviorRow}>
+          <Text style={styles.settingMeta}>Morning digest time</Text>
+          <Pressable
+            onPress={() => onOpenPicker("morningDigest")}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel={`Change morning digest time, currently ${formatClockLabel(prefs.morningDigestTime)}`}
+            style={({ pressed }) => [styles.timeInlineButton, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={styles.timeInlineButtonText}>
+              {formatClockLabel(prefs.morningDigestTime)}
+            </Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.behaviorRow}>
+          <Text style={styles.settingMeta}>Heads-up lead time</Text>
+          <View style={styles.chipRow}>
+            {REMINDER_LEAD_TIME_OPTIONS.map((minutes) => {
+              const active = prefs.reminderLeadTimeMinutes === minutes;
+              return (
+                <Pressable
+                  key={minutes}
+                  onPress={() => void setPreference("reminderLeadTimeMinutes", minutes)}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  style={({ pressed }) => [
+                    styles.choiceChip,
+                    active && styles.choiceChipActive,
+                    pressed && { opacity: 0.6 },
+                  ]}
+                >
+                  <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
+                    {minutes}m
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Quiet hours</Text>
+            <Text style={styles.settingHelp}>
+              A window where auto-chosen notification times are adjusted to fire outside this range.
+            </Text>
+          </View>
+          <Switch
+            value={prefs.quietHoursEnabled}
+            onValueChange={(next) => void setPreference("quietHoursEnabled", next)}
+            trackColor={{ false: colors.border, true: colors.accentSoft }}
+            thumbColor={prefs.quietHoursEnabled ? colors.accent : colors.textMuted}
+          />
+        </View>
+
+        <Pressable
+          onPress={() => onOpenPicker("quietStart")}
+          disabled={!prefs.quietHoursEnabled}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel={`Change quiet hours start, currently ${formatClockLabel(prefs.quietHoursStart)}`}
+          style={({ pressed }) => [
+            styles.timeRow,
+            !prefs.quietHoursEnabled && { opacity: 0.5 },
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <Text style={styles.settingMeta}>Starts</Text>
+          <Text style={styles.timeRowValue}>{formatClockLabel(prefs.quietHoursStart)}</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => onOpenPicker("quietEnd")}
+          disabled={!prefs.quietHoursEnabled}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel={`Change quiet hours end, currently ${formatClockLabel(prefs.quietHoursEnd)}`}
+          style={({ pressed }) => [
+            styles.timeRow,
+            !prefs.quietHoursEnabled && { opacity: 0.5 },
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <Text style={styles.settingMeta}>Ends</Text>
+          <Text style={styles.timeRowValue}>{formatClockLabel(prefs.quietHoursEnd)}</Text>
+        </Pressable>
+      </View>
+
+      {openPicker !== null ? (
+        <SnapWheelTimePicker
+          visible
+          title={pickerTitle(openPicker)}
+          value={pickerValue(openPicker, prefs)}
+          onConfirm={(value) => onTimePicked(openPicker, value)}
+          onClose={onClosePicker}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+type AppearanceSectionProps = {
+  prefs: ReturnType<typeof useUserPreferences>["prefs"];
+  setPreference: ReturnType<typeof useUserPreferences>["setPreference"];
+  tabOrder: readonly TabKey[];
+  onMoveTab: (key: TabKey, direction: "up" | "down") => void;
+};
+
+function AppearanceSection({
+  prefs,
+  setPreference,
+  tabOrder,
+  onMoveTab,
+}: AppearanceSectionProps) {
+  return (
+    <View style={styles.screenBody}>
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Motion & density</Text>
+        <Text style={styles.settingHelp}>
+          Override the system motion setting and tighten spacing for denser task triage.
+        </Text>
+
+        <View style={styles.fieldStack}>
+          <Text style={styles.fieldLabel}>Reduced motion</Text>
+          <View style={styles.segmented}>
+            {(["system", "always", "never"] as const).map((mode) => {
+              const active = prefs.reducedMotionOverride === mode;
+              return (
+                <Pressable
+                  key={mode}
+                  onPress={() => void setPreference("reducedMotionOverride", mode)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  style={({ pressed }) => [
+                    styles.segment,
+                    active && styles.segmentActive,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                    {mode === "system" ? "System" : mode === "always" ? "On" : "Off"}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.fieldStack}>
+          <Text style={styles.fieldLabel}>Density</Text>
+          <View style={styles.segmented}>
+            {(["cozy", "compact"] as const).map((density) => {
+              const active = prefs.density === density;
+              return (
+                <Pressable
+                  key={density}
+                  onPress={() => void setPreference("density", density)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  style={({ pressed }) => [
+                    styles.segment,
+                    active && styles.segmentActive,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                    {density === "cozy" ? "Cozy" : "Compact"}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Bulk task capture</Text>
+            <Text style={styles.settingHelp}>
+              Create numbered task series and assign copies to multiple goals.
+            </Text>
+          </View>
+          <Switch
+            value={prefs.bulkTaskCaptureEnabled}
+            onValueChange={(next) => void setPreference("bulkTaskCaptureEnabled", next)}
+            trackColor={{ false: colors.border, true: colors.accentSoft }}
+            thumbColor={prefs.bulkTaskCaptureEnabled ? colors.accent : colors.textMuted}
+            accessibilityLabel="Bulk task capture"
+          />
+        </View>
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Tab order</Text>
+        <Text style={styles.settingHelp}>
+          Reorder Inbox, Timeline, Goals, and Progress. Capture stays fixed in the center.
+        </Text>
+        <TabOrderPreview order={tabOrder} />
+        <TabOrderEditor order={tabOrder} onMove={onMoveTab} />
+      </View>
+    </View>
+  );
+}
+
+type AboutSectionProps = {
+  deviceId: string | null;
+  onCopy: (value: string, label: string) => Promise<void>;
+  onExportDiagnostics: () => void;
   calendarLastError?: string;
   gmailLastError?: string;
+  isClearingRetryQueue: boolean;
+  onClearRetryQueue: () => void;
+  onExportTasks: () => void;
+  onSignOut: () => void;
+  dangerArmed: "wipe" | null;
+  isWiping: boolean;
+  onWipeLocalData: () => void;
 };
+
+function AboutSection({
+  deviceId,
+  onCopy,
+  onExportDiagnostics,
+  calendarLastError,
+  gmailLastError,
+  isClearingRetryQueue,
+  onClearRetryQueue,
+  onExportTasks,
+  onSignOut,
+  dangerArmed,
+  isWiping,
+  onWipeLocalData,
+}: AboutSectionProps) {
+  return (
+    <View style={styles.screenBody}>
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <View style={styles.aboutHeader}>
+          <View style={styles.aboutHeaderCopy}>
+            <Text style={styles.settingLabel}>Pravah Mobile</Text>
+            <Text style={styles.aboutVersion}>Version {APP_VERSION}</Text>
+          </View>
+          <Pressable
+            onPress={() => void Linking.openURL(CHANGELOG_URL)}
+            hitSlop={12}
+            accessibilityRole="link"
+            accessibilityLabel="Open changelog on GitHub"
+            style={({ pressed }) => [styles.versionPill, pressed && { opacity: 0.6 }]}
+          >
+            <Text style={styles.versionPillText}>What's new</Text>
+          </Pressable>
+        </View>
+
+        <Pressable
+          onPress={() => void Linking.openURL(ISSUES_URL)}
+          hitSlop={12}
+          accessibilityRole="link"
+          accessibilityLabel="Report an issue on GitHub"
+          style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
+        >
+          <Text style={styles.linkRowText}>Report an issue</Text>
+          <Text style={styles.linkRowChevron}>↗</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => void Linking.openURL(REPO_URL)}
+          hitSlop={12}
+          accessibilityRole="link"
+          accessibilityLabel="Open Pravah repository on GitHub"
+          style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
+        >
+          <Text style={styles.linkRowText}>GitHub repository</Text>
+          <Text style={styles.linkRowChevron}>↗</Text>
+        </Pressable>
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Diagnostics</Text>
+        <Text style={styles.settingHelp}>
+          Export recent app events, device metadata, and sync state as a JSON file.
+        </Text>
+        <View style={styles.copyRow}>
+          <View style={[styles.codePill, styles.copyRowPill]}>
+            <Text selectable style={styles.codePillText} numberOfLines={1}>
+              {deviceId ?? "Loading…"}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => deviceId && void onCopy(deviceId, "Device ID")}
+            disabled={!deviceId}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Copy device ID"
+            style={({ pressed }) => [
+              styles.copyButton,
+              pressed && { opacity: 0.6 },
+              !deviceId && styles.softButtonDisabled,
+            ]}
+          >
+            <Text style={styles.copyButtonText}>Copy ID</Text>
+          </Pressable>
+        </View>
+        <Pressable
+          onPress={onExportDiagnostics}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Export diagnostics"
+          style={({ pressed }) => [styles.softButton, pressed && { opacity: 0.6 }]}
+        >
+          <Text style={styles.softButtonText}>Export diagnostics</Text>
+        </Pressable>
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Recent sync errors</Text>
+        <Text style={styles.settingHelp}>
+          Review the latest Google Calendar and Gmail failures without leaving the app.
+        </Text>
+
+        <View style={styles.sourceBlock}>
+          <View style={styles.sourceHeader}>
+            <View
+              style={[
+                styles.statusDot,
+                calendarLastError ? styles.statusDotErr : styles.statusDotOk,
+              ]}
+            />
+            <Text style={styles.sourceName}>Google Calendar</Text>
+            <Text
+              style={[
+                styles.sourceStatus,
+                calendarLastError ? styles.sourceStatusErr : styles.sourceStatusOk,
+              ]}
+            >
+              {calendarLastError ? "Error" : "Healthy"}
+            </Text>
+            {calendarLastError ? (
+              <Pressable
+                onPress={() => void onCopy(calendarLastError, "Calendar error")}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Copy Google Calendar error"
+                style={({ pressed }) => [styles.copyChip, pressed && { opacity: 0.6 }]}
+              >
+                <Text style={styles.copyChipText}>Copy</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          {calendarLastError ? (
+            <View style={styles.errorBlock}>
+              <Text selectable style={styles.errorBlockText}>
+                {summarizeSyncError(calendarLastError)}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={styles.sourceBlock}>
+          <View style={styles.sourceHeader}>
+            <View
+              style={[
+                styles.statusDot,
+                gmailLastError ? styles.statusDotErr : styles.statusDotOk,
+              ]}
+            />
+            <Text style={styles.sourceName}>Gmail</Text>
+            <Text
+              style={[
+                styles.sourceStatus,
+                gmailLastError ? styles.sourceStatusErr : styles.sourceStatusOk,
+              ]}
+            >
+              {gmailLastError ? "Error" : "Healthy"}
+            </Text>
+            {gmailLastError ? (
+              <Pressable
+                onPress={() => void onCopy(gmailLastError, "Gmail error")}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Copy Gmail error"
+                style={({ pressed }) => [styles.copyChip, pressed && { opacity: 0.6 }]}
+              >
+                <Text style={styles.copyChipText}>Copy</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          {gmailLastError ? (
+            <View style={styles.errorBlock}>
+              <Text selectable style={styles.errorBlockText}>
+                {summarizeSyncError(gmailLastError)}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Your data</Text>
+        <Text style={styles.settingHelp}>
+          Export every task currently in view as JSON via the system share sheet.
+        </Text>
+        <Pressable
+          onPress={onExportTasks}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Export tasks as JSON"
+          style={({ pressed }) => [styles.softButton, pressed && { opacity: 0.6 }]}
+        >
+          <Text style={styles.softButtonText}>Export tasks as JSON</Text>
+        </Pressable>
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Retry queue</Text>
+        <Text style={styles.settingHelp}>
+          Drop pending offline retries if a stuck request is blocking fresh syncs.
+        </Text>
+        <Pressable
+          onPress={onClearRetryQueue}
+          disabled={isClearingRetryQueue}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Clear retry queue"
+          style={({ pressed }) => [
+            styles.softButton,
+            pressed && { opacity: 0.6 },
+            isClearingRetryQueue && styles.softButtonDisabled,
+          ]}
+        >
+          <Text
+            style={[
+              styles.softButtonText,
+              isClearingRetryQueue && styles.inlineActionDisabled,
+            ]}
+          >
+            {isClearingRetryQueue ? "Clearing…" : "Clear retry queue"}
+          </Text>
+        </Pressable>
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard, styles.accountCard]}>
+        <Text style={styles.settingLabel}>Account</Text>
+        <Text style={styles.settingHelp}>
+          Sign out if you want to switch Google accounts on this device.
+        </Text>
+        <Pressable
+          onPress={onSignOut}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
+          style={({ pressed }) => [styles.signOutButton, pressed && { opacity: 0.6 }]}
+        >
+          <Text style={styles.signOutLink}>Sign out</Text>
+        </Pressable>
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard, styles.dangerCard]}>
+        <Text style={styles.dangerLabel}>Danger zone</Text>
+        <Text style={styles.settingHelp}>
+          Wipe locally cached preferences, retry queue, snapshot, and reminder schedule. Server data is untouched.
+        </Text>
+        <Pressable
+          onPress={onWipeLocalData}
+          disabled={isWiping}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel={
+            dangerArmed === "wipe" ? "Tap again to confirm wipe" : "Wipe local data"
+          }
+          style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
+        >
+          <Text style={[styles.dangerActionText, isWiping && styles.inlineActionDisabled]}>
+            {isWiping
+              ? "Wiping…"
+              : dangerArmed === "wipe"
+                ? "Tap again to confirm →"
+                : "Wipe local data"}
+          </Text>
+        </Pressable>
+
+        <Text style={[styles.settingHelp, { marginTop: spacing.sm }]}>
+          To permanently delete your Pravah account and server data, open a request with support.
+        </Text>
+        <Pressable
+          onPress={() =>
+            void Linking.openURL(`${ISSUES_URL}/new?title=Delete+my+Pravah+account`)
+          }
+          hitSlop={12}
+          accessibilityRole="link"
+          accessibilityLabel="Request account deletion via GitHub issue"
+          style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
+        >
+          <Text style={styles.dangerActionText}>Request account deletion →</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function renderDetailScreen(
+  navigation: SettingsNavigationState,
+  props: {
+    prefs: ReturnType<typeof useUserPreferences>["prefs"];
+    setPreference: ReturnType<typeof useUserPreferences>["setPreference"];
+    automationCredentials: Array<{
+      _id: Id<"automationCredentials">;
+      label: string;
+      credentialPreview: string;
+      status: string;
+      scopes: string[];
+    }>;
+    automationLabel: string;
+    setAutomationLabel: (value: string) => void;
+    allowTaskWrites: boolean;
+    setAllowTaskWrites: (value: boolean) => void;
+    issuedBootstrapToken: { token: string; expiresAt: number } | null;
+    isIssuingBootstrapToken: boolean;
+    onIssueBootstrapToken: () => void;
+    onCopy: (value: string, label: string) => Promise<void>;
+    onRevokeCredential: (credentialId: Id<"automationCredentials">) => Promise<void>;
+    revokingCredentialId: Id<"automationCredentials"> | null;
+    calendarSyncEnabled: boolean;
+    calendarSyncHealth: SyncHealth;
+    calendarErrorSummary?: string;
+    calendarAccountEmail?: string;
+    calendarLastRun?: IntegrationLastRunSummary;
+    isGoogleToggleSaving: boolean;
+    availableCalendars: GoogleCalendarOption[];
+    selectedCalendarIds: string[];
+    isLoadingCalendars: boolean;
+    onToggleCalendarSelected: (id: string) => void;
+    syncSettingsBusy: boolean;
+    isCalendarSyncing: boolean;
+    onGoogleCalendarToggle: () => void;
+    onGoogleCalendarSync: () => void;
+    onEnableAndSyncGoogleCalendar: () => void;
+    gmailSyncEnabled: boolean;
+    gmailSyncStatus: string;
+    gmailAccountEmail?: string;
+    gmailLastRun?: IntegrationLastRunSummary;
+    pendingGmailReviewCount: number;
+    isGmailToggleSaving: boolean;
+    canToggleGmailSync: boolean;
+    onGmailToggle: () => void;
+    showToast: SettingsSheetProps["showToast"];
+    notificationPermissionState: NotificationPermissionState;
+    notificationsEnabled: boolean;
+    isNotificationsBusy: boolean;
+    onRequestNotificationsAccess: () => void;
+    onSendTestNotification: () => void;
+    openPicker: QuietPickerKind | null;
+    onOpenPicker: (kind: QuietPickerKind) => void;
+    onTimePicked: (kind: QuietPickerKind, value: string) => void;
+    onClosePicker: () => void;
+    tabOrder: readonly TabKey[];
+    onMoveTab: (key: TabKey, direction: "up" | "down") => void;
+    deviceId: string | null;
+    onExportDiagnostics: () => void;
+    calendarLastError?: string;
+    gmailLastError?: string;
+    isClearingRetryQueue: boolean;
+    onClearRetryQueue: () => void;
+    onExportTasks: () => void;
+    onSignOut: () => void;
+    dangerArmed: "wipe" | null;
+    isWiping: boolean;
+    onWipeLocalData: () => void;
+  },
+) {
+  if (navigation.screen !== "detail") return null;
+
+  switch (navigation.category) {
+    case "assistantAutomation":
+      return <AssistantAutomationSection {...props} />;
+    case "sync":
+      return <SyncSection {...props} />;
+    case "reminders":
+      return <RemindersSection {...props} />;
+    case "appearance":
+      return <AppearanceSection {...props} />;
+    case "about":
+      return <AboutSection {...props} />;
+  }
+}
 
 export function SettingsSheet({
   visible,
@@ -337,18 +1433,13 @@ export function SettingsSheet({
   calendarLastError,
   gmailLastError,
 }: SettingsSheetProps) {
-  const bottomSheetRef = useRef<BottomSheet>(null);
-  // Scrolled content lives inside the active tab. Reset scroll to top on tab
-  // switch so each section feels like its own page rather than a remembered
-  // scroll within a long scroll.
-  const scrollRef = useRef<ScrollView>(null);
-  const tabBarRef = useRef<ScrollView>(null);
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
-  const [activeSection, setActiveSection] = useState<SectionKey>("assistant");
-  // Track the direction of the most recent tab change so content can slide in
-  // from the side matching the user's spatial mental model of the tab bar.
-  const [tabDirection, setTabDirection] = useState<"forward" | "backward">("forward");
+  const [navigation, dispatchNavigation] = useReducer(
+    settingsNavigationReducer,
+    INITIAL_SETTINGS_NAVIGATION,
+  );
+  const [navDirection, setNavDirection] = useState<NavDirection>("forward");
   const { prefs, setPreference } = useUserPreferences();
   const tabOrder = resolveTabOrder(prefs.tabOrder);
   const [openPicker, setOpenPicker] = useState<QuietPickerKind | null>(null);
@@ -369,13 +1460,80 @@ export function SettingsSheet({
   const revokeCredential = useMutation(api.automation.revokeCredential);
   const automationCredentials = useQuery(api.automation.listCredentials, {}) ?? [];
 
-  // Disarm the danger button after a few seconds so a stray re-tap doesn't
-  // execute a destructive action long after the user moved on.
   useEffect(() => {
     if (!dangerArmed) return;
-    const t = setTimeout(() => setDangerArmed(null), 5000);
-    return () => clearTimeout(t);
+    const timeout = setTimeout(() => setDangerArmed(null), 5000);
+    return () => clearTimeout(timeout);
   }, [dangerArmed]);
+
+  useEffect(() => {
+    if (!visible) {
+      setOpenPicker(null);
+      setDangerArmed(null);
+      dispatchNavigation({ type: "reset" });
+      return;
+    }
+    dispatchNavigation({ type: "reset" });
+    setNavDirection("forward");
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    if (navigation.screen !== "detail" || navigation.category !== "about" || deviceId) return;
+    void getOrCreateDeviceId().then(setDeviceId);
+  }, [deviceId, navigation, visible]);
+
+  const handleClose = useCallback(() => {
+    Keyboard.dismiss();
+    setOpenPicker(null);
+    dispatchNavigation({ type: "reset" });
+    onClose();
+  }, [onClose]);
+
+  const handleBack = useCallback(() => {
+    if (navigation.screen === "detail") {
+      Keyboard.dismiss();
+      setOpenPicker(null);
+      setNavDirection("backward");
+      dispatchNavigation({ type: "back" });
+      return;
+    }
+    handleClose();
+  }, [handleClose, navigation.screen]);
+
+  const handleOpenCategory = useCallback((category: SettingsCategoryKey) => {
+    Keyboard.dismiss();
+    setNavDirection("forward");
+    dispatchNavigation({ type: "open", category });
+  }, []);
+
+  const handleCopy = useCallback(
+    async (value: string, label: string) => {
+      try {
+        await Clipboard.setStringAsync(value);
+        showToast({ kind: "info", message: `${label} copied.` });
+      } catch (error) {
+        mobileLogger.warn("clipboard_copy_failed", { errorType: classifyError(error) });
+        showToast({ kind: "error", message: `Could not copy ${label.toLowerCase()}.` });
+      }
+    },
+    [showToast],
+  );
+
+  const handleClearRetryQueue = useCallback(async () => {
+    if (isClearingRetryQueue) return;
+    setIsClearingRetryQueue(true);
+    try {
+      await retryQueueStorage.removeItem("pravah_mobile_retry_queue_v1");
+      await SecureStore.deleteItemAsync("pravah_mobile_retry_queue_v1").catch(() => undefined);
+      showToast({ kind: "info", message: "Retry queue cleared." });
+    } catch (error) {
+      mobileLogger.warn("retry_queue_clear_failed", { errorType: classifyError(error) });
+      showToast({ kind: "error", message: "Could not clear retry queue." });
+    } finally {
+      setIsClearingRetryQueue(false);
+    }
+  }, [isClearingRetryQueue, showToast]);
 
   const handleWipeLocalData = useCallback(async () => {
     if (dangerArmed !== "wipe") {
@@ -394,43 +1552,6 @@ export function SettingsSheet({
       setIsWiping(false);
     }
   }, [dangerArmed, onWipeLocalData, showToast]);
-
-  // Lazy-load device id only when the More tab (which contains Diagnostics)
-  // is opened. Avoids touching storage on every settings open.
-  useEffect(() => {
-    if (activeSection !== "more" || deviceId) return;
-    void getOrCreateDeviceId().then(setDeviceId);
-  }, [activeSection, deviceId]);
-
-  const handleCopy = useCallback(
-    async (value: string, label: string) => {
-      try {
-        await Clipboard.setStringAsync(value);
-        showToast({ kind: "info", message: `${label} copied.` });
-      } catch (error) {
-        mobileLogger.warn("clipboard_copy_failed", { errorType: classifyError(error) });
-        showToast({ kind: "error", message: `Could not copy ${label.toLowerCase()}.` });
-      }
-    },
-    [showToast]
-  );
-
-  const handleClearRetryQueue = useCallback(async () => {
-    if (isClearingRetryQueue) return;
-    setIsClearingRetryQueue(true);
-    try {
-      await retryQueueStorage.removeItem("pravah_mobile_retry_queue_v1");
-      // Also clear the legacy SecureStore copy; if left behind it would be
-      // migrated back into AsyncStorage on the next read.
-      await SecureStore.deleteItemAsync("pravah_mobile_retry_queue_v1").catch(() => undefined);
-      showToast({ kind: "info", message: "Retry queue cleared." });
-    } catch (error) {
-      mobileLogger.warn("retry_queue_clear_failed", { errorType: classifyError(error) });
-      showToast({ kind: "error", message: "Could not clear retry queue." });
-    } finally {
-      setIsClearingRetryQueue(false);
-    }
-  }, [isClearingRetryQueue, showToast]);
 
   const handleIssueBootstrapToken = useCallback(async () => {
     const trimmedLabel = automationLabel.trim();
@@ -475,7 +1596,7 @@ export function SettingsSheet({
         setRevokingCredentialId(null);
       }
     },
-    [revokeCredential, showToast]
+    [revokeCredential, showToast],
   );
 
   const handleTimePicked = useCallback(
@@ -487,53 +1608,6 @@ export function SettingsSheet({
     [setPreference],
   );
 
-  // Reset to the first tab whenever the sheet opens so users always land in
-  // the same predictable place rather than wherever they last were.
-  const [prevVisible, setPrevVisible] = useState(visible);
-  if (prevVisible !== visible) {
-    setPrevVisible(visible);
-    if (visible) setActiveSection("assistant");
-  }
-
-  useEffect(() => {
-    if (visible) {
-      bottomSheetRef.current?.expand();
-    } else {
-      bottomSheetRef.current?.close();
-    }
-  }, [visible]);
-
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        pressBehavior="close"
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.6}
-      />
-    ),
-    []
-  );
-
-  const handleSelectTab = useCallback(
-    (key: SectionKey) => {
-      if (key === activeSection) {
-        // Tapping the active tab again jumps back to the top — matches
-        // standard iOS tab-bar behavior and is the only way to scroll a
-        // long-form section back up without dragging the sheet.
-        scrollRef.current?.scrollTo({ y: 0, animated: !reducedMotion });
-        return;
-      }
-      const prevIndex = SECTIONS.findIndex((s) => s.key === activeSection);
-      const nextIndex = SECTIONS.findIndex((s) => s.key === key);
-      setTabDirection(nextIndex > prevIndex ? "forward" : "backward");
-      setActiveSection(key);
-      scrollRef.current?.scrollTo({ y: 0, animated: false });
-    },
-    [activeSection, reducedMotion],
-  );
-
   const handleMoveTab = useCallback(
     (key: TabKey, direction: "up" | "down") => {
       void setPreference("tabOrder", moveTabOrder(tabOrder, key, direction));
@@ -541,1159 +1615,322 @@ export function SettingsSheet({
     [setPreference, tabOrder],
   );
 
+  const headerTitle =
+    navigation.screen === "detail"
+      ? SETTINGS_CATEGORY_META[navigation.category].title
+      : "Settings";
+
   return (
-    <BottomSheet
-      ref={bottomSheetRef}
-      index={-1}
-      snapPoints={["92%"]}
-      enablePanDownToClose
-      enableDynamicSizing={false}
-      backgroundStyle={styles.settingsSheet}
-      handleIndicatorStyle={styles.settingsHandle}
-      backdropComponent={renderBackdrop}
-      keyboardBehavior="extend"
-      keyboardBlurBehavior="restore"
-      android_keyboardInputMode="adjustResize"
-      onChange={(index) => {
-        if (index === -1 && visible) {
-          Keyboard.dismiss();
-          onClose();
-        }
-      }}
+    <Modal
+      visible={visible}
+      animationType="fade"
+      presentationStyle="fullScreen"
+      statusBarTranslucent
+      onRequestClose={navigation.screen === "detail" ? handleBack : handleClose}
     >
-      <View style={styles.pinnedHeader}>
-        <View style={styles.settingsHeader}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.settingsHeadline}>Settings</Text>
+      <View style={styles.modalRoot}>
+        <View
+          style={[
+            styles.headerShell,
+            {
+              paddingTop: insets.top + spacing.sm,
+              paddingBottom: spacing.sm,
+            },
+          ]}
+        >
+          <View style={styles.headerRow}>
+            <Pressable
+              onPress={navigation.screen === "detail" ? handleBack : handleClose}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel={navigation.screen === "detail" ? "Back" : "Close settings"}
+              style={({ pressed }) => [styles.headerAction, pressed && { opacity: 0.6 }]}
+            >
+              <Text style={styles.headerActionText}>
+                {navigation.screen === "detail" ? "Back" : "Close"}
+              </Text>
+            </Pressable>
+            <Text style={styles.headerTitle}>{headerTitle}</Text>
+            <Pressable
+              onPress={handleClose}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Close settings"
+              style={({ pressed }) => [styles.headerAction, pressed && { opacity: 0.6 }]}
+            >
+              <Text style={styles.headerActionText}>Done</Text>
+            </Pressable>
           </View>
-          <Pressable
-            onPress={() => { Keyboard.dismiss(); onClose(); }}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel="Close settings"
-            style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-          >
-            <Text style={styles.settingsCloseLink}>Close</Text>
-          </Pressable>
         </View>
 
-        <ScrollView
-          ref={tabBarRef}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabBarContent}
-          style={styles.tabBar}
-        >
-          {SECTIONS.map(({ key, label }) => {
-            const active = activeSection === key;
-            return (
-              <Pressable
-                key={key}
-                onPress={() => handleSelectTab(key)}
-                hitSlop={8}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={`${label} settings`}
-                style={({ pressed }) => [
-                  styles.tab,
-                  active && styles.tabActive,
-                  pressed && { opacity: 0.7 },
-                ]}
-              >
-                <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>
-                  {label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      <BottomSheetScrollView
-        ref={scrollRef}
-        style={styles.settingsScroll}
-        contentContainerStyle={[
-          styles.settingsScrollContent,
-          { paddingBottom: insets.bottom + spacing.section },
-        ]}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
         <Animated.View
-          key={activeSection}
+          key={
+            navigation.screen === "detail"
+              ? `detail-${navigation.category}`
+              : "list"
+          }
           entering={
             reducedMotion
               ? undefined
-              : tabDirection === "forward"
+              : navDirection === "forward"
                 ? SlideInRight.duration(180)
                 : SlideInLeft.duration(180)
           }
+          style={styles.contentWrap}
         >
-          {activeSection === "assistant" ? (
-            <View>
-              <Text style={styles.sectionHeader}>Assistant</Text>
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <Text style={styles.settingLabel}>Kairo</Text>
-                <Text style={styles.settingHelp}>
-                  Configure the provider, API key, endpoint, and model used for mobile AI assistance.
-                </Text>
-                <KairoSettingsSection />
-              </View>
-
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <Text style={styles.settingLabel}>Behavior</Text>
-                <Text style={styles.settingHelp}>
-                  Control mobile assistance affordances.
-                </Text>
-
-                {/* TODO(wire-up): restore kairoTemperature control once the setting is live. */}
-                {/* TODO(wire-up): restore kairoResponseStyle control once the setting is live. */}
-
-                <View style={styles.behaviorRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.settingMeta}>Starter pills</Text>
-                  </View>
-                  <Switch
-                    value={prefs.kairoStarterPillsEnabled}
-                    onValueChange={(next) => void setPreference("kairoStarterPillsEnabled", next)}
-                    trackColor={{ false: colors.border, true: colors.accentSoft }}
-                    thumbColor={prefs.kairoStarterPillsEnabled ? colors.accent : colors.textMuted}
-                  />
-                </View>
-                {/* TODO(wire-up): restore kairoUndoWindowMinutes control once the setting is live. */}
-              </View>
-
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <View style={styles.settingRow}>
-                  <View style={styles.settingCopy}>
-                    <Text style={styles.settingLabel}>CLI Credentials</Text>
-                    <Text style={styles.settingHelp}>
-                      Issue a short-lived bootstrap token for `pravah auth import`.
-                    </Text>
-                    <Text style={styles.settingMeta}>
-                      {automationCredentials.length} recorded
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.fieldStack}>
-                  <Text style={styles.fieldLabel}>Credential label</Text>
-                  <TextInput
-                    value={automationLabel}
-                    onChangeText={setAutomationLabel}
-                    placeholder="Codex local"
-                    placeholderTextColor={colors.textDim}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    style={styles.textInput}
-                    accessibilityLabel="Automation credential label"
-                  />
-                </View>
-
-                <View style={styles.behaviorRow}>
-                  <View style={styles.settingCopy}>
-                    <Text style={styles.settingMeta}>Allow task writes</Text>
-                    <Text style={styles.settingHelp}>
-                      Off by default. Enable only when the CLI should add, move,
-                      complete, reopen, or unschedule tasks.
-                    </Text>
-                  </View>
-                  <Switch
-                    value={allowTaskWrites}
-                    onValueChange={setAllowTaskWrites}
-                    trackColor={{ false: colors.border, true: colors.accentSoft }}
-                    thumbColor={allowTaskWrites ? colors.accent : colors.textMuted}
-                  />
-                </View>
-
-                <Text style={styles.settingMeta}>
-                  Scopes · {[
-                    ...READ_ONLY_AUTOMATION_SCOPES,
-                    ...(allowTaskWrites ? (["tasks:write"] as const) : []),
-                  ].join(" · ")}
-                </Text>
-
-                <Pressable
-                  onPress={() => void handleIssueBootstrapToken()}
-                  disabled={isIssuingBootstrapToken}
-                  hitSlop={12}
-                  accessibilityRole="button"
-                  accessibilityLabel="Issue bootstrap token"
-                  style={({ pressed }) => [
-                    styles.softButton,
-                    pressed && { opacity: 0.6 },
-                    isIssuingBootstrapToken && styles.softButtonDisabled,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.softButtonText,
-                      isIssuingBootstrapToken && styles.inlineActionDisabled,
-                    ]}
-                  >
-                    {isIssuingBootstrapToken ? "Issuing…" : "Issue bootstrap token"}
-                  </Text>
-                </Pressable>
-
-                {issuedBootstrapToken ? (
-                  <View style={styles.tokenBlock}>
-                    <Text style={styles.fieldLabel}>Bootstrap token</Text>
-                    <Text style={styles.settingHelp}>
-                      Copied to clipboard. It expires at{" "}
-                      {new Date(issuedBootstrapToken.expiresAt).toLocaleString()}.
-                    </Text>
-                    <View style={styles.copyRow}>
-                      <View style={[styles.codePill, styles.copyRowPill]}>
-                        <Text selectable style={styles.codePillText} numberOfLines={1}>
-                          {issuedBootstrapToken.token}
-                        </Text>
-                      </View>
-                      <Pressable
-                        onPress={() =>
-                          void handleCopy(issuedBootstrapToken.token, "Bootstrap token")
-                        }
-                        hitSlop={12}
-                        accessibilityRole="button"
-                        accessibilityLabel="Copy bootstrap token"
-                        style={({ pressed }) => [
-                          styles.copyButton,
-                          pressed && { opacity: 0.6 },
-                        ]}
-                      >
-                        <Text style={styles.copyButtonText}>Copy</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                ) : null}
-
-                {automationCredentials.length === 0 ? (
-                  <Text style={styles.settingMeta}>No automation credentials issued yet.</Text>
-                ) : (
-                  <View style={styles.credentialList}>
-                    {automationCredentials.map((credential) => (
-                      <View key={credential._id} style={styles.credentialRow}>
-                        <View style={styles.settingCopy}>
-                          <Text style={styles.settingLabel} numberOfLines={1}>
-                            {credential.label}
-                          </Text>
-                          <Text style={styles.settingMeta}>
-                            {credential.credentialPreview} · {credential.status}
-                          </Text>
-                          <Text style={styles.settingMeta} numberOfLines={1}>
-                            {credential.scopes.join(" · ")}
-                          </Text>
-                        </View>
-                        <Pressable
-                          onPress={() => void handleRevokeCredential(credential._id)}
-                          disabled={
-                            credential.status === "revoked" ||
-                            revokingCredentialId === credential._id
-                          }
-                          hitSlop={12}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Revoke ${credential.label}`}
-                          style={({ pressed }) => [
-                            styles.copyChip,
-                            pressed && { opacity: 0.6 },
-                            (credential.status === "revoked" ||
-                              revokingCredentialId === credential._id) &&
-                              styles.softButtonDisabled,
-                          ]}
-                        >
-                          <Text style={styles.copyChipText}>
-                            {credential.status === "revoked"
-                              ? "Revoked"
-                              : revokingCredentialId === credential._id
-                                ? "Revoking…"
-                                : "Revoke"}
-                          </Text>
-                        </Pressable>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </View>
-            </View>
-          ) : null}
-
-          {activeSection === "sync" ? (
-            <View>
-              <Text style={styles.sectionHeader}>Sync</Text>
-
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <View style={styles.settingRow}>
-                  <View style={styles.settingCopy}>
-                    <Text style={styles.settingLabel}>Google Calendar</Text>
-                    <Text style={styles.settingHelp}>Pull events and deadlines into Pravah.</Text>
-                    <Text style={[styles.settingStatus, { color: syncHealthColor(calendarSyncHealth) }]}>
-                      {syncHealthLabel(calendarSyncHealth)}
-                    </Text>
-                    {calendarSyncHealth === "error" && calendarErrorSummary ? (
-                      <Text style={[styles.settingMeta, { color: colors.error }]}>
-                        {calendarErrorSummary}
-                      </Text>
-                    ) : null}
-                    {calendarAccountEmail ? (
-                      <Text style={styles.settingMeta}>{calendarAccountEmail.toLowerCase()}</Text>
-                    ) : null}
-                    {describeLastRun(calendarLastRun) ? (
-                      <Text style={styles.settingMeta}>{describeLastRun(calendarLastRun)}</Text>
-                    ) : null}
-                  </View>
-                  <Switch
-                    value={calendarSyncEnabled}
-                    onValueChange={onGoogleCalendarToggle}
-                    disabled={isGoogleToggleSaving}
-                    trackColor={{ false: colors.border, true: colors.accentSoft }}
-                    thumbColor={calendarSyncEnabled ? colors.accent : colors.textMuted}
-                  />
-                </View>
-                {calendarSyncEnabled ? (
-                  <View style={styles.calendarPickerBlock}>
-                    <View style={styles.calendarPickerHeaderRow}>
-                      <Text style={styles.settingMeta}>
-                        Calendars
-                        {availableCalendars.length > 0
-                          ? ` · ${selectedCalendarIds.length || availableCalendars.length}/${availableCalendars.length}`
-                          : ""}
-                      </Text>
-                      {isLoadingCalendars ? (
-                        <Text style={styles.settingMeta}>Loading…</Text>
-                      ) : null}
-                    </View>
-                    {!isLoadingCalendars && availableCalendars.length === 0 ? (
-                      <Text style={styles.settingMeta}>
-                        Calendar list unavailable. All accessible calendars will be imported.
-                      </Text>
-                    ) : null}
-                    {availableCalendars.map((calendar) => {
-                      const checked =
-                        selectedCalendarIds.length === 0 || selectedCalendarIds.includes(calendar.id);
-                      return (
-                        <Pressable
-                          key={calendar.id}
-                          onPress={() => onToggleCalendarSelected(calendar.id)}
-                          hitSlop={6}
-                          accessibilityRole="checkbox"
-                          accessibilityState={{ checked }}
-                          accessibilityLabel={`Sync ${calendar.summary}${calendar.primary ? ", primary" : ""}`}
-                          style={({ pressed }) => [
-                            styles.calendarPickerRow,
-                            pressed && { opacity: 0.6 },
-                          ]}
-                        >
-                          <View style={[styles.calendarCheckbox, checked && styles.calendarCheckboxChecked]}>
-                            {checked ? <Text style={styles.calendarCheckmark}>✓</Text> : null}
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.settingLabel} numberOfLines={1}>
-                              {calendar.summary}
-                            </Text>
-                            {calendar.primary ? (
-                              <Text style={styles.settingMeta}>Primary</Text>
-                            ) : null}
-                          </View>
-                        </Pressable>
-                      );
-                    })}
-                    {availableCalendars.length > 0 && selectedCalendarIds.length === 0 ? (
-                      <Text style={styles.settingMeta}>
-                        No calendars selected — sync will pull all of them.
-                      </Text>
-                    ) : null}
-                  </View>
-                ) : null}
-                <Pressable
-                  onPress={
-                    calendarSyncHealth === "healthy" ? onGoogleCalendarSync : onEnableAndSyncGoogleCalendar
-                  }
-                  disabled={syncSettingsBusy}
-                  hitSlop={12}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${calendarActionLabel(calendarSyncHealth, isCalendarSyncing)} Google Calendar`}
-                  style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={[styles.inlineActionText, syncSettingsBusy && styles.inlineActionDisabled]}>
-                    {calendarActionLabel(calendarSyncHealth, isCalendarSyncing)}
-                  </Text>
-                </Pressable>
-              </View>
-
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <View style={styles.settingRow}>
-                  <View style={styles.settingCopy}>
-                    <Text style={styles.settingLabel}>Gmail</Text>
-                    <Text style={styles.settingHelp}>Surface pending email follow-ups for review.</Text>
-                    <Text style={[styles.settingStatus, { color: statusTextColor(gmailSyncStatus) }]}>
-                      {formatStatusLabel(gmailSyncStatus)}
-                    </Text>
-                    {gmailAccountEmail ? (
-                      <Text style={styles.settingMeta}>{gmailAccountEmail.toLowerCase()}</Text>
-                    ) : null}
-                    {describeLastRun(gmailLastRun) ? (
-                      <Text style={styles.settingMeta}>{describeLastRun(gmailLastRun)}</Text>
-                    ) : null}
-                  </View>
-                  <Switch
-                    value={gmailSyncEnabled}
-                    onValueChange={onGmailToggle}
-                    disabled={isGmailToggleSaving || !canToggleGmailSync}
-                    trackColor={{ false: colors.border, true: colors.accentSoft }}
-                    thumbColor={gmailSyncEnabled ? colors.accent : colors.textMuted}
-                  />
-                </View>
-                {pendingGmailReviewCount > 0 ? (
-                  <Text style={styles.settingMeta}>
-                    {pendingGmailReviewCount} captured{" "}
-                    {pendingGmailReviewCount === 1 ? "item" : "items"} waiting for review
-                  </Text>
-                ) : null}
-                {!canToggleGmailSync ? (
-                  <Text style={styles.settingMeta}>Connect Gmail on web before enabling mobile sync.</Text>
-                ) : null}
-                <GmailReviewSection enabled={gmailSyncEnabled} showToast={showToast} />
-              </View>
-            </View>
-          ) : null}
-
-          {activeSection === "alerts" ? (
-            <View>
-              <Text style={styles.sectionHeader}>Reminders</Text>
-
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <Text style={styles.settingLabel}>Notifications</Text>
-                <Text style={styles.settingHelp}>
-                  Timed Tasks notify at their Deadline and date-only Tasks roll into one morning digest.
-                </Text>
-                <Text style={[styles.settingStatus, { color: statusTextColor(notificationPermissionState) }]}>
-                  {formatStatusLabel(notificationPermissionState)}
-                </Text>
-
-                {!notificationsEnabled ? (
-                  <Pressable
-                    onPress={onRequestNotificationsAccess}
-                    disabled={isNotificationsBusy}
-                    hitSlop={12}
-                    accessibilityRole="button"
-                    accessibilityLabel="Enable notifications"
-                    style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-                  >
-                    <Text style={[styles.inlineActionText, isNotificationsBusy && styles.inlineActionDisabled]}>
-                      Enable notifications
-                    </Text>
-                  </Pressable>
-                ) : null}
-
-                <Pressable
-                  onPress={onSendTestNotification}
-                  disabled={isNotificationsBusy}
-                  hitSlop={12}
-                  accessibilityRole="button"
-                  accessibilityLabel="Send a test notification"
-                  style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={[styles.inlineActionText, isNotificationsBusy && styles.inlineActionDisabled]}>
-                    Send a test
-                  </Text>
-                </Pressable>
-
-                <View style={styles.behaviorRow}>
-                  <Text style={styles.settingMeta}>Morning digest time</Text>
-                  <Pressable
-                    onPress={() => setOpenPicker("morningDigest")}
-                    hitSlop={12}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Change morning digest time, currently ${formatClockLabel(prefs.morningDigestTime)}`}
-                    style={({ pressed }) => [styles.timeInlineButton, pressed && { opacity: 0.7 }]}
-                  >
-                    <Text style={styles.timeInlineButtonText}>
-                      {formatClockLabel(prefs.morningDigestTime)}
-                    </Text>
-                  </Pressable>
-                </View>
-
-                <View style={styles.behaviorRow}>
-                  <Text style={styles.settingMeta}>Heads-up lead time</Text>
-                  <View style={styles.chipRow}>
-                    {REMINDER_LEAD_TIME_OPTIONS.map((minutes) => {
-                      const active = prefs.reminderLeadTimeMinutes === minutes;
-                      return (
-                        <Pressable
-                          key={minutes}
-                          onPress={() => void setPreference("reminderLeadTimeMinutes", minutes)}
-                          hitSlop={6}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: active }}
-                          style={({ pressed }) => [
-                            styles.choiceChip,
-                            active && styles.choiceChipActive,
-                            pressed && { opacity: 0.6 },
-                          ]}
-                        >
-                          <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
-                            {minutes}m
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-              </View>
-
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <View style={styles.settingRow}>
-                  <View style={styles.settingCopy}>
-                    <Text style={styles.settingLabel}>Quiet hours</Text>
-                    <Text style={styles.settingHelp}>
-                      A window where auto-chosen notification times are adjusted to
-                      fire outside this range. Explicit timed Task Reminders still fire.
-                    </Text>
-                  </View>
-                  <Switch
-                    value={prefs.quietHoursEnabled}
-                    onValueChange={(next) => void setPreference("quietHoursEnabled", next)}
-                    trackColor={{ false: colors.border, true: colors.accentSoft }}
-                    thumbColor={prefs.quietHoursEnabled ? colors.accent : colors.textMuted}
-                  />
-                </View>
-
-                <Pressable
-                  onPress={() => setOpenPicker("quietStart")}
-                  disabled={!prefs.quietHoursEnabled}
-                  hitSlop={12}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Change quiet hours start, currently ${formatClockLabel(prefs.quietHoursStart)}`}
-                  style={({ pressed }) => [
-                    styles.timeRow,
-                    !prefs.quietHoursEnabled && { opacity: 0.5 },
-                    pressed && { opacity: 0.7 },
-                  ]}
-                >
-                  <Text style={styles.settingMeta}>Starts</Text>
-                  <Text style={styles.timeRowValue}>{formatClockLabel(prefs.quietHoursStart)}</Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={() => setOpenPicker("quietEnd")}
-                  disabled={!prefs.quietHoursEnabled}
-                  hitSlop={12}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Change quiet hours end, currently ${formatClockLabel(prefs.quietHoursEnd)}`}
-                  style={({ pressed }) => [
-                    styles.timeRow,
-                    !prefs.quietHoursEnabled && { opacity: 0.5 },
-                    pressed && { opacity: 0.7 },
-                  ]}
-                >
-                  <Text style={styles.settingMeta}>Ends</Text>
-                  <Text style={styles.timeRowValue}>{formatClockLabel(prefs.quietHoursEnd)}</Text>
-                </Pressable>
-              </View>
-
-              {openPicker !== null ? (
-                <SnapWheelTimePicker
-                  visible
-                  title={pickerTitle(openPicker)}
-                  value={pickerValue(openPicker, prefs)}
-                  onConfirm={(value) => handleTimePicked(openPicker, value)}
-                  onClose={() => setOpenPicker(null)}
-                />
-              ) : null}
-            </View>
-          ) : null}
-
-          {activeSection === "timeline" ? (
-            <View>
-              <Text style={styles.sectionHeader}>Timeline</Text>
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <View style={styles.settingRow}>
-                  <View style={styles.settingCopy}>
-                    <Text style={styles.settingLabel}>Bulk task capture</Text>
-                    <Text style={styles.settingHelp}>
-                      Create numbered task series and assign copies to multiple goals.
-                    </Text>
-                  </View>
-                  <Switch
-                    value={prefs.bulkTaskCaptureEnabled}
-                    onValueChange={(next) => void setPreference("bulkTaskCaptureEnabled", next)}
-                    trackColor={{ false: colors.border, true: colors.accentSoft }}
-                    thumbColor={prefs.bulkTaskCaptureEnabled ? colors.accent : colors.textMuted}
-                    accessibilityLabel="Bulk task capture"
-                  />
-                </View>
-              </View>
-
-              {/* TODO(wire-up): restore defaultTaskDurationMin control once the setting is live. */}
-              {/* TODO(wire-up): restore taskColorScheme control once the setting is live. */}
-
-              <Text style={styles.sectionHeader}>Appearance</Text>
-
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <Text style={styles.settingLabel}>Motion & density</Text>
-                <Text style={styles.settingHelp}>
-                  Override the system motion setting and tighten spacing.
-                </Text>
-
-                <View style={styles.fieldStack}>
-                  <Text style={styles.fieldLabel}>Reduced motion</Text>
-                  <View style={styles.segmented}>
-                    {(["system", "always", "never"] as const).map((mode) => {
-                      const active = prefs.reducedMotionOverride === mode;
-                      return (
-                        <Pressable
-                          key={mode}
-                          onPress={() => void setPreference("reducedMotionOverride", mode)}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: active }}
-                          style={({ pressed }) => [
-                            styles.segment,
-                            active && styles.segmentActive,
-                            pressed && { opacity: 0.7 },
-                          ]}
-                        >
-                          <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                            {mode === "system" ? "System" : mode === "always" ? "On" : "Off"}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-
-                <View style={styles.fieldStack}>
-                  <Text style={styles.fieldLabel}>Density</Text>
-                  <View style={styles.segmented}>
-                    {(["cozy", "compact"] as const).map((d) => {
-                      const active = prefs.density === d;
-                      return (
-                        <Pressable
-                          key={d}
-                          onPress={() => void setPreference("density", d)}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: active }}
-                          style={({ pressed }) => [
-                            styles.segment,
-                            active && styles.segmentActive,
-                            pressed && { opacity: 0.7 },
-                          ]}
-                        >
-                          <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                            {d === "cozy" ? "Cozy" : "Compact"}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-              </View>
-
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <Text style={styles.settingLabel}>Tab order</Text>
-                <Text style={styles.settingHelp}>
-                  Reorder Inbox, Timeline, Goals, and Progress. Capture stays fixed in the center.
-                </Text>
-                <TabOrderPreview order={tabOrder} />
-                <TabOrderEditor order={tabOrder} onMove={handleMoveTab} />
-              </View>
-
-              {/* TODO(wire-up): restore accentColor control once the setting is live. */}
-            </View>
-          ) : null}
-
-          {activeSection === "more" ? (
-            <View>
-              <Text style={styles.sectionHeader}>Diagnostics</Text>
-
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <Text style={styles.settingLabel}>Device</Text>
-                <Text style={styles.settingHelp}>
-                  Share this ID with support when reporting a bug.
-                </Text>
-                <View style={styles.copyRow}>
-                  <View style={[styles.codePill, styles.copyRowPill]}>
-                    <Text selectable style={styles.codePillText} numberOfLines={1}>
-                      {deviceId ?? "Loading…"}
-                    </Text>
-                  </View>
-                  <Pressable
-                    onPress={() => deviceId && void handleCopy(deviceId, "Device ID")}
-                    disabled={!deviceId}
-                    hitSlop={12}
-                    accessibilityRole="button"
-                    accessibilityLabel="Copy device ID"
-                    style={({ pressed }) => [
-                      styles.copyButton,
-                      pressed && { opacity: 0.6 },
-                      !deviceId && styles.softButtonDisabled,
-                    ]}
-                  >
-                    <Text style={styles.copyButtonText}>Copy</Text>
-                  </Pressable>
-                </View>
-              </View>
-
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <Text style={styles.settingLabel}>Diagnostics bundle</Text>
-                <Text style={styles.settingHelp}>
-                  Export recent app events, device metadata, and sync state as a JSON file.
-                </Text>
-                <Pressable
-                  onPress={onExportDiagnostics}
-                  hitSlop={12}
-                  accessibilityRole="button"
-                  accessibilityLabel="Export diagnostics"
-                  style={({ pressed }) => [styles.softButton, pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={styles.softButtonText}>Export diagnostics</Text>
-                </Pressable>
-              </View>
-
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <Text style={styles.settingLabel}>Recent sync errors</Text>
-                <Text style={styles.settingHelp}>
-                  From the most recent Google Calendar and Gmail sync runs.
-                </Text>
-
-                <View style={styles.sourceBlock}>
-                  <View style={styles.sourceHeader}>
-                    <View
-                      style={[
-                        styles.statusDot,
-                        calendarLastError ? styles.statusDotErr : styles.statusDotOk,
-                      ]}
-                    />
-                    <Text style={styles.sourceName}>Google Calendar</Text>
-                    <Text
-                      style={[
-                        styles.sourceStatus,
-                        calendarLastError ? styles.sourceStatusErr : styles.sourceStatusOk,
-                      ]}
-                    >
-                      {calendarLastError ? "Error" : "Healthy"}
-                    </Text>
-                    {calendarLastError ? (
-                      <Pressable
-                        onPress={() => void handleCopy(calendarLastError, "Calendar error")}
-                        hitSlop={12}
-                        accessibilityRole="button"
-                        accessibilityLabel="Copy Google Calendar error"
-                        style={({ pressed }) => [styles.copyChip, pressed && { opacity: 0.6 }]}
-                      >
-                        <Text style={styles.copyChipText}>Copy</Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
-                  {calendarLastError ? (
-                    <View style={styles.errorBlock}>
-                      <Text selectable style={styles.errorBlockText}>
-                        {summarizeSyncError(calendarLastError)}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-
-                <View style={styles.sourceBlock}>
-                  <View style={styles.sourceHeader}>
-                    <View
-                      style={[
-                        styles.statusDot,
-                        gmailLastError ? styles.statusDotErr : styles.statusDotOk,
-                      ]}
-                    />
-                    <Text style={styles.sourceName}>Gmail</Text>
-                    <Text
-                      style={[
-                        styles.sourceStatus,
-                        gmailLastError ? styles.sourceStatusErr : styles.sourceStatusOk,
-                      ]}
-                    >
-                      {gmailLastError ? "Error" : "Healthy"}
-                    </Text>
-                    {gmailLastError ? (
-                      <Pressable
-                        onPress={() => void handleCopy(gmailLastError, "Gmail error")}
-                        hitSlop={12}
-                        accessibilityRole="button"
-                        accessibilityLabel="Copy Gmail error"
-                        style={({ pressed }) => [styles.copyChip, pressed && { opacity: 0.6 }]}
-                      >
-                        <Text style={styles.copyChipText}>Copy</Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
-                  {gmailLastError ? (
-                    <View style={styles.errorBlock}>
-                      <Text selectable style={styles.errorBlockText}>
-                        {summarizeSyncError(gmailLastError)}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-              </View>
-
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <Text style={styles.settingLabel}>Retry queue</Text>
-                <Text style={styles.settingHelp}>
-                  Drops any pending offline retries. Use if a stuck request is preventing
-                  fresh syncs from running.
-                </Text>
-                <Pressable
-                  onPress={() => void handleClearRetryQueue()}
-                  disabled={isClearingRetryQueue}
-                  hitSlop={12}
-                  accessibilityRole="button"
-                  accessibilityLabel="Clear retry queue"
-                  style={({ pressed }) => [
-                    styles.softButton,
-                    pressed && { opacity: 0.6 },
-                    isClearingRetryQueue && styles.softButtonDisabled,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.softButtonText,
-                      isClearingRetryQueue && styles.inlineActionDisabled,
-                    ]}
-                  >
-                    {isClearingRetryQueue ? "Clearing…" : "Clear retry queue"}
-                  </Text>
-                </Pressable>
-              </View>
-
-              <Text style={styles.sectionHeader}>About</Text>
-
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <View style={styles.aboutHeader}>
-                  <View style={styles.aboutHeaderCopy}>
-                    <Text style={styles.settingLabel}>Pravah Mobile</Text>
-                    <Text style={styles.aboutVersion}>Version {APP_VERSION}</Text>
-                  </View>
-                  <Pressable
-                    onPress={() => void Linking.openURL(CHANGELOG_URL)}
-                    hitSlop={12}
-                    accessibilityRole="link"
-                    accessibilityLabel="Open changelog on GitHub"
-                    style={({ pressed }) => [styles.versionPill, pressed && { opacity: 0.6 }]}
-                  >
-                    <Text style={styles.versionPillText}>What's new</Text>
-                  </Pressable>
-                </View>
-
-                <Pressable
-                  onPress={() => void Linking.openURL(ISSUES_URL)}
-                  hitSlop={12}
-                  accessibilityRole="link"
-                  accessibilityLabel="Report an issue on GitHub"
-                  style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={styles.linkRowText}>Report an issue</Text>
-                  <Text style={styles.linkRowChevron}>↗</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => void Linking.openURL(REPO_URL)}
-                  hitSlop={12}
-                  accessibilityRole="link"
-                  accessibilityLabel="Open Pravah repository on GitHub"
-                  style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={styles.linkRowText}>GitHub repository</Text>
-                  <Text style={styles.linkRowChevron}>↗</Text>
-                </Pressable>
-              </View>
-
-              <Text style={styles.sectionHeader}>Account</Text>
-
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <Text style={styles.settingLabel}>Your data</Text>
-                <Text style={styles.settingHelp}>
-                  Export every task currently in view as a JSON payload via the system share
-                  sheet (save to Files, email, or another app).
-                </Text>
-                <Pressable
-                  onPress={onExportTasks}
-                  hitSlop={12}
-                  accessibilityRole="button"
-                  accessibilityLabel="Export tasks as JSON"
-                  style={({ pressed }) => [styles.softButton, pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={styles.softButtonText}>Export tasks as JSON</Text>
-                </Pressable>
-              </View>
-
-              <View style={[styles.settingBlock, styles.sectionCard, styles.accountCard]}>
-                <Text style={styles.settingLabel}>Signed in</Text>
-                <Text style={styles.settingHelp}>
-                  Sign out if you want to switch Google accounts on this device.
-                </Text>
-                <Pressable
-                  onPress={onSignOut}
-                  hitSlop={12}
-                  accessibilityRole="button"
-                  accessibilityLabel="Sign out"
-                  style={({ pressed }) => [styles.signOutButton, pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={styles.signOutLink}>Sign out</Text>
-                </Pressable>
-              </View>
-
-              <View style={[styles.settingBlock, styles.sectionCard, styles.dangerCard]}>
-                <Text style={styles.dangerLabel}>Danger zone</Text>
-                <Text style={styles.settingHelp}>
-                  Wipe locally cached preferences, retry queue, snapshot, and reminder
-                  schedule. Server data is untouched. Signs you out.
-                </Text>
-                <Pressable
-                  onPress={() => void handleWipeLocalData()}
-                  disabled={isWiping}
-                  hitSlop={12}
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    dangerArmed === "wipe" ? "Tap again to confirm wipe" : "Wipe local data"
-                  }
-                  style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={[styles.dangerActionText, isWiping && styles.inlineActionDisabled]}>
-                    {isWiping
-                      ? "Wiping…"
-                      : dangerArmed === "wipe"
-                        ? "Tap again to confirm →"
-                        : "Wipe local data"}
-                  </Text>
-                </Pressable>
-
-                <Text style={[styles.settingHelp, { marginTop: spacing.sm }]}>
-                  To permanently delete your Pravah account and server data, open a
-                  request with support.
-                </Text>
-                <Pressable
-                  onPress={() => void Linking.openURL(`${ISSUES_URL}/new?title=Delete+my+Pravah+account`)}
-                  hitSlop={12}
-                  accessibilityRole="link"
-                  accessibilityLabel="Request account deletion via GitHub issue"
-                  style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={styles.dangerActionText}>Request account deletion →</Text>
-                </Pressable>
-              </View>
-            </View>
-          ) : null}
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: insets.bottom + spacing.section },
+            ]}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {navigation.screen === "list" ? (
+              <SettingsCategoryList onOpenCategory={handleOpenCategory} />
+            ) : (
+              renderDetailScreen(navigation, {
+                prefs,
+                setPreference,
+                automationCredentials,
+                automationLabel,
+                setAutomationLabel,
+                allowTaskWrites,
+                setAllowTaskWrites,
+                issuedBootstrapToken,
+                isIssuingBootstrapToken,
+                onIssueBootstrapToken: () => void handleIssueBootstrapToken(),
+                onCopy: handleCopy,
+                onRevokeCredential: (credentialId) => handleRevokeCredential(credentialId),
+                revokingCredentialId,
+                calendarSyncEnabled,
+                calendarSyncHealth,
+                calendarErrorSummary,
+                calendarAccountEmail,
+                calendarLastRun,
+                isGoogleToggleSaving,
+                availableCalendars,
+                selectedCalendarIds,
+                isLoadingCalendars,
+                onToggleCalendarSelected,
+                syncSettingsBusy,
+                isCalendarSyncing,
+                onGoogleCalendarToggle,
+                onGoogleCalendarSync,
+                onEnableAndSyncGoogleCalendar,
+                gmailSyncEnabled,
+                gmailSyncStatus,
+                gmailAccountEmail,
+                gmailLastRun,
+                pendingGmailReviewCount,
+                isGmailToggleSaving,
+                canToggleGmailSync,
+                onGmailToggle,
+                showToast,
+                notificationPermissionState,
+                notificationsEnabled,
+                isNotificationsBusy,
+                onRequestNotificationsAccess,
+                onSendTestNotification,
+                openPicker,
+                onOpenPicker: setOpenPicker,
+                onTimePicked: handleTimePicked,
+                onClosePicker: () => setOpenPicker(null),
+                tabOrder,
+                onMoveTab: handleMoveTab,
+                deviceId,
+                onExportDiagnostics,
+                calendarLastError,
+                gmailLastError,
+                isClearingRetryQueue,
+                onClearRetryQueue: () => void handleClearRetryQueue(),
+                onExportTasks,
+                onSignOut,
+                dangerArmed,
+                isWiping,
+                onWipeLocalData: () => void handleWipeLocalData(),
+              })
+            )}
+          </ScrollView>
         </Animated.View>
-      </BottomSheetScrollView>
-    </BottomSheet>
+      </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  settingsSheet: {
-    backgroundColor: colors.bg,
-    borderTopLeftRadius: radii.xl,
-    borderTopRightRadius: radii.xl,
-  },
-  settingsHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.border,
-  },
-  settingsScroll: {
+  modalRoot: {
     flex: 1,
-  },
-  settingsScrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xxl,
-    gap: spacing.md,
-  },
-  pinnedHeader: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
     backgroundColor: colors.bg,
+  },
+  headerShell: {
+    paddingHorizontal: spacing.lg,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderSubtle,
+    backgroundColor: colors.bg,
   },
-  settingsHeader: {
+  headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.md,
-    marginBottom: spacing.md,
   },
-  tabBar: {
-    marginHorizontal: -spacing.lg,
+  headerAction: {
+    minWidth: 56,
   },
-  tabBarContent: {
+  headerActionText: {
+    ...typography.bodyMd,
+    color: colors.accent,
+  },
+  headerTitle: {
+    flex: 1,
+    textAlign: "center",
+    ...typography.headline,
+    color: colors.textPrimary,
+  },
+  contentWrap: {
+    flex: 1,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
     paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingTop: spacing.lg,
   },
-  tab: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.md,
+  screenBody: {
+    gap: spacing.md,
+  },
+  leadText: {
+    ...typography.bodyMd,
+    color: colors.textSecondary,
+    lineHeight: 22,
+  },
+  categoryList: {
+    gap: spacing.sm,
+  },
+  categoryCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radii.xl,
     backgroundColor: colors.bgCard,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
   },
-  tabActive: {
-    backgroundColor: colors.accentSoft,
-    borderColor: colors.accent,
+  categoryCopy: {
+    flex: 1,
+    gap: spacing.xs,
   },
-  tabLabel: {
+  categoryTitle: {
+    ...typography.title,
+    color: colors.textPrimary,
+  },
+  categorySummary: {
     ...typography.bodyMd,
     color: colors.textMuted,
+    lineHeight: 18,
   },
-  tabLabelActive: {
-    color: colors.accent,
-    fontWeight: "600",
+  categoryMeta: {
+    alignItems: "center",
+    gap: 2,
   },
-  settingsHeadline: {
-    ...typography.headline,
-    color: colors.textPrimary,
-    marginTop: 2,
-  },
-  settingsCloseLink: {
-    ...typography.bodyMd,
-    color: colors.accent,
-  },
-  sectionHeader: {
+  categoryCount: {
     ...typography.micro,
     color: colors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    fontWeight: "600",
-    marginTop: spacing.xl,
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing.xs,
+  },
+  categoryChevron: {
+    ...typography.title,
+    color: colors.accent,
   },
   settingBlock: {
     gap: spacing.sm,
   },
   sectionCard: {
-    padding: spacing.md,
-    borderRadius: radii.lg,
-    backgroundColor: colors.bgCardGlass,
+    backgroundColor: colors.bgCard,
+    borderRadius: radii.xl,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
-    marginBottom: spacing.sm,
-  },
-  accountCard: {
-    marginBottom: spacing.md,
+    padding: spacing.lg,
+    gap: spacing.sm,
   },
   settingRow: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.lg,
+    alignItems: "flex-start",
+    gap: spacing.md,
   },
   settingCopy: {
     flex: 1,
-    gap: 2,
+    gap: 4,
   },
   settingLabel: {
+    ...typography.bodyMd,
     color: colors.textPrimary,
-    ...typography.title,
+    fontFamily: "Geist_600SemiBold",
   },
   settingHelp: {
-    color: colors.textSecondary,
     ...typography.bodyMd,
-  },
-  settingStatus: {
-    ...typography.micro,
-    marginTop: spacing.xs,
+    color: colors.textMuted,
+    lineHeight: 18,
   },
   settingMeta: {
-    color: colors.textMuted,
-    ...typography.micro,
-  },
-  inlineActionText: {
-    color: colors.accent,
-    ...typography.micro,
-  },
-  inlineActionDisabled: {
+    ...typography.bodyMd,
     color: colors.textMuted,
   },
-  sectionFootAction: {
-    marginTop: spacing.xs,
-  },
-  calendarPickerBlock: {
-    marginTop: spacing.sm,
-    gap: spacing.xs,
-  },
-  calendarPickerHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  calendarPickerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderSubtle,
-  },
-  calendarCheckbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "transparent",
-  },
-  calendarCheckboxChecked: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accentSoft,
-  },
-  calendarCheckmark: {
-    ...typography.micro,
-    color: colors.accent,
-    fontWeight: "700",
+  settingStatus: {
+    ...typography.bodyMd,
+    fontFamily: "Geist_600SemiBold",
   },
   behaviorRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderSubtle,
+    gap: spacing.md,
   },
-  stepperRow: {
+  inlineActionText: {
+    ...typography.bodyMd,
+    color: colors.accent,
+  },
+  inlineActionDisabled: {
+    color: colors.textDim,
+  },
+  calendarPickerBlock: {
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  calendarPickerHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: spacing.sm,
   },
-  stepperButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+  calendarPickerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  calendarCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: colors.bgSurface,
   },
-  stepperGlyph: {
+  calendarCheckboxChecked: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accent,
+  },
+  calendarCheckmark: {
     ...typography.bodyMd,
-    color: colors.textPrimary,
-  },
-  stepperValue: {
-    ...typography.bodyMd,
-    color: colors.textPrimary,
-    minWidth: 36,
-    textAlign: "center",
-  },
-  chipRow: {
-    flexDirection: "row",
-    gap: spacing.xs,
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
+    color: colors.accent,
   },
   fieldStack: {
-    paddingTop: spacing.sm,
-    marginTop: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderSubtle,
     gap: spacing.sm,
   },
   fieldLabel: {
@@ -1705,258 +1942,277 @@ const styles = StyleSheet.create({
   textInput: {
     ...typography.bodyMd,
     color: colors.textPrimary,
-    backgroundColor: colors.bgInput,
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  segmented: {
-    flexDirection: "row",
-    backgroundColor: colors.bgCard,
-    borderRadius: radii.lg,
-    padding: 3,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-  },
-  segment: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.xs,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radii.md,
-  },
-  segmentActive: {
-    backgroundColor: colors.accentSoft,
-  },
-  segmentText: {
-    ...typography.micro,
-    color: colors.textMuted,
-    textAlign: "center",
-  },
-  segmentTextActive: {
-    color: colors.accent,
-    fontWeight: "600",
-  },
-  tabOrderPreview: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    backgroundColor: colors.bgCard,
+    backgroundColor: colors.bgSurface,
     borderRadius: radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
-    padding: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
   },
-  tabPreviewItem: {
-    flex: 1,
-    minHeight: 34,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radii.md,
-    backgroundColor: colors.bgInput,
-  },
-  tabPreviewText: {
-    ...typography.micro,
-    color: colors.textSecondary,
-  },
-  tabPreviewCapture: {
-    flex: 1,
-    minHeight: 34,
-    alignItems: "center",
-    justifyContent: "center",
+  softButton: {
+    marginTop: spacing.sm,
+    alignSelf: "flex-start",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     borderRadius: radii.full,
-    backgroundColor: colors.accentSoft,
+    backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderFocus,
+    borderColor: colors.borderSubtle,
   },
-  tabPreviewCaptureText: {
-    ...typography.micro,
-    color: colors.accent,
-    fontWeight: "600",
+  softButtonDisabled: {
+    opacity: 0.5,
   },
-  tabOrderEditor: {
-    gap: spacing.xs,
+  softButtonText: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
   },
-  tabOrderRow: {
+  tokenBlock: {
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  copyRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    paddingVertical: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderSubtle,
   },
-  tabOrderIndex: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
+  copyRowPill: {
+    flex: 1,
+  },
+  codePill: {
+    minHeight: 42,
     justifyContent: "center",
-    backgroundColor: colors.bgCard,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
   },
-  tabOrderIndexText: {
-    ...typography.micro,
-    color: colors.textMuted,
-    fontWeight: "600",
-  },
-  tabOrderControls: {
-    flexDirection: "row",
-    gap: spacing.xs,
-  },
-  tabOrderButton: {
-    width: 34,
-    height: 34,
-    borderRadius: radii.md,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.bgCard,
-  },
-  tabOrderButtonDisabled: {
-    opacity: 0.35,
-  },
-  tabOrderButtonText: {
+  codePillText: {
     ...typography.bodyMd,
     color: colors.textPrimary,
-    fontWeight: "700",
   },
-  tabOrderButtonTextDisabled: {
-    color: colors.textMuted,
-  },
-  swatchRow: {
-    flexDirection: "row",
-    gap: spacing.lg,
-    flexWrap: "wrap",
-  },
-  swatchItem: {
-    alignItems: "center",
-    gap: spacing.xs,
-  },
-  swatch: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "transparent",
-  },
-  swatchActive: {
-    borderColor: colors.textPrimary,
-  },
-  swatchCheck: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 18,
-  },
-  swatchLabel: {
-    ...typography.micro,
-    color: colors.textMuted,
-  },
-  swatchLabelActive: {
-    color: colors.textPrimary,
-    fontWeight: "600",
-  },
-  choiceChip: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs / 2,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  choiceChipActive: {
-    borderColor: colors.accent,
+  copyButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.full,
     backgroundColor: colors.accentSoft,
   },
+  copyButtonText: {
+    ...typography.bodyMd,
+    color: colors.accent,
+    fontFamily: "Geist_600SemiBold",
+  },
+  credentialList: {
+    gap: spacing.sm,
+  },
+  credentialRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  copyChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.full,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  copyChipText: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+  },
+  chipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  choiceChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.full,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  choiceChipActive: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accent,
+  },
   choiceChipText: {
-    ...typography.micro,
+    ...typography.bodyMd,
     color: colors.textMuted,
   },
   choiceChipTextActive: {
     color: colors.accent,
-    fontWeight: "600",
+    fontFamily: "Geist_600SemiBold",
   },
-  diagnosticsCode: {
-    ...typography.micro,
-    color: colors.textPrimary,
-    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
-    paddingVertical: spacing.xs,
+  timeInlineButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.full,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
   },
-  dangerCard: {
-    borderColor: "#c0552d",
-  },
-  dangerLabel: {
+  timeInlineButtonText: {
     ...typography.bodyMd,
-    color: "#c0552d",
-    fontWeight: "600",
-    marginBottom: spacing.xs,
-  },
-  dangerActionText: {
-    ...typography.micro,
-    color: "#c0552d",
-    fontWeight: "600",
+    color: colors.textPrimary,
   },
   timeRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: spacing.xs,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderSubtle,
-    marginTop: spacing.xs,
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
   },
   timeRowValue: {
     ...typography.bodyMd,
-    color: colors.accent,
+    color: colors.textPrimary,
   },
-  timeInlineButton: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.md,
-    backgroundColor: colors.accentSoft,
+  segmented: {
+    flexDirection: "row",
+    gap: spacing.sm,
   },
-  timeInlineButtonText: {
-    ...typography.micro,
-    color: colors.accent,
-    fontWeight: "600",
-  },
-  signOutLink: {
-    color: colors.error,
-    ...typography.micro,
-    fontWeight: "600",
-  },
-  signOutButton: {
-    alignSelf: "flex-start",
+  segment: {
+    flex: 1,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.error,
-    marginTop: spacing.xs,
-  },
-  codePill: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.bgCard,
-    borderRadius: 8,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    borderRadius: radii.full,
+    backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
-    marginTop: spacing.xs,
+    alignItems: "center",
   },
-  codePillText: {
-    ...typography.micro,
+  segmentActive: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accent,
+  },
+  segmentText: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+  },
+  segmentTextActive: {
+    color: colors.accent,
+    fontFamily: "Geist_600SemiBold",
+  },
+  tabOrderPreview: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  tabPreviewItem: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: spacing.sm,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSurface,
+  },
+  tabPreviewText: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+  },
+  tabPreviewCapture: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.full,
+    backgroundColor: colors.accentSoft,
+  },
+  tabPreviewCaptureText: {
+    ...typography.bodyMd,
+    color: colors.accent,
+    fontFamily: "Geist_600SemiBold",
+  },
+  tabOrderEditor: {
+    gap: spacing.sm,
+  },
+  tabOrderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  tabOrderIndex: {
+    width: 28,
+    height: 28,
+    borderRadius: radii.full,
+    backgroundColor: colors.bgSurface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabOrderIndexText: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+  },
+  tabOrderControls: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  tabOrderButton: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  tabOrderButtonDisabled: {
+    opacity: 0.5,
+  },
+  tabOrderButtonText: {
+    ...typography.bodyMd,
     color: colors.textPrimary,
-    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+  },
+  tabOrderButtonTextDisabled: {
+    color: colors.textDim,
+  },
+  aboutHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  aboutHeaderCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  aboutVersion: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+  },
+  versionPill: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.full,
+    backgroundColor: colors.accentSoft,
+  },
+  versionPillText: {
+    ...typography.bodyMd,
+    color: colors.accent,
+    fontFamily: "Geist_600SemiBold",
+  },
+  linkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  linkRowText: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+  },
+  linkRowChevron: {
+    ...typography.bodyMd,
+    color: colors.accent,
   },
   sourceBlock: {
-    marginTop: spacing.sm,
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
   sourceHeader: {
     flexDirection: "row",
@@ -1966,10 +2222,10 @@ const styles = StyleSheet.create({
   statusDot: {
     width: 8,
     height: 8,
-    borderRadius: 4,
+    borderRadius: radii.full,
   },
   statusDotOk: {
-    backgroundColor: colors.success,
+    backgroundColor: colors.primary,
   },
   statusDotErr: {
     backgroundColor: colors.error,
@@ -1977,142 +2233,52 @@ const styles = StyleSheet.create({
   sourceName: {
     ...typography.bodyMd,
     color: colors.textPrimary,
-    flex: 1,
   },
   sourceStatus: {
-    ...typography.micro,
-    fontWeight: "600",
+    ...typography.bodyMd,
   },
   sourceStatusOk: {
-    color: colors.success,
+    color: colors.primary,
   },
   sourceStatusErr: {
     color: colors.error,
   },
   errorBlock: {
-    backgroundColor: colors.bgCard,
-    borderRadius: 8,
-    padding: spacing.sm,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
+    padding: spacing.md,
   },
   errorBlockText: {
-    ...typography.micro,
-    // Errors are human content, not chrome: keep them mixed-case and readable
-    // rather than the uppercase log-line treatment used elsewhere.
-    textTransform: "none",
-    color: colors.textSecondary,
-    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
-    lineHeight: 16,
-  },
-  tokenBlock: {
-    backgroundColor: colors.accentDim,
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderFocus,
-    padding: spacing.sm,
-    gap: spacing.xs,
-  },
-  credentialList: {
-    gap: spacing.xs,
-  },
-  credentialRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderSubtle,
-  },
-  softButton: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.accentSoft,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 10,
-    marginTop: spacing.xs,
-  },
-  softButtonDisabled: {
-    opacity: 0.5,
-  },
-  softButtonText: {
-    ...typography.micro,
-    color: colors.accent,
-    fontWeight: "600",
-  },
-  aboutHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.sm,
-  },
-  aboutHeaderCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  aboutVersion: {
-    ...typography.micro,
-    color: colors.textMuted,
-  },
-  versionPill: {
-    backgroundColor: colors.accentSoft,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.md,
-  },
-  versionPillText: {
-    ...typography.micro,
-    color: colors.accent,
-    fontWeight: "600",
-  },
-  linkRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderSubtle,
-  },
-  linkRowText: {
     ...typography.bodyMd,
-    color: colors.textPrimary,
-  },
-  linkRowChevron: {
-    color: colors.textMuted,
-    fontSize: 16,
-  },
-  copyRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    marginTop: spacing.xs,
-  },
-  copyRowPill: {
-    flex: 1,
-    marginTop: 0,
-  },
-  copyButton: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 10,
-    backgroundColor: colors.accentSoft,
-  },
-  copyButtonText: {
-    ...typography.micro,
-    color: colors.accent,
-    fontWeight: "600",
-  },
-  copyChip: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radii.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-    backgroundColor: colors.bgCard,
-  },
-  copyChipText: {
-    ...typography.micro,
     color: colors.textSecondary,
-    fontWeight: "600",
+    lineHeight: 18,
+  },
+  accountCard: {
+    gap: spacing.sm,
+  },
+  signOutButton: {
+    alignSelf: "flex-start",
+  },
+  signOutLink: {
+    ...typography.bodyMd,
+    color: colors.accent,
+  },
+  dangerCard: {
+    gap: spacing.sm,
+    borderColor: colors.errorMuted,
+  },
+  dangerLabel: {
+    ...typography.bodyMd,
+    color: colors.error,
+    fontFamily: "Geist_600SemiBold",
+  },
+  sectionFootAction: {
+    alignSelf: "flex-start",
+  },
+  dangerActionText: {
+    ...typography.bodyMd,
+    color: colors.error,
   },
 });
