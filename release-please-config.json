@@ -6,6 +6,10 @@
     ".": {
       "component": "web",
       "release-type": "node"
+    },
+    "packages/cli": {
+      "component": "cli",
+      "release-type": "node"
     }
   }
 }
