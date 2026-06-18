@@ -54,6 +54,19 @@ export function isTaskInInbox(task: TaskLifecycleInput): boolean {
   return taskPlacement(task) === "inbox";
 }
 
+/**
+ * Secondary sort key within a single Deadline day:
+ * - Timed tasks (with a `time` field) sort before date-only tasks.
+ * - Among timed tasks, sort chronologically ("HH:MM" compares lexically).
+ * - Among date-only tasks, return 0 (caller falls through to compareTaskOrder).
+ */
+export function compareTasksWithinDay(a: { time?: string }, b: { time?: string }): number {
+  if (a.time && b.time) return a.time.localeCompare(b.time);
+  if (a.time) return -1;
+  if (b.time) return 1;
+  return 0;
+}
+
 export function hasPriorityBoundaryViolation<T extends { priority?: TaskPriority }>(
   original: T[],
   reordered: T[]

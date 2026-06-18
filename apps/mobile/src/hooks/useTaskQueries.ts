@@ -8,12 +8,53 @@
  * while the user was on another tab.
  */
 
-import { useMemo, useCallback } from "react";
+import { useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { MobileTask } from "../components/TaskCard";
 import { addDays, toIsoDate } from "../lib/dates";
-import { compareTaskOrder } from "../lib/taskLifecycle";
+import { compareTaskOrder, compareTasksWithinDay } from "../lib/taskLifecycle";
+
+/**
+ * Maps a raw task document to the MobileTask shape the UI consumes. Pure and
+ * stable so the hook and tests share it. MUST preserve every field the UI
+ * depends on — notably `time`, which the Timeline within-day sort reads (see
+ * buildScheduledTasks / compareTasksWithinDay). Dropping a field here silently
+ * disables behavior on the real data path even when isolated unit tests pass.
+ */
+export function mapTaskDoc(task: MobileTask): MobileTask {
+  return {
+    _id: task._id,
+    title: task.title,
+    description: task.description,
+    deadline: task.deadline,
+    time: task.time,
+    scheduledAt: task.scheduledAt,
+    completedAt: task.completedAt,
+    cancelledAt: task.cancelledAt,
+    priority: task.priority,
+    position: task.position,
+    updatedAt: task.updatedAt,
+    createdAt: task.createdAt,
+  };
+}
+
+/**
+ * Builds the ordered Timeline list from raw task docs: map to MobileTask, then
+ * sort by deadline date, then time-of-day within the day, then manual position.
+ * Exported so tests exercise the REAL data path (mapping + sort together) and
+ * catch regressions an isolated comparator test would miss.
+ */
+export function buildScheduledTasks(docs: MobileTask[]): MobileTask[] {
+  return docs
+    .map(mapTaskDoc)
+    .sort(
+      (a, b) =>
+        (a.deadline ?? "").localeCompare(b.deadline ?? "") ||
+        compareTasksWithinDay(a, b) ||
+        compareTaskOrder(a, b)
+    );
+}
 
 type UseTaskQueriesOptions = {
   /** Pass null/undefined when the session is not yet available — all queries skip. */
@@ -53,41 +94,18 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
     isAuthenticated ? {} : "skip"
   );
 
-  const mapTaskDoc = useCallback(
-    (task: MobileTask): MobileTask => ({
-      _id: task._id,
-      title: task.title,
-      description: task.description,
-      deadline: task.deadline,
-      scheduledAt: task.scheduledAt,
-      completedAt: task.completedAt,
-      cancelledAt: task.cancelledAt,
-      priority: task.priority,
-      position: task.position,
-      updatedAt: task.updatedAt,
-      createdAt: task.createdAt,
-    }),
-    []
-  );
-
   const inboxTasks = useMemo<MobileTask[]>(() => {
     return (
       (inboxQuery as MobileTask[] | undefined)
         ?.map(mapTaskDoc)
         .sort(compareTaskOrder) ?? []
     );
-  }, [inboxQuery, mapTaskDoc]);
+  }, [inboxQuery]);
 
   const scheduledTasks = useMemo<MobileTask[]>(() => {
     const flat = Object.values(timelineQuery ?? {}).flat() as MobileTask[];
-    return flat
-      .map(mapTaskDoc)
-      .sort(
-        (a, b) =>
-          (a.deadline ?? "").localeCompare(b.deadline ?? "") ||
-          compareTaskOrder(a, b)
-      );
-  }, [timelineQuery, mapTaskDoc]);
+    return buildScheduledTasks(flat);
+  }, [timelineQuery]);
 
   const completedTasks = useMemo<MobileTask[]>(() => {
     return (
@@ -95,12 +113,11 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
         ?.map(mapTaskDoc)
         .sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0)) ?? []
     );
-  }, [completedQuery, mapTaskDoc]);
+  }, [completedQuery]);
 
   const allWorkspaceTasks = useMemo<MobileTask[]>(
-    () =>
-      (allTasksQuery as MobileTask[] | undefined)?.map(mapTaskDoc) ?? [],
-    [allTasksQuery, mapTaskDoc]
+    () => (allTasksQuery as MobileTask[] | undefined)?.map(mapTaskDoc) ?? [],
+    [allTasksQuery]
   );
 
   const timelineSections = useMemo<[string, MobileTask[]][]>(() => {
