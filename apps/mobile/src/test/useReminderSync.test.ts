@@ -127,6 +127,61 @@ describe("useReminderSync", () => {
     expect(syncRemindersAsync).toHaveBeenCalledTimes(2);
   });
 
+  it("re-syncs when an overdue reflow moves deadlines and when undo restores them", () => {
+    const reflowedTasks: MobileTask[] = [
+      {
+        ...tasks[0],
+        deadline: "2026-06-23",
+      },
+      {
+        _id: "task-2" as MobileTask["_id"],
+        title: "Draft update",
+        deadline: "2026-06-24",
+        time: "14:00",
+        scheduledAt: 0,
+        position: 1,
+        updatedAt: 0,
+        createdAt: 0,
+      },
+    ];
+    const originalTasks: MobileTask[] = [
+      tasks[0],
+      {
+        ...reflowedTasks[1],
+        deadline: "2026-06-21",
+      },
+    ];
+
+    const { rerender } = renderHook(
+      ({ currentTasks, currentPrefs, enabled }) =>
+        useReminderSync(currentTasks, currentPrefs, enabled),
+      {
+        initialProps: {
+          currentTasks: originalTasks,
+          currentPrefs: prefs,
+          enabled: true,
+        },
+      },
+    );
+
+    rerender({
+      currentTasks: reflowedTasks,
+      currentPrefs: prefs,
+      enabled: true,
+    });
+
+    rerender({
+      currentTasks: originalTasks,
+      currentPrefs: prefs,
+      enabled: true,
+    });
+
+    expect(planReminders).toHaveBeenCalledTimes(3);
+    expect(planReminders).toHaveBeenNthCalledWith(2, reflowedTasks, prefs, expect.any(Date));
+    expect(planReminders).toHaveBeenNthCalledWith(3, originalTasks, prefs, expect.any(Date));
+    expect(syncRemindersAsync).toHaveBeenCalledTimes(3);
+  });
+
   it("re-syncs when reminder preferences change", () => {
     const { rerender } = renderHook(
       ({ currentTasks, currentPrefs, enabled }) =>

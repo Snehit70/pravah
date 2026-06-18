@@ -51,6 +51,9 @@ describe("wipeLocalAppData", () => {
     expect(clearKairoConfig).toHaveBeenCalledTimes(1);
     expect(multiRemove).toHaveBeenCalledWith(["pravah_a", "pravah_b"]);
     expect(deleteItemAsync).toHaveBeenCalledTimes(2);
+    expect(cancelAllRemindersAsync.mock.invocationCallOrder[0]).toBeLessThan(
+      multiRemove.mock.invocationCallOrder[0],
+    );
     expect(result).toEqual({ removedAsync: 2, removedSecure: 2 });
   });
 });
