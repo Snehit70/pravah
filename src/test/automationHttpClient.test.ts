@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { callConvexApi } from "../lib/automationHttpClient";
+import { callConvexApi } from "../../packages/cli/src/automationHttpClient";
 
 describe("automationHttpClient", () => {
   it("throws when convex url is missing", async () => {

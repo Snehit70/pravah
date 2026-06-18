@@ -4,10 +4,11 @@
   "version": "1.12.1",
   "type": "module",
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "bin": {
-    "pravah": "./src/cli/pravah.ts"
+    "pravah": "./packages/cli/src/pravah.ts"
   },
   "scripts": {
     "dev": "vite",
@@ -18,7 +19,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:ui": "vitest --ui",
-    "pravah": "bun run src/cli/pravah.ts",
+    "pravah": "bun run packages/cli/src/pravah.ts",
     "mobile:env": "bun scripts/sync-mobile-env.mjs",
     "mobile:start": "bun run mobile:env && bun run --cwd apps/mobile start",
     "mobile:android": "bun run mobile:env && bun scripts/run-mobile-android.mjs",

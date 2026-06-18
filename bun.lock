@@ -48,7 +48,7 @@
     },
     "apps/mobile": {
       "name": "@pravah/mobile",
-      "version": "2.2.0",
+      "version": "2.3.0",
       "dependencies": {
         "@convex-dev/better-auth": "^0.11.4",
         "@expo-google-fonts/geist": "^0.4.1",
@@ -95,6 +95,13 @@
         "@typescript/native-preview": "7.0.0-dev.20260421.2",
         "babel-preset-expo": "~56.0.0",
         "typescript": "~6.0.3",
+      },
+    },
+    "packages/cli": {
+      "name": "pravah",
+      "version": "0.1.0",
+      "bin": {
+        "pravah": "./dist/pravah.js",
       },
     },
   },
@@ -1330,6 +1337,8 @@
     "postcss": ["postcss@8.5.8", "", { "dependencies": { "nanoid": "^3.3.11", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, "sha512-OW/rX8O/jXnm82Ey1k44pObPtdblfiuWnrd8X7GJ7emImCOstunGbXUpp7HdBrFQX6rJzn3sPT397Wp5aCwCHg=="],
 
     "powershell-utils": ["powershell-utils@0.1.0", "", {}, "sha512-dM0jVuXJPsDN6DvRpea484tCUaMiXWjuCn++HGTqUWzGDjv5tZkEZldAJ/UMlqRYGFrD/etByo4/xOuC/snX2A=="],
+
+    "pravah": ["pravah@workspace:packages/cli"],
 
     "prelude-ls": ["prelude-ls@1.2.1", "", {}, "sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g=="],
 

@@ -3,10 +3,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { saveStoredCredential } from "../cli/authStore";
-import { executeCommand } from "../cli/commands";
-import { resolveCliHttpUrl } from "../cli/liveClient";
-import type { ParsedArgs } from "../cli/types";
+import { saveStoredCredential } from "../../packages/cli/src/authStore";
+import { executeCommand } from "../../packages/cli/src/commands";
+import { resolveCliHttpUrl } from "../../packages/cli/src/liveClient";
+import type { ParsedArgs } from "../../packages/cli/src/types";
 
 const env = process.env;
 const originalHttpUrl = env.PRAVAH_HTTP_URL;

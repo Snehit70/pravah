@@ -8,7 +8,7 @@ import {
   loadStoredCredential,
   parseCredentialImport,
   saveStoredCredential,
-} from "../cli/authStore";
+} from "../../packages/cli/src/authStore";
 
 const originalHome = process.env.HOME;
 const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;

@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { callConvexApi } from "../lib/automationHttpClient";
+import { callConvexApi } from "./automationHttpClient";
 import { loadStoredCredential, type StoredCredential } from "./authStore";
 
 interface CliEnv {

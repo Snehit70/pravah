@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'convex/_generated']),
+  globalIgnores(['dist', 'convex/_generated', 'packages/*/dist']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -27,7 +27,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['scripts/**/*.{js,mjs,ts}', 'convex/**/*.ts', 'vite.config.ts'],
+    files: ['scripts/**/*.{js,mjs,ts}', 'convex/**/*.ts', 'packages/cli/src/**/*.ts', 'vite.config.ts'],
     languageOptions: {
       globals: globals.node,
     },
