@@ -1,6 +1,7 @@
 /// <reference types="node" />
 import { randomUUID } from "node:crypto";
 import { hasFlag, readOption } from "./args";
+import { getCommandOptionKinds, getCommandSpec } from "./commandSpec";
 import type { ParsedArgs } from "./types";
 
 const TASK_STATUSES = [
@@ -13,113 +14,19 @@ const TASK_STATUSES = [
 const REVIEW_STATUSES = ["pending", "approved", "rejected"] as const;
 const TASK_PRIORITIES = ["p1", "p2", "p3"] as const;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-type OptionKind = "flag" | "value";
-
-const GLOBAL_OPTIONS: Record<string, OptionKind> = {
-  json: "flag",
-};
-const WRITE_OPTIONS: Record<string, OptionKind> = {
-  "dry-run": "flag",
-  "idempotency-key": "value",
-  "operation-group-id": "value",
-};
-const TASK_ID_WRITE_OPTIONS: Record<string, OptionKind> = {
-  "task-id": "value",
-  ...WRITE_OPTIONS,
-};
-
-const COMMAND_OPTIONS: Record<string, Record<string, OptionKind>> = {
-  capabilities: {},
-  "auth import": {
-    "bootstrap-token": "value",
-    "credential-file": "value",
-  },
-  "auth whoami": {},
-  "auth list-scopes": {},
-  "goals list": {},
-  "goals get": { "goal-id": "value" },
-  "goals search": { query: "value", limit: "value" },
-  "goals create": {
-    "goal-id": "value",
-    text: "value",
-    description: "value",
-    deadline: "value",
-    priority: "value",
-    ...WRITE_OPTIONS,
-  },
-  "goals update": {
-    "goal-id": "value",
-    description: "value",
-    deadline: "value",
-    priority: "value",
-    ...WRITE_OPTIONS,
-  },
-  "goals delete": {
-    "goal-id": "value",
-    "confirm-goal-delete": "flag",
-    ...WRITE_OPTIONS,
-  },
-  "tasks list": { status: "value", date: "value" },
-  "tasks get": { "task-id": "value" },
-  "tasks search": { query: "value", status: "value", limit: "value" },
-  "tasks inbox": {},
-  "tasks timeline": { "end-date": "value" },
-  "review list": { status: "value", limit: "value" },
-  "sync status": { provider: "value" },
-  "agent context": {},
-  "agent task": { "task-id": "value" },
-  "tasks add": {
-    title: "value",
-    description: "value",
-    deadline: "value",
-    priority: "value",
-    tags: "value",
-    "estimated-minutes": "value",
-    ...WRITE_OPTIONS,
-  },
-  "tasks move": {
-    "target-date": "value",
-    ...TASK_ID_WRITE_OPTIONS,
-  },
-  "tasks update": {
-    ...TASK_ID_WRITE_OPTIONS,
-    title: "value",
-    description: "value",
-    deadline: "value",
-    priority: "value",
-    tags: "value",
-    "estimated-minutes": "value",
-  },
-  "tasks delete": {
-    ...TASK_ID_WRITE_OPTIONS,
-    "confirm-task-delete": "flag",
-  },
-  "tasks link-goal": {
-    ...TASK_ID_WRITE_OPTIONS,
-    "goal-id": "value",
-  },
-  "tasks unlink-goal": TASK_ID_WRITE_OPTIONS,
-  "tasks complete": TASK_ID_WRITE_OPTIONS,
-  "tasks reopen": TASK_ID_WRITE_OPTIONS,
-  "tasks unschedule": TASK_ID_WRITE_OPTIONS,
-  "operations list": { limit: "value", "operation-group-id": "value" },
-  "operations get": { "operation-id": "value" },
-  "operations undo": {
-    "operation-id": "value",
-    "operation-group-id": "value",
-    ...WRITE_OPTIONS,
-  },
-};
 
 export function validateCommandArgs(command: string, args: ParsedArgs) {
-  if (args.positionals.length !== (command === "capabilities" ? 1 : 2)) {
+  const spec = getCommandSpec(command);
+  if (!spec) return;
+
+  if (args.positionals.length !== spec.path.length) {
     throw new Error(`Unexpected positional arguments for ${command}`);
   }
-  const commandOptions = COMMAND_OPTIONS[command];
+  const commandOptions = getCommandOptionKinds(command);
   if (!commandOptions) return;
 
   for (const [key, value] of Object.entries(args.options)) {
-    const kind = commandOptions[key] ?? GLOBAL_OPTIONS[key];
+    const kind = commandOptions[key];
     if (!kind) {
       throw new Error(`Unknown option --${key} for ${command}`);
     }
@@ -131,11 +38,8 @@ export function validateCommandArgs(command: string, args: ParsedArgs) {
     }
   }
 
-  if (command === "goals delete" && !hasFlag(args.options, "confirm-goal-delete")) {
-    throw new Error("--confirm-goal-delete is required for goals delete");
-  }
-  if (command === "tasks delete" && !hasFlag(args.options, "confirm-task-delete")) {
-    throw new Error("--confirm-task-delete is required for tasks delete");
+  if (spec.confirmationFlag && !hasFlag(args.options, spec.confirmationFlag)) {
+    throw new Error(`--${spec.confirmationFlag} is required for ${command}`);
   }
 }
 
