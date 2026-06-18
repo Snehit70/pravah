@@ -1,5 +1,6 @@
 /// <reference types="node" />
 import { readFileSync } from "node:fs";
+import { createInterface } from "node:readline/promises";
 import { readOption } from "./args";
 import {
   COMMAND_SPECS,
@@ -55,6 +56,35 @@ function unknownCommandError(input: string, candidates?: readonly string[]) {
   return suggestion
     ? new Error(`Unknown command: ${input}. Did you mean \`${suggestion}\`?`)
     : new Error(`Unknown command: ${input}`);
+}
+
+function normalizeSetupUrl(value: string) {
+  const normalized = value.trim().replace(/\/+$/, "");
+  if (!normalized) {
+    throw new Error("Setup requires a deployment URL");
+  }
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error("invalid");
+    }
+    return normalized;
+  } catch {
+    throw new Error("Setup requires a valid http(s) deployment URL");
+  }
+}
+
+async function exchangeBootstrapCredential(bootstrapToken: string, siteUrl?: string) {
+  const authClient = createCliAuthClient({
+    ...process.env,
+    PRAVAH_HTTP_URL: siteUrl ?? process.env.PRAVAH_HTTP_URL,
+  });
+  if (!authClient) {
+    throw new Error(
+      "CLI HTTP URL is not configured. Set PRAVAH_HTTP_URL or CONVEX_SITE_URL before importing a bootstrap token."
+    );
+  }
+  return authClient.exchangeBootstrapToken(bootstrapToken);
 }
 
 function resolveHelpOutput(args: ParsedArgs): CliTextResult {
@@ -128,13 +158,7 @@ async function importCredential(args: ParsedArgs) {
 
   let imported;
   if (bootstrapToken) {
-    const authClient = createCliAuthClient(process.env);
-    if (!authClient) {
-      throw new Error(
-        "CLI HTTP URL is not configured. Set PRAVAH_HTTP_URL or CONVEX_SITE_URL before importing a bootstrap token."
-      );
-    }
-    imported = await authClient.exchangeBootstrapToken(bootstrapToken);
+    imported = await exchangeBootstrapCredential(bootstrapToken);
   } else if (credentialFile) {
     imported = parseCredentialImport(readFileSync(credentialFile, "utf8"));
   } else {
@@ -173,20 +197,59 @@ function getCredentialContext() {
   );
 }
 
+function buildWhoamiPayload() {
+  const { credential, source } = getCredentialContext();
+  return {
+    userId: credential.userId ?? credential.ownerTokenIdentifier,
+    email: credential.email ?? null,
+    credentialLabel: credential.label,
+    siteUrl: credential.siteUrl ?? resolveCliHttpUrl(process.env) ?? null,
+    ownerTokenIdentifier: credential.ownerTokenIdentifier,
+    source,
+  };
+}
+
+async function runSetupFlow(args: ParsedArgs) {
+  const providedUrl = readOption(args.options, "url");
+  const providedBootstrapToken = readOption(args.options, "bootstrap-token");
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  try {
+    const siteUrl = normalizeSetupUrl(
+      providedUrl ?? await rl.question("Deployment URL: ")
+    );
+    const bootstrapToken = (providedBootstrapToken ?? await rl.question("Bootstrap token: ")).trim();
+    if (!bootstrapToken) {
+      throw new Error("Setup requires a bootstrap token");
+    }
+
+    const imported = await exchangeBootstrapCredential(bootstrapToken, siteUrl);
+    saveStoredCredential({
+      ...imported,
+      siteUrl,
+    });
+
+    return {
+      configured: true,
+      ...buildWhoamiPayload(),
+    };
+  } finally {
+    rl.close();
+  }
+}
+
 function executeAuthCommand(command: string, args: ParsedArgs) {
   if (command === "auth import") {
     return importCredential(args);
   }
+  if (command === "auth login" || command === "setup") {
+    return runSetupFlow(args);
+  }
   if (command === "auth whoami") {
-    const { credential, source } = getCredentialContext();
-    return {
-      userId: credential.userId ?? credential.ownerTokenIdentifier,
-      email: credential.email ?? null,
-      credentialLabel: credential.label,
-      siteUrl: credential.siteUrl ?? resolveCliHttpUrl(process.env) ?? null,
-      ownerTokenIdentifier: credential.ownerTokenIdentifier,
-      source,
-    };
+    return buildWhoamiPayload();
   }
   if (command === "auth list-scopes") {
     const { credential, source } = getCredentialContext();

@@ -67,6 +67,17 @@ export const COMMAND_SPECS: readonly CommandSpec[] = [
     options: [],
   },
   {
+    path: ["setup"],
+    summary: "Guide first-run CLI authentication and persist the deployment URL.",
+    description: "Prompt for, or accept, a deployment URL and bootstrap token, then exchange and persist the credential for later commands.",
+    kind: "auth",
+    requiredScopes: [],
+    options: [
+      { name: "url", kind: "value", valueLabel: "<http(s)://site>", description: "Deployment URL to persist alongside the imported credential." },
+      { name: "bootstrap-token", kind: "value", valueLabel: "<token>", description: "Bootstrap token to exchange during setup." },
+    ],
+  },
+  {
     path: ["auth", "import"],
     summary: "Import a bootstrap token or credential file into local CLI storage.",
     description: "Store one CLI credential locally by exchanging a bootstrap token or reading a credential export file.",
@@ -75,6 +86,17 @@ export const COMMAND_SPECS: readonly CommandSpec[] = [
     options: [
       { name: "bootstrap-token", kind: "value", valueLabel: "<token>", description: "Bootstrap token to exchange for a stored CLI credential." },
       { name: "credential-file", kind: "value", valueLabel: "<path>", description: "Path to an exported credential JSON file." },
+    ],
+  },
+  {
+    path: ["auth", "login"],
+    summary: "Run the guided setup flow under the auth namespace.",
+    description: "Alias of `pravah setup` for environments that prefer the auth namespace while preserving the same deployment URL and bootstrap-token prompts.",
+    kind: "auth",
+    requiredScopes: [],
+    options: [
+      { name: "url", kind: "value", valueLabel: "<http(s)://site>", description: "Deployment URL to persist alongside the imported credential." },
+      { name: "bootstrap-token", kind: "value", valueLabel: "<token>", description: "Bootstrap token to exchange during setup." },
     ],
   },
   {
