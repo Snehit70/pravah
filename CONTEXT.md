@@ -6,6 +6,7 @@ This context defines the planning language for the timeline-first personal task 
 
 **Timeline**:
 The dated planning surface where scheduled tasks live.
+Within a single day, Tasks whose Deadline has a time-of-day are ordered chronologically and shown above date-only Tasks, which keep their manual position.
 _Avoid_: calendar, planner
 
 **Inbox**:
@@ -29,8 +30,14 @@ _Avoid_: multi-goal task, shared task
 
 **Deadline**:
 The single user-facing date that marks when a task is expected to be completed.
+A Deadline may optionally carry a **time-of-day**; without one it is a date-only deadline.
+A time-of-day cannot exist without a deadline date. Semantically the Deadline is still a deadline, but the optional time also lets a user mark a moment-in-day event.
 Tasks with a deadline appear on the Timeline. Tasks without a deadline live in the Inbox. The Timeline is a single ordered lane keyed by deadline.
 _Avoid_: due date, scheduled date
+
+**Reminder**:
+A local device notification Pravah raises for a dated Task. A Task whose Deadline has a time-of-day is reminded at that time; a date-only Deadline is reminded at a default morning time the user can change.
+_Avoid_: alert, push (this system is local-only, not server push)
 
 **Scheduled At**:
 An immutable timestamp recording when a task was created in Pravah.
