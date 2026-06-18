@@ -728,6 +728,150 @@ describe("pravah CLI", () => {
     });
   });
 
+  it("persists the deployment URL during setup for later commands", async () => {
+    const home = mkdtempSync(join(tmpdir(), "pravah-cli-home-"));
+    let sawBearerWrite = false;
+    const server = createServer((request, response) => {
+      if (
+        request.method === "POST" &&
+        request.url === "/automation/bootstrap/exchange"
+      ) {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(
+          JSON.stringify({
+            credential: {
+              secret: "pravah_cred_setup",
+              label: "Setup laptop",
+              scopes: ["tasks:read", "tasks:write"],
+              ownerTokenIdentifier: "user-setup",
+              userId: "user-setup",
+              email: "setup@example.com",
+            },
+          })
+        );
+        return;
+      }
+
+      if (request.method === "POST" && request.url === "/tasks/complete") {
+        sawBearerWrite = request.headers.authorization === "Bearer pravah_cred_setup";
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ success: true, replayed: false }));
+        return;
+      }
+
+      response.writeHead(404, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ error: "Not found" }));
+    });
+
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      server.listen(0, "127.0.0.1", () => resolvePromise());
+      server.once("error", rejectPromise);
+    });
+
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Failed to determine test server address");
+      }
+      const baseUrl = `http://127.0.0.1:${address.port}`;
+
+      const setupResult = await runCliAsync(
+        ["setup", "--url", baseUrl, "--bootstrap-token", "pravah_bootstrap_setup", "--json"],
+        {
+          HOME: home,
+          PRAVAH_CLI_MOCK: "0",
+        }
+      );
+      expect(setupResult.status).toBe(0);
+      const setupPayload = JSON.parse(setupResult.stdout);
+      expect(setupPayload.data).toMatchObject({
+        configured: true,
+        credentialLabel: "Setup laptop",
+        ownerTokenIdentifier: "user-setup",
+        siteUrl: baseUrl,
+        source: "local",
+      });
+
+      const completeResult = await runCliAsync(
+        ["tasks", "complete", "--task-id", "task_live_1", "--json"],
+        { HOME: home, PRAVAH_CLI_MOCK: "0" }
+      );
+      expect(completeResult.status).toBe(0);
+      expect(JSON.parse(completeResult.stdout).data).toMatchObject({
+        action: "tasks.complete",
+        source: "live",
+      });
+      expect(sawBearerWrite).toBe(true);
+    } finally {
+      server.close();
+    }
+  }, 15000);
+
+  it("supports auth login as a setup alias", async () => {
+    const home = mkdtempSync(join(tmpdir(), "pravah-cli-home-"));
+    const server = createServer((request, response) => {
+      if (
+        request.method === "POST" &&
+        request.url === "/automation/bootstrap/exchange"
+      ) {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(
+          JSON.stringify({
+            credential: {
+              secret: "pravah_cred_login",
+              label: "Alias login",
+              scopes: ["tasks:read"],
+              ownerTokenIdentifier: "user-login",
+              siteUrl: "http://127.0.0.1",
+            },
+          })
+        );
+        return;
+      }
+
+      response.writeHead(404, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ error: "Not found" }));
+    });
+
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      server.listen(0, "127.0.0.1", () => resolvePromise());
+      server.once("error", rejectPromise);
+    });
+
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Failed to determine test server address");
+      }
+      const baseUrl = `http://127.0.0.1:${address.port}`;
+
+      const loginResult = await runCliAsync(
+        ["auth", "login", "--url", baseUrl, "--bootstrap-token", "pravah_bootstrap_alias", "--json"],
+        { HOME: home, PRAVAH_CLI_MOCK: "0" }
+      );
+      expect(loginResult.status).toBe(0);
+      expect(JSON.parse(loginResult.stdout).data).toMatchObject({
+        configured: true,
+        credentialLabel: "Alias login",
+        ownerTokenIdentifier: "user-login",
+        siteUrl: baseUrl,
+      });
+
+      const whoamiResult = await runCliAsync(["auth", "whoami", "--json"], {
+        HOME: home,
+        PRAVAH_CLI_MOCK: "0",
+      });
+      expect(whoamiResult.status).toBe(0);
+      expect(JSON.parse(whoamiResult.stdout).data).toMatchObject({
+        credentialLabel: "Alias login",
+        ownerTokenIdentifier: "user-login",
+        siteUrl: baseUrl,
+      });
+    } finally {
+      server.close();
+    }
+  }, 15000);
+
   it("requires exactly one credential import source", () => {
     const result = runCli(
       [
