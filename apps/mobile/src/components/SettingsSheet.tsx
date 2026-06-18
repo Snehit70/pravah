@@ -31,7 +31,7 @@ import * as SecureStore from "expo-secure-store";
 import * as Clipboard from "expo-clipboard";
 import { classifyError, mobileLogger } from "../lib/logger";
 import { colors, radii, spacing, typography } from "../theme/tokens";
-import { isWithinQuietHours, type NotificationPermissionState } from "../lib/notifications";
+import type { NotificationPermissionState } from "../lib/notifications";
 import { KairoSettingsSection } from "./KairoSettingsSection";
 import { GmailReviewSection } from "./GmailReviewSection";
 import type { GoogleCalendarOption, IntegrationLastRunSummary, SyncHealth } from "../hooks/useIntegrationsSettings";
@@ -39,7 +39,7 @@ import { summarizeSyncError } from "../hooks/useIntegrationsSettings";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 
-type QuietPickerKind = "reminder" | "quietStart" | "quietEnd";
+type QuietPickerKind = "quietStart" | "quietEnd";
 
 function timeToDate(value: string): Date {
   const [h, m] = value.split(":").map((n) => Number(n));
@@ -171,7 +171,6 @@ type SettingsSheetProps = {
   pendingGmailReviewCount: number;
   notificationPermissionState: NotificationPermissionState;
   notificationsEnabled: boolean;
-  isDailyReminderEnabled: boolean;
   isCalendarSyncing: boolean;
   isGoogleToggleSaving: boolean;
   isGmailToggleSaving: boolean;
@@ -183,7 +182,6 @@ type SettingsSheetProps = {
   onEnableAndSyncGoogleCalendar: () => void;
   onGmailToggle: () => void;
   onRequestNotificationsAccess: () => void;
-  onToggleDailyReminder: () => void;
   onSendTestNotification: () => void;
   onSignOut: () => void;
   onExportTasks: () => void;
@@ -213,7 +211,6 @@ export function SettingsSheet({
   pendingGmailReviewCount,
   notificationPermissionState,
   notificationsEnabled,
-  isDailyReminderEnabled,
   isCalendarSyncing,
   isGoogleToggleSaving,
   isGmailToggleSaving,
@@ -225,7 +222,6 @@ export function SettingsSheet({
   onEnableAndSyncGoogleCalendar,
   onGmailToggle,
   onRequestNotificationsAccess,
-  onToggleDailyReminder,
   onSendTestNotification,
   onSignOut,
   onExportTasks,
@@ -388,18 +384,11 @@ export function SettingsSheet({
       if (Platform.OS === "android") setOpenPicker(null);
       if (!picked) return;
       const value = dateToTime(picked);
-      if (kind === "reminder") void setPreference("dailyReminderTime", value);
-      else if (kind === "quietStart") void setPreference("quietHoursStart", value);
+      if (kind === "quietStart") void setPreference("quietHoursStart", value);
       else void setPreference("quietHoursEnd", value);
     },
     [setPreference],
   );
-
-  const reminderInQuietHours = isWithinQuietHours(prefs.dailyReminderTime, {
-    enabled: prefs.quietHoursEnabled,
-    start: prefs.quietHoursStart,
-    end: prefs.quietHoursEnd,
-  });
 
   // Reset to the first tab whenever the sheet opens so users always land in
   // the same predictable place rather than wherever they last were.
@@ -954,7 +943,7 @@ export function SettingsSheet({
 
               <View style={[styles.settingBlock, styles.sectionCard]}>
                 <Text style={styles.settingLabel}>Notifications</Text>
-                <Text style={styles.settingHelp}>Daily reminders and test alerts for mobile follow-through.</Text>
+                <Text style={styles.settingHelp}>Task Reminders fire at a timed Task's Deadline.</Text>
                 <Text style={[styles.settingStatus, { color: statusTextColor(notificationPermissionState) }]}>
                   {formatStatusLabel(notificationPermissionState)}
                 </Text>
@@ -972,46 +961,6 @@ export function SettingsSheet({
                       Enable notifications
                     </Text>
                   </Pressable>
-                ) : null}
-              </View>
-
-              <View style={[styles.settingBlock, styles.sectionCard]}>
-                <View style={styles.settingRow}>
-                  <View style={styles.settingCopy}>
-                    <Text style={styles.settingLabel}>Daily reminder</Text>
-                    <Text style={styles.settingHelp}>
-                      Send one reminder every day at the time you choose.
-                    </Text>
-                  </View>
-                  <Switch
-                    value={isDailyReminderEnabled}
-                    onValueChange={onToggleDailyReminder}
-                    disabled={isNotificationsBusy}
-                    trackColor={{ false: colors.border, true: colors.accentSoft }}
-                    thumbColor={isDailyReminderEnabled ? colors.accent : colors.textMuted}
-                  />
-                </View>
-
-                <Pressable
-                  onPress={() => setOpenPicker("reminder")}
-                  disabled={!isDailyReminderEnabled || isNotificationsBusy}
-                  hitSlop={12}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Change reminder time, currently ${formatClockLabel(prefs.dailyReminderTime)}`}
-                  style={({ pressed }) => [
-                    styles.timeRow,
-                    !isDailyReminderEnabled && { opacity: 0.5 },
-                    pressed && { opacity: 0.7 },
-                  ]}
-                >
-                  <Text style={styles.settingMeta}>Reminder time</Text>
-                  <Text style={styles.timeRowValue}>{formatClockLabel(prefs.dailyReminderTime)}</Text>
-                </Pressable>
-
-                {reminderInQuietHours ? (
-                  <Text style={[styles.settingMeta, { color: colors.accent }]}>
-                    This time falls within your quiet hours — the reminder will still fire.
-                  </Text>
                 ) : null}
 
                 <Pressable
@@ -1033,8 +982,8 @@ export function SettingsSheet({
                   <View style={styles.settingCopy}>
                     <Text style={styles.settingLabel}>Quiet hours</Text>
                     <Text style={styles.settingHelp}>
-                      A window where notifications are paused. Applies to future
-                      ad-hoc alerts; daily reminders still fire.
+                      A window where auto-chosen notification times are adjusted to
+                      fire outside this range. Explicit timed Task Reminders still fire.
                     </Text>
                   </View>
                   <Switch
@@ -1081,11 +1030,7 @@ export function SettingsSheet({
               {openPicker !== null ? (
                 <DateTimePicker
                   value={timeToDate(
-                    openPicker === "reminder"
-                      ? prefs.dailyReminderTime
-                      : openPicker === "quietStart"
-                        ? prefs.quietHoursStart
-                        : prefs.quietHoursEnd,
+                    openPicker === "quietStart" ? prefs.quietHoursStart : prefs.quietHoursEnd,
                   )}
                   mode="time"
                   is24Hour={false}

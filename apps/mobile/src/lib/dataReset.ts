@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import { clearKairoConfig } from "./kairoConfig";
-import { disableDailyReminderAsync } from "./notifications";
+import { cancelAllRemindersAsync } from "./syncReminders";
 import { classifyError, mobileLogger } from "./logger";
 
 // Keys touched by the secure-store backed parts of the app. Listed explicitly
@@ -9,6 +9,9 @@ import { classifyError, mobileLogger } from "./logger";
 // other libraries put on the device (e.g. auth tokens that belong to OS-level
 // SDKs).
 const SECURE_STORE_KEYS = [
+  // Legacy key: the old daily-reminder notification ID stored its OS identifier
+  // here. The reminder system no longer uses SecureStore, but this key is kept
+  // in the wipe list so a user upgrading from the old version cleans it up.
   "pravah_daily_reminder_notification_id_v1",
   // Legacy retry-queue location: older app versions wrote this to SecureStore
   // directly; current versions fall back to it when AsyncStorage is unavailable.
@@ -23,12 +26,12 @@ export async function wipeLocalAppData(): Promise<{ removedAsync: number; remove
   let removedAsync = 0;
   let removedSecure = 0;
 
-  // Cancel any scheduled daily reminder before its SecureStore ID is removed;
-  // without this the orphaned OS notification keeps firing with no way to cancel it.
+  // Cancel all planner-managed Reminders so no orphaned OS notifications fire
+  // after the reset.
   try {
-    await disableDailyReminderAsync();
+    await cancelAllRemindersAsync();
   } catch (error) {
-    mobileLogger.warn("wipe_disable_reminder_failed", { errorType: classifyError(error) });
+    mobileLogger.warn("wipe_cancel_reminders_failed", { errorType: classifyError(error) });
   }
 
   // Clear Kairo provider config from SecureStore. These keys are not in
