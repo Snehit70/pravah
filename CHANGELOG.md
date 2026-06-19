@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.13.3](https://github.com/Snehit70/pravah/compare/web-v1.13.2...web-v1.13.3) (2026-06-19)
+
+
+### Bug Fixes
+
+* **mobile:** use modal-safe kairo settings inputs ([2b44a37](https://github.com/Snehit70/pravah/commit/2b44a37cd34c5af68b08bd40f1492e2699e7e225))
+* **mobile:** use modal-safe Kairo settings inputs ([2e3843b](https://github.com/Snehit70/pravah/commit/2e3843bbf0d2ca5e751733d926b05e190a045c92))
+
 ## [1.13.2](https://github.com/Snehit70/pravah/compare/web-v1.13.1...web-v1.13.2) (2026-06-19)
 
 
