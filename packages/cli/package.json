@@ -1,6 +1,6 @@
 {
   "name": "pravah",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Timeline-based task manager with AI agent API support",
   "type": "module",
   "bin": {
