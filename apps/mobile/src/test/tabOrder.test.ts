@@ -4,6 +4,7 @@ import {
   DEFAULT_TAB_ORDER,
   moveTabOrder,
   resolveTabOrder,
+  resolveStartupTab,
   sanitizeTabOrder,
 } from "../lib/tabOrder";
 
@@ -36,5 +37,10 @@ describe("tab order helpers", () => {
     ]);
     expect(moveTabOrder(DEFAULT_TAB_ORDER, "inbox", "up")).toEqual(DEFAULT_TAB_ORDER);
     expect(moveTabOrder(DEFAULT_TAB_ORDER, "insights", "down")).toEqual(DEFAULT_TAB_ORDER);
+  });
+
+  it("uses the first resolved tab as the startup tab", () => {
+    expect(resolveStartupTab(["goals", "timeline", "inbox", "insights"])).toBe("goals");
+    expect(resolveStartupTab(["goals", "timeline", "inbox"])).toBe("inbox");
   });
 });
