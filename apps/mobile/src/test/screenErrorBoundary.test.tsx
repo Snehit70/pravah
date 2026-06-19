@@ -38,6 +38,10 @@ vi.mock("react-native", () => {
 
 vi.mock("../lib/logger", () => ({
   classifyError: () => "render_error",
+  describeErrorForDiagnostics: () => ({
+    errorName: "Error",
+    errorMessage: "intentional test crash",
+  }),
   mobileLogger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
 

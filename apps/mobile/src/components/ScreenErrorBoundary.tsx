@@ -1,6 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { classifyError, mobileLogger } from "../lib/logger";
+import { classifyError, describeErrorForDiagnostics, mobileLogger } from "../lib/logger";
 import { getDiagnosticsRuntimeState } from "../lib/diagnostics";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 
@@ -30,8 +30,7 @@ export class ScreenErrorBoundary extends Component<
     mobileLogger.error("screen_error_boundary_caught", {
       screenName: this.props.screenName,
       errorType: classifyError(error),
-      errorMessage: error.message,
-      errorStack: error.stack,
+      ...describeErrorForDiagnostics(error),
       componentStack: errorInfo.componentStack,
       runtime,
     });

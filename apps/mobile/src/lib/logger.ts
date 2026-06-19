@@ -99,6 +99,36 @@ export function classifyError(error: unknown): ErrorKind {
   return "unexpected";
 }
 
+export function describeErrorForDiagnostics(error: unknown): Record<string, unknown> {
+  if (error instanceof Error) {
+    return {
+      errorName: error.name,
+      errorMessage: error.message,
+      errorStack: error.stack,
+    };
+  }
+
+  if (typeof error === "object" && error !== null) {
+    const record = error as Record<string, unknown>;
+    return {
+      errorName: typeof record.name === "string" ? record.name : "NonErrorThrow",
+      errorMessage:
+        typeof record.message === "string"
+          ? record.message
+          : "A non-Error object was thrown.",
+      errorStack: typeof record.stack === "string" ? record.stack : undefined,
+      thrownValueType: "object",
+      thrownValueKeys: Object.keys(record).slice(0, 20),
+    };
+  }
+
+  return {
+    errorName: "NonErrorThrow",
+    errorMessage: String(error),
+    thrownValueType: typeof error,
+  };
+}
+
 export const mobileLogger = {
   debug: (event: string, context?: LogContext) => writeLog("debug", event, context),
   info: (event: string, context?: LogContext) => writeLog("info", event, context),

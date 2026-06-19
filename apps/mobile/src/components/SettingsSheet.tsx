@@ -12,7 +12,6 @@ import {
   View,
 } from "react-native";
 import { useMutation, useQuery } from "convex/react";
-import Animated, { SlideInLeft, SlideInRight } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
 import * as SecureStore from "expo-secure-store";
@@ -21,7 +20,6 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import type { NotificationPermissionState } from "../lib/notifications";
 import { colors, radii, spacing, typography } from "../theme/tokens";
-import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { getOrCreateDeviceId } from "../lib/deviceIdentity";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
@@ -92,8 +90,6 @@ type SettingsSheetProps = {
   calendarLastError?: string;
   gmailLastError?: string;
 };
-
-type NavDirection = "forward" | "backward";
 
 const REMINDER_LEAD_TIME_OPTIONS = [5, 15, 30, 60] as const;
 const READ_ONLY_AUTOMATION_SCOPES = ["tasks:read", "review:read", "sync:read"] as const;
@@ -1434,12 +1430,10 @@ export function SettingsSheet({
   gmailLastError,
 }: SettingsSheetProps) {
   const insets = useSafeAreaInsets();
-  const reducedMotion = useReducedMotion();
   const [navigation, dispatchNavigation] = useReducer(
     settingsNavigationReducer,
     INITIAL_SETTINGS_NAVIGATION,
   );
-  const [navDirection, setNavDirection] = useState<NavDirection>("forward");
   const { prefs, setPreference } = useUserPreferences();
   const tabOrder = resolveTabOrder(prefs.tabOrder);
   const [openPicker, setOpenPicker] = useState<QuietPickerKind | null>(null);
@@ -1474,7 +1468,6 @@ export function SettingsSheet({
       return;
     }
     dispatchNavigation({ type: "reset" });
-    setNavDirection("forward");
   }, [visible]);
 
   useEffect(() => {
@@ -1494,7 +1487,6 @@ export function SettingsSheet({
     if (navigation.screen === "detail") {
       Keyboard.dismiss();
       setOpenPicker(null);
-      setNavDirection("backward");
       dispatchNavigation({ type: "back" });
       return;
     }
@@ -1503,7 +1495,6 @@ export function SettingsSheet({
 
   const handleOpenCategory = useCallback((category: SettingsCategoryKey) => {
     Keyboard.dismiss();
-    setNavDirection("forward");
     dispatchNavigation({ type: "open", category });
   }, []);
 
@@ -1663,18 +1654,11 @@ export function SettingsSheet({
           </View>
         </View>
 
-        <Animated.View
+        <View
           key={
             navigation.screen === "detail"
               ? `detail-${navigation.category}`
               : "list"
-          }
-          entering={
-            reducedMotion
-              ? undefined
-              : navDirection === "forward"
-                ? SlideInRight.duration(180)
-                : SlideInLeft.duration(180)
           }
           style={styles.contentWrap}
         >
@@ -1753,7 +1737,7 @@ export function SettingsSheet({
               })
             )}
           </ScrollView>
-        </Animated.View>
+        </View>
       </View>
     </Modal>
   );
