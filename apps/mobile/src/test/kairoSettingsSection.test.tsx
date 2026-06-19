@@ -9,6 +9,8 @@
  */
 
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -49,20 +51,17 @@ vi.mock("react-native", () => {
       resolved,
     );
   };
-  return {
-    View,
-    Text,
-    Pressable,
-    StyleSheet: { create: <T,>(s: T) => s, hairlineWidth: 1 },
-  };
-});
-
-// ─── @gorhom/bottom-sheet mock ────────────────────────────────────────────────
-vi.mock("@gorhom/bottom-sheet", () => ({
-  BottomSheetTextInput: ({
+  const TextInput = ({
     value,
     onChangeText,
     placeholder,
+    autoCapitalize: _autoCapitalize,
+    autoCorrect: _autoCorrect,
+    editable: _editable,
+    placeholderTextColor: _placeholderTextColor,
+    secureTextEntry: _secureTextEntry,
+    style: _style,
+    ...rest
   }: {
     value?: string;
     onChangeText?: (v: string) => void;
@@ -70,11 +69,19 @@ vi.mock("@gorhom/bottom-sheet", () => ({
     [key: string]: unknown;
   }) =>
     React.createElement("input", {
+      ...rest,
       value: value ?? "",
       onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChangeText?.(e.target.value),
       placeholder,
-    }),
-}));
+    });
+  return {
+    View,
+    Text,
+    TextInput,
+    Pressable,
+    StyleSheet: { create: <T,>(s: T) => s, hairlineWidth: 1 },
+  };
+});
 
 // ─── react-native-reanimated mock ─────────────────────────────────────────────
 vi.mock("react-native-reanimated", () => ({
@@ -161,6 +168,19 @@ describe("KairoSettingsSection", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("does not depend on bottom-sheet internals inside Settings", () => {
+    const repoRootPath = resolve(
+      process.cwd(),
+      "apps/mobile/src/components/KairoSettingsSection.tsx",
+    );
+    const sourcePath = existsSync(repoRootPath)
+      ? repoRootPath
+      : resolve(process.cwd(), "src/components/KairoSettingsSection.tsx");
+    const source = readFileSync(sourcePath, "utf8");
+    expect(source).not.toContain("@gorhom/bottom-sheet");
+    expect(source).not.toContain("BottomSheetTextInput");
   });
 
   it("shows the loading skeleton while SecureStore resolves", () => {

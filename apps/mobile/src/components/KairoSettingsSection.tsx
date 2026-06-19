@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import {
   KAIRO_DEFAULTS,
@@ -196,7 +195,7 @@ export function KairoSettingsSection() {
       </Pressable>
 
       <View style={styles.apiKeyRow}>
-        <BottomSheetTextInput
+        <TextInput
           value={activeProfile.apiKey}
           onChangeText={(v) => updateActiveProfile({ apiKey: v })}
           placeholder="API key"
@@ -238,7 +237,7 @@ export function KairoSettingsSection() {
           style={styles.advancedWrap}
         >
           <Text style={styles.advancedLabel}>Endpoint URL</Text>
-          <BottomSheetTextInput
+          <TextInput
             value={activeProfile.baseUrl}
             onChangeText={(v) => updateActiveProfile({ baseUrl: v })}
             placeholder={placeholders.baseUrl}
@@ -249,7 +248,7 @@ export function KairoSettingsSection() {
             style={styles.input}
           />
           <Text style={styles.advancedLabel}>Model</Text>
-          <BottomSheetTextInput
+          <TextInput
             value={activeProfile.model}
             onChangeText={(v) => updateActiveProfile({ model: v })}
             placeholder={placeholders.model}
