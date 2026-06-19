@@ -9,7 +9,8 @@
  */
 
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -170,7 +171,14 @@ describe("KairoSettingsSection", () => {
   });
 
   it("does not depend on bottom-sheet internals inside Settings", () => {
-    const source = readFileSync("src/components/KairoSettingsSection.tsx", "utf8");
+    const repoRootPath = resolve(
+      process.cwd(),
+      "apps/mobile/src/components/KairoSettingsSection.tsx",
+    );
+    const sourcePath = existsSync(repoRootPath)
+      ? repoRootPath
+      : resolve(process.cwd(), "src/components/KairoSettingsSection.tsx");
+    const source = readFileSync(sourcePath, "utf8");
     expect(source).not.toContain("@gorhom/bottom-sheet");
     expect(source).not.toContain("BottomSheetTextInput");
   });
