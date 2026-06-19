@@ -34,6 +34,10 @@ export function resolveTabOrder(value: unknown): TabOrder {
   return sanitizeTabOrder(value);
 }
 
+export function resolveStartupTab(value: unknown): TabKey {
+  return resolveTabOrder(value)[0] ?? DEFAULT_TAB_ORDER[0];
+}
+
 export function moveTabOrder(
   order: readonly TabKey[],
   key: TabKey,

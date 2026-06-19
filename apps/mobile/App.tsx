@@ -78,6 +78,7 @@ import { useOverdueTriageController } from "./src/features/overdue-triage/contro
 import { isTaskInInbox } from "./src/lib/taskState";
 import { hasPriorityBoundaryViolation } from "./src/lib/taskLifecycle";
 import type { BulkTaskInput } from "./src/lib/bulkTaskCapture";
+import { resolveStartupTab } from "./src/lib/tabOrder";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -118,6 +119,8 @@ function MobileApp() {
   const [diagnosticEvents, setDiagnosticEvents] = useState<DiagnosticEvent[]>([]);
   const hasLoggedPostLoginRef = useRef(false);
   const didMarkInteractiveRef = useRef(false);
+  const didApplyStartupTabRef = useRef(false);
+  const didManuallyChangeTabRef = useRef(false);
 
   const {
     session,
@@ -155,7 +158,15 @@ function MobileApp() {
 
   const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
-  const { prefs } = useUserPreferences();
+  const { prefs, ready: preferencesReady } = useUserPreferences();
+
+  const handleTabChange = useCallback(
+    (nextTab: typeof activeTab) => {
+      didManuallyChangeTabRef.current = true;
+      setActiveTab(nextTab);
+    },
+    [setActiveTab],
+  );
 
   // ── Auth ────────────────────────────────────────────────────────────
 
@@ -389,6 +400,18 @@ function MobileApp() {
       mobileLogger.info("session_absent");
     }
   }, [session, sessionLoading]);
+
+  useEffect(() => {
+    if (!preferencesReady) return;
+    if (didApplyStartupTabRef.current) return;
+    didApplyStartupTabRef.current = true;
+    if (didManuallyChangeTabRef.current) return;
+
+    const startupTab = resolveStartupTab(prefs.tabOrder);
+    if (startupTab !== activeTab) {
+      setActiveTab(startupTab);
+    }
+  }, [activeTab, preferencesReady, prefs.tabOrder, setActiveTab]);
 
   useEffect(() => {
     if (sessionLoading || session) return;
@@ -1110,7 +1133,7 @@ function MobileApp() {
       {/* Bottom tab bar \u2014 no counts; the header subtitle carries those. */}
       <BottomTabBar
         active={activeTab}
-        onChange={setActiveTab}
+        onChange={handleTabChange}
         onCapture={() => addTaskSheetRef.current?.open()}
         canCapture={canUseWorkspaceActions && !isAddSheetOpen && !isEditSheetOpen}
         bottomInset={tabBarBottomPadding}
