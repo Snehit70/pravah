@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.13.2](https://github.com/Snehit70/pravah/compare/web-v1.13.1...web-v1.13.2) (2026-06-19)
+
+
+### Bug Fixes
+
+* **mobile:** open first ordered tab on startup ([1ba9db7](https://github.com/Snehit70/pravah/commit/1ba9db7167951b4f6f9a9f0e4a9fea4815b67cb4))
+* **mobile:** stabilize settings and startup tab ([6af4bab](https://github.com/Snehit70/pravah/commit/6af4babc2549120133e9be7983d87576cfe898ad))
+* **mobile:** stop settings crash on open ([f567992](https://github.com/Snehit70/pravah/commit/f567992e2482ece46f14598bb58e87f25fa759a7))
+
 ## [1.13.1](https://github.com/Snehit70/pravah/compare/web-v1.13.0...web-v1.13.1) (2026-06-19)
 
 
