@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.1](https://github.com/Snehit70/pravah/compare/web-v1.13.0...web-v1.13.1) (2026-06-19)
+
+
+### Bug Fixes
+
+* **ci:** remove unsupported setup-node input ([7c81513](https://github.com/Snehit70/pravah/commit/7c815137bb0ef7ec166c89f0ad524590dc7fb8d3))
+
 ## [1.13.0](https://github.com/Snehit70/pravah/compare/web-v1.12.1...web-v1.13.0) (2026-06-19)
 
 
