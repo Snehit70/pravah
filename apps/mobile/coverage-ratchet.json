@@ -1,0 +1,347 @@
+{
+  "description": "No-drop coverage ratchet for mobile logic files. Only apps/mobile/src/lib/** and apps/mobile/src/hooks/** are gated; components and screens are report-only.",
+  "files": {
+    "apps/mobile/src/hooks/useConfirm.ts": {
+      "lines": 0,
+      "statements": 0,
+      "functions": 0,
+      "branches": 0
+    },
+    "apps/mobile/src/hooks/useConvexGoalsSync.ts": {
+      "lines": 0,
+      "statements": 0,
+      "functions": 0,
+      "branches": 0
+    },
+    "apps/mobile/src/hooks/useDisplayWorkspace.ts": {
+      "lines": 91.42,
+      "statements": 87.17,
+      "functions": 60,
+      "branches": 75.47
+    },
+    "apps/mobile/src/hooks/useGoalMutations.ts": {
+      "lines": 0,
+      "statements": 0,
+      "functions": 0,
+      "branches": 0
+    },
+    "apps/mobile/src/hooks/useGoals.ts": {
+      "lines": 0,
+      "statements": 0,
+      "functions": 0,
+      "branches": 100
+    },
+    "apps/mobile/src/hooks/useGoogleAuth.ts": {
+      "lines": 56.71,
+      "statements": 56.94,
+      "functions": 85.71,
+      "branches": 24.13
+    },
+    "apps/mobile/src/hooks/useIncrementalRowCount.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "apps/mobile/src/hooks/useIntegrationsSettings.ts": {
+      "lines": 0,
+      "statements": 0,
+      "functions": 0,
+      "branches": 0
+    },
+    "apps/mobile/src/hooks/useKairoChats.ts": {
+      "lines": 46.29,
+      "statements": 43.4,
+      "functions": 54.83,
+      "branches": 31.66
+    },
+    "apps/mobile/src/hooks/useKeyboardInset.ts": {
+      "lines": 83.33,
+      "statements": 83.33,
+      "functions": 60,
+      "branches": 50
+    },
+    "apps/mobile/src/hooks/useNotificationsSettings.ts": {
+      "lines": 0,
+      "statements": 0,
+      "functions": 0,
+      "branches": 0
+    },
+    "apps/mobile/src/hooks/useReducedMotion.ts": {
+      "lines": 0,
+      "statements": 0,
+      "functions": 0,
+      "branches": 0
+    },
+    "apps/mobile/src/hooks/useReminderSync.ts": {
+      "lines": 84.61,
+      "statements": 88.23,
+      "functions": 71.42,
+      "branches": 100
+    },
+    "apps/mobile/src/hooks/useRetryQueue.ts": {
+      "lines": 75,
+      "statements": 71.64,
+      "functions": 81.81,
+      "branches": 45
+    },
+    "apps/mobile/src/hooks/useTaskMutations.ts": {
+      "lines": 55.88,
+      "statements": 54.83,
+      "functions": 37.73,
+      "branches": 45.45
+    },
+    "apps/mobile/src/hooks/useTaskQueries.ts": {
+      "lines": 80.43,
+      "statements": 74,
+      "functions": 84.61,
+      "branches": 54.76
+    },
+    "apps/mobile/src/hooks/useUserPreferences.ts": {
+      "lines": 62.79,
+      "statements": 63.82,
+      "functions": 71.42,
+      "branches": 62.5
+    },
+    "apps/mobile/src/hooks/useWorkspaceSnapshot.ts": {
+      "lines": 0,
+      "statements": 0,
+      "functions": 0,
+      "branches": 0
+    },
+    "apps/mobile/src/hooks/useWorkspaceState.ts": {
+      "lines": 0,
+      "statements": 0,
+      "functions": 0,
+      "branches": 0
+    },
+    "apps/mobile/src/lib/auth-client.ts": {
+      "lines": 0,
+      "statements": 0,
+      "functions": 0,
+      "branches": 0
+    },
+    "apps/mobile/src/lib/bulkTaskCapture.ts": {
+      "lines": 86.66,
+      "statements": 83.33,
+      "functions": 100,
+      "branches": 84.21
+    },
+    "apps/mobile/src/lib/calendarGrid.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "apps/mobile/src/lib/convex.tsx": {
+      "lines": 0,
+      "statements": 0,
+      "functions": 0,
+      "branches": 0
+    },
+    "apps/mobile/src/lib/dataReset.ts": {
+      "lines": 81.81,
+      "statements": 82.6,
+      "functions": 100,
+      "branches": 50
+    },
+    "apps/mobile/src/lib/dates.ts": {
+      "lines": 100,
+      "statements": 95.74,
+      "functions": 100,
+      "branches": 82.35
+    },
+    "apps/mobile/src/lib/deviceIdentity.ts": {
+      "lines": 0,
+      "statements": 0,
+      "functions": 0,
+      "branches": 0
+    },
+    "apps/mobile/src/lib/diagnostics.ts": {
+      "lines": 44.21,
+      "statements": 39.63,
+      "functions": 19.04,
+      "branches": 50.61
+    },
+    "apps/mobile/src/lib/diagnosticsExport.ts": {
+      "lines": 0,
+      "statements": 0,
+      "functions": 0,
+      "branches": 0
+    },
+    "apps/mobile/src/lib/goalLinks.ts": {
+      "lines": 0,
+      "statements": 0,
+      "functions": 0,
+      "branches": 0
+    },
+    "apps/mobile/src/lib/goalsStorage.ts": {
+      "lines": 0,
+      "statements": 0,
+      "functions": 0,
+      "branches": 0
+    },
+    "apps/mobile/src/lib/haptic.ts": {
+      "lines": 50,
+      "statements": 50,
+      "functions": 42.85,
+      "branches": 100
+    },
+    "apps/mobile/src/lib/kairoActions.ts": {
+      "lines": 90.47,
+      "statements": 90.9,
+      "functions": 90,
+      "branches": 68.42
+    },
+    "apps/mobile/src/lib/kairoAgent.ts": {
+      "lines": 83.83,
+      "statements": 81.73,
+      "functions": 69.23,
+      "branches": 79.71
+    },
+    "apps/mobile/src/lib/kairoApi.ts": {
+      "lines": 99.23,
+      "statements": 95.48,
+      "functions": 100,
+      "branches": 86.5
+    },
+    "apps/mobile/src/lib/kairoChatStorage.ts": {
+      "lines": 83.33,
+      "statements": 78.37,
+      "functions": 94.11,
+      "branches": 80.39
+    },
+    "apps/mobile/src/lib/kairoConfig.ts": {
+      "lines": 65.45,
+      "statements": 67.79,
+      "functions": 78.57,
+      "branches": 46.87
+    },
+    "apps/mobile/src/lib/kairoPolicy.ts": {
+      "lines": 88.88,
+      "statements": 88.88,
+      "functions": 100,
+      "branches": 77.27
+    },
+    "apps/mobile/src/lib/kairoTools.ts": {
+      "lines": 98.01,
+      "statements": 95.83,
+      "functions": 94.11,
+      "branches": 76.59
+    },
+    "apps/mobile/src/lib/logger.ts": {
+      "lines": 79.06,
+      "statements": 73.91,
+      "functions": 80,
+      "branches": 73.68
+    },
+    "apps/mobile/src/lib/notifications.ts": {
+      "lines": 53.57,
+      "statements": 52.63,
+      "functions": 37.5,
+      "branches": 62.96
+    },
+    "apps/mobile/src/lib/planReminders.ts": {
+      "lines": 93.1,
+      "statements": 88.23,
+      "functions": 100,
+      "branches": 84.31
+    },
+    "apps/mobile/src/lib/reminderConstants.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "apps/mobile/src/lib/retry-queue-storage.ts": {
+      "lines": 0,
+      "statements": 0,
+      "functions": 0,
+      "branches": 0
+    },
+    "apps/mobile/src/lib/retry-queue-utils.ts": {
+      "lines": 88.88,
+      "statements": 72.72,
+      "functions": 100,
+      "branches": 75
+    },
+    "apps/mobile/src/lib/settingsNavigation.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "apps/mobile/src/lib/settingsSections.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "apps/mobile/src/lib/snapWheelTimePicker.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "apps/mobile/src/lib/statsAggregators.ts": {
+      "lines": 42.22,
+      "statements": 38.88,
+      "functions": 53.33,
+      "branches": 31.42
+    },
+    "apps/mobile/src/lib/syncHealth.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 91.66
+    },
+    "apps/mobile/src/lib/syncReminders.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "apps/mobile/src/lib/tabOrder.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 94.73
+    },
+    "apps/mobile/src/lib/task-form.ts": {
+      "lines": 25.92,
+      "statements": 20,
+      "functions": 14.28,
+      "branches": 24.24
+    },
+    "apps/mobile/src/lib/task-optimistic.ts": {
+      "lines": 100,
+      "statements": 91.3,
+      "functions": 100,
+      "branches": 72.72
+    },
+    "apps/mobile/src/lib/taskLifecycle.ts": {
+      "lines": 100,
+      "statements": 96.15,
+      "functions": 100,
+      "branches": 95.45
+    },
+    "apps/mobile/src/lib/taskState.ts": {
+      "lines": 100,
+      "statements": 100,
+      "functions": 100,
+      "branches": 100
+    },
+    "apps/mobile/src/lib/userPreferences.ts": {
+      "lines": 64,
+      "statements": 67.85,
+      "functions": 77.77,
+      "branches": 96.29
+    },
+    "apps/mobile/src/lib/workspace-snapshot.ts": {
+      "lines": 92.3,
+      "statements": 76.47,
+      "functions": 100,
+      "branches": 74.19
+    }
+  }
+}

@@ -154,6 +154,52 @@ jobs:
         working-directory: apps/mobile
         run: bun run test
 
+      - name: Check mobile coverage ratchet
+        working-directory: apps/mobile
+        run: bun run coverage:ratchet
+
+      - name: Publish mobile coverage summary
+        if: always()
+        run: |
+          node <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const repoRoot = process.cwd();
+          const summary = JSON.parse(fs.readFileSync("apps/mobile/coverage/coverage-summary.json", "utf8"));
+          const metricNames = ["lines", "statements", "functions", "branches"];
+          const normalizePath = (filePath) => path.relative(repoRoot, path.isAbsolute(filePath) ? filePath : path.join(repoRoot, filePath)).split(path.sep).join("/");
+          const rows = Object.entries(summary)
+            .filter(([filePath]) => filePath !== "total")
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([filePath, metrics]) => {
+              const relativeFilePath = normalizePath(filePath);
+              const scope = /^apps\/mobile\/src\/(?:lib|hooks)\//.test(relativeFilePath) ? "ratcheted" : "report-only";
+              return `| \`${relativeFilePath.replace("apps/mobile/", "")}\` | ${scope} | ${metricNames.map((metric) => `${metrics[metric].pct}%`).join(" | ")} |`;
+            });
+
+          const total = summary.total;
+          const totalRow = `| total | report-only | ${metricNames.map((metric) => `${total[metric].pct}%`).join(" | ")} |`;
+
+          {
+            console.log("## Mobile coverage");
+            console.log();
+            console.log("Coverage is collected for lib, hooks, components, and screens. The no-drop ratchet gates only `src/lib/**` and `src/hooks/**`; components and screens are report-only.");
+            console.log();
+            console.log("| File | Scope | Lines | Statements | Functions | Branches |");
+            console.log("| --- | --- | ---: | ---: | ---: | ---: |");
+            console.log(totalRow);
+            for (const row of rows) console.log(row);
+          }
+          NODE
+
+      - name: Upload mobile coverage summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mobile-coverage-summary
+          path: apps/mobile/coverage/coverage-summary.json
+          if-no-files-found: error
+
   build-web:
     name: Build web
     runs-on: ubuntu-latest

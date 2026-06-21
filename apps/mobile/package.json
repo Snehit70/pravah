@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "typecheck:fast": "tsgo --noEmit",
     "lint": "eslint .",
-    "test": "vitest run src/test"
+    "test": "vitest run src/test",
+    "coverage:ratchet": "bun ../../scripts/check-mobile-coverage-ratchet.mjs"
   },
   "dependencies": {
     "@convex-dev/better-auth": "^0.11.4",
@@ -55,6 +56,7 @@
   "devDependencies": {
     "@types/react": "~19.2.14",
     "@typescript/native-preview": "7.0.0-dev.20260421.2",
+    "@vitest/coverage-v8": "4.1.2",
     "babel-preset-expo": "~56.0.0",
     "typescript": "~6.0.3"
   },
