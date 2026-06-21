@@ -26,9 +26,8 @@ type BottomTabBarProps = {
 type IconProps = { filled: boolean; color: string; size: number };
 
 // ── Icons ──────────────────────────────────────────────────────────────
-// Real Lucide paths (viewBox 0 0 24 24). Each renders an outline (inactive)
-// or a solid (active) variant from the same shape, so the active state is a
-// fill, not a pill. Two copies are stacked and cross-faded per tab.
+// Hand-authored matched outline/filled pairs. Two copies are stacked and
+// cross-faded per tab, so each active state remains a mark fill, not a pill.
 
 const STROKE = 2.1;
 
@@ -45,70 +44,75 @@ function frame(color: string, size: number) {
   };
 }
 
-// Inbox — layers/stack. Active fills the top sheet only; the lower two stay
-// strokes so the stack still reads as distinct layers.
-function LayersIcon({ filled, color, size }: IconProps) {
+// Inbox — open tray with a down-arrow.
+function InboxTrayIcon({ filled, color, size }: IconProps) {
   return (
     <Svg {...frame(color, size)}>
       <Path
         fill={filled ? color : "none"}
-        d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"
+        d="M3.8 12.4h4.05c.5 0 .92.34 1.04.82l.08.34c.14.56.65.96 1.23.96h3.6c.58 0 1.09-.4 1.23-.96l.08-.34c.12-.48.54-.82 1.04-.82h4.05l-1.25 6.45A2.25 2.25 0 0 1 16.74 20H7.26a2.25 2.25 0 0 1-2.21-1.15L3.8 12.4Z"
       />
-      <Path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12" />
-      <Path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17" />
+      <Path d="M3.8 12.4h4.05c.5 0 .92.34 1.04.82l.08.34c.14.56.65.96 1.23.96h3.6c.58 0 1.09-.4 1.23-.96l.08-.34c.12-.48.54-.82 1.04-.82h4.05" />
+      <Path d="m3.8 12.4 1.25 6.45A2.25 2.25 0 0 0 7.26 20h9.48a2.25 2.25 0 0 0 2.21-1.15l1.25-6.45" />
+      <Path d="M12 3.7v7.1" />
+      <Path d="m8.95 7.95 3.05 3.1 3.05-3.1" />
     </Svg>
   );
 }
 
-// Timeline — agenda rows. Leading markers fill when active; staggered line
-// lengths read as a schedule rather than a plain list.
+// Timeline — agenda rows.
 function AgendaIcon({ filled, color, size }: IconProps) {
-  const r = filled ? 1.7 : 1.4;
-  const dot = filled ? color : "none";
+  const rowFill = filled ? color : "none";
   return (
     <Svg {...frame(color, size)}>
-      <Circle cx={4.5} cy={6} r={r} fill={dot} />
-      <Line x1={8.5} y1={6} x2={20} y2={6} />
-      <Circle cx={4.5} cy={12} r={r} fill={dot} />
-      <Line x1={8.5} y1={12} x2={16} y2={12} />
-      <Circle cx={4.5} cy={18} r={r} fill={dot} />
-      <Line x1={8.5} y1={18} x2={18.5} y2={18} />
+      <Circle cx={5.3} cy={6.2} r={1.45} fill={filled ? color : "none"} />
+      <Path fill={rowFill} d="M9 4.85h10.8v2.7H9z" />
+      <Line x1={9} y1={6.2} x2={19.8} y2={6.2} />
+      <Circle cx={5.3} cy={12} r={1.45} fill={filled ? color : "none"} />
+      <Path fill={rowFill} d="M9 10.65h7.6v2.7H9z" />
+      <Line x1={9} y1={12} x2={16.6} y2={12} />
+      <Circle cx={5.3} cy={17.8} r={1.45} fill={filled ? color : "none"} />
+      <Path fill={rowFill} d="M9 16.45h9.2v2.7H9z" />
+      <Line x1={9} y1={17.8} x2={18.2} y2={17.8} />
     </Svg>
   );
 }
 
-// Goals — mountain (Lucide mountain-snow). Active fills the peak solid.
+// Goals — mountain.
 function MountainIcon({ filled, color, size }: IconProps) {
   return (
     <Svg {...frame(color, size)}>
-      <Path fill={filled ? color : "none"} d="m8 3 4 8 5-5 5 15H2L8 3z" />
-      <Path d="M4.14 15.08c2.62-1.57 5.24-1.43 7.86.42 2.74 1.94 5.49 2 8.23.19" />
+      <Path
+        fill={filled ? color : "none"}
+        d="M2.8 19.8 9 5.1l3.25 7.2 3.1-4.15 5.85 11.65H2.8Z"
+      />
+      <Path d="M9 5.1 12.25 12.3l3.1-4.15 5.85 11.65H2.8L9 5.1Z" />
+      <Path d="m7.15 13.65 2.2-1.95 2 2.6 2.45-2.8 2.35 3.25" />
     </Svg>
   );
 }
 
-// Progress — flame. Active fills the whole flame.
-function FlameIcon({ filled, color, size }: IconProps) {
+// Progress — upward trend line.
+function TrendIcon({ filled, color, size }: IconProps) {
   return (
     <Svg {...frame(color, size)}>
       <Path
         fill={filled ? color : "none"}
-        d="M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4"
+        d="M4.2 18.9v-4.55l3.75-3.45 3.35 2.7 5.95-6.55 2.55 2.3v9.55H4.2Z"
       />
+      <Path d="M4.2 18.9h15.6" />
+      <Path d="m4.2 14.35 3.75-3.45 3.35 2.7 5.95-6.55 2.55 2.3" />
+      <Path d="M17.05 6.95h3v3" />
     </Svg>
   );
 }
 
-// Capture — thought bubble + spark. Always white-on-accent (it's the hero
-// action, not a destination), so no outline/fill toggle.
+// Capture — bare plus inside the existing accent pill.
 function CaptureIcon({ color, size }: { color: string; size: number }) {
   return (
     <Svg {...frame(color, size)}>
-      <Path d="M5 5.5h14a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H9l-4 3.2V15.5H5a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2Z" />
-      <Path
-        fill={color}
-        d="M12 7.6c.25 1.9.9 2.55 2.8 2.8-1.9.25-2.55.9-2.8 2.8-.25-1.9-.9-2.55-2.8-2.8 1.9-.25 2.55-.9 2.8-2.8Z"
-      />
+      <Path d="M12 6.2v11.6" />
+      <Path d="M6.2 12h11.6" />
     </Svg>
   );
 }
@@ -118,10 +122,10 @@ function CaptureIcon({ color, size }: { color: string; size: number }) {
 type NavIcon = (p: IconProps) => JSX.Element;
 
 const NAV_TABS: Record<TabKey, { key: TabKey; label: string; Icon: NavIcon }> = {
-  inbox: { key: "inbox", label: TAB_LABELS.inbox, Icon: LayersIcon },
+  inbox: { key: "inbox", label: TAB_LABELS.inbox, Icon: InboxTrayIcon },
   timeline: { key: "timeline", label: TAB_LABELS.timeline, Icon: AgendaIcon },
   goals: { key: "goals", label: TAB_LABELS.goals, Icon: MountainIcon },
-  insights: { key: "insights", label: TAB_LABELS.insights, Icon: FlameIcon },
+  insights: { key: "insights", label: TAB_LABELS.insights, Icon: TrendIcon },
 };
 
 const ICON_SIZE = 22;

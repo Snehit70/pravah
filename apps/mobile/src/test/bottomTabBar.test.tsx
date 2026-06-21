@@ -1,5 +1,5 @@
 /** @vitest-environment happy-dom */
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -108,5 +108,28 @@ describe("BottomTabBar", () => {
       "Goals",
       "Timeline",
     ]);
+  });
+
+  it("marks the active tab as selected and calls onChange for inactive tabs", () => {
+    const onChange = vi.fn();
+    const { getByRole } = render(
+      <BottomTabBar active="inbox" onChange={onChange} onCapture={vi.fn()} />,
+    );
+
+    expect(getByRole("tab", { name: "Inbox" }).getAttribute("aria-selected")).toBe("true");
+    expect(getByRole("tab", { name: "Progress" }).getAttribute("aria-selected")).toBe("false");
+
+    fireEvent.click(getByRole("tab", { name: "Progress" }));
+    expect(onChange).toHaveBeenCalledWith("insights");
+  });
+
+  it("fires the capture action from the fixed center button", () => {
+    const onCapture = vi.fn();
+    const { getByRole } = render(
+      <BottomTabBar active="inbox" onChange={vi.fn()} onCapture={onCapture} />,
+    );
+
+    fireEvent.click(getByRole("button", { name: "Capture a new task" }));
+    expect(onCapture).toHaveBeenCalledTimes(1);
   });
 });
