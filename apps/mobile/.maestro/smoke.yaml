@@ -1,0 +1,14 @@
+appId: com.pravah.mobile
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Pravah"
+- assertVisible: "Inbox"
+- tapOn: "Timeline"
+- assertVisible: "Timeline"
+- tapOn: "Goals"
+- assertVisible: "Goals"
+- tapOn: "Progress"
+- assertVisible: "Progress"
+- tapOn: "Inbox"
+- assertVisible: "Inbox"
