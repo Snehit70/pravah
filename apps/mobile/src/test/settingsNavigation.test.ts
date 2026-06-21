@@ -69,6 +69,7 @@ describe("SETTINGS_CATEGORY_CONTROLS", () => {
         "density",
         "tab_order",
         "bulk_task_capture",
+        "hide_goal_linked_inbox",
       ]),
     );
     expect(SETTINGS_CATEGORY_CONTROLS.about).toEqual(

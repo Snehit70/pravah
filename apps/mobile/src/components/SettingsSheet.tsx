@@ -997,6 +997,22 @@ function AppearanceSection({
             accessibilityLabel="Bulk task capture"
           />
         </View>
+
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Hide goal-linked tasks from Inbox</Text>
+            <Text style={styles.settingHelp}>
+              Tasks linked to a goal stay under that goal instead of appearing in your Inbox.
+            </Text>
+          </View>
+          <Switch
+            value={prefs.hideGoalLinkedInboxTasks}
+            onValueChange={(next) => void setPreference("hideGoalLinkedInboxTasks", next)}
+            trackColor={{ false: colors.border, true: colors.accentSoft }}
+            thumbColor={prefs.hideGoalLinkedInboxTasks ? colors.accent : colors.textMuted}
+            accessibilityLabel="Hide goal-linked tasks from Inbox"
+          />
+        </View>
       </View>
 
       <View style={[styles.settingBlock, styles.sectionCard]}>

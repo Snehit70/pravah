@@ -135,6 +135,18 @@ vi.mock("../hooks/useGoals", () => ({
   useGoalLinks: () => ({ task1: "g1" }),
 }));
 
+const mockPrefs = vi.hoisted(() => ({
+  hideGoalLinkedInboxTasks: false,
+}));
+
+vi.mock("../hooks/useUserPreferences", () => ({
+  useUserPreferences: () => ({
+    prefs: mockPrefs,
+    ready: true,
+    setPreference: vi.fn(),
+  }),
+}));
+
 // ─── theme tokens mock ────────────────────────────────────────────────────────
 vi.mock("../theme/tokens", () => ({
   colors: {
@@ -196,6 +208,7 @@ describe("InboxScreen", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPrefs.hideGoalLinkedInboxTasks = false;
   });
 
   afterEach(() => {
@@ -256,6 +269,46 @@ describe("InboxScreen", () => {
     expect(screen.getByText("Task 1")).toBeTruthy();
     expect(screen.getByText("Task 2")).toBeTruthy();
     expect(mockRenderItem).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows the goal filter chip when hiding goal-linked tasks is off", () => {
+    render(
+      <InboxScreen
+        tasks={sampleTasks}
+        isLoading={false}
+        isRefreshing={false}
+        tabBarHeight={60}
+        onRefresh={mockOnRefresh}
+        onCapture={mockOnCapture}
+        renderItem={mockRenderItem}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /goal filter/i }));
+
+    expect(screen.getByRole("button", { name: "All goals" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "No goal" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Blog" })).toBeTruthy();
+  });
+
+  it("hides goal-linked tasks and suppresses the goal filter when the preference is on", () => {
+    mockPrefs.hideGoalLinkedInboxTasks = true;
+
+    render(
+      <InboxScreen
+        tasks={sampleTasks}
+        isLoading={false}
+        isRefreshing={false}
+        tabBarHeight={60}
+        onRefresh={mockOnRefresh}
+        onCapture={mockOnCapture}
+        renderItem={mockRenderItem}
+      />
+    );
+
+    expect(screen.queryByTestId("task-task1")).toBeNull();
+    expect(screen.getByTestId("task-task2")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /goal filter/i })).toBeNull();
   });
 
   it("calls onCapture when capture button is pressed", () => {

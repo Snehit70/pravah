@@ -293,6 +293,17 @@ function MobileApp() {
     }
     return out;
   }, [goalLinks, goals]);
+  const inboxViewTasks = useMemo(
+    () =>
+      prefs.hideGoalLinkedInboxTasks && activeTab === "inbox"
+        ? visibleTasks.filter((task) => !goalLinks[String(task._id)])
+        : visibleTasks,
+    [activeTab, goalLinks, prefs.hideGoalLinkedInboxTasks, visibleTasks],
+  );
+  const inboxHeaderCount =
+    prefs.hideGoalLinkedInboxTasks && activeTab === "inbox"
+      ? inboxViewTasks.length
+      : displayInboxCount;
   const kairoInboxTasks = useMemo(
     () => kairoTasks.filter(isTaskInInbox),
     [kairoTasks]
@@ -956,7 +967,7 @@ function MobileApp() {
             ? "On-device snapshot"
             : activeTab === "goals"
               ? "Long horizon"
-              : `${padCount(displayInboxCount)} to triage`;
+              : `${padCount(inboxHeaderCount)} to triage`;
 
   // ── Main layout ─────────────────────────────────────────────────────
 

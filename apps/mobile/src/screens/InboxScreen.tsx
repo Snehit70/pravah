@@ -22,6 +22,7 @@ import type { MobileTask } from "../components/TaskCard";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
 import { useGoalLinks, useGoals } from "../hooks/useGoals";
+import { useUserPreferences } from "../hooks/useUserPreferences";
 
 // Goal filter sentinels. Real goal ids never collide with these.
 const GOAL_ALL = "all";
@@ -105,6 +106,8 @@ export function InboxScreen({
 
   const { goals } = useGoals();
   const goalLinks = useGoalLinks();
+  const { prefs } = useUserPreferences();
+  const hideGoalLinkedInboxTasks = prefs.hideGoalLinkedInboxTasks;
 
   const selectedGoal = useMemo(
     () => goals.find((g) => g.id === goalFilter),
@@ -112,8 +115,11 @@ export function InboxScreen({
   );
   // A previously-selected goal can be deleted out from under us; fall back to
   // "all" so we never filter against a goal that no longer exists.
-  const activeGoalFilter =
-    goalFilter === GOAL_ALL || goalFilter === GOAL_NONE || selectedGoal ? goalFilter : GOAL_ALL;
+  const activeGoalFilter = hideGoalLinkedInboxTasks
+    ? GOAL_ALL
+    : goalFilter === GOAL_ALL || goalFilter === GOAL_NONE || selectedGoal
+      ? goalFilter
+      : GOAL_ALL;
 
   const resetFilters = () => {
     setQuery("");
@@ -125,6 +131,7 @@ export function InboxScreen({
   const filteredTasks = useMemo(() => {
     const q = query.trim().toLowerCase();
     return tasks.filter((task) => {
+      if (hideGoalLinkedInboxTasks && goalLinks[String(task._id)]) return false;
       if (filter !== "all") {
         const bucket = task.priority ?? "none";
         if (bucket !== filter) return false;
@@ -140,7 +147,7 @@ export function InboxScreen({
       const inDescription = task.description?.toLowerCase().includes(q) ?? false;
       return inTitle || inDescription;
     });
-  }, [tasks, query, filter, activeGoalFilter, goalLinks]);
+  }, [tasks, query, filter, activeGoalFilter, goalLinks, hideGoalLinkedInboxTasks]);
 
   const goalFilterLabel =
     activeGoalFilter === GOAL_ALL
@@ -149,7 +156,8 @@ export function InboxScreen({
         ? "No goal"
         : selectedGoal?.text ?? "All goals";
 
-  const isFiltering = query.trim() !== "" || filter !== "all" || activeGoalFilter !== GOAL_ALL;
+  const isFiltering =
+    query.trim() !== "" || filter !== "all" || (!hideGoalLinkedInboxTasks && activeGoalFilter !== GOAL_ALL);
 
   const emptyBlock = isFiltering ? (
     <Animated.View entering={FadeIn.duration(400)} style={styles.emptyWrap}>
@@ -231,7 +239,7 @@ export function InboxScreen({
         </Text>
       ) : null}
 
-      {goals.length > 0 ? (
+      {goals.length > 0 && !hideGoalLinkedInboxTasks ? (
         <View>
           <Pressable
             onPress={() => setShowGoalPicker((s) => !s)}

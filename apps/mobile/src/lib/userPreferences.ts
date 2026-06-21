@@ -31,6 +31,7 @@ export interface UserPreferences {
   accentColor: AccentColor;
   density: Density;
   bulkTaskCaptureEnabled: boolean;
+  hideGoalLinkedInboxTasks: boolean;
   tabOrder: TabOrder;
 }
 
@@ -50,6 +51,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   accentColor: "purple",
   density: "cozy",
   bulkTaskCaptureEnabled: false,
+  hideGoalLinkedInboxTasks: false,
   tabOrder: [...DEFAULT_TAB_ORDER],
 };
 
@@ -134,6 +136,10 @@ function sanitize(raw: unknown): UserPreferences {
     density: r.density === "compact" ? "compact" : "cozy",
     bulkTaskCaptureEnabled:
       typeof r.bulkTaskCaptureEnabled === "boolean" ? r.bulkTaskCaptureEnabled : false,
+    hideGoalLinkedInboxTasks:
+      typeof r.hideGoalLinkedInboxTasks === "boolean"
+        ? r.hideGoalLinkedInboxTasks
+        : DEFAULT_PREFERENCES.hideGoalLinkedInboxTasks,
     tabOrder: sanitizeTabOrder(r.tabOrder),
   };
 }

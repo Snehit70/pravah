@@ -40,7 +40,7 @@ export const SETTINGS_CATEGORY_META: Record<
   },
   appearance: {
     title: "Appearance",
-    summary: "Density, motion, tab order, and bulk capture preferences.",
+    summary: "Density, motion, Inbox display, tab order, and bulk capture preferences.",
   },
   about: {
     title: "About",
@@ -74,6 +74,7 @@ export const SETTINGS_CATEGORY_CONTROLS: Record<
     "density",
     "tab_order",
     "bulk_task_capture",
+    "hide_goal_linked_inbox",
   ],
   about: [
     "app_version",

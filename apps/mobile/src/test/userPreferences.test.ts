@@ -13,7 +13,14 @@ vi.mock("../lib/logger", () => ({
   mobileLogger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
 }));
 
-import { DEFAULT_PREFERENCES, __testing } from "../lib/userPreferences";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+import {
+  DEFAULT_PREFERENCES,
+  loadPreferences,
+  savePreferences,
+  __testing,
+} from "../lib/userPreferences";
 
 const { sanitize } = __testing;
 
@@ -22,6 +29,7 @@ describe("sanitize", () => {
     expect(sanitize(null)).toEqual(DEFAULT_PREFERENCES);
     expect(sanitize("nope")).toEqual(DEFAULT_PREFERENCES);
     expect(sanitize(42)).toEqual(DEFAULT_PREFERENCES);
+    expect(DEFAULT_PREFERENCES.hideGoalLinkedInboxTasks).toBe(false);
   });
 
   it("falls back per-field when a value is the wrong shape", () => {
@@ -30,6 +38,7 @@ describe("sanitize", () => {
       reminderLeadTimeMinutes: 17,
       kairoTemperature: "hot",
       kairoUndoWindowMinutes: 17,
+      hideGoalLinkedInboxTasks: "yes",
     });
     expect(result.morningDigestTime).toBe(DEFAULT_PREFERENCES.morningDigestTime);
     expect(result.reminderLeadTimeMinutes).toBe(
@@ -39,6 +48,7 @@ describe("sanitize", () => {
     expect(result.kairoUndoWindowMinutes).toBe(
       DEFAULT_PREFERENCES.kairoUndoWindowMinutes,
     );
+    expect(result.hideGoalLinkedInboxTasks).toBe(false);
   });
 
   it("accepts valid values verbatim", () => {
@@ -57,6 +67,8 @@ describe("sanitize", () => {
       reducedMotionOverride: "always",
       accentColor: "copper",
       density: "compact",
+      bulkTaskCaptureEnabled: true,
+      hideGoalLinkedInboxTasks: true,
       tabOrder: ["insights", "goals", "timeline", "inbox"],
     });
     expect(result).toMatchObject({
@@ -68,7 +80,23 @@ describe("sanitize", () => {
       kairoUndoWindowMinutes: 15,
       reducedMotionOverride: "always",
       density: "compact",
+      bulkTaskCaptureEnabled: true,
+      hideGoalLinkedInboxTasks: true,
       tabOrder: ["insights", "goals", "timeline", "inbox"],
+    });
+  });
+
+  it("round-trips hideGoalLinkedInboxTasks through persisted preferences", async () => {
+    const prefs = { ...DEFAULT_PREFERENCES, hideGoalLinkedInboxTasks: true };
+
+    await savePreferences(prefs);
+
+    const stored = vi.mocked(AsyncStorage.setItem).mock.calls.at(-1)?.[1];
+    expect(stored).toBeTruthy();
+    vi.mocked(AsyncStorage.getItem).mockResolvedValueOnce(stored ?? null);
+
+    await expect(loadPreferences()).resolves.toMatchObject({
+      hideGoalLinkedInboxTasks: true,
     });
   });
 
