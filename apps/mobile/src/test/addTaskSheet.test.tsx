@@ -85,10 +85,6 @@ vi.mock("react-native", () => {
     visible?: boolean;
     [key: string]: unknown;
   }) => (visible ? React.createElement("div", { "data-testid": "modal" }, children) : null);
-  const KeyboardAvoidingView = ({ children, ...rest }: AnyProps) => {
-    const { style: _, behavior: __, keyboardVerticalOffset: ___ } = rest;
-    return React.createElement("div", {}, children);
-  };
   const Keyboard = { dismiss: vi.fn() };
   const Platform = { OS: "android" };
   return {
@@ -98,7 +94,6 @@ vi.mock("react-native", () => {
     TextInput,
     ScrollView,
     Modal,
-    KeyboardAvoidingView,
     Keyboard,
     Platform,
     StyleSheet: {
@@ -108,6 +103,11 @@ vi.mock("react-native", () => {
     },
   };
 });
+
+vi.mock("react-native-keyboard-controller", () => ({
+  KeyboardAvoidingView: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
+    React.createElement("div", {}, children),
+}));
 
 // ─── react-native-reanimated mock ─────────────────────────────────────────────
 vi.mock("react-native-reanimated", () => ({
