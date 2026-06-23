@@ -110,6 +110,7 @@ The stable task read shape is a curated subset:
   "description": "Optional description",
   "status": "timeline",
   "deadline": "2026-06-05",
+  "time": "09:30",
   "priority": "p2",
   "source": "manual",
   "position": 0,

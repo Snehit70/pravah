@@ -439,6 +439,12 @@ export const updateTask = internalMutation({
         }
         if (Object.prototype.hasOwnProperty.call(args, "deadline")) {
           patch.deadline = args.deadline ?? undefined;
+          if (
+            args.deadline === null &&
+            !Object.prototype.hasOwnProperty.call(args, "time")
+          ) {
+            patch.time = undefined;
+          }
         }
         if (Object.prototype.hasOwnProperty.call(args, "time")) {
           patch.time = args.time ?? undefined;
