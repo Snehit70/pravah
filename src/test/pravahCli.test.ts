@@ -243,6 +243,8 @@ describe("pravah CLI", () => {
       "Add the missing fields",
       "--deadline",
       "2026-06-21",
+      "--time",
+      "09:30",
       "--priority",
       "p2",
       "--estimated-minutes",
@@ -260,6 +262,7 @@ describe("pravah CLI", () => {
       title: "Draft CLI contract",
       description: "Add the missing fields",
       deadline: "2026-06-21",
+      time: "09:30",
       priority: "p2",
       estimatedMinutes: 30,
       tags: ["cli", "automation"],
@@ -277,6 +280,8 @@ describe("pravah CLI", () => {
       "clear",
       "--deadline",
       "2026-06-22",
+      "--time",
+      "clear",
       "--priority",
       "p1",
       "--estimated-minutes",
@@ -294,6 +299,7 @@ describe("pravah CLI", () => {
       taskId: "task_1",
       description: null,
       deadline: "2026-06-22",
+      time: null,
       priority: "p1",
       estimatedMinutes: null,
       tags: ["cli", "shipping"],
@@ -328,6 +334,22 @@ describe("pravah CLI", () => {
     expect(badEstimate.status).toBe(1);
     expect(JSON.parse(badEstimate.stdout).error.message).toContain(
       "--estimated-minutes must be a positive integer"
+    );
+
+    const badTime = runCli([
+      "tasks",
+      "add",
+      "--title",
+      "Draft CLI contract",
+      "--deadline",
+      "2026-06-21",
+      "--time",
+      "9:30",
+      "--json",
+    ]);
+    expect(badTime.status).toBe(1);
+    expect(JSON.parse(badTime.stdout).error.message).toContain(
+      "--time must use HH:MM 24-hour format"
     );
 
     const badTags = runCli([
@@ -370,6 +392,22 @@ describe("pravah CLI", () => {
     expect(badPriority.status).toBe(1);
     expect(JSON.parse(badPriority.stdout).error.message).toContain(
       "--priority must be one of: p1, p2, p3, or `clear`"
+    );
+
+    const badTimeWithDeadlineClear = runCli([
+      "tasks",
+      "update",
+      "--task-id",
+      "task_1",
+      "--deadline",
+      "clear",
+      "--time",
+      "09:30",
+      "--json",
+    ]);
+    expect(badTimeWithDeadlineClear.status).toBe(1);
+    expect(JSON.parse(badTimeWithDeadlineClear.stdout).error.message).toContain(
+      "--time cannot be set when clearing --deadline"
     );
   });
 

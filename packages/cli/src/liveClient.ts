@@ -27,6 +27,7 @@ export interface LiveCliClient {
   addTask(input: {
     title: string;
     deadline?: string;
+    time?: string;
     description?: string;
     priority?: "p1" | "p2" | "p3";
     estimatedMinutes?: number;
@@ -39,6 +40,7 @@ export interface LiveCliClient {
     title?: string;
     description?: string | null;
     deadline?: string | null;
+    time?: string | null;
     priority?: "p1" | "p2" | "p3" | null;
     estimatedMinutes?: number | null;
     tags?: string[] | null;
@@ -220,6 +222,7 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
         title: input.title,
         description: input.description,
         deadline: input.deadline,
+        time: input.time,
         priority: input.priority,
         estimatedMinutes: input.estimatedMinutes,
         tags: input.tags,

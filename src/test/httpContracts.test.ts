@@ -71,6 +71,29 @@ describe("httpContracts", () => {
       expect(result.success).toBe(false);
     });
 
+    it("requires a valid HH:MM time and a deadline for task creation", () => {
+      expect(
+        createTaskSchema.safeParse({
+          title: "Timed task",
+          deadline: "2026-04-09",
+          time: "09:30",
+        }).success
+      ).toBe(true);
+      expect(
+        createTaskSchema.safeParse({
+          title: "Bad time",
+          deadline: "2026-04-09",
+          time: "9:30",
+        }).success
+      ).toBe(false);
+      expect(
+        createTaskSchema.safeParse({
+          title: "Missing deadline",
+          time: "09:30",
+        }).success
+      ).toBe(false);
+    });
+
     it("requires valid redirectUri in google token exchange payload", () => {
       const invalid = googleTokenExchangeSchema.safeParse({
         code: "abc",
@@ -103,6 +126,7 @@ describe("httpContracts", () => {
         taskId: "task_1",
         description: null,
         deadline: null,
+        time: null,
         estimatedMinutes: null,
         tags: null,
         priority: null,
@@ -112,10 +136,21 @@ describe("httpContracts", () => {
         taskId: "task_1",
         description: null,
         deadline: null,
+        time: null,
         estimatedMinutes: null,
         tags: null,
         priority: null,
       });
+    });
+
+    it("rejects setting time while clearing deadline in task updates", () => {
+      expect(
+        updateTaskSchema.safeParse({
+          taskId: "task_1",
+          deadline: null,
+          time: "09:30",
+        }).success
+      ).toBe(false);
     });
 
     it("requires at least one task id for bulk reschedule", () => {

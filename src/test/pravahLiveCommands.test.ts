@@ -58,7 +58,7 @@ describe("pravah live commands", () => {
   it("uses live reads for tasks list when env is configured", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => [{ _id: "live_1", title: "Live scheduled", deadline: "2026-06-05" }],
+      json: async () => [{ _id: "live_1", title: "Live scheduled", deadline: "2026-06-05", time: "09:30" }],
     } as Response);
 
     const result = await executeCommand(
@@ -72,6 +72,7 @@ describe("pravah live commands", () => {
     expect((result as { tasks: Array<{ id: string; status: string }> }).tasks[0]).toMatchObject({
       id: "live_1",
       status: "timeline",
+      time: "09:30",
     });
     expect(fetchSpy).toHaveBeenCalledWith(
       "https://pravah.example.com/tasks",
@@ -325,6 +326,7 @@ describe("pravah live commands", () => {
         title: "Draft CLI contract",
         description: "Add missing task add fields",
         deadline: "2026-06-21",
+        time: "09:30",
         priority: "p2",
         "estimated-minutes": "30",
         tags: "cli,automation",
@@ -337,6 +339,7 @@ describe("pravah live commands", () => {
       title: "Draft CLI contract",
       description: "Add missing task add fields",
       deadline: "2026-06-21",
+      time: "09:30",
       priority: "p2",
       estimatedMinutes: 30,
       tags: ["cli", "automation"],
@@ -355,6 +358,7 @@ describe("pravah live commands", () => {
           title: "Draft CLI contract",
           description: "Add missing task add fields",
           deadline: "2026-06-21",
+          time: "09:30",
           priority: "p2",
           estimatedMinutes: 30,
           tags: ["cli", "automation"],
@@ -375,6 +379,7 @@ describe("pravah live commands", () => {
         "task-id": "task_live_2",
         description: "clear",
         deadline: "2026-06-22",
+        time: "clear",
         priority: "p1",
         "estimated-minutes": "clear",
         tags: "cli,shipping",
@@ -387,6 +392,7 @@ describe("pravah live commands", () => {
       taskId: "task_live_2",
       description: null,
       deadline: "2026-06-22",
+      time: null,
       priority: "p1",
       estimatedMinutes: null,
       tags: ["cli", "shipping"],
@@ -404,6 +410,7 @@ describe("pravah live commands", () => {
           taskId: "task_live_2",
           description: null,
           deadline: "2026-06-22",
+          time: null,
           priority: "p1",
           estimatedMinutes: null,
           tags: ["cli", "shipping"],

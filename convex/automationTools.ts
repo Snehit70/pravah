@@ -237,6 +237,7 @@ export const addTask = internalMutation({
     title: v.string(),
     description: v.optional(v.string()),
     deadline: v.optional(v.string()),
+    time: v.optional(v.string()),
     source: v.optional(
       v.union(
         v.literal("manual"),
@@ -412,6 +413,7 @@ export const updateTask = internalMutation({
     title: v.optional(v.string()),
     description: v.optional(v.union(v.string(), v.null())),
     deadline: v.optional(v.union(v.string(), v.null())),
+    time: v.optional(v.union(v.string(), v.null())),
     estimatedMinutes: v.optional(v.union(v.number(), v.null())),
     tags: v.optional(v.union(v.array(v.string()), v.null())),
     priority: v.optional(
@@ -437,6 +439,15 @@ export const updateTask = internalMutation({
         }
         if (Object.prototype.hasOwnProperty.call(args, "deadline")) {
           patch.deadline = args.deadline ?? undefined;
+          if (
+            args.deadline === null &&
+            !Object.prototype.hasOwnProperty.call(args, "time")
+          ) {
+            patch.time = undefined;
+          }
+        }
+        if (Object.prototype.hasOwnProperty.call(args, "time")) {
+          patch.time = args.time ?? undefined;
         }
         if (Object.prototype.hasOwnProperty.call(args, "estimatedMinutes")) {
           patch.estimatedMinutes = args.estimatedMinutes ?? undefined;
