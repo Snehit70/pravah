@@ -14,6 +14,7 @@ const TASK_STATUSES = [
 const REVIEW_STATUSES = ["pending", "approved", "rejected"] as const;
 const TASK_PRIORITIES = ["p1", "p2", "p3"] as const;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 
 export function validateCommandArgs(command: string, args: ParsedArgs) {
   const spec = getCommandSpec(command);
@@ -246,6 +247,13 @@ export function readTaskAddOptions(args: ParsedArgs, command: string) {
   if (deadline && !DATE_PATTERN.test(deadline)) {
     throw new Error("--deadline must use YYYY-MM-DD format");
   }
+  const time = readOption(args.options, "time")?.trim() || undefined;
+  if (time !== undefined && !TIME_PATTERN.test(time)) {
+    throw new Error("--time must use HH:MM 24-hour format");
+  }
+  if (time !== undefined && !deadline) {
+    throw new Error("--time requires --deadline");
+  }
 
   const rawPriority = readOption(args.options, "priority")?.trim();
   if (
@@ -291,6 +299,7 @@ export function readTaskAddOptions(args: ParsedArgs, command: string) {
     title,
     description,
     deadline,
+    time,
     priority,
     estimatedMinutes,
     tags,
@@ -335,6 +344,22 @@ export function readTaskUpdateOptions(args: ParsedArgs, command: string) {
   });
   if (deadline !== undefined && deadline !== null && !DATE_PATTERN.test(deadline)) {
     throw new Error("--deadline must use YYYY-MM-DD format, or `clear`");
+  }
+  const rawTime = normalizeClearableValue(readOption(args.options, "time"), {
+    fieldName: "time",
+    allowClear: true,
+  });
+  let time: string | null | undefined;
+  if (rawTime === null) {
+    time = null;
+  } else if (rawTime !== undefined) {
+    if (!TIME_PATTERN.test(rawTime)) {
+      throw new Error("--time must use HH:MM 24-hour format, or `clear`");
+    }
+    time = rawTime;
+  }
+  if (time !== undefined && time !== null && deadline === null) {
+    throw new Error("--time cannot be set when clearing --deadline");
   }
 
   const rawPriority = normalizeClearableValue(readOption(args.options, "priority"), {
@@ -396,12 +421,13 @@ export function readTaskUpdateOptions(args: ParsedArgs, command: string) {
     title === undefined &&
     description === undefined &&
     deadline === undefined &&
+    time === undefined &&
     priority === undefined &&
     estimatedMinutes === undefined &&
     tags === undefined
   ) {
     throw new Error(
-      "tasks update requires at least one of --title, --description, --deadline, --priority, --estimated-minutes, or --tags"
+      "tasks update requires at least one of --title, --description, --deadline, --time, --priority, --estimated-minutes, or --tags"
     );
   }
 
@@ -410,6 +436,7 @@ export function readTaskUpdateOptions(args: ParsedArgs, command: string) {
     title,
     description,
     deadline,
+    time,
     priority,
     estimatedMinutes,
     tags,

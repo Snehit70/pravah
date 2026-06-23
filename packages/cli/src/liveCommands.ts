@@ -23,6 +23,7 @@ interface CliTaskSummary {
   description?: string;
   status: CliTaskStatus;
   deadline?: string;
+  time?: string;
   priority?: "p1" | "p2" | "p3";
   source?: "manual" | "ai-agent" | "gmail" | "gcal";
   createdAt?: number;
@@ -67,6 +68,12 @@ interface CliSyncStatusSummary {
 
 function readDateString(value: unknown) {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? value
+    : undefined;
+}
+
+function readTimeString(value: unknown) {
+  return typeof value === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)
     ? value
     : undefined;
 }
@@ -134,6 +141,7 @@ function toCliTaskSummary(value: unknown): CliTaskSummary | null {
       typeof task.description === "string" ? task.description : undefined,
     status: deriveTaskStatus(task),
     deadline,
+    time: readTimeString(task.time),
     priority: readPriority(task.priority),
     source: readSource(task.source),
     createdAt,

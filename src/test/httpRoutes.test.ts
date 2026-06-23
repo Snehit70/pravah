@@ -626,6 +626,7 @@ describe("http route handlers", () => {
         body: JSON.stringify({
           title: "Ship tests",
           deadline: "2026-04-09",
+          time: "09:30",
         }),
       })
     );
@@ -636,6 +637,7 @@ describe("http route handlers", () => {
       title: "Ship tests",
       description: undefined,
       deadline: "2026-04-09",
+      time: "09:30",
       source: "ai-agent",
       estimatedMinutes: undefined,
       tags: undefined,

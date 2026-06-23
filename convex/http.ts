@@ -354,6 +354,7 @@ http.route({
           title: data.title,
           description: data.description,
           deadline: data.deadline,
+          time: data.time,
           source: data.source,
           estimatedMinutes: data.estimatedMinutes,
           tags: data.tags,

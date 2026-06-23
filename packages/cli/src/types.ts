@@ -53,6 +53,7 @@ export interface MockTask {
   status: CliTaskStatus;
   description?: string;
   deadline?: string;
+  time?: string;
   scheduledAt: number;
   completedAt?: number;
   cancelledAt?: number;

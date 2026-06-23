@@ -162,8 +162,8 @@ pravah goals get --goal-id <goal-id> --json
 Allowed idempotent writes:
 
 ```bash
-pravah tasks add --title "Prepare brief" --description "Include rollout notes" --deadline 2026-06-06 --priority p2 --estimated-minutes 30 --tags cli,brief --idempotency-key brief-2026-06-04 --json
-pravah tasks update --task-id <id> --description "Refined brief" --priority p1 --estimated-minutes clear --tags cli,shipping --idempotency-key update-<id> --json
+pravah tasks add --title "Prepare brief" --description "Include rollout notes" --deadline 2026-06-06 --time 09:30 --priority p2 --estimated-minutes 30 --tags cli,brief --idempotency-key brief-2026-06-04 --json
+pravah tasks update --task-id <id> --description "Refined brief" --time clear --priority p1 --estimated-minutes clear --tags cli,shipping --idempotency-key update-<id> --json
 pravah tasks move --task-id <id> --target-date 2026-06-06 --idempotency-key move-<id>-2026-06-06 --json
 pravah tasks complete --task-id <id> --idempotency-key complete-<id> --json
 pravah tasks reopen --task-id <id> --idempotency-key reopen-<id> --json
@@ -212,7 +212,7 @@ Use one reversible write to validate auth, routing, idempotency, and cleanup:
 ```bash
 pravah auth whoami --json
 pravah agent context --json
-pravah tasks add --title "CLI smoke test" --description "Verify add fields" --deadline 2026-06-20 --priority p2 --estimated-minutes 15 --tags smoke,cli --idempotency-key smoke-add-2026-06-20 --json
+pravah tasks add --title "CLI smoke test" --description "Verify add fields" --deadline 2026-06-20 --time 14:00 --priority p2 --estimated-minutes 15 --tags smoke,cli --idempotency-key smoke-add-2026-06-20 --json
 pravah tasks list --date 2026-06-20 --json
 pravah tasks unschedule --task-id <created-task-id> --idempotency-key smoke-unschedule-<created-task-id> --json
 pravah tasks inbox --json
@@ -229,6 +229,7 @@ Create task:
   "title": "Task title",
   "description": "Optional description",
   "deadline": "2026-06-10",
+  "time": "09:30",
   "source": "ai-agent",
   "estimatedMinutes": 30,
   "tags": ["project"],
@@ -262,6 +263,7 @@ Update task:
   "taskId": "<task-id>",
   "description": "Refined brief",
   "deadline": null,
+  "time": null,
   "estimatedMinutes": null,
   "tags": ["cli", "shipping"],
   "priority": "p1"

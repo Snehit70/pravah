@@ -176,6 +176,7 @@ export const COMMAND_SPECS: readonly CommandSpec[] = [
       { name: "title", kind: "value", valueLabel: "<title>", description: "Task title." },
       { name: "description", kind: "value", valueLabel: "<text>", description: "Optional task description." },
       { name: "deadline", kind: "value", valueLabel: "<YYYY-MM-DD>", description: "Optional scheduled date for the task." },
+      { name: "time", kind: "value", valueLabel: "<HH:MM>", description: "Optional time-of-day for a scheduled task." },
       { name: "priority", kind: "value", valueLabel: "<p1|p2|p3>", description: "Optional task priority." },
       { name: "tags", kind: "value", valueLabel: "<tag1,tag2>", description: "Comma-separated task tags." },
       { name: "estimated-minutes", kind: "value", valueLabel: "<minutes>", description: "Positive integer estimate for task duration." },
@@ -201,7 +202,7 @@ export const COMMAND_SPECS: readonly CommandSpec[] = [
   {
     path: ["tasks", "update"],
     summary: "Update selected fields on an existing task.",
-    description: "Patch one task's title, description, deadline, priority, tags, or estimate. Clearable fields accept `clear`.",
+    description: "Patch one task's title, description, deadline, time, priority, tags, or estimate. Clearable fields accept `clear`.",
     kind: "write",
     requiredScopes: ["tasks:write"],
     options: [
@@ -209,6 +210,7 @@ export const COMMAND_SPECS: readonly CommandSpec[] = [
       { name: "title", kind: "value", valueLabel: "<title>", description: "Replacement task title." },
       { name: "description", kind: "value", valueLabel: "<text|clear>", description: "Replacement description, or `clear`." },
       { name: "deadline", kind: "value", valueLabel: "<YYYY-MM-DD|clear>", description: "Replacement deadline, or `clear`." },
+      { name: "time", kind: "value", valueLabel: "<HH:MM|clear>", description: "Replacement scheduled time, or `clear`." },
       { name: "priority", kind: "value", valueLabel: "<p1|p2|p3|clear>", description: "Replacement priority, or `clear`." },
       { name: "tags", kind: "value", valueLabel: "<tag1,tag2|clear>", description: "Replacement tag list, or `clear`." },
       { name: "estimated-minutes", kind: "value", valueLabel: "<minutes|clear>", description: "Replacement estimate, or `clear`." },
