@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.14.0](https://github.com/Snehit70/pravah/compare/web-v1.13.3...web-v1.14.0) (2026-06-23)
+
+
+### Features
+
+* **cli:** add task time CRUD support ([0e37f35](https://github.com/Snehit70/pravah/commit/0e37f3587666134fe8467e5e1f204e0006de6b53))
+* **cli:** add task time CRUD support ([bf62942](https://github.com/Snehit70/pravah/commit/bf62942c48453a69faedc0686c9786c50b1e3e42))
+
+
+### Bug Fixes
+
+* **cli:** clear task time when deadline is removed ([db2214e](https://github.com/Snehit70/pravah/commit/db2214e92c886e05360591ea0a4e3620136b83cf))
+
 ## [1.13.3](https://github.com/Snehit70/pravah/compare/web-v1.13.2...web-v1.13.3) (2026-06-19)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/Snehit70/pravah/compare/cli-v0.2.0...cli-v0.3.0) (2026-06-23)
+
+
+### Features
+
+* **cli:** add task time CRUD support ([0e37f35](https://github.com/Snehit70/pravah/commit/0e37f3587666134fe8467e5e1f204e0006de6b53))
+* **cli:** add task time CRUD support ([bf62942](https://github.com/Snehit70/pravah/commit/bf62942c48453a69faedc0686c9786c50b1e3e42))
+
 ## [0.2.0](https://github.com/Snehit70/pravah/compare/cli-v0.1.0...cli-v0.2.0) (2026-06-19)
 
 
