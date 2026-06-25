@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { type RenderItemParams } from "react-native-draggable-flatlist";
 import { useMutation, useQuery } from "convex/react";
@@ -1339,15 +1340,17 @@ export default function App() {
     <ObserveRoot>
       <SafeAreaProvider>
         <GestureHandlerRootView style={{ flex: 1 }}>
-          <LaunchGate>
-            <ConvexClientProvider>
-              <RootErrorBoundary>
-                <ConfirmProvider>
-                  <MobileApp />
-                </ConfirmProvider>
-              </RootErrorBoundary>
-            </ConvexClientProvider>
-          </LaunchGate>
+          <KeyboardProvider>
+            <LaunchGate>
+              <ConvexClientProvider>
+                <RootErrorBoundary>
+                  <ConfirmProvider>
+                    <MobileApp />
+                  </ConfirmProvider>
+                </RootErrorBoundary>
+              </ConvexClientProvider>
+            </LaunchGate>
+          </KeyboardProvider>
         </GestureHandlerRootView>
       </SafeAreaProvider>
     </ObserveRoot>

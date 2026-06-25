@@ -9,9 +9,7 @@ import {
 } from "react";
 import {
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,6 +17,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { BlurView } from "expo-blur";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { haptic } from "../lib/haptic";
@@ -263,13 +262,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           }
         }}
       >
-        <KeyboardAvoidingView
-          // Android already resizes the modal window for the keyboard. Adding
-          // KeyboardAvoidingView's height behavior on top can make the centered
-          // capture card repeatedly re-measure and visibly oscillate.
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.overlay}
-        >
+        <KeyboardAvoidingView behavior="padding" automaticOffset style={styles.overlay}>
           <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
           <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
           {!hasDraftChanges ? (
