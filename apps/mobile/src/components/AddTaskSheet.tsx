@@ -262,7 +262,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           }
         }}
       >
-        <KeyboardAvoidingView automaticOffset style={styles.overlay}>
+        <KeyboardAvoidingView behavior="padding" automaticOffset style={styles.overlay}>
           <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
           <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
           {!hasDraftChanges ? (
