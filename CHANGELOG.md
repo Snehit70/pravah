@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.15.0](https://github.com/Snehit70/pravah/compare/web-v1.14.0...web-v1.15.0) (2026-06-27)
+
+
+### Features
+
+* **mobile:** add manual app update check ([df2d997](https://github.com/Snehit70/pravah/commit/df2d997c2944b9873255463c3456fa384377eb9a))
+* **mobile:** add manual app update check ([8959a39](https://github.com/Snehit70/pravah/commit/8959a392286bae9d19cd21423ea6a9b12e7657e9))
+
+
+### Bug Fixes
+
+* **mobile:** address app update review feedback ([03f625f](https://github.com/Snehit70/pravah/commit/03f625f4c3d72c78460bf33ab521dc421e8b302d))
+* **mobile:** keep add task submit above keyboard ([e9c8b5d](https://github.com/Snehit70/pravah/commit/e9c8b5df757ada121a77159e959add7e2d05283b))
+* **mobile:** set explicit padding behavior on add task keyboard view ([5fd3292](https://github.com/Snehit70/pravah/commit/5fd3292291730ad18e1e3b71e9b9ba725f36e3f5))
+
 ## [1.14.0](https://github.com/Snehit70/pravah/compare/web-v1.13.3...web-v1.14.0) (2026-06-23)
 
 
