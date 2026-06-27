@@ -139,4 +139,24 @@ describe("AppUpdateSection", () => {
       expect.objectContaining({ status: "update-available", version: "2.4.0" }),
     );
   });
+
+  it.each([
+    [{ status: "offline" }, "Could not reach GitHub. Check your connection and try again."],
+    [
+      { status: "rate-limited", retryAfter: "120" },
+      "GitHub rate limited this device. Try again after 120.",
+    ],
+    [{ status: "malformed-metadata" }, "The release metadata could not be read safely."],
+    [
+      { status: "missing-asset", version: "2.4.0" },
+      "Version 2.4.0 is missing its APK or checksum.",
+    ],
+  ])("renders %s update-check errors", async (result, message) => {
+    mocks.checkForAppUpdate.mockResolvedValue(result);
+    render(<AppUpdateSection />);
+
+    fireEvent.click(screen.getByRole("button", { name: /check for app updates/i }));
+
+    await waitFor(() => expect(screen.getByText(message)).toBeTruthy());
+  });
 });

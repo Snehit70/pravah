@@ -33,7 +33,7 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
 
@@ -84,13 +84,21 @@ jobs:
             printf 'Manual Pravah mobile APK release %s.\n' "$VERSION" > "$NOTES_FILE"
           fi
 
-          gh release create "$TAG" \
-            "apps/mobile/pravah-$VERSION.apk" \
-            "apps/mobile/pravah-$VERSION.apk.md5" \
-            --title "$TAG" \
-            --notes-file "$NOTES_FILE" \
-            --target "$GITHUB_SHA" \
-            --repo "$GITHUB_REPOSITORY" || \
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" \
+              --title "$TAG" \
+              --notes-file "$NOTES_FILE" \
+              --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" \
+              "apps/mobile/pravah-$VERSION.apk" \
+              "apps/mobile/pravah-$VERSION.apk.md5" \
+              --title "$TAG" \
+              --notes-file "$NOTES_FILE" \
+              --target "$GITHUB_SHA" \
+              --repo "$GITHUB_REPOSITORY"
+          fi
+
           gh release upload "$TAG" \
             "apps/mobile/pravah-$VERSION.apk" \
             "apps/mobile/pravah-$VERSION.apk.md5" \

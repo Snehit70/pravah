@@ -58,6 +58,26 @@ function releaseVersion(release: GitHubRelease): string | null {
   return release.tag_name.slice(MOBILE_RELEASE_PREFIX.length);
 }
 
+function isGitHubReleaseAsset(value: unknown): value is GitHubReleaseAsset {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { name?: unknown }).name === "string" &&
+    typeof (value as { browser_download_url?: unknown }).browser_download_url === "string"
+  );
+}
+
+function isGitHubRelease(value: unknown): value is GitHubRelease {
+  if (typeof value !== "object" || value === null) return false;
+
+  const release = value as { tag_name?: unknown; assets?: unknown };
+  return (
+    typeof release.tag_name === "string" &&
+    (release.assets === undefined ||
+      (Array.isArray(release.assets) && release.assets.every(isGitHubReleaseAsset)))
+  );
+}
+
 export function resolveUpdate(
   currentVersion: string | null | undefined,
   releases: readonly GitHubRelease[],
@@ -127,8 +147,15 @@ export async function checkForAppUpdate(
 
   if (!response.ok) return { status: "offline" };
 
-  const payload = (await response.json()) as unknown;
-  if (!Array.isArray(payload)) return { status: "malformed-metadata" };
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return { status: "malformed-metadata" };
+  }
+  if (!Array.isArray(payload) || !payload.every(isGitHubRelease)) {
+    return { status: "malformed-metadata" };
+  }
 
-  return resolveUpdate(currentVersion, payload as GitHubRelease[]);
+  return resolveUpdate(currentVersion, payload);
 }

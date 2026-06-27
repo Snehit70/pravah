@@ -55,6 +55,8 @@ export function useAppUpdateInstaller(): AppUpdateInstaller {
   const [progress, setProgress] = useState(0);
 
   const install = useCallback(async (update: UpdateAvailableResult) => {
+    let downloadedUri: string;
+
     try {
       setStatus("downloading");
       setProgress(0);
@@ -76,6 +78,7 @@ export function useAppUpdateInstaller(): AppUpdateInstaller {
         setStatus("offline");
         return;
       }
+      downloadedUri = downloaded.uri;
 
       setStatus("verifying");
       const [checksumResponse, fileInfo] = await Promise.all([
@@ -92,9 +95,14 @@ export function useAppUpdateInstaller(): AppUpdateInstaller {
         setStatus("corrupt");
         return;
       }
+    } catch {
+      setStatus("offline");
+      return;
+    }
 
+    try {
       setStatus("installing");
-      const contentUri = await FileSystem.getContentUriAsync(downloaded.uri);
+      const contentUri = await FileSystem.getContentUriAsync(downloadedUri);
       await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
         data: contentUri,
         flags: 1,

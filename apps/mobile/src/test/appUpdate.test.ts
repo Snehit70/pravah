@@ -97,6 +97,22 @@ describe("checkForAppUpdate", () => {
     });
   });
 
+  it("maps invalid JSON to malformed metadata", async () => {
+    const fetchImpl = vi.fn(async () => new Response("not-json"));
+
+    await expect(checkForAppUpdate("2.3.0", fetchImpl as typeof fetch)).resolves.toEqual({
+      status: "malformed-metadata",
+    });
+  });
+
+  it("maps invalid release shapes to malformed metadata", async () => {
+    const fetchImpl = vi.fn(async () => Response.json([{}, null]));
+
+    await expect(checkForAppUpdate("2.3.0", fetchImpl as typeof fetch)).resolves.toEqual({
+      status: "malformed-metadata",
+    });
+  });
+
   it("passes successful GitHub release lists through resolution", async () => {
     const fetchImpl = vi.fn(async () => Response.json([release("mobile-v2.4.0")]));
 
