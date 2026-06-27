@@ -26,8 +26,9 @@
 ## Release and versioning policy
 
 - GitHub release automation is managed by `release-please` via `.github/workflows/release-please.yml`.
-- Agents should follow Conventional Commits (`feat:`, `fix:`, `chore:`, etc.) so semver bumps are generated correctly.
+- Agents should follow Conventional Commits (`feat:`, `fix:`, `chore:`, etc.) so web and CLI semver bumps are generated correctly.
 - Version sources are:
   - web: root `package.json`
   - mobile: `apps/mobile/package.json`
-- Mobile Expo version must stay in sync with mobile package version. This is automated through `release-please-config.json` by updating `apps/mobile/app.json` at `$.expo.version` during release PR generation.
+- Mobile stays out of release-please. Bump `apps/mobile/package.json` and `apps/mobile/app.json` by hand for deliberate native releases, then run the manual mobile APK release workflow.
+- Mobile EAS builds use local app versioning so the installed Android `versionName` matches the `mobile-v<version>` GitHub release tag.

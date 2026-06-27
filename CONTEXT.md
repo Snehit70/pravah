@@ -64,3 +64,19 @@ _Avoid_: task-goal mapping, goal assignment
 **Kairo**:
 The built-in AI copilot that reasons about schedule and task creation.
 _Avoid_: assistant, bot
+
+**Progress**:
+The surface that reports on-device statistics derived from a user's Tasks — completion velocity, streaks, and workload — together with the history of Completed Tasks.
+_Avoid_: Insights, Stats, Analytics, Dashboard
+
+**OTA Update**:
+A JavaScript/asset bundle delivered to an already-installed build over the air, without changing the installed binary. It applies only to builds whose app version matches the bundle's runtime version. This is the "push of UI."
+_Avoid_: hot update, code push, patch
+
+**App Update**:
+A new native binary (a freshly built, signed APK) carrying a bumped app version, delivered by sideloading because Pravah is not published to any app store. Reaching a new App Update requires installing the binary; it cannot arrive over the air. This is the "push of app updates."
+_Avoid_: store update, native update (there is no store)
+
+**Update Check**:
+A manual, user-initiated action in the app that asks whether a newer App Update exists and, if so, offers to install it. It does not concern OTA Updates, which arrive on their own.
+_Avoid_: auto-update, version check

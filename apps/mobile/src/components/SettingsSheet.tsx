@@ -41,6 +41,7 @@ import {
 } from "../lib/settingsNavigation";
 import { KairoSettingsSection } from "./KairoSettingsSection";
 import { GmailReviewSection } from "./GmailReviewSection";
+import { AppUpdateSection } from "./AppUpdateSection";
 import { SnapWheelTimePicker } from "./SnapWheelTimePicker";
 import {
   summarizeSyncError,
@@ -1080,6 +1081,8 @@ function AboutSection({
           <Text style={styles.linkRowChevron}>↗</Text>
         </Pressable>
       </View>
+
+      <AppUpdateSection />
 
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <Text style={styles.settingLabel}>Diagnostics</Text>
