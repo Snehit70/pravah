@@ -36,6 +36,9 @@
     },
     "android": {
       "package": "com.pravah.mobile",
+      "permissions": [
+        "REQUEST_INSTALL_PACKAGES"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#09111f"

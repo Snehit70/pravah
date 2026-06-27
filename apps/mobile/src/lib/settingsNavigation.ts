@@ -77,6 +77,7 @@ export const SETTINGS_CATEGORY_CONTROLS: Record<
   ],
   about: [
     "app_version",
+    "app_update_check",
     "support_links",
     "export_tasks",
     "export_diagnostics",

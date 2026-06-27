@@ -72,6 +72,7 @@
         "expo-haptics": "~56.0.3",
         "expo-image": "~56.0.11",
         "expo-insights": "~56.0.18",
+        "expo-intent-launcher": "~56.0.3",
         "expo-linear-gradient": "~56.0.4",
         "expo-notifications": "~56.0.18",
         "expo-observe": "~56.0.21",
@@ -99,7 +100,7 @@
     },
     "packages/cli": {
       "name": "pravah",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "bin": {
         "pravah": "./dist/pravah.js",
       },
@@ -957,6 +958,8 @@
     "expo-image": ["expo-image@56.0.11", "", { "dependencies": { "sf-symbols-typescript": "^2.2.0" }, "peerDependencies": { "expo": "*", "react": "*", "react-native": "*", "react-native-web": "*" }, "optionalPeers": ["react-native-web"] }, "sha512-k2xwxGk14xi6zxmEGAU4rUTb1lK5qf0y0Qb8+Jaggnul0KaJJxcq9qvyDp9iyJBW35cp9isONAUnNtIiooZ/Pw=="],
 
     "expo-insights": ["expo-insights@56.0.18", "", { "dependencies": { "expo-eas-client": "~56.0.0" }, "peerDependencies": { "expo": "*" } }, "sha512-MnuYw9ludoxHbkHbyYV/gL2vWWnAWiFb69Fe1kYim3z4Hqd/aadPWgzukSpKtD2R7HHJJJw/Dj7HqC3AKZvyHw=="],
+
+    "expo-intent-launcher": ["expo-intent-launcher@56.0.4", "", { "peerDependencies": { "expo": "*" } }, "sha512-ZqRMuPunNSucK9kRbtX+I8bD/OhY0moGNnHKHCWx//1BZ+HyKBCVw6OX12gWHjowz1AhcSVeAasYt48Y+tXPwQ=="],
 
     "expo-json-utils": ["expo-json-utils@56.0.0", "", {}, "sha512-lUqyv9aIGDbYTQ5Nux2FnH2/Dz0w5uJ8Pr080eS0StXi2jr5OmuMNErpzUnpfnYOU55xKotd4AHv68PfV/ludg=="],
 
