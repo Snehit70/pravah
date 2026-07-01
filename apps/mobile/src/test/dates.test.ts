@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { addDays, dateLabel, humanDate, isIsoDate, shortDate, toIsoDate } from "../lib/dates";
+import {
+  addDays,
+  dateLabel,
+  humanDate,
+  isIsoDate,
+  nextLaterThisWeek,
+  shortDate,
+  toIsoDate,
+} from "../lib/dates";
 
 describe("mobile dates helpers", () => {
   it("formats Date to YYYY-MM-DD", () => {
@@ -42,5 +50,10 @@ describe("mobile dates helpers", () => {
     expect(isIsoDate("2026-4-14")).toBe(false);
     expect(isIsoDate("14-04-2026")).toBe(false);
     expect(isIsoDate("2026-04-31")).toBe(false);
+  });
+
+  it("keeps the later preset in the future across weekend edges", () => {
+    expect(toIsoDate(nextLaterThisWeek(new Date(2026, 6, 4)))).toBe("2026-07-05");
+    expect(toIsoDate(nextLaterThisWeek(new Date(2026, 6, 5)))).toBe("2026-07-06");
   });
 });

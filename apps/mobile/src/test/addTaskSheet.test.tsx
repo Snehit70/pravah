@@ -225,6 +225,7 @@ describe("AddTaskSheet", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
@@ -355,5 +356,37 @@ describe("AddTaskSheet", () => {
 
     expect(screen.getByText("Add task")).toBeTruthy();
     expect(screen.getByText("Discard")).toBeTruthy();
+  });
+
+  it("recomputes the later preset label when the sheet is reopened on a new day", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 3, 10, 0, 0));
+
+    render(
+      <AddTaskSheet
+        ref={ref}
+        onAdd={mockOnAdd}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+      />
+    );
+
+    act(() => {
+      ref.current?.open();
+    });
+
+    expect(screen.getByText("Later this week, Sun")).toBeTruthy();
+
+    act(() => {
+      ref.current?.close();
+    });
+
+    vi.setSystemTime(new Date(2026, 6, 5, 10, 0, 0));
+
+    act(() => {
+      ref.current?.open();
+    });
+
+    expect(screen.getByText("Later this week, Mon")).toBeTruthy();
   });
 });

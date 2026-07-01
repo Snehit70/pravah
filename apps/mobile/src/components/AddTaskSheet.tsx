@@ -93,7 +93,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         || seriesEnabled
     );
 
-    const laterThisWeek = useMemo(() => nextLaterThisWeek(), []);
+    const laterThisWeek = nextLaterThisWeek();
     const modeOptions = useMemo<{ mode: ComposerMode; label: string }[]>(
       () => [
         { mode: "inbox", label: "Inbox" },
