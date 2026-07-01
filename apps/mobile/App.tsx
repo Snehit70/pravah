@@ -206,7 +206,6 @@ function MobileApp() {
 
   const needsFullWorkspaceCorpus =
     isKairoActive ||
-    activeTab === "timeline" ||
     activeTab === "insights" ||
     activeTab === "goals" ||
     notificationsEnabled;
@@ -289,7 +288,10 @@ function MobileApp() {
   const restoreTaskMutation = useMutation(api.tasks.restoreTask);
   const applyOverdueReflowMutation = useMutation(api.overdueReflow.apply);
   const undoOverdueReflowMutation = useMutation(api.overdueReflow.undo);
-  const overduePreviewData = useQuery(api.overdueReflow.preview, session ? { today } : "skip");
+  const overduePreviewData = useQuery(
+    api.overdueReflow.preview,
+    session && activeTab === "timeline" ? { today } : "skip"
+  );
 
   useConvexGoalsSync(Boolean(session));
   const { setGoalLink, clearAll: clearAllGoals } = useGoalMutations();
