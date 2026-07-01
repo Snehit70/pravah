@@ -33,6 +33,14 @@ export const claimLegacyData = mutation({
   args: {},
   handler: async (ctx) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
+    const existingUser = await ctx.db
+      .query("users")
+      .withIndex("by_token", (q) => q.eq("tokenIdentifier", tokenIdentifier))
+      .unique();
+
+    if (existingUser?.legacyDataClaimedAt !== undefined) {
+      return { claimed: false, skipped: true };
+    }
 
     // Pravah is currently a single-user product. This migration intentionally
     // claims any legacy ownerless records for the authenticated user so older
@@ -40,27 +48,29 @@ export const claimLegacyData = mutation({
 
     const legacyTasks = await ctx.db
       .query("tasks")
-      .filter((q) => q.eq(q.field("ownerTokenIdentifier"), undefined))
+      .withIndex("by_owner", (q) => q.eq("ownerTokenIdentifier", undefined))
       .collect();
     const legacyIntegrations = await ctx.db
       .query("integrations")
-      .filter((q) => q.eq(q.field("ownerTokenIdentifier"), undefined))
+      .withIndex("by_owner_provider", (q) => q.eq("ownerTokenIdentifier", undefined))
       .collect();
     const legacyCursors = await ctx.db
       .query("syncCursors")
-      .filter((q) => q.eq(q.field("ownerTokenIdentifier"), undefined))
+      .withIndex("by_owner_provider", (q) => q.eq("ownerTokenIdentifier", undefined))
       .collect();
     const legacyMappings = await ctx.db
       .query("externalTaskMappings")
-      .filter((q) => q.eq(q.field("ownerTokenIdentifier"), undefined))
+      .withIndex("by_owner_provider_external_id", (q) =>
+        q.eq("ownerTokenIdentifier", undefined)
+      )
       .collect();
     const legacyReviewItems = await ctx.db
       .query("reviewQueue")
-      .filter((q) => q.eq(q.field("ownerTokenIdentifier"), undefined))
+      .withIndex("by_owner_status", (q) => q.eq("ownerTokenIdentifier", undefined))
       .collect();
     const legacyRuns = await ctx.db
       .query("syncRuns")
-      .filter((q) => q.eq(q.field("ownerTokenIdentifier"), undefined))
+      .withIndex("by_owner_status", (q) => q.eq("ownerTokenIdentifier", undefined))
       .collect();
 
     await Promise.all(legacyTasks.map((doc) => ctx.db.patch(doc._id, { ownerTokenIdentifier: tokenIdentifier })));
@@ -73,6 +83,9 @@ export const claimLegacyData = mutation({
       legacyReviewItems.map((doc) => ctx.db.patch(doc._id, { ownerTokenIdentifier: tokenIdentifier }))
     );
     await Promise.all(legacyRuns.map((doc) => ctx.db.patch(doc._id, { ownerTokenIdentifier: tokenIdentifier })));
+    if (existingUser) {
+      await ctx.db.patch(existingUser._id, { legacyDataClaimedAt: Date.now() });
+    }
 
     return {
       claimed:
@@ -83,6 +96,7 @@ export const claimLegacyData = mutation({
           legacyReviewItems.length +
           legacyRuns.length >
         0,
+      skipped: false,
     };
   },
 });

@@ -85,6 +85,7 @@ export default defineSchema({
     email: v.optional(v.string()),
     image: v.optional(v.string()),
     tokenIdentifier: v.string(),
+    legacyDataClaimedAt: v.optional(v.number()),
   }).index("by_token", ["tokenIdentifier"]),
   automationCredentials: defineTable({
     ownerTokenIdentifier: v.string(),
@@ -205,6 +206,7 @@ export default defineSchema({
     cancelledAt: v.optional(v.number()),
   })
     .index("by_owner", ["ownerTokenIdentifier"])
+    .index("by_cancelled_at", ["cancelledAt"])
     .index("by_status", ["status"])
     .index("by_scheduled_date", ["scheduledDate"])
     .index("by_status_and_date", ["status", "scheduledDate"])
@@ -217,6 +219,7 @@ export default defineSchema({
     .index("by_owner_deadline", ["ownerTokenIdentifier", "deadline"])
     .index("by_owner_deadline_position", ["ownerTokenIdentifier", "deadline", "position"])
     .index("by_owner_completed_at", ["ownerTokenIdentifier", "completedAt"])
+    .index("by_owner_cancelled_at", ["ownerTokenIdentifier", "cancelledAt"])
     .index("by_owner_position", ["ownerTokenIdentifier", "position"]),
   integrations: defineTable({
     provider: v.union(v.literal("google_calendar"), v.literal("gmail")),
