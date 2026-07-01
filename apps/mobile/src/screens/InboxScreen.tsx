@@ -453,7 +453,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    minHeight: 40,
+    minHeight: 48,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
   },
@@ -473,7 +473,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.bgCardGlass,
-    minHeight: 32,
+    minHeight: 44,
     justifyContent: "center",
   },
   filterChipActive: {

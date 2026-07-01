@@ -754,7 +754,7 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   quickActionItem: {
-    minHeight: 36,
+    minHeight: 44,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     justifyContent: "center",

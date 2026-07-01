@@ -1328,7 +1328,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.accent,
-    backgroundColor: "rgba(167, 139, 250, 0.12)",
+    backgroundColor: colors.accentSoft,
   },
   headerHistoryIcon: {
     color: colors.accent,
@@ -1415,7 +1415,7 @@ const styles = StyleSheet.create({
   },
   chipApplied: {
     borderColor: colors.success,
-    backgroundColor: "rgba(34, 197, 94, 0.10)",
+    backgroundColor: colors.successMuted,
   },
   chipUndone: {
     borderColor: colors.textMuted,
@@ -1452,7 +1452,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: colors.bgInput,
   },
   chipUndoText: {
     ...typography.micro,
@@ -1504,7 +1504,7 @@ const styles = StyleSheet.create({
   thinkingBar: {
     height: 8,
     borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: colors.bgInput,
     overflow: "hidden",
   },
   thinkingBarSweep: {
@@ -1512,7 +1512,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: "60%",
-    backgroundColor: "rgba(255,255,255,0.25)",
+    backgroundColor: colors.accentSoft,
   },
   starters: {
     flexDirection: "row",

@@ -596,7 +596,7 @@ const styles = StyleSheet.create({
     color: colors.error,
   },
   primaryAction: {
-    minHeight: 34,
+    minHeight: 44,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radii.full,
@@ -617,11 +617,12 @@ const styles = StyleSheet.create({
   },
   actionCol: {
     marginLeft: spacing.md,
+    flexDirection: "row",
     gap: spacing.xs,
-    alignItems: "flex-end",
+    alignItems: "center",
   },
   secondaryInlineAction: {
-    alignSelf: "stretch",
+    backgroundColor: colors.bgCard,
   },
   // Swipe action panels — flat color, single label. The label is rendered
   // via SwipeActionLabel above so it can fade in proportional to drag.

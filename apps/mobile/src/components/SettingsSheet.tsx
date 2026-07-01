@@ -2022,7 +2022,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   codePill: {
-    minHeight: 42,
+    minHeight: 44,
     justifyContent: "center",
     paddingHorizontal: spacing.md,
     borderRadius: radii.lg,

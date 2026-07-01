@@ -438,7 +438,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   windowOption: {
-    minHeight: 40,
+    minHeight: 44,
     paddingHorizontal: spacing.md,
     alignItems: "center",
     justifyContent: "center",

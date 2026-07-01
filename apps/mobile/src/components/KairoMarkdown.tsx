@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
   },
   code: {
     fontFamily: fonts.mono,
-    backgroundColor: "rgba(255,255,255,0.07)",
+    backgroundColor: colors.bgInput,
     paddingHorizontal: 4,
     borderRadius: 3,
   },

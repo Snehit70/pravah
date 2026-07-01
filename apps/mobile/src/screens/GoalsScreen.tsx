@@ -922,7 +922,7 @@ const detailStyles = StyleSheet.create({
     letterSpacing: 0.6,
   },
   input: {
-    minHeight: 40,
+    minHeight: 48,
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
@@ -941,7 +941,7 @@ const detailStyles = StyleSheet.create({
     gap: spacing.xs,
   },
   priorityOption: {
-    minHeight: 32,
+    minHeight: 44,
     minWidth: 48,
     alignItems: "center",
     justifyContent: "center",
@@ -963,7 +963,7 @@ const detailStyles = StyleSheet.create({
     color: colors.accent,
   },
   saveBtn: {
-    minHeight: 40,
+    minHeight: 48,
     borderRadius: radii.md,
     alignItems: "center",
     justifyContent: "center",

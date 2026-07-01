@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   actionBtn: {
-    minHeight: 38,
+    minHeight: 44,
     paddingHorizontal: spacing.md,
     borderRadius: radii.md,
     alignItems: "center",
@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
   },
   destructiveText: {
     ...typography.bodyMd,
-    color: "#fff",
+    color: colors.textInverse,
     fontWeight: "600",
   },
 });

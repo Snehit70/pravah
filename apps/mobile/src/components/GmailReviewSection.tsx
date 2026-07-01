@@ -269,7 +269,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    minHeight: 28,
+    minHeight: 44,
     justifyContent: "center",
   },
   chipActive: {

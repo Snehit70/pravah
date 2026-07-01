@@ -46,16 +46,16 @@ export const colors = {
   textPrimary: "#201914",
   textSecondary: "#5b5048",
   textMuted: "#6f6358",
-  textDim: "#b4a89b",
+  textDim: "#76695e",
   textInverse: "#fffaf2",
-  textCompleted: "#8f8276",
+  textCompleted: "#76695e",
 
-  // ── Accent (indigo, oklch 0.78 0.14 260) ────────────────────────────
-  accent: "#7967d6",
-  accentHover: "#6753c7",
-  accentSoft: "rgba(121,103,214,0.16)",
-  accentGlow: "rgba(121,103,214,0.28)",
-  accentDim: "rgba(121,103,214,0.07)",
+  // ── Accent (darkened for AA text contrast on every warm surface) ────
+  accent: "#6753c7",
+  accentHover: "#5844b8",
+  accentSoft: "rgba(103,83,199,0.16)",
+  accentGlow: "rgba(103,83,199,0.28)",
+  accentDim: "rgba(103,83,199,0.07)",
 
   // ── Priority semantics ──────────────────────────────────────────────
   // One canonical, fixed (accent-independent) muted hue ramp — red → amber →
@@ -63,23 +63,23 @@ export const colors = {
   // previous values (accent purple + two near-identical grays) made P2 and P3
   // indistinguishable and tied P1 to the themeable accent. Intentionally
   // diverges from web here; mobile is the triage-heavy surface.
-  priorityP1: "#b85d4c",
-  priorityP2: "#a87928",
-  priorityP3: "#7b817d",
+  priorityP1: "#934536",
+  priorityP2: "#805712",
+  priorityP3: "#5e6662",
 
   // ── Status semantics ────────────────────────────────────────────────
-  success: "#267a55",
-  successMuted: "rgba(38,122,85,0.13)",
-  warning: "#9a6d1f",
-  warningMuted: "rgba(154,109,31,0.14)",
-  deadline: "#b56535",
-  deadlineMuted: "rgba(181,101,53,0.16)",
-  error: "#b94e3f",
-  errorMuted: "rgba(185,78,63,0.13)",
+  success: "#226b4b",
+  successMuted: "rgba(34,107,75,0.13)",
+  warning: "#805712",
+  warningMuted: "rgba(128,87,18,0.14)",
+  deadline: "#98502d",
+  deadlineMuted: "rgba(152,80,45,0.16)",
+  error: "#a43f32",
+  errorMuted: "rgba(164,63,50,0.13)",
 
   // ── Legacy aliases (kept so untouched call sites keep compiling) ────
   /** @deprecated Use `success`. */
-  primary: "#267a55",
+  primary: "#226b4b",
   /** @deprecated Use `bg`. */
   primaryDark: "#f7f1e8",
   /** @deprecated Use `textInverse`. */
@@ -165,7 +165,7 @@ export const shadow = {
     elevation: 16,
   },
   glow: {
-    shadowColor: "#7967d6",
+    shadowColor: "#6753c7",
     shadowOpacity: 0.24,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },

@@ -13,8 +13,8 @@
       "accent": {
         "role": "primary",
         "displayName": "Quiet Indigo",
-        "canonical": "#7967d6",
-        "tonalRamp": ["#201747", "#302467", "#43338a", "#5847ad", "#7967d6", "#9e91e5", "#c4bcf0", "#ebe8fa"]
+        "canonical": "#6753c7",
+        "tonalRamp": ["#201747", "#302467", "#43338a", "#5844b8", "#6753c7", "#9081dc", "#beb6ee", "#ebe8fa"]
       },
       "ink": {
         "role": "neutral",

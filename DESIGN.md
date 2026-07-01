@@ -9,16 +9,16 @@ colors:
   ink: "#201914"
   text-secondary: "#5b5048"
   text-muted: "#6f6358"
-  text-dim: "#b4a89b"
-  accent: "#7967d6"
-  accent-hover: "#6753c7"
-  success: "#267a55"
-  warning: "#9a6d1f"
-  deadline: "#b56535"
-  error: "#b94e3f"
-  priority-one: "#b85d4c"
-  priority-two: "#a87928"
-  priority-three: "#7b817d"
+  text-dim: "#76695e"
+  accent: "#6753c7"
+  accent-hover: "#5844b8"
+  success: "#226b4b"
+  warning: "#805712"
+  deadline: "#98502d"
+  error: "#a43f32"
+  priority-one: "#934536"
+  priority-two: "#805712"
+  priority-three: "#5e6662"
 typography:
   display:
     fontFamily: "Geist"
@@ -123,7 +123,7 @@ and a restrained indigo accent for selected or intelligent moments.
 
 ### Primary
 
-- **Quiet Indigo** (`#7967d6`): Primary actions, selected state, focus, and
+- **Quiet Indigo** (`#6753c7`): Primary actions, selected state, focus, and
   Kairo-specific emphasis. Keep it below roughly 10% of an everyday screen.
 
 ### Neutral
@@ -239,7 +239,7 @@ a full-screen surface.
 
 ### Do:
 
-- **Do** use warm neutral layers and reserve `#7967d6` for meaningful emphasis.
+- **Do** use warm neutral layers and reserve `#6753c7` for meaningful emphasis.
 - **Do** keep interactive targets at least 44 by 44 points.
 - **Do** expose role, label, value, selected, checked, and expanded state.
 - **Do** use one visually dominant action per local context.
