@@ -888,7 +888,6 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
             accessibilityRole="button"
             disabled={thinking}
           >
-            <Text style={styles.headerHistoryIcon}>⌕</Text>
             <Text style={styles.headerHistoryText}>Chat history</Text>
           </Pressable>
           <View style={styles.headerActions}>
@@ -930,7 +929,6 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           accessibilityRole="button"
           disabled={thinking}
         >
-          <KairoMark size={20} />
           <View style={styles.headerTitleCopy}>
             <Text style={styles.headerTitle} numberOfLines={1}>
               {activeChat?.title && activeChat.title !== "New chat"
@@ -1279,33 +1277,6 @@ function Thinking({ label }: { label?: string | null }) {
   );
 }
 
-/** Tiny gradient mark — RN can't do CSS gradient backgrounds without an SVG
- *  or LinearGradient, so a flat indigo disc with the brand glyph is good
- *  enough for a 20px header lockup. */
-function KairoMark({ size = 20 }: { size?: number }) {
-  return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        backgroundColor: colors.accent,
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <View
-        style={{
-          width: size * 0.32,
-          height: size * 0.32,
-          borderRadius: (size * 0.32) / 2,
-          backgroundColor: colors.bg,
-        }}
-      />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   sheetBg: {
     backgroundColor: colors.bg,
@@ -1334,7 +1305,6 @@ const styles = StyleSheet.create({
   headerTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
     marginTop: spacing.md,
     padding: spacing.sm,
     borderRadius: radii.lg,
@@ -1363,18 +1333,12 @@ const styles = StyleSheet.create({
   headerHistoryButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
     paddingHorizontal: spacing.sm,
     paddingVertical: 7,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.accent,
     backgroundColor: colors.accentSoft,
-  },
-  headerHistoryIcon: {
-    color: colors.accent,
-    fontFamily: fonts.sansSemibold,
-    fontSize: 13,
   },
   headerHistoryText: {
     color: colors.accent,
