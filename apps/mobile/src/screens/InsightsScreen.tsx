@@ -18,6 +18,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Circle, Path } from "react-native-svg";
 import type { MobileTask } from "../components/TaskCard";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { kpis, weekOverWeek } from "../lib/statsAggregators";
@@ -51,6 +52,26 @@ function trendCopy(current: number, previous: number): string {
   return current > previous
     ? `${difference} more than the previous 7 days`
     : `${difference} fewer than the previous 7 days`;
+}
+
+function ProgressEmptyIcon({ size = 28 }: { size?: number }) {
+  return (
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={colors.textSecondary}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <Path d="M4 18.5h16" />
+      <Path d="M6 15.5 10 11l3 2.5 5-6" />
+      <Path d="M15.5 7.5H18v2.5" />
+      <Circle cx={10} cy={11} r={0.8} fill={colors.textSecondary} stroke="none" />
+    </Svg>
+  );
 }
 
 export function InsightsScreen({
@@ -186,6 +207,9 @@ export function InsightsScreen({
           </View>
         ) : (
           <View style={styles.emptyState}>
+            <View style={styles.emptyIconWrap}>
+              <ProgressEmptyIcon />
+            </View>
             <Text style={styles.emptyTitle}>Complete a Task to start seeing momentum.</Text>
             <Text style={styles.emptyText}>
               Progress will keep the recent record here without turning work into a score.
@@ -396,6 +420,17 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.section,
     alignItems: "center",
     gap: spacing.sm,
+  },
+  emptyIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    marginBottom: spacing.xs,
   },
   emptyTitle: {
     ...typography.headline,

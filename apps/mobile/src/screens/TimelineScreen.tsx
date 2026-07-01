@@ -12,6 +12,7 @@ import { useEffect, useRef, useState, type JSX } from "react";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import type { RenderItemParams } from "react-native-draggable-flatlist";
+import Svg, { Line, Rect } from "react-native-svg";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
 import { TimelineSectionHeader } from "../components/TimelineSectionHeader";
@@ -94,6 +95,27 @@ function buildTimelineRows(
   return rows;
 }
 
+function TimelineEmptyIcon({ size = 28 }: { size?: number }) {
+  return (
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={colors.textSecondary}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <Rect x={3.5} y={5} width={17} height={15} rx={3} />
+      <Line x1={8} y1={3.75} x2={8} y2={7.25} />
+      <Line x1={16} y1={3.75} x2={16} y2={7.25} />
+      <Line x1={3.5} y1={9} x2={20.5} y2={9} />
+      <Rect x={10.5} y={12} width={3} height={3} rx={1} />
+    </Svg>
+  );
+}
+
 export function TimelineScreen({
   sections,
   today,
@@ -167,6 +189,9 @@ export function TimelineScreen({
 
   const emptyBlock = (
     <Animated.View entering={reducedMotion ? undefined : FadeIn.duration(400)} style={styles.emptyWrap}>
+      <View style={styles.emptyIconWrap}>
+        <TimelineEmptyIcon />
+      </View>
       <Text style={styles.emptyTitle}>Today is clear.</Text>
       <Text style={styles.emptyText}>
         Upcoming work will appear here when it has a Deadline. Use Capture or Inbox to
@@ -357,6 +382,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xxl,
     gap: spacing.sm,
     alignItems: "center",
+  },
+  emptyIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    marginBottom: spacing.xs,
   },
   emptyTitle: {
     color: colors.textPrimary,
