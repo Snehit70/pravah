@@ -1,6 +1,5 @@
 import { memo, useCallback, useEffect, useRef } from "react";
 import {
-  AccessibilityInfo,
   Pressable,
   StyleSheet,
   Text,
@@ -23,6 +22,7 @@ import { getLocalDateString } from "../lib/dates";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { isTaskCompleted, isTaskInInbox, isTaskOnTimeline } from "../lib/taskState";
 import { formatTime12h } from "../lib/task-form";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 
 export type MobileTask = {
   _id: Id<"tasks">;
@@ -124,6 +124,7 @@ function TaskCardInner({
   const isCompleted = isTaskCompleted(task);
   const isInboxTask = isTaskInInbox(task);
   const swipeRef = useRef<SwipeableMethods>(null);
+  const reducedMotion = useReducedMotion();
 
   // Web parity (src/index.css:228-233): when a task flips to completed, a 1px
   // accent bar sweeps left→right across the row, then the row eases to
@@ -135,8 +136,7 @@ function TaskCardInner({
   const wasCompleted = useRef(isCompleted);
   useEffect(() => {
     if (!wasCompleted.current && isCompleted) {
-      void AccessibilityInfo.isReduceMotionEnabled().then((reduceMotion) => {
-        if (reduceMotion) return;
+      if (!reducedMotion) {
         sweepOpacity.value = 1;
         sweepProgress.value = 0;
         sweepProgress.value = withTiming(
@@ -149,10 +149,10 @@ function TaskCardInner({
             if (finished) sweepOpacity.value = withTiming(0, { duration: motion.duration.fast });
           }
         );
-      });
+      }
     }
     wasCompleted.current = isCompleted;
-  }, [isCompleted, sweepOpacity, sweepProgress]);
+  }, [isCompleted, reducedMotion, sweepOpacity, sweepProgress]);
 
   // Bar leading edge tracks progress; trailing edge follows ~50% behind so the
   // visible accent stripe is a moving slice rather than a full fill. Width is
@@ -320,21 +320,23 @@ function TaskCardInner({
     label: string;
     run?: () => void;
     tone: "primary" | "secondary";
+    semantic: "button" | "completion";
   } =
     isCompleted
-      ? { label: "Reopen", run: onReopen ? handleReopen : undefined, tone: "secondary" }
+      ? { label: "Reopen", run: onReopen ? handleReopen : undefined, tone: "secondary", semantic: "completion" }
       : isInboxTask
-        ? { label: "Schedule", run: onMoveToday ? handleMoveToday : undefined, tone: "primary" }
-        : { label: "Complete", run: handleDone, tone: "primary" };
+        ? { label: "Schedule", run: onMoveToday ? handleMoveToday : undefined, tone: "primary", semantic: "button" }
+        : { label: "Complete", run: handleDone, tone: "primary", semantic: "completion" };
   const secondaryAction: {
     label: string;
     run?: () => void;
     tone: "secondary";
+    semantic: "button" | "completion";
   } | null = isCompleted
     ? null
     : isInboxTask
-      ? { label: "Complete", run: handleDone, tone: "secondary" }
-      : { label: "Inbox", run: onSendToInbox ? handleSendToInbox : undefined, tone: "secondary" };
+      ? { label: "Complete", run: handleDone, tone: "secondary", semantic: "completion" }
+      : { label: "Inbox", run: onSendToInbox ? handleSendToInbox : undefined, tone: "secondary", semantic: "button" };
 
   const rowContent = (
     <Pressable
@@ -408,8 +410,15 @@ function TaskCardInner({
             }}
             disabled={!secondaryAction.run}
             hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel={`${secondaryAction.label} ${task.title}`}
+            accessibilityRole={secondaryAction.semantic === "completion" ? "checkbox" : "button"}
+            accessibilityState={
+              secondaryAction.semantic === "completion" ? { checked: isCompleted } : undefined
+            }
+            accessibilityLabel={
+              secondaryAction.semantic === "completion"
+                ? `Mark ${task.title} complete`
+                : `${secondaryAction.label} ${task.title}`
+            }
             style={({ pressed }) => [
               styles.primaryAction,
               styles.primaryActionSecondary,
@@ -431,8 +440,17 @@ function TaskCardInner({
           }}
           disabled={!primaryAction.run}
           hitSlop={10}
-          accessibilityRole="button"
-          accessibilityLabel={`${primaryAction.label} ${task.title}`}
+          accessibilityRole={primaryAction.semantic === "completion" ? "checkbox" : "button"}
+          accessibilityState={
+            primaryAction.semantic === "completion" ? { checked: isCompleted } : undefined
+          }
+          accessibilityLabel={
+            primaryAction.semantic === "completion"
+              ? isCompleted
+                ? `Mark ${task.title} incomplete`
+                : `Mark ${task.title} complete`
+              : `${primaryAction.label} ${task.title}`
+          }
           style={({ pressed }) => [
             styles.primaryAction,
             primaryAction.tone === "secondary" && styles.primaryActionSecondary,
