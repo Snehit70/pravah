@@ -110,12 +110,15 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       [laterThisWeek],
     );
 
-    const presetDeadlines: Record<ComposerMode, string> = {
-      inbox: "",
-      today: toIsoDate(new Date()),
-      tomorrow: toIsoDate(addDays(new Date(), 1)),
-      laterThisWeek: toIsoDate(laterThisWeek),
-    };
+    const presetDeadlines = useMemo<Record<ComposerMode, string>>(
+      () => ({
+        inbox: "",
+        today: toIsoDate(new Date()),
+        tomorrow: toIsoDate(addDays(new Date(), 1)),
+        laterThisWeek: toIsoDate(laterThisWeek),
+      }),
+      [laterThisWeek],
+    );
     const selectedMode = modeOptions.find(
       (option) => presetDeadlines[option.mode] === deadline
     )?.mode;
@@ -272,6 +275,20 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     }, [goalIds, kind, prefs.bulkTaskCaptureEnabled, seriesEnabled, seriesEnd, seriesStart, title]);
 
     const canSubmit = useMemo(() => Boolean(title.trim()) && !saving, [title, saving]);
+    const captureOutcome = useMemo(() => {
+      if (kind === "goal") return "Creates a Goal you can plan from Goals.";
+      if (!deadline) return "Saves to Inbox for later triage.";
+      const selected = modeOptions.find((option) => presetDeadlines[option.mode] === deadline);
+      if (selected) return `Schedules for ${selected.label}.`;
+      return "Schedules for the selected date.";
+    }, [deadline, kind, modeOptions, presetDeadlines]);
+    const submitLabel = saving
+      ? "Saving..."
+      : kind === "goal"
+        ? "Create goal"
+        : deadline
+          ? "Schedule task"
+          : "Capture task";
 
     return (
       <Modal
@@ -570,6 +587,9 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               ) : null}
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
+              <Text accessibilityLiveRegion="polite" style={styles.outcomeText}>
+                {captureOutcome}
+              </Text>
             </ScrollView>
 
             {/* Sticky footer: the primary action stays pinned above the keyboard
@@ -586,7 +606,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                 ]}
               >
                 <Text style={[styles.primaryButtonText, !canSubmit && styles.primaryButtonTextDisabled]}>
-                  {saving ? "Adding…" : kind === "goal" ? "Add goal" : "Add task"}
+                  {submitLabel}
                 </Text>
               </Pressable>
 
@@ -656,6 +676,11 @@ const styles = StyleSheet.create({
   rangeRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   rangeInput: { minWidth: 72, color: colors.textPrimary, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, paddingVertical: spacing.sm, textAlign: "center" },
   previewText: { ...typography.micro, color: colors.textMuted },
+  outcomeText: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    lineHeight: 18,
+  },
 
   sheetKicker: {
     ...typography.micro,
