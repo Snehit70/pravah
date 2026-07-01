@@ -193,6 +193,20 @@ export function InboxScreen({
 
   const searchHeader = (
     <View style={styles.searchWrap}>
+      <View style={styles.queueIntro}>
+        <View style={styles.queueCopy}>
+          <Text style={styles.queueTitle}>Triage queue</Text>
+          <Text style={styles.queueSubtitle}>
+            {isFiltering
+              ? `${filteredTasks.length} matching ${
+                  filteredTasks.length === 1 ? "task" : "tasks"
+                }`
+              : `${tasks.length} task${tasks.length === 1 ? "" : "s"} without a Deadline`}
+          </Text>
+        </View>
+        {tasks.length > 0 ? <Text style={styles.queueMeta}>Schedule or complete</Text> : null}
+      </View>
+
       <Pressable
         onPress={() => setShowFilters((s) => !s)}
         hitSlop={10}
@@ -397,6 +411,29 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xs,
     paddingBottom: spacing.sm,
     gap: spacing.sm,
+  },
+  queueIntro: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  queueCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  queueTitle: {
+    color: colors.textPrimary,
+    ...typography.title,
+  },
+  queueSubtitle: {
+    color: colors.textMuted,
+    ...typography.bodyMd,
+  },
+  queueMeta: {
+    color: colors.textMuted,
+    ...typography.micro,
   },
   filterLauncher: {
     minHeight: 44,
