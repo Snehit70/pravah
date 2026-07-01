@@ -115,9 +115,18 @@ type GoalDetailSheetProps = {
   onDelete: () => void;
   onClose: () => void;
   onOpenTask: (task: MobileTask) => void;
+  onCreateTaskForGoal?: (goalId: string) => void;
 };
 
-function GoalDetailSheet({ goal, progress, linked, onDelete, onClose, onOpenTask }: GoalDetailSheetProps) {
+function GoalDetailSheet({
+  goal,
+  progress,
+  linked,
+  onDelete,
+  onClose,
+  onOpenTask,
+  onCreateTaskForGoal,
+}: GoalDetailSheetProps) {
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
   const confirm = useConfirm();
@@ -157,6 +166,13 @@ function GoalDetailSheet({ goal, progress, linked, onDelete, onClose, onOpenTask
     },
     [confirm, setGoalLink]
   );
+
+  const handlePlanNext = useCallback(() => {
+    if (!goal || !onCreateTaskForGoal) return;
+    const goalId = goal.id;
+    onClose();
+    setTimeout(() => onCreateTaskForGoal(goalId), 280);
+  }, [goal, onClose, onCreateTaskForGoal]);
 
   return (
     <Modal
@@ -330,7 +346,23 @@ function GoalDetailSheet({ goal, progress, linked, onDelete, onClose, onOpenTask
 
               {/* Linked tasks */}
               <View style={detailStyles.tasksSection}>
-                <Text style={detailStyles.sectionLabel}>Linked tasks</Text>
+                <View style={detailStyles.sectionHeaderRow}>
+                  <Text style={detailStyles.sectionLabel}>Linked tasks</Text>
+                  {onCreateTaskForGoal ? (
+                    <Pressable
+                      onPress={handlePlanNext}
+                      hitSlop={10}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Plan next Task for ${goal.text}`}
+                      style={({ pressed }) => [
+                        detailStyles.inlineAction,
+                        pressed && { opacity: 0.7 },
+                      ]}
+                    >
+                      <Text style={detailStyles.inlineActionText}>Plan next Task</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
                 {hasTasks ? linked.map((t) => {
                   const done = isTaskCompleted(t);
                   return (
@@ -649,6 +681,7 @@ export function GoalsScreen({
         onDelete={() => selectedGoal && void handleDelete(selectedGoal)}
         onClose={() => setSelectedGoalId(null)}
         onOpenTask={handleOpenTask}
+        onCreateTaskForGoal={onCreateTaskForGoal}
       />
     </View>
   );
@@ -1061,6 +1094,23 @@ const detailStyles = StyleSheet.create({
     color: colors.textMuted,
     textTransform: "uppercase",
     letterSpacing: 0.6,
+  },
+  sectionHeaderRow: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  inlineAction: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+  },
+  inlineActionText: {
+    ...typography.bodyMd,
+    color: colors.accent,
+    fontWeight: "600",
   },
   taskRow: {
     flexDirection: "row",
