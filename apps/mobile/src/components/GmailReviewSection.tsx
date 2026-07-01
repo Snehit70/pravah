@@ -7,6 +7,7 @@ import type { Doc, Id } from "../../../../convex/_generated/dataModel";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { addDays, nextLaterThisWeek, toIsoDate } from "../lib/dates";
 import { mobileLogger, classifyError } from "../lib/logger";
+import { InboxTrayIcon } from "./UiIcons";
 
 type ReviewItem = Doc<"reviewQueue">;
 
@@ -137,7 +138,12 @@ export function GmailReviewSection({ enabled, showToast }: Props) {
     return enabled ? (
       <View style={styles.wrap}>
         <Text style={styles.heading}>Review queue</Text>
-        <Text style={styles.emptyText}>No pending items.</Text>
+        <View style={styles.emptyState}>
+          <View style={styles.emptyIconWrap}>
+            <InboxTrayIcon color={colors.textSecondary} size={28} />
+          </View>
+          <Text style={styles.emptyText}>No pending items.</Text>
+        </View>
       </View>
     ) : null;
   }
@@ -236,6 +242,21 @@ const styles = StyleSheet.create({
   emptyText: {
     ...typography.bodyMd,
     color: colors.textSecondary,
+  },
+  emptyState: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  emptyIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
   },
   itemCard: {
     borderRadius: radii.md,

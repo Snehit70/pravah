@@ -81,6 +81,12 @@ import { hasPriorityBoundaryViolation } from "./src/lib/taskLifecycle";
 import type { BulkTaskInput } from "./src/lib/bulkTaskCapture";
 import { resolveStartupTab } from "./src/lib/tabOrder";
 import { feedback } from "./src/lib/feedback";
+import {
+  AlertCircleIcon,
+  InfoCircleIcon,
+  SettingsIcon,
+  SyncLoopIcon,
+} from "./src/components/UiIcons";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -1052,7 +1058,7 @@ function MobileApp() {
               accessibilityRole="button"
               accessibilityLabel="Open settings"
             >
-              <Text style={styles.settingsLink}>⚙︎</Text>
+              <SettingsIcon color={colors.textMuted} size={18} />
             </Pressable>
           </View>
         </View>
@@ -1066,6 +1072,11 @@ function MobileApp() {
           accessibilityLiveRegion={toast.kind === "error" ? "assertive" : "polite"}
           style={[styles.toast, toast.kind === "error" ? styles.toastError : styles.toastInfo]}
         >
+          {toast.kind === "error" ? (
+            <AlertCircleIcon color={colors.error} size={18} />
+          ) : (
+            <InfoCircleIcon color={colors.accent} size={18} />
+          )}
           <Text style={styles.toastText}>{toast.message}</Text>
           {toast.action ? (
             <Pressable
@@ -1095,9 +1106,12 @@ function MobileApp() {
           }. Retry sync.`}
           style={({ pressed }) => [styles.retryBanner, pressed && { opacity: 0.6 }]}
         >
-          <Text style={styles.retryBannerText}>
-            {retryQueue.length} change{retryQueue.length === 1 ? "" : "s"} pending sync
-          </Text>
+          <View style={styles.statusInline}>
+            <SyncLoopIcon color={colors.accent} size={18} />
+            <Text style={styles.retryBannerText}>
+              {retryQueue.length} change{retryQueue.length === 1 ? "" : "s"} pending sync
+            </Text>
+          </View>
           <Text style={styles.retryBannerAction}>Retry</Text>
         </Pressable>
       ) : null}
@@ -1135,7 +1149,10 @@ function MobileApp() {
               accessibilityRole="button"
               accessibilityLabel="Calendar sync paused after an error. Open settings to reconnect."
             >
-              <Text style={styles.syncBrokenText}>Calendar sync paused</Text>
+              <View style={styles.statusInline}>
+                <AlertCircleIcon color={colors.error} size={18} />
+                <Text style={styles.syncBrokenText}>Calendar sync paused</Text>
+              </View>
               <Text style={styles.syncBrokenAction}>Reconnect</Text>
             </Pressable>
           ) : null}
@@ -1592,10 +1609,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: spacing.md,
   },
+  statusInline: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    flex: 1,
+  },
   retryBannerText: {
     color: colors.textPrimary,
     ...typography.bodyMd,
-    flex: 1,
   },
   retryBannerAction: {
     color: colors.accent,

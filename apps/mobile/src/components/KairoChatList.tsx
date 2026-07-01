@@ -13,6 +13,7 @@ import type { ChatMeta } from "../lib/kairoChatStorage";
 import { formatRelative } from "../lib/formatRelative";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { useConfirm } from "../hooks/useConfirm";
+import { ChatBubbleIcon, ChevronLeftIcon, PlusIcon } from "./UiIcons";
 
 type Props = {
   chats: ChatMeta[];
@@ -47,7 +48,10 @@ export function KairoChatList({
           accessibilityRole="button"
           style={({ pressed }) => [pressed && { opacity: 0.6 }]}
         >
-          <Text style={styles.headerBack}>← Back</Text>
+          <View style={styles.headerInlineAction}>
+            <ChevronLeftIcon color={colors.textSecondary} size={16} />
+            <Text style={styles.headerBack}>Back</Text>
+          </View>
         </Pressable>
         <Text style={styles.headerTitle}>Chats</Text>
         <Pressable
@@ -57,13 +61,19 @@ export function KairoChatList({
           accessibilityRole="button"
           style={({ pressed }) => [pressed && { opacity: 0.6 }]}
         >
-          <Text style={styles.headerAction}>+ New</Text>
+          <View style={styles.headerInlineAction}>
+            <PlusIcon color={colors.accent} size={14} />
+            <Text style={styles.headerAction}>New</Text>
+          </View>
         </Pressable>
       </View>
 
       <BottomSheetScrollView contentContainerStyle={styles.listContent}>
         {sorted.length === 0 ? (
           <View style={styles.empty}>
+            <View style={styles.emptyIconWrap}>
+              <ChatBubbleIcon color={colors.textSecondary} size={28} />
+            </View>
             <Text style={styles.emptyTitle}>No chats yet.</Text>
             <Text style={styles.emptyText}>Start one from the current workspace and it will appear here.</Text>
             <Pressable
@@ -136,6 +146,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderSubtle,
   },
+  headerInlineAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
   headerBack: {
     color: colors.textSecondary,
     ...typography.micro,
@@ -192,6 +207,16 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xl,
     alignItems: "center",
     gap: spacing.sm,
+  },
+  emptyIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
   },
   emptyTitle: {
     color: colors.textPrimary,

@@ -23,6 +23,7 @@ import type { MobileTask } from "../components/TaskCard";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { kpis, weekOverWeek } from "../lib/statsAggregators";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { LedgerCheckIcon } from "../components/UiIcons";
 
 type HistoryWindow = "all" | "7d" | "30d";
 
@@ -295,6 +296,9 @@ export function InsightsScreen({
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
               <View style={styles.emptyState}>
+                <View style={styles.emptyIconWrap}>
+                  <LedgerCheckIcon color={colors.textSecondary} size={28} />
+                </View>
                 <Text style={styles.emptyTitle}>No matching completed Tasks.</Text>
                 <Text style={styles.emptyText}>Change the search or time window.</Text>
               </View>

@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, radii, spacing, typography } from "../../theme/tokens";
 import { dateLabel } from "../../lib/dates";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
+import { ChevronLeftIcon, ChevronRightIcon, LedgerCheckIcon } from "../../components/UiIcons";
 import type {
   ManualTriageTarget,
   OverduePreviewGroup,
@@ -90,7 +91,10 @@ export function OverdueSheet({
             <>
               <View style={styles.headerRow}>
                 <Pressable onPress={onClosePreview} hitSlop={12} accessibilityRole="button" accessibilityLabel="Back">
-                  <Text style={styles.backLink}>‹ Back</Text>
+                  <View style={styles.inlineAction}>
+                    <ChevronLeftIcon color={colors.accent} size={16} />
+                    <Text style={styles.backLink}>Back</Text>
+                  </View>
                 </Pressable>
                 <Text style={styles.headerTitle} numberOfLines={1}>{selectedPreview.goalText}</Text>
               </View>
@@ -182,7 +186,10 @@ export function OverdueSheet({
                         {group.goalDeadline ? ` · due ${group.goalDeadline}` : ""}
                       </Text>
                     </View>
-                    <Text style={styles.goalCta}>Reschedule ›</Text>
+                    <View style={styles.inlineAction}>
+                      <Text style={styles.goalCta}>Reschedule</Text>
+                      <ChevronRightIcon color={colors.accent} size={16} />
+                    </View>
                   </Pressable>
                 ))}
 
@@ -214,7 +221,12 @@ export function OverdueSheet({
                 ))}
 
                 {groups.length === 0 && orphans.length === 0 ? (
-                  <Text style={styles.emptyText}>Nothing overdue. You&apos;re clear.</Text>
+                  <View style={styles.emptyState}>
+                    <View style={styles.emptyIconWrap}>
+                      <LedgerCheckIcon color={colors.textSecondary} size={28} />
+                    </View>
+                    <Text style={styles.emptyText}>Nothing overdue. You&apos;re clear.</Text>
+                  </View>
                 ) : null}
               </ScrollView>
             </>
@@ -255,6 +267,11 @@ const styles = StyleSheet.create({
   },
   headerTitle: { flex: 1, color: colors.textPrimary, ...typography.title },
   backLink: { color: colors.accent, ...typography.bodyMd },
+  inlineAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
   listContent: { paddingBottom: spacing.lg, gap: spacing.xs },
   sectionLabel: {
     color: colors.textMuted,
@@ -347,11 +364,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   primaryBtnText: { color: colors.textInverse, ...typography.bodyMd, fontWeight: "600" },
+  emptyState: {
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.xxl,
+  },
+  emptyIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
   emptyText: {
     color: colors.textSecondary,
     ...typography.bodyMd,
     textAlign: "center",
-    paddingVertical: spacing.xxl,
   },
   pressed: { opacity: 0.7 },
 });

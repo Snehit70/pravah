@@ -26,6 +26,7 @@ import { useReducedMotion } from "../hooks/useReducedMotion";
 import { getOrCreateDeviceId } from "../lib/deviceIdentity";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
 import { classifyError, mobileLogger } from "../lib/logger";
+import { ArrowUpRightIcon, ChevronRightIcon } from "./UiIcons";
 import {
   moveTabOrder,
   resolveTabOrder,
@@ -456,7 +457,7 @@ function SettingsCategoryList({
               </View>
               <View style={styles.categoryMeta}>
                 <Text style={styles.categoryCount}>{controlCount}</Text>
-                <Text style={styles.categoryChevron}>›</Text>
+                <ChevronRightIcon color={colors.textMuted} size={16} />
               </View>
             </Pressable>
           );
@@ -1383,7 +1384,7 @@ function AboutSection({
           style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
         >
           <Text style={styles.linkRowText}>Report an issue</Text>
-          <Text style={styles.linkRowChevron}>↗</Text>
+          <ArrowUpRightIcon color={colors.textMuted} size={16} />
         </Pressable>
         <Pressable
           onPress={() => void Linking.openURL(REPO_URL)}
@@ -1393,7 +1394,7 @@ function AboutSection({
           style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
         >
           <Text style={styles.linkRowText}>GitHub repository</Text>
-          <Text style={styles.linkRowChevron}>↗</Text>
+          <ArrowUpRightIcon color={colors.textMuted} size={16} />
         </Pressable>
       </View>
 

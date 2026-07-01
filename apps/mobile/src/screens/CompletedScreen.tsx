@@ -7,11 +7,12 @@
 
 import type { JSX } from "react";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { FlatList, RefreshControl, Text } from "react-native";
+import { FlatList, RefreshControl, Text, View } from "react-native";
 import { colors, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
+import { LedgerCheckIcon } from "../components/UiIcons";
 
 type CompletedScreenProps = {
   tasks: MobileTask[];
@@ -36,6 +37,9 @@ export function CompletedScreen({
 
   const emptyBlock = (
     <Animated.View entering={FadeIn.duration(400)} style={styles.emptyWrap}>
+      <View style={styles.emptyIconWrap}>
+        <LedgerCheckIcon color={colors.textSecondary} size={28} />
+      </View>
       <Text style={styles.emptyTitle}>A quiet ledger — for now.</Text>
       <Text style={styles.emptyText}>Closed loops will gather here.</Text>
     </Animated.View>
@@ -82,6 +86,16 @@ const styles = {
     paddingHorizontal: spacing.xxl,
     gap: spacing.sm,
     alignItems: "center" as const,
+  },
+  emptyIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 9999,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    backgroundColor: colors.bgSurface,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
   },
   emptyTitle: {
     color: colors.textPrimary,

@@ -35,6 +35,7 @@ import { useConfirm } from "../hooks/useConfirm";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import type { MobileTask } from "../components/TaskCard";
 import { isTaskCompleted } from "../lib/taskState";
+import { ChevronRightIcon } from "../components/UiIcons";
 
 type DeadlineStatus = "overdue" | "soon" | "normal";
 function deadlineStatus(iso: string): DeadlineStatus {
@@ -707,7 +708,7 @@ export function GoalsScreen({
                           : "No tasks linked"}
                       </Text>
                     </View>
-                    <Text style={styles.goalChevron}>›</Text>
+                    <ChevronRightIcon color={colors.textMuted} size={16} />
                   </View>
                 </Pressable>
                 {onCreateTaskForGoal ? (
@@ -911,11 +912,6 @@ const styles = StyleSheet.create({
   goalMeta: {
     ...typography.micro,
     color: colors.textMuted,
-  },
-  goalChevron: {
-    ...typography.bodyLg,
-    color: colors.textMuted,
-    lineHeight: 20,
   },
   emptyWrap: {
     paddingTop: spacing.section,

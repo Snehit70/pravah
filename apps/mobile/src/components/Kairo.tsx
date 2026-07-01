@@ -37,6 +37,7 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { colors, fonts, motion, radii, spacing, typography } from "../theme/tokens";
 import { classifyError, createActionId, mobileLogger } from "../lib/logger";
+import { PlusIcon } from "./UiIcons";
 import {
   getKairoConfig,
   isKairoConfigured,
@@ -903,7 +904,10 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
               accessibilityRole="button"
               disabled={thinking}
             >
-              <Text style={styles.headerNewText}>+ New</Text>
+              <View style={styles.headerInlineAction}>
+                <PlusIcon color={colors.accent} size={14} />
+                <Text style={styles.headerNewText}>New</Text>
+              </View>
             </Pressable>
             <Pressable
               onPress={() => sheetRef.current?.close()}
@@ -1329,6 +1333,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
+  },
+  headerInlineAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
   },
   headerHistoryButton: {
     flexDirection: "row",

@@ -6,6 +6,7 @@ import { colors, radii, spacing, typography } from "../theme/tokens";
 import { toIsoDate } from "../lib/dates";
 import { buildMonthGrid } from "../lib/calendarGrid";
 import { useReducedMotion } from "../hooks/useReducedMotion";
+import { ChevronLeftIcon, ChevronRightIcon } from "./UiIcons";
 
 type ThemedDatePickerProps = {
   visible: boolean;
@@ -102,7 +103,7 @@ export function ThemedDatePicker({ visible, value, onSelect, onClose }: ThemedDa
               accessibilityLabel="Previous month"
               style={({ pressed }) => [styles.navBtn, pressed && { opacity: 0.6 }]}
             >
-              <Text style={styles.navGlyph}>‹</Text>
+              <ChevronLeftIcon color={colors.textSecondary} size={20} />
             </Pressable>
             <Text style={styles.monthLabel}>
               {MONTHS[viewMonth]} {viewYear}
@@ -114,7 +115,7 @@ export function ThemedDatePicker({ visible, value, onSelect, onClose }: ThemedDa
               accessibilityLabel="Next month"
               style={({ pressed }) => [styles.navBtn, pressed && { opacity: 0.6 }]}
             >
-              <Text style={styles.navGlyph}>›</Text>
+              <ChevronRightIcon color={colors.textSecondary} size={20} />
             </Pressable>
           </View>
 
@@ -224,10 +225,6 @@ const styles = StyleSheet.create({
     minHeight: 40,
     alignItems: "center",
     justifyContent: "center",
-  },
-  navGlyph: {
-    color: colors.textSecondary,
-    fontSize: 24,
   },
   monthLabel: {
     ...typography.title,
