@@ -39,7 +39,8 @@ function weekdayShort(date: Date): string {
 }
 
 export type AddTaskSheetRef = {
-  open: () => void;
+  open: (initialKind?: "task" | "goal") => void;
+  openForGoal: (goalId: string) => void;
   close: () => void;
   hasDraftChanges: () => boolean;
   dismissKeyboard: () => void;
@@ -144,7 +145,17 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     };
 
     useImperativeHandle(ref, () => ({
-      open: () => {
+      open: (initialKind = "task") => {
+        setKind(initialKind);
+        setShowDetails(initialKind === "goal");
+        setVisible(true);
+        onSheetChange?.(true);
+      },
+      openForGoal: (initialGoalId) => {
+        setKind("task");
+        setGoalId(initialGoalId);
+        setGoalIds([initialGoalId]);
+        setShowDetails(false);
         setVisible(true);
         onSheetChange?.(true);
       },

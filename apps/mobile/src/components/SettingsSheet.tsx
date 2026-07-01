@@ -1020,6 +1020,7 @@ function InteractionSection({ prefs, setPreference }: InteractionSectionProps) {
 
 function AppearanceSection({
   prefs,
+  setPreference,
   tabOrder,
   onMoveTab,
 }: AppearanceSectionProps) {

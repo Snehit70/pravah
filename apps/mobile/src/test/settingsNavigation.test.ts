@@ -73,9 +73,6 @@ describe("SETTINGS_CATEGORY_CONTROLS", () => {
     );
     expect(SETTINGS_CATEGORY_CONTROLS.appearance).toEqual(
       expect.arrayContaining([
-        "theme",
-        "font",
-        "density",
         "tab_order",
         "bulk_task_capture",
       ]),

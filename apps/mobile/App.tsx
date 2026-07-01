@@ -42,7 +42,7 @@ import { useGoalMutations } from "./src/hooks/useGoalMutations";
 
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { colors, fonts, spacing, typography } from "./src/theme/tokens";
+import { colors, fonts, radii, spacing, typography } from "./src/theme/tokens";
 import { TaskCard, type MobileTask } from "./src/components/TaskCard";
 import { BottomTabBar } from "./src/components/BottomTabBar";
 import { GridBackground } from "./src/components/GridBackground";
@@ -1135,6 +1135,16 @@ function MobileApp() {
               tabBarHeight={tabBarHeight}
               tasks={workspaceTaskCorpus}
               isTaskDataLoading={isGoalsTaskDataLoading}
+              onCreateGoal={
+                canUseWorkspaceActions
+                  ? () => addTaskSheetRef.current?.open("goal")
+                  : undefined
+              }
+              onCreateTaskForGoal={
+                canUseWorkspaceActions
+                  ? (goalId) => addTaskSheetRef.current?.openForGoal(goalId)
+                  : undefined
+              }
               onOpenTask={canUseWorkspaceActions ? handleEditTask : undefined}
             />
           </ScreenErrorBoundary>
@@ -1143,7 +1153,7 @@ function MobileApp() {
 
       {activeTab === "insights" ? (
         <Animated.View entering={tabEnterAnimation} style={styles.tabScreen}>
-          <ScreenErrorBoundary screenName="Insights">
+          <ScreenErrorBoundary screenName="Progress">
             <InsightsScreen
               tasks={workspaceTaskCorpus}
               completedTasks={displayCompletedTasks}

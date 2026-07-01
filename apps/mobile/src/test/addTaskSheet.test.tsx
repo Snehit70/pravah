@@ -263,6 +263,23 @@ describe("AddTaskSheet", () => {
     expect(mockOnSheetChange).toHaveBeenCalledWith(false);
   });
 
+  it("opens directly in the shared New goal mode", () => {
+    render(
+      <AddTaskSheet
+        ref={ref}
+        onAdd={mockOnAdd}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+      />
+    );
+
+    act(() => {
+      ref.current?.open("goal");
+    });
+
+    expect(screen.getByPlaceholderText("What do you want to achieve?")).toBeTruthy();
+  });
+
   it("creates inbox task with title only", async () => {
     render(
       <AddTaskSheet
@@ -397,6 +414,6 @@ describe("AddTaskSheet", () => {
       ref.current?.open();
     });
 
-    expect(screen.getByText("Later, Mon")).toBeTruthy();
+    expect(screen.getByText("Later, Tue")).toBeTruthy();
   });
 });

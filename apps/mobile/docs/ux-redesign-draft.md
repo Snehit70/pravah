@@ -1031,12 +1031,13 @@ Implemented on `mobile-ux-redesign` in this pass:
   `apps/mobile/assets/sounds/`.
 - Inbox collapsed search/filter launcher with active filter pills.
 - Timeline focused default view with later sections summarized.
-- Concrete Capture and overdue triage language: Today, Tomorrow, Later this
-  week with a visible day, and Week end with a visible date.
+- Concrete Capture and overdue triage language: Today, Tomorrow, Later with a
+  visible day, and Week end with a visible date.
 - Full-screen Goal detail presentation instead of a centered modal card.
+- Local New Goal entry routes through the shared Capture flow.
 - Explicit bottom-tab labels around the fixed Capture action.
-- Progress copy changed from vague "this week" language to trailing 7-day
-  windows.
+- Progress now opens on a reflection-first momentum summary with recent
+  Completed Tasks and a full-screen searchable history route.
 
 Deferred deliberately:
 
@@ -1045,9 +1046,6 @@ Deferred deliberately:
 - Humanist/System font switching. The current static `StyleSheet` token spread
   cannot apply font changes globally at runtime, so no inert font control is
   exposed.
-- Full Task quick-action sheet and Progress history drill-down. Task rows now
-  expose primary visible actions first; the richer object action surfaces are
-  the next implementation layer.
 
 ## Open Terminology Issues
 

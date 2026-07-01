@@ -53,6 +53,8 @@ export class ScreenErrorBoundary extends Component<
         <Text style={styles.body}>Try reloading this tab. If it happens again, inspect the latest logs.</Text>
         <Pressable
           onPress={this.handleRetry}
+          accessibilityRole="button"
+          accessibilityLabel={`Reload ${this.props.screenName}`}
           style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
         >
           <Text style={styles.buttonText}>Reload tab</Text>

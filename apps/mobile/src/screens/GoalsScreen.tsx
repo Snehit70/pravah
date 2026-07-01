@@ -339,8 +339,6 @@ function GoalDetailSheet({ goal, progress, linked, onDelete, onClose, onOpenTask
                         onPress={() => onOpenTask(t)}
                         hitSlop={8}
                         accessibilityRole="button"
-                        accessibilityLabel={`Unlink ${t.title} from ${goal.text}`}
-                        accessibilityRole="button"
                         accessibilityLabel={`Open task ${t.title}`}
                         style={({ pressed }) => [detailStyles.taskMain, pressed && { opacity: 0.6 }]}
                       >
@@ -354,6 +352,8 @@ function GoalDetailSheet({ goal, progress, linked, onDelete, onClose, onOpenTask
                           void handleUnlinkTask(t);
                         }}
                         hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Unlink ${t.title} from ${goal.text}`}
                         style={({ pressed }) => [pressed && { opacity: 0.6 }]}
                       >
                         <Text style={detailStyles.unlinkText}>Unlink</Text>
@@ -388,6 +388,8 @@ type GoalsScreenProps = {
   tabBarHeight: number;
   tasks: MobileTask[];
   isTaskDataLoading?: boolean;
+  onCreateGoal?: () => void;
+  onCreateTaskForGoal?: (goalId: string) => void;
   /** Open a linked task in the shared editor (edit / complete / delete). */
   onOpenTask?: (task: MobileTask) => void;
 };
@@ -398,7 +400,14 @@ type GoalProgress = {
   ratio: number;
 };
 
-export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false, onOpenTask }: GoalsScreenProps) {
+export function GoalsScreen({
+  tabBarHeight,
+  tasks,
+  isTaskDataLoading = false,
+  onCreateGoal,
+  onCreateTaskForGoal,
+  onOpenTask,
+}: GoalsScreenProps) {
   const reducedMotion = useReducedMotion();
   const confirm = useConfirm();
   const { deleteGoal } = useGoalMutations();
@@ -478,10 +487,17 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false, on
   const emptyBlock = (
     <Animated.View entering={reducedMotion ? undefined : FadeIn.duration(400)} style={styles.emptyWrap}>
       <Text style={styles.emptyTitle}>No goals yet.</Text>
-      <Text style={styles.emptyText}>
-        Tap + Capture and switch to "New goal" to add a long-horizon goal. New
-        tasks can be linked to a goal from the same sheet.
-      </Text>
+      <Text style={styles.emptyText}>Choose one outcome you want to move.</Text>
+      {onCreateGoal ? (
+        <Pressable
+          onPress={onCreateGoal}
+          accessibilityRole="button"
+          accessibilityLabel="Create a new goal"
+          style={({ pressed }) => [styles.emptyAction, pressed && { opacity: 0.75 }]}
+        >
+          <Text style={styles.emptyActionText}>New goal</Text>
+        </Pressable>
+      ) : null}
     </Animated.View>
   );
 
@@ -507,7 +523,19 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false, on
         keyExtractor={(item) => item.id}
         ListHeaderComponent={
           sortedGoals.length > 0 ? (
-            <Text style={styles.sectionMeta}>{`${sortedGoals.length} active`}</Text>
+            <View style={styles.listHeader}>
+              <Text style={styles.sectionMeta}>{`${sortedGoals.length} active`}</Text>
+              {onCreateGoal ? (
+                <Pressable
+                  onPress={onCreateGoal}
+                  accessibilityRole="button"
+                  accessibilityLabel="Create a new goal"
+                  style={({ pressed }) => [styles.newGoalAction, pressed && { opacity: 0.7 }]}
+                >
+                  <Text style={styles.newGoalActionText}>New goal</Text>
+                </Pressable>
+              ) : null}
+            </View>
           ) : null
         }
         ListEmptyComponent={isHydrated ? emptyBlock : null}
@@ -523,21 +551,17 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false, on
                 reducedMotion ? undefined : FadeInDown.duration(280).delay(index * 50)
               }
             >
-              <Pressable
-                onPress={() => { setSelectedGoalId(item.id); haptic.light(); }}
-                onLongPress={() => void handleDelete(item)}
-                hitSlop={8}
-                accessibilityRole="button"
-                // Tap opens the detail, which carries the visible "Delete goal"
-                // action; long-press stays as a power-user shortcut.
-                accessibilityLabel={`Goal: ${item.text}. Tap to open, edit, or delete.`}
-                style={({ pressed }) => [
-                  styles.goalCard,
-                  isComplete && styles.goalCardComplete,
-                  pressed && { opacity: 0.85 },
-                ]}
-              >
-                <View style={styles.goalTap}>
+              <View style={[styles.goalCard, isComplete && styles.goalCardComplete]}>
+                <Pressable
+                  onPress={() => { setSelectedGoalId(item.id); haptic.light(); }}
+                  onLongPress={() => void handleDelete(item)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  // Tap opens the detail, which carries the visible delete
+                  // action; long-press stays as a power-user shortcut.
+                  accessibilityLabel={`Goal: ${item.text}. Open goal details.`}
+                  style={({ pressed }) => [styles.goalTap, pressed && { opacity: 0.85 }]}
+                >
                   <View style={styles.goalHead}>
                     <Text style={styles.goalText} numberOfLines={2}>{item.text}</Text>
                     <Text style={styles.goalCount}>
@@ -584,8 +608,23 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false, on
                     </View>
                     <Text style={styles.goalChevron}>›</Text>
                   </View>
-                </View>
-              </Pressable>
+                </Pressable>
+                {onCreateTaskForGoal ? (
+                  <View style={styles.goalActionRow}>
+                    <Pressable
+                      onPress={() => onCreateTaskForGoal(item.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Add a Task to ${item.text}`}
+                      style={({ pressed }) => [
+                        styles.planNextAction,
+                        pressed && { opacity: 0.7 },
+                      ]}
+                    >
+                      <Text style={styles.planNextActionText}>Plan next Task</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+              </View>
             </Animated.View>
           );
         }}
@@ -605,13 +644,30 @@ export function GoalsScreen({ tabBarHeight, tasks, isTaskDataLoading = false, on
 }
 
 const styles = StyleSheet.create({
+  listHeader: {
+    minHeight: 44,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
   sectionMeta: {
     ...typography.micro,
     color: colors.textMuted,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
     textTransform: "uppercase",
     letterSpacing: 0.6,
+  },
+  newGoalAction: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+  },
+  newGoalActionText: {
+    ...typography.bodyMd,
+    color: colors.accent,
+    fontFamily: typography.title.fontFamily,
   },
   goalCard: {
     marginHorizontal: spacing.lg,
@@ -629,6 +685,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     gap: spacing.sm,
+  },
+  goalActionRow: {
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
+    alignItems: "flex-end",
+    justifyContent: "center",
+  },
+  planNextAction: {
+    minHeight: 44,
+    paddingHorizontal: spacing.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  planNextActionText: {
+    ...typography.bodyMd,
+    color: colors.accent,
+    fontFamily: typography.title.fontFamily,
   },
   goalHead: {
     flexDirection: "row",
@@ -720,6 +795,20 @@ const styles = StyleSheet.create({
     ...typography.bodyMd,
     color: colors.textSecondary,
     textAlign: "center",
+  },
+  emptyAction: {
+    minHeight: 44,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radii.md,
+    backgroundColor: colors.accent,
+  },
+  emptyActionText: {
+    ...typography.bodyMd,
+    color: colors.textInverse,
+    fontFamily: typography.title.fontFamily,
   },
   footerHint: {
     ...typography.micro,
