@@ -131,6 +131,21 @@ export function InsightsScreen({
             {trendCopy(comparison.thisWeek, comparison.lastWeek)}
           </Text>
 
+          <View style={styles.momentumGrid}>
+            <View style={styles.momentumTile}>
+              <Text style={styles.momentumTileValue}>{summary.completed7d}</Text>
+              <Text style={styles.momentumTileLabel}>7d done</Text>
+            </View>
+            <View style={styles.momentumTile}>
+              <Text style={styles.momentumTileValue}>{summary.streak}d</Text>
+              <Text style={styles.momentumTileLabel}>streak</Text>
+            </View>
+            <View style={styles.momentumTile}>
+              <Text style={styles.momentumTileValue}>{summary.overdue}</Text>
+              <Text style={styles.momentumTileLabel}>overdue</Text>
+            </View>
+          </View>
+
           <View style={styles.trustRow}>
             <Text style={styles.trustSignal}>
               {summary.overdue === 0 ? "No overdue Tasks" : `${summary.overdue} overdue`}
@@ -304,6 +319,29 @@ const styles = StyleSheet.create({
   trend: {
     ...typography.bodyMd,
     color: colors.textSecondary,
+  },
+  momentumGrid: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  momentumTile: {
+    flex: 1,
+    minHeight: 64,
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  momentumTileValue: {
+    ...typography.title,
+    color: colors.textPrimary,
+  },
+  momentumTileLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
   },
   trustRow: {
     flexDirection: "row",
