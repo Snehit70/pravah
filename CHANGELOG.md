@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.16.0](https://github.com/Snehit70/pravah/compare/web-v1.15.0...web-v1.16.0) (2026-07-01)
+
+
+### Features
+
+* **mobile:** add redesign preferences and feedback ([650860d](https://github.com/Snehit70/pravah/commit/650860d9996aba654f147d35f4c44a4a9b65858c))
+* **mobile:** complete goals and progress flows ([4b79cc0](https://github.com/Snehit70/pravah/commit/4b79cc0f8ab2fb258e2054dd08b7e7f9ab743eec))
+* **mobile:** redesign core mobile surfaces ([dc81bfa](https://github.com/Snehit70/pravah/commit/dc81bfa029d974fa54d9618b76448aff7052bb44))
+* **mobile:** redesign mobile UX surfaces ([fbe1667](https://github.com/Snehit70/pravah/commit/fbe166770e5908a9964d12ad57ce47b7693aa13a))
+
+
+### Bug Fixes
+
+* **mobile:** address redesign review feedback ([3bcda76](https://github.com/Snehit70/pravah/commit/3bcda7649313cdeb8e233f21fe35bc687380dd3e))
+* **mobile:** align sensory and disclosure feedback ([4e9c5e5](https://github.com/Snehit70/pravah/commit/4e9c5e5be4483e39bc86fe1715085066de4efa86))
+* **mobile:** enforce accessible visual tokens ([2dd553b](https://github.com/Snehit70/pravah/commit/2dd553b2efa134bbb79ea4b809a3ef2c29451f66))
+* **mobile:** expose auth diagnostics to assistive tech ([5ae862b](https://github.com/Snehit70/pravah/commit/5ae862b557593a934f5aeea389abe47517546958))
+* **mobile:** harden diagnostics and update accessibility ([9028d92](https://github.com/Snehit70/pravah/commit/9028d927ea58cb8c27d47326d2f255634a7b5c6b))
+* **mobile:** harden redesign accessibility and motion ([f7009b8](https://github.com/Snehit70/pravah/commit/f7009b8aaed2aebd873a41a48a5ee5d055b4f897))
+* **mobile:** keep contextual actions truthful ([3c63886](https://github.com/Snehit70/pravah/commit/3c638860f063de913b9f39dc439cf43ff11e4418))
+* **mobile:** keep later preset fresh ([f916d99](https://github.com/Snehit70/pravah/commit/f916d99f585309a5eac79aab670b97a9c69b9556))
+* **mobile:** refine sheets and input accessibility ([fb62174](https://github.com/Snehit70/pravah/commit/fb6217415487c003f0ffd2e6c0c37332df1d1b16))
+* **mobile:** restore task card accessibility semantics ([35b738f](https://github.com/Snehit70/pravah/commit/35b738f6965d97fad29a77344ab4143312d6bbce))
+* **mobile:** satisfy diagnostics test types ([ccefd0d](https://github.com/Snehit70/pravah/commit/ccefd0d04d3ebfb2d9f823e9bcb808107aacf6c4))
+
 ## [1.15.0](https://github.com/Snehit70/pravah/compare/web-v1.14.0...web-v1.15.0) (2026-06-27)
 
 
