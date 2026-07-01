@@ -915,20 +915,78 @@ type AppearanceSectionProps = {
   onMoveTab: (key: TabKey, direction: "up" | "down") => void;
 };
 
-function AppearanceSection({
-  prefs,
-  setPreference,
-  tabOrder,
-  onMoveTab,
-}: AppearanceSectionProps) {
+type InteractionSectionProps = {
+  prefs: ReturnType<typeof useUserPreferences>["prefs"];
+  setPreference: ReturnType<typeof useUserPreferences>["setPreference"];
+};
+
+function InteractionSection({ prefs, setPreference }: InteractionSectionProps) {
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Motion & density</Text>
+        <Text style={styles.settingLabel}>Task gestures</Text>
         <Text style={styles.settingHelp}>
-          Override the system motion setting and tighten spacing for denser task triage.
+          Keep visible actions available on every Task. Swipe actions are optional accelerators.
         </Text>
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingMeta}>Swipe actions</Text>
+            <Text style={styles.settingHelp}>
+              Off by default to reduce accidental completion or rescheduling.
+            </Text>
+          </View>
+          <Switch
+            value={prefs.swipeActionsEnabled}
+            onValueChange={(next) => void setPreference("swipeActionsEnabled", next)}
+            trackColor={{ false: colors.border, true: colors.accentSoft }}
+            thumbColor={prefs.swipeActionsEnabled ? colors.accent : colors.textMuted}
+            accessibilityLabel="Swipe actions"
+          />
+        </View>
+      </View>
 
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Feedback</Text>
+        <Text style={styles.settingHelp}>
+          Sensory feedback is subtle and functional. Sound stays off unless you enable it.
+        </Text>
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingMeta}>Haptics</Text>
+            <Text style={styles.settingHelp}>
+              Light feedback for capture, completion, selection, and confirmed Kairo actions.
+            </Text>
+          </View>
+          <Switch
+            value={prefs.hapticsEnabled}
+            onValueChange={(next) => void setPreference("hapticsEnabled", next)}
+            trackColor={{ false: colors.border, true: colors.accentSoft }}
+            thumbColor={prefs.hapticsEnabled ? colors.accent : colors.textMuted}
+            accessibilityLabel="Haptics"
+          />
+        </View>
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingMeta}>Sound</Text>
+            <Text style={styles.settingHelp}>
+              Optional quiet cues for capture, completion, and critical attention states.
+            </Text>
+          </View>
+          <Switch
+            value={prefs.soundEnabled}
+            onValueChange={(next) => void setPreference("soundEnabled", next)}
+            trackColor={{ false: colors.border, true: colors.accentSoft }}
+            thumbColor={prefs.soundEnabled ? colors.accent : colors.textMuted}
+            accessibilityLabel="Sound"
+          />
+        </View>
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Motion</Text>
+        <Text style={styles.settingHelp}>
+          Motion clarifies state changes. It should never slow down capture or completion.
+        </Text>
         <View style={styles.fieldStack}>
           <Text style={styles.fieldLabel}>Reduced motion</Text>
           <View style={styles.segmented}>
@@ -953,6 +1011,82 @@ function AppearanceSection({
               );
             })}
           </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function AppearanceSection({
+  prefs,
+  setPreference,
+  tabOrder,
+  onMoveTab,
+}: AppearanceSectionProps) {
+  return (
+    <View style={styles.screenBody}>
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Theme & typography</Text>
+        <Text style={styles.settingHelp}>
+          Default to the warm light redesign with Geist as the production typeface.
+        </Text>
+
+        <View style={styles.fieldStack}>
+          <Text style={styles.fieldLabel}>Theme</Text>
+          <View style={styles.segmented}>
+            {(["light"] as const).map((theme) => {
+              const active = prefs.themePreference === theme;
+              return (
+                <Pressable
+                  key={theme}
+                  onPress={() => void setPreference("themePreference", theme)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  style={({ pressed }) => [
+                    styles.segment,
+                    active && styles.segmentActive,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                    Light
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={styles.settingHelp}>
+            Dark and system themes will be exposed after the redesigned light system is complete.
+          </Text>
+        </View>
+
+        <View style={styles.fieldStack}>
+          <Text style={styles.fieldLabel}>Font</Text>
+          <View style={styles.segmented}>
+            {(["geist"] as const).map((font) => {
+              const active = prefs.fontPreference === font;
+              return (
+                <Pressable
+                  key={font}
+                  onPress={() => void setPreference("fontPreference", font)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  style={({ pressed }) => [
+                    styles.segment,
+                    active && styles.segmentActive,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                    Geist
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={styles.settingHelp}>
+            Additional fonts need the typography system to move from static StyleSheets to dynamic tokens first.
+          </Text>
         </View>
 
         <View style={styles.fieldStack}>
@@ -1380,12 +1514,14 @@ function renderDetailScreen(
   if (navigation.screen !== "detail") return null;
 
   switch (navigation.category) {
-    case "assistantAutomation":
+    case "kairo":
       return <AssistantAutomationSection {...props} />;
     case "sync":
       return <SyncSection {...props} />;
     case "reminders":
       return <RemindersSection {...props} />;
+    case "interaction":
+      return <InteractionSection {...props} />;
     case "appearance":
       return <AppearanceSection {...props} />;
     case "about":

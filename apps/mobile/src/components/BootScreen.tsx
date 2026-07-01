@@ -49,7 +49,7 @@ export function BootScreen({
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
       <GridBackground />
       <Animated.View entering={FadeIn.duration(400)} style={styles.content}>
         <Animated.View style={[styles.markWrap, markStyle]}>
@@ -66,7 +66,7 @@ export function BootScreen({
             <Text style={styles.actionText}>{actionLabel}</Text>
           </Pressable>
         ) : null}
-        <Text style={styles.progress}>Preparing your timeline, inbox, and assistant.</Text>
+        <Text style={styles.progress}>Preparing your timeline, inbox, and Kairo.</Text>
       </Animated.View>
     </SafeAreaView>
   );

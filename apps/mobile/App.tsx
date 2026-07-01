@@ -16,7 +16,6 @@ import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withTiming 
 import { type RenderItemParams } from "react-native-draggable-flatlist";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import * as Haptics from "expo-haptics";
 import { authStorageReady } from "./src/lib/auth-client";
 import {
   useFonts as useGeistFonts,
@@ -80,6 +79,7 @@ import { isTaskInInbox } from "./src/lib/taskState";
 import { hasPriorityBoundaryViolation } from "./src/lib/taskLifecycle";
 import type { BulkTaskInput } from "./src/lib/bulkTaskCapture";
 import { resolveStartupTab } from "./src/lib/tabOrder";
+import { feedback } from "./src/lib/feedback";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -605,7 +605,7 @@ function MobileApp() {
           idempotencyKey: actionId,
           tasks,
         });
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        feedback.success();
         showToast({
           kind: "info",
           message: `${result.taskIds.length} tasks created`,
@@ -631,7 +631,7 @@ function MobileApp() {
           taskCount: tasks.length,
           errorType: classifyError(error),
         });
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        feedback.error();
         return false;
       }
     },
@@ -694,7 +694,7 @@ function MobileApp() {
         if (data.goalId && newTaskId) {
           setGoalLink(String(newTaskId), data.goalId);
         }
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        feedback.captureSaved();
         mobileLogger.info("add_task_succeeded", { actionId, elapsedMs: Date.now() - startedAt });
         return true;
       } catch (error) {
@@ -722,7 +722,7 @@ function MobileApp() {
           errorType: classifyError(error),
           queuedForRetry: isOffline,
         });
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        feedback.error();
         return false;
       }
     },
@@ -842,9 +842,17 @@ function MobileApp() {
         onDragHandlePress={canUseWorkspaceActions ? drag : undefined}
         linkedGoalName={taskGoalNames.get(String(item._id))}
         hidePriorityBadge={hidePriorityBadge}
+        swipeActionsEnabled={prefs.swipeActionsEnabled}
       />
     ),
-    [canUseWorkspaceActions, handleEditTask, markDone, moveToToday, taskGoalNames]
+    [
+      canUseWorkspaceActions,
+      handleEditTask,
+      markDone,
+      moveToToday,
+      prefs.swipeActionsEnabled,
+      taskGoalNames,
+    ]
   );
 
   const renderTimelineTaskItem = useCallback(
@@ -862,6 +870,7 @@ function MobileApp() {
         onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
         onDragHandlePress={canUseWorkspaceActions ? drag : undefined}
         linkedGoalName={taskGoalNames.get(String(item._id))}
+        swipeActionsEnabled={prefs.swipeActionsEnabled}
       />
     ),
     [
@@ -870,6 +879,7 @@ function MobileApp() {
       sendToInbox,
       shiftTimelineTask,
       handleEditTask,
+      prefs.swipeActionsEnabled,
       taskGoalNames,
     ]
   );
@@ -882,9 +892,17 @@ function MobileApp() {
         onReopen={canUseWorkspaceActions ? reopenTask : undefined}
         onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
         linkedGoalName={taskGoalNames.get(String(item._id))}
+        swipeActionsEnabled={prefs.swipeActionsEnabled}
       />
     ),
-    [canUseWorkspaceActions, handleEditTask, markDone, reopenTask, taskGoalNames]
+    [
+      canUseWorkspaceActions,
+      handleEditTask,
+      markDone,
+      prefs.swipeActionsEnabled,
+      reopenTask,
+      taskGoalNames,
+    ]
   );
 
   // ── Loading / Auth screens ──────────────────────────────────────────
@@ -963,7 +981,7 @@ function MobileApp() {
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.container}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
       {/* Web-parity grid vignette behind everything. */}
       <GridBackground />
@@ -989,7 +1007,7 @@ function MobileApp() {
               style={({ pressed }) => [styles.settingsLinkWrap, pressed && styles.pressed]}
               hitSlop={12}
               accessibilityRole="button"
-              accessibilityLabel="Open Kairo assistant"
+              accessibilityLabel="Open Kairo"
             >
               <Text style={styles.kairoLink}>Kairo</Text>
             </Pressable>
@@ -1183,6 +1201,7 @@ function MobileApp() {
         applyDeadline={applyDeadline}
         today={today}
         tomorrow={tomorrow}
+        weekEnd={weekEnd}
         onOpenPreview={openPreview}
         onClosePreview={closePreview}
         onSetApplyDeadline={setApplyDeadline}

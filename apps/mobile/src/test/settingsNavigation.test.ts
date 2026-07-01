@@ -45,8 +45,8 @@ describe("settingsNavigationReducer", () => {
 });
 
 describe("SETTINGS_CATEGORY_CONTROLS", () => {
-  it("maps the Lean 5 categories to the expected control groups", () => {
-    expect(SETTINGS_CATEGORY_CONTROLS.assistantAutomation).toEqual(
+  it("maps the redesign categories to the expected control groups", () => {
+    expect(SETTINGS_CATEGORY_CONTROLS.kairo).toEqual(
       expect.arrayContaining([
         "kairo_starter_pills",
         "automation_bootstrap_token",
@@ -63,9 +63,18 @@ describe("SETTINGS_CATEGORY_CONTROLS", () => {
         "quiet_hours",
       ]),
     );
+    expect(SETTINGS_CATEGORY_CONTROLS.interaction).toEqual(
+      expect.arrayContaining([
+        "swipe_actions",
+        "haptics",
+        "sound",
+        "reduced_motion",
+      ]),
+    );
     expect(SETTINGS_CATEGORY_CONTROLS.appearance).toEqual(
       expect.arrayContaining([
-        "reduced_motion",
+        "theme",
+        "font",
         "density",
         "tab_order",
         "bulk_task_capture",
