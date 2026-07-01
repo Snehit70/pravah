@@ -49,6 +49,8 @@ export function CompletedTaskSheet({
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close completed task details" />
         <View
           style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}
+          role="dialog"
+          accessibilityViewIsModal
           accessibilityLabel={task ? `${task.title} details` : "Completed task details"}
         >
           {task ? (
