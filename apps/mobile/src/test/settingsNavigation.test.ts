@@ -65,6 +65,7 @@ describe("SETTINGS_CATEGORY_CONTROLS", () => {
     );
     expect(SETTINGS_CATEGORY_CONTROLS.interaction).toEqual(
       expect.arrayContaining([
+        "bulk_task_capture",
         "swipe_actions",
         "haptics",
         "sound",
@@ -73,8 +74,11 @@ describe("SETTINGS_CATEGORY_CONTROLS", () => {
     );
     expect(SETTINGS_CATEGORY_CONTROLS.appearance).toEqual(
       expect.arrayContaining([
+        "theme_baseline",
+        "font_baseline",
+        "density",
+        "task_color_scheme",
         "tab_order",
-        "bulk_task_capture",
       ]),
     );
     expect(SETTINGS_CATEGORY_CONTROLS.about).toEqual(

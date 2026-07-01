@@ -113,6 +113,7 @@ vi.mock("../theme/tokens", () => ({
     bgInput: "#222",
     bgSurface: "#181818",
     success: "#0a0",
+    deadline: "#b65",
     priorityP1: "#f00",
     priorityP2: "#fa0",
     priorityP3: "#ff0",
@@ -133,6 +134,15 @@ vi.mock("../theme/tokens", () => ({
 
 vi.mock("../hooks/useReducedMotion", () => ({
   useReducedMotion: () => reducedMotion,
+}));
+
+vi.mock("../hooks/useUserPreferences", () => ({
+  useUserPreferences: () => ({
+    prefs: {
+      density: "cozy",
+      taskColorScheme: "purple",
+    },
+  }),
 }));
 
 import { TaskCard, type MobileTask } from "../components/TaskCard";

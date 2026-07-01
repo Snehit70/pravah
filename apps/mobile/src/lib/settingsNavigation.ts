@@ -42,11 +42,11 @@ export const SETTINGS_CATEGORY_META: Record<
   },
   interaction: {
     title: "Interaction",
-    summary: "Swipe actions, haptics, sound, and motion preferences.",
+    summary: "Swipe, quick capture, sound, haptics, and motion preferences.",
   },
   appearance: {
     title: "Appearance",
-    summary: "Tab order and capture preferences.",
+    summary: "Warm theme baseline, Geist typography, density, task color, and tab order.",
   },
   about: {
     title: "About",
@@ -76,14 +76,18 @@ export const SETTINGS_CATEGORY_CONTROLS: Record<
     "quiet_hours",
   ],
   interaction: [
+    "bulk_task_capture",
     "swipe_actions",
     "haptics",
     "sound",
     "reduced_motion",
   ],
   appearance: [
+    "theme_baseline",
+    "font_baseline",
+    "density",
+    "task_color_scheme",
     "tab_order",
-    "bulk_task_capture",
   ],
   about: [
     "app_version",
