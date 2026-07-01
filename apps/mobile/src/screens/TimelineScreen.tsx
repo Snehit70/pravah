@@ -154,8 +154,11 @@ export function TimelineScreen({
         accessibilityRole="button"
         accessibilityLabel={`${effectiveOverdue} overdue. Open triage.`}
       >
-        <Text style={styles.overdueLabel}>Overdue · {effectiveOverdue}</Text>
-        <Text style={styles.overdueChevron}>›</Text>
+        <View style={styles.overdueCopy}>
+          <Text style={styles.overdueLabel}>Overdue · {effectiveOverdue}</Text>
+          <Text style={styles.overdueHelp}>Reflow or choose the next real date.</Text>
+        </View>
+        <Text style={styles.overdueChevron}>Review</Text>
       </Pressable>
     ) : null;
 
@@ -243,12 +246,15 @@ export function TimelineScreen({
         <>
           {laterTaskCount > 0 ? (
             <Pressable
-              onPress={() => setShowAllSections(true)}
+              onPress={() => setShowAllSections((current) => !current)}
               style={({ pressed }) => [styles.laterSummary, pressed && styles.laterSummaryPressed]}
               accessibilityRole="button"
-              accessibilityLabel={`Show ${laterTaskCount} later tasks`}
+              accessibilityLabel={`${showAllSections ? "Collapse" : "Show"} ${laterTaskCount} later tasks`}
             >
-              <Text style={styles.laterSummaryText}>Later · {laterTaskCount} tasks</Text>
+              <View style={styles.laterSummaryRow}>
+                <Text style={styles.laterSummaryText}>Later · {laterTaskCount} tasks</Text>
+                <Text style={styles.laterSummaryAction}>{showAllSections ? "Collapse" : "Show"}</Text>
+              </View>
             </Pressable>
           ) : null}
           {hasPendingRows ? <Text style={styles.loadingMore}>Preparing more tasks...</Text> : null}
@@ -268,13 +274,21 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginHorizontal: spacing.lg,
     marginBottom: spacing.sm,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderSubtle,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
   },
   overdueBarPressed: { opacity: 0.6 },
-  overdueLabel: { color: colors.textMuted, ...typography.micro },
-  overdueChevron: { color: colors.textMuted, ...typography.micro },
+  overdueCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  overdueLabel: { color: colors.textPrimary, ...typography.micro },
+  overdueHelp: { color: colors.textMuted, ...typography.bodyMd },
+  overdueChevron: { color: colors.accent, ...typography.bodyMd },
   jumpWrap: {
     marginHorizontal: spacing.lg,
     marginBottom: spacing.sm,
@@ -312,9 +326,19 @@ const styles = StyleSheet.create({
   laterSummaryPressed: {
     opacity: 0.65,
   },
+  laterSummaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
   laterSummaryText: {
     color: colors.textMuted,
     ...typography.micro,
+  },
+  laterSummaryAction: {
+    color: colors.accent,
+    ...typography.bodyMd,
   },
   emptyWrap: {
     paddingTop: spacing.section * 2,
