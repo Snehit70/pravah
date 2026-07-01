@@ -71,6 +71,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [time, setTime] = useState("");
     const [priority, setPriority] = useState<TaskPriority>(undefined);
     const [kind, setKind] = useState<"task" | "goal">("task");
+    const [firstTaskTitle, setFirstTaskTitle] = useState("");
     const [goalId, setGoalId] = useState<string | undefined>(undefined);
     const [goalIds, setGoalIds] = useState<string[]>([]);
     const [seriesEnabled, setSeriesEnabled] = useState(false);
@@ -94,6 +95,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         description.trim() ||
         deadline.trim() ||
         priority ||
+        firstTaskTitle.trim() ||
         goalId
         || goalIds.length > 0
         || seriesEnabled
@@ -139,6 +141,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setTime("");
       setPriority(undefined);
       setGoalId(undefined);
+      setFirstTaskTitle("");
       setGoalIds([]);
       setSeriesEnabled(false);
       setSeriesStart("1");
@@ -208,6 +211,17 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           haptic.error();
           return;
         }
+        const firstTask = firstTaskTitle.trim();
+        if (firstTask) {
+          await onAdd({
+            title: firstTask,
+            description: undefined,
+            deadline: deadlineResult.value,
+            time: deadlineResult.value ? (time.trim() || undefined) : undefined,
+            priority,
+            goalId: created.id,
+          });
+        }
         feedback.captureSaved();
         reset();
         closeModal();
@@ -257,7 +271,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         reset();
         closeModal();
       }
-    }, [title, description, deadline, time, priority, goalId, goalIds, seriesEnabled, seriesStart, seriesEnd, kind, saving, onAdd, onBulkAdd, isValidDeadline, closeModal, addGoal, prefs.bulkTaskCaptureEnabled]);
+    }, [title, description, deadline, time, priority, firstTaskTitle, goalId, goalIds, seriesEnabled, seriesStart, seriesEnd, kind, saving, onAdd, onBulkAdd, isValidDeadline, closeModal, addGoal, prefs.bulkTaskCaptureEnabled]);
 
     const bulkPreview = useMemo(() => {
       if (!prefs.bulkTaskCaptureEnabled || kind !== "task" || (!seriesEnabled && goalIds.length < 2)) return null;
@@ -421,6 +435,9 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                 </View>
               ) : (
                 <View style={styles.goalKindRow}>
+                  <Text style={styles.goalModeHint}>
+                    Create the direction first. Add a starting task now if the next move is clear.
+                  </Text>
                   <View style={{ flex: 1 }} />
                   <Pressable
                     onPress={() => setShowDetails(!showDetails)}
@@ -434,6 +451,20 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                   </Pressable>
                 </View>
               )}
+
+              {kind === "goal" ? (
+                <View style={styles.firstTaskBlock}>
+                  <Text style={styles.goalChipKicker}>First task</Text>
+                  <TextInput
+                    value={firstTaskTitle}
+                    onChangeText={setFirstTaskTitle}
+                    placeholder="Optional next move"
+                    placeholderTextColor={colors.textMuted}
+                    style={styles.inlineTextInput}
+                    accessibilityLabel="First linked task"
+                  />
+                </View>
+              ) : null}
 
               {kind === "task" && goals.length > 0 ? (
                 <View style={styles.goalSection}>
@@ -676,6 +707,25 @@ const styles = StyleSheet.create({
   rangeRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   rangeInput: { minWidth: 72, color: colors.textPrimary, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, paddingVertical: spacing.sm, textAlign: "center" },
   previewText: { ...typography.micro, color: colors.textMuted },
+  goalModeHint: {
+    flex: 1,
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    lineHeight: 18,
+  },
+  firstTaskBlock: {
+    gap: spacing.sm,
+  },
+  inlineTextInput: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+    backgroundColor: colors.bgInput,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
   outcomeText: {
     ...typography.bodyMd,
     color: colors.textMuted,
