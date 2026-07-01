@@ -196,6 +196,7 @@ export function InboxScreen({
         hitSlop={10}
         accessibilityRole="button"
         accessibilityLabel="Search or filter Inbox"
+        accessibilityState={{ expanded: showFilters }}
         style={({ pressed }) => [styles.filterLauncher, pressed && { opacity: 0.72 }]}
       >
         <Text style={styles.filterLauncherText}>Search or filter</Text>
@@ -271,6 +272,7 @@ export function InboxScreen({
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel={`Goal filter: ${goalFilterLabel}. Tap to change.`}
+                accessibilityState={{ expanded: showGoalPicker }}
                 style={({ pressed }) => [
                   styles.goalChip,
                   activeGoalFilter !== GOAL_ALL && styles.goalChipActive,

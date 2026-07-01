@@ -605,7 +605,7 @@ function MobileApp() {
           idempotencyKey: actionId,
           tasks,
         });
-        feedback.success();
+        feedback.captureSaved();
         showToast({
           kind: "info",
           message: `${result.taskIds.length} tasks created`,

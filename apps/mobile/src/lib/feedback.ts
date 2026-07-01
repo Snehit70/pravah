@@ -1,15 +1,13 @@
 import { haptic } from "./haptic";
 import { sound } from "./sound";
 
-// Central semantic feedback layer. Sound hooks will be added here once the
-// sound asset palette exists; screens should call these events instead of raw
-// haptic/audio APIs.
+// Central semantic feedback layer. Screens should call these events instead of
+// choosing raw haptic or audio effects themselves.
 export const feedback = {
   selection: () => haptic.selection(),
-  success: () => {
-    sound.play("success");
-    haptic.success();
-  },
+  light: () => haptic.light(),
+  medium: () => haptic.medium(),
+  success: () => haptic.success(),
   warning: () => {
     sound.play("warning");
     haptic.warning();

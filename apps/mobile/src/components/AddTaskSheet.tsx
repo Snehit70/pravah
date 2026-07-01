@@ -21,6 +21,7 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { BlurView } from "expo-blur";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { haptic } from "../lib/haptic";
+import { feedback } from "../lib/feedback";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { TaskMetaFields } from "./TaskMetaFields";
 import { type TaskPriority } from "../lib/task-form";
@@ -189,7 +190,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           haptic.error();
           return;
         }
-        haptic.medium();
+        feedback.captureSaved();
         reset();
         closeModal();
         return;

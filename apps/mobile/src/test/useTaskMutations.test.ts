@@ -6,23 +6,19 @@ import type { MobileTask } from "../components/TaskCard";
 import { useTaskMutations } from "../hooks/useTaskMutations";
 
 const useMutationMock = vi.fn();
-const impactAsyncMock = vi.fn();
-const notificationAsyncMock = vi.fn();
+const taskCompletedFeedbackMock = vi.fn();
 
 vi.mock("convex/react", () => ({
   useMutation: (...args: unknown[]) => useMutationMock(...args),
 }));
 
-vi.mock("expo-haptics", () => ({
-  impactAsync: (...args: unknown[]) => impactAsyncMock(...args),
-  notificationAsync: (...args: unknown[]) => notificationAsyncMock(...args),
-  ImpactFeedbackStyle: {
-    Light: "light",
-    Medium: "medium",
-  },
-  NotificationFeedbackType: {
-    Success: "success",
-    Error: "error",
+vi.mock("../lib/feedback", () => ({
+  feedback: {
+    error: vi.fn(),
+    light: vi.fn(),
+    medium: vi.fn(),
+    success: vi.fn(),
+    taskCompleted: (...args: unknown[]) => taskCompletedFeedbackMock(...args),
   },
 }));
 
@@ -58,8 +54,7 @@ describe("useTaskMutations", () => {
   beforeEach(() => {
     (globalThis as { __DEV__?: boolean }).__DEV__ = false;
     useMutationMock.mockReset();
-    impactAsyncMock.mockReset();
-    notificationAsyncMock.mockReset();
+    taskCompletedFeedbackMock.mockReset();
   });
 
   it("runs markDone through the optimistic mutation runner", async () => {
@@ -127,6 +122,7 @@ describe("useTaskMutations", () => {
     expect(setOptimisticTasks).toHaveBeenCalled();
     expect(setPendingMutations).toHaveBeenCalled();
     expect(pendingMutations).toBe(0);
+    expect(taskCompletedFeedbackMock).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces an Undo toast that reopens a completed task", async () => {

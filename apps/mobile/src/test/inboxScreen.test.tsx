@@ -28,12 +28,14 @@ vi.mock("react-native", () => {
       hitSlop: __,
       accessibilityLabel,
       accessibilityRole: ___,
+      accessibilityState,
       ...safe
     } = rest as {
       onPress?: () => void;
       hitSlop?: unknown;
       accessibilityLabel?: string;
       accessibilityRole?: string;
+      accessibilityState?: { expanded?: boolean; selected?: boolean };
     } & AnyProps;
     const resolved =
       typeof children === "function"
@@ -41,7 +43,14 @@ vi.mock("react-native", () => {
         : children;
     return React.createElement(
       "button",
-      { ...safe, onClick: onPress, type: "button", "aria-label": accessibilityLabel },
+      {
+        ...safe,
+        onClick: onPress,
+        type: "button",
+        "aria-label": accessibilityLabel,
+        "aria-expanded": accessibilityState?.expanded,
+        "aria-pressed": accessibilityState?.selected,
+      },
       resolved,
     );
   };
@@ -315,6 +324,30 @@ describe("InboxScreen", () => {
     // task1 is linked to Blog; task2 (unlinked) is filtered out.
     expect(screen.getByTestId("task-task1")).toBeTruthy();
     expect(screen.queryByTestId("task-task2")).toBeNull();
+  });
+
+  it("exposes expanded state for filter disclosures", () => {
+    render(
+      <InboxScreen
+        tasks={sampleTasks}
+        isLoading={false}
+        isRefreshing={false}
+        tabBarHeight={60}
+        onRefresh={mockOnRefresh}
+        onCapture={mockOnCapture}
+        renderItem={mockRenderItem}
+      />
+    );
+
+    const filters = screen.getByRole("button", { name: /search or filter/i });
+    expect(filters.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(filters);
+    expect(filters.getAttribute("aria-expanded")).toBe("true");
+
+    const goals = screen.getByRole("button", { name: /goal filter/i });
+    expect(goals.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(goals);
+    expect(goals.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("filters to unlinked tasks with the No goal option", () => {
