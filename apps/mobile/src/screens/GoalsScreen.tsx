@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { haptic } from "../lib/haptic";
 import { humanDate } from "../lib/dates";
@@ -103,6 +104,7 @@ type GoalDetailSheetProps = {
 };
 
 function GoalDetailSheet({ goal, progress, linked, onDelete, onClose, onOpenTask }: GoalDetailSheetProps) {
+  const insets = useSafeAreaInsets();
   const confirm = useConfirm();
   const { setGoalLink, updateGoal } = useGoalMutations();
   const [editing, setEditing] = useState(false);
@@ -152,7 +154,7 @@ function GoalDetailSheet({ goal, progress, linked, onDelete, onClose, onOpenTask
         {goal ? (
           <Animated.View entering={FadeIn.duration(140)} style={detailStyles.card}>
             {/* Header */}
-            <View style={detailStyles.header}>
+            <View style={[detailStyles.header, { paddingTop: Math.max(insets.top, spacing.lg) }]}>
               <View style={detailStyles.titleBlock}>
                 <Text style={detailStyles.title} numberOfLines={3}>{goal.text}</Text>
                 <Text style={detailStyles.titleHint}>{editing ? "Editing goal details" : "Tap Edit to change title, notes, priority, or deadline"}</Text>
@@ -175,7 +177,10 @@ function GoalDetailSheet({ goal, progress, linked, onDelete, onClose, onOpenTask
 
             <ScrollView
               style={detailStyles.scrollArea}
-              contentContainerStyle={detailStyles.scrollContent}
+              contentContainerStyle={[
+                detailStyles.scrollContent,
+                { paddingBottom: Math.max(insets.bottom, spacing.lg) },
+              ]}
               showsVerticalScrollIndicator={false}
             >
               {editing ? (
@@ -703,7 +708,6 @@ const detailStyles = StyleSheet.create({
     alignItems: "flex-start",
     gap: spacing.sm,
     padding: spacing.lg,
-    paddingTop: spacing.xxl,
     paddingBottom: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderSubtle,

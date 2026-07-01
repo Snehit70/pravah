@@ -15,6 +15,15 @@ export function addDays(base: Date, days: number): Date {
   return next;
 }
 
+export function nextLaterThisWeek(base: Date = new Date()): Date {
+  const day = base.getDay();
+  const daysUntilFriday = (5 - day + 7) % 7;
+  // Once Friday has arrived or passed, anchor to the coming weekend rather
+  // than jumping a full week ahead under a misleading "later this week" label.
+  const offset = day === 6 ? 1 : day === 0 ? 0 : daysUntilFriday === 0 ? 2 : daysUntilFriday;
+  return addDays(base, offset);
+}
+
 const SHORT_MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",

@@ -1,4 +1,8 @@
 import { createAudioPlayer, type AudioPlayer } from "expo-audio";
+import captureSound from "../../assets/sounds/pravah-capture.wav";
+import errorSound from "../../assets/sounds/pravah-error.wav";
+import successSound from "../../assets/sounds/pravah-success.wav";
+import warningSound from "../../assets/sounds/pravah-warning.wav";
 import { getUserPreferencesSnapshot } from "../hooks/useUserPreferences";
 
 type SoundEvent = "capture" | "success" | "warning" | "error";
@@ -8,13 +12,13 @@ const players: Partial<Record<SoundEvent, AudioPlayer>> = {};
 function sourceFor(event: SoundEvent): number {
   switch (event) {
     case "capture":
-      return require("../../assets/sounds/pravah-capture.wav");
+      return captureSound;
     case "success":
-      return require("../../assets/sounds/pravah-success.wav");
+      return successSound;
     case "warning":
-      return require("../../assets/sounds/pravah-warning.wav");
+      return warningSound;
     case "error":
-      return require("../../assets/sounds/pravah-error.wav");
+      return errorSound;
   }
 }
 

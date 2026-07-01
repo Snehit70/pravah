@@ -45,7 +45,7 @@ export const colors = {
   // ── Text ────────────────────────────────────────────────────────────
   textPrimary: "#201914",
   textSecondary: "#5b5048",
-  textMuted: "#85786c",
+  textMuted: "#6f6358",
   textDim: "#b4a89b",
   textInverse: "#fffaf2",
   textCompleted: "#8f8276",

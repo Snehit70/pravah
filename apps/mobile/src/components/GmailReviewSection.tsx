@@ -5,7 +5,7 @@ import { haptic } from "../lib/haptic";
 import { api } from "../../../../convex/_generated/api";
 import type { Doc, Id } from "../../../../convex/_generated/dataModel";
 import { colors, radii, spacing, typography } from "../theme/tokens";
-import { addDays, toIsoDate } from "../lib/dates";
+import { addDays, nextLaterThisWeek, toIsoDate } from "../lib/dates";
 import { mobileLogger, classifyError } from "../lib/logger";
 
 type ReviewItem = Doc<"reviewQueue">;
@@ -16,13 +16,6 @@ type Props = {
 };
 
 type ScheduleChoice = "today" | "tomorrow" | "laterThisWeek" | "inbox";
-
-function nextLaterThisWeek(): Date {
-  const now = new Date();
-  const day = now.getDay();
-  const daysUntilFriday = (5 - day + 7) % 7;
-  return addDays(now, daysUntilFriday === 0 ? 2 : daysUntilFriday);
-}
 
 function weekdayShort(date: Date): string {
   return date.toLocaleDateString(undefined, { weekday: "short" });

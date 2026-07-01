@@ -326,6 +326,15 @@ function TaskCardInner({
       : isInboxTask
         ? { label: "Schedule", run: onMoveToday ? handleMoveToday : undefined, tone: "primary" }
         : { label: "Complete", run: handleDone, tone: "primary" };
+  const secondaryAction: {
+    label: string;
+    run?: () => void;
+    tone: "secondary";
+  } | null = isCompleted
+    ? null
+    : isInboxTask
+      ? { label: "Complete", run: handleDone, tone: "secondary" }
+      : { label: "Inbox", run: onSendToInbox ? handleSendToInbox : undefined, tone: "secondary" };
 
   const rowContent = (
     <Pressable
@@ -390,31 +399,57 @@ function TaskCardInner({
         </View>
       ) : null}
 
-      <Pressable
-        onPress={(event) => {
-          event.stopPropagation();
-          primaryAction.run?.();
-        }}
-        disabled={!primaryAction.run}
-        hitSlop={10}
-        accessibilityRole="button"
-        accessibilityLabel={`${primaryAction.label} ${task.title}`}
-        style={({ pressed }) => [
-          styles.primaryAction,
-          primaryAction.tone === "secondary" && styles.primaryActionSecondary,
-          pressed && primaryAction.run && { opacity: 0.68 },
-          !primaryAction.run && { opacity: 0.45 },
-        ]}
-      >
-        <Text
-          style={[
-            styles.primaryActionText,
-            primaryAction.tone === "secondary" && styles.primaryActionTextSecondary,
+      <View style={styles.actionCol}>
+        {secondaryAction ? (
+          <Pressable
+            onPress={(event) => {
+              event.stopPropagation();
+              secondaryAction.run?.();
+            }}
+            disabled={!secondaryAction.run}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={`${secondaryAction.label} ${task.title}`}
+            style={({ pressed }) => [
+              styles.primaryAction,
+              styles.primaryActionSecondary,
+              styles.secondaryInlineAction,
+              pressed && secondaryAction.run && { opacity: 0.68 },
+              !secondaryAction.run && { opacity: 0.45 },
+            ]}
+          >
+            <Text style={[styles.primaryActionText, styles.primaryActionTextSecondary]}>
+              {secondaryAction.label}
+            </Text>
+          </Pressable>
+        ) : null}
+
+        <Pressable
+          onPress={(event) => {
+            event.stopPropagation();
+            primaryAction.run?.();
+          }}
+          disabled={!primaryAction.run}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={`${primaryAction.label} ${task.title}`}
+          style={({ pressed }) => [
+            styles.primaryAction,
+            primaryAction.tone === "secondary" && styles.primaryActionSecondary,
+            pressed && primaryAction.run && { opacity: 0.68 },
+            !primaryAction.run && { opacity: 0.45 },
           ]}
         >
-          {primaryAction.label}
-        </Text>
-      </Pressable>
+          <Text
+            style={[
+              styles.primaryActionText,
+              primaryAction.tone === "secondary" && styles.primaryActionTextSecondary,
+            ]}
+          >
+            {primaryAction.label}
+          </Text>
+        </Pressable>
+      </View>
     </Pressable>
   );
 
@@ -538,7 +573,6 @@ const styles = StyleSheet.create({
     color: colors.error,
   },
   primaryAction: {
-    marginLeft: spacing.md,
     minHeight: 34,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -557,6 +591,14 @@ const styles = StyleSheet.create({
   },
   primaryActionTextSecondary: {
     color: colors.textSecondary,
+  },
+  actionCol: {
+    marginLeft: spacing.md,
+    gap: spacing.xs,
+    alignItems: "flex-end",
+  },
+  secondaryInlineAction: {
+    alignSelf: "stretch",
   },
   // Swipe action panels — flat color, single label. The label is rendered
   // via SwipeActionLabel above so it can fade in proportional to drag.

@@ -6,7 +6,7 @@
  * of date-grouped sections, empty states, and loading states.
  */
 
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -180,6 +180,40 @@ const sampleSections: [string, MobileTask[]][] = [
         position: 0,
         updatedAt: 3000,
         createdAt: 1500,
+      },
+    ],
+  ],
+];
+
+const extendedSections: [string, MobileTask[]][] = [
+  ...sampleSections,
+  [
+    "2026-05-06",
+    [
+      {
+        _id: "task4" as Id<"tasks">,
+        title: "Task 4",
+        deadline: "2026-05-06",
+        scheduledAt: 1600,
+        priority: "p2",
+        position: 0,
+        updatedAt: 4000,
+        createdAt: 1600,
+      },
+    ],
+  ],
+  [
+    "2026-05-07",
+    [
+      {
+        _id: "task5" as Id<"tasks">,
+        title: "Task 5",
+        deadline: "2026-05-07",
+        scheduledAt: 1700,
+        priority: "p3",
+        position: 0,
+        updatedAt: 5000,
+        createdAt: 1700,
       },
     ],
   ],
@@ -423,5 +457,27 @@ describe("TimelineScreen", () => {
 
     expect(screen.getByTestId("task-bulk-29")).toBeTruthy();
     expect(screen.queryByText("Preparing more tasks...")).toBeNull();
+  });
+
+  it("expands later sections so hidden tasks become reachable", () => {
+    render(
+      <TimelineScreen
+        sections={extendedSections}
+        today="2026-05-04"
+        tomorrow="2026-05-05"
+        isLoading={false}
+        isRefreshing={false}
+        tabBarHeight={60}
+        onRefresh={mockOnRefresh}
+        renderItem={mockRenderItem}
+      />
+    );
+
+    expect(screen.queryByTestId("task-task5")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /show 1 later tasks/i }));
+
+    expect(screen.getByTestId("task-task5")).toBeTruthy();
+    expect(screen.queryByText("Later · 1 tasks")).toBeNull();
   });
 });

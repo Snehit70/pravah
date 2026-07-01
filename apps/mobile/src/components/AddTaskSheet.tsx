@@ -26,21 +26,11 @@ import { TaskMetaFields } from "./TaskMetaFields";
 import { type TaskPriority } from "../lib/task-form";
 import { useGoals } from "../hooks/useGoals";
 import { useGoalMutations } from "../hooks/useGoalMutations";
-import { addDays, toIsoDate } from "../lib/dates";
+import { addDays, nextLaterThisWeek, toIsoDate } from "../lib/dates";
 import { expandBulkTasks, MAX_BULK_TASKS, type BulkTaskInput } from "../lib/bulkTaskCapture";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 
 type ComposerMode = "inbox" | "today" | "tomorrow" | "laterThisWeek";
-
-function nextLaterThisWeek(): Date {
-  const now = new Date();
-  const day = now.getDay();
-  // Prefer Friday as the concrete "later this week" anchor. If Friday has
-  // passed, use the coming weekend instead of a vague week jump.
-  const daysUntilFriday = (5 - day + 7) % 7;
-  const offset = daysUntilFriday === 0 ? 2 : daysUntilFriday;
-  return addDays(now, offset);
-}
 
 function weekdayShort(date: Date): string {
   return date.toLocaleDateString(undefined, { weekday: "short" });

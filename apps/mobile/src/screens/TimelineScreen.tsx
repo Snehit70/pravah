@@ -8,7 +8,7 @@
  * currently disabled (RNDFL@4 / Reanimated@4 incompatibility).
  */
 
-import type { JSX } from "react";
+import { useState, type JSX } from "react";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import type { RenderItemParams } from "react-native-draggable-flatlist";
@@ -105,11 +105,14 @@ export function TimelineScreen({
   overdueCount,
   onOpenOverdue,
 }: TimelineScreenProps) {
+  const [showAllSections, setShowAllSections] = useState(false);
   const { future, overdueCount: localOverdue } = splitOverdue(sections, today);
   const effectiveOverdue = overdueCount ?? localOverdue;
   const sourceSections = onOpenOverdue ? future : sections;
-  const visibleSections = sourceSections.slice(0, DEFAULT_VISIBLE_SECTION_COUNT);
-  const laterSections = sourceSections.slice(DEFAULT_VISIBLE_SECTION_COUNT);
+  const visibleSections = showAllSections
+    ? sourceSections
+    : sourceSections.slice(0, DEFAULT_VISIBLE_SECTION_COUNT);
+  const laterSections = showAllSections ? [] : sourceSections.slice(DEFAULT_VISIBLE_SECTION_COUNT);
   const laterTaskCount = laterSections.reduce((sum, [, tasks]) => sum + tasks.length, 0);
 
   const totalRows = countTimelineRows(visibleSections);
@@ -187,9 +190,14 @@ export function TimelineScreen({
       ListFooterComponent={
         <>
           {laterTaskCount > 0 ? (
-            <View style={styles.laterSummary}>
+            <Pressable
+              onPress={() => setShowAllSections(true)}
+              style={({ pressed }) => [styles.laterSummary, pressed && styles.laterSummaryPressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`Show ${laterTaskCount} later tasks`}
+            >
               <Text style={styles.laterSummaryText}>Later · {laterTaskCount} tasks</Text>
-            </View>
+            </Pressable>
           ) : null}
           {hasPendingRows ? <Text style={styles.loadingMore}>Preparing more tasks...</Text> : null}
         </>
@@ -221,6 +229,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.borderSubtle,
+  },
+  laterSummaryPressed: {
+    opacity: 0.65,
   },
   laterSummaryText: {
     color: colors.textMuted,
