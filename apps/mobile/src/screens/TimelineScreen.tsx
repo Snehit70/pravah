@@ -40,6 +40,7 @@ type TimelineScreenProps = {
 };
 
 const noopDrag = () => {};
+const DEFAULT_VISIBLE_SECTION_COUNT = 3;
 
 function countTimelineRows(sections: [string, MobileTask[]][]) {
   let count = 0;
@@ -106,7 +107,10 @@ export function TimelineScreen({
 }: TimelineScreenProps) {
   const { future, overdueCount: localOverdue } = splitOverdue(sections, today);
   const effectiveOverdue = overdueCount ?? localOverdue;
-  const visibleSections = onOpenOverdue ? future : sections;
+  const sourceSections = onOpenOverdue ? future : sections;
+  const visibleSections = sourceSections.slice(0, DEFAULT_VISIBLE_SECTION_COUNT);
+  const laterSections = sourceSections.slice(DEFAULT_VISIBLE_SECTION_COUNT);
+  const laterTaskCount = laterSections.reduce((sum, [, tasks]) => sum + tasks.length, 0);
 
   const totalRows = countTimelineRows(visibleSections);
   const visibleRowCount = useIncrementalRowCount(totalRows);
@@ -131,8 +135,8 @@ export function TimelineScreen({
 
   const emptyBlock = (
     <Animated.View entering={FadeIn.duration(400)} style={styles.emptyWrap}>
-      <Text style={styles.emptyTitle}>An open day.</Text>
-      <Text style={styles.emptyText}>Move a task from the inbox to fill it.</Text>
+      <Text style={styles.emptyTitle}>Today is clear.</Text>
+      <Text style={styles.emptyText}>Upcoming work will appear here when it has a Deadline.</Text>
     </Animated.View>
   );
 
@@ -181,7 +185,14 @@ export function TimelineScreen({
       }
       ListHeaderComponent={overdueHeader}
       ListFooterComponent={
-        hasPendingRows ? <Text style={styles.loadingMore}>Preparing more tasks...</Text> : null
+        <>
+          {laterTaskCount > 0 ? (
+            <View style={styles.laterSummary}>
+              <Text style={styles.laterSummaryText}>Later · {laterTaskCount} tasks</Text>
+            </View>
+          ) : null}
+          {hasPendingRows ? <Text style={styles.loadingMore}>Preparing more tasks...</Text> : null}
+        </>
       }
       ListEmptyComponent={isLoading ? loadingBlock : emptyBlock}
     />
@@ -204,6 +215,17 @@ const styles = StyleSheet.create({
   overdueBarPressed: { opacity: 0.6 },
   overdueLabel: { color: colors.textMuted, ...typography.micro },
   overdueChevron: { color: colors.textMuted, ...typography.micro },
+  laterSummary: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    paddingVertical: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
+  },
+  laterSummaryText: {
+    color: colors.textMuted,
+    ...typography.micro,
+  },
   emptyWrap: {
     paddingTop: spacing.section * 2,
     paddingHorizontal: spacing.xxl,

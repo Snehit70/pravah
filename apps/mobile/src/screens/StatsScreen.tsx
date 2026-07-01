@@ -7,7 +7,7 @@
  *
  *   - Highlights: best weekday, peak hour, median cycle, longest streak
  *   - Workload: active task counts sliced by priority + lane
- *   - This week: completion delta vs the prior 7d window
+ *   - Last 7 days: completion delta vs the previous 7d window
  *
  * All aggregations are pure functions in lib/statsAggregators; this screen
  * is just memoization + layout.
@@ -203,16 +203,16 @@ export function StatsScreen({ tasks, tabBarHeight }: StatsScreenProps) {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>This week vs last</Text>
+        <Text style={styles.sectionTitle}>Last 7 days vs previous 7</Text>
         <View style={styles.wowRow}>
           <View style={styles.wowSide}>
             <Text style={styles.wowValue}>{wow.thisWeek}</Text>
-            <Text style={styles.wowCaption}>This week</Text>
+            <Text style={styles.wowCaption}>Last 7 days</Text>
           </View>
           <DeltaBadge thisWeek={wow.thisWeek} lastWeek={wow.lastWeek} deltaPct={wow.deltaPct} />
           <View style={styles.wowSide}>
             <Text style={[styles.wowValue, styles.wowValueMuted]}>{wow.lastWeek}</Text>
-            <Text style={styles.wowCaption}>Last week</Text>
+            <Text style={styles.wowCaption}>Previous 7 days</Text>
           </View>
         </View>
       </View>

@@ -26,6 +26,7 @@ type OverdueSheetProps = {
   applyDeadline: boolean;
   today: string;
   tomorrow: string;
+  weekEnd: string;
   onOpenPreview: (goalId: string) => void;
   onClosePreview: () => void;
   onSetApplyDeadline: (next: boolean) => void;
@@ -33,13 +34,6 @@ type OverdueSheetProps = {
   onRescheduleAll: () => void;
   onManualTriage: (taskId: string, target: ManualTriageTarget) => void;
 };
-
-const MANUAL_ACTIONS: { key: ManualTriageTarget; label: string }[] = [
-  { key: "today", label: "Today" },
-  { key: "tomorrow", label: "Tomorrow" },
-  { key: "week", label: "This week" },
-  { key: "drop", label: "Drop" },
-];
 
 export function OverdueSheet({
   visible,
@@ -50,6 +44,7 @@ export function OverdueSheet({
   applyDeadline,
   today,
   tomorrow,
+  weekEnd,
   onOpenPreview,
   onClosePreview,
   onSetApplyDeadline,
@@ -59,6 +54,12 @@ export function OverdueSheet({
 }: OverdueSheetProps) {
   const insets = useSafeAreaInsets();
   const friendly = (iso: string) => dateLabel(iso, today, tomorrow);
+  const manualActions: { key: ManualTriageTarget; label: string }[] = [
+    { key: "today", label: "Today" },
+    { key: "tomorrow", label: "Tomorrow" },
+    { key: "week", label: `Week end, ${friendly(weekEnd)}` },
+    { key: "drop", label: "Drop" },
+  ];
   const totalOverdue =
     groups.reduce((sum, group) => sum + group.overdueCount, 0) + orphans.length;
 
@@ -177,7 +178,7 @@ export function OverdueSheet({
                   <View key={task.taskId} style={styles.orphanRow}>
                     <Text style={styles.orphanTitle} numberOfLines={2}>{task.title}</Text>
                     <View style={styles.chipRow}>
-                      {MANUAL_ACTIONS.map((action) => (
+                        {manualActions.map((action) => (
                         <Pressable
                           key={action.key}
                           onPress={() => onManualTriage(task.taskId, action.key)}

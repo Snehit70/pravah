@@ -220,7 +220,7 @@ describe("TimelineScreen", () => {
     );
 
     expect(screen.getByTestId("skeleton-timeline")).toBeTruthy();
-    expect(screen.queryByText("An open day.")).toBeNull();
+    expect(screen.queryByText("Today is clear.")).toBeNull();
   });
 
   it("shows empty state when no sections and not loading", () => {
@@ -236,8 +236,8 @@ describe("TimelineScreen", () => {
       />
     );
 
-    expect(screen.getByText("An open day.")).toBeTruthy();
-    expect(screen.getByText("Move a task from the inbox to fill it.")).toBeTruthy();
+    expect(screen.getByText("Today is clear.")).toBeTruthy();
+    expect(screen.getByText("Upcoming work will appear here when it has a Deadline.")).toBeTruthy();
   });
 
   it("renders date sections with headers and tasks", () => {
@@ -305,7 +305,7 @@ describe("TimelineScreen", () => {
       />
     );
 
-    expect(screen.queryByText("An open day.")).toBeNull();
+    expect(screen.queryByText("Today is clear.")).toBeNull();
     expect(screen.getByTestId("skeleton-timeline")).toBeTruthy();
   });
 

@@ -9,6 +9,10 @@ vi.mock("react-native", () => {
     const { style: _, ...safe } = rest;
     return React.createElement("div", safe, children);
   };
+  const Text = ({ children, ...rest }: AnyProps) => {
+    const { style: _, ...safe } = rest;
+    return React.createElement("span", safe, children);
+  };
   const Pressable = ({ children, ...rest }: AnyProps) => {
     const {
       onPress,
@@ -49,7 +53,7 @@ vi.mock("react-native", () => {
     create: <T extends Record<string, unknown>>(styles: T): T => styles,
     hairlineWidth: 1,
   };
-  return { View, Pressable, StyleSheet };
+  return { View, Text, Pressable, StyleSheet };
 });
 
 vi.mock("react-native-reanimated", () => {

@@ -217,7 +217,7 @@ describe("InboxScreen", () => {
     );
 
     expect(screen.getByTestId("skeleton-inbox")).toBeTruthy();
-    expect(screen.queryByText("Nothing to carry forward.")).toBeNull();
+    expect(screen.queryByText("Everything has a place.")).toBeNull();
   });
 
   it("shows empty state when no tasks and not loading", () => {
@@ -233,8 +233,8 @@ describe("InboxScreen", () => {
       />
     );
 
-    expect(screen.getByText("Nothing to carry forward.")).toBeTruthy();
-    expect(screen.getByText("When something comes up, capture it.")).toBeTruthy();
+    expect(screen.getByText("Everything has a place.")).toBeTruthy();
+    expect(screen.getByText("Capture new loose work when it appears.")).toBeTruthy();
     expect(screen.getByRole("button", { name: /capture a task/i })).toBeTruthy();
   });
 
@@ -290,7 +290,7 @@ describe("InboxScreen", () => {
       />
     );
 
-    expect(screen.queryByText("Nothing to carry forward.")).toBeNull();
+    expect(screen.queryByText("Everything has a place.")).toBeNull();
     expect(screen.getByTestId("skeleton-inbox")).toBeTruthy();
   });
 
@@ -307,7 +307,8 @@ describe("InboxScreen", () => {
       />
     );
 
-    // Open the goal dropdown, then pick "Blog".
+    // Open the filter launcher, then the goal dropdown, then pick "Blog".
+    fireEvent.click(screen.getByRole("button", { name: /search or filter/i }));
     fireEvent.click(screen.getByRole("button", { name: /goal filter/i }));
     fireEvent.click(screen.getByRole("button", { name: "Blog" }));
 
@@ -329,6 +330,7 @@ describe("InboxScreen", () => {
       />
     );
 
+    fireEvent.click(screen.getByRole("button", { name: /search or filter/i }));
     fireEvent.click(screen.getByRole("button", { name: /goal filter/i }));
     fireEvent.click(screen.getByRole("button", { name: "No goal" }));
 

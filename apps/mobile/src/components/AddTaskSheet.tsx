@@ -30,14 +30,21 @@ import { addDays, toIsoDate } from "../lib/dates";
 import { expandBulkTasks, MAX_BULK_TASKS, type BulkTaskInput } from "../lib/bulkTaskCapture";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 
-type ComposerMode = "inbox" | "today" | "tomorrow" | "nextweek";
+type ComposerMode = "inbox" | "today" | "tomorrow" | "laterThisWeek";
 
-const MODE_OPTIONS: { mode: ComposerMode; label: string }[] = [
-  { mode: "inbox", label: "Inbox" },
-  { mode: "today", label: "Today" },
-  { mode: "tomorrow", label: "Tomorrow" },
-  { mode: "nextweek", label: "+1w" },
-];
+function nextLaterThisWeek(): Date {
+  const now = new Date();
+  const day = now.getDay();
+  // Prefer Friday as the concrete "later this week" anchor. If Friday has
+  // passed, use the coming weekend instead of a vague week jump.
+  const daysUntilFriday = (5 - day + 7) % 7;
+  const offset = daysUntilFriday === 0 ? 2 : daysUntilFriday;
+  return addDays(now, offset);
+}
+
+function weekdayShort(date: Date): string {
+  return date.toLocaleDateString(undefined, { weekday: "short" });
+}
 
 export type AddTaskSheetRef = {
   open: () => void;
@@ -96,13 +103,24 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         || seriesEnabled
     );
 
+    const laterThisWeek = useMemo(() => nextLaterThisWeek(), []);
+    const modeOptions = useMemo<{ mode: ComposerMode; label: string }[]>(
+      () => [
+        { mode: "inbox", label: "Inbox" },
+        { mode: "today", label: "Today" },
+        { mode: "tomorrow", label: "Tomorrow" },
+        { mode: "laterThisWeek", label: `Later this week, ${weekdayShort(laterThisWeek)}` },
+      ],
+      [laterThisWeek],
+    );
+
     const presetDeadlines: Record<ComposerMode, string> = {
       inbox: "",
       today: toIsoDate(new Date()),
       tomorrow: toIsoDate(addDays(new Date(), 1)),
-      nextweek: toIsoDate(addDays(new Date(), 7)),
+      laterThisWeek: toIsoDate(laterThisWeek),
     };
-    const selectedMode = MODE_OPTIONS.find(
+    const selectedMode = modeOptions.find(
       (option) => presetDeadlines[option.mode] === deadline
     )?.mode;
 
@@ -331,7 +349,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
 
               {kind === "task" ? (
                 <View style={styles.modeRow}>
-                  {MODE_OPTIONS.map((option) => (
+                  {modeOptions.map((option) => (
                     <Pressable
                       key={option.mode}
                       onPress={() => {

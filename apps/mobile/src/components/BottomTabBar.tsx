@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, type JSX } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, Line, Path } from "react-native-svg";
 import Animated, {
   useAnimatedStyle,
@@ -10,7 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { haptic } from "../lib/haptic";
 import { resolveTabOrder, TAB_LABELS, type TabKey } from "../lib/tabOrder";
-import { colors, radii, shadow, spacing } from "../theme/tokens";
+import { colors, radii, shadow, spacing, typography } from "../theme/tokens";
 
 export type { TabKey } from "../lib/tabOrder";
 
@@ -183,6 +183,9 @@ function NavTab({
           <Icon filled color={colors.accent} size={ICON_SIZE} />
         </Animated.View>
       </Animated.View>
+      <Text style={[styles.tabLabel, active && styles.tabLabelActive]} numberOfLines={1}>
+        {tab.label}
+      </Text>
     </AnimatedPressable>
   );
 }
@@ -228,7 +231,7 @@ function CaptureButton({
         accessibilityRole="button"
         accessibilityLabel="Capture a new task"
       >
-        <CaptureIcon color={colors.textPrimary} size={ICON_SIZE} />
+        <CaptureIcon color={colors.textInverse} size={ICON_SIZE} />
       </AnimatedPressable>
     </View>
   );
@@ -310,6 +313,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: spacing.sm,
+    gap: 2,
   },
   iconWrap: {
     width: ICON_SIZE,
@@ -323,6 +327,16 @@ const styles = StyleSheet.create({
     left: 0,
     width: ICON_SIZE,
     height: ICON_SIZE,
+  },
+  tabLabel: {
+    ...typography.micro,
+    fontSize: 9,
+    lineHeight: 11,
+    letterSpacing: 0.2,
+    color: colors.textMuted,
+  },
+  tabLabelActive: {
+    color: colors.accent,
   },
   captureSlot: {
     flex: 1,

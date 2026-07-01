@@ -281,7 +281,7 @@ export function activeBreakdown(tasks: MobileTask[]): ActiveBreakdown {
 }
 
 /**
- * This-week (last 7 days incl. today) vs. previous 7 days completion
+ * Last 7 days incl. today vs. previous 7 days completion
  * counts and percent delta. null delta when the prior week is zero
  * (avoid divide-by-zero / infinity styling edge case).
  */

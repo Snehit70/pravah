@@ -14,7 +14,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { BlurView } from "expo-blur";
 
 import { haptic } from "../lib/haptic";
 import { humanDate } from "../lib/dates";
@@ -145,16 +144,11 @@ function GoalDetailSheet({ goal, progress, linked, onDelete, onClose, onOpenTask
   return (
     <Modal
       visible={goal !== null}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
+      transparent={false}
+      animationType="slide"
       onRequestClose={onClose}
     >
       <View style={detailStyles.backdrop}>
-        <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
-        <View style={[StyleSheet.absoluteFill, detailStyles.backdropDim]} />
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-
         {goal ? (
           <Animated.View entering={FadeIn.duration(140)} style={detailStyles.card}>
             {/* Header */}
@@ -689,25 +683,15 @@ const styles = StyleSheet.create({
 const detailStyles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.lg,
-  },
-  backdropDim: {
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: colors.bg,
   },
   card: {
-    width: "100%",
-    maxWidth: 420,
-    maxHeight: "80%",
+    flex: 1,
     backgroundColor: colors.bg,
-    borderRadius: radii.xl,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
     overflow: "hidden",
   },
   scrollArea: {
-    flexShrink: 1,
+    flex: 1,
   },
   scrollContent: {
     paddingHorizontal: spacing.lg,
@@ -719,6 +703,7 @@ const detailStyles = StyleSheet.create({
     alignItems: "flex-start",
     gap: spacing.sm,
     padding: spacing.lg,
+    paddingTop: spacing.xxl,
     paddingBottom: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderSubtle,

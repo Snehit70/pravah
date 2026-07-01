@@ -15,23 +15,38 @@ type Props = {
   showToast: (next: { kind: "error" | "info"; message: string }) => void;
 };
 
-type ScheduleChoice = "today" | "tomorrow" | "nextweek" | "inbox";
+type ScheduleChoice = "today" | "tomorrow" | "laterThisWeek" | "inbox";
 
-const SCHEDULE_CHOICES: { value: ScheduleChoice; label: string }[] = [
-  { value: "today", label: "Today" },
-  { value: "tomorrow", label: "Tomorrow" },
-  { value: "nextweek", label: "+1w" },
-  { value: "inbox", label: "Inbox" },
-];
+function nextLaterThisWeek(): Date {
+  const now = new Date();
+  const day = now.getDay();
+  const daysUntilFriday = (5 - day + 7) % 7;
+  return addDays(now, daysUntilFriday === 0 ? 2 : daysUntilFriday);
+}
+
+function weekdayShort(date: Date): string {
+  return date.toLocaleDateString(undefined, { weekday: "short" });
+}
+
+function scheduleChoices(): { value: ScheduleChoice; label: string }[] {
+  const later = nextLaterThisWeek();
+  return [
+    { value: "today", label: "Today" },
+    { value: "tomorrow", label: "Tomorrow" },
+    { value: "laterThisWeek", label: `Later, ${weekdayShort(later)}` },
+    { value: "inbox", label: "Inbox" },
+  ];
+}
 
 function scheduleChoiceToDate(choice: ScheduleChoice): string | undefined {
   if (choice === "inbox") return undefined;
   if (choice === "today") return toIsoDate(new Date());
   if (choice === "tomorrow") return toIsoDate(addDays(new Date(), 1));
-  return toIsoDate(addDays(new Date(), 7));
+  return toIsoDate(nextLaterThisWeek());
 }
 
 export function GmailReviewSection({ enabled, showToast }: Props) {
+  const scheduleOptions = scheduleChoices();
   // Filter server-side so the row cap applies to Gmail items; client-side
   // filtering after take() would let non-Gmail items push Gmail rows out of
   // the response and silently hide pending Gmail work.
@@ -159,7 +174,7 @@ export function GmailReviewSection({ enabled, showToast }: Props) {
               ) : null}
 
               <View style={styles.chipRow}>
-                {SCHEDULE_CHOICES.map((option) => {
+                {scheduleOptions.map((option) => {
                   const active = choice === option.value;
                   return (
                     <Pressable
