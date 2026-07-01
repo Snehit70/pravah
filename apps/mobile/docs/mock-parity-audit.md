@@ -1,6 +1,7 @@
 # Mock Parity Audit
 
-Status: post-ship audit of mock fidelity for the `v3.0.0` mobile redesign.
+Status: archival pre-fix audit of the `v3.0.0` redesign drift. The current
+shipped-state truth now lives in `apps/mobile/docs/mock-parity-signoff.md`.
 
 This document compares the approved mock boards in `apps/mobile/docs/assets/`
 against the currently shipped implementation in `apps/mobile/`.
