@@ -172,7 +172,11 @@ describe("CompletedTaskSheet", () => {
 
   it("shows inbox-capture origin and hides goal action when unlinked", () => {
     mockConfirm.mockResolvedValue(true);
-    const { deadline: _deadline, time: _time, ...noDeadlineTask } = task;
+    const noDeadlineTask = {
+      ...task,
+      deadline: undefined,
+      time: undefined,
+    };
 
     render(
       <CompletedTaskSheet

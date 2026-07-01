@@ -106,6 +106,7 @@ vi.mock("../theme/tokens", () => ({
     textPrimary: "#fff",
     textSecondary: "#ccc",
   },
+  radii: { md: 16 },
   spacing: { xs: 4, sm: 8, md: 16, lg: 24, xxl: 48, section: 32 },
   typography: { headline: {}, bodyMd: {}, micro: {} },
 }));
