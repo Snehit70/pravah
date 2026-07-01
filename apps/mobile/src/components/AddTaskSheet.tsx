@@ -18,6 +18,7 @@ import {
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { haptic } from "../lib/haptic";
@@ -82,6 +83,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const { goals } = useGoals();
     const { prefs } = useUserPreferences();
     const reducedMotion = useReducedMotion();
+    const insets = useSafeAreaInsets();
     const { addGoal } = useGoalMutations();
     const selectedGoal = useMemo(
       () => goals.find((g) => g.id === goalId),
@@ -275,7 +277,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       <Modal
         visible={visible}
         transparent
-        animationType={reducedMotion ? "none" : "fade"}
+        animationType={reducedMotion ? "none" : "slide"}
         statusBarTranslucent
         onRequestClose={() => {
           if (!hasDraftChanges) {
@@ -284,7 +286,14 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           }
         }}
       >
-        <KeyboardAvoidingView behavior="padding" automaticOffset style={styles.overlay}>
+        <KeyboardAvoidingView
+          behavior="padding"
+          automaticOffset
+          style={[
+            styles.overlay,
+            { paddingBottom: Math.max(insets.bottom, spacing.sm) },
+          ]}
+        >
           <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
           <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
           {!hasDraftChanges ? (
@@ -605,8 +614,9 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-end",
     paddingHorizontal: spacing.md,
+    paddingTop: spacing.xxl,
   },
   backdropDim: {
     backgroundColor: "rgba(0,0,0,0.72)",
@@ -614,7 +624,7 @@ const styles = StyleSheet.create({
   card: {
     width: "100%",
     maxWidth: 480,
-    maxHeight: "85%",
+    maxHeight: "92%",
     backgroundColor: colors.bg,
     borderRadius: radii.xl,
     borderWidth: StyleSheet.hairlineWidth,

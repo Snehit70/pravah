@@ -108,6 +108,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
             <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
             <Pressable
+              accessibilityRole="button"
               accessibilityLabel="Dismiss dialog"
               style={StyleSheet.absoluteFill}
               onPress={() => close(false)}

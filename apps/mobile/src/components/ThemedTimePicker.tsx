@@ -3,6 +3,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-nati
 import { BlurView } from "expo-blur";
 import { haptic } from "../lib/haptic";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 
 type ThemedTimePickerProps = {
   visible: boolean;
@@ -44,6 +45,7 @@ export function ThemedTimePicker({
   onClear,
   onClose,
 }: ThemedTimePickerProps) {
+  const reducedMotion = useReducedMotion();
   const parsed = parseTimeParts(value);
   const [hour, setHour] = useState(parsed?.hour ?? 9);
   const [minute, setMinute] = useState(
@@ -63,11 +65,22 @@ export function ThemedTimePicker({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType={reducedMotion ? "none" : "fade"}
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
       <View style={styles.overlay}>
         <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
-        <Pressable accessibilityLabel="Dismiss" style={StyleSheet.absoluteFill} onPress={onClose} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss time picker"
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+        />
 
         <View style={styles.card}>
           <Text style={styles.heading}>Set time</Text>

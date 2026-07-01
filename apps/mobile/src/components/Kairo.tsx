@@ -943,6 +943,8 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
               <Pressable
                 key={p}
                 onPress={() => void sendMessage(p)}
+                accessibilityRole="button"
+                accessibilityLabel={`Ask Kairo: ${p}`}
                 style={({ pressed }) => [styles.starterPill, pressed && { opacity: 0.7 }]}
                 hitSlop={12}
               >
@@ -955,6 +957,8 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         {config && !isKairoConfigured(config) ? (
           <Pressable
             onPress={onOpenSettings}
+            accessibilityRole="button"
+            accessibilityLabel="Set up Kairo"
             style={({ pressed }) => [styles.configBanner, pressed && { opacity: 0.7 }]}
             hitSlop={12}
           >
@@ -966,7 +970,11 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       </BottomSheetScrollView>
 
       {copyFeedback ? (
-        <View style={styles.feedbackBanner} pointerEvents="none">
+        <View
+          style={styles.feedbackBanner}
+          pointerEvents="none"
+          accessibilityLiveRegion="polite"
+        >
           <Text style={styles.feedbackText}>{copyFeedback}</Text>
         </View>
       ) : null}
@@ -979,6 +987,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
             onChangeText={setVal}
             placeholder="Ask Kairo anything…"
             placeholderTextColor={colors.textMuted}
+            accessibilityLabel="Message Kairo"
             editable={!thinking}
             onSubmitEditing={() => void sendMessage(val)}
             returnKeyType="send"

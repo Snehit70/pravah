@@ -66,12 +66,21 @@ export class RootErrorBoundary extends Component<RootErrorBoundaryProps, RootErr
         <Text style={styles.title}>Something slipped out of view.</Text>
         <Text style={styles.body}>Try restoring the workspace. If this keeps happening, we should inspect the latest logs.</Text>
         <View style={styles.buttonRow}>
-          <Pressable onPress={this.handleRetry} style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}>
+          <Pressable
+            onPress={this.handleRetry}
+            accessibilityRole="button"
+            accessibilityLabel="Reload Pravah"
+            style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+          >
             <Text style={styles.buttonText}>Try again</Text>
           </Pressable>
           <Pressable
             onPress={this.handleExportDiagnostics}
             disabled={this.state.isExporting}
+            accessibilityRole="button"
+            accessibilityLabel={
+              this.state.isExporting ? "Exporting diagnostics" : "Export diagnostics"
+            }
             style={({ pressed }) => [
               styles.secondaryButton,
               pressed && styles.buttonPressed,

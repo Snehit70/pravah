@@ -215,6 +215,10 @@ vi.mock("../hooks/useConfirm", () => ({
     React.createElement("div", {}, children),
 }));
 
+vi.mock("../hooks/useReducedMotion", () => ({
+  useReducedMotion: () => false,
+}));
+
 // Import component after all mocks are set up.
 import { EditTaskSheet, type EditTaskSheetRef } from "../components/EditTaskSheet";
 import type { MobileTask } from "../components/TaskCard";

@@ -32,7 +32,7 @@ export function BootScreen({
 
   useEffect(() => {
     if (reducedMotion) {
-      glow.value = withTiming(1, { duration: 160 });
+      glow.value = 1;
       return;
     }
     glow.value = withRepeat(
@@ -51,7 +51,10 @@ export function BootScreen({
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
       <GridBackground />
-      <Animated.View entering={FadeIn.duration(400)} style={styles.content}>
+      <Animated.View
+        entering={reducedMotion ? undefined : FadeIn.duration(400)}
+        style={styles.content}
+      >
         <Animated.View style={[styles.markWrap, markStyle]}>
           <BrandMark size={56} />
         </Animated.View>
@@ -61,6 +64,8 @@ export function BootScreen({
         {actionLabel && onActionPress ? (
           <Pressable
             onPress={onActionPress}
+            accessibilityRole="button"
+            accessibilityLabel={actionLabel}
             style={({ pressed }) => [styles.actionButton, pressed && { opacity: 0.75 }]}
           >
             <Text style={styles.actionText}>{actionLabel}</Text>

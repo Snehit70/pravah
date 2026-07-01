@@ -5,6 +5,7 @@ import { haptic } from "../lib/haptic";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { toIsoDate } from "../lib/dates";
 import { buildMonthGrid } from "../lib/calendarGrid";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 
 type ThemedDatePickerProps = {
   visible: boolean;
@@ -34,6 +35,7 @@ function parseIsoParts(iso?: string): { year: number; month: number; day: number
  * date when the user actually taps a day. Dismissing is a clean cancel.
  */
 export function ThemedDatePicker({ visible, value, onSelect, onClose }: ThemedDatePickerProps) {
+  const reducedMotion = useReducedMotion();
   const todayIso = toIsoDate(new Date());
   const selected = parseIsoParts(value);
   const initial = selected ?? parseIsoParts(todayIso)!;
@@ -74,11 +76,22 @@ export function ThemedDatePicker({ visible, value, onSelect, onClose }: ThemedDa
     toIsoDate(new Date(viewYear, viewMonth, day)) === todayIso;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType={reducedMotion ? "none" : "fade"}
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
       <View style={styles.overlay}>
         <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
-        <Pressable accessibilityLabel="Dismiss" style={StyleSheet.absoluteFill} onPress={onClose} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss date picker"
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+        />
 
         <View style={styles.card}>
           <View style={styles.header}>

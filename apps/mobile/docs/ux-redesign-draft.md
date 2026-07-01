@@ -1030,6 +1030,8 @@ Implemented on `mobile-ux-redesign` in this pass:
 - Optional sound system through `expo-audio` with bundled quiet cues under
   `apps/mobile/assets/sounds/`.
 - Inbox collapsed search/filter launcher with active filter pills.
+- Capture and Task detail use safe-area-aware bottom-anchored sheets; Task
+  detail leads with contextual quick actions before editing.
 - Timeline focused default view with later sections summarized.
 - Concrete Capture and overdue triage language: Today, Tomorrow, Later with a
   visible day, and Week end with a visible date.

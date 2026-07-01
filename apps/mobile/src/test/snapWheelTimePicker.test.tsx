@@ -86,6 +86,10 @@ vi.mock("../lib/haptic", () => ({
   haptic: { light: vi.fn(), selection: vi.fn() },
 }));
 
+vi.mock("../hooks/useReducedMotion", () => ({
+  useReducedMotion: () => false,
+}));
+
 import {
   SnapWheelTimePicker,
 } from "../components/SnapWheelTimePicker";
