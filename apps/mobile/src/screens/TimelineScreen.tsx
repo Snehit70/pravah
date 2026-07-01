@@ -8,7 +8,7 @@
  * currently disabled (RNDFL@4 / Reanimated@4 incompatibility).
  */
 
-import { useState, type JSX } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import type { RenderItemParams } from "react-native-draggable-flatlist";
@@ -107,7 +107,9 @@ export function TimelineScreen({
   onOpenOverdue,
 }: TimelineScreenProps) {
   const reducedMotion = useReducedMotion();
+  const listRef = useRef<FlatList<TimelineRow>>(null);
   const [showAllSections, setShowAllSections] = useState(false);
+  const [pendingJumpDateKey, setPendingJumpDateKey] = useState<string | null>(null);
   const { future, overdueCount: localOverdue } = splitOverdue(sections, today);
   const effectiveOverdue = overdueCount ?? localOverdue;
   const sourceSections = onOpenOverdue ? future : sections;
@@ -124,6 +126,25 @@ export function TimelineScreen({
   // hydrate quickly, but the first paint avoids handing every row to React.
   const rows = buildTimelineRows(visibleSections, today, tomorrow, visibleRowCount);
   const hasPendingRows = rows.length < totalRows;
+  const jumpTargets = sourceSections.slice(0, 6).map(([dateKey]) => ({
+    dateKey,
+    label: dateLabel(dateKey, today, tomorrow),
+  }));
+
+  useEffect(() => {
+    if (!pendingJumpDateKey) return;
+    const rowIndex = rows.findIndex(
+      (row) => row.kind === "header" && row.dateKey === pendingJumpDateKey,
+    );
+    if (rowIndex >= 0) {
+      const timeout = setTimeout(() => {
+        listRef.current?.scrollToIndex({ index: rowIndex, animated: !reducedMotion });
+        setPendingJumpDateKey(null);
+      }, 0);
+      return () => clearTimeout(timeout);
+    }
+    if (!showAllSections) setShowAllSections(true);
+  }, [pendingJumpDateKey, reducedMotion, rows, showAllSections]);
 
   const overdueHeader =
     effectiveOverdue > 0 && onOpenOverdue ? (
@@ -141,14 +162,38 @@ export function TimelineScreen({
   const emptyBlock = (
     <Animated.View entering={reducedMotion ? undefined : FadeIn.duration(400)} style={styles.emptyWrap}>
       <Text style={styles.emptyTitle}>Today is clear.</Text>
-      <Text style={styles.emptyText}>Upcoming work will appear here when it has a Deadline.</Text>
+      <Text style={styles.emptyText}>
+        Upcoming work will appear here when it has a Deadline. Use Capture or Inbox to
+        place the next task in time.
+      </Text>
     </Animated.View>
   );
+
+  const jumpHeader =
+    jumpTargets.length > 0 ? (
+      <View style={styles.jumpWrap}>
+        <Text style={styles.jumpLabel}>Jump</Text>
+        <View style={styles.jumpRow}>
+          {jumpTargets.map((target) => (
+            <Pressable
+              key={target.dateKey}
+              onPress={() => setPendingJumpDateKey(target.dateKey)}
+              accessibilityRole="button"
+              accessibilityLabel={`Jump to ${target.label}`}
+              style={({ pressed }) => [styles.jumpChip, pressed && { opacity: 0.72 }]}
+            >
+              <Text style={styles.jumpChipText}>{target.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    ) : null;
 
   const loadingBlock = <TaskListSkeleton variant="timeline" />;
 
   return (
     <FlatList<TimelineRow>
+      ref={listRef}
       style={{ flex: 1 }}
       contentContainerStyle={{
         paddingTop: spacing.md,
@@ -188,7 +233,12 @@ export function TimelineScreen({
           progressBackgroundColor={colors.bgCard}
         />
       }
-      ListHeaderComponent={overdueHeader}
+      ListHeaderComponent={
+        <>
+          {overdueHeader}
+          {jumpHeader}
+        </>
+      }
       ListFooterComponent={
         <>
           {laterTaskCount > 0 ? (
@@ -225,6 +275,33 @@ const styles = StyleSheet.create({
   overdueBarPressed: { opacity: 0.6 },
   overdueLabel: { color: colors.textMuted, ...typography.micro },
   overdueChevron: { color: colors.textMuted, ...typography.micro },
+  jumpWrap: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    gap: spacing.xs,
+  },
+  jumpLabel: {
+    color: colors.textMuted,
+    ...typography.micro,
+  },
+  jumpRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+  },
+  jumpChip: {
+    minHeight: 40,
+    paddingHorizontal: spacing.md,
+    justifyContent: "center",
+    borderRadius: 999,
+    backgroundColor: colors.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  jumpChipText: {
+    color: colors.textPrimary,
+    ...typography.bodyMd,
+  },
   laterSummary: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
