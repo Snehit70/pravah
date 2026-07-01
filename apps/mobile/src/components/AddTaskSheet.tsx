@@ -30,6 +30,7 @@ import { useGoalMutations } from "../hooks/useGoalMutations";
 import { addDays, nextLaterThisWeek, toIsoDate } from "../lib/dates";
 import { expandBulkTasks, MAX_BULK_TASKS, type BulkTaskInput } from "../lib/bulkTaskCapture";
 import { useUserPreferences } from "../hooks/useUserPreferences";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 
 type ComposerMode = "inbox" | "today" | "tomorrow" | "laterThisWeek";
 
@@ -79,6 +80,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [error, setError] = useState<string | null>(null);
     const { goals } = useGoals();
     const { prefs } = useUserPreferences();
+    const reducedMotion = useReducedMotion();
     const { addGoal } = useGoalMutations();
     const selectedGoal = useMemo(
       () => goals.find((g) => g.id === goalId),
@@ -262,7 +264,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       <Modal
         visible={visible}
         transparent
-        animationType="fade"
+        animationType={reducedMotion ? "none" : "fade"}
         statusBarTranslucent
         onRequestClose={() => {
           if (!hasDraftChanges) {
@@ -277,6 +279,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           {!hasDraftChanges ? (
             <Pressable
               accessibilityLabel="Dismiss"
+              accessibilityRole="button"
               style={StyleSheet.absoluteFill}
               onPress={() => {
                 reset();
@@ -332,6 +335,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                 placeholder={
                   kind === "goal" ? "What do you want to achieve?" : "What needs to be done?"
                 }
+                accessibilityLabel={kind === "goal" ? "Goal title" : "Task title"}
                 placeholderTextColor={colors.textMuted}
                 style={styles.titleInput}
                 returnKeyType="done"
@@ -371,6 +375,9 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                     onPress={() => setShowDetails(!showDetails)}
                     style={({ pressed }) => [styles.detailsToggle, pressed && { opacity: 0.6 }]}
                     hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={showDetails ? "Hide task details" : "Show task details"}
+                    accessibilityState={{ expanded: showDetails }}
                   >
                     <Text style={styles.detailsToggleText}>{showDetails ? "Less" : "More"}</Text>
                   </Pressable>
@@ -382,6 +389,9 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                     onPress={() => setShowDetails(!showDetails)}
                     style={({ pressed }) => [styles.detailsToggle, pressed && { opacity: 0.6 }]}
                     hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={showDetails ? "Hide goal details" : "Show goal details"}
+                    accessibilityState={{ expanded: showDetails }}
                   >
                     <Text style={styles.detailsToggleText}>{showDetails ? "Less" : "More"}</Text>
                   </Pressable>
@@ -397,6 +407,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                     accessibilityLabel={
                       selectedGoal ? `Goal: ${selectedGoal.text}. Tap to change.` : "Pick a goal"
                     }
+                    accessibilityState={{ expanded: showGoalPicker }}
                     style={({ pressed }) => [
                       styles.goalChip,
                       (prefs.bulkTaskCaptureEnabled ? goalIds.length > 0 : selectedGoal) && styles.goalChipActive,
@@ -420,8 +431,8 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
 
                   {showGoalPicker ? (
                     <Animated.View
-                      entering={FadeIn.duration(150)}
-                      exiting={FadeOut.duration(120)}
+                      entering={reducedMotion ? undefined : FadeIn.duration(150)}
+                      exiting={reducedMotion ? undefined : FadeOut.duration(120)}
                       style={styles.goalPicker}
                     >
                       <Pressable
@@ -429,6 +440,12 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                           if (prefs.bulkTaskCaptureEnabled) setGoalIds([]); else setGoalId(undefined);
                         }}
                         hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityState={{
+                          selected: prefs.bulkTaskCaptureEnabled
+                            ? goalIds.length === 0
+                            : !goalId,
+                        }}
                         style={({ pressed }) => [
                           styles.goalOption,
                           (prefs.bulkTaskCaptureEnabled ? goalIds.length === 0 : !goalId) && styles.goalOptionActive,
@@ -453,6 +470,8 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                               }
                             }}
                             hitSlop={8}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: active }}
                             style={({ pressed }) => [
                               styles.goalOption,
                               active && styles.goalOptionActive,
@@ -501,8 +520,8 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
 
               {showDetails ? (
                 <Animated.View
-                  entering={FadeIn.duration(200)}
-                  exiting={FadeOut.duration(150)}
+                  entering={reducedMotion ? undefined : FadeIn.duration(200)}
+                  exiting={reducedMotion ? undefined : FadeOut.duration(150)}
                   style={styles.detailsSection}
                 >
                   <TextInput

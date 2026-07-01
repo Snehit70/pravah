@@ -1526,10 +1526,12 @@ const styles = StyleSheet.create({
   },
   configBanner: {
     marginTop: spacing.md,
-    paddingLeft: spacing.md,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderLeftWidth: 2,
-    borderLeftColor: colors.warning,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.warning,
+    borderRadius: radii.md,
+    backgroundColor: colors.warningMuted,
   },
   configBannerText: {
     color: colors.textPrimary,

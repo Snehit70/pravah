@@ -986,7 +986,8 @@ Convert Settings into the full-screen configuration surface:
 
 - Category list: Kairo, Sync, Reminders, Interaction, Appearance, About.
 - Add Interaction preferences for swipe actions, haptics, and sound.
-- Add Appearance preferences for theme, font, density, and tab order.
+- Keep the warm-light, Geist, comfortable-density baseline explicit; expose
+  only the working tab-order preference.
 - Keep notification controls under Reminders.
 
 Validation:
@@ -1042,7 +1043,8 @@ Deferred deliberately:
 - Dark/system theme switching. The app now ships the redesigned light system;
   additional themes should be exposed only after dynamic theme tokens exist.
 - Humanist/System font switching. The current static `StyleSheet` token spread
-  cannot apply font changes globally at runtime, so only Geist is exposed.
+  cannot apply font changes globally at runtime, so no inert font control is
+  exposed.
 - Full Task quick-action sheet and Progress history drill-down. Task rows now
   expose primary visible actions first; the richer object action surfaces are
   the next implementation layer.

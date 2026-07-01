@@ -46,7 +46,7 @@ export const SETTINGS_CATEGORY_META: Record<
   },
   appearance: {
     title: "Appearance",
-    summary: "Theme, font, density, tab order, and capture preferences.",
+    summary: "Tab order and capture preferences.",
   },
   about: {
     title: "About",
@@ -82,9 +82,6 @@ export const SETTINGS_CATEGORY_CONTROLS: Record<
     "reduced_motion",
   ],
   appearance: [
-    "theme",
-    "font",
-    "density",
     "tab_order",
     "bulk_task_capture",
   ],

@@ -153,8 +153,11 @@ function MobileApp() {
 
   const chromeDim = useSharedValue(1);
   useEffect(() => {
-    chromeDim.value = withTiming(isKairoActive ? 0.38 : 1, { duration: 280 });
-  }, [chromeDim, isKairoActive]);
+    const target = isKairoActive ? 0.38 : 1;
+    chromeDim.value = reducedMotion
+      ? target
+      : withTiming(target, { duration: 280 });
+  }, [chromeDim, isKairoActive, reducedMotion]);
   const chromeAnimStyle = useAnimatedStyle(() => ({ opacity: chromeDim.value }));
 
   const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
@@ -1029,7 +1032,8 @@ function MobileApp() {
       {/* Toast — left rule + line of copy, no filled pill. */}
       {toast ? (
         <Animated.View
-          entering={FadeIn.duration(200)}
+          entering={reducedMotion ? undefined : FadeIn.duration(200)}
+          accessibilityLiveRegion={toast.kind === "error" ? "assertive" : "polite"}
           style={[styles.toast, toast.kind === "error" ? styles.toastError : styles.toastInfo]}
         >
           <Text style={styles.toastText}>{toast.message}</Text>
@@ -1055,6 +1059,10 @@ function MobileApp() {
       {retryQueue.length > 0 ? (
         <Pressable
           onPress={() => void retryQueuedMutations()}
+          accessibilityRole="button"
+          accessibilityLabel={`${retryQueue.length} pending ${
+            retryQueue.length === 1 ? "change" : "changes"
+          }. Retry sync.`}
           style={({ pressed }) => [styles.retryBanner, pressed && { opacity: 0.6 }]}
         >
           <Text style={styles.retryBannerText}>
@@ -1066,7 +1074,7 @@ function MobileApp() {
 
       {/* Sync indicator — a mono log line, not a badge. */}
       {pendingMutations > 0 ? (
-        <Text style={styles.syncText}>Syncing</Text>
+        <Text accessibilityLiveRegion="polite" style={styles.syncText}>Syncing</Text>
       ) : null}
 
       {activeTab === "inbox" ? (
@@ -1472,23 +1480,26 @@ const styles = StyleSheet.create({
     textDecorationLine: "underline",
     textDecorationColor: colors.accent,
   },
-  // Toast — unenclosed: a thin 2px rule on the left + a line of copy. Error
-  // tone uses the rust accent, info uses copper. No border, no radius, no fill.
+  // Toasts use a quiet tonal fill and full hairline border so status is clear
+  // without relying on a decorative side stripe.
   toast: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
-    paddingLeft: spacing.md,
-    paddingVertical: spacing.xs,
-    borderLeftWidth: 2,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.md,
   },
   toastError: {
-    borderLeftColor: colors.error,
+    borderColor: colors.error,
+    backgroundColor: colors.errorMuted,
   },
   toastInfo: {
-    borderLeftColor: colors.accent,
+    borderColor: colors.borderFocus,
+    backgroundColor: colors.accentDim,
   },
   toastText: {
     flex: 1,
@@ -1505,15 +1516,16 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  // Retry banner + sync indicator — same left-rule language as the toast so
-  // the system-status surfaces share one visual idiom.
+  // Retry and sync surfaces share the same quiet tonal status language.
   retryBanner: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
-    paddingLeft: spacing.md,
-    paddingVertical: spacing.xs,
-    borderLeftWidth: 2,
-    borderLeftColor: colors.accent,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderFocus,
+    borderRadius: radii.md,
+    backgroundColor: colors.accentDim,
     flexDirection: "row",
     alignItems: "baseline",
     justifyContent: "space-between",
@@ -1535,16 +1547,18 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     paddingLeft: spacing.md,
   },
-  // Broken-sync banner — same left-rule idiom as the retry/sync surfaces, in
-  // the error tone. Only rendered while calendar sync is in an error state.
+  // Broken sync is persistent and actionable, so it uses an error-tinted
+  // surface rather than transient toast treatment.
   syncBrokenBanner: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
     marginBottom: spacing.xs,
-    paddingLeft: spacing.md,
-    paddingVertical: spacing.xs,
-    borderLeftWidth: 2,
-    borderLeftColor: colors.error,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.error,
+    borderRadius: radii.md,
+    backgroundColor: colors.errorMuted,
     flexDirection: "row",
     alignItems: "baseline",
     justifyContent: "space-between",

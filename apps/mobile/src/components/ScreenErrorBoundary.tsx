@@ -66,10 +66,12 @@ const styles = StyleSheet.create({
   container: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.lg,
-    paddingLeft: spacing.md,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
-    borderLeftWidth: 2,
-    borderLeftColor: colors.error,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.error,
+    borderRadius: radii.md,
+    backgroundColor: colors.errorMuted,
     gap: spacing.xs,
   },
   rule: {

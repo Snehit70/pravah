@@ -22,8 +22,6 @@ const prefs: UserPreferences = {
   reducedMotionOverride: "system",
   accentColor: "purple",
   density: "cozy",
-  themePreference: "light",
-  fontPreference: "geist",
   swipeActionsEnabled: false,
   hapticsEnabled: true,
   soundEnabled: false,

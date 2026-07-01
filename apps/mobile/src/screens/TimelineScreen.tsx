@@ -18,6 +18,7 @@ import { TimelineSectionHeader } from "../components/TimelineSectionHeader";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { dateLabel } from "../lib/dates";
 import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 
 type TimelineRow =
   | { kind: "header"; dateKey: string; label: string; isToday: boolean; count: number }
@@ -105,6 +106,7 @@ export function TimelineScreen({
   overdueCount,
   onOpenOverdue,
 }: TimelineScreenProps) {
+  const reducedMotion = useReducedMotion();
   const [showAllSections, setShowAllSections] = useState(false);
   const { future, overdueCount: localOverdue } = splitOverdue(sections, today);
   const effectiveOverdue = overdueCount ?? localOverdue;
@@ -137,7 +139,7 @@ export function TimelineScreen({
     ) : null;
 
   const emptyBlock = (
-    <Animated.View entering={FadeIn.duration(400)} style={styles.emptyWrap}>
+    <Animated.View entering={reducedMotion ? undefined : FadeIn.duration(400)} style={styles.emptyWrap}>
       <Text style={styles.emptyTitle}>Today is clear.</Text>
       <Text style={styles.emptyText}>Upcoming work will appear here when it has a Deadline.</Text>
     </Animated.View>

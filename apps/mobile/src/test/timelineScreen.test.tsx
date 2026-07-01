@@ -116,6 +116,10 @@ vi.mock("../components/LoadingSkeleton", () => ({
     React.createElement("div", { "data-testid": `skeleton-${variant}` }),
 }));
 
+vi.mock("../hooks/useReducedMotion", () => ({
+  useReducedMotion: () => false,
+}));
+
 // ─── TimelineSectionHeader mock ───────────────────────────────────────────────
 vi.mock("../components/TimelineSectionHeader", () => ({
   TimelineSectionHeader: ({ label, isToday }: { label: string; isToday: boolean }) =>

@@ -57,8 +57,6 @@ describe("sanitize", () => {
       reducedMotionOverride: "always",
       accentColor: "copper",
       density: "compact",
-      themePreference: "light",
-      fontPreference: "geist",
       swipeActionsEnabled: true,
       hapticsEnabled: false,
       soundEnabled: true,
@@ -73,8 +71,6 @@ describe("sanitize", () => {
       kairoUndoWindowMinutes: 15,
       reducedMotionOverride: "always",
       density: "compact",
-      themePreference: "light",
-      fontPreference: "geist",
       swipeActionsEnabled: true,
       hapticsEnabled: false,
       soundEnabled: true,
@@ -84,14 +80,10 @@ describe("sanitize", () => {
 
   it("defaults the redesign interaction preferences safely", () => {
     const result = sanitize({
-      themePreference: "solarized",
-      fontPreference: "comic",
       swipeActionsEnabled: "yes",
       hapticsEnabled: "no",
       soundEnabled: "sometimes",
     });
-    expect(result.themePreference).toBe("light");
-    expect(result.fontPreference).toBe("geist");
     expect(result.swipeActionsEnabled).toBe(false);
     expect(result.hapticsEnabled).toBe(true);
     expect(result.soundEnabled).toBe(false);

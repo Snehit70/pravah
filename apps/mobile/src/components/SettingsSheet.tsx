@@ -21,6 +21,7 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import type { NotificationPermissionState } from "../lib/notifications";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { useUserPreferences } from "../hooks/useUserPreferences";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 import { getOrCreateDeviceId } from "../lib/deviceIdentity";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
 import { classifyError, mobileLogger } from "../lib/logger";
@@ -1019,101 +1020,18 @@ function InteractionSection({ prefs, setPreference }: InteractionSectionProps) {
 
 function AppearanceSection({
   prefs,
-  setPreference,
   tabOrder,
   onMoveTab,
 }: AppearanceSectionProps) {
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Theme & typography</Text>
+        <Text style={styles.settingLabel}>Visual system</Text>
         <Text style={styles.settingHelp}>
-          Default to the warm light redesign with Geist as the production typeface.
+          Warm light surfaces, Geist typography, and comfortable density are the
+          production baseline. Controls appear here only when another complete
+          visual system is available.
         </Text>
-
-        <View style={styles.fieldStack}>
-          <Text style={styles.fieldLabel}>Theme</Text>
-          <View style={styles.segmented}>
-            {(["light"] as const).map((theme) => {
-              const active = prefs.themePreference === theme;
-              return (
-                <Pressable
-                  key={theme}
-                  onPress={() => void setPreference("themePreference", theme)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  style={({ pressed }) => [
-                    styles.segment,
-                    active && styles.segmentActive,
-                    pressed && { opacity: 0.7 },
-                  ]}
-                >
-                  <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                    Light
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          <Text style={styles.settingHelp}>
-            Dark and system themes will be exposed after the redesigned light system is complete.
-          </Text>
-        </View>
-
-        <View style={styles.fieldStack}>
-          <Text style={styles.fieldLabel}>Font</Text>
-          <View style={styles.segmented}>
-            {(["geist"] as const).map((font) => {
-              const active = prefs.fontPreference === font;
-              return (
-                <Pressable
-                  key={font}
-                  onPress={() => void setPreference("fontPreference", font)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  style={({ pressed }) => [
-                    styles.segment,
-                    active && styles.segmentActive,
-                    pressed && { opacity: 0.7 },
-                  ]}
-                >
-                  <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                    Geist
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          <Text style={styles.settingHelp}>
-            Additional fonts need the typography system to move from static StyleSheets to dynamic tokens first.
-          </Text>
-        </View>
-
-        <View style={styles.fieldStack}>
-          <Text style={styles.fieldLabel}>Density</Text>
-          <View style={styles.segmented}>
-            {(["cozy", "compact"] as const).map((density) => {
-              const active = prefs.density === density;
-              return (
-                <Pressable
-                  key={density}
-                  onPress={() => void setPreference("density", density)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  style={({ pressed }) => [
-                    styles.segment,
-                    active && styles.segmentActive,
-                    pressed && { opacity: 0.7 },
-                  ]}
-                >
-                  <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                    {density === "cozy" ? "Cozy" : "Compact"}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
       </View>
 
       <View style={[styles.settingBlock, styles.sectionCard]}>
@@ -1569,6 +1487,7 @@ export function SettingsSheet({
   gmailLastError,
 }: SettingsSheetProps) {
   const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
   const [navigation, dispatchNavigation] = useReducer(
     settingsNavigationReducer,
     INITIAL_SETTINGS_NAVIGATION,
@@ -1753,7 +1672,7 @@ export function SettingsSheet({
   return (
     <Modal
       visible={visible}
-      animationType="fade"
+      animationType={reducedMotion ? "none" : "fade"}
       presentationStyle="fullScreen"
       statusBarTranslucent
       onRequestClose={navigation.screen === "detail" ? handleBack : handleClose}

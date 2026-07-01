@@ -20,7 +20,10 @@ export function nextLaterThisWeek(base: Date = new Date()): Date {
   const daysUntilFriday = (5 - day + 7) % 7;
   // "Later" must be distinct from both Today and Tomorrow. Prefer Friday
   // early in the week, then move two days ahead once Friday is too close.
-  const offset = daysUntilFriday > 1 ? daysUntilFriday : 2;
+  const offset =
+    day === 0 || day === 6
+      ? 2
+      : Math.max(daysUntilFriday, 2);
   return addDays(base, offset);
 }
 

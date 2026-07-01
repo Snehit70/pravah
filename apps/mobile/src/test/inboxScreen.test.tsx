@@ -166,6 +166,10 @@ vi.mock("../components/LoadingSkeleton", () => ({
     React.createElement("div", { "data-testid": `skeleton-${variant}` }),
 }));
 
+vi.mock("../hooks/useReducedMotion", () => ({
+  useReducedMotion: () => false,
+}));
+
 // Import component after all mocks are set up.
 import { InboxScreen } from "../screens/InboxScreen";
 import type { MobileTask } from "../components/TaskCard";

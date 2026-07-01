@@ -21,6 +21,7 @@ import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useGoalLinks, useGoals } from "../hooks/useGoals";
 
 // Goal filter sentinels. Real goal ids never collide with these.
@@ -97,6 +98,7 @@ export function InboxScreen({
   onCapture,
   renderItem,
 }: InboxScreenProps) {
+  const reducedMotion = useReducedMotion();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterValue>("all");
   // "all" | "none" (unlinked) | a goal id.
@@ -154,7 +156,7 @@ export function InboxScreen({
   const isFiltering = query.trim() !== "" || filter !== "all" || activeGoalFilter !== GOAL_ALL;
 
   const emptyBlock = isFiltering ? (
-    <Animated.View entering={FadeIn.duration(400)} style={styles.emptyWrap}>
+    <Animated.View entering={reducedMotion ? undefined : FadeIn.duration(400)} style={styles.emptyWrap}>
       <Text style={styles.emptyTitle}>No matches.</Text>
       <Text style={styles.emptyText}>Try a different word or clear filters.</Text>
       <Pressable
@@ -168,7 +170,7 @@ export function InboxScreen({
       </Pressable>
     </Animated.View>
   ) : (
-    <Animated.View entering={FadeIn.duration(400)} style={styles.emptyWrap}>
+    <Animated.View entering={reducedMotion ? undefined : FadeIn.duration(400)} style={styles.emptyWrap}>
       <Text style={styles.emptyTitle}>Everything has a place.</Text>
       <Text style={styles.emptyText}>Capture new loose work when it appears.</Text>
       <Pressable
@@ -225,8 +227,8 @@ export function InboxScreen({
 
       {showFilters ? (
         <Animated.View
-          entering={FadeIn.duration(150)}
-          exiting={FadeOut.duration(120)}
+          entering={reducedMotion ? undefined : FadeIn.duration(150)}
+          exiting={reducedMotion ? undefined : FadeOut.duration(120)}
           style={styles.filterPanel}
         >
           <TextInput
@@ -294,8 +296,8 @@ export function InboxScreen({
 
               {showGoalPicker ? (
                 <Animated.View
-                  entering={FadeIn.duration(150)}
-                  exiting={FadeOut.duration(120)}
+                  entering={reducedMotion ? undefined : FadeIn.duration(150)}
+                  exiting={reducedMotion ? undefined : FadeOut.duration(120)}
                   style={styles.goalPicker}
                 >
                   {[

@@ -203,6 +203,16 @@ vi.mock("../hooks/useGoalMutations", () => ({
   }),
 }));
 
+vi.mock("../hooks/useReducedMotion", () => ({
+  useReducedMotion: () => false,
+}));
+
+vi.mock("../lib/feedback", () => ({
+  feedback: {
+    captureSaved: vi.fn(),
+  },
+}));
+
 // Import component after all mocks are set up.
 import { AddTaskSheet, type AddTaskSheetRef } from "../components/AddTaskSheet";
 

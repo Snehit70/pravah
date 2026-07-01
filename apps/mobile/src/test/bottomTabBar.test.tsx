@@ -89,6 +89,10 @@ vi.mock("../lib/haptic", () => ({
   haptic: { light: vi.fn(), medium: vi.fn() },
 }));
 
+vi.mock("../hooks/useReducedMotion", () => ({
+  useReducedMotion: () => false,
+}));
+
 import { BottomTabBar } from "../components/BottomTabBar";
 
 describe("BottomTabBar", () => {

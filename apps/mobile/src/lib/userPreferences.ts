@@ -12,8 +12,6 @@ export type KairoResponseStyle = "concise" | "detailed";
 export type ReducedMotionOverride = "system" | "always" | "never";
 export type AccentColor = "purple" | "copper" | "teal" | "rose";
 export type Density = "cozy" | "compact";
-export type ThemePreference = "light";
-export type FontPreference = "geist";
 export type UndoWindowMinutes = 5 | 15 | 30 | 60;
 export type ReminderLeadTimeMinutes = 5 | 15 | 30 | 60;
 
@@ -32,8 +30,6 @@ export interface UserPreferences {
   reducedMotionOverride: ReducedMotionOverride;
   accentColor: AccentColor;
   density: Density;
-  themePreference: ThemePreference;
-  fontPreference: FontPreference;
   swipeActionsEnabled: boolean;
   hapticsEnabled: boolean;
   soundEnabled: boolean;
@@ -56,8 +52,6 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   reducedMotionOverride: "system",
   accentColor: "purple",
   density: "cozy",
-  themePreference: "light",
-  fontPreference: "geist",
   swipeActionsEnabled: false,
   hapticsEnabled: true,
   soundEnabled: false,
@@ -81,14 +75,6 @@ function isUndoWindow(value: unknown): value is UndoWindowMinutes {
 
 function isReminderLeadTime(value: unknown): value is ReminderLeadTimeMinutes {
   return value === 5 || value === 15 || value === 30 || value === 60;
-}
-
-function isThemePreference(value: unknown): value is ThemePreference {
-  return value === "light";
-}
-
-function isFontPreference(value: unknown): value is FontPreference {
-  return value === "geist";
 }
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
@@ -152,12 +138,6 @@ function sanitize(raw: unknown): UserPreferences {
       ? r.accentColor
       : DEFAULT_PREFERENCES.accentColor,
     density: r.density === "compact" ? "compact" : "cozy",
-    themePreference: isThemePreference(r.themePreference)
-      ? r.themePreference
-      : DEFAULT_PREFERENCES.themePreference,
-    fontPreference: isFontPreference(r.fontPreference)
-      ? r.fontPreference
-      : DEFAULT_PREFERENCES.fontPreference,
     swipeActionsEnabled:
       typeof r.swipeActionsEnabled === "boolean"
         ? r.swipeActionsEnabled
