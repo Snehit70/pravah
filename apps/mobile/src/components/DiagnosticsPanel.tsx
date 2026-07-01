@@ -20,6 +20,13 @@ type DiagnosticsPanelProps = {
   events?: DiagnosticEvent[];
 };
 
+const FILTER_META = {
+  issue: { label: "error and warning events" },
+  auth: { label: "authentication events" },
+  network: { label: "network events" },
+  ui: { label: "interface events" },
+} as const;
+
 export function DiagnosticsPanel({
   visible,
   activeTab,
@@ -111,16 +118,44 @@ export function DiagnosticsPanel({
       <View style={styles.timeline}>
         <Text style={styles.timelineTitle}>Recent events</Text>
         <View style={styles.filtersRow}>
-          <Pressable onPress={() => toggleFilter("issue")} style={styles.filterChip}>
+          <Pressable
+            onPress={() => toggleFilter("issue")}
+            accessibilityRole="button"
+            accessibilityLabel={`${
+              enabledFilters.issue ? "Hide" : "Show"
+            } ${FILTER_META.issue.label}`}
+            accessibilityState={{ selected: enabledFilters.issue }}
+            style={styles.filterChip}
+          >
             <Text style={styles.filterText}>error/warn {enabledFilters.issue ? "on" : "off"}</Text>
           </Pressable>
-          <Pressable onPress={() => toggleFilter("auth")} style={styles.filterChip}>
+          <Pressable
+            onPress={() => toggleFilter("auth")}
+            accessibilityRole="button"
+            accessibilityLabel={`${enabledFilters.auth ? "Hide" : "Show"} ${FILTER_META.auth.label}`}
+            accessibilityState={{ selected: enabledFilters.auth }}
+            style={styles.filterChip}
+          >
             <Text style={styles.filterText}>auth {enabledFilters.auth ? "on" : "off"}</Text>
           </Pressable>
-          <Pressable onPress={() => toggleFilter("network")} style={styles.filterChip}>
+          <Pressable
+            onPress={() => toggleFilter("network")}
+            accessibilityRole="button"
+            accessibilityLabel={`${
+              enabledFilters.network ? "Hide" : "Show"
+            } ${FILTER_META.network.label}`}
+            accessibilityState={{ selected: enabledFilters.network }}
+            style={styles.filterChip}
+          >
             <Text style={styles.filterText}>network {enabledFilters.network ? "on" : "off"}</Text>
           </Pressable>
-          <Pressable onPress={() => toggleFilter("ui")} style={styles.filterChip}>
+          <Pressable
+            onPress={() => toggleFilter("ui")}
+            accessibilityRole="button"
+            accessibilityLabel={`${enabledFilters.ui ? "Hide" : "Show"} ${FILTER_META.ui.label}`}
+            accessibilityState={{ selected: enabledFilters.ui }}
+            style={styles.filterChip}
+          >
             <Text style={styles.filterText}>ui {enabledFilters.ui ? "on" : "off"}</Text>
           </Pressable>
         </View>

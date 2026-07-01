@@ -94,8 +94,11 @@ export function KairoChatList({
                 <Pressable
                   onPress={() => onSelect(item.id)}
                   style={styles.rowTap}
-                  accessibilityLabel={`Open chat: ${item.title}`}
+                  accessibilityLabel={
+                    isActive ? `Current chat: ${item.title}` : `Open chat: ${item.title}`
+                  }
                   accessibilityRole="button"
+                  accessibilityState={{ selected: isActive }}
                 >
                   <Text style={styles.rowTitle} numberOfLines={1}>
                     {item.title}
