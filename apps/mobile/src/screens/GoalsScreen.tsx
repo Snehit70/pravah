@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Circle } from "react-native-svg";
 
 import { haptic } from "../lib/haptic";
 import { humanDate } from "../lib/dates";
@@ -55,6 +56,31 @@ const PRIORITY_LABEL: Record<"p1" | "p2" | "p3", { label: string; color: string 
   p2: { label: "P2", color: colors.priorityP2 },
   p3: { label: "P3", color: colors.priorityP3 },
 };
+
+function GoalTargetIcon({
+  color = colors.accent,
+  size = 22,
+}: {
+  color?: string;
+  size?: number;
+}) {
+  return (
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <Circle cx={12} cy={12} r={7.25} />
+      <Circle cx={12} cy={12} r={3.75} />
+      <Circle cx={12} cy={12} r={1.35} fill={color} stroke="none" />
+    </Svg>
+  );
+}
 
 function GoalProgressBar({
   ratio,
@@ -522,6 +548,9 @@ export function GoalsScreen({
 
   const emptyBlock = (
     <Animated.View entering={reducedMotion ? undefined : FadeIn.duration(400)} style={styles.emptyWrap}>
+      <View style={styles.emptyIconWrap}>
+        <GoalTargetIcon color={colors.textSecondary} size={28} />
+      </View>
       <Text style={styles.emptyTitle}>No goals yet.</Text>
       <Text style={styles.emptyText}>Choose one outcome you want to move.</Text>
       {onCreateGoal ? (
@@ -621,7 +650,12 @@ export function GoalsScreen({
                   style={({ pressed }) => [styles.goalTap, pressed && { opacity: 0.85 }]}
                 >
                   <View style={styles.goalHead}>
-                    <Text style={styles.goalText} numberOfLines={2}>{item.text}</Text>
+                    <View style={styles.goalIdentity}>
+                      <View style={styles.goalIconWrap}>
+                        <GoalTargetIcon color={isComplete ? colors.success : colors.accent} size={20} />
+                      </View>
+                      <Text style={styles.goalText} numberOfLines={2}>{item.text}</Text>
+                    </View>
                     <Text style={styles.goalCount}>
                       {showLinkedLoading ? "…" : hasTasks ? `${progress.done}/${progress.total}` : "—"}
                     </Text>
@@ -779,6 +813,23 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: spacing.sm,
   },
+  goalIdentity: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+  },
+  goalIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    marginTop: 1,
+  },
   goalText: {
     flex: 1,
     ...typography.bodyLg,
@@ -871,6 +922,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xxl,
     gap: spacing.sm,
     alignItems: "center",
+  },
+  emptyIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    marginBottom: spacing.xs,
   },
   emptyTitle: {
     ...typography.headline,
