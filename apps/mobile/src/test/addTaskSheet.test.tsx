@@ -375,7 +375,7 @@ describe("AddTaskSheet", () => {
       ref.current?.open();
     });
 
-    expect(screen.getByText("Later this week, Sun")).toBeTruthy();
+    expect(screen.getByText("Later, Sun")).toBeTruthy();
 
     act(() => {
       ref.current?.close();
@@ -387,6 +387,6 @@ describe("AddTaskSheet", () => {
       ref.current?.open();
     });
 
-    expect(screen.getByText("Later this week, Mon")).toBeTruthy();
+    expect(screen.getByText("Later, Mon")).toBeTruthy();
   });
 });

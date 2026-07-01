@@ -300,21 +300,26 @@ function TaskCardInner({
   // single-line so the description gets to read as one full line below it.
   const hasDescription = Boolean(task.description) && !isCompleted;
   const titleLines = hasDescription ? 1 : 2;
-  const accessibilityHint = isCompleted
-    ? "Double tap to edit. Use actions to reopen this task."
-    : isInboxTask
-      ? "Double tap to edit. Use actions to mark done or move to today."
-      : onReorder
-        ? "Double tap to edit. Use actions to mark done, move to inbox, or reorder this task."
-        : "Double tap to edit. Use actions to mark done or move to inbox.";
   const accessibilityActions = [
     { name: "activate", label: "Edit task" },
-    isCompleted ? { name: "reopen", label: "Reopen task" } : { name: "complete", label: "Mark done" },
-    !isCompleted && isInboxTask ? { name: "move_today", label: "Move to today" } : null,
-    !isCompleted && !isInboxTask ? { name: "move_to_inbox", label: "Move to inbox" } : null,
+    isCompleted
+      ? onReopen
+        ? { name: "reopen", label: "Reopen task" }
+        : null
+      : { name: "complete", label: "Mark done" },
+    !isCompleted && isInboxTask && onMoveToday
+      ? { name: "move_today", label: "Move to today" }
+      : null,
+    !isCompleted && !isInboxTask && onSendToInbox
+      ? { name: "move_to_inbox", label: "Move to inbox" }
+      : null,
     isTaskOnTimeline(task) && onReorder ? { name: "increment", label: "Move down" } : null,
     isTaskOnTimeline(task) && onReorder ? { name: "decrement", label: "Move up" } : null,
   ].filter(Boolean) as Array<{ name: string; label: string }>;
+  const accessibilityHint =
+    accessibilityActions.length > 1
+      ? "Double tap to edit. Additional task actions are available."
+      : "Double tap to edit.";
 
   const primaryAction: {
     label: string;

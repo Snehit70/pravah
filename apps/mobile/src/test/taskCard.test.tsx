@@ -33,7 +33,7 @@ vi.mock("react-native", () => {
       accessibilityRole,
       accessibilityState,
       accessibilityHint: ___,
-      accessibilityActions: ____,
+      accessibilityActions,
       onAccessibilityAction: _____,
       onLongPress: ______,
       delayLongPress: _______,
@@ -45,7 +45,7 @@ vi.mock("react-native", () => {
       accessibilityRole?: string;
       accessibilityState?: { checked?: boolean };
       accessibilityHint?: string;
-      accessibilityActions?: unknown;
+      accessibilityActions?: Array<{ name: string; label: string }>;
       onAccessibilityAction?: unknown;
       onLongPress?: unknown;
       delayLongPress?: unknown;
@@ -66,6 +66,9 @@ vi.mock("react-native", () => {
           typeof accessibilityState?.checked === "boolean"
             ? String(accessibilityState.checked)
             : undefined,
+        "data-accessibility-actions": accessibilityActions
+          ? JSON.stringify(accessibilityActions)
+          : undefined,
       },
       resolved
     );
@@ -203,5 +206,34 @@ describe("TaskCard", () => {
     );
 
     expect(withTimingMock).not.toHaveBeenCalled();
+  });
+
+  it("only advertises accessibility actions with available handlers", () => {
+    const { rerender } = render(
+      <TaskCard
+        task={makeTask()}
+        onDone={vi.fn()}
+        onEdit={vi.fn()}
+      />
+    );
+
+    const row = screen.getByRole("button", { name: "Ship redesign" });
+    expect(row.getAttribute("data-accessibility-actions")).toBe(
+      JSON.stringify([
+        { name: "activate", label: "Edit task" },
+        { name: "complete", label: "Mark done" },
+      ])
+    );
+
+    rerender(
+      <TaskCard
+        task={makeTask()}
+        onDone={vi.fn()}
+        onMoveToday={vi.fn()}
+        onEdit={vi.fn()}
+      />
+    );
+
+    expect(row.getAttribute("data-accessibility-actions")).toContain("move_today");
   });
 });

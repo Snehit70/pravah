@@ -542,8 +542,8 @@ multi-goal capture should sit behind More or a deliberate mode switch. This
 protects the capture moment from becoming planning.
 
 Deadline presets should avoid vague labels such as This week. Use concrete
-options like Today, Tomorrow, Weekend, Pick date, or Later this week with a
-visible preview date such as "Later this week, Fri". The user should understand
+options like Today, Tomorrow, Weekend, Pick date, or Later with a
+visible preview day such as "Later, Fri". The user should understand
 the resulting Deadline before saving.
 
 Capture should expand to full-screen only when the user deliberately enters a

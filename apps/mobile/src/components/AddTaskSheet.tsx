@@ -100,7 +100,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         { mode: "inbox", label: "Inbox" },
         { mode: "today", label: "Today" },
         { mode: "tomorrow", label: "Tomorrow" },
-        { mode: "laterThisWeek", label: `Later this week, ${weekdayShort(laterThisWeek)}` },
+        { mode: "laterThisWeek", label: `Later, ${weekdayShort(laterThisWeek)}` },
       ],
       [laterThisWeek],
     );

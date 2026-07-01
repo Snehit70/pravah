@@ -18,11 +18,9 @@ export function addDays(base: Date, days: number): Date {
 export function nextLaterThisWeek(base: Date = new Date()): Date {
   const day = base.getDay();
   const daysUntilFriday = (5 - day + 7) % 7;
-  // Once Friday has arrived or passed, anchor to the coming weekend rather
-  // than jumping a full week ahead under a misleading "later this week" label.
-  // Sunday still needs to stay in the future, so advance to Monday instead of
-  // resolving to "today" and duplicating the Today preset.
-  const offset = day === 6 ? 1 : day === 0 ? 1 : daysUntilFriday === 0 ? 2 : daysUntilFriday;
+  // "Later" must be distinct from both Today and Tomorrow. Prefer Friday
+  // early in the week, then move two days ahead once Friday is too close.
+  const offset = daysUntilFriday > 1 ? daysUntilFriday : 2;
   return addDays(base, offset);
 }
 
