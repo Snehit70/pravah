@@ -75,7 +75,17 @@ export function KairoChatList({
       <BottomSheetScrollView contentContainerStyle={styles.listContent}>
         {sorted.length === 0 ? (
           <View style={styles.empty}>
-            <Text style={styles.emptyText}>No chats yet.</Text>
+            <Text style={styles.emptyTitle}>No chats yet.</Text>
+            <Text style={styles.emptyText}>Start one from the current workspace and it will appear here.</Text>
+            <Pressable
+              onPress={onCreate}
+              hitSlop={12}
+              accessibilityLabel="Start first chat"
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.emptyAction, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.emptyActionText}>New chat</Text>
+            </Pressable>
           </View>
         ) : (
           sorted.map((item) => {
@@ -192,9 +202,24 @@ const styles = StyleSheet.create({
   empty: {
     paddingTop: spacing.xl,
     alignItems: "center",
+    gap: spacing.sm,
+  },
+  emptyTitle: {
+    color: colors.textPrimary,
+    ...typography.title,
   },
   emptyText: {
     color: colors.textMuted,
+    ...typography.bodyMd,
+    textAlign: "center",
+  },
+  emptyAction: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+  },
+  emptyActionText: {
+    color: colors.accent,
     ...typography.bodyMd,
   },
 });
