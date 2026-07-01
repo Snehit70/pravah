@@ -55,7 +55,22 @@ export function MobileAuthScreen({
           style={styles.brandZone}
         >
           <BrandMark size={64} />
-          <Pressable onLongPress={onOpenDiagnostics} delayLongPress={450} hitSlop={10}>
+          <Pressable
+            onLongPress={onOpenDiagnostics}
+            delayLongPress={450}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Pravah"
+            accessibilityHint="Long press or use the diagnostics action to open diagnostics."
+            accessibilityActions={
+              onOpenDiagnostics ? [{ name: "longpress", label: "Open diagnostics" }] : undefined
+            }
+            onAccessibilityAction={(event) => {
+              if (event.nativeEvent.actionName === "longpress") {
+                onOpenDiagnostics?.();
+              }
+            }}
+          >
             <Text style={styles.wordmark}>Pravah</Text>
           </Pressable>
         </Animated.View>
