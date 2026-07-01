@@ -57,6 +57,7 @@ import { ScreenErrorBoundary } from "./src/components/ScreenErrorBoundary";
 import { SettingsSheet } from "./src/components/SettingsSheet";
 import { ConfirmProvider } from "./src/components/ConfirmDialog";
 import { DiagnosticsPanel } from "./src/components/DiagnosticsPanel";
+import { CompletedTaskSheet } from "./src/components/CompletedTaskSheet";
 import { InboxScreen } from "./src/screens/InboxScreen";
 import { TimelineScreen } from "./src/screens/TimelineScreen";
 import { InsightsScreen } from "./src/screens/InsightsScreen";
@@ -118,6 +119,8 @@ function MobileApp() {
   const lastListStateLogMsRef = useRef<number>(0);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [diagnosticEvents, setDiagnosticEvents] = useState<DiagnosticEvent[]>([]);
+  const [selectedCompletedTask, setSelectedCompletedTask] = useState<MobileTask | null>(null);
+  const [focusGoalId, setFocusGoalId] = useState<string | null>(null);
   const hasLoggedPostLoginRef = useRef(false);
   const didMarkInteractiveRef = useRef(false);
   const didApplyStartupTabRef = useRef(false);
@@ -167,6 +170,7 @@ function MobileApp() {
   const handleTabChange = useCallback(
     (nextTab: typeof activeTab) => {
       didManuallyChangeTabRef.current = true;
+      if (nextTab !== "goals") setFocusGoalId(null);
       setActiveTab(nextTab);
     },
     [setActiveTab],
@@ -338,6 +342,7 @@ function MobileApp() {
   } = useIntegrationsSettings({ isAuthenticated: Boolean(session), showToast });
 
   const handleSignOut = useCallback(async () => {
+    setSelectedCompletedTask(null);
     setIsSettingsModalOpen(false);
     await clearSnapshot();
     await googleSignOut();
@@ -348,6 +353,7 @@ function MobileApp() {
     await wipeLocalAppData();
     clearAllGoals();
     resetPreferencesStore();
+    setSelectedCompletedTask(null);
     setIsSettingsModalOpen(false);
     await clearSnapshot();
     await googleSignOut();
@@ -765,6 +771,24 @@ function MobileApp() {
     []
   );
 
+  const openCompletedTaskDetail = useCallback((task: MobileTask) => {
+    setSelectedCompletedTask(task);
+  }, []);
+
+  const closeCompletedTaskDetail = useCallback(() => {
+    setSelectedCompletedTask(null);
+  }, []);
+
+  const viewLinkedGoalFromCompletedTask = useCallback(() => {
+    if (!selectedCompletedTask) return;
+    const goalId = goalLinks[String(selectedCompletedTask._id)];
+    if (!goalId) return;
+    setSelectedCompletedTask(null);
+    setFocusGoalId(goalId);
+    didManuallyChangeTabRef.current = true;
+    setActiveTab("goals");
+  }, [goalLinks, selectedCompletedTask, setActiveTab]);
+
   // Settings/sign-out are session-level affordances and must remain reachable
   // even while we're still rendering a workspace snapshot or boot shell.
   const canOpenSession = Boolean(session) && !sessionLoading;
@@ -795,6 +819,10 @@ function MobileApp() {
   // straight to the launcher.
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (selectedCompletedTask) {
+        setSelectedCompletedTask(null);
+        return true;
+      }
       if (isOverdueSheetOpen) {
         closeOverdue();
         return true;
@@ -829,6 +857,7 @@ function MobileApp() {
     isSettingsModalOpen,
     isKairoActive,
     isOverdueSheetOpen,
+    selectedCompletedTask,
     closeOverdue,
     setIsSettingsModalOpen,
   ]);
@@ -841,6 +870,7 @@ function MobileApp() {
         dateLabel={item.deadline ? humanDate(item.deadline) : undefined}
         onDone={canUseWorkspaceActions ? markDone : () => undefined}
         onMoveToday={canUseWorkspaceActions ? moveToToday : undefined}
+        onSchedule={canUseWorkspaceActions ? handleEditTask : undefined}
         onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
         onDragHandlePress={canUseWorkspaceActions ? drag : undefined}
         linkedGoalName={taskGoalNames.get(String(item._id))}
@@ -887,21 +917,21 @@ function MobileApp() {
     ]
   );
 
-  const renderCompletedTaskItem = useCallback(
+  const renderProgressCompletedTaskItem = useCallback(
     ({ item }: { item: MobileTask }) => (
       <TaskCard
         task={item}
         onDone={canUseWorkspaceActions ? markDone : () => undefined}
         onReopen={canUseWorkspaceActions ? reopenTask : undefined}
-        onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
+        onEdit={canUseWorkspaceActions ? openCompletedTaskDetail : () => undefined}
         linkedGoalName={taskGoalNames.get(String(item._id))}
         swipeActionsEnabled={prefs.swipeActionsEnabled}
       />
     ),
     [
       canUseWorkspaceActions,
-      handleEditTask,
       markDone,
+      openCompletedTaskDetail,
       prefs.swipeActionsEnabled,
       reopenTask,
       taskGoalNames,
@@ -1146,6 +1176,7 @@ function MobileApp() {
                   : undefined
               }
               onOpenTask={canUseWorkspaceActions ? handleEditTask : undefined}
+              focusGoalId={focusGoalId}
             />
           </ScreenErrorBoundary>
         </Animated.View>
@@ -1161,7 +1192,7 @@ function MobileApp() {
               isRefreshing={isRefreshing}
               tabBarHeight={tabBarHeight}
               onRefresh={handleRefresh}
-              renderCompletedTaskItem={renderCompletedTaskItem}
+              renderCompletedTaskItem={renderProgressCompletedTaskItem}
             />
           </ScreenErrorBoundary>
         </Animated.View>
@@ -1266,6 +1297,26 @@ function MobileApp() {
         onToggleCalendarSelected={toggleCalendarSelected}
         calendarLastError={calendarLastError}
         gmailLastError={gmailLastError}
+      />
+      <CompletedTaskSheet
+        task={selectedCompletedTask}
+        linkedGoalName={
+          selectedCompletedTask ? taskGoalNames.get(String(selectedCompletedTask._id)) : undefined
+        }
+        onClose={closeCompletedTaskDetail}
+        onDelete={(taskId) => {
+          closeCompletedTaskDetail();
+          deleteTask(taskId);
+        }}
+        onReopen={(taskId) => {
+          closeCompletedTaskDetail();
+          reopenTask(taskId);
+        }}
+        onViewGoal={
+          selectedCompletedTask && goalLinks[String(selectedCompletedTask._id)]
+            ? viewLinkedGoalFromCompletedTask
+            : undefined
+        }
       />
 
       {__DEV__ ? (

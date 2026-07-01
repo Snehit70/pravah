@@ -204,8 +204,17 @@ export function InboxScreen({
               : `${tasks.length} task${tasks.length === 1 ? "" : "s"} without a Deadline`}
           </Text>
         </View>
-        {tasks.length > 0 ? <Text style={styles.queueMeta}>Schedule or complete</Text> : null}
+        {tasks.length > 0 ? <Text style={styles.queueMeta}>Schedule first</Text> : null}
       </View>
+
+      {!isFiltering && tasks.length > 0 ? (
+        <View style={styles.queueHint}>
+          <Text style={styles.queueHintText}>
+            Use <Text style={styles.queueHintEmphasis}>Schedule</Text> to place a task in time,
+            or complete it if it no longer needs a deadline.
+          </Text>
+        </View>
+      ) : null}
 
       <Pressable
         onPress={() => setShowFilters((s) => !s)}
@@ -434,6 +443,22 @@ const styles = StyleSheet.create({
   queueMeta: {
     color: colors.textMuted,
     ...typography.micro,
+  },
+  queueHint: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  queueHintText: {
+    color: colors.textMuted,
+    ...typography.bodyMd,
+  },
+  queueHintEmphasis: {
+    color: colors.textPrimary,
+    fontWeight: "600",
   },
   filterLauncher: {
     minHeight: 44,

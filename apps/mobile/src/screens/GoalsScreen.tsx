@@ -424,6 +424,8 @@ type GoalsScreenProps = {
   onCreateTaskForGoal?: (goalId: string) => void;
   /** Open a linked task in the shared editor (edit / complete / delete). */
   onOpenTask?: (task: MobileTask) => void;
+  /** Optional deep-link target for opening a specific goal detail. */
+  focusGoalId?: string | null;
 };
 
 type GoalProgress = {
@@ -439,6 +441,7 @@ export function GoalsScreen({
   onCreateGoal,
   onCreateTaskForGoal,
   onOpenTask,
+  focusGoalId,
 }: GoalsScreenProps) {
   const reducedMotion = useReducedMotion();
   const confirm = useConfirm();
@@ -542,6 +545,12 @@ export function GoalsScreen({
     ? (progressByGoal.get(selectedGoal.id) ?? { total: 0, done: 0, ratio: 0 })
     : { total: 0, done: 0, ratio: 0 };
   const selectedLinked = selectedGoal ? (tasksByGoal.get(selectedGoal.id) ?? []) : [];
+
+  useEffect(() => {
+    if (!focusGoalId) return;
+    if (!sortedGoals.some((goal) => goal.id === focusGoalId)) return;
+    setSelectedGoalId(focusGoalId);
+  }, [focusGoalId, sortedGoals]);
 
   return (
     <View style={{ flex: 1 }}>

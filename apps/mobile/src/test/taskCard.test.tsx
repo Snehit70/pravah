@@ -1,6 +1,6 @@
 /** @vitest-environment happy-dom */
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
@@ -245,5 +245,25 @@ describe("TaskCard", () => {
     );
 
     expect(row.getAttribute("data-accessibility-actions")).toContain("move_today");
+  });
+
+  it("uses the schedule flow for Inbox tasks when provided", () => {
+    const onSchedule = vi.fn();
+    const onMoveToday = vi.fn();
+
+    render(
+      <TaskCard
+        task={makeTask()}
+        onDone={vi.fn()}
+        onMoveToday={onMoveToday}
+        onSchedule={onSchedule}
+        onEdit={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Schedule Ship redesign" }));
+
+    expect(onSchedule).toHaveBeenCalledWith(expect.objectContaining({ title: "Ship redesign" }));
+    expect(onMoveToday).not.toHaveBeenCalled();
   });
 });

@@ -51,6 +51,8 @@ type TaskCardProps = {
   onMoveToday?: (id: Id<"tasks">) => void;
   /** Timeline → Inbox swipe action. */
   onSendToInbox?: (id: Id<"tasks">) => void;
+  /** Inbox visible action → open the scheduling flow. */
+  onSchedule?: (task: MobileTask) => void;
   /** Completed → Reopen swipe action. */
   onReopen?: (id: Id<"tasks">) => void;
   /** Timeline accessibility reorder action. */
@@ -128,6 +130,7 @@ function TaskCardInner({
   onDone,
   onMoveToday,
   onSendToInbox,
+  onSchedule,
   onReopen,
   onReorder,
   onEdit,
@@ -186,6 +189,7 @@ function TaskCardInner({
   const handleDone = useCallback(() => onDone(task._id), [onDone, task._id]);
   const handleMoveToday = useCallback(() => onMoveToday?.(task._id), [onMoveToday, task._id]);
   const handleSendToInbox = useCallback(() => onSendToInbox?.(task._id), [onSendToInbox, task._id]);
+  const handleSchedule = useCallback(() => onSchedule?.(task), [onSchedule, task]);
   const handleReopen = useCallback(() => onReopen?.(task._id), [onReopen, task._id]);
   const handleMoveUp = useCallback(() => onReorder?.(task._id, "up"), [onReorder, task._id]);
   const handleMoveDown = useCallback(() => onReorder?.(task._id, "down"), [onReorder, task._id]);
@@ -202,6 +206,9 @@ function TaskCardInner({
         case "move_today":
           handleMoveToday();
           break;
+        case "schedule":
+          handleSchedule();
+          break;
         case "move_to_inbox":
           handleSendToInbox();
           break;
@@ -216,7 +223,16 @@ function TaskCardInner({
           break;
       }
     },
-    [handleDone, handleEdit, handleMoveDown, handleMoveToday, handleMoveUp, handleReopen, handleSendToInbox]
+    [
+      handleDone,
+      handleEdit,
+      handleMoveDown,
+      handleMoveToday,
+      handleMoveUp,
+      handleReopen,
+      handleSchedule,
+      handleSendToInbox,
+    ]
   );
 
   // Right-side action (revealed by swiping LEFT) — always "Done" for active
@@ -328,6 +344,9 @@ function TaskCardInner({
     !isCompleted && isInboxTask && onMoveToday
       ? { name: "move_today", label: "Move to today" }
       : null,
+    !isCompleted && isInboxTask && onSchedule
+      ? { name: "schedule", label: "Schedule task" }
+      : null,
     !isCompleted && !isInboxTask && onSendToInbox
       ? { name: "move_to_inbox", label: "Move to inbox" }
       : null,
@@ -348,7 +367,12 @@ function TaskCardInner({
     isCompleted
       ? { label: "Reopen", run: onReopen ? handleReopen : undefined, tone: "secondary", semantic: "completion" }
       : isInboxTask
-        ? { label: "Schedule", run: onMoveToday ? handleMoveToday : undefined, tone: "primary", semantic: "button" }
+        ? {
+            label: "Schedule",
+            run: onSchedule ? handleSchedule : onMoveToday ? handleMoveToday : undefined,
+            tone: "primary",
+            semantic: "button",
+          }
         : { label: "Complete", run: handleDone, tone: "primary", semantic: "completion" };
   const secondaryAction: {
     label: string;
