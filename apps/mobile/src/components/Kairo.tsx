@@ -40,6 +40,7 @@ import { classifyError, createActionId, mobileLogger } from "../lib/logger";
 import {
   getKairoConfig,
   isKairoConfigured,
+  getKairoProviderLabel,
   type KairoConfig,
 } from "../lib/kairoConfig";
 import {
@@ -334,6 +335,10 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     () => buildKairoStarters(tasks, inboxTasks, today),
     [tasks, inboxTasks, today]
   );
+  const isConfigured = config ? isKairoConfigured(config) : false;
+  const setupSummary = config
+    ? `${getKairoProviderLabel(config.providerFormat)} · ${config.model}`
+    : "Loading provider";
 
   // Live context meter. The base — system prompt + thin workspace context +
   // visible history — only changes when the workspace or conversation does, so
@@ -936,6 +941,27 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           <View key={item.id}>{renderChatRow({ item })}</View>
         ))}
 
+        <View style={styles.contextCard}>
+          <View style={styles.contextRow}>
+            <View style={styles.contextMetric}>
+              <Text style={styles.contextKicker}>Workspace</Text>
+              <Text style={styles.contextValue}>{tasks.length}</Text>
+              <Text style={styles.contextMeta}>tasks in context</Text>
+            </View>
+            <View style={styles.contextMetric}>
+              <Text style={styles.contextKicker}>Inbox</Text>
+              <Text style={styles.contextValue}>{inboxTasks.length}</Text>
+              <Text style={styles.contextMeta}>unplaced tasks</Text>
+            </View>
+          </View>
+          <Text style={styles.contextStatusLabel}>{isConfigured ? "Ready" : "Setup needed"}</Text>
+          <Text style={styles.contextStatusText}>
+            {isConfigured
+              ? setupSummary
+              : "Add a provider, API key, base URL, and model in Settings → Kairo."}
+          </Text>
+        </View>
+
         {/* Starters render on first paint only (no user messages yet). */}
         {msgs.length === 1 && !thinking && !deferredPromptPreview && prefs.kairoStarterPillsEnabled ? (
           <View style={styles.starters}>
@@ -963,7 +989,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
             hitSlop={12}
           >
             <Text style={styles.configBannerText}>
-              Set up your Kairo provider and API key →
+              Open Settings → Kairo and finish provider setup →
             </Text>
           </Pressable>
         ) : null}
@@ -1519,6 +1545,44 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: spacing.sm,
     marginTop: spacing.sm,
+  },
+  contextCard: {
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  contextRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  contextMetric: {
+    flex: 1,
+    gap: 2,
+  },
+  contextKicker: {
+    color: colors.textMuted,
+    ...typography.micro,
+  },
+  contextValue: {
+    color: colors.textPrimary,
+    ...typography.title,
+  },
+  contextMeta: {
+    color: colors.textMuted,
+    ...typography.bodyMd,
+  },
+  contextStatusLabel: {
+    color: colors.textMuted,
+    ...typography.micro,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  contextStatusText: {
+    color: colors.textSecondary,
+    ...typography.bodyMd,
   },
   starterPill: {
     paddingHorizontal: spacing.md,
