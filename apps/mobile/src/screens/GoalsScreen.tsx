@@ -542,6 +542,8 @@ export function GoalsScreen({
         ListFooterComponent={sortedGoals.length > 0 ? footerHint : null}
         renderItem={({ item, index }) => {
           const progress = progressByGoal.get(item.id) ?? { total: 0, done: 0, ratio: 0 };
+          const linkedTasks = tasksByGoal.get(item.id) ?? [];
+          const nextLinkedTask = linkedTasks.find((task) => !isTaskCompleted(task));
           const hasTasks = progress.total > 0;
           const showLinkedLoading = isTaskDataLoading && !hasTasks;
           const isComplete = hasTasks && progress.done === progress.total;
@@ -578,6 +580,15 @@ export function GoalsScreen({
                     isComplete={isComplete}
                     isLoading={showLinkedLoading}
                   />
+
+                  {nextLinkedTask ? (
+                    <View style={styles.nextTaskPreview}>
+                      <Text style={styles.nextTaskKicker}>Next task</Text>
+                      <Text style={styles.nextTaskTitle} numberOfLines={1}>
+                        {nextLinkedTask.title}
+                      </Text>
+                    </View>
+                  ) : null}
 
                   <View style={styles.goalMetaRow}>
                     <View style={styles.goalMetaLeft}>
@@ -741,6 +752,24 @@ const styles = StyleSheet.create({
   },
   progressFillLoading: {
     opacity: 0.45,
+  },
+  nextTaskPreview: {
+    gap: 2,
+    padding: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  nextTaskKicker: {
+    ...typography.micro,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  nextTaskTitle: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
   },
   goalMetaRow: {
     flexDirection: "row",
