@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useState, type JSX } from "react";
 import {
   Keyboard,
   Linking,
@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import Svg, { Circle, Line, Path } from "react-native-svg";
 import { useMutation, useQuery } from "convex/react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
@@ -143,6 +144,87 @@ const APP_VERSION = appJson.expo?.version ?? "—";
 const REPO_URL = "https://github.com/Snehit70/pravah";
 const CHANGELOG_URL = `${REPO_URL}/blob/main/apps/mobile/CHANGELOG.md`;
 const ISSUES_URL = `${REPO_URL}/issues`;
+
+type CategoryIconProps = {
+  color: string;
+  size?: number;
+};
+
+function iconFrame(color: string, size: number) {
+  return {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none" as const,
+    stroke: color,
+    strokeWidth: 2,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+}
+
+function SyncIcon({ color, size = 18 }: CategoryIconProps) {
+  return (
+    <Svg {...iconFrame(color, size)}>
+      <Path d="M19 8a7 7 0 0 0-12.1-2.7" />
+      <Path d="M5 5v4h4" />
+      <Path d="M5 16a7 7 0 0 0 12.1 2.7" />
+      <Path d="M19 19v-4h-4" />
+    </Svg>
+  );
+}
+
+function BellIcon({ color, size = 18 }: CategoryIconProps) {
+  return (
+    <Svg {...iconFrame(color, size)}>
+      <Path d="M7 10a5 5 0 1 1 10 0c0 5 2 6 2 6H5s2-1 2-6" />
+      <Path d="M10 19a2 2 0 0 0 4 0" />
+    </Svg>
+  );
+}
+
+function HandIcon({ color, size = 18 }: CategoryIconProps) {
+  return (
+    <Svg {...iconFrame(color, size)}>
+      <Path d="M8.5 12V5.5a1.5 1.5 0 0 1 3 0V10" />
+      <Path d="M11.5 10V4.75a1.5 1.5 0 0 1 3 0V10.5" />
+      <Path d="M14.5 10.5V6.5a1.5 1.5 0 0 1 3 0v6.25A5.25 5.25 0 0 1 12.25 18H11a5 5 0 0 1-4.2-2.3L5 12.9a1.5 1.5 0 0 1 2.55-1.6L8.5 12Z" />
+    </Svg>
+  );
+}
+
+function SlidersIcon({ color, size = 18 }: CategoryIconProps) {
+  return (
+    <Svg {...iconFrame(color, size)}>
+      <Line x1={4} y1={7} x2={20} y2={7} />
+      <Circle cx={9} cy={7} r={1.75} fill={colors.bgCard} />
+      <Line x1={4} y1={12} x2={20} y2={12} />
+      <Circle cx={15} cy={12} r={1.75} fill={colors.bgCard} />
+      <Line x1={4} y1={17} x2={20} y2={17} />
+      <Circle cx={11} cy={17} r={1.75} fill={colors.bgCard} />
+    </Svg>
+  );
+}
+
+function InfoIcon({ color, size = 18 }: CategoryIconProps) {
+  return (
+    <Svg {...iconFrame(color, size)}>
+      <Circle cx={12} cy={12} r={8} />
+      <Line x1={12} y1={10.5} x2={12} y2={16} />
+      <Circle cx={12} cy={7.25} r={0.8} fill={color} stroke="none" />
+    </Svg>
+  );
+}
+
+const SETTINGS_CATEGORY_ICONS: Partial<
+  Record<SettingsCategoryKey, (props: CategoryIconProps) => JSX.Element>
+> = {
+  sync: SyncIcon,
+  reminders: BellIcon,
+  interaction: HandIcon,
+  appearance: SlidersIcon,
+  about: InfoIcon,
+};
 
 function formatClockLabel(value: string): string {
   const [hStr, mStr] = value.split(":");
@@ -350,6 +432,7 @@ function SettingsCategoryList({
         {SETTINGS_CATEGORY_ORDER.map((category) => {
           const meta = SETTINGS_CATEGORY_META[category];
           const controlCount = SETTINGS_CATEGORY_CONTROLS[category].length;
+          const Icon = SETTINGS_CATEGORY_ICONS[category];
           return (
             <Pressable
               key={category}
@@ -362,6 +445,11 @@ function SettingsCategoryList({
                 pressed && { opacity: 0.72 },
               ]}
             >
+              {Icon ? (
+                <View style={styles.categoryIconWrap}>
+                  <Icon color={colors.textSecondary} />
+                </View>
+              ) : null}
               <View style={styles.categoryCopy}>
                 <Text style={styles.categoryTitle}>{meta.title}</Text>
                 <Text style={styles.categorySummary}>{meta.summary}</Text>
@@ -2069,6 +2157,16 @@ const styles = StyleSheet.create({
   categoryCopy: {
     flex: 1,
     gap: spacing.xs,
+  },
+  categoryIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
   },
   categoryTitle: {
     ...typography.title,
