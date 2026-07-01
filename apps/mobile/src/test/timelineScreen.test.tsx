@@ -276,7 +276,11 @@ describe("TimelineScreen", () => {
     );
 
     expect(screen.getByText("Today is clear.")).toBeTruthy();
-    expect(screen.getByText("Upcoming work will appear here when it has a Deadline.")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Upcoming work will appear here when it has a Deadline. Use Capture or Inbox to place the next task in time."
+      )
+    ).toBeTruthy();
   });
 
   it("renders date sections with headers and tasks", () => {
@@ -293,8 +297,8 @@ describe("TimelineScreen", () => {
     );
 
     // Should render section headers
-    expect(screen.getByText("TODAY")).toBeTruthy();
-    expect(screen.getByText("TOMORROW")).toBeTruthy();
+    expect(screen.getByTestId("section-header-today").textContent).toContain("TODAY");
+    expect(screen.getByTestId("section-header-other").textContent).toContain("TOMORROW");
 
     // Should render tasks
     expect(screen.getByTestId("task-task1")).toBeTruthy();
