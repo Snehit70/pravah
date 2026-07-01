@@ -1,8 +1,10 @@
 /** @vitest-environment happy-dom */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
+
+const mockConfirm = vi.fn(async () => true);
 
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
@@ -80,6 +82,10 @@ vi.mock("../theme/tokens", () => ({
   typography: { micro: {}, headline: {}, bodyMd: {}, bodyLg: {}, title: { fontFamily: "Geist" } },
 }));
 
+vi.mock("../hooks/useConfirm", () => ({
+  useConfirm: () => mockConfirm,
+}));
+
 import { CompletedTaskSheet } from "../components/CompletedTaskSheet";
 import type { MobileTask } from "../components/TaskCard";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -99,6 +105,7 @@ const task: MobileTask = {
 
 describe("CompletedTaskSheet", () => {
   it("renders read-only completion details and actions", () => {
+    mockConfirm.mockResolvedValue(true);
     render(
       <CompletedTaskSheet
         task={task}
@@ -119,6 +126,7 @@ describe("CompletedTaskSheet", () => {
   });
 
   it("routes actions through the selected task id", () => {
+    mockConfirm.mockResolvedValue(true);
     const onReopen = vi.fn();
     const onDelete = vi.fn();
     const onViewGoal = vi.fn();
@@ -140,6 +148,25 @@ describe("CompletedTaskSheet", () => {
 
     expect(onReopen).toHaveBeenCalledWith("task-1");
     expect(onViewGoal).toHaveBeenCalledTimes(1);
-    expect(onDelete).toHaveBeenCalledWith("task-1");
+    return waitFor(() => expect(onDelete).toHaveBeenCalledWith("task-1"));
+  });
+
+  it("does not delete when confirmation is declined", () => {
+    mockConfirm.mockResolvedValue(false);
+    const onDelete = vi.fn();
+
+    render(
+      <CompletedTaskSheet
+        task={task}
+        linkedGoalName="Mobile parity"
+        onClose={vi.fn()}
+        onDelete={onDelete}
+        onReopen={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /delete ship redesign/i }));
+
+    expect(onDelete).not.toHaveBeenCalled();
   });
 });

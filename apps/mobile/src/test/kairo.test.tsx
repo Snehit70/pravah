@@ -283,9 +283,13 @@ vi.mock("convex/react", () => ({
 // ─── kairoConfig mock ─────────────────────────────────────────────────────────
 const mockGetKairoConfig = vi.fn();
 const mockIsKairoConfigured = vi.fn();
+const mockGetKairoProviderLabel = vi.fn((provider: string) =>
+  provider === "anthropic" ? "Anthropic" : provider === "gemini" ? "Gemini" : "OpenAI"
+);
 vi.mock("../lib/kairoConfig", () => ({
   getKairoConfig: () => mockGetKairoConfig(),
   isKairoConfigured: (cfg: unknown) => mockIsKairoConfigured(cfg),
+  getKairoProviderLabel: (provider: string) => mockGetKairoProviderLabel(provider),
 }));
 
 // kairoApi / kairoTools / kairoAgent are NOT mocked — they're pure and already

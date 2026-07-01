@@ -549,7 +549,8 @@ export function GoalsScreen({
   useEffect(() => {
     if (!focusGoalId) return;
     if (!sortedGoals.some((goal) => goal.id === focusGoalId)) return;
-    setSelectedGoalId(focusGoalId);
+    const timeout = setTimeout(() => setSelectedGoalId(focusGoalId), 0);
+    return () => clearTimeout(timeout);
   }, [focusGoalId, sortedGoals]);
 
   return (

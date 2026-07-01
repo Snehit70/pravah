@@ -3,6 +3,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { humanDate } from "../lib/dates";
 import { formatTime12h } from "../lib/task-form";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { useConfirm } from "../hooks/useConfirm";
 import type { MobileTask } from "./TaskCard";
 
 type CompletedTaskSheetProps = {
@@ -33,6 +34,7 @@ export function CompletedTaskSheet({
   onViewGoal,
 }: CompletedTaskSheetProps) {
   const insets = useSafeAreaInsets();
+  const confirm = useConfirm();
   const completedAtLabel = formatTimestamp(task?.completedAt);
   const createdAtLabel = formatTimestamp(task?.createdAt);
 
@@ -47,7 +49,6 @@ export function CompletedTaskSheet({
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close completed task details" />
         <View
           style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}
-          accessibilityRole="dialog"
           accessibilityLabel={task ? `${task.title} details` : "Completed task details"}
         >
           {task ? (
@@ -117,7 +118,18 @@ export function CompletedTaskSheet({
                   </Pressable>
                 ) : null}
                 <Pressable
-                  onPress={() => onDelete(task._id)}
+                  onPress={() => {
+                    void (async () => {
+                      const ok = await confirm({
+                        title: "Delete task?",
+                        message: "This cannot be undone.",
+                        confirmLabel: "Delete",
+                        destructive: true,
+                      });
+                      if (!ok) return;
+                      onDelete(task._id);
+                    })();
+                  }}
                   accessibilityRole="button"
                   accessibilityLabel={`Delete ${task.title}`}
                   style={({ pressed }) => [styles.destructiveAction, pressed && { opacity: 0.72 }]}

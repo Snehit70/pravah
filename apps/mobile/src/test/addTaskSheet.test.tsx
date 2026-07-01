@@ -426,6 +426,43 @@ describe("AddTaskSheet", () => {
     });
   });
 
+  it("keeps the goal draft open when the optional first task fails", async () => {
+    mockOnAdd.mockResolvedValueOnce(false);
+
+    render(
+      <AddTaskSheet
+        ref={ref}
+        onAdd={mockOnAdd}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+      />
+    );
+
+    act(() => {
+      ref.current?.open("goal");
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("What do you want to achieve?"), {
+      target: { value: "Launch parity redesign" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Optional next move"), {
+      target: { value: "Fix Settings first" },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Create goal"));
+    });
+
+    await waitFor(() => expect(mockOnAdd).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("modal")).toBeTruthy();
+    expect(screen.getByPlaceholderText("What do you want to achieve?").getAttribute("value")).toBe(
+      "Launch parity redesign"
+    );
+    expect(screen.getByPlaceholderText("Optional next move").getAttribute("value")).toBe(
+      "Fix Settings first"
+    );
+  });
+
   it("recomputes the later preset label when the sheet is reopened on a new day", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 6, 3, 10, 0, 0));

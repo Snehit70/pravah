@@ -12,7 +12,7 @@ import { useEffect, useRef, useState, type JSX } from "react";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import type { RenderItemParams } from "react-native-draggable-flatlist";
-import { colors, spacing, typography } from "../theme/tokens";
+import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
 import { TimelineSectionHeader } from "../components/TimelineSectionHeader";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
@@ -143,7 +143,10 @@ export function TimelineScreen({
       }, 0);
       return () => clearTimeout(timeout);
     }
-    if (!showAllSections) setShowAllSections(true);
+    if (!showAllSections) {
+      const timeout = setTimeout(() => setShowAllSections(true), 0);
+      return () => clearTimeout(timeout);
+    }
   }, [pendingJumpDateKey, reducedMotion, rows, showAllSections]);
 
   const overdueHeader =
@@ -227,6 +230,15 @@ export function TimelineScreen({
         });
       }}
       showsVerticalScrollIndicator={false}
+      onScrollToIndexFailed={({ index, highestMeasuredFrameIndex }) => {
+        const fallbackIndex = Math.max(0, highestMeasuredFrameIndex);
+        if (fallbackIndex !== index) {
+          listRef.current?.scrollToIndex({ index: fallbackIndex, animated: false });
+        }
+        setTimeout(() => {
+          listRef.current?.scrollToIndex({ index, animated: !reducedMotion });
+        }, 40);
+      }}
       refreshControl={
         <RefreshControl
           refreshing={isRefreshing}

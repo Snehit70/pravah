@@ -213,7 +213,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         }
         const firstTask = firstTaskTitle.trim();
         if (firstTask) {
-          await onAdd({
+          const success = await onAdd({
             title: firstTask,
             description: undefined,
             deadline: deadlineResult.value,
@@ -221,6 +221,10 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
             priority,
             goalId: created.id,
           });
+          if (!success) {
+            setSaving(false);
+            return;
+          }
         }
         feedback.captureSaved();
         reset();
