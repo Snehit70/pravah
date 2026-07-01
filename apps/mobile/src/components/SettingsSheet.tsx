@@ -640,6 +640,23 @@ function SyncSection({
 }: SyncSectionProps) {
   return (
     <View style={styles.screenBody}>
+      <View style={styles.summaryRow}>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryKicker}>Calendar</Text>
+          <Text style={styles.summaryValue}>{syncHealthLabel(calendarSyncHealth)}</Text>
+          <Text style={styles.summaryMeta}>
+            {calendarSyncEnabled ? "Timeline import on" : "Timeline import off"}
+          </Text>
+        </View>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryKicker}>Gmail</Text>
+          <Text style={styles.summaryValue}>{formatStatusLabel(gmailSyncStatus)}</Text>
+          <Text style={styles.summaryMeta}>
+            {gmailSyncEnabled ? "Review capture on" : "Review capture off"}
+          </Text>
+        </View>
+      </View>
+
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <View style={styles.settingRow}>
           <View style={styles.settingCopy}>
@@ -811,6 +828,23 @@ function RemindersSection({
 }: RemindersSectionProps) {
   return (
     <View style={styles.screenBody}>
+      <View style={styles.summaryRow}>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryKicker}>Notifications</Text>
+          <Text style={styles.summaryValue}>{formatStatusLabel(notificationPermissionState)}</Text>
+          <Text style={styles.summaryMeta}>
+            {notificationsEnabled ? "Alerts available on this device" : "Permission still needed"}
+          </Text>
+        </View>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryKicker}>Morning digest</Text>
+          <Text style={styles.summaryValue}>{formatClockLabel(prefs.morningDigestTime)}</Text>
+          <Text style={styles.summaryMeta}>
+            {prefs.quietHoursEnabled ? "Quiet hours adjust delivery" : "No quiet hours set"}
+          </Text>
+        </View>
+      </View>
+
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <Text style={styles.settingLabel}>Notifications</Text>
         <Text style={styles.settingHelp}>
@@ -1984,6 +2018,35 @@ const styles = StyleSheet.create({
   },
   screenBody: {
     gap: spacing.md,
+  },
+  summaryRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  summaryCard: {
+    flex: 1,
+    minHeight: 88,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    gap: 3,
+  },
+  summaryKicker: {
+    ...typography.micro,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  summaryValue: {
+    ...typography.title,
+    color: colors.textPrimary,
+  },
+  summaryMeta: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    lineHeight: 18,
   },
   leadText: {
     ...typography.bodyMd,
