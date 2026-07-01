@@ -29,6 +29,10 @@ function getSnapshot(): UserPreferences {
   return snapshot;
 }
 
+export function getUserPreferencesSnapshot(): UserPreferences {
+  return snapshot;
+}
+
 async function hydrate(): Promise<void> {
   if (hydrated) return;
   if (!hydrationPromise) {

@@ -57,6 +57,9 @@ describe("sanitize", () => {
       reducedMotionOverride: "always",
       accentColor: "copper",
       density: "compact",
+      swipeActionsEnabled: true,
+      hapticsEnabled: false,
+      soundEnabled: true,
       tabOrder: ["insights", "goals", "timeline", "inbox"],
     });
     expect(result).toMatchObject({
@@ -68,8 +71,22 @@ describe("sanitize", () => {
       kairoUndoWindowMinutes: 15,
       reducedMotionOverride: "always",
       density: "compact",
+      swipeActionsEnabled: true,
+      hapticsEnabled: false,
+      soundEnabled: true,
       tabOrder: ["insights", "goals", "timeline", "inbox"],
     });
+  });
+
+  it("defaults the redesign interaction preferences safely", () => {
+    const result = sanitize({
+      swipeActionsEnabled: "yes",
+      hapticsEnabled: "no",
+      soundEnabled: "sometimes",
+    });
+    expect(result.swipeActionsEnabled).toBe(false);
+    expect(result.hapticsEnabled).toBe(true);
+    expect(result.soundEnabled).toBe(false);
   });
 
   it("falls back to the default tab order for corrupted saved orders", () => {

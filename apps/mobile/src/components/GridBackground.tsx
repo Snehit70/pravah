@@ -3,7 +3,7 @@ import Svg, { Defs, Pattern, Path, Rect, RadialGradient, Stop } from "react-nati
 import { colors } from "../theme/tokens";
 
 /**
- * Web parity: src/index.css:101-113 — a 32px grid at 2.5% white opacity,
+ * A 32px warm-ink grid at low opacity,
  * masked with a radial gradient so the grid only reads near the center.
  *
  * Implementation notes:
@@ -19,7 +19,7 @@ import { colors } from "../theme/tokens";
 export function GridBackground() {
   const { width, height } = useWindowDimensions();
   const cell = 32;
-  const lineColor = "rgba(255,255,255,0.025)";
+  const lineColor = "rgba(78,62,43,0.055)";
 
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>

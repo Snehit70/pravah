@@ -43,6 +43,8 @@ export function TaskMetaFields({
             Keyboard.dismiss();
             setShowDatePicker(true);
           }}
+          accessibilityRole="button"
+          accessibilityLabel={deadline ? `Change Deadline, currently ${humanDate(deadline)}` : "Add Deadline"}
           style={({ pressed }) => [styles.metaField, pressed && { opacity: 0.6 }]}
           hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
         >
@@ -58,6 +60,8 @@ export function TaskMetaFields({
               Keyboard.dismiss();
               setShowTimePicker(true);
             }}
+            accessibilityRole="button"
+            accessibilityLabel={time ? `Change time, currently ${formatTime12h(time)}` : "Add time"}
             style={({ pressed }) => [styles.metaField, pressed && { opacity: 0.6 }]}
             hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
           >
@@ -75,6 +79,8 @@ export function TaskMetaFields({
               onTimeChange?.("");
               onClearError();
             }}
+            accessibilityRole="button"
+            accessibilityLabel="Clear Deadline and time"
             style={({ pressed }) => [styles.clearAction, pressed && { opacity: 0.6 }]}
             hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
           >
@@ -87,6 +93,8 @@ export function TaskMetaFields({
             onPriorityChange(nextPriority(priority));
             haptic.selection();
           }}
+          accessibilityRole="button"
+          accessibilityLabel={`Priority, currently ${priorityLabel(priority)}. Tap to change.`}
           style={({ pressed }) => [styles.metaField, pressed && { opacity: 0.6 }]}
           hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
         >

@@ -53,6 +53,8 @@ export class ScreenErrorBoundary extends Component<
         <Text style={styles.body}>Try reloading this tab. If it happens again, inspect the latest logs.</Text>
         <Pressable
           onPress={this.handleRetry}
+          accessibilityRole="button"
+          accessibilityLabel={`Reload ${this.props.screenName}`}
           style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
         >
           <Text style={styles.buttonText}>Reload tab</Text>
@@ -66,10 +68,12 @@ const styles = StyleSheet.create({
   container: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.lg,
-    paddingLeft: spacing.md,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
-    borderLeftWidth: 2,
-    borderLeftColor: colors.error,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.error,
+    borderRadius: radii.md,
+    backgroundColor: colors.errorMuted,
     gap: spacing.xs,
   },
   rule: {

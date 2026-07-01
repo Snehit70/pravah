@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, type JSX } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, Line, Path } from "react-native-svg";
 import Animated, {
   useAnimatedStyle,
@@ -9,8 +9,9 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { haptic } from "../lib/haptic";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 import { resolveTabOrder, TAB_LABELS, type TabKey } from "../lib/tabOrder";
-import { colors, radii, shadow, spacing } from "../theme/tokens";
+import { colors, radii, shadow, spacing, typography } from "../theme/tokens";
 
 export type { TabKey } from "../lib/tabOrder";
 
@@ -132,10 +133,12 @@ function NavTab({
   tab,
   active,
   onPress,
+  reducedMotion,
 }: {
   tab: (typeof NAV_TABS)[TabKey];
   active: boolean;
   onPress: () => void;
+  reducedMotion: boolean;
 }) {
   const press = useSharedValue(1);
   const pop = useSharedValue(1);
@@ -143,9 +146,10 @@ function NavTab({
   const mounted = useRef(false);
 
   useEffect(() => {
-    fade.set(withTiming(active ? 1 : 0, { duration: 200 }));
+    const target = active ? 1 : 0;
+    fade.set(reducedMotion ? target : withTiming(target, { duration: 200 }));
     // Pop only when a tab *becomes* active by interaction, not on first mount.
-    if (active && mounted.current) {
+    if (active && mounted.current && !reducedMotion) {
       pop.set(
         withSequence(
           withTiming(1.16, { duration: 120 }),
@@ -154,7 +158,7 @@ function NavTab({
       );
     }
     mounted.current = true;
-  }, [active, fade, pop]);
+  }, [active, fade, pop, reducedMotion]);
 
   const iconStyle = useAnimatedStyle(() => ({
     transform: [{ scale: press.value * pop.value }],
@@ -167,8 +171,12 @@ function NavTab({
   return (
     <AnimatedPressable
       onPress={onPress}
-      onPressIn={() => press.set(withSpring(0.9, SPRING))}
-      onPressOut={() => press.set(withSpring(1, SPRING))}
+      onPressIn={() => {
+        if (!reducedMotion) press.set(withSpring(0.9, SPRING));
+      }}
+      onPressOut={() => {
+        if (!reducedMotion) press.set(withSpring(1, SPRING));
+      }}
       style={styles.tabItem}
       hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
       accessibilityRole="tab"
@@ -183,6 +191,9 @@ function NavTab({
           <Icon filled color={colors.accent} size={ICON_SIZE} />
         </Animated.View>
       </Animated.View>
+      <Text style={[styles.tabLabel, active && styles.tabLabelActive]} numberOfLines={1}>
+        {tab.label}
+      </Text>
     </AnimatedPressable>
   );
 }
@@ -190,9 +201,11 @@ function NavTab({
 function CaptureButton({
   onCapture,
   canCapture,
+  reducedMotion,
 }: {
   onCapture: () => void;
   canCapture: boolean;
+  reducedMotion: boolean;
 }) {
   const scale = useSharedValue(1);
   const glow = useSharedValue(0);
@@ -215,10 +228,12 @@ function CaptureButton({
           onCapture();
         }}
         onPressIn={() => {
+          if (reducedMotion) return;
           scale.set(withSpring(0.9, SPRING));
           glow.set(withTiming(1, { duration: 140 }));
         }}
         onPressOut={() => {
+          if (reducedMotion) return;
           scale.set(withSpring(1, SPRING));
           glow.set(withTiming(0, { duration: 280 }));
         }}
@@ -228,7 +243,7 @@ function CaptureButton({
         accessibilityRole="button"
         accessibilityLabel="Capture a new task"
       >
-        <CaptureIcon color={colors.textPrimary} size={ICON_SIZE} />
+        <CaptureIcon color={colors.textInverse} size={ICON_SIZE} />
       </AnimatedPressable>
     </View>
   );
@@ -242,6 +257,7 @@ function BottomTabBarInner({
   bottomInset = spacing.md,
   tabOrder,
 }: BottomTabBarProps) {
+  const reducedMotion = useReducedMotion();
   const resolvedOrder = resolveTabOrder(tabOrder);
   const leftTabs = resolvedOrder.slice(0, 2);
   const rightTabs = resolvedOrder.slice(2);
@@ -264,10 +280,15 @@ function BottomTabBarInner({
             tab={NAV_TABS[tab]}
             active={active === tab}
             onPress={() => handlePress(tab)}
+            reducedMotion={reducedMotion}
           />
         ))}
 
-        <CaptureButton onCapture={onCapture} canCapture={canCapture} />
+        <CaptureButton
+          onCapture={onCapture}
+          canCapture={canCapture}
+          reducedMotion={reducedMotion}
+        />
 
         {rightTabs.map((tab) => (
           <NavTab
@@ -275,6 +296,7 @@ function BottomTabBarInner({
             tab={NAV_TABS[tab]}
             active={active === tab}
             onPress={() => handlePress(tab)}
+            reducedMotion={reducedMotion}
           />
         ))}
       </View>
@@ -310,6 +332,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: spacing.sm,
+    gap: 2,
   },
   iconWrap: {
     width: ICON_SIZE,
@@ -323,6 +346,16 @@ const styles = StyleSheet.create({
     left: 0,
     width: ICON_SIZE,
     height: ICON_SIZE,
+  },
+  tabLabel: {
+    ...typography.micro,
+    fontSize: 11,
+    lineHeight: 13,
+    letterSpacing: 0.2,
+    color: colors.textMuted,
+  },
+  tabLabelActive: {
+    color: colors.accent,
   },
   captureSlot: {
     flex: 1,

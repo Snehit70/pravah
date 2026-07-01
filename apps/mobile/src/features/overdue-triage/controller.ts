@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
-import * as Haptics from "expo-haptics";
 import { classifyError, createActionId, mobileLogger } from "../../lib/logger";
+import { feedback } from "../../lib/feedback";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import type { ToastState } from "../../hooks/useWorkspaceState";
 import type {
@@ -126,7 +126,7 @@ export function useOverdueTriageController({
           today,
           goalIdsToMoveDeadlines,
         });
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        feedback.success();
         showToast({
           kind: "info",
           message: `Rescheduled ${applied.taskCount} task${applied.taskCount === 1 ? "" : "s"}`,
@@ -177,7 +177,7 @@ export function useOverdueTriageController({
         void (async () => {
           try {
             await softDeleteTaskMutation({ taskId: id });
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            feedback.destructiveConfirmed();
             showToast({
               kind: "info",
               message: "Task dropped",
@@ -197,7 +197,7 @@ export function useOverdueTriageController({
       void (async () => {
         try {
           await moveTaskMutation({ taskId: id, targetDate });
-          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          feedback.taskScheduled();
         } catch (error) {
           if (classifyError(error) === "network") {
             enqueueRetry({

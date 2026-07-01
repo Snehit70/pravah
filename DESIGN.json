@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-01T00:00:00+05:30",
+  "title": "Design System: Pravah Mobile",
+  "extensions": {
+    "colorMeta": {
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Planning Canvas",
+        "canonical": "#f7f1e8",
+        "tonalRamp": ["#30281f", "#4c4033", "#695b4b", "#887866", "#a99a87", "#c9bcaa", "#e6dccd", "#f7f1e8"]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Quiet Indigo",
+        "canonical": "#6753c7",
+        "tonalRamp": ["#201747", "#302467", "#43338a", "#5844b8", "#6753c7", "#9081dc", "#beb6ee", "#ebe8fa"]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Warm Ink",
+        "canonical": "#201914",
+        "tonalRamp": ["#201914", "#3c312a", "#594b41", "#77685c", "#97887b", "#b8aa9d", "#d9cfc4", "#f6f1eb"]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Destination Display",
+        "purpose": "Top-level mobile destination titles."
+      },
+      "body": {
+        "displayName": "Product Body",
+        "purpose": "Task-supporting copy and explanations."
+      },
+      "metadata": {
+        "displayName": "Scannable Metadata",
+        "purpose": "Dates, counts, priorities, and compact state."
+      }
+    },
+    "shadows": [
+      {
+        "name": "low",
+        "value": "0 1px 2px rgba(44,33,24,0.08)",
+        "purpose": "Small raised controls."
+      },
+      {
+        "name": "medium",
+        "value": "0 4px 12px rgba(44,33,24,0.12)",
+        "purpose": "Floating panels."
+      },
+      {
+        "name": "high",
+        "value": "0 8px 28px rgba(44,33,24,0.16)",
+        "purpose": "Sheets and dialogs."
+      }
+    ],
+    "motion": [
+      {
+        "name": "fast",
+        "value": "200ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Pressed, selected, and compact disclosure state."
+      },
+      {
+        "name": "base",
+        "value": "280ms cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Sheet, row, and toast transitions."
+      }
+    ],
+    "breakpoints": []
+  },
+  "components": [],
+  "narrative": {
+    "northStar": "The Warm Planning Desk",
+    "overview": "A quiet mobile planning surface with paper-warm neutrals, stable action anatomy, and restrained intelligence cues.",
+    "keyCharacteristics": [
+      "Warm low-chroma neutral layers",
+      "Comfortable mobile density",
+      "One primary action per context",
+      "Visible non-gesture paths",
+      "State-explaining feedback"
+    ],
+    "rules": [
+      {
+        "name": "The Quiet Accent Rule",
+        "body": "Indigo communicates action, selection, focus, or Kairo and is never background decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The Earned Elevation Rule",
+        "body": "A shadow indicates real layering or focus, never decoration.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Use one visually dominant action per context.",
+      "Expose complete accessibility state.",
+      "Keep essential actions available without gestures."
+    ],
+    "donts": [
+      "Do not use purple gradients, neon glow, decorative glass, or generic AI-futuristic styling.",
+      "Do not turn Timeline into a calendar clone.",
+      "Do not hide essential actions behind swipe gestures."
+    ]
+  }
+}

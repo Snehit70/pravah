@@ -1,9 +1,8 @@
-/** Design tokens for Pravah.
+/** Design tokens for Pravah mobile.
  *
- * Mirrors the web app's design system at src/index.css so the two surfaces
- * read as one product. Mobile is denser-paint than dense-desktop, so the
- * typography scale is bumped one step versus web while colors, radii, and
- * accent semantics match exactly.
+ * Mobile now leads the redesign direction: warm light-neutral by default,
+ * restrained purple as an intelligence accent, and functional colors for
+ * trust-building task states.
  */
 
 /**
@@ -28,64 +27,35 @@ export const fonts = {
   mono: "GeistMono_500Medium",
 } as const;
 
-/**
- * Web-aligned palette. Values that exist as web CSS variables are noted so
- * the parity is auditable.
- *
- * Web uses oklch() for accent + semantics; RN doesn't accept oklch, so the
- * hex values below are sRGB approximations that round-trip within ~1 ΔE for
- * typical mobile displays.
- */
 export const colors = {
   // ── Background layers ────────────────────────────────────────────────
-  /** --color-bg-base — page floor */
-  bg: "#0a0a0b",
-  /** --color-bg-surface — base sections */
-  bgSurface: "#101013",
-  /** --color-bg-elevated — opaque card surface */
-  bgCard: "#17171b",
-  /** --color-bg-floating — popovers, sheets, drag overlay */
-  bgFloating: "#1c1c20",
-  /** --color-card-bg — translucent card tint that sits over the grid */
-  bgCardGlass: "rgba(255,255,255,0.025)",
-  /** Translucent input fill (matches web Input bg) */
-  bgInput: "rgba(255,255,255,0.025)",
-  /** --color-bg-overlay — modal scrim */
-  backdrop: "rgba(0,0,0,0.6)",
+  bg: "#f7f1e8",
+  bgSurface: "#fbf7ef",
+  bgCard: "#fffaf2",
+  bgFloating: "#fffdf7",
+  bgCardGlass: "rgba(74,54,35,0.035)",
+  bgInput: "rgba(74,54,35,0.045)",
+  backdrop: "rgba(39,30,22,0.32)",
 
   // ── Borders ─────────────────────────────────────────────────────────
-  /** --color-border-default */
-  border: "rgba(255,255,255,0.13)",
-  /** --color-border-subtle — hairline dividers */
-  borderSubtle: "rgba(255,255,255,0.07)",
-  /** --color-border-focus — accent ring on focused inputs */
-  borderFocus: "rgba(139,125,232,0.45)",
+  border: "rgba(78,62,43,0.18)",
+  borderSubtle: "rgba(78,62,43,0.09)",
+  borderFocus: "rgba(121,103,214,0.46)",
 
   // ── Text ────────────────────────────────────────────────────────────
-  /** --color-text-primary */
-  textPrimary: "#ededef",
-  /** --color-text-secondary */
-  textSecondary: "#c2c2c8",
-  /** --color-text-muted */
-  textMuted: "#6b6b72",
-  /** --color-text-dim — disabled / inactive */
-  textDim: "#45454a",
-  /** Inverse / on-accent text */
-  textInverse: "#0a0a0b",
-  /** Completed task text — reads "checked off", not "disabled" */
-  textCompleted: "#6b6b72",
+  textPrimary: "#201914",
+  textSecondary: "#5b5048",
+  textMuted: "#6f6358",
+  textDim: "#76695e",
+  textInverse: "#fffaf2",
+  textCompleted: "#76695e",
 
-  // ── Accent (indigo, oklch 0.78 0.14 260) ────────────────────────────
-  /** --color-accent-primary */
-  accent: "#8b7de8",
-  /** --color-accent-primary-hover */
-  accentHover: "#7866dc",
-  /** --color-accent-primary-muted (~20% alpha) */
-  accentSoft: "rgba(139,125,232,0.20)",
-  /** --color-accent-glow (~35% alpha) — used for shadows */
-  accentGlow: "rgba(139,125,232,0.35)",
-  /** --color-accent-dim (~8% alpha) — barely-there wash */
-  accentDim: "rgba(139,125,232,0.08)",
+  // ── Accent (darkened for AA text contrast on every warm surface) ────
+  accent: "#6753c7",
+  accentHover: "#5844b8",
+  accentSoft: "rgba(103,83,199,0.16)",
+  accentGlow: "rgba(103,83,199,0.28)",
+  accentDim: "rgba(103,83,199,0.07)",
 
   // ── Priority semantics ──────────────────────────────────────────────
   // One canonical, fixed (accent-independent) muted hue ramp — red → amber →
@@ -93,33 +63,29 @@ export const colors = {
   // previous values (accent purple + two near-identical grays) made P2 and P3
   // indistinguishable and tied P1 to the themeable accent. Intentionally
   // diverges from web here; mobile is the triage-heavy surface.
-  priorityP1: "#d06b5a",
-  priorityP2: "#d4ab66",
-  priorityP3: "#80828c",
+  priorityP1: "#934536",
+  priorityP2: "#805712",
+  priorityP3: "#5e6662",
 
   // ── Status semantics ────────────────────────────────────────────────
-  /** --color-success — mossy mint (oklch 0.78 0.18 150) */
-  success: "#5dd39e",
-  successMuted: "rgba(93,211,158,0.18)",
-  /** --color-warning — amber (oklch 0.78 0.15 60) */
-  warning: "#d9b870",
-  warningMuted: "rgba(217,184,112,0.18)",
-  /** --color-deadline — orange (oklch 0.72 0.16 30) */
-  deadline: "#d38560",
-  deadlineMuted: "rgba(211,133,96,0.22)",
-  /** --color-error — red-orange (oklch 0.72 0.20 25) */
-  error: "#dd6e53",
-  errorMuted: "rgba(221,110,83,0.18)",
+  success: "#226b4b",
+  successMuted: "rgba(34,107,75,0.13)",
+  warning: "#805712",
+  warningMuted: "rgba(128,87,18,0.14)",
+  deadline: "#98502d",
+  deadlineMuted: "rgba(152,80,45,0.16)",
+  error: "#a43f32",
+  errorMuted: "rgba(164,63,50,0.13)",
 
   // ── Legacy aliases (kept so untouched call sites keep compiling) ────
   /** @deprecated Use `success`. */
-  primary: "#5dd39e",
+  primary: "#226b4b",
   /** @deprecated Use `bg`. */
-  primaryDark: "#0a0a0b",
+  primaryDark: "#f7f1e8",
   /** @deprecated Use `textInverse`. */
-  primaryInk: "#0a0a0b",
+  primaryInk: "#fffaf2",
   /** @deprecated Halo replaced by GridBackground; soft accent wash kept for back-compat. */
-  haloCopper: "rgba(139,125,232,0.06)",
+  haloCopper: "rgba(121,103,214,0.07)",
 } as const;
 
 /**
@@ -171,36 +137,36 @@ export const spacing = {
  */
 export const shadow = {
   sm: {
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
+    shadowColor: "#2c2118",
+    shadowOpacity: 0.08,
     shadowRadius: 2,
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
   md: {
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
+    shadowColor: "#2c2118",
+    shadowOpacity: 0.12,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
   },
   lg: {
-    shadowColor: "#000",
-    shadowOpacity: 0.4,
+    shadowColor: "#2c2118",
+    shadowOpacity: 0.16,
     shadowRadius: 28,
     shadowOffset: { width: 0, height: 8 },
     elevation: 10,
   },
   xl: {
-    shadowColor: "#000",
-    shadowOpacity: 0.55,
+    shadowColor: "#2c2118",
+    shadowOpacity: 0.2,
     shadowRadius: 80,
     shadowOffset: { width: 0, height: 40 },
     elevation: 16,
   },
   glow: {
-    shadowColor: "#8b7de8",
-    shadowOpacity: 0.4,
+    shadowColor: "#6753c7",
+    shadowOpacity: 0.24,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
     elevation: 8,

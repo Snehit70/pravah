@@ -19,6 +19,7 @@ import {
   View,
 } from "react-native";
 import { BlurView } from "expo-blur";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { haptic } from "../lib/haptic";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "./TaskCard";
@@ -32,6 +33,7 @@ import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useGoals } from "../hooks/useGoals";
 import { goalLinksStore } from "../lib/goalLinks";
 import { useGoalMutations } from "../hooks/useGoalMutations";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 
 export type EditTaskSheetRef = {
   open: (task: MobileTask) => void;
@@ -63,6 +65,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const titleInputRef = useRef<TextInput>(null);
     const openSeqRef = useRef(0);
     const confirm = useConfirm();
+    const insets = useSafeAreaInsets();
+    const reducedMotion = useReducedMotion();
     const { goals } = useGoals();
     const { setGoalLink } = useGoalMutations();
 
@@ -243,7 +247,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       <Modal
         visible={visible}
         transparent
-        animationType="fade"
+        animationType={reducedMotion ? "none" : "slide"}
         statusBarTranslucent
         onRequestClose={() => void requestClose()}
       >
@@ -252,13 +256,17 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           // KeyboardAvoidingView's height behavior on top can push the lower
           // edit actions outside the visible card.
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.overlay}
+          style={[
+            styles.overlay,
+            { paddingBottom: Math.max(insets.bottom, spacing.sm) },
+          ]}
         >
           <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
           <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
           {!hasUnsavedChanges ? (
             <Pressable
               accessibilityLabel="Dismiss"
+              accessibilityRole="button"
               style={StyleSheet.absoluteFill}
               onPress={() => void requestClose()}
             />
@@ -308,6 +316,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                     hitSlop={8}
                     accessibilityRole="button"
                     accessibilityLabel={linkedGoal ? `Goal: ${linkedGoal.text}. Tap to change.` : "Link to a goal"}
+                    accessibilityState={{ expanded: showGoalPicker }}
                     style={({ pressed }) => [
                       styles.goalChip,
                       linkedGoal && styles.goalChipActive,
@@ -326,8 +335,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
 
                   {showGoalPicker ? (
                     <Animated.View
-                      entering={FadeIn.duration(150)}
-                      exiting={FadeOut.duration(120)}
+                      entering={reducedMotion ? undefined : FadeIn.duration(150)}
+                      exiting={reducedMotion ? undefined : FadeOut.duration(120)}
                       style={styles.goalPicker}
                     >
                       <Pressable
@@ -349,6 +358,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                           })();
                         }}
                         hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: !linkedGoalId }}
                         style={({ pressed }) => [
                           styles.goalOption,
                           !linkedGoalId && styles.goalOptionActive,
@@ -370,6 +381,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                               haptic.light();
                             }}
                             hitSlop={8}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: active }}
                             style={({ pressed }) => [
                               styles.goalOption,
                               active && styles.goalOptionActive,
@@ -401,6 +414,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                 }}
                 placeholder="Task title"
                 placeholderTextColor={colors.textMuted}
+                accessibilityLabel="Task title"
                 style={styles.titleInput}
               />
 
@@ -409,6 +423,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                 onChangeText={setDescription}
                 placeholder="Notes"
                 placeholderTextColor={colors.textMuted}
+                accessibilityLabel="Task notes"
                 style={styles.notesInput}
                 multiline
               />
@@ -441,6 +456,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                           closeModal();
                         }}
                         hitSlop={12}
+                        accessibilityRole="button"
+                        accessibilityLabel="Reopen Task"
                         style={({ pressed }) => [styles.quickActionItem, pressed && { opacity: 0.6 }]}
                       >
                         <Text style={styles.quickActionText}>Reopen</Text>
@@ -455,6 +472,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                             closeModal();
                           }}
                           hitSlop={12}
+                          accessibilityRole="button"
+                          accessibilityLabel="Complete Task"
                           style={({ pressed }) => [styles.quickActionItem, pressed && { opacity: 0.6 }]}
                         >
                           <Text style={styles.quickActionText}>Complete</Text>
@@ -467,6 +486,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                             closeModal();
                           }}
                           hitSlop={12}
+                          accessibilityRole="button"
+                          accessibilityLabel="Move Task to Inbox"
                           style={({ pressed }) => [styles.quickActionItem, pressed && { opacity: 0.6 }]}
                         >
                           <Text style={styles.quickActionText}>Unschedule</Text>
@@ -491,6 +512,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                         })();
                       }}
                       hitSlop={12}
+                      accessibilityRole="button"
+                      accessibilityLabel="Delete Task"
                       style={({ pressed }) => [
                         styles.quickActionItem,
                         styles.deleteActionItem,
@@ -510,6 +533,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                       onPress={() => closeModal()}
                       style={({ pressed }) => [styles.cancelButton, pressed && { opacity: 0.6 }]}
                       hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Close Task details"
                     >
                       <Text style={styles.cancelButtonText}>Close</Text>
                     </Pressable>
@@ -529,6 +554,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                       onPress={() => void exitEditMode()}
                       style={({ pressed }) => [styles.cancelButton, pressed && { opacity: 0.6 }]}
                       hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Cancel editing Task"
                     >
                       <Text style={styles.cancelButtonText}>Cancel</Text>
                     </Pressable>
@@ -536,6 +563,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                       onPress={() => void handleSave()}
                       disabled={!canSave}
                       hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={saving ? "Saving Task" : "Save Task"}
                       style={({ pressed }) => [
                         styles.primaryButton,
                         !canSave && styles.primaryButtonDisabled,
@@ -561,7 +590,7 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     alignItems: "center",
-    justifyContent: "flex-start",
+    justifyContent: "flex-end",
     paddingHorizontal: spacing.md,
     paddingTop: spacing.xxl,
   },
@@ -571,7 +600,7 @@ const styles = StyleSheet.create({
   card: {
     width: "100%",
     maxWidth: 480,
-    maxHeight: "78%",
+    maxHeight: "92%",
     backgroundColor: colors.bg,
     borderRadius: radii.xl,
     borderWidth: StyleSheet.hairlineWidth,
@@ -725,7 +754,7 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   quickActionItem: {
-    minHeight: 36,
+    minHeight: 44,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     justifyContent: "center",

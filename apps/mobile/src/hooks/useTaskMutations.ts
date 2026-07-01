@@ -1,9 +1,9 @@
 import { useCallback, useRef, type Dispatch, type SetStateAction } from "react";
-import { haptic } from "../lib/haptic";
 import { useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { classifyError, createActionId, mobileLogger } from "../lib/logger";
+import { feedback } from "../lib/feedback";
 import type { MobileTask } from "../components/TaskCard";
 import { isTaskInInbox, isTaskOnTimeline } from "../lib/taskState";
 import {
@@ -27,7 +27,7 @@ type UseTaskMutationsOptions = {
   hasPriorityBoundaryViolation: (original: MobileTask[], reordered: MobileTask[]) => boolean;
 };
 
-type SuccessHaptic = "notification" | "light" | "medium";
+type SuccessFeedback = "notification" | "light" | "medium" | "taskCompleted";
 
 /** Config for one optimistic mutation. The same builder feeds both an action
  *  and its inverse, so a swipe and its Undo never drift out of sync. */
@@ -38,7 +38,7 @@ type RunConfig = {
   actionName: string;
   retryLabel?: string;
   retryPayload?: RetryPayload;
-  successHaptic?: SuccessHaptic;
+  successFeedback?: SuccessFeedback;
   taskId?: Id<"tasks">;
 };
 
@@ -59,15 +59,16 @@ export function useTaskMutations({
         kind: "error",
         message: canRetry ? `${message} Queued for retry.` : message,
       });
-      haptic.error();
+      feedback.error();
     },
     [showToast]
   );
 
-  const triggerSuccessHaptic = useCallback((kind: SuccessHaptic) => {
-    if (kind === "notification") { haptic.success(); return; }
-    if (kind === "medium") { haptic.medium(); return; }
-    haptic.light();
+  const triggerSuccessFeedback = useCallback((kind: SuccessFeedback) => {
+    if (kind === "taskCompleted") { feedback.taskCompleted(); return; }
+    if (kind === "notification") { feedback.success(); return; }
+    if (kind === "medium") { feedback.medium(); return; }
+    feedback.light();
   }, []);
 
   const completeTaskMutation = useMutation(api.tasks.completeTask);
@@ -90,7 +91,7 @@ export function useTaskMutations({
       actionName,
       retryLabel,
       retryPayload,
-      successHaptic = "notification",
+      successFeedback = "notification",
       taskId,
       undo,
     }: RunConfig & { undo?: UndoSpec }): Promise<boolean> => {
@@ -113,7 +114,7 @@ export function useTaskMutations({
 
       try {
         await mutation();
-        triggerSuccessHaptic(successHaptic);
+        triggerSuccessFeedback(successFeedback);
         if (undo) {
           showToast({
             kind: "info",
@@ -145,7 +146,7 @@ export function useTaskMutations({
         setPendingMutations((count) => Math.max(0, count - 1));
       }
     },
-    [serverTasks, enqueueRetry, setOptimisticTasks, setPendingMutations, showToast, showToastWithHaptic, triggerSuccessHaptic]
+    [serverTasks, enqueueRetry, setOptimisticTasks, setPendingMutations, showToast, showToastWithHaptic, triggerSuccessFeedback]
   );
 
   // Reusable per-operation configs. Each swipe action below pairs one of these
@@ -160,6 +161,7 @@ export function useTaskMutations({
       errorMessage: "Could not mark task as done.",
       retryLabel: "Retry done",
       retryPayload: { type: "completeTask", taskId },
+      successFeedback: "taskCompleted",
       taskId,
     }),
     [completeTaskMutation]
@@ -175,7 +177,7 @@ export function useTaskMutations({
       errorMessage: "Could not reopen task.",
       retryLabel: "Retry reopen",
       retryPayload: { type: "reopenTask", taskId },
-      successHaptic: "light",
+      successFeedback: "light",
       taskId,
     }),
     [reopenTaskMutation]
@@ -191,7 +193,7 @@ export function useTaskMutations({
       errorMessage: "Could not move task to today.",
       retryLabel: "Retry move to today",
       retryPayload: { type: "moveTask", taskId, targetDate: today },
-      successHaptic: "light",
+      successFeedback: "light",
       taskId,
     }),
     [moveTaskMutation, today]
@@ -207,7 +209,7 @@ export function useTaskMutations({
       errorMessage: "Could not move task back to inbox.",
       retryLabel: "Retry move to inbox",
       retryPayload: { type: "unscheduleTask", taskId },
-      successHaptic: "light",
+      successFeedback: "light",
       taskId,
     }),
     [unscheduleTaskMutation]
@@ -253,7 +255,7 @@ export function useTaskMutations({
                     await moveTaskMutation({ taskId, targetDate: priorDate });
                   },
                   errorMessage: "Could not undo.",
-                  successHaptic: "light",
+                  successFeedback: "light",
                   taskId,
                 }),
             }
@@ -282,7 +284,7 @@ export function useTaskMutations({
           await deleteTaskMutation({ taskId });
         },
         errorMessage: "Could not delete task.",
-        successHaptic: "medium",
+        successFeedback: "medium",
         taskId,
       });
     },
@@ -329,7 +331,7 @@ export function useTaskMutations({
           time: data.deadline ? data.time : undefined,
           priority: data.priority,
         },
-        successHaptic: "medium",
+        successFeedback: "medium",
         taskId: data.taskId,
       });
     },
@@ -361,7 +363,7 @@ export function useTaskMutations({
 
       try {
         await reorderTasksMutation({ date: dateKey, taskIds });
-        haptic.light();
+        feedback.light();
       } catch {
         setOptimisticTasks(stateRef.current);
         showToast({ kind: "error", message: "Could not save timeline order." });
@@ -395,7 +397,7 @@ export function useTaskMutations({
 
       try {
         await reorderInboxTasksMutation({ taskIds });
-        haptic.light();
+        feedback.light();
       } catch {
         setOptimisticTasks(stateRef.current);
         showToast({ kind: "error", message: "Could not save inbox order." });
@@ -426,7 +428,7 @@ export function useTaskMutations({
         reordered.splice(neighborIdx, 0, moved);
         if (hasPriorityBoundaryViolation(scoped, reordered)) {
           showToast({ kind: "error", message: "Drag only within the same priority group." });
-          haptic.error();
+          feedback.error();
           return;
         }
       }
@@ -445,7 +447,7 @@ export function useTaskMutations({
           await shiftScheduledTaskPositionMutation({ taskId, direction });
         },
         errorMessage: `Could not move task ${direction}.`,
-        successHaptic: "light",
+        successFeedback: "light",
         taskId,
       });
     },

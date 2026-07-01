@@ -8,7 +8,7 @@
  * currently disabled (RNDFL@4 / Reanimated@4 incompatibility).
  */
 
-import type { JSX } from "react";
+import { useState, type JSX } from "react";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import type { RenderItemParams } from "react-native-draggable-flatlist";
@@ -18,6 +18,7 @@ import { TimelineSectionHeader } from "../components/TimelineSectionHeader";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { dateLabel } from "../lib/dates";
 import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 
 type TimelineRow =
   | { kind: "header"; dateKey: string; label: string; isToday: boolean; count: number }
@@ -40,6 +41,7 @@ type TimelineScreenProps = {
 };
 
 const noopDrag = () => {};
+const DEFAULT_VISIBLE_SECTION_COUNT = 3;
 
 function countTimelineRows(sections: [string, MobileTask[]][]) {
   let count = 0;
@@ -104,9 +106,16 @@ export function TimelineScreen({
   overdueCount,
   onOpenOverdue,
 }: TimelineScreenProps) {
+  const reducedMotion = useReducedMotion();
+  const [showAllSections, setShowAllSections] = useState(false);
   const { future, overdueCount: localOverdue } = splitOverdue(sections, today);
   const effectiveOverdue = overdueCount ?? localOverdue;
-  const visibleSections = onOpenOverdue ? future : sections;
+  const sourceSections = onOpenOverdue ? future : sections;
+  const visibleSections = showAllSections
+    ? sourceSections
+    : sourceSections.slice(0, DEFAULT_VISIBLE_SECTION_COUNT);
+  const laterSections = showAllSections ? [] : sourceSections.slice(DEFAULT_VISIBLE_SECTION_COUNT);
+  const laterTaskCount = laterSections.reduce((sum, [, tasks]) => sum + tasks.length, 0);
 
   const totalRows = countTimelineRows(visibleSections);
   const visibleRowCount = useIncrementalRowCount(totalRows);
@@ -130,9 +139,9 @@ export function TimelineScreen({
     ) : null;
 
   const emptyBlock = (
-    <Animated.View entering={FadeIn.duration(400)} style={styles.emptyWrap}>
-      <Text style={styles.emptyTitle}>An open day.</Text>
-      <Text style={styles.emptyText}>Move a task from the inbox to fill it.</Text>
+    <Animated.View entering={reducedMotion ? undefined : FadeIn.duration(400)} style={styles.emptyWrap}>
+      <Text style={styles.emptyTitle}>Today is clear.</Text>
+      <Text style={styles.emptyText}>Upcoming work will appear here when it has a Deadline.</Text>
     </Animated.View>
   );
 
@@ -181,7 +190,19 @@ export function TimelineScreen({
       }
       ListHeaderComponent={overdueHeader}
       ListFooterComponent={
-        hasPendingRows ? <Text style={styles.loadingMore}>Preparing more tasks...</Text> : null
+        <>
+          {laterTaskCount > 0 ? (
+            <Pressable
+              onPress={() => setShowAllSections(true)}
+              style={({ pressed }) => [styles.laterSummary, pressed && styles.laterSummaryPressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`Show ${laterTaskCount} later tasks`}
+            >
+              <Text style={styles.laterSummaryText}>Later · {laterTaskCount} tasks</Text>
+            </Pressable>
+          ) : null}
+          {hasPendingRows ? <Text style={styles.loadingMore}>Preparing more tasks...</Text> : null}
+        </>
       }
       ListEmptyComponent={isLoading ? loadingBlock : emptyBlock}
     />
@@ -204,6 +225,20 @@ const styles = StyleSheet.create({
   overdueBarPressed: { opacity: 0.6 },
   overdueLabel: { color: colors.textMuted, ...typography.micro },
   overdueChevron: { color: colors.textMuted, ...typography.micro },
+  laterSummary: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    paddingVertical: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
+  },
+  laterSummaryPressed: {
+    opacity: 0.65,
+  },
+  laterSummaryText: {
+    color: colors.textMuted,
+    ...typography.micro,
+  },
   emptyWrap: {
     paddingTop: spacing.section * 2,
     paddingHorizontal: spacing.xxl,

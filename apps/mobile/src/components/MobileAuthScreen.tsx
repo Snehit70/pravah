@@ -10,6 +10,7 @@ import {
 import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, shadow, spacing, typography } from "../theme/tokens";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 import { BrandMark } from "./BrandMark";
 
 import authBg from "../../assets/auth-bg.png";
@@ -28,6 +29,7 @@ export function MobileAuthScreen({
   onOpenDiagnostics,
 }: MobileAuthScreenProps) {
   const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
 
   return (
     <ImageBackground source={authBg} resizeMode="cover" style={styles.bg}>
@@ -48,14 +50,35 @@ export function MobileAuthScreen({
       >
         <StatusBar style="light" />
 
-        <Animated.View entering={FadeInDown.duration(500).delay(80)} style={styles.brandZone}>
+        <Animated.View
+          entering={reducedMotion ? undefined : FadeInDown.duration(500).delay(80)}
+          style={styles.brandZone}
+        >
           <BrandMark size={64} />
-          <Pressable onLongPress={onOpenDiagnostics} delayLongPress={450} hitSlop={10}>
+          <Pressable
+            onLongPress={onOpenDiagnostics}
+            delayLongPress={450}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Pravah"
+            accessibilityHint="Long press or use the diagnostics action to open diagnostics."
+            accessibilityActions={
+              onOpenDiagnostics ? [{ name: "longpress", label: "Open diagnostics" }] : undefined
+            }
+            onAccessibilityAction={(event) => {
+              if (event.nativeEvent.actionName === "longpress") {
+                onOpenDiagnostics?.();
+              }
+            }}
+          >
             <Text style={styles.wordmark}>Pravah</Text>
           </Pressable>
         </Animated.View>
 
-        <Animated.View entering={FadeInUp.duration(500).delay(160)} style={styles.actionZone}>
+        <Animated.View
+          entering={reducedMotion ? undefined : FadeInUp.duration(500).delay(160)}
+          style={styles.actionZone}
+        >
           <View style={styles.copy}>
             <Text style={styles.headline}>A calmer way to keep your day in view.</Text>
             <Text style={styles.subtitle}>
@@ -66,6 +89,8 @@ export function MobileAuthScreen({
           <Pressable
             onPress={onGoogleSignIn}
             disabled={!canGoogleSignIn || isSigningIn}
+            accessibilityRole="button"
+            accessibilityLabel={isSigningIn ? "Signing in with Google" : "Sign in with Google"}
             style={({ pressed }) => [
               styles.googleButton,
               (!canGoogleSignIn || isSigningIn) && styles.disabledButton,

@@ -13,6 +13,7 @@ import { BlurView } from "expo-blur";
 import { haptic } from "../lib/haptic";
 import { selectedIndexFromOffset } from "../lib/snapWheelTimePicker";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 
 type SnapWheelTimePickerProps = {
   visible: boolean;
@@ -132,6 +133,7 @@ export function SnapWheelTimePicker({
   onConfirm,
   onClose,
 }: SnapWheelTimePickerProps) {
+  const reducedMotion = useReducedMotion();
   const parsed = parseTime(value);
   const [hour, setHour] = useState(parsed.hour);
   const [minute, setMinute] = useState(parsed.minute);
@@ -143,11 +145,22 @@ export function SnapWheelTimePicker({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType={reducedMotion ? "none" : "fade"}
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
       <View style={styles.overlay}>
         <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
-        <Pressable accessibilityLabel="Dismiss time picker" style={StyleSheet.absoluteFill} onPress={onClose} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss time picker"
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+        />
 
         <View style={styles.card}>
           <Text style={styles.heading}>{title}</Text>

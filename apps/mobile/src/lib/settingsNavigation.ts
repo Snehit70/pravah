@@ -1,7 +1,8 @@
 export type SettingsCategoryKey =
-  | "assistantAutomation"
+  | "kairo"
   | "sync"
   | "reminders"
+  | "interaction"
   | "appearance"
   | "about";
 
@@ -15,9 +16,10 @@ export type SettingsNavigationAction =
   | { type: "reset" };
 
 export const SETTINGS_CATEGORY_ORDER: readonly SettingsCategoryKey[] = [
-  "assistantAutomation",
+  "kairo",
   "sync",
   "reminders",
+  "interaction",
   "appearance",
   "about",
 ];
@@ -26,9 +28,9 @@ export const SETTINGS_CATEGORY_META: Record<
   SettingsCategoryKey,
   { title: string; summary: string }
 > = {
-  assistantAutomation: {
-    title: "Assistant & Automation",
-    summary: "Kairo settings, starter pills, bootstrap tokens, and issued credentials.",
+  kairo: {
+    title: "Kairo",
+    summary: "Provider setup, starter pills, bootstrap tokens, and issued credentials.",
   },
   sync: {
     title: "Sync",
@@ -38,9 +40,13 @@ export const SETTINGS_CATEGORY_META: Record<
     title: "Reminders",
     summary: "Notifications, morning digest, lead time, and quiet hours.",
   },
+  interaction: {
+    title: "Interaction",
+    summary: "Swipe actions, haptics, sound, and motion preferences.",
+  },
   appearance: {
     title: "Appearance",
-    summary: "Density, motion, tab order, and bulk capture preferences.",
+    summary: "Tab order and capture preferences.",
   },
   about: {
     title: "About",
@@ -52,7 +58,7 @@ export const SETTINGS_CATEGORY_CONTROLS: Record<
   SettingsCategoryKey,
   readonly string[]
 > = {
-  assistantAutomation: [
+  kairo: [
     "kairo_config",
     "kairo_starter_pills",
     "automation_bootstrap_token",
@@ -69,9 +75,13 @@ export const SETTINGS_CATEGORY_CONTROLS: Record<
     "reminder_lead_time",
     "quiet_hours",
   ],
-  appearance: [
+  interaction: [
+    "swipe_actions",
+    "haptics",
+    "sound",
     "reduced_motion",
-    "density",
+  ],
+  appearance: [
     "tab_order",
     "bulk_task_capture",
   ],

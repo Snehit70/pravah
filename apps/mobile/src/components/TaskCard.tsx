@@ -1,12 +1,10 @@
 import { memo, useCallback, useEffect, useRef } from "react";
 import {
-  AccessibilityInfo,
   Pressable,
   StyleSheet,
   Text,
   View,
   type AccessibilityActionEvent,
-  type GestureResponderEvent,
 } from "react-native";
 import ReanimatedSwipeable, {
   type SwipeableMethods,
@@ -16,8 +14,6 @@ import Animated, {
   interpolate,
   useAnimatedStyle,
   useSharedValue,
-  withSequence,
-  withSpring,
   withTiming,
   type SharedValue,
 } from "react-native-reanimated";
@@ -26,6 +22,7 @@ import { getLocalDateString } from "../lib/dates";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { isTaskCompleted, isTaskInInbox, isTaskOnTimeline } from "../lib/taskState";
 import { formatTime12h } from "../lib/task-form";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 
 export type MobileTask = {
   _id: Id<"tasks">;
@@ -65,6 +62,8 @@ type TaskCardProps = {
   linkedGoalName?: string;
   /** Hide priority metadata when a parent group already carries that encoding. */
   hidePriorityBadge?: boolean;
+  /** Swipe gestures are opt-in. Every action must remain visible without them. */
+  swipeActionsEnabled?: boolean;
 };
 
 const TASK_CARD_RADIUS = radii.lg;
@@ -120,10 +119,12 @@ function TaskCardInner({
   onDragHandlePress,
   linkedGoalName,
   hidePriorityBadge,
+  swipeActionsEnabled = false,
 }: TaskCardProps) {
   const isCompleted = isTaskCompleted(task);
   const isInboxTask = isTaskInInbox(task);
   const swipeRef = useRef<SwipeableMethods>(null);
+  const reducedMotion = useReducedMotion();
 
   // Web parity (src/index.css:228-233): when a task flips to completed, a 1px
   // accent bar sweeps left→right across the row, then the row eases to
@@ -132,12 +133,10 @@ function TaskCardInner({
   // chases) plus opacity for the final fadeout.
   const sweepProgress = useSharedValue(0);
   const sweepOpacity = useSharedValue(0);
-  const checkboxScale = useSharedValue(1);
   const wasCompleted = useRef(isCompleted);
   useEffect(() => {
     if (!wasCompleted.current && isCompleted) {
-      void AccessibilityInfo.isReduceMotionEnabled().then((reduceMotion) => {
-        if (reduceMotion) return;
+      if (!reducedMotion) {
         sweepOpacity.value = 1;
         sweepProgress.value = 0;
         sweepProgress.value = withTiming(
@@ -150,17 +149,10 @@ function TaskCardInner({
             if (finished) sweepOpacity.value = withTiming(0, { duration: motion.duration.fast });
           }
         );
-        checkboxScale.value = withSequence(
-          withSpring(1.35, { damping: 8, stiffness: 400 }),
-          withSpring(1, { damping: 14, stiffness: 280 }),
-        );
-      });
+      }
     }
     wasCompleted.current = isCompleted;
-  }, [isCompleted, sweepOpacity, sweepProgress, checkboxScale]);
-  const checkboxStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: checkboxScale.value }],
-  }));
+  }, [isCompleted, reducedMotion, sweepOpacity, sweepProgress]);
 
   // Bar leading edge tracks progress; trailing edge follows ~50% behind so the
   // visible accent stripe is a moving slice rather than a full fill. Width is
@@ -174,13 +166,6 @@ function TaskCardInner({
   });
 
   const handleDone = useCallback(() => onDone(task._id), [onDone, task._id]);
-  const handleCheckboxPress = useCallback(
-    (event: GestureResponderEvent) => {
-      event.stopPropagation();
-      handleDone();
-    },
-    [handleDone]
-  );
   const handleMoveToday = useCallback(() => onMoveToday?.(task._id), [onMoveToday, task._id]);
   const handleSendToInbox = useCallback(() => onSendToInbox?.(task._id), [onSendToInbox, task._id]);
   const handleReopen = useCallback(() => onReopen?.(task._id), [onReopen, task._id]);
@@ -315,21 +300,185 @@ function TaskCardInner({
   // single-line so the description gets to read as one full line below it.
   const hasDescription = Boolean(task.description) && !isCompleted;
   const titleLines = hasDescription ? 1 : 2;
-  const accessibilityHint = isCompleted
-    ? "Double tap to edit. Use actions to reopen this task."
-    : isInboxTask
-      ? "Double tap to edit. Use actions to mark done or move to today."
-      : onReorder
-        ? "Double tap to edit. Use actions to mark done, move to inbox, or reorder this task."
-        : "Double tap to edit. Use actions to mark done or move to inbox.";
   const accessibilityActions = [
     { name: "activate", label: "Edit task" },
-    isCompleted ? { name: "reopen", label: "Reopen task" } : { name: "complete", label: "Mark done" },
-    !isCompleted && isInboxTask ? { name: "move_today", label: "Move to today" } : null,
-    !isCompleted && !isInboxTask ? { name: "move_to_inbox", label: "Move to inbox" } : null,
+    isCompleted
+      ? onReopen
+        ? { name: "reopen", label: "Reopen task" }
+        : null
+      : { name: "complete", label: "Mark done" },
+    !isCompleted && isInboxTask && onMoveToday
+      ? { name: "move_today", label: "Move to today" }
+      : null,
+    !isCompleted && !isInboxTask && onSendToInbox
+      ? { name: "move_to_inbox", label: "Move to inbox" }
+      : null,
     isTaskOnTimeline(task) && onReorder ? { name: "increment", label: "Move down" } : null,
     isTaskOnTimeline(task) && onReorder ? { name: "decrement", label: "Move up" } : null,
   ].filter(Boolean) as Array<{ name: string; label: string }>;
+  const accessibilityHint =
+    accessibilityActions.length > 1
+      ? "Double tap to edit. Additional task actions are available."
+      : "Double tap to edit.";
+
+  const primaryAction: {
+    label: string;
+    run?: () => void;
+    tone: "primary" | "secondary";
+    semantic: "button" | "completion";
+  } =
+    isCompleted
+      ? { label: "Reopen", run: onReopen ? handleReopen : undefined, tone: "secondary", semantic: "completion" }
+      : isInboxTask
+        ? { label: "Schedule", run: onMoveToday ? handleMoveToday : undefined, tone: "primary", semantic: "button" }
+        : { label: "Complete", run: handleDone, tone: "primary", semantic: "completion" };
+  const secondaryAction: {
+    label: string;
+    run?: () => void;
+    tone: "secondary";
+    semantic: "button" | "completion";
+  } | null = isCompleted
+    ? null
+    : isInboxTask
+      ? { label: "Complete", run: handleDone, tone: "secondary", semantic: "completion" }
+      : { label: "Inbox", run: onSendToInbox ? handleSendToInbox : undefined, tone: "secondary", semantic: "button" };
+
+  const rowContent = (
+    <Pressable
+      onPress={handleEdit}
+      // Long-press is wired up for future drag-to-reorder; currently a no-op
+      // while the parent list is plain FlatList.
+      onLongPress={onDragHandlePress}
+      delayLongPress={250}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      accessibilityRole="button"
+      accessibilityLabel={task.title}
+      accessibilityHint={accessibilityHint}
+      accessibilityActions={accessibilityActions}
+      onAccessibilityAction={handleAccessibilityAction}
+      hitSlop={12}
+    >
+      {/* Priority rail — the only enclosing shape on the row. */}
+      <View style={[styles.rail, { backgroundColor: railColor }]} />
+
+      {/* Completion sweep — 1px accent stripe that scans across the card
+          on the inbox→completed transition. Pointer-events none. */}
+      <Animated.View pointerEvents="none" style={[styles.sweep, sweepStyle]} />
+
+      {/* Body — title + description. Both single-line by default. */}
+      <View style={styles.body}>
+        <Text
+          style={[styles.title, isCompleted && styles.titleCompleted]}
+          numberOfLines={titleLines}
+          ellipsizeMode="tail"
+        >
+          {task.title}
+        </Text>
+        {hasDescription ? (
+          <Text style={styles.description} numberOfLines={1} ellipsizeMode="tail">
+            {task.description}
+          </Text>
+        ) : null}
+        {linkedGoalName ? (
+          <Text style={styles.goalTag} numberOfLines={1} ellipsizeMode="tail">
+            ◈ {linkedGoalName}
+          </Text>
+        ) : null}
+      </View>
+
+      {/* Metadata column — right-aligned mono micro stack. Renders nothing
+          when there's no date / deadline / priority so the row stays clean. */}
+      {metaLines.length ? (
+        <View style={styles.metaCol}>
+          {metaLines.map((line) => (
+            <Text
+              key={line.key}
+              style={[
+                styles.metaText,
+                line.tone === "accent" && styles.metaTextAccent,
+                line.tone === "error" && styles.metaTextError,
+              ]}
+              numberOfLines={1}
+            >
+              {line.text}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+
+      <View style={styles.actionCol}>
+        {secondaryAction ? (
+          <Pressable
+            onPress={(event) => {
+              event.stopPropagation();
+              secondaryAction.run?.();
+            }}
+            disabled={!secondaryAction.run}
+            hitSlop={10}
+            accessibilityRole={secondaryAction.semantic === "completion" ? "checkbox" : "button"}
+            accessibilityState={
+              secondaryAction.semantic === "completion" ? { checked: isCompleted } : undefined
+            }
+            accessibilityLabel={
+              secondaryAction.semantic === "completion"
+                ? `Mark ${task.title} complete`
+                : `${secondaryAction.label} ${task.title}`
+            }
+            style={({ pressed }) => [
+              styles.primaryAction,
+              styles.primaryActionSecondary,
+              styles.secondaryInlineAction,
+              pressed && secondaryAction.run && { opacity: 0.68 },
+              !secondaryAction.run && { opacity: 0.45 },
+            ]}
+          >
+            <Text style={[styles.primaryActionText, styles.primaryActionTextSecondary]}>
+              {secondaryAction.label}
+            </Text>
+          </Pressable>
+        ) : null}
+
+        <Pressable
+          onPress={(event) => {
+            event.stopPropagation();
+            primaryAction.run?.();
+          }}
+          disabled={!primaryAction.run}
+          hitSlop={10}
+          accessibilityRole={primaryAction.semantic === "completion" ? "checkbox" : "button"}
+          accessibilityState={
+            primaryAction.semantic === "completion" ? { checked: isCompleted } : undefined
+          }
+          accessibilityLabel={
+            primaryAction.semantic === "completion"
+              ? isCompleted
+                ? `Mark ${task.title} incomplete`
+                : `Mark ${task.title} complete`
+              : `${primaryAction.label} ${task.title}`
+          }
+          style={({ pressed }) => [
+            styles.primaryAction,
+            primaryAction.tone === "secondary" && styles.primaryActionSecondary,
+            pressed && primaryAction.run && { opacity: 0.68 },
+            !primaryAction.run && { opacity: 0.45 },
+          ]}
+        >
+          <Text
+            style={[
+              styles.primaryActionText,
+              primaryAction.tone === "secondary" && styles.primaryActionTextSecondary,
+            ]}
+          >
+            {primaryAction.label}
+          </Text>
+        </Pressable>
+      </View>
+    </Pressable>
+  );
+
+  if (!swipeActionsEnabled) {
+    return <View style={styles.swipeContainer}>{rowContent}</View>;
+  }
 
   return (
     <ReanimatedSwipeable
@@ -349,92 +498,7 @@ function TaskCardInner({
       onSwipeableOpen={handleSwipeableOpen}
       containerStyle={styles.swipeContainer}
     >
-      <Pressable
-        onPress={handleEdit}
-        // Long-press is wired up for future drag-to-reorder; currently a no-op
-        // while the parent list is plain FlatList.
-        onLongPress={onDragHandlePress}
-        delayLongPress={250}
-        style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-        accessibilityRole="button"
-        accessibilityLabel={task.title}
-        accessibilityHint={accessibilityHint}
-        accessibilityActions={accessibilityActions}
-        onAccessibilityAction={handleAccessibilityAction}
-        hitSlop={12}
-      >
-        {/* Priority rail — the only enclosing shape on the row. */}
-        <View style={[styles.rail, { backgroundColor: railColor }]} />
-
-        {/* Completion sweep — 1px accent stripe that scans across the card
-            on the inbox→completed transition. Pointer-events none. */}
-        <Animated.View pointerEvents="none" style={[styles.sweep, sweepStyle]} />
-
-        {/* Checkbox — 20px circle. Tapping completes the task; for completed
-            rows it's filled and inert (the swipe-right reopen action handles
-            that case). */}
-        <Animated.View style={checkboxStyle}>
-          {isCompleted ? (
-            <View
-              style={[styles.checkbox, styles.checkboxDone]}
-              accessible
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: true }}
-              accessibilityLabel={`${task.title} completed`}
-            />
-          ) : (
-            <Pressable
-              onPress={handleCheckboxPress}
-              hitSlop={12}
-              style={({ pressed }) => [styles.checkbox, pressed && styles.checkboxPressed]}
-              accessibilityRole="checkbox"
-              accessibilityLabel={`Complete ${task.title}`}
-              accessibilityState={{ checked: false }}
-            />
-          )}
-        </Animated.View>
-
-        {/* Body — title + description. Both single-line by default. */}
-        <View style={styles.body}>
-          <Text
-            style={[styles.title, isCompleted && styles.titleCompleted]}
-            numberOfLines={titleLines}
-            ellipsizeMode="tail"
-          >
-            {task.title}
-          </Text>
-          {hasDescription ? (
-            <Text style={styles.description} numberOfLines={1} ellipsizeMode="tail">
-              {task.description}
-            </Text>
-          ) : null}
-          {linkedGoalName ? (
-            <Text style={styles.goalTag} numberOfLines={1} ellipsizeMode="tail">
-              ◈ {linkedGoalName}
-            </Text>
-          ) : null}
-        </View>
-
-        {/* Metadata column — right-aligned mono micro stack. Renders nothing
-            when there's no date / deadline / priority so the row stays clean. */}
-        {metaLines.length ? (
-          <View style={styles.metaCol}>
-            {metaLines.map((line) => (
-              <Text
-                key={line.key}
-                style={[
-                  styles.metaText,
-                  line.tone === "accent" && styles.metaTextAccent,
-                  line.tone === "error" && styles.metaTextError,
-                ]}
-                numberOfLines={1}
-              >
-                {line.text}
-              </Text>
-            ))}
-          </View>
-        ) : null}
-      </Pressable>
+      {rowContent}
     </ReanimatedSwipeable>
   );
 }
@@ -456,9 +520,9 @@ const styles = StyleSheet.create({
   // top of the grid, hairline border, soft layered shadow.
   row: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     paddingLeft: spacing.md,
-    paddingRight: spacing.lg,
+    paddingRight: spacing.md,
     paddingVertical: spacing.md,
     backgroundColor: colors.bgCard,
     borderRadius: TASK_CARD_RADIUS,
@@ -489,25 +553,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: "30%",
     backgroundColor: colors.accentSoft,
-  },
-  // Checkbox — 20px ring. Empty in default state (no inner dot), filled in
-  // completed state. Strikethrough on the title carries the rest of the
-  // signal so the checkbox doesn't need a glyph.
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.textMuted,
-    marginTop: 1,
-    marginRight: spacing.md,
-  },
-  checkboxPressed: {
-    borderColor: colors.textSecondary,
-  },
-  checkboxDone: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
   },
   body: {
     flex: 1,
@@ -549,6 +594,35 @@ const styles = StyleSheet.create({
   },
   metaTextError: {
     color: colors.error,
+  },
+  primaryAction: {
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.full,
+    backgroundColor: colors.accent,
+    justifyContent: "center",
+  },
+  primaryActionSecondary: {
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  primaryActionText: {
+    ...typography.micro,
+    color: colors.textInverse,
+  },
+  primaryActionTextSecondary: {
+    color: colors.textSecondary,
+  },
+  actionCol: {
+    marginLeft: spacing.md,
+    flexDirection: "row",
+    gap: spacing.xs,
+    alignItems: "center",
+  },
+  secondaryInlineAction: {
+    backgroundColor: colors.bgCard,
   },
   // Swipe action panels — flat color, single label. The label is rendered
   // via SwipeActionLabel above so it can fade in proportional to drag.

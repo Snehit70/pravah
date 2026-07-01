@@ -153,7 +153,7 @@ export function KairoSettingsSection() {
 
   return (
     <View style={styles.block}>
-      <Text style={styles.label}>Kairo assistant</Text>
+      <Text style={styles.label}>Kairo</Text>
       <Text style={styles.help}>Bring your own API key. Stored in the device keychain.</Text>
       <Text style={[styles.status, { color: status === "Configured" ? colors.primary : colors.textMuted }]}>
         {status}

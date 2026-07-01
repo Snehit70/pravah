@@ -76,7 +76,7 @@ export function AppUpdateSection() {
         </View>
       ) : null}
       {installStatus ? (
-        <Text style={styles.statusText}>
+        <Text accessibilityLiveRegion="polite" style={styles.statusText}>
           {installStatus}
           {installer.status === "downloading"
             ? ` ${Math.round(installer.progress * 100)}%`
@@ -96,6 +96,7 @@ export function AppUpdateSection() {
           disabled={busy}
           accessibilityRole="button"
           accessibilityLabel="Check for app updates"
+          accessibilityState={{ disabled: busy }}
           style={({ pressed }) => [
             styles.button,
             styles.secondaryButton,
@@ -111,6 +112,7 @@ export function AppUpdateSection() {
             disabled={busy}
             accessibilityRole="button"
             accessibilityLabel={`Install Pravah ${update.version}`}
+            accessibilityState={{ disabled: busy }}
             style={({ pressed }) => [
               styles.button,
               styles.primaryButton,

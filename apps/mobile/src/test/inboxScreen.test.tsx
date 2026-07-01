@@ -28,12 +28,14 @@ vi.mock("react-native", () => {
       hitSlop: __,
       accessibilityLabel,
       accessibilityRole: ___,
+      accessibilityState,
       ...safe
     } = rest as {
       onPress?: () => void;
       hitSlop?: unknown;
       accessibilityLabel?: string;
       accessibilityRole?: string;
+      accessibilityState?: { expanded?: boolean; selected?: boolean };
     } & AnyProps;
     const resolved =
       typeof children === "function"
@@ -41,7 +43,14 @@ vi.mock("react-native", () => {
         : children;
     return React.createElement(
       "button",
-      { ...safe, onClick: onPress, type: "button", "aria-label": accessibilityLabel },
+      {
+        ...safe,
+        onClick: onPress,
+        type: "button",
+        "aria-label": accessibilityLabel,
+        "aria-expanded": accessibilityState?.expanded,
+        "aria-pressed": accessibilityState?.selected,
+      },
       resolved,
     );
   };
@@ -157,6 +166,10 @@ vi.mock("../components/LoadingSkeleton", () => ({
     React.createElement("div", { "data-testid": `skeleton-${variant}` }),
 }));
 
+vi.mock("../hooks/useReducedMotion", () => ({
+  useReducedMotion: () => false,
+}));
+
 // Import component after all mocks are set up.
 import { InboxScreen } from "../screens/InboxScreen";
 import type { MobileTask } from "../components/TaskCard";
@@ -217,7 +230,7 @@ describe("InboxScreen", () => {
     );
 
     expect(screen.getByTestId("skeleton-inbox")).toBeTruthy();
-    expect(screen.queryByText("Nothing to carry forward.")).toBeNull();
+    expect(screen.queryByText("Everything has a place.")).toBeNull();
   });
 
   it("shows empty state when no tasks and not loading", () => {
@@ -233,8 +246,8 @@ describe("InboxScreen", () => {
       />
     );
 
-    expect(screen.getByText("Nothing to carry forward.")).toBeTruthy();
-    expect(screen.getByText("When something comes up, capture it.")).toBeTruthy();
+    expect(screen.getByText("Everything has a place.")).toBeTruthy();
+    expect(screen.getByText("Capture new loose work when it appears.")).toBeTruthy();
     expect(screen.getByRole("button", { name: /capture a task/i })).toBeTruthy();
   });
 
@@ -290,7 +303,7 @@ describe("InboxScreen", () => {
       />
     );
 
-    expect(screen.queryByText("Nothing to carry forward.")).toBeNull();
+    expect(screen.queryByText("Everything has a place.")).toBeNull();
     expect(screen.getByTestId("skeleton-inbox")).toBeTruthy();
   });
 
@@ -307,13 +320,38 @@ describe("InboxScreen", () => {
       />
     );
 
-    // Open the goal dropdown, then pick "Blog".
+    // Open the filter launcher, then the goal dropdown, then pick "Blog".
+    fireEvent.click(screen.getByRole("button", { name: /search or filter/i }));
     fireEvent.click(screen.getByRole("button", { name: /goal filter/i }));
     fireEvent.click(screen.getByRole("button", { name: "Blog" }));
 
     // task1 is linked to Blog; task2 (unlinked) is filtered out.
     expect(screen.getByTestId("task-task1")).toBeTruthy();
     expect(screen.queryByTestId("task-task2")).toBeNull();
+  });
+
+  it("exposes expanded state for filter disclosures", () => {
+    render(
+      <InboxScreen
+        tasks={sampleTasks}
+        isLoading={false}
+        isRefreshing={false}
+        tabBarHeight={60}
+        onRefresh={mockOnRefresh}
+        onCapture={mockOnCapture}
+        renderItem={mockRenderItem}
+      />
+    );
+
+    const filters = screen.getByRole("button", { name: /search or filter/i });
+    expect(filters.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(filters);
+    expect(filters.getAttribute("aria-expanded")).toBe("true");
+
+    const goals = screen.getByRole("button", { name: /goal filter/i });
+    expect(goals.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(goals);
+    expect(goals.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("filters to unlinked tasks with the No goal option", () => {
@@ -329,6 +367,7 @@ describe("InboxScreen", () => {
       />
     );
 
+    fireEvent.click(screen.getByRole("button", { name: /search or filter/i }));
     fireEvent.click(screen.getByRole("button", { name: /goal filter/i }));
     fireEvent.click(screen.getByRole("button", { name: "No goal" }));
 

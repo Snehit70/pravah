@@ -6,7 +6,7 @@
  * of date-grouped sections, empty states, and loading states.
  */
 
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -116,6 +116,10 @@ vi.mock("../components/LoadingSkeleton", () => ({
     React.createElement("div", { "data-testid": `skeleton-${variant}` }),
 }));
 
+vi.mock("../hooks/useReducedMotion", () => ({
+  useReducedMotion: () => false,
+}));
+
 // ─── TimelineSectionHeader mock ───────────────────────────────────────────────
 vi.mock("../components/TimelineSectionHeader", () => ({
   TimelineSectionHeader: ({ label, isToday }: { label: string; isToday: boolean }) =>
@@ -185,6 +189,40 @@ const sampleSections: [string, MobileTask[]][] = [
   ],
 ];
 
+const extendedSections: [string, MobileTask[]][] = [
+  ...sampleSections,
+  [
+    "2026-05-06",
+    [
+      {
+        _id: "task4" as Id<"tasks">,
+        title: "Task 4",
+        deadline: "2026-05-06",
+        scheduledAt: 1600,
+        priority: "p2",
+        position: 0,
+        updatedAt: 4000,
+        createdAt: 1600,
+      },
+    ],
+  ],
+  [
+    "2026-05-07",
+    [
+      {
+        _id: "task5" as Id<"tasks">,
+        title: "Task 5",
+        deadline: "2026-05-07",
+        scheduledAt: 1700,
+        priority: "p3",
+        position: 0,
+        updatedAt: 5000,
+        createdAt: 1700,
+      },
+    ],
+  ],
+];
+
 // ─── tests ────────────────────────────────────────────────────────────────────
 
 describe("TimelineScreen", () => {
@@ -220,7 +258,7 @@ describe("TimelineScreen", () => {
     );
 
     expect(screen.getByTestId("skeleton-timeline")).toBeTruthy();
-    expect(screen.queryByText("An open day.")).toBeNull();
+    expect(screen.queryByText("Today is clear.")).toBeNull();
   });
 
   it("shows empty state when no sections and not loading", () => {
@@ -236,8 +274,8 @@ describe("TimelineScreen", () => {
       />
     );
 
-    expect(screen.getByText("An open day.")).toBeTruthy();
-    expect(screen.getByText("Move a task from the inbox to fill it.")).toBeTruthy();
+    expect(screen.getByText("Today is clear.")).toBeTruthy();
+    expect(screen.getByText("Upcoming work will appear here when it has a Deadline.")).toBeTruthy();
   });
 
   it("renders date sections with headers and tasks", () => {
@@ -305,7 +343,7 @@ describe("TimelineScreen", () => {
       />
     );
 
-    expect(screen.queryByText("An open day.")).toBeNull();
+    expect(screen.queryByText("Today is clear.")).toBeNull();
     expect(screen.getByTestId("skeleton-timeline")).toBeTruthy();
   });
 
@@ -423,5 +461,27 @@ describe("TimelineScreen", () => {
 
     expect(screen.getByTestId("task-bulk-29")).toBeTruthy();
     expect(screen.queryByText("Preparing more tasks...")).toBeNull();
+  });
+
+  it("expands later sections so hidden tasks become reachable", () => {
+    render(
+      <TimelineScreen
+        sections={extendedSections}
+        today="2026-05-04"
+        tomorrow="2026-05-05"
+        isLoading={false}
+        isRefreshing={false}
+        tabBarHeight={60}
+        onRefresh={mockOnRefresh}
+        renderItem={mockRenderItem}
+      />
+    );
+
+    expect(screen.queryByTestId("task-task5")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /show 1 later tasks/i }));
+
+    expect(screen.getByTestId("task-task5")).toBeTruthy();
+    expect(screen.queryByText("Later · 1 tasks")).toBeNull();
   });
 });

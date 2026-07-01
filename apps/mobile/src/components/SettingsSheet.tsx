@@ -21,6 +21,7 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import type { NotificationPermissionState } from "../lib/notifications";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { useUserPreferences } from "../hooks/useUserPreferences";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 import { getOrCreateDeviceId } from "../lib/deviceIdentity";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
 import { classifyError, mobileLogger } from "../lib/logger";
@@ -915,20 +916,78 @@ type AppearanceSectionProps = {
   onMoveTab: (key: TabKey, direction: "up" | "down") => void;
 };
 
-function AppearanceSection({
-  prefs,
-  setPreference,
-  tabOrder,
-  onMoveTab,
-}: AppearanceSectionProps) {
+type InteractionSectionProps = {
+  prefs: ReturnType<typeof useUserPreferences>["prefs"];
+  setPreference: ReturnType<typeof useUserPreferences>["setPreference"];
+};
+
+function InteractionSection({ prefs, setPreference }: InteractionSectionProps) {
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Motion & density</Text>
+        <Text style={styles.settingLabel}>Task gestures</Text>
         <Text style={styles.settingHelp}>
-          Override the system motion setting and tighten spacing for denser task triage.
+          Keep visible actions available on every Task. Swipe actions are optional accelerators.
         </Text>
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingMeta}>Swipe actions</Text>
+            <Text style={styles.settingHelp}>
+              Off by default to reduce accidental completion or rescheduling.
+            </Text>
+          </View>
+          <Switch
+            value={prefs.swipeActionsEnabled}
+            onValueChange={(next) => void setPreference("swipeActionsEnabled", next)}
+            trackColor={{ false: colors.border, true: colors.accentSoft }}
+            thumbColor={prefs.swipeActionsEnabled ? colors.accent : colors.textMuted}
+            accessibilityLabel="Swipe actions"
+          />
+        </View>
+      </View>
 
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Feedback</Text>
+        <Text style={styles.settingHelp}>
+          Sensory feedback is subtle and functional. Sound stays off unless you enable it.
+        </Text>
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingMeta}>Haptics</Text>
+            <Text style={styles.settingHelp}>
+              Light feedback for capture, completion, selection, and confirmed Kairo actions.
+            </Text>
+          </View>
+          <Switch
+            value={prefs.hapticsEnabled}
+            onValueChange={(next) => void setPreference("hapticsEnabled", next)}
+            trackColor={{ false: colors.border, true: colors.accentSoft }}
+            thumbColor={prefs.hapticsEnabled ? colors.accent : colors.textMuted}
+            accessibilityLabel="Haptics"
+          />
+        </View>
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingMeta}>Sound</Text>
+            <Text style={styles.settingHelp}>
+              Optional quiet cues for capture, completion, and critical attention states.
+            </Text>
+          </View>
+          <Switch
+            value={prefs.soundEnabled}
+            onValueChange={(next) => void setPreference("soundEnabled", next)}
+            trackColor={{ false: colors.border, true: colors.accentSoft }}
+            thumbColor={prefs.soundEnabled ? colors.accent : colors.textMuted}
+            accessibilityLabel="Sound"
+          />
+        </View>
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Motion</Text>
+        <Text style={styles.settingHelp}>
+          Motion clarifies state changes. It should never slow down capture or completion.
+        </Text>
         <View style={styles.fieldStack}>
           <Text style={styles.fieldLabel}>Reduced motion</Text>
           <View style={styles.segmented}>
@@ -954,32 +1013,26 @@ function AppearanceSection({
             })}
           </View>
         </View>
+      </View>
+    </View>
+  );
+}
 
-        <View style={styles.fieldStack}>
-          <Text style={styles.fieldLabel}>Density</Text>
-          <View style={styles.segmented}>
-            {(["cozy", "compact"] as const).map((density) => {
-              const active = prefs.density === density;
-              return (
-                <Pressable
-                  key={density}
-                  onPress={() => void setPreference("density", density)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  style={({ pressed }) => [
-                    styles.segment,
-                    active && styles.segmentActive,
-                    pressed && { opacity: 0.7 },
-                  ]}
-                >
-                  <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                    {density === "cozy" ? "Cozy" : "Compact"}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
+function AppearanceSection({
+  prefs,
+  setPreference,
+  tabOrder,
+  onMoveTab,
+}: AppearanceSectionProps) {
+  return (
+    <View style={styles.screenBody}>
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Visual system</Text>
+        <Text style={styles.settingHelp}>
+          Warm light surfaces, Geist typography, and comfortable density are the
+          production baseline. Controls appear here only when another complete
+          visual system is available.
+        </Text>
       </View>
 
       <View style={[styles.settingBlock, styles.sectionCard]}>
@@ -1380,12 +1433,14 @@ function renderDetailScreen(
   if (navigation.screen !== "detail") return null;
 
   switch (navigation.category) {
-    case "assistantAutomation":
+    case "kairo":
       return <AssistantAutomationSection {...props} />;
     case "sync":
       return <SyncSection {...props} />;
     case "reminders":
       return <RemindersSection {...props} />;
+    case "interaction":
+      return <InteractionSection {...props} />;
     case "appearance":
       return <AppearanceSection {...props} />;
     case "about":
@@ -1433,6 +1488,7 @@ export function SettingsSheet({
   gmailLastError,
 }: SettingsSheetProps) {
   const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
   const [navigation, dispatchNavigation] = useReducer(
     settingsNavigationReducer,
     INITIAL_SETTINGS_NAVIGATION,
@@ -1617,7 +1673,7 @@ export function SettingsSheet({
   return (
     <Modal
       visible={visible}
-      animationType="fade"
+      animationType={reducedMotion ? "none" : "fade"}
       presentationStyle="fullScreen"
       statusBarTranslucent
       onRequestClose={navigation.screen === "detail" ? handleBack : handleClose}
@@ -1966,7 +2022,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   codePill: {
-    minHeight: 42,
+    minHeight: 44,
     justifyContent: "center",
     paddingHorizontal: spacing.md,
     borderRadius: radii.lg,

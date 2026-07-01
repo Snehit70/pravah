@@ -943,6 +943,8 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
               <Pressable
                 key={p}
                 onPress={() => void sendMessage(p)}
+                accessibilityRole="button"
+                accessibilityLabel={`Ask Kairo: ${p}`}
                 style={({ pressed }) => [styles.starterPill, pressed && { opacity: 0.7 }]}
                 hitSlop={12}
               >
@@ -955,6 +957,8 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         {config && !isKairoConfigured(config) ? (
           <Pressable
             onPress={onOpenSettings}
+            accessibilityRole="button"
+            accessibilityLabel="Set up Kairo"
             style={({ pressed }) => [styles.configBanner, pressed && { opacity: 0.7 }]}
             hitSlop={12}
           >
@@ -966,7 +970,11 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
       </BottomSheetScrollView>
 
       {copyFeedback ? (
-        <View style={styles.feedbackBanner} pointerEvents="none">
+        <View
+          style={styles.feedbackBanner}
+          pointerEvents="none"
+          accessibilityLiveRegion="polite"
+        >
           <Text style={styles.feedbackText}>{copyFeedback}</Text>
         </View>
       ) : null}
@@ -979,6 +987,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
             onChangeText={setVal}
             placeholder="Ask Kairo anything…"
             placeholderTextColor={colors.textMuted}
+            accessibilityLabel="Message Kairo"
             editable={!thinking}
             onSubmitEditing={() => void sendMessage(val)}
             returnKeyType="send"
@@ -1319,7 +1328,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.accent,
-    backgroundColor: "rgba(167, 139, 250, 0.12)",
+    backgroundColor: colors.accentSoft,
   },
   headerHistoryIcon: {
     color: colors.accent,
@@ -1406,7 +1415,7 @@ const styles = StyleSheet.create({
   },
   chipApplied: {
     borderColor: colors.success,
-    backgroundColor: "rgba(34, 197, 94, 0.10)",
+    backgroundColor: colors.successMuted,
   },
   chipUndone: {
     borderColor: colors.textMuted,
@@ -1443,7 +1452,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: colors.bgInput,
   },
   chipUndoText: {
     ...typography.micro,
@@ -1495,7 +1504,7 @@ const styles = StyleSheet.create({
   thinkingBar: {
     height: 8,
     borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: colors.bgInput,
     overflow: "hidden",
   },
   thinkingBarSweep: {
@@ -1503,7 +1512,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: "60%",
-    backgroundColor: "rgba(255,255,255,0.25)",
+    backgroundColor: colors.accentSoft,
   },
   starters: {
     flexDirection: "row",
@@ -1526,10 +1535,12 @@ const styles = StyleSheet.create({
   },
   configBanner: {
     marginTop: spacing.md,
-    paddingLeft: spacing.md,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderLeftWidth: 2,
-    borderLeftColor: colors.warning,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.warning,
+    borderRadius: radii.md,
+    backgroundColor: colors.warningMuted,
   },
   configBannerText: {
     color: colors.textPrimary,

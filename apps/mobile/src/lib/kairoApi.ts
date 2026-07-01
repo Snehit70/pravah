@@ -107,7 +107,7 @@ export function buildKairoStarters(
   if (overdue.length) starters.push(`What's overdue? (${overdue.length})`);
   if (dueToday.length) starters.push("What's on today?");
   if (inboxTasks.length >= 3) starters.push(`Triage my inbox (${inboxTasks.length})`);
-  if (scheduled.length >= 5) starters.push("What looks heavy this week?");
+  if (scheduled.length >= 5) starters.push("What looks heavy in the next 7 days?");
 
   const evergreen = [
     "Plan my week",

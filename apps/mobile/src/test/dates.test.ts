@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { addDays, dateLabel, humanDate, isIsoDate, shortDate, toIsoDate } from "../lib/dates";
+import {
+  addDays,
+  dateLabel,
+  humanDate,
+  isIsoDate,
+  nextLaterThisWeek,
+  shortDate,
+  toIsoDate,
+} from "../lib/dates";
 
 describe("mobile dates helpers", () => {
   it("formats Date to YYYY-MM-DD", () => {
@@ -42,5 +50,24 @@ describe("mobile dates helpers", () => {
     expect(isIsoDate("2026-4-14")).toBe(false);
     expect(isIsoDate("14-04-2026")).toBe(false);
     expect(isIsoDate("2026-04-31")).toBe(false);
+  });
+
+  it("keeps the later preset distinct from Today and Tomorrow all week", () => {
+    const expected = [
+      [new Date(2026, 5, 29), "2026-07-03"],
+      [new Date(2026, 5, 30), "2026-07-03"],
+      [new Date(2026, 6, 1), "2026-07-03"],
+      [new Date(2026, 6, 2), "2026-07-04"],
+      [new Date(2026, 6, 3), "2026-07-05"],
+      [new Date(2026, 6, 4), "2026-07-06"],
+      [new Date(2026, 6, 5), "2026-07-07"],
+    ] as const;
+
+    for (const [date, later] of expected) {
+      const result = nextLaterThisWeek(date);
+      expect(toIsoDate(result)).toBe(later);
+      expect(toIsoDate(result)).not.toBe(toIsoDate(date));
+      expect(toIsoDate(result)).not.toBe(toIsoDate(addDays(date, 1)));
+    }
   });
 });

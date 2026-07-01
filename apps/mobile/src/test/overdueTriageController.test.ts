@@ -3,16 +3,12 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useOverdueTriageController } from "../features/overdue-triage/controller";
 
-vi.mock("expo-haptics", () => ({
-  default: {},
-  notificationAsync: vi.fn(),
-  impactAsync: vi.fn(),
-  NotificationFeedbackType: {
-    Success: "success",
-  },
-  ImpactFeedbackStyle: {
-    Light: "light",
-    Medium: "medium",
+vi.mock("../lib/feedback", () => ({
+  feedback: {
+    success: vi.fn(),
+    error: vi.fn(),
+    destructiveConfirmed: vi.fn(),
+    taskScheduled: vi.fn(),
   },
 }));
 

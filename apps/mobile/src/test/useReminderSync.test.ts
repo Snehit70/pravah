@@ -22,6 +22,9 @@ const prefs: UserPreferences = {
   reducedMotionOverride: "system",
   accentColor: "purple",
   density: "cozy",
+  swipeActionsEnabled: false,
+  hapticsEnabled: true,
+  soundEnabled: false,
   bulkTaskCaptureEnabled: false,
   tabOrder: ["inbox", "timeline", "goals", "insights"],
 };

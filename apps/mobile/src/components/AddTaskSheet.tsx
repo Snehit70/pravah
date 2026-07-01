@@ -18,29 +18,30 @@ import {
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { haptic } from "../lib/haptic";
+import { feedback } from "../lib/feedback";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { TaskMetaFields } from "./TaskMetaFields";
 import { type TaskPriority } from "../lib/task-form";
 import { useGoals } from "../hooks/useGoals";
 import { useGoalMutations } from "../hooks/useGoalMutations";
-import { addDays, toIsoDate } from "../lib/dates";
+import { addDays, nextLaterThisWeek, toIsoDate } from "../lib/dates";
 import { expandBulkTasks, MAX_BULK_TASKS, type BulkTaskInput } from "../lib/bulkTaskCapture";
 import { useUserPreferences } from "../hooks/useUserPreferences";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 
-type ComposerMode = "inbox" | "today" | "tomorrow" | "nextweek";
+type ComposerMode = "inbox" | "today" | "tomorrow" | "laterThisWeek";
 
-const MODE_OPTIONS: { mode: ComposerMode; label: string }[] = [
-  { mode: "inbox", label: "Inbox" },
-  { mode: "today", label: "Today" },
-  { mode: "tomorrow", label: "Tomorrow" },
-  { mode: "nextweek", label: "+1w" },
-];
+function weekdayShort(date: Date): string {
+  return date.toLocaleDateString(undefined, { weekday: "short" });
+}
 
 export type AddTaskSheetRef = {
-  open: () => void;
+  open: (initialKind?: "task" | "goal") => void;
+  openForGoal: (goalId: string) => void;
   close: () => void;
   hasDraftChanges: () => boolean;
   dismissKeyboard: () => void;
@@ -81,6 +82,8 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [error, setError] = useState<string | null>(null);
     const { goals } = useGoals();
     const { prefs } = useUserPreferences();
+    const reducedMotion = useReducedMotion();
+    const insets = useSafeAreaInsets();
     const { addGoal } = useGoalMutations();
     const selectedGoal = useMemo(
       () => goals.find((g) => g.id === goalId),
@@ -96,13 +99,24 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         || seriesEnabled
     );
 
+    const laterThisWeek = nextLaterThisWeek();
+    const modeOptions = useMemo<{ mode: ComposerMode; label: string }[]>(
+      () => [
+        { mode: "inbox", label: "Inbox" },
+        { mode: "today", label: "Today" },
+        { mode: "tomorrow", label: "Tomorrow" },
+        { mode: "laterThisWeek", label: `Later, ${weekdayShort(laterThisWeek)}` },
+      ],
+      [laterThisWeek],
+    );
+
     const presetDeadlines: Record<ComposerMode, string> = {
       inbox: "",
       today: toIsoDate(new Date()),
       tomorrow: toIsoDate(addDays(new Date(), 1)),
-      nextweek: toIsoDate(addDays(new Date(), 7)),
+      laterThisWeek: toIsoDate(laterThisWeek),
     };
-    const selectedMode = MODE_OPTIONS.find(
+    const selectedMode = modeOptions.find(
       (option) => presetDeadlines[option.mode] === deadline
     )?.mode;
 
@@ -133,7 +147,17 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     };
 
     useImperativeHandle(ref, () => ({
-      open: () => {
+      open: (initialKind = "task") => {
+        setKind(initialKind);
+        setShowDetails(initialKind === "goal");
+        setVisible(true);
+        onSheetChange?.(true);
+      },
+      openForGoal: (initialGoalId) => {
+        setKind("task");
+        setGoalId(initialGoalId);
+        setGoalIds([initialGoalId]);
+        setShowDetails(false);
         setVisible(true);
         onSheetChange?.(true);
       },
@@ -181,7 +205,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           haptic.error();
           return;
         }
-        haptic.medium();
+        feedback.captureSaved();
         reset();
         closeModal();
         return;
@@ -253,7 +277,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       <Modal
         visible={visible}
         transparent
-        animationType="fade"
+        animationType={reducedMotion ? "none" : "slide"}
         statusBarTranslucent
         onRequestClose={() => {
           if (!hasDraftChanges) {
@@ -262,12 +286,20 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           }
         }}
       >
-        <KeyboardAvoidingView behavior="padding" automaticOffset style={styles.overlay}>
+        <KeyboardAvoidingView
+          behavior="padding"
+          automaticOffset
+          style={[
+            styles.overlay,
+            { paddingBottom: Math.max(insets.bottom, spacing.sm) },
+          ]}
+        >
           <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
           <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
           {!hasDraftChanges ? (
             <Pressable
               accessibilityLabel="Dismiss"
+              accessibilityRole="button"
               style={StyleSheet.absoluteFill}
               onPress={() => {
                 reset();
@@ -323,6 +355,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                 placeholder={
                   kind === "goal" ? "What do you want to achieve?" : "What needs to be done?"
                 }
+                accessibilityLabel={kind === "goal" ? "Goal title" : "Task title"}
                 placeholderTextColor={colors.textMuted}
                 style={styles.titleInput}
                 returnKeyType="done"
@@ -331,7 +364,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
 
               {kind === "task" ? (
                 <View style={styles.modeRow}>
-                  {MODE_OPTIONS.map((option) => (
+                  {modeOptions.map((option) => (
                     <Pressable
                       key={option.mode}
                       onPress={() => {
@@ -362,6 +395,9 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                     onPress={() => setShowDetails(!showDetails)}
                     style={({ pressed }) => [styles.detailsToggle, pressed && { opacity: 0.6 }]}
                     hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={showDetails ? "Hide task details" : "Show task details"}
+                    accessibilityState={{ expanded: showDetails }}
                   >
                     <Text style={styles.detailsToggleText}>{showDetails ? "Less" : "More"}</Text>
                   </Pressable>
@@ -373,6 +409,9 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                     onPress={() => setShowDetails(!showDetails)}
                     style={({ pressed }) => [styles.detailsToggle, pressed && { opacity: 0.6 }]}
                     hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={showDetails ? "Hide goal details" : "Show goal details"}
+                    accessibilityState={{ expanded: showDetails }}
                   >
                     <Text style={styles.detailsToggleText}>{showDetails ? "Less" : "More"}</Text>
                   </Pressable>
@@ -388,6 +427,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                     accessibilityLabel={
                       selectedGoal ? `Goal: ${selectedGoal.text}. Tap to change.` : "Pick a goal"
                     }
+                    accessibilityState={{ expanded: showGoalPicker }}
                     style={({ pressed }) => [
                       styles.goalChip,
                       (prefs.bulkTaskCaptureEnabled ? goalIds.length > 0 : selectedGoal) && styles.goalChipActive,
@@ -411,8 +451,8 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
 
                   {showGoalPicker ? (
                     <Animated.View
-                      entering={FadeIn.duration(150)}
-                      exiting={FadeOut.duration(120)}
+                      entering={reducedMotion ? undefined : FadeIn.duration(150)}
+                      exiting={reducedMotion ? undefined : FadeOut.duration(120)}
                       style={styles.goalPicker}
                     >
                       <Pressable
@@ -420,6 +460,12 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                           if (prefs.bulkTaskCaptureEnabled) setGoalIds([]); else setGoalId(undefined);
                         }}
                         hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityState={{
+                          selected: prefs.bulkTaskCaptureEnabled
+                            ? goalIds.length === 0
+                            : !goalId,
+                        }}
                         style={({ pressed }) => [
                           styles.goalOption,
                           (prefs.bulkTaskCaptureEnabled ? goalIds.length === 0 : !goalId) && styles.goalOptionActive,
@@ -444,6 +490,8 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                               }
                             }}
                             hitSlop={8}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: active }}
                             style={({ pressed }) => [
                               styles.goalOption,
                               active && styles.goalOptionActive,
@@ -492,8 +540,8 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
 
               {showDetails ? (
                 <Animated.View
-                  entering={FadeIn.duration(200)}
-                  exiting={FadeOut.duration(150)}
+                  entering={reducedMotion ? undefined : FadeIn.duration(200)}
+                  exiting={reducedMotion ? undefined : FadeOut.duration(150)}
                   style={styles.detailsSection}
                 >
                   <TextInput
@@ -566,8 +614,9 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-end",
     paddingHorizontal: spacing.md,
+    paddingTop: spacing.xxl,
   },
   backdropDim: {
     backgroundColor: "rgba(0,0,0,0.72)",
@@ -575,7 +624,7 @@ const styles = StyleSheet.create({
   card: {
     width: "100%",
     maxWidth: 480,
-    maxHeight: "85%",
+    maxHeight: "92%",
     backgroundColor: colors.bg,
     borderRadius: radii.xl,
     borderWidth: StyleSheet.hairlineWidth,

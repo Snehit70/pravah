@@ -16,7 +16,6 @@ import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withTiming 
 import { type RenderItemParams } from "react-native-draggable-flatlist";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import * as Haptics from "expo-haptics";
 import { authStorageReady } from "./src/lib/auth-client";
 import {
   useFonts as useGeistFonts,
@@ -43,7 +42,7 @@ import { useGoalMutations } from "./src/hooks/useGoalMutations";
 
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { colors, fonts, spacing, typography } from "./src/theme/tokens";
+import { colors, fonts, radii, spacing, typography } from "./src/theme/tokens";
 import { TaskCard, type MobileTask } from "./src/components/TaskCard";
 import { BottomTabBar } from "./src/components/BottomTabBar";
 import { GridBackground } from "./src/components/GridBackground";
@@ -80,6 +79,7 @@ import { isTaskInInbox } from "./src/lib/taskState";
 import { hasPriorityBoundaryViolation } from "./src/lib/taskLifecycle";
 import type { BulkTaskInput } from "./src/lib/bulkTaskCapture";
 import { resolveStartupTab } from "./src/lib/tabOrder";
+import { feedback } from "./src/lib/feedback";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -153,8 +153,11 @@ function MobileApp() {
 
   const chromeDim = useSharedValue(1);
   useEffect(() => {
-    chromeDim.value = withTiming(isKairoActive ? 0.38 : 1, { duration: 280 });
-  }, [chromeDim, isKairoActive]);
+    const target = isKairoActive ? 0.38 : 1;
+    chromeDim.value = reducedMotion
+      ? target
+      : withTiming(target, { duration: 280 });
+  }, [chromeDim, isKairoActive, reducedMotion]);
   const chromeAnimStyle = useAnimatedStyle(() => ({ opacity: chromeDim.value }));
 
   const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
@@ -605,7 +608,7 @@ function MobileApp() {
           idempotencyKey: actionId,
           tasks,
         });
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        feedback.captureSaved();
         showToast({
           kind: "info",
           message: `${result.taskIds.length} tasks created`,
@@ -631,7 +634,7 @@ function MobileApp() {
           taskCount: tasks.length,
           errorType: classifyError(error),
         });
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        feedback.error();
         return false;
       }
     },
@@ -694,7 +697,7 @@ function MobileApp() {
         if (data.goalId && newTaskId) {
           setGoalLink(String(newTaskId), data.goalId);
         }
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        feedback.captureSaved();
         mobileLogger.info("add_task_succeeded", { actionId, elapsedMs: Date.now() - startedAt });
         return true;
       } catch (error) {
@@ -722,7 +725,7 @@ function MobileApp() {
           errorType: classifyError(error),
           queuedForRetry: isOffline,
         });
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        feedback.error();
         return false;
       }
     },
@@ -842,9 +845,17 @@ function MobileApp() {
         onDragHandlePress={canUseWorkspaceActions ? drag : undefined}
         linkedGoalName={taskGoalNames.get(String(item._id))}
         hidePriorityBadge={hidePriorityBadge}
+        swipeActionsEnabled={prefs.swipeActionsEnabled}
       />
     ),
-    [canUseWorkspaceActions, handleEditTask, markDone, moveToToday, taskGoalNames]
+    [
+      canUseWorkspaceActions,
+      handleEditTask,
+      markDone,
+      moveToToday,
+      prefs.swipeActionsEnabled,
+      taskGoalNames,
+    ]
   );
 
   const renderTimelineTaskItem = useCallback(
@@ -862,6 +873,7 @@ function MobileApp() {
         onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
         onDragHandlePress={canUseWorkspaceActions ? drag : undefined}
         linkedGoalName={taskGoalNames.get(String(item._id))}
+        swipeActionsEnabled={prefs.swipeActionsEnabled}
       />
     ),
     [
@@ -870,6 +882,7 @@ function MobileApp() {
       sendToInbox,
       shiftTimelineTask,
       handleEditTask,
+      prefs.swipeActionsEnabled,
       taskGoalNames,
     ]
   );
@@ -882,9 +895,17 @@ function MobileApp() {
         onReopen={canUseWorkspaceActions ? reopenTask : undefined}
         onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
         linkedGoalName={taskGoalNames.get(String(item._id))}
+        swipeActionsEnabled={prefs.swipeActionsEnabled}
       />
     ),
-    [canUseWorkspaceActions, handleEditTask, markDone, reopenTask, taskGoalNames]
+    [
+      canUseWorkspaceActions,
+      handleEditTask,
+      markDone,
+      prefs.swipeActionsEnabled,
+      reopenTask,
+      taskGoalNames,
+    ]
   );
 
   // ── Loading / Auth screens ──────────────────────────────────────────
@@ -963,7 +984,7 @@ function MobileApp() {
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.container}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
       {/* Web-parity grid vignette behind everything. */}
       <GridBackground />
@@ -989,7 +1010,7 @@ function MobileApp() {
               style={({ pressed }) => [styles.settingsLinkWrap, pressed && styles.pressed]}
               hitSlop={12}
               accessibilityRole="button"
-              accessibilityLabel="Open Kairo assistant"
+              accessibilityLabel="Open Kairo"
             >
               <Text style={styles.kairoLink}>Kairo</Text>
             </Pressable>
@@ -1011,7 +1032,8 @@ function MobileApp() {
       {/* Toast — left rule + line of copy, no filled pill. */}
       {toast ? (
         <Animated.View
-          entering={FadeIn.duration(200)}
+          entering={reducedMotion ? undefined : FadeIn.duration(200)}
+          accessibilityLiveRegion={toast.kind === "error" ? "assertive" : "polite"}
           style={[styles.toast, toast.kind === "error" ? styles.toastError : styles.toastInfo]}
         >
           <Text style={styles.toastText}>{toast.message}</Text>
@@ -1037,6 +1059,10 @@ function MobileApp() {
       {retryQueue.length > 0 ? (
         <Pressable
           onPress={() => void retryQueuedMutations()}
+          accessibilityRole="button"
+          accessibilityLabel={`${retryQueue.length} pending ${
+            retryQueue.length === 1 ? "change" : "changes"
+          }. Retry sync.`}
           style={({ pressed }) => [styles.retryBanner, pressed && { opacity: 0.6 }]}
         >
           <Text style={styles.retryBannerText}>
@@ -1048,7 +1074,7 @@ function MobileApp() {
 
       {/* Sync indicator — a mono log line, not a badge. */}
       {pendingMutations > 0 ? (
-        <Text style={styles.syncText}>Syncing</Text>
+        <Text accessibilityLiveRegion="polite" style={styles.syncText}>Syncing</Text>
       ) : null}
 
       {activeTab === "inbox" ? (
@@ -1109,6 +1135,16 @@ function MobileApp() {
               tabBarHeight={tabBarHeight}
               tasks={workspaceTaskCorpus}
               isTaskDataLoading={isGoalsTaskDataLoading}
+              onCreateGoal={
+                canUseWorkspaceActions
+                  ? () => addTaskSheetRef.current?.open("goal")
+                  : undefined
+              }
+              onCreateTaskForGoal={
+                canUseWorkspaceActions
+                  ? (goalId) => addTaskSheetRef.current?.openForGoal(goalId)
+                  : undefined
+              }
               onOpenTask={canUseWorkspaceActions ? handleEditTask : undefined}
             />
           </ScreenErrorBoundary>
@@ -1117,7 +1153,7 @@ function MobileApp() {
 
       {activeTab === "insights" ? (
         <Animated.View entering={tabEnterAnimation} style={styles.tabScreen}>
-          <ScreenErrorBoundary screenName="Insights">
+          <ScreenErrorBoundary screenName="Progress">
             <InsightsScreen
               tasks={workspaceTaskCorpus}
               completedTasks={displayCompletedTasks}
@@ -1183,6 +1219,7 @@ function MobileApp() {
         applyDeadline={applyDeadline}
         today={today}
         tomorrow={tomorrow}
+        weekEnd={weekEnd}
         onOpenPreview={openPreview}
         onClosePreview={closePreview}
         onSetApplyDeadline={setApplyDeadline}
@@ -1453,23 +1490,26 @@ const styles = StyleSheet.create({
     textDecorationLine: "underline",
     textDecorationColor: colors.accent,
   },
-  // Toast — unenclosed: a thin 2px rule on the left + a line of copy. Error
-  // tone uses the rust accent, info uses copper. No border, no radius, no fill.
+  // Toasts use a quiet tonal fill and full hairline border so status is clear
+  // without relying on a decorative side stripe.
   toast: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
-    paddingLeft: spacing.md,
-    paddingVertical: spacing.xs,
-    borderLeftWidth: 2,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.md,
   },
   toastError: {
-    borderLeftColor: colors.error,
+    borderColor: colors.error,
+    backgroundColor: colors.errorMuted,
   },
   toastInfo: {
-    borderLeftColor: colors.accent,
+    borderColor: colors.borderFocus,
+    backgroundColor: colors.accentDim,
   },
   toastText: {
     flex: 1,
@@ -1486,15 +1526,16 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  // Retry banner + sync indicator — same left-rule language as the toast so
-  // the system-status surfaces share one visual idiom.
+  // Retry and sync surfaces share the same quiet tonal status language.
   retryBanner: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
-    paddingLeft: spacing.md,
-    paddingVertical: spacing.xs,
-    borderLeftWidth: 2,
-    borderLeftColor: colors.accent,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderFocus,
+    borderRadius: radii.md,
+    backgroundColor: colors.accentDim,
     flexDirection: "row",
     alignItems: "baseline",
     justifyContent: "space-between",
@@ -1516,16 +1557,18 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     paddingLeft: spacing.md,
   },
-  // Broken-sync banner — same left-rule idiom as the retry/sync surfaces, in
-  // the error tone. Only rendered while calendar sync is in an error state.
+  // Broken sync is persistent and actionable, so it uses an error-tinted
+  // surface rather than transient toast treatment.
   syncBrokenBanner: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
     marginBottom: spacing.xs,
-    paddingLeft: spacing.md,
-    paddingVertical: spacing.xs,
-    borderLeftWidth: 2,
-    borderLeftColor: colors.error,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.error,
+    borderRadius: radii.md,
+    backgroundColor: colors.errorMuted,
     flexDirection: "row",
     alignItems: "baseline",
     justifyContent: "space-between",

@@ -108,6 +108,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
             <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
             <Pressable
+              accessibilityRole="button"
               accessibilityLabel="Dismiss dialog"
               style={StyleSheet.absoluteFill}
               onPress={() => close(false)}
@@ -213,7 +214,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   actionBtn: {
-    minHeight: 38,
+    minHeight: 44,
     paddingHorizontal: spacing.md,
     borderRadius: radii.md,
     alignItems: "center",
@@ -239,7 +240,7 @@ const styles = StyleSheet.create({
   },
   destructiveText: {
     ...typography.bodyMd,
-    color: "#fff",
+    color: colors.textInverse,
     fontWeight: "600",
   },
 });

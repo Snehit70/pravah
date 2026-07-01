@@ -203,6 +203,20 @@ vi.mock("../hooks/useGoalMutations", () => ({
   }),
 }));
 
+vi.mock("../hooks/useReducedMotion", () => ({
+  useReducedMotion: () => false,
+}));
+
+vi.mock("react-native-safe-area-context", () => ({
+  useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
+}));
+
+vi.mock("../lib/feedback", () => ({
+  feedback: {
+    captureSaved: vi.fn(),
+  },
+}));
+
 // Import component after all mocks are set up.
 import { AddTaskSheet, type AddTaskSheetRef } from "../components/AddTaskSheet";
 
@@ -225,6 +239,7 @@ describe("AddTaskSheet", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
@@ -250,6 +265,23 @@ describe("AddTaskSheet", () => {
     });
 
     expect(mockOnSheetChange).toHaveBeenCalledWith(false);
+  });
+
+  it("opens directly in the shared New goal mode", () => {
+    render(
+      <AddTaskSheet
+        ref={ref}
+        onAdd={mockOnAdd}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+      />
+    );
+
+    act(() => {
+      ref.current?.open("goal");
+    });
+
+    expect(screen.getByPlaceholderText("What do you want to achieve?")).toBeTruthy();
   });
 
   it("creates inbox task with title only", async () => {
@@ -355,5 +387,37 @@ describe("AddTaskSheet", () => {
 
     expect(screen.getByText("Add task")).toBeTruthy();
     expect(screen.getByText("Discard")).toBeTruthy();
+  });
+
+  it("recomputes the later preset label when the sheet is reopened on a new day", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 3, 10, 0, 0));
+
+    render(
+      <AddTaskSheet
+        ref={ref}
+        onAdd={mockOnAdd}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+      />
+    );
+
+    act(() => {
+      ref.current?.open();
+    });
+
+    expect(screen.getByText("Later, Sun")).toBeTruthy();
+
+    act(() => {
+      ref.current?.close();
+    });
+
+    vi.setSystemTime(new Date(2026, 6, 5, 10, 0, 0));
+
+    act(() => {
+      ref.current?.open();
+    });
+
+    expect(screen.getByText("Later, Tue")).toBeTruthy();
   });
 });

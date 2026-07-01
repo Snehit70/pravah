@@ -11,6 +11,7 @@ import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, radii, spacing, typography } from "../../theme/tokens";
 import { dateLabel } from "../../lib/dates";
+import { useReducedMotion } from "../../hooks/useReducedMotion";
 import type {
   ManualTriageTarget,
   OverduePreviewGroup,
@@ -26,6 +27,7 @@ type OverdueSheetProps = {
   applyDeadline: boolean;
   today: string;
   tomorrow: string;
+  weekEnd: string;
   onOpenPreview: (goalId: string) => void;
   onClosePreview: () => void;
   onSetApplyDeadline: (next: boolean) => void;
@@ -33,13 +35,6 @@ type OverdueSheetProps = {
   onRescheduleAll: () => void;
   onManualTriage: (taskId: string, target: ManualTriageTarget) => void;
 };
-
-const MANUAL_ACTIONS: { key: ManualTriageTarget; label: string }[] = [
-  { key: "today", label: "Today" },
-  { key: "tomorrow", label: "Tomorrow" },
-  { key: "week", label: "This week" },
-  { key: "drop", label: "Drop" },
-];
 
 export function OverdueSheet({
   visible,
@@ -50,6 +45,7 @@ export function OverdueSheet({
   applyDeadline,
   today,
   tomorrow,
+  weekEnd,
   onOpenPreview,
   onClosePreview,
   onSetApplyDeadline,
@@ -58,16 +54,34 @@ export function OverdueSheet({
   onManualTriage,
 }: OverdueSheetProps) {
   const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
   const friendly = (iso: string) => dateLabel(iso, today, tomorrow);
+  const manualActions: { key: ManualTriageTarget; label: string }[] = [
+    { key: "today", label: "Today" },
+    { key: "tomorrow", label: "Tomorrow" },
+    { key: "week", label: `Week end, ${friendly(weekEnd)}` },
+    { key: "drop", label: "Drop" },
+  ];
   const totalOverdue =
     groups.reduce((sum, group) => sum + group.overdueCount, 0) + orphans.length;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType={reducedMotion ? "none" : "slide"}
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
       <View style={styles.overlay}>
         <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
-        <Pressable accessibilityLabel="Dismiss" style={StyleSheet.absoluteFill} onPress={onClose} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss overdue triage"
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+        />
 
         <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
           <View style={styles.handle} />
@@ -177,7 +191,7 @@ export function OverdueSheet({
                   <View key={task.taskId} style={styles.orphanRow}>
                     <Text style={styles.orphanTitle} numberOfLines={2}>{task.title}</Text>
                     <View style={styles.chipRow}>
-                      {MANUAL_ACTIONS.map((action) => (
+                        {manualActions.map((action) => (
                         <Pressable
                           key={action.key}
                           onPress={() => onManualTriage(task.taskId, action.key)}
@@ -292,9 +306,12 @@ const styles = StyleSheet.create({
   chipText: { ...typography.micro, color: colors.textSecondary },
   chipDropText: { color: colors.error },
   summaryBlock: {
-    borderLeftWidth: 2,
-    borderLeftColor: colors.accent,
-    paddingLeft: spacing.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderFocus,
+    borderRadius: radii.md,
+    backgroundColor: colors.accentDim,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     gap: 2,
     marginBottom: spacing.md,
   },

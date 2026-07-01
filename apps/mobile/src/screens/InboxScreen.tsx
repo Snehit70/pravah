@@ -21,6 +21,7 @@ import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useGoalLinks, useGoals } from "../hooks/useGoals";
 
 // Goal filter sentinels. Real goal ids never collide with these.
@@ -97,10 +98,12 @@ export function InboxScreen({
   onCapture,
   renderItem,
 }: InboxScreenProps) {
+  const reducedMotion = useReducedMotion();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterValue>("all");
   // "all" | "none" (unlinked) | a goal id.
   const [goalFilter, setGoalFilter] = useState<string>(GOAL_ALL);
+  const [showFilters, setShowFilters] = useState(false);
   const [showGoalPicker, setShowGoalPicker] = useState(false);
 
   const { goals } = useGoals();
@@ -119,6 +122,7 @@ export function InboxScreen({
     setQuery("");
     setFilter("all");
     setGoalFilter(GOAL_ALL);
+    setShowFilters(false);
     setShowGoalPicker(false);
   };
 
@@ -152,7 +156,7 @@ export function InboxScreen({
   const isFiltering = query.trim() !== "" || filter !== "all" || activeGoalFilter !== GOAL_ALL;
 
   const emptyBlock = isFiltering ? (
-    <Animated.View entering={FadeIn.duration(400)} style={styles.emptyWrap}>
+    <Animated.View entering={reducedMotion ? undefined : FadeIn.duration(400)} style={styles.emptyWrap}>
       <Text style={styles.emptyTitle}>No matches.</Text>
       <Text style={styles.emptyText}>Try a different word or clear filters.</Text>
       <Pressable
@@ -166,9 +170,9 @@ export function InboxScreen({
       </Pressable>
     </Animated.View>
   ) : (
-    <Animated.View entering={FadeIn.duration(400)} style={styles.emptyWrap}>
-      <Text style={styles.emptyTitle}>Nothing to carry forward.</Text>
-      <Text style={styles.emptyText}>When something comes up, capture it.</Text>
+    <Animated.View entering={reducedMotion ? undefined : FadeIn.duration(400)} style={styles.emptyWrap}>
+      <Text style={styles.emptyTitle}>Everything has a place.</Text>
+      <Text style={styles.emptyText}>Capture new loose work when it appears.</Text>
       <Pressable
         onPress={onCapture}
         hitSlop={12}
@@ -189,114 +193,149 @@ export function InboxScreen({
 
   const searchHeader = (
     <View style={styles.searchWrap}>
-      <TextInput
-        value={query}
-        onChangeText={setQuery}
-        placeholder="Search inbox"
-        placeholderTextColor={colors.textMuted}
-        style={styles.searchInput}
-        returnKeyType="search"
-        autoCorrect={false}
-        autoCapitalize="none"
-        clearButtonMode="while-editing"
-      />
-      <View style={styles.filterRow}>
-        {FILTERS.map((option) => {
-          const active = filter === option.value;
-          return (
-            <Pressable
-              key={option.value}
-              onPress={() => setFilter(option.value)}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              accessibilityLabel={`Filter ${option.label}`}
-              style={({ pressed }) => [
-                styles.filterChip,
-                active && styles.filterChipActive,
-                pressed && { opacity: 0.7 },
-              ]}
-            >
-              <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-                {option.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <Pressable
+        onPress={() => setShowFilters((s) => !s)}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel="Search or filter Inbox"
+        accessibilityState={{ expanded: showFilters }}
+        style={({ pressed }) => [styles.filterLauncher, pressed && { opacity: 0.72 }]}
+      >
+        <Text style={styles.filterLauncherText}>Search or filter</Text>
+        <Text style={styles.filterLauncherMeta}>
+          {isFiltering
+            ? `${filteredTasks.length}/${tasks.length}`
+            : `${tasks.length} unplaced`}
+        </Text>
+      </Pressable>
 
       {isFiltering ? (
-        <Text style={styles.filterCount}>
-          {filteredTasks.length} of {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
-        </Text>
+        <View style={styles.activePillRow}>
+          {query.trim() ? <Text style={styles.activePill}>Search: {query.trim()}</Text> : null}
+          {filter !== "all" ? <Text style={styles.activePill}>{filter.toUpperCase()}</Text> : null}
+          {activeGoalFilter !== GOAL_ALL ? <Text style={styles.activePill}>{goalFilterLabel}</Text> : null}
+          <Pressable
+            onPress={resetFilters}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Clear Inbox filters"
+          >
+            <Text style={styles.clearFilters}>Clear</Text>
+          </Pressable>
+        </View>
       ) : null}
 
-      {goals.length > 0 ? (
-        <View>
-          <Pressable
-            onPress={() => setShowGoalPicker((s) => !s)}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={`Goal filter: ${goalFilterLabel}. Tap to change.`}
-            style={({ pressed }) => [
-              styles.goalChip,
-              activeGoalFilter !== GOAL_ALL && styles.goalChipActive,
-              pressed && { opacity: 0.7 },
-            ]}
-          >
-            <Text style={styles.goalChipKicker}>Goal</Text>
-            <Text
-              style={[
-                styles.goalChipValue,
-                activeGoalFilter !== GOAL_ALL && styles.goalChipValueActive,
-              ]}
-              numberOfLines={1}
-            >
-              {goalFilterLabel}
-            </Text>
-            <Text style={styles.goalChipCaret}>{showGoalPicker ? "▾" : "▸"}</Text>
-          </Pressable>
+      {showFilters ? (
+        <Animated.View
+          entering={reducedMotion ? undefined : FadeIn.duration(150)}
+          exiting={reducedMotion ? undefined : FadeOut.duration(120)}
+          style={styles.filterPanel}
+        >
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search Inbox"
+            placeholderTextColor={colors.textMuted}
+            style={styles.searchInput}
+            returnKeyType="search"
+            autoCorrect={false}
+            autoCapitalize="none"
+            clearButtonMode="while-editing"
+          />
+          <View style={styles.filterRow}>
+            {FILTERS.map((option) => {
+              const active = filter === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={() => setFilter(option.value)}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`Filter ${option.label}`}
+                  style={({ pressed }) => [
+                    styles.filterChip,
+                    active && styles.filterChipActive,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
 
-          {showGoalPicker ? (
-            <Animated.View
-              entering={FadeIn.duration(150)}
-              exiting={FadeOut.duration(120)}
-              style={styles.goalPicker}
-            >
-              {[
-                { id: GOAL_ALL, text: "All goals" },
-                { id: GOAL_NONE, text: "No goal" },
-                ...goals,
-              ].map((option) => {
-                const active = activeGoalFilter === option.id;
-                return (
-                  <Pressable
-                    key={option.id}
-                    onPress={() => {
-                      setGoalFilter(option.id);
-                      setShowGoalPicker(false);
-                    }}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
-                    style={({ pressed }) => [
-                      styles.goalOption,
-                      active && styles.goalOptionActive,
-                      pressed && { opacity: 0.7 },
-                    ]}
-                  >
-                    <Text
-                      style={[styles.goalOptionText, active && styles.goalOptionTextActive]}
-                      numberOfLines={2}
-                    >
-                      {option.text}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </Animated.View>
+          {goals.length > 0 ? (
+            <View>
+              <Pressable
+                onPress={() => setShowGoalPicker((s) => !s)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Goal filter: ${goalFilterLabel}. Tap to change.`}
+                accessibilityState={{ expanded: showGoalPicker }}
+                style={({ pressed }) => [
+                  styles.goalChip,
+                  activeGoalFilter !== GOAL_ALL && styles.goalChipActive,
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <Text style={styles.goalChipKicker}>Goal</Text>
+                <Text
+                  style={[
+                    styles.goalChipValue,
+                    activeGoalFilter !== GOAL_ALL && styles.goalChipValueActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {goalFilterLabel}
+                </Text>
+                <Text style={styles.goalChipCaret}>{showGoalPicker ? "▾" : "▸"}</Text>
+              </Pressable>
+
+              {showGoalPicker ? (
+                <Animated.View
+                  entering={reducedMotion ? undefined : FadeIn.duration(150)}
+                  exiting={reducedMotion ? undefined : FadeOut.duration(120)}
+                  style={styles.goalPicker}
+                >
+                  {[
+                    { id: GOAL_ALL, text: "All goals" },
+                    { id: GOAL_NONE, text: "No goal" },
+                    ...goals,
+                  ].map((option) => {
+                    const active = activeGoalFilter === option.id;
+                    return (
+                      <Pressable
+                        key={option.id}
+                        onPress={() => {
+                          setGoalFilter(option.id);
+                          setShowGoalPicker(false);
+                        }}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                        style={({ pressed }) => [
+                          styles.goalOption,
+                          active && styles.goalOptionActive,
+                          pressed && { opacity: 0.7 },
+                        ]}
+                      >
+                        <Text
+                          style={[styles.goalOptionText, active && styles.goalOptionTextActive]}
+                          numberOfLines={2}
+                        >
+                          {option.text}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </Animated.View>
+              ) : null}
+            </View>
           ) : null}
-        </View>
+        </Animated.View>
       ) : null}
     </View>
   );
@@ -359,6 +398,54 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
     gap: spacing.sm,
   },
+  filterLauncher: {
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  filterLauncherText: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+  },
+  filterLauncherMeta: {
+    ...typography.micro,
+    color: colors.textMuted,
+  },
+  filterPanel: {
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radii.xl,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  activePillRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  activePill: {
+    ...typography.micro,
+    color: colors.accent,
+    backgroundColor: colors.accentDim,
+    borderRadius: radii.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  clearFilters: {
+    ...typography.micro,
+    color: colors.textMuted,
+    paddingHorizontal: spacing.sm,
+  },
   searchInput: {
     color: colors.textPrimary,
     ...typography.bodyMd,
@@ -366,7 +453,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    minHeight: 40,
+    minHeight: 48,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
   },
@@ -386,7 +473,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.bgCardGlass,
-    minHeight: 32,
+    minHeight: 44,
     justifyContent: "center",
   },
   filterChipActive: {

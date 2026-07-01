@@ -30,6 +30,9 @@ export interface UserPreferences {
   reducedMotionOverride: ReducedMotionOverride;
   accentColor: AccentColor;
   density: Density;
+  swipeActionsEnabled: boolean;
+  hapticsEnabled: boolean;
+  soundEnabled: boolean;
   bulkTaskCaptureEnabled: boolean;
   tabOrder: TabOrder;
 }
@@ -49,6 +52,9 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   reducedMotionOverride: "system",
   accentColor: "purple",
   density: "cozy",
+  swipeActionsEnabled: false,
+  hapticsEnabled: true,
+  soundEnabled: false,
   bulkTaskCaptureEnabled: false,
   tabOrder: [...DEFAULT_TAB_ORDER],
 };
@@ -132,6 +138,18 @@ function sanitize(raw: unknown): UserPreferences {
       ? r.accentColor
       : DEFAULT_PREFERENCES.accentColor,
     density: r.density === "compact" ? "compact" : "cozy",
+    swipeActionsEnabled:
+      typeof r.swipeActionsEnabled === "boolean"
+        ? r.swipeActionsEnabled
+        : DEFAULT_PREFERENCES.swipeActionsEnabled,
+    hapticsEnabled:
+      typeof r.hapticsEnabled === "boolean"
+        ? r.hapticsEnabled
+        : DEFAULT_PREFERENCES.hapticsEnabled,
+    soundEnabled:
+      typeof r.soundEnabled === "boolean"
+        ? r.soundEnabled
+        : DEFAULT_PREFERENCES.soundEnabled,
     bulkTaskCaptureEnabled:
       typeof r.bulkTaskCaptureEnabled === "boolean" ? r.bulkTaskCaptureEnabled : false,
     tabOrder: sanitizeTabOrder(r.tabOrder),
