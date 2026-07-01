@@ -101,7 +101,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         || seriesEnabled
     );
 
-    const laterThisWeek = nextLaterThisWeek();
+    const laterThisWeek = useMemo(() => nextLaterThisWeek(), [visible]);
     const modeOptions = useMemo<{ mode: ComposerMode; label: string }[]>(
       () => [
         { mode: "inbox", label: "Inbox" },
@@ -205,8 +205,8 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           deadline: deadlineResult.value,
           priority,
         });
-        setSaving(false);
         if (!created) {
+          setSaving(false);
           setError("You already have a goal with that name.");
           haptic.error();
           return;
@@ -226,6 +226,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
             return;
           }
         }
+        setSaving(false);
         feedback.captureSaved();
         reset();
         closeModal();

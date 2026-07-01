@@ -169,4 +169,21 @@ describe("CompletedTaskSheet", () => {
 
     expect(onDelete).not.toHaveBeenCalled();
   });
+
+  it("shows inbox-capture origin and hides goal action when unlinked", () => {
+    mockConfirm.mockResolvedValue(true);
+    const { deadline: _deadline, time: _time, ...noDeadlineTask } = task;
+
+    render(
+      <CompletedTaskSheet
+        task={noDeadlineTask}
+        onClose={vi.fn()}
+        onDelete={vi.fn()}
+        onReopen={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Inbox capture")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /view linked goal/i })).toBeNull();
+  });
 });

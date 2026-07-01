@@ -59,6 +59,7 @@ import {
   buildToolDefs,
   createHandleRegistry,
 } from "../lib/kairoTools";
+import { formatRelative } from "../lib/formatRelative";
 import {
   runKairoAgent,
   type ApplyAgentActions,
@@ -101,18 +102,6 @@ type KairoProps = {
 };
 
 const DEFERRED_LOADING_TEXT = "Loading your workspace... one moment.";
-
-function formatRelative(updatedAt: number): string {
-  const diff = Date.now() - updatedAt;
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(updatedAt).toLocaleDateString();
-}
 
 function buildGeminiRequestUrl(baseUrl: string, model: string, apiKey: string): string {
   const modelName = encodeURIComponent(model.trim());
@@ -213,6 +202,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   const [val, setVal] = useState("");
   const [thinking, setThinking] = useState(false);
   const [config, setConfig] = useState<KairoConfig | null>(null);
+  const [configLoaded, setConfigLoaded] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   // Live status line shown in the thinking skeleton, driven by the agent's
   // onProgress callback ("Checking your inbox…", "Updating your tasks…").
@@ -299,12 +289,17 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     // recomputes starters without needing a close/re-open.
     const timer = setInterval(refreshToday, 60_000);
     let cancelled = false;
+    setConfigLoaded(false);
     void getKairoConfig()
       .then((c) => {
-        if (!cancelled) setConfig(c);
+        if (!cancelled) {
+          setConfig(c);
+          setConfigLoaded(true);
+        }
       })
       .catch((error) => {
         mobileLogger.warn("kairo_config_load_failed", { errorType: classifyError(error) });
+        if (!cancelled) setConfigLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -347,7 +342,8 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     () => buildKairoStarters(tasks, inboxTasks, today),
     [tasks, inboxTasks, today]
   );
-  const isConfigured = config ? isKairoConfigured(config) : false;
+  const isConfigPending = open && !configLoaded;
+  const isConfigured = configLoaded && config ? isKairoConfigured(config) : false;
   const setupSummary = config
     ? `${getKairoProviderLabel(config.providerFormat)} · ${config.model}`
     : "Loading provider";
@@ -969,9 +965,13 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
               <Text style={styles.contextMeta}>unplaced tasks</Text>
             </View>
           </View>
-          <Text style={styles.contextStatusLabel}>{isConfigured ? "Ready" : "Setup needed"}</Text>
+          <Text style={styles.contextStatusLabel}>
+            {isConfigPending ? "Loading" : isConfigured ? "Ready" : "Setup needed"}
+          </Text>
           <Text style={styles.contextStatusText}>
-            {isConfigured
+            {isConfigPending
+              ? "Checking your saved provider configuration."
+              : isConfigured
               ? setupSummary
               : "Add a provider, API key, base URL, and model in Settings → Kairo."}
           </Text>

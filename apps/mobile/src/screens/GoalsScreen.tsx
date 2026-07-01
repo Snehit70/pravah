@@ -12,7 +12,7 @@
  * comment). Delete-and-readd is the manual reorder path until that's fixed.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -449,6 +449,7 @@ export function GoalsScreen({
   const { goals, isHydrated } = useGoals();
   const links = useGoalLinks();
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
+  const appliedFocusGoalIdRef = useRef<string | null>(null);
 
   // The goal detail is a native Modal that stacks above the bottom-sheet
   // editor, so close it first and let it dismiss before opening the task.
@@ -549,6 +550,8 @@ export function GoalsScreen({
   useEffect(() => {
     if (!focusGoalId) return;
     if (!sortedGoals.some((goal) => goal.id === focusGoalId)) return;
+    if (appliedFocusGoalIdRef.current === focusGoalId) return;
+    appliedFocusGoalIdRef.current = focusGoalId;
     const timeout = setTimeout(() => setSelectedGoalId(focusGoalId), 0);
     return () => clearTimeout(timeout);
   }, [focusGoalId, sortedGoals]);
@@ -585,7 +588,18 @@ export function GoalsScreen({
         renderItem={({ item, index }) => {
           const progress = progressByGoal.get(item.id) ?? { total: 0, done: 0, ratio: 0 };
           const linkedTasks = tasksByGoal.get(item.id) ?? [];
-          const nextLinkedTask = linkedTasks.find((task) => !isTaskCompleted(task));
+          const nextLinkedTask = [...linkedTasks]
+            .filter((task) => !isTaskCompleted(task))
+            .sort((a, b) => {
+              const aHasDeadline = typeof a.deadline === "string";
+              const bHasDeadline = typeof b.deadline === "string";
+              if (aHasDeadline && bHasDeadline && a.deadline !== b.deadline) {
+                return a.deadline!.localeCompare(b.deadline!);
+              }
+              if (aHasDeadline !== bHasDeadline) return aHasDeadline ? -1 : 1;
+              if (a.position !== b.position) return a.position - b.position;
+              return a.createdAt - b.createdAt;
+            })[0];
           const hasTasks = progress.total > 0;
           const showLinkedLoading = isTaskDataLoading && !hasTasks;
           const isComplete = hasTasks && progress.done === progress.total;

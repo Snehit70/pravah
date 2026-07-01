@@ -204,7 +204,7 @@ export function InboxScreen({
               : `${tasks.length} task${tasks.length === 1 ? "" : "s"} without a Deadline`}
           </Text>
         </View>
-        {tasks.length > 0 ? <Text style={styles.queueMeta}>Schedule first</Text> : null}
+        {!isFiltering && tasks.length > 0 ? <Text style={styles.queueMeta}>Schedule first</Text> : null}
       </View>
 
       {!isFiltering && tasks.length > 0 ? (

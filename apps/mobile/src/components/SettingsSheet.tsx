@@ -129,13 +129,13 @@ const TASK_COLOR_OPTIONS: Array<{
     value: "teal",
     label: "Teal",
     description: "Cooler task emphasis for quieter review sessions.",
-    swatch: colors.success,
+    swatch: "#3e7b78",
   },
   {
     value: "rose",
     label: "Rose",
     description: "Sharper task emphasis for high-attention queues.",
-    swatch: colors.error,
+    swatch: "#9d586f",
   },
 ];
 const READ_ONLY_AUTOMATION_SCOPES = ["tasks:read", "review:read", "sync:read"] as const;
@@ -2372,9 +2372,14 @@ const styles = StyleSheet.create({
     color: colors.accent,
   },
   optionGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: spacing.sm,
   },
   optionCard: {
+    minWidth: 0,
+    flexBasis: "48%",
+    flexGrow: 1,
     padding: spacing.md,
     borderRadius: radii.lg,
     backgroundColor: colors.bgSurface,
@@ -2400,9 +2405,14 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   swatchGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: spacing.sm,
   },
   swatchOption: {
+    minWidth: 0,
+    flexBasis: "48%",
+    flexGrow: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,

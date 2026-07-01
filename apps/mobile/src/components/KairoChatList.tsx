@@ -10,6 +10,7 @@ import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import type { ChatMeta } from "../lib/kairoChatStorage";
+import { formatRelative } from "../lib/formatRelative";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { useConfirm } from "../hooks/useConfirm";
 
@@ -21,18 +22,6 @@ type Props = {
   onDelete: (id: string) => void;
   onClose: () => void;
 };
-
-function formatRelative(updatedAt: number): string {
-  const diff = Date.now() - updatedAt;
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(updatedAt).toLocaleDateString();
-}
 
 export function KairoChatList({
   chats,
