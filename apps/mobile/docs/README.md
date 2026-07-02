@@ -9,6 +9,7 @@ loading behavior, or Android-specific ergonomics.
 
 - `architecture.md` - current mobile module map, data flow, and ownership boundaries
 - `ux-orchestration.md` - loading strategy, keyboard behavior, motion rules, and settings UX
+- `android-build-performance.md` - Android Gradle build tuning, expected speedups, and why (not Bazel)
 
 ## Quick Facts
 
