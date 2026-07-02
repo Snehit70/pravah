@@ -19,6 +19,7 @@ import * as SecureStore from "expo-secure-store";
 import appJson from "../../app.json";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import { getKairoSettings } from "../lib/kairoConfig";
 import type { NotificationPermissionState } from "../lib/notifications";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { useUserPreferences } from "../hooks/useUserPreferences";
@@ -26,7 +27,7 @@ import { useReducedMotion } from "../hooks/useReducedMotion";
 import { getOrCreateDeviceId } from "../lib/deviceIdentity";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
 import { classifyError, mobileLogger } from "../lib/logger";
-import { ArrowUpRightIcon, ChevronRightIcon } from "./UiIcons";
+import { ArrowUpRightIcon, ChatBubbleIcon, ChevronLeftIcon, ChevronRightIcon } from "./UiIcons";
 import {
   moveTabOrder,
   resolveTabOrder,
@@ -35,7 +36,6 @@ import {
 } from "../lib/tabOrder";
 import {
   INITIAL_SETTINGS_NAVIGATION,
-  SETTINGS_CATEGORY_CONTROLS,
   SETTINGS_CATEGORY_META,
   SETTINGS_CATEGORY_ORDER,
   settingsNavigationReducer,
@@ -151,6 +151,13 @@ type CategoryIconProps = {
   size?: number;
 };
 
+type SettingsHomeStatusTone = "success" | "warning" | "error" | "neutral";
+
+type SettingsHomeStatus = {
+  label: string;
+  tone: SettingsHomeStatusTone;
+};
+
 function iconFrame(color: string, size: number) {
   return {
     width: size,
@@ -220,6 +227,7 @@ function InfoIcon({ color, size = 18 }: CategoryIconProps) {
 const SETTINGS_CATEGORY_ICONS: Partial<
   Record<SettingsCategoryKey, (props: CategoryIconProps) => JSX.Element>
 > = {
+  kairo: ChatBubbleIcon,
   sync: SyncIcon,
   reminders: BellIcon,
   interaction: HandIcon,
@@ -322,6 +330,13 @@ function calendarActionLabel(health: SyncHealth, isSyncing: boolean): string {
   return "Sync now";
 }
 
+function settingsStatusColor(tone: SettingsHomeStatusTone): string {
+  if (tone === "success") return colors.success;
+  if (tone === "warning") return colors.warning;
+  if (tone === "error") return colors.error;
+  return colors.textSecondary;
+}
+
 type TabOrderEditorProps = {
   order: readonly TabKey[];
   onMove: (key: TabKey, direction: "up" | "down") => void;
@@ -421,19 +436,19 @@ function TabOrderEditor({ order, onMove }: TabOrderEditorProps) {
 
 function SettingsCategoryList({
   onOpenCategory,
+  statuses,
 }: {
   onOpenCategory: (category: SettingsCategoryKey) => void;
+  statuses: Record<SettingsCategoryKey, SettingsHomeStatus>;
 }) {
   return (
     <View style={styles.screenBody}>
-      <Text style={styles.leadText}>
-        Only one category at a time. Pick the surface you want to tune, then drill in.
-      </Text>
-      <View style={styles.categoryList}>
+      <View style={styles.categoryPanel}>
         {SETTINGS_CATEGORY_ORDER.map((category) => {
           const meta = SETTINGS_CATEGORY_META[category];
-          const controlCount = SETTINGS_CATEGORY_CONTROLS[category].length;
           const Icon = SETTINGS_CATEGORY_ICONS[category];
+          const status = statuses[category];
+          const isLast = category === SETTINGS_CATEGORY_ORDER[SETTINGS_CATEGORY_ORDER.length - 1];
           return (
             <Pressable
               key={category}
@@ -443,12 +458,13 @@ function SettingsCategoryList({
               accessibilityLabel={`Open ${meta.title} settings`}
               style={({ pressed }) => [
                 styles.categoryCard,
+                !isLast && styles.categoryCardBorder,
                 pressed && { opacity: 0.72 },
               ]}
             >
               {Icon ? (
                 <View style={styles.categoryIconWrap}>
-                  <Icon color={colors.textSecondary} />
+                  <Icon color={colors.textSecondary} size={18} />
                 </View>
               ) : null}
               <View style={styles.categoryCopy}>
@@ -456,8 +472,15 @@ function SettingsCategoryList({
                 <Text style={styles.categorySummary}>{meta.summary}</Text>
               </View>
               <View style={styles.categoryMeta}>
-                <Text style={styles.categoryCount}>{controlCount}</Text>
-                <ChevronRightIcon color={colors.textMuted} size={16} />
+                <Text
+                  style={[
+                    styles.categoryStatus,
+                    { color: settingsStatusColor(status.tone) },
+                  ]}
+                >
+                  {status.label}
+                </Text>
+                <ChevronRightIcon color={colors.textDim} size={16} />
               </View>
             </Pressable>
           );
@@ -1772,6 +1795,10 @@ export function SettingsSheet({
   const [isIssuingBootstrapToken, setIsIssuingBootstrapToken] = useState(false);
   const [revokingCredentialId, setRevokingCredentialId] =
     useState<Id<"automationCredentials"> | null>(null);
+  const [kairoHomeStatus, setKairoHomeStatus] = useState<SettingsHomeStatus>({
+    label: "Checking",
+    tone: "neutral",
+  });
   const issueBootstrapToken = useMutation(api.automation.issueBootstrapToken);
   const revokeCredential = useMutation(api.automation.revokeCredential);
   const automationCredentials = useQuery(api.automation.listCredentials, {}) ?? [];
@@ -1797,6 +1824,28 @@ export function SettingsSheet({
     if (navigation.screen !== "detail" || navigation.category !== "about" || deviceId) return;
     void getOrCreateDeviceId().then(setDeviceId);
   }, [deviceId, navigation, visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    void getKairoSettings()
+      .then((settings) => {
+        if (cancelled) return;
+        const profile = settings.profiles[settings.defaultProvider];
+        setKairoHomeStatus(
+          profile.apiKey
+            ? { label: "Ready", tone: "success" }
+            : { label: "Needs setup", tone: "warning" },
+        );
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setKairoHomeStatus({ label: "Issue", tone: "error" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible]);
 
   const handleClose = useCallback(() => {
     Keyboard.dismiss();
@@ -1933,6 +1982,29 @@ export function SettingsSheet({
       ? SETTINGS_CATEGORY_META[navigation.category].title
       : "Settings";
 
+  const settingsHomeStatuses: Record<SettingsCategoryKey, SettingsHomeStatus> = {
+    kairo: kairoHomeStatus,
+    sync:
+      calendarSyncHealth === "error" || Boolean(calendarLastError) || Boolean(gmailLastError)
+        ? { label: "Attention", tone: "error" }
+        : isCalendarSyncing || isGoogleToggleSaving || isGmailToggleSaving
+          ? { label: "Syncing", tone: "neutral" }
+          : calendarSyncEnabled || gmailSyncEnabled
+            ? { label: "All synced", tone: "success" }
+            : { label: "Off", tone: "neutral" },
+    reminders: notificationsEnabled
+      ? { label: "On", tone: "success" }
+      : { label: "Off", tone: "warning" },
+    interaction: prefs.swipeActionsEnabled
+      ? { label: "Swipe on", tone: "neutral" }
+      : { label: "Swipe off", tone: "neutral" },
+    appearance: { label: "Geist", tone: "neutral" },
+    about: {
+      label: APP_VERSION.startsWith("v") ? APP_VERSION : `v${APP_VERSION}`,
+      tone: "neutral",
+    },
+  };
+
   return (
     <Modal
       visible={visible}
@@ -1959,20 +2031,10 @@ export function SettingsSheet({
               accessibilityLabel={navigation.screen === "detail" ? "Back" : "Close settings"}
               style={({ pressed }) => [styles.headerAction, pressed && { opacity: 0.6 }]}
             >
-              <Text style={styles.headerActionText}>
-                {navigation.screen === "detail" ? "Back" : "Close"}
-              </Text>
+              <ChevronLeftIcon color={colors.textPrimary} size={20} />
             </Pressable>
             <Text style={styles.headerTitle}>{headerTitle}</Text>
-            <Pressable
-              onPress={handleClose}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel="Close settings"
-              style={({ pressed }) => [styles.headerAction, pressed && { opacity: 0.6 }]}
-            >
-              <Text style={styles.headerActionText}>Done</Text>
-            </Pressable>
+            <View style={styles.headerSpacer} />
           </View>
         </View>
 
@@ -1994,7 +2056,10 @@ export function SettingsSheet({
             keyboardShouldPersistTaps="handled"
           >
             {navigation.screen === "list" ? (
-              <SettingsCategoryList onOpenCategory={handleOpenCategory} />
+              <SettingsCategoryList
+                onOpenCategory={handleOpenCategory}
+                statuses={settingsHomeStatuses}
+              />
             ) : (
               renderDetailScreen(navigation, {
                 prefs,
@@ -2083,17 +2148,20 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   headerAction: {
-    minWidth: 56,
-  },
-  headerActionText: {
-    ...typography.bodyMd,
-    color: colors.accent,
+    width: 40,
+    height: 40,
+    alignItems: "flex-start",
+    justifyContent: "center",
   },
   headerTitle: {
     flex: 1,
     textAlign: "center",
     ...typography.headline,
     color: colors.textPrimary,
+  },
+  headerSpacer: {
+    width: 40,
+    height: 40,
   },
   contentWrap: {
     flex: 1,
@@ -2137,31 +2205,33 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     lineHeight: 18,
   },
-  leadText: {
-    ...typography.bodyMd,
-    color: colors.textSecondary,
-    lineHeight: 22,
-  },
-  categoryList: {
-    gap: spacing.sm,
-  },
-  categoryCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    padding: spacing.lg,
+  categoryPanel: {
+    overflow: "hidden",
     borderRadius: radii.xl,
     backgroundColor: colors.bgCard,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
   },
+  categoryCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    minHeight: 78,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.bgCard,
+  },
+  categoryCardBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
+  },
   categoryCopy: {
     flex: 1,
-    gap: spacing.xs,
+    gap: 2,
   },
   categoryIconWrap: {
-    width: 34,
-    height: 34,
+    width: 36,
+    height: 36,
     borderRadius: radii.full,
     alignItems: "center",
     justifyContent: "center",
@@ -2179,12 +2249,12 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   categoryMeta: {
+    flexDirection: "row",
     alignItems: "center",
-    gap: 2,
+    gap: spacing.sm,
   },
-  categoryCount: {
-    ...typography.micro,
-    color: colors.textMuted,
+  categoryStatus: {
+    ...typography.bodyMd,
   },
   categoryChevron: {
     ...typography.title,

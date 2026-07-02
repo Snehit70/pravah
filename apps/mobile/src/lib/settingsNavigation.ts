@@ -30,27 +30,27 @@ export const SETTINGS_CATEGORY_META: Record<
 > = {
   kairo: {
     title: "Kairo",
-    summary: "Provider setup, starter pills, bootstrap tokens, and issued credentials.",
+    summary: "AI provider and status",
   },
   sync: {
     title: "Sync",
-    summary: "Google Calendar health, Gmail review, and connected account state.",
+    summary: "Data sync and accounts",
   },
   reminders: {
     title: "Reminders",
-    summary: "Notifications, morning digest, lead time, and quiet hours.",
+    summary: "Notifications and reminders",
   },
   interaction: {
     title: "Interaction",
-    summary: "Swipe, quick capture, sound, haptics, and motion preferences.",
+    summary: "Gestures and feedback",
   },
   appearance: {
     title: "Appearance",
-    summary: "Warm theme baseline, Geist typography, density, task color, and tab order.",
+    summary: "Theme and display",
   },
   about: {
     title: "About",
-    summary: "Version info, exports, diagnostics, account actions, and support links.",
+    summary: "Version and diagnostics",
   },
 };
 
