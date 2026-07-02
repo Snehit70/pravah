@@ -414,39 +414,40 @@ function SettingsCategoryList({
           const status = statuses[category];
           const isLast = category === SETTINGS_CATEGORY_ORDER[SETTINGS_CATEGORY_ORDER.length - 1];
           return (
-            <Pressable
-              key={category}
-              onPress={() => onOpenCategory(category)}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel={`Open ${meta.title} settings`}
-              style={({ pressed }) => [
-                styles.categoryCard,
-                !isLast && styles.categoryCardBorder,
-                pressed && { opacity: 0.72 },
-              ]}
-            >
-              {Icon ? (
-                <View style={styles.categoryIconWrap}>
-                  <Icon color={colors.textSecondary} size={18} />
+            <View key={category}>
+              <Pressable
+                onPress={() => onOpenCategory(category)}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${meta.title} settings`}
+                style={({ pressed }) => [
+                  styles.categoryCard,
+                  pressed && { opacity: 0.72 },
+                ]}
+              >
+                {Icon ? (
+                  <View style={styles.categoryIconWrap}>
+                    <Icon color={colors.textSecondary} size={18} />
+                  </View>
+                ) : null}
+                <View style={styles.categoryCopy}>
+                  <Text style={styles.categoryTitle}>{meta.title}</Text>
+                  <Text style={styles.categorySummary}>{meta.summary}</Text>
                 </View>
-              ) : null}
-              <View style={styles.categoryCopy}>
-                <Text style={styles.categoryTitle}>{meta.title}</Text>
-                <Text style={styles.categorySummary}>{meta.summary}</Text>
-              </View>
-              <View style={styles.categoryMeta}>
-                <Text
-                  style={[
-                    styles.categoryStatus,
-                    { color: settingsStatusColor(status.tone) },
-                  ]}
-                >
-                  {status.label}
-                </Text>
-                <ChevronRightIcon color={colors.textDim} size={16} />
-              </View>
-            </Pressable>
+                <View style={styles.categoryMeta}>
+                  <Text
+                    style={[
+                      styles.categoryStatus,
+                      { color: settingsStatusColor(status.tone) },
+                    ]}
+                  >
+                    {status.label}
+                  </Text>
+                  <ChevronRightIcon color={colors.textDim} size={16} />
+                </View>
+              </Pressable>
+              {!isLast ? <View style={styles.categoryDivider} /> : null}
+            </View>
           );
         })}
       </View>
@@ -2171,7 +2172,7 @@ const styles = StyleSheet.create({
   },
   categoryPanel: {
     overflow: "hidden",
-    borderRadius: 14,
+    borderRadius: radii.lg,
     backgroundColor: colors.bgCard,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
@@ -2185,9 +2186,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     backgroundColor: colors.bgCard,
   },
-  categoryCardBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+  categoryDivider: {
+    height: 1,
+    backgroundColor: colors.bgInput,
   },
   categoryCopy: {
     flex: 1,
@@ -2196,7 +2197,7 @@ const styles = StyleSheet.create({
   categoryIconWrap: {
     width: 36,
     height: 36,
-    borderRadius: radii.full,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.bgSurface,

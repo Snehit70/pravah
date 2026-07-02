@@ -25,7 +25,7 @@ loading behavior, or Android-specific ergonomics.
   - links: link task to goal / unlink task from goal
 - The Capture surface (`AddTaskSheet`) and Edit task surface (`EditTaskSheet`) are centered `Modal` components, not `BottomSheet`.
 - Kairo settings on mobile use `expo-secure-store`, not browser `localStorage`.
-- The settings sheet is a `@gorhom/bottom-sheet` surface and must remain keyboard-safe on Android.
+- Settings is a full-screen drill-down modal with category rows and detail screens.
 
 ## OTA Workflow (Android preview)
 
