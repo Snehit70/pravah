@@ -1986,7 +1986,7 @@ export function SettingsSheet({
     kairo: kairoHomeStatus,
     sync:
       calendarSyncHealth === "error" || Boolean(calendarLastError) || Boolean(gmailLastError)
-        ? { label: "Attention", tone: "error" }
+        ? { label: "Attention", tone: "warning" }
         : isCalendarSyncing || isGoogleToggleSaving || isGmailToggleSaving
           ? { label: "Syncing", tone: "neutral" }
           : calendarSyncEnabled || gmailSyncEnabled
@@ -1994,7 +1994,7 @@ export function SettingsSheet({
             : { label: "Off", tone: "neutral" },
     reminders: notificationsEnabled
       ? { label: "On", tone: "success" }
-      : { label: "Off", tone: "warning" },
+      : { label: "Off", tone: "neutral" },
     interaction: prefs.swipeActionsEnabled
       ? { label: "Swipe on", tone: "neutral" }
       : { label: "Swipe off", tone: "neutral" },
@@ -2207,7 +2207,7 @@ const styles = StyleSheet.create({
   },
   categoryPanel: {
     overflow: "hidden",
-    borderRadius: radii.xl,
+    borderRadius: 14,
     backgroundColor: colors.bgCard,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
@@ -2216,14 +2216,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    minHeight: 78,
+    minHeight: 74,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingVertical: 10,
     backgroundColor: colors.bgCard,
   },
   categoryCardBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderSubtle,
+    borderBottomColor: colors.border,
   },
   categoryCopy: {
     flex: 1,
@@ -2255,6 +2255,7 @@ const styles = StyleSheet.create({
   },
   categoryStatus: {
     ...typography.bodyMd,
+    fontFamily: "Geist_500Medium",
   },
   categoryChevron: {
     ...typography.title,
