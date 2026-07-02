@@ -125,6 +125,24 @@ async function listTasksByCompletedAtRange(
     .collect();
 }
 
+async function listTasksByCancelledAtRange(
+  ctx: TaskCtx,
+  tokenIdentifier: string,
+  args: { startMs?: number; endMs?: number } = {}
+) {
+  const startMs = args.startMs ?? 0;
+  const endMs = args.endMs;
+  return await ctx.db
+    .query("tasks")
+    .withIndex("by_owner_cancelled_at", (q) => {
+      const byOwner = q
+        .eq("ownerTokenIdentifier", tokenIdentifier)
+        .gte("cancelledAt", startMs);
+      return endMs === undefined ? byOwner : byOwner.lt("cancelledAt", endMs);
+    })
+    .collect();
+}
+
 function dedupeTasks(tasks: Doc<"tasks">[]) {
   const seen = new Set<string>();
   return tasks.filter((task) => {
@@ -140,34 +158,23 @@ async function getNextPositionForLane(
   tokenIdentifier: string,
   deadline?: string
 ) {
-  const deadlineIndex = deadline
-    ? ctx.db
-        .query("tasks")
-        .withIndex("by_owner_deadline_position", (q) =>
-          q.eq("ownerTokenIdentifier", tokenIdentifier).eq("deadline", deadline)
-        )
-    : null;
-  if (
-    deadlineIndex &&
-    "order" in deadlineIndex &&
-    typeof deadlineIndex.order === "function"
-  ) {
+  const deadlineIndex = ctx.db
+    .query("tasks")
+    .withIndex("by_owner_deadline_position", (q) =>
+      q.eq("ownerTokenIdentifier", tokenIdentifier).eq("deadline", deadline)
+    );
+
+  if ("order" in deadlineIndex && typeof deadlineIndex.order === "function") {
     const latestTask = await deadlineIndex.order("desc").first();
     return (latestTask?.position ?? -1) + 1;
   }
 
-  const tasks = await listOwnedTasks(ctx, tokenIdentifier);
-  let maxPosition = -1;
-  for (const task of tasks) {
-    if (isCancelledTask(task) || isCompletedTask(task)) continue;
-    if (deadline) {
-      if (getTaskDeadline(task) !== deadline) continue;
-    } else if (!isInboxTask(task)) {
-      continue;
-    }
-    maxPosition = Math.max(maxPosition, task.position);
-  }
-  return maxPosition + 1;
+  const tasks = await listTasksByExactDeadline(ctx, tokenIdentifier, deadline);
+  return (
+    tasks
+      .filter((task) => !isCancelledTask(task) && !isCompletedTask(task))
+      .reduce((maxPosition, task) => Math.max(maxPosition, task.position), -1) + 1
+  );
 }
 
 async function migrateNativeTaskRows(
@@ -231,7 +238,42 @@ export async function listTasksForOwner(
   tokenIdentifier: string,
   args: ListTasksArgs
 ) {
-  const tasks = await listOwnedTasks(ctx, tokenIdentifier);
+  let tasks: Doc<"tasks">[];
+
+  if (args.status === "inbox") {
+    const [inboxCandidates, legacyInboxTasks] = await Promise.all([
+      args.date
+        ? Promise.resolve([])
+        : listTasksByExactDeadline(ctx, tokenIdentifier, undefined),
+      listTasksByLegacyStatus(ctx, tokenIdentifier, "inbox"),
+    ]);
+    tasks = dedupeTasks([...inboxCandidates, ...legacyInboxTasks]);
+  } else if (args.status === "scheduled") {
+    const [deadlineTasks, legacyScheduledTasks] = await Promise.all([
+      args.date
+        ? listTasksByExactDeadline(ctx, tokenIdentifier, args.date)
+        : listTasksByDeadlineRange(ctx, tokenIdentifier),
+      listTasksByLegacyStatus(ctx, tokenIdentifier, "scheduled"),
+    ]);
+    tasks = dedupeTasks([...deadlineTasks, ...legacyScheduledTasks]);
+  } else if (args.status === "completed") {
+    const [completedTasks, legacyCompletedTasks] = await Promise.all([
+      listTasksByCompletedAtRange(ctx, tokenIdentifier),
+      listTasksByLegacyStatus(ctx, tokenIdentifier, "completed"),
+    ]);
+    tasks = dedupeTasks([...completedTasks, ...legacyCompletedTasks]);
+  } else if (args.status === "cancelled") {
+    const [cancelledTasks, legacyCancelledTasks] = await Promise.all([
+      listTasksByCancelledAtRange(ctx, tokenIdentifier),
+      listTasksByLegacyStatus(ctx, tokenIdentifier, "cancelled"),
+    ]);
+    tasks = dedupeTasks([...cancelledTasks, ...legacyCancelledTasks]);
+  } else if (args.date) {
+    tasks = await listTasksByExactDeadline(ctx, tokenIdentifier, args.date);
+  } else {
+    tasks = await listOwnedTasks(ctx, tokenIdentifier);
+  }
+
   const visible = tasks
     .filter((task) => {
       const state = getTaskState(task);
@@ -867,15 +909,25 @@ export const purgeExpiredCancelledTasks = internalMutation({
   args: {},
   handler: async (ctx) => {
     const cutoff = Date.now() - PURGE_GRACE_MS;
-    const tasks = await ctx.db.query("tasks").collect();
+    const [cancelledAtTasks, legacyCancelledTasks] = await Promise.all([
+      ctx.db
+        .query("tasks")
+        .withIndex("by_cancelled_at", (q) =>
+          q.gte("cancelledAt", 0).lt("cancelledAt", cutoff)
+        )
+        .collect(),
+      ctx.db
+        .query("tasks")
+        .withIndex("by_status", (q) => q.eq("status", "cancelled"))
+        .collect(),
+    ]);
 
     let purged = 0;
-    for (const task of tasks) {
+    for (const task of dedupeTasks([...cancelledAtTasks, ...legacyCancelledTasks])) {
       const cancelledAt = getTaskCancelledAt(task);
-      if (cancelledAt !== undefined && cancelledAt < cutoff) {
-        await ctx.db.delete(task._id);
-        purged += 1;
-      }
+      if (cancelledAt === undefined || cancelledAt >= cutoff) continue;
+      await ctx.db.delete(task._id);
+      purged += 1;
     }
     return { purged };
   },

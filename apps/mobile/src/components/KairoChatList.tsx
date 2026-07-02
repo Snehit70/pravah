@@ -10,8 +10,10 @@ import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import type { ChatMeta } from "../lib/kairoChatStorage";
+import { formatRelative } from "../lib/formatRelative";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { useConfirm } from "../hooks/useConfirm";
+import { ChatBubbleIcon, ChevronLeftIcon, PlusIcon } from "./UiIcons";
 
 type Props = {
   chats: ChatMeta[];
@@ -21,18 +23,6 @@ type Props = {
   onDelete: (id: string) => void;
   onClose: () => void;
 };
-
-function formatRelative(updatedAt: number): string {
-  const diff = Date.now() - updatedAt;
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(updatedAt).toLocaleDateString();
-}
 
 export function KairoChatList({
   chats,
@@ -58,7 +48,10 @@ export function KairoChatList({
           accessibilityRole="button"
           style={({ pressed }) => [pressed && { opacity: 0.6 }]}
         >
-          <Text style={styles.headerBack}>← Back</Text>
+          <View style={styles.headerInlineAction}>
+            <ChevronLeftIcon color={colors.textSecondary} size={16} />
+            <Text style={styles.headerBack}>Back</Text>
+          </View>
         </Pressable>
         <Text style={styles.headerTitle}>Chats</Text>
         <Pressable
@@ -68,14 +61,30 @@ export function KairoChatList({
           accessibilityRole="button"
           style={({ pressed }) => [pressed && { opacity: 0.6 }]}
         >
-          <Text style={styles.headerAction}>+ New</Text>
+          <View style={styles.headerInlineAction}>
+            <PlusIcon color={colors.accent} size={14} />
+            <Text style={styles.headerAction}>New</Text>
+          </View>
         </Pressable>
       </View>
 
       <BottomSheetScrollView contentContainerStyle={styles.listContent}>
         {sorted.length === 0 ? (
           <View style={styles.empty}>
-            <Text style={styles.emptyText}>No chats yet.</Text>
+            <View style={styles.emptyIconWrap}>
+              <ChatBubbleIcon color={colors.textSecondary} size={28} />
+            </View>
+            <Text style={styles.emptyTitle}>No chats yet.</Text>
+            <Text style={styles.emptyText}>Start one from the current workspace and it will appear here.</Text>
+            <Pressable
+              onPress={onCreate}
+              hitSlop={12}
+              accessibilityLabel="Start first chat"
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.emptyAction, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.emptyActionText}>New chat</Text>
+            </Pressable>
           </View>
         ) : (
           sorted.map((item) => {
@@ -137,6 +146,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderSubtle,
   },
+  headerInlineAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
   headerBack: {
     color: colors.textSecondary,
     ...typography.micro,
@@ -192,9 +206,34 @@ const styles = StyleSheet.create({
   empty: {
     paddingTop: spacing.xl,
     alignItems: "center",
+    gap: spacing.sm,
+  },
+  emptyIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  emptyTitle: {
+    color: colors.textPrimary,
+    ...typography.title,
   },
   emptyText: {
     color: colors.textMuted,
+    ...typography.bodyMd,
+    textAlign: "center",
+  },
+  emptyAction: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+  },
+  emptyActionText: {
+    color: colors.accent,
     ...typography.bodyMd,
   },
 });

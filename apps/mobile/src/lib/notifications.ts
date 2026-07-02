@@ -29,7 +29,6 @@ export async function initializeNotificationsAsync(): Promise<void> {
     importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 200, 150, 200],
     lightColor: "#c88445",
-    sound: "default",
   });
 }
 

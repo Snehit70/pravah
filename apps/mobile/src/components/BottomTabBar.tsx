@@ -1,10 +1,9 @@
-import { memo, useCallback, useEffect, useRef, type JSX } from "react";
+import { memo, useCallback, type JSX } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import Svg, { Circle, Line, Path } from "react-native-svg";
+import Svg, { Circle, Line, Path, Rect } from "react-native-svg";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
-  withSequence,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
@@ -24,12 +23,11 @@ type BottomTabBarProps = {
   tabOrder?: readonly TabKey[];
 };
 
-type IconProps = { filled: boolean; color: string; size: number };
+type IconProps = { color: string; size: number };
 
 // ── Icons ──────────────────────────────────────────────────────────────
-// Real Lucide paths (viewBox 0 0 24 24). Each renders an outline (inactive)
-// or a solid (active) variant from the same shape, so the active state is a
-// fill, not a pill. Two copies are stacked and cross-faded per tab.
+// Calm, literal metaphors on a stable 24x24 grid. Active state is expressed
+// through color and nearby chrome rather than by swapping to a different icon.
 
 const STROKE = 2.1;
 
@@ -46,70 +44,55 @@ function frame(color: string, size: number) {
   };
 }
 
-// Inbox — layers/stack. Active fills the top sheet only; the lower two stay
-// strokes so the stack still reads as distinct layers.
-function LayersIcon({ filled, color, size }: IconProps) {
+function InboxTrayIcon({ color, size }: IconProps) {
   return (
     <Svg {...frame(color, size)}>
-      <Path
-        fill={filled ? color : "none"}
-        d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"
-      />
-      <Path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12" />
-      <Path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17" />
+      <Path d="M3 8.5h18l-2 9.5H5L3 8.5Z" />
+      <Path d="M8 8.5V6.75A1.75 1.75 0 0 1 9.75 5h4.5A1.75 1.75 0 0 1 16 6.75V8.5" />
+      <Path d="M3.75 13h4.7l1.1 2h4.9l1.1-2h4.7" />
     </Svg>
   );
 }
 
-// Timeline — agenda rows. Leading markers fill when active; staggered line
-// lengths read as a schedule rather than a plain list.
-function AgendaIcon({ filled, color, size }: IconProps) {
-  const r = filled ? 1.7 : 1.4;
-  const dot = filled ? color : "none";
+function CalendarIcon({ color, size }: IconProps) {
   return (
     <Svg {...frame(color, size)}>
-      <Circle cx={4.5} cy={6} r={r} fill={dot} />
-      <Line x1={8.5} y1={6} x2={20} y2={6} />
-      <Circle cx={4.5} cy={12} r={r} fill={dot} />
-      <Line x1={8.5} y1={12} x2={16} y2={12} />
-      <Circle cx={4.5} cy={18} r={r} fill={dot} />
-      <Line x1={8.5} y1={18} x2={18.5} y2={18} />
+      <Rect x={3.5} y={5} width={17} height={15} rx={3} />
+      <Line x1={8} y1={3.75} x2={8} y2={7.25} />
+      <Line x1={16} y1={3.75} x2={16} y2={7.25} />
+      <Line x1={3.5} y1={9} x2={20.5} y2={9} />
+      <Rect x={7} y={12} width={3} height={3} rx={1} />
+      <Rect x={11} y={12} width={3} height={3} rx={1} />
+      <Rect x={15} y={12} width={3} height={3} rx={1} />
     </Svg>
   );
 }
 
-// Goals — mountain (Lucide mountain-snow). Active fills the peak solid.
-function MountainIcon({ filled, color, size }: IconProps) {
+function TargetIcon({ color, size }: IconProps) {
   return (
     <Svg {...frame(color, size)}>
-      <Path fill={filled ? color : "none"} d="m8 3 4 8 5-5 5 15H2L8 3z" />
-      <Path d="M4.14 15.08c2.62-1.57 5.24-1.43 7.86.42 2.74 1.94 5.49 2 8.23.19" />
+      <Circle cx={12} cy={12} r={7.25} />
+      <Circle cx={12} cy={12} r={3.75} />
+      <Circle cx={12} cy={12} r={1.35} fill={color} stroke="none" />
     </Svg>
   );
 }
 
-// Progress — flame. Active fills the whole flame.
-function FlameIcon({ filled, color, size }: IconProps) {
+function TrendIcon({ color, size }: IconProps) {
   return (
     <Svg {...frame(color, size)}>
-      <Path
-        fill={filled ? color : "none"}
-        d="M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4"
-      />
+      <Path d="M4 18.5h16" />
+      <Path d="M6 15.5 10 11l3 2.5 5-6" />
+      <Path d="M15.5 7.5H18v2.5" />
     </Svg>
   );
 }
 
-// Capture — thought bubble + spark. Always white-on-accent (it's the hero
-// action, not a destination), so no outline/fill toggle.
 function CaptureIcon({ color, size }: { color: string; size: number }) {
   return (
     <Svg {...frame(color, size)}>
-      <Path d="M5 5.5h14a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H9l-4 3.2V15.5H5a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2Z" />
-      <Path
-        fill={color}
-        d="M12 7.6c.25 1.9.9 2.55 2.8 2.8-1.9.25-2.55.9-2.8 2.8-.25-1.9-.9-2.55-2.8-2.8 1.9-.25 2.55-.9 2.8-2.8Z"
-      />
+      <Line x1={12} y1={5.25} x2={12} y2={18.75} />
+      <Line x1={5.25} y1={12} x2={18.75} y2={12} />
     </Svg>
   );
 }
@@ -119,10 +102,10 @@ function CaptureIcon({ color, size }: { color: string; size: number }) {
 type NavIcon = (p: IconProps) => JSX.Element;
 
 const NAV_TABS: Record<TabKey, { key: TabKey; label: string; Icon: NavIcon }> = {
-  inbox: { key: "inbox", label: TAB_LABELS.inbox, Icon: LayersIcon },
-  timeline: { key: "timeline", label: TAB_LABELS.timeline, Icon: AgendaIcon },
-  goals: { key: "goals", label: TAB_LABELS.goals, Icon: MountainIcon },
-  insights: { key: "insights", label: TAB_LABELS.insights, Icon: FlameIcon },
+  inbox: { key: "inbox", label: TAB_LABELS.inbox, Icon: InboxTrayIcon },
+  timeline: { key: "timeline", label: TAB_LABELS.timeline, Icon: CalendarIcon },
+  goals: { key: "goals", label: TAB_LABELS.goals, Icon: TargetIcon },
+  insights: { key: "insights", label: TAB_LABELS.insights, Icon: TrendIcon },
 };
 
 const ICON_SIZE = 22;
@@ -141,30 +124,9 @@ function NavTab({
   reducedMotion: boolean;
 }) {
   const press = useSharedValue(1);
-  const pop = useSharedValue(1);
-  const fade = useSharedValue(active ? 1 : 0); // 0 = outline, 1 = filled
-  const mounted = useRef(false);
-
-  useEffect(() => {
-    const target = active ? 1 : 0;
-    fade.set(reducedMotion ? target : withTiming(target, { duration: 200 }));
-    // Pop only when a tab *becomes* active by interaction, not on first mount.
-    if (active && mounted.current && !reducedMotion) {
-      pop.set(
-        withSequence(
-          withTiming(1.16, { duration: 120 }),
-          withSpring(1, { damping: 12, stiffness: 360 })
-        )
-      );
-    }
-    mounted.current = true;
-  }, [active, fade, pop, reducedMotion]);
-
   const iconStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: press.value * pop.value }],
+    transform: [{ scale: press.value }],
   }));
-  const outlineStyle = useAnimatedStyle(() => ({ opacity: 1 - fade.value }));
-  const filledStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
 
   const { Icon } = tab;
 
@@ -177,19 +139,18 @@ function NavTab({
       onPressOut={() => {
         if (!reducedMotion) press.set(withSpring(1, SPRING));
       }}
-      style={styles.tabItem}
       hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
       accessibilityRole="tab"
       accessibilityState={{ selected: active }}
       accessibilityLabel={tab.label}
+      style={({ pressed }) => [
+        styles.tabItem,
+        active && styles.tabItemActive,
+        pressed && { opacity: 0.78 },
+      ]}
     >
       <Animated.View style={[styles.iconWrap, iconStyle]}>
-        <Animated.View style={[styles.iconLayer, outlineStyle]}>
-          <Icon filled={false} color={colors.textSecondary} size={ICON_SIZE} />
-        </Animated.View>
-        <Animated.View style={[styles.iconLayer, filledStyle]}>
-          <Icon filled color={colors.accent} size={ICON_SIZE} />
-        </Animated.View>
+        <Icon color={active ? colors.accent : colors.textMuted} size={ICON_SIZE} />
       </Animated.View>
       <Text style={[styles.tabLabel, active && styles.tabLabelActive]} numberOfLines={1}>
         {tab.label}
@@ -333,19 +294,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: spacing.sm,
     gap: 2,
+    borderRadius: radii.full,
+  },
+  tabItemActive: {
+    backgroundColor: colors.accentDim,
   },
   iconWrap: {
     width: ICON_SIZE,
     height: ICON_SIZE,
     alignItems: "center",
     justifyContent: "center",
-  },
-  iconLayer: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    width: ICON_SIZE,
-    height: ICON_SIZE,
   },
   tabLabel: {
     ...typography.micro,

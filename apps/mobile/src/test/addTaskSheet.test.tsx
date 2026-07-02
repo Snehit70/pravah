@@ -334,7 +334,7 @@ describe("AddTaskSheet", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Set deadline Today" }));
     fireEvent.change(screen.getByTestId("title-input"), { target: { value: "Today task" } });
-    fireEvent.click(screen.getByText("Add task"));
+    fireEvent.click(screen.getByText("Schedule task"));
 
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
@@ -364,7 +364,7 @@ describe("AddTaskSheet", () => {
       ref.current?.open();
     });
 
-    const addBtn = screen.getByText("Add task");
+    const addBtn = screen.getByText("Capture task");
     expect(addBtn.parentElement).toHaveProperty("disabled", true);
   });
 
@@ -385,8 +385,82 @@ describe("AddTaskSheet", () => {
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
     fireEvent.change(titleInput, { target: { value: "Draft" } });
 
-    expect(screen.getByText("Add task")).toBeTruthy();
+    expect(screen.getByText("Capture task")).toBeTruthy();
     expect(screen.getByText("Discard")).toBeTruthy();
+  });
+
+  it("creates an optional first task when saving a goal from Capture", async () => {
+    render(
+      <AddTaskSheet
+        ref={ref}
+        onAdd={mockOnAdd}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+      />
+    );
+
+    act(() => {
+      ref.current?.open("goal");
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("What do you want to achieve?"), {
+      target: { value: "Launch parity redesign" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Optional next move"), {
+      target: { value: "Fix Settings first" },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Create goal"));
+    });
+
+    await waitFor(() => {
+      expect(mockOnAdd).toHaveBeenCalledWith({
+        title: "Fix Settings first",
+        description: undefined,
+        deadline: undefined,
+        time: undefined,
+        priority: undefined,
+        goalId: "g1",
+      });
+    });
+  });
+
+  it("keeps the goal draft open when the optional first task fails", async () => {
+    mockOnAdd.mockResolvedValueOnce(false);
+
+    render(
+      <AddTaskSheet
+        ref={ref}
+        onAdd={mockOnAdd}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+      />
+    );
+
+    act(() => {
+      ref.current?.open("goal");
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("What do you want to achieve?"), {
+      target: { value: "Launch parity redesign" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Optional next move"), {
+      target: { value: "Fix Settings first" },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Create goal"));
+    });
+
+    await waitFor(() => expect(mockOnAdd).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("modal")).toBeTruthy();
+    expect(screen.getByPlaceholderText("What do you want to achieve?").getAttribute("value")).toBe(
+      "Launch parity redesign"
+    );
+    expect(screen.getByPlaceholderText("Optional next move").getAttribute("value")).toBe(
+      "Fix Settings first"
+    );
   });
 
   it("recomputes the later preset label when the sheet is reopened on a new day", () => {

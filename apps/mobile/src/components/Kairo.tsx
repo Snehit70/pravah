@@ -37,9 +37,11 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { colors, fonts, motion, radii, spacing, typography } from "../theme/tokens";
 import { classifyError, createActionId, mobileLogger } from "../lib/logger";
+import { PlusIcon } from "./UiIcons";
 import {
   getKairoConfig,
   isKairoConfigured,
+  getKairoProviderLabel,
   type KairoConfig,
 } from "../lib/kairoConfig";
 import {
@@ -58,6 +60,7 @@ import {
   buildToolDefs,
   createHandleRegistry,
 } from "../lib/kairoTools";
+import { formatRelative } from "../lib/formatRelative";
 import {
   runKairoAgent,
   type ApplyAgentActions,
@@ -200,6 +203,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   const [val, setVal] = useState("");
   const [thinking, setThinking] = useState(false);
   const [config, setConfig] = useState<KairoConfig | null>(null);
+  const [configLoaded, setConfigLoaded] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   // Live status line shown in the thinking skeleton, driven by the agent's
   // onProgress callback ("Checking your inbox…", "Updating your tasks…").
@@ -286,12 +290,17 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     // recomputes starters without needing a close/re-open.
     const timer = setInterval(refreshToday, 60_000);
     let cancelled = false;
+    setConfigLoaded(false);
     void getKairoConfig()
       .then((c) => {
-        if (!cancelled) setConfig(c);
+        if (!cancelled) {
+          setConfig(c);
+          setConfigLoaded(true);
+        }
       })
       .catch((error) => {
         mobileLogger.warn("kairo_config_load_failed", { errorType: classifyError(error) });
+        if (!cancelled) setConfigLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -334,6 +343,14 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     () => buildKairoStarters(tasks, inboxTasks, today),
     [tasks, inboxTasks, today]
   );
+  const isConfigPending = open && !configLoaded;
+  const isConfigured = configLoaded && config ? isKairoConfigured(config) : false;
+  const setupSummary = config
+    ? `${getKairoProviderLabel(config.providerFormat)} · ${config.model}`
+    : "Loading provider";
+  const activeChatSummary = activeChat
+    ? `${Math.max(activeChat.messages.length - 1, 0)} turns · ${formatRelative(activeChat.updatedAt)}`
+    : "No chat loaded";
 
   // Live context meter. The base — system prompt + thin workspace context +
   // visible history — only changes when the workspace or conversation does, so
@@ -872,7 +889,6 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
             accessibilityRole="button"
             disabled={thinking}
           >
-            <Text style={styles.headerHistoryIcon}>⌕</Text>
             <Text style={styles.headerHistoryText}>Chat history</Text>
           </Pressable>
           <View style={styles.headerActions}>
@@ -888,7 +904,10 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
               accessibilityRole="button"
               disabled={thinking}
             >
-              <Text style={styles.headerNewText}>+ New</Text>
+              <View style={styles.headerInlineAction}>
+                <PlusIcon color={colors.accent} size={14} />
+                <Text style={styles.headerNewText}>New</Text>
+              </View>
             </Pressable>
             <Pressable
               onPress={() => sheetRef.current?.close()}
@@ -914,14 +933,13 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
           accessibilityRole="button"
           disabled={thinking}
         >
-          <KairoMark size={20} />
           <View style={styles.headerTitleCopy}>
             <Text style={styles.headerTitle} numberOfLines={1}>
               {activeChat?.title && activeChat.title !== "New chat"
                 ? activeChat.title
                 : "Kairo"}
             </Text>
-            <Text style={styles.headerTitleHint}>Tap to switch chats</Text>
+            <Text style={styles.headerTitleHint}>{activeChatSummary}</Text>
           </View>
         </Pressable>
       </View>
@@ -935,6 +953,31 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         {chatRows.map((item) => (
           <View key={item.id}>{renderChatRow({ item })}</View>
         ))}
+
+        <View style={styles.contextCard}>
+          <View style={styles.contextRow}>
+            <View style={styles.contextMetric}>
+              <Text style={styles.contextKicker}>Workspace</Text>
+              <Text style={styles.contextValue}>{tasks.length}</Text>
+              <Text style={styles.contextMeta}>tasks in context</Text>
+            </View>
+            <View style={styles.contextMetric}>
+              <Text style={styles.contextKicker}>Inbox</Text>
+              <Text style={styles.contextValue}>{inboxTasks.length}</Text>
+              <Text style={styles.contextMeta}>unplaced tasks</Text>
+            </View>
+          </View>
+          <Text style={styles.contextStatusLabel}>
+            {isConfigPending ? "Loading" : isConfigured ? "Ready" : "Setup needed"}
+          </Text>
+          <Text style={styles.contextStatusText}>
+            {isConfigPending
+              ? "Checking your saved provider configuration."
+              : isConfigured
+              ? setupSummary
+              : "Add a provider, API key, base URL, and model in Settings → Kairo."}
+          </Text>
+        </View>
 
         {/* Starters render on first paint only (no user messages yet). */}
         {msgs.length === 1 && !thinking && !deferredPromptPreview && prefs.kairoStarterPillsEnabled ? (
@@ -963,7 +1006,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
             hitSlop={12}
           >
             <Text style={styles.configBannerText}>
-              Set up your Kairo provider and API key →
+              Open Settings → Kairo and finish provider setup →
             </Text>
           </Pressable>
         ) : null}
@@ -1238,33 +1281,6 @@ function Thinking({ label }: { label?: string | null }) {
   );
 }
 
-/** Tiny gradient mark — RN can't do CSS gradient backgrounds without an SVG
- *  or LinearGradient, so a flat indigo disc with the brand glyph is good
- *  enough for a 20px header lockup. */
-function KairoMark({ size = 20 }: { size?: number }) {
-  return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        backgroundColor: colors.accent,
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <View
-        style={{
-          width: size * 0.32,
-          height: size * 0.32,
-          borderRadius: (size * 0.32) / 2,
-          backgroundColor: colors.bg,
-        }}
-      />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   sheetBg: {
     backgroundColor: colors.bg,
@@ -1293,7 +1309,6 @@ const styles = StyleSheet.create({
   headerTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
     marginTop: spacing.md,
     padding: spacing.sm,
     borderRadius: radii.lg,
@@ -1319,21 +1334,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
   },
-  headerHistoryButton: {
+  headerInlineAction: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
+  },
+  headerHistoryButton: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: spacing.sm,
     paddingVertical: 7,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.accent,
     backgroundColor: colors.accentSoft,
-  },
-  headerHistoryIcon: {
-    color: colors.accent,
-    fontFamily: fonts.sansSemibold,
-    fontSize: 13,
   },
   headerHistoryText: {
     color: colors.accent,
@@ -1519,6 +1533,44 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: spacing.sm,
     marginTop: spacing.sm,
+  },
+  contextCard: {
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  contextRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  contextMetric: {
+    flex: 1,
+    gap: 2,
+  },
+  contextKicker: {
+    color: colors.textMuted,
+    ...typography.micro,
+  },
+  contextValue: {
+    color: colors.textPrimary,
+    ...typography.title,
+  },
+  contextMeta: {
+    color: colors.textMuted,
+    ...typography.bodyMd,
+  },
+  contextStatusLabel: {
+    color: colors.textMuted,
+    ...typography.micro,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  contextStatusText: {
+    color: colors.textSecondary,
+    ...typography.bodyMd,
   },
   starterPill: {
     paddingHorizontal: spacing.md,

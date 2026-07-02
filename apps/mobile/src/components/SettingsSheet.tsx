@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useState, type JSX } from "react";
 import {
   Keyboard,
   Linking,
@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import Svg, { Path } from "react-native-svg";
 import { useMutation, useQuery } from "convex/react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
@@ -18,6 +19,7 @@ import * as SecureStore from "expo-secure-store";
 import appJson from "../../app.json";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import { getKairoSettings } from "../lib/kairoConfig";
 import type { NotificationPermissionState } from "../lib/notifications";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { useUserPreferences } from "../hooks/useUserPreferences";
@@ -25,6 +27,13 @@ import { useReducedMotion } from "../hooks/useReducedMotion";
 import { getOrCreateDeviceId } from "../lib/deviceIdentity";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
 import { classifyError, mobileLogger } from "../lib/logger";
+import { ArrowUpRightIcon, ChevronLeftIcon, ChevronRightIcon } from "./UiIcons";
+import AboutIconAsset from "../assets/icons/settings-about.svg";
+import AppearanceIconAsset from "../assets/icons/settings-appearance.svg";
+import InteractionIconAsset from "../assets/icons/settings-interaction.svg";
+import KairoIconAsset from "../assets/icons/settings-kairo.svg";
+import RemindersIconAsset from "../assets/icons/settings-reminders.svg";
+import SyncIconAsset from "../assets/icons/settings-sync.svg";
 import {
   moveTabOrder,
   resolveTabOrder,
@@ -33,13 +42,13 @@ import {
 } from "../lib/tabOrder";
 import {
   INITIAL_SETTINGS_NAVIGATION,
-  SETTINGS_CATEGORY_CONTROLS,
   SETTINGS_CATEGORY_META,
   SETTINGS_CATEGORY_ORDER,
   settingsNavigationReducer,
   type SettingsCategoryKey,
   type SettingsNavigationState,
 } from "../lib/settingsNavigation";
+import type { AccentColor, Density } from "../lib/userPreferences";
 import { KairoSettingsSection } from "./KairoSettingsSection";
 import { GmailReviewSection } from "./GmailReviewSection";
 import { AppUpdateSection } from "./AppUpdateSection";
@@ -94,11 +103,101 @@ type SettingsSheetProps = {
 };
 
 const REMINDER_LEAD_TIME_OPTIONS = [5, 15, 30, 60] as const;
+const DENSITY_OPTIONS: Array<{ value: Density; label: string; description: string }> = [
+  {
+    value: "cozy",
+    label: "Comfortable",
+    description: "The default thumb-safe spacing used across the redesign.",
+  },
+  {
+    value: "compact",
+    label: "Compact",
+    description: "Tighter task rows for review-heavy sessions.",
+  },
+];
+const TASK_COLOR_OPTIONS: Array<{
+  value: AccentColor;
+  label: string;
+  description: string;
+  swatch: string;
+}> = [
+  {
+    value: "purple",
+    label: "Indigo",
+    description: "Default Pravah selection and planning accent.",
+    swatch: colors.accent,
+  },
+  {
+    value: "copper",
+    label: "Copper",
+    description: "Warmer task emphasis for deadline-heavy planning.",
+    swatch: colors.deadline,
+  },
+  {
+    value: "teal",
+    label: "Teal",
+    description: "Cooler task emphasis for quieter review sessions.",
+    swatch: "#3e7b78",
+  },
+  {
+    value: "rose",
+    label: "Rose",
+    description: "Sharper task emphasis for high-attention queues.",
+    swatch: "#9d586f",
+  },
+];
 const READ_ONLY_AUTOMATION_SCOPES = ["tasks:read", "review:read", "sync:read"] as const;
 const APP_VERSION = appJson.expo?.version ?? "—";
 const REPO_URL = "https://github.com/Snehit70/pravah";
 const CHANGELOG_URL = `${REPO_URL}/blob/main/apps/mobile/CHANGELOG.md`;
 const ISSUES_URL = `${REPO_URL}/issues`;
+
+type CategoryIconProps = {
+  color: string;
+  size?: number;
+};
+
+type SettingsHomeStatusTone = "success" | "warning" | "error" | "neutral";
+
+type SettingsHomeStatus = {
+  label: string;
+  tone: SettingsHomeStatusTone;
+};
+
+function SyncIcon({ color: _color, size = 18 }: CategoryIconProps) {
+  return <SyncIconAsset width={size} height={size} />;
+}
+
+function KairoIcon({ color, size = 18 }: CategoryIconProps) {
+  return <KairoIconAsset width={size} height={size} color={color} />;
+}
+
+function BellIcon({ color: _color, size = 18 }: CategoryIconProps) {
+  return <RemindersIconAsset width={size} height={size} />;
+}
+
+function HandIcon({ color: _color, size = 18 }: CategoryIconProps) {
+  return <InteractionIconAsset width={size} height={size} />;
+}
+
+function SlidersIcon({ color: _color, size = 18 }: CategoryIconProps) {
+  return <AppearanceIconAsset width={size} height={size} />;
+}
+
+function InfoIcon({ color: _color, size = 18 }: CategoryIconProps) {
+  return <AboutIconAsset width={size} height={size} />;
+}
+
+const SETTINGS_CATEGORY_ICONS: Partial<
+  Record<SettingsCategoryKey, (props: CategoryIconProps) => JSX.Element>
+> = {
+  kairo: KairoIcon,
+  sync: SyncIcon,
+  reminders: BellIcon,
+  interaction: HandIcon,
+  appearance: SlidersIcon,
+  about: InfoIcon,
+};
 
 function formatClockLabel(value: string): string {
   const [hStr, mStr] = value.split(":");
@@ -193,6 +292,13 @@ function calendarActionLabel(health: SyncHealth, isSyncing: boolean): string {
   if (health === "error") return "Reconnect";
   if (health === "paused" || health === "disconnected") return "Enable and sync";
   return "Sync now";
+}
+
+function settingsStatusColor(tone: SettingsHomeStatusTone): string {
+  if (tone === "success") return colors.success;
+  if (tone === "warning") return colors.warning;
+  if (tone === "error") return colors.error;
+  return colors.textSecondary;
 }
 
 type TabOrderEditorProps = {
@@ -294,39 +400,54 @@ function TabOrderEditor({ order, onMove }: TabOrderEditorProps) {
 
 function SettingsCategoryList({
   onOpenCategory,
+  statuses,
 }: {
   onOpenCategory: (category: SettingsCategoryKey) => void;
+  statuses: Record<SettingsCategoryKey, SettingsHomeStatus>;
 }) {
   return (
     <View style={styles.screenBody}>
-      <Text style={styles.leadText}>
-        Only one category at a time. Pick the surface you want to tune, then drill in.
-      </Text>
-      <View style={styles.categoryList}>
+      <View style={styles.categoryPanel}>
         {SETTINGS_CATEGORY_ORDER.map((category) => {
           const meta = SETTINGS_CATEGORY_META[category];
-          const controlCount = SETTINGS_CATEGORY_CONTROLS[category].length;
+          const Icon = SETTINGS_CATEGORY_ICONS[category];
+          const status = statuses[category];
+          const isLast = category === SETTINGS_CATEGORY_ORDER[SETTINGS_CATEGORY_ORDER.length - 1];
           return (
-            <Pressable
-              key={category}
-              onPress={() => onOpenCategory(category)}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel={`Open ${meta.title} settings`}
-              style={({ pressed }) => [
-                styles.categoryCard,
-                pressed && { opacity: 0.72 },
-              ]}
-            >
-              <View style={styles.categoryCopy}>
-                <Text style={styles.categoryTitle}>{meta.title}</Text>
-                <Text style={styles.categorySummary}>{meta.summary}</Text>
-              </View>
-              <View style={styles.categoryMeta}>
-                <Text style={styles.categoryCount}>{controlCount}</Text>
-                <Text style={styles.categoryChevron}>›</Text>
-              </View>
-            </Pressable>
+            <View key={category}>
+              <Pressable
+                onPress={() => onOpenCategory(category)}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${meta.title} settings`}
+                style={({ pressed }) => [
+                  styles.categoryCard,
+                  pressed && { opacity: 0.72 },
+                ]}
+              >
+                {Icon ? (
+                  <View style={styles.categoryIconWrap}>
+                    <Icon color={colors.textSecondary} size={18} />
+                  </View>
+                ) : null}
+                <View style={styles.categoryCopy}>
+                  <Text style={styles.categoryTitle}>{meta.title}</Text>
+                  <Text style={styles.categorySummary}>{meta.summary}</Text>
+                </View>
+                <View style={styles.categoryMeta}>
+                  <Text
+                    style={[
+                      styles.categoryStatus,
+                      { color: settingsStatusColor(status.tone) },
+                    ]}
+                  >
+                    {status.label}
+                  </Text>
+                  <ChevronRightIcon color={colors.textDim} size={16} />
+                </View>
+              </Pressable>
+              {!isLast ? <View style={styles.categoryDivider} /> : null}
+            </View>
           );
         })}
       </View>
@@ -596,6 +717,23 @@ function SyncSection({
 }: SyncSectionProps) {
   return (
     <View style={styles.screenBody}>
+      <View style={styles.summaryRow}>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryKicker}>Calendar</Text>
+          <Text style={styles.summaryValue}>{syncHealthLabel(calendarSyncHealth)}</Text>
+          <Text style={styles.summaryMeta}>
+            {calendarSyncEnabled ? "Timeline import on" : "Timeline import off"}
+          </Text>
+        </View>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryKicker}>Gmail</Text>
+          <Text style={styles.summaryValue}>{formatStatusLabel(gmailSyncStatus)}</Text>
+          <Text style={styles.summaryMeta}>
+            {gmailSyncEnabled ? "Review capture on" : "Review capture off"}
+          </Text>
+        </View>
+      </View>
+
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <View style={styles.settingRow}>
           <View style={styles.settingCopy}>
@@ -767,6 +905,23 @@ function RemindersSection({
 }: RemindersSectionProps) {
   return (
     <View style={styles.screenBody}>
+      <View style={styles.summaryRow}>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryKicker}>Notifications</Text>
+          <Text style={styles.summaryValue}>{formatStatusLabel(notificationPermissionState)}</Text>
+          <Text style={styles.summaryMeta}>
+            {notificationsEnabled ? "Alerts available on this device" : "Permission still needed"}
+          </Text>
+        </View>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryKicker}>Morning digest</Text>
+          <Text style={styles.summaryValue}>{formatClockLabel(prefs.morningDigestTime)}</Text>
+          <Text style={styles.summaryMeta}>
+            {prefs.quietHoursEnabled ? "Quiet hours adjust delivery" : "No quiet hours set"}
+          </Text>
+        </View>
+      </View>
+
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <Text style={styles.settingLabel}>Notifications</Text>
         <Text style={styles.settingHelp}>
@@ -925,6 +1080,29 @@ function InteractionSection({ prefs, setPreference }: InteractionSectionProps) {
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Quick capture</Text>
+        <Text style={styles.settingHelp}>
+          Capture stays centered in the tab bar. Advanced creation tools stay hidden until
+          you choose to use them.
+        </Text>
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingMeta}>Bulk task capture</Text>
+            <Text style={styles.settingHelp}>
+              Create numbered task series and assign copies to multiple Goals.
+            </Text>
+          </View>
+          <Switch
+            value={prefs.bulkTaskCaptureEnabled}
+            onValueChange={(next) => void setPreference("bulkTaskCaptureEnabled", next)}
+            trackColor={{ false: colors.border, true: colors.accentSoft }}
+            thumbColor={prefs.bulkTaskCaptureEnabled ? colors.accent : colors.textMuted}
+            accessibilityLabel="Bulk task capture"
+          />
+        </View>
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard]}>
         <Text style={styles.settingLabel}>Task gestures</Text>
         <Text style={styles.settingHelp}>
           Keep visible actions available on every Task. Swipe actions are optional accelerators.
@@ -1027,29 +1205,102 @@ function AppearanceSection({
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Visual system</Text>
+        <Text style={styles.settingLabel}>Theme</Text>
         <Text style={styles.settingHelp}>
-          Warm light surfaces, Geist typography, and comfortable density are the
-          production baseline. Controls appear here only when another complete
-          visual system is available.
+          Warm light surfaces are the production theme. Dark or alternate themes stay out
+          until the full token set exists.
         </Text>
+        <View style={styles.selectionCardSelected}>
+          <View style={styles.selectionCopy}>
+            <Text style={styles.selectionTitle}>Warm light</Text>
+            <Text style={styles.selectionDescription}>
+              Paper neutrals, warm ink, and restrained indigo accent.
+            </Text>
+          </View>
+          <Text style={styles.selectionStatusText}>Active</Text>
+        </View>
       </View>
 
       <View style={[styles.settingBlock, styles.sectionCard]}>
-        <View style={styles.settingRow}>
-          <View style={styles.settingCopy}>
-            <Text style={styles.settingLabel}>Bulk task capture</Text>
-            <Text style={styles.settingHelp}>
-              Create numbered task series and assign copies to multiple goals.
+        <Text style={styles.settingLabel}>Typography</Text>
+        <Text style={styles.settingHelp}>
+          Geist is the only shipped font system. More fonts need full truncation,
+          line-height, and accessibility validation before they become settings.
+        </Text>
+        <View style={styles.selectionCardSelected}>
+          <View style={styles.selectionCopy}>
+            <Text style={styles.selectionTitle}>Geist</Text>
+            <Text style={styles.selectionDescription}>
+              Sans for product UI, Geist Mono for dates, counts, and compact metadata.
             </Text>
           </View>
-          <Switch
-            value={prefs.bulkTaskCaptureEnabled}
-            onValueChange={(next) => void setPreference("bulkTaskCaptureEnabled", next)}
-            trackColor={{ false: colors.border, true: colors.accentSoft }}
-            thumbColor={prefs.bulkTaskCaptureEnabled ? colors.accent : colors.textMuted}
-            accessibilityLabel="Bulk task capture"
-          />
+          <Text style={styles.selectionStatusText}>Active</Text>
+        </View>
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Density</Text>
+        <Text style={styles.settingHelp}>
+          Comfortable is the default. Compact tightens task rows without hiding actions.
+        </Text>
+        <View style={styles.optionGrid}>
+          {DENSITY_OPTIONS.map((option) => {
+            const active = prefs.density === option.value;
+            return (
+              <Pressable
+                key={option.value}
+                onPress={() => void setPreference("density", option.value)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`Use ${option.label} density`}
+                style={({ pressed }) => [
+                  styles.optionCard,
+                  active && styles.optionCardActive,
+                  pressed && { opacity: 0.72 },
+                ]}
+              >
+                <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>
+                  {option.label}
+                </Text>
+                <Text style={styles.optionDescription}>{option.description}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Task color</Text>
+        <Text style={styles.settingHelp}>
+          Choose the task emphasis color used by task rows. Status colors keep their
+          fixed meanings.
+        </Text>
+        <View style={styles.swatchGrid}>
+          {TASK_COLOR_OPTIONS.map((option) => {
+            const active = prefs.taskColorScheme === option.value;
+            return (
+              <Pressable
+                key={option.value}
+                onPress={() => void setPreference("taskColorScheme", option.value)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`Use ${option.label} task color`}
+                style={({ pressed }) => [
+                  styles.swatchOption,
+                  active && styles.optionCardActive,
+                  pressed && { opacity: 0.72 },
+                ]}
+              >
+                <View style={[styles.swatchDot, { backgroundColor: option.swatch }]} />
+                <View style={styles.selectionCopy}>
+                  <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>
+                    {option.label}
+                  </Text>
+                  <Text style={styles.optionDescription}>{option.description}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
 
@@ -1121,7 +1372,7 @@ function AboutSection({
           style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
         >
           <Text style={styles.linkRowText}>Report an issue</Text>
-          <Text style={styles.linkRowChevron}>↗</Text>
+          <ArrowUpRightIcon color={colors.textMuted} size={16} />
         </Pressable>
         <Pressable
           onPress={() => void Linking.openURL(REPO_URL)}
@@ -1131,7 +1382,7 @@ function AboutSection({
           style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
         >
           <Text style={styles.linkRowText}>GitHub repository</Text>
-          <Text style={styles.linkRowChevron}>↗</Text>
+          <ArrowUpRightIcon color={colors.textMuted} size={16} />
         </Pressable>
       </View>
 
@@ -1509,6 +1760,10 @@ export function SettingsSheet({
   const [isIssuingBootstrapToken, setIsIssuingBootstrapToken] = useState(false);
   const [revokingCredentialId, setRevokingCredentialId] =
     useState<Id<"automationCredentials"> | null>(null);
+  const [kairoHomeStatus, setKairoHomeStatus] = useState<SettingsHomeStatus>({
+    label: "Checking",
+    tone: "neutral",
+  });
   const issueBootstrapToken = useMutation(api.automation.issueBootstrapToken);
   const revokeCredential = useMutation(api.automation.revokeCredential);
   const automationCredentials = useQuery(api.automation.listCredentials, {}) ?? [];
@@ -1534,6 +1789,28 @@ export function SettingsSheet({
     if (navigation.screen !== "detail" || navigation.category !== "about" || deviceId) return;
     void getOrCreateDeviceId().then(setDeviceId);
   }, [deviceId, navigation, visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    void getKairoSettings()
+      .then((settings) => {
+        if (cancelled) return;
+        const profile = settings.profiles[settings.defaultProvider];
+        setKairoHomeStatus(
+          profile.apiKey
+            ? { label: "Ready", tone: "success" }
+            : { label: "Needs setup", tone: "warning" },
+        );
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setKairoHomeStatus({ label: "Issue", tone: "error" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible]);
 
   const handleClose = useCallback(() => {
     Keyboard.dismiss();
@@ -1670,6 +1947,29 @@ export function SettingsSheet({
       ? SETTINGS_CATEGORY_META[navigation.category].title
       : "Settings";
 
+  const settingsHomeStatuses: Record<SettingsCategoryKey, SettingsHomeStatus> = {
+    kairo: kairoHomeStatus,
+    sync:
+      calendarSyncHealth === "error" || Boolean(calendarLastError) || Boolean(gmailLastError)
+        ? { label: "Attention", tone: "warning" }
+        : isCalendarSyncing || isGoogleToggleSaving || isGmailToggleSaving
+          ? { label: "Syncing", tone: "neutral" }
+          : calendarSyncEnabled || gmailSyncEnabled
+            ? { label: "All synced", tone: "success" }
+            : { label: "Off", tone: "neutral" },
+    reminders: notificationsEnabled
+      ? { label: "On", tone: "success" }
+      : { label: "Off", tone: "neutral" },
+    interaction: prefs.swipeActionsEnabled
+      ? { label: "Swipe on", tone: "neutral" }
+      : { label: "Swipe off", tone: "neutral" },
+    appearance: { label: "Geist", tone: "neutral" },
+    about: {
+      label: APP_VERSION.startsWith("v") ? APP_VERSION : `v${APP_VERSION}`,
+      tone: "neutral",
+    },
+  };
+
   return (
     <Modal
       visible={visible}
@@ -1696,20 +1996,10 @@ export function SettingsSheet({
               accessibilityLabel={navigation.screen === "detail" ? "Back" : "Close settings"}
               style={({ pressed }) => [styles.headerAction, pressed && { opacity: 0.6 }]}
             >
-              <Text style={styles.headerActionText}>
-                {navigation.screen === "detail" ? "Back" : "Close"}
-              </Text>
+              <ChevronLeftIcon color={colors.textPrimary} size={20} />
             </Pressable>
             <Text style={styles.headerTitle}>{headerTitle}</Text>
-            <Pressable
-              onPress={handleClose}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel="Close settings"
-              style={({ pressed }) => [styles.headerAction, pressed && { opacity: 0.6 }]}
-            >
-              <Text style={styles.headerActionText}>Done</Text>
-            </Pressable>
+            <View style={styles.headerSpacer} />
           </View>
         </View>
 
@@ -1731,7 +2021,10 @@ export function SettingsSheet({
             keyboardShouldPersistTaps="handled"
           >
             {navigation.screen === "list" ? (
-              <SettingsCategoryList onOpenCategory={handleOpenCategory} />
+              <SettingsCategoryList
+                onOpenCategory={handleOpenCategory}
+                statuses={settingsHomeStatuses}
+              />
             ) : (
               renderDetailScreen(navigation, {
                 prefs,
@@ -1820,17 +2113,20 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   headerAction: {
-    minWidth: 56,
-  },
-  headerActionText: {
-    ...typography.bodyMd,
-    color: colors.accent,
+    width: 40,
+    height: 40,
+    alignItems: "flex-start",
+    justifyContent: "center",
   },
   headerTitle: {
     flex: 1,
     textAlign: "center",
     ...typography.headline,
     color: colors.textPrimary,
+  },
+  headerSpacer: {
+    width: 40,
+    height: 40,
   },
   contentWrap: {
     flex: 1,
@@ -1845,27 +2141,68 @@ const styles = StyleSheet.create({
   screenBody: {
     gap: spacing.md,
   },
-  leadText: {
-    ...typography.bodyMd,
-    color: colors.textSecondary,
-    lineHeight: 22,
-  },
-  categoryList: {
+  summaryRow: {
+    flexDirection: "row",
     gap: spacing.sm,
+  },
+  summaryCard: {
+    flex: 1,
+    minHeight: 88,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    gap: 3,
+  },
+  summaryKicker: {
+    ...typography.micro,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  summaryValue: {
+    ...typography.title,
+    color: colors.textPrimary,
+  },
+  summaryMeta: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    lineHeight: 18,
+  },
+  categoryPanel: {
+    overflow: "hidden",
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
   },
   categoryCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radii.xl,
+    minHeight: 74,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 10,
     backgroundColor: colors.bgCard,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
+  },
+  categoryDivider: {
+    height: 1,
+    backgroundColor: colors.bgInput,
   },
   categoryCopy: {
     flex: 1,
-    gap: spacing.xs,
+    gap: 2,
+  },
+  categoryIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
   },
   categoryTitle: {
     ...typography.title,
@@ -1877,12 +2214,13 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   categoryMeta: {
+    flexDirection: "row",
     alignItems: "center",
-    gap: 2,
+    gap: spacing.sm,
   },
-  categoryCount: {
-    ...typography.micro,
-    color: colors.textMuted,
+  categoryStatus: {
+    ...typography.bodyMd,
+    fontFamily: "Geist_500Medium",
   },
   categoryChevron: {
     ...typography.title,
@@ -2139,6 +2477,92 @@ const styles = StyleSheet.create({
   segmentTextActive: {
     color: colors.accent,
     fontFamily: "Geist_600SemiBold",
+  },
+  selectionCardSelected: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.accentDim,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderFocus,
+  },
+  selectionCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  selectionTitle: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+    fontFamily: "Geist_600SemiBold",
+  },
+  selectionDescription: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    lineHeight: 18,
+  },
+  selectionStatusText: {
+    ...typography.micro,
+    color: colors.accent,
+  },
+  optionGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  optionCard: {
+    minWidth: 0,
+    flexBasis: "48%",
+    flexGrow: 1,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    gap: 3,
+  },
+  optionCardActive: {
+    backgroundColor: colors.accentDim,
+    borderColor: colors.borderFocus,
+  },
+  optionTitle: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+    fontFamily: "Geist_600SemiBold",
+  },
+  optionTitleActive: {
+    color: colors.accent,
+  },
+  optionDescription: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    lineHeight: 18,
+  },
+  swatchGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  swatchOption: {
+    minWidth: 0,
+    flexBasis: "48%",
+    flexGrow: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  swatchDot: {
+    width: 22,
+    height: 22,
+    borderRadius: radii.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
   tabOrderPreview: {
     flexDirection: "row",

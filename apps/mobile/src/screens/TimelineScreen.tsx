@@ -8,11 +8,12 @@
  * currently disabled (RNDFL@4 / Reanimated@4 incompatibility).
  */
 
-import { useState, type JSX } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import type { RenderItemParams } from "react-native-draggable-flatlist";
-import { colors, spacing, typography } from "../theme/tokens";
+import Svg, { Line, Rect } from "react-native-svg";
+import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
 import { TimelineSectionHeader } from "../components/TimelineSectionHeader";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
@@ -94,6 +95,27 @@ function buildTimelineRows(
   return rows;
 }
 
+function TimelineEmptyIcon({ size = 28 }: { size?: number }) {
+  return (
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={colors.textSecondary}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <Rect x={3.5} y={5} width={17} height={15} rx={3} />
+      <Line x1={8} y1={3.75} x2={8} y2={7.25} />
+      <Line x1={16} y1={3.75} x2={16} y2={7.25} />
+      <Line x1={3.5} y1={9} x2={20.5} y2={9} />
+      <Rect x={10.5} y={12} width={3} height={3} rx={1} />
+    </Svg>
+  );
+}
+
 export function TimelineScreen({
   sections,
   today,
@@ -107,7 +129,9 @@ export function TimelineScreen({
   onOpenOverdue,
 }: TimelineScreenProps) {
   const reducedMotion = useReducedMotion();
+  const listRef = useRef<FlatList<TimelineRow>>(null);
   const [showAllSections, setShowAllSections] = useState(false);
+  const [pendingJumpDateKey, setPendingJumpDateKey] = useState<string | null>(null);
   const { future, overdueCount: localOverdue } = splitOverdue(sections, today);
   const effectiveOverdue = overdueCount ?? localOverdue;
   const sourceSections = onOpenOverdue ? future : sections;
@@ -124,6 +148,28 @@ export function TimelineScreen({
   // hydrate quickly, but the first paint avoids handing every row to React.
   const rows = buildTimelineRows(visibleSections, today, tomorrow, visibleRowCount);
   const hasPendingRows = rows.length < totalRows;
+  const jumpTargets = sourceSections.slice(0, 6).map(([dateKey]) => ({
+    dateKey,
+    label: dateLabel(dateKey, today, tomorrow),
+  }));
+
+  useEffect(() => {
+    if (!pendingJumpDateKey) return;
+    const rowIndex = rows.findIndex(
+      (row) => row.kind === "header" && row.dateKey === pendingJumpDateKey,
+    );
+    if (rowIndex >= 0) {
+      const timeout = setTimeout(() => {
+        listRef.current?.scrollToIndex({ index: rowIndex, animated: !reducedMotion });
+        setPendingJumpDateKey(null);
+      }, 0);
+      return () => clearTimeout(timeout);
+    }
+    if (!showAllSections) {
+      const timeout = setTimeout(() => setShowAllSections(true), 0);
+      return () => clearTimeout(timeout);
+    }
+  }, [pendingJumpDateKey, reducedMotion, rows, showAllSections]);
 
   const overdueHeader =
     effectiveOverdue > 0 && onOpenOverdue ? (
@@ -133,22 +179,52 @@ export function TimelineScreen({
         accessibilityRole="button"
         accessibilityLabel={`${effectiveOverdue} overdue. Open triage.`}
       >
-        <Text style={styles.overdueLabel}>Overdue · {effectiveOverdue}</Text>
-        <Text style={styles.overdueChevron}>›</Text>
+        <View style={styles.overdueCopy}>
+          <Text style={styles.overdueLabel}>Overdue · {effectiveOverdue}</Text>
+          <Text style={styles.overdueHelp}>Reflow or choose the next real date.</Text>
+        </View>
+        <Text style={styles.overdueChevron}>Review</Text>
       </Pressable>
     ) : null;
 
   const emptyBlock = (
     <Animated.View entering={reducedMotion ? undefined : FadeIn.duration(400)} style={styles.emptyWrap}>
+      <View style={styles.emptyIconWrap}>
+        <TimelineEmptyIcon />
+      </View>
       <Text style={styles.emptyTitle}>Today is clear.</Text>
-      <Text style={styles.emptyText}>Upcoming work will appear here when it has a Deadline.</Text>
+      <Text style={styles.emptyText}>
+        Upcoming work will appear here when it has a Deadline. Use Capture or Inbox to
+        place the next task in time.
+      </Text>
     </Animated.View>
   );
+
+  const jumpHeader =
+    jumpTargets.length > 0 ? (
+      <View style={styles.jumpWrap}>
+        <Text style={styles.jumpLabel}>Jump</Text>
+        <View style={styles.jumpRow}>
+          {jumpTargets.map((target) => (
+            <Pressable
+              key={target.dateKey}
+              onPress={() => setPendingJumpDateKey(target.dateKey)}
+              accessibilityRole="button"
+              accessibilityLabel={`Jump to ${target.label}`}
+              style={({ pressed }) => [styles.jumpChip, pressed && { opacity: 0.72 }]}
+            >
+              <Text style={styles.jumpChipText}>{target.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    ) : null;
 
   const loadingBlock = <TaskListSkeleton variant="timeline" />;
 
   return (
     <FlatList<TimelineRow>
+      ref={listRef}
       style={{ flex: 1 }}
       contentContainerStyle={{
         paddingTop: spacing.md,
@@ -179,6 +255,15 @@ export function TimelineScreen({
         });
       }}
       showsVerticalScrollIndicator={false}
+      onScrollToIndexFailed={({ index, highestMeasuredFrameIndex }) => {
+        const fallbackIndex = Math.max(0, highestMeasuredFrameIndex);
+        if (fallbackIndex !== index) {
+          listRef.current?.scrollToIndex({ index: fallbackIndex, animated: false });
+        }
+        setTimeout(() => {
+          listRef.current?.scrollToIndex({ index, animated: !reducedMotion });
+        }, 40);
+      }}
       refreshControl={
         <RefreshControl
           refreshing={isRefreshing}
@@ -188,17 +273,25 @@ export function TimelineScreen({
           progressBackgroundColor={colors.bgCard}
         />
       }
-      ListHeaderComponent={overdueHeader}
+      ListHeaderComponent={
+        <>
+          {overdueHeader}
+          {jumpHeader}
+        </>
+      }
       ListFooterComponent={
         <>
           {laterTaskCount > 0 ? (
             <Pressable
-              onPress={() => setShowAllSections(true)}
+              onPress={() => setShowAllSections((current) => !current)}
               style={({ pressed }) => [styles.laterSummary, pressed && styles.laterSummaryPressed]}
               accessibilityRole="button"
-              accessibilityLabel={`Show ${laterTaskCount} later tasks`}
+              accessibilityLabel={`${showAllSections ? "Collapse" : "Show"} ${laterTaskCount} later tasks`}
             >
-              <Text style={styles.laterSummaryText}>Later · {laterTaskCount} tasks</Text>
+              <View style={styles.laterSummaryRow}>
+                <Text style={styles.laterSummaryText}>Later · {laterTaskCount} tasks</Text>
+                <Text style={styles.laterSummaryAction}>{showAllSections ? "Collapse" : "Show"}</Text>
+              </View>
             </Pressable>
           ) : null}
           {hasPendingRows ? <Text style={styles.loadingMore}>Preparing more tasks...</Text> : null}
@@ -218,13 +311,48 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginHorizontal: spacing.lg,
     marginBottom: spacing.sm,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderSubtle,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
   },
   overdueBarPressed: { opacity: 0.6 },
-  overdueLabel: { color: colors.textMuted, ...typography.micro },
-  overdueChevron: { color: colors.textMuted, ...typography.micro },
+  overdueCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  overdueLabel: { color: colors.textPrimary, ...typography.micro },
+  overdueHelp: { color: colors.textMuted, ...typography.bodyMd },
+  overdueChevron: { color: colors.accent, ...typography.bodyMd },
+  jumpWrap: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    gap: spacing.xs,
+  },
+  jumpLabel: {
+    color: colors.textMuted,
+    ...typography.micro,
+  },
+  jumpRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+  },
+  jumpChip: {
+    minHeight: 40,
+    paddingHorizontal: spacing.md,
+    justifyContent: "center",
+    borderRadius: 999,
+    backgroundColor: colors.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  jumpChipText: {
+    color: colors.textPrimary,
+    ...typography.bodyMd,
+  },
   laterSummary: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
@@ -235,15 +363,36 @@ const styles = StyleSheet.create({
   laterSummaryPressed: {
     opacity: 0.65,
   },
+  laterSummaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
   laterSummaryText: {
     color: colors.textMuted,
     ...typography.micro,
+  },
+  laterSummaryAction: {
+    color: colors.accent,
+    ...typography.bodyMd,
   },
   emptyWrap: {
     paddingTop: spacing.section * 2,
     paddingHorizontal: spacing.xxl,
     gap: spacing.sm,
     alignItems: "center",
+  },
+  emptyIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    marginBottom: spacing.xs,
   },
   emptyTitle: {
     color: colors.textPrimary,

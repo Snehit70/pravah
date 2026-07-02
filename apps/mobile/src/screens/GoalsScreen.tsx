@@ -12,9 +12,10 @@
  * comment). Delete-and-readd is the manual reorder path until that's fixed.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Circle } from "react-native-svg";
 
 import { haptic } from "../lib/haptic";
 import { humanDate } from "../lib/dates";
@@ -34,6 +35,7 @@ import { useConfirm } from "../hooks/useConfirm";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import type { MobileTask } from "../components/TaskCard";
 import { isTaskCompleted } from "../lib/taskState";
+import { ChevronRightIcon } from "../components/UiIcons";
 
 type DeadlineStatus = "overdue" | "soon" | "normal";
 function deadlineStatus(iso: string): DeadlineStatus {
@@ -55,6 +57,31 @@ const PRIORITY_LABEL: Record<"p1" | "p2" | "p3", { label: string; color: string 
   p2: { label: "P2", color: colors.priorityP2 },
   p3: { label: "P3", color: colors.priorityP3 },
 };
+
+function GoalTargetIcon({
+  color = colors.accent,
+  size = 22,
+}: {
+  color?: string;
+  size?: number;
+}) {
+  return (
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <Circle cx={12} cy={12} r={7.25} />
+      <Circle cx={12} cy={12} r={3.75} />
+      <Circle cx={12} cy={12} r={1.35} fill={color} stroke="none" />
+    </Svg>
+  );
+}
 
 function GoalProgressBar({
   ratio,
@@ -115,9 +142,18 @@ type GoalDetailSheetProps = {
   onDelete: () => void;
   onClose: () => void;
   onOpenTask: (task: MobileTask) => void;
+  onCreateTaskForGoal?: (goalId: string) => void;
 };
 
-function GoalDetailSheet({ goal, progress, linked, onDelete, onClose, onOpenTask }: GoalDetailSheetProps) {
+function GoalDetailSheet({
+  goal,
+  progress,
+  linked,
+  onDelete,
+  onClose,
+  onOpenTask,
+  onCreateTaskForGoal,
+}: GoalDetailSheetProps) {
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
   const confirm = useConfirm();
@@ -157,6 +193,13 @@ function GoalDetailSheet({ goal, progress, linked, onDelete, onClose, onOpenTask
     },
     [confirm, setGoalLink]
   );
+
+  const handlePlanNext = useCallback(() => {
+    if (!goal || !onCreateTaskForGoal) return;
+    const goalId = goal.id;
+    onClose();
+    setTimeout(() => onCreateTaskForGoal(goalId), 280);
+  }, [goal, onClose, onCreateTaskForGoal]);
 
   return (
     <Modal
@@ -330,7 +373,23 @@ function GoalDetailSheet({ goal, progress, linked, onDelete, onClose, onOpenTask
 
               {/* Linked tasks */}
               <View style={detailStyles.tasksSection}>
-                <Text style={detailStyles.sectionLabel}>Linked tasks</Text>
+                <View style={detailStyles.sectionHeaderRow}>
+                  <Text style={detailStyles.sectionLabel}>Linked tasks</Text>
+                  {onCreateTaskForGoal ? (
+                    <Pressable
+                      onPress={handlePlanNext}
+                      hitSlop={10}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Plan next Task for ${goal.text}`}
+                      style={({ pressed }) => [
+                        detailStyles.inlineAction,
+                        pressed && { opacity: 0.7 },
+                      ]}
+                    >
+                      <Text style={detailStyles.inlineActionText}>Plan next Task</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
                 {hasTasks ? linked.map((t) => {
                   const done = isTaskCompleted(t);
                   return (
@@ -392,6 +451,8 @@ type GoalsScreenProps = {
   onCreateTaskForGoal?: (goalId: string) => void;
   /** Open a linked task in the shared editor (edit / complete / delete). */
   onOpenTask?: (task: MobileTask) => void;
+  /** Optional deep-link target for opening a specific goal detail. */
+  focusGoalId?: string | null;
 };
 
 type GoalProgress = {
@@ -407,6 +468,7 @@ export function GoalsScreen({
   onCreateGoal,
   onCreateTaskForGoal,
   onOpenTask,
+  focusGoalId,
 }: GoalsScreenProps) {
   const reducedMotion = useReducedMotion();
   const confirm = useConfirm();
@@ -414,6 +476,7 @@ export function GoalsScreen({
   const { goals, isHydrated } = useGoals();
   const links = useGoalLinks();
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
+  const appliedFocusGoalIdRef = useRef<string | null>(null);
 
   // The goal detail is a native Modal that stacks above the bottom-sheet
   // editor, so close it first and let it dismiss before opening the task.
@@ -486,6 +549,9 @@ export function GoalsScreen({
 
   const emptyBlock = (
     <Animated.View entering={reducedMotion ? undefined : FadeIn.duration(400)} style={styles.emptyWrap}>
+      <View style={styles.emptyIconWrap}>
+        <GoalTargetIcon color={colors.textSecondary} size={28} />
+      </View>
       <Text style={styles.emptyTitle}>No goals yet.</Text>
       <Text style={styles.emptyText}>Choose one outcome you want to move.</Text>
       {onCreateGoal ? (
@@ -510,6 +576,15 @@ export function GoalsScreen({
     ? (progressByGoal.get(selectedGoal.id) ?? { total: 0, done: 0, ratio: 0 })
     : { total: 0, done: 0, ratio: 0 };
   const selectedLinked = selectedGoal ? (tasksByGoal.get(selectedGoal.id) ?? []) : [];
+
+  useEffect(() => {
+    if (!focusGoalId) return;
+    if (!sortedGoals.some((goal) => goal.id === focusGoalId)) return;
+    if (appliedFocusGoalIdRef.current === focusGoalId) return;
+    appliedFocusGoalIdRef.current = focusGoalId;
+    const timeout = setTimeout(() => setSelectedGoalId(focusGoalId), 0);
+    return () => clearTimeout(timeout);
+  }, [focusGoalId, sortedGoals]);
 
   return (
     <View style={{ flex: 1 }}>
@@ -542,6 +617,19 @@ export function GoalsScreen({
         ListFooterComponent={sortedGoals.length > 0 ? footerHint : null}
         renderItem={({ item, index }) => {
           const progress = progressByGoal.get(item.id) ?? { total: 0, done: 0, ratio: 0 };
+          const linkedTasks = tasksByGoal.get(item.id) ?? [];
+          const nextLinkedTask = [...linkedTasks]
+            .filter((task) => !isTaskCompleted(task))
+            .sort((a, b) => {
+              const aHasDeadline = typeof a.deadline === "string";
+              const bHasDeadline = typeof b.deadline === "string";
+              if (aHasDeadline && bHasDeadline && a.deadline !== b.deadline) {
+                return a.deadline!.localeCompare(b.deadline!);
+              }
+              if (aHasDeadline !== bHasDeadline) return aHasDeadline ? -1 : 1;
+              if (a.position !== b.position) return a.position - b.position;
+              return a.createdAt - b.createdAt;
+            })[0];
           const hasTasks = progress.total > 0;
           const showLinkedLoading = isTaskDataLoading && !hasTasks;
           const isComplete = hasTasks && progress.done === progress.total;
@@ -563,7 +651,12 @@ export function GoalsScreen({
                   style={({ pressed }) => [styles.goalTap, pressed && { opacity: 0.85 }]}
                 >
                   <View style={styles.goalHead}>
-                    <Text style={styles.goalText} numberOfLines={2}>{item.text}</Text>
+                    <View style={styles.goalIdentity}>
+                      <View style={styles.goalIconWrap}>
+                        <GoalTargetIcon color={isComplete ? colors.success : colors.accent} size={20} />
+                      </View>
+                      <Text style={styles.goalText} numberOfLines={2}>{item.text}</Text>
+                    </View>
                     <Text style={styles.goalCount}>
                       {showLinkedLoading ? "…" : hasTasks ? `${progress.done}/${progress.total}` : "—"}
                     </Text>
@@ -578,6 +671,15 @@ export function GoalsScreen({
                     isComplete={isComplete}
                     isLoading={showLinkedLoading}
                   />
+
+                  {nextLinkedTask ? (
+                    <View style={styles.nextTaskPreview}>
+                      <Text style={styles.nextTaskKicker}>Next task</Text>
+                      <Text style={styles.nextTaskTitle} numberOfLines={1}>
+                        {nextLinkedTask.title}
+                      </Text>
+                    </View>
+                  ) : null}
 
                   <View style={styles.goalMetaRow}>
                     <View style={styles.goalMetaLeft}>
@@ -606,7 +708,7 @@ export function GoalsScreen({
                           : "No tasks linked"}
                       </Text>
                     </View>
-                    <Text style={styles.goalChevron}>›</Text>
+                    <ChevronRightIcon color={colors.textMuted} size={16} />
                   </View>
                 </Pressable>
                 {onCreateTaskForGoal ? (
@@ -638,6 +740,7 @@ export function GoalsScreen({
         onDelete={() => selectedGoal && void handleDelete(selectedGoal)}
         onClose={() => setSelectedGoalId(null)}
         onOpenTask={handleOpenTask}
+        onCreateTaskForGoal={onCreateTaskForGoal}
       />
     </View>
   );
@@ -711,6 +814,23 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: spacing.sm,
   },
+  goalIdentity: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+  },
+  goalIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    marginTop: 1,
+  },
   goalText: {
     flex: 1,
     ...typography.bodyLg,
@@ -741,6 +861,24 @@ const styles = StyleSheet.create({
   },
   progressFillLoading: {
     opacity: 0.45,
+  },
+  nextTaskPreview: {
+    gap: 2,
+    padding: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  nextTaskKicker: {
+    ...typography.micro,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  nextTaskTitle: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
   },
   goalMetaRow: {
     flexDirection: "row",
@@ -775,16 +913,22 @@ const styles = StyleSheet.create({
     ...typography.micro,
     color: colors.textMuted,
   },
-  goalChevron: {
-    ...typography.bodyLg,
-    color: colors.textMuted,
-    lineHeight: 20,
-  },
   emptyWrap: {
     paddingTop: spacing.section,
     paddingHorizontal: spacing.xxl,
     gap: spacing.sm,
     alignItems: "center",
+  },
+  emptyIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    marginBottom: spacing.xs,
   },
   emptyTitle: {
     ...typography.headline,
@@ -1032,6 +1176,23 @@ const detailStyles = StyleSheet.create({
     color: colors.textMuted,
     textTransform: "uppercase",
     letterSpacing: 0.6,
+  },
+  sectionHeaderRow: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  inlineAction: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+  },
+  inlineActionText: {
+    ...typography.bodyMd,
+    color: colors.accent,
+    fontWeight: "600",
   },
   taskRow: {
     flexDirection: "row",

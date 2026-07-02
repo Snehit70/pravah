@@ -82,7 +82,7 @@ vi.mock("react-native-reanimated", () => {
 vi.mock("react-native-svg", () => {
   const Svg = ({ children }: { children?: React.ReactNode }) => React.createElement("svg", {}, children);
   const Shape = () => React.createElement("span");
-  return { default: Svg, Circle: Shape, Line: Shape, Path: Shape };
+  return { default: Svg, Circle: Shape, Line: Shape, Path: Shape, Rect: Shape };
 });
 
 vi.mock("../lib/haptic", () => ({

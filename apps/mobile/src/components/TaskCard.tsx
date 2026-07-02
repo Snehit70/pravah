@@ -23,6 +23,8 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import { isTaskCompleted, isTaskInInbox, isTaskOnTimeline } from "../lib/taskState";
 import { formatTime12h } from "../lib/task-form";
 import { useReducedMotion } from "../hooks/useReducedMotion";
+import { useUserPreferences } from "../hooks/useUserPreferences";
+import type { AccentColor } from "../lib/userPreferences";
 
 export type MobileTask = {
   _id: Id<"tasks">;
@@ -49,6 +51,8 @@ type TaskCardProps = {
   onMoveToday?: (id: Id<"tasks">) => void;
   /** Timeline → Inbox swipe action. */
   onSendToInbox?: (id: Id<"tasks">) => void;
+  /** Inbox visible action → open the scheduling flow. */
+  onSchedule?: (task: MobileTask) => void;
   /** Completed → Reopen swipe action. */
   onReopen?: (id: Id<"tasks">) => void;
   /** Timeline accessibility reorder action. */
@@ -67,6 +71,19 @@ type TaskCardProps = {
 };
 
 const TASK_CARD_RADIUS = radii.lg;
+
+function taskEmphasisColor(scheme: AccentColor): string {
+  switch (scheme) {
+    case "copper":
+      return colors.deadline;
+    case "teal":
+      return colors.success;
+    case "rose":
+      return colors.error;
+    case "purple":
+      return colors.accent;
+  }
+}
 
 /**
  * Reanimated swipe-action panel. The pan progress comes from
@@ -113,6 +130,7 @@ function TaskCardInner({
   onDone,
   onMoveToday,
   onSendToInbox,
+  onSchedule,
   onReopen,
   onReorder,
   onEdit,
@@ -125,6 +143,9 @@ function TaskCardInner({
   const isInboxTask = isTaskInInbox(task);
   const swipeRef = useRef<SwipeableMethods>(null);
   const reducedMotion = useReducedMotion();
+  const { prefs } = useUserPreferences();
+  const compactDensity = prefs.density === "compact";
+  const taskAccent = taskEmphasisColor(prefs.taskColorScheme);
 
   // Web parity (src/index.css:228-233): when a task flips to completed, a 1px
   // accent bar sweeps left→right across the row, then the row eases to
@@ -168,6 +189,7 @@ function TaskCardInner({
   const handleDone = useCallback(() => onDone(task._id), [onDone, task._id]);
   const handleMoveToday = useCallback(() => onMoveToday?.(task._id), [onMoveToday, task._id]);
   const handleSendToInbox = useCallback(() => onSendToInbox?.(task._id), [onSendToInbox, task._id]);
+  const handleSchedule = useCallback(() => onSchedule?.(task), [onSchedule, task]);
   const handleReopen = useCallback(() => onReopen?.(task._id), [onReopen, task._id]);
   const handleMoveUp = useCallback(() => onReorder?.(task._id, "up"), [onReorder, task._id]);
   const handleMoveDown = useCallback(() => onReorder?.(task._id, "down"), [onReorder, task._id]);
@@ -184,6 +206,9 @@ function TaskCardInner({
         case "move_today":
           handleMoveToday();
           break;
+        case "schedule":
+          handleSchedule();
+          break;
         case "move_to_inbox":
           handleSendToInbox();
           break;
@@ -198,7 +223,16 @@ function TaskCardInner({
           break;
       }
     },
-    [handleDone, handleEdit, handleMoveDown, handleMoveToday, handleMoveUp, handleReopen, handleSendToInbox]
+    [
+      handleDone,
+      handleEdit,
+      handleMoveDown,
+      handleMoveToday,
+      handleMoveUp,
+      handleReopen,
+      handleSchedule,
+      handleSendToInbox,
+    ]
   );
 
   // Right-side action (revealed by swiping LEFT) — always "Done" for active
@@ -265,7 +299,7 @@ function TaskCardInner({
         ? colors.priorityP2
         : task.priority === "p3"
           ? colors.priorityP3
-          : colors.borderSubtle;
+          : taskAccent;
 
   // Stacked metadata column on the right. Each line is its own micro entry so
   // the column reads like a small log table rather than a row of pills.
@@ -310,6 +344,9 @@ function TaskCardInner({
     !isCompleted && isInboxTask && onMoveToday
       ? { name: "move_today", label: "Move to today" }
       : null,
+    !isCompleted && isInboxTask && onSchedule
+      ? { name: "schedule", label: "Schedule task" }
+      : null,
     !isCompleted && !isInboxTask && onSendToInbox
       ? { name: "move_to_inbox", label: "Move to inbox" }
       : null,
@@ -330,7 +367,12 @@ function TaskCardInner({
     isCompleted
       ? { label: "Reopen", run: onReopen ? handleReopen : undefined, tone: "secondary", semantic: "completion" }
       : isInboxTask
-        ? { label: "Schedule", run: onMoveToday ? handleMoveToday : undefined, tone: "primary", semantic: "button" }
+        ? {
+            label: "Schedule",
+            run: onSchedule ? handleSchedule : onMoveToday ? handleMoveToday : undefined,
+            tone: "primary",
+            semantic: "button",
+          }
         : { label: "Complete", run: handleDone, tone: "primary", semantic: "completion" };
   const secondaryAction: {
     label: string;
@@ -350,7 +392,11 @@ function TaskCardInner({
       // while the parent list is plain FlatList.
       onLongPress={onDragHandlePress}
       delayLongPress={250}
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      style={({ pressed }) => [
+        styles.row,
+        compactDensity && styles.rowCompact,
+        pressed && styles.rowPressed,
+      ]}
       accessibilityRole="button"
       accessibilityLabel={task.title}
       accessibilityHint={accessibilityHint}
@@ -368,19 +414,31 @@ function TaskCardInner({
       {/* Body — title + description. Both single-line by default. */}
       <View style={styles.body}>
         <Text
-          style={[styles.title, isCompleted && styles.titleCompleted]}
+          style={[
+            styles.title,
+            compactDensity && styles.titleCompact,
+            isCompleted && styles.titleCompleted,
+          ]}
           numberOfLines={titleLines}
           ellipsizeMode="tail"
         >
           {task.title}
         </Text>
         {hasDescription ? (
-          <Text style={styles.description} numberOfLines={1} ellipsizeMode="tail">
+          <Text
+            style={[styles.description, compactDensity && styles.descriptionCompact]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
             {task.description}
           </Text>
         ) : null}
         {linkedGoalName ? (
-          <Text style={styles.goalTag} numberOfLines={1} ellipsizeMode="tail">
+          <Text
+            style={[styles.goalTag, { color: taskAccent }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
             ◈ {linkedGoalName}
           </Text>
         ) : null}
@@ -395,7 +453,7 @@ function TaskCardInner({
               key={line.key}
               style={[
                 styles.metaText,
-                line.tone === "accent" && styles.metaTextAccent,
+                line.tone === "accent" && { color: taskAccent },
                 line.tone === "error" && styles.metaTextError,
               ]}
               numberOfLines={1}
@@ -458,6 +516,7 @@ function TaskCardInner({
           }
           style={({ pressed }) => [
             styles.primaryAction,
+            primaryAction.tone === "primary" && { backgroundColor: taskAccent },
             primaryAction.tone === "secondary" && styles.primaryActionSecondary,
             pressed && primaryAction.run && { opacity: 0.68 },
             !primaryAction.run && { opacity: 0.45 },
@@ -530,6 +589,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     ...shadow.sm,
   },
+  rowCompact: {
+    paddingVertical: spacing.sm,
+  },
   rowPressed: {
     backgroundColor: colors.bgFloating,
   },
@@ -562,6 +624,10 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     ...typography.title,
   },
+  titleCompact: {
+    fontSize: 15,
+    lineHeight: 20,
+  },
   titleCompleted: {
     color: colors.textCompleted,
     textDecorationLine: "line-through",
@@ -570,6 +636,10 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     ...typography.bodyMd,
     marginTop: 2,
+  },
+  descriptionCompact: {
+    fontSize: 12,
+    lineHeight: 16,
   },
   goalTag: {
     ...typography.micro,

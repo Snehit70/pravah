@@ -28,7 +28,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#f7f1e8"
         }
-      ]
+      ],
+      "./plugins/withBuildPerformance"
     ],
     "ios": {
       "supportsTablet": true,
