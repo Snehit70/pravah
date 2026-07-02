@@ -159,6 +159,36 @@ function useCustomEndpointConfig() {
   vi.mocked(SecureStore.deleteItemAsync).mockResolvedValue(undefined);
 }
 
+function useMultiProviderConfig() {
+  vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key: string) => {
+    if (key === "pravah_kairo_settings_v2") {
+      return JSON.stringify({
+        defaultProvider: "anthropic",
+        profiles: {
+          anthropic: {
+            apiKey: "anthropic-key",
+            baseUrl: "https://api.anthropic.com/v1/messages",
+            model: "claude-haiku-4-5",
+          },
+          openai: {
+            apiKey: "openai-key",
+            baseUrl: "https://api.openai.com/v1/chat/completions",
+            model: "gpt-5.4-mini",
+          },
+          gemini: {
+            apiKey: "",
+            baseUrl: "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            model: "gemini-2.5-flash",
+          },
+        },
+      });
+    }
+    return null;
+  });
+  vi.mocked(SecureStore.setItemAsync).mockResolvedValue(undefined);
+  vi.mocked(SecureStore.deleteItemAsync).mockResolvedValue(undefined);
+}
+
 // ─── tests ────────────────────────────────────────────────────────────────────
 
 describe("KairoSettingsSection", () => {
@@ -306,5 +336,50 @@ describe("KairoSettingsSection", () => {
 
     expect(screen.getByText("Could not clear Kairo settings.")).toBeTruthy();
     expect(clearBtn.textContent).toBe("Clear");
+  });
+
+  it("shows the default provider separately from the selected provider editor", async () => {
+    useMultiProviderConfig();
+
+    render(<KairoSettingsSection />);
+
+    await waitFor(() => expect(screen.queryByTestId("kairo-skeleton")).toBeNull());
+
+    expect(screen.getByText("Default provider")).toBeTruthy();
+    expect(screen.getByText("Anthropic")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /edit openai provider profile/i }));
+
+    expect(screen.getByText("Credentials for OpenAI")).toBeTruthy();
+    expect(
+      screen.getByText("You can configure this profile without making it the default."),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /make openai the default kairo provider/i }),
+    ).toBeTruthy();
+  });
+
+  it("persists the selected provider as default only after make default and save", async () => {
+    useMultiProviderConfig();
+
+    render(<KairoSettingsSection />);
+
+    await waitFor(() => expect(screen.queryByTestId("kairo-skeleton")).toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: /edit openai provider profile/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /make openai the default kairo provider/i }),
+    );
+
+    const saveBtn = screen.getByRole("button", { name: /save kairo configuration/i });
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+
+    const savedPayload = vi.mocked(SecureStore.setItemAsync).mock.calls.find(
+      ([key]) => key === "pravah_kairo_settings_v2",
+    )?.[1];
+    expect(typeof savedPayload).toBe("string");
+    expect(JSON.parse(savedPayload as string).defaultProvider).toBe("openai");
   });
 });
