@@ -172,6 +172,26 @@ function KairoIcon({ color, size = 18 }: CategoryIconProps) {
   return <KairoIconAsset width={size} height={size} color={color} />;
 }
 
+function CliIcon({ color, size = 18 }: CategoryIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M5 7L10 12L5 17"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M12.5 17H19"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
 function BellIcon({ color: _color, size = 18 }: CategoryIconProps) {
   return <RemindersIconAsset width={size} height={size} />;
 }
@@ -192,6 +212,7 @@ const SETTINGS_CATEGORY_ICONS: Partial<
   Record<SettingsCategoryKey, (props: CategoryIconProps) => JSX.Element>
 > = {
   kairo: KairoIcon,
+  cli: CliIcon,
   sync: SyncIcon,
   reminders: BellIcon,
   interaction: HandIcon,
@@ -455,47 +476,16 @@ function SettingsCategoryList({
   );
 }
 
-type AssistantAutomationSectionProps = {
+type KairoSectionProps = {
   prefs: ReturnType<typeof useUserPreferences>["prefs"];
   setPreference: ReturnType<typeof useUserPreferences>["setPreference"];
-  automationCredentials: Array<{
-    _id: Id<"automationCredentials">;
-    label: string;
-    credentialPreview: string;
-    status: string;
-    scopes: string[];
-  }>;
-  automationLabel: string;
-  setAutomationLabel: (value: string) => void;
-  allowTaskWrites: boolean;
-  setAllowTaskWrites: (value: boolean) => void;
-  issuedBootstrapToken: { token: string; expiresAt: number } | null;
-  isIssuingBootstrapToken: boolean;
-  onIssueBootstrapToken: () => void;
-  onCopy: (value: string, label: string) => Promise<void>;
-  onRevokeCredential: (credentialId: Id<"automationCredentials">) => Promise<void>;
-  revokingCredentialId: Id<"automationCredentials"> | null;
 };
 
-function AssistantAutomationSection({
-  prefs,
-  setPreference,
-  automationCredentials,
-  automationLabel,
-  setAutomationLabel,
-  allowTaskWrites,
-  setAllowTaskWrites,
-  issuedBootstrapToken,
-  isIssuingBootstrapToken,
-  onIssueBootstrapToken,
-  onCopy,
-  onRevokeCredential,
-  revokingCredentialId,
-}: AssistantAutomationSectionProps) {
+function KairoSection({ prefs, setPreference }: KairoSectionProps) {
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Kairo</Text>
+        <Text style={styles.settingLabel}>Provider</Text>
         <Text style={styles.settingHelp}>
           Configure the provider, API key, endpoint, and model used for mobile AI assistance.
         </Text>
@@ -519,7 +509,45 @@ function AssistantAutomationSection({
           />
         </View>
       </View>
+    </View>
+  );
+}
 
+type CliCredentialsSectionProps = {
+  automationCredentials: Array<{
+    _id: Id<"automationCredentials">;
+    label: string;
+    credentialPreview: string;
+    status: string;
+    scopes: string[];
+  }>;
+  automationLabel: string;
+  setAutomationLabel: (value: string) => void;
+  allowTaskWrites: boolean;
+  setAllowTaskWrites: (value: boolean) => void;
+  issuedBootstrapToken: { token: string; expiresAt: number } | null;
+  isIssuingBootstrapToken: boolean;
+  onIssueBootstrapToken: () => void;
+  onCopy: (value: string, label: string) => Promise<void>;
+  onRevokeCredential: (credentialId: Id<"automationCredentials">) => Promise<void>;
+  revokingCredentialId: Id<"automationCredentials"> | null;
+};
+
+function CliCredentialsSection({
+  automationCredentials,
+  automationLabel,
+  setAutomationLabel,
+  allowTaskWrites,
+  setAllowTaskWrites,
+  issuedBootstrapToken,
+  isIssuingBootstrapToken,
+  onIssueBootstrapToken,
+  onCopy,
+  onRevokeCredential,
+  revokingCredentialId,
+}: CliCredentialsSectionProps) {
+  return (
+    <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <Text style={styles.settingLabel}>CLI credentials</Text>
         <Text style={styles.settingHelp}>
@@ -1685,7 +1713,23 @@ function renderDetailScreen(
 
   switch (navigation.category) {
     case "kairo":
-      return <AssistantAutomationSection {...props} />;
+      return <KairoSection prefs={props.prefs} setPreference={props.setPreference} />;
+    case "cli":
+      return (
+        <CliCredentialsSection
+          automationCredentials={props.automationCredentials}
+          automationLabel={props.automationLabel}
+          setAutomationLabel={props.setAutomationLabel}
+          allowTaskWrites={props.allowTaskWrites}
+          setAllowTaskWrites={props.setAllowTaskWrites}
+          issuedBootstrapToken={props.issuedBootstrapToken}
+          isIssuingBootstrapToken={props.isIssuingBootstrapToken}
+          onIssueBootstrapToken={props.onIssueBootstrapToken}
+          onCopy={props.onCopy}
+          onRevokeCredential={props.onRevokeCredential}
+          revokingCredentialId={props.revokingCredentialId}
+        />
+      );
     case "sync":
       return <SyncSection {...props} />;
     case "reminders":
@@ -1949,6 +1993,10 @@ export function SettingsSheet({
 
   const settingsHomeStatuses: Record<SettingsCategoryKey, SettingsHomeStatus> = {
     kairo: kairoHomeStatus,
+    cli:
+      automationCredentials.length > 0
+        ? { label: `${automationCredentials.length} active`, tone: "neutral" }
+        : { label: "Not issued", tone: "neutral" },
     sync:
       calendarSyncHealth === "error" || Boolean(calendarLastError) || Boolean(gmailLastError)
         ? { label: "Attention", tone: "warning" }

@@ -1,5 +1,6 @@
 export type SettingsCategoryKey =
   | "kairo"
+  | "cli"
   | "sync"
   | "reminders"
   | "interaction"
@@ -17,6 +18,7 @@ export type SettingsNavigationAction =
 
 export const SETTINGS_CATEGORY_ORDER: readonly SettingsCategoryKey[] = [
   "kairo",
+  "cli",
   "sync",
   "reminders",
   "interaction",
@@ -30,7 +32,11 @@ export const SETTINGS_CATEGORY_META: Record<
 > = {
   kairo: {
     title: "Kairo",
-    summary: "AI provider and status",
+    summary: "Provider and behavior",
+  },
+  cli: {
+    title: "CLI credentials",
+    summary: "Bootstrap tokens and device access",
   },
   sync: {
     title: "Sync",
@@ -58,12 +64,8 @@ export const SETTINGS_CATEGORY_CONTROLS: Record<
   SettingsCategoryKey,
   readonly string[]
 > = {
-  kairo: [
-    "kairo_config",
-    "kairo_starter_pills",
-    "automation_bootstrap_token",
-    "automation_credentials",
-  ],
+  kairo: ["kairo_config", "kairo_starter_pills"],
+  cli: ["automation_bootstrap_token", "automation_credentials"],
   sync: [
     "google_calendar_sync",
     "gmail_review",

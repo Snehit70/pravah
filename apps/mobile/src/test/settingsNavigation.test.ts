@@ -47,8 +47,10 @@ describe("settingsNavigationReducer", () => {
 describe("SETTINGS_CATEGORY_CONTROLS", () => {
   it("maps the redesign categories to the expected control groups", () => {
     expect(SETTINGS_CATEGORY_CONTROLS.kairo).toEqual(
+      expect.arrayContaining(["kairo_config", "kairo_starter_pills"]),
+    );
+    expect(SETTINGS_CATEGORY_CONTROLS.cli).toEqual(
       expect.arrayContaining([
-        "kairo_starter_pills",
         "automation_bootstrap_token",
         "automation_credentials",
       ]),
