@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import Svg, { Circle, Line, Path } from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
 import { useMutation, useQuery } from "convex/react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
@@ -27,7 +27,13 @@ import { useReducedMotion } from "../hooks/useReducedMotion";
 import { getOrCreateDeviceId } from "../lib/deviceIdentity";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
 import { classifyError, mobileLogger } from "../lib/logger";
-import { ArrowUpRightIcon, ChatBubbleIcon, ChevronLeftIcon, ChevronRightIcon } from "./UiIcons";
+import { ArrowUpRightIcon, ChevronLeftIcon, ChevronRightIcon } from "./UiIcons";
+import AboutIconAsset from "../assets/icons/settings-about.svg";
+import AppearanceIconAsset from "../assets/icons/settings-appearance.svg";
+import InteractionIconAsset from "../assets/icons/settings-interaction.svg";
+import KairoIconAsset from "../assets/icons/settings-kairo.svg";
+import RemindersIconAsset from "../assets/icons/settings-reminders.svg";
+import SyncIconAsset from "../assets/icons/settings-sync.svg";
 import {
   moveTabOrder,
   resolveTabOrder,
@@ -158,76 +164,34 @@ type SettingsHomeStatus = {
   tone: SettingsHomeStatusTone;
 };
 
-function iconFrame(color: string, size: number) {
-  return {
-    width: size,
-    height: size,
-    viewBox: "0 0 24 24",
-    fill: "none" as const,
-    stroke: color,
-    strokeWidth: 2,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-  };
+function SyncIcon({ color: _color, size = 18 }: CategoryIconProps) {
+  return <SyncIconAsset width={size} height={size} />;
 }
 
-function SyncIcon({ color, size = 18 }: CategoryIconProps) {
-  return (
-    <Svg {...iconFrame(color, size)}>
-      <Path d="M19 8a7 7 0 0 0-12.1-2.7" />
-      <Path d="M5 5v4h4" />
-      <Path d="M5 16a7 7 0 0 0 12.1 2.7" />
-      <Path d="M19 19v-4h-4" />
-    </Svg>
-  );
+function KairoIcon({ color, size = 18 }: CategoryIconProps) {
+  return <KairoIconAsset width={size} height={size} color={color} />;
 }
 
-function BellIcon({ color, size = 18 }: CategoryIconProps) {
-  return (
-    <Svg {...iconFrame(color, size)}>
-      <Path d="M7 10a5 5 0 1 1 10 0c0 5 2 6 2 6H5s2-1 2-6" />
-      <Path d="M10 19a2 2 0 0 0 4 0" />
-    </Svg>
-  );
+function BellIcon({ color: _color, size = 18 }: CategoryIconProps) {
+  return <RemindersIconAsset width={size} height={size} />;
 }
 
-function HandIcon({ color, size = 18 }: CategoryIconProps) {
-  return (
-    <Svg {...iconFrame(color, size)}>
-      <Path d="M8.5 12V5.5a1.5 1.5 0 0 1 3 0V10" />
-      <Path d="M11.5 10V4.75a1.5 1.5 0 0 1 3 0V10.5" />
-      <Path d="M14.5 10.5V6.5a1.5 1.5 0 0 1 3 0v6.25A5.25 5.25 0 0 1 12.25 18H11a5 5 0 0 1-4.2-2.3L5 12.9a1.5 1.5 0 0 1 2.55-1.6L8.5 12Z" />
-    </Svg>
-  );
+function HandIcon({ color: _color, size = 18 }: CategoryIconProps) {
+  return <InteractionIconAsset width={size} height={size} />;
 }
 
-function SlidersIcon({ color, size = 18 }: CategoryIconProps) {
-  return (
-    <Svg {...iconFrame(color, size)}>
-      <Line x1={4} y1={7} x2={20} y2={7} />
-      <Circle cx={9} cy={7} r={1.75} fill={colors.bgCard} />
-      <Line x1={4} y1={12} x2={20} y2={12} />
-      <Circle cx={15} cy={12} r={1.75} fill={colors.bgCard} />
-      <Line x1={4} y1={17} x2={20} y2={17} />
-      <Circle cx={11} cy={17} r={1.75} fill={colors.bgCard} />
-    </Svg>
-  );
+function SlidersIcon({ color: _color, size = 18 }: CategoryIconProps) {
+  return <AppearanceIconAsset width={size} height={size} />;
 }
 
-function InfoIcon({ color, size = 18 }: CategoryIconProps) {
-  return (
-    <Svg {...iconFrame(color, size)}>
-      <Circle cx={12} cy={12} r={8} />
-      <Line x1={12} y1={10.5} x2={12} y2={16} />
-      <Circle cx={12} cy={7.25} r={0.8} fill={color} stroke="none" />
-    </Svg>
-  );
+function InfoIcon({ color: _color, size = 18 }: CategoryIconProps) {
+  return <AboutIconAsset width={size} height={size} />;
 }
 
 const SETTINGS_CATEGORY_ICONS: Partial<
   Record<SettingsCategoryKey, (props: CategoryIconProps) => JSX.Element>
 > = {
-  kairo: ChatBubbleIcon,
+  kairo: KairoIcon,
   sync: SyncIcon,
   reminders: BellIcon,
   interaction: HandIcon,
