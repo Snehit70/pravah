@@ -63,7 +63,7 @@ describe("syncRemindersAsync", () => {
     expect(scheduleNotificationAsync).toHaveBeenCalledTimes(1);
     expect(scheduleNotificationAsync).toHaveBeenCalledWith({
       identifier: `${REMINDER_ID_PREFIX}new`,
-      content: { title: "Pravah", body: "New", sound: "default" },
+      content: { title: "Pravah", body: "New", sound: true },
       trigger: {
         type: "date",
         date: fireAt,

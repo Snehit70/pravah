@@ -31,7 +31,7 @@ export async function syncRemindersAsync(specs: ReminderSpec[]): Promise<void> {
         content: {
           title: spec.title,
           body: spec.body,
-          sound: "default",
+          sound: true,
         },
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
