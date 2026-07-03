@@ -236,6 +236,12 @@ function formatRelativeTime(ts: number | undefined): string | null {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
+function formatShortDate(ts: number): string {
+  const date = new Date(ts);
+  const month = date.toLocaleString("en-US", { month: "short" });
+  return `${month} ${date.getDate()}`;
+}
+
 function describeLastRun(run: IntegrationLastRunSummary | undefined): string | null {
   if (!run) return null;
   const when = formatRelativeTime(run.finishedAt);
@@ -496,6 +502,8 @@ type CliCredentialsSectionProps = {
     credentialPreview: string;
     status: string;
     scopes: string[];
+    createdAt: number;
+    lastUsedAt?: number;
   }>;
   issuedBootstrapToken: { token: string; expiresAt: number } | null;
   pendingBootstrapTokens: Array<{
@@ -548,12 +556,19 @@ function CliCredentialsSection({
   onRenameCredential,
   updatingCredentialId,
 }: CliCredentialsSectionProps) {
+  const reducedMotion = useReducedMotion();
   const [expandedId, setExpandedId] =
     useState<Id<"automationCredentials"> | null>(null);
   const [renamingId, setRenamingId] =
     useState<Id<"automationCredentials"> | null>(null);
   const [renameText, setRenameText] = useState("");
   const [tokenCopied, setTokenCopied] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  } | null>(null);
   const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
@@ -789,6 +804,12 @@ function CliCredentialsSection({
               const isBusy = updatingCredentialId === credential._id;
               const isDeleting = deletingCredentialId === credential._id;
               const isRevoking = revokingCredentialId === credential._id;
+              const lastUsed = formatRelativeTime(credential.lastUsedAt);
+              const tokenSubtitle = `${writesOn ? "Read & write" : "Read-only"} · ${
+                lastUsed
+                  ? `Last used ${lastUsed}`
+                  : `Created ${formatShortDate(credential.createdAt)}`
+              }`;
               return (
                 <View key={credential._id}>
                   {index > 0 ? <View style={styles.tokenDivider} /> : null}
@@ -832,29 +853,9 @@ function CliCredentialsSection({
                           </Text>
                         </View>
                       </View>
-                      <View style={styles.scopeChipRow}>
-                        {credential.scopes.map((scope) => {
-                          const isWrite = scope === "tasks:write";
-                          return (
-                            <View
-                              key={scope}
-                              style={[
-                                styles.scopeChip,
-                                isWrite && styles.scopeChipWrite,
-                              ]}
-                            >
-                              <Text
-                                style={[
-                                  styles.scopeChipText,
-                                  isWrite && styles.scopeChipTextWrite,
-                                ]}
-                              >
-                                {scope}
-                              </Text>
-                            </View>
-                          );
-                        })}
-                      </View>
+                      <Text style={styles.tokenSubtitle} numberOfLines={1}>
+                        {tokenSubtitle}
+                      </Text>
                     </View>
                     <View
                       style={[
@@ -930,8 +931,8 @@ function CliCredentialsSection({
                               void onSetTaskWrites(credential._id, next)
                             }
                             disabled={isBusy}
-                            trackColor={{ false: colors.border, true: colors.accentSoft }}
-                            thumbColor={writesOn ? colors.accent : colors.textMuted}
+                            trackColor={{ false: colors.border, true: colors.warningMuted }}
+                            thumbColor={writesOn ? colors.warning : colors.textMuted}
                           />
                         </View>
                       ) : null}
@@ -955,7 +956,15 @@ function CliCredentialsSection({
                         ) : null}
                         {isRevoked ? (
                           <Pressable
-                            onPress={() => void onDeleteCredential(credential._id)}
+                            onPress={() =>
+                              setConfirmDialog({
+                                title: "Remove token?",
+                                message: `“${credential.label}” will be permanently deleted.`,
+                                confirmLabel: "Remove",
+                                onConfirm: () =>
+                                  void onDeleteCredential(credential._id),
+                              })
+                            }
                             disabled={isDeleting}
                             hitSlop={12}
                             accessibilityRole="button"
@@ -972,7 +981,15 @@ function CliCredentialsSection({
                           </Pressable>
                         ) : (
                           <Pressable
-                            onPress={() => void onRevokeCredential(credential._id)}
+                            onPress={() =>
+                              setConfirmDialog({
+                                title: "Revoke token?",
+                                message: `“${credential.label}” will stop working immediately. This can't be undone.`,
+                                confirmLabel: "Revoke",
+                                onConfirm: () =>
+                                  void onRevokeCredential(credential._id),
+                              })
+                            }
                             disabled={isRevoking}
                             hitSlop={12}
                             accessibilityRole="button"
@@ -1027,6 +1044,57 @@ function CliCredentialsSection({
           </Pressable>
         </View>
       )}
+
+      <Modal
+        visible={confirmDialog !== null}
+        transparent
+        animationType={reducedMotion ? "none" : "fade"}
+        statusBarTranslucent
+        onRequestClose={() => setConfirmDialog(null)}
+      >
+        <Pressable
+          style={styles.confirmBackdrop}
+          onPress={() => setConfirmDialog(null)}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss dialog"
+        >
+          <Pressable style={styles.confirmCard} onPress={() => {}}>
+            <Text style={styles.confirmTitle}>{confirmDialog?.title}</Text>
+            <Text style={styles.confirmMessage}>{confirmDialog?.message}</Text>
+            <View style={styles.confirmActions}>
+              <Pressable
+                onPress={() => setConfirmDialog(null)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+                style={({ pressed }) => [
+                  styles.ghostButton,
+                  pressed && { opacity: 0.6 },
+                ]}
+              >
+                <Text style={styles.ghostButtonText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  confirmDialog?.onConfirm();
+                  setConfirmDialog(null);
+                }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={confirmDialog?.confirmLabel}
+                style={({ pressed }) => [
+                  styles.confirmDestructiveButton,
+                  pressed && { opacity: 0.75 },
+                ]}
+              >
+                <Text style={styles.confirmDestructiveText}>
+                  {confirmDialog?.confirmLabel}
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -1992,6 +2060,8 @@ function renderDetailScreen(
       credentialPreview: string;
       status: string;
       scopes: string[];
+      createdAt: number;
+      lastUsedAt?: number;
     }>;
     issuedBootstrapToken: { token: string; expiresAt: number } | null;
     pendingBootstrapTokens: Array<{
@@ -3130,28 +3200,10 @@ const styles = StyleSheet.create({
     fontFamily: "Geist_600SemiBold",
     flexShrink: 1,
   },
-  scopeChipRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.xs,
-  },
-  scopeChip: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-    borderRadius: radii.md,
-    backgroundColor: colors.bgInput,
-  },
-  scopeChipWrite: {
-    backgroundColor: colors.warningMuted,
-  },
-  scopeChipText: {
-    ...typography.numeric,
-    fontSize: 11,
-    lineHeight: 14,
+  tokenSubtitle: {
+    ...typography.bodyMd,
     color: colors.textSecondary,
-  },
-  scopeChipTextWrite: {
-    color: colors.warning,
+    flexShrink: 1,
   },
   rowChevron: {
     alignItems: "center",
@@ -3185,7 +3237,7 @@ const styles = StyleSheet.create({
   ghostButton: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
@@ -3195,10 +3247,52 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontFamily: "Geist_500Medium",
   },
+  confirmBackdrop: {
+    flex: 1,
+    backgroundColor: colors.backdrop,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xl,
+  },
+  confirmCard: {
+    alignSelf: "stretch",
+    backgroundColor: colors.bgFloating,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  confirmTitle: {
+    ...typography.title,
+    color: colors.textPrimary,
+  },
+  confirmMessage: {
+    ...typography.bodyMd,
+    color: colors.textSecondary,
+  },
+  confirmActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  confirmDestructiveButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.error,
+  },
+  confirmDestructiveText: {
+    ...typography.bodyMd,
+    color: colors.textInverse,
+    fontFamily: "Geist_600SemiBold",
+  },
   revokeButton: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     backgroundColor: colors.errorMuted,
   },
   revokeButtonText: {
