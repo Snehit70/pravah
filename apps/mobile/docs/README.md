@@ -14,6 +14,8 @@ loading behavior, or Android-specific ergonomics.
 ## Quick Facts
 
 - The mobile app is an Expo app rooted at `apps/mobile/App.tsx`.
+- The active mobile target is Android preview. Do not introduce iOS-specific
+  guidance or fixes unless the product scope explicitly changes.
 - Global mobile workspace state lives in `src/hooks/useWorkspaceState.ts`.
 - Mobile task subscriptions and derived lists live in `src/hooks/useTaskQueries.ts`.
 - Task mutations and optimistic updates live in `src/hooks/useTaskMutations.ts`.

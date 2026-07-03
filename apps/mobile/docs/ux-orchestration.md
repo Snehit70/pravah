@@ -212,7 +212,8 @@ Settings detail screens must remain usable on Android when the keyboard is open.
 Current rules:
 
 - keep `keyboardShouldPersistTaps="handled"` on the scroll container
-- leave generous bottom padding so the last field can scroll clear of the keyboard
+- use Android keyboard inset padding so the last field can scroll clear of the keyboard
+- avoid iOS-only keyboard affordances unless the active mobile target changes
 - group long settings sections into visual cards so the scroll surface reads in chunks instead of as one undifferentiated column
 
 ### API key field rules
@@ -270,9 +271,9 @@ Rules for new motion:
 
 ## Android Ergonomics
 
-These rules exist because Android has a smaller default touch target tolerance than
-iOS and no system-level equivalent of `UILargeContentViewer`. Without an explicit
-policy, small interactive elements accumulate across the codebase until they are
+These rules exist because Android has a small practical touch target tolerance
+on mid-range devices. Without an explicit policy, small interactive elements
+accumulate across the codebase until they are
 consistently unreachable on mid-range Android devices.
 
 ### Touch target policy

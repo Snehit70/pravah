@@ -1806,7 +1806,7 @@ export function SettingsSheet({
     if (activeCategory !== "kairo") return;
 
     const timeout = setTimeout(() => {
-      scrollRef.current?.scrollToEnd({ animated: true });
+      scrollRef.current?.scrollTo({ y: 360, animated: true });
     }, 80);
 
     return () => clearTimeout(timeout);
@@ -2065,10 +2065,9 @@ export function SettingsSheet({
             style={styles.scroll}
             contentContainerStyle={[
               styles.scrollContent,
-              { paddingBottom: bottomInset + spacing.section },
+              { paddingBottom: bottomInset + spacing.lg },
             ]}
             showsVerticalScrollIndicator={false}
-            keyboardDismissMode="interactive"
             keyboardShouldPersistTaps="handled"
           >
             {navigation.screen === "list" ? (
