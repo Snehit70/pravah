@@ -2662,13 +2662,10 @@ export function SettingsSheet({
     navigation.screen === "detail"
       ? SETTINGS_CATEGORY_META[navigation.category].title
       : "Settings";
-  const showKairoHeaderMark =
-    navigation.screen === "detail" && navigation.category === "kairo";
-  const showCliHeaderMark =
-    navigation.screen === "detail" && navigation.category === "cli";
-  const showSyncHeaderMark =
-    navigation.screen === "detail" && navigation.category === "sync";
-  const showSettingsHeaderMark = navigation.screen === "list";
+  const HeaderMarkIcon =
+    navigation.screen === "detail"
+      ? SETTINGS_CATEGORY_ICONS[navigation.category]
+      : SettingsHomeIcon;
 
   const settingsHomeStatuses: Record<SettingsCategoryKey, SettingsHomeStatus> = {
     kairo: kairoHomeStatus,
@@ -2726,14 +2723,8 @@ export function SettingsSheet({
               <ChevronLeftIcon color={colors.textPrimary} size={20} />
             </Pressable>
             <View style={styles.headerTitleWrap}>
-              {showKairoHeaderMark ? (
-                <KairoIcon color={colors.textSecondary} size={22} />
-              ) : showCliHeaderMark ? (
-                <CliIcon color={colors.textSecondary} size={22} />
-              ) : showSyncHeaderMark ? (
-                <SyncIcon color={colors.textSecondary} size={22} />
-              ) : showSettingsHeaderMark ? (
-                <SettingsHomeIcon color={colors.textSecondary} size={22} />
+              {HeaderMarkIcon ? (
+                <HeaderMarkIcon color={colors.textSecondary} size={22} />
               ) : null}
               <Text style={styles.headerTitle}>{headerTitle}</Text>
             </View>
