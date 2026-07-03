@@ -7,6 +7,7 @@ import Animated, {
   FadeOut,
   LinearTransition,
   useAnimatedStyle,
+  useSharedValue,
   withTiming,
 } from "react-native-reanimated";
 import {
@@ -101,13 +102,19 @@ function ProviderChevron({
   expanded: boolean;
   reducedMotion: boolean;
 }) {
+  const rotation = useSharedValue(expanded ? -90 : 0);
+
+  useEffect(() => {
+    rotation.value = withTiming(expanded ? -90 : 0, {
+      duration: reducedMotion ? 0 : motion.duration.base,
+      easing: PROVIDER_REVEAL_EASING,
+    });
+  }, [expanded, reducedMotion, rotation]);
+
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
       {
-        rotate: withTiming(expanded ? "-90deg" : "0deg", {
-          duration: reducedMotion ? 0 : motion.duration.base,
-          easing: PROVIDER_REVEAL_EASING,
-        }),
+        rotate: `${rotation.value}deg`,
       },
     ],
   }));

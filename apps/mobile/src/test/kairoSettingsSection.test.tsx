@@ -95,7 +95,8 @@ vi.mock("react-native-reanimated", () => ({
   FadeOut: { duration: () => ({ easing: () => undefined }) },
   LinearTransition: { duration: () => ({ easing: () => undefined }) },
   useAnimatedStyle: (factory: () => unknown) => factory(),
-  withTiming: (value: string) => value,
+  useSharedValue: (value: number) => ({ value }),
+  withTiming: (value: number) => value,
 }));
 
 // ─── useReducedMotion mock ────────────────────────────────────────────────────
