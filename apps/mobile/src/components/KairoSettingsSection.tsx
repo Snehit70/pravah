@@ -847,8 +847,8 @@ const styles = StyleSheet.create({
   },
   providerBadge: {
     paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-    borderRadius: radii.lg,
+    paddingVertical: 4,
+    borderRadius: 7,
   },
   providerBadgeConfigured: {
     backgroundColor: "rgba(103,83,199,0.08)",
