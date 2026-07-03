@@ -9,15 +9,20 @@ import Animated, {
 } from "react-native-reanimated";
 import {
   KAIRO_DEFAULTS,
+  KairoSettingsValidationError,
   clearKairoConfig,
   getKairoProviderLabel,
   getKairoSettings,
   hasCustomKairoEndpoint,
   saveKairoSettings,
+  validateKairoProviderProfile,
   type KairoConfig,
+  type KairoProfileErrors,
+  type KairoProfileField,
   type KairoProviderFormat,
   type KairoSettings,
 } from "../lib/kairoConfig";
+import { testKairoConnection } from "../lib/kairoConnection";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { KairoSettingsSkeleton } from "./LoadingSkeleton";
 import { colors, motion, radii, spacing, typography } from "../theme/tokens";
@@ -33,6 +38,7 @@ const PROVIDER_REVEAL_EASING = Easing.bezier(...motion.easing.outQuart);
 const PROVIDER_EXIT_EASING = Easing.bezier(...motion.easing.outExpo);
 
 type SaveState = "idle" | "saving" | "saved" | "cleared";
+type TestState = "idle" | "testing" | "passed";
 
 function toConfig(settings: KairoSettings, provider: KairoProviderFormat): KairoConfig {
   const profile = settings.profiles[provider];
@@ -44,8 +50,14 @@ function toConfig(settings: KairoSettings, provider: KairoProviderFormat): Kairo
   };
 }
 
-function isProfileConfigured(profile: KairoSettings["profiles"][KairoProviderFormat]): boolean {
-  return Boolean(profile.apiKey && profile.baseUrl && profile.model);
+function isProfileConfigured(
+  provider: KairoProviderFormat,
+  profile: KairoSettings["profiles"][KairoProviderFormat],
+): boolean {
+  return (
+    Boolean(profile.apiKey) &&
+    Object.keys(validateKairoProviderProfile({ ...profile })).length === 0
+  );
 }
 
 function ProviderIcon({
@@ -78,7 +90,9 @@ export function KairoSettingsSection() {
   const [defaultPickerOpen, setDefaultPickerOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [testState, setTestState] = useState<TestState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<KairoProfileErrors>({});
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const reducedMotion = useReducedMotion();
@@ -105,13 +119,15 @@ export function KairoSettingsSection() {
 
   const anyConfigured = useMemo(() => {
     if (!settings) return false;
-    return PROVIDERS.some((provider) => isProfileConfigured(settings.profiles[provider]));
+    return PROVIDERS.some((provider) =>
+      isProfileConfigured(provider, settings.profiles[provider]),
+    );
   }, [settings]);
 
   const defaultProvider = settings?.defaultProvider ?? "anthropic";
   const editorProvider = activeProvider ?? defaultProvider;
   const defaultProviderConfigured = settings
-    ? isProfileConfigured(settings.profiles[defaultProvider])
+    ? isProfileConfigured(defaultProvider, settings.profiles[defaultProvider])
     : false;
   const defaultProviderValue = anyConfigured
     ? getKairoProviderLabel(defaultProvider)
@@ -140,7 +156,13 @@ export function KairoSettingsSection() {
     }, 1800);
   };
 
-  const updateActiveProfile = (patch: Partial<(typeof activeProfile)>) => {
+  const updateActiveProfile = (
+    patch: Partial<(typeof activeProfile)>,
+    field: KairoProfileField,
+  ) => {
+    setFieldErrors((current) => ({ ...current, [field]: undefined }));
+    setErrorMessage(null);
+    setTestState("idle");
     setSettings((prev) => {
       if (!prev || !activeProvider) return prev;
       return {
@@ -161,10 +183,16 @@ export function KairoSettingsSection() {
       setActiveProvider(null);
       setApiKeyVisible(false);
       setShowAdvanced(false);
+      setFieldErrors({});
+      setErrorMessage(null);
+      setTestState("idle");
       return;
     }
     setActiveProvider(provider);
     setApiKeyVisible(false);
+    setFieldErrors({});
+    setErrorMessage(null);
+    setTestState("idle");
     if (!settings) {
       setShowAdvanced(false);
       return;
@@ -174,7 +202,7 @@ export function KairoSettingsSection() {
 
   const handleChooseDefaultProvider = (provider: KairoProviderFormat) => {
     if (!settings) return;
-    const providerConfigured = isProfileConfigured(settings.profiles[provider]);
+    const providerConfigured = isProfileConfigured(provider, settings.profiles[provider]);
     if (!providerConfigured) {
       setDefaultPickerOpen(false);
       handleSelectProvider(provider);
@@ -185,8 +213,15 @@ export function KairoSettingsSection() {
   };
 
   const handleSave = async () => {
-    if (!loaded || saveState === "saving" || !settings) return;
+    if (!loaded || saveState === "saving" || !settings || !activeProvider) return;
     setErrorMessage(null);
+    const validationErrors = validateKairoProviderProfile(activeProfile);
+    if (Object.keys(validationErrors).length > 0) {
+      setFieldErrors(validationErrors);
+      if (validationErrors.baseUrl || validationErrors.model) setShowAdvanced(true);
+      return;
+    }
+    setFieldErrors({});
     setSaveState("saving");
     try {
       await saveKairoSettings(settings);
@@ -194,7 +229,38 @@ export function KairoSettingsSection() {
     } catch (error) {
       mobileLogger.warn("kairo_settings_save_failed", { errorType: classifyError(error) });
       setSaveState("idle");
-      setErrorMessage("Could not save Kairo settings.");
+      if (error instanceof KairoSettingsValidationError) {
+        setFieldErrors(error.errors);
+        setErrorMessage(`Check the ${getKairoProviderLabel(error.provider)} settings.`);
+        if (error.errors.baseUrl || error.errors.model) setShowAdvanced(true);
+      } else {
+        setErrorMessage("Could not save Kairo settings.");
+      }
+    }
+  };
+
+  const handleTestConnection = async () => {
+    if (!activeProvider || testState === "testing") return;
+    setErrorMessage(null);
+    const validationErrors = validateKairoProviderProfile(activeProfile);
+    if (Object.keys(validationErrors).length > 0) {
+      setFieldErrors(validationErrors);
+      if (validationErrors.baseUrl || validationErrors.model) setShowAdvanced(true);
+      return;
+    }
+    setFieldErrors({});
+    setTestState("testing");
+    try {
+      await testKairoConnection(toConfig(settings!, activeProvider));
+      setTestState("passed");
+    } catch (error) {
+      mobileLogger.warn("kairo_connection_test_failed", { errorType: classifyError(error) });
+      setTestState("idle");
+      if (error instanceof KairoSettingsValidationError) {
+        setFieldErrors(error.errors);
+      } else {
+        setErrorMessage(error instanceof Error ? error.message : "Could not reach the provider.");
+      }
     }
   };
 
@@ -210,6 +276,8 @@ export function KairoSettingsSection() {
       setDefaultPickerOpen(false);
       setApiKeyVisible(false);
       setShowAdvanced(false);
+      setFieldErrors({});
+      setTestState("idle");
       flashState("cleared");
     } catch (error) {
       mobileLogger.warn("kairo_settings_clear_failed", { errorType: classifyError(error) });
@@ -265,7 +333,7 @@ export function KairoSettingsSection() {
             <View style={styles.defaultPickerList}>
               {PROVIDERS.map((provider, index) => {
                 const providerConfigured = settings
-                  ? isProfileConfigured(settings.profiles[provider])
+                  ? isProfileConfigured(provider, settings.profiles[provider])
                   : false;
                 const isCurrentDefault = anyConfigured && provider === defaultProvider;
                 const disabled = !providerConfigured && !isCurrentDefault;
@@ -340,7 +408,7 @@ export function KairoSettingsSection() {
           const isSelected = provider === activeProvider;
           const isDefault = anyConfigured && settings?.defaultProvider === provider;
           const providerConfigured = settings
-            ? isProfileConfigured(settings.profiles[provider])
+            ? isProfileConfigured(provider, settings.profiles[provider])
             : false;
 
           return (
@@ -432,14 +500,19 @@ export function KairoSettingsSection() {
                   <View style={styles.apiKeyField}>
                     <TextInput
                       value={activeProfile.apiKey}
-                      onChangeText={(v) => updateActiveProfile({ apiKey: v })}
+                      onChangeText={(v) => updateActiveProfile({ apiKey: v }, "apiKey")}
                       placeholder="Paste API key"
                       placeholderTextColor={colors.textMuted}
                       autoCapitalize="none"
                       autoCorrect={false}
                       secureTextEntry={!apiKeyVisible}
                       editable={loaded}
-                      style={[styles.input, styles.apiKeyInput]}
+                      style={[
+                        styles.input,
+                        styles.apiKeyInput,
+                        fieldErrors.apiKey && styles.inputError,
+                      ]}
+                      accessibilityHint={fieldErrors.apiKey}
                     />
                     <Pressable
                       onPress={() => setApiKeyVisible((visible) => !visible)}
@@ -451,6 +524,9 @@ export function KairoSettingsSection() {
                       <EyeIcon color={colors.textSecondary} size={18} />
                     </Pressable>
                   </View>
+                  {fieldErrors.apiKey ? (
+                    <Text style={styles.fieldError}>{fieldErrors.apiKey}</Text>
+                  ) : null}
 
                   <Pressable
                     onPress={() => setShowAdvanced((current) => !current)}
@@ -477,25 +553,33 @@ export function KairoSettingsSection() {
                       <Text style={styles.advancedLabel}>Endpoint URL</Text>
                       <TextInput
                         value={activeProfile.baseUrl}
-                        onChangeText={(v) => updateActiveProfile({ baseUrl: v })}
+                        onChangeText={(v) => updateActiveProfile({ baseUrl: v }, "baseUrl")}
                         placeholder={placeholders.baseUrl}
                         placeholderTextColor={colors.textMuted}
                         autoCapitalize="none"
                         autoCorrect={false}
                         editable={loaded}
-                        style={styles.input}
+                        style={[styles.input, fieldErrors.baseUrl && styles.inputError]}
+                        accessibilityHint={fieldErrors.baseUrl}
                       />
+                      {fieldErrors.baseUrl ? (
+                        <Text style={styles.fieldError}>{fieldErrors.baseUrl}</Text>
+                      ) : null}
                       <Text style={styles.advancedLabel}>Model</Text>
                       <TextInput
                         value={activeProfile.model}
-                        onChangeText={(v) => updateActiveProfile({ model: v })}
+                        onChangeText={(v) => updateActiveProfile({ model: v }, "model")}
                         placeholder={placeholders.model}
                         placeholderTextColor={colors.textMuted}
                         autoCapitalize="none"
                         autoCorrect={false}
                         editable={loaded}
-                        style={styles.input}
+                        style={[styles.input, fieldErrors.model && styles.inputError]}
+                        accessibilityHint={fieldErrors.model}
                       />
+                      {fieldErrors.model ? (
+                        <Text style={styles.fieldError}>{fieldErrors.model}</Text>
+                      ) : null}
                     </Animated.View>
                   ) : null}
 
@@ -514,6 +598,33 @@ export function KairoSettingsSection() {
                     >
                       <Text style={styles.clearButtonText}>
                         {saveState === "cleared" ? "Cleared" : "Clear"}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => void handleTestConnection()}
+                      hitSlop={12}
+                      accessibilityRole="button"
+                      accessibilityLabel="Test provider connection"
+                      disabled={testState === "testing" || saveState === "saving"}
+                      style={({ pressed }) => [
+                        styles.testButton,
+                        testState === "passed" && styles.testButtonPassed,
+                        pressed && styles.pressed,
+                        (testState === "testing" || saveState === "saving") &&
+                          styles.disabledAction,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.testButtonText,
+                          testState === "passed" && styles.testButtonTextPassed,
+                        ]}
+                      >
+                        {testState === "testing"
+                          ? "Testing…"
+                          : testState === "passed"
+                            ? "Connected"
+                            : "Test"}
                       </Text>
                     </Pressable>
                     <Pressable
@@ -805,6 +916,13 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     ...typography.bodyMd,
   },
+  inputError: {
+    borderColor: colors.error,
+  },
+  fieldError: {
+    color: colors.error,
+    ...typography.bodyMd,
+  },
   apiKeyInput: {
     flex: 1,
   },
@@ -868,6 +986,28 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     ...typography.bodyMd,
     fontFamily: "Geist_500Medium",
+  },
+  testButton: {
+    minHeight: 44,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.bgSurface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  testButtonPassed: {
+    borderColor: "rgba(34,107,75,0.24)",
+    backgroundColor: colors.successMuted,
+  },
+  testButtonText: {
+    color: colors.textPrimary,
+    ...typography.bodyMd,
+    fontFamily: "Geist_500Medium",
+  },
+  testButtonTextPassed: {
+    color: colors.success,
   },
   saveButton: {
     minHeight: 44,
