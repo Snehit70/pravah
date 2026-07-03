@@ -170,6 +170,19 @@ export const ChatBubbleIcon = icon(({ color, size, strokeWidth }) => (
   </Svg>
 ));
 
+export const BellIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M12 4.75a4.75 4.75 0 0 1 4.75 4.75c0 3.1.85 4.75 1.5 5.75H5.75c.65-1 1.5-2.65 1.5-5.75A4.75 4.75 0 0 1 12 4.75Z" />
+    <Path d="M10.25 18.25a1.85 1.85 0 0 0 3.5 0" />
+  </Svg>
+));
+
+export const MoonIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M18.75 13.9a7 7 0 0 1-8.65-8.65 7 7 0 1 0 8.65 8.65Z" />
+  </Svg>
+));
+
 export const LedgerCheckIcon = icon(({ color, size, strokeWidth }) => (
   <Svg {...frame(color, size, strokeWidth)}>
     <Path d="M7.5 5.5h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Z" />
