@@ -84,9 +84,9 @@ import { feedback } from "./src/lib/feedback";
 import {
   AlertCircleIcon,
   InfoCircleIcon,
-  SettingsIcon,
   SyncLoopIcon,
 } from "./src/components/UiIcons";
+import AppSettingsIcon from "./src/assets/icons/app-settings.svg";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -1060,7 +1060,7 @@ function MobileApp() {
               accessibilityRole="button"
               accessibilityLabel="Open settings"
             >
-              <SettingsIcon color={colors.textMuted} size={18} />
+              <AppSettingsIcon width={19} height={19} color={colors.textMuted} />
             </Pressable>
           </View>
         </View>

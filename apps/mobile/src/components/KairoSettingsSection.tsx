@@ -34,9 +34,9 @@ import {
   AdjustmentsIcon,
   ChevronRightIcon,
   ChevronUpIcon,
-  KeyIcon,
 } from "./UiIcons";
 import KairoIconAsset from "../assets/icons/settings-kairo.svg";
+import KairoKeyAsset from "../assets/icons/kairo-key.svg";
 import AnthropicIconAsset from "../assets/icons/provider-anthropic.svg";
 import OpenAIIconAsset from "../assets/icons/provider-openai.svg";
 import GeminiIconAsset from "../assets/icons/provider-gemini.svg";
@@ -557,7 +557,7 @@ export function KairoSettingsSection({ onFieldFocus }: KairoSettingsSectionProps
                         fieldErrors.apiKey && styles.inputError,
                       ]}
                     >
-                      <KeyIcon color={colors.textDim} size={18} strokeWidth={1.8} />
+                      <KairoKeyAsset width={24} height={18} color={colors.textDim} />
                       <TextInput
                         value={activeProfile.apiKey}
                         onChangeText={(v) => updateActiveProfile({ apiKey: v }, "apiKey")}
@@ -819,8 +819,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   defaultOptionRadio: {
-    width: 20,
-    height: 20,
+    width: 22,
+    height: 22,
     borderRadius: radii.full,
     borderWidth: 1.5,
     borderColor: colors.border,
@@ -829,17 +829,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   defaultOptionRadioActive: {
-    borderColor: colors.accent,
+    borderColor: colors.textPrimary,
+    backgroundColor: colors.textPrimary,
   },
   defaultOptionRadioDisabled: {
     backgroundColor: colors.bgSurface,
     borderColor: colors.borderSubtle,
   },
   defaultOptionRadioDot: {
-    width: 8,
-    height: 8,
+    width: 7,
+    height: 7,
     borderRadius: radii.full,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.bgFloating,
   },
   sectionDivider: {
     height: 1,
@@ -911,7 +912,7 @@ const styles = StyleSheet.create({
     borderRadius: 7,
   },
   providerBadgeConfigured: {
-    backgroundColor: "rgba(103,83,199,0.08)",
+    backgroundColor: colors.successMuted,
   },
   providerBadgeIdle: {
     backgroundColor: "rgba(91,80,72,0.05)",
@@ -921,7 +922,7 @@ const styles = StyleSheet.create({
     fontFamily: "Geist_500Medium",
   },
   providerBadgeTextConfigured: {
-    color: colors.accent,
+    color: colors.success,
   },
   providerBadgeTextIdle: {
     color: colors.textSecondary,

@@ -33,6 +33,7 @@ import AboutIconAsset from "../assets/icons/settings-about.svg";
 import AppearanceIconAsset from "../assets/icons/settings-appearance.svg";
 import InteractionIconAsset from "../assets/icons/settings-interaction.svg";
 import KairoIconAsset from "../assets/icons/settings-kairo.svg";
+import AppSettingsIconAsset from "../assets/icons/app-settings.svg";
 import RemindersIconAsset from "../assets/icons/settings-reminders.svg";
 import SyncIconAsset from "../assets/icons/settings-sync.svg";
 import {
@@ -171,6 +172,10 @@ function SyncIcon({ color: _color, size = 18 }: CategoryIconProps) {
 
 function KairoIcon({ color, size = 18 }: CategoryIconProps) {
   return <KairoIconAsset width={size} height={size} color={color} />;
+}
+
+function SettingsHomeIcon({ color, size = 18 }: CategoryIconProps) {
+  return <AppSettingsIconAsset width={size} height={size} color={color} />;
 }
 
 function CliIcon({ color, size = 18 }: CategoryIconProps) {
@@ -2001,6 +2006,7 @@ export function SettingsSheet({
       : "Settings";
   const showKairoHeaderMark =
     navigation.screen === "detail" && navigation.category === "kairo";
+  const showSettingsHeaderMark = navigation.screen === "list";
 
   const settingsHomeStatuses: Record<SettingsCategoryKey, SettingsHomeStatus> = {
     kairo: kairoHomeStatus,
@@ -2060,6 +2066,8 @@ export function SettingsSheet({
             <View style={styles.headerTitleWrap}>
               {showKairoHeaderMark ? (
                 <KairoIcon color={colors.textSecondary} size={22} />
+              ) : showSettingsHeaderMark ? (
+                <SettingsHomeIcon color={colors.textSecondary} size={22} />
               ) : null}
               <Text style={styles.headerTitle}>{headerTitle}</Text>
             </View>
