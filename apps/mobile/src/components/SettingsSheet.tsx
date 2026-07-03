@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useState, type JSX } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState, type JSX } from "react";
 import {
   Keyboard,
   Linking,
@@ -24,6 +24,7 @@ import type { NotificationPermissionState } from "../lib/notifications";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useReducedMotion } from "../hooks/useReducedMotion";
+import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { getOrCreateDeviceId } from "../lib/deviceIdentity";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
 import { classifyError, mobileLogger } from "../lib/logger";
@@ -1761,11 +1762,14 @@ export function SettingsSheet({
   gmailLastError,
 }: SettingsSheetProps) {
   const insets = useSafeAreaInsets();
+  const bottomInset = useKeyboardInset(insets.bottom);
   const reducedMotion = useReducedMotion();
+  const scrollRef = useRef<ScrollView>(null);
   const [navigation, dispatchNavigation] = useReducer(
     settingsNavigationReducer,
     INITIAL_SETTINGS_NAVIGATION,
   );
+  const activeCategory = navigation.screen === "detail" ? navigation.category : null;
   const { prefs, setPreference } = useUserPreferences();
   const tabOrder = resolveTabOrder(prefs.tabOrder);
   const [openPicker, setOpenPicker] = useState<QuietPickerKind | null>(null);
@@ -1795,6 +1799,18 @@ export function SettingsSheet({
     const timeout = setTimeout(() => setDangerArmed(null), 5000);
     return () => clearTimeout(timeout);
   }, [dangerArmed]);
+
+  useEffect(() => {
+    const keyboardVisible = bottomInset > Math.max(insets.bottom, spacing.lg);
+    if (!visible || !keyboardVisible) return;
+    if (activeCategory !== "kairo") return;
+
+    const timeout = setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, 80);
+
+    return () => clearTimeout(timeout);
+  }, [activeCategory, bottomInset, insets.bottom, visible]);
 
   useEffect(() => {
     if (!visible) {
@@ -2045,12 +2061,14 @@ export function SettingsSheet({
           style={styles.contentWrap}
         >
           <ScrollView
+            ref={scrollRef}
             style={styles.scroll}
             contentContainerStyle={[
               styles.scrollContent,
-              { paddingBottom: insets.bottom + spacing.section },
+              { paddingBottom: bottomInset + spacing.section },
             ]}
             showsVerticalScrollIndicator={false}
+            keyboardDismissMode="interactive"
             keyboardShouldPersistTaps="handled"
           >
             {navigation.screen === "list" ? (
