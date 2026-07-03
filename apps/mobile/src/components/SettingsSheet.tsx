@@ -480,13 +480,14 @@ function SettingsCategoryList({
 type KairoSectionProps = {
   prefs: ReturnType<typeof useUserPreferences>["prefs"];
   setPreference: ReturnType<typeof useUserPreferences>["setPreference"];
+  onApiKeyFocus: () => void;
 };
 
-function KairoSection(_: KairoSectionProps) {
+function KairoSection({ onApiKeyFocus }: KairoSectionProps) {
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
-        <KairoSettingsSection />
+        <KairoSettingsSection onApiKeyFocus={onApiKeyFocus} />
       </View>
     </View>
   );
@@ -1623,6 +1624,7 @@ function renderDetailScreen(
   props: {
     prefs: ReturnType<typeof useUserPreferences>["prefs"];
     setPreference: ReturnType<typeof useUserPreferences>["setPreference"];
+    onKairoApiKeyFocus: () => void;
     automationCredentials: Array<{
       _id: Id<"automationCredentials">;
       label: string;
@@ -1692,7 +1694,13 @@ function renderDetailScreen(
 
   switch (navigation.category) {
     case "kairo":
-      return <KairoSection prefs={props.prefs} setPreference={props.setPreference} />;
+      return (
+        <KairoSection
+          prefs={props.prefs}
+          setPreference={props.setPreference}
+          onApiKeyFocus={props.onKairoApiKeyFocus}
+        />
+      );
     case "cli":
       return (
         <CliCredentialsSection
@@ -1765,6 +1773,7 @@ export function SettingsSheet({
   const bottomInset = useKeyboardInset(insets.bottom);
   const reducedMotion = useReducedMotion();
   const scrollRef = useRef<ScrollView>(null);
+  const kairoFocusScrollTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [navigation, dispatchNavigation] = useReducer(
     settingsNavigationReducer,
     INITIAL_SETTINGS_NAVIGATION,
@@ -1800,19 +1809,21 @@ export function SettingsSheet({
     return () => clearTimeout(timeout);
   }, [dangerArmed]);
 
-  useEffect(() => {
-    const keyboardVisible = bottomInset > Math.max(insets.bottom, spacing.lg);
-    if (!visible || !keyboardVisible) return;
-    if (activeCategory !== "kairo") return;
+  const handleKairoApiKeyFocus = useCallback(() => {
+    if (!visible || activeCategory !== "kairo") return;
 
-    const timeout = setTimeout(() => {
-      scrollRef.current?.scrollTo({ y: 360, animated: true });
-    }, 80);
-
-    return () => clearTimeout(timeout);
-  }, [activeCategory, bottomInset, insets.bottom, visible]);
+    if (kairoFocusScrollTimeout.current) clearTimeout(kairoFocusScrollTimeout.current);
+    kairoFocusScrollTimeout.current = setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: 240, animated: true });
+      kairoFocusScrollTimeout.current = null;
+    }, 120);
+  }, [activeCategory, visible]);
 
   useEffect(() => {
+    if (kairoFocusScrollTimeout.current) {
+      clearTimeout(kairoFocusScrollTimeout.current);
+      kairoFocusScrollTimeout.current = null;
+    }
     if (!visible) {
       setOpenPicker(null);
       setDangerArmed(null);
@@ -2079,6 +2090,7 @@ export function SettingsSheet({
               renderDetailScreen(navigation, {
                 prefs,
                 setPreference,
+                onKairoApiKeyFocus: handleKairoApiKeyFocus,
                 automationCredentials,
                 automationLabel,
                 setAutomationLabel,

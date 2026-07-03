@@ -92,7 +92,11 @@ function ApiKeyVisibilityIcon({ visible }: { visible: boolean }) {
   return <Icon width={19} height={19} color={colors.textSecondary} />;
 }
 
-export function KairoSettingsSection() {
+type KairoSettingsSectionProps = {
+  onApiKeyFocus?: () => void;
+};
+
+export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProps = {}) {
   const [settings, setSettings] = useState<KairoSettings | null>(null);
   const [activeProvider, setActiveProvider] = useState<KairoProviderFormat | null>(null);
   const [defaultPickerOpen, setDefaultPickerOpen] = useState(false);
@@ -515,6 +519,7 @@ export function KairoSettingsSection() {
                       autoCorrect={false}
                       secureTextEntry={!apiKeyVisible}
                       editable={loaded}
+                      onFocus={onApiKeyFocus}
                       style={[
                         styles.input,
                         styles.apiKeyInput,
