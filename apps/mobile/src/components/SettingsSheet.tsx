@@ -31,6 +31,7 @@ import { classifyError, mobileLogger } from "../lib/logger";
 import {
   AlertCircleIcon,
   ArrowUpRightIcon,
+  BellIcon as BellStrokeIcon,
   CalendarIcon,
   CheckIcon,
   ChevronLeftIcon,
@@ -39,6 +40,7 @@ import {
   InboxTrayIcon,
   InfoCircleIcon,
   MailIcon,
+  MoonIcon,
   SyncLoopIcon,
 } from "./UiIcons";
 import AboutIconAsset from "../assets/icons/settings-about.svg";
@@ -275,12 +277,10 @@ function getStatusTone(status: string): "success" | "warning" | "error" | "muted
   return "muted";
 }
 
-function statusTextColor(status: string): string {
-  const tone = getStatusTone(status);
-  if (tone === "success") return colors.primary;
-  if (tone === "warning") return colors.accent;
-  if (tone === "error") return colors.error;
-  return colors.textMuted;
+function notificationPermissionLabel(state: NotificationPermissionState): string {
+  if (state === "granted") return "Ready";
+  if (state === "denied") return "Denied";
+  return "Permission needed";
 }
 
 function syncHealthLabel(health: SyncHealth): string {
@@ -1428,59 +1428,55 @@ function RemindersSection({
 }: RemindersSectionProps) {
   return (
     <View style={styles.screenBody}>
-      <View style={styles.summaryRow}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryKicker}>Notifications</Text>
-          <Text style={styles.summaryValue}>{formatStatusLabel(notificationPermissionState)}</Text>
-          <Text style={styles.summaryMeta}>
-            {notificationsEnabled ? "Alerts available on this device" : "Permission still needed"}
-          </Text>
-        </View>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryKicker}>Morning digest</Text>
-          <Text style={styles.summaryValue}>{formatClockLabel(prefs.morningDigestTime)}</Text>
-          <Text style={styles.summaryMeta}>
-            {prefs.quietHoursEnabled ? "Quiet hours adjust delivery" : "No quiet hours set"}
-          </Text>
-        </View>
-      </View>
-
       <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Notifications</Text>
-        <Text style={styles.settingHelp}>
-          Timed tasks notify at their deadline, and date-only tasks roll into one morning digest.
-        </Text>
-        <Text style={[styles.settingStatus, { color: statusTextColor(notificationPermissionState) }]}>
-          {formatStatusLabel(notificationPermissionState)}
-        </Text>
+        <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <BellStrokeIcon color={colors.textSecondary} size={18} />
+          </View>
+          <View style={styles.settingCopy}>
+            <View style={styles.syncTitleRow}>
+              <Text style={styles.settingLabel}>Notifications</Text>
+              <SyncStatusBadge
+                label={notificationPermissionLabel(notificationPermissionState)}
+                tone={getStatusTone(notificationPermissionState)}
+              />
+            </View>
+            <Text style={styles.settingHelp}>
+              Timed tasks notify at their deadline, and date-only tasks roll into one morning
+              digest.
+            </Text>
+          </View>
+        </View>
 
-        {!notificationsEnabled ? (
+        <View style={styles.behaviorRow}>
+          <Text style={styles.settingMeta}>
+            {notificationsEnabled ? "Check delivery" : "Alerts on this device"}
+          </Text>
           <Pressable
-            onPress={onRequestNotificationsAccess}
+            onPress={notificationsEnabled ? onSendTestNotification : onRequestNotificationsAccess}
             disabled={isNotificationsBusy}
-            hitSlop={12}
+            hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel="Enable notifications"
-            style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+            accessibilityLabel={
+              notificationsEnabled ? "Send a test notification" : "Enable notifications"
+            }
+            style={({ pressed }) => [
+              styles.timeInlineButton,
+              pressed && { opacity: 0.7 },
+              isNotificationsBusy && styles.syncActionButtonDisabled,
+            ]}
           >
-            <Text style={[styles.inlineActionText, isNotificationsBusy && styles.inlineActionDisabled]}>
-              Enable notifications
+            <Text
+              style={[
+                styles.timeInlineButtonText,
+                { fontFamily: "Geist_600SemiBold" },
+                isNotificationsBusy && { color: colors.textDim },
+              ]}
+            >
+              {notificationsEnabled ? "Send a test" : "Enable"}
             </Text>
           </Pressable>
-        ) : null}
-
-        <Pressable
-          onPress={onSendTestNotification}
-          disabled={isNotificationsBusy}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel="Send a test notification"
-          style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-        >
-          <Text style={[styles.inlineActionText, isNotificationsBusy && styles.inlineActionDisabled]}>
-            Send a test
-          </Text>
-        </Pressable>
+        </View>
 
         <View style={styles.behaviorRow}>
           <Text style={styles.settingMeta}>Morning digest time</Text>
@@ -1527,51 +1523,63 @@ function RemindersSection({
 
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <MoonIcon color={colors.textSecondary} size={18} />
+          </View>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Quiet hours</Text>
             <Text style={styles.settingHelp}>
-              A window where auto-chosen notification times are adjusted to fire outside this range.
+              Auto-scheduled alerts wait until quiet hours end.
             </Text>
           </View>
           <Switch
             value={prefs.quietHoursEnabled}
             onValueChange={(next) => void setPreference("quietHoursEnabled", next)}
-            trackColor={{ false: colors.border, true: colors.accentSoft }}
-            thumbColor={prefs.quietHoursEnabled ? colors.accent : colors.textMuted}
+            trackColor={{ false: colors.border, true: colors.warningMuted }}
+            thumbColor={prefs.quietHoursEnabled ? colors.warning : colors.textMuted}
           />
         </View>
 
-        <Pressable
-          onPress={() => onOpenPicker("quietStart")}
-          disabled={!prefs.quietHoursEnabled}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel={`Change quiet hours start, currently ${formatClockLabel(prefs.quietHoursStart)}`}
-          style={({ pressed }) => [
-            styles.timeRow,
-            !prefs.quietHoursEnabled && { opacity: 0.5 },
-            pressed && { opacity: 0.7 },
-          ]}
-        >
-          <Text style={styles.settingMeta}>Starts</Text>
-          <Text style={styles.timeRowValue}>{formatClockLabel(prefs.quietHoursStart)}</Text>
-        </Pressable>
+        {prefs.quietHoursEnabled ? (
+          <>
+            <View style={styles.behaviorRow}>
+              <Text style={styles.settingMeta}>Starts</Text>
+              <Pressable
+                onPress={() => onOpenPicker("quietStart")}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel={`Change quiet hours start, currently ${formatClockLabel(prefs.quietHoursStart)}`}
+                style={({ pressed }) => [styles.timeInlineButton, pressed && { opacity: 0.7 }]}
+              >
+                <Text style={styles.timeInlineButtonText}>
+                  {formatClockLabel(prefs.quietHoursStart)}
+                </Text>
+              </Pressable>
+            </View>
 
-        <Pressable
-          onPress={() => onOpenPicker("quietEnd")}
-          disabled={!prefs.quietHoursEnabled}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel={`Change quiet hours end, currently ${formatClockLabel(prefs.quietHoursEnd)}`}
-          style={({ pressed }) => [
-            styles.timeRow,
-            !prefs.quietHoursEnabled && { opacity: 0.5 },
-            pressed && { opacity: 0.7 },
-          ]}
-        >
-          <Text style={styles.settingMeta}>Ends</Text>
-          <Text style={styles.timeRowValue}>{formatClockLabel(prefs.quietHoursEnd)}</Text>
-        </Pressable>
+            <View style={styles.behaviorRow}>
+              <Text style={styles.settingMeta}>Ends</Text>
+              <Pressable
+                onPress={() => onOpenPicker("quietEnd")}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel={`Change quiet hours end, currently ${formatClockLabel(prefs.quietHoursEnd)}`}
+                style={({ pressed }) => [styles.timeInlineButton, pressed && { opacity: 0.7 }]}
+              >
+                <Text style={styles.timeInlineButtonText}>
+                  {formatClockLabel(prefs.quietHoursEnd)}
+                </Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.syncHintRow}>
+              <InfoCircleIcon color={colors.textMuted} size={14} strokeWidth={1.8} />
+              <Text style={styles.syncHintText}>
+                Reminders with a time you set yourself still fire during quiet hours.
+              </Text>
+            </View>
+          </>
+        ) : null}
       </View>
 
       {openPicker !== null ? (
@@ -3519,27 +3527,27 @@ const styles = StyleSheet.create({
   choiceChip: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
   },
   choiceChipActive: {
-    backgroundColor: colors.accentSoft,
-    borderColor: colors.accent,
+    backgroundColor: colors.textPrimary,
+    borderColor: colors.textPrimary,
   },
   choiceChipText: {
     ...typography.bodyMd,
     color: colors.textMuted,
   },
   choiceChipTextActive: {
-    color: colors.accent,
+    color: colors.textInverse,
     fontFamily: "Geist_600SemiBold",
   },
   timeInlineButton: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
