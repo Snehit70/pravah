@@ -1493,7 +1493,7 @@ function RemindersSection({
           </Pressable>
         </View>
 
-        <View style={styles.behaviorRow}>
+        <View style={styles.behaviorStack}>
           <Text style={styles.settingMeta}>Heads-up lead time</Text>
           <View style={styles.chipRow}>
             {REMINDER_LEAD_TIME_OPTIONS.map((minutes) => {
@@ -3510,13 +3510,17 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: "Geist_600SemiBold",
   },
+  behaviorStack: {
+    gap: spacing.sm,
+  },
   chipRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
     gap: spacing.sm,
   },
   choiceChip: {
-    paddingHorizontal: spacing.md,
+    flex: 1,
+    alignItems: "center",
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
     borderRadius: radii.md,
     backgroundColor: colors.bgSurface,
