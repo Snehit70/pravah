@@ -10,6 +10,14 @@ import {
   View,
 } from "react-native";
 import { BlurView } from "expo-blur";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { haptic } from "../lib/haptic";
 import { selectedIndexFromOffset } from "../lib/snapWheelTimePicker";
 import { colors, radii, spacing, typography } from "../theme/tokens";
@@ -138,31 +146,72 @@ export function SnapWheelTimePicker({
   const [hour, setHour] = useState(parsed.hour);
   const [minute, setMinute] = useState(parsed.minute);
 
+  // 0 = fully hidden, 1 = fully presented. Entrance springs the card up;
+  // exit plays a quick fade/drop before the modal actually unmounts.
+  const progress = useSharedValue(0);
+
+  useEffect(() => {
+    if (!visible) return;
+    progress.value = reducedMotion
+      ? 1
+      : withSpring(1, { damping: 18, stiffness: 280, mass: 0.8 });
+    // The shared value is a stable ref; listing it would re-trigger on writes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, reducedMotion]);
+
+  const dismiss = () => {
+    if (reducedMotion) {
+      onClose();
+      return;
+    }
+    progress.value = withTiming(
+      0,
+      { duration: 140, easing: Easing.in(Easing.quad) },
+      (finished) => {
+        if (finished) scheduleOnRN(onClose);
+      },
+    );
+  };
+
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: progress.value,
+  }));
+
+  const cardStyle = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [
+      { translateY: (1 - progress.value) * 28 },
+      { scale: 0.94 + progress.value * 0.06 },
+    ],
+  }));
+
   const confirm = () => {
     haptic.light();
     onConfirm(`${pad2(hour)}:${pad2(minute)}`);
-    onClose();
+    dismiss();
   };
 
   return (
     <Modal
       visible={visible}
       transparent
-      animationType={reducedMotion ? "none" : "fade"}
+      animationType="none"
       statusBarTranslucent
-      onRequestClose={onClose}
+      onRequestClose={dismiss}
     >
       <View style={styles.overlay}>
-        <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
-        <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
+        <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
+          <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
+          <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
+        </Animated.View>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Dismiss time picker"
           style={StyleSheet.absoluteFill}
-          onPress={onClose}
+          onPress={dismiss}
         />
 
-        <View style={styles.card}>
+        <Animated.View style={[styles.card, cardStyle]}>
           <Text style={styles.heading}>{title}</Text>
           <View style={styles.columns}>
             <Wheel
@@ -183,7 +232,7 @@ export function SnapWheelTimePicker({
 
           <View style={styles.footer}>
             <Pressable
-              onPress={onClose}
+              onPress={dismiss}
               hitSlop={12}
               accessibilityRole="button"
               accessibilityLabel="Cancel"
@@ -201,7 +250,7 @@ export function SnapWheelTimePicker({
               <Text style={styles.footerConfirm}>Set</Text>
             </Pressable>
           </View>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );

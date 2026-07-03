@@ -3,6 +3,33 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
 
+vi.mock("react-native-reanimated", () => {
+  type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
+  const AnimatedView = ({ children, ...rest }: AnyProps) => {
+    const { style: _, ...safe } = rest;
+    return React.createElement("div", safe, children);
+  };
+  return {
+    default: { View: AnimatedView, Text: AnimatedView },
+    Easing: { in: (f: unknown) => f, quad: {} },
+    useSharedValue: (initial: number) => ({ value: initial }),
+    useAnimatedStyle: () => ({}),
+    withSpring: (value: number) => value,
+    withTiming: (
+      value: number,
+      _config?: unknown,
+      callback?: (finished: boolean) => void,
+    ) => {
+      callback?.(true);
+      return value;
+    },
+  };
+});
+
+vi.mock("react-native-worklets", () => ({
+  scheduleOnRN: (fn: () => void) => fn(),
+}));
+
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
   const View = ({ children, ...rest }: AnyProps) => {
