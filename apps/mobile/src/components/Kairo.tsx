@@ -74,7 +74,6 @@ import {
 import { applyConfirmedKairoActions } from "../lib/kairoPolicy";
 import { getLocalDateString } from "../lib/dates";
 import { useKairoChats } from "../hooks/useKairoChats";
-import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useGoalLinks, useGoals } from "../hooks/useGoals";
 import { KairoChatList } from "./KairoChatList";
 import { KairoMarkdown } from "./KairoMarkdown";
@@ -227,7 +226,6 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   // identity is stable across renders; messages only carry the serializable
   // chip state and reference back into this map by id.
   const undoMap = useRef<Map<string, () => Promise<void>>>(new Map());
-  const { prefs } = useUserPreferences();
   const confirm = useConfirm();
 
   const {
@@ -980,7 +978,7 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
         </View>
 
         {/* Starters render on first paint only (no user messages yet). */}
-        {msgs.length === 1 && !thinking && !deferredPromptPreview && prefs.kairoStarterPillsEnabled ? (
+        {msgs.length === 1 && !thinking && !deferredPromptPreview ? (
           <View style={styles.starters}>
             {starters.map((p) => (
               <Pressable
