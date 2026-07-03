@@ -6,6 +6,8 @@ import Animated, {
   FadeInDown,
   FadeOut,
   LinearTransition,
+  useAnimatedStyle,
+  withTiming,
 } from "react-native-reanimated";
 import {
   KAIRO_DEFAULTS,
@@ -90,6 +92,31 @@ function ApiKeyVisibilityIcon({ visible }: { visible: boolean }) {
   const Icon = visible ? KairoEyeClosedAsset : KairoEyeOpenAsset;
 
   return <Icon width={19} height={19} color={colors.textSecondary} />;
+}
+
+function ProviderChevron({
+  expanded,
+  reducedMotion,
+}: {
+  expanded: boolean;
+  reducedMotion: boolean;
+}) {
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        rotate: `${withTiming(expanded ? -90 : 0, {
+          duration: reducedMotion ? 0 : motion.duration.base,
+          easing: PROVIDER_REVEAL_EASING,
+        })}deg`,
+      },
+    ],
+  }));
+
+  return (
+    <Animated.View style={animatedStyle}>
+      <ChevronRightIcon color={colors.textSecondary} size={18} />
+    </Animated.View>
+  );
 }
 
 type KairoSettingsSectionProps = {
@@ -486,11 +513,7 @@ export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProp
                       {providerConfigured ? "Configured" : "Not configured"}
                     </Text>
                   </View>
-                  {isSelected ? (
-                    <ChevronUpIcon color={colors.textSecondary} size={18} />
-                  ) : (
-                    <ChevronRightIcon color={colors.textSecondary} size={18} />
-                  )}
+                  <ProviderChevron expanded={isSelected} reducedMotion={reducedMotion} />
                 </View>
               </Pressable>
 
