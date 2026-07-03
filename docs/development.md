@@ -10,7 +10,6 @@ This guide covers local setup and day-to-day workflows for Pravah.
 - Optional for mobile:
   - Android Studio + Android SDK
   - JDK 21 (or compatible JDK)
-  - Xcode for iOS development
 
 ## First-Time Setup
 
@@ -92,12 +91,6 @@ bun run mobile:android
 
 `scripts/run-mobile-android.mjs` auto-detects common Android SDK paths and a compatible JDK if env vars are missing.
 
-### iOS
-
-```bash
-bun run mobile:ios
-```
-
 ### Expo web
 
 ```bash
@@ -112,7 +105,7 @@ Generate `apps/mobile/.env.local` from root env:
 bun run mobile:env
 ```
 
-Auto-run by: `mobile:start`, `mobile:android`, `mobile:ios`, `mobile:web`.
+Auto-run by: `mobile:start`, `mobile:android`, and `mobile:web`.
 
 ### Mobile auth env
 
@@ -122,8 +115,6 @@ Minimum mobile auth env for Google sign-in:
 EXPO_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
 EXPO_PUBLIC_CONVEX_SITE_URL=https://your-deployment.convex.site
 EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=your-google-web-client-id
-# Optional:
-EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=your-google-ios-client-id
 ```
 
 ### Mobile sign-out reliability notes

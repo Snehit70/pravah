@@ -1,5 +1,6 @@
 export type SettingsCategoryKey =
   | "kairo"
+  | "cli"
   | "sync"
   | "reminders"
   | "interaction"
@@ -17,6 +18,7 @@ export type SettingsNavigationAction =
 
 export const SETTINGS_CATEGORY_ORDER: readonly SettingsCategoryKey[] = [
   "kairo",
+  "cli",
   "sync",
   "reminders",
   "interaction",
@@ -30,27 +32,31 @@ export const SETTINGS_CATEGORY_META: Record<
 > = {
   kairo: {
     title: "Kairo",
-    summary: "Provider setup, starter pills, bootstrap tokens, and issued credentials.",
+    summary: "Provider and behavior",
+  },
+  cli: {
+    title: "Access tokens",
+    summary: "Short-lived tokens for the pravah CLI",
   },
   sync: {
     title: "Sync",
-    summary: "Google Calendar health, Gmail review, and connected account state.",
+    summary: "Data sync and accounts",
   },
   reminders: {
     title: "Reminders",
-    summary: "Notifications, morning digest, lead time, and quiet hours.",
+    summary: "Notifications and reminders",
   },
   interaction: {
     title: "Interaction",
-    summary: "Swipe actions, haptics, sound, and motion preferences.",
+    summary: "Gestures and feedback",
   },
   appearance: {
     title: "Appearance",
-    summary: "Tab order and capture preferences.",
+    summary: "Theme and display",
   },
   about: {
     title: "About",
-    summary: "Version info, exports, diagnostics, account actions, and support links.",
+    summary: "Version and diagnostics",
   },
 };
 
@@ -58,12 +64,8 @@ export const SETTINGS_CATEGORY_CONTROLS: Record<
   SettingsCategoryKey,
   readonly string[]
 > = {
-  kairo: [
-    "kairo_config",
-    "kairo_starter_pills",
-    "automation_bootstrap_token",
-    "automation_credentials",
-  ],
+  kairo: ["kairo_config", "kairo_starter_pills"],
+  cli: ["automation_bootstrap_token", "automation_credentials"],
   sync: [
     "google_calendar_sync",
     "gmail_review",
@@ -76,14 +78,18 @@ export const SETTINGS_CATEGORY_CONTROLS: Record<
     "quiet_hours",
   ],
   interaction: [
+    "bulk_task_capture",
     "swipe_actions",
     "haptics",
     "sound",
     "reduced_motion",
   ],
   appearance: [
+    "theme_baseline",
+    "font_baseline",
+    "density",
+    "task_color_scheme",
     "tab_order",
-    "bulk_task_capture",
   ],
   about: [
     "app_version",

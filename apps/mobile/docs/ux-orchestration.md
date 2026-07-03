@@ -162,22 +162,26 @@ That means:
 This is intentionally optimistic because Pravah is a single-user personal tool,
 not a high-risk admin surface.
 
-## Settings Sheet UX
+## Settings UX
 
 ### Current structure
 
-The settings sheet is a long-form bottom sheet with this order:
+Settings is a full-screen drill-down modal. The home surface is a category
+list, and each category opens a focused detail screen:
 
-1. Assistant / Kairo config
+1. Kairo
 2. Sync
-3. Alerts
-4. Account
+3. Reminders
+4. Interaction
+5. Appearance
+6. About
 
 This order is deliberate.
 
-The Kairo section has text inputs and is frequently edited. Putting it near the
-top reduces long-scroll + keyboard conflicts and makes the highest-friction
-interaction easier to reach.
+Kairo remains first because provider setup is the highest-friction
+configuration flow. Sync and reminders follow because they expose operational
+trust state. Interaction and Appearance hold preference controls. About stays
+last because version, diagnostics, and account actions are low-frequency.
 
 The Kairo form itself is also intentionally tiered:
 
@@ -188,14 +192,14 @@ This keeps the common mobile path short while still preserving full provider con
 
 The `Advanced` section auto-opens only when the persisted config has an endpoint URL or model that diverges from the active provider's defaults. Empty fields are treated as "use defaults" and do not auto-open the section. The decision is taken once when the config loads from secure storage, not on every keystroke.
 
-### Section jump chips
+### Category navigation
 
-The chip row at the top of the sheet is both a jump control and a passive position indicator. Tapping a chip scrolls to the matching section header; manually scrolling also updates which chip is highlighted.
+The Settings home uses icon-plus-text category rows with short status summaries.
+Rows are navigation entries, not inline form controls. The detail screen title
+changes to the selected category, and the leading header action becomes Back.
 
-- chips are pressable and use captured `onLayout` offsets to scroll, so behavior stays reliable on Android bottom sheets
-- the active chip is filled with the accent color so the user can tell where they are
-- scrolling honors `useReducedMotion` — reduced motion jumps without animating
-- the active chip tracks manual scroll position via a lightweight `onScroll` handler that compares `contentOffset.y` against the captured offsets — no per-frame animations, just a single state update when the user crosses a section boundary
+The category list uses explicit divider views between rows instead of Android
+hairline borders on pressable rows, so separators render consistently on device.
 
 ### Save / clear feedback
 
@@ -203,14 +207,13 @@ Save in Kairo settings is a filled accent chip rather than a text link, and it b
 
 ### Keyboard rules
 
-The settings sheet must remain usable on Android when the keyboard is open.
+Settings detail screens must remain usable on Android when the keyboard is open.
 
 Current rules:
 
-- use bottom-sheet keyboard handling (`extend`, `restore`, `adjustResize`)
-- use `BottomSheetTextInput` for inputs inside the sheet
 - keep `keyboardShouldPersistTaps="handled"` on the scroll container
-- leave generous bottom padding so the last field can scroll clear of the keyboard
+- use Android keyboard inset padding so the last field can scroll clear of the keyboard
+- avoid iOS-only keyboard affordances unless the active mobile target changes
 - group long settings sections into visual cards so the scroll surface reads in chunks instead of as one undifferentiated column
 
 ### API key field rules
@@ -268,9 +271,9 @@ Rules for new motion:
 
 ## Android Ergonomics
 
-These rules exist because Android has a smaller default touch target tolerance than
-iOS and no system-level equivalent of `UILargeContentViewer`. Without an explicit
-policy, small interactive elements accumulate across the codebase until they are
+These rules exist because Android has a small practical touch target tolerance
+on mid-range devices. Without an explicit policy, small interactive elements
+accumulate across the codebase until they are
 consistently unreachable on mid-range Android devices.
 
 ### Touch target policy
@@ -433,6 +436,8 @@ These are intentional tradeoffs, not accidental gaps:
 
 - skeletons are approximate, not pixel-perfect clones of final content
 - Kairo still needs a full-workspace query when open because AI context quality matters more there than minimal query count
-- the settings experience still lives in one bottom sheet instead of a nested native stack, because that keeps parity with the current product model and reduces navigation complexity
+- Settings uses an in-modal reducer rather than a native navigation stack,
+  because the flow is shallow and should stay context-preserving.
 
-If the settings surface grows substantially beyond the current scope, splitting Kairo configuration into a dedicated sub-screen will likely be the next step.
+If the settings surface grows substantially beyond the current scope, moving
+Settings to a dedicated native stack will likely be the next step.

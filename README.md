@@ -6,7 +6,8 @@ Pravah is a timeline-first task manager built around a horizontal week view. Tas
 
 ## Mobile App
 
-The mobile app (Expo / React Native) brings the full Pravah experience to Android and iOS — inbox, timeline, goals, Kairo AI, and sync — all in the same dark typographic style.
+The mobile app (Expo / React Native) currently targets Android preview builds:
+inbox, timeline, goals, Kairo AI, and sync in the same mobile shell.
 
 <p align="center">
   <img src="public/images/mobile/mobile-auth.jpeg" width="18%" alt="Sign in" />
@@ -67,7 +68,6 @@ you move on to mobile or backend debugging.
 | `bun run pravah -- --help` | Pravah automation CLI |
 | `bun run mobile:start` | Start Expo |
 | `bun run mobile:android` | Android native build (auto-syncs env) |
-| `bun run mobile:ios` | iOS native build |
 | `bun run mobile:web` | Expo web |
 
 Run `cd packages/cli && bun link` once when you want the package bin available directly as `pravah`. Use `bun run pravah -- <namespace> <command>` inside the checkout without linking.
@@ -135,7 +135,7 @@ ALLOWED_CORS_ORIGINS=https://staging.example.com,https://preview.example.com
 bun run mobile:env   # generates apps/mobile/.env.local from root env
 ```
 
-`mobile:start`, `mobile:android`, `mobile:ios`, and `mobile:web` run this automatically.
+`mobile:start`, `mobile:android`, and `mobile:web` run this automatically.
 
 ## CI
 

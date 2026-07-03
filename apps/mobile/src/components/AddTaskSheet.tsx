@@ -71,6 +71,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [time, setTime] = useState("");
     const [priority, setPriority] = useState<TaskPriority>(undefined);
     const [kind, setKind] = useState<"task" | "goal">("task");
+    const [firstTaskTitle, setFirstTaskTitle] = useState("");
     const [goalId, setGoalId] = useState<string | undefined>(undefined);
     const [goalIds, setGoalIds] = useState<string[]>([]);
     const [seriesEnabled, setSeriesEnabled] = useState(false);
@@ -94,6 +95,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         description.trim() ||
         deadline.trim() ||
         priority ||
+        firstTaskTitle.trim() ||
         goalId
         || goalIds.length > 0
         || seriesEnabled
@@ -110,12 +112,15 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       [laterThisWeek],
     );
 
-    const presetDeadlines: Record<ComposerMode, string> = {
-      inbox: "",
-      today: toIsoDate(new Date()),
-      tomorrow: toIsoDate(addDays(new Date(), 1)),
-      laterThisWeek: toIsoDate(laterThisWeek),
-    };
+    const presetDeadlines = useMemo<Record<ComposerMode, string>>(
+      () => ({
+        inbox: "",
+        today: toIsoDate(new Date()),
+        tomorrow: toIsoDate(addDays(new Date(), 1)),
+        laterThisWeek: toIsoDate(laterThisWeek),
+      }),
+      [laterThisWeek],
+    );
     const selectedMode = modeOptions.find(
       (option) => presetDeadlines[option.mode] === deadline
     )?.mode;
@@ -136,6 +141,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setTime("");
       setPriority(undefined);
       setGoalId(undefined);
+      setFirstTaskTitle("");
       setGoalIds([]);
       setSeriesEnabled(false);
       setSeriesStart("1");
@@ -199,12 +205,28 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           deadline: deadlineResult.value,
           priority,
         });
-        setSaving(false);
         if (!created) {
+          setSaving(false);
           setError("You already have a goal with that name.");
           haptic.error();
           return;
         }
+        const firstTask = firstTaskTitle.trim();
+        if (firstTask) {
+          const success = await onAdd({
+            title: firstTask,
+            description: undefined,
+            deadline: deadlineResult.value,
+            time: deadlineResult.value ? (time.trim() || undefined) : undefined,
+            priority,
+            goalId: created.id,
+          });
+          if (!success) {
+            setSaving(false);
+            return;
+          }
+        }
+        setSaving(false);
         feedback.captureSaved();
         reset();
         closeModal();
@@ -254,7 +276,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         reset();
         closeModal();
       }
-    }, [title, description, deadline, time, priority, goalId, goalIds, seriesEnabled, seriesStart, seriesEnd, kind, saving, onAdd, onBulkAdd, isValidDeadline, closeModal, addGoal, prefs.bulkTaskCaptureEnabled]);
+    }, [title, description, deadline, time, priority, firstTaskTitle, goalId, goalIds, seriesEnabled, seriesStart, seriesEnd, kind, saving, onAdd, onBulkAdd, isValidDeadline, closeModal, addGoal, prefs.bulkTaskCaptureEnabled]);
 
     const bulkPreview = useMemo(() => {
       if (!prefs.bulkTaskCaptureEnabled || kind !== "task" || (!seriesEnabled && goalIds.length < 2)) return null;
@@ -272,6 +294,20 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     }, [goalIds, kind, prefs.bulkTaskCaptureEnabled, seriesEnabled, seriesEnd, seriesStart, title]);
 
     const canSubmit = useMemo(() => Boolean(title.trim()) && !saving, [title, saving]);
+    const captureOutcome = useMemo(() => {
+      if (kind === "goal") return "Creates a Goal you can plan from Goals.";
+      if (!deadline) return "Saves to Inbox for later triage.";
+      const selected = modeOptions.find((option) => presetDeadlines[option.mode] === deadline);
+      if (selected) return `Schedules for ${selected.label}.`;
+      return "Schedules for the selected date.";
+    }, [deadline, kind, modeOptions, presetDeadlines]);
+    const submitLabel = saving
+      ? "Saving..."
+      : kind === "goal"
+        ? "Create goal"
+        : deadline
+          ? "Schedule task"
+          : "Capture task";
 
     return (
       <Modal
@@ -404,6 +440,9 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                 </View>
               ) : (
                 <View style={styles.goalKindRow}>
+                  <Text style={styles.goalModeHint}>
+                    Create the direction first. Add a starting task now if the next move is clear.
+                  </Text>
                   <View style={{ flex: 1 }} />
                   <Pressable
                     onPress={() => setShowDetails(!showDetails)}
@@ -417,6 +456,20 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                   </Pressable>
                 </View>
               )}
+
+              {kind === "goal" ? (
+                <View style={styles.firstTaskBlock}>
+                  <Text style={styles.goalChipKicker}>First task</Text>
+                  <TextInput
+                    value={firstTaskTitle}
+                    onChangeText={setFirstTaskTitle}
+                    placeholder="Optional next move"
+                    placeholderTextColor={colors.textMuted}
+                    style={styles.inlineTextInput}
+                    accessibilityLabel="First linked task"
+                  />
+                </View>
+              ) : null}
 
               {kind === "task" && goals.length > 0 ? (
                 <View style={styles.goalSection}>
@@ -570,6 +623,9 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               ) : null}
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
+              <Text accessibilityLiveRegion="polite" style={styles.outcomeText}>
+                {captureOutcome}
+              </Text>
             </ScrollView>
 
             {/* Sticky footer: the primary action stays pinned above the keyboard
@@ -586,7 +642,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                 ]}
               >
                 <Text style={[styles.primaryButtonText, !canSubmit && styles.primaryButtonTextDisabled]}>
-                  {saving ? "Adding…" : kind === "goal" ? "Add goal" : "Add task"}
+                  {submitLabel}
                 </Text>
               </Pressable>
 
@@ -656,6 +712,30 @@ const styles = StyleSheet.create({
   rangeRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   rangeInput: { minWidth: 72, color: colors.textPrimary, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, paddingVertical: spacing.sm, textAlign: "center" },
   previewText: { ...typography.micro, color: colors.textMuted },
+  goalModeHint: {
+    flex: 1,
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    lineHeight: 18,
+  },
+  firstTaskBlock: {
+    gap: spacing.sm,
+  },
+  inlineTextInput: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+    backgroundColor: colors.bgInput,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  outcomeText: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    lineHeight: 18,
+  },
 
   sheetKicker: {
     ...typography.micro,

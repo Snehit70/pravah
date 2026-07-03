@@ -13,7 +13,6 @@ vi.mock("../../../../convex/_generated/api", () => ({
     tasks: {
       listTasks: { __ref: "tasks.listTasks" },
       getTimeline: { __ref: "tasks.getTimeline" },
-      getTaskCounts: { __ref: "tasks.getTaskCounts" },
     },
   },
 }));
@@ -22,6 +21,7 @@ import { buildTimelineWindow, useTaskQueries } from "../hooks/useTaskQueries";
 
 const LIST_REF = { __ref: "tasks.listTasks" };
 const TIMELINE_REF = { __ref: "tasks.getTimeline" };
+const COUNTS_REF = { __ref: "tasks.getTaskCounts" };
 
 function callsTo(ref: { __ref: string }, args?: unknown) {
   return useQueryMock.mock.calls.filter(([fn, payload]) => {
@@ -52,17 +52,19 @@ describe("useTaskQueries — full corpus gating", () => {
     expect(fullCorpus.every(([, payload]) => payload === "skip")).toBe(true);
   });
 
-  it("skips the all-tasks query when authenticated but Kairo is inactive", () => {
-    renderHook(() =>
+  it("skips full-corpus and duplicate count queries when full context is inactive", () => {
+    const { result } = renderHook(() =>
       useTaskQueries({ isAuthenticated: true, includeAllTasks: false })
     );
 
     const fullCorpusActive = callsTo(LIST_REF, {});
     expect(fullCorpusActive).toHaveLength(0);
+    expect(callsTo(COUNTS_REF)).toHaveLength(0);
 
     // The narrow status-scoped subscriptions still fire so tab switching is instant.
     expect(callsTo(LIST_REF, { status: "inbox" })).toHaveLength(1);
     expect(callsTo(LIST_REF, { status: "completed" })).toHaveLength(1);
+    expect(result.current.isAllTasksReady).toBe(true);
   });
 
   it("subscribes to the full corpus when Kairo is active", () => {

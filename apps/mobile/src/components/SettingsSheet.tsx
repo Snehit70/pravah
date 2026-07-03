@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type JSX } from "react";
 import {
+  ActivityIndicator,
   Keyboard,
   Linking,
   Modal,
@@ -18,13 +19,30 @@ import * as SecureStore from "expo-secure-store";
 import appJson from "../../app.json";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import { getKairoSettings } from "../lib/kairoConfig";
 import type { NotificationPermissionState } from "../lib/notifications";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useReducedMotion } from "../hooks/useReducedMotion";
+import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { getOrCreateDeviceId } from "../lib/deviceIdentity";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
 import { classifyError, mobileLogger } from "../lib/logger";
+import {
+  ArrowUpRightIcon,
+  CheckIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CopyIcon,
+} from "./UiIcons";
+import AboutIconAsset from "../assets/icons/settings-about.svg";
+import AppearanceIconAsset from "../assets/icons/settings-appearance.svg";
+import InteractionIconAsset from "../assets/icons/settings-interaction.svg";
+import KairoIconAsset from "../assets/icons/settings-kairo.svg";
+import CliIconAsset from "../assets/icons/settings-cli.svg";
+import AppSettingsIconAsset from "../assets/icons/app-settings.svg";
+import RemindersIconAsset from "../assets/icons/settings-reminders.svg";
+import SyncIconAsset from "../assets/icons/settings-sync.svg";
 import {
   moveTabOrder,
   resolveTabOrder,
@@ -33,13 +51,13 @@ import {
 } from "../lib/tabOrder";
 import {
   INITIAL_SETTINGS_NAVIGATION,
-  SETTINGS_CATEGORY_CONTROLS,
   SETTINGS_CATEGORY_META,
   SETTINGS_CATEGORY_ORDER,
   settingsNavigationReducer,
   type SettingsCategoryKey,
   type SettingsNavigationState,
 } from "../lib/settingsNavigation";
+import type { AccentColor, Density } from "../lib/userPreferences";
 import { KairoSettingsSection } from "./KairoSettingsSection";
 import { GmailReviewSection } from "./GmailReviewSection";
 import { AppUpdateSection } from "./AppUpdateSection";
@@ -94,11 +112,110 @@ type SettingsSheetProps = {
 };
 
 const REMINDER_LEAD_TIME_OPTIONS = [5, 15, 30, 60] as const;
+const DENSITY_OPTIONS: Array<{ value: Density; label: string; description: string }> = [
+  {
+    value: "cozy",
+    label: "Comfortable",
+    description: "The default thumb-safe spacing used across the redesign.",
+  },
+  {
+    value: "compact",
+    label: "Compact",
+    description: "Tighter task rows for review-heavy sessions.",
+  },
+];
+const TASK_COLOR_OPTIONS: Array<{
+  value: AccentColor;
+  label: string;
+  description: string;
+  swatch: string;
+}> = [
+  {
+    value: "purple",
+    label: "Indigo",
+    description: "Default Pravah selection and planning accent.",
+    swatch: colors.accent,
+  },
+  {
+    value: "copper",
+    label: "Copper",
+    description: "Warmer task emphasis for deadline-heavy planning.",
+    swatch: colors.deadline,
+  },
+  {
+    value: "teal",
+    label: "Teal",
+    description: "Cooler task emphasis for quieter review sessions.",
+    swatch: "#3e7b78",
+  },
+  {
+    value: "rose",
+    label: "Rose",
+    description: "Sharper task emphasis for high-attention queues.",
+    swatch: "#9d586f",
+  },
+];
 const READ_ONLY_AUTOMATION_SCOPES = ["tasks:read", "review:read", "sync:read"] as const;
 const APP_VERSION = appJson.expo?.version ?? "—";
 const REPO_URL = "https://github.com/Snehit70/pravah";
 const CHANGELOG_URL = `${REPO_URL}/blob/main/apps/mobile/CHANGELOG.md`;
 const ISSUES_URL = `${REPO_URL}/issues`;
+
+type CategoryIconProps = {
+  color: string;
+  size?: number;
+};
+
+type SettingsHomeStatusTone = "success" | "warning" | "error" | "neutral";
+
+type SettingsHomeStatus = {
+  label: string;
+  tone: SettingsHomeStatusTone;
+};
+
+function SyncIcon({ color: _color, size = 18 }: CategoryIconProps) {
+  return <SyncIconAsset width={size} height={size} />;
+}
+
+function KairoIcon({ color, size = 18 }: CategoryIconProps) {
+  return <KairoIconAsset width={size} height={size} color={color} />;
+}
+
+function SettingsHomeIcon({ color, size = 18 }: CategoryIconProps) {
+  return <AppSettingsIconAsset width={size} height={size} color={color} />;
+}
+
+function CliIcon({ color, size = 18 }: CategoryIconProps) {
+  return <CliIconAsset width={size} height={size} color={color} />;
+}
+
+function BellIcon({ color: _color, size = 18 }: CategoryIconProps) {
+  return <RemindersIconAsset width={size} height={size} />;
+}
+
+function HandIcon({ color: _color, size = 18 }: CategoryIconProps) {
+  return <InteractionIconAsset width={size} height={size} />;
+}
+
+function SlidersIcon({ color: _color, size = 18 }: CategoryIconProps) {
+  return <AppearanceIconAsset width={size} height={size} />;
+}
+
+function InfoIcon({ color: _color, size = 18 }: CategoryIconProps) {
+  return <AboutIconAsset width={size} height={size} />;
+}
+
+const SETTINGS_CATEGORY_ICONS: Partial<
+  Record<SettingsCategoryKey, (props: CategoryIconProps) => JSX.Element>
+> = {
+  kairo: KairoIcon,
+  cli: CliIcon,
+  sync: SyncIcon,
+  reminders: BellIcon,
+  interaction: HandIcon,
+  appearance: SlidersIcon,
+  about: InfoIcon,
+};
 
 function formatClockLabel(value: string): string {
   const [hStr, mStr] = value.split(":");
@@ -117,6 +234,12 @@ function formatRelativeTime(ts: number | undefined): string | null {
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
   return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+function formatShortDate(ts: number): string {
+  const date = new Date(ts);
+  const month = date.toLocaleString("en-US", { month: "short" });
+  return `${month} ${date.getDate()}`;
 }
 
 function describeLastRun(run: IntegrationLastRunSummary | undefined): string | null {
@@ -193,6 +316,13 @@ function calendarActionLabel(health: SyncHealth, isSyncing: boolean): string {
   if (health === "error") return "Reconnect";
   if (health === "paused" || health === "disconnected") return "Enable and sync";
   return "Sync now";
+}
+
+function settingsStatusColor(tone: SettingsHomeStatusTone): string {
+  if (tone === "success") return colors.success;
+  if (tone === "warning") return colors.warning;
+  if (tone === "error") return colors.error;
+  return colors.textSecondary;
 }
 
 type TabOrderEditorProps = {
@@ -294,39 +424,54 @@ function TabOrderEditor({ order, onMove }: TabOrderEditorProps) {
 
 function SettingsCategoryList({
   onOpenCategory,
+  statuses,
 }: {
   onOpenCategory: (category: SettingsCategoryKey) => void;
+  statuses: Record<SettingsCategoryKey, SettingsHomeStatus>;
 }) {
   return (
     <View style={styles.screenBody}>
-      <Text style={styles.leadText}>
-        Only one category at a time. Pick the surface you want to tune, then drill in.
-      </Text>
-      <View style={styles.categoryList}>
+      <View style={styles.categoryPanel}>
         {SETTINGS_CATEGORY_ORDER.map((category) => {
           const meta = SETTINGS_CATEGORY_META[category];
-          const controlCount = SETTINGS_CATEGORY_CONTROLS[category].length;
+          const Icon = SETTINGS_CATEGORY_ICONS[category];
+          const status = statuses[category];
+          const isLast = category === SETTINGS_CATEGORY_ORDER[SETTINGS_CATEGORY_ORDER.length - 1];
           return (
-            <Pressable
-              key={category}
-              onPress={() => onOpenCategory(category)}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel={`Open ${meta.title} settings`}
-              style={({ pressed }) => [
-                styles.categoryCard,
-                pressed && { opacity: 0.72 },
-              ]}
-            >
-              <View style={styles.categoryCopy}>
-                <Text style={styles.categoryTitle}>{meta.title}</Text>
-                <Text style={styles.categorySummary}>{meta.summary}</Text>
-              </View>
-              <View style={styles.categoryMeta}>
-                <Text style={styles.categoryCount}>{controlCount}</Text>
-                <Text style={styles.categoryChevron}>›</Text>
-              </View>
-            </Pressable>
+            <View key={category}>
+              <Pressable
+                onPress={() => onOpenCategory(category)}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${meta.title} settings`}
+                style={({ pressed }) => [
+                  styles.categoryCard,
+                  pressed && { opacity: 0.72 },
+                ]}
+              >
+                {Icon ? (
+                  <View style={styles.categoryIconWrap}>
+                    <Icon color={colors.textSecondary} size={18} />
+                  </View>
+                ) : null}
+                <View style={styles.categoryCopy}>
+                  <Text style={styles.categoryTitle}>{meta.title}</Text>
+                  <Text style={styles.categorySummary}>{meta.summary}</Text>
+                </View>
+                <View style={styles.categoryMeta}>
+                  <Text
+                    style={[
+                      styles.categoryStatus,
+                      { color: settingsStatusColor(status.tone) },
+                    ]}
+                  >
+                    {status.label}
+                  </Text>
+                  <ChevronRightIcon color={colors.textDim} size={16} />
+                </View>
+              </Pressable>
+              {!isLast ? <View style={styles.categoryDivider} /> : null}
+            </View>
           );
         })}
       </View>
@@ -334,209 +479,622 @@ function SettingsCategoryList({
   );
 }
 
-type AssistantAutomationSectionProps = {
+type KairoSectionProps = {
   prefs: ReturnType<typeof useUserPreferences>["prefs"];
   setPreference: ReturnType<typeof useUserPreferences>["setPreference"];
+  onFieldFocus: (field: "apiKey" | "baseUrl" | "model") => void;
+};
+
+function KairoSection({ onFieldFocus }: KairoSectionProps) {
+  return (
+    <View style={styles.screenBody}>
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <KairoSettingsSection onFieldFocus={onFieldFocus} />
+      </View>
+    </View>
+  );
+}
+
+type CliCredentialsSectionProps = {
   automationCredentials: Array<{
     _id: Id<"automationCredentials">;
     label: string;
     credentialPreview: string;
     status: string;
     scopes: string[];
+    createdAt: number;
+    lastUsedAt?: number;
   }>;
-  automationLabel: string;
-  setAutomationLabel: (value: string) => void;
-  allowTaskWrites: boolean;
-  setAllowTaskWrites: (value: boolean) => void;
   issuedBootstrapToken: { token: string; expiresAt: number } | null;
+  pendingBootstrapTokens: Array<{
+    _id: Id<"automationBootstrapTokens">;
+    label: string;
+    scopes: string[];
+    expiresAt: number;
+    createdAt: number;
+  }>;
   isIssuingBootstrapToken: boolean;
+  isLoadingCredentials: boolean;
   onIssueBootstrapToken: () => void;
+  onDismissIssuedToken: () => void;
+  onCancelBootstrapToken: (
+    bootstrapTokenId: Id<"automationBootstrapTokens">,
+  ) => Promise<void>;
+  cancellingBootstrapTokenId: Id<"automationBootstrapTokens"> | null;
   onCopy: (value: string, label: string) => Promise<void>;
   onRevokeCredential: (credentialId: Id<"automationCredentials">) => Promise<void>;
   revokingCredentialId: Id<"automationCredentials"> | null;
+  onDeleteCredential: (credentialId: Id<"automationCredentials">) => Promise<void>;
+  deletingCredentialId: Id<"automationCredentials"> | null;
+  onSetTaskWrites: (
+    credentialId: Id<"automationCredentials">,
+    allow: boolean,
+  ) => Promise<void>;
+  onRenameCredential: (
+    credentialId: Id<"automationCredentials">,
+    label: string,
+  ) => Promise<void>;
+  updatingCredentialId: Id<"automationCredentials"> | null;
 };
 
-function AssistantAutomationSection({
-  prefs,
-  setPreference,
+function CliCredentialsSection({
   automationCredentials,
-  automationLabel,
-  setAutomationLabel,
-  allowTaskWrites,
-  setAllowTaskWrites,
   issuedBootstrapToken,
+  pendingBootstrapTokens,
   isIssuingBootstrapToken,
+  isLoadingCredentials,
   onIssueBootstrapToken,
+  onDismissIssuedToken,
+  onCancelBootstrapToken,
+  cancellingBootstrapTokenId,
   onCopy,
   onRevokeCredential,
   revokingCredentialId,
-}: AssistantAutomationSectionProps) {
+  onDeleteCredential,
+  deletingCredentialId,
+  onSetTaskWrites,
+  onRenameCredential,
+  updatingCredentialId,
+}: CliCredentialsSectionProps) {
+  const reducedMotion = useReducedMotion();
+  const [expandedId, setExpandedId] =
+    useState<Id<"automationCredentials"> | null>(null);
+  const [renamingId, setRenamingId] =
+    useState<Id<"automationCredentials"> | null>(null);
+  const [renameText, setRenameText] = useState("");
+  const [tokenCopied, setTokenCopied] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  } | null>(null);
+  const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(
+    () => () => {
+      if (copyResetRef.current) clearTimeout(copyResetRef.current);
+    },
+    [],
+  );
+
+  // Hide the pending row for the token currently shown in the "new token" card
+  // (expiresAt is a unique server timestamp), so it isn't listed twice.
+  const visiblePending = pendingBootstrapTokens.filter(
+    (token) =>
+      !issuedBootstrapToken || token.expiresAt !== issuedBootstrapToken.expiresAt,
+  );
+  const hasPending = visiblePending.length > 0;
+
+  // Keep issued/pending token countdowns live while any are on screen.
+  useEffect(() => {
+    if (!issuedBootstrapToken && !hasPending) return;
+    const seed = setTimeout(() => setNow(Date.now()), 0);
+    const id = setInterval(() => setNow(Date.now()), 15000);
+    return () => {
+      clearTimeout(seed);
+      clearInterval(id);
+    };
+  }, [issuedBootstrapToken, hasPending]);
+
+  const handleCopyToken = async (token: string) => {
+    await onCopy(token, "Bootstrap token");
+    setTokenCopied(true);
+    if (copyResetRef.current) clearTimeout(copyResetRef.current);
+    copyResetRef.current = setTimeout(() => setTokenCopied(false), 2000);
+  };
+
+  const cancelRename = () => {
+    setRenamingId(null);
+    setRenameText("");
+  };
+
+  const issuedMsLeft = issuedBootstrapToken
+    ? issuedBootstrapToken.expiresAt - now
+    : 0;
+  const isIssuedExpired = issuedMsLeft <= 0;
+  const issuedMinsLeft = Math.max(0, Math.ceil(issuedMsLeft / 60000));
+
+  const hasTokens = automationCredentials.length > 0;
+
+  const beginRename = (id: Id<"automationCredentials">, label: string) => {
+    setRenamingId(id);
+    setRenameText(label);
+  };
+
+  const commitRename = async (id: Id<"automationCredentials">) => {
+    const next = renameText.trim();
+    setRenamingId(null);
+    if (next) {
+      await onRenameCredential(id, next);
+    }
+  };
+
   return (
     <View style={styles.screenBody}>
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Kairo</Text>
-        <Text style={styles.settingHelp}>
-          Configure the provider, API key, endpoint, and model used for mobile AI assistance.
-        </Text>
-        <KairoSettingsSection />
-      </View>
-
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Behavior</Text>
-        <Text style={styles.settingHelp}>
-          Control the AI affordances that show up inside the task flow.
-        </Text>
-        <View style={styles.behaviorRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.settingMeta}>Starter pills</Text>
-          </View>
-          <Switch
-            value={prefs.kairoStarterPillsEnabled}
-            onValueChange={(next) => void setPreference("kairoStarterPillsEnabled", next)}
-            trackColor={{ false: colors.border, true: colors.accentSoft }}
-            thumbColor={prefs.kairoStarterPillsEnabled ? colors.accent : colors.textMuted}
-          />
-        </View>
-      </View>
-
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>CLI credentials</Text>
-        <Text style={styles.settingHelp}>
-          Issue a short-lived bootstrap token for `pravah setup` or `pravah auth import`.
-        </Text>
-        <Text style={styles.settingMeta}>{automationCredentials.length} recorded</Text>
-
-        <View style={styles.fieldStack}>
-          <Text style={styles.fieldLabel}>Credential label</Text>
-          <TextInput
-            value={automationLabel}
-            onChangeText={setAutomationLabel}
-            placeholder="Codex local"
-            placeholderTextColor={colors.textDim}
-            autoCapitalize="none"
-            autoCorrect={false}
-            style={styles.textInput}
-            accessibilityLabel="Automation credential label"
-          />
-        </View>
-
-        <View style={styles.behaviorRow}>
-          <View style={styles.settingCopy}>
-            <Text style={styles.settingMeta}>Allow task writes</Text>
-            <Text style={styles.settingHelp}>
-              Off by default. Enable only when the CLI should change tasks from this device.
+      {issuedBootstrapToken ? (
+        <View style={[styles.sectionCard, styles.issuedCard]}>
+          <View style={styles.issuedHeader}>
+            <Text style={styles.fieldLabel}>New bootstrap token</Text>
+            <Text
+              style={[
+                styles.issuedExpiry,
+                isIssuedExpired && styles.issuedExpiryExpired,
+              ]}
+            >
+              {isIssuedExpired ? "Expired" : `Expires in ${issuedMinsLeft} min`}
             </Text>
           </View>
-          <Switch
-            value={allowTaskWrites}
-            onValueChange={setAllowTaskWrites}
-            trackColor={{ false: colors.border, true: colors.accentSoft }}
-            thumbColor={allowTaskWrites ? colors.accent : colors.textMuted}
-          />
-        </View>
-
-        <Text style={styles.settingMeta}>
-          Scopes · {[
-            ...READ_ONLY_AUTOMATION_SCOPES,
-            ...(allowTaskWrites ? (["tasks:write"] as const) : []),
-          ].join(" · ")}
-        </Text>
-
-        <Pressable
-          onPress={onIssueBootstrapToken}
-          disabled={isIssuingBootstrapToken}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel="Issue bootstrap token"
-          style={({ pressed }) => [
-            styles.softButton,
-            pressed && { opacity: 0.6 },
-            isIssuingBootstrapToken && styles.softButtonDisabled,
-          ]}
-        >
-          <Text
-            style={[
-              styles.softButtonText,
-              isIssuingBootstrapToken && styles.inlineActionDisabled,
+          <View style={styles.copyRow}>
+            <View
+              style={[
+                styles.codePill,
+                styles.copyRowPill,
+                isIssuedExpired && styles.codePillMuted,
+              ]}
+            >
+              <Text
+                selectable
+                style={[
+                  styles.tokenMono,
+                  isIssuedExpired && styles.tokenMonoMuted,
+                ]}
+                numberOfLines={1}
+              >
+                {issuedBootstrapToken.token}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => void handleCopyToken(issuedBootstrapToken.token)}
+              disabled={isIssuedExpired}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel={tokenCopied ? "Token copied" : "Copy bootstrap token"}
+              style={({ pressed }) => [
+                styles.copyButton,
+                tokenCopied && styles.copyButtonDone,
+                isIssuedExpired && styles.softButtonDisabled,
+                pressed && { opacity: 0.6 },
+              ]}
+            >
+              {tokenCopied ? (
+                <CheckIcon color={colors.success} size={16} />
+              ) : (
+                <CopyIcon
+                  color={isIssuedExpired ? colors.textDim : colors.textPrimary}
+                  size={16}
+                />
+              )}
+            </Pressable>
+          </View>
+          <Text style={styles.issuedHint}>
+            {isIssuedExpired ? (
+              "This token expired before it was used. Issue a new one to connect the CLI."
+            ) : (
+              <>
+                You won&rsquo;t see this token again — copy it now, then run{" "}
+                <Text style={styles.issuedHintMono}>pravah setup</Text> and paste
+                it to finish.
+              </>
+            )}
+          </Text>
+          <Pressable
+            onPress={onDismissIssuedToken}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss token"
+            style={({ pressed }) => [
+              styles.ghostButton,
+              styles.issuedDoneButton,
+              pressed && { opacity: 0.6 },
             ]}
           >
-            {isIssuingBootstrapToken ? "Issuing…" : "Issue bootstrap token"}
-          </Text>
-        </Pressable>
-
-        {issuedBootstrapToken ? (
-          <View style={styles.tokenBlock}>
-            <Text style={styles.fieldLabel}>Bootstrap token</Text>
-            <Text style={styles.settingHelp}>
-              Copied to clipboard. It expires at{" "}
-              {new Date(issuedBootstrapToken.expiresAt).toLocaleString()}.
+            <Text style={styles.ghostButtonText}>
+              {isIssuedExpired ? "Dismiss" : "Done"}
             </Text>
-            <View style={styles.copyRow}>
-              <View style={[styles.codePill, styles.copyRowPill]}>
-                <Text selectable style={styles.codePillText} numberOfLines={1}>
-                  {issuedBootstrapToken.token}
-                </Text>
-              </View>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {hasPending ? (
+        <View style={styles.sectionCard}>
+          <View style={styles.tokensHeader}>
+            <Text style={styles.settingLabel}>Pending setup</Text>
+          </View>
+          <Text style={styles.issuedHint}>
+            Issued but not connected yet. Run{" "}
+            <Text style={styles.issuedHintMono}>pravah setup</Text> with the
+            copied token to finish, or cancel it below.
+          </Text>
+          <View style={styles.tokenList}>
+            {visiblePending.map((token, index) => {
+              const mins = Math.max(
+                0,
+                Math.ceil((token.expiresAt - now) / 60000),
+              );
+              const isCancelling = cancellingBootstrapTokenId === token._id;
+              return (
+                <View key={token._id}>
+                  {index > 0 ? <View style={styles.tokenDivider} /> : null}
+                  <View style={styles.tokenRow}>
+                    <View style={styles.tokenIconTile}>
+                      <CliIcon color={colors.textSecondary} size={18} />
+                    </View>
+                    <View style={styles.tokenRowCopy}>
+                      <Text style={styles.tokenName} numberOfLines={1}>
+                        {token.label}
+                      </Text>
+                      <Text style={styles.pendingMeta}>
+                        Waiting · expires in {mins} min
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={() => void onCancelBootstrapToken(token._id)}
+                      disabled={isCancelling}
+                      hitSlop={12}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Cancel ${token.label}`}
+                      style={({ pressed }) => [
+                        styles.ghostButton,
+                        pressed && { opacity: 0.6 },
+                        isCancelling && styles.softButtonDisabled,
+                      ]}
+                    >
+                      <Text style={styles.ghostButtonText}>
+                        {isCancelling ? "Cancelling…" : "Cancel"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+
+      {hasTokens ? (
+        <View style={styles.sectionCard}>
+          <View style={styles.tokensHeader}>
+            <Text style={styles.settingLabel}>Your tokens</Text>
+            <Pressable
+              onPress={onIssueBootstrapToken}
+              disabled={isIssuingBootstrapToken}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Issue token"
+              style={({ pressed }) => [
+                styles.newTokenChip,
+                pressed && { opacity: 0.6 },
+                isIssuingBootstrapToken && styles.softButtonDisabled,
+              ]}
+            >
+              <Text style={styles.newTokenChipText}>
+                {isIssuingBootstrapToken ? "Issuing…" : "+ New"}
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.tokenList}>
+            {automationCredentials.map((credential, index) => {
+              const isRevoked = credential.status === "revoked";
+              const isExpanded = expandedId === credential._id;
+              const isRenaming = renamingId === credential._id;
+              const writesOn = credential.scopes.includes("tasks:write");
+              const isBusy = updatingCredentialId === credential._id;
+              const isDeleting = deletingCredentialId === credential._id;
+              const isRevoking = revokingCredentialId === credential._id;
+              const lastUsed = formatRelativeTime(credential.lastUsedAt);
+              const tokenSubtitle = `${writesOn ? "Read & write" : "Read-only"} · ${
+                lastUsed
+                  ? `Last used ${lastUsed}`
+                  : `Created ${formatShortDate(credential.createdAt)}`
+              }`;
+              return (
+                <View key={credential._id}>
+                  {index > 0 ? <View style={styles.tokenDivider} /> : null}
+                  <Pressable
+                    onPress={() =>
+                      setExpandedId(isExpanded ? null : credential._id)
+                    }
+                    style={({ pressed }) => [
+                      styles.tokenRow,
+                      pressed && { opacity: 0.84 },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${credential.label} token`}
+                    accessibilityState={{ expanded: isExpanded }}
+                  >
+                    <View style={styles.tokenIconTile}>
+                      <CliIcon color={colors.textSecondary} size={18} />
+                    </View>
+                    <View style={styles.tokenRowCopy}>
+                      <View style={styles.tokenRowTop}>
+                        <Text style={styles.tokenName} numberOfLines={1}>
+                          {credential.label}
+                        </Text>
+                        <View
+                          style={[
+                            styles.statusBadge,
+                            isRevoked
+                              ? styles.statusBadgeIdle
+                              : styles.statusBadgeActive,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.statusBadgeText,
+                              isRevoked
+                                ? styles.statusBadgeTextIdle
+                                : styles.statusBadgeTextActive,
+                            ]}
+                          >
+                            {isRevoked ? "Revoked" : "Active"}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.tokenSubtitle} numberOfLines={1}>
+                        {tokenSubtitle}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.rowChevron,
+                        isExpanded && styles.rowChevronExpanded,
+                      ]}
+                    >
+                      <ChevronRightIcon color={colors.textDim} size={18} />
+                    </View>
+                  </Pressable>
+
+                  {isExpanded ? (
+                    <View style={styles.tokenPanel}>
+                      <Text style={styles.fieldLabel}>Token</Text>
+                      <View style={styles.codePill}>
+                        <Text style={styles.tokenMono} numberOfLines={1}>
+                          {credential.credentialPreview}
+                        </Text>
+                      </View>
+
+                      {isRenaming ? (
+                        <View style={styles.renameRow}>
+                          <TextInput
+                            value={renameText}
+                            onChangeText={setRenameText}
+                            autoFocus
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            placeholder="Token name"
+                            placeholderTextColor={colors.textDim}
+                            style={[styles.textInput, styles.renameInput]}
+                            accessibilityLabel="Token name"
+                            onSubmitEditing={() => void commitRename(credential._id)}
+                          />
+                          <Pressable
+                            onPress={cancelRename}
+                            hitSlop={12}
+                            accessibilityRole="button"
+                            accessibilityLabel="Cancel rename"
+                            style={({ pressed }) => [
+                              styles.ghostButton,
+                              pressed && { opacity: 0.6 },
+                            ]}
+                          >
+                            <Text style={styles.ghostButtonText}>Cancel</Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => void commitRename(credential._id)}
+                            hitSlop={12}
+                            accessibilityRole="button"
+                            accessibilityLabel="Save token name"
+                            style={({ pressed }) => [
+                              styles.copyButton,
+                              pressed && { opacity: 0.6 },
+                            ]}
+                          >
+                            <Text style={styles.copyButtonText}>Save</Text>
+                          </Pressable>
+                        </View>
+                      ) : null}
+
+                      {!isRevoked ? (
+                        <View style={styles.behaviorRow}>
+                          <View style={styles.settingCopy}>
+                            <Text style={styles.settingLabel}>Allow task writes</Text>
+                            <Text style={styles.settingHelp}>
+                              Lets this token create and edit your tasks.
+                            </Text>
+                          </View>
+                          <Switch
+                            value={writesOn}
+                            onValueChange={(next) =>
+                              void onSetTaskWrites(credential._id, next)
+                            }
+                            disabled={isBusy}
+                            trackColor={{ false: colors.border, true: colors.warningMuted }}
+                            thumbColor={writesOn ? colors.warning : colors.textMuted}
+                          />
+                        </View>
+                      ) : null}
+
+                      <View style={styles.tokenActions}>
+                        {!isRevoked && !isRenaming ? (
+                          <Pressable
+                            onPress={() =>
+                              beginRename(credential._id, credential.label)
+                            }
+                            hitSlop={12}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Rename ${credential.label}`}
+                            style={({ pressed }) => [
+                              styles.ghostButton,
+                              pressed && { opacity: 0.6 },
+                            ]}
+                          >
+                            <Text style={styles.ghostButtonText}>Rename</Text>
+                          </Pressable>
+                        ) : null}
+                        {isRevoked ? (
+                          <Pressable
+                            onPress={() =>
+                              setConfirmDialog({
+                                title: "Remove token?",
+                                message: `“${credential.label}” will be permanently deleted.`,
+                                confirmLabel: "Remove",
+                                onConfirm: () =>
+                                  void onDeleteCredential(credential._id),
+                              })
+                            }
+                            disabled={isDeleting}
+                            hitSlop={12}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Remove ${credential.label}`}
+                            style={({ pressed }) => [
+                              styles.ghostButton,
+                              pressed && { opacity: 0.6 },
+                              isDeleting && styles.softButtonDisabled,
+                            ]}
+                          >
+                            <Text style={styles.ghostButtonText}>
+                              {isDeleting ? "Removing…" : "Remove"}
+                            </Text>
+                          </Pressable>
+                        ) : (
+                          <Pressable
+                            onPress={() =>
+                              setConfirmDialog({
+                                title: "Revoke token?",
+                                message: `“${credential.label}” will stop working immediately. This can't be undone.`,
+                                confirmLabel: "Revoke",
+                                onConfirm: () =>
+                                  void onRevokeCredential(credential._id),
+                              })
+                            }
+                            disabled={isRevoking}
+                            hitSlop={12}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Revoke ${credential.label}`}
+                            style={({ pressed }) => [
+                              styles.revokeButton,
+                              pressed && { opacity: 0.6 },
+                              isRevoking && styles.softButtonDisabled,
+                            ]}
+                          >
+                            <Text style={styles.revokeButtonText}>
+                              {isRevoking ? "Revoking…" : "Revoke"}
+                            </Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      ) : issuedBootstrapToken || hasPending ? null : isLoadingCredentials ? (
+        <View style={[styles.sectionCard, styles.emptyCard]}>
+          <ActivityIndicator color={colors.textDim} />
+        </View>
+      ) : (
+        <View style={[styles.sectionCard, styles.emptyCard]}>
+          <View style={styles.emptyIconTile}>
+            <CliIcon color={colors.textSecondary} size={22} />
+          </View>
+          <Text style={styles.emptyTitle}>No tokens yet</Text>
+          <Text style={styles.emptyHelp}>
+            Create one to connect the pravah CLI.
+          </Text>
+          <Pressable
+            onPress={onIssueBootstrapToken}
+            disabled={isIssuingBootstrapToken}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Issue token"
+            style={({ pressed }) => [
+              styles.primaryButton,
+              pressed && { opacity: 0.85 },
+              isIssuingBootstrapToken && styles.softButtonDisabled,
+            ]}
+          >
+            <Text style={styles.primaryButtonText}>
+              {isIssuingBootstrapToken ? "Issuing…" : "Issue token"}
+            </Text>
+          </Pressable>
+        </View>
+      )}
+
+      <Modal
+        visible={confirmDialog !== null}
+        transparent
+        animationType={reducedMotion ? "none" : "fade"}
+        statusBarTranslucent
+        onRequestClose={() => setConfirmDialog(null)}
+      >
+        <Pressable
+          style={styles.confirmBackdrop}
+          onPress={() => setConfirmDialog(null)}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss dialog"
+        >
+          <Pressable style={styles.confirmCard} onPress={() => {}}>
+            <Text style={styles.confirmTitle}>{confirmDialog?.title}</Text>
+            <Text style={styles.confirmMessage}>{confirmDialog?.message}</Text>
+            <View style={styles.confirmActions}>
               <Pressable
-                onPress={() => void onCopy(issuedBootstrapToken.token, "Bootstrap token")}
-                hitSlop={12}
+                onPress={() => setConfirmDialog(null)}
+                hitSlop={8}
                 accessibilityRole="button"
-                accessibilityLabel="Copy bootstrap token"
-                style={({ pressed }) => [styles.copyButton, pressed && { opacity: 0.6 }]}
+                accessibilityLabel="Cancel"
+                style={({ pressed }) => [
+                  styles.ghostButton,
+                  pressed && { opacity: 0.6 },
+                ]}
               >
-                <Text style={styles.copyButtonText}>Copy</Text>
+                <Text style={styles.ghostButtonText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  confirmDialog?.onConfirm();
+                  setConfirmDialog(null);
+                }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={confirmDialog?.confirmLabel}
+                style={({ pressed }) => [
+                  styles.confirmDestructiveButton,
+                  pressed && { opacity: 0.75 },
+                ]}
+              >
+                <Text style={styles.confirmDestructiveText}>
+                  {confirmDialog?.confirmLabel}
+                </Text>
               </Pressable>
             </View>
-          </View>
-        ) : null}
-
-        {automationCredentials.length === 0 ? (
-          <Text style={styles.settingMeta}>No automation credentials issued yet.</Text>
-        ) : (
-          <View style={styles.credentialList}>
-            {automationCredentials.map((credential) => (
-              <View key={credential._id} style={styles.credentialRow}>
-                <View style={styles.settingCopy}>
-                  <Text style={styles.settingLabel} numberOfLines={1}>
-                    {credential.label}
-                  </Text>
-                  <Text style={styles.settingMeta}>
-                    {credential.credentialPreview} · {credential.status}
-                  </Text>
-                  <Text style={styles.settingMeta} numberOfLines={1}>
-                    {credential.scopes.join(" · ")}
-                  </Text>
-                </View>
-                <Pressable
-                  onPress={() => void onRevokeCredential(credential._id)}
-                  disabled={
-                    credential.status === "revoked" ||
-                    revokingCredentialId === credential._id
-                  }
-                  hitSlop={12}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Revoke ${credential.label}`}
-                  style={({ pressed }) => [
-                    styles.copyChip,
-                    pressed && { opacity: 0.6 },
-                    (credential.status === "revoked" ||
-                      revokingCredentialId === credential._id) &&
-                      styles.softButtonDisabled,
-                  ]}
-                >
-                  <Text style={styles.copyChipText}>
-                    {credential.status === "revoked"
-                      ? "Revoked"
-                      : revokingCredentialId === credential._id
-                        ? "Revoking…"
-                        : "Revoke"}
-                  </Text>
-                </Pressable>
-              </View>
-            ))}
-          </View>
-        )}
-      </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -596,6 +1154,23 @@ function SyncSection({
 }: SyncSectionProps) {
   return (
     <View style={styles.screenBody}>
+      <View style={styles.summaryRow}>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryKicker}>Calendar</Text>
+          <Text style={styles.summaryValue}>{syncHealthLabel(calendarSyncHealth)}</Text>
+          <Text style={styles.summaryMeta}>
+            {calendarSyncEnabled ? "Timeline import on" : "Timeline import off"}
+          </Text>
+        </View>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryKicker}>Gmail</Text>
+          <Text style={styles.summaryValue}>{formatStatusLabel(gmailSyncStatus)}</Text>
+          <Text style={styles.summaryMeta}>
+            {gmailSyncEnabled ? "Review capture on" : "Review capture off"}
+          </Text>
+        </View>
+      </View>
+
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <View style={styles.settingRow}>
           <View style={styles.settingCopy}>
@@ -767,6 +1342,23 @@ function RemindersSection({
 }: RemindersSectionProps) {
   return (
     <View style={styles.screenBody}>
+      <View style={styles.summaryRow}>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryKicker}>Notifications</Text>
+          <Text style={styles.summaryValue}>{formatStatusLabel(notificationPermissionState)}</Text>
+          <Text style={styles.summaryMeta}>
+            {notificationsEnabled ? "Alerts available on this device" : "Permission still needed"}
+          </Text>
+        </View>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryKicker}>Morning digest</Text>
+          <Text style={styles.summaryValue}>{formatClockLabel(prefs.morningDigestTime)}</Text>
+          <Text style={styles.summaryMeta}>
+            {prefs.quietHoursEnabled ? "Quiet hours adjust delivery" : "No quiet hours set"}
+          </Text>
+        </View>
+      </View>
+
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <Text style={styles.settingLabel}>Notifications</Text>
         <Text style={styles.settingHelp}>
@@ -925,6 +1517,29 @@ function InteractionSection({ prefs, setPreference }: InteractionSectionProps) {
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Quick capture</Text>
+        <Text style={styles.settingHelp}>
+          Capture stays centered in the tab bar. Advanced creation tools stay hidden until
+          you choose to use them.
+        </Text>
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingMeta}>Bulk task capture</Text>
+            <Text style={styles.settingHelp}>
+              Create numbered task series and assign copies to multiple Goals.
+            </Text>
+          </View>
+          <Switch
+            value={prefs.bulkTaskCaptureEnabled}
+            onValueChange={(next) => void setPreference("bulkTaskCaptureEnabled", next)}
+            trackColor={{ false: colors.border, true: colors.accentSoft }}
+            thumbColor={prefs.bulkTaskCaptureEnabled ? colors.accent : colors.textMuted}
+            accessibilityLabel="Bulk task capture"
+          />
+        </View>
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard]}>
         <Text style={styles.settingLabel}>Task gestures</Text>
         <Text style={styles.settingHelp}>
           Keep visible actions available on every Task. Swipe actions are optional accelerators.
@@ -1027,29 +1642,102 @@ function AppearanceSection({
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Visual system</Text>
+        <Text style={styles.settingLabel}>Theme</Text>
         <Text style={styles.settingHelp}>
-          Warm light surfaces, Geist typography, and comfortable density are the
-          production baseline. Controls appear here only when another complete
-          visual system is available.
+          Warm light surfaces are the production theme. Dark or alternate themes stay out
+          until the full token set exists.
         </Text>
+        <View style={styles.selectionCardSelected}>
+          <View style={styles.selectionCopy}>
+            <Text style={styles.selectionTitle}>Warm light</Text>
+            <Text style={styles.selectionDescription}>
+              Paper neutrals, warm ink, and restrained indigo accent.
+            </Text>
+          </View>
+          <Text style={styles.selectionStatusText}>Active</Text>
+        </View>
       </View>
 
       <View style={[styles.settingBlock, styles.sectionCard]}>
-        <View style={styles.settingRow}>
-          <View style={styles.settingCopy}>
-            <Text style={styles.settingLabel}>Bulk task capture</Text>
-            <Text style={styles.settingHelp}>
-              Create numbered task series and assign copies to multiple goals.
+        <Text style={styles.settingLabel}>Typography</Text>
+        <Text style={styles.settingHelp}>
+          Geist is the only shipped font system. More fonts need full truncation,
+          line-height, and accessibility validation before they become settings.
+        </Text>
+        <View style={styles.selectionCardSelected}>
+          <View style={styles.selectionCopy}>
+            <Text style={styles.selectionTitle}>Geist</Text>
+            <Text style={styles.selectionDescription}>
+              Sans for product UI, Geist Mono for dates, counts, and compact metadata.
             </Text>
           </View>
-          <Switch
-            value={prefs.bulkTaskCaptureEnabled}
-            onValueChange={(next) => void setPreference("bulkTaskCaptureEnabled", next)}
-            trackColor={{ false: colors.border, true: colors.accentSoft }}
-            thumbColor={prefs.bulkTaskCaptureEnabled ? colors.accent : colors.textMuted}
-            accessibilityLabel="Bulk task capture"
-          />
+          <Text style={styles.selectionStatusText}>Active</Text>
+        </View>
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Density</Text>
+        <Text style={styles.settingHelp}>
+          Comfortable is the default. Compact tightens task rows without hiding actions.
+        </Text>
+        <View style={styles.optionGrid}>
+          {DENSITY_OPTIONS.map((option) => {
+            const active = prefs.density === option.value;
+            return (
+              <Pressable
+                key={option.value}
+                onPress={() => void setPreference("density", option.value)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`Use ${option.label} density`}
+                style={({ pressed }) => [
+                  styles.optionCard,
+                  active && styles.optionCardActive,
+                  pressed && { opacity: 0.72 },
+                ]}
+              >
+                <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>
+                  {option.label}
+                </Text>
+                <Text style={styles.optionDescription}>{option.description}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Task color</Text>
+        <Text style={styles.settingHelp}>
+          Choose the task emphasis color used by task rows. Status colors keep their
+          fixed meanings.
+        </Text>
+        <View style={styles.swatchGrid}>
+          {TASK_COLOR_OPTIONS.map((option) => {
+            const active = prefs.taskColorScheme === option.value;
+            return (
+              <Pressable
+                key={option.value}
+                onPress={() => void setPreference("taskColorScheme", option.value)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`Use ${option.label} task color`}
+                style={({ pressed }) => [
+                  styles.swatchOption,
+                  active && styles.optionCardActive,
+                  pressed && { opacity: 0.72 },
+                ]}
+              >
+                <View style={[styles.swatchDot, { backgroundColor: option.swatch }]} />
+                <View style={styles.selectionCopy}>
+                  <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>
+                    {option.label}
+                  </Text>
+                  <Text style={styles.optionDescription}>{option.description}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
 
@@ -1121,7 +1809,7 @@ function AboutSection({
           style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
         >
           <Text style={styles.linkRowText}>Report an issue</Text>
-          <Text style={styles.linkRowChevron}>↗</Text>
+          <ArrowUpRightIcon color={colors.textMuted} size={16} />
         </Pressable>
         <Pressable
           onPress={() => void Linking.openURL(REPO_URL)}
@@ -1131,7 +1819,7 @@ function AboutSection({
           style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
         >
           <Text style={styles.linkRowText}>GitHub repository</Text>
-          <Text style={styles.linkRowChevron}>↗</Text>
+          <ArrowUpRightIcon color={colors.textMuted} size={16} />
         </Pressable>
       </View>
 
@@ -1365,23 +2053,46 @@ function renderDetailScreen(
   props: {
     prefs: ReturnType<typeof useUserPreferences>["prefs"];
     setPreference: ReturnType<typeof useUserPreferences>["setPreference"];
+    onKairoFieldFocus: (field: "apiKey" | "baseUrl" | "model") => void;
     automationCredentials: Array<{
       _id: Id<"automationCredentials">;
       label: string;
       credentialPreview: string;
       status: string;
       scopes: string[];
+      createdAt: number;
+      lastUsedAt?: number;
     }>;
-    automationLabel: string;
-    setAutomationLabel: (value: string) => void;
-    allowTaskWrites: boolean;
-    setAllowTaskWrites: (value: boolean) => void;
     issuedBootstrapToken: { token: string; expiresAt: number } | null;
+    pendingBootstrapTokens: Array<{
+      _id: Id<"automationBootstrapTokens">;
+      label: string;
+      scopes: string[];
+      expiresAt: number;
+      createdAt: number;
+    }>;
     isIssuingBootstrapToken: boolean;
+    isLoadingCredentials: boolean;
     onIssueBootstrapToken: () => void;
+    onDismissIssuedToken: () => void;
+    onCancelBootstrapToken: (
+      bootstrapTokenId: Id<"automationBootstrapTokens">,
+    ) => Promise<void>;
+    cancellingBootstrapTokenId: Id<"automationBootstrapTokens"> | null;
     onCopy: (value: string, label: string) => Promise<void>;
     onRevokeCredential: (credentialId: Id<"automationCredentials">) => Promise<void>;
     revokingCredentialId: Id<"automationCredentials"> | null;
+    onDeleteCredential: (credentialId: Id<"automationCredentials">) => Promise<void>;
+    deletingCredentialId: Id<"automationCredentials"> | null;
+    onSetTaskWrites: (
+      credentialId: Id<"automationCredentials">,
+      allow: boolean,
+    ) => Promise<void>;
+    onRenameCredential: (
+      credentialId: Id<"automationCredentials">,
+      label: string,
+    ) => Promise<void>;
+    updatingCredentialId: Id<"automationCredentials"> | null;
     calendarSyncEnabled: boolean;
     calendarSyncHealth: SyncHealth;
     calendarErrorSummary?: string;
@@ -1434,7 +2145,35 @@ function renderDetailScreen(
 
   switch (navigation.category) {
     case "kairo":
-      return <AssistantAutomationSection {...props} />;
+      return (
+        <KairoSection
+          prefs={props.prefs}
+          setPreference={props.setPreference}
+          onFieldFocus={props.onKairoFieldFocus}
+        />
+      );
+    case "cli":
+      return (
+        <CliCredentialsSection
+          automationCredentials={props.automationCredentials}
+          issuedBootstrapToken={props.issuedBootstrapToken}
+          pendingBootstrapTokens={props.pendingBootstrapTokens}
+          isIssuingBootstrapToken={props.isIssuingBootstrapToken}
+          isLoadingCredentials={props.isLoadingCredentials}
+          onIssueBootstrapToken={props.onIssueBootstrapToken}
+          onDismissIssuedToken={props.onDismissIssuedToken}
+          onCancelBootstrapToken={props.onCancelBootstrapToken}
+          cancellingBootstrapTokenId={props.cancellingBootstrapTokenId}
+          onCopy={props.onCopy}
+          onRevokeCredential={props.onRevokeCredential}
+          revokingCredentialId={props.revokingCredentialId}
+          onDeleteCredential={props.onDeleteCredential}
+          deletingCredentialId={props.deletingCredentialId}
+          onSetTaskWrites={props.onSetTaskWrites}
+          onRenameCredential={props.onRenameCredential}
+          updatingCredentialId={props.updatingCredentialId}
+        />
+      );
     case "sync":
       return <SyncSection {...props} />;
     case "reminders":
@@ -1488,11 +2227,15 @@ export function SettingsSheet({
   gmailLastError,
 }: SettingsSheetProps) {
   const insets = useSafeAreaInsets();
+  const bottomInset = useKeyboardInset(insets.bottom);
   const reducedMotion = useReducedMotion();
+  const scrollRef = useRef<ScrollView>(null);
+  const kairoFocusScrollTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [navigation, dispatchNavigation] = useReducer(
     settingsNavigationReducer,
     INITIAL_SETTINGS_NAVIGATION,
   );
+  const activeCategory = navigation.screen === "detail" ? navigation.category : null;
   const { prefs, setPreference } = useUserPreferences();
   const tabOrder = resolveTabOrder(prefs.tabOrder);
   const [openPicker, setOpenPicker] = useState<QuietPickerKind | null>(null);
@@ -1500,8 +2243,6 @@ export function SettingsSheet({
   const [isClearingRetryQueue, setIsClearingRetryQueue] = useState(false);
   const [dangerArmed, setDangerArmed] = useState<"wipe" | null>(null);
   const [isWiping, setIsWiping] = useState(false);
-  const [automationLabel, setAutomationLabel] = useState("Codex local");
-  const [allowTaskWrites, setAllowTaskWrites] = useState(false);
   const [issuedBootstrapToken, setIssuedBootstrapToken] = useState<{
     token: string;
     expiresAt: number;
@@ -1509,9 +2250,45 @@ export function SettingsSheet({
   const [isIssuingBootstrapToken, setIsIssuingBootstrapToken] = useState(false);
   const [revokingCredentialId, setRevokingCredentialId] =
     useState<Id<"automationCredentials"> | null>(null);
+  const [updatingCredentialId, setUpdatingCredentialId] =
+    useState<Id<"automationCredentials"> | null>(null);
+  const [deletingCredentialId, setDeletingCredentialId] =
+    useState<Id<"automationCredentials"> | null>(null);
+  const [cancellingBootstrapTokenId, setCancellingBootstrapTokenId] =
+    useState<Id<"automationBootstrapTokens"> | null>(null);
+  const [kairoHomeStatus, setKairoHomeStatus] = useState<SettingsHomeStatus>({
+    label: "Checking",
+    tone: "neutral",
+  });
   const issueBootstrapToken = useMutation(api.automation.issueBootstrapToken);
   const revokeCredential = useMutation(api.automation.revokeCredential);
-  const automationCredentials = useQuery(api.automation.listCredentials, {}) ?? [];
+  const updateCredential = useMutation(api.automation.updateCredential);
+  const deleteCredential = useMutation(api.automation.deleteCredential);
+  const cancelBootstrapToken = useMutation(api.automation.cancelBootstrapToken);
+  const automationCredentialsResult = useQuery(api.automation.listCredentials, {});
+  const automationCredentials = useMemo(
+    () => automationCredentialsResult ?? [],
+    [automationCredentialsResult],
+  );
+  const pendingBootstrapTokensResult = useQuery(
+    api.automation.listBootstrapTokens,
+    {},
+  );
+  const pendingBootstrapTokens = useMemo(
+    () => pendingBootstrapTokensResult ?? [],
+    [pendingBootstrapTokensResult],
+  );
+  const isLoadingCredentials = automationCredentialsResult === undefined;
+  const issuedAtCredentialCountRef = useRef(0);
+
+  // Clear the freshly-issued token card once the CLI exchanges it (the new
+  // credential shows up in the list, so the one-time token is now redundant).
+  useEffect(() => {
+    if (!issuedBootstrapToken) return;
+    if (automationCredentials.length > issuedAtCredentialCountRef.current) {
+      setIssuedBootstrapToken(null);
+    }
+  }, [automationCredentials.length, issuedBootstrapToken]);
 
   useEffect(() => {
     if (!dangerArmed) return;
@@ -1519,7 +2296,25 @@ export function SettingsSheet({
     return () => clearTimeout(timeout);
   }, [dangerArmed]);
 
+  const handleKairoFieldFocus = useCallback((field: "apiKey" | "baseUrl" | "model") => {
+    if (!visible || activeCategory !== "kairo") return;
+
+    if (kairoFocusScrollTimeout.current) clearTimeout(kairoFocusScrollTimeout.current);
+    kairoFocusScrollTimeout.current = setTimeout(() => {
+      if (field === "apiKey") {
+        scrollRef.current?.scrollTo({ y: 240, animated: true });
+      } else {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      }
+      kairoFocusScrollTimeout.current = null;
+    }, 120);
+  }, [activeCategory, visible]);
+
   useEffect(() => {
+    if (kairoFocusScrollTimeout.current) {
+      clearTimeout(kairoFocusScrollTimeout.current);
+      kairoFocusScrollTimeout.current = null;
+    }
     if (!visible) {
       setOpenPicker(null);
       setDangerArmed(null);
@@ -1534,6 +2329,28 @@ export function SettingsSheet({
     if (navigation.screen !== "detail" || navigation.category !== "about" || deviceId) return;
     void getOrCreateDeviceId().then(setDeviceId);
   }, [deviceId, navigation, visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    void getKairoSettings()
+      .then((settings) => {
+        if (cancelled) return;
+        const profile = settings.profiles[settings.defaultProvider];
+        setKairoHomeStatus(
+          profile.apiKey
+            ? { label: "Ready", tone: "success" }
+            : { label: "Needs setup", tone: "warning" },
+        );
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setKairoHomeStatus({ label: "Issue", tone: "error" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible]);
 
   const handleClose = useCallback(() => {
     Keyboard.dismiss();
@@ -1604,32 +2421,71 @@ export function SettingsSheet({
   }, [dangerArmed, onWipeLocalData, showToast]);
 
   const handleIssueBootstrapToken = useCallback(async () => {
-    const trimmedLabel = automationLabel.trim();
-    if (!trimmedLabel) {
-      showToast({ kind: "error", message: "Enter a credential label." });
-      return;
-    }
-
     setIsIssuingBootstrapToken(true);
+    issuedAtCredentialCountRef.current = automationCredentials.length;
     try {
-      const scopes = allowTaskWrites
-        ? [...READ_ONLY_AUTOMATION_SCOPES, "tasks:write" as const]
-        : [...READ_ONLY_AUTOMATION_SCOPES];
+      const existingLabels = new Set(automationCredentials.map((c) => c.label));
+      let counter = automationCredentials.length + 1;
+      let label = `Token ${counter}`;
+      while (existingLabels.has(label)) {
+        counter += 1;
+        label = `Token ${counter}`;
+      }
       const result = await issueBootstrapToken({
-        label: trimmedLabel,
-        scopes,
+        label,
+        scopes: [...READ_ONLY_AUTOMATION_SCOPES],
         ttlMinutes: 15,
       });
       setIssuedBootstrapToken({ token: result.bootstrapToken, expiresAt: result.expiresAt });
       await Clipboard.setStringAsync(result.bootstrapToken);
-      showToast({ kind: "info", message: "Bootstrap token issued and copied." });
+      showToast({ kind: "info", message: "Token issued and copied." });
     } catch (error) {
       mobileLogger.warn("automation_bootstrap_issue_failed", { errorType: classifyError(error) });
-      showToast({ kind: "error", message: "Could not issue bootstrap token." });
+      showToast({ kind: "error", message: "Could not issue token." });
     } finally {
       setIsIssuingBootstrapToken(false);
     }
-  }, [allowTaskWrites, automationLabel, issueBootstrapToken, showToast]);
+  }, [automationCredentials, issueBootstrapToken, showToast]);
+
+  const handleDismissIssuedToken = useCallback(() => {
+    setIssuedBootstrapToken(null);
+  }, []);
+
+  const handleCancelBootstrapToken = useCallback(
+    async (bootstrapTokenId: Id<"automationBootstrapTokens">) => {
+      setCancellingBootstrapTokenId(bootstrapTokenId);
+      try {
+        await cancelBootstrapToken({ bootstrapTokenId });
+        showToast({ kind: "info", message: "Pending token cancelled." });
+      } catch (error) {
+        mobileLogger.warn("automation_bootstrap_cancel_failed", {
+          errorType: classifyError(error),
+        });
+        showToast({ kind: "error", message: "Could not cancel token." });
+      } finally {
+        setCancellingBootstrapTokenId(null);
+      }
+    },
+    [cancelBootstrapToken, showToast],
+  );
+
+  const handleDeleteCredential = useCallback(
+    async (credentialId: Id<"automationCredentials">) => {
+      setDeletingCredentialId(credentialId);
+      try {
+        await deleteCredential({ credentialId });
+        showToast({ kind: "info", message: "Token removed." });
+      } catch (error) {
+        mobileLogger.warn("automation_credential_delete_failed", {
+          errorType: classifyError(error),
+        });
+        showToast({ kind: "error", message: "Could not remove token." });
+      } finally {
+        setDeletingCredentialId(null);
+      }
+    },
+    [deleteCredential, showToast],
+  );
 
   const handleRevokeCredential = useCallback(
     async (credentialId: Id<"automationCredentials">) => {
@@ -1647,6 +2503,49 @@ export function SettingsSheet({
       }
     },
     [revokeCredential, showToast],
+  );
+
+  const handleSetTaskWrites = useCallback(
+    async (credentialId: Id<"automationCredentials">, allow: boolean) => {
+      setUpdatingCredentialId(credentialId);
+      try {
+        await updateCredential({ credentialId, allowTaskWrites: allow });
+        showToast({
+          kind: "info",
+          message: allow ? "Task writes enabled." : "Task writes disabled.",
+        });
+      } catch (error) {
+        mobileLogger.warn("automation_credential_update_failed", {
+          errorType: classifyError(error),
+        });
+        showToast({ kind: "error", message: "Could not update token." });
+      } finally {
+        setUpdatingCredentialId(null);
+      }
+    },
+    [updateCredential, showToast],
+  );
+
+  const handleRenameCredential = useCallback(
+    async (credentialId: Id<"automationCredentials">, label: string) => {
+      const trimmed = label.trim();
+      if (!trimmed) {
+        showToast({ kind: "error", message: "Enter a token name." });
+        return;
+      }
+      setUpdatingCredentialId(credentialId);
+      try {
+        await updateCredential({ credentialId, label: trimmed });
+      } catch (error) {
+        mobileLogger.warn("automation_credential_rename_failed", {
+          errorType: classifyError(error),
+        });
+        showToast({ kind: "error", message: "Could not rename token." });
+      } finally {
+        setUpdatingCredentialId(null);
+      }
+    },
+    [updateCredential, showToast],
   );
 
   const handleTimePicked = useCallback(
@@ -1669,6 +2568,38 @@ export function SettingsSheet({
     navigation.screen === "detail"
       ? SETTINGS_CATEGORY_META[navigation.category].title
       : "Settings";
+  const showKairoHeaderMark =
+    navigation.screen === "detail" && navigation.category === "kairo";
+  const showCliHeaderMark =
+    navigation.screen === "detail" && navigation.category === "cli";
+  const showSettingsHeaderMark = navigation.screen === "list";
+
+  const settingsHomeStatuses: Record<SettingsCategoryKey, SettingsHomeStatus> = {
+    kairo: kairoHomeStatus,
+    cli:
+      automationCredentials.length > 0
+        ? { label: `${automationCredentials.length} active`, tone: "neutral" }
+        : { label: "Not issued", tone: "neutral" },
+    sync:
+      calendarSyncHealth === "error" || Boolean(calendarLastError) || Boolean(gmailLastError)
+        ? { label: "Attention", tone: "warning" }
+        : isCalendarSyncing || isGoogleToggleSaving || isGmailToggleSaving
+          ? { label: "Syncing", tone: "neutral" }
+          : calendarSyncEnabled || gmailSyncEnabled
+            ? { label: "All synced", tone: "success" }
+            : { label: "Off", tone: "neutral" },
+    reminders: notificationsEnabled
+      ? { label: "On", tone: "success" }
+      : { label: "Off", tone: "neutral" },
+    interaction: prefs.swipeActionsEnabled
+      ? { label: "Swipe on", tone: "neutral" }
+      : { label: "Swipe off", tone: "neutral" },
+    appearance: { label: "Geist", tone: "neutral" },
+    about: {
+      label: APP_VERSION.startsWith("v") ? APP_VERSION : `v${APP_VERSION}`,
+      tone: "neutral",
+    },
+  };
 
   return (
     <Modal
@@ -1696,20 +2627,19 @@ export function SettingsSheet({
               accessibilityLabel={navigation.screen === "detail" ? "Back" : "Close settings"}
               style={({ pressed }) => [styles.headerAction, pressed && { opacity: 0.6 }]}
             >
-              <Text style={styles.headerActionText}>
-                {navigation.screen === "detail" ? "Back" : "Close"}
-              </Text>
+              <ChevronLeftIcon color={colors.textPrimary} size={20} />
             </Pressable>
-            <Text style={styles.headerTitle}>{headerTitle}</Text>
-            <Pressable
-              onPress={handleClose}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel="Close settings"
-              style={({ pressed }) => [styles.headerAction, pressed && { opacity: 0.6 }]}
-            >
-              <Text style={styles.headerActionText}>Done</Text>
-            </Pressable>
+            <View style={styles.headerTitleWrap}>
+              {showKairoHeaderMark ? (
+                <KairoIcon color={colors.textSecondary} size={22} />
+              ) : showCliHeaderMark ? (
+                <CliIcon color={colors.textSecondary} size={22} />
+              ) : showSettingsHeaderMark ? (
+                <SettingsHomeIcon color={colors.textSecondary} size={22} />
+              ) : null}
+              <Text style={styles.headerTitle}>{headerTitle}</Text>
+            </View>
+            <View style={styles.headerSpacer} />
           </View>
         </View>
 
@@ -1722,31 +2652,45 @@ export function SettingsSheet({
           style={styles.contentWrap}
         >
           <ScrollView
+            ref={scrollRef}
             style={styles.scroll}
             contentContainerStyle={[
               styles.scrollContent,
-              { paddingBottom: insets.bottom + spacing.section },
+              { paddingBottom: bottomInset + spacing.lg },
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
             {navigation.screen === "list" ? (
-              <SettingsCategoryList onOpenCategory={handleOpenCategory} />
+              <SettingsCategoryList
+                onOpenCategory={handleOpenCategory}
+                statuses={settingsHomeStatuses}
+              />
             ) : (
               renderDetailScreen(navigation, {
                 prefs,
                 setPreference,
+                onKairoFieldFocus: handleKairoFieldFocus,
                 automationCredentials,
-                automationLabel,
-                setAutomationLabel,
-                allowTaskWrites,
-                setAllowTaskWrites,
                 issuedBootstrapToken,
+                pendingBootstrapTokens,
                 isIssuingBootstrapToken,
+                isLoadingCredentials,
                 onIssueBootstrapToken: () => void handleIssueBootstrapToken(),
+                onDismissIssuedToken: handleDismissIssuedToken,
+                onCancelBootstrapToken: (bootstrapTokenId) =>
+                  handleCancelBootstrapToken(bootstrapTokenId),
+                cancellingBootstrapTokenId,
                 onCopy: handleCopy,
                 onRevokeCredential: (credentialId) => handleRevokeCredential(credentialId),
                 revokingCredentialId,
+                onDeleteCredential: (credentialId) => handleDeleteCredential(credentialId),
+                deletingCredentialId,
+                onSetTaskWrites: (credentialId, allow) =>
+                  handleSetTaskWrites(credentialId, allow),
+                onRenameCredential: (credentialId, label) =>
+                  handleRenameCredential(credentialId, label),
+                updatingCredentialId,
                 calendarSyncEnabled,
                 calendarSyncHealth,
                 calendarErrorSummary,
@@ -1820,17 +2764,25 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   headerAction: {
-    minWidth: 56,
-  },
-  headerActionText: {
-    ...typography.bodyMd,
-    color: colors.accent,
+    width: 40,
+    height: 40,
+    alignItems: "flex-start",
+    justifyContent: "center",
   },
   headerTitle: {
-    flex: 1,
-    textAlign: "center",
     ...typography.headline,
     color: colors.textPrimary,
+  },
+  headerTitleWrap: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+  },
+  headerSpacer: {
+    width: 40,
+    height: 40,
   },
   contentWrap: {
     flex: 1,
@@ -1845,27 +2797,68 @@ const styles = StyleSheet.create({
   screenBody: {
     gap: spacing.md,
   },
-  leadText: {
-    ...typography.bodyMd,
-    color: colors.textSecondary,
-    lineHeight: 22,
-  },
-  categoryList: {
+  summaryRow: {
+    flexDirection: "row",
     gap: spacing.sm,
+  },
+  summaryCard: {
+    flex: 1,
+    minHeight: 88,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    gap: 3,
+  },
+  summaryKicker: {
+    ...typography.micro,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  summaryValue: {
+    ...typography.title,
+    color: colors.textPrimary,
+  },
+  summaryMeta: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    lineHeight: 18,
+  },
+  categoryPanel: {
+    overflow: "hidden",
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
   },
   categoryCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radii.xl,
+    minHeight: 74,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 10,
     backgroundColor: colors.bgCard,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
+  },
+  categoryDivider: {
+    height: 1,
+    backgroundColor: colors.bgInput,
   },
   categoryCopy: {
     flex: 1,
-    gap: spacing.xs,
+    gap: 2,
+  },
+  categoryIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
   },
   categoryTitle: {
     ...typography.title,
@@ -1877,12 +2870,13 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   categoryMeta: {
+    flexDirection: "row",
     alignItems: "center",
-    gap: 2,
+    gap: spacing.sm,
   },
-  categoryCount: {
-    ...typography.micro,
-    color: colors.textMuted,
+  categoryStatus: {
+    ...typography.bodyMd,
+    fontFamily: "Geist_500Medium",
   },
   categoryChevron: {
     ...typography.title,
@@ -2035,15 +3029,27 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   copyButton: {
+    minWidth: 44,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: radii.full,
-    backgroundColor: colors.accentSoft,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgInput,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
   },
   copyButtonText: {
     ...typography.bodyMd,
-    color: colors.accent,
+    color: colors.textPrimary,
     fontFamily: "Geist_600SemiBold",
+  },
+  copyButtonDone: {
+    backgroundColor: colors.successMuted,
+    borderColor: colors.successMuted,
+  },
+  copyButtonTextDone: {
+    color: colors.success,
   },
   credentialList: {
     gap: spacing.sm,
@@ -2053,6 +3059,35 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
     paddingVertical: spacing.sm,
+  },
+  credentialHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  credentialLabel: {
+    flexShrink: 1,
+  },
+  statusBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 7,
+  },
+  statusBadgeActive: {
+    backgroundColor: colors.successMuted,
+  },
+  statusBadgeIdle: {
+    backgroundColor: "rgba(91,80,72,0.05)",
+  },
+  statusBadgeText: {
+    ...typography.bodyMd,
+    fontFamily: "Geist_500Medium",
+  },
+  statusBadgeTextActive: {
+    color: colors.success,
+  },
+  statusBadgeTextIdle: {
+    color: colors.textSecondary,
   },
   copyChip: {
     paddingHorizontal: spacing.md,
@@ -2065,6 +3100,246 @@ const styles = StyleSheet.create({
   copyChipText: {
     ...typography.bodyMd,
     color: colors.textPrimary,
+  },
+  issuedCard: {
+    gap: spacing.md,
+  },
+  issuedHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  issuedExpiry: {
+    ...typography.numeric,
+    color: colors.textDim,
+  },
+  issuedExpiryExpired: {
+    color: colors.error,
+  },
+  issuedHint: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    lineHeight: 18,
+  },
+  issuedHintMono: {
+    ...typography.numeric,
+    color: colors.textSecondary,
+  },
+  issuedDoneButton: {
+    alignSelf: "flex-end",
+  },
+  pendingMeta: {
+    ...typography.numeric,
+    color: colors.textMuted,
+  },
+  codePillMuted: {
+    opacity: 0.55,
+  },
+  tokenMono: {
+    ...typography.numeric,
+    color: colors.textPrimary,
+  },
+  tokenMonoMuted: {
+    color: colors.textDim,
+  },
+  tokensHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  newTokenChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  newTokenChipText: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+    fontFamily: "Geist_600SemiBold",
+  },
+  tokenList: {
+    marginTop: spacing.xs,
+  },
+  tokenDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.bgInput,
+  },
+  tokenRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  tokenIconTile: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  tokenRowCopy: {
+    flex: 1,
+    gap: 6,
+  },
+  tokenRowTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  tokenName: {
+    ...typography.bodyLg,
+    color: colors.textPrimary,
+    fontFamily: "Geist_600SemiBold",
+    flexShrink: 1,
+  },
+  tokenSubtitle: {
+    ...typography.bodyMd,
+    color: colors.textSecondary,
+    flexShrink: 1,
+  },
+  rowChevron: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rowChevronExpanded: {
+    transform: [{ rotate: "90deg" }],
+  },
+  tokenPanel: {
+    gap: spacing.md,
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSurface,
+  },
+  renameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  renameInput: {
+    flex: 1,
+  },
+  tokenActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: spacing.sm,
+  },
+  ghostButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  ghostButtonText: {
+    ...typography.bodyMd,
+    color: colors.textSecondary,
+    fontFamily: "Geist_500Medium",
+  },
+  confirmBackdrop: {
+    flex: 1,
+    backgroundColor: colors.backdrop,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xl,
+  },
+  confirmCard: {
+    alignSelf: "stretch",
+    backgroundColor: colors.bgFloating,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  confirmTitle: {
+    ...typography.title,
+    color: colors.textPrimary,
+  },
+  confirmMessage: {
+    ...typography.bodyMd,
+    color: colors.textSecondary,
+  },
+  confirmActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  confirmDestructiveButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.error,
+  },
+  confirmDestructiveText: {
+    ...typography.bodyMd,
+    color: colors.textInverse,
+    fontFamily: "Geist_600SemiBold",
+  },
+  revokeButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.errorMuted,
+  },
+  revokeButtonText: {
+    ...typography.bodyMd,
+    color: colors.error,
+    fontFamily: "Geist_600SemiBold",
+  },
+  emptyCard: {
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.xxl,
+  },
+  emptyIconTile: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    marginBottom: spacing.xs,
+  },
+  emptyTitle: {
+    ...typography.title,
+    color: colors.textPrimary,
+  },
+  emptyHelp: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    textAlign: "center",
+  },
+  primaryButton: {
+    marginTop: spacing.md,
+    alignSelf: "stretch",
+    minHeight: 48,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgInput,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  primaryButtonText: {
+    ...typography.bodyLg,
+    color: colors.textPrimary,
+    fontFamily: "Geist_600SemiBold",
   },
   chipRow: {
     flexDirection: "row",
@@ -2139,6 +3414,92 @@ const styles = StyleSheet.create({
   segmentTextActive: {
     color: colors.accent,
     fontFamily: "Geist_600SemiBold",
+  },
+  selectionCardSelected: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.accentDim,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderFocus,
+  },
+  selectionCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  selectionTitle: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+    fontFamily: "Geist_600SemiBold",
+  },
+  selectionDescription: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    lineHeight: 18,
+  },
+  selectionStatusText: {
+    ...typography.micro,
+    color: colors.accent,
+  },
+  optionGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  optionCard: {
+    minWidth: 0,
+    flexBasis: "48%",
+    flexGrow: 1,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    gap: 3,
+  },
+  optionCardActive: {
+    backgroundColor: colors.accentDim,
+    borderColor: colors.borderFocus,
+  },
+  optionTitle: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+    fontFamily: "Geist_600SemiBold",
+  },
+  optionTitleActive: {
+    color: colors.accent,
+  },
+  optionDescription: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    lineHeight: 18,
+  },
+  swatchGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  swatchOption: {
+    minWidth: 0,
+    flexBasis: "48%",
+    flexGrow: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  swatchDot: {
+    width: 22,
+    height: 22,
+    borderRadius: radii.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
   tabOrderPreview: {
     flexDirection: "row",

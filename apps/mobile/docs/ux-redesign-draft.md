@@ -222,6 +222,63 @@ expansions, confirmation dialogs, segmented controls, pickers, toasts, banners,
 and persistent header actions. Without this layer, each screen will continue to
 solve similar interaction problems locally.
 
+### Keep iconography functional before expressive
+
+Pravah's icon system should be primarily functional-semantic, not
+brand-expressive. Icons in recurring navigation, repeated actions, and dense
+task flows should reduce hesitation and clarify meaning quickly. Brand
+expression should come mainly from the brand mark, motion, color, and Kairo's
+voice rather than from ambiguous or poetic icons.
+
+This means:
+
+- bottom-tab and repeated-action icons should prefer immediately legible
+  metaphors over clever ones
+- if text communicates a concept more clearly than an icon, the redesign should
+  prefer text or text-plus-icon
+- expressive or decorative icon treatments should be reserved for branded
+  moments, not core workflow controls
+- bottom-tab icons in particular should stay literal rather than abstracted,
+  because they are the highest-frequency icon surface in the app and must be
+  recognized with near-zero interpretation cost
+- the broader control system should stay text-first with selective icons rather
+  than icon-first, especially for nuanced actions like scheduling, reflow,
+  goal linking, Kairo setup, and history review
+- Pravah should use one canonical icon dialect across the app rather than
+  mixing custom SVG icons, text glyphs, and unrelated visual metaphors across
+  surfaces; if a control cannot justify a shared-system icon, it should prefer
+  text-only treatment instead
+- because this is a full redesign rather than a compatibility pass, all current
+  shipped bottom-tab icons are replaceable if they do not meet the new bar
+- the approved mock boards are a stronger source of truth for bottom-tab
+  metaphors than the shipped implementation; redraws may refine execution, but
+  the redesign should stay directionally aligned with the mock's more literal
+  icon choices
+- for bottom navigation specifically, the mock boards should be treated as
+  canonical at the metaphor level but flexible at the drawing level: keep the
+  semantic direction, then redraw into one shared Pravah icon dialect rather
+  than copying mock pixels literally
+- active bottom-tab state should keep the same icon shape and communicate
+  selection through restrained changes in color, weight, and surrounding
+  navigation treatment rather than through a materially different icon metaphor
+- icon-only controls should be avoided by default in task actions, Kairo setup
+  and history actions, empty-state primary actions, destructive actions, and
+  other task-state mutations with non-trivial consequences
+- Settings is a narrower exception: top-level category rows and clear section
+  entry rows may use icon-plus-text pairs for faster scanning, but Settings
+  should still avoid icon-only rows and should not force icons onto every deep
+  preference row, toggle, or explanatory item
+- Kairo should get one canonical branded accent mark, but its controls and
+  utility actions should still follow the shared app icon dialect rather than
+  introducing a separate AI-specific icon family or ad hoc text glyphs
+- the canonical Pravah icon dialect should use calm rounded geometry on a
+  24x24 grid with medium-weight strokes, rounded caps and joins, restrained
+  internal detail, and low sharpness rather than angular, intricate, or highly
+  technical forms
+- empty states, banners, and supporting feedback should use restrained symbolic
+  icons rather than expressive illustrations; these surfaces should support
+  orientation and tone without raising the app's visual noise floor
+
 ### Reserve bottom tabs for recurring user modes
 
 A bottom tab must be a persistent destination that represents a recurring user
@@ -701,12 +758,110 @@ show enough Tasks to make Inbox and Timeline efficient.
 Compact density can become an Appearance preference later, but the default
 should optimize for trust, readability, and reduced mis-taps.
 
+### Iconography should use one calm semantic system
+
+Reference board: [Icon system board](./assets/icon-system-board.png).
+
+Pravah should define one canonical mobile icon dialect and use it consistently
+across navigation, Settings, support states, and Kairo utilities. The system
+should be calm, rounded, medium-weight, and immediately legible rather than
+decorative, angular, or metaphorically clever.
+
+System rules:
+
+- Use a 24x24 grid with medium strokes, rounded caps, rounded joins, and
+  restrained internal detail.
+- Prefer one stable shape per concept; state changes should come from color,
+  emphasis, and nearby chrome rather than icon swaps.
+- Use icons to improve scanning, not to replace comprehension.
+- If a control is unclear without text, it should stay text-first or use
+  text-plus-icon rather than icon-only treatment.
+- Priority should stay a modifier expressed through color, dot, and label
+  treatment rather than receiving its own dedicated icon language.
+- Utility icons such as calendar, clock, and bell should be used sparingly and
+  only when they denote a real system concept or entry point; they should not
+  prefix every date, time, or reminder-related metadata fragment across the UI.
+- Standard utility icons such as back, close, and overflow may use the shared
+  system icon dialect, but destructive actions such as delete should remain
+  text-forward with at most a supporting icon rather than relying on icon-only
+  recognition.
+
+Canonical bottom-tab mapping:
+
+- `Inbox` -> tray or inbox-container metaphor
+- `Timeline` -> calendar or scheduled-day metaphor
+- `Goals` -> target or focus-ring metaphor
+- `Progress` -> progress-chart or trend-line metaphor
+- `Capture` -> plus-first creation mark, centered and more prominent than tab
+  destinations
+
+Bottom-tab state behavior:
+
+- inactive tabs use muted icon and muted label
+- active tabs keep the same icon shape and use stronger emphasis through color,
+  weight, and surrounding navigation treatment
+- the redesign should redraw all shipped tab icons to align with the approved
+  mock semantics rather than preserving the current shipped metaphors
+
+Kairo mapping:
+
+- Kairo may use its canonical mark beside the `Kairo` title on dedicated
+  inner-page surfaces where it improves orientation
+- in Settings, the Kairo title mark should use the same quiet neutral color as
+  the top-level Settings category icons (`colors.textSecondary`), not the
+  purple accent; reserve purple for selected state, primary actions, and
+  meaningful Kairo emphasis inside the interaction itself
+- Kairo utility controls such as history, new chat, close, and setup should
+  still use the shared icon dialect if they use icons at all
+- do not use ad hoc text glyphs, generic AI sparkles, or a separate AI-specific
+  icon family
+
+Settings mapping:
+
+- top-level category list may use icon-plus-text rows
+- category icons should be quiet scanning aids, not decorative badges
+- Kairo provider setup may temporarily reuse the quiet Kairo mark in the same
+  36x36 neutral squircle used by Settings category icons; replace these
+  placeholders with real provider icons when the provider icon set is ready
+- recommended category metaphors:
+  - `Kairo` -> quiet Kairo mark when needed, paired with text and never treated
+    as a decorative badge
+  - `Sync` -> sync arrows
+  - `Reminders` -> bell
+  - `Interaction` -> hand or gesture-control metaphor
+  - `Appearance` -> sliders or tuning controls
+  - `About` -> info circle
+- deep preference rows, toggles, and explanatory items should stay mostly
+  text-first and should not require icons
+
+Supporting-surface mapping:
+
+- empty states use one restrained symbolic icon
+- banners use one compact utility or status icon
+- toasts may use a small confirmation or status icon when it improves speed
+- destructive actions may use a supporting delete or warning icon, but should
+  remain text-first
+
+Icon omission rules:
+
+- avoid icon-only controls for task-state changes, setup flows, history actions,
+  destructive actions, and nuanced productivity actions
+- Settings should avoid mandatory icons on every row
+- if a metaphor becomes ambiguous in review, remove the icon before adding a
+  weaker or more decorative one
+
 ### Task rows should be stable, scannable action units
 
 Task rows should keep stable anatomy across Inbox, Timeline, and Progress:
 title, one line of context metadata, one primary visible action, and optional
 status or Goal signal. The primary action changes by surface: Schedule in
 Inbox, Complete in Timeline, and Reopen or read-only inspection in Progress.
+
+Task rows should stay status-first rather than semantic-icon-first. The leading
+edge should communicate state, completion, selection, or priority signal rather
+than carrying a decorative task-type metaphor. Everyday Tasks should not gain a
+new leading icon by default; if a special icon appears inside a row, it should
+mark an exceptional state rather than normal task identity.
 
 Rows should not become mini forms. Editing, multi-option decisions, and
 destructive actions belong in the quick-action sheet, full-screen edit flow, or
@@ -718,6 +873,12 @@ Goal rows should show title, health or status, a progress signal, the next
 linked Task preview when one exists, and one motion-oriented action such as
 Plan next or Add Task. They should not show all linked Tasks, edit controls, or
 dense metadata by default.
+
+Unlike task rows, goal rows may use one quiet semantic leading icon because
+Goals are fewer, more strategic, and benefit from a stronger object identity.
+That icon should stay stable, calm, and direction-oriented, ideally in the same
+target or focus-ring family as the Goals tab, and it should not compete with
+the row's progress signal, status, or primary action.
 
 Tapping a Goal row should open the full-screen Goal detail surface. Goal row
 actions should push movement toward the outcome; editing and destructive

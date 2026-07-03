@@ -1,11 +1,9 @@
 /**
  * useTaskQueries
  *
- * Owns all Convex query subscriptions for the task workspace. Queries are
- * kept always-on while the user is authenticated — never gated on which tab
- * is active. This ensures instant tab switches (data is already cached) and
- * prevents the blank-inbox regression that occurred when the query was skipped
- * while the user was on another tab.
+ * Owns Convex query subscriptions for the task workspace. Core tab data stays
+ * live while authenticated; the expensive full-corpus subscription is loaded
+ * only for features that need workspace-wide context.
  */
 
 import { useMemo } from "react";
@@ -89,11 +87,6 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
     isAuthenticated && includeAllTasks ? {} : "skip"
   );
 
-  const countsQuery = useQuery(
-    api.tasks.getTaskCounts,
-    isAuthenticated ? {} : "skip"
-  );
-
   const inboxTasks = useMemo<MobileTask[]>(() => {
     return (
       (inboxQuery as MobileTask[] | undefined)
@@ -131,9 +124,6 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
     return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [scheduledTasks]);
 
-  const inboxCount =
-    countsQuery?.inboxCount ?? inboxTasks.length;
-
   // Split timeline counts so the header can honestly distinguish
   // "still owed" (overdue) from "ahead of you" (this week). A single
   // combined count under the "through this week" label hides large
@@ -154,13 +144,13 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
   }, [scheduledTasks, today, weekEnd]);
 
   const timelineCount = scheduledTasks.length;
-  const completedCount =
-    countsQuery?.completedCount ?? completedTasks.length;
+  const inboxCount = inboxTasks.length;
+  const completedCount = completedTasks.length;
 
   const isInboxLoading = inboxQuery === undefined;
   const isTimelineLoading = timelineQuery === undefined;
   const isCompletedLoading = completedQuery === undefined;
-  const isAllTasksReady = allTasksQuery !== undefined;
+  const isAllTasksReady = !includeAllTasks || allTasksQuery !== undefined;
 
   return {
     today,

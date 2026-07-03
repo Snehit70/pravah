@@ -33,56 +33,73 @@ export const claimLegacyData = mutation({
   args: {},
   handler: async (ctx) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
+    const existingUser = await ctx.db
+      .query("users")
+      .withIndex("by_token", (q) => q.eq("tokenIdentifier", tokenIdentifier))
+      .unique();
 
-    // Pravah is currently a single-user product. This migration intentionally
-    // claims any legacy ownerless records for the authenticated user so older
-    // local/dev data becomes visible again after ownerTokenIdentifier was added.
+    if (existingUser?.legacyDataClaimedAt) {
+      return {
+        claimed: false,
+        skipped: true,
+      };
+    }
 
-    const legacyTasks = await ctx.db
-      .query("tasks")
-      .filter((q) => q.eq(q.field("ownerTokenIdentifier"), undefined))
-      .collect();
-    const legacyIntegrations = await ctx.db
-      .query("integrations")
-      .filter((q) => q.eq(q.field("ownerTokenIdentifier"), undefined))
-      .collect();
-    const legacyCursors = await ctx.db
-      .query("syncCursors")
-      .filter((q) => q.eq(q.field("ownerTokenIdentifier"), undefined))
-      .collect();
-    const legacyMappings = await ctx.db
-      .query("externalTaskMappings")
-      .filter((q) => q.eq(q.field("ownerTokenIdentifier"), undefined))
-      .collect();
-    const legacyReviewItems = await ctx.db
-      .query("reviewQueue")
-      .filter((q) => q.eq(q.field("ownerTokenIdentifier"), undefined))
-      .collect();
-    const legacyRuns = await ctx.db
-      .query("syncRuns")
-      .filter((q) => q.eq(q.field("ownerTokenIdentifier"), undefined))
-      .collect();
+    const claimedAt = Date.now();
+    const counts = {
+      tasks: 0,
+      integrations: 0,
+      syncCursors: 0,
+      externalTaskMappings: 0,
+      reviewQueue: 0,
+      syncRuns: 0,
+    };
 
-    await Promise.all(legacyTasks.map((doc) => ctx.db.patch(doc._id, { ownerTokenIdentifier: tokenIdentifier })));
-    await Promise.all(
-      legacyIntegrations.map((doc) => ctx.db.patch(doc._id, { ownerTokenIdentifier: tokenIdentifier }))
-    );
-    await Promise.all(legacyCursors.map((doc) => ctx.db.patch(doc._id, { ownerTokenIdentifier: tokenIdentifier })));
-    await Promise.all(legacyMappings.map((doc) => ctx.db.patch(doc._id, { ownerTokenIdentifier: tokenIdentifier })));
-    await Promise.all(
-      legacyReviewItems.map((doc) => ctx.db.patch(doc._id, { ownerTokenIdentifier: tokenIdentifier }))
-    );
-    await Promise.all(legacyRuns.map((doc) => ctx.db.patch(doc._id, { ownerTokenIdentifier: tokenIdentifier })));
+    for (const row of await ctx.db.query("tasks").collect()) {
+      if (row.ownerTokenIdentifier) continue;
+      await ctx.db.patch(row._id, { ownerTokenIdentifier: tokenIdentifier });
+      counts.tasks += 1;
+    }
+
+    for (const row of await ctx.db.query("integrations").collect()) {
+      if (row.ownerTokenIdentifier) continue;
+      await ctx.db.patch(row._id, { ownerTokenIdentifier: tokenIdentifier });
+      counts.integrations += 1;
+    }
+
+    for (const row of await ctx.db.query("syncCursors").collect()) {
+      if (row.ownerTokenIdentifier) continue;
+      await ctx.db.patch(row._id, { ownerTokenIdentifier: tokenIdentifier });
+      counts.syncCursors += 1;
+    }
+
+    for (const row of await ctx.db.query("externalTaskMappings").collect()) {
+      if (row.ownerTokenIdentifier) continue;
+      await ctx.db.patch(row._id, { ownerTokenIdentifier: tokenIdentifier });
+      counts.externalTaskMappings += 1;
+    }
+
+    for (const row of await ctx.db.query("reviewQueue").collect()) {
+      if (row.ownerTokenIdentifier) continue;
+      await ctx.db.patch(row._id, { ownerTokenIdentifier: tokenIdentifier });
+      counts.reviewQueue += 1;
+    }
+
+    for (const row of await ctx.db.query("syncRuns").collect()) {
+      if (row.ownerTokenIdentifier) continue;
+      await ctx.db.patch(row._id, { ownerTokenIdentifier: tokenIdentifier });
+      counts.syncRuns += 1;
+    }
+
+    if (existingUser) {
+      await ctx.db.patch(existingUser._id, { legacyDataClaimedAt: claimedAt });
+    }
 
     return {
-      claimed:
-        legacyTasks.length +
-          legacyIntegrations.length +
-          legacyCursors.length +
-          legacyMappings.length +
-          legacyReviewItems.length +
-          legacyRuns.length >
-        0,
+      claimed: true,
+      skipped: false,
+      counts,
+      claimedAt,
     };
   },
 });

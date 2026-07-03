@@ -1,6 +1,6 @@
 /** @vitest-environment happy-dom */
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
@@ -113,6 +113,7 @@ vi.mock("../theme/tokens", () => ({
     bgInput: "#222",
     bgSurface: "#181818",
     success: "#0a0",
+    deadline: "#b65",
     priorityP1: "#f00",
     priorityP2: "#fa0",
     priorityP3: "#ff0",
@@ -133,6 +134,15 @@ vi.mock("../theme/tokens", () => ({
 
 vi.mock("../hooks/useReducedMotion", () => ({
   useReducedMotion: () => reducedMotion,
+}));
+
+vi.mock("../hooks/useUserPreferences", () => ({
+  useUserPreferences: () => ({
+    prefs: {
+      density: "cozy",
+      taskColorScheme: "purple",
+    },
+  }),
 }));
 
 import { TaskCard, type MobileTask } from "../components/TaskCard";
@@ -235,5 +245,25 @@ describe("TaskCard", () => {
     );
 
     expect(row.getAttribute("data-accessibility-actions")).toContain("move_today");
+  });
+
+  it("uses the schedule flow for Inbox tasks when provided", () => {
+    const onSchedule = vi.fn();
+    const onMoveToday = vi.fn();
+
+    render(
+      <TaskCard
+        task={makeTask()}
+        onDone={vi.fn()}
+        onMoveToday={onMoveToday}
+        onSchedule={onSchedule}
+        onEdit={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Schedule Ship redesign" }));
+
+    expect(onSchedule).toHaveBeenCalledWith(expect.objectContaining({ title: "Ship redesign" }));
+    expect(onMoveToday).not.toHaveBeenCalled();
   });
 });

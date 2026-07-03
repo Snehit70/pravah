@@ -382,8 +382,8 @@ The app mixes bottom sheets and centered modals; each surface has a clear role.
 
 ### Settings sheet
 
-- long-form configuration surface using `@gorhom/bottom-sheet`
-- includes sync, alerts, Kairo config, and account actions
+- full-screen configuration modal with a category home and detail screens
+- includes Kairo, Sync, Reminders, Interaction, Appearance, and About
 - must remain scrollable and usable while keyboard is visible
 
 ### Kairo sheet
@@ -397,33 +397,38 @@ The mobile settings hierarchy is ordered for actionability, not for alphabetical
 
 Current order:
 
-1. Assistant (`Kairo`)
+1. Kairo
 2. Sync
-3. Alerts
-4. Account
+3. Reminders
+4. Interaction
+5. Appearance
+6. About
 
 Reasoning:
 
 - Kairo configuration is an active editing flow with text inputs, so burying it at the bottom makes the keyboard experience worse.
-- Sync and alerts are mostly toggles and status surfaces.
-- Account is low-frequency and belongs at the end.
+- Sync and reminders are operational trust surfaces.
+- Interaction and Appearance hold durable preferences.
+- About is low-frequency and belongs at the end.
 - The Kairo section keeps provider and API key visible by default, while endpoint URL and model live behind an `Advanced` toggle so the default editing path stays short on mobile.
 
-### Section tab bar
-
-The bar at the top of the settings sheet (`Assistant`, `Sync`, `Alerts`, `Account`, …) is a tab control: only the active tab's content renders below it, and switching tabs swaps content rather than scrolling within a single long sheet.
+### Category navigation
 
 Implementation rules:
 
-- the tab bar lives inside the pinned header (`BottomSheetView`) so it stays put while content scrolls
-- the bar itself is a horizontally-scrollable `ScrollView` so new tabs can be added without crowding the visible row
-- the active tab is highlighted with the accent fill; inactive tabs share the muted card chrome
-- exactly one section component renders at a time; the others are unmounted so a section with heavy state (Kairo, Gmail review) doesn't keep working when the user is elsewhere
-- tab content animates in with a short `FadeIn` keyed on the active section, gated on `useReducedMotion`
-- tapping the already-active tab scrolls its content back to the top (standard iOS tab-bar gesture); switching to a new tab resets scroll to top instantly
-- opening the sheet always lands on the first tab — predictable rather than "wherever you last were"
+- `settingsNavigationReducer` owns the shallow list/detail state.
+- the home screen renders one icon-plus-text row per category with a short
+  status summary
+- exactly one detail category renders at a time, so heavier sections such as
+  Kairo and Gmail review do not keep active UI mounted while the user is
+  elsewhere
+- opening Settings always lands on the category list
+- Android separators are explicit `View` dividers between rows, not
+  `StyleSheet.hairlineWidth` borders on pressable rows
 
-The earlier chip-scroll model (`src/lib/settingsSections.ts` + `selectActiveSection`) is no longer wired in; the helper remains in the tree as a legacy artifact and is not imported.
+The earlier chip-scroll model (`src/lib/settingsSections.ts` + `selectActiveSection`)
+and the tab-bar model are no longer wired in. The helper remains in the tree as
+a legacy artifact and is not imported.
 
 ### Advanced auto-open rule
 

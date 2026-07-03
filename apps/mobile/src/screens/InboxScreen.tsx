@@ -17,6 +17,7 @@ import { useMemo, useState, type JSX } from "react";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
 import type { RenderItemParams } from "react-native-draggable-flatlist";
+import Svg, { Path } from "react-native-svg";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
@@ -87,6 +88,25 @@ function buildInboxRows(tasks: MobileTask[]): InboxRow[] {
     for (const task of inBucket) rows.push({ kind: "task", task });
   }
   return rows;
+}
+
+function InboxEmptyIcon({ size = 28 }: { size?: number }) {
+  return (
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={colors.textSecondary}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <Path d="M3 8.5h18l-2 9.5H5L3 8.5Z" />
+      <Path d="M8 8.5V6.75A1.75 1.75 0 0 1 9.75 5h4.5A1.75 1.75 0 0 1 16 6.75V8.5" />
+      <Path d="M3.75 13h4.7l1.1 2h4.9l1.1-2h4.7" />
+    </Svg>
+  );
 }
 
 export function InboxScreen({
@@ -171,6 +191,9 @@ export function InboxScreen({
     </Animated.View>
   ) : (
     <Animated.View entering={reducedMotion ? undefined : FadeIn.duration(400)} style={styles.emptyWrap}>
+      <View style={styles.emptyIconWrap}>
+        <InboxEmptyIcon />
+      </View>
       <Text style={styles.emptyTitle}>Everything has a place.</Text>
       <Text style={styles.emptyText}>Capture new loose work when it appears.</Text>
       <Pressable
@@ -193,6 +216,29 @@ export function InboxScreen({
 
   const searchHeader = (
     <View style={styles.searchWrap}>
+      <View style={styles.queueIntro}>
+        <View style={styles.queueCopy}>
+          <Text style={styles.queueTitle}>Triage queue</Text>
+          <Text style={styles.queueSubtitle}>
+            {isFiltering
+              ? `${filteredTasks.length} matching ${
+                  filteredTasks.length === 1 ? "task" : "tasks"
+                }`
+              : `${tasks.length} task${tasks.length === 1 ? "" : "s"} without a Deadline`}
+          </Text>
+        </View>
+        {!isFiltering && tasks.length > 0 ? <Text style={styles.queueMeta}>Schedule first</Text> : null}
+      </View>
+
+      {!isFiltering && tasks.length > 0 ? (
+        <View style={styles.queueHint}>
+          <Text style={styles.queueHintText}>
+            Use <Text style={styles.queueHintEmphasis}>Schedule</Text> to place a task in time,
+            or complete it if it no longer needs a deadline.
+          </Text>
+        </View>
+      ) : null}
+
       <Pressable
         onPress={() => setShowFilters((s) => !s)}
         hitSlop={10}
@@ -398,6 +444,45 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
     gap: spacing.sm,
   },
+  queueIntro: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  queueCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  queueTitle: {
+    color: colors.textPrimary,
+    ...typography.title,
+  },
+  queueSubtitle: {
+    color: colors.textMuted,
+    ...typography.bodyMd,
+  },
+  queueMeta: {
+    color: colors.textMuted,
+    ...typography.micro,
+  },
+  queueHint: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  queueHintText: {
+    color: colors.textMuted,
+    ...typography.bodyMd,
+  },
+  queueHintEmphasis: {
+    color: colors.textPrimary,
+    fontWeight: "600",
+  },
   filterLauncher: {
     minHeight: 44,
     paddingHorizontal: spacing.md,
@@ -552,6 +637,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xxl,
     gap: spacing.sm,
     alignItems: "center",
+  },
+  emptyIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    marginBottom: spacing.xs,
   },
   emptyTitle: {
     color: colors.textPrimary,
