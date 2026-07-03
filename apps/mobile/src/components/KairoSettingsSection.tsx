@@ -104,10 +104,10 @@ function ProviderChevron({
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
       {
-        rotate: `${withTiming(expanded ? -90 : 0, {
+        rotate: withTiming(expanded ? "-90deg" : "0deg", {
           duration: reducedMotion ? 0 : motion.duration.base,
           easing: PROVIDER_REVEAL_EASING,
-        })}deg`,
+        }),
       },
     ],
   }));
