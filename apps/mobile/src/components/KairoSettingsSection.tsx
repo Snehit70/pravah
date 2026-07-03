@@ -325,7 +325,6 @@ export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProp
   }
 
   const placeholders = KAIRO_DEFAULTS[editorProvider];
-  const activeIsDefault = hasDefaultProvider && defaultProvider === activeProvider;
 
   return (
     <View style={styles.block}>
@@ -440,7 +439,6 @@ export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProp
 
         {PROVIDERS.map((provider, index) => {
           const isSelected = provider === activeProvider;
-          const isDefault = hasDefaultProvider && defaultProvider === provider;
           const providerConfigured = savedSettings
             ? isProfileConfigured(provider, savedSettings.profiles[provider])
             : false;
@@ -488,13 +486,6 @@ export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProp
                       {providerConfigured ? "Configured" : "Not configured"}
                     </Text>
                   </View>
-                  {isDefault ? (
-                    <View style={[styles.providerBadge, styles.providerBadgeDefault]}>
-                      <Text style={[styles.providerBadgeText, styles.providerBadgeTextDefault]}>
-                        Default
-                      </Text>
-                    </View>
-                  ) : null}
                   {isSelected ? (
                     <ChevronUpIcon color={colors.textSecondary} size={18} />
                   ) : (
@@ -521,13 +512,6 @@ export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProp
                     <Text style={styles.editorLabel}>
                       {getKairoProviderLabel(activeProvider)} credentials
                     </Text>
-                    {activeIsDefault ? (
-                      <View style={[styles.providerBadge, styles.providerBadgeDefault]}>
-                        <Text style={[styles.providerBadgeText, styles.providerBadgeTextDefault]}>
-                          Default
-                        </Text>
-                      </View>
-                    ) : null}
                   </View>
 
                   <Text style={styles.fieldLabel}>API key</Text>
@@ -891,9 +875,6 @@ const styles = StyleSheet.create({
   providerBadgeIdle: {
     backgroundColor: "rgba(91,80,72,0.05)",
   },
-  providerBadgeDefault: {
-    backgroundColor: "rgba(91,80,72,0.06)",
-  },
   providerBadgeText: {
     ...typography.bodyMd,
     fontFamily: "Geist_500Medium",
@@ -902,9 +883,6 @@ const styles = StyleSheet.create({
     color: colors.accent,
   },
   providerBadgeTextIdle: {
-    color: colors.textSecondary,
-  },
-  providerBadgeTextDefault: {
     color: colors.textSecondary,
   },
   providerListDivider: {
