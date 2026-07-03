@@ -580,13 +580,13 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   defaultTitle: {
+    color: colors.textPrimary,
+    ...typography.title,
+  },
+  defaultValue: {
     color: colors.textSecondary,
     ...typography.bodyMd,
     fontFamily: "Geist_500Medium",
-  },
-  defaultValue: {
-    color: colors.textPrimary,
-    ...typography.title,
   },
   defaultHelp: {
     maxWidth: 260,
