@@ -27,11 +27,13 @@ import { useReducedMotion } from "../hooks/useReducedMotion";
 import { KairoSettingsSkeleton } from "./LoadingSkeleton";
 import { colors, motion, radii, spacing, typography } from "../theme/tokens";
 import { classifyError, mobileLogger } from "../lib/logger";
-import { ChevronRightIcon, ChevronUpIcon, EyeIcon, SettingsIcon } from "./UiIcons";
+import { ChevronRightIcon, ChevronUpIcon, SettingsIcon } from "./UiIcons";
 import KairoIconAsset from "../assets/icons/settings-kairo.svg";
 import AnthropicIconAsset from "../assets/icons/provider-anthropic.svg";
 import OpenAIIconAsset from "../assets/icons/provider-openai.svg";
 import GeminiIconAsset from "../assets/icons/provider-gemini.svg";
+import KairoEyeOpenAsset from "../assets/icons/kairo-eye-open.svg";
+import KairoEyeClosedAsset from "../assets/icons/kairo-eye-closed.svg";
 
 const PROVIDERS: KairoProviderFormat[] = ["anthropic", "openai", "gemini"];
 const PROVIDER_REVEAL_EASING = Easing.bezier(...motion.easing.outQuart);
@@ -82,6 +84,12 @@ function ProviderIcon({
       )}
     </View>
   );
+}
+
+function ApiKeyVisibilityIcon({ visible }: { visible: boolean }) {
+  const Icon = visible ? KairoEyeClosedAsset : KairoEyeOpenAsset;
+
+  return <Icon width={19} height={19} color={colors.textSecondary} />;
 }
 
 export function KairoSettingsSection() {
@@ -521,7 +529,7 @@ export function KairoSettingsSection() {
                       accessibilityLabel={apiKeyVisible ? "Hide API key" : "Show API key"}
                       style={({ pressed }) => [styles.eyeButton, pressed && styles.pressed]}
                     >
-                      <EyeIcon color={colors.textSecondary} size={18} />
+                      <ApiKeyVisibilityIcon visible={apiKeyVisible} />
                     </Pressable>
                   </View>
                   {fieldErrors.apiKey ? (
