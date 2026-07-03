@@ -17,6 +17,19 @@ export interface KairoConfig extends KairoProviderProfile {
   providerFormat: KairoProviderFormat;
 }
 
+export type KairoProfileField = keyof KairoProviderProfile;
+export type KairoProfileErrors = Partial<Record<KairoProfileField, string>>;
+
+export class KairoSettingsValidationError extends Error {
+  constructor(
+    public readonly provider: KairoProviderFormat,
+    public readonly errors: KairoProfileErrors,
+  ) {
+    super(`Invalid ${getKairoProviderLabel(provider)} configuration`);
+    this.name = "KairoSettingsValidationError";
+  }
+}
+
 const STORAGE_KEYS = {
   settings: "pravah_kairo_settings_v2",
   // Legacy v1 keys
@@ -132,11 +145,18 @@ export async function saveKairoSettings(settings: KairoSettings): Promise<void> 
   const provider = normalizeProvider(settings.defaultProvider);
   const normalized: KairoSettings = makeDefaultSettings(provider);
   for (const p of ["anthropic", "openai", "gemini"] as KairoProviderFormat[]) {
-    normalized.profiles[p] = {
+    const profile = {
       apiKey: settings.profiles[p]?.apiKey?.trim?.() ?? "",
       baseUrl: settings.profiles[p]?.baseUrl?.trim?.() || KAIRO_DEFAULTS[p].baseUrl,
       model: settings.profiles[p]?.model?.trim?.() || KAIRO_DEFAULTS[p].model,
     };
+    if (profile.apiKey) {
+      const errors = validateKairoProviderProfile(profile);
+      if (Object.keys(errors).length > 0) {
+        throw new KairoSettingsValidationError(p, errors);
+      }
+    }
+    normalized.profiles[p] = profile;
   }
   await SecureStore.setItemAsync(STORAGE_KEYS.settings, JSON.stringify(normalized));
 }
@@ -171,13 +191,58 @@ export async function clearKairoConfig(): Promise<void> {
 }
 
 export function isKairoConfigured(c: KairoConfig): boolean {
-  return Boolean(c.apiKey && c.baseUrl && c.model && c.providerFormat);
+  return (
+    Boolean(c.apiKey && c.providerFormat) &&
+    Object.keys(validateKairoProviderProfile(c)).length === 0
+  );
 }
 
 export function getKairoProviderLabel(p: KairoProviderFormat): string {
   if (p === "anthropic") return "Anthropic";
   if (p === "gemini") return "Gemini";
   return "OpenAI";
+}
+
+export function validateKairoProviderProfile(
+  profile: KairoProviderProfile,
+): KairoProfileErrors {
+  const errors: KairoProfileErrors = {};
+  const apiKey = profile.apiKey.trim();
+  const baseUrl = profile.baseUrl.trim();
+  const model = profile.model.trim();
+
+  if (!apiKey) {
+    errors.apiKey = "Enter an API key.";
+  }
+
+  if (!baseUrl) {
+    errors.baseUrl = "Enter an endpoint URL.";
+  } else {
+    try {
+      const parsed = new URL(baseUrl);
+      const localHttp =
+        parsed.protocol === "http:" &&
+        (parsed.hostname === "localhost" ||
+          parsed.hostname === "127.0.0.1" ||
+          parsed.hostname === "::1");
+      if (parsed.protocol !== "https:" && !localHttp) {
+        errors.baseUrl = "Use HTTPS, or HTTP only for a local endpoint.";
+      }
+    } catch {
+      errors.baseUrl = "Enter a valid endpoint URL.";
+    }
+  }
+
+  if (!model) {
+    errors.model = "Enter a model name.";
+  } else if ([...model].some((char) => {
+    const code = char.charCodeAt(0);
+    return code <= 31 || code === 127;
+  })) {
+    errors.model = "Model name contains unsupported characters.";
+  }
+
+  return errors;
 }
 
 export function hasCustomKairoEndpoint(c: KairoConfig): boolean {

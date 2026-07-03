@@ -12,6 +12,7 @@ vi.mock("expo-secure-store", () => ({
 import {
   KAIRO_DEFAULTS,
   hasCustomKairoEndpoint,
+  validateKairoProviderProfile,
   type KairoConfig,
 } from "../lib/kairoConfig";
 
@@ -75,5 +76,47 @@ describe("hasCustomKairoEndpoint", () => {
       model: KAIRO_DEFAULTS.anthropic.model,
     });
     expect(hasCustomKairoEndpoint(wrongDefaultsForProvider)).toBe(true);
+  });
+});
+
+describe("validateKairoProviderProfile", () => {
+  it("requires every field", () => {
+    expect(validateKairoProviderProfile(make())).toEqual({
+      apiKey: "Enter an API key.",
+      baseUrl: "Enter an endpoint URL.",
+      model: "Enter a model name.",
+    });
+  });
+
+  it.each(["anthropic", "openai", "gemini"] as const)(
+    "accepts the default %s profile",
+    (providerFormat) => {
+      expect(
+        validateKairoProviderProfile({
+          apiKey: "provider-key",
+          ...KAIRO_DEFAULTS[providerFormat],
+        }),
+      ).toEqual({});
+    },
+  );
+
+  it("requires HTTPS for remote endpoints", () => {
+    expect(
+      validateKairoProviderProfile({
+        apiKey: "key",
+        baseUrl: "http://provider.example/v1",
+        model: "model",
+      }).baseUrl,
+    ).toBe("Use HTTPS, or HTTP only for a local endpoint.");
+  });
+
+  it("allows HTTP for local development endpoints", () => {
+    expect(
+      validateKairoProviderProfile({
+        apiKey: "key",
+        baseUrl: "http://localhost:11434/v1/chat/completions",
+        model: "model",
+      }),
+    ).toEqual({});
   });
 });
