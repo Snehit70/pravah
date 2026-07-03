@@ -42,7 +42,13 @@ async function insertAuditEvent(
     ownerTokenIdentifier: string;
     credentialId?: Id<"automationCredentials">;
     bootstrapTokenId?: Id<"automationBootstrapTokens">;
-    eventType: "bootstrap_issued" | "bootstrap_exchanged" | "credential_revoked" | "credential_used";
+    eventType:
+      | "bootstrap_issued"
+      | "bootstrap_exchanged"
+      | "credential_revoked"
+      | "credential_updated"
+      | "credential_deleted"
+      | "credential_used";
     metadata?: Record<string, unknown>;
   }
 ) {
@@ -68,6 +74,55 @@ export const listCredentials = query({
     return credentials
       .sort((left, right) => right.createdAt - left.createdAt)
       .map(({ credentialHash: _credentialHash, ...credential }) => credential);
+  },
+});
+
+export const listBootstrapTokens = query({
+  args: {},
+  handler: async (ctx) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    const now = Date.now();
+    const tokens = await ctx.db
+      .query("automationBootstrapTokens")
+      .withIndex("by_owner", (q) => q.eq("ownerTokenIdentifier", tokenIdentifier))
+      .collect();
+
+    // Only tokens still awaiting exchange (issued, not yet used/expired/revoked).
+    return tokens
+      .filter((token) => token.status === "active" && token.expiresAt > now)
+      .sort((left, right) => right.createdAt - left.createdAt)
+      .map((token) => ({
+        _id: token._id,
+        label: token.label,
+        scopes: token.scopes,
+        expiresAt: token.expiresAt,
+        createdAt: token.createdAt,
+      }));
+  },
+});
+
+export const cancelBootstrapToken = mutation({
+  args: {
+    bootstrapTokenId: v.id("automationBootstrapTokens"),
+  },
+  handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    const record = await ctx.db.get(args.bootstrapTokenId);
+    if (!record || record.ownerTokenIdentifier !== tokenIdentifier) {
+      throw new Error("Bootstrap token not found");
+    }
+    if (record.status !== "active") {
+      return { cancelled: false };
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(args.bootstrapTokenId, {
+      status: "revoked",
+      revokedAt: now,
+      updatedAt: now,
+    });
+
+    return { cancelled: true };
   },
 });
 
@@ -220,6 +275,114 @@ export const revokeCredential = mutation({
     });
 
     return { revoked: true };
+  },
+});
+
+export const deleteCredential = mutation({
+  args: {
+    credentialId: v.id("automationCredentials"),
+  },
+  handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    const credential = await ctx.db.get(args.credentialId);
+    if (!credential || credential.ownerTokenIdentifier !== tokenIdentifier) {
+      throw new Error("Credential not found");
+    }
+    // Only revoked credentials can be removed; active ones must be revoked first.
+    if (credential.status !== "revoked") {
+      throw new Error("Revoke the credential before deleting it");
+    }
+
+    await ctx.db.delete(args.credentialId);
+
+    await insertAuditEvent(ctx, {
+      ownerTokenIdentifier: tokenIdentifier,
+      credentialId: args.credentialId,
+      eventType: "credential_deleted",
+      metadata: {
+        label: credential.label,
+      },
+    });
+
+    return { deleted: true };
+  },
+});
+
+export const updateCredential = mutation({
+  args: {
+    credentialId: v.id("automationCredentials"),
+    label: v.optional(v.string()),
+    allowTaskWrites: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    const credential = await ctx.db.get(args.credentialId);
+    if (!credential || credential.ownerTokenIdentifier !== tokenIdentifier) {
+      throw new Error("Credential not found");
+    }
+    if (credential.status === "revoked") {
+      throw new Error("Cannot update a revoked credential");
+    }
+
+    const now = Date.now();
+    const patch: {
+      label?: string;
+      scopes?: AutomationScope[];
+      updatedAt: number;
+    } = { updatedAt: now };
+    const auditMetadata: Record<string, unknown> = { label: credential.label };
+
+    if (args.label !== undefined) {
+      const nextLabel = args.label.trim();
+      if (!nextLabel) {
+        throw new Error("Credential label is required");
+      }
+      if (nextLabel.length > MAX_CREDENTIAL_LABEL_LENGTH) {
+        throw new Error(
+          `Credential label must be at most ${MAX_CREDENTIAL_LABEL_LENGTH} characters`
+        );
+      }
+      if (nextLabel !== credential.label) {
+        patch.label = nextLabel;
+        auditMetadata.label = nextLabel;
+        auditMetadata.previousLabel = credential.label;
+      }
+    }
+
+    if (args.allowTaskWrites !== undefined) {
+      const scopes = new Set(credential.scopes as AutomationScope[]);
+      const hasWrite = scopes.has("tasks:write");
+      if (args.allowTaskWrites && !hasWrite) {
+        scopes.add("tasks:write");
+      } else if (!args.allowTaskWrites && hasWrite) {
+        scopes.delete("tasks:write");
+      }
+      const nextScopes = [...scopes];
+      if (nextScopes.length === 0) {
+        throw new Error("At least one automation scope is required");
+      }
+      // Only record a scope change when it actually differs.
+      if (nextScopes.length !== credential.scopes.length) {
+        patch.scopes = nextScopes;
+        auditMetadata.taskWrites = args.allowTaskWrites;
+        auditMetadata.scopes = nextScopes;
+      }
+    }
+
+    if (patch.label === undefined && patch.scopes === undefined) {
+      return { updated: false };
+    }
+
+    await ctx.db.patch(args.credentialId, patch);
+
+    await insertAuditEvent(ctx, {
+      ownerTokenIdentifier: tokenIdentifier,
+      credentialId: args.credentialId,
+      eventType: "credential_updated",
+      metadata: auditMetadata,
+    });
+
+    return { updated: true };
   },
 });
 

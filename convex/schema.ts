@@ -127,6 +127,8 @@ export default defineSchema({
       v.literal("bootstrap_issued"),
       v.literal("bootstrap_exchanged"),
       v.literal("credential_revoked"),
+      v.literal("credential_updated"),
+      v.literal("credential_deleted"),
       v.literal("credential_used")
     ),
     metadataJson: v.optional(v.string()),
