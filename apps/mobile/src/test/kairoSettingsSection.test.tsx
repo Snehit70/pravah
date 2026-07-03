@@ -89,8 +89,11 @@ vi.mock("react-native-reanimated", () => ({
     View: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
       React.createElement("div", {}, children),
   },
-  FadeIn: { duration: () => undefined },
-  FadeOut: { duration: () => undefined },
+  Easing: { bezier: () => undefined },
+  FadeIn: { duration: () => ({ easing: () => undefined }) },
+  FadeInDown: { duration: () => ({ easing: () => undefined }) },
+  FadeOut: { duration: () => ({ easing: () => undefined }) },
+  LinearTransition: { duration: () => ({ easing: () => undefined }) },
 }));
 
 // ─── useReducedMotion mock ────────────────────────────────────────────────────
@@ -114,6 +117,10 @@ vi.mock("../theme/tokens", () => ({
   radii: { md: 8, lg: 12, full: 9999 },
   spacing: { xs: 4, sm: 8, md: 16, lg: 24 },
   typography: { micro: {}, bodyMd: {}, title: {}, headline: {} },
+  motion: {
+    duration: { base: 180, instant: 100 },
+    easing: { outQuart: [0.25, 1, 0.5, 1], outExpo: [0.16, 1, 0.3, 1] },
+  },
 }));
 
 // ─── LoadingSkeleton mock ─────────────────────────────────────────────────────
@@ -228,6 +235,7 @@ describe("KairoSettingsSection", () => {
     render(<KairoSettingsSection />);
 
     await waitFor(() => expect(screen.queryByTestId("kairo-skeleton")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: /edit anthropic provider profile/i }));
 
     // Advanced fields should not be visible.
     expect(screen.queryByText("Endpoint URL")).toBeNull();
@@ -243,6 +251,7 @@ describe("KairoSettingsSection", () => {
     render(<KairoSettingsSection />);
 
     await waitFor(() => expect(screen.queryByTestId("kairo-skeleton")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: /edit anthropic provider profile/i }));
 
     const toggleBtn = screen.getByRole("button", { name: /show advanced kairo settings/i });
     fireEvent.click(toggleBtn);
@@ -260,8 +269,9 @@ describe("KairoSettingsSection", () => {
     render(<KairoSettingsSection />);
 
     await waitFor(() => expect(screen.queryByTestId("kairo-skeleton")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: /edit anthropic provider profile/i }));
 
-    // Advanced section should be immediately visible — no user interaction needed.
+    // A saved custom endpoint opens Advanced when its provider editor opens.
     expect(screen.getByText("Endpoint URL")).toBeTruthy();
     expect(screen.getByText("Model")).toBeTruthy();
   });
@@ -283,6 +293,10 @@ describe("KairoSettingsSection", () => {
     render(<KairoSettingsSection />);
 
     await waitFor(() => expect(screen.queryByTestId("kairo-skeleton")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: /edit anthropic provider profile/i }));
+    fireEvent.change(screen.getByPlaceholderText("Paste API key"), {
+      target: { value: "anthropic-key" },
+    });
 
     // Idle state: button reads "Save".
     const saveBtn = screen.getByRole("button", { name: /save kairo configuration/i });
@@ -311,6 +325,10 @@ describe("KairoSettingsSection", () => {
     render(<KairoSettingsSection />);
 
     await waitFor(() => expect(screen.queryByTestId("kairo-skeleton")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: /edit anthropic provider profile/i }));
+    fireEvent.change(screen.getByPlaceholderText("Paste API key"), {
+      target: { value: "anthropic-key" },
+    });
 
     const saveBtn = screen.getByRole("button", { name: /save kairo configuration/i });
     await act(async () => {
@@ -328,6 +346,7 @@ describe("KairoSettingsSection", () => {
     render(<KairoSettingsSection />);
 
     await waitFor(() => expect(screen.queryByTestId("kairo-skeleton")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: /edit anthropic provider profile/i }));
 
     const clearBtn = screen.getByRole("button", { name: /clear kairo configuration/i });
     await act(async () => {
@@ -346,17 +365,66 @@ describe("KairoSettingsSection", () => {
     await waitFor(() => expect(screen.queryByTestId("kairo-skeleton")).toBeNull());
 
     expect(screen.getByText("Default provider")).toBeTruthy();
-    expect(screen.getByText("Anthropic")).toBeTruthy();
+    expect(screen.getAllByText("Anthropic")).toHaveLength(2);
 
     fireEvent.click(screen.getByRole("button", { name: /edit openai provider profile/i }));
 
-    expect(screen.getByText("Credentials for OpenAI")).toBeTruthy();
-    expect(
-      screen.getByText("You can configure this profile without making it the default."),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: /make openai the default kairo provider/i }),
-    ).toBeTruthy();
+    expect(screen.getByText("OpenAI credentials")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /save kairo configuration/i })).toBeTruthy();
+  });
+
+  it("does not mark a provider configured or expose the fallback default before save", async () => {
+    useEmptyConfig();
+
+    render(<KairoSettingsSection />);
+
+    await waitFor(() => expect(screen.queryByTestId("kairo-skeleton")).toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: /edit openai provider profile/i }));
+    fireEvent.change(screen.getByPlaceholderText("Paste API key"), {
+      target: { value: "sk-unsaved" },
+    });
+
+    expect(screen.queryByText("Configured")).toBeNull();
+    expect(screen.queryByText("Default")).toBeNull();
+    expect(screen.getByText("Not set")).toBeTruthy();
+  });
+
+  it("does not show an unconfigured stored fallback as the default", async () => {
+    useMultiProviderConfig();
+    vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key: string) => {
+      if (key === "pravah_kairo_settings_v2") {
+        return JSON.stringify({
+          defaultProvider: "anthropic",
+          profiles: {
+            anthropic: {
+              apiKey: "",
+              baseUrl: "https://api.anthropic.com/v1/messages",
+              model: "claude-haiku-4-5",
+            },
+            openai: {
+              apiKey: "openai-key",
+              baseUrl: "https://api.openai.com/v1/chat/completions",
+              model: "gpt-5.4-mini",
+            },
+            gemini: {
+              apiKey: "",
+              baseUrl:
+                "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+              model: "gemini-2.5-flash",
+            },
+          },
+        });
+      }
+      return null;
+    });
+
+    render(<KairoSettingsSection />);
+
+    await waitFor(() => expect(screen.queryByTestId("kairo-skeleton")).toBeNull());
+
+    expect(screen.getByText("Not set")).toBeTruthy();
+    expect(screen.queryByText("Default")).toBeNull();
   });
 
   it("persists the selected provider as default only after make default and save", async () => {
@@ -366,10 +434,11 @@ describe("KairoSettingsSection", () => {
 
     await waitFor(() => expect(screen.queryByTestId("kairo-skeleton")).toBeNull());
 
-    fireEvent.click(screen.getByRole("button", { name: /edit openai provider profile/i }));
+    fireEvent.click(screen.getByRole("button", { name: /choose default kairo provider/i }));
     fireEvent.click(
-      screen.getByRole("button", { name: /make openai the default kairo provider/i }),
+      screen.getByRole("button", { name: /set openai as the default provider/i }),
     );
+    fireEvent.click(screen.getByRole("button", { name: /edit openai provider profile/i }));
 
     const saveBtn = screen.getByRole("button", { name: /save kairo configuration/i });
     await act(async () => {

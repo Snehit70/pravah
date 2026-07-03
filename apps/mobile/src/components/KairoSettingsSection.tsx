@@ -98,6 +98,7 @@ type KairoSettingsSectionProps = {
 
 export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProps = {}) {
   const [settings, setSettings] = useState<KairoSettings | null>(null);
+  const [savedSettings, setSavedSettings] = useState<KairoSettings | null>(null);
   const [activeProvider, setActiveProvider] = useState<KairoProviderFormat | null>(null);
   const [defaultPickerOpen, setDefaultPickerOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -115,6 +116,7 @@ export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProp
       .then((next) => {
         if (cancelled) return;
         setSettings(next);
+        setSavedSettings(next);
         setActiveProvider(null);
         setDefaultPickerOpen(false);
         setShowAdvanced(false);
@@ -130,25 +132,24 @@ export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProp
   }, []);
 
   const anyConfigured = useMemo(() => {
-    if (!settings) return false;
+    if (!savedSettings) return false;
     return PROVIDERS.some((provider) =>
-      isProfileConfigured(provider, settings.profiles[provider]),
+      isProfileConfigured(provider, savedSettings.profiles[provider]),
     );
-  }, [settings]);
+  }, [savedSettings]);
 
-  const defaultProvider = settings?.defaultProvider ?? "anthropic";
+  const defaultProvider = savedSettings?.defaultProvider ?? "anthropic";
   const editorProvider = activeProvider ?? defaultProvider;
-  const defaultProviderConfigured = settings
-    ? isProfileConfigured(defaultProvider, settings.profiles[defaultProvider])
+  const defaultProviderConfigured = savedSettings
+    ? isProfileConfigured(defaultProvider, savedSettings.profiles[defaultProvider])
     : false;
-  const defaultProviderValue = anyConfigured
+  const hasDefaultProvider = anyConfigured && defaultProviderConfigured;
+  const defaultProviderValue = hasDefaultProvider
     ? getKairoProviderLabel(defaultProvider)
     : "Not set";
-  const defaultProviderHelp = !anyConfigured
+  const defaultProviderHelp = !hasDefaultProvider
     ? "Set up a provider to choose a default."
-    : !defaultProviderConfigured
-      ? "Set up this provider to use it as the default."
-      : null;
+    : null;
 
   const activeProfile = useMemo(() => {
     if (!settings) {
@@ -237,6 +238,7 @@ export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProp
     setSaveState("saving");
     try {
       await saveKairoSettings(settings);
+      setSavedSettings(settings);
       flashState("saved");
     } catch (error) {
       mobileLogger.warn("kairo_settings_save_failed", { errorType: classifyError(error) });
@@ -284,6 +286,7 @@ export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProp
       await clearKairoConfig();
       const cleared = await getKairoSettings();
       setSettings(cleared);
+      setSavedSettings(cleared);
       setActiveProvider(null);
       setDefaultPickerOpen(false);
       setApiKeyVisible(false);
@@ -303,7 +306,7 @@ export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProp
   }
 
   const placeholders = KAIRO_DEFAULTS[editorProvider];
-  const activeIsDefault = anyConfigured && settings?.defaultProvider === activeProvider;
+  const activeIsDefault = hasDefaultProvider && defaultProvider === activeProvider;
 
   return (
     <View style={styles.block}>
@@ -318,7 +321,7 @@ export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProp
           accessibilityState={{ expanded: defaultPickerOpen }}
         >
           <ProviderIcon
-            provider={anyConfigured ? defaultProvider : undefined}
+            provider={hasDefaultProvider ? defaultProvider : undefined}
             size={22}
             variant="large"
           />
@@ -344,10 +347,10 @@ export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProp
           <View style={styles.defaultPickerInset}>
             <View style={styles.defaultPickerList}>
               {PROVIDERS.map((provider, index) => {
-                const providerConfigured = settings
-                  ? isProfileConfigured(provider, settings.profiles[provider])
+                const providerConfigured = savedSettings
+                  ? isProfileConfigured(provider, savedSettings.profiles[provider])
                   : false;
-                const isCurrentDefault = anyConfigured && provider === defaultProvider;
+                const isCurrentDefault = hasDefaultProvider && provider === defaultProvider;
                 const disabled = !providerConfigured && !isCurrentDefault;
 
                 return (
@@ -418,9 +421,9 @@ export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProp
 
         {PROVIDERS.map((provider, index) => {
           const isSelected = provider === activeProvider;
-          const isDefault = anyConfigured && settings?.defaultProvider === provider;
-          const providerConfigured = settings
-            ? isProfileConfigured(provider, settings.profiles[provider])
+          const isDefault = hasDefaultProvider && defaultProvider === provider;
+          const providerConfigured = savedSettings
+            ? isProfileConfigured(provider, savedSettings.profiles[provider])
             : false;
 
           return (

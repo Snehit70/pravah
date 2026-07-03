@@ -37,7 +37,9 @@ describe("testKairoConnection", () => {
     expect(init).toBeDefined();
     expect(url).toBe(KAIRO_DEFAULTS[provider].baseUrl);
     expect((init!.headers as Record<string, string>)[header]).toBe(value);
-    expect(JSON.parse(init!.body as string).model).toBe(KAIRO_DEFAULTS[provider].model);
+    const body = JSON.parse(init!.body as string);
+    expect(body.model).toBe(KAIRO_DEFAULTS[provider].model);
+    if (provider === "openai") expect(body.max_completion_tokens).toBe(64);
   });
 
   it("expands the Gemini model and sends its key in the URL", async () => {

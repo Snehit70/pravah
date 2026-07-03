@@ -42,7 +42,8 @@ function requestFor(config: KairoConfig): {
       headers,
       body: {
         model: config.model,
-        max_completion_tokens: 1,
+        // Reasoning models may spend part of this budget before emitting "OK".
+        max_completion_tokens: 64,
         messages: [{ role: "user", content: "Reply with OK." }],
       },
     };
