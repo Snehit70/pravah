@@ -319,7 +319,7 @@ export function useIntegrationsSettings({
         // If storage read fails, proceed without forcing a resync.
       }
 
-      await importGoogleCalendarAction({
+      const syncResult = await importGoogleCalendarAction({
         accessToken,
         calendarIds: selectedCalendarIds.length > 0 ? selectedCalendarIds : undefined,
         fullResync,
@@ -347,7 +347,14 @@ export function useIntegrationsSettings({
         // Best-effort; next sync for a newly-added calendar will re-trigger.
       }
 
-      showToast({ kind: "info", message: "Google Calendar sync complete." });
+      const changedCount = syncResult.importedCount + syncResult.updatedCount;
+      showToast({
+        kind: "info",
+        message:
+          changedCount > 0
+            ? `Synced: ${syncResult.importedCount} imported, ${syncResult.updatedCount} updated.`
+            : "Google Calendar is up to date.",
+      });
     } catch (error) {
       mobileLogger.warn("google_calendar_sync_failed", { errorType: classifyError(error) });
       showToast({ kind: "error", message: "Google Calendar sync failed. Try again." });

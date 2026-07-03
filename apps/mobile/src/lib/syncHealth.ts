@@ -12,7 +12,7 @@ export type SyncHealth = "healthy" | "error" | "paused" | "disconnected";
 export function summarizeSyncError(raw?: string): string | undefined {
   if (!raw) return undefined;
   if (/too many documents read/i.test(raw)) {
-    return "The last sync was too large to finish in one pass. Reconnect to retry.";
+    return "The last sync was too large to finish in one pass. Retry the sync.";
   }
   const firstLine = raw
     .split("\n")[0]

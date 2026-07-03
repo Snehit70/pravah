@@ -29,11 +29,17 @@ import { getOrCreateDeviceId } from "../lib/deviceIdentity";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
 import { classifyError, mobileLogger } from "../lib/logger";
 import {
+  AlertCircleIcon,
   ArrowUpRightIcon,
+  CalendarIcon,
   CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CopyIcon,
+  InboxTrayIcon,
+  InfoCircleIcon,
+  MailIcon,
+  SyncLoopIcon,
 } from "./UiIcons";
 import AboutIconAsset from "../assets/icons/settings-about.svg";
 import AppearanceIconAsset from "../assets/icons/settings-appearance.svg";
@@ -282,18 +288,20 @@ function syncHealthLabel(health: SyncHealth): string {
     case "healthy":
       return "Connected";
     case "error":
-      return "Sync paused after an error";
+      return "Needs retry";
     case "paused":
-      return "Sync off";
+      return "Paused";
     case "disconnected":
-      return "Not connected";
+      return "Off";
   }
 }
 
-function syncHealthColor(health: SyncHealth): string {
-  if (health === "healthy") return colors.primary;
-  if (health === "error") return colors.error;
-  return colors.textMuted;
+type SyncBadgeTone = "success" | "warning" | "error" | "muted";
+
+function syncHealthTone(health: SyncHealth): SyncBadgeTone {
+  if (health === "healthy") return "success";
+  if (health === "error") return "error";
+  return "muted";
 }
 
 function pickerTitle(kind: QuietPickerKind): string {
@@ -313,7 +321,7 @@ function pickerValue(
 
 function calendarActionLabel(health: SyncHealth, isSyncing: boolean): string {
   if (isSyncing) return "Syncing…";
-  if (health === "error") return "Reconnect";
+  if (health === "error") return "Retry sync";
   if (health === "paused" || health === "disconnected") return "Enable and sync";
   return "Sync now";
 }
@@ -1152,53 +1160,78 @@ function SyncSection({
   onGmailToggle,
   showToast,
 }: SyncSectionProps) {
+  const calendarMetaLine = [
+    calendarAccountEmail?.toLowerCase(),
+    describeLastRun(calendarLastRun),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const gmailMetaLine = [gmailAccountEmail?.toLowerCase(), describeLastRun(gmailLastRun)]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <View style={styles.screenBody}>
       <View style={styles.summaryRow}>
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryKicker}>Calendar</Text>
+          <View style={styles.summaryKickerRow}>
+            <CalendarIcon color={colors.textMuted} size={13} strokeWidth={1.8} />
+            <Text style={styles.summaryKicker}>Calendar</Text>
+          </View>
           <Text style={styles.summaryValue}>{syncHealthLabel(calendarSyncHealth)}</Text>
           <Text style={styles.summaryMeta}>
-            {calendarSyncEnabled ? "Timeline import on" : "Timeline import off"}
+            {describeLastRun(calendarLastRun) ??
+              (calendarSyncEnabled ? "Timeline import on" : "Timeline import off")}
           </Text>
         </View>
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryKicker}>Gmail</Text>
+          <View style={styles.summaryKickerRow}>
+            <MailIcon color={colors.textMuted} size={13} strokeWidth={1.8} />
+            <Text style={styles.summaryKicker}>Gmail</Text>
+          </View>
           <Text style={styles.summaryValue}>{formatStatusLabel(gmailSyncStatus)}</Text>
           <Text style={styles.summaryMeta}>
-            {gmailSyncEnabled ? "Review capture on" : "Review capture off"}
+            {pendingGmailReviewCount > 0
+              ? `${pendingGmailReviewCount} awaiting review`
+              : gmailSyncEnabled
+                ? "Nothing to review"
+                : "Review capture off"}
           </Text>
         </View>
       </View>
 
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <CalendarIcon color={colors.textSecondary} size={18} />
+          </View>
           <View style={styles.settingCopy}>
-            <Text style={styles.settingLabel}>Google Calendar</Text>
+            <View style={styles.syncTitleRow}>
+              <Text style={styles.settingLabel}>Google Calendar</Text>
+              <SyncStatusBadge
+                label={syncHealthLabel(calendarSyncHealth)}
+                tone={syncHealthTone(calendarSyncHealth)}
+              />
+            </View>
             <Text style={styles.settingHelp}>Pull events and deadlines into Pravah.</Text>
-            <Text style={[styles.settingStatus, { color: syncHealthColor(calendarSyncHealth) }]}>
-              {syncHealthLabel(calendarSyncHealth)}
-            </Text>
-            {calendarSyncHealth === "error" && calendarErrorSummary ? (
-              <Text style={[styles.settingMeta, { color: colors.error }]}>
-                {calendarErrorSummary}
-              </Text>
-            ) : null}
-            {calendarAccountEmail ? (
-              <Text style={styles.settingMeta}>{calendarAccountEmail.toLowerCase()}</Text>
-            ) : null}
-            {describeLastRun(calendarLastRun) ? (
-              <Text style={styles.settingMeta}>{describeLastRun(calendarLastRun)}</Text>
+            {calendarMetaLine ? (
+              <Text style={styles.settingMeta}>{calendarMetaLine}</Text>
             ) : null}
           </View>
           <Switch
             value={calendarSyncEnabled}
             onValueChange={onGoogleCalendarToggle}
             disabled={isGoogleToggleSaving}
-            trackColor={{ false: colors.border, true: colors.accentSoft }}
-            thumbColor={calendarSyncEnabled ? colors.accent : colors.textMuted}
+            trackColor={{ false: colors.border, true: colors.warningMuted }}
+            thumbColor={calendarSyncEnabled ? colors.warning : colors.textMuted}
           />
         </View>
+        {calendarSyncHealth === "error" && calendarErrorSummary ? (
+          <View style={styles.syncErrorCallout}>
+            <AlertCircleIcon color={colors.error} size={16} />
+            <Text style={styles.syncErrorText}>{calendarErrorSummary}</Text>
+          </View>
+        ) : null}
         {calendarSyncEnabled ? (
           <View style={styles.calendarPickerBlock}>
             <View style={styles.calendarPickerHeaderRow}>
@@ -1255,6 +1288,12 @@ function SyncSection({
             ) : null}
           </View>
         ) : null}
+        <View style={styles.syncHintRow}>
+          <InfoCircleIcon color={colors.textMuted} size={14} strokeWidth={1.8} />
+          <Text style={styles.syncHintText}>
+            One-way import — changes in Pravah don't write back to Google.
+          </Text>
+        </View>
         <Pressable
           onPress={
             calendarSyncHealth === "healthy"
@@ -1262,12 +1301,20 @@ function SyncSection({
               : onEnableAndSyncGoogleCalendar
           }
           disabled={syncSettingsBusy}
-          hitSlop={12}
+          hitSlop={8}
           accessibilityRole="button"
           accessibilityLabel={`${calendarActionLabel(calendarSyncHealth, isCalendarSyncing)} Google Calendar`}
-          style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+          style={({ pressed }) => [
+            styles.syncActionButton,
+            pressed && { opacity: 0.7 },
+            syncSettingsBusy && styles.syncActionButtonDisabled,
+          ]}
         >
-          <Text style={[styles.inlineActionText, syncSettingsBusy && styles.inlineActionDisabled]}>
+          <SyncLoopIcon
+            color={syncSettingsBusy ? colors.textDim : colors.textPrimary}
+            size={16}
+          />
+          <Text style={[styles.syncActionText, syncSettingsBusy && { color: colors.textDim }]}>
             {calendarActionLabel(calendarSyncHealth, isCalendarSyncing)}
           </Text>
         </Pressable>
@@ -1275,40 +1322,79 @@ function SyncSection({
 
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <MailIcon color={colors.textSecondary} size={18} />
+          </View>
           <View style={styles.settingCopy}>
-            <Text style={styles.settingLabel}>Gmail</Text>
+            <View style={styles.syncTitleRow}>
+              <Text style={styles.settingLabel}>Gmail</Text>
+              <SyncStatusBadge
+                label={formatStatusLabel(gmailSyncStatus)}
+                tone={getStatusTone(gmailSyncStatus)}
+              />
+            </View>
             <Text style={styles.settingHelp}>Surface pending email follow-ups for review.</Text>
-            <Text style={[styles.settingStatus, { color: statusTextColor(gmailSyncStatus) }]}>
-              {formatStatusLabel(gmailSyncStatus)}
-            </Text>
-            {gmailAccountEmail ? (
-              <Text style={styles.settingMeta}>{gmailAccountEmail.toLowerCase()}</Text>
-            ) : null}
-            {describeLastRun(gmailLastRun) ? (
-              <Text style={styles.settingMeta}>{describeLastRun(gmailLastRun)}</Text>
-            ) : null}
+            {gmailMetaLine ? <Text style={styles.settingMeta}>{gmailMetaLine}</Text> : null}
           </View>
           <Switch
             value={gmailSyncEnabled}
             onValueChange={onGmailToggle}
             disabled={isGmailToggleSaving || !canToggleGmailSync}
-            trackColor={{ false: colors.border, true: colors.accentSoft }}
-            thumbColor={gmailSyncEnabled ? colors.accent : colors.textMuted}
+            trackColor={{ false: colors.border, true: colors.warningMuted }}
+            thumbColor={gmailSyncEnabled ? colors.warning : colors.textMuted}
           />
         </View>
         {pendingGmailReviewCount > 0 ? (
-          <Text style={styles.settingMeta}>
-            {pendingGmailReviewCount} captured{" "}
-            {pendingGmailReviewCount === 1 ? "item" : "items"} waiting for review
-          </Text>
+          <View style={styles.syncHintRow}>
+            <InboxTrayIcon color={colors.textMuted} size={14} strokeWidth={1.8} />
+            <Text style={styles.syncHintText}>
+              {pendingGmailReviewCount} captured{" "}
+              {pendingGmailReviewCount === 1 ? "item" : "items"} waiting for review
+            </Text>
+          </View>
         ) : null}
         {!canToggleGmailSync ? (
-          <Text style={styles.settingMeta}>
-            Connect Gmail on web before enabling mobile sync.
-          </Text>
+          <View style={styles.syncHintRow}>
+            <InfoCircleIcon color={colors.textMuted} size={14} strokeWidth={1.8} />
+            <Text style={styles.syncHintText}>
+              Connect Gmail on web before enabling mobile sync.
+            </Text>
+          </View>
         ) : null}
         <GmailReviewSection enabled={gmailSyncEnabled} showToast={showToast} />
       </View>
+    </View>
+  );
+}
+
+function SyncStatusBadge({ label, tone }: { label: string; tone: SyncBadgeTone }) {
+  return (
+    <View
+      style={[
+        styles.statusBadge,
+        tone === "success"
+          ? styles.statusBadgeActive
+          : tone === "error"
+            ? styles.statusBadgeError
+            : tone === "warning"
+              ? styles.statusBadgeWarning
+              : styles.statusBadgeIdle,
+      ]}
+    >
+      <Text
+        style={[
+          styles.statusBadgeText,
+          tone === "success"
+            ? styles.statusBadgeTextActive
+            : tone === "error"
+              ? styles.statusBadgeTextError
+              : tone === "warning"
+                ? styles.statusBadgeTextWarning
+                : styles.statusBadgeTextIdle,
+        ]}
+      >
+        {label}
+      </Text>
     </View>
   );
 }
@@ -2572,6 +2658,8 @@ export function SettingsSheet({
     navigation.screen === "detail" && navigation.category === "kairo";
   const showCliHeaderMark =
     navigation.screen === "detail" && navigation.category === "cli";
+  const showSyncHeaderMark =
+    navigation.screen === "detail" && navigation.category === "sync";
   const showSettingsHeaderMark = navigation.screen === "list";
 
   const settingsHomeStatuses: Record<SettingsCategoryKey, SettingsHomeStatus> = {
@@ -2634,6 +2722,8 @@ export function SettingsSheet({
                 <KairoIcon color={colors.textSecondary} size={22} />
               ) : showCliHeaderMark ? (
                 <CliIcon color={colors.textSecondary} size={22} />
+              ) : showSyncHeaderMark ? (
+                <SyncIcon color={colors.textSecondary} size={22} />
               ) : showSettingsHeaderMark ? (
                 <SettingsHomeIcon color={colors.textSecondary} size={22} />
               ) : null}
@@ -2810,6 +2900,11 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
     gap: 3,
+  },
+  summaryKickerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
   },
   summaryKicker: {
     ...typography.micro,
@@ -3079,6 +3174,12 @@ const styles = StyleSheet.create({
   statusBadgeIdle: {
     backgroundColor: "rgba(91,80,72,0.05)",
   },
+  statusBadgeError: {
+    backgroundColor: colors.errorMuted,
+  },
+  statusBadgeWarning: {
+    backgroundColor: colors.warningMuted,
+  },
   statusBadgeText: {
     ...typography.bodyMd,
     fontFamily: "Geist_500Medium",
@@ -3088,6 +3189,75 @@ const styles = StyleSheet.create({
   },
   statusBadgeTextIdle: {
     color: colors.textSecondary,
+  },
+  statusBadgeTextError: {
+    color: colors.error,
+  },
+  statusBadgeTextWarning: {
+    color: colors.warning,
+  },
+  syncIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  syncTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    flexWrap: "wrap",
+  },
+  syncErrorCallout: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: colors.errorMuted,
+  },
+  syncErrorText: {
+    ...typography.bodyMd,
+    color: colors.error,
+    flex: 1,
+    lineHeight: 18,
+  },
+  syncHintRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    paddingTop: 1,
+  },
+  syncHintText: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    flex: 1,
+    lineHeight: 18,
+    marginTop: -2,
+  },
+  syncActionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    paddingVertical: 10,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    marginTop: spacing.xs,
+  },
+  syncActionButtonDisabled: {
+    opacity: 0.6,
+  },
+  syncActionText: {
+    ...typography.bodyMd,
+    fontFamily: "Geist_600SemiBold",
+    color: colors.textPrimary,
   },
   copyChip: {
     paddingHorizontal: spacing.md,

@@ -141,6 +141,22 @@ export const SyncLoopIcon = icon(({ color, size, strokeWidth }) => (
   </Svg>
 ));
 
+export const CalendarIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M6.5 5.75h11a2 2 0 0 1 2 2v9.5a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2v-9.5a2 2 0 0 1 2-2Z" />
+    <Path d="M4.5 9.75h15" />
+    <Path d="M8.5 3.75v3" />
+    <Path d="M15.5 3.75v3" />
+  </Svg>
+));
+
+export const MailIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M4.5 6.75h15a.75.75 0 0 1 .75.75v9a.75.75 0 0 1-.75.75h-15a.75.75 0 0 1-.75-.75v-9a.75.75 0 0 1 .75-.75Z" />
+    <Path d="m4.5 8 7.5 5.25L19.5 8" />
+  </Svg>
+));
+
 export const InboxTrayIcon = icon(({ color, size, strokeWidth }) => (
   <Svg {...frame(color, size, strokeWidth)}>
     <Path d="M4.5 8.5h15l-1.35 8.25a2 2 0 0 1-1.98 1.65H7.83a2 2 0 0 1-1.98-1.65Z" />
