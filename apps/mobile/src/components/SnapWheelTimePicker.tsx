@@ -262,9 +262,9 @@ const styles = StyleSheet.create({
     top: WHEEL_PADDING,
     height: ROW_HEIGHT,
     borderRadius: radii.md,
-    backgroundColor: colors.accentSoft,
+    backgroundColor: colors.textPrimary,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderFocus,
+    borderColor: colors.textPrimary,
   },
   wheel: {
     height: WHEEL_HEIGHT,
@@ -283,7 +283,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   wheelItemTextActive: {
-    color: colors.accent,
+    color: colors.textInverse,
     fontWeight: "700",
   },
   footer: {
@@ -306,6 +306,6 @@ const styles = StyleSheet.create({
   },
   footerConfirm: {
     ...typography.title,
-    color: colors.accent,
+    color: colors.textPrimary,
   },
 });
