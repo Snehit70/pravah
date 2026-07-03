@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useReducer, useRef, useState, type JSX } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type JSX } from "react";
 import {
+  ActivityIndicator,
   Keyboard,
   Linking,
   Modal,
@@ -11,7 +12,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-import Svg, { Path } from "react-native-svg";
 import { useMutation, useQuery } from "convex/react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
@@ -28,11 +28,18 @@ import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { getOrCreateDeviceId } from "../lib/deviceIdentity";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
 import { classifyError, mobileLogger } from "../lib/logger";
-import { ArrowUpRightIcon, ChevronLeftIcon, ChevronRightIcon } from "./UiIcons";
+import {
+  ArrowUpRightIcon,
+  CheckIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CopyIcon,
+} from "./UiIcons";
 import AboutIconAsset from "../assets/icons/settings-about.svg";
 import AppearanceIconAsset from "../assets/icons/settings-appearance.svg";
 import InteractionIconAsset from "../assets/icons/settings-interaction.svg";
 import KairoIconAsset from "../assets/icons/settings-kairo.svg";
+import CliIconAsset from "../assets/icons/settings-cli.svg";
 import AppSettingsIconAsset from "../assets/icons/app-settings.svg";
 import RemindersIconAsset from "../assets/icons/settings-reminders.svg";
 import SyncIconAsset from "../assets/icons/settings-sync.svg";
@@ -179,23 +186,7 @@ function SettingsHomeIcon({ color, size = 18 }: CategoryIconProps) {
 }
 
 function CliIcon({ color, size = 18 }: CategoryIconProps) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M5 7L10 12L5 17"
-        stroke={color}
-        strokeWidth={1.8}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <Path
-        d="M12.5 17H19"
-        stroke={color}
-        strokeWidth={1.8}
-        strokeLinecap="round"
-      />
-    </Svg>
-  );
+  return <CliIconAsset width={size} height={size} color={color} />;
 }
 
 function BellIcon({ color: _color, size = 18 }: CategoryIconProps) {
@@ -506,171 +497,536 @@ type CliCredentialsSectionProps = {
     status: string;
     scopes: string[];
   }>;
-  automationLabel: string;
-  setAutomationLabel: (value: string) => void;
-  allowTaskWrites: boolean;
-  setAllowTaskWrites: (value: boolean) => void;
   issuedBootstrapToken: { token: string; expiresAt: number } | null;
+  pendingBootstrapTokens: Array<{
+    _id: Id<"automationBootstrapTokens">;
+    label: string;
+    scopes: string[];
+    expiresAt: number;
+    createdAt: number;
+  }>;
   isIssuingBootstrapToken: boolean;
+  isLoadingCredentials: boolean;
   onIssueBootstrapToken: () => void;
+  onDismissIssuedToken: () => void;
+  onCancelBootstrapToken: (
+    bootstrapTokenId: Id<"automationBootstrapTokens">,
+  ) => Promise<void>;
+  cancellingBootstrapTokenId: Id<"automationBootstrapTokens"> | null;
   onCopy: (value: string, label: string) => Promise<void>;
   onRevokeCredential: (credentialId: Id<"automationCredentials">) => Promise<void>;
   revokingCredentialId: Id<"automationCredentials"> | null;
+  onDeleteCredential: (credentialId: Id<"automationCredentials">) => Promise<void>;
+  deletingCredentialId: Id<"automationCredentials"> | null;
+  onSetTaskWrites: (
+    credentialId: Id<"automationCredentials">,
+    allow: boolean,
+  ) => Promise<void>;
+  onRenameCredential: (
+    credentialId: Id<"automationCredentials">,
+    label: string,
+  ) => Promise<void>;
+  updatingCredentialId: Id<"automationCredentials"> | null;
 };
 
 function CliCredentialsSection({
   automationCredentials,
-  automationLabel,
-  setAutomationLabel,
-  allowTaskWrites,
-  setAllowTaskWrites,
   issuedBootstrapToken,
+  pendingBootstrapTokens,
   isIssuingBootstrapToken,
+  isLoadingCredentials,
   onIssueBootstrapToken,
+  onDismissIssuedToken,
+  onCancelBootstrapToken,
+  cancellingBootstrapTokenId,
   onCopy,
   onRevokeCredential,
   revokingCredentialId,
+  onDeleteCredential,
+  deletingCredentialId,
+  onSetTaskWrites,
+  onRenameCredential,
+  updatingCredentialId,
 }: CliCredentialsSectionProps) {
+  const [expandedId, setExpandedId] =
+    useState<Id<"automationCredentials"> | null>(null);
+  const [renamingId, setRenamingId] =
+    useState<Id<"automationCredentials"> | null>(null);
+  const [renameText, setRenameText] = useState("");
+  const [tokenCopied, setTokenCopied] = useState(false);
+  const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(
+    () => () => {
+      if (copyResetRef.current) clearTimeout(copyResetRef.current);
+    },
+    [],
+  );
+
+  // Hide the pending row for the token currently shown in the "new token" card
+  // (expiresAt is a unique server timestamp), so it isn't listed twice.
+  const visiblePending = pendingBootstrapTokens.filter(
+    (token) =>
+      !issuedBootstrapToken || token.expiresAt !== issuedBootstrapToken.expiresAt,
+  );
+  const hasPending = visiblePending.length > 0;
+
+  // Keep issued/pending token countdowns live while any are on screen.
+  useEffect(() => {
+    if (!issuedBootstrapToken && !hasPending) return;
+    const seed = setTimeout(() => setNow(Date.now()), 0);
+    const id = setInterval(() => setNow(Date.now()), 15000);
+    return () => {
+      clearTimeout(seed);
+      clearInterval(id);
+    };
+  }, [issuedBootstrapToken, hasPending]);
+
+  const handleCopyToken = async (token: string) => {
+    await onCopy(token, "Bootstrap token");
+    setTokenCopied(true);
+    if (copyResetRef.current) clearTimeout(copyResetRef.current);
+    copyResetRef.current = setTimeout(() => setTokenCopied(false), 2000);
+  };
+
+  const cancelRename = () => {
+    setRenamingId(null);
+    setRenameText("");
+  };
+
+  const issuedMsLeft = issuedBootstrapToken
+    ? issuedBootstrapToken.expiresAt - now
+    : 0;
+  const isIssuedExpired = issuedMsLeft <= 0;
+  const issuedMinsLeft = Math.max(0, Math.ceil(issuedMsLeft / 60000));
+
+  const hasTokens = automationCredentials.length > 0;
+
+  const beginRename = (id: Id<"automationCredentials">, label: string) => {
+    setRenamingId(id);
+    setRenameText(label);
+  };
+
+  const commitRename = async (id: Id<"automationCredentials">) => {
+    const next = renameText.trim();
+    setRenamingId(null);
+    if (next) {
+      await onRenameCredential(id, next);
+    }
+  };
+
   return (
     <View style={styles.screenBody}>
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>CLI credentials</Text>
-        <Text style={styles.settingHelp}>
-          Issue a short-lived bootstrap token for `pravah setup` or `pravah auth import`.
-        </Text>
-        <Text style={styles.settingMeta}>{automationCredentials.length} recorded</Text>
-
-        <View style={styles.fieldStack}>
-          <Text style={styles.fieldLabel}>Credential label</Text>
-          <TextInput
-            value={automationLabel}
-            onChangeText={setAutomationLabel}
-            placeholder="Codex local"
-            placeholderTextColor={colors.textDim}
-            autoCapitalize="none"
-            autoCorrect={false}
-            style={styles.textInput}
-            accessibilityLabel="Automation credential label"
-          />
-        </View>
-
-        <View style={styles.behaviorRow}>
-          <View style={styles.settingCopy}>
-            <Text style={styles.settingMeta}>Allow task writes</Text>
-            <Text style={styles.settingHelp}>
-              Off by default. Enable only when the CLI should change tasks from this device.
+      {issuedBootstrapToken ? (
+        <View style={[styles.sectionCard, styles.issuedCard]}>
+          <View style={styles.issuedHeader}>
+            <Text style={styles.fieldLabel}>New bootstrap token</Text>
+            <Text
+              style={[
+                styles.issuedExpiry,
+                isIssuedExpired && styles.issuedExpiryExpired,
+              ]}
+            >
+              {isIssuedExpired ? "Expired" : `Expires in ${issuedMinsLeft} min`}
             </Text>
           </View>
-          <Switch
-            value={allowTaskWrites}
-            onValueChange={setAllowTaskWrites}
-            trackColor={{ false: colors.border, true: colors.accentSoft }}
-            thumbColor={allowTaskWrites ? colors.accent : colors.textMuted}
-          />
-        </View>
-
-        <Text style={styles.settingMeta}>
-          Scopes · {[
-            ...READ_ONLY_AUTOMATION_SCOPES,
-            ...(allowTaskWrites ? (["tasks:write"] as const) : []),
-          ].join(" · ")}
-        </Text>
-
-        <Pressable
-          onPress={onIssueBootstrapToken}
-          disabled={isIssuingBootstrapToken}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel="Issue bootstrap token"
-          style={({ pressed }) => [
-            styles.softButton,
-            pressed && { opacity: 0.6 },
-            isIssuingBootstrapToken && styles.softButtonDisabled,
-          ]}
-        >
-          <Text
-            style={[
-              styles.softButtonText,
-              isIssuingBootstrapToken && styles.inlineActionDisabled,
+          <View style={styles.copyRow}>
+            <View
+              style={[
+                styles.codePill,
+                styles.copyRowPill,
+                isIssuedExpired && styles.codePillMuted,
+              ]}
+            >
+              <Text
+                selectable
+                style={[
+                  styles.tokenMono,
+                  isIssuedExpired && styles.tokenMonoMuted,
+                ]}
+                numberOfLines={1}
+              >
+                {issuedBootstrapToken.token}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => void handleCopyToken(issuedBootstrapToken.token)}
+              disabled={isIssuedExpired}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel={tokenCopied ? "Token copied" : "Copy bootstrap token"}
+              style={({ pressed }) => [
+                styles.copyButton,
+                tokenCopied && styles.copyButtonDone,
+                isIssuedExpired && styles.softButtonDisabled,
+                pressed && { opacity: 0.6 },
+              ]}
+            >
+              {tokenCopied ? (
+                <CheckIcon color={colors.success} size={16} />
+              ) : (
+                <CopyIcon
+                  color={isIssuedExpired ? colors.textDim : colors.textPrimary}
+                  size={16}
+                />
+              )}
+            </Pressable>
+          </View>
+          <Text style={styles.issuedHint}>
+            {isIssuedExpired ? (
+              "This token expired before it was used. Issue a new one to connect the CLI."
+            ) : (
+              <>
+                You won&rsquo;t see this token again — copy it now, then run{" "}
+                <Text style={styles.issuedHintMono}>pravah setup</Text> and paste
+                it to finish.
+              </>
+            )}
+          </Text>
+          <Pressable
+            onPress={onDismissIssuedToken}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss token"
+            style={({ pressed }) => [
+              styles.ghostButton,
+              styles.issuedDoneButton,
+              pressed && { opacity: 0.6 },
             ]}
           >
-            {isIssuingBootstrapToken ? "Issuing…" : "Issue bootstrap token"}
-          </Text>
-        </Pressable>
-
-        {issuedBootstrapToken ? (
-          <View style={styles.tokenBlock}>
-            <Text style={styles.fieldLabel}>Bootstrap token</Text>
-            <Text style={styles.settingHelp}>
-              Copied to clipboard. It expires at{" "}
-              {new Date(issuedBootstrapToken.expiresAt).toLocaleString()}.
+            <Text style={styles.ghostButtonText}>
+              {isIssuedExpired ? "Dismiss" : "Done"}
             </Text>
-            <View style={styles.copyRow}>
-              <View style={[styles.codePill, styles.copyRowPill]}>
-                <Text selectable style={styles.codePillText} numberOfLines={1}>
-                  {issuedBootstrapToken.token}
-                </Text>
-              </View>
-              <Pressable
-                onPress={() => void onCopy(issuedBootstrapToken.token, "Bootstrap token")}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="Copy bootstrap token"
-                style={({ pressed }) => [styles.copyButton, pressed && { opacity: 0.6 }]}
-              >
-                <Text style={styles.copyButtonText}>Copy</Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
+          </Pressable>
+        </View>
+      ) : null}
 
-        {automationCredentials.length === 0 ? (
-          <Text style={styles.settingMeta}>No automation credentials issued yet.</Text>
-        ) : (
-          <View style={styles.credentialList}>
-            {automationCredentials.map((credential) => (
-              <View key={credential._id} style={styles.credentialRow}>
-                <View style={styles.settingCopy}>
-                  <Text style={styles.settingLabel} numberOfLines={1}>
-                    {credential.label}
-                  </Text>
-                  <Text style={styles.settingMeta}>
-                    {credential.credentialPreview} · {credential.status}
-                  </Text>
-                  <Text style={styles.settingMeta} numberOfLines={1}>
-                    {credential.scopes.join(" · ")}
-                  </Text>
-                </View>
-                <Pressable
-                  onPress={() => void onRevokeCredential(credential._id)}
-                  disabled={
-                    credential.status === "revoked" ||
-                    revokingCredentialId === credential._id
-                  }
-                  hitSlop={12}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Revoke ${credential.label}`}
-                  style={({ pressed }) => [
-                    styles.copyChip,
-                    pressed && { opacity: 0.6 },
-                    (credential.status === "revoked" ||
-                      revokingCredentialId === credential._id) &&
-                      styles.softButtonDisabled,
-                  ]}
-                >
-                  <Text style={styles.copyChipText}>
-                    {credential.status === "revoked"
-                      ? "Revoked"
-                      : revokingCredentialId === credential._id
-                        ? "Revoking…"
-                        : "Revoke"}
-                  </Text>
-                </Pressable>
-              </View>
-            ))}
+      {hasPending ? (
+        <View style={styles.sectionCard}>
+          <View style={styles.tokensHeader}>
+            <Text style={styles.settingLabel}>Pending setup</Text>
           </View>
-        )}
-      </View>
+          <Text style={styles.issuedHint}>
+            Issued but not connected yet. Run{" "}
+            <Text style={styles.issuedHintMono}>pravah setup</Text> with the
+            copied token to finish, or cancel it below.
+          </Text>
+          <View style={styles.tokenList}>
+            {visiblePending.map((token, index) => {
+              const mins = Math.max(
+                0,
+                Math.ceil((token.expiresAt - now) / 60000),
+              );
+              const isCancelling = cancellingBootstrapTokenId === token._id;
+              return (
+                <View key={token._id}>
+                  {index > 0 ? <View style={styles.tokenDivider} /> : null}
+                  <View style={styles.tokenRow}>
+                    <View style={styles.tokenIconTile}>
+                      <CliIcon color={colors.textSecondary} size={18} />
+                    </View>
+                    <View style={styles.tokenRowCopy}>
+                      <Text style={styles.tokenName} numberOfLines={1}>
+                        {token.label}
+                      </Text>
+                      <Text style={styles.pendingMeta}>
+                        Waiting · expires in {mins} min
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={() => void onCancelBootstrapToken(token._id)}
+                      disabled={isCancelling}
+                      hitSlop={12}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Cancel ${token.label}`}
+                      style={({ pressed }) => [
+                        styles.ghostButton,
+                        pressed && { opacity: 0.6 },
+                        isCancelling && styles.softButtonDisabled,
+                      ]}
+                    >
+                      <Text style={styles.ghostButtonText}>
+                        {isCancelling ? "Cancelling…" : "Cancel"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+
+      {hasTokens ? (
+        <View style={styles.sectionCard}>
+          <View style={styles.tokensHeader}>
+            <Text style={styles.settingLabel}>Your tokens</Text>
+            <Pressable
+              onPress={onIssueBootstrapToken}
+              disabled={isIssuingBootstrapToken}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Issue token"
+              style={({ pressed }) => [
+                styles.newTokenChip,
+                pressed && { opacity: 0.6 },
+                isIssuingBootstrapToken && styles.softButtonDisabled,
+              ]}
+            >
+              <Text style={styles.newTokenChipText}>
+                {isIssuingBootstrapToken ? "Issuing…" : "+ New"}
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.tokenList}>
+            {automationCredentials.map((credential, index) => {
+              const isRevoked = credential.status === "revoked";
+              const isExpanded = expandedId === credential._id;
+              const isRenaming = renamingId === credential._id;
+              const writesOn = credential.scopes.includes("tasks:write");
+              const isBusy = updatingCredentialId === credential._id;
+              const isDeleting = deletingCredentialId === credential._id;
+              const isRevoking = revokingCredentialId === credential._id;
+              return (
+                <View key={credential._id}>
+                  {index > 0 ? <View style={styles.tokenDivider} /> : null}
+                  <Pressable
+                    onPress={() =>
+                      setExpandedId(isExpanded ? null : credential._id)
+                    }
+                    style={({ pressed }) => [
+                      styles.tokenRow,
+                      pressed && { opacity: 0.84 },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${credential.label} token`}
+                    accessibilityState={{ expanded: isExpanded }}
+                  >
+                    <View style={styles.tokenIconTile}>
+                      <CliIcon color={colors.textSecondary} size={18} />
+                    </View>
+                    <View style={styles.tokenRowCopy}>
+                      <View style={styles.tokenRowTop}>
+                        <Text style={styles.tokenName} numberOfLines={1}>
+                          {credential.label}
+                        </Text>
+                        <View
+                          style={[
+                            styles.statusBadge,
+                            isRevoked
+                              ? styles.statusBadgeIdle
+                              : styles.statusBadgeActive,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.statusBadgeText,
+                              isRevoked
+                                ? styles.statusBadgeTextIdle
+                                : styles.statusBadgeTextActive,
+                            ]}
+                          >
+                            {isRevoked ? "Revoked" : "Active"}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.scopeChipRow}>
+                        {credential.scopes.map((scope) => {
+                          const isWrite = scope === "tasks:write";
+                          return (
+                            <View
+                              key={scope}
+                              style={[
+                                styles.scopeChip,
+                                isWrite && styles.scopeChipWrite,
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.scopeChipText,
+                                  isWrite && styles.scopeChipTextWrite,
+                                ]}
+                              >
+                                {scope}
+                              </Text>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    </View>
+                    <View
+                      style={[
+                        styles.rowChevron,
+                        isExpanded && styles.rowChevronExpanded,
+                      ]}
+                    >
+                      <ChevronRightIcon color={colors.textDim} size={18} />
+                    </View>
+                  </Pressable>
+
+                  {isExpanded ? (
+                    <View style={styles.tokenPanel}>
+                      <Text style={styles.fieldLabel}>Token</Text>
+                      <View style={styles.codePill}>
+                        <Text style={styles.tokenMono} numberOfLines={1}>
+                          {credential.credentialPreview}
+                        </Text>
+                      </View>
+
+                      {isRenaming ? (
+                        <View style={styles.renameRow}>
+                          <TextInput
+                            value={renameText}
+                            onChangeText={setRenameText}
+                            autoFocus
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            placeholder="Token name"
+                            placeholderTextColor={colors.textDim}
+                            style={[styles.textInput, styles.renameInput]}
+                            accessibilityLabel="Token name"
+                            onSubmitEditing={() => void commitRename(credential._id)}
+                          />
+                          <Pressable
+                            onPress={cancelRename}
+                            hitSlop={12}
+                            accessibilityRole="button"
+                            accessibilityLabel="Cancel rename"
+                            style={({ pressed }) => [
+                              styles.ghostButton,
+                              pressed && { opacity: 0.6 },
+                            ]}
+                          >
+                            <Text style={styles.ghostButtonText}>Cancel</Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => void commitRename(credential._id)}
+                            hitSlop={12}
+                            accessibilityRole="button"
+                            accessibilityLabel="Save token name"
+                            style={({ pressed }) => [
+                              styles.copyButton,
+                              pressed && { opacity: 0.6 },
+                            ]}
+                          >
+                            <Text style={styles.copyButtonText}>Save</Text>
+                          </Pressable>
+                        </View>
+                      ) : null}
+
+                      {!isRevoked ? (
+                        <View style={styles.behaviorRow}>
+                          <View style={styles.settingCopy}>
+                            <Text style={styles.settingLabel}>Allow task writes</Text>
+                            <Text style={styles.settingHelp}>
+                              Lets this token create and edit your tasks.
+                            </Text>
+                          </View>
+                          <Switch
+                            value={writesOn}
+                            onValueChange={(next) =>
+                              void onSetTaskWrites(credential._id, next)
+                            }
+                            disabled={isBusy}
+                            trackColor={{ false: colors.border, true: colors.accentSoft }}
+                            thumbColor={writesOn ? colors.accent : colors.textMuted}
+                          />
+                        </View>
+                      ) : null}
+
+                      <View style={styles.tokenActions}>
+                        {!isRevoked && !isRenaming ? (
+                          <Pressable
+                            onPress={() =>
+                              beginRename(credential._id, credential.label)
+                            }
+                            hitSlop={12}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Rename ${credential.label}`}
+                            style={({ pressed }) => [
+                              styles.ghostButton,
+                              pressed && { opacity: 0.6 },
+                            ]}
+                          >
+                            <Text style={styles.ghostButtonText}>Rename</Text>
+                          </Pressable>
+                        ) : null}
+                        {isRevoked ? (
+                          <Pressable
+                            onPress={() => void onDeleteCredential(credential._id)}
+                            disabled={isDeleting}
+                            hitSlop={12}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Remove ${credential.label}`}
+                            style={({ pressed }) => [
+                              styles.ghostButton,
+                              pressed && { opacity: 0.6 },
+                              isDeleting && styles.softButtonDisabled,
+                            ]}
+                          >
+                            <Text style={styles.ghostButtonText}>
+                              {isDeleting ? "Removing…" : "Remove"}
+                            </Text>
+                          </Pressable>
+                        ) : (
+                          <Pressable
+                            onPress={() => void onRevokeCredential(credential._id)}
+                            disabled={isRevoking}
+                            hitSlop={12}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Revoke ${credential.label}`}
+                            style={({ pressed }) => [
+                              styles.revokeButton,
+                              pressed && { opacity: 0.6 },
+                              isRevoking && styles.softButtonDisabled,
+                            ]}
+                          >
+                            <Text style={styles.revokeButtonText}>
+                              {isRevoking ? "Revoking…" : "Revoke"}
+                            </Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      ) : issuedBootstrapToken || hasPending ? null : isLoadingCredentials ? (
+        <View style={[styles.sectionCard, styles.emptyCard]}>
+          <ActivityIndicator color={colors.textDim} />
+        </View>
+      ) : (
+        <View style={[styles.sectionCard, styles.emptyCard]}>
+          <View style={styles.emptyIconTile}>
+            <CliIcon color={colors.textSecondary} size={22} />
+          </View>
+          <Text style={styles.emptyTitle}>No tokens yet</Text>
+          <Text style={styles.emptyHelp}>
+            Create one to connect the pravah CLI.
+          </Text>
+          <Pressable
+            onPress={onIssueBootstrapToken}
+            disabled={isIssuingBootstrapToken}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Issue token"
+            style={({ pressed }) => [
+              styles.primaryButton,
+              pressed && { opacity: 0.85 },
+              isIssuingBootstrapToken && styles.softButtonDisabled,
+            ]}
+          >
+            <Text style={styles.primaryButtonText}>
+              {isIssuingBootstrapToken ? "Issuing…" : "Issue token"}
+            </Text>
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
@@ -1637,16 +1993,36 @@ function renderDetailScreen(
       status: string;
       scopes: string[];
     }>;
-    automationLabel: string;
-    setAutomationLabel: (value: string) => void;
-    allowTaskWrites: boolean;
-    setAllowTaskWrites: (value: boolean) => void;
     issuedBootstrapToken: { token: string; expiresAt: number } | null;
+    pendingBootstrapTokens: Array<{
+      _id: Id<"automationBootstrapTokens">;
+      label: string;
+      scopes: string[];
+      expiresAt: number;
+      createdAt: number;
+    }>;
     isIssuingBootstrapToken: boolean;
+    isLoadingCredentials: boolean;
     onIssueBootstrapToken: () => void;
+    onDismissIssuedToken: () => void;
+    onCancelBootstrapToken: (
+      bootstrapTokenId: Id<"automationBootstrapTokens">,
+    ) => Promise<void>;
+    cancellingBootstrapTokenId: Id<"automationBootstrapTokens"> | null;
     onCopy: (value: string, label: string) => Promise<void>;
     onRevokeCredential: (credentialId: Id<"automationCredentials">) => Promise<void>;
     revokingCredentialId: Id<"automationCredentials"> | null;
+    onDeleteCredential: (credentialId: Id<"automationCredentials">) => Promise<void>;
+    deletingCredentialId: Id<"automationCredentials"> | null;
+    onSetTaskWrites: (
+      credentialId: Id<"automationCredentials">,
+      allow: boolean,
+    ) => Promise<void>;
+    onRenameCredential: (
+      credentialId: Id<"automationCredentials">,
+      label: string,
+    ) => Promise<void>;
+    updatingCredentialId: Id<"automationCredentials"> | null;
     calendarSyncEnabled: boolean;
     calendarSyncHealth: SyncHealth;
     calendarErrorSummary?: string;
@@ -1710,16 +2086,22 @@ function renderDetailScreen(
       return (
         <CliCredentialsSection
           automationCredentials={props.automationCredentials}
-          automationLabel={props.automationLabel}
-          setAutomationLabel={props.setAutomationLabel}
-          allowTaskWrites={props.allowTaskWrites}
-          setAllowTaskWrites={props.setAllowTaskWrites}
           issuedBootstrapToken={props.issuedBootstrapToken}
+          pendingBootstrapTokens={props.pendingBootstrapTokens}
           isIssuingBootstrapToken={props.isIssuingBootstrapToken}
+          isLoadingCredentials={props.isLoadingCredentials}
           onIssueBootstrapToken={props.onIssueBootstrapToken}
+          onDismissIssuedToken={props.onDismissIssuedToken}
+          onCancelBootstrapToken={props.onCancelBootstrapToken}
+          cancellingBootstrapTokenId={props.cancellingBootstrapTokenId}
           onCopy={props.onCopy}
           onRevokeCredential={props.onRevokeCredential}
           revokingCredentialId={props.revokingCredentialId}
+          onDeleteCredential={props.onDeleteCredential}
+          deletingCredentialId={props.deletingCredentialId}
+          onSetTaskWrites={props.onSetTaskWrites}
+          onRenameCredential={props.onRenameCredential}
+          updatingCredentialId={props.updatingCredentialId}
         />
       );
     case "sync":
@@ -1791,8 +2173,6 @@ export function SettingsSheet({
   const [isClearingRetryQueue, setIsClearingRetryQueue] = useState(false);
   const [dangerArmed, setDangerArmed] = useState<"wipe" | null>(null);
   const [isWiping, setIsWiping] = useState(false);
-  const [automationLabel, setAutomationLabel] = useState("Codex local");
-  const [allowTaskWrites, setAllowTaskWrites] = useState(false);
   const [issuedBootstrapToken, setIssuedBootstrapToken] = useState<{
     token: string;
     expiresAt: number;
@@ -1800,13 +2180,45 @@ export function SettingsSheet({
   const [isIssuingBootstrapToken, setIsIssuingBootstrapToken] = useState(false);
   const [revokingCredentialId, setRevokingCredentialId] =
     useState<Id<"automationCredentials"> | null>(null);
+  const [updatingCredentialId, setUpdatingCredentialId] =
+    useState<Id<"automationCredentials"> | null>(null);
+  const [deletingCredentialId, setDeletingCredentialId] =
+    useState<Id<"automationCredentials"> | null>(null);
+  const [cancellingBootstrapTokenId, setCancellingBootstrapTokenId] =
+    useState<Id<"automationBootstrapTokens"> | null>(null);
   const [kairoHomeStatus, setKairoHomeStatus] = useState<SettingsHomeStatus>({
     label: "Checking",
     tone: "neutral",
   });
   const issueBootstrapToken = useMutation(api.automation.issueBootstrapToken);
   const revokeCredential = useMutation(api.automation.revokeCredential);
-  const automationCredentials = useQuery(api.automation.listCredentials, {}) ?? [];
+  const updateCredential = useMutation(api.automation.updateCredential);
+  const deleteCredential = useMutation(api.automation.deleteCredential);
+  const cancelBootstrapToken = useMutation(api.automation.cancelBootstrapToken);
+  const automationCredentialsResult = useQuery(api.automation.listCredentials, {});
+  const automationCredentials = useMemo(
+    () => automationCredentialsResult ?? [],
+    [automationCredentialsResult],
+  );
+  const pendingBootstrapTokensResult = useQuery(
+    api.automation.listBootstrapTokens,
+    {},
+  );
+  const pendingBootstrapTokens = useMemo(
+    () => pendingBootstrapTokensResult ?? [],
+    [pendingBootstrapTokensResult],
+  );
+  const isLoadingCredentials = automationCredentialsResult === undefined;
+  const issuedAtCredentialCountRef = useRef(0);
+
+  // Clear the freshly-issued token card once the CLI exchanges it (the new
+  // credential shows up in the list, so the one-time token is now redundant).
+  useEffect(() => {
+    if (!issuedBootstrapToken) return;
+    if (automationCredentials.length > issuedAtCredentialCountRef.current) {
+      setIssuedBootstrapToken(null);
+    }
+  }, [automationCredentials.length, issuedBootstrapToken]);
 
   useEffect(() => {
     if (!dangerArmed) return;
@@ -1939,32 +2351,71 @@ export function SettingsSheet({
   }, [dangerArmed, onWipeLocalData, showToast]);
 
   const handleIssueBootstrapToken = useCallback(async () => {
-    const trimmedLabel = automationLabel.trim();
-    if (!trimmedLabel) {
-      showToast({ kind: "error", message: "Enter a credential label." });
-      return;
-    }
-
     setIsIssuingBootstrapToken(true);
+    issuedAtCredentialCountRef.current = automationCredentials.length;
     try {
-      const scopes = allowTaskWrites
-        ? [...READ_ONLY_AUTOMATION_SCOPES, "tasks:write" as const]
-        : [...READ_ONLY_AUTOMATION_SCOPES];
+      const existingLabels = new Set(automationCredentials.map((c) => c.label));
+      let counter = automationCredentials.length + 1;
+      let label = `Token ${counter}`;
+      while (existingLabels.has(label)) {
+        counter += 1;
+        label = `Token ${counter}`;
+      }
       const result = await issueBootstrapToken({
-        label: trimmedLabel,
-        scopes,
+        label,
+        scopes: [...READ_ONLY_AUTOMATION_SCOPES],
         ttlMinutes: 15,
       });
       setIssuedBootstrapToken({ token: result.bootstrapToken, expiresAt: result.expiresAt });
       await Clipboard.setStringAsync(result.bootstrapToken);
-      showToast({ kind: "info", message: "Bootstrap token issued and copied." });
+      showToast({ kind: "info", message: "Token issued and copied." });
     } catch (error) {
       mobileLogger.warn("automation_bootstrap_issue_failed", { errorType: classifyError(error) });
-      showToast({ kind: "error", message: "Could not issue bootstrap token." });
+      showToast({ kind: "error", message: "Could not issue token." });
     } finally {
       setIsIssuingBootstrapToken(false);
     }
-  }, [allowTaskWrites, automationLabel, issueBootstrapToken, showToast]);
+  }, [automationCredentials, issueBootstrapToken, showToast]);
+
+  const handleDismissIssuedToken = useCallback(() => {
+    setIssuedBootstrapToken(null);
+  }, []);
+
+  const handleCancelBootstrapToken = useCallback(
+    async (bootstrapTokenId: Id<"automationBootstrapTokens">) => {
+      setCancellingBootstrapTokenId(bootstrapTokenId);
+      try {
+        await cancelBootstrapToken({ bootstrapTokenId });
+        showToast({ kind: "info", message: "Pending token cancelled." });
+      } catch (error) {
+        mobileLogger.warn("automation_bootstrap_cancel_failed", {
+          errorType: classifyError(error),
+        });
+        showToast({ kind: "error", message: "Could not cancel token." });
+      } finally {
+        setCancellingBootstrapTokenId(null);
+      }
+    },
+    [cancelBootstrapToken, showToast],
+  );
+
+  const handleDeleteCredential = useCallback(
+    async (credentialId: Id<"automationCredentials">) => {
+      setDeletingCredentialId(credentialId);
+      try {
+        await deleteCredential({ credentialId });
+        showToast({ kind: "info", message: "Token removed." });
+      } catch (error) {
+        mobileLogger.warn("automation_credential_delete_failed", {
+          errorType: classifyError(error),
+        });
+        showToast({ kind: "error", message: "Could not remove token." });
+      } finally {
+        setDeletingCredentialId(null);
+      }
+    },
+    [deleteCredential, showToast],
+  );
 
   const handleRevokeCredential = useCallback(
     async (credentialId: Id<"automationCredentials">) => {
@@ -1982,6 +2433,49 @@ export function SettingsSheet({
       }
     },
     [revokeCredential, showToast],
+  );
+
+  const handleSetTaskWrites = useCallback(
+    async (credentialId: Id<"automationCredentials">, allow: boolean) => {
+      setUpdatingCredentialId(credentialId);
+      try {
+        await updateCredential({ credentialId, allowTaskWrites: allow });
+        showToast({
+          kind: "info",
+          message: allow ? "Task writes enabled." : "Task writes disabled.",
+        });
+      } catch (error) {
+        mobileLogger.warn("automation_credential_update_failed", {
+          errorType: classifyError(error),
+        });
+        showToast({ kind: "error", message: "Could not update token." });
+      } finally {
+        setUpdatingCredentialId(null);
+      }
+    },
+    [updateCredential, showToast],
+  );
+
+  const handleRenameCredential = useCallback(
+    async (credentialId: Id<"automationCredentials">, label: string) => {
+      const trimmed = label.trim();
+      if (!trimmed) {
+        showToast({ kind: "error", message: "Enter a token name." });
+        return;
+      }
+      setUpdatingCredentialId(credentialId);
+      try {
+        await updateCredential({ credentialId, label: trimmed });
+      } catch (error) {
+        mobileLogger.warn("automation_credential_rename_failed", {
+          errorType: classifyError(error),
+        });
+        showToast({ kind: "error", message: "Could not rename token." });
+      } finally {
+        setUpdatingCredentialId(null);
+      }
+    },
+    [updateCredential, showToast],
   );
 
   const handleTimePicked = useCallback(
@@ -2006,6 +2500,8 @@ export function SettingsSheet({
       : "Settings";
   const showKairoHeaderMark =
     navigation.screen === "detail" && navigation.category === "kairo";
+  const showCliHeaderMark =
+    navigation.screen === "detail" && navigation.category === "cli";
   const showSettingsHeaderMark = navigation.screen === "list";
 
   const settingsHomeStatuses: Record<SettingsCategoryKey, SettingsHomeStatus> = {
@@ -2066,6 +2562,8 @@ export function SettingsSheet({
             <View style={styles.headerTitleWrap}>
               {showKairoHeaderMark ? (
                 <KairoIcon color={colors.textSecondary} size={22} />
+              ) : showCliHeaderMark ? (
+                <CliIcon color={colors.textSecondary} size={22} />
               ) : showSettingsHeaderMark ? (
                 <SettingsHomeIcon color={colors.textSecondary} size={22} />
               ) : null}
@@ -2104,16 +2602,25 @@ export function SettingsSheet({
                 setPreference,
                 onKairoFieldFocus: handleKairoFieldFocus,
                 automationCredentials,
-                automationLabel,
-                setAutomationLabel,
-                allowTaskWrites,
-                setAllowTaskWrites,
                 issuedBootstrapToken,
+                pendingBootstrapTokens,
                 isIssuingBootstrapToken,
+                isLoadingCredentials,
                 onIssueBootstrapToken: () => void handleIssueBootstrapToken(),
+                onDismissIssuedToken: handleDismissIssuedToken,
+                onCancelBootstrapToken: (bootstrapTokenId) =>
+                  handleCancelBootstrapToken(bootstrapTokenId),
+                cancellingBootstrapTokenId,
                 onCopy: handleCopy,
                 onRevokeCredential: (credentialId) => handleRevokeCredential(credentialId),
                 revokingCredentialId,
+                onDeleteCredential: (credentialId) => handleDeleteCredential(credentialId),
+                deletingCredentialId,
+                onSetTaskWrites: (credentialId, allow) =>
+                  handleSetTaskWrites(credentialId, allow),
+                onRenameCredential: (credentialId, label) =>
+                  handleRenameCredential(credentialId, label),
+                updatingCredentialId,
                 calendarSyncEnabled,
                 calendarSyncHealth,
                 calendarErrorSummary,
@@ -2452,15 +2959,27 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   copyButton: {
+    minWidth: 44,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: radii.full,
-    backgroundColor: colors.accentSoft,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgInput,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
   },
   copyButtonText: {
     ...typography.bodyMd,
-    color: colors.accent,
+    color: colors.textPrimary,
     fontFamily: "Geist_600SemiBold",
+  },
+  copyButtonDone: {
+    backgroundColor: colors.successMuted,
+    borderColor: colors.successMuted,
+  },
+  copyButtonTextDone: {
+    color: colors.success,
   },
   credentialList: {
     gap: spacing.sm,
@@ -2470,6 +2989,35 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
     paddingVertical: spacing.sm,
+  },
+  credentialHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  credentialLabel: {
+    flexShrink: 1,
+  },
+  statusBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 7,
+  },
+  statusBadgeActive: {
+    backgroundColor: colors.successMuted,
+  },
+  statusBadgeIdle: {
+    backgroundColor: "rgba(91,80,72,0.05)",
+  },
+  statusBadgeText: {
+    ...typography.bodyMd,
+    fontFamily: "Geist_500Medium",
+  },
+  statusBadgeTextActive: {
+    color: colors.success,
+  },
+  statusBadgeTextIdle: {
+    color: colors.textSecondary,
   },
   copyChip: {
     paddingHorizontal: spacing.md,
@@ -2482,6 +3030,222 @@ const styles = StyleSheet.create({
   copyChipText: {
     ...typography.bodyMd,
     color: colors.textPrimary,
+  },
+  issuedCard: {
+    gap: spacing.md,
+  },
+  issuedHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  issuedExpiry: {
+    ...typography.numeric,
+    color: colors.textDim,
+  },
+  issuedExpiryExpired: {
+    color: colors.error,
+  },
+  issuedHint: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    lineHeight: 18,
+  },
+  issuedHintMono: {
+    ...typography.numeric,
+    color: colors.textSecondary,
+  },
+  issuedDoneButton: {
+    alignSelf: "flex-end",
+  },
+  pendingMeta: {
+    ...typography.numeric,
+    color: colors.textMuted,
+  },
+  codePillMuted: {
+    opacity: 0.55,
+  },
+  tokenMono: {
+    ...typography.numeric,
+    color: colors.textPrimary,
+  },
+  tokenMonoMuted: {
+    color: colors.textDim,
+  },
+  tokensHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  newTokenChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  newTokenChipText: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+    fontFamily: "Geist_600SemiBold",
+  },
+  tokenList: {
+    marginTop: spacing.xs,
+  },
+  tokenDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.bgInput,
+  },
+  tokenRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  tokenIconTile: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  tokenRowCopy: {
+    flex: 1,
+    gap: 6,
+  },
+  tokenRowTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  tokenName: {
+    ...typography.bodyLg,
+    color: colors.textPrimary,
+    fontFamily: "Geist_600SemiBold",
+    flexShrink: 1,
+  },
+  scopeChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+  },
+  scopeChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgInput,
+  },
+  scopeChipWrite: {
+    backgroundColor: colors.warningMuted,
+  },
+  scopeChipText: {
+    ...typography.numeric,
+    fontSize: 11,
+    lineHeight: 14,
+    color: colors.textSecondary,
+  },
+  scopeChipTextWrite: {
+    color: colors.warning,
+  },
+  rowChevron: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rowChevronExpanded: {
+    transform: [{ rotate: "90deg" }],
+  },
+  tokenPanel: {
+    gap: spacing.md,
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSurface,
+  },
+  renameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  renameInput: {
+    flex: 1,
+  },
+  tokenActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: spacing.sm,
+  },
+  ghostButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.full,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  ghostButtonText: {
+    ...typography.bodyMd,
+    color: colors.textSecondary,
+    fontFamily: "Geist_500Medium",
+  },
+  revokeButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.full,
+    backgroundColor: colors.errorMuted,
+  },
+  revokeButtonText: {
+    ...typography.bodyMd,
+    color: colors.error,
+    fontFamily: "Geist_600SemiBold",
+  },
+  emptyCard: {
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.xxl,
+  },
+  emptyIconTile: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    marginBottom: spacing.xs,
+  },
+  emptyTitle: {
+    ...typography.title,
+    color: colors.textPrimary,
+  },
+  emptyHelp: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    textAlign: "center",
+  },
+  primaryButton: {
+    marginTop: spacing.md,
+    alignSelf: "stretch",
+    minHeight: 48,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgInput,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  primaryButtonText: {
+    ...typography.bodyLg,
+    color: colors.textPrimary,
+    fontFamily: "Geist_600SemiBold",
   },
   chipRow: {
     flexDirection: "row",

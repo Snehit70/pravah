@@ -89,6 +89,19 @@ export const AdjustmentsIcon = icon(({ color, size, strokeWidth }) => (
   </Svg>
 ));
 
+export const CopyIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M9.5 8.5h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z" />
+    <Path d="M5.5 15.5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2" />
+  </Svg>
+));
+
+export const CheckIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="m5 12.5 4.5 4.5L19 7" />
+  </Svg>
+));
+
 export const PlusIcon = icon(({ color, size, strokeWidth }) => (
   <Svg {...frame(color, size, strokeWidth)}>
     <Line x1={12} y1={6} x2={12} y2={18} />

@@ -35,8 +35,8 @@ export const SETTINGS_CATEGORY_META: Record<
     summary: "Provider and behavior",
   },
   cli: {
-    title: "CLI credentials",
-    summary: "Bootstrap tokens and device access",
+    title: "Access tokens",
+    summary: "Short-lived tokens for the pravah CLI",
   },
   sync: {
     title: "Sync",
