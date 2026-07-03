@@ -43,6 +43,41 @@ export async function syncRemindersAsync(specs: ReminderSpec[]): Promise<void> {
   );
 }
 
+const SYNC_DEBOUNCE_MS = 400;
+let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+let latestGetSpecs: (() => ReminderSpec[]) | null = null;
+let syncChain: Promise<void> = Promise.resolve();
+
+/**
+ * Debounced entry point for reminder syncing. Callers hand over a lazy spec
+ * producer and return immediately; rapid calls coalesce into one sync of the
+ * latest specs after the debounce window. Runs are serialized on a single
+ * promise chain so overlapping syncs can't interleave their native
+ * cancel/schedule calls.
+ */
+export function queueReminderSync(
+  getSpecs: () => ReminderSpec[],
+  onError: (error: unknown) => void,
+  delayMs: number = SYNC_DEBOUNCE_MS,
+): void {
+  latestGetSpecs = getSpecs;
+  if (pendingTimer !== null) clearTimeout(pendingTimer);
+  pendingTimer = setTimeout(() => {
+    pendingTimer = null;
+    const specs = latestGetSpecs?.() ?? [];
+    latestGetSpecs = null;
+    syncChain = syncChain.then(() => syncRemindersAsync(specs)).catch(onError);
+  }, delayMs);
+}
+
+/** Test-only: drop any pending debounced sync. */
+export function __resetReminderSyncQueue(): void {
+  if (pendingTimer !== null) clearTimeout(pendingTimer);
+  pendingTimer = null;
+  latestGetSpecs = null;
+  syncChain = Promise.resolve();
+}
+
 /** Cancel every pravah-managed pending Reminder (used by data reset). */
 export async function cancelAllRemindersAsync(): Promise<void> {
   const all = await Notifications.getAllScheduledNotificationsAsync();

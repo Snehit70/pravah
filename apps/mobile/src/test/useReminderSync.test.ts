@@ -6,7 +6,14 @@ import type { UserPreferences } from "../lib/userPreferences";
 
 const addEventListener = vi.fn();
 const planReminders = vi.fn(() => []);
-const syncRemindersAsync = vi.fn(async () => undefined);
+const syncRemindersAsync = vi.fn(async (_specs: unknown) => undefined);
+// Executes queued syncs immediately; debounce behavior is covered by
+// syncReminders.test.ts.
+const queueReminderSync = vi.fn(
+  (getSpecs: () => unknown[], onError: (e: unknown) => void) => {
+    void syncRemindersAsync(getSpecs()).catch(onError);
+  },
+);
 const prefs: UserPreferences = {
   morningDigestTime: "09:00",
   reminderLeadTimeMinutes: 15,
@@ -39,6 +46,7 @@ vi.mock("../lib/planReminders", () => ({
 
 vi.mock("../lib/syncReminders", () => ({
   syncRemindersAsync,
+  queueReminderSync,
 }));
 
 vi.mock("../lib/logger", () => ({
@@ -71,9 +79,13 @@ describe("useReminderSync", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.useFakeTimers();
     remove = vi.fn();
     appStateHandler = undefined;
+    queueReminderSync.mockImplementation(
+      (getSpecs: () => unknown[], onError: (e: unknown) => void) => {
+        void syncRemindersAsync(getSpecs()).catch(onError);
+      },
+    );
     addEventListener.mockImplementation((_event: string, handler: (state: string) => void) => {
       appStateHandler = handler;
       return { remove };
@@ -81,49 +93,28 @@ describe("useReminderSync", () => {
   });
 
   afterEach(() => {
-    vi.useRealTimers();
     appStateHandler = undefined;
   });
 
-  async function flushDebounce() {
-    await act(async () => {
-      vi.advanceTimersByTime(400);
-      await Promise.resolve();
-    });
-  }
-
-  async function flushChain() {
-    await act(async () => {
-      await Promise.resolve();
-    });
-  }
-
-  it("syncs after the debounce on task changes when reminders are enabled", async () => {
+  it("queues a sync on mount when reminders are enabled", () => {
     renderHook(() => useReminderSync(tasks, prefs, true));
-
-    expect(planReminders).not.toHaveBeenCalled();
-    await flushDebounce();
-
     expect(planReminders).toHaveBeenCalledTimes(1);
     expect(planReminders).toHaveBeenCalledWith(tasks, prefs, expect.any(Date));
     expect(syncRemindersAsync).toHaveBeenCalledTimes(1);
   });
 
-  it("re-syncs when the app returns to the foreground", async () => {
+  it("re-syncs when the app returns to the foreground", () => {
     renderHook(() => useReminderSync(tasks, prefs, true));
-    await flushDebounce();
-
     act(() => {
       appStateHandler?.("background");
       appStateHandler?.("active");
     });
-    await flushChain();
 
     expect(planReminders).toHaveBeenCalledTimes(2);
     expect(syncRemindersAsync).toHaveBeenCalledTimes(2);
   });
 
-  it("re-syncs when the task list changes", async () => {
+  it("re-syncs when the task list changes", () => {
     const { rerender } = renderHook(
       ({ currentTasks, currentPrefs, enabled }) =>
         useReminderSync(currentTasks, currentPrefs, enabled),
@@ -136,8 +127,6 @@ describe("useReminderSync", () => {
       },
     );
 
-    await flushDebounce();
-
     rerender({
       currentPrefs: prefs,
       currentTasks: [
@@ -148,13 +137,11 @@ describe("useReminderSync", () => {
       ],
       enabled: true,
     });
-    await flushDebounce();
-
     expect(planReminders).toHaveBeenCalledTimes(2);
     expect(syncRemindersAsync).toHaveBeenCalledTimes(2);
   });
 
-  it("re-syncs when an overdue reflow moves deadlines and when undo restores them", async () => {
+  it("re-syncs when an overdue reflow moves deadlines and when undo restores them", () => {
     const reflowedTasks: MobileTask[] = [
       {
         ...tasks[0],
@@ -191,29 +178,23 @@ describe("useReminderSync", () => {
       },
     );
 
-    await flushDebounce();
-
     rerender({
       currentTasks: reflowedTasks,
       currentPrefs: prefs,
       enabled: true,
     });
-    await flushDebounce();
-
     rerender({
       currentTasks: originalTasks,
       currentPrefs: prefs,
       enabled: true,
     });
-    await flushDebounce();
-
     expect(planReminders).toHaveBeenCalledTimes(3);
     expect(planReminders).toHaveBeenNthCalledWith(2, reflowedTasks, prefs, expect.any(Date));
     expect(planReminders).toHaveBeenNthCalledWith(3, originalTasks, prefs, expect.any(Date));
     expect(syncRemindersAsync).toHaveBeenCalledTimes(3);
   });
 
-  it("re-syncs when reminder preferences change", async () => {
+  it("re-syncs when reminder preferences change", () => {
     const { rerender } = renderHook(
       ({ currentTasks, currentPrefs, enabled }) =>
         useReminderSync(currentTasks, currentPrefs, enabled),
@@ -226,8 +207,6 @@ describe("useReminderSync", () => {
       },
     );
 
-    await flushDebounce();
-
     rerender({
       currentTasks: tasks,
       currentPrefs: {
@@ -236,16 +215,12 @@ describe("useReminderSync", () => {
       },
       enabled: true,
     });
-    await flushDebounce();
-
     expect(planReminders).toHaveBeenCalledTimes(2);
     expect(syncRemindersAsync).toHaveBeenCalledTimes(2);
   });
 
-  it("does nothing when reminders are disabled", async () => {
+  it("does nothing when reminders are disabled", () => {
     renderHook(() => useReminderSync(tasks, prefs, false));
-    await flushDebounce();
-
     expect(planReminders).not.toHaveBeenCalled();
     expect(syncRemindersAsync).not.toHaveBeenCalled();
     expect(addEventListener).not.toHaveBeenCalled();

@@ -1,53 +1,49 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { AppState } from "react-native";
 import type { MobileTask } from "../components/TaskCard";
 import { planReminders } from "../lib/planReminders";
-import { syncRemindersAsync } from "../lib/syncReminders";
+import { queueReminderSync } from "../lib/syncReminders";
 import { classifyError, mobileLogger } from "../lib/logger";
 import type { UserPreferences } from "../lib/userPreferences";
 
 /**
- * Subscribes to task changes and app-foreground events, running a full
- * reminder sync on each trigger. Re-syncing on task mutations keeps scheduled
- * notifications current without requiring per-mutation notification calls.
+ * Subscribes to task changes and app-foreground events, queueing a full
+ * reminder sync on each trigger. Debouncing, coalescing, and serialization
+ * live in the sync layer (queueReminderSync); this hook only signals intent.
  */
 export function useReminderSync(
   tasks: MobileTask[],
   prefs: UserPreferences,
   notificationsEnabled: boolean,
 ): void {
-  // Serialize syncs so overlapping runs can't interleave their native
-  // cancel/schedule calls and double-book or drop notifications.
-  const chainRef = useRef<Promise<void>>(Promise.resolve());
-
-  const runSync = (logEvent: string) => {
-    const specs = planReminders(tasks, prefs, new Date());
-    chainRef.current = chainRef.current
-      .then(() => syncRemindersAsync(specs))
-      .catch((error) => {
-        mobileLogger.warn(logEvent, { errorType: classifyError(error) });
-      });
-  };
-
-  // Sync whenever the task list changes (covers: add, edit, complete, delete).
-  // Debounced so a settings tap (e.g. lead time) paints immediately instead
-  // of stalling on the reschedule burst; rapid changes coalesce into one run.
+  // Queue whenever the task list or reminder prefs change (covers: add,
+  // edit, complete, delete, lead-time/digest/quiet-hours changes).
   useEffect(() => {
     if (!notificationsEnabled) return;
-    const timer = setTimeout(() => runSync("reminder_sync_failed"), 400);
-    return () => clearTimeout(timer);
-    // runSync reads tasks/prefs from this render's closure.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    queueReminderSync(
+      () => planReminders(tasks, prefs, new Date()),
+      (error) => {
+        mobileLogger.warn("reminder_sync_failed", { errorType: classifyError(error) });
+      },
+    );
   }, [tasks, prefs, notificationsEnabled]);
 
-  // Also sync on app foreground to roll the 7-day window forward.
+  // Also sync on app foreground to roll the 7-day window forward. No
+  // debounce: the window should refresh as soon as the app is visible.
   useEffect(() => {
     if (!notificationsEnabled) return;
     const sub = AppState.addEventListener("change", (nextState) => {
       if (nextState !== "active") return;
-      runSync("reminder_sync_foreground_failed");
+      queueReminderSync(
+        () => planReminders(tasks, prefs, new Date()),
+        (error) => {
+          mobileLogger.warn("reminder_sync_foreground_failed", {
+            errorType: classifyError(error),
+          });
+        },
+        0,
+      );
     });
     return () => sub.remove();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks, prefs, notificationsEnabled]);
 }
