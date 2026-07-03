@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeInDown,
+  FadeOut,
+  LinearTransition,
+} from "react-native-reanimated";
 import {
   KAIRO_DEFAULTS,
   clearKairoConfig,
@@ -14,10 +20,17 @@ import {
 } from "../lib/kairoConfig";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { KairoSettingsSkeleton } from "./LoadingSkeleton";
-import { colors, radii, spacing, typography } from "../theme/tokens";
+import { colors, motion, radii, spacing, typography } from "../theme/tokens";
 import { classifyError, mobileLogger } from "../lib/logger";
+import { ChevronRightIcon, ChevronUpIcon, EyeIcon, SettingsIcon } from "./UiIcons";
+import KairoIconAsset from "../assets/icons/settings-kairo.svg";
+import AnthropicIconAsset from "../assets/icons/provider-anthropic.svg";
+import OpenAIIconAsset from "../assets/icons/provider-openai.svg";
+import GeminiIconAsset from "../assets/icons/provider-gemini.svg";
 
 const PROVIDERS: KairoProviderFormat[] = ["anthropic", "openai", "gemini"];
+const PROVIDER_REVEAL_EASING = Easing.bezier(...motion.easing.outQuart);
+const PROVIDER_EXIT_EASING = Easing.bezier(...motion.easing.outExpo);
 
 type SaveState = "idle" | "saving" | "saved" | "cleared";
 
@@ -35,9 +48,34 @@ function isProfileConfigured(profile: KairoSettings["profiles"][KairoProviderFor
   return Boolean(profile.apiKey && profile.baseUrl && profile.model);
 }
 
+function ProviderIcon({
+  provider,
+  size = 18,
+  variant = "default",
+}: {
+  provider?: KairoProviderFormat;
+  size?: number;
+  variant?: "default" | "large";
+}) {
+  return (
+    <View style={[styles.providerIconWrap, variant === "large" && styles.providerIconWrapLarge]}>
+      {provider === "anthropic" ? (
+        <AnthropicIconAsset width={size} height={size} color={colors.textSecondary} />
+      ) : provider === "openai" ? (
+        <OpenAIIconAsset width={size} height={size} color={colors.textSecondary} />
+      ) : provider === "gemini" ? (
+        <GeminiIconAsset width={size} height={size} color={colors.textSecondary} />
+      ) : (
+        <KairoIconAsset width={size} height={size} color={colors.textSecondary} />
+      )}
+    </View>
+  );
+}
+
 export function KairoSettingsSection() {
   const [settings, setSettings] = useState<KairoSettings | null>(null);
-  const [activeProvider, setActiveProvider] = useState<KairoProviderFormat>("anthropic");
+  const [activeProvider, setActiveProvider] = useState<KairoProviderFormat | null>(null);
+  const [defaultPickerOpen, setDefaultPickerOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -51,8 +89,9 @@ export function KairoSettingsSection() {
       .then((next) => {
         if (cancelled) return;
         setSettings(next);
-        setActiveProvider(next.defaultProvider);
-        setShowAdvanced(hasCustomKairoEndpoint(toConfig(next, next.defaultProvider)));
+        setActiveProvider(null);
+        setDefaultPickerOpen(false);
+        setShowAdvanced(false);
         setLoaded(true);
       })
       .catch((error) => {
@@ -64,29 +103,35 @@ export function KairoSettingsSection() {
     };
   }, []);
 
+  const anyConfigured = useMemo(() => {
+    if (!settings) return false;
+    return PROVIDERS.some((provider) => isProfileConfigured(settings.profiles[provider]));
+  }, [settings]);
+
+  const defaultProvider = settings?.defaultProvider ?? "anthropic";
+  const editorProvider = activeProvider ?? defaultProvider;
+  const defaultProviderConfigured = settings
+    ? isProfileConfigured(settings.profiles[defaultProvider])
+    : false;
+  const defaultProviderValue = anyConfigured
+    ? getKairoProviderLabel(defaultProvider)
+    : "Not set";
+  const defaultProviderHelp = !anyConfigured
+    ? "Set up a provider to choose a default."
+    : !defaultProviderConfigured
+      ? "Set up this provider to use it as the default."
+      : null;
+
   const activeProfile = useMemo(() => {
     if (!settings) {
       return {
         apiKey: "",
-        baseUrl: KAIRO_DEFAULTS[activeProvider].baseUrl,
-        model: KAIRO_DEFAULTS[activeProvider].model,
+        baseUrl: KAIRO_DEFAULTS[editorProvider].baseUrl,
+        model: KAIRO_DEFAULTS[editorProvider].model,
       };
     }
-    return settings.profiles[activeProvider];
-  }, [activeProvider, settings]);
-
-  const status = useMemo(() => {
-    if (!settings) return "Not configured";
-    const isAnyConfigured = PROVIDERS.some((provider) =>
-      isProfileConfigured(settings.profiles[provider]),
-    );
-    return isAnyConfigured ? "Configured" : "Not configured";
-  }, [settings]);
-
-  const configuredCount = useMemo(() => {
-    if (!settings) return 0;
-    return PROVIDERS.filter((provider) => isProfileConfigured(settings.profiles[provider])).length;
-  }, [settings]);
+    return settings.profiles[editorProvider];
+  }, [editorProvider, settings]);
 
   const flashState = (next: "saved" | "cleared") => {
     setSaveState(next);
@@ -97,7 +142,7 @@ export function KairoSettingsSection() {
 
   const updateActiveProfile = (patch: Partial<(typeof activeProfile)>) => {
     setSettings((prev) => {
-      if (!prev) return prev;
+      if (!prev || !activeProvider) return prev;
       return {
         ...prev,
         profiles: {
@@ -111,17 +156,32 @@ export function KairoSettingsSection() {
     });
   };
 
-  const handleSetDefault = () => {
-    setSettings((prev) => (prev ? { ...prev, defaultProvider: activeProvider } : prev));
-  };
-
   const handleSelectProvider = (provider: KairoProviderFormat) => {
+    if (activeProvider === provider) {
+      setActiveProvider(null);
+      setApiKeyVisible(false);
+      setShowAdvanced(false);
+      return;
+    }
     setActiveProvider(provider);
+    setApiKeyVisible(false);
     if (!settings) {
       setShowAdvanced(false);
       return;
     }
     setShowAdvanced(hasCustomKairoEndpoint(toConfig(settings, provider)));
+  };
+
+  const handleChooseDefaultProvider = (provider: KairoProviderFormat) => {
+    if (!settings) return;
+    const providerConfigured = isProfileConfigured(settings.profiles[provider]);
+    if (!providerConfigured) {
+      setDefaultPickerOpen(false);
+      handleSelectProvider(provider);
+      return;
+    }
+    setSettings((prev) => (prev ? { ...prev, defaultProvider: provider } : prev));
+    setDefaultPickerOpen(false);
   };
 
   const handleSave = async () => {
@@ -146,7 +206,9 @@ export function KairoSettingsSection() {
       await clearKairoConfig();
       const cleared = await getKairoSettings();
       setSettings(cleared);
-      setActiveProvider(cleared.defaultProvider);
+      setActiveProvider(null);
+      setDefaultPickerOpen(false);
+      setApiKeyVisible(false);
       setShowAdvanced(false);
       flashState("cleared");
     } catch (error) {
@@ -160,69 +222,204 @@ export function KairoSettingsSection() {
     return <KairoSettingsSkeleton />;
   }
 
-  const placeholders = KAIRO_DEFAULTS[activeProvider];
-  const providerMeta =
-    activeProvider === "anthropic"
-      ? "Anthropic format"
-      : activeProvider === "gemini"
-        ? "Gemini native format"
-        : "OpenAI-compatible format";
-  const activeIsDefault = settings?.defaultProvider === activeProvider;
+  const placeholders = KAIRO_DEFAULTS[editorProvider];
+  const activeIsDefault = anyConfigured && settings?.defaultProvider === activeProvider;
 
   return (
     <View style={styles.block}>
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
-      <View style={styles.providerCard}>
-        <View style={styles.providerCardHeader}>
-          <View style={styles.providerCardSummary}>
-            <Text style={styles.providerCardTitle}>
-              Default provider: {getKairoProviderLabel(settings?.defaultProvider ?? "anthropic")}
-            </Text>
-            <Text style={styles.providerCardSubtext}>
-              {configuredCount} of {PROVIDERS.length} providers configured
-            </Text>
+      <View style={styles.layout}>
+        <Pressable
+          onPress={() => setDefaultPickerOpen((current) => !current)}
+          style={({ pressed }) => [styles.defaultHeader, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Choose default Kairo provider"
+          accessibilityState={{ expanded: defaultPickerOpen }}
+        >
+          <ProviderIcon
+            provider={anyConfigured ? defaultProvider : undefined}
+            size={22}
+            variant="large"
+          />
+          <View style={styles.defaultHeaderCopy}>
+            <View style={styles.defaultHeaderText}>
+              <Text style={styles.defaultTitle}>Default provider</Text>
+              <Text style={styles.defaultValue}>{defaultProviderValue}</Text>
+              {defaultProviderHelp ? (
+                <Text style={styles.defaultHelp}>{defaultProviderHelp}</Text>
+              ) : null}
+            </View>
           </View>
-          <View
-            style={[
-              styles.summaryStatusBadge,
-              status === "Configured"
-                ? styles.summaryStatusBadgeReady
-                : styles.summaryStatusBadgeSetup,
-            ]}
-          >
-            <Text
-              style={[
-                styles.summaryStatusBadgeText,
-                status === "Configured"
-                  ? styles.summaryStatusBadgeTextReady
-                  : styles.summaryStatusBadgeTextSetup,
-              ]}
-            >
-              {status === "Configured" ? "Ready" : "Needs setup"}
-            </Text>
+          <View style={styles.defaultChevron}>
+            {defaultPickerOpen ? (
+              <ChevronUpIcon color={colors.textSecondary} size={18} />
+            ) : (
+              <ChevronRightIcon color={colors.textSecondary} size={18} />
+            )}
           </View>
+        </Pressable>
+
+        {defaultPickerOpen ? (
+          <View style={styles.defaultPickerInset}>
+            <View style={styles.defaultPickerList}>
+              {PROVIDERS.map((provider, index) => {
+                const providerConfigured = settings
+                  ? isProfileConfigured(settings.profiles[provider])
+                  : false;
+                const isCurrentDefault = anyConfigured && provider === defaultProvider;
+                const disabled = !providerConfigured && !isCurrentDefault;
+
+                return (
+                  <Pressable
+                    key={provider}
+                    onPress={() => handleChooseDefaultProvider(provider)}
+                    disabled={disabled}
+                    accessibilityRole="radio"
+                    accessibilityLabel={`Set ${getKairoProviderLabel(provider)} as the default provider`}
+                    accessibilityState={{ selected: isCurrentDefault, disabled }}
+                    style={({ pressed }) => [
+                      styles.defaultOption,
+                      index > 0 && styles.defaultOptionBorder,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <View style={styles.defaultOptionIdentity}>
+                      <ProviderIcon provider={provider} />
+                      <View style={styles.defaultOptionCopy}>
+                        <Text
+                          style={[
+                            styles.defaultOptionTitle,
+                            disabled && styles.defaultOptionTitleDisabled,
+                          ]}
+                        >
+                          {getKairoProviderLabel(provider)}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.defaultOptionMeta,
+                            disabled && styles.defaultOptionMetaDisabled,
+                          ]}
+                        >
+                          {isCurrentDefault
+                            ? providerConfigured
+                              ? "Current default"
+                              : "Current default, needs setup."
+                            : providerConfigured
+                              ? "Ready to use"
+                              : "Set up this provider first."}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.defaultOptionRadioWrap}>
+                      <View
+                        style={[
+                          styles.defaultOptionRadio,
+                          isCurrentDefault && styles.defaultOptionRadioActive,
+                          disabled && styles.defaultOptionRadioDisabled,
+                        ]}
+                      >
+                        {isCurrentDefault ? <View style={styles.defaultOptionRadioDot} /> : null}
+                      </View>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+
+        <View style={styles.sectionDivider} />
+
+        <View style={styles.providersSection}>
+          <Text style={styles.providersTitle}>Providers</Text>
+          <Text style={styles.providersHelp}>Manage your providers and credentials</Text>
         </View>
-        {PROVIDERS.map((provider) => {
+
+        {PROVIDERS.map((provider, index) => {
           const isSelected = provider === activeProvider;
-          const isDefault = settings?.defaultProvider === provider;
-          const providerConfigured = settings ? isProfileConfigured(settings.profiles[provider]) : false;
+          const isDefault = anyConfigured && settings?.defaultProvider === provider;
+          const providerConfigured = settings
+            ? isProfileConfigured(settings.profiles[provider])
+            : false;
+
           return (
-            <View key={provider}>
+            <Animated.View
+              key={provider}
+              layout={
+                reducedMotion
+                  ? undefined
+                  : LinearTransition.duration(motion.duration.base).easing(PROVIDER_REVEAL_EASING)
+              }
+            >
               <Pressable
                 onPress={() => handleSelectProvider(provider)}
                 style={({ pressed }) => [
                   styles.providerRow,
                   isSelected && styles.providerRowSelected,
-                  pressed && { opacity: 0.8 },
+                  pressed && styles.pressed,
                 ]}
                 accessibilityRole="button"
                 accessibilityLabel={`Edit ${getKairoProviderLabel(provider)} provider profile`}
               >
-                <View style={styles.providerIdentity}>
-                  <View style={styles.providerTitleRow}>
-                    <Text style={styles.providerName}>{getKairoProviderLabel(provider)}</Text>
-                    {isDefault ? (
+                <View style={styles.providerRowIdentity}>
+                  <ProviderIcon provider={provider} />
+                  <View style={styles.providerRowCopy}>
+                    <Text style={styles.providerRowTitle}>{getKairoProviderLabel(provider)}</Text>
+                  </View>
+                </View>
+                <View style={styles.providerRowMeta}>
+                  <View
+                    style={[
+                      styles.providerBadge,
+                      providerConfigured ? styles.providerBadgeConfigured : styles.providerBadgeIdle,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.providerBadgeText,
+                        providerConfigured
+                          ? styles.providerBadgeTextConfigured
+                          : styles.providerBadgeTextIdle,
+                      ]}
+                    >
+                      {providerConfigured ? "Configured" : "Not configured"}
+                    </Text>
+                  </View>
+                  {isDefault ? (
+                    <View style={[styles.providerBadge, styles.providerBadgeDefault]}>
+                      <Text style={[styles.providerBadgeText, styles.providerBadgeTextDefault]}>
+                        Default
+                      </Text>
+                    </View>
+                  ) : null}
+                  {isSelected ? (
+                    <ChevronUpIcon color={colors.textSecondary} size={18} />
+                  ) : (
+                    <ChevronRightIcon color={colors.textSecondary} size={18} />
+                  )}
+                </View>
+              </Pressable>
+
+              {isSelected ? (
+                <Animated.View
+                  entering={
+                    reducedMotion
+                      ? undefined
+                      : FadeInDown.duration(motion.duration.base).easing(PROVIDER_REVEAL_EASING)
+                  }
+                  exiting={
+                    reducedMotion
+                      ? undefined
+                      : FadeOut.duration(motion.duration.instant).easing(PROVIDER_EXIT_EASING)
+                  }
+                  style={styles.editorPanel}
+                >
+                  <View style={styles.editorHeader}>
+                    <Text style={styles.editorLabel}>
+                      {getKairoProviderLabel(activeProvider)} credentials
+                    </Text>
+                    {activeIsDefault ? (
                       <View style={[styles.providerBadge, styles.providerBadgeDefault]}>
                         <Text style={[styles.providerBadgeText, styles.providerBadgeTextDefault]}>
                           Default
@@ -230,62 +427,13 @@ export function KairoSettingsSection() {
                       </View>
                     ) : null}
                   </View>
-                  <View style={styles.providerBadges}>
-                    <View
-                      style={[
-                        styles.providerBadge,
-                        providerConfigured
-                          ? styles.providerBadgeConfigured
-                          : styles.providerBadgeIdle,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.providerBadgeText,
-                          providerConfigured
-                            ? styles.providerBadgeTextConfigured
-                            : styles.providerBadgeTextIdle,
-                        ]}
-                      >
-                        {providerConfigured ? "Configured" : "Needs key"}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-                <Text style={styles.providerRowAction}>{isSelected ? "" : "Edit"}</Text>
-              </Pressable>
 
-              {isSelected ? (
-                <View style={styles.editorInline}>
-                  <View style={styles.editorHeader}>
-                    <View style={styles.editorHeaderCopy}>
-                      <Text style={styles.editorLabel}>
-                        {getKairoProviderLabel(activeProvider)} credentials
-                      </Text>
-                      <Text style={styles.editorHelp}>
-                        {activeIsDefault
-                          ? "Kairo uses this provider by default."
-                          : "You can configure this profile without making it the default."}
-                      </Text>
-                    </View>
-                    {!activeIsDefault ? (
-                      <Pressable
-                        onPress={handleSetDefault}
-                        hitSlop={12}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Make ${getKairoProviderLabel(activeProvider)} the default Kairo provider`}
-                        style={({ pressed }) => [styles.defaultAction, pressed && { opacity: 0.7 }]}
-                      >
-                        <Text style={styles.defaultActionText}>Make default</Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
-
-                  <View style={styles.apiKeyRow}>
+                  <Text style={styles.fieldLabel}>API key</Text>
+                  <View style={styles.apiKeyField}>
                     <TextInput
                       value={activeProfile.apiKey}
                       onChangeText={(v) => updateActiveProfile({ apiKey: v })}
-                      placeholder="API key"
+                      placeholder="Paste API key"
                       placeholderTextColor={colors.textMuted}
                       autoCapitalize="none"
                       autoCorrect={false}
@@ -294,34 +442,31 @@ export function KairoSettingsSection() {
                       style={[styles.input, styles.apiKeyInput]}
                     />
                     <Pressable
-                      onPress={() => setApiKeyVisible((v) => !v)}
+                      onPress={() => setApiKeyVisible((visible) => !visible)}
                       hitSlop={12}
                       accessibilityRole="button"
                       accessibilityLabel={apiKeyVisible ? "Hide API key" : "Show API key"}
-                      style={({ pressed }) => [styles.apiKeyToggle, pressed && { opacity: 0.7 }]}
+                      style={({ pressed }) => [styles.eyeButton, pressed && styles.pressed]}
                     >
-                      <Text style={styles.apiKeyToggleText}>{apiKeyVisible ? "Hide" : "Show"}</Text>
+                      <EyeIcon color={colors.textSecondary} size={18} />
                     </Pressable>
                   </View>
 
-                  <View style={styles.metaRow}>
-                    <Text style={styles.metaText}>{providerMeta}</Text>
-                    <Pressable
-                      onPress={() => setShowAdvanced((v) => !v)}
-                      hitSlop={12}
-                      accessibilityRole="button"
-                      accessibilityLabel={
-                        showAdvanced
-                          ? "Hide advanced Kairo settings"
-                          : "Show advanced Kairo settings"
-                      }
-                      style={({ pressed }) => [styles.advancedToggle, pressed && { opacity: 0.7 }]}
-                    >
-                      <Text style={styles.advancedToggleText}>
-                        {showAdvanced ? "Hide advanced" : "Advanced"}
-                      </Text>
-                    </Pressable>
-                  </View>
+                  <Pressable
+                    onPress={() => setShowAdvanced((current) => !current)}
+                    hitSlop={12}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      showAdvanced ? "Hide advanced Kairo settings" : "Show advanced Kairo settings"
+                    }
+                    style={({ pressed }) => [styles.advancedRow, pressed && styles.pressed]}
+                  >
+                    <View style={styles.advancedLabelRow}>
+                      <SettingsIcon color={colors.textDim} size={16} strokeWidth={1.9} />
+                      <Text style={styles.advancedRowLabel}>Advanced</Text>
+                    </View>
+                    <ChevronRightIcon color={colors.textSecondary} size={18} />
+                  </Pressable>
 
                   {showAdvanced ? (
                     <Animated.View
@@ -356,6 +501,22 @@ export function KairoSettingsSection() {
 
                   <View style={styles.actions}>
                     <Pressable
+                      onPress={() => void handleClear()}
+                      hitSlop={12}
+                      accessibilityRole="button"
+                      accessibilityLabel="Clear Kairo configuration"
+                      disabled={saveState === "saving"}
+                      style={({ pressed }) => [
+                        styles.clearButton,
+                        pressed && styles.pressed,
+                        saveState === "saving" && styles.disabledAction,
+                      ]}
+                    >
+                      <Text style={styles.clearButtonText}>
+                        {saveState === "cleared" ? "Cleared" : "Clear"}
+                      </Text>
+                    </Pressable>
+                    <Pressable
                       onPress={() => void handleSave()}
                       hitSlop={12}
                       accessibilityRole="button"
@@ -364,8 +525,8 @@ export function KairoSettingsSection() {
                       style={({ pressed }) => [
                         styles.saveButton,
                         saveState === "saved" && styles.saveButtonSaved,
-                        pressed && { opacity: 0.7 },
-                        (!loaded || saveState === "saving" || !settings) && { opacity: 0.5 },
+                        pressed && styles.pressed,
+                        (!loaded || saveState === "saving" || !settings) && styles.disabledAction,
                       ]}
                     >
                       <Text
@@ -377,24 +538,12 @@ export function KairoSettingsSection() {
                         {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : "Save"}
                       </Text>
                     </Pressable>
-                    <Pressable
-                      onPress={() => void handleClear()}
-                      hitSlop={12}
-                      accessibilityRole="button"
-                      accessibilityLabel="Clear Kairo configuration"
-                      disabled={saveState === "saving"}
-                      style={({ pressed }) => [styles.clearAction, pressed && { opacity: 0.6 }]}
-                    >
-                      <Text style={styles.clearText}>{saveState === "cleared" ? "Cleared" : "Clear"}</Text>
-                    </Pressable>
                   </View>
-                </View>
+                </Animated.View>
               ) : null}
 
-              {provider !== PROVIDERS[PROVIDERS.length - 1] ? (
-                <View style={styles.providerDivider} />
-              ) : null}
-            </View>
+              {index < PROVIDERS.length - 1 ? <View style={styles.providerListDivider} /> : null}
+            </Animated.View>
           );
         })}
       </View>
@@ -403,118 +552,346 @@ export function KairoSettingsSection() {
 }
 
 const styles = StyleSheet.create({
-  block: { gap: spacing.sm },
-  errorText: { color: colors.error, ...typography.micro },
-  summaryStatusBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.full,
+  block: {
+    gap: spacing.sm,
   },
-  summaryStatusBadgeReady: { backgroundColor: colors.accentSoft },
-  summaryStatusBadgeSetup: { backgroundColor: colors.bgCard },
-  summaryStatusBadgeText: { ...typography.micro },
-  summaryStatusBadgeTextReady: { color: colors.accent },
-  summaryStatusBadgeTextSetup: { color: colors.textMuted },
-  providerCard: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    borderRadius: radii.lg,
-    backgroundColor: colors.bgCard,
-    overflow: "hidden",
+  errorText: {
+    color: colors.error,
+    ...typography.micro,
   },
-  providerCardHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
+  layout: {
+    gap: spacing.lg,
   },
-  providerCardSummary: { flex: 1, gap: spacing.xs },
-  providerCardTitle: { color: colors.textPrimary, ...typography.bodyMd },
-  providerCardSubtext: { color: colors.textSecondary, ...typography.micro },
-  providerRow: {
+  pressed: {
+    opacity: 0.84,
+  },
+  defaultHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.xs,
+    paddingTop: spacing.xs,
+  },
+  defaultHeaderCopy: {
+    flex: 1,
+  },
+  defaultHeaderText: {
+    gap: 2,
+  },
+  defaultTitle: {
+    color: colors.textSecondary,
+    ...typography.bodyMd,
+    fontFamily: "Geist_500Medium",
+  },
+  defaultValue: {
+    color: colors.textPrimary,
+    ...typography.title,
+  },
+  defaultHelp: {
+    maxWidth: 260,
+    color: colors.textMuted,
+    ...typography.bodyMd,
+  },
+  defaultChevron: {
+    justifyContent: "center",
+  },
+  defaultPickerInset: {
+    paddingTop: spacing.xs,
+  },
+  defaultPickerList: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSurface,
+    overflow: "hidden",
+  },
+  defaultOption: {
+    minHeight: 64,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  defaultOptionBorder: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
+  },
+  defaultOptionCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  defaultOptionIdentity: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  defaultOptionTitle: {
+    color: colors.textPrimary,
+    ...typography.title,
+  },
+  defaultOptionTitleDisabled: {
+    color: colors.textSecondary,
+  },
+  defaultOptionMeta: {
+    color: colors.textMuted,
+    ...typography.bodyMd,
+  },
+  defaultOptionMetaDisabled: {
+    color: colors.textDim,
+  },
+  defaultOptionRadioWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  defaultOptionRadio: {
+    width: 20,
+    height: 20,
+    borderRadius: radii.full,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.bgFloating,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  defaultOptionRadioActive: {
+    borderColor: colors.accent,
+  },
+  defaultOptionRadioDisabled: {
+    backgroundColor: colors.bgSurface,
+    borderColor: colors.borderSubtle,
+  },
+  defaultOptionRadioDot: {
+    width: 8,
+    height: 8,
+    borderRadius: radii.full,
+    backgroundColor: colors.accent,
+  },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: colors.bgInput,
+  },
+  providersSection: {
+    gap: spacing.sm,
+  },
+  providersTitle: {
+    color: colors.textPrimary,
+    ...typography.title,
+  },
+  providersHelp: {
+    color: colors.textMuted,
+    ...typography.bodyMd,
+  },
+  providerRow: {
+    minHeight: 56,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  providerIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  providerIconWrapLarge: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
   },
   providerRowSelected: {
-    backgroundColor: "#f7f1e7",
+    backgroundColor: colors.bgSurface,
+    borderRadius: radii.lg,
   },
-  providerIdentity: { flex: 1, gap: spacing.xs },
-  providerTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, flexWrap: "wrap" },
-  providerName: { color: colors.textPrimary, ...typography.bodyMd },
-  providerBadges: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  providerRowIdentity: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  providerRowCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  providerRowTitle: {
+    color: colors.textPrimary,
+    ...typography.title,
+  },
+  providerRowMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: spacing.sm,
+    flexShrink: 1,
+  },
   providerBadge: {
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: radii.full,
   },
-  providerBadgeConfigured: { backgroundColor: "#efe7f8" },
-  providerBadgeIdle: { backgroundColor: "#f7f1e7" },
-  providerBadgeDefault: { backgroundColor: "#ebe2d5" },
-  providerBadgeText: { ...typography.micro },
-  providerBadgeTextConfigured: { color: colors.accent },
-  providerBadgeTextIdle: { color: colors.textMuted },
-  providerBadgeTextDefault: { color: colors.textSecondary },
-  providerRowAction: {
+  providerBadgeConfigured: {
+    backgroundColor: "rgba(103,83,199,0.08)",
+  },
+  providerBadgeIdle: {
+    backgroundColor: "rgba(91,80,72,0.05)",
+  },
+  providerBadgeDefault: {
+    backgroundColor: "rgba(91,80,72,0.06)",
+  },
+  providerBadgeText: {
+    ...typography.bodyMd,
+    fontFamily: "Geist_500Medium",
+  },
+  providerBadgeTextConfigured: {
+    color: colors.accent,
+  },
+  providerBadgeTextIdle: {
+    color: colors.textSecondary,
+  },
+  providerBadgeTextDefault: {
+    color: colors.textSecondary,
+  },
+  providerListDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.bgInput,
+  },
+  editorPanel: {
+    gap: spacing.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.lg,
+    backgroundColor: colors.bgSurface,
+    borderRadius: radii.lg,
+  },
+  editorHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  editorLabel: {
+    flex: 1,
+    color: colors.textPrimary,
+    ...typography.title,
+  },
+  fieldLabel: {
     color: colors.textMuted,
     ...typography.micro,
-    minWidth: 34,
-    textAlign: "right",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
-  providerDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
-    marginHorizontal: spacing.md,
-  },
-  editorInline: {
+  apiKeyField: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-    paddingTop: spacing.xs,
-    backgroundColor: "#fcf7f0",
   },
-  editorHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: spacing.md },
-  editorHeaderCopy: { flex: 1, gap: spacing.xs },
-  editorLabel: { color: colors.textPrimary, ...typography.bodyMd },
-  editorHelp: { color: colors.textSecondary, ...typography.micro },
-  defaultAction: { paddingVertical: spacing.xs },
-  defaultActionText: { ...typography.micro, color: colors.accent },
   input: {
-    backgroundColor: colors.bgCard,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    borderRadius: radii.md,
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSurface,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
     color: colors.textPrimary,
     ...typography.bodyMd,
   },
-  apiKeyRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  apiKeyInput: { flex: 1 },
-  apiKeyToggle: { paddingVertical: spacing.sm, paddingHorizontal: spacing.sm },
-  apiKeyToggleText: { ...typography.micro, color: colors.accent },
-  metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
-  metaText: { flex: 1, color: colors.textMuted, ...typography.micro },
-  advancedToggle: { paddingVertical: spacing.xs },
-  advancedToggleText: { color: colors.accent, ...typography.micro },
-  advancedWrap: { gap: spacing.sm, paddingTop: spacing.xs },
-  advancedLabel: { color: colors.textMuted, ...typography.micro },
-  actions: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingTop: spacing.xs },
-  saveButton: {
-    borderRadius: radii.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    backgroundColor: colors.accent,
+  apiKeyInput: {
+    flex: 1,
   },
-  saveButtonSaved: { backgroundColor: colors.primary },
-  saveButtonText: { color: colors.bgCard, ...typography.micro },
-  saveButtonTextSaved: { color: colors.bgCard },
-  clearAction: { paddingVertical: spacing.xs },
-  clearText: { color: colors.textMuted, ...typography.micro },
+  eyeButton: {
+    width: 44,
+    height: 44,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSurface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  advancedRow: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSurface,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  advancedLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  advancedRowLabel: {
+    color: colors.textSecondary,
+    ...typography.bodyMd,
+  },
+  advancedWrap: {
+    gap: spacing.sm,
+  },
+  advancedLabel: {
+    color: colors.textSecondary,
+    ...typography.micro,
+  },
+  actions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: spacing.md,
+    paddingTop: spacing.xs,
+  },
+  clearButton: {
+    minHeight: 44,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    backgroundColor: colors.bgSurface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  clearButtonText: {
+    color: colors.textSecondary,
+    ...typography.bodyMd,
+    fontFamily: "Geist_500Medium",
+  },
+  saveButton: {
+    minHeight: 44,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgInput,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  saveButtonSaved: {
+    backgroundColor: colors.successMuted,
+    borderColor: "rgba(34,107,75,0.24)",
+  },
+  saveButtonText: {
+    color: colors.textPrimary,
+    ...typography.bodyMd,
+    fontFamily: "Geist_600SemiBold",
+  },
+  saveButtonTextSaved: {
+    color: colors.success,
+  },
+  disabledAction: {
+    opacity: 0.5,
+  },
 });

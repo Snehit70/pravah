@@ -42,6 +42,12 @@ export const ChevronRightIcon = icon(({ color, size, strokeWidth }) => (
   </Svg>
 ));
 
+export const ChevronUpIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="m6 14.5 6-6 6 6" />
+  </Svg>
+));
+
 export const ArrowUpRightIcon = icon(({ color, size, strokeWidth }) => (
   <Svg {...frame(color, size, strokeWidth)}>
     <Path d="M7 17 17 7" />
@@ -83,6 +89,13 @@ export const AlertCircleIcon = icon(({ color, size, strokeWidth }) => (
     <Circle cx={12} cy={12} r={8} />
     <Line x1={12} y1={8} x2={12} y2={12.5} />
     <Circle cx={12} cy={16.35} r={0.8} fill={color} stroke="none" />
+  </Svg>
+));
+
+export const EyeIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M3.75 12s2.85-5 8.25-5 8.25 5 8.25 5-2.85 5-8.25 5-8.25-5-8.25-5Z" />
+    <Circle cx={12} cy={12} r={2.25} />
   </Svg>
 ));
 

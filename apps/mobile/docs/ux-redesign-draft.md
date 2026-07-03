@@ -805,8 +805,12 @@ Bottom-tab state behavior:
 
 Kairo mapping:
 
-- for the current redesign pass, Kairo should stay text-led rather than using
-  a dedicated branded mark
+- Kairo may use its canonical mark beside the `Kairo` title on dedicated
+  inner-page surfaces where it improves orientation
+- in Settings, the Kairo title mark should use the same quiet neutral color as
+  the top-level Settings category icons (`colors.textSecondary`), not the
+  purple accent; reserve purple for selected state, primary actions, and
+  meaningful Kairo emphasis inside the interaction itself
 - Kairo utility controls such as history, new chat, close, and setup should
   still use the shared icon dialect if they use icons at all
 - do not use ad hoc text glyphs, generic AI sparkles, or a separate AI-specific
@@ -816,8 +820,12 @@ Settings mapping:
 
 - top-level category list may use icon-plus-text rows
 - category icons should be quiet scanning aids, not decorative badges
+- Kairo provider setup may temporarily reuse the quiet Kairo mark in the same
+  36x36 neutral squircle used by Settings category icons; replace these
+  placeholders with real provider icons when the provider icon set is ready
 - recommended category metaphors:
-  - `Kairo` -> text-first category row for now, with no dedicated Kairo mark
+  - `Kairo` -> quiet Kairo mark when needed, paired with text and never treated
+    as a decorative badge
   - `Sync` -> sync arrows
   - `Reminders` -> bell
   - `Interaction` -> hand or gesture-control metaphor

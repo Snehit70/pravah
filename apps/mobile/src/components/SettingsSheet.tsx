@@ -481,33 +481,11 @@ type KairoSectionProps = {
   setPreference: ReturnType<typeof useUserPreferences>["setPreference"];
 };
 
-function KairoSection({ prefs, setPreference }: KairoSectionProps) {
+function KairoSection(_: KairoSectionProps) {
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Provider</Text>
-        <Text style={styles.settingHelp}>
-          Configure the provider, API key, endpoint, and model used for mobile AI assistance.
-        </Text>
         <KairoSettingsSection />
-      </View>
-
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Behavior</Text>
-        <Text style={styles.settingHelp}>
-          Control the AI affordances that show up inside the task flow.
-        </Text>
-        <View style={styles.behaviorRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.settingMeta}>Starter pills</Text>
-          </View>
-          <Switch
-            value={prefs.kairoStarterPillsEnabled}
-            onValueChange={(next) => void setPreference("kairoStarterPillsEnabled", next)}
-            trackColor={{ false: colors.border, true: colors.accentSoft }}
-            thumbColor={prefs.kairoStarterPillsEnabled ? colors.accent : colors.textMuted}
-          />
-        </View>
       </View>
     </View>
   );
@@ -1990,6 +1968,8 @@ export function SettingsSheet({
     navigation.screen === "detail"
       ? SETTINGS_CATEGORY_META[navigation.category].title
       : "Settings";
+  const showKairoHeaderMark =
+    navigation.screen === "detail" && navigation.category === "kairo";
 
   const settingsHomeStatuses: Record<SettingsCategoryKey, SettingsHomeStatus> = {
     kairo: kairoHomeStatus,
@@ -2046,7 +2026,12 @@ export function SettingsSheet({
             >
               <ChevronLeftIcon color={colors.textPrimary} size={20} />
             </Pressable>
-            <Text style={styles.headerTitle}>{headerTitle}</Text>
+            <View style={styles.headerTitleWrap}>
+              {showKairoHeaderMark ? (
+                <KairoIcon color={colors.textSecondary} size={22} />
+              ) : null}
+              <Text style={styles.headerTitle}>{headerTitle}</Text>
+            </View>
             <View style={styles.headerSpacer} />
           </View>
         </View>
@@ -2167,10 +2152,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   headerTitle: {
-    flex: 1,
-    textAlign: "center",
     ...typography.headline,
     color: colors.textPrimary,
+  },
+  headerTitleWrap: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
   },
   headerSpacer: {
     width: 40,
