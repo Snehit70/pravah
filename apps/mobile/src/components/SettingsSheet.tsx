@@ -65,7 +65,13 @@ import {
   type SettingsCategoryKey,
   type SettingsNavigationState,
 } from "../lib/settingsNavigation";
-import type { AccentColor, Density } from "../lib/userPreferences";
+import type { AccentColor, Density, ReminderLeadTimeMinutes } from "../lib/userPreferences";
+import Animated, {
+  interpolateColor,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import { KairoSettingsSection } from "./KairoSettingsSection";
 import { GmailReviewSection } from "./GmailReviewSection";
 import { AppUpdateSection } from "./AppUpdateSection";
@@ -1495,29 +1501,10 @@ function RemindersSection({
 
         <View style={styles.behaviorStack}>
           <Text style={styles.settingMeta}>Heads-up lead time</Text>
-          <View style={styles.chipRow}>
-            {REMINDER_LEAD_TIME_OPTIONS.map((minutes) => {
-              const active = prefs.reminderLeadTimeMinutes === minutes;
-              return (
-                <Pressable
-                  key={minutes}
-                  onPress={() => void setPreference("reminderLeadTimeMinutes", minutes)}
-                  hitSlop={6}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  style={({ pressed }) => [
-                    styles.choiceChip,
-                    active && styles.choiceChipActive,
-                    pressed && { opacity: 0.6 },
-                  ]}
-                >
-                  <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
-                    {minutes}m
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <LeadTimeSegmented
+            value={prefs.reminderLeadTimeMinutes}
+            onSelect={(minutes) => void setPreference("reminderLeadTimeMinutes", minutes)}
+          />
         </View>
       </View>
 
@@ -1592,6 +1579,96 @@ function RemindersSection({
         />
       ) : null}
     </View>
+  );
+}
+
+const SEGMENT_TRACK_PADDING = 3;
+
+function LeadTimeSegmented({
+  value,
+  onSelect,
+}: {
+  value: ReminderLeadTimeMinutes;
+  onSelect: (minutes: ReminderLeadTimeMinutes) => void;
+}) {
+  const reducedMotion = useReducedMotion();
+  const [innerWidth, setInnerWidth] = useState(0);
+  const index = Math.max(0, REMINDER_LEAD_TIME_OPTIONS.indexOf(value));
+  const progress = useSharedValue(index);
+
+  useEffect(() => {
+    progress.value = reducedMotion
+      ? index
+      : withSpring(index, { damping: 15, stiffness: 220, mass: 0.7 });
+  }, [index, progress, reducedMotion]);
+
+  const segmentWidth =
+    innerWidth > 0 ? innerWidth / REMINDER_LEAD_TIME_OPTIONS.length : 0;
+
+  const thumbStyle = useAnimatedStyle(
+    () => ({
+      transform: [{ translateX: progress.value * segmentWidth }],
+    }),
+    [segmentWidth],
+  );
+
+  return (
+    <View
+      style={styles.segmentedTrack}
+      onLayout={(event) =>
+        setInnerWidth(event.nativeEvent.layout.width - SEGMENT_TRACK_PADDING * 2)
+      }
+    >
+      {segmentWidth > 0 ? (
+        <Animated.View
+          style={[styles.segmentedThumb, { width: segmentWidth }, thumbStyle]}
+        />
+      ) : null}
+      {REMINDER_LEAD_TIME_OPTIONS.map((minutes, optionIndex) => (
+        <SegmentOption
+          key={minutes}
+          label={`${minutes}m`}
+          selected={value === minutes}
+          optionIndex={optionIndex}
+          progress={progress}
+          onPress={() => onSelect(minutes)}
+        />
+      ))}
+    </View>
+  );
+}
+
+function SegmentOption({
+  label,
+  selected,
+  optionIndex,
+  progress,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  optionIndex: number;
+  progress: ReturnType<typeof useSharedValue<number>>;
+  onPress: () => void;
+}) {
+  const labelStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(
+      progress.value,
+      [optionIndex - 1, optionIndex, optionIndex + 1],
+      [colors.textMuted, colors.textInverse, colors.textMuted],
+    ),
+  }));
+
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      style={styles.segmentedOption}
+    >
+      <Animated.Text style={[styles.segmentedOptionText, labelStyle]}>{label}</Animated.Text>
+    </Pressable>
   );
 }
 
@@ -3513,31 +3590,31 @@ const styles = StyleSheet.create({
   behaviorStack: {
     gap: spacing.sm,
   },
-  chipRow: {
+  segmentedTrack: {
     flexDirection: "row",
-    gap: spacing.sm,
-  },
-  choiceChip: {
-    flex: 1,
-    alignItems: "center",
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    padding: SEGMENT_TRACK_PADDING,
     borderRadius: radii.md,
     backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
   },
-  choiceChipActive: {
+  segmentedThumb: {
+    position: "absolute",
+    top: SEGMENT_TRACK_PADDING,
+    bottom: SEGMENT_TRACK_PADDING,
+    left: SEGMENT_TRACK_PADDING,
+    borderRadius: radii.md - SEGMENT_TRACK_PADDING,
     backgroundColor: colors.textPrimary,
-    borderColor: colors.textPrimary,
   },
-  choiceChipText: {
+  segmentedOption: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: spacing.sm,
+  },
+  segmentedOptionText: {
     ...typography.bodyMd,
-    color: colors.textMuted,
-  },
-  choiceChipTextActive: {
-    color: colors.textInverse,
-    fontFamily: "Geist_600SemiBold",
+    fontFamily: "Geist_500Medium",
   },
   timeInlineButton: {
     paddingHorizontal: spacing.md,
