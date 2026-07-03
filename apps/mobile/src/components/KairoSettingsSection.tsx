@@ -213,16 +213,35 @@ export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProp
     setShowAdvanced(hasCustomKairoEndpoint(toConfig(settings, provider)));
   };
 
-  const handleChooseDefaultProvider = (provider: KairoProviderFormat) => {
-    if (!settings) return;
-    const providerConfigured = isProfileConfigured(provider, settings.profiles[provider]);
+  const handleChooseDefaultProvider = async (provider: KairoProviderFormat) => {
+    if (!settings || !savedSettings || saveState === "saving") return;
+    const providerConfigured = isProfileConfigured(
+      provider,
+      savedSettings.profiles[provider],
+    );
     if (!providerConfigured) {
       setDefaultPickerOpen(false);
       handleSelectProvider(provider);
       return;
     }
-    setSettings((prev) => (prev ? { ...prev, defaultProvider: provider } : prev));
     setDefaultPickerOpen(false);
+    setErrorMessage(null);
+    setSaveState("saving");
+    const nextSavedSettings = { ...savedSettings, defaultProvider: provider };
+    try {
+      await saveKairoSettings(nextSavedSettings);
+      setSavedSettings(nextSavedSettings);
+      setSettings((current) =>
+        current ? { ...current, defaultProvider: provider } : current,
+      );
+      flashState("saved");
+    } catch (error) {
+      mobileLogger.warn("kairo_default_provider_save_failed", {
+        errorType: classifyError(error),
+      });
+      setSaveState("idle");
+      setErrorMessage("Could not update the default provider.");
+    }
   };
 
   const handleSave = async () => {
@@ -356,7 +375,7 @@ export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProp
                 return (
                   <Pressable
                     key={provider}
-                    onPress={() => handleChooseDefaultProvider(provider)}
+                    onPress={() => void handleChooseDefaultProvider(provider)}
                     disabled={disabled}
                     accessibilityRole="radio"
                     accessibilityLabel={`Set ${getKairoProviderLabel(provider)} as the default provider`}

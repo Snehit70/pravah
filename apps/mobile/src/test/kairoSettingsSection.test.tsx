@@ -427,7 +427,7 @@ describe("KairoSettingsSection", () => {
     expect(screen.queryByText("Default")).toBeNull();
   });
 
-  it("persists the selected provider as default only after make default and save", async () => {
+  it("persists a configured default provider immediately", async () => {
     useMultiProviderConfig();
 
     render(<KairoSettingsSection />);
@@ -435,14 +435,10 @@ describe("KairoSettingsSection", () => {
     await waitFor(() => expect(screen.queryByTestId("kairo-skeleton")).toBeNull());
 
     fireEvent.click(screen.getByRole("button", { name: /choose default kairo provider/i }));
-    fireEvent.click(
-      screen.getByRole("button", { name: /set openai as the default provider/i }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: /edit openai provider profile/i }));
-
-    const saveBtn = screen.getByRole("button", { name: /save kairo configuration/i });
     await act(async () => {
-      fireEvent.click(saveBtn);
+      fireEvent.click(
+        screen.getByRole("button", { name: /set openai as the default provider/i }),
+      );
     });
 
     const savedPayload = vi.mocked(SecureStore.setItemAsync).mock.calls.find(
@@ -450,5 +446,6 @@ describe("KairoSettingsSection", () => {
     )?.[1];
     expect(typeof savedPayload).toBe("string");
     expect(JSON.parse(savedPayload as string).defaultProvider).toBe("openai");
+    expect(screen.getAllByText("OpenAI")).toHaveLength(2);
   });
 });
