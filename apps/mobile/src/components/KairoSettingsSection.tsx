@@ -30,7 +30,12 @@ import { useReducedMotion } from "../hooks/useReducedMotion";
 import { KairoSettingsSkeleton } from "./LoadingSkeleton";
 import { colors, motion, radii, spacing, typography } from "../theme/tokens";
 import { classifyError, mobileLogger } from "../lib/logger";
-import { ChevronRightIcon, ChevronUpIcon, SettingsIcon } from "./UiIcons";
+import {
+  AdjustmentsIcon,
+  ChevronRightIcon,
+  ChevronUpIcon,
+  KeyIcon,
+} from "./UiIcons";
 import KairoIconAsset from "../assets/icons/settings-kairo.svg";
 import AnthropicIconAsset from "../assets/icons/provider-anthropic.svg";
 import OpenAIIconAsset from "../assets/icons/provider-openai.svg";
@@ -127,10 +132,10 @@ function ProviderChevron({
 }
 
 type KairoSettingsSectionProps = {
-  onApiKeyFocus?: () => void;
+  onFieldFocus?: (field: KairoProfileField) => void;
 };
 
-export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProps = {}) {
+export function KairoSettingsSection({ onFieldFocus }: KairoSettingsSectionProps = {}) {
   const [settings, setSettings] = useState<KairoSettings | null>(null);
   const [savedSettings, setSavedSettings] = useState<KairoSettings | null>(null);
   const [activeProvider, setActiveProvider] = useState<KairoProviderFormat | null>(null);
@@ -546,23 +551,27 @@ export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProp
 
                   <Text style={styles.fieldLabel}>API key</Text>
                   <View style={styles.apiKeyField}>
-                    <TextInput
-                      value={activeProfile.apiKey}
-                      onChangeText={(v) => updateActiveProfile({ apiKey: v }, "apiKey")}
-                      placeholder="Paste API key"
-                      placeholderTextColor={colors.textMuted}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      secureTextEntry={!apiKeyVisible}
-                      editable={loaded}
-                      onFocus={onApiKeyFocus}
+                    <View
                       style={[
-                        styles.input,
-                        styles.apiKeyInput,
+                        styles.apiKeyInputShell,
                         fieldErrors.apiKey && styles.inputError,
                       ]}
-                      accessibilityHint={fieldErrors.apiKey}
-                    />
+                    >
+                      <KeyIcon color={colors.textDim} size={18} strokeWidth={1.8} />
+                      <TextInput
+                        value={activeProfile.apiKey}
+                        onChangeText={(v) => updateActiveProfile({ apiKey: v }, "apiKey")}
+                        placeholder="Paste API key"
+                        placeholderTextColor={colors.textMuted}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        secureTextEntry={!apiKeyVisible}
+                        editable={loaded}
+                        onFocus={() => onFieldFocus?.("apiKey")}
+                        style={styles.apiKeyInput}
+                        accessibilityHint={fieldErrors.apiKey}
+                      />
+                    </View>
                     <Pressable
                       onPress={() => setApiKeyVisible((visible) => !visible)}
                       hitSlop={12}
@@ -587,7 +596,7 @@ export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProp
                     style={({ pressed }) => [styles.advancedRow, pressed && styles.pressed]}
                   >
                     <View style={styles.advancedLabelRow}>
-                      <SettingsIcon color={colors.textDim} size={16} strokeWidth={1.9} />
+                      <AdjustmentsIcon color={colors.textDim} size={17} strokeWidth={1.8} />
                       <Text style={styles.advancedRowLabel}>Advanced</Text>
                     </View>
                     <ChevronRightIcon color={colors.textSecondary} size={18} />
@@ -608,6 +617,7 @@ export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProp
                         autoCapitalize="none"
                         autoCorrect={false}
                         editable={loaded}
+                        onFocus={() => onFieldFocus?.("baseUrl")}
                         style={[styles.input, fieldErrors.baseUrl && styles.inputError]}
                         accessibilityHint={fieldErrors.baseUrl}
                       />
@@ -623,6 +633,7 @@ export function KairoSettingsSection({ onApiKeyFocus }: KairoSettingsSectionProp
                         autoCapitalize="none"
                         autoCorrect={false}
                         editable={loaded}
+                        onFocus={() => onFieldFocus?.("model")}
                         style={[styles.input, fieldErrors.model && styles.inputError]}
                         accessibilityHint={fieldErrors.model}
                       />
@@ -948,6 +959,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
   },
+  apiKeyInputShell: {
+    minHeight: 48,
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSurface,
+    paddingHorizontal: spacing.md,
+  },
   input: {
     minHeight: 48,
     borderWidth: 1,
@@ -968,6 +991,10 @@ const styles = StyleSheet.create({
   },
   apiKeyInput: {
     flex: 1,
+    minHeight: 48,
+    paddingVertical: spacing.md,
+    color: colors.textPrimary,
+    ...typography.bodyMd,
   },
   eyeButton: {
     width: 44,

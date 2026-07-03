@@ -266,6 +266,28 @@ describe("KairoSettingsSection", () => {
     expect(screen.getByRole("button", { name: /hide advanced kairo settings/i })).toBeTruthy();
   });
 
+  it("reports focus for API key and advanced fields", async () => {
+    useEmptyConfig();
+    const onFieldFocus = vi.fn();
+
+    render(<KairoSettingsSection onFieldFocus={onFieldFocus} />);
+
+    await waitFor(() => expect(screen.queryByTestId("kairo-skeleton")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: /edit anthropic provider profile/i }));
+    fireEvent.click(screen.getByRole("button", { name: /show advanced kairo settings/i }));
+
+    const fields = screen.getAllByRole("textbox");
+    fireEvent.focus(fields[0]!);
+    fireEvent.focus(fields[1]!);
+    fireEvent.focus(fields[2]!);
+
+    expect(onFieldFocus.mock.calls).toEqual([
+      ["apiKey"],
+      ["baseUrl"],
+      ["model"],
+    ]);
+  });
+
   it("auto-opens advanced section on mount when config has a custom endpoint", async () => {
     useCustomEndpointConfig();
 

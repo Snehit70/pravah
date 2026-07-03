@@ -480,14 +480,14 @@ function SettingsCategoryList({
 type KairoSectionProps = {
   prefs: ReturnType<typeof useUserPreferences>["prefs"];
   setPreference: ReturnType<typeof useUserPreferences>["setPreference"];
-  onApiKeyFocus: () => void;
+  onFieldFocus: (field: "apiKey" | "baseUrl" | "model") => void;
 };
 
-function KairoSection({ onApiKeyFocus }: KairoSectionProps) {
+function KairoSection({ onFieldFocus }: KairoSectionProps) {
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
-        <KairoSettingsSection onApiKeyFocus={onApiKeyFocus} />
+        <KairoSettingsSection onFieldFocus={onFieldFocus} />
       </View>
     </View>
   );
@@ -1624,7 +1624,7 @@ function renderDetailScreen(
   props: {
     prefs: ReturnType<typeof useUserPreferences>["prefs"];
     setPreference: ReturnType<typeof useUserPreferences>["setPreference"];
-    onKairoApiKeyFocus: () => void;
+    onKairoFieldFocus: (field: "apiKey" | "baseUrl" | "model") => void;
     automationCredentials: Array<{
       _id: Id<"automationCredentials">;
       label: string;
@@ -1698,7 +1698,7 @@ function renderDetailScreen(
         <KairoSection
           prefs={props.prefs}
           setPreference={props.setPreference}
-          onApiKeyFocus={props.onKairoApiKeyFocus}
+          onFieldFocus={props.onKairoFieldFocus}
         />
       );
     case "cli":
@@ -1809,12 +1809,16 @@ export function SettingsSheet({
     return () => clearTimeout(timeout);
   }, [dangerArmed]);
 
-  const handleKairoApiKeyFocus = useCallback(() => {
+  const handleKairoFieldFocus = useCallback((field: "apiKey" | "baseUrl" | "model") => {
     if (!visible || activeCategory !== "kairo") return;
 
     if (kairoFocusScrollTimeout.current) clearTimeout(kairoFocusScrollTimeout.current);
     kairoFocusScrollTimeout.current = setTimeout(() => {
-      scrollRef.current?.scrollTo({ y: 240, animated: true });
+      if (field === "apiKey") {
+        scrollRef.current?.scrollTo({ y: 240, animated: true });
+      } else {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      }
       kairoFocusScrollTimeout.current = null;
     }, 120);
   }, [activeCategory, visible]);
@@ -2090,7 +2094,7 @@ export function SettingsSheet({
               renderDetailScreen(navigation, {
                 prefs,
                 setPreference,
-                onKairoApiKeyFocus: handleKairoApiKeyFocus,
+                onKairoFieldFocus: handleKairoFieldFocus,
                 automationCredentials,
                 automationLabel,
                 setAutomationLabel,
