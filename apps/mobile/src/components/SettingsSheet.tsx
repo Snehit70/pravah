@@ -81,6 +81,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
 } from "react-native-reanimated";
 import { KairoSettingsSection } from "./KairoSettingsSection";
 import { GmailReviewSection } from "./GmailReviewSection";
@@ -344,6 +345,47 @@ type TabOrderEditorProps = {
 };
 
 const TAB_REORDER_EASING = Easing.bezier(...motion.easing.outQuart);
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+function SwatchChip({
+  label,
+  swatch,
+  active,
+  onSelect,
+}: {
+  label: string;
+  swatch: string;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const reducedMotion = useReducedMotion();
+  const progress = useSharedValue(active ? 1 : 0);
+
+  useEffect(() => {
+    const next = active ? 1 : 0;
+    progress.value = reducedMotion
+      ? next
+      : withTiming(next, { duration: motion.duration.fast, easing: TAB_REORDER_EASING });
+  }, [active, progress, reducedMotion]);
+
+  const borderStyle = useAnimatedStyle(() => ({
+    borderColor: interpolateColor(progress.value, [0, 1], [colors.borderSubtle, swatch]),
+  }));
+
+  return (
+    <AnimatedPressable
+      onPress={onSelect}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={`Use ${label} task color`}
+      style={[styles.swatchOption, borderStyle]}
+    >
+      <View style={[styles.swatchDot, { backgroundColor: swatch }]} />
+      <Text style={styles.optionTitle}>{label}</Text>
+    </AnimatedPressable>
+  );
+}
 
 function useTabReorderTransition() {
   const reducedMotion = useReducedMotion();
@@ -1899,28 +1941,15 @@ function AppearanceSection({
           </View>
         </View>
         <View style={styles.swatchGrid}>
-          {TASK_COLOR_OPTIONS.map((option) => {
-            const active = prefs.taskColorScheme === option.value;
-            return (
-              <Pressable
-                key={option.value}
-                onPress={() => void setPreference("taskColorScheme", option.value)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={`Use ${option.label} task color`}
-                style={({ pressed }) => [
-                  styles.swatchOption,
-                  active && styles.swatchOptionActive,
-                  pressed && { opacity: 0.72 },
-                ]}
-              >
-                <View style={[styles.swatchDot, { backgroundColor: option.swatch }]} />
-                <Text style={[styles.optionTitle, active && styles.swatchTitleActive]}>
-                  {option.label}
-                </Text>
-              </Pressable>
-            );
-          })}
+          {TASK_COLOR_OPTIONS.map((option) => (
+            <SwatchChip
+              key={option.value}
+              label={option.label}
+              swatch={option.swatch}
+              active={prefs.taskColorScheme === option.value}
+              onSelect={() => void setPreference("taskColorScheme", option.value)}
+            />
+          ))}
         </View>
         <View style={styles.sectionDivider} />
 
@@ -3685,20 +3714,14 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius: radii.md,
     backgroundColor: colors.bgSurface,
-    borderWidth: StyleSheet.hairlineWidth,
+    // Constant width so the swatch-colored active border doesn't shift layout.
+    borderWidth: 2,
     borderColor: colors.borderSubtle,
-  },
-  swatchOptionActive: {
-    backgroundColor: colors.textPrimary,
-    borderColor: colors.textPrimary,
-  },
-  swatchTitleActive: {
-    color: colors.textInverse,
   },
   swatchDot: {
     width: 22,
     height: 22,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
   },
