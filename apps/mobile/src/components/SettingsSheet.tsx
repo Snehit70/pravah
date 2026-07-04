@@ -125,6 +125,10 @@ type SettingsSheetProps = {
 };
 
 const REMINDER_LEAD_TIME_OPTIONS = [5, 15, 30, 60] as const;
+const LEAD_TIME_SEGMENTS = REMINDER_LEAD_TIME_OPTIONS.map((minutes) => ({
+  value: minutes as ReminderLeadTimeMinutes,
+  label: `${minutes}m`,
+}));
 const DENSITY_OPTIONS: Array<{ value: Density; label: string; description: string }> = [
   {
     value: "cozy",
@@ -1504,7 +1508,8 @@ function RemindersSection({
 
         <View style={styles.behaviorStack}>
           <Text style={styles.settingMeta}>Heads-up lead time</Text>
-          <LeadTimeSegmented
+          <SlidingSegmented
+            options={LEAD_TIME_SEGMENTS}
             value={prefs.reminderLeadTimeMinutes}
             onSelect={(minutes) => void setPreference("reminderLeadTimeMinutes", minutes)}
           />
@@ -1586,17 +1591,25 @@ function RemindersSection({
 
 const SEGMENT_TRACK_PADDING = 3;
 
-function LeadTimeSegmented({
+type SegmentedItem<T extends string | number> = { value: T; label: string };
+
+function SlidingSegmented<T extends string | number>({
+  options,
   value,
   onSelect,
 }: {
-  value: ReminderLeadTimeMinutes;
-  onSelect: (minutes: ReminderLeadTimeMinutes) => void;
+  options: readonly SegmentedItem<T>[];
+  value: T;
+  onSelect: (value: T) => void;
 }) {
   const reducedMotion = useReducedMotion();
   const [innerWidth, setInnerWidth] = useState(0);
-  const index = Math.max(0, REMINDER_LEAD_TIME_OPTIONS.indexOf(value));
+  const index = Math.max(0, options.findIndex((option) => option.value === value));
   const progress = useSharedValue(index);
+  // Shared (not React state) so the thumb worklet sees the measured width on
+  // the UI thread immediately; a closure over state leaves the thumb parked on
+  // the first segment until the rebuilt worklet lands.
+  const segmentWidthSv = useSharedValue(0);
 
   useEffect(() => {
     progress.value = reducedMotion
@@ -1604,36 +1617,34 @@ function LeadTimeSegmented({
       : withSpring(index, { damping: 15, stiffness: 220, mass: 0.7 });
   }, [index, progress, reducedMotion]);
 
-  const segmentWidth =
-    innerWidth > 0 ? innerWidth / REMINDER_LEAD_TIME_OPTIONS.length : 0;
+  const segmentWidth = innerWidth > 0 ? innerWidth / options.length : 0;
 
-  const thumbStyle = useAnimatedStyle(
-    () => ({
-      transform: [{ translateX: progress.value * segmentWidth }],
-    }),
-    [segmentWidth],
-  );
+  const thumbStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: progress.value * segmentWidthSv.value }],
+  }));
 
   return (
     <View
       style={styles.segmentedTrack}
-      onLayout={(event) =>
-        setInnerWidth(event.nativeEvent.layout.width - SEGMENT_TRACK_PADDING * 2)
-      }
+      onLayout={(event) => {
+        const inner = event.nativeEvent.layout.width - SEGMENT_TRACK_PADDING * 2;
+        segmentWidthSv.value = inner / options.length;
+        setInnerWidth(inner);
+      }}
     >
       {segmentWidth > 0 ? (
         <Animated.View
           style={[styles.segmentedThumb, { width: segmentWidth }, thumbStyle]}
         />
       ) : null}
-      {REMINDER_LEAD_TIME_OPTIONS.map((minutes, optionIndex) => (
+      {options.map((option, optionIndex) => (
         <SegmentOption
-          key={minutes}
-          label={`${minutes}m`}
-          selected={value === minutes}
+          key={option.value}
+          label={option.label}
+          selected={value === option.value}
           optionIndex={optionIndex}
           progress={progress}
-          onPress={() => onSelect(minutes)}
+          onPress={() => onSelect(option.value)}
         />
       ))}
     </View>
