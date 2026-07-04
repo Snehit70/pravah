@@ -1509,9 +1509,8 @@ function RemindersSection({
             onSelect={(minutes) => void setPreference("reminderLeadTimeMinutes", minutes)}
           />
         </View>
-      </View>
+        <View style={styles.sectionDivider} />
 
-      <View style={[styles.settingBlock, styles.sectionCard]}>
         <View style={styles.settingRow}>
           <View style={styles.syncIconWrap}>
             <QuietHoursIcon color={colors.textSecondary} size={18} />
@@ -3015,6 +3014,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: 10,
     backgroundColor: colors.bgCard,
+  },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: colors.bgInput,
+    marginHorizontal: -spacing.lg,
+    marginVertical: spacing.xs,
   },
   categoryDivider: {
     height: 1,
