@@ -946,14 +946,13 @@ function CliCredentialsSection({
                               Lets this token create and edit your tasks.
                             </Text>
                           </View>
-                          <Switch
+                          <ThemedToggle
                             value={writesOn}
                             onValueChange={(next) =>
                               void onSetTaskWrites(credential._id, next)
                             }
                             disabled={isBusy}
-                            trackColor={{ false: colors.border, true: colors.warningMuted }}
-                            thumbColor={writesOn ? colors.warning : colors.textMuted}
+                            accessibilityLabel="Allow task writes"
                           />
                         </View>
                       ) : null}
@@ -1231,12 +1230,11 @@ function SyncSection({
               <Text style={styles.settingMeta}>{calendarMetaLine}</Text>
             ) : null}
           </View>
-          <Switch
+          <ThemedToggle
             value={calendarSyncEnabled}
             onValueChange={onGoogleCalendarToggle}
             disabled={isGoogleToggleSaving}
-            trackColor={{ false: colors.border, true: colors.warningMuted }}
-            thumbColor={calendarSyncEnabled ? colors.warning : colors.textMuted}
+            accessibilityLabel="Google Calendar sync"
           />
         </View>
         {calendarSyncHealth === "error" && calendarErrorSummary ? (
@@ -1349,12 +1347,11 @@ function SyncSection({
             <Text style={styles.settingHelp}>Surface pending email follow-ups for review.</Text>
             {gmailMetaLine ? <Text style={styles.settingMeta}>{gmailMetaLine}</Text> : null}
           </View>
-          <Switch
+          <ThemedToggle
             value={gmailSyncEnabled}
             onValueChange={onGmailToggle}
             disabled={isGmailToggleSaving || !canToggleGmailSync}
-            trackColor={{ false: colors.border, true: colors.warningMuted }}
-            thumbColor={gmailSyncEnabled ? colors.warning : colors.textMuted}
+            accessibilityLabel="Gmail sync"
           />
         </View>
         {pendingGmailReviewCount > 0 ? (
@@ -1526,11 +1523,10 @@ function RemindersSection({
               Auto-scheduled alerts wait until quiet hours end.
             </Text>
           </View>
-          <Switch
+          <ThemedToggle
             value={prefs.quietHoursEnabled}
             onValueChange={(next) => void setPreference("quietHoursEnabled", next)}
-            trackColor={{ false: colors.border, true: colors.warningMuted }}
-            thumbColor={prefs.quietHoursEnabled ? colors.warning : colors.textMuted}
+            accessibilityLabel="Quiet hours"
           />
         </View>
 
@@ -1681,6 +1677,71 @@ function SegmentOption({
       style={styles.segmentedOption}
     >
       <Animated.Text style={[styles.segmentedOptionText, labelStyle]}>{label}</Animated.Text>
+    </Pressable>
+  );
+}
+
+const TOGGLE_TRACK_WIDTH = 46;
+const TOGGLE_TRACK_HEIGHT = 27;
+const TOGGLE_PADDING = 3;
+const TOGGLE_THUMB_SIZE = TOGGLE_TRACK_HEIGHT - TOGGLE_PADDING * 2;
+
+function ThemedToggle({
+  value,
+  onValueChange,
+  disabled,
+  accessibilityLabel,
+}: {
+  value: boolean;
+  onValueChange: (next: boolean) => void;
+  disabled?: boolean;
+  accessibilityLabel?: string;
+}) {
+  const reducedMotion = useReducedMotion();
+  const progress = useSharedValue(value ? 1 : 0);
+
+  useEffect(() => {
+    const next = value ? 1 : 0;
+    progress.value = reducedMotion
+      ? next
+      : withSpring(next, { damping: 16, stiffness: 260, mass: 0.7 });
+  }, [value, progress, reducedMotion]);
+
+  const trackStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      progress.value,
+      [0, 1],
+      [colors.border, colors.warningMuted],
+    ),
+  }));
+
+  const thumbStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      progress.value,
+      [0, 1],
+      [colors.textMuted, colors.warning],
+    ),
+    transform: [
+      {
+        translateX:
+          progress.value * (TOGGLE_TRACK_WIDTH - TOGGLE_THUMB_SIZE - TOGGLE_PADDING * 2),
+      },
+    ],
+  }));
+
+  return (
+    <Pressable
+      onPress={() => onValueChange(!value)}
+      disabled={disabled}
+      hitSlop={8}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value, disabled: !!disabled }}
+      accessibilityLabel={accessibilityLabel}
+      style={disabled ? { opacity: 0.5 } : undefined}
+    >
+      <Animated.View style={[styles.toggleTrack, trackStyle]}>
+        <Animated.View style={[styles.toggleThumb, thumbStyle]} />
+      </Animated.View>
     </Pressable>
   );
 }
@@ -3634,6 +3695,18 @@ const styles = StyleSheet.create({
   segmentedOptionText: {
     ...typography.bodyMd,
     fontFamily: "Geist_500Medium",
+  },
+  toggleTrack: {
+    width: TOGGLE_TRACK_WIDTH,
+    height: TOGGLE_TRACK_HEIGHT,
+    borderRadius: radii.md,
+    padding: TOGGLE_PADDING,
+    justifyContent: "center",
+  },
+  toggleThumb: {
+    width: TOGGLE_THUMB_SIZE,
+    height: TOGGLE_THUMB_SIZE,
+    borderRadius: radii.md - TOGGLE_PADDING,
   },
   timeInlineButton: {
     paddingHorizontal: spacing.md,
