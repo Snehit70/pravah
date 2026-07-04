@@ -7,7 +7,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -39,7 +38,12 @@ import {
   InboxTrayIcon,
   InfoCircleIcon,
   MailIcon,
+  MotionIcon,
+  SpeakerIcon,
+  StackPlusIcon,
+  SwipeIcon,
   SyncLoopIcon,
+  VibrateIcon,
 } from "./UiIcons";
 import AboutIconAsset from "../assets/icons/settings-about.svg";
 import AppearanceIconAsset from "../assets/icons/settings-appearance.svg";
@@ -129,6 +133,11 @@ const LEAD_TIME_SEGMENTS = REMINDER_LEAD_TIME_OPTIONS.map((minutes) => ({
   value: minutes as ReminderLeadTimeMinutes,
   label: `${minutes}m`,
 }));
+const REDUCED_MOTION_SEGMENTS = [
+  { value: "system", label: "System" },
+  { value: "always", label: "On" },
+  { value: "never", label: "Off" },
+] as const;
 const DENSITY_OPTIONS: Array<{ value: Density; label: string; description: string }> = [
   {
     value: "cozy",
@@ -1762,117 +1771,92 @@ function InteractionSection({ prefs, setPreference }: InteractionSectionProps) {
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Quick capture</Text>
-        <Text style={styles.settingHelp}>
-          Capture stays centered in the tab bar. Advanced creation tools stay hidden until
-          you choose to use them.
-        </Text>
         <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <StackPlusIcon color={colors.textSecondary} size={18} />
+          </View>
           <View style={styles.settingCopy}>
-            <Text style={styles.settingMeta}>Bulk task capture</Text>
+            <Text style={styles.settingLabel}>Bulk task capture</Text>
             <Text style={styles.settingHelp}>
-              Create numbered task series and assign copies to multiple Goals.
+              Create numbered task series across multiple Goals.
             </Text>
           </View>
-          <Switch
+          <ThemedToggle
             value={prefs.bulkTaskCaptureEnabled}
             onValueChange={(next) => void setPreference("bulkTaskCaptureEnabled", next)}
-            trackColor={{ false: colors.border, true: colors.accentSoft }}
-            thumbColor={prefs.bulkTaskCaptureEnabled ? colors.accent : colors.textMuted}
             accessibilityLabel="Bulk task capture"
           />
         </View>
-      </View>
+        <View style={styles.sectionDivider} />
 
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Task gestures</Text>
-        <Text style={styles.settingHelp}>
-          Keep visible actions available on every Task. Swipe actions are optional accelerators.
-        </Text>
         <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <SwipeIcon color={colors.textSecondary} size={18} />
+          </View>
           <View style={styles.settingCopy}>
-            <Text style={styles.settingMeta}>Swipe actions</Text>
+            <Text style={styles.settingLabel}>Swipe actions</Text>
             <Text style={styles.settingHelp}>
-              Off by default to reduce accidental completion or rescheduling.
+              Swipe a Task to complete or reschedule it.
             </Text>
           </View>
-          <Switch
+          <ThemedToggle
             value={prefs.swipeActionsEnabled}
             onValueChange={(next) => void setPreference("swipeActionsEnabled", next)}
-            trackColor={{ false: colors.border, true: colors.accentSoft }}
-            thumbColor={prefs.swipeActionsEnabled ? colors.accent : colors.textMuted}
             accessibilityLabel="Swipe actions"
           />
         </View>
-      </View>
+        <View style={styles.sectionDivider} />
 
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Feedback</Text>
-        <Text style={styles.settingHelp}>
-          Sensory feedback is subtle and functional. Sound stays off unless you enable it.
-        </Text>
         <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <VibrateIcon color={colors.textSecondary} size={18} />
+          </View>
           <View style={styles.settingCopy}>
-            <Text style={styles.settingMeta}>Haptics</Text>
+            <Text style={styles.settingLabel}>Haptics</Text>
             <Text style={styles.settingHelp}>
-              Light feedback for capture, completion, selection, and confirmed Kairo actions.
+              Light feedback for capture, completion, and Kairo actions.
             </Text>
           </View>
-          <Switch
+          <ThemedToggle
             value={prefs.hapticsEnabled}
             onValueChange={(next) => void setPreference("hapticsEnabled", next)}
-            trackColor={{ false: colors.border, true: colors.accentSoft }}
-            thumbColor={prefs.hapticsEnabled ? colors.accent : colors.textMuted}
             accessibilityLabel="Haptics"
           />
         </View>
+        <View style={styles.sectionDivider} />
+
         <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <SpeakerIcon color={colors.textSecondary} size={18} />
+          </View>
           <View style={styles.settingCopy}>
-            <Text style={styles.settingMeta}>Sound</Text>
+            <Text style={styles.settingLabel}>Sound</Text>
             <Text style={styles.settingHelp}>
-              Optional quiet cues for capture, completion, and critical attention states.
+              Quiet cues for capture and completion.
             </Text>
           </View>
-          <Switch
+          <ThemedToggle
             value={prefs.soundEnabled}
             onValueChange={(next) => void setPreference("soundEnabled", next)}
-            trackColor={{ false: colors.border, true: colors.accentSoft }}
-            thumbColor={prefs.soundEnabled ? colors.accent : colors.textMuted}
             accessibilityLabel="Sound"
           />
         </View>
-      </View>
+        <View style={styles.sectionDivider} />
 
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Motion</Text>
-        <Text style={styles.settingHelp}>
-          Motion clarifies state changes. It should never slow down capture or completion.
-        </Text>
-        <View style={styles.fieldStack}>
-          <Text style={styles.fieldLabel}>Reduced motion</Text>
-          <View style={styles.segmented}>
-            {(["system", "always", "never"] as const).map((mode) => {
-              const active = prefs.reducedMotionOverride === mode;
-              return (
-                <Pressable
-                  key={mode}
-                  onPress={() => void setPreference("reducedMotionOverride", mode)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  style={({ pressed }) => [
-                    styles.segment,
-                    active && styles.segmentActive,
-                    pressed && { opacity: 0.7 },
-                  ]}
-                >
-                  <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                    {mode === "system" ? "System" : mode === "always" ? "On" : "Off"}
-                  </Text>
-                </Pressable>
-              );
-            })}
+        <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <MotionIcon color={colors.textSecondary} size={18} />
+          </View>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Reduced motion</Text>
+            <Text style={styles.settingHelp}>Minimize animations across the app.</Text>
           </View>
         </View>
+        <SlidingSegmented
+          options={REDUCED_MOTION_SEGMENTS}
+          value={prefs.reducedMotionOverride}
+          onSelect={(mode) => void setPreference("reducedMotionOverride", mode)}
+        />
       </View>
     </View>
   );
@@ -3218,9 +3202,6 @@ const styles = StyleSheet.create({
     ...typography.bodyMd,
     color: colors.accent,
   },
-  fieldStack: {
-    gap: spacing.sm,
-  },
   fieldLabel: {
     ...typography.micro,
     color: colors.textMuted,
@@ -3730,32 +3711,6 @@ const styles = StyleSheet.create({
   timeRowValue: {
     ...typography.bodyMd,
     color: colors.textPrimary,
-  },
-  segmented: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  segment: {
-    flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.full,
-    backgroundColor: colors.bgSurface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-    alignItems: "center",
-  },
-  segmentActive: {
-    backgroundColor: colors.accentSoft,
-    borderColor: colors.accent,
-  },
-  segmentText: {
-    ...typography.bodyMd,
-    color: colors.textMuted,
-  },
-  segmentTextActive: {
-    color: colors.accent,
-    fontFamily: "Geist_600SemiBold",
   },
   selectionCardSelected: {
     flexDirection: "row",
