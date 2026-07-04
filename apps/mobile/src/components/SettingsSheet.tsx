@@ -31,7 +31,6 @@ import { classifyError, mobileLogger } from "../lib/logger";
 import {
   AlertCircleIcon,
   ArrowUpRightIcon,
-  BellIcon as BellStrokeIcon,
   CalendarIcon,
   CheckIcon,
   ChevronLeftIcon,
@@ -40,7 +39,6 @@ import {
   InboxTrayIcon,
   InfoCircleIcon,
   MailIcon,
-  MoonIcon,
   SyncLoopIcon,
 } from "./UiIcons";
 import AboutIconAsset from "../assets/icons/settings-about.svg";
@@ -50,6 +48,7 @@ import KairoIconAsset from "../assets/icons/settings-kairo.svg";
 import CliIconAsset from "../assets/icons/settings-cli.svg";
 import AppSettingsIconAsset from "../assets/icons/app-settings.svg";
 import RemindersIconAsset from "../assets/icons/settings-reminders.svg";
+import QuietHoursIconAsset from "../assets/icons/settings-quiet-hours.svg";
 import SyncIconAsset from "../assets/icons/settings-sync.svg";
 import {
   moveTabOrder,
@@ -205,6 +204,10 @@ function CliIcon({ color, size = 18 }: CategoryIconProps) {
 
 function BellIcon({ color: _color, size = 18 }: CategoryIconProps) {
   return <RemindersIconAsset width={size} height={size} />;
+}
+
+function QuietHoursIcon({ color: _color, size = 18 }: CategoryIconProps) {
+  return <QuietHoursIconAsset width={size} height={size} />;
 }
 
 function HandIcon({ color: _color, size = 18 }: CategoryIconProps) {
@@ -1437,7 +1440,7 @@ function RemindersSection({
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <View style={styles.settingRow}>
           <View style={styles.syncIconWrap}>
-            <BellStrokeIcon color={colors.textSecondary} size={18} />
+            <BellIcon color={colors.textSecondary} size={18} />
           </View>
           <View style={styles.settingCopy}>
             <View style={styles.syncTitleRow}>
@@ -1511,7 +1514,7 @@ function RemindersSection({
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <View style={styles.settingRow}>
           <View style={styles.syncIconWrap}>
-            <MoonIcon color={colors.textSecondary} size={18} />
+            <QuietHoursIcon color={colors.textSecondary} size={18} />
           </View>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Quiet hours</Text>
