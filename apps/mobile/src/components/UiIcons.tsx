@@ -190,3 +190,46 @@ export const LedgerCheckIcon = icon(({ color, size, strokeWidth }) => (
     <Path d="M8.5 8.5h7" />
   </Svg>
 ));
+
+export const StackPlusIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M4 7h9" />
+    <Path d="M4 12h9" />
+    <Path d="M4 17h6" />
+    <Path d="M17.5 14v6" />
+    <Path d="M14.5 17h6" />
+  </Svg>
+));
+
+export const SwipeIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M4 12h16" />
+    <Path d="m16.75 8.75 3.25 3.25-3.25 3.25" />
+    <Path d="M7.25 8.75 4 12l3.25 3.25" />
+  </Svg>
+));
+
+export const VibrateIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M9.5 5.5h5A1.5 1.5 0 0 1 16 7v10a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 8 17V7a1.5 1.5 0 0 1 1.5-1.5Z" />
+    <Path d="M4.5 9.5v5" />
+    <Path d="M19.5 9.5v5" />
+  </Svg>
+));
+
+export const SpeakerIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M4 9.5v5h3l4.5 3.5v-12L7 9.5H4Z" />
+    <Path d="M15 9.75a3.5 3.5 0 0 1 0 4.5" />
+    <Path d="M17.75 7.5a7 7 0 0 1 0 9" />
+  </Svg>
+));
+
+export const MotionIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Circle cx={14.5} cy={12} r={4.5} />
+    <Path d="M3.5 8.5H8" />
+    <Path d="M2.5 12h4.5" />
+    <Path d="M3.5 15.5H8" />
+  </Svg>
+));
