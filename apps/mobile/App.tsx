@@ -1031,22 +1031,23 @@ function MobileApp() {
         style={[styles.chrome, chromeAnimStyle]}
         pointerEvents={isKairoActive ? "none" : "auto"}
       >
-      {/* Compact header: one title line, Kairo promoted, settings quiet. */}
+      {/* Compact header: brand mark + view name on one line (the mark already
+          says "Pravah"; no caps label needed), subtitle tucked beneath. */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
         <View style={styles.headerMain}>
           <View style={styles.titleLockup}>
-            <BrandMark size={24} />
+            <BrandMark size={28} />
             <View style={styles.titleTextBlock}>
-              <Text style={styles.wordmark}>Pravah</Text>
               <Text style={styles.headerTitle}>{headerViewName}</Text>
+              <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>
             </View>
           </View>
           <View style={styles.headerLinks}>
             <Pressable
               onPress={openKairo}
               disabled={!canUseWorkspaceActions}
-              style={({ pressed }) => [styles.settingsLinkWrap, pressed && styles.pressed]}
-              hitSlop={12}
+              style={({ pressed }) => [styles.kairoChip, pressed && styles.pressed]}
+              hitSlop={8}
               accessibilityRole="button"
               accessibilityLabel="Open Kairo"
             >
@@ -1060,11 +1061,10 @@ function MobileApp() {
               accessibilityRole="button"
               accessibilityLabel="Open settings"
             >
-              <AppSettingsIcon width={19} height={19} color={colors.textMuted} />
+              <AppSettingsIcon width={20} height={20} color={colors.textMuted} />
             </Pressable>
           </View>
         </View>
-        <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>
       </View>
 
       {/* Toast — left rule + line of copy, no filled pill. */}
@@ -1484,23 +1484,13 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.sm,
   },
   headerMain: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     gap: spacing.md,
-  },
-  // Lowercase wordmark in Fraunces — the brand voice, not a brand badge.
-  // Slightly lowered baseline relative to the Settings link via a small
-  // negative letterSpacing nudge handled in tokens.
-  wordmark: {
-    color: colors.textMuted,
-    fontFamily: fonts.sansSemibold,
-    fontSize: 11,
-    letterSpacing: 1.1,
-    textTransform: "uppercase",
   },
   titleLockup: {
     flexDirection: "row",
@@ -1528,14 +1518,13 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     ...typography.micro,
     marginTop: 2,
-    paddingLeft: 24 + spacing.sm,
   },
   // Header links sit in a row so additional affordances (Kairo, Settings)
   // line up with the same visual weight rather than competing for spot.
   headerLinks: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: spacing.lg,
   },
   // Settings is a hairline-underlined word, not a button shape.
   settingsLinkWrap: {
@@ -1549,16 +1538,23 @@ const styles = StyleSheet.create({
     fontSize: 18,
     letterSpacing: 1,
   },
-  // Kairo entry point: same micro-link dialect as Settings but tinted in the
-  // accent so it reads as the AI affordance without needing iconography.
+  // Kairo entry point: a quiet squircle chip with accent text — reads as the
+  // AI affordance without underline chrome or iconography.
+  kairoChip: {
+    minHeight: 34,
+    paddingHorizontal: spacing.md,
+    justifyContent: "center",
+    borderRadius: radii.md,
+    borderCurve: "continuous",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
   kairoLink: {
-    color: colors.textPrimary,
+    color: colors.accent,
     fontFamily: fonts.sansSemibold,
     fontSize: 13,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    textDecorationLine: "underline",
-    textDecorationColor: colors.accent,
+    letterSpacing: 0.2,
   },
   // Toasts use a quiet tonal fill and full hairline border so status is clear
   // without relying on a decorative side stripe.
@@ -1632,8 +1628,9 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     paddingLeft: spacing.md,
   },
-  // Broken sync is persistent and actionable, so it uses an error-tinted
-  // surface rather than transient toast treatment.
+  // Broken sync is persistent and actionable, but it lives above the task
+  // list every session — so it reads as a quiet status line (surface fill,
+  // hairline border) with error color reserved for the icon and action.
   syncBrokenBanner: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
@@ -1641,16 +1638,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.error,
+    borderColor: colors.borderSubtle,
     borderRadius: radii.md,
-    backgroundColor: colors.errorMuted,
+    backgroundColor: colors.bgSurface,
     flexDirection: "row",
-    alignItems: "baseline",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.md,
   },
   syncBrokenText: {
-    color: colors.textPrimary,
+    color: colors.textSecondary,
     ...typography.bodyMd,
     flex: 1,
   },

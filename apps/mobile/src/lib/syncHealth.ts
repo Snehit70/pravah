@@ -23,16 +23,18 @@ export function summarizeSyncError(raw?: string): string | undefined {
 }
 
 /** Collapse the separate connection/enabled/error fields into one honest health
- *  state. An unresolved lastError outranks everything: a green "Connected" while
- *  sync is silently failing is the dishonesty this exists to prevent. */
+ *  state. While sync is enabled, an unresolved lastError outranks "Connected":
+ *  a green status while sync is silently failing is the dishonesty this exists
+ *  to prevent. But a disconnected or user-disabled integration can't be "in
+ *  error" — a stale lastError must not outrank the feature being off. */
 export function deriveSyncHealth(input: {
   status: string;
   syncEnabled: boolean;
   hasAccount: boolean;
   lastError?: string;
 }): SyncHealth {
-  if (input.lastError) return "error";
   if (input.status === "disconnected") return "disconnected";
   if (!input.syncEnabled) return "paused";
+  if (input.lastError) return "error";
   return "healthy";
 }

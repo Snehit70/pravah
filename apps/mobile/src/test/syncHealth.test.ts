@@ -32,6 +32,15 @@ describe("deriveSyncHealth", () => {
     ).toBe("paused");
   });
 
+  it("does not report error from a stale lastError once sync is disabled or disconnected", () => {
+    expect(
+      deriveSyncHealth({ status: "connected", syncEnabled: false, hasAccount: true, lastError: "boom" })
+    ).toBe("paused");
+    expect(
+      deriveSyncHealth({ status: "disconnected", syncEnabled: false, hasAccount: false, lastError: "boom" })
+    ).toBe("disconnected");
+  });
+
   it("reports disconnected whenever the backend status is disconnected", () => {
     expect(
       deriveSyncHealth({ status: "disconnected", syncEnabled: false, hasAccount: false })
