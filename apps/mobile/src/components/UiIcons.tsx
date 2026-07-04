@@ -143,6 +143,36 @@ export const UpdateArrowIcon = icon(({ color, size, strokeWidth }) => (
   </Svg>
 ));
 
+export const FileTextIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M8 3.5h5.5L18 8v9.5a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3v-11a3 3 0 0 1 3-3Z" />
+    <Path d="M13.5 3.5V8H18" />
+    <Path d="M8.5 12.5H14" />
+    <Path d="M8.5 16H12" />
+  </Svg>
+));
+
+export const PulseIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M3.5 12h3.25l2.5-5.5 3.5 11 2.5-5.5h5.25" />
+  </Svg>
+));
+
+export const RetryArrowIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" />
+    <Path d="M19.5 3.5v3.5H16" />
+  </Svg>
+));
+
+export const AlertSquircleIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M12 3.75c5.75 0 8.25 2.5 8.25 8.25s-2.5 8.25-8.25 8.25S3.75 17.75 3.75 12 6.25 3.75 12 3.75Z" />
+    <Line x1={12} y1={7.75} x2={12} y2={12.75} />
+    <Circle cx={12} cy={16.35} r={0.8} fill={color} stroke="none" />
+  </Svg>
+));
+
 export const CheckIcon = icon(({ color, size, strokeWidth }) => (
   <Svg {...frame(color, size, strokeWidth)}>
     <Path d="m5 12.5 4.5 4.5L19 7" />

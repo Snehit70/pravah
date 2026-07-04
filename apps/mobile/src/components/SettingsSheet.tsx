@@ -30,6 +30,7 @@ import { retryQueueStorage } from "../lib/retry-queue-storage";
 import { classifyError, mobileLogger } from "../lib/logger";
 import {
   AlertCircleIcon,
+  AlertSquircleIcon,
   ArrowUpRightIcon,
   BugIcon,
   CalendarIcon,
@@ -38,11 +39,14 @@ import {
   ChevronRightIcon,
   CopyIcon,
   DownloadTrayIcon,
+  FileTextIcon,
   GitBranchIcon,
   InboxTrayIcon,
   InfoCircleIcon,
   MailIcon,
   MotionIcon,
+  PulseIcon,
+  RetryArrowIcon,
   SmartphoneIcon,
   SpeakerIcon,
   StackPlusIcon,
@@ -177,6 +181,7 @@ const APP_VERSION = appJson.expo?.version ?? "—";
 const REPO_URL = "https://github.com/Snehit70/pravah";
 const CHANGELOG_URL = `${REPO_URL}/blob/main/apps/mobile/CHANGELOG.md`;
 const ISSUES_URL = `${REPO_URL}/issues`;
+const RETRY_QUEUE_STORAGE_KEY = "pravah_mobile_retry_queue_v1";
 
 type CategoryIconProps = {
   color: string;
@@ -2118,7 +2123,10 @@ function DataSection({
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Your data</Text>
+        <View style={styles.aboutTitleRow}>
+          <FileTextIcon color={colors.textPrimary} size={16} strokeWidth={1.8} />
+          <Text style={styles.settingLabel}>Your data</Text>
+        </View>
         <Text style={styles.settingHelp}>
           Export every task currently in view as JSON.
         </Text>
@@ -2134,7 +2142,10 @@ function DataSection({
         </Pressable>
         <View style={styles.sectionDivider} />
 
-        <Text style={styles.settingLabel}>Diagnostics</Text>
+        <View style={styles.aboutTitleRow}>
+          <PulseIcon color={colors.textPrimary} size={16} strokeWidth={1.8} />
+          <Text style={styles.settingLabel}>Diagnostics</Text>
+        </View>
         <Text style={styles.settingHelp}>
           Export app events, device metadata, and sync state as JSON.
         </Text>
@@ -2172,7 +2183,10 @@ function DataSection({
         </Pressable>
         <View style={styles.sectionDivider} />
 
-        <Text style={styles.settingLabel}>Retry queue</Text>
+        <View style={styles.aboutTitleRow}>
+          <RetryArrowIcon color={colors.textPrimary} size={16} strokeWidth={1.8} />
+          <Text style={styles.settingLabel}>Retry queue</Text>
+        </View>
         <Text style={styles.settingHelp}>
           Drop pending offline retries if a stuck request blocks fresh syncs.
         </Text>
@@ -2197,10 +2211,12 @@ function DataSection({
             {isClearingRetryQueue ? "Clearing…" : "Clear retry queue"}
           </Text>
         </Pressable>
-      </View>
+        <View style={styles.sectionDivider} />
 
-      <View style={[styles.settingBlock, styles.sectionCard, styles.dangerCard]}>
-        <Text style={styles.dangerLabel}>Danger zone</Text>
+        <View style={styles.aboutTitleRow}>
+          <AlertSquircleIcon color={colors.error} size={16} strokeWidth={1.8} />
+          <Text style={styles.dangerLabel}>Danger zone</Text>
+        </View>
         <Text style={styles.settingHelp}>
           Wipe locally cached preferences, retry queue, snapshot, and reminder schedule. Server data is untouched.
         </Text>
@@ -2217,20 +2233,6 @@ function DataSection({
           </Text>
         </Pressable>
 
-        <Text style={[styles.settingHelp, { marginTop: spacing.sm }]}>
-          To permanently delete your Pravah account and server data, open a request with support.
-        </Text>
-        <Pressable
-          onPress={() =>
-            void Linking.openURL(`${ISSUES_URL}/new?title=Delete+my+Pravah+account`)
-          }
-          hitSlop={12}
-          accessibilityRole="link"
-          accessibilityLabel="Request account deletion via GitHub issue"
-          style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
-        >
-          <Text style={styles.dangerActionText}>Request account deletion →</Text>
-        </Pressable>
       </View>
     </View>
   );
@@ -2449,6 +2451,7 @@ export function SettingsSheet({
     label: "Checking",
     tone: "neutral",
   });
+  const [retryQueueCount, setRetryQueueCount] = useState<number | null>(null);
   const issueBootstrapToken = useMutation(api.automation.issueBootstrapToken);
   const revokeCredential = useMutation(api.automation.revokeCredential);
   const updateCredential = useMutation(api.automation.updateCredential);
@@ -2534,6 +2537,25 @@ export function SettingsSheet({
     };
   }, [visible]);
 
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    void retryQueueStorage
+      .getItem(RETRY_QUEUE_STORAGE_KEY)
+      .then((raw) => {
+        if (cancelled) return;
+        const parsed: unknown = raw ? JSON.parse(raw) : [];
+        setRetryQueueCount(Array.isArray(parsed) ? parsed.length : 0);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRetryQueueCount(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible]);
+
   const handleClose = useCallback(() => {
     Keyboard.dismiss();
     setOpenPicker(null);
@@ -2580,8 +2602,9 @@ export function SettingsSheet({
     if (!confirmed) return;
     setIsClearingRetryQueue(true);
     try {
-      await retryQueueStorage.removeItem("pravah_mobile_retry_queue_v1");
-      await SecureStore.deleteItemAsync("pravah_mobile_retry_queue_v1").catch(() => undefined);
+      await retryQueueStorage.removeItem(RETRY_QUEUE_STORAGE_KEY);
+      await SecureStore.deleteItemAsync(RETRY_QUEUE_STORAGE_KEY).catch(() => undefined);
+      setRetryQueueCount(0);
       showToast({ kind: "info", message: "Retry queue cleared." });
     } catch (error) {
       mobileLogger.warn("retry_queue_clear_failed", { errorType: classifyError(error) });
@@ -2603,6 +2626,7 @@ export function SettingsSheet({
     setIsWiping(true);
     try {
       await onWipeLocalData();
+      setRetryQueueCount(0);
       showToast({ kind: "info", message: "Local data wiped." });
     } catch (error) {
       mobileLogger.warn("wipe_local_data_failed", { errorType: classifyError(error) });
@@ -2796,7 +2820,15 @@ export function SettingsSheet({
       ? { label: "Swipe on", tone: "neutral" }
       : { label: "Swipe off", tone: "neutral" },
     appearance: { label: "Geist", tone: "neutral" },
-    data: { label: "", tone: "neutral" },
+    data:
+      retryQueueCount === null
+        ? { label: "", tone: "neutral" }
+        : retryQueueCount > 0
+          ? {
+              label: `${retryQueueCount} queued`,
+              tone: "warning",
+            }
+          : { label: "All clear", tone: "success" },
     about: {
       label: APP_VERSION.startsWith("v") ? APP_VERSION : `v${APP_VERSION}`,
       tone: "neutral",
@@ -3855,10 +3887,6 @@ const styles = StyleSheet.create({
   linkRowChevron: {
     ...typography.bodyMd,
     color: colors.accent,
-  },
-  dangerCard: {
-    gap: spacing.sm,
-    borderColor: colors.errorMuted,
   },
   dangerLabel: {
     ...typography.bodyMd,
