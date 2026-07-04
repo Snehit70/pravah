@@ -236,7 +236,11 @@ export function SnapWheelTimePicker({
               hitSlop={12}
               accessibilityRole="button"
               accessibilityLabel="Cancel"
-              style={({ pressed }) => [styles.footerBtn, pressed && { opacity: 0.6 }]}
+              style={({ pressed }) => [
+                styles.footerBtn,
+                styles.footerGhostBtn,
+                pressed && { opacity: 0.6 },
+              ]}
             >
               <Text style={styles.footerCancel}>Cancel</Text>
             </Pressable>
@@ -245,7 +249,11 @@ export function SnapWheelTimePicker({
               hitSlop={12}
               accessibilityRole="button"
               accessibilityLabel="Confirm time"
-              style={({ pressed }) => [styles.footerBtn, pressed && { opacity: 0.6 }]}
+              style={({ pressed }) => [
+                styles.footerBtn,
+                styles.footerSolidBtn,
+                pressed && { opacity: 0.85 },
+              ]}
             >
               <Text style={styles.footerConfirm}>Set</Text>
             </Pressable>
@@ -347,7 +355,16 @@ const styles = StyleSheet.create({
   footerBtn: {
     minHeight: 44,
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.md,
+  },
+  footerGhostBtn: {
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  footerSolidBtn: {
+    backgroundColor: colors.textPrimary,
   },
   footerCancel: {
     ...typography.title,
@@ -355,6 +372,6 @@ const styles = StyleSheet.create({
   },
   footerConfirm: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: colors.textInverse,
   },
 });
