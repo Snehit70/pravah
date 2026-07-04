@@ -31,16 +31,19 @@ import { classifyError, mobileLogger } from "../lib/logger";
 import {
   AlertCircleIcon,
   ArrowUpRightIcon,
+  BugIcon,
   CalendarIcon,
   CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CopyIcon,
   DownloadTrayIcon,
+  GitBranchIcon,
   InboxTrayIcon,
   InfoCircleIcon,
   MailIcon,
   MotionIcon,
+  SmartphoneIcon,
   SpeakerIcon,
   StackPlusIcon,
   SwipeIcon,
@@ -89,6 +92,7 @@ import Animated, {
 import { KairoSettingsSection } from "./KairoSettingsSection";
 import { GmailReviewSection } from "./GmailReviewSection";
 import { AppUpdateSection } from "./AppUpdateSection";
+import { WhatsNewSheet } from "./WhatsNewSheet";
 import { SnapWheelTimePicker } from "./SnapWheelTimePicker";
 import {
   summarizeSyncError,
@@ -2027,24 +2031,35 @@ function AppearanceSection({
 }
 
 function AboutSection() {
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
+
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <View style={styles.aboutHeader}>
           <View style={styles.aboutHeaderCopy}>
-            <Text style={styles.settingLabel}>Pravah Mobile</Text>
+            <View style={styles.aboutTitleRow}>
+              <SmartphoneIcon color={colors.textPrimary} size={16} />
+              <Text style={styles.settingLabel}>Pravah Mobile</Text>
+            </View>
             <Text style={styles.aboutVersion}>Version {APP_VERSION}</Text>
           </View>
           <Pressable
-            onPress={() => void Linking.openURL(CHANGELOG_URL)}
+            onPress={() => setWhatsNewOpen(true)}
             hitSlop={12}
-            accessibilityRole="link"
-            accessibilityLabel="Open changelog on GitHub"
+            accessibilityRole="button"
+            accessibilityLabel="Show what's new"
             style={({ pressed }) => [styles.versionPill, pressed && { opacity: 0.6 }]}
           >
             <Text style={styles.versionPillText}>What's new</Text>
           </Pressable>
         </View>
+
+        <WhatsNewSheet
+          visible={whatsNewOpen}
+          onClose={() => setWhatsNewOpen(false)}
+          changelogUrl={CHANGELOG_URL}
+        />
 
         <Pressable
           onPress={() => void Linking.openURL(ISSUES_URL)}
@@ -2053,7 +2068,10 @@ function AboutSection() {
           accessibilityLabel="Report an issue on GitHub"
           style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
         >
-          <Text style={styles.linkRowText}>Report an issue</Text>
+          <View style={styles.linkRowLead}>
+            <BugIcon color={colors.textMuted} size={16} />
+            <Text style={styles.linkRowText}>Report an issue</Text>
+          </View>
           <ArrowUpRightIcon color={colors.textMuted} size={16} />
         </Pressable>
         <Pressable
@@ -2063,7 +2081,10 @@ function AboutSection() {
           accessibilityLabel="Open Pravah repository on GitHub"
           style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
         >
-          <Text style={styles.linkRowText}>GitHub repository</Text>
+          <View style={styles.linkRowLead}>
+            <GitBranchIcon color={colors.textMuted} size={16} />
+            <Text style={styles.linkRowText}>GitHub repository</Text>
+          </View>
           <ArrowUpRightIcon color={colors.textMuted} size={16} />
         </Pressable>
 
@@ -3808,6 +3829,17 @@ const styles = StyleSheet.create({
     ...typography.bodyMd,
     color: colors.textPrimary,
     fontFamily: "Geist_600SemiBold",
+  },
+  aboutTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  linkRowLead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    flex: 1,
   },
   linkRow: {
     flexDirection: "row",

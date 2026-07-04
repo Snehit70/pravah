@@ -5,6 +5,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { checkForAppUpdate, type UpdateAvailableResult, type UpdateCheckResult } from "../lib/appUpdate";
 import { useAppUpdateInstaller } from "../hooks/useAppUpdateInstaller";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { UpdateArrowIcon } from "./UiIcons";
 
 const CANONICAL_PACKAGE = "com.pravah.mobile";
 
@@ -70,7 +71,10 @@ export function AppUpdateSection() {
   return (
     <View style={styles.group}>
       <View style={styles.divider} />
-      <Text style={styles.label}>App updates</Text>
+      <View style={styles.labelRow}>
+        <UpdateArrowIcon color={colors.textPrimary} size={16} />
+        <Text style={styles.label}>App updates</Text>
+      </View>
       <Text style={styles.help}>{statusCopy(checkState)}</Text>
       {update ? (
         <View style={styles.notesBox}>
@@ -142,6 +146,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgInput,
     marginHorizontal: -spacing.lg,
     marginVertical: spacing.xs,
+  },
+  labelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
   },
   label: {
     ...typography.bodyMd,

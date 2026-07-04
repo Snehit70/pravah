@@ -104,6 +104,45 @@ export const DownloadTrayIcon = icon(({ color, size, strokeWidth }) => (
   </Svg>
 ));
 
+export const BugIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M9 8.5a3 3 0 0 1 6 0v5a3 3 0 0 1-6 0Z" />
+    <Path d="M9.5 7a2.5 2.5 0 0 1 5 0" />
+    <Path d="M12 16.5V20" />
+    <Path d="M9 10H5.5" />
+    <Path d="M15 10h3.5" />
+    <Path d="M9.3 13.5 6 15.5" />
+    <Path d="m14.7 13.5 3.3 2" />
+    <Path d="M9.6 6.4 7.5 4.5" />
+    <Path d="m14.4 6.4 2.1-1.9" />
+  </Svg>
+));
+
+export const GitBranchIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Circle cx={6.5} cy={6} r={2.25} />
+    <Circle cx={6.5} cy={18} r={2.25} />
+    <Circle cx={17.5} cy={6} r={2.25} />
+    <Path d="M6.5 8.25v7.5" />
+    <Path d="M17.5 8.25a5 5 0 0 1-5 5h-2" />
+  </Svg>
+));
+
+export const SmartphoneIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M10 3.5h4a3 3 0 0 1 3 3v11a3 3 0 0 1-3 3h-4a3 3 0 0 1-3-3v-11a3 3 0 0 1 3-3Z" />
+    <Path d="M11 17h2" />
+  </Svg>
+));
+
+export const UpdateArrowIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M12 3.75c5.75 0 8.25 2.5 8.25 8.25s-2.5 8.25-8.25 8.25S3.75 17.75 3.75 12 6.25 3.75 12 3.75Z" />
+    <Path d="M12 15.5v-7" />
+    <Path d="m8.75 11.5 3.25-3.25 3.25 3.25" />
+  </Svg>
+));
+
 export const CheckIcon = icon(({ color, size, strokeWidth }) => (
   <Svg {...frame(color, size, strokeWidth)}>
     <Path d="m5 12.5 4.5 4.5L19 7" />

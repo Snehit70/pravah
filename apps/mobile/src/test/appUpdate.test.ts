@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { checkForAppUpdate, resolveUpdate, type GitHubRelease } from "../lib/appUpdate";
+import {
+  checkForAppUpdate,
+  fetchMobileReleases,
+  resolveReleaseFeed,
+  resolveUpdate,
+  type GitHubRelease,
+} from "../lib/appUpdate";
 
 function release(
   tag: string,
@@ -119,6 +125,53 @@ describe("checkForAppUpdate", () => {
     await expect(checkForAppUpdate("2.3.0", fetchImpl as typeof fetch)).resolves.toMatchObject({
       status: "update-available",
       version: "2.4.0",
+    });
+  });
+});
+
+describe("resolveReleaseFeed", () => {
+  it("lists mobile releases newest-first, ignoring other products, drafts, and prereleases", () => {
+    expect(
+      resolveReleaseFeed([
+        release("web-v9.0.0"),
+        release("mobile-v2.3.0", { body: "Older notes" }),
+        release("mobile-v2.4.0", { body: "Newer notes" }),
+        release("mobile-v2.5.0", { draft: true }),
+        release("mobile-v2.6.0", { prerelease: true }),
+        release("mobile-vnext"),
+      ]),
+    ).toEqual([
+      { version: "2.4.0", notes: "Newer notes" },
+      { version: "2.3.0", notes: "Older notes" },
+    ]);
+  });
+
+  it("falls back to placeholder notes for empty bodies", () => {
+    expect(resolveReleaseFeed([release("mobile-v2.4.0", { body: "  " })])).toEqual([
+      { version: "2.4.0", notes: "No release notes provided." },
+    ]);
+  });
+});
+
+describe("fetchMobileReleases", () => {
+  it("returns the resolved feed on success", async () => {
+    const fetchImpl = vi.fn(async () =>
+      Response.json([release("mobile-v2.4.0", { body: "Notes" })]),
+    );
+
+    await expect(fetchMobileReleases(fetchImpl as typeof fetch)).resolves.toEqual({
+      status: "ok",
+      releases: [{ version: "2.4.0", notes: "Notes" }],
+    });
+  });
+
+  it("shares transport error mapping with update checks", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new Error("offline");
+    });
+
+    await expect(fetchMobileReleases(fetchImpl as typeof fetch)).resolves.toEqual({
+      status: "offline",
     });
   });
 });
