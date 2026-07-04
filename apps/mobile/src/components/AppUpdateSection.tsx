@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     ...typography.bodyMd,
-    color: colors.accent,
+    color: colors.textSecondary,
   },
   actions: {
     flexDirection: "row",
@@ -177,12 +177,12 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
   },
   primaryButton: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
+    backgroundColor: colors.textPrimary,
+    borderColor: colors.textPrimary,
   },
   secondaryButton: {
     backgroundColor: colors.bgSurface,

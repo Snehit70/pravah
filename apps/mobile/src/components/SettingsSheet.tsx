@@ -2018,7 +2018,7 @@ function AboutSection({
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <Text style={styles.settingLabel}>Diagnostics</Text>
         <Text style={styles.settingHelp}>
-          Export recent app events, device metadata, and sync state as a JSON file.
+          Export app events, device metadata, and sync state as JSON.
         </Text>
         <View style={styles.copyRow}>
           <View style={[styles.codePill, styles.copyRowPill]}>
@@ -2050,13 +2050,9 @@ function AboutSection({
         >
           <Text style={styles.softButtonText}>Export diagnostics</Text>
         </Pressable>
-      </View>
+        <View style={styles.sectionDivider} />
 
-      <View style={[styles.settingBlock, styles.sectionCard]}>
         <Text style={styles.settingLabel}>Recent sync errors</Text>
-        <Text style={styles.settingHelp}>
-          Review the latest Google Calendar and Gmail failures without leaving the app.
-        </Text>
 
         <View style={styles.sourceBlock}>
           <View style={styles.sourceHeader}>
@@ -2133,12 +2129,11 @@ function AboutSection({
             </View>
           ) : null}
         </View>
-      </View>
+        <View style={styles.sectionDivider} />
 
-      <View style={[styles.settingBlock, styles.sectionCard]}>
         <Text style={styles.settingLabel}>Your data</Text>
         <Text style={styles.settingHelp}>
-          Export every task currently in view as JSON via the system share sheet.
+          Export every task currently in view as JSON.
         </Text>
         <Pressable
           onPress={onExportTasks}
@@ -2149,12 +2144,11 @@ function AboutSection({
         >
           <Text style={styles.softButtonText}>Export tasks as JSON</Text>
         </Pressable>
-      </View>
+        <View style={styles.sectionDivider} />
 
-      <View style={[styles.settingBlock, styles.sectionCard]}>
         <Text style={styles.settingLabel}>Retry queue</Text>
         <Text style={styles.settingHelp}>
-          Drop pending offline retries if a stuck request is blocking fresh syncs.
+          Drop pending offline retries if a stuck request blocks fresh syncs.
         </Text>
         <Pressable
           onPress={onClearRetryQueue}
@@ -2177,21 +2171,20 @@ function AboutSection({
             {isClearingRetryQueue ? "Clearing…" : "Clear retry queue"}
           </Text>
         </Pressable>
-      </View>
+        <View style={styles.sectionDivider} />
 
-      <View style={[styles.settingBlock, styles.sectionCard, styles.accountCard]}>
         <Text style={styles.settingLabel}>Account</Text>
         <Text style={styles.settingHelp}>
-          Sign out if you want to switch Google accounts on this device.
+          Sign out to switch Google accounts on this device.
         </Text>
         <Pressable
           onPress={onSignOut}
           hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel="Sign out"
-          style={({ pressed }) => [styles.signOutButton, pressed && { opacity: 0.6 }]}
+          style={({ pressed }) => [styles.softButton, pressed && { opacity: 0.6 }]}
         >
-          <Text style={styles.signOutLink}>Sign out</Text>
+          <Text style={styles.softButtonText}>Sign out</Text>
         </Pressable>
       </View>
 
@@ -3184,7 +3177,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
@@ -3360,7 +3353,7 @@ const styles = StyleSheet.create({
   copyChip: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
@@ -3799,12 +3792,14 @@ const styles = StyleSheet.create({
   versionPill: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: radii.full,
-    backgroundColor: colors.accentSoft,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
   },
   versionPillText: {
     ...typography.bodyMd,
-    color: colors.accent,
+    color: colors.textPrimary,
     fontFamily: "Geist_600SemiBold",
   },
   linkRow: {
@@ -3836,7 +3831,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.full,
   },
   statusDotOk: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.success,
   },
   statusDotErr: {
     backgroundColor: colors.error,
@@ -3849,7 +3844,7 @@ const styles = StyleSheet.create({
     ...typography.bodyMd,
   },
   sourceStatusOk: {
-    color: colors.primary,
+    color: colors.success,
   },
   sourceStatusErr: {
     color: colors.error,
@@ -3865,16 +3860,6 @@ const styles = StyleSheet.create({
     ...typography.bodyMd,
     color: colors.textSecondary,
     lineHeight: 18,
-  },
-  accountCard: {
-    gap: spacing.sm,
-  },
-  signOutButton: {
-    alignSelf: "flex-start",
-  },
-  signOutLink: {
-    ...typography.bodyMd,
-    color: colors.accent,
   },
   dangerCard: {
     gap: spacing.sm,
