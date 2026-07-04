@@ -138,17 +138,9 @@ const REDUCED_MOTION_SEGMENTS = [
   { value: "always", label: "On" },
   { value: "never", label: "Off" },
 ] as const;
-const DENSITY_OPTIONS: Array<{ value: Density; label: string; description: string }> = [
-  {
-    value: "cozy",
-    label: "Comfortable",
-    description: "The default thumb-safe spacing used across the redesign.",
-  },
-  {
-    value: "compact",
-    label: "Compact",
-    description: "Tighter task rows for review-heavy sessions.",
-  },
+const DENSITY_SEGMENTS: Array<SegmentedItem<Density>> = [
+  { value: "cozy", label: "Comfortable" },
+  { value: "compact", label: "Compact" },
 ];
 const TASK_COLOR_OPTIONS: Array<{
   value: AccentColor;
@@ -1871,76 +1863,49 @@ function AppearanceSection({
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Theme</Text>
-        <Text style={styles.settingHelp}>
-          Warm light surfaces are the production theme. Dark or alternate themes stay out
-          until the full token set exists.
-        </Text>
-        <View style={styles.selectionCardSelected}>
-          <View style={styles.selectionCopy}>
-            <Text style={styles.selectionTitle}>Warm light</Text>
-            <Text style={styles.selectionDescription}>
-              Paper neutrals, warm ink, and restrained indigo accent.
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Theme</Text>
+            <Text style={styles.settingHelp}>Paper neutrals and warm ink.</Text>
+          </View>
+          <Text style={styles.timeRowValue}>Warm light</Text>
+        </View>
+        <View style={styles.sectionDivider} />
+
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Typography</Text>
+            <Text style={styles.settingHelp}>
+              Geist Sans for UI, Geist Mono for metadata.
             </Text>
           </View>
-          <Text style={styles.selectionStatusText}>Active</Text>
+          <Text style={styles.timeRowValue}>Geist</Text>
         </View>
-      </View>
+        <View style={styles.sectionDivider} />
 
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Typography</Text>
-        <Text style={styles.settingHelp}>
-          Geist is the only shipped font system. More fonts need full truncation,
-          line-height, and accessibility validation before they become settings.
-        </Text>
-        <View style={styles.selectionCardSelected}>
-          <View style={styles.selectionCopy}>
-            <Text style={styles.selectionTitle}>Geist</Text>
-            <Text style={styles.selectionDescription}>
-              Sans for product UI, Geist Mono for dates, counts, and compact metadata.
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Density</Text>
+            <Text style={styles.settingHelp}>
+              Compact tightens task rows without hiding actions.
             </Text>
           </View>
-          <Text style={styles.selectionStatusText}>Active</Text>
         </View>
-      </View>
+        <SlidingSegmented
+          options={DENSITY_SEGMENTS}
+          value={prefs.density}
+          onSelect={(density) => void setPreference("density", density)}
+        />
+        <View style={styles.sectionDivider} />
 
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Density</Text>
-        <Text style={styles.settingHelp}>
-          Comfortable is the default. Compact tightens task rows without hiding actions.
-        </Text>
-        <View style={styles.optionGrid}>
-          {DENSITY_OPTIONS.map((option) => {
-            const active = prefs.density === option.value;
-            return (
-              <Pressable
-                key={option.value}
-                onPress={() => void setPreference("density", option.value)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={`Use ${option.label} density`}
-                style={({ pressed }) => [
-                  styles.optionCard,
-                  active && styles.optionCardActive,
-                  pressed && { opacity: 0.72 },
-                ]}
-              >
-                <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>
-                  {option.label}
-                </Text>
-                <Text style={styles.optionDescription}>{option.description}</Text>
-              </Pressable>
-            );
-          })}
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Task color</Text>
+            <Text style={styles.settingHelp}>
+              Emphasis color for task rows. Status colors keep their meanings.
+            </Text>
+          </View>
         </View>
-      </View>
-
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Task color</Text>
-        <Text style={styles.settingHelp}>
-          Choose the task emphasis color used by task rows. Status colors keep their
-          fixed meanings.
-        </Text>
         <View style={styles.swatchGrid}>
           {TASK_COLOR_OPTIONS.map((option) => {
             const active = prefs.taskColorScheme === option.value;
@@ -1958,23 +1923,19 @@ function AppearanceSection({
                 ]}
               >
                 <View style={[styles.swatchDot, { backgroundColor: option.swatch }]} />
-                <View style={styles.selectionCopy}>
-                  <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>
-                    {option.label}
-                  </Text>
-                  <Text style={styles.optionDescription}>{option.description}</Text>
-                </View>
+                <Text style={styles.optionTitle}>{option.label}</Text>
               </Pressable>
             );
           })}
         </View>
-      </View>
+        <View style={styles.sectionDivider} />
 
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Tab order</Text>
-        <Text style={styles.settingHelp}>
-          Reorder Inbox, Timeline, Goals, and Progress. Capture stays fixed in the center.
-        </Text>
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Tab order</Text>
+            <Text style={styles.settingHelp}>Capture stays fixed in the center.</Text>
+          </View>
+        </View>
         <TabOrderPreview order={tabOrder} />
         <TabOrderEditor order={tabOrder} onMove={onMoveTab} />
       </View>
@@ -3712,66 +3673,14 @@ const styles = StyleSheet.create({
     ...typography.bodyMd,
     color: colors.textPrimary,
   },
-  selectionCardSelected: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radii.lg,
-    backgroundColor: colors.accentDim,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderFocus,
-  },
-  selectionCopy: {
-    flex: 1,
-    gap: 3,
-  },
-  selectionTitle: {
-    ...typography.bodyMd,
-    color: colors.textPrimary,
-    fontFamily: "Geist_600SemiBold",
-  },
-  selectionDescription: {
-    ...typography.bodyMd,
-    color: colors.textMuted,
-    lineHeight: 18,
-  },
-  selectionStatusText: {
-    ...typography.micro,
-    color: colors.accent,
-  },
-  optionGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-  },
-  optionCard: {
-    minWidth: 0,
-    flexBasis: "48%",
-    flexGrow: 1,
-    padding: spacing.md,
-    borderRadius: radii.lg,
-    backgroundColor: colors.bgSurface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-    gap: 3,
-  },
   optionCardActive: {
-    backgroundColor: colors.accentDim,
-    borderColor: colors.borderFocus,
+    backgroundColor: colors.bgInput,
+    borderColor: colors.textPrimary,
   },
   optionTitle: {
     ...typography.bodyMd,
     color: colors.textPrimary,
     fontFamily: "Geist_600SemiBold",
-  },
-  optionTitleActive: {
-    color: colors.accent,
-  },
-  optionDescription: {
-    ...typography.bodyMd,
-    color: colors.textMuted,
-    lineHeight: 18,
   },
   swatchGrid: {
     flexDirection: "row",
@@ -3785,8 +3694,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radii.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
     backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
@@ -3819,12 +3729,12 @@ const styles = StyleSheet.create({
   tabPreviewCapture: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: radii.full,
-    backgroundColor: colors.accentSoft,
+    borderRadius: radii.md,
+    backgroundColor: colors.textPrimary,
   },
   tabPreviewCaptureText: {
     ...typography.bodyMd,
-    color: colors.accent,
+    color: colors.textInverse,
     fontFamily: "Geist_600SemiBold",
   },
   tabOrderEditor: {
@@ -3839,7 +3749,7 @@ const styles = StyleSheet.create({
   tabOrderIndex: {
     width: 28,
     height: 28,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     backgroundColor: colors.bgSurface,
     alignItems: "center",
     justifyContent: "center",
@@ -3855,7 +3765,7 @@ const styles = StyleSheet.create({
   tabOrderButton: {
     width: 36,
     height: 36,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.bgSurface,
