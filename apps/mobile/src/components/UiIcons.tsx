@@ -96,6 +96,14 @@ export const CopyIcon = icon(({ color, size, strokeWidth }) => (
   </Svg>
 ));
 
+export const DownloadTrayIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M12 4v10" />
+    <Path d="m7.5 10.5 4.5 4.5 4.5-4.5" />
+    <Path d="M4 16.5v1.5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1.5" />
+  </Svg>
+));
+
 export const CheckIcon = icon(({ color, size, strokeWidth }) => (
   <Svg {...frame(color, size, strokeWidth)}>
     <Path d="m5 12.5 4.5 4.5L19 7" />

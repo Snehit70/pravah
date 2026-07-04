@@ -14,7 +14,9 @@ function statusCopy(result: UpdateCheckResult | null): string {
     case "up-to-date":
       return "You're up to date.";
     case "update-available":
-      return `Version ${result.version} is available.`;
+      return `APK ${result.version} is available. Installed APK is ${
+        Application.nativeApplicationVersion ?? "unknown"
+      }.`;
     case "offline":
       return "Could not reach GitHub. Check your connection and try again.";
     case "rate-limited":
@@ -31,11 +33,11 @@ function statusCopy(result: UpdateCheckResult | null): string {
 function installerCopy(status: ReturnType<typeof useAppUpdateInstaller>["status"]): string | null {
   switch (status) {
     case "downloading":
-      return "Downloading APK...";
+      return "Downloading APK…";
     case "verifying":
-      return "Verifying download...";
+      return "Verifying download…";
     case "installing":
-      return "Opening Android installer...";
+      return "Opening Android installer…";
     case "corrupt":
       return "Download corrupted. Try again.";
     case "cant-install":
@@ -66,8 +68,9 @@ export function AppUpdateSection() {
   const installStatus = installerCopy(installer.status);
 
   return (
-    <View style={styles.card}>
-      <Text style={styles.label}>App Update</Text>
+    <View style={styles.group}>
+      <View style={styles.divider} />
+      <Text style={styles.label}>App updates</Text>
       <Text style={styles.help}>{statusCopy(checkState)}</Text>
       {update ? (
         <View style={styles.notesBox}>
@@ -104,7 +107,7 @@ export function AppUpdateSection() {
             busy && styles.disabled,
           ]}
         >
-          <Text style={styles.buttonText}>{isChecking ? "Checking..." : "Check for updates"}</Text>
+          <Text style={styles.buttonText}>{isChecking ? "Checking…" : "Check for updates"}</Text>
         </Pressable>
         {update ? (
           <Pressable
@@ -129,13 +132,16 @@ export function AppUpdateSection() {
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: colors.bgCard,
-    borderRadius: radii.xl,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-    padding: spacing.lg,
+  group: {
     gap: spacing.sm,
+  },
+  // Mirrors SettingsSheet's full-bleed sectionDivider; lives here so the
+  // divider disappears with the section on non-canonical builds.
+  divider: {
+    height: 1,
+    backgroundColor: colors.bgInput,
+    marginHorizontal: -spacing.lg,
+    marginVertical: spacing.xs,
   },
   label: {
     ...typography.bodyMd,

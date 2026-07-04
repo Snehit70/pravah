@@ -24,6 +24,7 @@ import { colors, motion, radii, spacing, typography } from "../theme/tokens";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
+import { useConfirm } from "../hooks/useConfirm";
 import { getOrCreateDeviceId } from "../lib/deviceIdentity";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
 import { classifyError, mobileLogger } from "../lib/logger";
@@ -35,6 +36,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CopyIcon,
+  DownloadTrayIcon,
   InboxTrayIcon,
   InfoCircleIcon,
   MailIcon,
@@ -54,6 +56,7 @@ import AppSettingsIconAsset from "../assets/icons/app-settings.svg";
 import RemindersIconAsset from "../assets/icons/settings-reminders.svg";
 import QuietHoursIconAsset from "../assets/icons/settings-quiet-hours.svg";
 import SyncIconAsset from "../assets/icons/settings-sync.svg";
+import DataIconAsset from "../assets/icons/settings-data.svg";
 import {
   moveTabOrder,
   resolveTabOrder,
@@ -215,6 +218,10 @@ function SlidersIcon({ color: _color, size = 18 }: CategoryIconProps) {
   return <AppearanceIconAsset width={size} height={size} />;
 }
 
+function DataIcon({ color: _color, size = 18 }: CategoryIconProps) {
+  return <DataIconAsset width={size} height={size} />;
+}
+
 function InfoIcon({ color: _color, size = 18 }: CategoryIconProps) {
   return <AboutIconAsset width={size} height={size} />;
 }
@@ -228,6 +235,7 @@ const SETTINGS_CATEGORY_ICONS: Partial<
   reminders: BellIcon,
   interaction: HandIcon,
   appearance: SlidersIcon,
+  data: DataIcon,
   about: InfoIcon,
 };
 
@@ -1186,6 +1194,10 @@ type SyncSectionProps = {
   canToggleGmailSync: boolean;
   onGmailToggle: () => void;
   showToast: SettingsSheetProps["showToast"];
+  calendarLastError?: string;
+  gmailLastError?: string;
+  onCopy: (value: string, label: string) => Promise<void>;
+  onSignOut: () => void;
 };
 
 function SyncSection({
@@ -1213,6 +1225,10 @@ function SyncSection({
   canToggleGmailSync,
   onGmailToggle,
   showToast,
+  calendarLastError,
+  gmailLastError,
+  onCopy,
+  onSignOut,
 }: SyncSectionProps) {
   const calendarMetaLine = [
     calendarAccountEmail?.toLowerCase(),
@@ -1283,6 +1299,18 @@ function SyncSection({
           <View style={styles.syncErrorCallout}>
             <AlertCircleIcon color={colors.error} size={16} />
             <Text style={styles.syncErrorText}>{calendarErrorSummary}</Text>
+            <Pressable
+              onPress={() =>
+                void onCopy(calendarLastError ?? calendarErrorSummary, "Calendar error")
+              }
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Copy Google Calendar error"
+              style={({ pressed }) => [styles.copyChip, pressed && { opacity: 0.6 }]}
+            >
+              <CopyIcon color={colors.textPrimary} size={14} strokeWidth={1.8} />
+              <Text style={styles.copyChipText}>Copy</Text>
+            </Pressable>
           </View>
         ) : null}
         {calendarSyncEnabled ? (
@@ -1413,7 +1441,39 @@ function SyncSection({
             </Text>
           </View>
         ) : null}
+        {gmailLastError ? (
+          <View style={styles.syncErrorCallout}>
+            <AlertCircleIcon color={colors.error} size={16} />
+            <Text style={styles.syncErrorText}>{summarizeSyncError(gmailLastError)}</Text>
+            <Pressable
+              onPress={() => void onCopy(gmailLastError, "Gmail error")}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Copy Gmail error"
+              style={({ pressed }) => [styles.copyChip, pressed && { opacity: 0.6 }]}
+            >
+              <CopyIcon color={colors.textPrimary} size={14} strokeWidth={1.8} />
+              <Text style={styles.copyChipText}>Copy</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <GmailReviewSection enabled={gmailSyncEnabled} showToast={showToast} />
+      </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Account</Text>
+        <Text style={styles.settingHelp}>
+          Sign out to switch Google accounts on this device.
+        </Text>
+        <Pressable
+          onPress={onSignOut}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
+          style={({ pressed }) => [styles.softButton, pressed && { opacity: 0.6 }]}
+        >
+          <Text style={styles.softButtonText}>Sign out</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -1966,35 +2026,7 @@ function AppearanceSection({
   );
 }
 
-type AboutSectionProps = {
-  deviceId: string | null;
-  onCopy: (value: string, label: string) => Promise<void>;
-  onExportDiagnostics: () => void;
-  calendarLastError?: string;
-  gmailLastError?: string;
-  isClearingRetryQueue: boolean;
-  onClearRetryQueue: () => void;
-  onExportTasks: () => void;
-  onSignOut: () => void;
-  dangerArmed: "wipe" | null;
-  isWiping: boolean;
-  onWipeLocalData: () => void;
-};
-
-function AboutSection({
-  deviceId,
-  onCopy,
-  onExportDiagnostics,
-  calendarLastError,
-  gmailLastError,
-  isClearingRetryQueue,
-  onClearRetryQueue,
-  onExportTasks,
-  onSignOut,
-  dangerArmed,
-  isWiping,
-  onWipeLocalData,
-}: AboutSectionProps) {
+function AboutSection() {
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
@@ -2034,11 +2066,53 @@ function AboutSection({
           <Text style={styles.linkRowText}>GitHub repository</Text>
           <ArrowUpRightIcon color={colors.textMuted} size={16} />
         </Pressable>
+
+        <AppUpdateSection />
       </View>
+    </View>
+  );
+}
 
-      <AppUpdateSection />
+type DataSectionProps = {
+  deviceId: string | null;
+  onCopy: (value: string, label: string) => Promise<void>;
+  onExportDiagnostics: () => void;
+  isClearingRetryQueue: boolean;
+  onClearRetryQueue: () => void;
+  onExportTasks: () => void;
+  isWiping: boolean;
+  onWipeLocalData: () => void;
+};
 
+function DataSection({
+  deviceId,
+  onCopy,
+  onExportDiagnostics,
+  isClearingRetryQueue,
+  onClearRetryQueue,
+  onExportTasks,
+  isWiping,
+  onWipeLocalData,
+}: DataSectionProps) {
+  return (
+    <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Your data</Text>
+        <Text style={styles.settingHelp}>
+          Export every task currently in view as JSON.
+        </Text>
+        <Pressable
+          onPress={onExportTasks}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Export tasks as JSON"
+          style={({ pressed }) => [styles.softButton, pressed && { opacity: 0.6 }]}
+        >
+          <DownloadTrayIcon color={colors.textPrimary} size={15} strokeWidth={1.8} />
+          <Text style={styles.softButtonText}>Export tasks as JSON</Text>
+        </Pressable>
+        <View style={styles.sectionDivider} />
+
         <Text style={styles.settingLabel}>Diagnostics</Text>
         <Text style={styles.settingHelp}>
           Export app events, device metadata, and sync state as JSON.
@@ -2061,6 +2135,7 @@ function AboutSection({
               !deviceId && styles.softButtonDisabled,
             ]}
           >
+            <CopyIcon color={colors.textPrimary} size={15} strokeWidth={1.8} />
             <Text style={styles.copyButtonText}>Copy ID</Text>
           </Pressable>
         </View>
@@ -2071,101 +2146,8 @@ function AboutSection({
           accessibilityLabel="Export diagnostics"
           style={({ pressed }) => [styles.softButton, pressed && { opacity: 0.6 }]}
         >
+          <DownloadTrayIcon color={colors.textPrimary} size={15} strokeWidth={1.8} />
           <Text style={styles.softButtonText}>Export diagnostics</Text>
-        </Pressable>
-        <View style={styles.sectionDivider} />
-
-        <Text style={styles.settingLabel}>Recent sync errors</Text>
-
-        <View style={styles.sourceBlock}>
-          <View style={styles.sourceHeader}>
-            <View
-              style={[
-                styles.statusDot,
-                calendarLastError ? styles.statusDotErr : styles.statusDotOk,
-              ]}
-            />
-            <Text style={styles.sourceName}>Google Calendar</Text>
-            <Text
-              style={[
-                styles.sourceStatus,
-                calendarLastError ? styles.sourceStatusErr : styles.sourceStatusOk,
-              ]}
-            >
-              {calendarLastError ? "Error" : "Healthy"}
-            </Text>
-            {calendarLastError ? (
-              <Pressable
-                onPress={() => void onCopy(calendarLastError, "Calendar error")}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="Copy Google Calendar error"
-                style={({ pressed }) => [styles.copyChip, pressed && { opacity: 0.6 }]}
-              >
-                <Text style={styles.copyChipText}>Copy</Text>
-              </Pressable>
-            ) : null}
-          </View>
-          {calendarLastError ? (
-            <View style={styles.errorBlock}>
-              <Text selectable style={styles.errorBlockText}>
-                {summarizeSyncError(calendarLastError)}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-
-        <View style={styles.sourceBlock}>
-          <View style={styles.sourceHeader}>
-            <View
-              style={[
-                styles.statusDot,
-                gmailLastError ? styles.statusDotErr : styles.statusDotOk,
-              ]}
-            />
-            <Text style={styles.sourceName}>Gmail</Text>
-            <Text
-              style={[
-                styles.sourceStatus,
-                gmailLastError ? styles.sourceStatusErr : styles.sourceStatusOk,
-              ]}
-            >
-              {gmailLastError ? "Error" : "Healthy"}
-            </Text>
-            {gmailLastError ? (
-              <Pressable
-                onPress={() => void onCopy(gmailLastError, "Gmail error")}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="Copy Gmail error"
-                style={({ pressed }) => [styles.copyChip, pressed && { opacity: 0.6 }]}
-              >
-                <Text style={styles.copyChipText}>Copy</Text>
-              </Pressable>
-            ) : null}
-          </View>
-          {gmailLastError ? (
-            <View style={styles.errorBlock}>
-              <Text selectable style={styles.errorBlockText}>
-                {summarizeSyncError(gmailLastError)}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-        <View style={styles.sectionDivider} />
-
-        <Text style={styles.settingLabel}>Your data</Text>
-        <Text style={styles.settingHelp}>
-          Export every task currently in view as JSON.
-        </Text>
-        <Pressable
-          onPress={onExportTasks}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel="Export tasks as JSON"
-          style={({ pressed }) => [styles.softButton, pressed && { opacity: 0.6 }]}
-        >
-          <Text style={styles.softButtonText}>Export tasks as JSON</Text>
         </Pressable>
         <View style={styles.sectionDivider} />
 
@@ -2194,21 +2176,6 @@ function AboutSection({
             {isClearingRetryQueue ? "Clearing…" : "Clear retry queue"}
           </Text>
         </Pressable>
-        <View style={styles.sectionDivider} />
-
-        <Text style={styles.settingLabel}>Account</Text>
-        <Text style={styles.settingHelp}>
-          Sign out to switch Google accounts on this device.
-        </Text>
-        <Pressable
-          onPress={onSignOut}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel="Sign out"
-          style={({ pressed }) => [styles.softButton, pressed && { opacity: 0.6 }]}
-        >
-          <Text style={styles.softButtonText}>Sign out</Text>
-        </Pressable>
       </View>
 
       <View style={[styles.settingBlock, styles.sectionCard, styles.dangerCard]}>
@@ -2221,17 +2188,11 @@ function AboutSection({
           disabled={isWiping}
           hitSlop={12}
           accessibilityRole="button"
-          accessibilityLabel={
-            dangerArmed === "wipe" ? "Tap again to confirm wipe" : "Wipe local data"
-          }
+          accessibilityLabel="Wipe local data"
           style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
         >
           <Text style={[styles.dangerActionText, isWiping && styles.inlineActionDisabled]}>
-            {isWiping
-              ? "Wiping…"
-              : dangerArmed === "wipe"
-                ? "Tap again to confirm →"
-                : "Wipe local data"}
+            {isWiping ? "Wiping…" : "Wipe local data"}
           </Text>
         </Pressable>
 
@@ -2342,7 +2303,6 @@ function renderDetailScreen(
     onClearRetryQueue: () => void;
     onExportTasks: () => void;
     onSignOut: () => void;
-    dangerArmed: "wipe" | null;
     isWiping: boolean;
     onWipeLocalData: () => void;
   },
@@ -2388,8 +2348,10 @@ function renderDetailScreen(
       return <InteractionSection {...props} />;
     case "appearance":
       return <AppearanceSection {...props} />;
+    case "data":
+      return <DataSection {...props} />;
     case "about":
-      return <AboutSection {...props} />;
+      return <AboutSection />;
   }
 }
 
@@ -2447,8 +2409,8 @@ export function SettingsSheet({
   const [openPicker, setOpenPicker] = useState<QuietPickerKind | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [isClearingRetryQueue, setIsClearingRetryQueue] = useState(false);
-  const [dangerArmed, setDangerArmed] = useState<"wipe" | null>(null);
   const [isWiping, setIsWiping] = useState(false);
+  const confirm = useConfirm();
   const [issuedBootstrapToken, setIssuedBootstrapToken] = useState<{
     token: string;
     expiresAt: number;
@@ -2496,12 +2458,6 @@ export function SettingsSheet({
     }
   }, [automationCredentials.length, issuedBootstrapToken]);
 
-  useEffect(() => {
-    if (!dangerArmed) return;
-    const timeout = setTimeout(() => setDangerArmed(null), 5000);
-    return () => clearTimeout(timeout);
-  }, [dangerArmed]);
-
   const handleKairoFieldFocus = useCallback((field: "apiKey" | "baseUrl" | "model") => {
     if (!visible || activeCategory !== "kairo") return;
 
@@ -2523,7 +2479,6 @@ export function SettingsSheet({
     }
     if (!visible) {
       setOpenPicker(null);
-      setDangerArmed(null);
       dispatchNavigation({ type: "reset" });
       return;
     }
@@ -2532,7 +2487,7 @@ export function SettingsSheet({
 
   useEffect(() => {
     if (!visible) return;
-    if (navigation.screen !== "detail" || navigation.category !== "about" || deviceId) return;
+    if (navigation.screen !== "detail" || navigation.category !== "data" || deviceId) return;
     void getOrCreateDeviceId().then(setDeviceId);
   }, [deviceId, navigation, visible]);
 
@@ -2595,6 +2550,13 @@ export function SettingsSheet({
 
   const handleClearRetryQueue = useCallback(async () => {
     if (isClearingRetryQueue) return;
+    const confirmed = await confirm({
+      title: "Clear retry queue?",
+      message: "Pending offline changes that haven't reached the server will be discarded.",
+      confirmLabel: "Clear",
+      destructive: true,
+    });
+    if (!confirmed) return;
     setIsClearingRetryQueue(true);
     try {
       await retryQueueStorage.removeItem("pravah_mobile_retry_queue_v1");
@@ -2606,14 +2568,17 @@ export function SettingsSheet({
     } finally {
       setIsClearingRetryQueue(false);
     }
-  }, [isClearingRetryQueue, showToast]);
+  }, [confirm, isClearingRetryQueue, showToast]);
 
   const handleWipeLocalData = useCallback(async () => {
-    if (dangerArmed !== "wipe") {
-      setDangerArmed("wipe");
-      return;
-    }
-    setDangerArmed(null);
+    const confirmed = await confirm({
+      title: "Wipe local data?",
+      message:
+        "Preferences, retry queue, snapshot, and reminder schedule on this device will be cleared. Server data is untouched.",
+      confirmLabel: "Wipe",
+      destructive: true,
+    });
+    if (!confirmed) return;
     setIsWiping(true);
     try {
       await onWipeLocalData();
@@ -2624,7 +2589,17 @@ export function SettingsSheet({
     } finally {
       setIsWiping(false);
     }
-  }, [dangerArmed, onWipeLocalData, showToast]);
+  }, [confirm, onWipeLocalData, showToast]);
+
+  const handleSignOut = useCallback(async () => {
+    const confirmed = await confirm({
+      title: "Sign out?",
+      message:
+        "This clears the local snapshot on this device. Your data stays on the server.",
+      confirmLabel: "Sign out",
+    });
+    if (confirmed) onSignOut();
+  }, [confirm, onSignOut]);
 
   const handleIssueBootstrapToken = useCallback(async () => {
     setIsIssuingBootstrapToken(true);
@@ -2800,6 +2775,7 @@ export function SettingsSheet({
       ? { label: "Swipe on", tone: "neutral" }
       : { label: "Swipe off", tone: "neutral" },
     appearance: { label: "Geist", tone: "neutral" },
+    data: { label: "", tone: "neutral" },
     about: {
       label: APP_VERSION.startsWith("v") ? APP_VERSION : `v${APP_VERSION}`,
       tone: "neutral",
@@ -2934,8 +2910,7 @@ export function SettingsSheet({
                 isClearingRetryQueue,
                 onClearRetryQueue: () => void handleClearRetryQueue(),
                 onExportTasks,
-                onSignOut,
-                dangerArmed,
+                onSignOut: () => void handleSignOut(),
                 isWiping,
                 onWipeLocalData: () => void handleWipeLocalData(),
               })
@@ -3198,6 +3173,9 @@ const styles = StyleSheet.create({
   softButton: {
     marginTop: spacing.sm,
     alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radii.md,
@@ -3239,6 +3217,8 @@ const styles = StyleSheet.create({
   },
   copyButton: {
     minWidth: 44,
+    flexDirection: "row",
+    gap: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radii.md,
@@ -3374,6 +3354,9 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   copyChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radii.md,
@@ -3840,50 +3823,6 @@ const styles = StyleSheet.create({
   linkRowChevron: {
     ...typography.bodyMd,
     color: colors.accent,
-  },
-  sourceBlock: {
-    gap: spacing.sm,
-  },
-  sourceHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: radii.full,
-  },
-  statusDotOk: {
-    backgroundColor: colors.success,
-  },
-  statusDotErr: {
-    backgroundColor: colors.error,
-  },
-  sourceName: {
-    ...typography.bodyMd,
-    color: colors.textPrimary,
-  },
-  sourceStatus: {
-    ...typography.bodyMd,
-  },
-  sourceStatusOk: {
-    color: colors.success,
-  },
-  sourceStatusErr: {
-    color: colors.error,
-  },
-  errorBlock: {
-    borderRadius: radii.lg,
-    backgroundColor: colors.bgSurface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-    padding: spacing.md,
-  },
-  errorBlockText: {
-    ...typography.bodyMd,
-    color: colors.textSecondary,
-    lineHeight: 18,
   },
   dangerCard: {
     gap: spacing.sm,
