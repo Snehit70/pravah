@@ -156,8 +156,16 @@ vi.mock("../theme/tokens", () => ({
     textMuted: "#888",
   },
   spacing: { xs: 4, sm: 8, md: 16, lg: 24, xxl: 48, section: 32 },
-  typography: { headline: {}, bodyMd: {}, micro: {} },
+  typography: { headline: {}, bodyMd: {}, micro: {}, numeric: {} },
   radii: { sm: 4, md: 8, lg: 12, xl: 16, full: 999 },
+  fonts: { sans: "sans", sansSemibold: "sans-semibold" },
+}));
+
+// The real header animates with Reanimated hooks the mock above doesn't
+// provide; the inbox tests only care that a header row renders per bucket.
+vi.mock("../components/TimelineSectionHeader", () => ({
+  TimelineSectionHeader: ({ label, count }: { label: string; count?: number }) =>
+    React.createElement("div", {}, count === undefined ? label : `${label} ${count}`),
 }));
 
 // ─── LoadingSkeleton mock ─────────────────────────────────────────────────────

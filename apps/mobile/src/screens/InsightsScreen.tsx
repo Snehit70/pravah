@@ -22,7 +22,7 @@ import Svg, { Circle, Path } from "react-native-svg";
 import type { MobileTask } from "../components/TaskCard";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { kpis, weekOverWeek } from "../lib/statsAggregators";
-import { colors, radii, spacing, typography } from "../theme/tokens";
+import { colors, fonts, radii, spacing, typography } from "../theme/tokens";
 import { LedgerCheckIcon } from "../components/UiIcons";
 
 type HistoryWindow = "all" | "7d" | "30d";
@@ -332,7 +332,9 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   eyebrow: {
-    ...typography.micro,
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    lineHeight: 16,
     color: colors.textMuted,
   },
   momentumTitle: {
@@ -368,7 +370,9 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   momentumTileLabel: {
-    ...typography.micro,
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    lineHeight: 16,
     color: colors.textMuted,
   },
   trustRow: {
@@ -379,7 +383,9 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xs,
   },
   trustSignal: {
-    ...typography.micro,
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    lineHeight: 16,
     color: colors.textMuted,
   },
   trustDivider: {
@@ -447,7 +453,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   footerNote: {
-    ...typography.micro,
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    lineHeight: 16,
     color: colors.textMuted,
     textAlign: "center",
     paddingHorizontal: spacing.lg,

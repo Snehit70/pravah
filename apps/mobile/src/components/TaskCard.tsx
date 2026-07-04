@@ -623,8 +623,12 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
   },
+  // Sentence-case Geist, not mono caps — a tappable verb, not metadata.
   scheduleButtonText: {
-    ...typography.micro,
+    fontFamily: fonts.sansSemibold,
+    fontSize: 12,
+    lineHeight: 16,
+    letterSpacing: -0.1,
     color: colors.textSecondary,
   },
   actionCol: {

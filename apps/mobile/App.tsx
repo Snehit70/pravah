@@ -87,6 +87,7 @@ import {
   SyncLoopIcon,
 } from "./src/components/UiIcons";
 import AppSettingsIcon from "./src/assets/icons/app-settings.svg";
+import KairoMarkIcon from "./src/assets/icons/settings-kairo.svg";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -1051,7 +1052,7 @@ function MobileApp() {
               accessibilityRole="button"
               accessibilityLabel="Open Kairo"
             >
-              <Text style={styles.kairoLink}>Kairo</Text>
+              <KairoMarkIcon width={18} height={18} color={colors.accent} />
             </Pressable>
             <Pressable
               onPress={openSettingsModal}
@@ -1538,23 +1539,18 @@ const styles = StyleSheet.create({
     fontSize: 18,
     letterSpacing: 1,
   },
-  // Kairo entry point: a quiet squircle chip with accent text — reads as the
-  // AI affordance without underline chrome or iconography.
+  // Kairo entry point: a quiet square squircle chip with the accent Kairo
+  // mark — reads as the AI affordance without a text label.
   kairoChip: {
-    minHeight: 34,
-    paddingHorizontal: spacing.md,
+    width: 34,
+    height: 34,
+    alignItems: "center",
     justifyContent: "center",
     borderRadius: radii.md,
     borderCurve: "continuous",
     backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
-  },
-  kairoLink: {
-    color: colors.accent,
-    fontFamily: fonts.sansSemibold,
-    fontSize: 13,
-    letterSpacing: 0.2,
   },
   // Toasts use a quiet tonal fill and full hairline border so status is clear
   // without relying on a decorative side stripe.
