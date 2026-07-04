@@ -20,7 +20,7 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { getKairoSettings } from "../lib/kairoConfig";
 import type { NotificationPermissionState } from "../lib/notifications";
-import { colors, radii, spacing, typography } from "../theme/tokens";
+import { colors, motion, radii, spacing, typography } from "../theme/tokens";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
@@ -68,9 +68,16 @@ import {
   type SettingsCategoryKey,
   type SettingsNavigationState,
 } from "../lib/settingsNavigation";
-import type { AccentColor, Density, ReminderLeadTimeMinutes } from "../lib/userPreferences";
+import type {
+  AccentColor,
+  Density,
+  ReminderLeadTimeMinutes,
+  ThemePreference,
+} from "../lib/userPreferences";
 import Animated, {
+  Easing,
   interpolateColor,
+  LinearTransition,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -142,36 +149,20 @@ const DENSITY_SEGMENTS: Array<SegmentedItem<Density>> = [
   { value: "cozy", label: "Comfortable" },
   { value: "compact", label: "Compact" },
 ];
+const THEME_SEGMENTS: Array<SegmentedItem<ThemePreference>> = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Warm light" },
+  { value: "dark", label: "Dark" },
+];
 const TASK_COLOR_OPTIONS: Array<{
   value: AccentColor;
   label: string;
-  description: string;
   swatch: string;
 }> = [
-  {
-    value: "purple",
-    label: "Indigo",
-    description: "Default Pravah selection and planning accent.",
-    swatch: colors.accent,
-  },
-  {
-    value: "copper",
-    label: "Copper",
-    description: "Warmer task emphasis for deadline-heavy planning.",
-    swatch: colors.deadline,
-  },
-  {
-    value: "teal",
-    label: "Teal",
-    description: "Cooler task emphasis for quieter review sessions.",
-    swatch: "#3e7b78",
-  },
-  {
-    value: "rose",
-    label: "Rose",
-    description: "Sharper task emphasis for high-attention queues.",
-    swatch: "#9d586f",
-  },
+  { value: "purple", label: "Indigo", swatch: colors.accent },
+  { value: "copper", label: "Copper", swatch: colors.deadline },
+  { value: "teal", label: "Teal", swatch: "#3e7b78" },
+  { value: "rose", label: "Rose", swatch: "#9d586f" },
 ];
 const READ_ONLY_AUTOMATION_SCOPES = ["tasks:read", "review:read", "sync:read"] as const;
 const APP_VERSION = appJson.expo?.version ?? "—";
@@ -352,44 +343,52 @@ type TabOrderEditorProps = {
   onMove: (key: TabKey, direction: "up" | "down") => void;
 };
 
+const TAB_REORDER_EASING = Easing.bezier(...motion.easing.outQuart);
+
+function useTabReorderTransition() {
+  const reducedMotion = useReducedMotion();
+  return reducedMotion
+    ? undefined
+    : LinearTransition.duration(motion.duration.base).easing(TAB_REORDER_EASING);
+}
+
 function TabOrderPreview({ order }: { order: readonly TabKey[] }) {
+  const layout = useTabReorderTransition();
   const left = order.slice(0, 2);
   const right = order.slice(2);
   return (
     <View style={styles.tabOrderPreview} testID="tab-order-preview">
       {left.map((key) => (
-        <View key={key} style={styles.tabPreviewItem}>
+        <Animated.View key={key} layout={layout} style={styles.tabPreviewItem}>
           <Text style={styles.tabPreviewText}>{TAB_LABELS[key]}</Text>
-        </View>
+        </Animated.View>
       ))}
       <View style={styles.tabPreviewCapture}>
         <Text style={styles.tabPreviewCaptureText}>Capture</Text>
       </View>
       {right.map((key) => (
-        <View key={key} style={styles.tabPreviewItem}>
+        <Animated.View key={key} layout={layout} style={styles.tabPreviewItem}>
           <Text style={styles.tabPreviewText}>{TAB_LABELS[key]}</Text>
-        </View>
+        </Animated.View>
       ))}
     </View>
   );
 }
 
 function TabOrderEditor({ order, onMove }: TabOrderEditorProps) {
+  const layout = useTabReorderTransition();
   return (
     <View style={styles.tabOrderEditor}>
       {order.map((key, index) => {
         const isFirst = index === 0;
         const isLast = index === order.length - 1;
         return (
-          <View key={key} style={styles.tabOrderRow}>
+          <Animated.View key={key} layout={layout} style={styles.tabOrderRow}>
             <View style={styles.tabOrderIndex}>
               <Text style={styles.tabOrderIndexText}>{index + 1}</Text>
             </View>
             <View style={styles.settingCopy}>
               <Text style={styles.settingLabel}>{TAB_LABELS[key]}</Text>
-              <Text style={styles.settingMeta}>
-                {index < 2 ? "Left of Capture" : "Right of Capture"}
-              </Text>
             </View>
             <View style={styles.tabOrderControls}>
               <Pressable
@@ -437,7 +436,7 @@ function TabOrderEditor({ order, onMove }: TabOrderEditorProps) {
                 </Text>
               </Pressable>
             </View>
-          </View>
+          </Animated.View>
         );
       })}
     </View>
@@ -1866,21 +1865,14 @@ function AppearanceSection({
         <View style={styles.settingRow}>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Theme</Text>
-            <Text style={styles.settingHelp}>Paper neutrals and warm ink.</Text>
+            <Text style={styles.settingHelp}>Dark theme is coming soon.</Text>
           </View>
-          <Text style={styles.timeRowValue}>Warm light</Text>
         </View>
-        <View style={styles.sectionDivider} />
-
-        <View style={styles.settingRow}>
-          <View style={styles.settingCopy}>
-            <Text style={styles.settingLabel}>Typography</Text>
-            <Text style={styles.settingHelp}>
-              Geist Sans for UI, Geist Mono for metadata.
-            </Text>
-          </View>
-          <Text style={styles.timeRowValue}>Geist</Text>
-        </View>
+        <SlidingSegmented
+          options={THEME_SEGMENTS}
+          value={prefs.theme}
+          onSelect={(theme) => void setPreference("theme", theme)}
+        />
         <View style={styles.sectionDivider} />
 
         <View style={styles.settingRow}>
@@ -1918,12 +1910,14 @@ function AppearanceSection({
                 accessibilityLabel={`Use ${option.label} task color`}
                 style={({ pressed }) => [
                   styles.swatchOption,
-                  active && styles.optionCardActive,
+                  active && styles.swatchOptionActive,
                   pressed && { opacity: 0.72 },
                 ]}
               >
                 <View style={[styles.swatchDot, { backgroundColor: option.swatch }]} />
-                <Text style={styles.optionTitle}>{option.label}</Text>
+                <Text style={[styles.optionTitle, active && styles.swatchTitleActive]}>
+                  {option.label}
+                </Text>
               </Pressable>
             );
           })}
@@ -3693,6 +3687,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
+  },
+  swatchOptionActive: {
+    backgroundColor: colors.textPrimary,
+    borderColor: colors.textPrimary,
+  },
+  swatchTitleActive: {
+    color: colors.textInverse,
   },
   swatchDot: {
     width: 22,
