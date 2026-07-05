@@ -15,7 +15,15 @@
  * the tab.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type ReactNode,
+} from "react";
 import {
   FlatList,
   Pressable,
@@ -28,9 +36,16 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 import Animated, {
+  Extrapolation,
+  interpolate,
+  useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
+  withSequence,
+  withSpring,
   withTiming,
+  type SharedValue,
 } from "react-native-reanimated";
 import { colors, fonts, motion, radii, shadow, spacing, typography } from "../theme/tokens";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -38,12 +53,7 @@ import type { MobileTask } from "./TaskCard";
 import { taskEmphasisColor } from "../lib/taskAccent";
 import { CheckIcon } from "./UiIcons";
 import { dateLabel, weekdayDate } from "../lib/dates";
-import {
-  buildDayCards,
-  cardKey,
-  dotStripState,
-  type DayCarouselCard,
-} from "../lib/timelineCarousel";
+import { buildDayCards, cardKey, type DayCarouselCard } from "../lib/timelineCarousel";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 
@@ -64,9 +74,15 @@ type TimelineDayCarouselProps = {
   emptyComponent: JSX.Element;
 };
 
-/** Card takes ~88% of the window so the next day peeks at the trailing edge. */
-const CARD_WIDTH_RATIO = 0.88;
+/** Card takes ~85% of the window so the next day peeks at the trailing edge. */
+const CARD_WIDTH_RATIO = 0.85;
 const CARD_GAP = spacing.md;
+
+// Focus-scale swipe: transforms are pure functions of scroll position — the
+// centered card sits at identity, neighbors ease down to these floors. No
+// event-driven arrival animation (it can never desync from the gesture).
+const FOCUS_SCALE_MIN = 0.94;
+const FOCUS_OPACITY_MIN = 0.8;
 
 // ─── Slim task row ──────────────────────────────────────────────────────────
 
@@ -83,8 +99,39 @@ type SlimTaskRowProps = {
  *  no swipe actions in this layout. */
 function SlimTaskRow({ task, completed, goalName, onToggle, onPress }: SlimTaskRowProps) {
   const { prefs } = useUserPreferences();
+  const reducedMotion = useReducedMotion();
   const compactDensity = prefs.density === "compact";
   const taskAccent = taskEmphasisColor(prefs.taskColorScheme);
+
+  // Check + settle: the checkbox spring-pops and the row body cross-fades to
+  // its done style in place — the row never moves (the hold design keeps it
+  // tappable for mistap undo). Skipped on first mount and under reduced motion.
+  const checkScale = useSharedValue(1);
+  const bodyOpacity = useSharedValue(1);
+  const prevCompleted = useRef<boolean | null>(null);
+  useEffect(() => {
+    const prev = prevCompleted.current;
+    prevCompleted.current = completed;
+    if (prev === null || prev === completed || reducedMotion) return;
+    if (completed) {
+      checkScale.set(
+        withSequence(
+          withTiming(0.8, { duration: 60 }),
+          withSpring(1, { damping: 12, stiffness: 260 })
+        )
+      );
+    }
+    bodyOpacity.set(
+      withSequence(
+        withTiming(0.35, { duration: 70 }),
+        withTiming(1, { duration: motion.duration.fast })
+      )
+    );
+  }, [bodyOpacity, checkScale, completed, reducedMotion]);
+  const checkAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: checkScale.value }],
+  }));
+  const bodyAnimStyle = useAnimatedStyle(() => ({ opacity: bodyOpacity.value }));
 
   const hasDescription = Boolean(task.description) && !completed;
   const showPriority = Boolean(task.priority) && !completed;
@@ -103,11 +150,12 @@ function SlimTaskRow({ task, completed, goalName, onToggle, onPress }: SlimTaskR
       accessibilityLabel={task.title}
       accessibilityHint="Double tap to edit."
     >
-      <Pressable
-        onPress={(event) => {
-          event.stopPropagation();
-          onToggle?.(task, completed);
-        }}
+      <Animated.View style={checkAnimStyle}>
+        <Pressable
+          onPress={(event) => {
+            event.stopPropagation();
+            onToggle?.(task, completed);
+          }}
         disabled={!onToggle}
         hitSlop={12}
         accessibilityRole="checkbox"
@@ -115,17 +163,20 @@ function SlimTaskRow({ task, completed, goalName, onToggle, onPress }: SlimTaskR
         accessibilityLabel={
           completed ? `Mark ${task.title} incomplete` : `Mark ${task.title} complete`
         }
-        style={({ pressed }) => [
-          styles.checkbox,
-          completed && styles.checkboxDone,
-          pressed && onToggle && { opacity: 0.68 },
-          !onToggle && { opacity: 0.45 },
-        ]}
-      >
-        {completed ? <CheckIcon size={14} color={colors.textInverse} strokeWidth={2.4} /> : null}
-      </Pressable>
+          style={({ pressed }) => [
+            styles.checkbox,
+            completed && styles.checkboxDone,
+            pressed && onToggle && { opacity: 0.68 },
+            !onToggle && { opacity: 0.45 },
+          ]}
+        >
+          {completed ? (
+            <CheckIcon size={14} color={colors.textInverse} strokeWidth={2.4} />
+          ) : null}
+        </Pressable>
+      </Animated.View>
 
-      <View style={styles.rowBody}>
+      <Animated.View style={[styles.rowBody, bodyAnimStyle]}>
         <Text
           style={[styles.rowTitle, completed && styles.rowTitleDone]}
           numberOfLines={hasDescription ? 1 : 2}
@@ -156,8 +207,38 @@ function SlimTaskRow({ task, completed, goalName, onToggle, onPress }: SlimTaskR
             ) : null}
           </Text>
         ) : null}
-      </View>
+      </Animated.View>
     </Pressable>
+  );
+}
+
+// ─── Day-clear header ───────────────────────────────────────────────────────
+
+/** The reward moment: badge + title enter with a gentle scale-fade after a
+ *  short beat, so the state change reads as earned rather than a flash.
+ *  Mounted only when the day empties, so a mount-time animation suffices. */
+function DayClearHeader() {
+  const reducedMotion = useReducedMotion();
+  const enter = useSharedValue(0);
+  useEffect(() => {
+    if (reducedMotion) {
+      enter.set(1);
+      return;
+    }
+    enter.set(withDelay(250, withSpring(1, { damping: 14, stiffness: 200 })));
+  }, [enter, reducedMotion]);
+  const enterStyle = useAnimatedStyle(() => ({
+    opacity: Math.max(0, Math.min(1, enter.value)),
+    transform: [{ scale: 0.8 + 0.2 * enter.value }],
+  }));
+
+  return (
+    <Animated.View style={[styles.dayClearWrap, enterStyle]}>
+      <View style={styles.dayClearBadge}>
+        <CheckIcon size={18} color={colors.success} strokeWidth={2.4} />
+      </View>
+      <Text style={styles.dayClearTitle}>Day clear</Text>
+    </Animated.View>
   );
 }
 
@@ -239,16 +320,7 @@ function DayCardView({
             progressBackgroundColor={colors.bgCard}
           />
         }
-        ListHeaderComponent={
-          isDayClear ? (
-            <View style={styles.dayClearWrap}>
-              <View style={styles.dayClearBadge}>
-                <CheckIcon size={18} color={colors.success} strokeWidth={2.4} />
-              </View>
-              <Text style={styles.dayClearTitle}>Day clear</Text>
-            </View>
-          ) : null
-        }
+        ListHeaderComponent={isDayClear ? <DayClearHeader /> : null}
         renderItem={({ item }) => (
           <SlimTaskRow
             task={item}
@@ -291,6 +363,59 @@ function OverdueCard({ count, onOpenOverdue }: { count: number; onOpenOverdue: (
   );
 }
 
+// ─── Focus-scale card shell ─────────────────────────────────────────────────
+
+type CarouselCardShellProps = {
+  index: number;
+  interval: number;
+  cardWidth: number;
+  scrollX: SharedValue<number>;
+  reducedMotion: boolean;
+  children: ReactNode;
+};
+
+/** Wraps each card and derives scale/opacity from scroll position on the UI
+ *  thread: identity when centered, easing to the focus floors one interval
+ *  away. Reduced motion collapses to a rigid identity transform. */
+function CarouselCardShell({
+  index,
+  interval,
+  cardWidth,
+  scrollX,
+  reducedMotion,
+  children,
+}: CarouselCardShellProps) {
+  const animatedStyle = useAnimatedStyle(() => {
+    if (reducedMotion) return { transform: [{ scale: 1 }], opacity: 1 };
+    const center = index * interval;
+    const range = [center - interval, center, center + interval];
+    return {
+      transform: [
+        {
+          scale: interpolate(
+            scrollX.value,
+            range,
+            [FOCUS_SCALE_MIN, 1, FOCUS_SCALE_MIN],
+            Extrapolation.CLAMP
+          ),
+        },
+      ],
+      opacity: interpolate(
+        scrollX.value,
+        range,
+        [FOCUS_OPACITY_MIN, 1, FOCUS_OPACITY_MIN],
+        Extrapolation.CLAMP
+      ),
+    };
+  });
+
+  return (
+    <Animated.View style={[{ width: cardWidth, marginRight: CARD_GAP }, animatedStyle]}>
+      {children}
+    </Animated.View>
+  );
+}
+
 // ─── Carousel ───────────────────────────────────────────────────────────────
 
 export function TimelineDayCarousel({
@@ -314,6 +439,12 @@ export function TimelineDayCarousel({
   const interval = cardWidth + CARD_GAP;
 
   const listRef = useRef<FlatList<DayCarouselCard>>(null);
+  // Scroll offset mirrored to the UI thread — every swipe animation (focus
+  // scale, worm) is a pure function of this value.
+  const scrollX = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler((event) => {
+    scrollX.value = event.contentOffset.x;
+  });
   const [current, setCurrent] = useState<{ key: string; index: number } | null>(null);
   const [justCompleted, setJustCompleted] = useState<Record<string, MobileTask>>({});
 
@@ -363,7 +494,9 @@ export function TimelineDayCarousel({
       return;
     }
     listRef.current?.scrollToOffset({ offset: current.index * interval, animated: false });
-  }, [current, interval]);
+    // Non-animated scrolls may not emit scroll events — keep the UI thread in sync.
+    scrollX.set(current.index * interval);
+  }, [current, interval, scrollX]);
 
   const handleMomentumEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -428,8 +561,6 @@ export function TimelineDayCarousel({
     return <View style={styles.emptyContainer}>{emptyComponent}</View>;
   }
 
-  const { dotCount, activeDot } = dotStripState(cards.length, current?.index ?? landingIndex);
-
   return (
     <View style={[styles.container, { paddingBottom: tabBarHeight + spacing.sm }]}>
       <View style={styles.chipRow} pointerEvents="box-none">
@@ -445,7 +576,7 @@ export function TimelineDayCarousel({
         </Animated.View>
       </View>
 
-      <FlatList<DayCarouselCard>
+      <Animated.FlatList<DayCarouselCard>
         ref={listRef}
         horizontal
         data={cards}
@@ -457,9 +588,17 @@ export function TimelineDayCarousel({
         getItemLayout={(_, index) => ({ length: interval, offset: index * interval, index })}
         initialScrollIndex={landingIndex}
         contentContainerStyle={styles.carouselContent}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
         onMomentumScrollEnd={handleMomentumEnd}
-        renderItem={({ item }) => (
-          <View style={{ width: cardWidth, marginRight: CARD_GAP }}>
+        renderItem={({ item, index }) => (
+          <CarouselCardShell
+            index={index}
+            interval={interval}
+            cardWidth={cardWidth}
+            scrollX={scrollX}
+            reducedMotion={reducedMotion}
+          >
             {item.kind === "overdue" ? (
               onOpenOverdue ? (
                 <OverdueCard count={item.count} onOpenOverdue={onOpenOverdue} />
@@ -479,19 +618,10 @@ export function TimelineDayCarousel({
                 getGoalName={getGoalName}
               />
             )}
-          </View>
+          </CarouselCardShell>
         )}
       />
 
-      {dotCount > 1 ? (
-        <View style={styles.dotRow} pointerEvents="none">
-          {Array.from({ length: dotCount }, (_, index) => (
-            <View key={index} style={[styles.dot, index === activeDot && styles.dotActive]} />
-          ))}
-        </View>
-      ) : (
-        <View style={styles.dotRow} />
-      )}
     </View>
   );
 }
@@ -680,21 +810,5 @@ const styles = StyleSheet.create({
   overdueReview: {
     color: colors.accent,
     ...typography.bodyMd,
-  },
-  dotRow: {
-    height: 24,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: radii.full,
-    backgroundColor: colors.borderSubtle,
-  },
-  dotActive: {
-    backgroundColor: colors.accent,
   },
 });

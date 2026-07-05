@@ -79,19 +79,3 @@ export function findLandingIndex(cards: DayCarouselCard[], today: string): numbe
   if (firstDay !== -1) return firstDay;
   return 0;
 }
-
-/**
- * Dot strip mapping: at most `maxDots` dots; beyond that the strip stays fixed
- * and the active dot position is proportional to progress through the axis.
- */
-export function dotStripState(
-  cardCount: number,
-  activeIndex: number,
-  maxDots = 7
-): { dotCount: number; activeDot: number } {
-  const dotCount = Math.min(cardCount, maxDots);
-  if (dotCount <= 1) return { dotCount, activeDot: 0 };
-  if (cardCount <= maxDots) return { dotCount, activeDot: activeIndex };
-  const progress = activeIndex / (cardCount - 1);
-  return { dotCount, activeDot: Math.round(progress * (dotCount - 1)) };
-}

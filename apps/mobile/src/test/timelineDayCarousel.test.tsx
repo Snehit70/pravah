@@ -91,15 +91,50 @@ vi.mock("react-native", () => {
 });
 
 // ─── react-native-reanimated mock ─────────────────────────────────────────────
-vi.mock("react-native-reanimated", () => ({
-  default: {
-    View: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
-      React.createElement("div", {}, children),
-  },
-  useAnimatedStyle: () => ({}),
-  useSharedValue: (value: number) => ({ value }),
-  withTiming: (value: number) => value,
-}));
+vi.mock("react-native-reanimated", () => {
+  const AnimatedFlatList = ({
+    data,
+    renderItem,
+    keyExtractor,
+  }: {
+    data: unknown[];
+    renderItem: (params: { item: unknown; index: number }) => React.ReactNode;
+    keyExtractor: (item: unknown) => string;
+    [key: string]: unknown;
+  }) =>
+    React.createElement(
+      "div",
+      {},
+      data.map((item, index) =>
+        React.createElement("div", { key: keyExtractor(item) }, renderItem({ item, index }))
+      )
+    );
+  return {
+    default: {
+      View: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
+        React.createElement("div", {}, children),
+      FlatList: AnimatedFlatList,
+    },
+    Extrapolation: { CLAMP: "clamp" },
+    interpolate: () => 1,
+    useAnimatedScrollHandler: () => () => {},
+    useAnimatedStyle: () => ({}),
+    useSharedValue: (value: number) => {
+      const sv = {
+        value,
+        get: () => sv.value,
+        set: (next: number) => {
+          sv.value = next;
+        },
+      };
+      return sv;
+    },
+    withDelay: (_delay: number, value: number) => value,
+    withSequence: (...values: number[]) => values[values.length - 1],
+    withSpring: (value: number) => value,
+    withTiming: (value: number) => value,
+  };
+});
 
 // ─── react-native-svg mock ────────────────────────────────────────────────────
 vi.mock("react-native-svg", () => {

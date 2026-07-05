@@ -1,13 +1,12 @@
 /**
  * Axis construction for the comfortable-mode day carousel: overdue card
- * first, task days only, landing rules, held-date insertion, dot strip.
+ * first, task days only, landing rules, held-date insertion.
  */
 
 import { describe, expect, it } from "vitest";
 import {
   buildDayCards,
   cardKey,
-  dotStripState,
   findLandingIndex,
   OVERDUE_CARD_KEY,
 } from "../lib/timelineCarousel";
@@ -141,23 +140,5 @@ describe("buildDayCards", () => {
 describe("findLandingIndex", () => {
   it("returns 0 for an empty axis", () => {
     expect(findLandingIndex([], TODAY)).toBe(0);
-  });
-});
-
-describe("dotStripState", () => {
-  it("maps one dot per card up to the cap", () => {
-    expect(dotStripState(4, 2)).toEqual({ dotCount: 4, activeDot: 2 });
-    expect(dotStripState(7, 6)).toEqual({ dotCount: 7, activeDot: 6 });
-  });
-
-  it("keeps the strip at the cap and maps the active dot proportionally", () => {
-    expect(dotStripState(13, 0)).toEqual({ dotCount: 7, activeDot: 0 });
-    expect(dotStripState(13, 6)).toEqual({ dotCount: 7, activeDot: 3 });
-    expect(dotStripState(13, 12)).toEqual({ dotCount: 7, activeDot: 6 });
-  });
-
-  it("handles degenerate counts", () => {
-    expect(dotStripState(0, 0)).toEqual({ dotCount: 0, activeDot: 0 });
-    expect(dotStripState(1, 0)).toEqual({ dotCount: 1, activeDot: 0 });
   });
 });
