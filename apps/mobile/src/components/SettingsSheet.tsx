@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type JSX } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type ComponentType,
+  type JSX,
+} from "react";
 import {
   ActivityIndicator,
   Keyboard,
@@ -44,15 +53,10 @@ import {
   InboxTrayIcon,
   InfoCircleIcon,
   MailIcon,
-  MotionIcon,
   PulseIcon,
   RetryArrowIcon,
   SmartphoneIcon,
-  SpeakerIcon,
-  StackPlusIcon,
-  SwipeIcon,
   SyncLoopIcon,
-  VibrateIcon,
 } from "./UiIcons";
 import AboutIconAsset from "../assets/icons/settings-about.svg";
 import AppearanceIconAsset from "../assets/icons/settings-appearance.svg";
@@ -64,6 +68,15 @@ import RemindersIconAsset from "../assets/icons/settings-reminders.svg";
 import QuietHoursIconAsset from "../assets/icons/settings-quiet-hours.svg";
 import SyncIconAsset from "../assets/icons/settings-sync.svg";
 import DataIconAsset from "../assets/icons/settings-data.svg";
+import BulkCaptureIconAsset from "../assets/icons/interaction-bulk-capture.svg";
+import SwipeIconAsset from "../assets/icons/interaction-swipe.svg";
+import HapticsIconAsset from "../assets/icons/interaction-haptics.svg";
+import SoundIconAsset from "../assets/icons/interaction-sound.svg";
+import ReducedMotionIconAsset from "../assets/icons/interaction-reduced-motion.svg";
+import DensityComfortableIconAsset from "../assets/icons/appearance-density-comfortable.svg";
+import DensityCompactIconAsset from "../assets/icons/appearance-density-compact.svg";
+import ThemeSystemIconAsset from "../assets/icons/appearance-theme-system.svg";
+import ThemeWarmIconAsset from "../assets/icons/appearance-theme-warm.svg";
 import {
   moveTabOrder,
   resolveTabOrder,
@@ -158,12 +171,12 @@ const REDUCED_MOTION_SEGMENTS = [
   { value: "never", label: "Off" },
 ] as const;
 const DENSITY_SEGMENTS: Array<SegmentedItem<Density>> = [
-  { value: "cozy", label: "Comfortable" },
-  { value: "compact", label: "Compact" },
+  { value: "cozy", label: "Comfortable", Icon: DensityComfortableIconAsset },
+  { value: "compact", label: "Compact", Icon: DensityCompactIconAsset },
 ];
 const THEME_SEGMENTS: Array<SegmentedItem<ThemePreference>> = [
-  { value: "system", label: "System" },
-  { value: "light", label: "Warm light" },
+  { value: "system", label: "System", Icon: ThemeSystemIconAsset },
+  { value: "light", label: "Warm light", Icon: ThemeWarmIconAsset },
   { value: "dark", label: "Dark" },
 ];
 const TASK_COLOR_OPTIONS: Array<{
@@ -1698,7 +1711,11 @@ function RemindersSection({
 
 const SEGMENT_TRACK_PADDING = 3;
 
-type SegmentedItem<T extends string | number> = { value: T; label: string };
+type SegmentedItem<T extends string | number> = {
+  value: T;
+  label: string;
+  Icon?: ComponentType<{ width?: number; height?: number; color?: string }>;
+};
 
 function SlidingSegmented<T extends string | number>({
   options,
@@ -1748,6 +1765,7 @@ function SlidingSegmented<T extends string | number>({
         <SegmentOption
           key={option.value}
           label={option.label}
+          Icon={option.Icon}
           selected={value === option.value}
           optionIndex={optionIndex}
           progress={progress}
@@ -1760,12 +1778,14 @@ function SlidingSegmented<T extends string | number>({
 
 function SegmentOption({
   label,
+  Icon,
   selected,
   optionIndex,
   progress,
   onPress,
 }: {
   label: string;
+  Icon?: ComponentType<{ width?: number; height?: number; color?: string }>;
   selected: boolean;
   optionIndex: number;
   progress: ReturnType<typeof useSharedValue<number>>;
@@ -1787,7 +1807,16 @@ function SegmentOption({
       accessibilityState={{ selected }}
       style={styles.segmentedOption}
     >
-      <Animated.Text style={[styles.segmentedOptionText, labelStyle]}>{label}</Animated.Text>
+      <View style={styles.segmentedOptionContent}>
+        {Icon ? (
+          <Icon
+            width={15}
+            height={15}
+            color={selected ? colors.textInverse : colors.textMuted}
+          />
+        ) : null}
+        <Animated.Text style={[styles.segmentedOptionText, labelStyle]}>{label}</Animated.Text>
+      </View>
     </Pressable>
   );
 }
@@ -1875,7 +1904,7 @@ function InteractionSection({ prefs, setPreference }: InteractionSectionProps) {
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <View style={styles.settingRow}>
           <View style={styles.syncIconWrap}>
-            <StackPlusIcon color={colors.textSecondary} size={18} />
+            <BulkCaptureIconAsset width={18} height={18} />
           </View>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Bulk task capture</Text>
@@ -1893,7 +1922,7 @@ function InteractionSection({ prefs, setPreference }: InteractionSectionProps) {
 
         <View style={styles.settingRow}>
           <View style={styles.syncIconWrap}>
-            <SwipeIcon color={colors.textSecondary} size={18} />
+            <SwipeIconAsset width={22} height={22} />
           </View>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Swipe actions</Text>
@@ -1911,7 +1940,7 @@ function InteractionSection({ prefs, setPreference }: InteractionSectionProps) {
 
         <View style={styles.settingRow}>
           <View style={styles.syncIconWrap}>
-            <VibrateIcon color={colors.textSecondary} size={18} />
+            <HapticsIconAsset width={18} height={18} />
           </View>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Haptics</Text>
@@ -1929,7 +1958,7 @@ function InteractionSection({ prefs, setPreference }: InteractionSectionProps) {
 
         <View style={styles.settingRow}>
           <View style={styles.syncIconWrap}>
-            <SpeakerIcon color={colors.textSecondary} size={18} />
+            <SoundIconAsset width={18} height={18} />
           </View>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Sound</Text>
@@ -1947,7 +1976,7 @@ function InteractionSection({ prefs, setPreference }: InteractionSectionProps) {
 
         <View style={styles.settingRow}>
           <View style={styles.syncIconWrap}>
-            <MotionIcon color={colors.textSecondary} size={18} />
+            <ReducedMotionIconAsset width={18} height={18} />
           </View>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Reduced motion</Text>
@@ -3685,6 +3714,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: spacing.sm,
+  },
+  segmentedOptionContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
   },
   segmentedOptionText: {
     ...typography.bodyMd,
