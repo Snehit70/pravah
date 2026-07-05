@@ -1,6 +1,6 @@
-import { memo, useCallback, type JSX } from "react";
+import { memo, useCallback, useEffect, type JSX } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import Svg, { Circle, Line, Path, Rect } from "react-native-svg";
+import Svg, { Circle, Line, Path } from "react-native-svg";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -26,8 +26,9 @@ type BottomTabBarProps = {
 type IconProps = { color: string; size: number };
 
 // ── Icons ──────────────────────────────────────────────────────────────
-// Calm, literal metaphors on a stable 24x24 grid. Active state is expressed
-// through color and nearby chrome rather than by swapping to a different icon.
+// Hand-authored matched outline+fill pairs on a stable 24x24 grid (ADR-0005).
+// The active state is an area-fill: the filled twin of each mark is revealed
+// through a rising clip mask rather than swapping color chrome.
 
 const STROKE = 2.1;
 
@@ -44,43 +45,92 @@ function frame(color: string, size: number) {
   };
 }
 
+// Inbox — open tray with an arrow dropping in.
+const INBOX_TRAY = "M3.4 13h4.5l1.2 2.2h5.8l1.2-2.2h4.5v4.3a2.2 2.2 0 0 1-2.2 2.2H5.6a2.2 2.2 0 0 1-2.2-2.2Z";
+
 function InboxTrayIcon({ color, size }: IconProps) {
   return (
     <Svg {...frame(color, size)}>
-      <Path d="M3 8.5h18l-2 9.5H5L3 8.5Z" />
-      <Path d="M8 8.5V6.75A1.75 1.75 0 0 1 9.75 5h4.5A1.75 1.75 0 0 1 16 6.75V8.5" />
-      <Path d="M3.75 13h4.7l1.1 2h4.9l1.1-2h4.7" />
+      <Path d={INBOX_TRAY} />
+      <Path d="M12 4.2v6.2" />
+      <Path d="m9 7.6 3 3 3-3" />
     </Svg>
   );
 }
 
-function CalendarIcon({ color, size }: IconProps) {
+function InboxTrayFillIcon({ color, size }: IconProps) {
   return (
     <Svg {...frame(color, size)}>
-      <Rect x={3.5} y={5} width={17} height={15} rx={3} />
-      <Line x1={8} y1={3.75} x2={8} y2={7.25} />
-      <Line x1={16} y1={3.75} x2={16} y2={7.25} />
-      <Line x1={3.5} y1={9} x2={20.5} y2={9} />
-      <Rect x={7} y={12} width={3} height={3} rx={1} />
-      <Rect x={11} y={12} width={3} height={3} rx={1} />
-      <Rect x={15} y={12} width={3} height={3} rx={1} />
+      <Path d={INBOX_TRAY} fill={color} />
+      <Path d="M12 4.2v6.2" />
+      <Path d="m9 7.6 3 3 3-3" />
     </Svg>
   );
 }
 
-function TargetIcon({ color, size }: IconProps) {
+// Timeline — agenda rows: dot + entry line, repeated.
+const AGENDA_ROWS = [5.6, 12, 18.4] as const;
+
+function AgendaIcon({ color, size }: IconProps) {
   return (
     <Svg {...frame(color, size)}>
-      <Circle cx={12} cy={12} r={7.25} />
-      <Circle cx={12} cy={12} r={3.75} />
-      <Circle cx={12} cy={12} r={1.35} fill={color} stroke="none" />
+      {AGENDA_ROWS.map((y) => (
+        <Circle key={y} cx={5.3} cy={y} r={1.7} />
+      ))}
+      {AGENDA_ROWS.map((y) => (
+        <Line key={y} x1={10.2} y1={y} x2={20.6} y2={y} />
+      ))}
     </Svg>
   );
 }
 
+function AgendaFillIcon({ color, size }: IconProps) {
+  return (
+    <Svg {...frame(color, size)}>
+      {AGENDA_ROWS.map((y) => (
+        <Circle key={y} cx={5.3} cy={y} r={1.7} fill={color} />
+      ))}
+      {AGENDA_ROWS.map((y) => (
+        <Line key={y} x1={10.2} y1={y} x2={20.6} y2={y} />
+      ))}
+    </Svg>
+  );
+}
+
+// Goals — mountain ridge, twin peaks.
+const MOUNTAIN = "M2.9 18.75 9 7.5l3.4 5.5 2.8-4.3 5.9 10.05Z";
+
+function MountainIcon({ color, size }: IconProps) {
+  return (
+    <Svg {...frame(color, size)}>
+      <Path d={MOUNTAIN} />
+    </Svg>
+  );
+}
+
+function MountainFillIcon({ color, size }: IconProps) {
+  return (
+    <Svg {...frame(color, size)}>
+      <Path d={MOUNTAIN} fill={color} />
+    </Svg>
+  );
+}
+
+// Progress — upward trend; filled twin shades the area under the curve.
 function TrendIcon({ color, size }: IconProps) {
   return (
     <Svg {...frame(color, size)}>
+      <Path d="M4 18.5h16" />
+      <Path d="M6 15.5 10 11l3 2.5 5-6" />
+      <Path d="M15.5 7.5H18v2.5" />
+    </Svg>
+  );
+}
+
+function TrendFillIcon({ color, size }: IconProps) {
+  return (
+    <Svg {...frame(color, size)}>
+      <Path d="M6 15.5 10 11l3 2.5 5-6V18.5H6Z" fill={color} stroke="none" />
       <Path d="M4 18.5h16" />
       <Path d="M6 15.5 10 11l3 2.5 5-6" />
       <Path d="M15.5 7.5H18v2.5" />
@@ -100,15 +150,44 @@ function CaptureIcon({ color, size }: { color: string; size: number }) {
 // ── Tabs ───────────────────────────────────────────────────────────────
 
 type NavIcon = (p: IconProps) => JSX.Element;
+type FillDirection = "up" | "right";
 
-const NAV_TABS: Record<TabKey, { key: TabKey; label: string; Icon: NavIcon }> = {
-  inbox: { key: "inbox", label: TAB_LABELS.inbox, Icon: InboxTrayIcon },
-  timeline: { key: "timeline", label: TAB_LABELS.timeline, Icon: CalendarIcon },
-  goals: { key: "goals", label: TAB_LABELS.goals, Icon: TargetIcon },
-  insights: { key: "insights", label: TAB_LABELS.insights, Icon: TrendIcon },
+const NAV_TABS: Record<
+  TabKey,
+  { key: TabKey; label: string; Icon: NavIcon; FillIcon: NavIcon; fillDirection: FillDirection }
+> = {
+  inbox: {
+    key: "inbox",
+    label: TAB_LABELS.inbox,
+    Icon: InboxTrayIcon,
+    FillIcon: InboxTrayFillIcon,
+    fillDirection: "up",
+  },
+  timeline: {
+    key: "timeline",
+    label: TAB_LABELS.timeline,
+    Icon: AgendaIcon,
+    FillIcon: AgendaFillIcon,
+    fillDirection: "up",
+  },
+  goals: {
+    key: "goals",
+    label: TAB_LABELS.goals,
+    Icon: MountainIcon,
+    FillIcon: MountainFillIcon,
+    fillDirection: "up",
+  },
+  insights: {
+    key: "insights",
+    label: TAB_LABELS.insights,
+    Icon: TrendIcon,
+    FillIcon: TrendFillIcon,
+    fillDirection: "right",
+  },
 };
 
 const ICON_SIZE = 22;
+const FILL_DURATION = 280;
 const SPRING = { damping: 18, stiffness: 320 };
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -124,38 +203,62 @@ function NavTab({
   reducedMotion: boolean;
 }) {
   const press = useSharedValue(1);
+  const fill = useSharedValue(active ? 1 : 0);
   const iconStyle = useAnimatedStyle(() => ({
     transform: [{ scale: press.value }],
   }));
 
-  const { Icon } = tab;
+  const { Icon, FillIcon, fillDirection } = tab;
+
+  useEffect(() => {
+    const target = active ? 1 : 0;
+    fill.set(reducedMotion ? target : withTiming(target, { duration: FILL_DURATION }));
+  }, [active, reducedMotion, fill]);
+
+  // Directional fill-rise: the filled twin is revealed through a clip window
+  // that grows bottom-up (tray/mountain/agenda) or left-to-right (trend).
+  const maskStyle = useAnimatedStyle(() =>
+    fillDirection === "right"
+      ? { width: fill.value * ICON_SIZE }
+      : { height: fill.value * ICON_SIZE }
+  );
 
   return (
-    <AnimatedPressable
-      onPress={onPress}
-      onPressIn={() => {
-        if (!reducedMotion) press.set(withSpring(0.9, SPRING));
-      }}
-      onPressOut={() => {
-        if (!reducedMotion) press.set(withSpring(1, SPRING));
-      }}
-      hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
-      accessibilityRole="tab"
-      accessibilityState={{ selected: active }}
-      accessibilityLabel={tab.label}
-      style={({ pressed }) => [
-        styles.tabItem,
-        active && styles.tabItemActive,
-        pressed && { opacity: 0.78 },
-      ]}
-    >
-      <Animated.View style={[styles.iconWrap, iconStyle]}>
-        <Icon color={active ? colors.accent : colors.textMuted} size={ICON_SIZE} />
-      </Animated.View>
-      <Text style={[styles.tabLabel, active && styles.tabLabelActive]} numberOfLines={1}>
-        {tab.label}
-      </Text>
-    </AnimatedPressable>
+    <View style={styles.slot}>
+      <AnimatedPressable
+        onPress={onPress}
+        onPressIn={() => {
+          if (!reducedMotion) press.set(withSpring(0.9, SPRING));
+        }}
+        onPressOut={() => {
+          if (!reducedMotion) press.set(withSpring(1, SPRING));
+        }}
+        hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: active }}
+        accessibilityLabel={tab.label}
+        style={({ pressed }) => [styles.tabItem, pressed && { opacity: 0.78 }]}
+      >
+        <Animated.View style={[styles.iconWrap, iconStyle]}>
+          <Icon color={active ? colors.accent : colors.textMuted} size={ICON_SIZE} />
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.fillMask,
+              fillDirection === "right" ? styles.fillMaskRight : styles.fillMaskUp,
+              maskStyle,
+            ]}
+          >
+            <View style={fillDirection === "right" ? styles.fillInnerRight : styles.fillInnerUp}>
+              <FillIcon color={colors.accent} size={ICON_SIZE} />
+            </View>
+          </Animated.View>
+        </Animated.View>
+        <Text style={[styles.tabLabel, active && styles.tabLabelActive]} numberOfLines={1}>
+          {tab.label}
+        </Text>
+      </AnimatedPressable>
+    </View>
   );
 }
 
@@ -287,23 +390,57 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
   },
-  tabItem: {
-    flex: 1,
+  // Layout flex lives on plain wrapper Views: flex on the animated Pressable
+  // itself does not survive createAnimatedComponent's style flattening, which
+  // let the capture slot absorb all the slack and un-even the five slots.
+  slot: {
+    flexGrow: 1,
+    flexBasis: 0,
     minHeight: 50,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabItem: {
+    alignSelf: "stretch",
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: spacing.sm,
     gap: 2,
     borderRadius: radii.full,
   },
-  tabItemActive: {
-    backgroundColor: colors.accentDim,
-  },
   iconWrap: {
     width: ICON_SIZE,
     height: ICON_SIZE,
     alignItems: "center",
     justifyContent: "center",
+  },
+  fillMask: {
+    position: "absolute",
+    overflow: "hidden",
+  },
+  fillMaskUp: {
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  fillMaskRight: {
+    left: 0,
+    top: 0,
+    bottom: 0,
+  },
+  fillInnerUp: {
+    position: "absolute",
+    left: 0,
+    bottom: 0,
+    width: ICON_SIZE,
+    height: ICON_SIZE,
+  },
+  fillInnerRight: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: ICON_SIZE,
+    height: ICON_SIZE,
   },
   tabLabel: {
     ...typography.micro,
@@ -316,21 +453,22 @@ const styles = StyleSheet.create({
     color: colors.accent,
   },
   captureSlot: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: 0,
     minHeight: 50,
     alignItems: "center",
     justifyContent: "center",
   },
   captureHalo: {
     position: "absolute",
-    width: "100%",
-    height: 50,
+    width: 56,
+    height: 40,
     borderRadius: radii.full,
     backgroundColor: colors.accent,
   },
   captureBtn: {
-    alignSelf: "stretch",
-    minHeight: 50,
+    width: 56,
+    height: 40,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radii.full,

@@ -1052,7 +1052,7 @@ function MobileApp() {
               accessibilityRole="button"
               accessibilityLabel="Open Kairo"
             >
-              <KairoMarkIcon width={18} height={18} color={colors.accent} />
+              <KairoMarkIcon width={18} height={18} color={colors.textMuted} />
             </Pressable>
             <Pressable
               onPress={openSettingsModal}
