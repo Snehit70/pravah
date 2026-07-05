@@ -61,6 +61,10 @@ _Avoid_: objective, target
 The association between one Task and one Goal. It gives the Task strategic context without changing the Task's lifecycle or placement.
 _Avoid_: task-goal mapping, goal assignment
 
+**Day Strip**:
+A horizontal week navigator above the Timeline's day cards. It presents a real calendar week (Sunday–Saturday) and lets the user jump directly to a day. Days that hold tasks are reachable destinations; days without tasks are shown for orientation but are not destinations. The Day Strip always contains the day the user is currently viewing, sliding to a new week when the user crosses a week boundary.
+_Avoid_: date picker, calendar bar, week scroller
+
 **Kairo**:
 The built-in AI copilot that reasons about schedule and task creation.
 _Avoid_: assistant, bot
