@@ -25,7 +25,7 @@ import { isTaskCompleted, isTaskInInbox, isTaskOnTimeline } from "../lib/taskSta
 import { formatTime12h } from "../lib/task-form";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useUserPreferences } from "../hooks/useUserPreferences";
-import type { AccentColor } from "../lib/userPreferences";
+import { taskEmphasisColor } from "../lib/taskAccent";
 
 export type MobileTask = {
   _id: Id<"tasks">;
@@ -72,19 +72,6 @@ type TaskCardProps = {
 };
 
 const TASK_CARD_RADIUS = radii.lg;
-
-function taskEmphasisColor(scheme: AccentColor): string {
-  switch (scheme) {
-    case "copper":
-      return colors.deadline;
-    case "teal":
-      return colors.success;
-    case "rose":
-      return colors.error;
-    case "purple":
-      return colors.accent;
-  }
-}
 
 /**
  * Reanimated swipe-action panel. The pan progress comes from

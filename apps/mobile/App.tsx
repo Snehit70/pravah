@@ -60,6 +60,7 @@ import { DiagnosticsPanel } from "./src/components/DiagnosticsPanel";
 import { CompletedTaskSheet } from "./src/components/CompletedTaskSheet";
 import { InboxScreen } from "./src/screens/InboxScreen";
 import { TimelineScreen } from "./src/screens/TimelineScreen";
+import { TimelineLayoutToggle } from "./src/components/TimelineLayoutToggle";
 import { InsightsScreen } from "./src/screens/InsightsScreen";
 import { GoalsScreen } from "./src/screens/GoalsScreen";
 import { useRetryQueue, type RetryPayload } from "./src/hooks/useRetryQueue";
@@ -1044,6 +1045,7 @@ function MobileApp() {
             </View>
           </View>
           <View style={styles.headerLinks}>
+            {activeTab === "timeline" ? <TimelineLayoutToggle /> : null}
             <Pressable
               onPress={openKairo}
               disabled={!canUseWorkspaceActions}
@@ -1173,6 +1175,11 @@ function MobileApp() {
               onOpenOverdue={
                 canUseWorkspaceActions && isTimelineTriageReady ? openOverdue : undefined
               }
+              layout={prefs.timelineLayout}
+              onCompleteTask={canUseWorkspaceActions ? markDone : undefined}
+              onReopenTask={canUseWorkspaceActions ? reopenTask : undefined}
+              onEditTask={canUseWorkspaceActions ? handleEditTask : undefined}
+              getGoalName={(taskId) => taskGoalNames.get(taskId)}
             />
           </ScreenErrorBoundary>
         </Animated.View>

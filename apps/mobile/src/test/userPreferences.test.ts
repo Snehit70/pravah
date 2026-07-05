@@ -78,6 +78,13 @@ describe("sanitize", () => {
     });
   });
 
+  it("sanitizes the timeline layout preference", () => {
+    expect(sanitize({ timelineLayout: "carousel" }).timelineLayout).toBe("carousel");
+    expect(sanitize({ timelineLayout: "list" }).timelineLayout).toBe("list");
+    expect(sanitize({ timelineLayout: "grid" }).timelineLayout).toBe("list");
+    expect(sanitize({}).timelineLayout).toBe("list");
+  });
+
   it("defaults the redesign interaction preferences safely", () => {
     const result = sanitize({
       swipeActionsEnabled: "yes",

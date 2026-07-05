@@ -9,15 +9,18 @@
  */
 
 import { useState, type JSX } from "react";
-import Animated, { FadeIn } from "react-native-reanimated";
+import Animated, { FadeIn, FadeOut, withDelay, withTiming } from "react-native-reanimated";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import type { RenderItemParams } from "react-native-draggable-flatlist";
 import Svg, { Line, Rect } from "react-native-svg";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import type { Id } from "../../../../convex/_generated/dataModel";
 import type { MobileTask } from "../components/TaskCard";
 import { TimelineSectionHeader } from "../components/TimelineSectionHeader";
+import { TimelineDayCarousel } from "../components/TimelineDayCarousel";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { dateLabel } from "../lib/dates";
+import type { TimelineLayout } from "../lib/userPreferences";
 import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 
@@ -39,10 +42,32 @@ type TimelineScreenProps = {
   overdueCount?: number;
   /** Opens the overdue triage sheet. Omitted while actions are unavailable. */
   onOpenOverdue?: () => void;
+  /** Timeline layout preference — the compact list (default) or the
+   *  comfortable day-card carousel. */
+  layout?: TimelineLayout;
+  /** Carousel-mode slim rows call these directly instead of `renderItem`. */
+  onCompleteTask?: (id: Id<"tasks">) => void;
+  onReopenTask?: (id: Id<"tasks">) => void;
+  onEditTask?: (task: MobileTask) => void;
+  getGoalName?: (taskId: string) => string | undefined;
 };
 
 const noopDrag = () => {};
 const DEFAULT_VISIBLE_SECTION_COUNT = 3;
+
+/** Crossfade for the layout toggle (PRD §5): incoming layout fades in over
+ *  ~220ms with a subtle 0.98→1 scale, delayed so it overlaps the last ~60ms
+ *  of the outgoing fade. */
+function layoutEntering() {
+  "worklet";
+  return {
+    initialValues: { opacity: 0, transform: [{ scale: 0.98 }] },
+    animations: {
+      opacity: withDelay(120, withTiming(1, { duration: 220 })),
+      transform: [{ scale: withDelay(120, withTiming(1, { duration: 220 })) }],
+    },
+  };
+}
 
 function countTimelineRows(sections: [string, MobileTask[]][]) {
   let count = 0;
@@ -127,9 +152,22 @@ export function TimelineScreen({
   renderItem,
   overdueCount,
   onOpenOverdue,
+  layout = "list",
+  onCompleteTask,
+  onReopenTask,
+  onEditTask,
+  getGoalName,
 }: TimelineScreenProps) {
   const reducedMotion = useReducedMotion();
   const [showAllSections, setShowAllSections] = useState(false);
+  // Entering animations also fire on first mount; the tab transition already
+  // animates that, so the crossfade only arms once the layout prop changes.
+  const [lastLayout, setLastLayout] = useState(layout);
+  const [crossfadeArmed, setCrossfadeArmed] = useState(false);
+  if (lastLayout !== layout) {
+    setLastLayout(layout);
+    if (!crossfadeArmed) setCrossfadeArmed(true);
+  }
   const { future, overdueCount: localOverdue } = splitOverdue(sections, today);
   const effectiveOverdue = overdueCount ?? localOverdue;
   const sourceSections = onOpenOverdue ? future : sections;
@@ -178,7 +216,11 @@ export function TimelineScreen({
 
   const loadingBlock = <TaskListSkeleton variant="timeline" />;
 
-  return (
+  const animateCrossfade = crossfadeArmed && !reducedMotion;
+  const entering = animateCrossfade ? layoutEntering : undefined;
+  const exiting = animateCrossfade ? FadeOut.duration(180) : undefined;
+
+  const listBody = (
     <FlatList<TimelineRow>
       style={{ flex: 1 }}
       contentContainerStyle={{
@@ -241,9 +283,55 @@ export function TimelineScreen({
       ListEmptyComponent={isLoading ? loadingBlock : emptyBlock}
     />
   );
+
+  const carouselBody = isLoading ? (
+    loadingBlock
+  ) : (
+    <TimelineDayCarousel
+      sections={sections}
+      today={today}
+      tomorrow={tomorrow}
+      isRefreshing={isRefreshing}
+      tabBarHeight={tabBarHeight}
+      onRefresh={onRefresh}
+      overdueCount={overdueCount}
+      onOpenOverdue={onOpenOverdue}
+      onCompleteTask={onCompleteTask}
+      onReopenTask={onReopenTask}
+      onEditTask={onEditTask}
+      getGoalName={getGoalName}
+      emptyComponent={emptyBlock}
+    />
+  );
+
+  // Both layouts mount in an absolute-fill wrapper so the exiting one can
+  // fade out in place without doubling the flex layout during the overlap.
+  return (
+    <View style={styles.layoutRoot}>
+      {layout === "carousel" ? (
+        <Animated.View key="carousel" style={styles.layoutFill} entering={entering} exiting={exiting}>
+          {carouselBody}
+        </Animated.View>
+      ) : (
+        <Animated.View key="list" style={styles.layoutFill} entering={entering} exiting={exiting}>
+          {listBody}
+        </Animated.View>
+      )}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
+  layoutRoot: {
+    flex: 1,
+  },
+  layoutFill: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   // Muted, tappable doorway to the triage sheet — count + chevron only, no
   // alarm color (per the overdue-handling design: tone fixed by behavior).
   overdueBar: {
