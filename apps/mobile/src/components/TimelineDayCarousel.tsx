@@ -54,6 +54,7 @@ import { taskEmphasisColor } from "../lib/taskAccent";
 import { CheckIcon } from "./UiIcons";
 import { dateLabel, weekdayDate } from "../lib/dates";
 import { buildDayCards, cardKey, type DayCarouselCard } from "../lib/timelineCarousel";
+import { TimelineDayStrip } from "./TimelineDayStrip";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 
@@ -534,28 +535,20 @@ export function TimelineDayCarousel({
   );
   const canToggle = Boolean(onCompleteTask);
 
-  // "‹ Today" chip — fades in once the user is off the landing card.
-  const landingKey = cards.length > 0 ? cardKey(cards[landingIndex]) : null;
-  const chipVisible = Boolean(current && landingKey && current.key !== landingKey);
-  const chipOpacity = useSharedValue(0);
-  useEffect(() => {
-    const target = chipVisible ? 1 : 0;
-    chipOpacity.value = reducedMotion
-      ? target
-      : withTiming(target, { duration: motion.duration.fast });
-  }, [chipOpacity, chipVisible, reducedMotion]);
-  const chipStyle = useAnimatedStyle(() => ({ opacity: chipOpacity.value }));
-
-  const jumpToToday = useCallback(() => {
-    if (cards.length === 0) return;
-    listRef.current?.scrollToOffset({
-      offset: landingIndex * interval,
-      animated: !reducedMotion,
-    });
-    scrollSettledRef.current = true;
-    setCurrent({ key: cardKey(cards[landingIndex]), index: landingIndex });
-    setJustCompleted({});
-  }, [cards, interval, landingIndex, reducedMotion]);
+  // Jump straight to any card — the day strip's cell taps and its "back to
+  // today" affordance both call this (the latter with landingIndex). Marks the
+  // change as scroll-driven so the pin effect doesn't cut the glide short.
+  const jumpToCard = useCallback(
+    (index: number) => {
+      if (index < 0 || index >= cards.length) return;
+      listRef.current?.scrollToOffset({ offset: index * interval, animated: !reducedMotion });
+      scrollSettledRef.current = true;
+      setCurrent({ key: cardKey(cards[index]), index });
+      // Navigating away releases the previous card's Day-clear hold.
+      setJustCompleted({});
+    },
+    [cards, interval, reducedMotion]
+  );
 
   if (cards.length === 0) {
     return <View style={styles.emptyContainer}>{emptyComponent}</View>;
@@ -563,18 +556,16 @@ export function TimelineDayCarousel({
 
   return (
     <View style={[styles.container, { paddingBottom: tabBarHeight + spacing.sm }]}>
-      <View style={styles.chipRow} pointerEvents="box-none">
-        <Animated.View style={chipStyle} pointerEvents={chipVisible ? "auto" : "none"}>
-          <Pressable
-            onPress={jumpToToday}
-            style={({ pressed }) => [styles.todayChip, pressed && { opacity: 0.6 }]}
-            accessibilityRole="button"
-            accessibilityLabel="Jump back to today"
-          >
-            <Text style={styles.todayChipText}>‹ Today</Text>
-          </Pressable>
-        </Animated.View>
-      </View>
+      <TimelineDayStrip
+        cards={cards}
+        currentIndex={current?.index ?? null}
+        today={today}
+        scrollX={scrollX}
+        interval={interval}
+        landingIndex={landingIndex}
+        reducedMotion={reducedMotion}
+        onJumpToCard={jumpToCard}
+      />
 
       <Animated.FlatList<DayCarouselCard>
         ref={listRef}
@@ -634,29 +625,6 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     flex: 1,
-  },
-  // Fixed-height chip lane so the Today chip fading in never shifts the cards.
-  chipRow: {
-    height: 40,
-    justifyContent: "center",
-    paddingHorizontal: spacing.lg,
-  },
-  todayChip: {
-    alignSelf: "flex-start",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs + 2,
-    borderRadius: radii.md,
-    borderCurve: "continuous",
-    backgroundColor: colors.bgSurface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-  },
-  todayChipText: {
-    color: colors.accent,
-    fontFamily: fonts.sansSemibold,
-    fontSize: 13,
-    lineHeight: 17,
-    letterSpacing: -0.1,
   },
   carouselContent: {
     paddingHorizontal: spacing.lg,

@@ -105,3 +105,11 @@ export function dateLabel(date: string, today: string, tomorrow: string): string
 export function isIsoDate(value: string): boolean {
   return parseIsoParts(value) !== null;
 }
+
+/** Local Date at midnight for an ISO date, or null if the string isn't a valid
+ *  ISO date. Local (not UTC) construction so week/weekday math matches the
+ *  user's calendar day — mirrors weekdayShort above. */
+export function isoToDate(iso: string): Date | null {
+  const p = parseIsoParts(iso);
+  return p ? new Date(p.year, p.month - 1, p.day) : null;
+}
