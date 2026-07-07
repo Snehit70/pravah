@@ -5,7 +5,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { checkForAppUpdate, type UpdateAvailableResult, type UpdateCheckResult } from "../lib/appUpdate";
 import { useAppUpdateInstaller } from "../hooks/useAppUpdateInstaller";
 import { colors, radii, spacing, typography } from "../theme/tokens";
-import { UpdateArrowIcon } from "./UiIcons";
+import AppUpdatesIconAsset from "../assets/icons/about-app-updates.svg";
 
 const CANONICAL_PACKAGE = "com.pravah.mobile";
 
@@ -71,11 +71,15 @@ export function AppUpdateSection() {
   return (
     <View style={styles.group}>
       <View style={styles.divider} />
-      <View style={styles.labelRow}>
-        <UpdateArrowIcon color={colors.textPrimary} size={16} />
-        <Text style={styles.label}>App updates</Text>
+      <View style={styles.headerRow}>
+        <View style={styles.iconTile}>
+          <AppUpdatesIconAsset color={colors.textPrimary} width={18} height={18} />
+        </View>
+        <View style={styles.headerCopy}>
+          <Text style={styles.label}>App updates</Text>
+          <Text style={styles.help}>{statusCopy(checkState)}</Text>
+        </View>
       </View>
-      <Text style={styles.help}>{statusCopy(checkState)}</Text>
       {update ? (
         <View style={styles.notesBox}>
           <Text style={styles.notesTitle}>Release notes</Text>
@@ -147,10 +151,24 @@ const styles = StyleSheet.create({
     marginHorizontal: -spacing.lg,
     marginVertical: spacing.xs,
   },
-  labelRow: {
+  headerRow: {
     flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.md,
+  },
+  iconTile: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     alignItems: "center",
-    gap: spacing.sm,
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  headerCopy: {
+    flex: 1,
+    gap: 4,
   },
   label: {
     ...typography.bodyMd,
@@ -186,6 +204,7 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: "row",
     flexWrap: "wrap",
+    justifyContent: "flex-end",
     gap: spacing.sm,
   },
   button: {

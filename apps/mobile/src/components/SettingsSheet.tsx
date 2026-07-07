@@ -39,25 +39,27 @@ import { retryQueueStorage } from "../lib/retry-queue-storage";
 import { classifyError, mobileLogger } from "../lib/logger";
 import {
   AlertCircleIcon,
-  AlertSquircleIcon,
   ArrowUpRightIcon,
-  BugIcon,
   CalendarIcon,
   CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CopyIcon,
-  DownloadTrayIcon,
-  FileTextIcon,
-  GitBranchIcon,
   InboxTrayIcon,
   InfoCircleIcon,
   MailIcon,
-  PulseIcon,
-  RetryArrowIcon,
-  SmartphoneIcon,
   SyncLoopIcon,
 } from "./UiIcons";
+import GithubIconAsset from "../assets/icons/about-github.svg";
+import ReportIssueIconAsset from "../assets/icons/about-report-issue.svg";
+import PravahMobileIconAsset from "../assets/icons/about-pravah-mobile.svg";
+import YourDataIconAsset from "../assets/icons/data-your-data.svg";
+import DiagnosticsIconAsset from "../assets/icons/data-diagnostics.svg";
+import ExportTasksIconAsset from "../assets/icons/data-export-tasks.svg";
+import ExportDiagnosticsIconAsset from "../assets/icons/data-export-diagnostics.svg";
+import RetryQueueIconAsset from "../assets/icons/data-retry-queue.svg";
+import DangerZoneIconAsset from "../assets/icons/data-danger-zone.svg";
+import WipeLocalIconAsset from "../assets/icons/data-wipe-local.svg";
 import AboutIconAsset from "../assets/icons/settings-about.svg";
 import AppearanceIconAsset from "../assets/icons/settings-appearance.svg";
 import InteractionIconAsset from "../assets/icons/settings-interaction.svg";
@@ -75,6 +77,7 @@ import SoundIconAsset from "../assets/icons/interaction-sound.svg";
 import ReducedMotionIconAsset from "../assets/icons/interaction-reduced-motion.svg";
 import DensityComfortableIconAsset from "../assets/icons/appearance-density-comfortable.svg";
 import DensityCompactIconAsset from "../assets/icons/appearance-density-compact.svg";
+import ThemeDarkIconAsset from "../assets/icons/appearance-theme-dark.svg";
 import ThemeSystemIconAsset from "../assets/icons/appearance-theme-system.svg";
 import ThemeWarmIconAsset from "../assets/icons/appearance-theme-warm.svg";
 import {
@@ -83,6 +86,7 @@ import {
   TAB_LABELS,
   type TabKey,
 } from "../lib/tabOrder";
+import { TabNavIcon } from "./tabNavIcons";
 import {
   INITIAL_SETTINGS_NAVIGATION,
   SETTINGS_CATEGORY_META,
@@ -177,7 +181,7 @@ const DENSITY_SEGMENTS: Array<SegmentedItem<Density>> = [
 const THEME_SEGMENTS: Array<SegmentedItem<ThemePreference>> = [
   { value: "system", label: "System", Icon: ThemeSystemIconAsset },
   { value: "light", label: "Warm light", Icon: ThemeWarmIconAsset },
-  { value: "dark", label: "Dark" },
+  { value: "dark", label: "Dark", Icon: ThemeDarkIconAsset },
 ];
 const TASK_COLOR_OPTIONS: Array<{
   value: AccentColor;
@@ -424,6 +428,23 @@ function useTabReorderTransition() {
     : LinearTransition.duration(motion.duration.base).easing(TAB_REORDER_EASING);
 }
 
+function TabOrderPreviewItem({
+  tab,
+  layout,
+}: {
+  tab: TabKey;
+  layout: ReturnType<typeof useTabReorderTransition>;
+}) {
+  return (
+    <Animated.View layout={layout} style={styles.tabPreviewItem}>
+      <TabNavIcon tab={tab} color={colors.textMuted} size={14} />
+      <Text style={styles.tabPreviewText} numberOfLines={1}>
+        {TAB_LABELS[tab]}
+      </Text>
+    </Animated.View>
+  );
+}
+
 function TabOrderPreview({ order }: { order: readonly TabKey[] }) {
   const layout = useTabReorderTransition();
   const left = order.slice(0, 2);
@@ -431,17 +452,13 @@ function TabOrderPreview({ order }: { order: readonly TabKey[] }) {
   return (
     <View style={styles.tabOrderPreview} testID="tab-order-preview">
       {left.map((key) => (
-        <Animated.View key={key} layout={layout} style={styles.tabPreviewItem}>
-          <Text style={styles.tabPreviewText}>{TAB_LABELS[key]}</Text>
-        </Animated.View>
+        <TabOrderPreviewItem key={key} tab={key} layout={layout} />
       ))}
       <View style={styles.tabPreviewCapture}>
         <Text style={styles.tabPreviewCaptureText}>Capture</Text>
       </View>
       {right.map((key) => (
-        <Animated.View key={key} layout={layout} style={styles.tabPreviewItem}>
-          <Text style={styles.tabPreviewText}>{TAB_LABELS[key]}</Text>
-        </Animated.View>
+        <TabOrderPreviewItem key={key} tab={key} layout={layout} />
       ))}
     </View>
   );
@@ -2071,11 +2088,11 @@ function AboutSection() {
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <View style={styles.aboutHeader}>
+          <View style={styles.syncIconWrap}>
+            <PravahMobileIconAsset color={colors.textPrimary} width={18} height={18} />
+          </View>
           <View style={styles.aboutHeaderCopy}>
-            <View style={styles.aboutTitleRow}>
-              <SmartphoneIcon color={colors.textPrimary} size={16} />
-              <Text style={styles.settingLabel}>Pravah Mobile</Text>
-            </View>
+            <Text style={styles.settingLabel}>Pravah Mobile</Text>
             <Text style={styles.aboutVersion}>Version {APP_VERSION}</Text>
           </View>
           <Pressable
@@ -2103,7 +2120,9 @@ function AboutSection() {
           style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
         >
           <View style={styles.linkRowLead}>
-            <BugIcon color={colors.textMuted} size={16} />
+            <View style={styles.syncIconWrap}>
+              <ReportIssueIconAsset color={colors.textPrimary} width={18} height={18} />
+            </View>
             <Text style={styles.linkRowText}>Report an issue</Text>
           </View>
           <ArrowUpRightIcon color={colors.textMuted} size={16} />
@@ -2116,7 +2135,9 @@ function AboutSection() {
           style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
         >
           <View style={styles.linkRowLead}>
-            <GitBranchIcon color={colors.textMuted} size={16} />
+            <View style={styles.syncIconWrap}>
+              <GithubIconAsset color={colors.textPrimary} width={18} height={18} />
+            </View>
             <Text style={styles.linkRowText}>GitHub repository</Text>
           </View>
           <ArrowUpRightIcon color={colors.textMuted} size={16} />
@@ -2152,32 +2173,40 @@ function DataSection({
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
-        <View style={styles.aboutTitleRow}>
-          <FileTextIcon color={colors.textPrimary} size={16} strokeWidth={1.8} />
-          <Text style={styles.settingLabel}>Your data</Text>
+        <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <YourDataIconAsset color={colors.textPrimary} width={18} height={18} />
+          </View>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Your data</Text>
+            <Text style={styles.settingHelp}>
+              Export every task currently in view as JSON.
+            </Text>
+          </View>
         </View>
-        <Text style={styles.settingHelp}>
-          Export every task currently in view as JSON.
-        </Text>
         <Pressable
           onPress={onExportTasks}
           hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel="Export tasks as JSON"
-          style={({ pressed }) => [styles.softButton, pressed && { opacity: 0.6 }]}
+          style={({ pressed }) => [styles.softButton, styles.softButtonEnd, pressed && { opacity: 0.6 }]}
         >
-          <DownloadTrayIcon color={colors.textPrimary} size={15} strokeWidth={1.8} />
+          <ExportTasksIconAsset color={colors.textPrimary} width={15} height={15} />
           <Text style={styles.softButtonText}>Export tasks as JSON</Text>
         </Pressable>
         <View style={styles.sectionDivider} />
 
-        <View style={styles.aboutTitleRow}>
-          <PulseIcon color={colors.textPrimary} size={16} strokeWidth={1.8} />
-          <Text style={styles.settingLabel}>Diagnostics</Text>
+        <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <DiagnosticsIconAsset color={colors.textPrimary} width={18} height={18} />
+          </View>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Diagnostics</Text>
+            <Text style={styles.settingHelp}>
+              Export app events, device metadata, and sync state as JSON.
+            </Text>
+          </View>
         </View>
-        <Text style={styles.settingHelp}>
-          Export app events, device metadata, and sync state as JSON.
-        </Text>
         <View style={styles.copyRow}>
           <View style={[styles.codePill, styles.copyRowPill]}>
             <Text selectable style={styles.codePillText} numberOfLines={1}>
@@ -2205,20 +2234,24 @@ function DataSection({
           hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel="Export diagnostics"
-          style={({ pressed }) => [styles.softButton, pressed && { opacity: 0.6 }]}
+          style={({ pressed }) => [styles.softButton, styles.softButtonEnd, pressed && { opacity: 0.6 }]}
         >
-          <DownloadTrayIcon color={colors.textPrimary} size={15} strokeWidth={1.8} />
+          <ExportDiagnosticsIconAsset color={colors.textPrimary} width={15} height={15} />
           <Text style={styles.softButtonText}>Export diagnostics</Text>
         </Pressable>
         <View style={styles.sectionDivider} />
 
-        <View style={styles.aboutTitleRow}>
-          <RetryArrowIcon color={colors.textPrimary} size={16} strokeWidth={1.8} />
-          <Text style={styles.settingLabel}>Retry queue</Text>
+        <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <RetryQueueIconAsset color={colors.textPrimary} width={18} height={18} />
+          </View>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Retry queue</Text>
+            <Text style={styles.settingHelp}>
+              Drop pending offline retries if a stuck request blocks fresh syncs.
+            </Text>
+          </View>
         </View>
-        <Text style={styles.settingHelp}>
-          Drop pending offline retries if a stuck request blocks fresh syncs.
-        </Text>
         <Pressable
           onPress={onClearRetryQueue}
           disabled={isClearingRetryQueue}
@@ -2227,6 +2260,7 @@ function DataSection({
           accessibilityLabel="Clear retry queue"
           style={({ pressed }) => [
             styles.softButton,
+            styles.softButtonEnd,
             pressed && { opacity: 0.6 },
             isClearingRetryQueue && styles.softButtonDisabled,
           ]}
@@ -2242,13 +2276,17 @@ function DataSection({
         </Pressable>
         <View style={styles.sectionDivider} />
 
-        <View style={styles.aboutTitleRow}>
-          <AlertSquircleIcon color={colors.error} size={16} strokeWidth={1.8} />
-          <Text style={styles.dangerLabel}>Danger zone</Text>
+        <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <DangerZoneIconAsset color={colors.error} width={18} height={18} />
+          </View>
+          <View style={styles.settingCopy}>
+            <Text style={styles.dangerLabel}>Danger zone</Text>
+            <Text style={styles.settingHelp}>
+              Wipe locally cached preferences, retry queue, snapshot, and reminder schedule. Server data is untouched.
+            </Text>
+          </View>
         </View>
-        <Text style={styles.settingHelp}>
-          Wipe locally cached preferences, retry queue, snapshot, and reminder schedule. Server data is untouched.
-        </Text>
         <Pressable
           onPress={onWipeLocalData}
           disabled={isWiping}
@@ -2257,6 +2295,7 @@ function DataSection({
           accessibilityLabel="Wipe local data"
           style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
         >
+          <WipeLocalIconAsset color={colors.error} width={15} height={15} />
           <Text style={[styles.dangerActionText, isWiping && styles.inlineActionDisabled]}>
             {isWiping ? "Wiping…" : "Wipe local data"}
           </Text>
@@ -3252,6 +3291,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
   },
+  softButtonEnd: {
+    alignSelf: "flex-end",
+  },
   softButton: {
     marginTop: spacing.sm,
     alignSelf: "flex-start",
@@ -3804,7 +3846,10 @@ const styles = StyleSheet.create({
   },
   tabPreviewItem: {
     flex: 1,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
     paddingVertical: spacing.sm,
     borderRadius: radii.lg,
     backgroundColor: colors.bgSurface,
@@ -3928,7 +3973,10 @@ const styles = StyleSheet.create({
     fontFamily: "Geist_600SemiBold",
   },
   sectionFootAction: {
-    alignSelf: "flex-start",
+    alignSelf: "flex-end",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   dangerActionText: {
     ...typography.bodyMd,
