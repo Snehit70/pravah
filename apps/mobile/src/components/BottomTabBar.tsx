@@ -1,6 +1,6 @@
-import { memo, useCallback, useEffect, type JSX } from "react";
+import { memo, useCallback, useEffect } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import Svg, { Circle, Line, Path } from "react-native-svg";
+import Svg, { Line } from "react-native-svg";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -11,6 +11,7 @@ import { haptic } from "../lib/haptic";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { resolveTabOrder, TAB_LABELS, type TabKey } from "../lib/tabOrder";
 import { colors, radii, shadow, spacing, typography } from "../theme/tokens";
+import { TabNavIcon } from "./tabNavIcons";
 
 export type { TabKey } from "../lib/tabOrder";
 
@@ -23,124 +24,18 @@ type BottomTabBarProps = {
   tabOrder?: readonly TabKey[];
 };
 
-type IconProps = { color: string; size: number };
-
-// ── Icons ──────────────────────────────────────────────────────────────
-// Hand-authored matched outline+fill pairs on a stable 24x24 grid (ADR-0005).
-// The active state is an area-fill: the filled twin of each mark is revealed
-// through a rising clip mask rather than swapping color chrome.
-
-const STROKE = 2.1;
-
-function frame(color: string, size: number) {
-  return {
-    width: size,
-    height: size,
-    viewBox: "0 0 24 24",
-    fill: "none" as const,
-    stroke: color,
-    strokeWidth: STROKE,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-  };
-}
-
-// Inbox — open tray with an arrow dropping in.
-const INBOX_TRAY = "M3.4 13h4.5l1.2 2.2h5.8l1.2-2.2h4.5v4.3a2.2 2.2 0 0 1-2.2 2.2H5.6a2.2 2.2 0 0 1-2.2-2.2Z";
-
-function InboxTrayIcon({ color, size }: IconProps) {
-  return (
-    <Svg {...frame(color, size)}>
-      <Path d={INBOX_TRAY} />
-      <Path d="M12 4.2v6.2" />
-      <Path d="m9 7.6 3 3 3-3" />
-    </Svg>
-  );
-}
-
-function InboxTrayFillIcon({ color, size }: IconProps) {
-  return (
-    <Svg {...frame(color, size)}>
-      <Path d={INBOX_TRAY} fill={color} />
-      <Path d="M12 4.2v6.2" />
-      <Path d="m9 7.6 3 3 3-3" />
-    </Svg>
-  );
-}
-
-// Timeline — agenda rows: dot + entry line, repeated.
-const AGENDA_ROWS = [5.6, 12, 18.4] as const;
-
-function AgendaIcon({ color, size }: IconProps) {
-  return (
-    <Svg {...frame(color, size)}>
-      {AGENDA_ROWS.map((y) => (
-        <Circle key={y} cx={5.3} cy={y} r={1.7} />
-      ))}
-      {AGENDA_ROWS.map((y) => (
-        <Line key={y} x1={10.2} y1={y} x2={20.6} y2={y} />
-      ))}
-    </Svg>
-  );
-}
-
-function AgendaFillIcon({ color, size }: IconProps) {
-  return (
-    <Svg {...frame(color, size)}>
-      {AGENDA_ROWS.map((y) => (
-        <Circle key={y} cx={5.3} cy={y} r={1.7} fill={color} />
-      ))}
-      {AGENDA_ROWS.map((y) => (
-        <Line key={y} x1={10.2} y1={y} x2={20.6} y2={y} />
-      ))}
-    </Svg>
-  );
-}
-
-// Goals — mountain ridge, twin peaks.
-const MOUNTAIN = "M2.9 18.75 9 7.5l3.4 5.5 2.8-4.3 5.9 10.05Z";
-
-function MountainIcon({ color, size }: IconProps) {
-  return (
-    <Svg {...frame(color, size)}>
-      <Path d={MOUNTAIN} />
-    </Svg>
-  );
-}
-
-function MountainFillIcon({ color, size }: IconProps) {
-  return (
-    <Svg {...frame(color, size)}>
-      <Path d={MOUNTAIN} fill={color} />
-    </Svg>
-  );
-}
-
-// Progress — upward trend; filled twin shades the area under the curve.
-function TrendIcon({ color, size }: IconProps) {
-  return (
-    <Svg {...frame(color, size)}>
-      <Path d="M4 18.5h16" />
-      <Path d="M6 15.5 10 11l3 2.5 5-6" />
-      <Path d="M15.5 7.5H18v2.5" />
-    </Svg>
-  );
-}
-
-function TrendFillIcon({ color, size }: IconProps) {
-  return (
-    <Svg {...frame(color, size)}>
-      <Path d="M6 15.5 10 11l3 2.5 5-6V18.5H6Z" fill={color} stroke="none" />
-      <Path d="M4 18.5h16" />
-      <Path d="M6 15.5 10 11l3 2.5 5-6" />
-      <Path d="M15.5 7.5H18v2.5" />
-    </Svg>
-  );
-}
-
 function CaptureIcon({ color, size }: { color: string; size: number }) {
   return (
-    <Svg {...frame(color, size)}>
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={2.1}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <Line x1={12} y1={5.25} x2={12} y2={18.75} />
       <Line x1={5.25} y1={12} x2={18.75} y2={12} />
     </Svg>
@@ -148,42 +43,19 @@ function CaptureIcon({ color, size }: { color: string; size: number }) {
 }
 
 // ── Tabs ───────────────────────────────────────────────────────────────
+// The active state is an area-fill: the filled twin of each mark is revealed
+// through a rising clip mask rather than swapping color chrome.
 
-type NavIcon = (p: IconProps) => JSX.Element;
 type FillDirection = "up" | "right";
 
 const NAV_TABS: Record<
   TabKey,
-  { key: TabKey; label: string; Icon: NavIcon; FillIcon: NavIcon; fillDirection: FillDirection }
+  { key: TabKey; label: string; fillDirection: FillDirection }
 > = {
-  inbox: {
-    key: "inbox",
-    label: TAB_LABELS.inbox,
-    Icon: InboxTrayIcon,
-    FillIcon: InboxTrayFillIcon,
-    fillDirection: "up",
-  },
-  timeline: {
-    key: "timeline",
-    label: TAB_LABELS.timeline,
-    Icon: AgendaIcon,
-    FillIcon: AgendaFillIcon,
-    fillDirection: "up",
-  },
-  goals: {
-    key: "goals",
-    label: TAB_LABELS.goals,
-    Icon: MountainIcon,
-    FillIcon: MountainFillIcon,
-    fillDirection: "up",
-  },
-  insights: {
-    key: "insights",
-    label: TAB_LABELS.insights,
-    Icon: TrendIcon,
-    FillIcon: TrendFillIcon,
-    fillDirection: "right",
-  },
+  inbox: { key: "inbox", label: TAB_LABELS.inbox, fillDirection: "up" },
+  timeline: { key: "timeline", label: TAB_LABELS.timeline, fillDirection: "up" },
+  goals: { key: "goals", label: TAB_LABELS.goals, fillDirection: "up" },
+  insights: { key: "insights", label: TAB_LABELS.insights, fillDirection: "right" },
 };
 
 const ICON_SIZE = 22;
@@ -208,7 +80,7 @@ function NavTab({
     transform: [{ scale: press.value }],
   }));
 
-  const { Icon, FillIcon, fillDirection } = tab;
+  const { fillDirection } = tab;
 
   useEffect(() => {
     const target = active ? 1 : 0;
@@ -240,7 +112,11 @@ function NavTab({
         style={({ pressed }) => [styles.tabItem, pressed && { opacity: 0.78 }]}
       >
         <Animated.View style={[styles.iconWrap, iconStyle]}>
-          <Icon color={active ? colors.accent : colors.textMuted} size={ICON_SIZE} />
+          <TabNavIcon
+            tab={tab.key}
+            color={active ? colors.accent : colors.textMuted}
+            size={ICON_SIZE}
+          />
           <Animated.View
             pointerEvents="none"
             style={[
@@ -250,7 +126,7 @@ function NavTab({
             ]}
           >
             <View style={fillDirection === "right" ? styles.fillInnerRight : styles.fillInnerUp}>
-              <FillIcon color={colors.accent} size={ICON_SIZE} />
+              <TabNavIcon tab={tab.key} fill color={colors.accent} size={ICON_SIZE} />
             </View>
           </Animated.View>
         </Animated.View>
