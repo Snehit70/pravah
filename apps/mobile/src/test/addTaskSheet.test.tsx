@@ -117,6 +117,44 @@ vi.mock("react-native-reanimated", () => ({
   },
   FadeIn: { duration: () => undefined },
   FadeOut: { duration: () => undefined },
+  useSharedValue: <T,>(initial: T) => {
+    let value = initial;
+    return {
+      value: initial,
+      get: () => value,
+      set: (next: T) => {
+        value = next;
+      },
+    };
+  },
+  useAnimatedStyle: () => ({}),
+  withSpring: <T,>(v: T) => v,
+  withTiming: <T,>(v: T) => v,
+  runOnJS: <T extends (...args: never[]) => unknown>(fn: T) => fn,
+}));
+
+// ─── react-native-gesture-handler mock ────────────────────────────────────────
+vi.mock("react-native-gesture-handler", () => {
+  const chainablePan = () => {
+    const gesture: Record<string, (...args: unknown[]) => unknown> = {};
+    for (const method of ["activeOffsetY", "failOffsetX", "onUpdate", "onEnd"]) {
+      gesture[method] = () => gesture;
+    }
+    return gesture;
+  };
+  return {
+    Gesture: { Pan: chainablePan },
+    GestureDetector: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
+      React.createElement(React.Fragment, {}, children),
+    GestureHandlerRootView: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
+      React.createElement("div", {}, children),
+  };
+});
+
+// ─── expo-linear-gradient mock ────────────────────────────────────────────────
+vi.mock("expo-linear-gradient", () => ({
+  LinearGradient: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
+    React.createElement("div", {}, children),
 }));
 
 // ─── expo-haptics mock ────────────────────────────────────────────────────────
@@ -138,6 +176,7 @@ vi.mock("../theme/tokens", () => ({
   colors: {
     accent: "#06f",
     accentSoft: "#003",
+    accentGlow: "#036",
     bg: "#000",
     bgCard: "#111",
     bgFloating: "#111",
@@ -334,7 +373,7 @@ describe("AddTaskSheet", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Set deadline Today" }));
     fireEvent.change(screen.getByTestId("title-input"), { target: { value: "Today task" } });
-    fireEvent.click(screen.getByText("Schedule task"));
+    fireEvent.click(screen.getByText("Save & close"));
 
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
@@ -364,7 +403,7 @@ describe("AddTaskSheet", () => {
       ref.current?.open();
     });
 
-    const addBtn = screen.getByText("Capture task");
+    const addBtn = screen.getByText("Save & close");
     expect(addBtn.parentElement).toHaveProperty("disabled", true);
   });
 
@@ -385,7 +424,7 @@ describe("AddTaskSheet", () => {
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
     fireEvent.change(titleInput, { target: { value: "Draft" } });
 
-    expect(screen.getByText("Capture task")).toBeTruthy();
+    expect(screen.getByText("Save & close")).toBeTruthy();
     expect(screen.getByText("Discard")).toBeTruthy();
   });
 
@@ -493,5 +532,154 @@ describe("AddTaskSheet", () => {
     });
 
     expect(screen.getByText("Later, Tue")).toBeTruthy();
+  });
+
+  it("Enter saves and keeps the sheet open with the title cleared", async () => {
+    render(
+      <AddTaskSheet
+        ref={ref}
+        onAdd={mockOnAdd}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+      />
+    );
+
+    act(() => {
+      ref.current?.open();
+    });
+
+    const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
+    fireEvent.change(titleInput, { target: { value: "First thought" } });
+    await act(async () => {
+      fireEvent.keyDown(titleInput, { key: "Enter" });
+    });
+
+    await waitFor(() => expect(mockOnAdd).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("modal")).toBeTruthy();
+    expect(mockOnSheetChange).not.toHaveBeenCalledWith(false);
+    expect((screen.getByTestId("title-input") as HTMLInputElement).value).toBe("");
+    expect(screen.getByText("✓ Saved · 1 captured")).toBeTruthy();
+  });
+
+  it("keeps when-context sticky across a burst and counts saves", async () => {
+    render(
+      <AddTaskSheet
+        ref={ref}
+        onAdd={mockOnAdd}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+      />
+    );
+
+    act(() => {
+      ref.current?.open();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Set deadline Today" }));
+
+    const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
+    fireEvent.change(titleInput, { target: { value: "First" } });
+    await act(async () => {
+      fireEvent.keyDown(titleInput, { key: "Enter" });
+    });
+    fireEvent.change(titleInput, { target: { value: "Second" } });
+    await act(async () => {
+      fireEvent.keyDown(titleInput, { key: "Enter" });
+    });
+
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+      now.getDate()
+    ).padStart(2, "0")}`;
+    await waitFor(() => expect(mockOnAdd).toHaveBeenCalledTimes(2));
+    expect(mockOnAdd).toHaveBeenNthCalledWith(2, {
+      title: "Second",
+      description: undefined,
+      deadline: today,
+      time: undefined,
+      priority: undefined,
+      goalId: undefined,
+    });
+    expect(screen.getByText("✓ Saved · 2 captured")).toBeTruthy();
+  });
+
+  it("footer Save & close saves the current title and dismisses", async () => {
+    render(
+      <AddTaskSheet
+        ref={ref}
+        onAdd={mockOnAdd}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+      />
+    );
+
+    act(() => {
+      ref.current?.open();
+    });
+
+    fireEvent.change(screen.getByTestId("title-input"), { target: { value: "Last one" } });
+    await act(async () => {
+      fireEvent.click(screen.getByText("Save & close"));
+    });
+
+    await waitFor(() => expect(mockOnAdd).toHaveBeenCalledTimes(1));
+    expect(mockOnSheetChange).toHaveBeenCalledWith(false);
+    expect(screen.queryByTestId("modal")).toBeNull();
+  });
+
+  it("offers Done mid-burst when the title is empty and closes without saving", async () => {
+    render(
+      <AddTaskSheet
+        ref={ref}
+        onAdd={mockOnAdd}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+      />
+    );
+
+    act(() => {
+      ref.current?.open();
+    });
+
+    const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
+    fireEvent.change(titleInput, { target: { value: "Only thought" } });
+    await act(async () => {
+      fireEvent.keyDown(titleInput, { key: "Enter" });
+    });
+    await waitFor(() => expect(mockOnAdd).toHaveBeenCalledTimes(1));
+
+    const doneBtn = screen.getByText("Done");
+    await act(async () => {
+      fireEvent.click(doneBtn);
+    });
+
+    expect(mockOnAdd).toHaveBeenCalledTimes(1);
+    expect(mockOnSheetChange).toHaveBeenCalledWith(false);
+    expect(screen.queryByTestId("modal")).toBeNull();
+  });
+
+  it("saving a goal still closes the sheet (goals are not burst items)", async () => {
+    render(
+      <AddTaskSheet
+        ref={ref}
+        onAdd={mockOnAdd}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+      />
+    );
+
+    act(() => {
+      ref.current?.open("goal");
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("What do you want to achieve?"), {
+      target: { value: "Ship the redesign" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText("Create goal"));
+    });
+
+    await waitFor(() => expect(mockOnSheetChange).toHaveBeenCalledWith(false));
+    expect(screen.queryByTestId("modal")).toBeNull();
   });
 });

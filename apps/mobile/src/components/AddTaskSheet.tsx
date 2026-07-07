@@ -20,7 +20,21 @@ import {
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { LinearGradient } from "expo-linear-gradient";
+import {
+  Gesture,
+  GestureDetector,
+  GestureHandlerRootView,
+} from "react-native-gesture-handler";
+import Animated, {
+  FadeIn,
+  FadeOut,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 import { haptic } from "../lib/haptic";
 import { feedback } from "../lib/feedback";
 import { colors, radii, spacing, typography } from "../theme/tokens";
@@ -81,6 +95,14 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [saving, setSaving] = useState(false);
     const [showDetails, setShowDetails] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    // Burst capture: how many tasks were saved since the sheet opened. Once
+    // it is > 0 the lit when/goal/priority selections are *saved* context
+    // being reused, not an unsaved draft — the dismiss guards key off that.
+    const [burstCount, setBurstCount] = useState(0);
+    const [savedFlash, setSavedFlash] = useState<number | null>(null);
+    const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const dragY = useSharedValue(0);
+    const titleFocus = useSharedValue(0);
     const { goals } = useGoals();
     const { prefs } = useUserPreferences();
     const reducedMotion = useReducedMotion();
@@ -90,16 +112,19 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       () => goals.find((g) => g.id === goalId),
       [goals, goalId]
     );
-    const hasDraftChanges = Boolean(
-      title.trim() ||
-        description.trim() ||
-        deadline.trim() ||
-        priority ||
-        firstTaskTitle.trim() ||
-        goalId
-        || goalIds.length > 0
-        || seriesEnabled
+    // Typed-but-not-saved text always guards dismissal. Context selections
+    // (when/goal/priority/series) only guard until the first burst save —
+    // after that they are sticky saved context, and every leave verb
+    // (backdrop, back button, swipe-down) must still work mid-burst.
+    const hasUnsavedText = Boolean(
+      title.trim() || description.trim() || firstTaskTitle.trim()
     );
+    const hasUnsavedContext =
+      burstCount === 0 &&
+      Boolean(
+        deadline.trim() || priority || goalId || goalIds.length > 0 || seriesEnabled
+      );
+    const hasDraftChanges = hasUnsavedText || hasUnsavedContext;
 
     const laterThisWeek = nextLaterThisWeek();
     const modeOptions = useMemo<{ mode: ComposerMode; label: string }[]>(
@@ -150,12 +175,19 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setShowDetails(false);
       setKind("task");
       setError(null);
+      setBurstCount(0);
+      setSavedFlash(null);
+      if (flashTimer.current) {
+        clearTimeout(flashTimer.current);
+        flashTimer.current = null;
+      }
     };
 
     useImperativeHandle(ref, () => ({
       open: (initialKind = "task") => {
         setKind(initialKind);
         setShowDetails(initialKind === "goal");
+        dragY.set(0);
         setVisible(true);
         onSheetChange?.(true);
       },
@@ -164,6 +196,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         setGoalId(initialGoalId);
         setGoalIds([initialGoalId]);
         setShowDetails(false);
+        dragY.set(0);
         setVisible(true);
         onSheetChange?.(true);
       },
@@ -177,14 +210,37 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       },
     }));
 
-    // Focus title input once the modal has animated in
+    // Focus title input as soon as the modal mounts — the cursor should be
+    // hot before the slide-in finishes, not after (capture is a speed tool).
     useEffect(() => {
       if (!visible) return;
-      const t = setTimeout(() => titleInputRef.current?.focus(), 120);
+      const t = setTimeout(() => titleInputRef.current?.focus(), 40);
       return () => clearTimeout(t);
     }, [visible]);
 
-    const handleAdd = useCallback(async () => {
+    useEffect(
+      () => () => {
+        if (flashTimer.current) clearTimeout(flashTimer.current);
+      },
+      []
+    );
+
+    // Save & stay: the burst path. Title/notes clear so the next thought has
+    // a blank line, but when/goal/priority stay lit (sticky context).
+    const finishBurstSave = useCallback(() => {
+      setTitle("");
+      setDescription("");
+      setFirstTaskTitle("");
+      setError(null);
+      const next = burstCount + 1;
+      setBurstCount(next);
+      setSavedFlash(next);
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+      flashTimer.current = setTimeout(() => setSavedFlash(null), 500);
+      titleInputRef.current?.focus();
+    }, [burstCount]);
+
+    const handleAdd = useCallback(async (intent: "stay" | "close" = "close") => {
       const trimmed = title.trim();
       if (!trimmed || saving) return;
 
@@ -273,10 +329,16 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setSaving(false);
 
       if (success) {
-        reset();
-        closeModal();
+        // Single-task capture is the burst path: Enter saves and keeps the
+        // sheet open; only the explicit footer verb saves and closes.
+        if (intent === "stay") {
+          finishBurstSave();
+        } else {
+          reset();
+          closeModal();
+        }
       }
-    }, [title, description, deadline, time, priority, firstTaskTitle, goalId, goalIds, seriesEnabled, seriesStart, seriesEnd, kind, saving, onAdd, onBulkAdd, isValidDeadline, closeModal, addGoal, prefs.bulkTaskCaptureEnabled]);
+    }, [title, description, deadline, time, priority, firstTaskTitle, goalId, goalIds, seriesEnabled, seriesStart, seriesEnd, kind, saving, onAdd, onBulkAdd, isValidDeadline, closeModal, finishBurstSave, addGoal, prefs.bulkTaskCaptureEnabled]);
 
     const bulkPreview = useMemo(() => {
       if (!prefs.bulkTaskCaptureEnabled || kind !== "task" || (!seriesEnabled && goalIds.length < 2)) return null;
@@ -301,13 +363,61 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       if (selected) return `Schedules for ${selected.label}.`;
       return "Schedules for the selected date.";
     }, [deadline, kind, modeOptions, presetDeadlines]);
+    // Mid-burst with an empty title there is nothing left to save, so the
+    // footer verb degrades to a plain "Done" that just closes the sheet.
+    const closeOnly = kind === "task" && burstCount > 0 && !title.trim();
     const submitLabel = saving
       ? "Saving..."
       : kind === "goal"
         ? "Create goal"
-        : deadline
-          ? "Schedule task"
-          : "Capture task";
+        : closeOnly
+          ? "Done"
+          : "Save & close";
+    const footerEnabled = canSubmit || closeOnly;
+    const handleFooterPress = () => {
+      if (closeOnly) {
+        reset();
+        closeModal();
+        return;
+      }
+      void handleAdd("close");
+    };
+
+    const dismissBySwipe = useCallback(() => {
+      reset();
+      closeModal();
+    }, [closeModal]);
+
+    // Swipe-down to dismiss. Activates only on a clearly vertical downward
+    // drag so it does not steal the sheet's inner scroll or horizontal taps;
+    // an unsaved draft springs the card back instead of dismissing.
+    const panGesture = Gesture.Pan()
+      .activeOffsetY(16)
+      .failOffsetX([-24, 24])
+      .onUpdate((event) => {
+        "worklet";
+        dragY.set(Math.max(0, event.translationY));
+      })
+      .onEnd((event) => {
+        "worklet";
+        const wantsDismiss = event.translationY > 120 || event.velocityY > 900;
+        if (wantsDismiss && !hasDraftChanges) {
+          dragY.set(withTiming(560, { duration: 160 }));
+          runOnJS(dismissBySwipe)();
+        } else {
+          dragY.set(
+            reducedMotion ? 0 : withSpring(0, { damping: 26, stiffness: 320 })
+          );
+        }
+      });
+
+    const cardDragStyle = useAnimatedStyle(() => ({
+      transform: [{ translateY: dragY.get() }],
+    }));
+    const titleUnderlineStyle = useAnimatedStyle(() => ({
+      opacity: titleFocus.get(),
+      transform: [{ scaleX: titleFocus.get() }],
+    }));
 
     return (
       <Modal
@@ -322,6 +432,10 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           }
         }}
       >
+        {/* A native Modal is its own Android window, so the app-root
+            GestureHandlerRootView can't see these touches — the pan gesture
+            needs its own root inside the modal. */}
+        <GestureHandlerRootView style={styles.gestureRoot}>
         <KeyboardAvoidingView
           behavior="padding"
           automaticOffset
@@ -344,7 +458,22 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
             />
           ) : null}
 
-          <View style={styles.card}>
+          <GestureDetector gesture={panGesture}>
+          <Animated.View style={[styles.card, cardDragStyle]}>
+            {/* Accent hairline + soft top glow: the same accent as the tab
+                bar's `+` button, visually tying capture entry to the sheet. */}
+            <LinearGradient
+              pointerEvents="none"
+              colors={["transparent", colors.accent, "transparent"]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={styles.accentHairline}
+            />
+            <LinearGradient
+              pointerEvents="none"
+              colors={[colors.accentGlow, "transparent"]}
+              style={styles.accentTopGlow}
+            />
             <ScrollView
               style={styles.scrollArea}
               contentContainerStyle={styles.content}
@@ -381,22 +510,43 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                 </Pressable>
               </View>
 
-              <TextInput
-                ref={titleInputRef}
-                value={title}
-                onChangeText={(text) => {
-                  setTitle(text);
-                  setError(null);
-                }}
-                placeholder={
-                  kind === "goal" ? "What do you want to achieve?" : "What needs to be done?"
-                }
-                accessibilityLabel={kind === "goal" ? "Goal title" : "Task title"}
-                placeholderTextColor={colors.textMuted}
-                style={styles.titleInput}
-                returnKeyType="done"
-                onSubmitEditing={() => void handleAdd()}
-              />
+              <View>
+                <TextInput
+                  ref={titleInputRef}
+                  value={title}
+                  onChangeText={(text) => {
+                    setTitle(text);
+                    setError(null);
+                  }}
+                  placeholder={
+                    kind === "goal" ? "What do you want to achieve?" : "What needs to be done?"
+                  }
+                  accessibilityLabel={kind === "goal" ? "Goal title" : "Task title"}
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.titleInput}
+                  returnKeyType="done"
+                  // Keep the keyboard up across a burst: Enter saves & stays,
+                  // so blurring after submit would break rapid-fire capture.
+                  submitBehavior="submit"
+                  onSubmitEditing={() =>
+                    void handleAdd(kind === "task" ? "stay" : "close")
+                  }
+                  onFocus={() => {
+                    titleFocus.set(
+                      reducedMotion ? 1 : withTiming(1, { duration: 180 })
+                    );
+                  }}
+                  onBlur={() => {
+                    titleFocus.set(
+                      reducedMotion ? 0 : withTiming(0, { duration: 140 })
+                    );
+                  }}
+                />
+                <Animated.View
+                  pointerEvents="none"
+                  style={[styles.titleUnderline, titleUnderlineStyle]}
+                />
+              </View>
 
               {kind === "task" ? (
                 <View style={styles.modeRow}>
@@ -623,25 +773,48 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               ) : null}
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
-              <Text accessibilityLiveRegion="polite" style={styles.outcomeText}>
-                {captureOutcome}
-              </Text>
+              <View style={styles.outcomeRow}>
+                <Text accessibilityLiveRegion="polite" style={styles.outcomeText}>
+                  {captureOutcome}
+                </Text>
+                {savedFlash !== null ? (
+                  <Animated.View
+                    entering={reducedMotion ? undefined : FadeIn.duration(120)}
+                    exiting={reducedMotion ? undefined : FadeOut.duration(160)}
+                    style={styles.savedFlash}
+                  >
+                    <Text
+                      accessibilityLiveRegion="polite"
+                      style={styles.savedFlashText}
+                    >
+                      ✓ Saved · {savedFlash} captured
+                    </Text>
+                  </Animated.View>
+                ) : null}
+              </View>
             </ScrollView>
 
             {/* Sticky footer: the primary action stays pinned above the keyboard
                 instead of scrolling behind it (the most common capture friction). */}
             <View style={styles.footer}>
               <Pressable
-                onPress={() => void handleAdd()}
-                disabled={!canSubmit}
+                onPress={handleFooterPress}
+                disabled={!footerEnabled}
                 hitSlop={12}
                 style={({ pressed }) => [
                   styles.primaryButton,
-                  !canSubmit && styles.primaryButtonDisabled,
+                  !footerEnabled && styles.primaryButtonDisabled,
                   pressed && { opacity: 0.85 },
                 ]}
               >
-                <Text style={[styles.primaryButtonText, !canSubmit && styles.primaryButtonTextDisabled]}>
+                {footerEnabled ? (
+                  <LinearGradient
+                    pointerEvents="none"
+                    colors={["rgba(255,255,255,0.22)", "rgba(255,255,255,0)"]}
+                    style={styles.primaryButtonSheen}
+                  />
+                ) : null}
+                <Text style={[styles.primaryButtonText, !footerEnabled && styles.primaryButtonTextDisabled]}>
                   {submitLabel}
                 </Text>
               </Pressable>
@@ -659,14 +832,65 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                 </Pressable>
               ) : null}
             </View>
-          </View>
+          </Animated.View>
+          </GestureDetector>
         </KeyboardAvoidingView>
+        </GestureHandlerRootView>
       </Modal>
     );
   }
 );
 
 const styles = StyleSheet.create({
+  gestureRoot: {
+    flex: 1,
+  },
+  accentHairline: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    zIndex: 1,
+  },
+  accentTopGlow: {
+    position: "absolute",
+    top: 2,
+    left: 0,
+    right: 0,
+    height: 20,
+    opacity: 0.35,
+  },
+  titleUnderline: {
+    height: 2,
+    marginTop: -1,
+    borderRadius: 1,
+    backgroundColor: colors.accent,
+  },
+  outcomeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    flexWrap: "wrap",
+  },
+  savedFlash: {
+    borderRadius: radii.full,
+    backgroundColor: colors.accentSoft,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 2,
+  },
+  savedFlashText: {
+    ...typography.micro,
+    color: colors.accent,
+    fontWeight: "600",
+  },
+  primaryButtonSheen: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: "55%",
+  },
   overlay: {
     flex: 1,
     alignItems: "center",
@@ -847,6 +1071,8 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: "center",
     marginTop: spacing.sm,
+    // Clip the lit-from-above sheen gradient to the pill shape.
+    overflow: "hidden",
   },
   primaryButtonDisabled: {
     backgroundColor: colors.border,
