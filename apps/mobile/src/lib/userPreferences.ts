@@ -12,6 +12,8 @@ export type KairoResponseStyle = "concise" | "detailed";
 export type ReducedMotionOverride = "system" | "always" | "never";
 export type AccentColor = "purple" | "copper" | "teal" | "rose";
 export type Density = "cozy" | "compact";
+export type TimelineLayout = "list" | "carousel";
+export type ThemePreference = "system" | "light" | "dark";
 export type UndoWindowMinutes = 5 | 15 | 30 | 60;
 export type ReminderLeadTimeMinutes = 5 | 15 | 30 | 60;
 
@@ -30,6 +32,9 @@ export interface UserPreferences {
   reducedMotionOverride: ReducedMotionOverride;
   accentColor: AccentColor;
   density: Density;
+  timelineLayout: TimelineLayout;
+  // Stored ahead of dark-theme support; rendering ignores it for now.
+  theme: ThemePreference;
   swipeActionsEnabled: boolean;
   hapticsEnabled: boolean;
   soundEnabled: boolean;
@@ -52,6 +57,8 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   reducedMotionOverride: "system",
   accentColor: "purple",
   density: "cozy",
+  timelineLayout: "list",
+  theme: "light",
   swipeActionsEnabled: false,
   hapticsEnabled: true,
   soundEnabled: false,
@@ -138,6 +145,9 @@ function sanitize(raw: unknown): UserPreferences {
       ? r.accentColor
       : DEFAULT_PREFERENCES.accentColor,
     density: r.density === "compact" ? "compact" : "cozy",
+    timelineLayout: r.timelineLayout === "carousel" ? "carousel" : "list",
+    theme:
+      r.theme === "system" || r.theme === "dark" ? r.theme : DEFAULT_PREFERENCES.theme,
     swipeActionsEnabled:
       typeof r.swipeActionsEnabled === "boolean"
         ? r.swipeActionsEnabled

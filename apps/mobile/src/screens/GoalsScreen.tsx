@@ -27,7 +27,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import { colors, radii, spacing, typography } from "../theme/tokens";
+import { colors, fonts, radii, spacing, typography } from "../theme/tokens";
 import type { GoalItem } from "../lib/goalsStorage";
 import { useGoals, useGoalLinks } from "../hooks/useGoals";
 import { useGoalMutations } from "../hooks/useGoalMutations";
@@ -380,13 +380,13 @@ function GoalDetailSheet({
                       onPress={handlePlanNext}
                       hitSlop={10}
                       accessibilityRole="button"
-                      accessibilityLabel={`Plan next Task for ${goal.text}`}
+                      accessibilityLabel={`Plan next task for ${goal.text}`}
                       style={({ pressed }) => [
                         detailStyles.inlineAction,
                         pressed && { opacity: 0.7 },
                       ]}
                     >
-                      <Text style={detailStyles.inlineActionText}>Plan next Task</Text>
+                      <Text style={detailStyles.inlineActionText}>Plan next task</Text>
                     </Pressable>
                   ) : null}
                 </View>
@@ -722,7 +722,7 @@ export function GoalsScreen({
                         pressed && { opacity: 0.7 },
                       ]}
                     >
-                      <Text style={styles.planNextActionText}>Plan next Task</Text>
+                      <Text style={styles.planNextActionText}>Plan next task</Text>
                     </Pressable>
                   </View>
                 ) : null}
@@ -756,11 +756,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: spacing.md,
   },
+  // Sentence case — wayfinding, not log-line metadata.
   sectionMeta: {
-    ...typography.micro,
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    lineHeight: 16,
     color: colors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
   },
   newGoalAction: {
     minHeight: 44,
@@ -871,10 +872,10 @@ const styles = StyleSheet.create({
     borderColor: colors.borderSubtle,
   },
   nextTaskKicker: {
-    ...typography.micro,
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    lineHeight: 16,
     color: colors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
   },
   nextTaskTitle: {
     ...typography.bodyMd,
@@ -910,7 +911,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   goalMeta: {
-    ...typography.micro,
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    lineHeight: 16,
     color: colors.textMuted,
   },
   emptyWrap: {

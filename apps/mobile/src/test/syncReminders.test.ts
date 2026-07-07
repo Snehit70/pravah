@@ -1,5 +1,5 @@
 /** @vitest-environment happy-dom */
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   getAllScheduledNotificationsAsync,
@@ -28,13 +28,19 @@ import { REMINDER_ID_PREFIX, type ReminderSpec } from "../lib/planReminders";
 let cancelAllRemindersAsync: typeof import("../lib/syncReminders").cancelAllRemindersAsync;
 let REMINDERS_CHANNEL_ID: typeof import("../lib/syncReminders").REMINDERS_CHANNEL_ID;
 let syncRemindersAsync: typeof import("../lib/syncReminders").syncRemindersAsync;
+let queueReminderSync: typeof import("../lib/syncReminders").queueReminderSync;
+let __resetReminderSyncQueue: typeof import("../lib/syncReminders").__resetReminderSyncQueue;
 
 describe("syncRemindersAsync", () => {
   beforeAll(async () => {
     (globalThis as { __DEV__?: boolean }).__DEV__ = false;
-    ({ cancelAllRemindersAsync, REMINDERS_CHANNEL_ID, syncRemindersAsync } = await import(
-      "../lib/syncReminders"
-    ));
+    ({
+      cancelAllRemindersAsync,
+      REMINDERS_CHANNEL_ID,
+      syncRemindersAsync,
+      queueReminderSync,
+      __resetReminderSyncQueue,
+    } = await import("../lib/syncReminders"));
   });
 
   beforeEach(() => {
@@ -88,5 +94,50 @@ describe("syncRemindersAsync", () => {
     expect(cancelScheduledNotificationAsync).toHaveBeenCalledWith(
       `${REMINDER_ID_PREFIX}two`,
     );
+  });
+});
+
+describe("queueReminderSync", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    __resetReminderSyncQueue();
+    getAllScheduledNotificationsAsync.mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("coalesces rapid calls into one sync of the latest specs", async () => {
+    const first = vi.fn(() => [] as ReminderSpec[]);
+    const latest = vi.fn(() => [] as ReminderSpec[]);
+    const onError = vi.fn();
+
+    queueReminderSync(first, onError);
+    vi.advanceTimersByTime(200);
+    queueReminderSync(latest, onError);
+    vi.advanceTimersByTime(400);
+    await vi.runAllTimersAsync();
+
+    expect(first).not.toHaveBeenCalled();
+    expect(latest).toHaveBeenCalledTimes(1);
+    expect(getAllScheduledNotificationsAsync).toHaveBeenCalledTimes(1);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("does not run before the debounce window elapses", () => {
+    const getSpecs = vi.fn(() => [] as ReminderSpec[]);
+    queueReminderSync(getSpecs, vi.fn());
+    vi.advanceTimersByTime(399);
+    expect(getSpecs).not.toHaveBeenCalled();
+  });
+
+  it("reports sync failures through onError", async () => {
+    getAllScheduledNotificationsAsync.mockRejectedValueOnce(new Error("boom"));
+    const onError = vi.fn();
+    queueReminderSync(() => [], onError, 0);
+    await vi.runAllTimersAsync();
+    expect(onError).toHaveBeenCalledTimes(1);
   });
 });

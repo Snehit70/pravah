@@ -18,13 +18,14 @@ import Animated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { colors, fonts, motion, radii, shadow, spacing, typography } from "../theme/tokens";
+import { CheckIcon } from "./UiIcons";
 import { getLocalDateString } from "../lib/dates";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { isTaskCompleted, isTaskInInbox, isTaskOnTimeline } from "../lib/taskState";
 import { formatTime12h } from "../lib/task-form";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useUserPreferences } from "../hooks/useUserPreferences";
-import type { AccentColor } from "../lib/userPreferences";
+import { taskEmphasisColor } from "../lib/taskAccent";
 
 export type MobileTask = {
   _id: Id<"tasks">;
@@ -71,19 +72,6 @@ type TaskCardProps = {
 };
 
 const TASK_CARD_RADIUS = radii.lg;
-
-function taskEmphasisColor(scheme: AccentColor): string {
-  switch (scheme) {
-    case "copper":
-      return colors.deadline;
-    case "teal":
-      return colors.success;
-    case "rose":
-      return colors.error;
-    case "purple":
-      return colors.accent;
-  }
-}
 
 /**
  * Reanimated swipe-action panel. The pan progress comes from
@@ -287,19 +275,8 @@ function TaskCardInner({
     [handleMoveToday, handleSendToInbox, isCompleted, isInboxTask, onRightActionTrigger]
   );
 
-  // The left rail is priority-only for active rows. Date state stays in the
-  // right metadata column so overdue does not borrow the priority signal.
   const today = getLocalDateString();
   const isOverdue = !!task.deadline && task.deadline < today && !isCompleted;
-  const railColor = isCompleted
-    ? colors.success
-    : task.priority === "p1"
-      ? colors.priorityP1
-      : task.priority === "p2"
-        ? colors.priorityP2
-        : task.priority === "p3"
-          ? colors.priorityP3
-          : taskAccent;
 
   // Stacked metadata column on the right. Each line is its own micro entry so
   // the column reads like a small log table rather than a row of pills.
@@ -358,32 +335,13 @@ function TaskCardInner({
       ? "Double tap to edit. Additional task actions are available."
       : "Double tap to edit.";
 
-  const primaryAction: {
-    label: string;
-    run?: () => void;
-    tone: "primary" | "secondary";
-    semantic: "button" | "completion";
-  } =
-    isCompleted
-      ? { label: "Reopen", run: onReopen ? handleReopen : undefined, tone: "secondary", semantic: "completion" }
-      : isInboxTask
-        ? {
-            label: "Schedule",
-            run: onSchedule ? handleSchedule : onMoveToday ? handleMoveToday : undefined,
-            tone: "primary",
-            semantic: "button",
-          }
-        : { label: "Complete", run: handleDone, tone: "primary", semantic: "completion" };
-  const secondaryAction: {
-    label: string;
-    run?: () => void;
-    tone: "secondary";
-    semantic: "button" | "completion";
-  } | null = isCompleted
-    ? null
-    : isInboxTask
-      ? { label: "Complete", run: handleDone, tone: "secondary", semantic: "completion" }
-      : { label: "Inbox", run: onSendToInbox ? handleSendToInbox : undefined, tone: "secondary", semantic: "button" };
+  // One idiom everywhere: a squircle checkbox toggles complete/reopen. The
+  // inbox additionally keeps a compact Schedule button because scheduling is
+  // that surface's whole job; every other action lives in the edit sheet or
+  // behind swipe.
+  const checkboxRun = isCompleted ? (onReopen ? handleReopen : undefined) : handleDone;
+  const scheduleRun = onSchedule ? handleSchedule : onMoveToday ? handleMoveToday : undefined;
+  const showScheduleButton = !isCompleted && isInboxTask;
 
   const rowContent = (
     <Pressable
@@ -404,9 +362,6 @@ function TaskCardInner({
       onAccessibilityAction={handleAccessibilityAction}
       hitSlop={12}
     >
-      {/* Priority rail — the only enclosing shape on the row. */}
-      <View style={[styles.rail, { backgroundColor: railColor }]} />
-
       {/* Completion sweep — 1px accent stripe that scans across the card
           on the inbox→completed transition. Pointer-events none. */}
       <Animated.View pointerEvents="none" style={[styles.sweep, sweepStyle]} />
@@ -434,12 +389,9 @@ function TaskCardInner({
           </Text>
         ) : null}
         {linkedGoalName ? (
-          <Text
-            style={[styles.goalTag, { color: taskAccent }]}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-          >
-            ◈ {linkedGoalName}
+          <Text style={styles.goalTag} numberOfLines={1} ellipsizeMode="tail">
+            <Text style={{ color: taskAccent }}>◈ </Text>
+            {linkedGoalName}
           </Text>
         ) : null}
       </View>
@@ -465,71 +417,50 @@ function TaskCardInner({
       ) : null}
 
       <View style={styles.actionCol}>
-        {secondaryAction ? (
+        {showScheduleButton ? (
           <Pressable
             onPress={(event) => {
               event.stopPropagation();
-              secondaryAction.run?.();
+              scheduleRun?.();
             }}
-            disabled={!secondaryAction.run}
+            disabled={!scheduleRun}
             hitSlop={10}
-            accessibilityRole={secondaryAction.semantic === "completion" ? "checkbox" : "button"}
-            accessibilityState={
-              secondaryAction.semantic === "completion" ? { checked: isCompleted } : undefined
-            }
-            accessibilityLabel={
-              secondaryAction.semantic === "completion"
-                ? `Mark ${task.title} complete`
-                : `${secondaryAction.label} ${task.title}`
-            }
+            accessibilityRole="button"
+            accessibilityLabel={`Schedule ${task.title}`}
             style={({ pressed }) => [
-              styles.primaryAction,
-              styles.primaryActionSecondary,
-              styles.secondaryInlineAction,
-              pressed && secondaryAction.run && { opacity: 0.68 },
-              !secondaryAction.run && { opacity: 0.45 },
+              styles.scheduleButton,
+              pressed && scheduleRun && { opacity: 0.68 },
+              !scheduleRun && { opacity: 0.45 },
             ]}
           >
-            <Text style={[styles.primaryActionText, styles.primaryActionTextSecondary]}>
-              {secondaryAction.label}
-            </Text>
+            <Text style={styles.scheduleButtonText}>Schedule</Text>
           </Pressable>
         ) : null}
 
         <Pressable
           onPress={(event) => {
             event.stopPropagation();
-            primaryAction.run?.();
+            checkboxRun?.();
           }}
-          disabled={!primaryAction.run}
-          hitSlop={10}
-          accessibilityRole={primaryAction.semantic === "completion" ? "checkbox" : "button"}
-          accessibilityState={
-            primaryAction.semantic === "completion" ? { checked: isCompleted } : undefined
-          }
+          disabled={!checkboxRun}
+          hitSlop={12}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: isCompleted }}
           accessibilityLabel={
-            primaryAction.semantic === "completion"
-              ? isCompleted
-                ? `Mark ${task.title} incomplete`
-                : `Mark ${task.title} complete`
-              : `${primaryAction.label} ${task.title}`
+            isCompleted
+              ? `Mark ${task.title} incomplete`
+              : `Mark ${task.title} complete`
           }
           style={({ pressed }) => [
-            styles.primaryAction,
-            primaryAction.tone === "primary" && { backgroundColor: taskAccent },
-            primaryAction.tone === "secondary" && styles.primaryActionSecondary,
-            pressed && primaryAction.run && { opacity: 0.68 },
-            !primaryAction.run && { opacity: 0.45 },
+            styles.checkbox,
+            isCompleted && { backgroundColor: colors.success, borderColor: colors.success },
+            pressed && checkboxRun && { opacity: 0.68 },
+            !checkboxRun && { opacity: 0.45 },
           ]}
         >
-          <Text
-            style={[
-              styles.primaryActionText,
-              primaryAction.tone === "secondary" && styles.primaryActionTextSecondary,
-            ]}
-          >
-            {primaryAction.label}
-          </Text>
+          {isCompleted ? (
+            <CheckIcon size={16} color={colors.textInverse} strokeWidth={2.4} />
+          ) : null}
         </Pressable>
       </View>
     </Pressable>
@@ -595,18 +526,6 @@ const styles = StyleSheet.create({
   rowPressed: {
     backgroundColor: colors.bgFloating,
   },
-  // Web parity (src/components/TaskCard.tsx:94-101): a 4px left accent rail
-  // anchored to the card edge, color reflecting status. Done as an absolutely
-  // positioned strip so it always touches the rounded corner cleanly.
-  rail: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-    borderTopLeftRadius: TASK_CARD_RADIUS,
-    borderBottomLeftRadius: TASK_CARD_RADIUS,
-  },
   // Sweep stripe — 30% wide, full row height, accent fill. Position:absolute
   // + translateX % drives the scan motion via Reanimated.
   sweep: {
@@ -641,11 +560,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
   },
+  // Goal link reads as quiet provenance, not a status: muted sentence-case
+  // text with only the ◈ glyph carrying the task accent tint.
   goalTag: {
-    ...typography.micro,
-    color: colors.accent,
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.textMuted,
     marginTop: 4,
-    opacity: 0.8,
   },
   // Right-aligned metadata column. Stays narrow so the title gets the
   // horizontal real estate. Each micro line stacks tightly.
@@ -665,34 +587,42 @@ const styles = StyleSheet.create({
   metaTextError: {
     color: colors.error,
   },
-  primaryAction: {
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.full,
-    backgroundColor: colors.accent,
+  // Squircle checkbox — the row's single visible action. Fills green with a
+  // check when the task is complete; hitSlop covers the 44px touch target.
+  checkbox: {
+    width: 26,
+    height: 26,
+    borderRadius: 9,
+    borderCurve: "continuous",
+    borderWidth: 1.5,
+    borderColor: colors.borderSubtle,
+    backgroundColor: colors.bgSurface,
+    alignItems: "center",
     justifyContent: "center",
   },
-  primaryActionSecondary: {
+  scheduleButton: {
+    minHeight: 36,
+    paddingHorizontal: spacing.md,
+    justifyContent: "center",
+    borderRadius: radii.md,
+    borderCurve: "continuous",
     backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
   },
-  primaryActionText: {
-    ...typography.micro,
-    color: colors.textInverse,
-  },
-  primaryActionTextSecondary: {
+  // Sentence-case Geist, not mono caps — a tappable verb, not metadata.
+  scheduleButtonText: {
+    fontFamily: fonts.sansSemibold,
+    fontSize: 12,
+    lineHeight: 16,
+    letterSpacing: -0.1,
     color: colors.textSecondary,
   },
   actionCol: {
     marginLeft: spacing.md,
     flexDirection: "row",
-    gap: spacing.xs,
+    gap: spacing.sm,
     alignItems: "center",
-  },
-  secondaryInlineAction: {
-    backgroundColor: colors.bgCard,
   },
   // Swipe action panels — flat color, single label. The label is rendered
   // via SwipeActionLabel above so it can fade in proportional to drag.

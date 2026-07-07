@@ -6,7 +6,14 @@ import type { UserPreferences } from "../lib/userPreferences";
 
 const addEventListener = vi.fn();
 const planReminders = vi.fn(() => []);
-const syncRemindersAsync = vi.fn(async () => undefined);
+const syncRemindersAsync = vi.fn(async (_specs: unknown) => undefined);
+// Executes queued syncs immediately; debounce behavior is covered by
+// syncReminders.test.ts.
+const queueReminderSync = vi.fn(
+  (getSpecs: () => unknown[], onError: (e: unknown) => void) => {
+    void syncRemindersAsync(getSpecs()).catch(onError);
+  },
+);
 const prefs: UserPreferences = {
   morningDigestTime: "09:00",
   reminderLeadTimeMinutes: 15,
@@ -22,6 +29,8 @@ const prefs: UserPreferences = {
   reducedMotionOverride: "system",
   accentColor: "purple",
   density: "cozy",
+  timelineLayout: "list",
+  theme: "light",
   swipeActionsEnabled: false,
   hapticsEnabled: true,
   soundEnabled: false,
@@ -39,6 +48,7 @@ vi.mock("../lib/planReminders", () => ({
 
 vi.mock("../lib/syncReminders", () => ({
   syncRemindersAsync,
+  queueReminderSync,
 }));
 
 vi.mock("../lib/logger", () => ({
@@ -73,6 +83,11 @@ describe("useReminderSync", () => {
     vi.clearAllMocks();
     remove = vi.fn();
     appStateHandler = undefined;
+    queueReminderSync.mockImplementation(
+      (getSpecs: () => unknown[], onError: (e: unknown) => void) => {
+        void syncRemindersAsync(getSpecs()).catch(onError);
+      },
+    );
     addEventListener.mockImplementation((_event: string, handler: (state: string) => void) => {
       appStateHandler = handler;
       return { remove };
@@ -83,9 +98,8 @@ describe("useReminderSync", () => {
     appStateHandler = undefined;
   });
 
-  it("syncs immediately on task changes when reminders are enabled", () => {
+  it("queues a sync on mount when reminders are enabled", () => {
     renderHook(() => useReminderSync(tasks, prefs, true));
-
     expect(planReminders).toHaveBeenCalledTimes(1);
     expect(planReminders).toHaveBeenCalledWith(tasks, prefs, expect.any(Date));
     expect(syncRemindersAsync).toHaveBeenCalledTimes(1);
@@ -93,7 +107,6 @@ describe("useReminderSync", () => {
 
   it("re-syncs when the app returns to the foreground", () => {
     renderHook(() => useReminderSync(tasks, prefs, true));
-
     act(() => {
       appStateHandler?.("background");
       appStateHandler?.("active");
@@ -126,7 +139,6 @@ describe("useReminderSync", () => {
       ],
       enabled: true,
     });
-
     expect(planReminders).toHaveBeenCalledTimes(2);
     expect(syncRemindersAsync).toHaveBeenCalledTimes(2);
   });
@@ -173,13 +185,11 @@ describe("useReminderSync", () => {
       currentPrefs: prefs,
       enabled: true,
     });
-
     rerender({
       currentTasks: originalTasks,
       currentPrefs: prefs,
       enabled: true,
     });
-
     expect(planReminders).toHaveBeenCalledTimes(3);
     expect(planReminders).toHaveBeenNthCalledWith(2, reflowedTasks, prefs, expect.any(Date));
     expect(planReminders).toHaveBeenNthCalledWith(3, originalTasks, prefs, expect.any(Date));
@@ -207,14 +217,12 @@ describe("useReminderSync", () => {
       },
       enabled: true,
     });
-
     expect(planReminders).toHaveBeenCalledTimes(2);
     expect(syncRemindersAsync).toHaveBeenCalledTimes(2);
   });
 
   it("does nothing when reminders are disabled", () => {
     renderHook(() => useReminderSync(tasks, prefs, false));
-
     expect(planReminders).not.toHaveBeenCalled();
     expect(syncRemindersAsync).not.toHaveBeenCalled();
     expect(addEventListener).not.toHaveBeenCalled();

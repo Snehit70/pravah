@@ -5,6 +5,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { checkForAppUpdate, type UpdateAvailableResult, type UpdateCheckResult } from "../lib/appUpdate";
 import { useAppUpdateInstaller } from "../hooks/useAppUpdateInstaller";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import AppUpdatesIconAsset from "../assets/icons/about-app-updates.svg";
 
 const CANONICAL_PACKAGE = "com.pravah.mobile";
 
@@ -14,7 +15,9 @@ function statusCopy(result: UpdateCheckResult | null): string {
     case "up-to-date":
       return "You're up to date.";
     case "update-available":
-      return `Version ${result.version} is available.`;
+      return `APK ${result.version} is available. Installed APK is ${
+        Application.nativeApplicationVersion ?? "unknown"
+      }.`;
     case "offline":
       return "Could not reach GitHub. Check your connection and try again.";
     case "rate-limited":
@@ -31,11 +34,11 @@ function statusCopy(result: UpdateCheckResult | null): string {
 function installerCopy(status: ReturnType<typeof useAppUpdateInstaller>["status"]): string | null {
   switch (status) {
     case "downloading":
-      return "Downloading APK...";
+      return "Downloading APK…";
     case "verifying":
-      return "Verifying download...";
+      return "Verifying download…";
     case "installing":
-      return "Opening Android installer...";
+      return "Opening Android installer…";
     case "corrupt":
       return "Download corrupted. Try again.";
     case "cant-install":
@@ -66,9 +69,17 @@ export function AppUpdateSection() {
   const installStatus = installerCopy(installer.status);
 
   return (
-    <View style={styles.card}>
-      <Text style={styles.label}>App Update</Text>
-      <Text style={styles.help}>{statusCopy(checkState)}</Text>
+    <View style={styles.group}>
+      <View style={styles.divider} />
+      <View style={styles.headerRow}>
+        <View style={styles.iconTile}>
+          <AppUpdatesIconAsset color={colors.textPrimary} width={18} height={18} />
+        </View>
+        <View style={styles.headerCopy}>
+          <Text style={styles.label}>App updates</Text>
+          <Text style={styles.help}>{statusCopy(checkState)}</Text>
+        </View>
+      </View>
       {update ? (
         <View style={styles.notesBox}>
           <Text style={styles.notesTitle}>Release notes</Text>
@@ -104,7 +115,7 @@ export function AppUpdateSection() {
             busy && styles.disabled,
           ]}
         >
-          <Text style={styles.buttonText}>{isChecking ? "Checking..." : "Check for updates"}</Text>
+          <Text style={styles.buttonText}>{isChecking ? "Checking…" : "Check for updates"}</Text>
         </Pressable>
         {update ? (
           <Pressable
@@ -129,13 +140,35 @@ export function AppUpdateSection() {
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: colors.bgCard,
-    borderRadius: radii.xl,
+  group: {
+    gap: spacing.sm,
+  },
+  // Mirrors SettingsSheet's full-bleed sectionDivider; lives here so the
+  // divider disappears with the section on non-canonical builds.
+  divider: {
+    height: 1,
+    backgroundColor: colors.bgInput,
+    marginHorizontal: -spacing.lg,
+    marginVertical: spacing.xs,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.md,
+  },
+  iconTile: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
-    padding: spacing.lg,
-    gap: spacing.sm,
+  },
+  headerCopy: {
+    flex: 1,
+    gap: 4,
   },
   label: {
     ...typography.bodyMd,
@@ -166,23 +199,24 @@ const styles = StyleSheet.create({
   },
   statusText: {
     ...typography.bodyMd,
-    color: colors.accent,
+    color: colors.textSecondary,
   },
   actions: {
     flexDirection: "row",
     flexWrap: "wrap",
+    justifyContent: "flex-end",
     gap: spacing.sm,
   },
   button: {
     marginTop: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
   },
   primaryButton: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
+    backgroundColor: colors.textPrimary,
+    borderColor: colors.textPrimary,
   },
   secondaryButton: {
     backgroundColor: colors.bgSurface,

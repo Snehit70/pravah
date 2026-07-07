@@ -76,6 +76,13 @@ function weekdayShort(iso: string): string {
   return SHORT_WEEKDAYS[new Date(p.year, p.month - 1, p.day).getDay()] ?? "";
 }
 
+/** "Sat · Jul 5" — absolute companion line for day cards whose primary label
+ *  is relative ("Today", "Tomorrow"). Returns "" for non-ISO input. */
+export function weekdayDate(iso: string): string {
+  const weekday = weekdayShort(iso);
+  return weekday ? `${weekday} · ${shortDate(iso)}` : "";
+}
+
 /**
  * Timeline section header label. Today/Tomorrow stay relative; everything from
  * today+2 onward gets a distinct day-named header ("Thu · Jun 18") so days are
@@ -97,4 +104,12 @@ export function dateLabel(date: string, today: string, tomorrow: string): string
 
 export function isIsoDate(value: string): boolean {
   return parseIsoParts(value) !== null;
+}
+
+/** Local Date at midnight for an ISO date, or null if the string isn't a valid
+ *  ISO date. Local (not UTC) construction so week/weekday math matches the
+ *  user's calendar day — mirrors weekdayShort above. */
+export function isoToDate(iso: string): Date | null {
+  const p = parseIsoParts(iso);
+  return p ? new Date(p.year, p.month - 1, p.day) : null;
 }

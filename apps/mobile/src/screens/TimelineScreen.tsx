@@ -8,16 +8,19 @@
  * currently disabled (RNDFL@4 / Reanimated@4 incompatibility).
  */
 
-import { useEffect, useRef, useState, type JSX } from "react";
-import Animated, { FadeIn } from "react-native-reanimated";
+import { useState, type JSX } from "react";
+import Animated, { FadeIn, FadeOut, withDelay, withTiming } from "react-native-reanimated";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import type { RenderItemParams } from "react-native-draggable-flatlist";
 import Svg, { Line, Rect } from "react-native-svg";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import type { Id } from "../../../../convex/_generated/dataModel";
 import type { MobileTask } from "../components/TaskCard";
 import { TimelineSectionHeader } from "../components/TimelineSectionHeader";
+import { TimelineDayCarousel } from "../components/TimelineDayCarousel";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { dateLabel } from "../lib/dates";
+import type { TimelineLayout } from "../lib/userPreferences";
 import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 
@@ -39,10 +42,32 @@ type TimelineScreenProps = {
   overdueCount?: number;
   /** Opens the overdue triage sheet. Omitted while actions are unavailable. */
   onOpenOverdue?: () => void;
+  /** Timeline layout preference — the compact list (default) or the
+   *  comfortable day-card carousel. */
+  layout?: TimelineLayout;
+  /** Carousel-mode slim rows call these directly instead of `renderItem`. */
+  onCompleteTask?: (id: Id<"tasks">) => void;
+  onReopenTask?: (id: Id<"tasks">) => void;
+  onEditTask?: (task: MobileTask) => void;
+  getGoalName?: (taskId: string) => string | undefined;
 };
 
 const noopDrag = () => {};
 const DEFAULT_VISIBLE_SECTION_COUNT = 3;
+
+/** Crossfade for the layout toggle (PRD §5): incoming layout fades in over
+ *  ~220ms with a subtle 0.98→1 scale, delayed so it overlaps the last ~60ms
+ *  of the outgoing fade. */
+function layoutEntering() {
+  "worklet";
+  return {
+    initialValues: { opacity: 0, transform: [{ scale: 0.98 }] },
+    animations: {
+      opacity: withDelay(120, withTiming(1, { duration: 220 })),
+      transform: [{ scale: withDelay(120, withTiming(1, { duration: 220 })) }],
+    },
+  };
+}
 
 function countTimelineRows(sections: [string, MobileTask[]][]) {
   let count = 0;
@@ -127,11 +152,22 @@ export function TimelineScreen({
   renderItem,
   overdueCount,
   onOpenOverdue,
+  layout = "list",
+  onCompleteTask,
+  onReopenTask,
+  onEditTask,
+  getGoalName,
 }: TimelineScreenProps) {
   const reducedMotion = useReducedMotion();
-  const listRef = useRef<FlatList<TimelineRow>>(null);
   const [showAllSections, setShowAllSections] = useState(false);
-  const [pendingJumpDateKey, setPendingJumpDateKey] = useState<string | null>(null);
+  // Entering animations also fire on first mount; the tab transition already
+  // animates that, so the crossfade only arms once the layout prop changes.
+  const [lastLayout, setLastLayout] = useState(layout);
+  const [crossfadeArmed, setCrossfadeArmed] = useState(false);
+  if (lastLayout !== layout) {
+    setLastLayout(layout);
+    if (!crossfadeArmed) setCrossfadeArmed(true);
+  }
   const { future, overdueCount: localOverdue } = splitOverdue(sections, today);
   const effectiveOverdue = overdueCount ?? localOverdue;
   const sourceSections = onOpenOverdue ? future : sections;
@@ -148,28 +184,6 @@ export function TimelineScreen({
   // hydrate quickly, but the first paint avoids handing every row to React.
   const rows = buildTimelineRows(visibleSections, today, tomorrow, visibleRowCount);
   const hasPendingRows = rows.length < totalRows;
-  const jumpTargets = sourceSections.slice(0, 6).map(([dateKey]) => ({
-    dateKey,
-    label: dateLabel(dateKey, today, tomorrow),
-  }));
-
-  useEffect(() => {
-    if (!pendingJumpDateKey) return;
-    const rowIndex = rows.findIndex(
-      (row) => row.kind === "header" && row.dateKey === pendingJumpDateKey,
-    );
-    if (rowIndex >= 0) {
-      const timeout = setTimeout(() => {
-        listRef.current?.scrollToIndex({ index: rowIndex, animated: !reducedMotion });
-        setPendingJumpDateKey(null);
-      }, 0);
-      return () => clearTimeout(timeout);
-    }
-    if (!showAllSections) {
-      const timeout = setTimeout(() => setShowAllSections(true), 0);
-      return () => clearTimeout(timeout);
-    }
-  }, [pendingJumpDateKey, reducedMotion, rows, showAllSections]);
 
   const overdueHeader =
     effectiveOverdue > 0 && onOpenOverdue ? (
@@ -200,31 +214,14 @@ export function TimelineScreen({
     </Animated.View>
   );
 
-  const jumpHeader =
-    jumpTargets.length > 0 ? (
-      <View style={styles.jumpWrap}>
-        <Text style={styles.jumpLabel}>Jump</Text>
-        <View style={styles.jumpRow}>
-          {jumpTargets.map((target) => (
-            <Pressable
-              key={target.dateKey}
-              onPress={() => setPendingJumpDateKey(target.dateKey)}
-              accessibilityRole="button"
-              accessibilityLabel={`Jump to ${target.label}`}
-              style={({ pressed }) => [styles.jumpChip, pressed && { opacity: 0.72 }]}
-            >
-              <Text style={styles.jumpChipText}>{target.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-    ) : null;
-
   const loadingBlock = <TaskListSkeleton variant="timeline" />;
 
-  return (
+  const animateCrossfade = crossfadeArmed && !reducedMotion;
+  const entering = animateCrossfade ? layoutEntering : undefined;
+  const exiting = animateCrossfade ? FadeOut.duration(180) : undefined;
+
+  const listBody = (
     <FlatList<TimelineRow>
-      ref={listRef}
       style={{ flex: 1 }}
       contentContainerStyle={{
         paddingTop: spacing.md,
@@ -255,15 +252,6 @@ export function TimelineScreen({
         });
       }}
       showsVerticalScrollIndicator={false}
-      onScrollToIndexFailed={({ index, highestMeasuredFrameIndex }) => {
-        const fallbackIndex = Math.max(0, highestMeasuredFrameIndex);
-        if (fallbackIndex !== index) {
-          listRef.current?.scrollToIndex({ index: fallbackIndex, animated: false });
-        }
-        setTimeout(() => {
-          listRef.current?.scrollToIndex({ index, animated: !reducedMotion });
-        }, 40);
-      }}
       refreshControl={
         <RefreshControl
           refreshing={isRefreshing}
@@ -273,12 +261,7 @@ export function TimelineScreen({
           progressBackgroundColor={colors.bgCard}
         />
       }
-      ListHeaderComponent={
-        <>
-          {overdueHeader}
-          {jumpHeader}
-        </>
-      }
+      ListHeaderComponent={overdueHeader}
       ListFooterComponent={
         <>
           {laterTaskCount > 0 ? (
@@ -300,9 +283,55 @@ export function TimelineScreen({
       ListEmptyComponent={isLoading ? loadingBlock : emptyBlock}
     />
   );
+
+  const carouselBody = isLoading ? (
+    loadingBlock
+  ) : (
+    <TimelineDayCarousel
+      sections={sections}
+      today={today}
+      tomorrow={tomorrow}
+      isRefreshing={isRefreshing}
+      tabBarHeight={tabBarHeight}
+      onRefresh={onRefresh}
+      overdueCount={overdueCount}
+      onOpenOverdue={onOpenOverdue}
+      onCompleteTask={onCompleteTask}
+      onReopenTask={onReopenTask}
+      onEditTask={onEditTask}
+      getGoalName={getGoalName}
+      emptyComponent={emptyBlock}
+    />
+  );
+
+  // Both layouts mount in an absolute-fill wrapper so the exiting one can
+  // fade out in place without doubling the flex layout during the overlap.
+  return (
+    <View style={styles.layoutRoot}>
+      {layout === "carousel" ? (
+        <Animated.View key="carousel" style={styles.layoutFill} entering={entering} exiting={exiting}>
+          {carouselBody}
+        </Animated.View>
+      ) : (
+        <Animated.View key="list" style={styles.layoutFill} entering={entering} exiting={exiting}>
+          {listBody}
+        </Animated.View>
+      )}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
+  layoutRoot: {
+    flex: 1,
+  },
+  layoutFill: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   // Muted, tappable doorway to the triage sheet — count + chevron only, no
   // alarm color (per the overdue-handling design: tone fixed by behavior).
   overdueBar: {
@@ -326,33 +355,6 @@ const styles = StyleSheet.create({
   overdueLabel: { color: colors.textPrimary, ...typography.micro },
   overdueHelp: { color: colors.textMuted, ...typography.bodyMd },
   overdueChevron: { color: colors.accent, ...typography.bodyMd },
-  jumpWrap: {
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
-    gap: spacing.xs,
-  },
-  jumpLabel: {
-    color: colors.textMuted,
-    ...typography.micro,
-  },
-  jumpRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.xs,
-  },
-  jumpChip: {
-    minHeight: 40,
-    paddingHorizontal: spacing.md,
-    justifyContent: "center",
-    borderRadius: 999,
-    backgroundColor: colors.bgCard,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-  },
-  jumpChipText: {
-    color: colors.textPrimary,
-    ...typography.bodyMd,
-  },
   laterSummary: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,

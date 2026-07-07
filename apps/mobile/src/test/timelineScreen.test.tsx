@@ -96,6 +96,9 @@ vi.mock("react-native-reanimated", () => ({
       React.createElement("div", {}, children),
   },
   FadeIn: { duration: () => undefined },
+  FadeOut: { duration: () => undefined },
+  withDelay: (_delay: number, value: unknown) => value,
+  withTiming: (value: unknown) => value,
 }));
 
 // ─── theme tokens mock ────────────────────────────────────────────────────────
@@ -119,6 +122,16 @@ vi.mock("../components/LoadingSkeleton", () => ({
 
 vi.mock("../hooks/useReducedMotion", () => ({
   useReducedMotion: () => false,
+}));
+
+// ─── TimelineDayCarousel mock ─────────────────────────────────────────────────
+vi.mock("../components/TimelineDayCarousel", () => ({
+  TimelineDayCarousel: ({ sections }: { sections: unknown[] }) =>
+    React.createElement(
+      "div",
+      { "data-testid": "day-carousel" },
+      `carousel:${sections.length}`
+    ),
 }));
 
 // ─── TimelineSectionHeader mock ───────────────────────────────────────────────
@@ -488,5 +501,61 @@ describe("TimelineScreen", () => {
 
     expect(screen.getByTestId("task-task5")).toBeTruthy();
     expect(screen.queryByText("Later · 1 tasks")).toBeNull();
+  });
+
+  it("renders the compact list by default (no carousel)", () => {
+    render(
+      <TimelineScreen
+        sections={sampleSections}
+        today="2026-05-04"
+        tomorrow="2026-05-05"
+        isLoading={false}
+        isRefreshing={false}
+        tabBarHeight={60}
+        onRefresh={mockOnRefresh}
+        renderItem={mockRenderItem}
+      />
+    );
+
+    expect(screen.queryByTestId("day-carousel")).toBeNull();
+    expect(screen.getByTestId("task-task1")).toBeTruthy();
+  });
+
+  it("renders the day carousel in comfortable mode", () => {
+    render(
+      <TimelineScreen
+        sections={sampleSections}
+        today="2026-05-04"
+        tomorrow="2026-05-05"
+        isLoading={false}
+        isRefreshing={false}
+        tabBarHeight={60}
+        onRefresh={mockOnRefresh}
+        renderItem={mockRenderItem}
+        layout="carousel"
+      />
+    );
+
+    expect(screen.getByTestId("day-carousel").textContent).toBe("carousel:2");
+    expect(screen.queryByTestId("task-task1")).toBeNull();
+  });
+
+  it("keeps the loading skeleton in carousel mode while data loads", () => {
+    render(
+      <TimelineScreen
+        sections={[]}
+        today="2026-05-04"
+        tomorrow="2026-05-05"
+        isLoading={true}
+        isRefreshing={false}
+        tabBarHeight={60}
+        onRefresh={mockOnRefresh}
+        renderItem={mockRenderItem}
+        layout="carousel"
+      />
+    );
+
+    expect(screen.getByTestId("skeleton-timeline")).toBeTruthy();
+    expect(screen.queryByTestId("day-carousel")).toBeNull();
   });
 });

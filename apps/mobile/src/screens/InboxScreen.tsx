@@ -18,8 +18,9 @@ import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
 import type { RenderItemParams } from "react-native-draggable-flatlist";
 import Svg, { Path } from "react-native-svg";
-import { colors, radii, spacing, typography } from "../theme/tokens";
+import { colors, fonts, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
+import { TimelineSectionHeader } from "../components/TimelineSectionHeader";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
 import { useReducedMotion } from "../hooks/useReducedMotion";
@@ -54,14 +55,14 @@ const noopDrag = () => {};
 type PriorityBucket = "p1" | "p2" | "p3" | "none";
 
 type InboxRow =
-  | { kind: "header"; bucket: PriorityBucket; label: string }
+  | { kind: "header"; bucket: PriorityBucket; label: string; count: number }
   | { kind: "task"; task: MobileTask };
 
 const BUCKET_ORDER: PriorityBucket[] = ["p1", "p2", "p3", "none"];
 const BUCKET_LABEL: Record<PriorityBucket, string> = {
-  p1: "P1",
-  p2: "P2",
-  p3: "P3",
+  p1: "Priority 1",
+  p2: "Priority 2",
+  p3: "Priority 3",
   none: "Unprioritized",
 };
 
@@ -84,7 +85,7 @@ function buildInboxRows(tasks: MobileTask[]): InboxRow[] {
   for (const bucket of BUCKET_ORDER) {
     const inBucket = grouped.get(bucket);
     if (!inBucket || inBucket.length === 0) continue;
-    rows.push({ kind: "header", bucket, label: BUCKET_LABEL[bucket] });
+    rows.push({ kind: "header", bucket, label: BUCKET_LABEL[bucket], count: inBucket.length });
     for (const task of inBucket) rows.push({ kind: "task", task });
   }
   return rows;
@@ -229,15 +230,6 @@ export function InboxScreen({
         </View>
         {!isFiltering && tasks.length > 0 ? <Text style={styles.queueMeta}>Schedule first</Text> : null}
       </View>
-
-      {!isFiltering && tasks.length > 0 ? (
-        <View style={styles.queueHint}>
-          <Text style={styles.queueHintText}>
-            Use <Text style={styles.queueHintEmphasis}>Schedule</Text> to place a task in time,
-            or complete it if it no longer needs a deadline.
-          </Text>
-        </View>
-      ) : null}
 
       <Pressable
         onPress={() => setShowFilters((s) => !s)}
@@ -404,11 +396,7 @@ export function InboxScreen({
       }
       renderItem={({ item: row, index }) => {
         if (row.kind === "header") {
-          return (
-            <View style={styles.sectionHeader} pointerEvents="box-none">
-              <Text style={styles.sectionLabel}>{row.label}</Text>
-            </View>
-          );
+          return <TimelineSectionHeader label={row.label} count={row.count} isToday={false} />;
         }
         return renderItem({
           item: row.task,
@@ -463,25 +451,12 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     ...typography.bodyMd,
   },
+  // Sentence case — an instruction, not log-line metadata.
   queueMeta: {
     color: colors.textMuted,
-    ...typography.micro,
-  },
-  queueHint: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.md,
-    backgroundColor: colors.bgSurface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-  },
-  queueHintText: {
-    color: colors.textMuted,
-    ...typography.bodyMd,
-  },
-  queueHintEmphasis: {
-    color: colors.textPrimary,
-    fontWeight: "600",
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    lineHeight: 16,
   },
   filterLauncher: {
     minHeight: 44,
@@ -501,7 +476,8 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   filterLauncherMeta: {
-    ...typography.micro,
+    ...typography.numeric,
+    fontSize: 11,
     color: colors.textMuted,
   },
   filterPanel: {
@@ -666,15 +642,6 @@ const styles = StyleSheet.create({
   },
   emptyCta: {
     color: colors.accent,
-    ...typography.micro,
-  },
-  sectionHeader: {
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing.lg,
-  },
-  sectionLabel: {
-    color: colors.textMuted,
     ...typography.micro,
   },
   loadingMore: {

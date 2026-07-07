@@ -56,7 +56,12 @@ describe("SETTINGS_CATEGORY_CONTROLS", () => {
       ]),
     );
     expect(SETTINGS_CATEGORY_CONTROLS.sync).toEqual(
-      expect.arrayContaining(["google_calendar_sync", "gmail_review"]),
+      expect.arrayContaining([
+        "google_calendar_sync",
+        "gmail_review",
+        "sync_errors",
+        "sign_out",
+      ]),
     );
     expect(SETTINGS_CATEGORY_CONTROLS.reminders).toEqual(
       expect.arrayContaining([
@@ -83,8 +88,16 @@ describe("SETTINGS_CATEGORY_CONTROLS", () => {
         "tab_order",
       ]),
     );
+    expect(SETTINGS_CATEGORY_CONTROLS.data).toEqual(
+      expect.arrayContaining([
+        "export_tasks",
+        "export_diagnostics",
+        "retry_queue",
+        "wipe_local_data",
+      ]),
+    );
     expect(SETTINGS_CATEGORY_CONTROLS.about).toEqual(
-      expect.arrayContaining(["app_version", "sign_out", "support_links"]),
+      expect.arrayContaining(["app_version", "app_update_check", "support_links"]),
     );
   });
 });

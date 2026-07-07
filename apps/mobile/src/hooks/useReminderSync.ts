@@ -2,38 +2,47 @@ import { useEffect } from "react";
 import { AppState } from "react-native";
 import type { MobileTask } from "../components/TaskCard";
 import { planReminders } from "../lib/planReminders";
-import { syncRemindersAsync } from "../lib/syncReminders";
+import { queueReminderSync } from "../lib/syncReminders";
 import { classifyError, mobileLogger } from "../lib/logger";
 import type { UserPreferences } from "../lib/userPreferences";
 
 /**
- * Subscribes to task changes and app-foreground events, running a full
- * reminder sync on each trigger. Re-syncing on task mutations keeps scheduled
- * notifications current without requiring per-mutation notification calls.
+ * Subscribes to task changes and app-foreground events, queueing a full
+ * reminder sync on each trigger. Debouncing, coalescing, and serialization
+ * live in the sync layer (queueReminderSync); this hook only signals intent.
  */
 export function useReminderSync(
   tasks: MobileTask[],
   prefs: UserPreferences,
   notificationsEnabled: boolean,
 ): void {
-  // Sync whenever the task list changes (covers: add, edit, complete, delete).
+  // Queue whenever the task list or reminder prefs change (covers: add,
+  // edit, complete, delete, lead-time/digest/quiet-hours changes).
   useEffect(() => {
     if (!notificationsEnabled) return;
-    const specs = planReminders(tasks, prefs, new Date());
-    void syncRemindersAsync(specs).catch((error) => {
-      mobileLogger.warn("reminder_sync_failed", { errorType: classifyError(error) });
-    });
+    queueReminderSync(
+      () => planReminders(tasks, prefs, new Date()),
+      (error) => {
+        mobileLogger.warn("reminder_sync_failed", { errorType: classifyError(error) });
+      },
+    );
   }, [tasks, prefs, notificationsEnabled]);
 
-  // Also sync on app foreground to roll the 7-day window forward.
+  // Also sync on app foreground to roll the 7-day window forward. No
+  // debounce: the window should refresh as soon as the app is visible.
   useEffect(() => {
     if (!notificationsEnabled) return;
     const sub = AppState.addEventListener("change", (nextState) => {
       if (nextState !== "active") return;
-      const specs = planReminders(tasks, prefs, new Date());
-      void syncRemindersAsync(specs).catch((error) => {
-        mobileLogger.warn("reminder_sync_foreground_failed", { errorType: classifyError(error) });
-      });
+      queueReminderSync(
+        () => planReminders(tasks, prefs, new Date()),
+        (error) => {
+          mobileLogger.warn("reminder_sync_foreground_failed", {
+            errorType: classifyError(error),
+          });
+        },
+        0,
+      );
     });
     return () => sub.remove();
   }, [tasks, prefs, notificationsEnabled]);

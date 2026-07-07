@@ -7,7 +7,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from "react-native-reanimated";
-import { colors, motion, spacing, typography } from "../theme/tokens";
+import { colors, fonts, motion, spacing, typography } from "../theme/tokens";
 
 type Props = {
   label: string;
@@ -60,9 +60,9 @@ export function TimelineSectionHeader({ label, count, isToday }: Props) {
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.label}>
+      <Text style={[styles.label, isToday && styles.labelToday]}>
         {label}
-        {typeof count === "number" ? ` · ${count}` : ""}
+        {typeof count === "number" ? <Text style={styles.count}>  {count}</Text> : null}
       </Text>
       {isToday ? <Animated.View style={[styles.underline, underlineStyle]} /> : null}
     </View>
@@ -70,14 +70,29 @@ export function TimelineSectionHeader({ label, count, isToday }: Props) {
 }
 
 const styles = StyleSheet.create({
+  // Aligned to the card margin so headers and cards share one left edge.
   wrap: {
-    marginTop: spacing.md,
+    marginTop: spacing.lg,
     marginBottom: spacing.sm,
+    marginHorizontal: spacing.lg,
     alignSelf: "flex-start",
   },
+  // Sentence-case Geist, not mono caps — headers are wayfinding, not log
+  // lines. Accent color is reserved for today, the "you are here" anchor.
   label: {
+    color: colors.textSecondary,
+    fontFamily: fonts.sansSemibold,
+    fontSize: 14,
+    lineHeight: 18,
+    letterSpacing: -0.1,
+  },
+  labelToday: {
     color: colors.accent,
-    ...typography.micro,
+  },
+  count: {
+    color: colors.textMuted,
+    ...typography.numeric,
+    fontSize: 12,
   },
   // 1px accent rule beneath the label. transform-origin defaults to center on
   // RN, which matches web's `transform-origin: center`.

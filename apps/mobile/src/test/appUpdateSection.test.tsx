@@ -130,7 +130,9 @@ describe("AppUpdateSection", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /check for app updates/i }));
 
-    await waitFor(() => expect(screen.getByText("Version 2.4.0 is available.")).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByText(/APK 2\.4\.0 is available\./)).toBeTruthy(),
+    );
     expect(screen.getByText("Keyboard and update fixes.")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /install pravah 2.4.0/i }));

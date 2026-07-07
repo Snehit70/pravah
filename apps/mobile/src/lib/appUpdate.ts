@@ -123,10 +123,13 @@ function isRateLimited(response: Response): boolean {
   );
 }
 
-export async function checkForAppUpdate(
-  currentVersion: string | null | undefined,
-  fetchImpl: typeof fetch = fetch,
-): Promise<UpdateCheckResult> {
+type ReleaseListResult =
+  | { status: "ok"; releases: GitHubRelease[] }
+  | { status: "offline" }
+  | { status: "rate-limited"; retryAfter?: string }
+  | { status: "malformed-metadata" };
+
+async function fetchReleaseList(fetchImpl: typeof fetch): Promise<ReleaseListResult> {
   let response: Response;
   try {
     response = await fetchImpl(GITHUB_RELEASES_URL, {
@@ -157,5 +160,49 @@ export async function checkForAppUpdate(
     return { status: "malformed-metadata" };
   }
 
-  return resolveUpdate(currentVersion, payload);
+  return { status: "ok", releases: payload };
+}
+
+export async function checkForAppUpdate(
+  currentVersion: string | null | undefined,
+  fetchImpl: typeof fetch = fetch,
+): Promise<UpdateCheckResult> {
+  const list = await fetchReleaseList(fetchImpl);
+  if (list.status !== "ok") return list;
+  return resolveUpdate(currentVersion, list.releases);
+}
+
+export type MobileRelease = {
+  version: string;
+  notes: string;
+};
+
+export type ReleaseFeedResult =
+  | { status: "ok"; releases: MobileRelease[] }
+  | { status: "offline" }
+  | { status: "rate-limited"; retryAfter?: string }
+  | { status: "malformed-metadata" };
+
+export function resolveReleaseFeed(releases: readonly GitHubRelease[]): MobileRelease[] {
+  return releases
+    .filter((release) => !release.draft && !release.prerelease)
+    .map((release) => {
+      const version = releaseVersion(release);
+      const parsed = version ? parseSemver(version) : null;
+      return version && parsed ? { release, version, parsed } : null;
+    })
+    .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
+    .sort((a, b) => compareSemver(b.parsed, a.parsed))
+    .map(({ release, version }) => ({
+      version,
+      notes: release.body?.trim() || "No release notes provided.",
+    }));
+}
+
+export async function fetchMobileReleases(
+  fetchImpl: typeof fetch = fetch,
+): Promise<ReleaseFeedResult> {
+  const list = await fetchReleaseList(fetchImpl);
+  if (list.status !== "ok") return list;
+  return { status: "ok", releases: resolveReleaseFeed(list.releases) };
 }

@@ -5,6 +5,7 @@ export type SettingsCategoryKey =
   | "reminders"
   | "interaction"
   | "appearance"
+  | "data"
   | "about";
 
 export type SettingsNavigationState =
@@ -23,6 +24,7 @@ export const SETTINGS_CATEGORY_ORDER: readonly SettingsCategoryKey[] = [
   "reminders",
   "interaction",
   "appearance",
+  "data",
   "about",
 ];
 
@@ -54,9 +56,13 @@ export const SETTINGS_CATEGORY_META: Record<
     title: "Appearance",
     summary: "Theme and display",
   },
+  data: {
+    title: "Data & diagnostics",
+    summary: "Exports, retry queue, reset",
+  },
   about: {
     title: "About",
-    summary: "Version and diagnostics",
+    summary: "Version and updates",
   },
 };
 
@@ -69,6 +75,8 @@ export const SETTINGS_CATEGORY_CONTROLS: Record<
   sync: [
     "google_calendar_sync",
     "gmail_review",
+    "sync_errors",
+    "sign_out",
   ],
   reminders: [
     "notification_permissions",
@@ -91,16 +99,16 @@ export const SETTINGS_CATEGORY_CONTROLS: Record<
     "task_color_scheme",
     "tab_order",
   ],
+  data: [
+    "export_tasks",
+    "export_diagnostics",
+    "retry_queue",
+    "wipe_local_data",
+  ],
   about: [
     "app_version",
     "app_update_check",
     "support_links",
-    "export_tasks",
-    "export_diagnostics",
-    "sync_errors",
-    "retry_queue",
-    "sign_out",
-    "wipe_local_data",
   ],
 };
 

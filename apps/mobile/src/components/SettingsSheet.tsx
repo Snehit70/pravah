@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type JSX } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type ComponentType,
+  type JSX,
+} from "react";
 import {
   ActivityIndicator,
   Keyboard,
@@ -7,7 +16,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -21,20 +29,37 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { getKairoSettings } from "../lib/kairoConfig";
 import type { NotificationPermissionState } from "../lib/notifications";
-import { colors, radii, spacing, typography } from "../theme/tokens";
+import { colors, motion, radii, spacing, typography } from "../theme/tokens";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
+import { useConfirm } from "../hooks/useConfirm";
 import { getOrCreateDeviceId } from "../lib/deviceIdentity";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
 import { classifyError, mobileLogger } from "../lib/logger";
 import {
+  AlertCircleIcon,
   ArrowUpRightIcon,
+  CalendarIcon,
   CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CopyIcon,
+  InboxTrayIcon,
+  InfoCircleIcon,
+  MailIcon,
+  SyncLoopIcon,
 } from "./UiIcons";
+import GithubIconAsset from "../assets/icons/about-github.svg";
+import ReportIssueIconAsset from "../assets/icons/about-report-issue.svg";
+import PravahMobileIconAsset from "../assets/icons/about-pravah-mobile.svg";
+import YourDataIconAsset from "../assets/icons/data-your-data.svg";
+import DiagnosticsIconAsset from "../assets/icons/data-diagnostics.svg";
+import ExportTasksIconAsset from "../assets/icons/data-export-tasks.svg";
+import ExportDiagnosticsIconAsset from "../assets/icons/data-export-diagnostics.svg";
+import RetryQueueIconAsset from "../assets/icons/data-retry-queue.svg";
+import DangerZoneIconAsset from "../assets/icons/data-danger-zone.svg";
+import WipeLocalIconAsset from "../assets/icons/data-wipe-local.svg";
 import AboutIconAsset from "../assets/icons/settings-about.svg";
 import AppearanceIconAsset from "../assets/icons/settings-appearance.svg";
 import InteractionIconAsset from "../assets/icons/settings-interaction.svg";
@@ -42,13 +67,26 @@ import KairoIconAsset from "../assets/icons/settings-kairo.svg";
 import CliIconAsset from "../assets/icons/settings-cli.svg";
 import AppSettingsIconAsset from "../assets/icons/app-settings.svg";
 import RemindersIconAsset from "../assets/icons/settings-reminders.svg";
+import QuietHoursIconAsset from "../assets/icons/settings-quiet-hours.svg";
 import SyncIconAsset from "../assets/icons/settings-sync.svg";
+import DataIconAsset from "../assets/icons/settings-data.svg";
+import BulkCaptureIconAsset from "../assets/icons/interaction-bulk-capture.svg";
+import SwipeIconAsset from "../assets/icons/interaction-swipe.svg";
+import HapticsIconAsset from "../assets/icons/interaction-haptics.svg";
+import SoundIconAsset from "../assets/icons/interaction-sound.svg";
+import ReducedMotionIconAsset from "../assets/icons/interaction-reduced-motion.svg";
+import DensityComfortableIconAsset from "../assets/icons/appearance-density-comfortable.svg";
+import DensityCompactIconAsset from "../assets/icons/appearance-density-compact.svg";
+import ThemeDarkIconAsset from "../assets/icons/appearance-theme-dark.svg";
+import ThemeSystemIconAsset from "../assets/icons/appearance-theme-system.svg";
+import ThemeWarmIconAsset from "../assets/icons/appearance-theme-warm.svg";
 import {
   moveTabOrder,
   resolveTabOrder,
   TAB_LABELS,
   type TabKey,
 } from "../lib/tabOrder";
+import { TabNavIcon } from "./tabNavIcons";
 import {
   INITIAL_SETTINGS_NAVIGATION,
   SETTINGS_CATEGORY_META,
@@ -57,10 +95,25 @@ import {
   type SettingsCategoryKey,
   type SettingsNavigationState,
 } from "../lib/settingsNavigation";
-import type { AccentColor, Density } from "../lib/userPreferences";
+import type {
+  AccentColor,
+  Density,
+  ReminderLeadTimeMinutes,
+  ThemePreference,
+} from "../lib/userPreferences";
+import Animated, {
+  Easing,
+  interpolateColor,
+  LinearTransition,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 import { KairoSettingsSection } from "./KairoSettingsSection";
 import { GmailReviewSection } from "./GmailReviewSection";
 import { AppUpdateSection } from "./AppUpdateSection";
+import { WhatsNewSheet } from "./WhatsNewSheet";
 import { SnapWheelTimePicker } from "./SnapWheelTimePicker";
 import {
   summarizeSyncError,
@@ -112,54 +165,40 @@ type SettingsSheetProps = {
 };
 
 const REMINDER_LEAD_TIME_OPTIONS = [5, 15, 30, 60] as const;
-const DENSITY_OPTIONS: Array<{ value: Density; label: string; description: string }> = [
-  {
-    value: "cozy",
-    label: "Comfortable",
-    description: "The default thumb-safe spacing used across the redesign.",
-  },
-  {
-    value: "compact",
-    label: "Compact",
-    description: "Tighter task rows for review-heavy sessions.",
-  },
+const LEAD_TIME_SEGMENTS = REMINDER_LEAD_TIME_OPTIONS.map((minutes) => ({
+  value: minutes as ReminderLeadTimeMinutes,
+  label: `${minutes}m`,
+}));
+const REDUCED_MOTION_SEGMENTS = [
+  { value: "system", label: "System" },
+  { value: "always", label: "On" },
+  { value: "never", label: "Off" },
+] as const;
+const DENSITY_SEGMENTS: Array<SegmentedItem<Density>> = [
+  { value: "cozy", label: "Comfortable", Icon: DensityComfortableIconAsset },
+  { value: "compact", label: "Compact", Icon: DensityCompactIconAsset },
+];
+const THEME_SEGMENTS: Array<SegmentedItem<ThemePreference>> = [
+  { value: "system", label: "System", Icon: ThemeSystemIconAsset },
+  { value: "light", label: "Warm light", Icon: ThemeWarmIconAsset },
+  { value: "dark", label: "Dark", Icon: ThemeDarkIconAsset },
 ];
 const TASK_COLOR_OPTIONS: Array<{
   value: AccentColor;
   label: string;
-  description: string;
   swatch: string;
 }> = [
-  {
-    value: "purple",
-    label: "Indigo",
-    description: "Default Pravah selection and planning accent.",
-    swatch: colors.accent,
-  },
-  {
-    value: "copper",
-    label: "Copper",
-    description: "Warmer task emphasis for deadline-heavy planning.",
-    swatch: colors.deadline,
-  },
-  {
-    value: "teal",
-    label: "Teal",
-    description: "Cooler task emphasis for quieter review sessions.",
-    swatch: "#3e7b78",
-  },
-  {
-    value: "rose",
-    label: "Rose",
-    description: "Sharper task emphasis for high-attention queues.",
-    swatch: "#9d586f",
-  },
+  { value: "purple", label: "Indigo", swatch: colors.accent },
+  { value: "copper", label: "Copper", swatch: colors.deadline },
+  { value: "teal", label: "Teal", swatch: "#3e7b78" },
+  { value: "rose", label: "Rose", swatch: "#9d586f" },
 ];
 const READ_ONLY_AUTOMATION_SCOPES = ["tasks:read", "review:read", "sync:read"] as const;
 const APP_VERSION = appJson.expo?.version ?? "—";
 const REPO_URL = "https://github.com/Snehit70/pravah";
 const CHANGELOG_URL = `${REPO_URL}/blob/main/apps/mobile/CHANGELOG.md`;
 const ISSUES_URL = `${REPO_URL}/issues`;
+const RETRY_QUEUE_STORAGE_KEY = "pravah_mobile_retry_queue_v1";
 
 type CategoryIconProps = {
   color: string;
@@ -193,12 +232,20 @@ function BellIcon({ color: _color, size = 18 }: CategoryIconProps) {
   return <RemindersIconAsset width={size} height={size} />;
 }
 
+function QuietHoursIcon({ color: _color, size = 18 }: CategoryIconProps) {
+  return <QuietHoursIconAsset width={size} height={size} />;
+}
+
 function HandIcon({ color: _color, size = 18 }: CategoryIconProps) {
   return <InteractionIconAsset width={size} height={size} />;
 }
 
 function SlidersIcon({ color: _color, size = 18 }: CategoryIconProps) {
   return <AppearanceIconAsset width={size} height={size} />;
+}
+
+function DataIcon({ color: _color, size = 18 }: CategoryIconProps) {
+  return <DataIconAsset width={size} height={size} />;
 }
 
 function InfoIcon({ color: _color, size = 18 }: CategoryIconProps) {
@@ -214,6 +261,7 @@ const SETTINGS_CATEGORY_ICONS: Partial<
   reminders: BellIcon,
   interaction: HandIcon,
   appearance: SlidersIcon,
+  data: DataIcon,
   about: InfoIcon,
 };
 
@@ -269,12 +317,10 @@ function getStatusTone(status: string): "success" | "warning" | "error" | "muted
   return "muted";
 }
 
-function statusTextColor(status: string): string {
-  const tone = getStatusTone(status);
-  if (tone === "success") return colors.primary;
-  if (tone === "warning") return colors.accent;
-  if (tone === "error") return colors.error;
-  return colors.textMuted;
+function notificationPermissionLabel(state: NotificationPermissionState): string {
+  if (state === "granted") return "Ready";
+  if (state === "denied") return "Denied";
+  return "Permission needed";
 }
 
 function syncHealthLabel(health: SyncHealth): string {
@@ -282,18 +328,20 @@ function syncHealthLabel(health: SyncHealth): string {
     case "healthy":
       return "Connected";
     case "error":
-      return "Sync paused after an error";
+      return "Needs retry";
     case "paused":
-      return "Sync off";
+      return "Paused";
     case "disconnected":
-      return "Not connected";
+      return "Off";
   }
 }
 
-function syncHealthColor(health: SyncHealth): string {
-  if (health === "healthy") return colors.primary;
-  if (health === "error") return colors.error;
-  return colors.textMuted;
+type SyncBadgeTone = "success" | "warning" | "error" | "muted";
+
+function syncHealthTone(health: SyncHealth): SyncBadgeTone {
+  if (health === "healthy") return "success";
+  if (health === "error") return "error";
+  return "muted";
 }
 
 function pickerTitle(kind: QuietPickerKind): string {
@@ -313,7 +361,7 @@ function pickerValue(
 
 function calendarActionLabel(health: SyncHealth, isSyncing: boolean): string {
   if (isSyncing) return "Syncing…";
-  if (health === "error") return "Reconnect";
+  if (health === "error") return "Retry sync";
   if (health === "paused" || health === "disconnected") return "Enable and sync";
   return "Sync now";
 }
@@ -330,44 +378,106 @@ type TabOrderEditorProps = {
   onMove: (key: TabKey, direction: "up" | "down") => void;
 };
 
+const TAB_REORDER_EASING = Easing.bezier(...motion.easing.outQuart);
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+function SwatchChip({
+  label,
+  swatch,
+  active,
+  onSelect,
+}: {
+  label: string;
+  swatch: string;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const reducedMotion = useReducedMotion();
+  const progress = useSharedValue(active ? 1 : 0);
+
+  useEffect(() => {
+    const next = active ? 1 : 0;
+    progress.value = reducedMotion
+      ? next
+      : withTiming(next, { duration: motion.duration.fast, easing: TAB_REORDER_EASING });
+  }, [active, progress, reducedMotion]);
+
+  const borderStyle = useAnimatedStyle(() => ({
+    borderColor: interpolateColor(progress.value, [0, 1], [colors.borderSubtle, swatch]),
+  }));
+
+  return (
+    <AnimatedPressable
+      onPress={onSelect}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={`Use ${label} task color`}
+      style={[styles.swatchOption, borderStyle]}
+    >
+      <View style={[styles.swatchDot, { backgroundColor: swatch }]} />
+      <Text style={styles.optionTitle}>{label}</Text>
+    </AnimatedPressable>
+  );
+}
+
+function useTabReorderTransition() {
+  const reducedMotion = useReducedMotion();
+  return reducedMotion
+    ? undefined
+    : LinearTransition.duration(motion.duration.base).easing(TAB_REORDER_EASING);
+}
+
+function TabOrderPreviewItem({
+  tab,
+  layout,
+}: {
+  tab: TabKey;
+  layout: ReturnType<typeof useTabReorderTransition>;
+}) {
+  return (
+    <Animated.View layout={layout} style={styles.tabPreviewItem}>
+      <TabNavIcon tab={tab} color={colors.textMuted} size={14} />
+      <Text style={styles.tabPreviewText} numberOfLines={1}>
+        {TAB_LABELS[tab]}
+      </Text>
+    </Animated.View>
+  );
+}
+
 function TabOrderPreview({ order }: { order: readonly TabKey[] }) {
+  const layout = useTabReorderTransition();
   const left = order.slice(0, 2);
   const right = order.slice(2);
   return (
     <View style={styles.tabOrderPreview} testID="tab-order-preview">
       {left.map((key) => (
-        <View key={key} style={styles.tabPreviewItem}>
-          <Text style={styles.tabPreviewText}>{TAB_LABELS[key]}</Text>
-        </View>
+        <TabOrderPreviewItem key={key} tab={key} layout={layout} />
       ))}
       <View style={styles.tabPreviewCapture}>
         <Text style={styles.tabPreviewCaptureText}>Capture</Text>
       </View>
       {right.map((key) => (
-        <View key={key} style={styles.tabPreviewItem}>
-          <Text style={styles.tabPreviewText}>{TAB_LABELS[key]}</Text>
-        </View>
+        <TabOrderPreviewItem key={key} tab={key} layout={layout} />
       ))}
     </View>
   );
 }
 
 function TabOrderEditor({ order, onMove }: TabOrderEditorProps) {
+  const layout = useTabReorderTransition();
   return (
     <View style={styles.tabOrderEditor}>
       {order.map((key, index) => {
         const isFirst = index === 0;
         const isLast = index === order.length - 1;
         return (
-          <View key={key} style={styles.tabOrderRow}>
+          <Animated.View key={key} layout={layout} style={styles.tabOrderRow}>
             <View style={styles.tabOrderIndex}>
               <Text style={styles.tabOrderIndexText}>{index + 1}</Text>
             </View>
             <View style={styles.settingCopy}>
               <Text style={styles.settingLabel}>{TAB_LABELS[key]}</Text>
-              <Text style={styles.settingMeta}>
-                {index < 2 ? "Left of Capture" : "Right of Capture"}
-              </Text>
             </View>
             <View style={styles.tabOrderControls}>
               <Pressable
@@ -415,7 +525,7 @@ function TabOrderEditor({ order, onMove }: TabOrderEditorProps) {
                 </Text>
               </Pressable>
             </View>
-          </View>
+          </Animated.View>
         );
       })}
     </View>
@@ -925,14 +1035,13 @@ function CliCredentialsSection({
                               Lets this token create and edit your tasks.
                             </Text>
                           </View>
-                          <Switch
+                          <ThemedToggle
                             value={writesOn}
                             onValueChange={(next) =>
                               void onSetTaskWrites(credential._id, next)
                             }
                             disabled={isBusy}
-                            trackColor={{ false: colors.border, true: colors.warningMuted }}
-                            thumbColor={writesOn ? colors.warning : colors.textMuted}
+                            accessibilityLabel="Allow task writes"
                           />
                         </View>
                       ) : null}
@@ -1124,6 +1233,10 @@ type SyncSectionProps = {
   canToggleGmailSync: boolean;
   onGmailToggle: () => void;
   showToast: SettingsSheetProps["showToast"];
+  calendarLastError?: string;
+  gmailLastError?: string;
+  onCopy: (value: string, label: string) => Promise<void>;
+  onSignOut: () => void;
 };
 
 function SyncSection({
@@ -1151,54 +1264,94 @@ function SyncSection({
   canToggleGmailSync,
   onGmailToggle,
   showToast,
+  calendarLastError,
+  gmailLastError,
+  onCopy,
+  onSignOut,
 }: SyncSectionProps) {
+  const calendarMetaLine = [
+    calendarAccountEmail?.toLowerCase(),
+    describeLastRun(calendarLastRun),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const gmailMetaLine = [gmailAccountEmail?.toLowerCase(), describeLastRun(gmailLastRun)]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <View style={styles.screenBody}>
       <View style={styles.summaryRow}>
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryKicker}>Calendar</Text>
+          <View style={styles.summaryKickerRow}>
+            <CalendarIcon color={colors.textMuted} size={13} strokeWidth={1.8} />
+            <Text style={styles.summaryKicker}>Calendar</Text>
+          </View>
           <Text style={styles.summaryValue}>{syncHealthLabel(calendarSyncHealth)}</Text>
           <Text style={styles.summaryMeta}>
-            {calendarSyncEnabled ? "Timeline import on" : "Timeline import off"}
+            {describeLastRun(calendarLastRun) ??
+              (calendarSyncEnabled ? "Timeline import on" : "Timeline import off")}
           </Text>
         </View>
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryKicker}>Gmail</Text>
+          <View style={styles.summaryKickerRow}>
+            <MailIcon color={colors.textMuted} size={13} strokeWidth={1.8} />
+            <Text style={styles.summaryKicker}>Gmail</Text>
+          </View>
           <Text style={styles.summaryValue}>{formatStatusLabel(gmailSyncStatus)}</Text>
           <Text style={styles.summaryMeta}>
-            {gmailSyncEnabled ? "Review capture on" : "Review capture off"}
+            {pendingGmailReviewCount > 0
+              ? `${pendingGmailReviewCount} awaiting review`
+              : gmailSyncEnabled
+                ? "Nothing to review"
+                : "Review capture off"}
           </Text>
         </View>
       </View>
 
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <CalendarIcon color={colors.textSecondary} size={18} />
+          </View>
           <View style={styles.settingCopy}>
-            <Text style={styles.settingLabel}>Google Calendar</Text>
+            <View style={styles.syncTitleRow}>
+              <Text style={styles.settingLabel}>Google Calendar</Text>
+              <SyncStatusBadge
+                label={syncHealthLabel(calendarSyncHealth)}
+                tone={syncHealthTone(calendarSyncHealth)}
+              />
+            </View>
             <Text style={styles.settingHelp}>Pull events and deadlines into Pravah.</Text>
-            <Text style={[styles.settingStatus, { color: syncHealthColor(calendarSyncHealth) }]}>
-              {syncHealthLabel(calendarSyncHealth)}
-            </Text>
-            {calendarSyncHealth === "error" && calendarErrorSummary ? (
-              <Text style={[styles.settingMeta, { color: colors.error }]}>
-                {calendarErrorSummary}
-              </Text>
-            ) : null}
-            {calendarAccountEmail ? (
-              <Text style={styles.settingMeta}>{calendarAccountEmail.toLowerCase()}</Text>
-            ) : null}
-            {describeLastRun(calendarLastRun) ? (
-              <Text style={styles.settingMeta}>{describeLastRun(calendarLastRun)}</Text>
+            {calendarMetaLine ? (
+              <Text style={styles.settingMeta}>{calendarMetaLine}</Text>
             ) : null}
           </View>
-          <Switch
+          <ThemedToggle
             value={calendarSyncEnabled}
             onValueChange={onGoogleCalendarToggle}
             disabled={isGoogleToggleSaving}
-            trackColor={{ false: colors.border, true: colors.accentSoft }}
-            thumbColor={calendarSyncEnabled ? colors.accent : colors.textMuted}
+            accessibilityLabel="Google Calendar sync"
           />
         </View>
+        {calendarSyncHealth === "error" && calendarErrorSummary ? (
+          <View style={styles.syncErrorCallout}>
+            <AlertCircleIcon color={colors.error} size={16} />
+            <Text style={styles.syncErrorText}>{calendarErrorSummary}</Text>
+            <Pressable
+              onPress={() =>
+                void onCopy(calendarLastError ?? calendarErrorSummary, "Calendar error")
+              }
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Copy Google Calendar error"
+              style={({ pressed }) => [styles.copyChip, pressed && { opacity: 0.6 }]}
+            >
+              <CopyIcon color={colors.textPrimary} size={14} strokeWidth={1.8} />
+              <Text style={styles.copyChipText}>Copy</Text>
+            </Pressable>
+          </View>
+        ) : null}
         {calendarSyncEnabled ? (
           <View style={styles.calendarPickerBlock}>
             <View style={styles.calendarPickerHeaderRow}>
@@ -1255,6 +1408,12 @@ function SyncSection({
             ) : null}
           </View>
         ) : null}
+        <View style={styles.syncHintRow}>
+          <InfoCircleIcon color={colors.textMuted} size={14} strokeWidth={1.8} />
+          <Text style={styles.syncHintText}>
+            One-way import — changes in Pravah don't write back to Google.
+          </Text>
+        </View>
         <Pressable
           onPress={
             calendarSyncHealth === "healthy"
@@ -1262,12 +1421,20 @@ function SyncSection({
               : onEnableAndSyncGoogleCalendar
           }
           disabled={syncSettingsBusy}
-          hitSlop={12}
+          hitSlop={8}
           accessibilityRole="button"
           accessibilityLabel={`${calendarActionLabel(calendarSyncHealth, isCalendarSyncing)} Google Calendar`}
-          style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+          style={({ pressed }) => [
+            styles.syncActionButton,
+            pressed && { opacity: 0.7 },
+            syncSettingsBusy && styles.syncActionButtonDisabled,
+          ]}
         >
-          <Text style={[styles.inlineActionText, syncSettingsBusy && styles.inlineActionDisabled]}>
+          <SyncLoopIcon
+            color={syncSettingsBusy ? colors.textDim : colors.textPrimary}
+            size={16}
+          />
+          <Text style={[styles.syncActionText, syncSettingsBusy && { color: colors.textDim }]}>
             {calendarActionLabel(calendarSyncHealth, isCalendarSyncing)}
           </Text>
         </Pressable>
@@ -1275,40 +1442,110 @@ function SyncSection({
 
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <View style={styles.settingRow}>
-          <View style={styles.settingCopy}>
-            <Text style={styles.settingLabel}>Gmail</Text>
-            <Text style={styles.settingHelp}>Surface pending email follow-ups for review.</Text>
-            <Text style={[styles.settingStatus, { color: statusTextColor(gmailSyncStatus) }]}>
-              {formatStatusLabel(gmailSyncStatus)}
-            </Text>
-            {gmailAccountEmail ? (
-              <Text style={styles.settingMeta}>{gmailAccountEmail.toLowerCase()}</Text>
-            ) : null}
-            {describeLastRun(gmailLastRun) ? (
-              <Text style={styles.settingMeta}>{describeLastRun(gmailLastRun)}</Text>
-            ) : null}
+          <View style={styles.syncIconWrap}>
+            <MailIcon color={colors.textSecondary} size={18} />
           </View>
-          <Switch
+          <View style={styles.settingCopy}>
+            <View style={styles.syncTitleRow}>
+              <Text style={styles.settingLabel}>Gmail</Text>
+              <SyncStatusBadge
+                label={formatStatusLabel(gmailSyncStatus)}
+                tone={getStatusTone(gmailSyncStatus)}
+              />
+            </View>
+            <Text style={styles.settingHelp}>Surface pending email follow-ups for review.</Text>
+            {gmailMetaLine ? <Text style={styles.settingMeta}>{gmailMetaLine}</Text> : null}
+          </View>
+          <ThemedToggle
             value={gmailSyncEnabled}
             onValueChange={onGmailToggle}
             disabled={isGmailToggleSaving || !canToggleGmailSync}
-            trackColor={{ false: colors.border, true: colors.accentSoft }}
-            thumbColor={gmailSyncEnabled ? colors.accent : colors.textMuted}
+            accessibilityLabel="Gmail sync"
           />
         </View>
         {pendingGmailReviewCount > 0 ? (
-          <Text style={styles.settingMeta}>
-            {pendingGmailReviewCount} captured{" "}
-            {pendingGmailReviewCount === 1 ? "item" : "items"} waiting for review
-          </Text>
+          <View style={styles.syncHintRow}>
+            <InboxTrayIcon color={colors.textMuted} size={14} strokeWidth={1.8} />
+            <Text style={styles.syncHintText}>
+              {pendingGmailReviewCount} captured{" "}
+              {pendingGmailReviewCount === 1 ? "item" : "items"} waiting for review
+            </Text>
+          </View>
         ) : null}
         {!canToggleGmailSync ? (
-          <Text style={styles.settingMeta}>
-            Connect Gmail on web before enabling mobile sync.
-          </Text>
+          <View style={styles.syncHintRow}>
+            <InfoCircleIcon color={colors.textMuted} size={14} strokeWidth={1.8} />
+            <Text style={styles.syncHintText}>
+              Connect Gmail on web before enabling mobile sync.
+            </Text>
+          </View>
+        ) : null}
+        {gmailLastError ? (
+          <View style={styles.syncErrorCallout}>
+            <AlertCircleIcon color={colors.error} size={16} />
+            <Text style={styles.syncErrorText}>{summarizeSyncError(gmailLastError)}</Text>
+            <Pressable
+              onPress={() => void onCopy(gmailLastError, "Gmail error")}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Copy Gmail error"
+              style={({ pressed }) => [styles.copyChip, pressed && { opacity: 0.6 }]}
+            >
+              <CopyIcon color={colors.textPrimary} size={14} strokeWidth={1.8} />
+              <Text style={styles.copyChipText}>Copy</Text>
+            </Pressable>
+          </View>
         ) : null}
         <GmailReviewSection enabled={gmailSyncEnabled} showToast={showToast} />
       </View>
+
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Account</Text>
+        <Text style={styles.settingHelp}>
+          Sign out to switch Google accounts on this device.
+        </Text>
+        <Pressable
+          onPress={onSignOut}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
+          style={({ pressed }) => [styles.softButton, pressed && { opacity: 0.6 }]}
+        >
+          <Text style={styles.softButtonText}>Sign out</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function SyncStatusBadge({ label, tone }: { label: string; tone: SyncBadgeTone }) {
+  return (
+    <View
+      style={[
+        styles.statusBadge,
+        tone === "success"
+          ? styles.statusBadgeActive
+          : tone === "error"
+            ? styles.statusBadgeError
+            : tone === "warning"
+              ? styles.statusBadgeWarning
+              : styles.statusBadgeIdle,
+      ]}
+    >
+      <Text
+        style={[
+          styles.statusBadgeText,
+          tone === "success"
+            ? styles.statusBadgeTextActive
+            : tone === "error"
+              ? styles.statusBadgeTextError
+              : tone === "warning"
+                ? styles.statusBadgeTextWarning
+                : styles.statusBadgeTextIdle,
+        ]}
+      >
+        {label}
+      </Text>
     </View>
   );
 }
@@ -1342,59 +1579,55 @@ function RemindersSection({
 }: RemindersSectionProps) {
   return (
     <View style={styles.screenBody}>
-      <View style={styles.summaryRow}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryKicker}>Notifications</Text>
-          <Text style={styles.summaryValue}>{formatStatusLabel(notificationPermissionState)}</Text>
-          <Text style={styles.summaryMeta}>
-            {notificationsEnabled ? "Alerts available on this device" : "Permission still needed"}
-          </Text>
-        </View>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryKicker}>Morning digest</Text>
-          <Text style={styles.summaryValue}>{formatClockLabel(prefs.morningDigestTime)}</Text>
-          <Text style={styles.summaryMeta}>
-            {prefs.quietHoursEnabled ? "Quiet hours adjust delivery" : "No quiet hours set"}
-          </Text>
-        </View>
-      </View>
-
       <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Notifications</Text>
-        <Text style={styles.settingHelp}>
-          Timed tasks notify at their deadline, and date-only tasks roll into one morning digest.
-        </Text>
-        <Text style={[styles.settingStatus, { color: statusTextColor(notificationPermissionState) }]}>
-          {formatStatusLabel(notificationPermissionState)}
-        </Text>
+        <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <BellIcon color={colors.textSecondary} size={18} />
+          </View>
+          <View style={styles.settingCopy}>
+            <View style={styles.syncTitleRow}>
+              <Text style={styles.settingLabel}>Notifications</Text>
+              <SyncStatusBadge
+                label={notificationPermissionLabel(notificationPermissionState)}
+                tone={getStatusTone(notificationPermissionState)}
+              />
+            </View>
+            <Text style={styles.settingHelp}>
+              Timed tasks notify at their deadline, and date-only tasks roll into one morning
+              digest.
+            </Text>
+          </View>
+        </View>
 
-        {!notificationsEnabled ? (
+        <View style={styles.behaviorRow}>
+          <Text style={styles.settingMeta}>
+            {notificationsEnabled ? "Check delivery" : "Alerts on this device"}
+          </Text>
           <Pressable
-            onPress={onRequestNotificationsAccess}
+            onPress={notificationsEnabled ? onSendTestNotification : onRequestNotificationsAccess}
             disabled={isNotificationsBusy}
-            hitSlop={12}
+            hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel="Enable notifications"
-            style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+            accessibilityLabel={
+              notificationsEnabled ? "Send a test notification" : "Enable notifications"
+            }
+            style={({ pressed }) => [
+              styles.timeInlineButton,
+              pressed && { opacity: 0.7 },
+              isNotificationsBusy && styles.syncActionButtonDisabled,
+            ]}
           >
-            <Text style={[styles.inlineActionText, isNotificationsBusy && styles.inlineActionDisabled]}>
-              Enable notifications
+            <Text
+              style={[
+                styles.timeInlineButtonText,
+                { fontFamily: "Geist_600SemiBold" },
+                isNotificationsBusy && { color: colors.textDim },
+              ]}
+            >
+              {notificationsEnabled ? "Send a test" : "Enable"}
             </Text>
           </Pressable>
-        ) : null}
-
-        <Pressable
-          onPress={onSendTestNotification}
-          disabled={isNotificationsBusy}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel="Send a test notification"
-          style={({ pressed }) => [pressed && { opacity: 0.6 }]}
-        >
-          <Text style={[styles.inlineActionText, isNotificationsBusy && styles.inlineActionDisabled]}>
-            Send a test
-          </Text>
-        </Pressable>
+        </View>
 
         <View style={styles.behaviorRow}>
           <Text style={styles.settingMeta}>Morning digest time</Text>
@@ -1411,81 +1644,73 @@ function RemindersSection({
           </Pressable>
         </View>
 
-        <View style={styles.behaviorRow}>
+        <View style={styles.behaviorStack}>
           <Text style={styles.settingMeta}>Heads-up lead time</Text>
-          <View style={styles.chipRow}>
-            {REMINDER_LEAD_TIME_OPTIONS.map((minutes) => {
-              const active = prefs.reminderLeadTimeMinutes === minutes;
-              return (
-                <Pressable
-                  key={minutes}
-                  onPress={() => void setPreference("reminderLeadTimeMinutes", minutes)}
-                  hitSlop={6}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  style={({ pressed }) => [
-                    styles.choiceChip,
-                    active && styles.choiceChipActive,
-                    pressed && { opacity: 0.6 },
-                  ]}
-                >
-                  <Text style={[styles.choiceChipText, active && styles.choiceChipTextActive]}>
-                    {minutes}m
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <SlidingSegmented
+            options={LEAD_TIME_SEGMENTS}
+            value={prefs.reminderLeadTimeMinutes}
+            onSelect={(minutes) => void setPreference("reminderLeadTimeMinutes", minutes)}
+          />
         </View>
-      </View>
+        <View style={styles.sectionDivider} />
 
-      <View style={[styles.settingBlock, styles.sectionCard]}>
         <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <QuietHoursIcon color={colors.textSecondary} size={18} />
+          </View>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Quiet hours</Text>
             <Text style={styles.settingHelp}>
-              A window where auto-chosen notification times are adjusted to fire outside this range.
+              Auto-scheduled alerts wait until quiet hours end.
             </Text>
           </View>
-          <Switch
+          <ThemedToggle
             value={prefs.quietHoursEnabled}
             onValueChange={(next) => void setPreference("quietHoursEnabled", next)}
-            trackColor={{ false: colors.border, true: colors.accentSoft }}
-            thumbColor={prefs.quietHoursEnabled ? colors.accent : colors.textMuted}
+            accessibilityLabel="Quiet hours"
           />
         </View>
 
-        <Pressable
-          onPress={() => onOpenPicker("quietStart")}
-          disabled={!prefs.quietHoursEnabled}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel={`Change quiet hours start, currently ${formatClockLabel(prefs.quietHoursStart)}`}
-          style={({ pressed }) => [
-            styles.timeRow,
-            !prefs.quietHoursEnabled && { opacity: 0.5 },
-            pressed && { opacity: 0.7 },
-          ]}
-        >
-          <Text style={styles.settingMeta}>Starts</Text>
-          <Text style={styles.timeRowValue}>{formatClockLabel(prefs.quietHoursStart)}</Text>
-        </Pressable>
+        {prefs.quietHoursEnabled ? (
+          <>
+            <View style={styles.behaviorRow}>
+              <Text style={styles.settingMeta}>Starts</Text>
+              <Pressable
+                onPress={() => onOpenPicker("quietStart")}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel={`Change quiet hours start, currently ${formatClockLabel(prefs.quietHoursStart)}`}
+                style={({ pressed }) => [styles.timeInlineButton, pressed && { opacity: 0.7 }]}
+              >
+                <Text style={styles.timeInlineButtonText}>
+                  {formatClockLabel(prefs.quietHoursStart)}
+                </Text>
+              </Pressable>
+            </View>
 
-        <Pressable
-          onPress={() => onOpenPicker("quietEnd")}
-          disabled={!prefs.quietHoursEnabled}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel={`Change quiet hours end, currently ${formatClockLabel(prefs.quietHoursEnd)}`}
-          style={({ pressed }) => [
-            styles.timeRow,
-            !prefs.quietHoursEnabled && { opacity: 0.5 },
-            pressed && { opacity: 0.7 },
-          ]}
-        >
-          <Text style={styles.settingMeta}>Ends</Text>
-          <Text style={styles.timeRowValue}>{formatClockLabel(prefs.quietHoursEnd)}</Text>
-        </Pressable>
+            <View style={styles.behaviorRow}>
+              <Text style={styles.settingMeta}>Ends</Text>
+              <Pressable
+                onPress={() => onOpenPicker("quietEnd")}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel={`Change quiet hours end, currently ${formatClockLabel(prefs.quietHoursEnd)}`}
+                style={({ pressed }) => [styles.timeInlineButton, pressed && { opacity: 0.7 }]}
+              >
+                <Text style={styles.timeInlineButtonText}>
+                  {formatClockLabel(prefs.quietHoursEnd)}
+                </Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.syncHintRow}>
+              <InfoCircleIcon color={colors.textMuted} size={14} strokeWidth={1.8} />
+              <Text style={styles.syncHintText}>
+                Reminders with a time you set yourself still fire during quiet hours.
+              </Text>
+            </View>
+          </>
+        ) : null}
       </View>
 
       {openPicker !== null ? (
@@ -1498,6 +1723,183 @@ function RemindersSection({
         />
       ) : null}
     </View>
+  );
+}
+
+const SEGMENT_TRACK_PADDING = 3;
+
+type SegmentedItem<T extends string | number> = {
+  value: T;
+  label: string;
+  Icon?: ComponentType<{ width?: number; height?: number; color?: string }>;
+};
+
+function SlidingSegmented<T extends string | number>({
+  options,
+  value,
+  onSelect,
+}: {
+  options: readonly SegmentedItem<T>[];
+  value: T;
+  onSelect: (value: T) => void;
+}) {
+  const reducedMotion = useReducedMotion();
+  const [innerWidth, setInnerWidth] = useState(0);
+  const index = Math.max(0, options.findIndex((option) => option.value === value));
+  const progress = useSharedValue(index);
+  // Shared (not React state) so the thumb worklet sees the measured width on
+  // the UI thread immediately; a closure over state leaves the thumb parked on
+  // the first segment until the rebuilt worklet lands.
+  const segmentWidthSv = useSharedValue(0);
+
+  useEffect(() => {
+    progress.value = reducedMotion
+      ? index
+      : withSpring(index, { damping: 15, stiffness: 220, mass: 0.7 });
+  }, [index, progress, reducedMotion]);
+
+  const segmentWidth = innerWidth > 0 ? innerWidth / options.length : 0;
+
+  const thumbStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: progress.value * segmentWidthSv.value }],
+  }));
+
+  return (
+    <View
+      style={styles.segmentedTrack}
+      onLayout={(event) => {
+        const inner = event.nativeEvent.layout.width - SEGMENT_TRACK_PADDING * 2;
+        segmentWidthSv.value = inner / options.length;
+        setInnerWidth(inner);
+      }}
+    >
+      {segmentWidth > 0 ? (
+        <Animated.View
+          style={[styles.segmentedThumb, { width: segmentWidth }, thumbStyle]}
+        />
+      ) : null}
+      {options.map((option, optionIndex) => (
+        <SegmentOption
+          key={option.value}
+          label={option.label}
+          Icon={option.Icon}
+          selected={value === option.value}
+          optionIndex={optionIndex}
+          progress={progress}
+          onPress={() => onSelect(option.value)}
+        />
+      ))}
+    </View>
+  );
+}
+
+function SegmentOption({
+  label,
+  Icon,
+  selected,
+  optionIndex,
+  progress,
+  onPress,
+}: {
+  label: string;
+  Icon?: ComponentType<{ width?: number; height?: number; color?: string }>;
+  selected: boolean;
+  optionIndex: number;
+  progress: ReturnType<typeof useSharedValue<number>>;
+  onPress: () => void;
+}) {
+  const labelStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(
+      progress.value,
+      [optionIndex - 1, optionIndex, optionIndex + 1],
+      [colors.textMuted, colors.textInverse, colors.textMuted],
+    ),
+  }));
+
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      style={styles.segmentedOption}
+    >
+      <View style={styles.segmentedOptionContent}>
+        {Icon ? (
+          <Icon
+            width={15}
+            height={15}
+            color={selected ? colors.textInverse : colors.textMuted}
+          />
+        ) : null}
+        <Animated.Text style={[styles.segmentedOptionText, labelStyle]}>{label}</Animated.Text>
+      </View>
+    </Pressable>
+  );
+}
+
+const TOGGLE_TRACK_WIDTH = 46;
+const TOGGLE_TRACK_HEIGHT = 27;
+const TOGGLE_PADDING = 3;
+const TOGGLE_THUMB_SIZE = TOGGLE_TRACK_HEIGHT - TOGGLE_PADDING * 2;
+
+function ThemedToggle({
+  value,
+  onValueChange,
+  disabled,
+  accessibilityLabel,
+}: {
+  value: boolean;
+  onValueChange: (next: boolean) => void;
+  disabled?: boolean;
+  accessibilityLabel?: string;
+}) {
+  const reducedMotion = useReducedMotion();
+  const progress = useSharedValue(value ? 1 : 0);
+
+  useEffect(() => {
+    const next = value ? 1 : 0;
+    progress.value = reducedMotion
+      ? next
+      : withSpring(next, { damping: 16, stiffness: 260, mass: 0.7 });
+  }, [value, progress, reducedMotion]);
+
+  const trackStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      progress.value,
+      [0, 1],
+      [colors.border, colors.warningMuted],
+    ),
+  }));
+
+  const thumbStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      progress.value,
+      [0, 1],
+      [colors.textMuted, colors.warning],
+    ),
+    transform: [
+      {
+        translateX:
+          progress.value * (TOGGLE_TRACK_WIDTH - TOGGLE_THUMB_SIZE - TOGGLE_PADDING * 2),
+      },
+    ],
+  }));
+
+  return (
+    <Pressable
+      onPress={() => onValueChange(!value)}
+      disabled={disabled}
+      hitSlop={8}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value, disabled: !!disabled }}
+      accessibilityLabel={accessibilityLabel}
+      style={disabled ? { opacity: 0.5 } : undefined}
+    >
+      <Animated.View style={[styles.toggleTrack, trackStyle]}>
+        <Animated.View style={[styles.toggleThumb, thumbStyle]} />
+      </Animated.View>
+    </Pressable>
   );
 }
 
@@ -1517,117 +1919,92 @@ function InteractionSection({ prefs, setPreference }: InteractionSectionProps) {
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Quick capture</Text>
-        <Text style={styles.settingHelp}>
-          Capture stays centered in the tab bar. Advanced creation tools stay hidden until
-          you choose to use them.
-        </Text>
         <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <BulkCaptureIconAsset width={18} height={18} />
+          </View>
           <View style={styles.settingCopy}>
-            <Text style={styles.settingMeta}>Bulk task capture</Text>
+            <Text style={styles.settingLabel}>Bulk task capture</Text>
             <Text style={styles.settingHelp}>
-              Create numbered task series and assign copies to multiple Goals.
+              Create numbered task series across multiple Goals.
             </Text>
           </View>
-          <Switch
+          <ThemedToggle
             value={prefs.bulkTaskCaptureEnabled}
             onValueChange={(next) => void setPreference("bulkTaskCaptureEnabled", next)}
-            trackColor={{ false: colors.border, true: colors.accentSoft }}
-            thumbColor={prefs.bulkTaskCaptureEnabled ? colors.accent : colors.textMuted}
             accessibilityLabel="Bulk task capture"
           />
         </View>
-      </View>
+        <View style={styles.sectionDivider} />
 
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Task gestures</Text>
-        <Text style={styles.settingHelp}>
-          Keep visible actions available on every Task. Swipe actions are optional accelerators.
-        </Text>
         <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <SwipeIconAsset width={22} height={22} />
+          </View>
           <View style={styles.settingCopy}>
-            <Text style={styles.settingMeta}>Swipe actions</Text>
+            <Text style={styles.settingLabel}>Swipe actions</Text>
             <Text style={styles.settingHelp}>
-              Off by default to reduce accidental completion or rescheduling.
+              Swipe a Task to complete or reschedule it.
             </Text>
           </View>
-          <Switch
+          <ThemedToggle
             value={prefs.swipeActionsEnabled}
             onValueChange={(next) => void setPreference("swipeActionsEnabled", next)}
-            trackColor={{ false: colors.border, true: colors.accentSoft }}
-            thumbColor={prefs.swipeActionsEnabled ? colors.accent : colors.textMuted}
             accessibilityLabel="Swipe actions"
           />
         </View>
-      </View>
+        <View style={styles.sectionDivider} />
 
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Feedback</Text>
-        <Text style={styles.settingHelp}>
-          Sensory feedback is subtle and functional. Sound stays off unless you enable it.
-        </Text>
         <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <HapticsIconAsset width={18} height={18} />
+          </View>
           <View style={styles.settingCopy}>
-            <Text style={styles.settingMeta}>Haptics</Text>
+            <Text style={styles.settingLabel}>Haptics</Text>
             <Text style={styles.settingHelp}>
-              Light feedback for capture, completion, selection, and confirmed Kairo actions.
+              Light feedback for capture, completion, and Kairo actions.
             </Text>
           </View>
-          <Switch
+          <ThemedToggle
             value={prefs.hapticsEnabled}
             onValueChange={(next) => void setPreference("hapticsEnabled", next)}
-            trackColor={{ false: colors.border, true: colors.accentSoft }}
-            thumbColor={prefs.hapticsEnabled ? colors.accent : colors.textMuted}
             accessibilityLabel="Haptics"
           />
         </View>
+        <View style={styles.sectionDivider} />
+
         <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <SoundIconAsset width={18} height={18} />
+          </View>
           <View style={styles.settingCopy}>
-            <Text style={styles.settingMeta}>Sound</Text>
+            <Text style={styles.settingLabel}>Sound</Text>
             <Text style={styles.settingHelp}>
-              Optional quiet cues for capture, completion, and critical attention states.
+              Quiet cues for capture and completion.
             </Text>
           </View>
-          <Switch
+          <ThemedToggle
             value={prefs.soundEnabled}
             onValueChange={(next) => void setPreference("soundEnabled", next)}
-            trackColor={{ false: colors.border, true: colors.accentSoft }}
-            thumbColor={prefs.soundEnabled ? colors.accent : colors.textMuted}
             accessibilityLabel="Sound"
           />
         </View>
-      </View>
+        <View style={styles.sectionDivider} />
 
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Motion</Text>
-        <Text style={styles.settingHelp}>
-          Motion clarifies state changes. It should never slow down capture or completion.
-        </Text>
-        <View style={styles.fieldStack}>
-          <Text style={styles.fieldLabel}>Reduced motion</Text>
-          <View style={styles.segmented}>
-            {(["system", "always", "never"] as const).map((mode) => {
-              const active = prefs.reducedMotionOverride === mode;
-              return (
-                <Pressable
-                  key={mode}
-                  onPress={() => void setPreference("reducedMotionOverride", mode)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  style={({ pressed }) => [
-                    styles.segment,
-                    active && styles.segmentActive,
-                    pressed && { opacity: 0.7 },
-                  ]}
-                >
-                  <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                    {mode === "system" ? "System" : mode === "always" ? "On" : "Off"}
-                  </Text>
-                </Pressable>
-              );
-            })}
+        <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <ReducedMotionIconAsset width={18} height={18} />
+          </View>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Reduced motion</Text>
+            <Text style={styles.settingHelp}>Minimize animations across the app.</Text>
           </View>
         </View>
+        <SlidingSegmented
+          options={REDUCED_MOTION_SEGMENTS}
+          value={prefs.reducedMotionOverride}
+          onSelect={(mode) => void setPreference("reducedMotionOverride", mode)}
+        />
       </View>
     </View>
   );
@@ -1642,110 +2019,61 @@ function AppearanceSection({
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Theme</Text>
-        <Text style={styles.settingHelp}>
-          Warm light surfaces are the production theme. Dark or alternate themes stay out
-          until the full token set exists.
-        </Text>
-        <View style={styles.selectionCardSelected}>
-          <View style={styles.selectionCopy}>
-            <Text style={styles.selectionTitle}>Warm light</Text>
-            <Text style={styles.selectionDescription}>
-              Paper neutrals, warm ink, and restrained indigo accent.
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Theme</Text>
+            <Text style={styles.settingHelp}>Dark theme is coming soon.</Text>
+          </View>
+        </View>
+        <SlidingSegmented
+          options={THEME_SEGMENTS}
+          value={prefs.theme}
+          onSelect={(theme) => void setPreference("theme", theme)}
+        />
+        <View style={styles.sectionDivider} />
+
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Density</Text>
+            <Text style={styles.settingHelp}>
+              Compact tightens task rows without hiding actions.
             </Text>
           </View>
-          <Text style={styles.selectionStatusText}>Active</Text>
         </View>
-      </View>
+        <SlidingSegmented
+          options={DENSITY_SEGMENTS}
+          value={prefs.density}
+          onSelect={(density) => void setPreference("density", density)}
+        />
+        <View style={styles.sectionDivider} />
 
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Typography</Text>
-        <Text style={styles.settingHelp}>
-          Geist is the only shipped font system. More fonts need full truncation,
-          line-height, and accessibility validation before they become settings.
-        </Text>
-        <View style={styles.selectionCardSelected}>
-          <View style={styles.selectionCopy}>
-            <Text style={styles.selectionTitle}>Geist</Text>
-            <Text style={styles.selectionDescription}>
-              Sans for product UI, Geist Mono for dates, counts, and compact metadata.
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Task color</Text>
+            <Text style={styles.settingHelp}>
+              Emphasis color for task rows. Status colors keep their meanings.
             </Text>
           </View>
-          <Text style={styles.selectionStatusText}>Active</Text>
         </View>
-      </View>
-
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Density</Text>
-        <Text style={styles.settingHelp}>
-          Comfortable is the default. Compact tightens task rows without hiding actions.
-        </Text>
-        <View style={styles.optionGrid}>
-          {DENSITY_OPTIONS.map((option) => {
-            const active = prefs.density === option.value;
-            return (
-              <Pressable
-                key={option.value}
-                onPress={() => void setPreference("density", option.value)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={`Use ${option.label} density`}
-                style={({ pressed }) => [
-                  styles.optionCard,
-                  active && styles.optionCardActive,
-                  pressed && { opacity: 0.72 },
-                ]}
-              >
-                <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>
-                  {option.label}
-                </Text>
-                <Text style={styles.optionDescription}>{option.description}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
-
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Task color</Text>
-        <Text style={styles.settingHelp}>
-          Choose the task emphasis color used by task rows. Status colors keep their
-          fixed meanings.
-        </Text>
         <View style={styles.swatchGrid}>
-          {TASK_COLOR_OPTIONS.map((option) => {
-            const active = prefs.taskColorScheme === option.value;
-            return (
-              <Pressable
-                key={option.value}
-                onPress={() => void setPreference("taskColorScheme", option.value)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={`Use ${option.label} task color`}
-                style={({ pressed }) => [
-                  styles.swatchOption,
-                  active && styles.optionCardActive,
-                  pressed && { opacity: 0.72 },
-                ]}
-              >
-                <View style={[styles.swatchDot, { backgroundColor: option.swatch }]} />
-                <View style={styles.selectionCopy}>
-                  <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>
-                    {option.label}
-                  </Text>
-                  <Text style={styles.optionDescription}>{option.description}</Text>
-                </View>
-              </Pressable>
-            );
-          })}
+          {TASK_COLOR_OPTIONS.map((option) => (
+            <SwatchChip
+              key={option.value}
+              label={option.label}
+              swatch={option.swatch}
+              active={prefs.taskColorScheme === option.value}
+              onSelect={() => void setPreference("taskColorScheme", option.value)}
+            />
+          ))}
         </View>
-      </View>
+        <View style={styles.sectionDivider} />
 
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Tab order</Text>
-        <Text style={styles.settingHelp}>
-          Reorder Inbox, Timeline, Goals, and Progress. Capture stays fixed in the center.
-        </Text>
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Tab order</Text>
+            <Text style={styles.settingHelp}>Capture stays fixed in the center.</Text>
+          </View>
+        </View>
         <TabOrderPreview order={tabOrder} />
         <TabOrderEditor order={tabOrder} onMove={onMoveTab} />
       </View>
@@ -1753,53 +2081,36 @@ function AppearanceSection({
   );
 }
 
-type AboutSectionProps = {
-  deviceId: string | null;
-  onCopy: (value: string, label: string) => Promise<void>;
-  onExportDiagnostics: () => void;
-  calendarLastError?: string;
-  gmailLastError?: string;
-  isClearingRetryQueue: boolean;
-  onClearRetryQueue: () => void;
-  onExportTasks: () => void;
-  onSignOut: () => void;
-  dangerArmed: "wipe" | null;
-  isWiping: boolean;
-  onWipeLocalData: () => void;
-};
+function AboutSection() {
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
 
-function AboutSection({
-  deviceId,
-  onCopy,
-  onExportDiagnostics,
-  calendarLastError,
-  gmailLastError,
-  isClearingRetryQueue,
-  onClearRetryQueue,
-  onExportTasks,
-  onSignOut,
-  dangerArmed,
-  isWiping,
-  onWipeLocalData,
-}: AboutSectionProps) {
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <View style={styles.aboutHeader}>
+          <View style={styles.syncIconWrap}>
+            <PravahMobileIconAsset color={colors.textPrimary} width={18} height={18} />
+          </View>
           <View style={styles.aboutHeaderCopy}>
             <Text style={styles.settingLabel}>Pravah Mobile</Text>
             <Text style={styles.aboutVersion}>Version {APP_VERSION}</Text>
           </View>
           <Pressable
-            onPress={() => void Linking.openURL(CHANGELOG_URL)}
+            onPress={() => setWhatsNewOpen(true)}
             hitSlop={12}
-            accessibilityRole="link"
-            accessibilityLabel="Open changelog on GitHub"
+            accessibilityRole="button"
+            accessibilityLabel="Show what's new"
             style={({ pressed }) => [styles.versionPill, pressed && { opacity: 0.6 }]}
           >
             <Text style={styles.versionPillText}>What's new</Text>
           </Pressable>
         </View>
+
+        <WhatsNewSheet
+          visible={whatsNewOpen}
+          onClose={() => setWhatsNewOpen(false)}
+          changelogUrl={CHANGELOG_URL}
+        />
 
         <Pressable
           onPress={() => void Linking.openURL(ISSUES_URL)}
@@ -1808,7 +2119,12 @@ function AboutSection({
           accessibilityLabel="Report an issue on GitHub"
           style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
         >
-          <Text style={styles.linkRowText}>Report an issue</Text>
+          <View style={styles.linkRowLead}>
+            <View style={styles.syncIconWrap}>
+              <ReportIssueIconAsset color={colors.textPrimary} width={18} height={18} />
+            </View>
+            <Text style={styles.linkRowText}>Report an issue</Text>
+          </View>
           <ArrowUpRightIcon color={colors.textMuted} size={16} />
         </Pressable>
         <Pressable
@@ -1818,18 +2134,79 @@ function AboutSection({
           accessibilityLabel="Open Pravah repository on GitHub"
           style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
         >
-          <Text style={styles.linkRowText}>GitHub repository</Text>
+          <View style={styles.linkRowLead}>
+            <View style={styles.syncIconWrap}>
+              <GithubIconAsset color={colors.textPrimary} width={18} height={18} />
+            </View>
+            <Text style={styles.linkRowText}>GitHub repository</Text>
+          </View>
           <ArrowUpRightIcon color={colors.textMuted} size={16} />
         </Pressable>
+
+        <AppUpdateSection />
       </View>
+    </View>
+  );
+}
 
-      <AppUpdateSection />
+type DataSectionProps = {
+  deviceId: string | null;
+  onCopy: (value: string, label: string) => Promise<void>;
+  onExportDiagnostics: () => void;
+  isClearingRetryQueue: boolean;
+  onClearRetryQueue: () => void;
+  onExportTasks: () => void;
+  isWiping: boolean;
+  onWipeLocalData: () => void;
+};
 
+function DataSection({
+  deviceId,
+  onCopy,
+  onExportDiagnostics,
+  isClearingRetryQueue,
+  onClearRetryQueue,
+  onExportTasks,
+  isWiping,
+  onWipeLocalData,
+}: DataSectionProps) {
+  return (
+    <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Diagnostics</Text>
-        <Text style={styles.settingHelp}>
-          Export recent app events, device metadata, and sync state as a JSON file.
-        </Text>
+        <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <YourDataIconAsset color={colors.textPrimary} width={18} height={18} />
+          </View>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Your data</Text>
+            <Text style={styles.settingHelp}>
+              Export every task currently in view as JSON.
+            </Text>
+          </View>
+        </View>
+        <Pressable
+          onPress={onExportTasks}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Export tasks as JSON"
+          style={({ pressed }) => [styles.softButton, styles.softButtonEnd, pressed && { opacity: 0.6 }]}
+        >
+          <ExportTasksIconAsset color={colors.textPrimary} width={15} height={15} />
+          <Text style={styles.softButtonText}>Export tasks as JSON</Text>
+        </Pressable>
+        <View style={styles.sectionDivider} />
+
+        <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <DiagnosticsIconAsset color={colors.textPrimary} width={18} height={18} />
+          </View>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Diagnostics</Text>
+            <Text style={styles.settingHelp}>
+              Export app events, device metadata, and sync state as JSON.
+            </Text>
+          </View>
+        </View>
         <View style={styles.copyRow}>
           <View style={[styles.codePill, styles.copyRowPill]}>
             <Text selectable style={styles.codePillText} numberOfLines={1}>
@@ -1848,6 +2225,7 @@ function AboutSection({
               !deviceId && styles.softButtonDisabled,
             ]}
           >
+            <CopyIcon color={colors.textPrimary} size={15} strokeWidth={1.8} />
             <Text style={styles.copyButtonText}>Copy ID</Text>
           </Pressable>
         </View>
@@ -1856,116 +2234,24 @@ function AboutSection({
           hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel="Export diagnostics"
-          style={({ pressed }) => [styles.softButton, pressed && { opacity: 0.6 }]}
+          style={({ pressed }) => [styles.softButton, styles.softButtonEnd, pressed && { opacity: 0.6 }]}
         >
+          <ExportDiagnosticsIconAsset color={colors.textPrimary} width={15} height={15} />
           <Text style={styles.softButtonText}>Export diagnostics</Text>
         </Pressable>
-      </View>
+        <View style={styles.sectionDivider} />
 
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Recent sync errors</Text>
-        <Text style={styles.settingHelp}>
-          Review the latest Google Calendar and Gmail failures without leaving the app.
-        </Text>
-
-        <View style={styles.sourceBlock}>
-          <View style={styles.sourceHeader}>
-            <View
-              style={[
-                styles.statusDot,
-                calendarLastError ? styles.statusDotErr : styles.statusDotOk,
-              ]}
-            />
-            <Text style={styles.sourceName}>Google Calendar</Text>
-            <Text
-              style={[
-                styles.sourceStatus,
-                calendarLastError ? styles.sourceStatusErr : styles.sourceStatusOk,
-              ]}
-            >
-              {calendarLastError ? "Error" : "Healthy"}
-            </Text>
-            {calendarLastError ? (
-              <Pressable
-                onPress={() => void onCopy(calendarLastError, "Calendar error")}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="Copy Google Calendar error"
-                style={({ pressed }) => [styles.copyChip, pressed && { opacity: 0.6 }]}
-              >
-                <Text style={styles.copyChipText}>Copy</Text>
-              </Pressable>
-            ) : null}
+        <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <RetryQueueIconAsset color={colors.textPrimary} width={18} height={18} />
           </View>
-          {calendarLastError ? (
-            <View style={styles.errorBlock}>
-              <Text selectable style={styles.errorBlockText}>
-                {summarizeSyncError(calendarLastError)}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-
-        <View style={styles.sourceBlock}>
-          <View style={styles.sourceHeader}>
-            <View
-              style={[
-                styles.statusDot,
-                gmailLastError ? styles.statusDotErr : styles.statusDotOk,
-              ]}
-            />
-            <Text style={styles.sourceName}>Gmail</Text>
-            <Text
-              style={[
-                styles.sourceStatus,
-                gmailLastError ? styles.sourceStatusErr : styles.sourceStatusOk,
-              ]}
-            >
-              {gmailLastError ? "Error" : "Healthy"}
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Retry queue</Text>
+            <Text style={styles.settingHelp}>
+              Drop pending offline retries if a stuck request blocks fresh syncs.
             </Text>
-            {gmailLastError ? (
-              <Pressable
-                onPress={() => void onCopy(gmailLastError, "Gmail error")}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="Copy Gmail error"
-                style={({ pressed }) => [styles.copyChip, pressed && { opacity: 0.6 }]}
-              >
-                <Text style={styles.copyChipText}>Copy</Text>
-              </Pressable>
-            ) : null}
           </View>
-          {gmailLastError ? (
-            <View style={styles.errorBlock}>
-              <Text selectable style={styles.errorBlockText}>
-                {summarizeSyncError(gmailLastError)}
-              </Text>
-            </View>
-          ) : null}
         </View>
-      </View>
-
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Your data</Text>
-        <Text style={styles.settingHelp}>
-          Export every task currently in view as JSON via the system share sheet.
-        </Text>
-        <Pressable
-          onPress={onExportTasks}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel="Export tasks as JSON"
-          style={({ pressed }) => [styles.softButton, pressed && { opacity: 0.6 }]}
-        >
-          <Text style={styles.softButtonText}>Export tasks as JSON</Text>
-        </Pressable>
-      </View>
-
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Retry queue</Text>
-        <Text style={styles.settingHelp}>
-          Drop pending offline retries if a stuck request is blocking fresh syncs.
-        </Text>
         <Pressable
           onPress={onClearRetryQueue}
           disabled={isClearingRetryQueue}
@@ -1974,6 +2260,7 @@ function AboutSection({
           accessibilityLabel="Clear retry queue"
           style={({ pressed }) => [
             styles.softButton,
+            styles.softButtonEnd,
             pressed && { opacity: 0.6 },
             isClearingRetryQueue && styles.softButtonDisabled,
           ]}
@@ -1987,62 +2274,33 @@ function AboutSection({
             {isClearingRetryQueue ? "Clearing…" : "Clear retry queue"}
           </Text>
         </Pressable>
-      </View>
+        <View style={styles.sectionDivider} />
 
-      <View style={[styles.settingBlock, styles.sectionCard, styles.accountCard]}>
-        <Text style={styles.settingLabel}>Account</Text>
-        <Text style={styles.settingHelp}>
-          Sign out if you want to switch Google accounts on this device.
-        </Text>
-        <Pressable
-          onPress={onSignOut}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel="Sign out"
-          style={({ pressed }) => [styles.signOutButton, pressed && { opacity: 0.6 }]}
-        >
-          <Text style={styles.signOutLink}>Sign out</Text>
-        </Pressable>
-      </View>
-
-      <View style={[styles.settingBlock, styles.sectionCard, styles.dangerCard]}>
-        <Text style={styles.dangerLabel}>Danger zone</Text>
-        <Text style={styles.settingHelp}>
-          Wipe locally cached preferences, retry queue, snapshot, and reminder schedule. Server data is untouched.
-        </Text>
+        <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
+            <DangerZoneIconAsset color={colors.error} width={18} height={18} />
+          </View>
+          <View style={styles.settingCopy}>
+            <Text style={styles.dangerLabel}>Danger zone</Text>
+            <Text style={styles.settingHelp}>
+              Wipe locally cached preferences, retry queue, snapshot, and reminder schedule. Server data is untouched.
+            </Text>
+          </View>
+        </View>
         <Pressable
           onPress={onWipeLocalData}
           disabled={isWiping}
           hitSlop={12}
           accessibilityRole="button"
-          accessibilityLabel={
-            dangerArmed === "wipe" ? "Tap again to confirm wipe" : "Wipe local data"
-          }
+          accessibilityLabel="Wipe local data"
           style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
         >
+          <WipeLocalIconAsset color={colors.error} width={15} height={15} />
           <Text style={[styles.dangerActionText, isWiping && styles.inlineActionDisabled]}>
-            {isWiping
-              ? "Wiping…"
-              : dangerArmed === "wipe"
-                ? "Tap again to confirm →"
-                : "Wipe local data"}
+            {isWiping ? "Wiping…" : "Wipe local data"}
           </Text>
         </Pressable>
 
-        <Text style={[styles.settingHelp, { marginTop: spacing.sm }]}>
-          To permanently delete your Pravah account and server data, open a request with support.
-        </Text>
-        <Pressable
-          onPress={() =>
-            void Linking.openURL(`${ISSUES_URL}/new?title=Delete+my+Pravah+account`)
-          }
-          hitSlop={12}
-          accessibilityRole="link"
-          accessibilityLabel="Request account deletion via GitHub issue"
-          style={({ pressed }) => [styles.sectionFootAction, pressed && { opacity: 0.6 }]}
-        >
-          <Text style={styles.dangerActionText}>Request account deletion →</Text>
-        </Pressable>
       </View>
     </View>
   );
@@ -2136,7 +2394,6 @@ function renderDetailScreen(
     onClearRetryQueue: () => void;
     onExportTasks: () => void;
     onSignOut: () => void;
-    dangerArmed: "wipe" | null;
     isWiping: boolean;
     onWipeLocalData: () => void;
   },
@@ -2182,8 +2439,10 @@ function renderDetailScreen(
       return <InteractionSection {...props} />;
     case "appearance":
       return <AppearanceSection {...props} />;
+    case "data":
+      return <DataSection {...props} />;
     case "about":
-      return <AboutSection {...props} />;
+      return <AboutSection />;
   }
 }
 
@@ -2241,8 +2500,8 @@ export function SettingsSheet({
   const [openPicker, setOpenPicker] = useState<QuietPickerKind | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [isClearingRetryQueue, setIsClearingRetryQueue] = useState(false);
-  const [dangerArmed, setDangerArmed] = useState<"wipe" | null>(null);
   const [isWiping, setIsWiping] = useState(false);
+  const confirm = useConfirm();
   const [issuedBootstrapToken, setIssuedBootstrapToken] = useState<{
     token: string;
     expiresAt: number;
@@ -2260,6 +2519,7 @@ export function SettingsSheet({
     label: "Checking",
     tone: "neutral",
   });
+  const [retryQueueCount, setRetryQueueCount] = useState<number | null>(null);
   const issueBootstrapToken = useMutation(api.automation.issueBootstrapToken);
   const revokeCredential = useMutation(api.automation.revokeCredential);
   const updateCredential = useMutation(api.automation.updateCredential);
@@ -2290,12 +2550,6 @@ export function SettingsSheet({
     }
   }, [automationCredentials.length, issuedBootstrapToken]);
 
-  useEffect(() => {
-    if (!dangerArmed) return;
-    const timeout = setTimeout(() => setDangerArmed(null), 5000);
-    return () => clearTimeout(timeout);
-  }, [dangerArmed]);
-
   const handleKairoFieldFocus = useCallback((field: "apiKey" | "baseUrl" | "model") => {
     if (!visible || activeCategory !== "kairo") return;
 
@@ -2317,7 +2571,6 @@ export function SettingsSheet({
     }
     if (!visible) {
       setOpenPicker(null);
-      setDangerArmed(null);
       dispatchNavigation({ type: "reset" });
       return;
     }
@@ -2326,7 +2579,7 @@ export function SettingsSheet({
 
   useEffect(() => {
     if (!visible) return;
-    if (navigation.screen !== "detail" || navigation.category !== "about" || deviceId) return;
+    if (navigation.screen !== "detail" || navigation.category !== "data" || deviceId) return;
     void getOrCreateDeviceId().then(setDeviceId);
   }, [deviceId, navigation, visible]);
 
@@ -2346,6 +2599,25 @@ export function SettingsSheet({
       .catch(() => {
         if (cancelled) return;
         setKairoHomeStatus({ label: "Issue", tone: "error" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    void retryQueueStorage
+      .getItem(RETRY_QUEUE_STORAGE_KEY)
+      .then((raw) => {
+        if (cancelled) return;
+        const parsed: unknown = raw ? JSON.parse(raw) : [];
+        setRetryQueueCount(Array.isArray(parsed) ? parsed.length : 0);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRetryQueueCount(0);
       });
     return () => {
       cancelled = true;
@@ -2389,10 +2661,18 @@ export function SettingsSheet({
 
   const handleClearRetryQueue = useCallback(async () => {
     if (isClearingRetryQueue) return;
+    const confirmed = await confirm({
+      title: "Clear retry queue?",
+      message: "Pending offline changes that haven't reached the server will be discarded.",
+      confirmLabel: "Clear",
+      destructive: true,
+    });
+    if (!confirmed) return;
     setIsClearingRetryQueue(true);
     try {
-      await retryQueueStorage.removeItem("pravah_mobile_retry_queue_v1");
-      await SecureStore.deleteItemAsync("pravah_mobile_retry_queue_v1").catch(() => undefined);
+      await retryQueueStorage.removeItem(RETRY_QUEUE_STORAGE_KEY);
+      await SecureStore.deleteItemAsync(RETRY_QUEUE_STORAGE_KEY).catch(() => undefined);
+      setRetryQueueCount(0);
       showToast({ kind: "info", message: "Retry queue cleared." });
     } catch (error) {
       mobileLogger.warn("retry_queue_clear_failed", { errorType: classifyError(error) });
@@ -2400,17 +2680,21 @@ export function SettingsSheet({
     } finally {
       setIsClearingRetryQueue(false);
     }
-  }, [isClearingRetryQueue, showToast]);
+  }, [confirm, isClearingRetryQueue, showToast]);
 
   const handleWipeLocalData = useCallback(async () => {
-    if (dangerArmed !== "wipe") {
-      setDangerArmed("wipe");
-      return;
-    }
-    setDangerArmed(null);
+    const confirmed = await confirm({
+      title: "Wipe local data?",
+      message:
+        "Preferences, retry queue, snapshot, and reminder schedule on this device will be cleared. Server data is untouched.",
+      confirmLabel: "Wipe",
+      destructive: true,
+    });
+    if (!confirmed) return;
     setIsWiping(true);
     try {
       await onWipeLocalData();
+      setRetryQueueCount(0);
       showToast({ kind: "info", message: "Local data wiped." });
     } catch (error) {
       mobileLogger.warn("wipe_local_data_failed", { errorType: classifyError(error) });
@@ -2418,7 +2702,17 @@ export function SettingsSheet({
     } finally {
       setIsWiping(false);
     }
-  }, [dangerArmed, onWipeLocalData, showToast]);
+  }, [confirm, onWipeLocalData, showToast]);
+
+  const handleSignOut = useCallback(async () => {
+    const confirmed = await confirm({
+      title: "Sign out?",
+      message:
+        "This clears the local snapshot on this device. Your data stays on the server.",
+      confirmLabel: "Sign out",
+    });
+    if (confirmed) onSignOut();
+  }, [confirm, onSignOut]);
 
   const handleIssueBootstrapToken = useCallback(async () => {
     setIsIssuingBootstrapToken(true);
@@ -2568,11 +2862,10 @@ export function SettingsSheet({
     navigation.screen === "detail"
       ? SETTINGS_CATEGORY_META[navigation.category].title
       : "Settings";
-  const showKairoHeaderMark =
-    navigation.screen === "detail" && navigation.category === "kairo";
-  const showCliHeaderMark =
-    navigation.screen === "detail" && navigation.category === "cli";
-  const showSettingsHeaderMark = navigation.screen === "list";
+  const HeaderMarkIcon =
+    navigation.screen === "detail"
+      ? SETTINGS_CATEGORY_ICONS[navigation.category]
+      : SettingsHomeIcon;
 
   const settingsHomeStatuses: Record<SettingsCategoryKey, SettingsHomeStatus> = {
     kairo: kairoHomeStatus,
@@ -2595,6 +2888,15 @@ export function SettingsSheet({
       ? { label: "Swipe on", tone: "neutral" }
       : { label: "Swipe off", tone: "neutral" },
     appearance: { label: "Geist", tone: "neutral" },
+    data:
+      retryQueueCount === null
+        ? { label: "", tone: "neutral" }
+        : retryQueueCount > 0
+          ? {
+              label: `${retryQueueCount} queued`,
+              tone: "warning",
+            }
+          : { label: "All clear", tone: "success" },
     about: {
       label: APP_VERSION.startsWith("v") ? APP_VERSION : `v${APP_VERSION}`,
       tone: "neutral",
@@ -2630,12 +2932,8 @@ export function SettingsSheet({
               <ChevronLeftIcon color={colors.textPrimary} size={20} />
             </Pressable>
             <View style={styles.headerTitleWrap}>
-              {showKairoHeaderMark ? (
-                <KairoIcon color={colors.textSecondary} size={22} />
-              ) : showCliHeaderMark ? (
-                <CliIcon color={colors.textSecondary} size={22} />
-              ) : showSettingsHeaderMark ? (
-                <SettingsHomeIcon color={colors.textSecondary} size={22} />
+              {HeaderMarkIcon ? (
+                <HeaderMarkIcon color={colors.textSecondary} size={22} />
               ) : null}
               <Text style={styles.headerTitle}>{headerTitle}</Text>
             </View>
@@ -2733,8 +3031,7 @@ export function SettingsSheet({
                 isClearingRetryQueue,
                 onClearRetryQueue: () => void handleClearRetryQueue(),
                 onExportTasks,
-                onSignOut,
-                dangerArmed,
+                onSignOut: () => void handleSignOut(),
                 isWiping,
                 onWipeLocalData: () => void handleWipeLocalData(),
               })
@@ -2811,6 +3108,11 @@ const styles = StyleSheet.create({
     borderColor: colors.borderSubtle,
     gap: 3,
   },
+  summaryKickerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
   summaryKicker: {
     ...typography.micro,
     color: colors.textMuted,
@@ -2841,6 +3143,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: 10,
     backgroundColor: colors.bgCard,
+  },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: colors.bgInput,
+    marginHorizontal: -spacing.lg,
+    marginVertical: spacing.xs,
   },
   categoryDivider: {
     height: 1,
@@ -2967,9 +3275,6 @@ const styles = StyleSheet.create({
     ...typography.bodyMd,
     color: colors.accent,
   },
-  fieldStack: {
-    gap: spacing.sm,
-  },
   fieldLabel: {
     ...typography.micro,
     color: colors.textMuted,
@@ -2986,12 +3291,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
   },
+  softButtonEnd: {
+    alignSelf: "flex-end",
+  },
   softButton: {
     marginTop: spacing.sm,
     alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
@@ -3030,6 +3341,8 @@ const styles = StyleSheet.create({
   },
   copyButton: {
     minWidth: 44,
+    flexDirection: "row",
+    gap: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radii.md,
@@ -3079,6 +3392,12 @@ const styles = StyleSheet.create({
   statusBadgeIdle: {
     backgroundColor: "rgba(91,80,72,0.05)",
   },
+  statusBadgeError: {
+    backgroundColor: colors.errorMuted,
+  },
+  statusBadgeWarning: {
+    backgroundColor: colors.warningMuted,
+  },
   statusBadgeText: {
     ...typography.bodyMd,
     fontFamily: "Geist_500Medium",
@@ -3089,10 +3408,82 @@ const styles = StyleSheet.create({
   statusBadgeTextIdle: {
     color: colors.textSecondary,
   },
+  statusBadgeTextError: {
+    color: colors.error,
+  },
+  statusBadgeTextWarning: {
+    color: colors.warning,
+  },
+  syncIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  syncTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    flexWrap: "wrap",
+  },
+  syncErrorCallout: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: colors.errorMuted,
+  },
+  syncErrorText: {
+    ...typography.bodyMd,
+    color: colors.error,
+    flex: 1,
+    lineHeight: 18,
+  },
+  syncHintRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    paddingTop: 1,
+  },
+  syncHintText: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    flex: 1,
+    lineHeight: 18,
+    marginTop: -2,
+  },
+  syncActionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    paddingVertical: 10,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    marginTop: spacing.xs,
+  },
+  syncActionButtonDisabled: {
+    opacity: 0.6,
+  },
+  syncActionText: {
+    ...typography.bodyMd,
+    fontFamily: "Geist_600SemiBold",
+    color: colors.textPrimary,
+  },
   copyChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
@@ -3341,35 +3732,56 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: "Geist_600SemiBold",
   },
-  chipRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+  behaviorStack: {
     gap: spacing.sm,
   },
-  choiceChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.full,
+  segmentedTrack: {
+    flexDirection: "row",
+    padding: SEGMENT_TRACK_PADDING,
+    borderRadius: radii.md,
     backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
   },
-  choiceChipActive: {
-    backgroundColor: colors.accentSoft,
-    borderColor: colors.accent,
+  segmentedThumb: {
+    position: "absolute",
+    top: SEGMENT_TRACK_PADDING,
+    bottom: SEGMENT_TRACK_PADDING,
+    left: SEGMENT_TRACK_PADDING,
+    borderRadius: radii.md - SEGMENT_TRACK_PADDING,
+    backgroundColor: colors.textPrimary,
   },
-  choiceChipText: {
+  segmentedOption: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: spacing.sm,
+  },
+  segmentedOptionContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  segmentedOptionText: {
     ...typography.bodyMd,
-    color: colors.textMuted,
+    fontFamily: "Geist_500Medium",
   },
-  choiceChipTextActive: {
-    color: colors.accent,
-    fontFamily: "Geist_600SemiBold",
+  toggleTrack: {
+    width: TOGGLE_TRACK_WIDTH,
+    height: TOGGLE_TRACK_HEIGHT,
+    borderRadius: radii.md,
+    padding: TOGGLE_PADDING,
+    justifyContent: "center",
+  },
+  toggleThumb: {
+    width: TOGGLE_THUMB_SIZE,
+    height: TOGGLE_THUMB_SIZE,
+    borderRadius: radii.md - TOGGLE_PADDING,
   },
   timeInlineButton: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
@@ -3389,92 +3801,14 @@ const styles = StyleSheet.create({
     ...typography.bodyMd,
     color: colors.textPrimary,
   },
-  segmented: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  segment: {
-    flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.full,
-    backgroundColor: colors.bgSurface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-    alignItems: "center",
-  },
-  segmentActive: {
-    backgroundColor: colors.accentSoft,
-    borderColor: colors.accent,
-  },
-  segmentText: {
-    ...typography.bodyMd,
-    color: colors.textMuted,
-  },
-  segmentTextActive: {
-    color: colors.accent,
-    fontFamily: "Geist_600SemiBold",
-  },
-  selectionCardSelected: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radii.lg,
-    backgroundColor: colors.accentDim,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderFocus,
-  },
-  selectionCopy: {
-    flex: 1,
-    gap: 3,
-  },
-  selectionTitle: {
-    ...typography.bodyMd,
-    color: colors.textPrimary,
-    fontFamily: "Geist_600SemiBold",
-  },
-  selectionDescription: {
-    ...typography.bodyMd,
-    color: colors.textMuted,
-    lineHeight: 18,
-  },
-  selectionStatusText: {
-    ...typography.micro,
-    color: colors.accent,
-  },
-  optionGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-  },
-  optionCard: {
-    minWidth: 0,
-    flexBasis: "48%",
-    flexGrow: 1,
-    padding: spacing.md,
-    borderRadius: radii.lg,
-    backgroundColor: colors.bgSurface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-    gap: 3,
-  },
   optionCardActive: {
-    backgroundColor: colors.accentDim,
-    borderColor: colors.borderFocus,
+    backgroundColor: colors.bgInput,
+    borderColor: colors.textPrimary,
   },
   optionTitle: {
     ...typography.bodyMd,
     color: colors.textPrimary,
     fontFamily: "Geist_600SemiBold",
-  },
-  optionTitleActive: {
-    color: colors.accent,
-  },
-  optionDescription: {
-    ...typography.bodyMd,
-    color: colors.textMuted,
-    lineHeight: 18,
   },
   swatchGrid: {
     flexDirection: "row",
@@ -3488,16 +3822,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radii.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
     backgroundColor: colors.bgSurface,
-    borderWidth: StyleSheet.hairlineWidth,
+    // Constant width so the swatch-colored active border doesn't shift layout.
+    borderWidth: 2,
     borderColor: colors.borderSubtle,
   },
   swatchDot: {
     width: 22,
     height: 22,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
   },
@@ -3510,7 +3846,10 @@ const styles = StyleSheet.create({
   },
   tabPreviewItem: {
     flex: 1,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
     paddingVertical: spacing.sm,
     borderRadius: radii.lg,
     backgroundColor: colors.bgSurface,
@@ -3522,12 +3861,12 @@ const styles = StyleSheet.create({
   tabPreviewCapture: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: radii.full,
-    backgroundColor: colors.accentSoft,
+    borderRadius: radii.md,
+    backgroundColor: colors.textPrimary,
   },
   tabPreviewCaptureText: {
     ...typography.bodyMd,
-    color: colors.accent,
+    color: colors.textInverse,
     fontFamily: "Geist_600SemiBold",
   },
   tabOrderEditor: {
@@ -3542,7 +3881,7 @@ const styles = StyleSheet.create({
   tabOrderIndex: {
     width: 28,
     height: 28,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     backgroundColor: colors.bgSurface,
     alignItems: "center",
     justifyContent: "center",
@@ -3558,7 +3897,7 @@ const styles = StyleSheet.create({
   tabOrderButton: {
     width: 36,
     height: 36,
-    borderRadius: radii.full,
+    borderRadius: radii.md,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.bgSurface,
@@ -3592,13 +3931,26 @@ const styles = StyleSheet.create({
   versionPill: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: radii.full,
-    backgroundColor: colors.accentSoft,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
   },
   versionPillText: {
     ...typography.bodyMd,
-    color: colors.accent,
+    color: colors.textPrimary,
     fontFamily: "Geist_600SemiBold",
+  },
+  aboutTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  linkRowLead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    flex: 1,
   },
   linkRow: {
     flexDirection: "row",
@@ -3615,71 +3967,16 @@ const styles = StyleSheet.create({
     ...typography.bodyMd,
     color: colors.accent,
   },
-  sourceBlock: {
-    gap: spacing.sm,
-  },
-  sourceHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: radii.full,
-  },
-  statusDotOk: {
-    backgroundColor: colors.primary,
-  },
-  statusDotErr: {
-    backgroundColor: colors.error,
-  },
-  sourceName: {
-    ...typography.bodyMd,
-    color: colors.textPrimary,
-  },
-  sourceStatus: {
-    ...typography.bodyMd,
-  },
-  sourceStatusOk: {
-    color: colors.primary,
-  },
-  sourceStatusErr: {
-    color: colors.error,
-  },
-  errorBlock: {
-    borderRadius: radii.lg,
-    backgroundColor: colors.bgSurface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-    padding: spacing.md,
-  },
-  errorBlockText: {
-    ...typography.bodyMd,
-    color: colors.textSecondary,
-    lineHeight: 18,
-  },
-  accountCard: {
-    gap: spacing.sm,
-  },
-  signOutButton: {
-    alignSelf: "flex-start",
-  },
-  signOutLink: {
-    ...typography.bodyMd,
-    color: colors.accent,
-  },
-  dangerCard: {
-    gap: spacing.sm,
-    borderColor: colors.errorMuted,
-  },
   dangerLabel: {
     ...typography.bodyMd,
     color: colors.error,
     fontFamily: "Geist_600SemiBold",
   },
   sectionFootAction: {
-    alignSelf: "flex-start",
+    alignSelf: "flex-end",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   dangerActionText: {
     ...typography.bodyMd,
