@@ -40,7 +40,7 @@ export const colors = {
   // ── Borders ─────────────────────────────────────────────────────────
   border: "rgba(78,62,43,0.18)",
   borderSubtle: "rgba(78,62,43,0.09)",
-  borderFocus: "rgba(121,103,214,0.46)",
+  borderFocus: "rgba(43,32,22,0.46)",
 
   // ── Text ────────────────────────────────────────────────────────────
   textPrimary: "#201914",
@@ -50,12 +50,12 @@ export const colors = {
   textInverse: "#fffaf2",
   textCompleted: "#76695e",
 
-  // ── Accent (darkened for AA text contrast on every warm surface) ────
-  accent: "#6753c7",
-  accentHover: "#5844b8",
-  accentSoft: "rgba(103,83,199,0.16)",
-  accentGlow: "rgba(103,83,199,0.28)",
-  accentDim: "rgba(103,83,199,0.07)",
+  // ── Accent (warm ink — monochrome; reads as bold on every warm surface) ──
+  accent: "#2b2016",
+  accentHover: "#1c140d",
+  accentSoft: "rgba(43,32,22,0.16)",
+  accentGlow: "rgba(43,32,22,0.28)",
+  accentDim: "rgba(43,32,22,0.07)",
 
   // ── Priority semantics ──────────────────────────────────────────────
   // One canonical, fixed (accent-independent) muted hue ramp — red → amber →
@@ -85,7 +85,7 @@ export const colors = {
   /** @deprecated Use `textInverse`. */
   primaryInk: "#fffaf2",
   /** @deprecated Halo replaced by GridBackground; soft accent wash kept for back-compat. */
-  haloCopper: "rgba(121,103,214,0.07)",
+  haloCopper: "rgba(43,32,22,0.07)",
 } as const;
 
 /**
@@ -165,9 +165,9 @@ export const shadow = {
     elevation: 16,
   },
   glow: {
-    shadowColor: "#6753c7",
-    shadowOpacity: 0.24,
-    shadowRadius: 20,
+    shadowColor: "#2c2118",
+    shadowOpacity: 0.2,
+    shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },
     elevation: 8,
   },
@@ -243,16 +243,23 @@ export const typography = {
 export const chart = {
   /** Empty/no-completion heatmap cell — faint warm track, distinct from bucket 1. */
   heatmapEmpty: "rgba(78,62,43,0.07)",
-  /** 4-bucket purple intensity ramp, light → dark. Validated ordinal ramp. */
-  heatmapRamp: ["#b6a1df", "#9a7ed3", "#7c61c9", "#6146bd"] as const,
+  /** 4-bucket warm-brown intensity ramp, light → dark. Monotone ordinal ramp. */
+  heatmapRamp: ["#cbb488", "#a8895a", "#795b33", "#4a3419"] as const,
   /** Hero line + rhythm bars — the single-series mark. */
   line: colors.accent,
-  /** Gradient area fill under the hero line (decorative; the line carries contrast). */
-  areaTop: "rgba(103,83,199,0.26)",
-  areaBottom: "rgba(103,83,199,0)",
+  /** Subtle gradient area fill (hour sparkline); the line carries contrast. */
+  areaTop: "rgba(43,32,22,0.24)",
+  areaBottom: "rgba(43,32,22,0)",
+  /**
+   * Hero area fill — deliberately bolder than the sparkline: saturated accent at
+   * the peak fading to near-nothing at the baseline, so the trend reads as a
+   * solid "mountain" without a hard bottom edge.
+   */
+  heroAreaTop: "rgba(43,32,22,0.42)",
+  heroAreaBottom: "rgba(43,32,22,0.02)",
   /** Rhythm bars: active vs. the empty-bucket track. */
   bar: colors.accent,
-  barTrack: "rgba(103,83,199,0.12)",
+  barTrack: "rgba(43,32,22,0.12)",
   /** Recessive gridlines / baselines. */
   grid: colors.borderSubtle,
   /** Scrub crosshair + focus dot. */

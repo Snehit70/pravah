@@ -188,7 +188,7 @@ const TASK_COLOR_OPTIONS: Array<{
   label: string;
   swatch: string;
 }> = [
-  { value: "purple", label: "Indigo", swatch: colors.accent },
+  { value: "purple", label: "Ink", swatch: colors.accent },
   { value: "copper", label: "Copper", swatch: colors.deadline },
   { value: "teal", label: "Teal", swatch: "#3e7b78" },
   { value: "rose", label: "Rose", swatch: "#9d586f" },
