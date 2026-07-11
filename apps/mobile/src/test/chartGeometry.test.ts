@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   areaPath,
   monotoneLinePath,
+  nearestIndex,
   pathLengthUpperBound,
   type Pt,
 } from "../lib/chartGeometry";
@@ -78,6 +79,45 @@ describe("areaPath", () => {
 
   it("returns empty for an empty line", () => {
     expect(areaPath("", 0, 1, 10)).toBe("");
+  });
+});
+
+describe("nearestIndex", () => {
+  // Powers the hero scrubber: finger x → nearest day. Ties resolve to the
+  // lower index (deterministic), and out-of-range x clamps to the ends so a
+  // finger dragged past the chart edge still reads the first/last day.
+  const xs = [0, 10, 20, 30, 40]; // 5 uniformly-spaced days
+
+  it("returns -1 for an empty domain", () => {
+    expect(nearestIndex([], 5)).toBe(-1);
+  });
+
+  it("returns 0 for a single-point domain", () => {
+    expect(nearestIndex([12], -99)).toBe(0);
+    expect(nearestIndex([12], 99)).toBe(0);
+  });
+
+  it("clamps below the first and above the last point", () => {
+    expect(nearestIndex(xs, -50)).toBe(0);
+    expect(nearestIndex(xs, 9999)).toBe(4);
+  });
+
+  it("snaps to exact and near hits", () => {
+    expect(nearestIndex(xs, 20)).toBe(2);
+    expect(nearestIndex(xs, 21)).toBe(2);
+    expect(nearestIndex(xs, 27)).toBe(3);
+  });
+
+  it("resolves an exact midpoint tie to the lower index", () => {
+    // 15 is equidistant from x=10 (idx 1) and x=20 (idx 2) → picks 1.
+    expect(nearestIndex(xs, 15)).toBe(1);
+  });
+
+  it("handles non-uniform spacing (missing days / gaps)", () => {
+    const gappy = [0, 5, 40, 42]; // a wide gap between idx 1 and idx 2
+    expect(nearestIndex(gappy, 6)).toBe(1);
+    expect(nearestIndex(gappy, 30)).toBe(2);
+    expect(nearestIndex(gappy, 41.5)).toBe(3);
   });
 });
 

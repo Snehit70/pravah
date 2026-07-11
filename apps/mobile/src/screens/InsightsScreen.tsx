@@ -231,6 +231,7 @@ export function InsightsScreen({
         <Wrap entering={sectionEnter(0)}>
           <HeroVelocityChart
             series={heroSeries}
+            rawCounts={series.map((p) => p.count)}
             total={rangeTotal}
             caption={RANGE_CAPTION[range]}
             delta={delta}

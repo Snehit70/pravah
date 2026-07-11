@@ -100,7 +100,7 @@ vi.mock("react-native-svg", () => {
 
 vi.mock("react-native-reanimated", () => {
   const View = ({ children, ...rest }: { children?: React.ReactNode }) => {
-    const { entering: _e, style: _s, ...safe } = rest as Record<string, unknown>;
+    const { entering: _, style: __, ...safe } = rest as Record<string, unknown>;
     return React.createElement("div", safe, children);
   };
   const identity = (v: unknown) => v;
@@ -114,12 +114,54 @@ vi.mock("react-native-reanimated", () => {
     useAnimatedProps: () => ({}),
     useAnimatedStyle: () => ({}),
     withTiming: identity,
+    runOnJS: (fn: unknown) => fn,
     Easing: { out: () => identity, cubic: identity, inOut: () => identity, quad: identity },
     FadeIn: chain(),
     FadeInDown: chain(),
     FadeOut: chain(),
   };
 });
+
+// The hero chart attaches a Pan scrubber; stub gesture-handler to inert,
+// chainable builders so the screen mounts without the native gesture stack.
+vi.mock("react-native-gesture-handler", () => {
+  const chainable = () => {
+    const g: Record<string, (...args: unknown[]) => unknown> = {};
+    for (const method of [
+      "enabled",
+      "activeOffsetX",
+      "failOffsetY",
+      "minDistance",
+      "onBegin",
+      "onStart",
+      "onUpdate",
+      "onEnd",
+      "onFinalize",
+    ]) {
+      g[method] = () => g;
+    }
+    return g;
+  };
+  return {
+    Gesture: { Pan: chainable, Tap: chainable },
+    GestureDetector: ({ children }: { children?: React.ReactNode }) =>
+      React.createElement(React.Fragment, {}, children),
+  };
+});
+
+// Charts fire a haptic tick on scrub/cell-tap; stub it so importing the
+// components doesn't pull in expo-haptics + the preferences store.
+vi.mock("../lib/haptic", () => ({
+  haptic: {
+    light: vi.fn(),
+    medium: vi.fn(),
+    heavy: vi.fn(),
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+    selection: vi.fn(),
+  },
+}));
 
 vi.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),

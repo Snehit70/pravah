@@ -17,17 +17,27 @@
  */
 
 import { useMemo, useState } from "react";
-import { StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import Svg, { Rect } from "react-native-svg";
 import { useReducedMotion } from "../hooks/useReducedMotion";
+import { haptic } from "../lib/haptic";
 import type { DayPoint } from "../lib/statsAggregators";
 import { chart, colors, radii, spacing, typography } from "../theme/tokens";
 
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_LABELS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
+
+/** "2026-07-03" → "Fri · Jul 3" (local, locale-stable). */
+function formatDayLabel(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  const wd = WEEKDAY_LABELS[new Date(y, m - 1, d).getDay()];
+  return `${wd} · ${MONTH_LABELS[m - 1]} ${d}`;
+}
 const COLS = 31;
 const MIN_MONTHS = 4;
 const LABEL_W = 34;
@@ -54,7 +64,14 @@ function rampColor(count: number, max: number): string {
 export function ConsistencyHeatmap({ series, currentStreak, bestStreak }: Props) {
   const reducedMotion = useReducedMotion();
   const [width, setWidth] = useState(0);
+  const [selected, setSelected] = useState<{ date: string; count: number } | null>(null);
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
+
+  const selectCell = (cell: { date: string; count: number }) => {
+    haptic.selection();
+    // Re-tapping the open day closes it back to the legend.
+    setSelected((prev) => (prev?.date === cell.date ? null : { date: cell.date, count: cell.count }));
+  };
 
   const { rows, activeDays, gridW, size } = useMemo(() => {
     const counts = new Map<string, number>();
@@ -156,29 +173,52 @@ export function ConsistencyHeatmap({ series, currentStreak, bestStreak }: Props)
             <View key={row.key} style={styles.monthRow} importantForAccessibility="no-hide-descendants">
               <Text style={styles.monthLabel}>{row.label}</Text>
               <Svg width={Math.max(1, gridW)} height={rowSize}>
-                {row.cells.map((c) => (
-                  <Rect
-                    key={c.date}
-                    x={c.x}
-                    y={0}
-                    width={c.size}
-                    height={c.size}
-                    rx={2}
-                    fill={c.fill}
-                  />
-                ))}
+                {row.cells.map((c) => {
+                  const isSelected = selected?.date === c.date;
+                  return (
+                    <Rect
+                      key={c.date}
+                      x={c.x}
+                      y={0}
+                      width={c.size}
+                      height={c.size}
+                      rx={2}
+                      fill={c.fill}
+                      stroke={isSelected ? colors.accent : undefined}
+                      strokeWidth={isSelected ? 1.5 : 0}
+                      onPress={() => selectCell(c)}
+                    />
+                  );
+                })}
               </Svg>
             </View>
           ))}
 
-          <View style={styles.legendRow}>
-            <Text style={styles.legendText}>Less</Text>
-            <View style={[styles.legendCell, { backgroundColor: chart.heatmapEmpty }]} />
-            {chart.heatmapRamp.map((c) => (
-              <View key={c} style={[styles.legendCell, { backgroundColor: c }]} />
-            ))}
-            <Text style={styles.legendText}>More</Text>
-          </View>
+          {selected ? (
+            <Pressable
+              onPress={() => setSelected(null)}
+              accessibilityRole="button"
+              accessibilityLabel={`${formatDayLabel(selected.date)}, ${selected.count} completed. Tap to dismiss.`}
+              style={styles.detailRow}
+            >
+              <View style={[styles.detailDot, selected.count === 0 && styles.detailDotEmpty]} />
+              <Text style={styles.detailDate}>{formatDayLabel(selected.date)}</Text>
+              <Text style={styles.detailCount}>
+                {selected.count === 0
+                  ? "no completions"
+                  : `${selected.count} completed`}
+              </Text>
+            </Pressable>
+          ) : (
+            <View style={styles.legendRow}>
+              <Text style={styles.legendText}>Less</Text>
+              <View style={[styles.legendCell, { backgroundColor: chart.heatmapEmpty }]} />
+              {chart.heatmapRamp.map((c) => (
+                <View key={c} style={[styles.legendCell, { backgroundColor: c }]} />
+              ))}
+              <Text style={styles.legendText}>More</Text>
+            </View>
+          )}
         </View>
       )}
     </Animated.View>
@@ -237,6 +277,34 @@ const styles = StyleSheet.create({
     ...typography.micro,
     color: colors.textMuted,
     width: LABEL_W,
+  },
+  detailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingTop: spacing.sm,
+    minHeight: 32,
+  },
+  detailDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 3,
+    backgroundColor: colors.accent,
+  },
+  detailDotEmpty: {
+    backgroundColor: chart.heatmapEmpty,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  detailDate: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+    fontFamily: typography.title.fontFamily,
+  },
+  detailCount: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    marginLeft: "auto",
   },
   legendRow: {
     flexDirection: "row",

@@ -105,6 +105,37 @@ export function pathLengthUpperBound(pts: Pt[]): number {
   return L;
 }
 
+/**
+ * Index of the point whose x is nearest to `x`, with `x` clamped into the
+ * domain first (a finger dragged past the chart edge reads the end day). Uses
+ * binary search so it stays O(log n) and tolerates non-uniform spacing (gaps
+ * from missing days), unlike a `round((x-x0)/step)` shortcut. Exact midpoint
+ * ties resolve to the lower index.
+ *
+ * The `'worklet'` directive lets the reanimated Babel plugin compile a UI-thread
+ * copy, so the scrub gesture can call it from a worklet without a JS round-trip;
+ * it remains an ordinary function when called from JS (e.g. unit tests).
+ */
+export function nearestIndex(xs: number[], x: number): number {
+  "worklet";
+  const n = xs.length;
+  if (n === 0) return -1;
+  const clamped = Math.max(xs[0], Math.min(x, xs[n - 1]));
+  let lo = 0;
+  let hi = n - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (xs[mid] < clamped) lo = mid + 1;
+    else hi = mid;
+  }
+  // `lo` is the first x >= clamped; the true nearest is either it or its
+  // left neighbour. `<=` biases the tie to the lower index.
+  if (lo > 0 && Math.abs(xs[lo - 1] - clamped) <= Math.abs(xs[lo] - clamped)) {
+    lo -= 1;
+  }
+  return lo;
+}
+
 /** Round to 2dp to keep `d` strings compact without visible precision loss. */
 function r(v: number): number {
   return Math.round(v * 100) / 100;
