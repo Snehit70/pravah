@@ -6,14 +6,12 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
-  const View = ({ children, ...rest }: AnyProps) => {
+  const passthrough = (tag: string) => ({ children, ...rest }: AnyProps) => {
     const { style: _, ...safe } = rest;
-    return React.createElement("div", safe, children);
+    return React.createElement(tag, safe, children);
   };
-  const Text = ({ children, ...rest }: AnyProps) => {
-    const { style: _, ...safe } = rest;
-    return React.createElement("span", safe, children);
-  };
+  const View = passthrough("div");
+  const Text = passthrough("span");
   const Pressable = ({ children, ...rest }: AnyProps) => {
     const {
       onPress,
@@ -78,11 +76,7 @@ vi.mock("react-native", () => {
       {},
       data.length
         ? data.map((item) =>
-            React.createElement(
-              "div",
-              { key: keyExtractor(item) },
-              renderItem({ item }),
-            ),
+            React.createElement("div", { key: keyExtractor(item) }, renderItem({ item })),
           )
         : ListEmptyComponent,
     );
@@ -90,17 +84,40 @@ vi.mock("react-native", () => {
   const StyleSheet = {
     create: <T extends Record<string, unknown>>(styles: T): T => styles,
     hairlineWidth: 1,
+    absoluteFill: {},
+  };
+  return { FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View };
+});
+
+// Charts pull in the native SVG + animation stack; stub them to inert nodes so
+// the screen renders in happy-dom. We assert the screen's structure and the
+// history flow, not the pixels (chart math is covered by chartGeometry tests).
+vi.mock("react-native-svg", () => {
+  const Stub = ({ children }: { children?: React.ReactNode }) =>
+    React.createElement("div", {}, children);
+  return { default: Stub, Svg: Stub, Path: Stub, Rect: Stub, G: Stub, Defs: Stub, LinearGradient: Stub, Stop: Stub, Line: Stub, Circle: Stub, Text: Stub };
+});
+
+vi.mock("react-native-reanimated", () => {
+  const View = ({ children, ...rest }: { children?: React.ReactNode }) => {
+    const { entering: _e, style: _s, ...safe } = rest as Record<string, unknown>;
+    return React.createElement("div", safe, children);
+  };
+  const identity = (v: unknown) => v;
+  const chain = () => {
+    const o = { duration: () => o, delay: () => o };
+    return o;
   };
   return {
-    FlatList,
-    Modal,
-    Pressable,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+    default: { View, createAnimatedComponent: identity },
+    useSharedValue: (v: number) => ({ value: v }),
+    useAnimatedProps: () => ({}),
+    useAnimatedStyle: () => ({}),
+    withTiming: identity,
+    Easing: { out: () => identity, cubic: identity, inOut: () => identity, quad: identity },
+    FadeIn: chain(),
+    FadeInDown: chain(),
+    FadeOut: chain(),
   };
 });
 
@@ -109,7 +126,12 @@ vi.mock("react-native-safe-area-context", () => ({
 }));
 
 vi.mock("../hooks/useReducedMotion", () => ({
-  useReducedMotion: () => false,
+  useReducedMotion: () => true, // reduced motion → components skip animation branches
+}));
+
+vi.mock("../hooks/useGoals", () => ({
+  useGoals: () => ({ goals: [], isHydrated: true }),
+  useGoalLinks: () => ({}),
 }));
 
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -128,45 +150,44 @@ function task(id: string, title: string, completedAt?: number): MobileTask {
   };
 }
 
+function renderScreen(completed: MobileTask[]) {
+  return render(
+    <InsightsScreen
+      tasks={completed}
+      completedTasks={completed}
+      isLoading={false}
+      isRefreshing={false}
+      tabBarHeight={60}
+      onRefresh={vi.fn(async () => undefined)}
+      renderCompletedTaskItem={({ item }) => <span>{item.title}</span>}
+    />,
+  );
+}
+
 describe("Progress screen", () => {
   const completed = [
     task("one", "Ship redesign", Date.now()),
     task("two", "Write release notes", Date.now() - 1000),
   ];
 
-  it("shows momentum and recent completed Tasks without legacy subtabs", () => {
-    render(
-      <InsightsScreen
-        tasks={completed}
-        completedTasks={completed}
-        isLoading={false}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={vi.fn(async () => undefined)}
-        renderCompletedTaskItem={({ item }) => <span>{item.title}</span>}
-      />,
-    );
-
+  it("renders the analytics sections without legacy subtabs", () => {
+    renderScreen(completed);
     expect(screen.getByText("Recent momentum")).toBeTruthy();
-    expect(screen.getByText("Recently completed")).toBeTruthy();
-    expect(screen.getByText("Ship redesign")).toBeTruthy();
+    expect(screen.getByText("Your journey")).toBeTruthy();
+    expect(screen.getByText("Your rhythm")).toBeTruthy();
+    // The inline "Recently completed" list was dropped in the redesign.
+    expect(screen.queryByText("Recently completed")).toBeNull();
     expect(screen.queryByText("Insights")).toBeNull();
-    expect(screen.queryByText("Done")).toBeNull();
+  });
+
+  it("switches the momentum range", () => {
+    renderScreen(completed);
+    fireEvent.click(screen.getByRole("button", { name: /show last 7 days/i }));
+    expect(screen.getByText("completed this week")).toBeTruthy();
   });
 
   it("opens searchable full-screen completion history", () => {
-    render(
-      <InsightsScreen
-        tasks={completed}
-        completedTasks={completed}
-        isLoading={false}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={vi.fn(async () => undefined)}
-        renderCompletedTaskItem={({ item }) => <span>{item.title}</span>}
-      />,
-    );
-
+    renderScreen(completed);
     fireEvent.click(screen.getByRole("button", { name: /view completion history/i }));
     expect(screen.getByText("Completion history")).toBeTruthy();
 
@@ -174,6 +195,7 @@ describe("Progress screen", () => {
       target: { value: "release" },
     });
     expect(screen.getAllByText("Write release notes").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Ship redesign")).toHaveLength(1);
+    // No inline recent list anymore, so a filtered-out task disappears entirely.
+    expect(screen.queryByText("Ship redesign")).toBeNull();
   });
 });

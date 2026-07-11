@@ -9,6 +9,8 @@
 import { describe, expect, it } from "vitest";
 import {
   completionsByDay,
+  completionsByHour,
+  completionsByWeekday,
   currentStreak,
   kpis,
   rollingAverage,
@@ -115,6 +117,53 @@ describe("currentStreak", () => {
       makeTask({ _id: `t${n}`, completedAt: daysAgo(n) }),
     );
     expect(currentStreak(tasks, NOW)).toBe(1);
+  });
+});
+
+describe("completionsByWeekday", () => {
+  it("returns seven zeroed buckets with an empty task list", () => {
+    const { counts, total } = completionsByWeekday([], NOW, 30);
+    expect(counts).toHaveLength(7);
+    expect(counts.every((c) => c === 0)).toBe(true);
+    expect(total).toBe(0);
+  });
+
+  it("buckets by local weekday, ungated, ignoring non-completed and out-of-window", () => {
+    // NOW is Sunday 2025-06-15 (getDay 0); daysAgo(2) is Friday (getDay 5).
+    const tasks = [
+      makeTask({ _id: "a", completedAt: daysAgo(0) }),
+      makeTask({ _id: "b", completedAt: daysAgo(0, 18) }),
+      makeTask({ _id: "c", completedAt: daysAgo(2) }),
+      makeTask({ _id: "active", updatedAt: daysAgo(0) }),
+      makeTask({ _id: "old", completedAt: daysAgo(40) }),
+    ];
+    const { counts, total } = completionsByWeekday(tasks, NOW, 30);
+    expect(counts[0]).toBe(2); // Sunday
+    expect(counts[5]).toBe(1); // Friday
+    expect(total).toBe(3);
+  });
+});
+
+describe("completionsByHour", () => {
+  it("returns 24 zeroed buckets with an empty task list", () => {
+    const { counts, total } = completionsByHour([], NOW, 30);
+    expect(counts).toHaveLength(24);
+    expect(counts.every((c) => c === 0)).toBe(true);
+    expect(total).toBe(0);
+  });
+
+  it("buckets by local hour, ignoring non-completed and out-of-window", () => {
+    const tasks = [
+      makeTask({ _id: "a", completedAt: daysAgo(0, 9) }),
+      makeTask({ _id: "b", completedAt: daysAgo(1, 9) }),
+      makeTask({ _id: "c", completedAt: daysAgo(0, 18) }),
+      makeTask({ _id: "active", updatedAt: daysAgo(0) }),
+      makeTask({ _id: "old", completedAt: daysAgo(40, 9) }),
+    ];
+    const { counts, total } = completionsByHour(tasks, NOW, 30);
+    expect(counts[9]).toBe(2);
+    expect(counts[18]).toBe(1);
+    expect(total).toBe(3);
   });
 });
 

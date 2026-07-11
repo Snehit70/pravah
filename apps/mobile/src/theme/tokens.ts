@@ -232,6 +232,34 @@ export const typography = {
 } as const;
 
 /**
+ * Chart tokens for the Progress screen.
+ *
+ * Colors are not eyeballed: the heatmap ramp is a validated single-hue ordinal
+ * scale (monotone lightness, visible step gaps, lightest bucket ≥ 2:1 on the
+ * warm `bg` surface, single hue ~262°). The line/bar mark uses `accent`, which
+ * clears 5:1 on every warm surface. Text in charts always wears the ink text
+ * tokens above — a mark's color carries identity, never the number beside it.
+ */
+export const chart = {
+  /** Empty/no-completion heatmap cell — faint warm track, distinct from bucket 1. */
+  heatmapEmpty: "rgba(78,62,43,0.07)",
+  /** 4-bucket purple intensity ramp, light → dark. Validated ordinal ramp. */
+  heatmapRamp: ["#b6a1df", "#9a7ed3", "#7c61c9", "#6146bd"] as const,
+  /** Hero line + rhythm bars — the single-series mark. */
+  line: colors.accent,
+  /** Gradient area fill under the hero line (decorative; the line carries contrast). */
+  areaTop: "rgba(103,83,199,0.26)",
+  areaBottom: "rgba(103,83,199,0)",
+  /** Rhythm bars: active vs. the empty-bucket track. */
+  bar: colors.accent,
+  barTrack: "rgba(103,83,199,0.12)",
+  /** Recessive gridlines / baselines. */
+  grid: colors.borderSubtle,
+  /** Scrub crosshair + focus dot. */
+  cursor: colors.accent,
+} as const;
+
+/**
  * Motion tokens. Mirror web's src/lib/motion.ts so animation feel is shared.
  */
 export const motion = {

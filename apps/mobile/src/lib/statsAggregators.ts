@@ -137,7 +137,7 @@ export function kpis(tasks: MobileTask[], now: number): StatsKpis {
   };
 }
 
-const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+export const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 /**
  * Among completions inside the trailing `days` window, which weekday saw
@@ -190,6 +190,52 @@ export function peakHour(
   let best = 0;
   for (let i = 1; i < 24; i++) if (buckets[i] > buckets[best]) best = i;
   return { hour: best, count: buckets[best] };
+}
+
+/**
+ * Full weekday distribution of completions inside the trailing `days` window,
+ * indexed Sun(0)..Sat(6) to match WEEKDAY_LABELS. Unlike `bestWeekday`, this
+ * returns every bucket with no significance gating — the rhythm mini-chart
+ * renders all seven bars and the presentation layer decides how to treat a
+ * thin sample. `total` is provided so callers can show a low-data state.
+ */
+export function completionsByWeekday(
+  tasks: MobileTask[],
+  now: number,
+  days: number,
+): { counts: number[]; total: number } {
+  const cutoff = addCalendarDays(startOfLocalDay(now), -(days - 1)).getTime();
+  const counts = [0, 0, 0, 0, 0, 0, 0];
+  let total = 0;
+  for (const t of tasks) {
+    if (!isTaskCompleted(t) || t.completedAt === undefined) continue;
+    if (t.completedAt < cutoff) continue;
+    counts[new Date(t.completedAt).getDay()]++;
+    total++;
+  }
+  return { counts, total };
+}
+
+/**
+ * Full hour-of-day distribution of completions inside the trailing `days`
+ * window, indexed 0..23 (local hour). Companion to `completionsByWeekday`
+ * for the "focus by hour" curve; returns every bucket, ungated.
+ */
+export function completionsByHour(
+  tasks: MobileTask[],
+  now: number,
+  days: number,
+): { counts: number[]; total: number } {
+  const cutoff = addCalendarDays(startOfLocalDay(now), -(days - 1)).getTime();
+  const counts = new Array<number>(24).fill(0);
+  let total = 0;
+  for (const t of tasks) {
+    if (!isTaskCompleted(t) || t.completedAt === undefined) continue;
+    if (t.completedAt < cutoff) continue;
+    counts[new Date(t.completedAt).getHours()]++;
+    total++;
+  }
+  return { counts, total };
 }
 
 /**

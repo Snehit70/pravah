@@ -1,8 +1,14 @@
 /**
- * Progress overview and full completion history.
+ * Progress screen.
  *
- * The filename remains for internal compatibility; user-facing language is
- * canonical Progress terminology.
+ * A reflective (not gamified) analytics page: a recent-momentum hero, an
+ * all-time consistency journey, work-rhythm mini-charts, and goals in motion —
+ * then a searchable completion-history modal. The filename stays `Insights`
+ * for wiring compatibility; user-facing language is "Progress".
+ *
+ * Everything is derived on-device from the task list (already in memory) plus
+ * the local goals stores. Charts render with react-native-svg + reanimated
+ * only, so the whole screen stays OTA-updatable.
  */
 
 import { useMemo, useState, type JSX } from "react";
@@ -18,14 +24,29 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Circle, Path } from "react-native-svg";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import type { MobileTask } from "../components/TaskCard";
-import { useReducedMotion } from "../hooks/useReducedMotion";
-import { kpis, weekOverWeek } from "../lib/statsAggregators";
-import { colors, fonts, radii, spacing, typography } from "../theme/tokens";
+import { HeroVelocityChart } from "../components/HeroVelocityChart";
+import { ConsistencyHeatmap } from "../components/ConsistencyHeatmap";
+import { RhythmMiniCharts } from "../components/RhythmMiniCharts";
+import { GoalsProgress } from "../components/GoalsProgress";
 import { LedgerCheckIcon } from "../components/UiIcons";
+import { useReducedMotion } from "../hooks/useReducedMotion";
+import { useGoalLinks, useGoals } from "../hooks/useGoals";
+import {
+  completionsByDay,
+  completionsByHour,
+  completionsByWeekday,
+  currentStreak,
+  longestStreak,
+  medianCycleTimeDays,
+  rollingAverage,
+} from "../lib/statsAggregators";
+import { computeGoalProgress, goalsInMotion } from "../lib/goalProgress";
+import { colors, radii, spacing, typography } from "../theme/tokens";
 
 type HistoryWindow = "all" | "7d" | "30d";
+type RangeKey = "7d" | "30d" | "90d";
 
 type InsightsScreenProps = {
   tasks: MobileTask[];
@@ -37,6 +58,16 @@ type InsightsScreenProps = {
   renderCompletedTaskItem: ({ item }: { item: MobileTask }) => JSX.Element;
 };
 
+const RANGE_DAYS: Record<RangeKey, number> = { "7d": 7, "30d": 30, "90d": 90 };
+const RANGE_LABELS: Record<RangeKey, string> = { "7d": "7d", "30d": "30d", "90d": "90d" };
+const RANGE_CAPTION: Record<RangeKey, string> = {
+  "7d": "completed this week",
+  "30d": "completed this month",
+  "90d": "completed this quarter",
+};
+const JOURNEY_DAYS = 365;
+const GOALS_SHOWN = 6;
+
 const HISTORY_WINDOWS: Array<{ key: HistoryWindow; label: string; days?: number }> = [
   { key: "all", label: "All" },
   { key: "7d", label: "7 days", days: 7 },
@@ -47,32 +78,11 @@ function completionTime(task: MobileTask): number {
   return task.completedAt ?? task.updatedAt;
 }
 
-function trendCopy(current: number, previous: number): string {
-  if (current === previous) return "Same pace as the previous 7 days";
-  const difference = Math.abs(current - previous);
-  return current > previous
-    ? `${difference} more than the previous 7 days`
-    : `${difference} fewer than the previous 7 days`;
-}
-
-function ProgressEmptyIcon({ size = 28 }: { size?: number }) {
-  return (
-    <Svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={colors.textSecondary}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <Path d="M4 18.5h16" />
-      <Path d="M6 15.5 10 11l3 2.5 5-6" />
-      <Path d="M15.5 7.5H18v2.5" />
-      <Circle cx={10} cy={11} r={0.8} fill={colors.textSecondary} stroke="none" />
-    </Svg>
-  );
+function localDateKey(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate(),
+  ).padStart(2, "0")}`;
 }
 
 export function InsightsScreen({
@@ -89,23 +99,74 @@ export function InsightsScreen({
   const [historyVisible, setHistoryVisible] = useState(false);
   const [query, setQuery] = useState("");
   const [window, setWindow] = useState<HistoryWindow>("all");
+  const [range, setRange] = useState<RangeKey>("30d");
   const [now] = useState(() => Date.now());
 
+  const { goals } = useGoals();
+  const links = useGoalLinks();
+
+  const windowDays = RANGE_DAYS[range];
+
+  // ── Recent momentum (hero) ────────────────────────────────────────────
+  const series = useMemo(
+    () => completionsByDay(tasks, now, windowDays),
+    [tasks, now, windowDays],
+  );
+  const rangeTotal = useMemo(() => series.reduce((s, p) => s + p.count, 0), [series]);
+  // Daily completion data is spiky (bursts between zero-days); a light rolling
+  // average turns it into a calm momentum curve. The headline stays the raw
+  // sum — only the line's shape is smoothed.
+  const heroSeries = useMemo(() => {
+    const w = range === "7d" ? 2 : range === "30d" ? 4 : 7;
+    const avg = rollingAverage(series, w);
+    return series.map((p, i) => ({ date: p.date, count: avg[i] }));
+  }, [series, range]);
+  const delta = useMemo(() => {
+    // This window vs. the immediately preceding window of the same length.
+    const prev = completionsByDay(tasks, now - windowDays * 86_400_000, windowDays);
+    const lastPeriod = prev.reduce((s, p) => s + p.count, 0);
+    const deltaPct = lastPeriod === 0 ? null : ((rangeTotal - lastPeriod) / lastPeriod) * 100;
+    return { thisPeriod: rangeTotal, lastPeriod, deltaPct };
+  }, [tasks, now, windowDays, rangeTotal]);
+
+  // ── All-time journey (heatmap) ────────────────────────────────────────
+  const journeySeries = useMemo(
+    () => completionsByDay(tasks, now, JOURNEY_DAYS),
+    [tasks, now],
+  );
+  const streak = useMemo(() => currentStreak(tasks, now), [tasks, now]);
+  const best = useMemo(() => longestStreak(tasks), [tasks]);
+
+  // ── Rhythm ────────────────────────────────────────────────────────────
+  const weekday = useMemo(
+    () => completionsByWeekday(tasks, now, windowDays),
+    [tasks, now, windowDays],
+  );
+  const hour = useMemo(
+    () => completionsByHour(tasks, now, windowDays),
+    [tasks, now, windowDays],
+  );
+  const cycle = useMemo(
+    () => medianCycleTimeDays(tasks, now, windowDays),
+    [tasks, now, windowDays],
+  );
+
+  // ── Goals in motion ───────────────────────────────────────────────────
+  const goalRows = useMemo(
+    () => goalsInMotion(computeGoalProgress(goals, links, tasks)),
+    [goals, links, tasks],
+  );
+  const todayKey = useMemo(() => localDateKey(now), [now]);
+
+  // ── History modal ─────────────────────────────────────────────────────
   const orderedCompleted = useMemo(
     () => [...completedTasks].sort((a, b) => completionTime(b) - completionTime(a)),
     [completedTasks],
   );
-  const recentCompleted = orderedCompleted.slice(0, 5);
-  const summary = useMemo(() => kpis(tasks, now), [now, tasks]);
-  const comparison = useMemo(() => weekOverWeek(tasks, now), [now, tasks]);
-
   const historyTasks = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
     const selected = HISTORY_WINDOWS.find((option) => option.key === window);
-    const cutoff = selected?.days
-      ? now - selected.days * 24 * 60 * 60 * 1000
-      : null;
-
+    const cutoff = selected?.days ? now - selected.days * 86_400_000 : null;
     return orderedCompleted.filter((task) => {
       if (cutoff !== null && completionTime(task) < cutoff) return false;
       if (!normalizedQuery) return true;
@@ -115,6 +176,10 @@ export function InsightsScreen({
     });
   }, [now, orderedCompleted, query, window]);
 
+  const Wrap = reducedMotion ? View : Animated.View;
+  const sectionEnter = (i: number) =>
+    reducedMotion ? undefined : FadeInDown.duration(360).delay(60 * i);
+
   return (
     <View style={styles.root}>
       <ScrollView
@@ -122,6 +187,7 @@ export function InsightsScreen({
         contentContainerStyle={{
           paddingTop: spacing.md,
           paddingBottom: tabBarHeight + 84,
+          gap: spacing.lg,
         }}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -134,93 +200,94 @@ export function InsightsScreen({
           />
         }
       >
-        <View style={styles.momentum}>
-          <View style={styles.momentumHeading}>
-            <View style={styles.momentumTitleBlock}>
-              <Text style={styles.eyebrow}>Recent momentum</Text>
-              <Text style={styles.momentumTitle}>
-                {summary.completed7d === 0
-                  ? "A clear place to begin."
-                  : `${summary.completed7d} ${
-                      summary.completed7d === 1 ? "Task" : "Tasks"
-                    } completed`}
-              </Text>
-            </View>
-            <Text style={styles.streak}>{summary.streak}d streak</Text>
-          </View>
-
-          <Text style={styles.trend}>
-            {trendCopy(comparison.thisWeek, comparison.lastWeek)}
-          </Text>
-
-          <View style={styles.momentumGrid}>
-            <View style={styles.momentumTile}>
-              <Text style={styles.momentumTileValue}>{summary.completed7d}</Text>
-              <Text style={styles.momentumTileLabel}>7d done</Text>
-            </View>
-            <View style={styles.momentumTile}>
-              <Text style={styles.momentumTileValue}>{summary.streak}d</Text>
-              <Text style={styles.momentumTileLabel}>streak</Text>
-            </View>
-            <View style={styles.momentumTile}>
-              <Text style={styles.momentumTileValue}>{summary.overdue}</Text>
-              <Text style={styles.momentumTileLabel}>overdue</Text>
-            </View>
-          </View>
-
-          <View style={styles.trustRow}>
-            <Text style={styles.trustSignal}>
-              {summary.overdue === 0 ? "No overdue Tasks" : `${summary.overdue} overdue`}
-            </Text>
-            <View style={styles.trustDivider} />
-            <Text style={styles.trustSignal}>
-              {summary.inbox === 0 ? "Inbox is clear" : `${summary.inbox} in Inbox`}
-            </Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.eyebrow}>Recent momentum</Text>
+          <View style={styles.rangeRow}>
+            {(Object.keys(RANGE_DAYS) as RangeKey[]).map((key) => {
+              const active = range === key;
+              return (
+                <Pressable
+                  key={key}
+                  onPress={() => setRange(key)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`Show last ${RANGE_DAYS[key]} days`}
+                  hitSlop={8}
+                  style={({ pressed }) => [
+                    styles.rangePill,
+                    active && styles.rangePillActive,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Text style={[styles.rangeText, active && styles.rangeTextActive]}>
+                    {RANGE_LABELS[key]}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
 
-        <View style={styles.recentHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>Recently completed</Text>
-            <Text style={styles.sectionSub}>Your latest closed loops</Text>
-          </View>
-          {orderedCompleted.length > 0 ? (
-            <Pressable
-              onPress={() => setHistoryVisible(true)}
-              accessibilityRole="button"
-              accessibilityLabel={`View completion history, ${orderedCompleted.length} Tasks`}
-              style={({ pressed }) => [styles.historyAction, pressed && { opacity: 0.65 }]}
-            >
-              <Text style={styles.historyActionText}>View history</Text>
-            </Pressable>
-          ) : null}
-        </View>
+        <Wrap entering={sectionEnter(0)}>
+          <HeroVelocityChart
+            series={heroSeries}
+            total={rangeTotal}
+            caption={RANGE_CAPTION[range]}
+            delta={delta}
+          />
+        </Wrap>
 
-        {isLoading ? (
-          <Text accessibilityLiveRegion="polite" style={styles.emptyText}>
-            Loading completed Tasks...
+        <Wrap entering={sectionEnter(1)}>
+          <Text style={styles.sectionTitle}>Your journey</Text>
+          <Text style={styles.sectionSub}>Every day you showed up</Text>
+          <ConsistencyHeatmap
+            series={journeySeries}
+            currentStreak={streak}
+            bestStreak={best}
+          />
+        </Wrap>
+
+        <Wrap entering={sectionEnter(2)}>
+          <Text style={styles.sectionTitle}>Your rhythm</Text>
+          <Text style={styles.sectionSub}>When you tend to do your best work</Text>
+          <RhythmMiniCharts weekday={weekday} hour={hour} cycleDays={cycle} />
+        </Wrap>
+
+        {goalRows.length > 0 ? (
+          <Wrap entering={sectionEnter(3)}>
+            <Text style={styles.sectionTitle}>Goals in motion</Text>
+            <Text style={styles.sectionSub}>
+              {goalRows.length} {goalRows.length === 1 ? "goal" : "goals"} moving forward
+            </Text>
+            <GoalsProgress
+              rows={goalRows.slice(0, GOALS_SHOWN)}
+              todayKey={todayKey}
+              moreCount={Math.max(0, goalRows.length - GOALS_SHOWN)}
+            />
+          </Wrap>
+        ) : null}
+
+        {orderedCompleted.length > 0 ? (
+          <Pressable
+            onPress={() => setHistoryVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`View completion history, ${orderedCompleted.length} tasks`}
+            style={({ pressed }) => [styles.historyButton, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={styles.historyButtonText}>View completion history</Text>
+            <Text style={styles.historyButtonMeta}>{orderedCompleted.length} →</Text>
+          </Pressable>
+        ) : null}
+
+        {isLoading && orderedCompleted.length === 0 ? (
+          <Text accessibilityLiveRegion="polite" style={styles.footerNote}>
+            Loading your progress…
           </Text>
-        ) : recentCompleted.length > 0 ? (
-          <View style={styles.recentList}>
-            {recentCompleted.map((item) => (
-              <View key={String(item._id)}>{renderCompletedTaskItem({ item })}</View>
-            ))}
-          </View>
         ) : (
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIconWrap}>
-              <ProgressEmptyIcon />
-            </View>
-            <Text style={styles.emptyTitle}>Complete a Task to start seeing momentum.</Text>
-            <Text style={styles.emptyText}>
-              Progress will keep the recent record here without turning work into a score.
-            </Text>
-          </View>
+          <Text style={styles.footerNote}>
+            Computed on device from your task history. No data leaves the phone.
+          </Text>
         )}
-
-        <Text style={styles.footerNote}>
-          Computed on device from your Task history.
-        </Text>
       </ScrollView>
 
       <Modal
@@ -314,152 +381,80 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
   },
-  momentum: {
+  headerRow: {
     marginHorizontal: spacing.lg,
-    paddingVertical: spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-    gap: spacing.sm,
-  },
-  momentumHeading: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.md,
-  },
-  momentumTitleBlock: {
-    flex: 1,
-    gap: spacing.xs,
   },
   eyebrow: {
-    fontFamily: fonts.sans,
-    fontSize: 12,
-    lineHeight: 16,
+    ...typography.micro,
     color: colors.textMuted,
   },
-  momentumTitle: {
-    ...typography.headline,
-    color: colors.textPrimary,
-  },
-  streak: {
-    ...typography.numeric,
-    color: colors.accent,
-    paddingTop: spacing.xs,
-  },
-  trend: {
-    ...typography.bodyMd,
-    color: colors.textSecondary,
-  },
-  momentumGrid: {
+  rangeRow: {
     flexDirection: "row",
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
-  momentumTile: {
-    flex: 1,
-    minHeight: 64,
-    justifyContent: "center",
+  rangePill: {
+    minWidth: 40,
+    paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
     borderRadius: radii.md,
-    backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+    alignItems: "center",
   },
-  momentumTileValue: {
-    ...typography.title,
-    color: colors.textPrimary,
+  rangePillActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
   },
-  momentumTileLabel: {
-    fontFamily: fonts.sans,
-    fontSize: 12,
-    lineHeight: 16,
+  rangeText: {
+    ...typography.micro,
     color: colors.textMuted,
   },
-  trustRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-    paddingTop: spacing.xs,
-  },
-  trustSignal: {
-    fontFamily: fonts.sans,
-    fontSize: 12,
-    lineHeight: 16,
-    color: colors.textMuted,
-  },
-  trustDivider: {
-    width: 3,
-    height: 3,
-    borderRadius: radii.full,
-    backgroundColor: colors.border,
-  },
-  recentHeader: {
-    minHeight: 68,
-    marginTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.md,
+  rangeTextActive: {
+    color: colors.accent,
   },
   sectionTitle: {
     ...typography.title,
     color: colors.textPrimary,
+    marginHorizontal: spacing.lg,
   },
   sectionSub: {
     ...typography.bodyMd,
     color: colors.textMuted,
+    marginHorizontal: spacing.lg,
     marginTop: 2,
+    marginBottom: spacing.sm,
   },
-  historyAction: {
-    minHeight: 44,
-    justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+  historyButton: {
+    marginHorizontal: spacing.lg,
+    minHeight: 52,
+    paddingHorizontal: spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
   },
-  historyActionText: {
-    ...typography.bodyMd,
-    color: colors.accent,
+  historyButtonText: {
+    ...typography.bodyLg,
+    color: colors.textPrimary,
     fontFamily: typography.title.fontFamily,
   },
-  recentList: {
-    gap: spacing.xs,
-  },
-  emptyState: {
-    paddingHorizontal: spacing.xxl,
-    paddingVertical: spacing.section,
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  emptyIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: radii.full,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.bgSurface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-    marginBottom: spacing.xs,
-  },
-  emptyTitle: {
-    ...typography.headline,
-    color: colors.textPrimary,
-    textAlign: "center",
-  },
-  emptyText: {
-    ...typography.bodyMd,
-    color: colors.textSecondary,
-    textAlign: "center",
+  historyButtonMeta: {
+    ...typography.numeric,
+    color: colors.accent,
   },
   footerNote: {
-    fontFamily: fonts.sans,
-    fontSize: 12,
-    lineHeight: 16,
+    ...typography.micro,
     color: colors.textMuted,
     textAlign: "center",
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.section,
+    marginTop: spacing.sm,
   },
   historyRoot: {
     flex: 1,
@@ -542,5 +537,32 @@ const styles = StyleSheet.create({
   windowTextActive: {
     color: colors.accent,
     fontFamily: typography.title.fontFamily,
+  },
+  emptyState: {
+    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.section,
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  emptyIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    marginBottom: spacing.xs,
+  },
+  emptyTitle: {
+    ...typography.headline,
+    color: colors.textPrimary,
+    textAlign: "center",
+  },
+  emptyText: {
+    ...typography.bodyMd,
+    color: colors.textSecondary,
+    textAlign: "center",
   },
 });
