@@ -150,7 +150,9 @@ function WeekdayBar({
       <Animated.View
         style={[
           styles.barFill,
-          { backgroundColor: chart.bar, opacity: isPeak ? 1 : 0.4 },
+          // Peak at full strength; non-peak bars stay clearly legible (0.55)
+          // so the whole weekday distribution reads, not just the winner.
+          { backgroundColor: chart.bar, opacity: isPeak ? 1 : 0.55 },
           fillStyle,
         ]}
       />

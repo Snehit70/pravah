@@ -16,12 +16,13 @@
  * already carries each cell's date + count for that.
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import Svg, { Rect } from "react-native-svg";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { haptic } from "../lib/haptic";
+import { CalendarIcon, ClockIcon, StarIcon } from "./UiIcons";
 import type { DayPoint } from "../lib/statsAggregators";
 import { chart, colors, radii, spacing, typography } from "../theme/tokens";
 
@@ -152,11 +153,30 @@ export function ConsistencyHeatmap({ series, currentStreak, bestStreak }: Props)
       entering={reducedMotion ? undefined : FadeIn.duration(400)}
     >
       <View style={styles.statRow}>
-        <JourneyStat label="Current" value={`${currentStreak}d`} accent={currentStreak > 0} />
+        <JourneyStat
+          label="Current streak"
+          value={`${currentStreak}d`}
+          accent={currentStreak > 0}
+          icon={
+            <ClockIcon
+              color={currentStreak > 0 ? colors.accent : colors.textMuted}
+              size={20}
+              strokeWidth={1.75}
+            />
+          }
+        />
         <View style={styles.statDivider} />
-        <JourneyStat label="Best" value={`${bestStreak}d`} />
+        <JourneyStat
+          label="Best streak"
+          value={`${bestStreak}d`}
+          icon={<StarIcon color={colors.accent} size={20} strokeWidth={1.75} />}
+        />
         <View style={styles.statDivider} />
-        <JourneyStat label="Active days" value={String(activeDays)} />
+        <JourneyStat
+          label="Active days"
+          value={String(activeDays)}
+          icon={<CalendarIcon color={colors.accent} size={20} strokeWidth={1.75} />}
+        />
       </View>
 
       {rows.length === 0 ? (
@@ -225,11 +245,24 @@ export function ConsistencyHeatmap({ series, currentStreak, bestStreak }: Props)
   );
 }
 
-function JourneyStat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function JourneyStat({
+  label,
+  value,
+  accent,
+  icon,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+  icon?: ReactNode;
+}) {
   return (
     <View style={styles.stat}>
-      <Text style={[styles.statValue, accent && { color: colors.accent }]}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+      {icon ? <View style={styles.statIcon}>{icon}</View> : null}
+      <View style={styles.statText}>
+        <Text style={[styles.statValue, accent && { color: colors.accent }]}>{value}</Text>
+        <Text style={styles.statLabel}>{label}</Text>
+      </View>
     </View>
   );
 }
@@ -251,8 +284,17 @@ const styles = StyleSheet.create({
   },
   stat: {
     flex: 1,
+    flexDirection: "row",
     alignItems: "center",
-    gap: 2,
+    justifyContent: "center",
+    gap: spacing.xs,
+  },
+  statIcon: {
+    opacity: 0.9,
+  },
+  statText: {
+    alignItems: "flex-start",
+    gap: 1,
   },
   statValue: {
     ...typography.title,

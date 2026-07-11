@@ -227,6 +227,19 @@ export const CalendarIcon = icon(({ color, size, strokeWidth }) => (
   </Svg>
 ));
 
+export const ClockIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Circle cx={12} cy={12} r={7.75} />
+    <Path d="M12 8v4.25l2.75 1.75" />
+  </Svg>
+));
+
+export const StarIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M12 4.5l2.32 4.7 5.18.75-3.75 3.66.88 5.14L12 16.5l-4.63 2.44.88-5.14-3.75-3.66 5.18-.75L12 4.5Z" />
+  </Svg>
+));
+
 export const MailIcon = icon(({ color, size, strokeWidth }) => (
   <Svg {...frame(color, size, strokeWidth)}>
     <Path d="M4.5 6.75h15a.75.75 0 0 1 .75.75v9a.75.75 0 0 1-.75.75h-15a.75.75 0 0 1-.75-.75v-9a.75.75 0 0 1 .75-.75Z" />

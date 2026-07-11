@@ -215,8 +215,8 @@ describe("Progress screen", () => {
   it("renders the analytics sections without legacy subtabs", () => {
     renderScreen(completed);
     expect(screen.getByText("Recent momentum")).toBeTruthy();
-    expect(screen.getByText("Your journey")).toBeTruthy();
-    expect(screen.getByText("Your rhythm")).toBeTruthy();
+    expect(screen.getByText("Journey")).toBeTruthy();
+    expect(screen.getByText("Rhythm")).toBeTruthy();
     // The inline "Recently completed" list was dropped in the redesign.
     expect(screen.queryByText("Recently completed")).toBeNull();
     expect(screen.queryByText("Insights")).toBeNull();
@@ -225,7 +225,7 @@ describe("Progress screen", () => {
   it("switches the momentum range", () => {
     renderScreen(completed);
     fireEvent.click(screen.getByRole("button", { name: /show last 7 days/i }));
-    expect(screen.getByText("completed this week")).toBeTruthy();
+    expect(screen.getByText("this week")).toBeTruthy();
   });
 
   it("opens searchable full-screen completion history", () => {

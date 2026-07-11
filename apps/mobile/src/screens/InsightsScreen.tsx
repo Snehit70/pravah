@@ -60,10 +60,15 @@ type InsightsScreenProps = {
 
 const RANGE_DAYS: Record<RangeKey, number> = { "7d": 7, "30d": 30, "90d": 90 };
 const RANGE_LABELS: Record<RangeKey, string> = { "7d": "7d", "30d": "30d", "90d": "90d" };
-const RANGE_CAPTION: Record<RangeKey, string> = {
-  "7d": "completed this week",
-  "30d": "completed this month",
-  "90d": "completed this quarter",
+const RANGE_PERIOD: Record<RangeKey, string> = {
+  "7d": "this week",
+  "30d": "this month",
+  "90d": "this quarter",
+};
+const RANGE_COMPARISON: Record<RangeKey, string> = {
+  "7d": "vs last week",
+  "30d": "vs last month",
+  "90d": "vs last quarter",
 };
 const JOURNEY_DAYS = 365;
 const GOALS_SHOWN = 6;
@@ -117,7 +122,9 @@ export function InsightsScreen({
   // average turns it into a calm momentum curve. The headline stays the raw
   // sum — only the line's shape is smoothed.
   const heroSeries = useMemo(() => {
-    const w = range === "7d" ? 2 : range === "30d" ? 4 : 7;
+    // Odd, centered windows (radius 1/2/3): calmer at wider ranges without the
+    // lag a trailing average would add. 30d was the busy one → radius 2.
+    const w = range === "7d" ? 3 : range === "30d" ? 5 : 7;
     const avg = rollingAverage(series, w);
     return series.map((p, i) => ({ date: p.date, count: avg[i] }));
   }, [series, range]);
@@ -233,14 +240,14 @@ export function InsightsScreen({
             series={heroSeries}
             rawCounts={series.map((p) => p.count)}
             total={rangeTotal}
-            caption={RANGE_CAPTION[range]}
+            periodLabel={RANGE_PERIOD[range]}
+            comparisonLabel={RANGE_COMPARISON[range]}
             delta={delta}
           />
         </Wrap>
 
         <Wrap entering={sectionEnter(1)}>
-          <Text style={styles.sectionTitle}>Your journey</Text>
-          <Text style={styles.sectionSub}>Every day you showed up</Text>
+          <SectionHeader label="Journey" caption="Every day you showed up" />
           <ConsistencyHeatmap
             series={journeySeries}
             currentStreak={streak}
@@ -249,17 +256,16 @@ export function InsightsScreen({
         </Wrap>
 
         <Wrap entering={sectionEnter(2)}>
-          <Text style={styles.sectionTitle}>Your rhythm</Text>
-          <Text style={styles.sectionSub}>When you tend to do your best work</Text>
+          <SectionHeader label="Rhythm" caption="When you do your best work" />
           <RhythmMiniCharts weekday={weekday} hour={hour} cycleDays={cycle} />
         </Wrap>
 
         {goalRows.length > 0 ? (
           <Wrap entering={sectionEnter(3)}>
-            <Text style={styles.sectionTitle}>Goals in motion</Text>
-            <Text style={styles.sectionSub}>
-              {goalRows.length} {goalRows.length === 1 ? "goal" : "goals"} moving forward
-            </Text>
+            <SectionHeader
+              label="Goals in motion"
+              caption={`${goalRows.length} ${goalRows.length === 1 ? "goal" : "goals"} moving forward`}
+            />
             <GoalsProgress
               rows={goalRows.slice(0, GOALS_SHOWN)}
               todayKey={todayKey}
@@ -378,6 +384,18 @@ export function InsightsScreen({
   );
 }
 
+/** Editorial section header: an uppercase eyebrow left, a muted caption right. */
+function SectionHeader({ label, caption }: { label: string; caption: string }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionEyebrow}>{label}</Text>
+      <Text style={styles.sectionCaption} numberOfLines={1}>
+        {caption}
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
@@ -417,17 +435,23 @@ const styles = StyleSheet.create({
   rangeTextActive: {
     color: colors.accent,
   },
-  sectionTitle: {
-    ...typography.title,
-    color: colors.textPrimary,
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
     marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    gap: spacing.md,
   },
-  sectionSub: {
+  sectionEyebrow: {
+    ...typography.micro,
+    color: colors.textSecondary,
+  },
+  sectionCaption: {
     ...typography.bodyMd,
     color: colors.textMuted,
-    marginHorizontal: spacing.lg,
-    marginTop: 2,
-    marginBottom: spacing.sm,
+    flexShrink: 1,
+    textAlign: "right",
   },
   historyButton: {
     marginHorizontal: spacing.lg,
