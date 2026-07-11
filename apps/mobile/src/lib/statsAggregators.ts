@@ -64,18 +64,23 @@ export function completionsByDay(
 }
 
 /**
- * Right-aligned trailing rolling average. window=1 returns the input.
- * For positions where fewer than `window` samples exist, averages only
- * what's available (so the line starts immediately, not after a gap).
+ * Centered rolling average (radius = floor(window/2)). window=1 returns the
+ * input. Unlike a trailing average, it introduces no directional lag — a real
+ * peak stays plotted on its own day rather than drifting later — so the
+ * smoothed hero line reads calm *and* honest. Edges average only the samples
+ * that exist, so the line starts immediately rather than after a gap.
  */
 export function rollingAverage(series: DayPoint[], window: number): number[] {
   if (window <= 1) return series.map((p) => p.count);
+  const radius = Math.floor(window / 2);
+  const n = series.length;
   const out: number[] = [];
-  for (let i = 0; i < series.length; i++) {
-    const start = Math.max(0, i - window + 1);
+  for (let i = 0; i < n; i++) {
+    const start = Math.max(0, i - radius);
+    const end = Math.min(n - 1, i + radius);
     let sum = 0;
-    for (let j = start; j <= i; j++) sum += series[j].count;
-    out.push(sum / (i - start + 1));
+    for (let j = start; j <= end; j++) sum += series[j].count;
+    out.push(sum / (end - start + 1));
   }
   return out;
 }

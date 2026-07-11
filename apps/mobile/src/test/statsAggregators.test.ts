@@ -87,9 +87,21 @@ describe("rollingAverage", () => {
     expect(rollingAverage(series, 1)).toEqual([1, 3, 5]);
   });
 
-  it("averages over a trailing window, partial at the start", () => {
+  it("averages over a centered window, partial at both edges", () => {
+    // window=3 → radius 1: each point is the mean of itself and its neighbours,
+    // so the smooth has no directional lag (a peak stays on its real day).
     const series = [0, 2, 4, 6].map((count, i) => ({ date: `d${i}`, count }));
-    expect(rollingAverage(series, 3)).toEqual([0, 1, 2, 4]);
+    // i0:[0,2]/2=1  i1:[0,2,4]/3=2  i2:[2,4,6]/3=4  i3:[4,6]/2=5
+    expect(rollingAverage(series, 3)).toEqual([1, 2, 4, 5]);
+  });
+
+  it("is symmetric — a centered spike smooths without directional lag", () => {
+    const series = [0, 0, 9, 0, 0].map((count, i) => ({ date: `d${i}`, count }));
+    const avg = rollingAverage(series, 3);
+    // A trailing average would drift the spike's weight to the right, breaking
+    // this mirror symmetry; a centered one keeps it balanced on the real day.
+    expect(avg).toEqual([...avg].reverse());
+    expect(Math.max(...avg)).toBe(avg[2]);
   });
 });
 
