@@ -16,10 +16,25 @@
 
 export type Pt = { x: number; y: number };
 
-const sgn = (x: number): number => (x < 0 ? -1 : 1);
+/**
+ * Everything here carries `'worklet'` so the reanimated Babel plugin compiles a
+ * UI-thread copy. The hero's range morph rebuilds its `d` every frame from
+ * interpolated points, which has to happen on the UI thread — a JS round-trip
+ * per frame would drop the animation to render speed. A worklet may only call
+ * other worklets, so the whole call graph (`sgn` → `monotoneTangents` →
+ * `monotoneLinePath`, plus `r` and `areaPath`) is marked, not just the entry
+ * point. The directive is inert when these are called from JS, so useMemo and
+ * the unit tests keep working unchanged.
+ */
+
+const sgn = (x: number): number => {
+  "worklet";
+  return x < 0 ? -1 : 1;
+};
 
 /** Fritsch–Carlson / Steffen monotone tangents. Never overshoots. */
 function monotoneTangents(pts: Pt[]): number[] {
+  "worklet";
   const n = pts.length;
   const h: number[] = [];
   const s: number[] = [];
@@ -50,6 +65,7 @@ function monotoneTangents(pts: Pt[]): number[] {
  * an empty `d` for 1–2 points.
  */
 export function monotoneLinePath(pts: Pt[]): string {
+  "worklet";
   if (pts.length === 0) return "";
   if (pts.length === 1) return `M${r(pts[0].x)},${r(pts[0].y)}`;
   if (pts.length === 2) return `M${r(pts[0].x)},${r(pts[0].y)}L${r(pts[1].x)},${r(pts[1].y)}`;
@@ -76,6 +92,7 @@ export function areaPath(
   lastX: number,
   baselineY: number,
 ): string {
+  "worklet";
   if (!line) return "";
   return `${line}L${r(lastX)},${r(baselineY)}L${r(firstX)},${r(baselineY)}Z`;
 }
@@ -136,7 +153,86 @@ export function nearestIndex(xs: number[], x: number): number {
   return lo;
 }
 
+/** Interpolate two point-sets of equal length. Runs per frame on the UI thread. */
+export function lerpPts(
+  fx: number[],
+  fy: number[],
+  tx: number[],
+  ty: number[],
+  t: number,
+): Pt[] {
+  "worklet";
+  const pts: Pt[] = [];
+  for (let i = 0; i < tx.length; i++) {
+    pts.push({ x: fx[i] + (tx[i] - fx[i]) * t, y: fy[i] + (ty[i] - fy[i]) * t });
+  }
+  return pts;
+}
+
+export type MorphBounds = {
+  width: number;
+  height: number;
+  padTop: number;
+  padBottom: number;
+};
+
+/**
+ * Describe the same days twice — once per range window — so switching range can
+ * be a single interpolation instead of a crossfade.
+ *
+ * Both windows end today, so today is the anchor: pin it to the right edge and a
+ * wider window is literally a zoom-out. Going 30d → 90d the shared 30 days
+ * compress into the right third while the earlier 60 arrive from off-screen
+ * left, which is what actually happened — the window widened, the days did not
+ * move. A crossfade says none of that; it erases one line and draws another.
+ *
+ * Two rules keep it smooth rather than rough:
+ *
+ *  1. **The point count never changes.** Both states are laid out over the same
+ *     union of days (the longer window contains the shorter — they share an end
+ *     date), so the monotone spline's tangents evolve continuously instead of
+ *     being recomputed on a shrinking point set, which pops. Days outside a
+ *     window get negative x — off-screen by construction, so an Svg's own bounds
+ *     clip them and no clip path is needed.
+ *  2. **Every point keeps a real height in both states**, so incoming days slide
+ *     in already-shaped instead of inflating up from the baseline.
+ *
+ * What is left is a uniform-step polyline whose step shrinks from width/(m-1) to
+ * width/(n-1) with today pinned — a pure per-point lerp of x and y.
+ */
+export function anchoredMorph(
+  prev: Array<{ count: number }>,
+  next: Array<{ count: number }>,
+  { width, height, padTop, padBottom }: MorphBounds,
+) {
+  const union = prev.length >= next.length ? prev : next;
+  const n = union.length;
+  const innerH = Math.max(1, height - padTop - padBottom);
+
+  const state = (s: Array<{ count: number }>) => {
+    const m = s.length;
+    let max = 1;
+    for (const p of s) max = Math.max(max, p.count);
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const dayOffset = n - 1 - i;
+      xs.push(m > 1 ? width - (dayOffset / (m - 1)) * width : width / 2);
+      // Inside this window use its own (differently smoothed) value; outside it
+      // fall back to the union's, which only ever renders off-screen.
+      const v = dayOffset <= m - 1 ? s[m - 1 - dayOffset].count : union[i].count;
+      ys.push(padTop + innerH - (v / max) * (innerH - 2));
+    }
+    return { xs, ys };
+  };
+
+  const a = state(prev);
+  const b = state(next);
+  return { fromXs: a.xs, fromYs: a.ys, toXs: b.xs, toYs: b.ys };
+}
+
 /** Round to 2dp to keep `d` strings compact without visible precision loss. */
 function r(v: number): number {
+  "worklet";
   return Math.round(v * 100) / 100;
 }

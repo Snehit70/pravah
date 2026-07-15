@@ -43,7 +43,9 @@ import Svg, { Circle, Defs, G, Line, LinearGradient, Path, Stop } from "react-na
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { haptic } from "../lib/haptic";
 import {
+  anchoredMorph,
   areaPath,
+  lerpPts,
   monotoneLinePath,
   nearestIndex,
   pathLengthUpperBound,
@@ -80,6 +82,7 @@ type Props = {
 const PAD_TOP = 10;
 const PAD_BOTTOM = 6;
 const READOUT_W = 104;
+
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
@@ -152,45 +155,82 @@ export function HeroVelocityChart({
     };
   }, [series]);
 
-  // ── Entrance draw-on + range crossfade ──────────────────────────────────
+  // ── Entrance draw-on + anchored range morph ─────────────────────────────
   const progress = useSharedValue(reducedMotion ? 1 : 0);
-  const fade = useSharedValue(0);
-  const prevGeomRef = useRef(geom);
-  const prevGeom = prevGeomRef.current;
-  const isMorphing = !reducedMotion && !!prevGeom.line && prevGeom.line !== geom.line;
+  const morph = useSharedValue(1);
+  const fromXs = useSharedValue<number[]>([]);
+  const fromYs = useSharedValue<number[]>([]);
+  const toXs = useSharedValue<number[]>([]);
+  const toYs = useSharedValue<number[]>([]);
+  const prevRef = useRef<{ series: DayPoint[]; width: number } | null>(null);
 
   useEffect(() => {
-    prevGeomRef.current = geom;
-  });
+    const prev = prevRef.current;
+    prevRef.current = { series, width };
 
-  useEffect(() => {
-    if (reducedMotion) {
+    if (reducedMotion || width === 0 || series.length === 0) {
       progress.value = 1;
-      fade.value = 0;
+      morph.value = 1;
       return;
     }
-    if (isMorphing) {
-      fade.value = 1;
-      fade.value = withTiming(0, {
-        duration: motion.duration.slow,
-        easing: Easing.out(Easing.quad),
+
+    // A different day count at the same width is a range switch. Anything else
+    // (first mount, a task completing) is a data refresh, which draws on.
+    const rangeChanged =
+      !!prev &&
+      prev.width === width &&
+      prev.series.length > 1 &&
+      prev.series.length !== series.length;
+
+    if (rangeChanged && prev) {
+      const m = anchoredMorph(prev.series, series, {
+        width,
+        height,
+        padTop: PAD_TOP,
+        padBottom: PAD_BOTTOM,
       });
+      fromXs.value = m.fromXs;
+      fromYs.value = m.fromYs;
+      toXs.value = m.toXs;
+      toYs.value = m.toYs;
+      // The line is already on screen. Reshape it — never erase and redraw.
+      progress.value = 1;
+      morph.value = 0;
+      morph.value = withTiming(1, {
+        duration: motion.duration.slow,
+        easing: Easing.inOut(Easing.quad),
+      });
+      return;
     }
+
+    morph.value = 1;
     progress.value = 0;
     progress.value = withTiming(1, {
       duration: motion.duration.deliberate,
       easing: Easing.out(Easing.cubic),
     });
-  }, [geom.line, reducedMotion, progress, fade]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [series, width, height, reducedMotion]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const lineProps = useAnimatedProps(() => ({
-    strokeDashoffset: geom.length * (1 - progress.value),
-  }));
-  const areaProps = useAnimatedProps(() => ({ fillOpacity: progress.value }));
+  const lineProps = useAnimatedProps(() => {
+    if (morph.value >= 1 || toXs.value.length === 0) {
+      return { d: geom.line, strokeDashoffset: geom.length * (1 - progress.value) };
+    }
+    const pts = lerpPts(fromXs.value, fromYs.value, toXs.value, toYs.value, morph.value);
+    return { d: monotoneLinePath(pts), strokeDashoffset: 0 };
+  });
+  const areaProps = useAnimatedProps(() => {
+    if (morph.value >= 1 || toXs.value.length === 0) {
+      return { d: geom.area, fillOpacity: progress.value };
+    }
+    const pts = lerpPts(fromXs.value, fromYs.value, toXs.value, toYs.value, morph.value);
+    return {
+      d: areaPath(monotoneLinePath(pts), pts[0].x, pts[pts.length - 1].x, height),
+      fillOpacity: 1,
+    };
+  });
   const riseProps = useAnimatedProps(() => ({
     transform: [{ translateY: 12 * (1 - progress.value) }],
   }));
-  const ghostProps = useAnimatedProps(() => ({ opacity: fade.value }));
 
   // ── Scrub ───────────────────────────────────────────────────────────────
   const cursorX = useSharedValue(0);
@@ -300,34 +340,26 @@ export function HeroVelocityChart({
                   </LinearGradient>
                 </Defs>
 
-                {/* Outgoing range, frozen and fading out under the new one. */}
-                {isMorphing ? (
-                  <AnimatedG animatedProps={ghostProps}>
-                    <Path d={prevGeom.area} fill="url(#heroArea)" />
-                    <Path
-                      d={prevGeom.line}
+                {/* An empty range has no trend to draw. Plotting zeros welds a
+                    flat line onto the baseline rule, which reads as a broken
+                    chart rather than as "nothing happened" — the empty message
+                    below says that better. */}
+                {hasData ? (
+                  <>
+                    <AnimatedG animatedProps={riseProps}>
+                      <AnimatedPath fill="url(#heroArea)" animatedProps={areaProps} />
+                    </AnimatedG>
+                    <AnimatedPath
                       stroke={chart.line}
                       strokeWidth={2}
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       fill="none"
+                      strokeDasharray={geom.length}
+                      animatedProps={lineProps}
                     />
-                  </AnimatedG>
+                  </>
                 ) : null}
-
-                <AnimatedG animatedProps={riseProps}>
-                  <AnimatedPath d={geom.area} fill="url(#heroArea)" animatedProps={areaProps} />
-                </AnimatedG>
-                <AnimatedPath
-                  d={geom.line}
-                  stroke={chart.line}
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  fill="none"
-                  strokeDasharray={geom.length}
-                  animatedProps={lineProps}
-                />
 
                 {/* Dotted baseline under the trend. */}
                 <Line
