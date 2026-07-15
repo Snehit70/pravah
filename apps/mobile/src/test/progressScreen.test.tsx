@@ -6,9 +6,28 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
+  // react-native-web maps accessibility* onto ARIA. Model that here: without it
+  // the seam silently swallows every View/Text label, so a chart's
+  // accessibilityLabel — often the only text describing it — is untestable.
+  const ROLE: Record<string, string> = { image: "img", header: "heading" };
   const passthrough = (tag: string) => ({ children, ...rest }: AnyProps) => {
-    const { style: _, ...safe } = rest;
-    return React.createElement(tag, safe, children);
+    const {
+      style: _,
+      accessible: __,
+      importantForAccessibility: ___,
+      accessibilityLabel,
+      accessibilityRole,
+      ...safe
+    } = rest as AnyProps & { accessibilityLabel?: string; accessibilityRole?: string };
+    return React.createElement(
+      tag,
+      {
+        ...safe,
+        ...(accessibilityLabel ? { "aria-label": accessibilityLabel } : {}),
+        ...(accessibilityRole ? { role: ROLE[accessibilityRole] ?? accessibilityRole } : {}),
+      },
+      children,
+    );
   };
   const View = passthrough("div");
   const Text = passthrough("span");
@@ -227,13 +246,23 @@ describe("Progress screen", () => {
     fireEvent.click(screen.getByRole("button", { name: /show last 7 days/i }));
     // The window is a rolling N days ending today, so the copy says so — it
     // used to claim "this week" while plotting the last 7 days.
-    expect(screen.getByText("last 7 days")).toBeTruthy();
+    expect(screen.getByText("vs previous 7 days")).toBeTruthy();
   });
 
   it("names the momentum window as rolling, never as a calendar period", () => {
     renderScreen(completed);
-    expect(screen.getByText("last 30 days")).toBeTruthy();
+    expect(screen.getByText("vs previous 30 days")).toBeTruthy();
     expect(screen.queryByText("this month")).toBeNull();
+  });
+
+  it("states the window for a screen reader, which cannot see the range pill", () => {
+    // The visible eyebrow was dropped as the third restatement of "30 days" in
+    // one card. Sighted users read the window off the pill; the hero's
+    // accessibility summary is the only place left that spells it out.
+    renderScreen(completed);
+    expect(screen.getByLabelText(/tasks completed last 30 days/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /show last 7 days/i }));
+    expect(screen.getByLabelText(/tasks completed last 7 days/i)).toBeTruthy();
   });
 
   it("toggles the rhythm metric between weekday and hour", () => {

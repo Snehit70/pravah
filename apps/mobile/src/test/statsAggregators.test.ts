@@ -87,12 +87,19 @@ describe("rollingAverage", () => {
     expect(rollingAverage(series, 1)).toEqual([1, 3, 5]);
   });
 
-  it("averages over a centered window, partial at both edges", () => {
-    // window=3 → radius 1: each point is the mean of itself and its neighbours,
-    // so the smooth has no directional lag (a peak stays on its real day).
+  it("weights the centre day double its neighbours, partial at both edges", () => {
+    // window=3 → radius 1 → triangular weights [1,2,1]: the centre day counts
+    // twice, so the smooth has no directional lag (a peak stays on its real day)
+    // and no boxcar shelf as a busy day enters or leaves the window.
     const series = [0, 2, 4, 6].map((count, i) => ({ date: `d${i}`, count }));
-    // i0:[0,2]/2=1  i1:[0,2,4]/3=2  i2:[2,4,6]/3=4  i3:[4,6]/2=5
-    expect(rollingAverage(series, 3)).toEqual([1, 2, 4, 5]);
+    // i0:(0*2+2*1)/3      i1:(0*1+2*2+4*1)/4=2
+    // i2:(2*1+4*2+6*1)/4=4  i3:(4*1+6*2)/3
+    expect(rollingAverage(series, 3)).toEqual([2 / 3, 2, 4, 16 / 3]);
+  });
+
+  it("leaves a flat run flat — weighting never invents a slope", () => {
+    const series = [3, 3, 3, 3].map((count, i) => ({ date: `d${i}`, count }));
+    expect(rollingAverage(series, 3)).toEqual([3, 3, 3, 3]);
   });
 
   it("is symmetric — a centered spike smooths without directional lag", () => {

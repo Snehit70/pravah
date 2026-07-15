@@ -126,7 +126,8 @@ export function InsightsScreen({
   // sum — only the line's shape is smoothed.
   const heroSeries = useMemo(() => {
     // Odd, centered windows (radius 1/2/3): calmer at wider ranges without the
-    // lag a trailing average would add. 30d was the busy one → radius 2.
+    // lag a trailing average would add. The kernel is triangular, so a wider
+    // range buys smoothness without the shelves a boxcar leaves behind.
     const w = range === "7d" ? 3 : range === "30d" ? 5 : 7;
     const avg = rollingAverage(series, w);
     return series.map((p, i) => ({ date: p.date, count: avg[i] }));

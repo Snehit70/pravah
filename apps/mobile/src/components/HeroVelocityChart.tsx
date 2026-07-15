@@ -265,15 +265,15 @@ export function HeroVelocityChart({
       accessibilityRole="image"
       accessibilityLabel={accessibilitySummary(total, periodLabel, delta)}
     >
-      <View style={styles.summaryRow}>
-        <View style={styles.summaryLeft}>
-          <Text style={styles.headline}>
-            {total}
-            <Text style={styles.unit}> tasks completed</Text>
-          </Text>
-          <DeltaChip delta={delta} comparisonLabel={comparisonLabel} />
-        </View>
-        <Text style={styles.periodEyebrow}>{periodLabel}</Text>
+      {/* No period eyebrow here: the range pill above the card already sets the
+          window, and the delta caption names it again. `periodLabel` still
+          feeds the accessibility summary, where there is no pill to read. */}
+      <View style={styles.summaryLeft}>
+        <Text style={styles.headline}>
+          {total}
+          <Text style={styles.unit}> tasks completed</Text>
+        </Text>
+        <DeltaChip delta={delta} comparisonLabel={comparisonLabel} />
       </View>
 
       <GestureDetector gesture={pan}>
@@ -450,12 +450,6 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     ...shadow.sm,
   },
-  summaryRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: spacing.md,
-  },
   summaryLeft: {
     flexShrink: 1,
   },
@@ -473,11 +467,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: colors.textPrimary,
     letterSpacing: 0,
-  },
-  periodEyebrow: {
-    ...typography.micro,
-    color: colors.textMuted,
-    paddingTop: spacing.sm,
   },
   deltaChip: {
     flexDirection: "row",
