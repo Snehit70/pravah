@@ -26,6 +26,10 @@
  * Bars are reanimated Views growing from the baseline off one shared value; the
  * curve is an SVG monotone line (same geometry as the hero). Both degrade to a
  * calm low-data line when the sample is too thin.
+ *
+ * Every bar is the same colour — see `chart.bar`. Height already encodes which
+ * day won, so the peak is called out with a direct count label rather than a
+ * tint.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -306,14 +310,7 @@ function WeekdayBar({
     <View style={styles.barSlot}>
       {isPeak ? <Text style={styles.barPeakLabel}>{count}</Text> : null}
       <Animated.View
-        style={[
-          styles.barFill,
-          // Peak at full strength; the rest stay clearly legible (0.5) so the
-          // whole distribution reads, not just the winner. No track behind
-          // them — an empty slot should read as zero, not as a container.
-          { backgroundColor: chart.bar, opacity: isPeak ? 1 : 0.5 },
-          fillStyle,
-        ]}
+        style={[styles.barFill, fillStyle]}
       />
     </View>
   );
@@ -407,7 +404,7 @@ function HourChart({
         {shape === "line" ? (
           <HourCurve counts={counts} width={width} />
         ) : (
-          <HourBars counts={counts} peak={peakHour} />
+          <HourBars counts={counts} />
         )}
         <View style={[styles.hourTicks, { width }]}>
           {HOUR_TICKS.map(({ hour, label: tick }) => (
@@ -469,7 +466,7 @@ function HourCurve({ counts, width }: { counts: number[]; width: number }) {
   );
 }
 
-function HourBars({ counts, peak }: { counts: number[]; peak: number }) {
+function HourBars({ counts }: { counts: number[] }) {
   const max = Math.max(1, ...counts);
   return (
     <View style={[styles.hourBarsRow, { height: CHART_H }]}>
@@ -478,11 +475,7 @@ function HourBars({ counts, peak }: { counts: number[]; peak: number }) {
           key={h}
           style={[
             styles.hourBar,
-            {
-              height: Math.max(c > 0 ? 3 : 0, (CHART_H - 8) * (c / max)),
-              backgroundColor: chart.bar,
-              opacity: h === peak && c > 0 ? 1 : 0.5,
-            },
+            { height: Math.max(c > 0 ? 3 : 0, (CHART_H - 8) * (c / max)) },
           ]}
         />
       ))}
@@ -561,7 +554,11 @@ const styles = StyleSheet.create({
   },
   barFill: {
     width: "100%",
-    borderRadius: radii.md,
+    backgroundColor: chart.bar,
+    // Round the data end only — a bar is anchored to its baseline, and rounding
+    // the foot lifts it off the axis so it reads as a floating lozenge.
+    borderTopLeftRadius: radii.sm,
+    borderTopRightRadius: radii.sm,
   },
   barPeakLabel: {
     ...typography.numeric,
@@ -575,7 +572,9 @@ const styles = StyleSheet.create({
   },
   hourBar: {
     flex: 1,
-    borderRadius: 2,
+    backgroundColor: chart.bar,
+    borderTopLeftRadius: 2,
+    borderTopRightRadius: 2,
   },
   labelsRow: {
     flexDirection: "row",

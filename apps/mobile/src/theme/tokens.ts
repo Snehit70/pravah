@@ -246,18 +246,33 @@ export const typography = {
  * `GridBackground` already use the split form — these tokens make it the rule.
  *
  * ── Heatmap ramp ────────────────────────────────────────────────────────
- * A validated single-hue ordinal scale in the app's own `success` green
- * (hue 141°→151°, monotone lightness 0.41 → 0.27 → 0.16 → 0.08, each step gap
- * ≥ 1.4×). The lightest bucket clears 2:1 on the warm `bg`; the darkest clears
- * 7:1. Green rather than the old tan→brown→black ramp: that one ran the
- * intensity scale straight into the ink used for text and read as dirt. The
- * empty cell stays warm, which is what keeps the grid tied to the page.
+ * A validated single-hue ordinal scale in copper (hue 52°, chroma held at
+ * 0.115, contrast 2.07 / 3.11 / 4.62 / 6.63 on `bg`).
+ *
+ * Two earlier ramps failed here, and both failures are measurable:
+ *
+ *  - tan→brown→black: bucket 1 missed the 2:1 floor at 1.79:1, and bucket 4 sat
+ *    1.48:1 from `textPrimary` — the darkest cell *was* the ink used for text.
+ *  - `success` green: passed every check, but imports a hue the warm palette
+ *    doesn't own.
+ *
+ * The trap is that every warm hue here is already reserved (`warning`,
+ * `deadline`, `error`, `priorityP1`) and the accent is ink, which leaves only
+ * neutral tan — and neutral tan at full intensity IS text ink. Copper escapes by
+ * holding chroma instead of darkening: mud is what a warm hue becomes when you
+ * take its chroma away, so keep C ≥ 0.10 on every bucket. The darkest step stays
+ * 2.36:1 off `textPrimary`, and copper's nearest reserved neighbour
+ * (`priorityP1`, ΔE 4.6) never renders on the Progress tab. `warning` and
+ * `error` do — they live in Goals below the grid — so a ramp must stay off those
+ * two; that is what ruled out amber (ΔE 3.7 from `warning`).
+ *
+ * The empty cell stays warm, which is what keeps the grid tied to the page.
  */
 export const chart = {
   /** Empty/no-completion heatmap cell — faint warm track, distinct from bucket 1. */
   heatmapEmpty: "rgba(78,62,43,0.07)",
-  /** 4-bucket green intensity ramp, light → dark. Monotone ordinal ramp. */
-  heatmapRamp: ["#82b795", "#559c74", "#2f7f56", "#1a5c3c"] as const,
+  /** 4-bucket copper intensity ramp, light → dark. Monotone ordinal ramp. */
+  heatmapRamp: ["#e69867", "#c27746", "#a35a28", "#844417"] as const,
   /** Hero line + rhythm bars — the single-series mark. */
   line: colors.accent,
   /** Sparkline area fill; the line carries the contrast. */
@@ -271,9 +286,15 @@ export const chart = {
   heroAreaColor: colors.accent,
   heroAreaTopOpacity: 0.16,
   heroAreaBottomOpacity: 0,
-  /** Rhythm bars: active vs. the empty-bucket track. */
+  /**
+   * Rhythm bars — one mark, one colour. Every bar wears this, including the
+   * peak: bar height already says which day won, so tinting the peak spends the
+   * colour channel re-encoding what length shows. The peak is called out with a
+   * direct count label instead. (The previous `opacity: 0.5` on the non-peak
+   * bars composited ink over cream into a dead grey — an alpha channel making a
+   * colour decision, the same mistake as an rgba() gradient stop.)
+   */
   bar: colors.accent,
-  barTrack: "rgba(43,32,22,0.12)",
   /** Recessive gridlines / baselines. */
   grid: colors.borderSubtle,
   /** Scrub crosshair + focus dot. */
