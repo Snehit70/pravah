@@ -15,8 +15,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Circle } from "react-native-svg";
 
+import NavGoalsAsset from "../assets/icons/nav-goals.svg";
 import { haptic } from "../lib/haptic";
 import { humanDate } from "../lib/dates";
 import Animated, {
@@ -35,7 +35,6 @@ import { useConfirm } from "../hooks/useConfirm";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import type { MobileTask } from "../components/TaskCard";
 import { isTaskCompleted } from "../lib/taskState";
-import { ChevronRightIcon } from "../components/UiIcons";
 
 type DeadlineStatus = "overdue" | "soon" | "normal";
 function deadlineStatus(iso: string): DeadlineStatus {
@@ -58,39 +57,31 @@ const PRIORITY_LABEL: Record<"p1" | "p2" | "p3", { label: string; color: string 
   p3: { label: "P3", color: colors.priorityP3 },
 };
 
-function GoalTargetIcon({
+function GoalIcon({
   color = colors.accent,
   size = 22,
 }: {
   color?: string;
   size?: number;
 }) {
-  return (
-    <Svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <Circle cx={12} cy={12} r={7.25} />
-      <Circle cx={12} cy={12} r={3.75} />
-      <Circle cx={12} cy={12} r={1.35} fill={color} stroke="none" />
-    </Svg>
-  );
+  return <NavGoalsAsset color={color} width={size} height={size} />;
 }
 
+/**
+ * `thin` draws the 2px rule the list card sits the title on — there the bar is
+ * structure (the title's underline), not a widget. The detail sheet keeps the
+ * 4px track, where it's a component in its own right.
+ */
 function GoalProgressBar({
   ratio,
   isComplete,
   isLoading,
+  thin,
 }: {
   ratio: number;
   isComplete: boolean;
   isLoading?: boolean;
+  thin?: boolean;
 }) {
   const reducedMotion = useReducedMotion();
   const progress = useSharedValue(0);
@@ -109,7 +100,7 @@ function GoalProgressBar({
   }));
   return (
     <View
-      style={styles.progressTrack}
+      style={[styles.progressTrack, thin && styles.progressTrackThin]}
       accessible
       accessibilityRole="progressbar"
       accessibilityValue={
@@ -550,7 +541,7 @@ export function GoalsScreen({
   const emptyBlock = (
     <Animated.View entering={reducedMotion ? undefined : FadeIn.duration(400)} style={styles.emptyWrap}>
       <View style={styles.emptyIconWrap}>
-        <GoalTargetIcon color={colors.textSecondary} size={28} />
+        <GoalIcon color={colors.textSecondary} size={28} />
       </View>
       <Text style={styles.emptyTitle}>No goals yet.</Text>
       <Text style={styles.emptyText}>Choose one outcome you want to move.</Text>
@@ -617,22 +608,17 @@ export function GoalsScreen({
         ListFooterComponent={sortedGoals.length > 0 ? footerHint : null}
         renderItem={({ item, index }) => {
           const progress = progressByGoal.get(item.id) ?? { total: 0, done: 0, ratio: 0 };
-          const linkedTasks = tasksByGoal.get(item.id) ?? [];
-          const nextLinkedTask = [...linkedTasks]
-            .filter((task) => !isTaskCompleted(task))
-            .sort((a, b) => {
-              const aHasDeadline = typeof a.deadline === "string";
-              const bHasDeadline = typeof b.deadline === "string";
-              if (aHasDeadline && bHasDeadline && a.deadline !== b.deadline) {
-                return a.deadline!.localeCompare(b.deadline!);
-              }
-              if (aHasDeadline !== bHasDeadline) return aHasDeadline ? -1 : 1;
-              if (a.position !== b.position) return a.position - b.position;
-              return a.createdAt - b.createdAt;
-            })[0];
           const hasTasks = progress.total > 0;
           const showLinkedLoading = isTaskDataLoading && !hasTasks;
           const isComplete = hasTasks && progress.done === progress.total;
+          const priority = item.priority ? PRIORITY_LABEL[item.priority] : null;
+          const countLabel = showLinkedLoading
+            ? "Loading…"
+            : isComplete
+            ? "All done"
+            : hasTasks
+            ? `${progress.done} of ${progress.total} done`
+            : "No tasks linked";
           return (
             <Animated.View
               entering={
@@ -643,89 +629,65 @@ export function GoalsScreen({
                 <Pressable
                   onPress={() => { setSelectedGoalId(item.id); haptic.light(); }}
                   onLongPress={() => void handleDelete(item)}
-                  hitSlop={8}
                   accessibilityRole="button"
                   // Tap opens the detail, which carries the visible delete
                   // action; long-press stays as a power-user shortcut.
-                  accessibilityLabel={`Goal: ${item.text}. Open goal details.`}
-                  style={({ pressed }) => [styles.goalTap, pressed && { opacity: 0.85 }]}
+                  accessibilityLabel={`Goal: ${item.text}. ${
+                    priority ? `Priority ${priority.label}. ` : ""
+                  }${countLabel}. Open goal details.`}
+                  style={({ pressed }) => [styles.goalRow, pressed && { opacity: 0.85 }]}
                 >
-                  <View style={styles.goalHead}>
-                    <View style={styles.goalIdentity}>
-                      <View style={styles.goalIconWrap}>
-                        <GoalTargetIcon color={isComplete ? colors.success : colors.accent} size={20} />
-                      </View>
-                      <Text style={styles.goalText} numberOfLines={2}>{item.text}</Text>
-                    </View>
-                    <Text style={styles.goalCount}>
-                      {showLinkedLoading ? "…" : hasTasks ? `${progress.done}/${progress.total}` : "—"}
-                    </Text>
+                  <View style={styles.goalTile}>
+                    <GoalIcon color={isComplete ? colors.success : colors.accent} size={19} />
                   </View>
-
-                  {item.description ? (
-                    <Text style={styles.goalDesc} numberOfLines={2}>{item.description}</Text>
-                  ) : null}
-
-                  <GoalProgressBar
-                    ratio={progress.ratio}
-                    isComplete={isComplete}
-                    isLoading={showLinkedLoading}
-                  />
-
-                  {nextLinkedTask ? (
-                    <View style={styles.nextTaskPreview}>
-                      <Text style={styles.nextTaskKicker}>Next task</Text>
-                      <Text style={styles.nextTaskTitle} numberOfLines={1}>
-                        {nextLinkedTask.title}
-                      </Text>
+                  <View style={styles.goalBody}>
+                    {/* The title line carries nothing but the title, so titles
+                        stay aligned down a long list. */}
+                    <View style={styles.goalTitleLine}>
+                      <Text style={styles.goalText} numberOfLines={1}>{item.text}</Text>
                     </View>
-                  ) : null}
 
-                  <View style={styles.goalMetaRow}>
-                    <View style={styles.goalMetaLeft}>
-                      {item.priority ? (
-                        <View style={styles.priorityChip}>
-                          <View style={[styles.priorityDot, { backgroundColor: PRIORITY_LABEL[item.priority].color }]} />
-                          <Text style={styles.priorityText}>{PRIORITY_LABEL[item.priority].label}</Text>
-                        </View>
+                    <GoalProgressBar
+                      ratio={progress.ratio}
+                      isComplete={isComplete}
+                      isLoading={showLinkedLoading}
+                      thin
+                    />
+
+                    <View style={styles.goalMetaLine}>
+                      <View style={styles.goalMetaLeft}>
+                        {/* Priority reads twice — hue and the letters — so it
+                            survives greyscale and a deuteranope's P1/P2. */}
+                        {priority ? (
+                          <>
+                            <View style={[styles.priorityDot, { backgroundColor: priority.color }]} />
+                            <Text style={[styles.priorityText, { color: priority.color }]}>
+                              {priority.label}
+                            </Text>
+                            <Text style={styles.metaSep}>·</Text>
+                          </>
+                        ) : null}
+                        <Text
+                          style={[styles.goalMeta, isComplete && styles.goalMetaComplete]}
+                          numberOfLines={1}
+                        >
+                          {countLabel}
+                        </Text>
+                      </View>
+                      {onCreateTaskForGoal ? (
+                        <Pressable
+                          onPress={() => onCreateTaskForGoal(item.id)}
+                          hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Plan next task for ${item.text}`}
+                          style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+                        >
+                          <Text style={styles.planNextActionText}>Plan next task</Text>
+                        </Pressable>
                       ) : null}
-                      {item.deadline ? (() => {
-                        const ds = deadlineStatus(item.deadline);
-                        const dlColor = ds === "overdue" ? colors.error : ds === "soon" ? colors.warning : undefined;
-                        return (
-                          <Text style={[styles.goalMeta, dlColor ? { color: dlColor } : null]}>
-                            {ds === "overdue" ? `Overdue · ${humanDate(item.deadline)}` : humanDate(item.deadline)}
-                          </Text>
-                        );
-                      })() : null}
-                      <Text style={styles.goalMeta}>
-                        {showLinkedLoading
-                          ? "Loading linked tasks..."
-                          : hasTasks
-                          ? isComplete
-                            ? "All done"
-                            : "In progress"
-                          : "No tasks linked"}
-                      </Text>
                     </View>
-                    <ChevronRightIcon color={colors.textMuted} size={16} />
                   </View>
                 </Pressable>
-                {onCreateTaskForGoal ? (
-                  <View style={styles.goalActionRow}>
-                    <Pressable
-                      onPress={() => onCreateTaskForGoal(item.id)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Add a Task to ${item.text}`}
-                      style={({ pressed }) => [
-                        styles.planNextAction,
-                        pressed && { opacity: 0.7 },
-                      ]}
-                    >
-                      <Text style={styles.planNextActionText}>Plan next task</Text>
-                    </Pressable>
-                  </View>
-                ) : null}
               </View>
             </Animated.View>
           );
@@ -785,73 +747,56 @@ const styles = StyleSheet.create({
   goalCardComplete: {
     borderColor: colors.success,
   },
-  goalTap: {
+  goalRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm + 2,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    gap: spacing.sm,
+    paddingVertical: spacing.sm + 2,
   },
-  goalActionRow: {
-    minHeight: 48,
-    paddingHorizontal: spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderSubtle,
-    alignItems: "flex-end",
-    justifyContent: "center",
-  },
-  planNextAction: {
-    minHeight: 44,
-    paddingHorizontal: spacing.sm,
+  // Matches the settings category tile (SettingsSheet categoryIconWrap).
+  goalTile: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  goalBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  goalTitleLine: {
+    paddingBottom: 7,
+  },
+  goalText: {
+    ...typography.bodyLg,
+    color: colors.textPrimary,
+  },
+  goalMetaLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    paddingTop: 6,
   },
   planNextActionText: {
     ...typography.bodyMd,
     color: colors.accent,
     fontFamily: typography.title.fontFamily,
   },
-  goalHead: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: spacing.sm,
-  },
-  goalIdentity: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.sm,
-  },
-  goalIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: radii.full,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.bgSurface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-    marginTop: 1,
-  },
-  goalText: {
-    flex: 1,
-    ...typography.bodyLg,
-    color: colors.textPrimary,
-  },
-  goalCount: {
-    ...typography.micro,
-    color: colors.textSecondary,
-    fontWeight: "600",
-    fontVariant: ["tabular-nums"],
-  },
-  goalDesc: {
-    ...typography.bodyMd,
-    color: colors.textSecondary,
-  },
   progressTrack: {
     height: 4,
     borderRadius: 2,
     backgroundColor: colors.bgCardGlass,
     overflow: "hidden",
+  },
+  progressTrackThin: {
+    height: 2,
+    borderRadius: 1,
   },
   progressFill: {
     height: "100%",
@@ -863,42 +808,11 @@ const styles = StyleSheet.create({
   progressFillLoading: {
     opacity: 0.45,
   },
-  nextTaskPreview: {
-    gap: 2,
-    padding: spacing.sm,
-    borderRadius: radii.md,
-    backgroundColor: colors.bgSurface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-  },
-  nextTaskKicker: {
-    fontFamily: fonts.sans,
-    fontSize: 12,
-    lineHeight: 16,
-    color: colors.textMuted,
-  },
-  nextTaskTitle: {
-    ...typography.bodyMd,
-    color: colors.textPrimary,
-  },
-  goalMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.sm,
-  },
   goalMetaLeft: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
-    columnGap: spacing.sm,
-    rowGap: spacing.xs / 2,
-  },
-  priorityChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
+    gap: spacing.xs + 2,
   },
   priorityDot: {
     width: 6,
@@ -907,14 +821,23 @@ const styles = StyleSheet.create({
   },
   priorityText: {
     ...typography.micro,
-    color: colors.textSecondary,
-    fontWeight: "600",
+    fontWeight: "700",
   },
-  goalMeta: {
+  metaSep: {
     fontFamily: fonts.sans,
     fontSize: 12,
     lineHeight: 16,
     color: colors.textMuted,
+  },
+  goalMeta: {
+    flexShrink: 1,
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.textMuted,
+  },
+  goalMetaComplete: {
+    color: colors.success,
   },
   emptyWrap: {
     paddingTop: spacing.section,
