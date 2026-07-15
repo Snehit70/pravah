@@ -118,20 +118,25 @@ vi.mock("react-native-svg", () => {
 });
 
 vi.mock("react-native-reanimated", () => {
-  const View = ({ children, ...rest }: { children?: React.ReactNode }) => {
+  const animated = (tag: string) => ({ children, ...rest }: { children?: React.ReactNode }) => {
     const { entering: _, style: __, ...safe } = rest as Record<string, unknown>;
-    return React.createElement("div", safe, children);
+    return React.createElement(tag, safe, children);
   };
+  const View = animated("div");
   const identity = (v: unknown) => v;
   const chain = () => {
     const o = { duration: () => o, delay: () => o };
     return o;
   };
   return {
-    default: { View, createAnimatedComponent: identity },
+    // Text is here because the Rhythm peak label is an Animated.Text; without it
+    // the first test to render a peak would die on an undefined element type.
+    default: { View, Text: animated("span"), createAnimatedComponent: identity },
     useSharedValue: (v: number) => ({ value: v }),
     useAnimatedProps: () => ({}),
     useAnimatedStyle: () => ({}),
+    // Null reads as "not mid-morph", so the charts render their static path.
+    useDerivedValue: () => ({ value: null }),
     withTiming: identity,
     runOnJS: (fn: unknown) => fn,
     Easing: { out: () => identity, cubic: identity, inOut: () => identity, quad: identity },

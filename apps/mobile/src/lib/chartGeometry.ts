@@ -17,24 +17,24 @@
 export type Pt = { x: number; y: number };
 
 /**
- * Everything here carries `'worklet'` so the reanimated Babel plugin compiles a
- * UI-thread copy. The hero's range morph rebuilds its `d` every frame from
- * interpolated points, which has to happen on the UI thread — a JS round-trip
- * per frame would drop the animation to render speed. A worklet may only call
- * other worklets, so the whole call graph (`sgn` → `monotoneTangents` →
- * `monotoneLinePath`, plus `r` and `areaPath`) is marked, not just the entry
- * point. The directive is inert when these are called from JS, so useMemo and
- * the unit tests keep working unchanged.
+ * These are plain JS, deliberately.
+ *
+ * Marking this module's call graph `'worklet'` so the hero could rebuild `d` on
+ * the UI thread crashed the app: reanimated's plugin captures a worklet's free
+ * identifiers at its definition site, and `r` is declared below its callers, so
+ * `monotoneLinePath` captured it as undefined and every call — including the
+ * plain JS ones from useMemo — died with "undefined is not a function".
+ *
+ * The rule that survives: a worklet must be self-contained. `nearestIndex`
+ * below is one and has always worked, because it references nothing but `Math`.
+ * Anything needing this geometry on the UI thread inlines its own copy rather
+ * than reaching across module scope — see `morphPath` in HeroVelocityChart.
  */
 
-const sgn = (x: number): number => {
-  "worklet";
-  return x < 0 ? -1 : 1;
-};
+const sgn = (x: number): number => (x < 0 ? -1 : 1);
 
 /** Fritsch–Carlson / Steffen monotone tangents. Never overshoots. */
 function monotoneTangents(pts: Pt[]): number[] {
-  "worklet";
   const n = pts.length;
   const h: number[] = [];
   const s: number[] = [];
@@ -65,7 +65,6 @@ function monotoneTangents(pts: Pt[]): number[] {
  * an empty `d` for 1–2 points.
  */
 export function monotoneLinePath(pts: Pt[]): string {
-  "worklet";
   if (pts.length === 0) return "";
   if (pts.length === 1) return `M${r(pts[0].x)},${r(pts[0].y)}`;
   if (pts.length === 2) return `M${r(pts[0].x)},${r(pts[0].y)}L${r(pts[1].x)},${r(pts[1].y)}`;
@@ -92,7 +91,6 @@ export function areaPath(
   lastX: number,
   baselineY: number,
 ): string {
-  "worklet";
   if (!line) return "";
   return `${line}L${r(lastX)},${r(baselineY)}L${r(firstX)},${r(baselineY)}Z`;
 }
@@ -153,7 +151,11 @@ export function nearestIndex(xs: number[], x: number): number {
   return lo;
 }
 
-/** Interpolate two point-sets of equal length. Runs per frame on the UI thread. */
+/**
+ * Interpolate two point-sets of equal length. Plain JS — the UI thread inlines
+ * its own copy inside `morphPath`; this one exists so the morph's arithmetic is
+ * testable without a running animation.
+ */
 export function lerpPts(
   fx: number[],
   fy: number[],
@@ -161,7 +163,6 @@ export function lerpPts(
   ty: number[],
   t: number,
 ): Pt[] {
-  "worklet";
   const pts: Pt[] = [];
   for (let i = 0; i < tx.length; i++) {
     pts.push({ x: fx[i] + (tx[i] - fx[i]) * t, y: fy[i] + (ty[i] - fy[i]) * t });
@@ -233,6 +234,5 @@ export function anchoredMorph(
 
 /** Round to 2dp to keep `d` strings compact without visible precision loss. */
 function r(v: number): number {
-  "worklet";
   return Math.round(v * 100) / 100;
 }

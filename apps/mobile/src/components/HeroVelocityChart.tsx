@@ -36,6 +36,7 @@ import Animated, {
   runOnJS,
   useAnimatedProps,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
@@ -45,7 +46,6 @@ import { haptic } from "../lib/haptic";
 import {
   anchoredMorph,
   areaPath,
-  lerpPts,
   monotoneLinePath,
   nearestIndex,
   pathLengthUpperBound,
@@ -82,6 +82,78 @@ type Props = {
 const PAD_TOP = 10;
 const PAD_BOTTOM = 6;
 const READOUT_W = 104;
+
+/**
+ * The morph's line + area for one frame, built entirely inside one worklet.
+ *
+ * This restates lib/chartGeometry's monotone-cubic math instead of calling it,
+ * and that duplication is the point. A worklet's free identifiers are captured
+ * at its definition site, so marking that shared module's call graph `'worklet'`
+ * made its bottom-declared `r` resolve to undefined and crashed every call —
+ * including the plain JS ones. A worklet that reaches across module scope is a
+ * trap; one that closes over nothing but `Math` is not. If the tangent rule
+ * changes, it changes in both places — chartGeometry's tests are what pin the
+ * rule, and `anchoredMorph` + `lerpPts` cover the arithmetic below.
+ *
+ * Both paths come from one pass so the spline is not walked twice per frame.
+ */
+function morphPath(
+  fx: number[],
+  fy: number[],
+  tx: number[],
+  ty: number[],
+  t: number,
+  baselineY: number,
+): { line: string; area: string } {
+  "worklet";
+  const n = tx.length;
+  if (n === 0) return { line: "", area: "" };
+
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (let i = 0; i < n; i++) {
+    xs.push(fx[i] + (tx[i] - fx[i]) * t);
+    ys.push(fy[i] + (ty[i] - fy[i]) * t);
+  }
+  const rr = (v: number) => Math.round(v * 100) / 100;
+  if (n === 1) {
+    const only = `M${rr(xs[0])},${rr(ys[0])}`;
+    return { line: only, area: "" };
+  }
+
+  // Fritsch–Carlson / Steffen tangents — mirrors monotoneTangents.
+  const h: number[] = [];
+  const s: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    h.push(xs[i + 1] - xs[i]);
+    s.push(h[i] === 0 ? 0 : (ys[i + 1] - ys[i]) / h[i]);
+  }
+  const m: number[] = new Array(n);
+  m[0] = s[0];
+  m[n - 1] = s[n - 2];
+  for (let i = 1; i < n - 1; i++) {
+    const s0 = s[i - 1];
+    const s1 = s[i];
+    if (s0 * s1 <= 0) {
+      m[i] = 0;
+    } else {
+      const p = (s0 * h[i] + s1 * h[i - 1]) / (h[i - 1] + h[i]);
+      const sign = (s0 < 0 ? -1 : 1) + (s1 < 0 ? -1 : 1);
+      m[i] = sign * Math.min(Math.abs(s0), Math.abs(s1), 0.5 * Math.abs(p));
+    }
+  }
+
+  let line = `M${rr(xs[0])},${rr(ys[0])}`;
+  for (let i = 0; i < n - 1; i++) {
+    const dx = (xs[i + 1] - xs[i]) / 3;
+    line +=
+      `C${rr(xs[i] + dx)},${rr(ys[i] + dx * m[i])} ` +
+      `${rr(xs[i + 1] - dx)},${rr(ys[i + 1] - dx * m[i + 1])} ` +
+      `${rr(xs[i + 1])},${rr(ys[i + 1])}`;
+  }
+  const area = `${line}L${rr(xs[n - 1])},${rr(baselineY)}L${rr(xs[0])},${rr(baselineY)}Z`;
+  return { line, area };
+}
 
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -211,22 +283,27 @@ export function HeroVelocityChart({
     });
   }, [series, width, height, reducedMotion]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // One pass per frame, shared by the line and the area.
+  const morphed = useDerivedValue(() => {
+    if (morph.value >= 1 || toXs.value.length === 0) return null;
+    return morphPath(
+      fromXs.value,
+      fromYs.value,
+      toXs.value,
+      toYs.value,
+      morph.value,
+      height,
+    );
+  });
   const lineProps = useAnimatedProps(() => {
-    if (morph.value >= 1 || toXs.value.length === 0) {
-      return { d: geom.line, strokeDashoffset: geom.length * (1 - progress.value) };
-    }
-    const pts = lerpPts(fromXs.value, fromYs.value, toXs.value, toYs.value, morph.value);
-    return { d: monotoneLinePath(pts), strokeDashoffset: 0 };
+    const m = morphed.value;
+    if (!m) return { d: geom.line, strokeDashoffset: geom.length * (1 - progress.value) };
+    return { d: m.line, strokeDashoffset: 0 };
   });
   const areaProps = useAnimatedProps(() => {
-    if (morph.value >= 1 || toXs.value.length === 0) {
-      return { d: geom.area, fillOpacity: progress.value };
-    }
-    const pts = lerpPts(fromXs.value, fromYs.value, toXs.value, toYs.value, morph.value);
-    return {
-      d: areaPath(monotoneLinePath(pts), pts[0].x, pts[pts.length - 1].x, height),
-      fillOpacity: 1,
-    };
+    const m = morphed.value;
+    if (!m) return { d: geom.area, fillOpacity: progress.value };
+    return { d: m.area, fillOpacity: 1 };
   });
   const riseProps = useAnimatedProps(() => ({
     transform: [{ translateY: 12 * (1 - progress.value) }],
