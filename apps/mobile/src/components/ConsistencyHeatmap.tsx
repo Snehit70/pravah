@@ -1,23 +1,36 @@
 /**
  * ConsistencyHeatmap
  *
- * All-time "journey" view: one row per calendar month, days laid left→right,
- * each cell tinted by that day's completion count. Reads like a diary of
- * consistency — where the gaps are, where the runs are.
+ * All-time "journey" view, laid out the way GitHub's contribution graph is:
+ * one column per week, one row per weekday, oldest week left. Month labels ride
+ * above the columns where each month starts; the grid scrolls horizontally and
+ * opens parked on today.
+ *
+ * Why the rewrite: the old layout was one row per month with 31 fixed columns,
+ * which forced every cell to be ~8px on a phone — too small to read, far too
+ * small to hit, and a column position that meant nothing (day-of-month aligns
+ * down the grid, but nobody asks "how did I do on the 14th of each month?").
+ * Weeks-as-columns makes a row mean "every Tuesday", which is a question people
+ * actually have, and letting the card scroll buys the cells enough size to be
+ * both legible and tappable.
  *
  * Craft (docs/research/progress-page-dataviz.md §2):
  *  - Single validated ordinal ramp (theme.chart.heatmapRamp), quantized into
  *    discrete buckets so intensity reads as levels, not noise.
- *  - Render-once: the cell array is memoized on [series, width]; we never
- *    animate individual cells. The whole surface fades in as one node.
- *  - 31 fixed columns so day-1 aligns down every month.
- *
- * Phase 2 will add per-cell tap → "Jul 3 · 4 done" detail; the geometry here
- * already carries each cell's date + count for that.
+ *  - Render-once: the cell array is memoized on [series]; we never animate
+ *    individual cells. The whole surface fades in as one node.
+ *  - Cells stop at today — a day that hasn't happened is not a day you missed,
+ *    so the future is simply absent rather than drawn as an empty track.
  */
 
-import { useMemo, useState, type ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import { useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import Svg, { Rect } from "react-native-svg";
 import { useReducedMotion } from "../hooks/useReducedMotion";
@@ -32,6 +45,17 @@ const MONTH_LABELS = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
+/** Rows GitHub labels — every other row, so the labels never collide. */
+const LABELLED_ROWS = [1, 3, 5];
+
+const CELL = 18;
+const GAP = 4;
+const PITCH = CELL + GAP;
+const ROWS = 7;
+const LABEL_W = 30;
+const MIN_WEEKS = 14;
+const MONTH_LABEL_H = 16;
+
 /** "2026-07-03" → "Fri · Jul 3" (local, locale-stable). */
 function formatDayLabel(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
@@ -39,12 +63,13 @@ function formatDayLabel(iso: string): string {
   const wd = WEEKDAY_LABELS[new Date(y, m - 1, d).getDay()];
   return `${wd} · ${MONTH_LABELS[m - 1]} ${d}`;
 }
-const COLS = 31;
-const MIN_MONTHS = 4;
-const LABEL_W = 34;
-const GAP = 2;
-const ROW_GAP = 5;
-const CARD_PAD = spacing.md; // must match styles.card horizontal padding
+
+/** "2026-07-03" → "Jul 3". */
+function formatShortDate(iso: string): string {
+  const [, m, d] = iso.split("-").map(Number);
+  if (!m || !d) return iso;
+  return `${MONTH_LABELS[m - 1]} ${d}`;
+}
 
 type Props = {
   /** Contiguous, oldest→newest daily counts spanning the visible history. */
@@ -53,9 +78,10 @@ type Props = {
   bestStreak: number;
 };
 
-type Cell = { x: number; y: number; size: number; fill: string; date: string; count: number };
+type Cell = { x: number; y: number; fill: string; date: string; count: number };
+type MonthTick = { key: string; label: string; x: number };
 
-/** 0 → empty track; 1..4 buckets of increasing accent intensity. */
+/** 0 → empty track; 1..4 buckets of increasing intensity. */
 function rampColor(count: number, max: number): string {
   if (count <= 0 || max <= 0) return chart.heatmapEmpty;
   const bucket = Math.min(3, Math.ceil((count / max) * 4) - 1); // 0..3
@@ -64,122 +90,97 @@ function rampColor(count: number, max: number): string {
 
 export function ConsistencyHeatmap({ series, currentStreak, bestStreak }: Props) {
   const reducedMotion = useReducedMotion();
-  const [width, setWidth] = useState(0);
   const [selected, setSelected] = useState<{ date: string; count: number } | null>(null);
-  const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
+  const scrollRef = useRef<ScrollView>(null);
 
   const selectCell = (cell: { date: string; count: number }) => {
     haptic.selection();
     // Re-tapping the open day closes it back to the legend.
-    setSelected((prev) => (prev?.date === cell.date ? null : { date: cell.date, count: cell.count }));
+    setSelected((prev) =>
+      prev?.date === cell.date ? null : { date: cell.date, count: cell.count },
+    );
   };
 
-  const { rows, activeDays, gridW, size } = useMemo(() => {
-    const counts = new Map<string, number>();
-    let active = 0;
-    let max = 1;
-    for (const p of series) {
-      counts.set(p.date, p.count);
-      if (p.count > 0) active++;
-      if (p.count > max) max = p.count;
-    }
-    if (series.length === 0 || width === 0) {
+  const { cells, months, gridW, activeDays, lastActive } = useMemo(() => {
+    if (series.length === 0) {
       return {
-        rows: [] as Array<{ key: string; label: string; cells: Cell[] }>,
-        activeDays: 0,
+        cells: [] as Cell[],
+        months: [] as MonthTick[],
         gridW: 0,
-        size: 10,
+        activeDays: 0,
+        lastActive: null as string | null,
       };
     }
 
-    // `width` is the card's border-box (includes its horizontal padding), so
-    // subtract both the padding and the month label before laying out columns —
-    // otherwise the rightmost cells overflow the card's rounded edge.
-    const gridW = width - CARD_PAD * 2 - LABEL_W;
-    const step = gridW / COLS;
-    const size = Math.max(4, step - GAP);
-
-    // Months present, newest first.
-    const firstDate = series[0].date;
-    const lastDate = series[series.length - 1].date;
-    const [fy, fm] = firstDate.split("-").map(Number);
-    const [ly, lm] = lastDate.split("-").map(Number);
-    const monthsAsc: Array<{ y: number; m: number }> = [];
-    for (let y = fy, m = fm; y < ly || (y === ly && m <= lm); ) {
-      monthsAsc.push({ y, m });
-      m += 1;
-      if (m > 12) { m = 1; y += 1; }
+    let max = 1;
+    let active = 0;
+    let last: string | null = null;
+    for (const p of series) {
+      if (p.count > 0) {
+        active++;
+        last = p.date;
+        if (p.count > max) max = p.count;
+      }
     }
 
-    const allRows = monthsAsc
-      .slice()
-      .reverse()
-      .map(({ y, m }) => {
-        const daysInMonth = new Date(y, m, 0).getDate();
-        const cells: Cell[] = [];
-        for (let d = 1; d <= daysInMonth; d++) {
-          const key = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-          const count = counts.get(key) ?? 0;
-          cells.push({
-            x: (d - 1) * step,
-            y: 0,
-            size,
-            fill: rampColor(count, max),
-            date: key,
-            count,
-          });
-        }
-        return { key: `${y}-${m}`, label: MONTH_LABELS[m - 1], cells };
+    // Start at the first day with activity so a new user doesn't scroll through
+    // a year of blanks, but never later than MIN_WEEKS ago so the grid always
+    // has enough body to read as a calendar. The first column is partially
+    // empty when that day isn't a Sunday, which is what GitHub does too.
+    const firstActive = series.findIndex((p) => p.count > 0);
+    const minStart = Math.max(0, series.length - MIN_WEEKS * 7);
+    const startIdx = firstActive < 0 ? minStart : Math.min(firstActive, minStart);
+    const visible = series.slice(startIdx);
+
+    const [fy, fm, fd] = visible[0].date.split("-").map(Number);
+    const firstDow = new Date(fy, fm - 1, fd).getDay();
+
+    const cells: Cell[] = [];
+    const months: MonthTick[] = [];
+    let lastMonth = -1;
+
+    visible.forEach((p, i) => {
+      const slot = i + firstDow;
+      const col = Math.floor(slot / 7);
+      const row = slot % 7;
+      const x = col * PITCH;
+      cells.push({
+        x,
+        y: row * PITCH,
+        fill: rampColor(p.count, max),
+        date: p.date,
+        count: p.count,
       });
 
-    // Rows are newest→oldest; drop the run of all-empty oldest months so the
-    // calendar starts near the first day of activity instead of trailing off
-    // into a wall of blank months. Keep a minimum span for visual weight.
-    let lastActive = allRows.length - 1;
-    while (lastActive > 0 && allRows[lastActive].cells.every((c) => c.count === 0)) {
-      lastActive--;
-    }
-    const rows = allRows.slice(0, Math.max(MIN_MONTHS, lastActive + 1));
+      // Label a column the first time a new month appears in it.
+      const month = Number(p.date.split("-")[1]);
+      if (month !== lastMonth) {
+        lastMonth = month;
+        const alreadyOnColumn = months.length > 0 && months[months.length - 1].x === x;
+        if (!alreadyOnColumn) {
+          months.push({ key: p.date, label: MONTH_LABELS[month - 1], x });
+        }
+      }
+    });
 
-    return { rows, activeDays: active, gridW, size };
-  }, [series, width]);
+    const cols = Math.ceil((visible.length + firstDow) / 7);
+    return {
+      cells,
+      months,
+      gridW: cols * PITCH,
+      activeDays: active,
+      lastActive: last,
+    };
+  }, [series]);
 
-  const rowSize = size;
+  const gridH = ROWS * PITCH;
 
   return (
     <Animated.View
       style={styles.card}
-      onLayout={onLayout}
       entering={reducedMotion ? undefined : FadeIn.duration(400)}
     >
-      <View style={styles.statRow}>
-        <JourneyStat
-          label="Current streak"
-          value={`${currentStreak}d`}
-          accent={currentStreak > 0}
-          icon={
-            <ClockIcon
-              color={currentStreak > 0 ? colors.accent : colors.textMuted}
-              size={20}
-              strokeWidth={1.75}
-            />
-          }
-        />
-        <View style={styles.statDivider} />
-        <JourneyStat
-          label="Best streak"
-          value={`${bestStreak}d`}
-          icon={<StarIcon color={colors.accent} size={20} strokeWidth={1.75} />}
-        />
-        <View style={styles.statDivider} />
-        <JourneyStat
-          label="Active days"
-          value={String(activeDays)}
-          icon={<CalendarIcon color={colors.accent} size={20} strokeWidth={1.75} />}
-        />
-      </View>
-
-      {rows.length === 0 ? (
+      {cells.length === 0 ? (
         <Text style={styles.emptyText}>
           Your consistency calendar fills in as you complete tasks over the days ahead.
         </Text>
@@ -189,30 +190,65 @@ export function ConsistencyHeatmap({ series, currentStreak, bestStreak }: Props)
           accessibilityRole="image"
           accessibilityLabel={`Consistency calendar. ${activeDays} active days, current streak ${currentStreak} days, best ${bestStreak} days.`}
         >
-          {rows.map((row) => (
-            <View key={row.key} style={styles.monthRow} importantForAccessibility="no-hide-descendants">
-              <Text style={styles.monthLabel}>{row.label}</Text>
-              <Svg width={Math.max(1, gridW)} height={rowSize}>
-                {row.cells.map((c) => {
-                  const isSelected = selected?.date === c.date;
-                  return (
+          <View style={styles.gridRow} importantForAccessibility="no-hide-descendants">
+            {/* Fixed weekday gutter — stays put while the weeks scroll under it. */}
+            <View style={[styles.gutter, { height: gridH, marginTop: MONTH_LABEL_H }]}>
+              {LABELLED_ROWS.map((row) => (
+                <Text key={row} style={[styles.gutterLabel, { top: row * PITCH + 3 }]}>
+                  {WEEKDAY_LABELS[row]}
+                </Text>
+              ))}
+            </View>
+
+            <ScrollView
+              ref={scrollRef}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              // Open parked on today; the newest week is the one you came for.
+              onContentSizeChange={() =>
+                scrollRef.current?.scrollToEnd({ animated: false })
+              }
+              contentContainerStyle={{ paddingRight: spacing.xs }}
+            >
+              <View>
+                <View style={{ height: MONTH_LABEL_H, width: gridW }}>
+                  {months.map((m) => (
+                    <Text key={m.key} style={[styles.monthLabel, { left: m.x }]}>
+                      {m.label}
+                    </Text>
+                  ))}
+                </View>
+                <Svg width={Math.max(1, gridW)} height={gridH}>
+                  {cells.map((c) => (
                     <Rect
                       key={c.date}
                       x={c.x}
-                      y={0}
-                      width={c.size}
-                      height={c.size}
-                      rx={2}
+                      y={c.y}
+                      width={CELL}
+                      height={CELL}
+                      rx={4}
                       fill={c.fill}
-                      stroke={isSelected ? colors.accent : undefined}
-                      strokeWidth={isSelected ? 1.5 : 0}
+                      stroke={selected?.date === c.date ? colors.accent : undefined}
+                      strokeWidth={selected?.date === c.date ? 2 : 0}
+                    />
+                  ))}
+                  {/* Transparent hit layer: the visible cell is 18px, but the
+                      target covers the full pitch so a fingertip can land. */}
+                  {cells.map((c) => (
+                    <Rect
+                      key={`hit-${c.date}`}
+                      x={c.x - GAP / 2}
+                      y={c.y - GAP / 2}
+                      width={PITCH}
+                      height={PITCH}
+                      fill="transparent"
                       onPress={() => selectCell(c)}
                     />
-                  );
-                })}
-              </Svg>
-            </View>
-          ))}
+                  ))}
+                </Svg>
+              </View>
+            </ScrollView>
+          </View>
 
           {selected ? (
             <Pressable
@@ -224,9 +260,7 @@ export function ConsistencyHeatmap({ series, currentStreak, bestStreak }: Props)
               <View style={[styles.detailDot, selected.count === 0 && styles.detailDotEmpty]} />
               <Text style={styles.detailDate}>{formatDayLabel(selected.date)}</Text>
               <Text style={styles.detailCount}>
-                {selected.count === 0
-                  ? "no completions"
-                  : `${selected.count} completed`}
+                {selected.count === 0 ? "no completions" : `${selected.count} completed`}
               </Text>
             </Pressable>
           ) : (
@@ -241,6 +275,39 @@ export function ConsistencyHeatmap({ series, currentStreak, bestStreak }: Props)
           )}
         </View>
       )}
+
+      {/* Stats read as the summary of the calendar above them, not a scoreboard
+          you're handed before you've seen the evidence. Active days leads: it's
+          the figure that supports "every day you showed up". A zeroed streak
+          becomes "last active", which states a fact instead of scolding. */}
+      <View style={styles.statRow}>
+        <JourneyStat
+          label="Active days"
+          value={String(activeDays)}
+          icon={<CalendarIcon color={colors.accent} size={18} strokeWidth={1.75} />}
+        />
+        <View style={styles.statDivider} />
+        <JourneyStat
+          label="Best streak"
+          value={`${bestStreak}d`}
+          icon={<StarIcon color={colors.accent} size={18} strokeWidth={1.75} />}
+        />
+        <View style={styles.statDivider} />
+        {currentStreak > 0 ? (
+          <JourneyStat
+            label="Current streak"
+            value={`${currentStreak}d`}
+            accent
+            icon={<ClockIcon color={colors.accent} size={18} strokeWidth={1.75} />}
+          />
+        ) : (
+          <JourneyStat
+            label="Last active"
+            value={lastActive ? formatShortDate(lastActive) : "—"}
+            icon={<ClockIcon color={colors.textMuted} size={18} strokeWidth={1.75} />}
+          />
+        )}
+      </View>
     </Animated.View>
   );
 }
@@ -270,62 +337,45 @@ function JourneyStat({
 const styles = StyleSheet.create({
   card: {
     marginHorizontal: spacing.lg,
-    padding: spacing.md,
-    borderRadius: radii.lg,
+    paddingVertical: spacing.lg,
+    paddingLeft: spacing.lg,
+    borderRadius: radii.xl,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.bgCard,
     gap: spacing.sm,
+    overflow: "hidden",
   },
-  statRow: {
+  gridRow: {
     flexDirection: "row",
-    alignItems: "center",
-    paddingBottom: spacing.xs,
   },
-  stat: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.xs,
+  gutter: {
+    width: LABEL_W,
+    position: "relative",
   },
-  statIcon: {
-    opacity: 0.9,
-  },
-  statText: {
-    alignItems: "flex-start",
-    gap: 1,
-  },
-  statValue: {
-    ...typography.title,
-    color: colors.textPrimary,
-  },
-  statLabel: {
+  gutterLabel: {
+    position: "absolute",
+    left: 0,
     ...typography.micro,
+    fontSize: 10,
+    letterSpacing: 0.3,
     color: colors.textMuted,
-  },
-  statDivider: {
-    width: StyleSheet.hairlineWidth,
-    alignSelf: "stretch",
-    backgroundColor: colors.borderSubtle,
-    marginVertical: spacing.xs,
-  },
-  monthRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: ROW_GAP,
   },
   monthLabel: {
+    position: "absolute",
+    top: 0,
     ...typography.micro,
+    fontSize: 10,
+    letterSpacing: 0.3,
     color: colors.textMuted,
-    width: LABEL_W,
   },
   detailRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
     paddingTop: spacing.sm,
-    minHeight: 32,
+    paddingRight: spacing.lg,
+    minHeight: 36,
   },
   detailDot: {
     width: 10,
@@ -354,20 +404,60 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     gap: 3,
     paddingTop: spacing.xs,
+    paddingRight: spacing.lg,
+    minHeight: 36,
   },
   legendText: {
-    ...typography.micro,
+    ...typography.bodyMd,
     color: colors.textMuted,
     marginHorizontal: spacing.xs,
   },
   legendCell: {
-    width: 11,
-    height: 11,
-    borderRadius: 2,
+    width: 12,
+    height: 12,
+    borderRadius: 3,
+  },
+  statRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingTop: spacing.md,
+    paddingRight: spacing.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
+  },
+  stat: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+  },
+  statIcon: {
+    opacity: 0.9,
+  },
+  statText: {
+    alignItems: "flex-start",
+    gap: 1,
+  },
+  statValue: {
+    ...typography.title,
+    color: colors.textPrimary,
+  },
+  statLabel: {
+    ...typography.bodyMd,
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  statDivider: {
+    width: StyleSheet.hairlineWidth,
+    alignSelf: "stretch",
+    backgroundColor: colors.borderSubtle,
+    marginVertical: spacing.xs,
   },
   emptyText: {
     ...typography.bodyMd,
     color: colors.textMuted,
     paddingVertical: spacing.md,
+    paddingRight: spacing.lg,
   },
 });

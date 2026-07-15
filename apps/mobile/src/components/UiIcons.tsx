@@ -55,6 +55,20 @@ export const ArrowUpRightIcon = icon(({ color, size, strokeWidth }) => (
   </Svg>
 ));
 
+export const BarChartIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M5 20V13" />
+    <Path d="M12 20V5" />
+    <Path d="M19 20v-10" />
+  </Svg>
+));
+
+export const LineChartIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M4 15l4.5-5.5 3.5 3L19 6" />
+  </Svg>
+));
+
 export const SettingsIcon = icon(({ color, size, strokeWidth }) => (
   <Svg {...frame(color, size, strokeWidth)}>
     <Circle cx={12} cy={12} r={2.75} />

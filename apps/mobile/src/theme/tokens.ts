@@ -234,29 +234,43 @@ export const typography = {
 /**
  * Chart tokens for the Progress screen.
  *
- * Colors are not eyeballed: the heatmap ramp is a validated single-hue ordinal
- * scale (monotone lightness, visible step gaps, lightest bucket ≥ 2:1 on the
- * warm `bg` surface, single hue ~262°). The line/bar mark uses `accent`, which
- * clears 5:1 on every warm surface. Text in charts always wears the ink text
- * tokens above — a mark's color carries identity, never the number beside it.
+ * Colors are not eyeballed. Text in charts always wears the ink text tokens
+ * above — a mark's color carries identity, never the number beside it.
+ *
+ * ── Gradient stops ──────────────────────────────────────────────────────
+ * Area fills are expressed as a solid `*AreaColor` plus a numeric
+ * `*AreaTopOpacity` / `*AreaBottomOpacity`, NOT as `rgba()` strings.
+ * react-native-svg reads a gradient stop's alpha from `stopOpacity`; an alpha
+ * baked into an `rgba()` passed to `stopColor` is dropped, so the fill renders
+ * fully opaque and the chart turns into a solid black blob. `FlowingWaves` and
+ * `GridBackground` already use the split form — these tokens make it the rule.
+ *
+ * ── Heatmap ramp ────────────────────────────────────────────────────────
+ * A validated single-hue ordinal scale in the app's own `success` green
+ * (hue 141°→151°, monotone lightness 0.41 → 0.27 → 0.16 → 0.08, each step gap
+ * ≥ 1.4×). The lightest bucket clears 2:1 on the warm `bg`; the darkest clears
+ * 7:1. Green rather than the old tan→brown→black ramp: that one ran the
+ * intensity scale straight into the ink used for text and read as dirt. The
+ * empty cell stays warm, which is what keeps the grid tied to the page.
  */
 export const chart = {
   /** Empty/no-completion heatmap cell — faint warm track, distinct from bucket 1. */
   heatmapEmpty: "rgba(78,62,43,0.07)",
-  /** 4-bucket warm-brown intensity ramp, light → dark. Monotone ordinal ramp. */
-  heatmapRamp: ["#cbb488", "#a8895a", "#795b33", "#4a3419"] as const,
+  /** 4-bucket green intensity ramp, light → dark. Monotone ordinal ramp. */
+  heatmapRamp: ["#82b795", "#559c74", "#2f7f56", "#1a5c3c"] as const,
   /** Hero line + rhythm bars — the single-series mark. */
   line: colors.accent,
-  /** Subtle gradient area fill (hour sparkline); the line carries contrast. */
-  areaTop: "rgba(43,32,22,0.24)",
-  areaBottom: "rgba(43,32,22,0)",
+  /** Sparkline area fill; the line carries the contrast. */
+  areaColor: colors.accent,
+  areaTopOpacity: 0.12,
+  areaBottomOpacity: 0,
   /**
-   * Hero area fill — deliberately bolder than the sparkline: saturated accent at
-   * the peak fading to near-nothing at the baseline, so the trend reads as a
-   * solid "mountain" without a hard bottom edge.
+   * Hero area fill — a pale wash under a crisp line, not a filled silhouette.
+   * The line is the mark; the fill only gives the trend a body to sit in.
    */
-  heroAreaTop: "rgba(43,32,22,0.42)",
-  heroAreaBottom: "rgba(43,32,22,0.02)",
+  heroAreaColor: colors.accent,
+  heroAreaTopOpacity: 0.16,
+  heroAreaBottomOpacity: 0,
   /** Rhythm bars: active vs. the empty-bucket track. */
   bar: colors.accent,
   barTrack: "rgba(43,32,22,0.12)",

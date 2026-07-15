@@ -225,7 +225,42 @@ describe("Progress screen", () => {
   it("switches the momentum range", () => {
     renderScreen(completed);
     fireEvent.click(screen.getByRole("button", { name: /show last 7 days/i }));
-    expect(screen.getByText("this week")).toBeTruthy();
+    // The window is a rolling N days ending today, so the copy says so — it
+    // used to claim "this week" while plotting the last 7 days.
+    expect(screen.getByText("last 7 days")).toBeTruthy();
+  });
+
+  it("names the momentum window as rolling, never as a calendar period", () => {
+    renderScreen(completed);
+    expect(screen.getByText("last 30 days")).toBeTruthy();
+    expect(screen.queryByText("this month")).toBeNull();
+  });
+
+  it("toggles the rhythm metric between weekday and hour", () => {
+    renderScreen(completed);
+    // Both metrics live behind one full-width chart now, not side-by-side panels.
+    fireEvent.click(screen.getByRole("button", { name: "Focus by hour" }));
+    expect(
+      screen.getByRole("button", { name: "Focus by hour" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      screen.getByRole("button", { name: "When you finish" }).getAttribute("aria-pressed"),
+    ).toBe("false");
+  });
+
+  it("toggles the rhythm chart shape independently of the metric", () => {
+    renderScreen(completed);
+    fireEvent.click(screen.getByRole("button", { name: /show as a line/i }));
+    expect(
+      screen.getByRole("button", { name: /show as a line/i }).getAttribute("aria-pressed"),
+    ).toBe("true");
+
+    // A chosen shape sticks across a metric switch; only the untouched default
+    // is per-metric.
+    fireEvent.click(screen.getByRole("button", { name: "Focus by hour" }));
+    expect(
+      screen.getByRole("button", { name: /show as a line/i }).getAttribute("aria-pressed"),
+    ).toBe("true");
   });
 
   it("opens searchable full-screen completion history", () => {

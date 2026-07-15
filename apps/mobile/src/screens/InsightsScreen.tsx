@@ -11,7 +11,7 @@
  * only, so the whole screen stays OTA-updatable.
  */
 
-import { useMemo, useState, type JSX } from "react";
+import { useMemo, useState, type JSX, type ReactNode } from "react";
 import {
   FlatList,
   Modal,
@@ -60,15 +60,18 @@ type InsightsScreenProps = {
 
 const RANGE_DAYS: Record<RangeKey, number> = { "7d": 7, "30d": 30, "90d": 90 };
 const RANGE_LABELS: Record<RangeKey, string> = { "7d": "7d", "30d": "30d", "90d": "90d" };
+// The window is a rolling N days ending today, not a calendar period — the
+// hero's own axis reads "16 Jun → 15 Jul" while the old copy said "this month".
+// Say what the data actually is.
 const RANGE_PERIOD: Record<RangeKey, string> = {
-  "7d": "this week",
-  "30d": "this month",
-  "90d": "this quarter",
+  "7d": "last 7 days",
+  "30d": "last 30 days",
+  "90d": "last 90 days",
 };
 const RANGE_COMPARISON: Record<RangeKey, string> = {
-  "7d": "vs last week",
-  "30d": "vs last month",
-  "90d": "vs last quarter",
+  "7d": "vs previous 7 days",
+  "30d": "vs previous 30 days",
+  "90d": "vs previous 90 days",
 };
 const JOURNEY_DAYS = 365;
 const GOALS_SHOWN = 6;
@@ -194,7 +197,9 @@ export function InsightsScreen({
         contentContainerStyle={{
           paddingTop: spacing.md,
           paddingBottom: tabBarHeight + 84,
-          gap: spacing.lg,
+          // tokens.ts documents `section` as the gap between major sections, and
+          // these are the major sections; `lg` packed them at half that density.
+          gap: spacing.section,
         }}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -207,33 +212,35 @@ export function InsightsScreen({
           />
         }
       >
-        <View style={styles.headerRow}>
-          <Text style={styles.eyebrow}>Recent momentum</Text>
-          <View style={styles.rangeRow}>
-            {(Object.keys(RANGE_DAYS) as RangeKey[]).map((key) => {
-              const active = range === key;
-              return (
-                <Pressable
-                  key={key}
-                  onPress={() => setRange(key)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  accessibilityLabel={`Show last ${RANGE_DAYS[key]} days`}
-                  hitSlop={8}
-                  style={({ pressed }) => [
-                    styles.rangePill,
-                    active && styles.rangePillActive,
-                    pressed && { opacity: 0.7 },
-                  ]}
-                >
-                  <Text style={[styles.rangeText, active && styles.rangeTextActive]}>
-                    {RANGE_LABELS[key]}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
+        <SectionHeader
+          label="Recent momentum"
+          right={
+            <View style={styles.rangeRow}>
+              {(Object.keys(RANGE_DAYS) as RangeKey[]).map((key) => {
+                const active = range === key;
+                return (
+                  <Pressable
+                    key={key}
+                    onPress={() => setRange(key)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={`Show last ${RANGE_DAYS[key]} days`}
+                    hitSlop={8}
+                    style={({ pressed }) => [
+                      styles.rangePill,
+                      active && styles.rangePillActive,
+                      pressed && { opacity: 0.7 },
+                    ]}
+                  >
+                    <Text style={[styles.rangeText, active && styles.rangeTextActive]}>
+                      {RANGE_LABELS[key]}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          }
+        />
 
         <Wrap entering={sectionEnter(0)}>
           <HeroVelocityChart
@@ -247,17 +254,17 @@ export function InsightsScreen({
         </Wrap>
 
         <Wrap entering={sectionEnter(1)}>
+          <SectionHeader label="Rhythm" caption="When you do your best work" />
+          <RhythmMiniCharts weekday={weekday} hour={hour} cycleDays={cycle} />
+        </Wrap>
+
+        <Wrap entering={sectionEnter(2)}>
           <SectionHeader label="Journey" caption="Every day you showed up" />
           <ConsistencyHeatmap
             series={journeySeries}
             currentStreak={streak}
             bestStreak={best}
           />
-        </Wrap>
-
-        <Wrap entering={sectionEnter(2)}>
-          <SectionHeader label="Rhythm" caption="When you do your best work" />
-          <RhythmMiniCharts weekday={weekday} hour={hour} cycleDays={cycle} />
         </Wrap>
 
         {goalRows.length > 0 ? (
@@ -384,14 +391,30 @@ export function InsightsScreen({
   );
 }
 
-/** Editorial section header: an uppercase eyebrow left, a muted caption right. */
-function SectionHeader({ label, caption }: { label: string; caption: string }) {
+/**
+ * Section header: an uppercase eyebrow with its caption stacked beneath it.
+ *
+ * The caption used to sit right-aligned on the same line under
+ * `numberOfLines={1}`, which truncated the warmest writing on the screen
+ * ("Every day you sho…") on narrow devices. Stacked, it has the full width.
+ * `right` takes a node for headers that carry a control instead of prose.
+ */
+function SectionHeader({
+  label,
+  caption,
+  right,
+}: {
+  label: string;
+  caption?: string;
+  right?: ReactNode;
+}) {
   return (
     <View style={styles.sectionHeader}>
-      <Text style={styles.sectionEyebrow}>{label}</Text>
-      <Text style={styles.sectionCaption} numberOfLines={1}>
-        {caption}
-      </Text>
+      <View style={styles.sectionHeaderRow}>
+        <Text style={styles.sectionEyebrow}>{label}</Text>
+        {right}
+      </View>
+      {caption ? <Text style={styles.sectionCaption}>{caption}</Text> : null}
     </View>
   );
 }
@@ -400,23 +423,14 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
   },
-  headerRow: {
-    marginHorizontal: spacing.lg,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  eyebrow: {
-    ...typography.micro,
-    color: colors.textMuted,
-  },
   rangeRow: {
     flexDirection: "row",
     gap: spacing.xs,
   },
   rangePill: {
-    minWidth: 40,
-    paddingVertical: spacing.xs,
+    minWidth: 44,
+    minHeight: 32,
+    justifyContent: "center",
     paddingHorizontal: spacing.sm,
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
@@ -424,24 +438,31 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgCard,
     alignItems: "center",
   },
+  // Inverted, not washed. `accentSoft` over `bgCard` rendered the selected pill
+  // duller than its unselected neighbours, which reads as "disabled" — the
+  // opposite of what a selection should say. Matches the active tab treatment.
   rangePillActive: {
     borderColor: colors.accent,
-    backgroundColor: colors.accentSoft,
+    backgroundColor: colors.accent,
   },
   rangeText: {
     ...typography.micro,
     color: colors.textMuted,
   },
   rangeTextActive: {
-    color: colors.accent,
+    color: colors.textInverse,
   },
   sectionHeader: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "space-between",
     marginHorizontal: spacing.lg,
     marginBottom: spacing.sm,
+    gap: 2,
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: spacing.md,
+    minHeight: 32,
   },
   sectionEyebrow: {
     ...typography.micro,
@@ -450,8 +471,6 @@ const styles = StyleSheet.create({
   sectionCaption: {
     ...typography.bodyMd,
     color: colors.textMuted,
-    flexShrink: 1,
-    textAlign: "right",
   },
   historyButton: {
     marginHorizontal: spacing.lg,

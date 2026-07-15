@@ -1,13 +1,20 @@
 /**
  * HeroVelocityChart
  *
- * The Progress page hero: a big completion-velocity number + delta on the left,
- * a smooth gradient area chart of daily completions on the right, over a dotted
- * date axis. Reads like the opening figure of a printed report.
+ * The Progress page hero: a compact summary line, then a full-width line chart
+ * of daily completions under it.
+ *
+ * The number and the chart used to sit side by side, which gave a 44px numeral
+ * half the card and left the chart ~220px to describe 30 days. Stacking them
+ * hands the full width to the only element that needs it; the summary reads
+ * fine at body scale because it's two short facts, not a dashboard tile.
  *
  * Craft (see docs/research/progress-page-dataviz.md):
  *  - Monotone-cubic line (never overshoots count data) via lib/chartGeometry.
- *  - Bold vertical gradient area (saturated peak → near-nothing baseline).
+ *  - A pale gradient wash under a crisp 2px line. The line is the mark; the
+ *    fill only gives the trend a body. Stops split color from opacity — see
+ *    the note on `chart.heroAreaColor` in theme/tokens.ts for why an rgba()
+ *    stopColor renders as a solid silhouette.
  *  - Entrance "draw-on": `d` stays static; we animate `strokeDashoffset`
  *    (line sweep) + area `fillOpacity`/`translateY` (rise) off one shared value.
  *
@@ -43,7 +50,7 @@ import {
   type Pt,
 } from "../lib/chartGeometry";
 import type { DayPoint } from "../lib/statsAggregators";
-import { chart, colors, motion, radii, spacing, typography } from "../theme/tokens";
+import { chart, colors, motion, radii, shadow, spacing, typography } from "../theme/tokens";
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const AnimatedG = Animated.createAnimatedComponent(G);
@@ -73,7 +80,6 @@ type Props = {
 const PAD_TOP = 10;
 const PAD_BOTTOM = 6;
 const READOUT_W = 104;
-const LEFT_COL_W = 116;
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
@@ -103,7 +109,7 @@ export function HeroVelocityChart({
   comparisonLabel,
   delta,
   rawCounts,
-  height = 132,
+  height = 168,
 }: Props) {
   const reducedMotion = useReducedMotion();
   const [width, setWidth] = useState(0);
@@ -259,120 +265,129 @@ export function HeroVelocityChart({
       accessibilityRole="image"
       accessibilityLabel={accessibilitySummary(total, periodLabel, delta)}
     >
-      <View style={styles.heroRow}>
-        <View style={styles.leftCol}>
-          <Text style={styles.headline}>{total}</Text>
-          <Text style={styles.unit}>tasks completed</Text>
-          <View style={styles.divider} />
-          <Text style={styles.periodEyebrow}>{periodLabel}</Text>
+      <View style={styles.summaryRow}>
+        <View style={styles.summaryLeft}>
+          <Text style={styles.headline}>
+            {total}
+            <Text style={styles.unit}> tasks completed</Text>
+          </Text>
           <DeltaChip delta={delta} comparisonLabel={comparisonLabel} />
         </View>
+        <Text style={styles.periodEyebrow}>{periodLabel}</Text>
+      </View>
 
-        <GestureDetector gesture={pan}>
-          <View style={styles.rightCol}>
-            <View
-              style={{ height }}
-              onLayout={onLayout}
-              importantForAccessibility="no-hide-descendants"
-            >
-              {width > 0 && geom.line ? (
-                <Svg width={width} height={height}>
-                  <Defs>
-                    <LinearGradient id="heroArea" x1="0" y1="0" x2="0" y2="1">
-                      <Stop offset="0" stopColor={chart.heroAreaTop} stopOpacity="1" />
-                      <Stop offset="1" stopColor={chart.heroAreaBottom} stopOpacity="1" />
-                    </LinearGradient>
-                  </Defs>
+      <GestureDetector gesture={pan}>
+        <View style={styles.chartCol}>
+          <View
+            style={{ height }}
+            onLayout={onLayout}
+            importantForAccessibility="no-hide-descendants"
+          >
+            {width > 0 && geom.line ? (
+              <Svg width={width} height={height}>
+                <Defs>
+                  <LinearGradient id="heroArea" x1="0" y1="0" x2="0" y2="1">
+                    <Stop
+                      offset="0"
+                      stopColor={chart.heroAreaColor}
+                      stopOpacity={chart.heroAreaTopOpacity}
+                    />
+                    <Stop
+                      offset="1"
+                      stopColor={chart.heroAreaColor}
+                      stopOpacity={chart.heroAreaBottomOpacity}
+                    />
+                  </LinearGradient>
+                </Defs>
 
-                  {/* Outgoing range, frozen and fading out under the new one. */}
-                  {isMorphing ? (
-                    <AnimatedG animatedProps={ghostProps}>
-                      <Path d={prevGeom.area} fill="url(#heroArea)" />
-                      <Path
-                        d={prevGeom.line}
-                        stroke={chart.line}
-                        strokeWidth={2}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        fill="none"
-                      />
-                    </AnimatedG>
-                  ) : null}
-
-                  <AnimatedG animatedProps={riseProps}>
-                    <AnimatedPath d={geom.area} fill="url(#heroArea)" animatedProps={areaProps} />
+                {/* Outgoing range, frozen and fading out under the new one. */}
+                {isMorphing ? (
+                  <AnimatedG animatedProps={ghostProps}>
+                    <Path d={prevGeom.area} fill="url(#heroArea)" />
+                    <Path
+                      d={prevGeom.line}
+                      stroke={chart.line}
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      fill="none"
+                    />
                   </AnimatedG>
-                  <AnimatedPath
-                    d={geom.line}
-                    stroke={chart.line}
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    fill="none"
-                    strokeDasharray={geom.length}
-                    animatedProps={lineProps}
-                  />
+                ) : null}
 
-                  {/* Dotted baseline under the trend. */}
-                  <Line
-                    x1={0}
-                    x2={width}
-                    y1={baselineY}
-                    y2={baselineY}
-                    stroke={chart.grid}
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeDasharray="1 6"
-                    opacity={0.7}
-                  />
+                <AnimatedG animatedProps={riseProps}>
+                  <AnimatedPath d={geom.area} fill="url(#heroArea)" animatedProps={areaProps} />
+                </AnimatedG>
+                <AnimatedPath
+                  d={geom.line}
+                  stroke={chart.line}
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                  strokeDasharray={geom.length}
+                  animatedProps={lineProps}
+                />
 
-                  {/* Scrub crosshair + focus dot (opacity 0 until a drag starts). */}
-                  <AnimatedLine
-                    y1={PAD_TOP}
-                    y2={baselineY}
-                    stroke={chart.cursor}
-                    strokeWidth={1}
-                    strokeDasharray="3 3"
-                    animatedProps={crosshairProps}
-                  />
-                  <AnimatedCircle
-                    r={4.5}
-                    fill={chart.cursor}
-                    stroke={colors.bgCard}
-                    strokeWidth={2}
-                    animatedProps={dotProps}
-                  />
-                </Svg>
-              ) : null}
+                {/* Dotted baseline under the trend. */}
+                <Line
+                  x1={0}
+                  x2={width}
+                  y1={baselineY}
+                  y2={baselineY}
+                  stroke={chart.grid}
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeDasharray="1 6"
+                  opacity={0.7}
+                />
 
-              {canScrub ? (
-                <Animated.View style={[styles.readout, readoutStyle]} pointerEvents="none">
-                  {readout ? (
-                    <>
-                      <Text style={styles.readoutValue}>{readout.value} done</Text>
-                      <Text style={styles.readoutLabel}>{readout.label}</Text>
-                    </>
-                  ) : null}
-                </Animated.View>
-              ) : null}
+                {/* Scrub crosshair + focus dot (opacity 0 until a drag starts). */}
+                <AnimatedLine
+                  y1={PAD_TOP}
+                  y2={baselineY}
+                  stroke={chart.cursor}
+                  strokeWidth={1}
+                  strokeDasharray="3 3"
+                  animatedProps={crosshairProps}
+                />
+                <AnimatedCircle
+                  r={4.5}
+                  fill={chart.cursor}
+                  stroke={colors.bgCard}
+                  strokeWidth={2}
+                  animatedProps={dotProps}
+                />
+              </Svg>
+            ) : null}
 
-              {!hasData ? (
-                <View style={styles.emptyOverlay} pointerEvents="none">
-                  <Text style={styles.emptyText}>Momentum takes shape here.</Text>
-                </View>
-              ) : null}
-            </View>
+            {canScrub ? (
+              <Animated.View style={[styles.readout, readoutStyle]} pointerEvents="none">
+                {readout ? (
+                  <>
+                    <Text style={styles.readoutValue}>{readout.value} done</Text>
+                    <Text style={styles.readoutLabel}>{readout.label}</Text>
+                  </>
+                ) : null}
+              </Animated.View>
+            ) : null}
 
-            {axis && hasData ? (
-              <View style={styles.axisRow}>
-                <Text style={styles.axisTick}>{axis.start}</Text>
-                <Text style={styles.axisTick}>{axis.mid}</Text>
-                <Text style={[styles.axisTick, styles.axisTickEnd]}>{axis.end}</Text>
+            {!hasData ? (
+              <View style={styles.emptyOverlay} pointerEvents="none">
+                <Text style={styles.emptyText}>Momentum takes shape here.</Text>
               </View>
             ) : null}
           </View>
-        </GestureDetector>
-      </View>
+
+          {axis && hasData ? (
+            <View style={styles.axisRow}>
+              <Text style={styles.axisTick}>{axis.start}</Text>
+              <Text style={styles.axisTick}>{axis.mid}</Text>
+              <Text style={[styles.axisTick, styles.axisTickEnd]}>{axis.end}</Text>
+            </View>
+          ) : null}
+        </View>
+      </GestureDetector>
     </View>
   );
 }
@@ -426,73 +441,72 @@ function accessibilitySummary(total: number, periodLabel: string, delta: Delta):
 const styles = StyleSheet.create({
   card: {
     marginHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-    borderRadius: radii.lg,
+    padding: spacing.lg,
+    borderRadius: radii.xl,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.bgCard,
     overflow: "hidden",
+    gap: spacing.md,
+    ...shadow.sm,
   },
-  heroRow: {
+  summaryRow: {
     flexDirection: "row",
     alignItems: "flex-start",
+    justifyContent: "space-between",
     gap: spacing.md,
   },
-  leftCol: {
-    width: LEFT_COL_W,
+  summaryLeft: {
+    flexShrink: 1,
   },
+  /** "23" sized to lead the line, with the unit riding along inside it. */
   headline: {
     fontFamily: typography.display.fontFamily,
-    fontSize: 44,
-    lineHeight: 46,
-    letterSpacing: -1.5,
+    fontSize: 30,
+    lineHeight: 36,
+    letterSpacing: -0.8,
     color: colors.textPrimary,
   },
   unit: {
-    ...typography.title,
+    ...typography.bodyLg,
+    fontSize: 16,
+    lineHeight: 22,
     color: colors.textPrimary,
-    marginTop: 2,
-  },
-  divider: {
-    width: 24,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xs,
+    letterSpacing: 0,
   },
   periodEyebrow: {
     ...typography.micro,
     color: colors.textMuted,
+    paddingTop: spacing.sm,
   },
   deltaChip: {
-    marginTop: spacing.sm,
-    alignItems: "flex-start",
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: spacing.xs,
+    marginTop: 2,
+    flexWrap: "wrap",
   },
   deltaText: {
     ...typography.numeric,
-    fontSize: 17,
+    fontSize: 15,
     lineHeight: 20,
     fontFamily: typography.title.fontFamily,
   },
   deltaMeta: {
-    ...typography.micro,
+    ...typography.bodyMd,
     color: colors.textMuted,
-    marginTop: 1,
   },
-  rightCol: {
-    flex: 1,
+  chartCol: {
+    width: "100%",
   },
   axisRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: spacing.xs,
+    marginTop: spacing.sm,
   },
   axisTick: {
     ...typography.micro,
     color: colors.textMuted,
-    fontSize: 9,
   },
   axisTickEnd: {
     textAlign: "right",
