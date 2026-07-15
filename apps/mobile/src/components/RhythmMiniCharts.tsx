@@ -36,6 +36,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import Animated, {
   Easing,
+  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -45,13 +46,19 @@ import Svg, { Defs, LinearGradient, Path, Stop } from "react-native-svg";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { haptic } from "../lib/haptic";
 import { BarChartIcon, LineChartIcon } from "./UiIcons";
-import { areaPath, monotoneLinePath, type Pt } from "../lib/chartGeometry";
+import {
+  areaPath,
+  monotoneLinePath,
+  pathLengthUpperBound,
+  type Pt,
+} from "../lib/chartGeometry";
 import { WEEKDAY_LABELS } from "../lib/statsAggregators";
 import { chart, colors, motion, radii, spacing, typography } from "../theme/tokens";
 
 /** Full width finally has room for real day names instead of "S M T W T F S". */
 const WEEKDAY_SHORT = WEEKDAY_LABELS.map((l) => l.slice(0, 3));
 const MIN_SAMPLE = 3;
+const AnimatedPath = Animated.createAnimatedComponent(Path);
 const CARD_PAD = spacing.lg; // must match styles.card horizontal padding
 const CHART_H = 148;
 
@@ -224,18 +231,21 @@ function WeekdayChart({
   shape: Shape;
   width: number;
 }) {
-  const max = Math.max(1, ...counts);
   const peak = counts.indexOf(Math.max(...counts));
   const label = `Completions by weekday. Most on ${WEEKDAY_LABELS[peak]}s, ${counts[peak]} completed.`;
 
   return (
     <View accessible accessibilityRole="image" accessibilityLabel={label}>
       <View importantForAccessibility="no-hide-descendants">
-        {shape === "bars" ? (
-          <WeekdayBars counts={counts} max={max} peak={peak} />
-        ) : (
-          <CategoryCurve counts={counts} width={width} peak={peak} />
-        )}
+        <MorphChart
+          counts={counts}
+          shape={shape}
+          width={width}
+          peak={peak}
+          padTop={20}
+          gap={spacing.sm}
+          gradientId="weekdayArea"
+        />
         <View style={styles.labelsRow}>
           {WEEKDAY_SHORT.map((day, i) => (
             <Text
@@ -251,17 +261,77 @@ function WeekdayChart({
   );
 }
 
-function WeekdayBars({
+/**
+ * Slot centres and the y of each count. The bars' tops ARE the line's points —
+ * that identity is the whole reason the morph below is free. Points are inset by
+ * half a slot so each one sits over its own label.
+ */
+function distribution(counts: number[], width: number, padTop: number, gap: number) {
+  const max = Math.max(1, ...counts);
+  const innerH = Math.max(1, CHART_H - padTop);
+  const slot = width / counts.length;
+  return {
+    slot,
+    barW: Math.max(2, slot - gap),
+    xs: counts.map((_, i) => slot / 2 + i * slot),
+    ys: counts.map((c) => padTop + innerH - (c / max) * innerH),
+  };
+}
+
+/**
+ * A distribution drawn as bars, as a line, or anywhere in between.
+ *
+ * Both metrics render through this one component. They used to be four —
+ * WeekdayBars / CategoryCurve / HourBars / HourCurve — each owning its own
+ * animation story, which is exactly how the hour bars ended up as plain Views
+ * that never animated while the weekday bars grew. One component cannot
+ * disagree with itself.
+ *
+ * Two shared values, both UI-thread:
+ *  - `grow` — the entrance. Bars rise from the baseline; the line draws on.
+ *  - `shapeT` — the bars↔line morph (0 = bars, 1 = line).
+ *
+ * The morph works because a bar's top and the line's point are the same y: the
+ * bars narrow to 2px ticks and fade while the line draws through those exact
+ * y's, so nothing moves vertically and the eye holds the shape while only the
+ * encoding changes. The line's reveal is `strokeDashoffset` driven by
+ * `shapeT * grow`, which covers both jobs with no second value — it draws on at
+ * entrance, sweeps on a morph, and un-draws right-to-left going back to bars.
+ */
+function MorphChart({
   counts,
-  max,
+  shape,
+  width,
   peak,
+  padTop,
+  gap,
+  gradientId,
 }: {
   counts: number[];
-  max: number;
+  shape: Shape;
+  width: number;
   peak: number;
+  padTop: number;
+  gap: number;
+  gradientId: string;
 }) {
   const reducedMotion = useReducedMotion();
   const grow = useSharedValue(reducedMotion ? 1 : 0);
+  const shapeT = useSharedValue(shape === "line" ? 1 : 0);
+
+  const geom = useMemo(
+    () => distribution(counts, Math.max(0, width), padTop, gap),
+    [counts, width, padTop, gap],
+  );
+  const path = useMemo(() => {
+    const pts: Pt[] = geom.xs.map((x, i) => ({ x, y: geom.ys[i] }));
+    const line = monotoneLinePath(pts);
+    return {
+      line,
+      area: areaPath(line, pts[0]?.x ?? 0, pts[pts.length - 1]?.x ?? 0, CHART_H),
+      length: pathLengthUpperBound(pts),
+    };
+  }, [geom]);
 
   useEffect(() => {
     if (reducedMotion) {
@@ -275,105 +345,109 @@ function WeekdayBars({
     });
   }, [counts, reducedMotion, grow]);
 
-  return (
-    <View style={[styles.barsRow, { height: CHART_H }]}>
-      {counts.map((c, i) => (
-        <WeekdayBar
-          key={i}
-          count={c}
-          fraction={c / max}
-          grow={grow}
-          isPeak={i === peak && c > 0}
-        />
-      ))}
-    </View>
-  );
-}
+  useEffect(() => {
+    const target = shape === "line" ? 1 : 0;
+    if (reducedMotion) {
+      shapeT.value = target;
+      return;
+    }
+    shapeT.value = withTiming(target, {
+      duration: motion.duration.base,
+      easing: Easing.inOut(Easing.quad),
+    });
+  }, [shape, reducedMotion, shapeT]);
 
-function WeekdayBar({
-  count,
-  fraction,
-  grow,
-  isPeak,
-}: {
-  count: number;
-  fraction: number;
-  grow: SharedValue<number>;
-  isPeak: boolean;
-}) {
-  // Leave headroom for the peak's count label so it never clips the card.
-  const plotH = CHART_H - 18;
-  const fillStyle = useAnimatedStyle(() => ({
-    height: Math.max(fraction > 0 ? 3 : 0, plotH * fraction * grow.value),
+  const lineProps = useAnimatedProps(() => ({
+    strokeDashoffset: path.length * (1 - shapeT.value * grow.value),
   }));
-  return (
-    <View style={styles.barSlot}>
-      {isPeak ? <Text style={styles.barPeakLabel}>{count}</Text> : null}
-      <Animated.View
-        style={[styles.barFill, fillStyle]}
-      />
-    </View>
-  );
-}
-
-/**
- * The weekday series drawn as a line. Sunday→Monday gets a slope it hasn't
- * earned, but it's an explicit user choice — see the toggle note up top.
- */
-function CategoryCurve({
-  counts,
-  width,
-  peak,
-}: {
-  counts: number[];
-  width: number;
-  peak: number;
-}) {
-  const { line, area, dot } = useMemo(() => {
-    const max = Math.max(1, ...counts);
-    const padTop = 20;
-    const innerH = Math.max(1, CHART_H - padTop);
-    // Inset by half a slot so each point sits over its own day label.
-    const slot = width / counts.length;
-    const pts: Pt[] = counts.map((c, i) => ({
-      x: slot / 2 + i * slot,
-      y: padTop + innerH - (c / max) * innerH,
-    }));
-    const line = monotoneLinePath(pts);
-    return {
-      line,
-      area: areaPath(line, pts[0].x, pts[pts.length - 1].x, CHART_H),
-      dot: pts[peak],
-    };
-  }, [counts, width, peak]);
+  const areaProps = useAnimatedProps(() => ({
+    fillOpacity: shapeT.value * grow.value,
+  }));
+  const peakLabelStyle = useAnimatedStyle(() => ({ opacity: grow.value }));
 
   if (width <= 0) return <View style={{ height: CHART_H }} />;
 
   return (
-    <Svg width={width} height={CHART_H}>
-      <Defs>
-        <LinearGradient id="weekdayArea" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={chart.areaColor} stopOpacity={chart.areaTopOpacity} />
-          <Stop offset="1" stopColor={chart.areaColor} stopOpacity={chart.areaBottomOpacity} />
-        </LinearGradient>
-      </Defs>
-      <Path d={area} fill="url(#weekdayArea)" />
-      <Path
-        d={line}
-        stroke={chart.line}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
-      <Path
-        d={`M ${dot.x} ${dot.y} l 0 0`}
-        stroke={chart.line}
-        strokeWidth={7}
-        strokeLinecap="round"
-      />
-    </Svg>
+    <View style={{ height: CHART_H, width }}>
+      {counts.map((c, i) => (
+        <MorphBar
+          key={i}
+          x={geom.xs[i]}
+          y={geom.ys[i]}
+          barW={geom.barW}
+          hasValue={c > 0}
+          grow={grow}
+          shapeT={shapeT}
+        />
+      ))}
+
+      <Svg
+        width={width}
+        height={CHART_H}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      >
+        <Defs>
+          <LinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={chart.areaColor} stopOpacity={chart.areaTopOpacity} />
+            <Stop offset="1" stopColor={chart.areaColor} stopOpacity={chart.areaBottomOpacity} />
+          </LinearGradient>
+        </Defs>
+        <AnimatedPath d={path.area} fill={`url(#${gradientId})`} animatedProps={areaProps} />
+        <AnimatedPath
+          d={path.line}
+          stroke={chart.line}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+          strokeDasharray={path.length}
+          animatedProps={lineProps}
+        />
+      </Svg>
+
+      {counts[peak] > 0 ? (
+        <Animated.Text
+          style={[
+            styles.barPeakLabel,
+            { left: geom.xs[peak] - geom.slot / 2, top: geom.ys[peak] - 18, width: geom.slot },
+            peakLabelStyle,
+          ]}
+        >
+          {counts[peak]}
+        </Animated.Text>
+      ) : null}
+    </View>
   );
+}
+
+function MorphBar({
+  x,
+  y,
+  barW,
+  hasValue,
+  grow,
+  shapeT,
+}: {
+  x: number;
+  y: number;
+  barW: number;
+  hasValue: boolean;
+  grow: SharedValue<number>;
+  shapeT: SharedValue<number>;
+}) {
+  const style = useAnimatedStyle(() => {
+    const t = shapeT.value;
+    const w = barW + (2 - barW) * t;
+    const full = CHART_H - y;
+    return {
+      left: x - w / 2,
+      width: w,
+      height: Math.max(hasValue ? 3 : 0, full * grow.value),
+      opacity: 1 - t,
+    };
+  });
+  return <Animated.View style={[styles.barFill, style]} />;
 }
 
 // ── Hour ────────────────────────────────────────────────────────────────
@@ -397,27 +471,30 @@ function HourChart({
 }) {
   const peakHour = counts.indexOf(Math.max(...counts));
   const label = `Completions by hour. Peak around ${formatHour(peakHour)}.`;
+  // Hours sit on slot centres (same geometry as the weekday chart), so a tick
+  // lands under its own slot rather than on the plot edge.
+  const slot = width > 0 ? width / counts.length : 0;
 
   return (
     <View accessible accessibilityRole="image" accessibilityLabel={label}>
       <View importantForAccessibility="no-hide-descendants">
-        {shape === "line" ? (
-          <HourCurve counts={counts} width={width} />
-        ) : (
-          <HourBars counts={counts} />
-        )}
+        <MorphChart
+          counts={counts}
+          shape={shape}
+          width={width}
+          peak={peakHour}
+          padTop={8}
+          gap={2}
+          gradientId="hourArea"
+        />
         <View style={[styles.hourTicks, { width }]}>
           {HOUR_TICKS.map(({ hour, label: tick }) => (
             <Text
               key={hour}
               style={[
                 styles.hourTick,
-                // Pin the outer ticks to the ends; center the rest on their hour.
-                hour === 0
-                  ? { left: 0, textAlign: "left" }
-                  : hour === 23
-                    ? { right: 0, textAlign: "right" }
-                    : { left: (hour / 23) * width - 14 },
+                // Centre on the slot, then keep the outermost ticks inside the plot.
+                { left: Math.max(0, Math.min(width - 28, slot / 2 + hour * slot - 14)) },
               ]}
             >
               {tick}
@@ -425,60 +502,6 @@ function HourChart({
           ))}
         </View>
       </View>
-    </View>
-  );
-}
-
-function HourCurve({ counts, width }: { counts: number[]; width: number }) {
-  const { line, area } = useMemo(() => {
-    const max = Math.max(1, ...counts);
-    const padTop = 8;
-    const innerH = Math.max(1, CHART_H - padTop);
-    const step = width / 23;
-    const pts: Pt[] = counts.map((c, h) => ({
-      x: h * step,
-      y: padTop + innerH - (c / max) * innerH,
-    }));
-    const line = monotoneLinePath(pts);
-    return { line, area: areaPath(line, 0, (counts.length - 1) * step, CHART_H) };
-  }, [counts, width]);
-
-  if (width <= 0) return <View style={{ height: CHART_H }} />;
-
-  return (
-    <Svg width={width} height={CHART_H}>
-      <Defs>
-        <LinearGradient id="hourArea" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={chart.areaColor} stopOpacity={chart.areaTopOpacity} />
-          <Stop offset="1" stopColor={chart.areaColor} stopOpacity={chart.areaBottomOpacity} />
-        </LinearGradient>
-      </Defs>
-      <Path d={area} fill="url(#hourArea)" />
-      <Path
-        d={line}
-        stroke={chart.line}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
-    </Svg>
-  );
-}
-
-function HourBars({ counts }: { counts: number[] }) {
-  const max = Math.max(1, ...counts);
-  return (
-    <View style={[styles.hourBarsRow, { height: CHART_H }]}>
-      {counts.map((c, h) => (
-        <View
-          key={h}
-          style={[
-            styles.hourBar,
-            { height: Math.max(c > 0 ? 3 : 0, (CHART_H - 8) * (c / max)) },
-          ]}
-        />
-      ))}
     </View>
   );
 }
@@ -542,18 +565,9 @@ const styles = StyleSheet.create({
   shapeButtonActive: {
     backgroundColor: colors.accent,
   },
-  barsRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: spacing.sm,
-  },
-  barSlot: {
-    flex: 1,
-    justifyContent: "flex-end",
-    alignItems: "center",
-  },
   barFill: {
-    width: "100%",
+    position: "absolute",
+    bottom: 0,
     backgroundColor: chart.bar,
     // Round the data end only — a bar is anchored to its baseline, and rounding
     // the foot lifts it off the axis so it reads as a floating lozenge.
@@ -561,20 +575,10 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radii.sm,
   },
   barPeakLabel: {
+    position: "absolute",
+    textAlign: "center",
     ...typography.numeric,
     color: colors.textPrimary,
-    marginBottom: 4,
-  },
-  hourBarsRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 2,
-  },
-  hourBar: {
-    flex: 1,
-    backgroundColor: chart.bar,
-    borderTopLeftRadius: 2,
-    borderTopRightRadius: 2,
   },
   labelsRow: {
     flexDirection: "row",
