@@ -1265,6 +1265,7 @@ function MobileApp() {
 
       <SettingsSheet
         visible={isSettingsModalOpen}
+        isAuthenticated={Boolean(session)}
         calendarSyncEnabled={googleSyncEnabled}
         gmailSyncEnabled={gmailSyncEnabled}
         gmailSyncStatus={gmailSyncStatus}

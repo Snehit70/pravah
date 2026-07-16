@@ -126,6 +126,7 @@ type QuietPickerKind = "morningDigest" | "quietStart" | "quietEnd";
 
 type SettingsSheetProps = {
   visible: boolean;
+  isAuthenticated: boolean;
   calendarSyncEnabled: boolean;
   gmailSyncEnabled: boolean;
   gmailSyncStatus: string;
@@ -2448,6 +2449,7 @@ function renderDetailScreen(
 
 export function SettingsSheet({
   visible,
+  isAuthenticated,
   calendarSyncEnabled,
   gmailSyncEnabled,
   gmailSyncStatus,
@@ -2525,14 +2527,20 @@ export function SettingsSheet({
   const updateCredential = useMutation(api.automation.updateCredential);
   const deleteCredential = useMutation(api.automation.deleteCredential);
   const cancelBootstrapToken = useMutation(api.automation.cancelBootstrapToken);
-  const automationCredentialsResult = useQuery(api.automation.listCredentials, {});
+  // Both automation queries require auth on the server; the sheet stays
+  // mounted through the optimistic shell and sign-out, so they must skip
+  // until the session is live or requireIdentity red-screens the app.
+  const automationCredentialsResult = useQuery(
+    api.automation.listCredentials,
+    isAuthenticated ? {} : "skip",
+  );
   const automationCredentials = useMemo(
     () => automationCredentialsResult ?? [],
     [automationCredentialsResult],
   );
   const pendingBootstrapTokensResult = useQuery(
     api.automation.listBootstrapTokens,
-    {},
+    isAuthenticated ? {} : "skip",
   );
   const pendingBootstrapTokens = useMemo(
     () => pendingBootstrapTokensResult ?? [],
