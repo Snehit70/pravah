@@ -87,13 +87,30 @@ function NavTab({
     fill.set(reducedMotion ? target : withTiming(target, { duration: FILL_DURATION }));
   }, [active, reducedMotion, fill]);
 
-  // Directional fill-rise: the filled twin is revealed through a clip window
-  // that grows bottom-up (tray/mountain/agenda) or left-to-right (trend).
-  const maskStyle = useAnimatedStyle(() =>
-    fillDirection === "right"
-      ? { width: fill.value * ICON_SIZE }
-      : { height: fill.value * ICON_SIZE }
-  );
+  // Directional fill-rise: the filled twin is revealed through a fixed-size
+  // clip window that slides in (bottom-up for tray/mountain/agenda,
+  // left-to-right for trend) while the icon inside slides the opposite way so
+  // it stays visually pinned. Transforms only — animating width/height here
+  // went through layout and could wedge the mask open at a stale size,
+  // leaving an inactive tab rendered with its filled twin.
+  const maskStyle = useAnimatedStyle(() => {
+    const offset = (1 - fill.value) * ICON_SIZE;
+    return {
+      transform:
+        fillDirection === "right"
+          ? [{ translateX: -offset }]
+          : [{ translateY: offset }],
+    };
+  });
+  const maskInnerStyle = useAnimatedStyle(() => {
+    const offset = (1 - fill.value) * ICON_SIZE;
+    return {
+      transform:
+        fillDirection === "right"
+          ? [{ translateX: offset }]
+          : [{ translateY: -offset }],
+    };
+  });
 
   return (
     <View style={styles.slot}>
@@ -117,18 +134,13 @@ function NavTab({
             color={active ? colors.accent : colors.textMuted}
             size={ICON_SIZE}
           />
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.fillMask,
-              fillDirection === "right" ? styles.fillMaskRight : styles.fillMaskUp,
-              maskStyle,
-            ]}
-          >
-            <View style={fillDirection === "right" ? styles.fillInnerRight : styles.fillInnerUp}>
-              <TabNavIcon tab={tab.key} fill color={colors.accent} size={ICON_SIZE} />
-            </View>
-          </Animated.View>
+          <View pointerEvents="none" style={styles.fillClip}>
+            <Animated.View style={[styles.fillMask, maskStyle]}>
+              <Animated.View style={maskInnerStyle}>
+                <TabNavIcon tab={tab.key} fill color={colors.accent} size={ICON_SIZE} />
+              </Animated.View>
+            </Animated.View>
+          </View>
         </Animated.View>
         <Text style={[styles.tabLabel, active && styles.tabLabelActive]} numberOfLines={1}>
           {tab.label}
@@ -290,33 +302,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  // Stationary anchor over the outline icon. It must NOT clip — the sliding
+  // window below moves outside its bounds while inactive.
+  fillClip: {
+    position: "absolute",
+    width: ICON_SIZE,
+    height: ICON_SIZE,
+  },
+  // The sliding clip window: translated off the icon when inactive while the
+  // filled twin inside counter-translates to stay visually pinned, so only
+  // the overlapped portion of the fill shows through.
   fillMask: {
-    position: "absolute",
+    width: ICON_SIZE,
+    height: ICON_SIZE,
     overflow: "hidden",
-  },
-  fillMaskUp: {
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  fillMaskRight: {
-    left: 0,
-    top: 0,
-    bottom: 0,
-  },
-  fillInnerUp: {
-    position: "absolute",
-    left: 0,
-    bottom: 0,
-    width: ICON_SIZE,
-    height: ICON_SIZE,
-  },
-  fillInnerRight: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    width: ICON_SIZE,
-    height: ICON_SIZE,
   },
   tabLabel: {
     ...typography.micro,
