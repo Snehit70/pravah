@@ -454,9 +454,70 @@ export function useTaskMutations({
     [runOptimisticMutation, shiftScheduledTaskPositionMutation, serverTasks, hasPriorityBoundaryViolation, showToast]
   );
 
+  // Inbox quick-schedule: place an unscheduled task on an explicit date. Undo
+  // unschedules it back to the inbox (inbox tasks have no prior date to restore).
+  const scheduleToDate = useCallback(
+    (taskId: Id<"tasks">, targetDate: string) => {
+      void runOptimisticMutation({
+        actionName: "move_task_date",
+        optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
+        mutation: async () => {
+          await moveTaskMutation({ taskId, targetDate });
+        },
+        errorMessage: "Could not schedule task.",
+        retryLabel: "Retry schedule",
+        retryPayload: { type: "moveTask", taskId, targetDate },
+        successFeedback: "light",
+        taskId,
+        undo: {
+          message: "Scheduled",
+          run: () => void runOptimisticMutation(unscheduleConfig(taskId)),
+        },
+      });
+    },
+    [runOptimisticMutation, moveTaskMutation, unscheduleConfig]
+  );
+
+  // Inbox bulk complete (also the single-select path). One optimistic removal,
+  // one awaited fan-out, one toast whose Undo reopens every task in the batch.
+  const markManyDone = useCallback(
+    async (taskIds: Id<"tasks">[]): Promise<boolean> => {
+      if (taskIds.length === 0) return true;
+      const ids = new Set<string>(taskIds.map(String));
+      return runOptimisticMutation({
+        actionName: "complete_tasks_bulk",
+        optimistic: (cur) => cur.filter((task) => !ids.has(String(task._id))),
+        mutation: async () => {
+          await Promise.all(taskIds.map((taskId) => completeTaskMutation({ taskId })));
+        },
+        errorMessage:
+          taskIds.length === 1
+            ? "Could not mark task as done."
+            : "Could not mark tasks as done.",
+        successFeedback: "taskCompleted",
+        undo: {
+          message: taskIds.length === 1 ? "Marked done" : `Marked ${taskIds.length} done`,
+          run: () =>
+            void runOptimisticMutation({
+              actionName: "reopen_tasks_bulk",
+              optimistic: (cur) => cur,
+              mutation: async () => {
+                await Promise.all(taskIds.map((taskId) => reopenTaskMutation({ taskId })));
+              },
+              errorMessage: "Could not undo.",
+              successFeedback: "light",
+            }),
+        },
+      });
+    },
+    [runOptimisticMutation, completeTaskMutation, reopenTaskMutation]
+  );
+
   return {
     markDone,
     moveToToday,
+    scheduleToDate,
+    markManyDone,
     sendToInbox,
     reopenTask,
     deleteTask,

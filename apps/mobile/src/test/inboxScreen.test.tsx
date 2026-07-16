@@ -2,8 +2,9 @@
 /**
  * InboxScreen tests
  *
- * Strategy: mock react-native components and DraggableFlatList, test rendering
- * states (loading, empty, with tasks) and user interactions.
+ * Strategy: mock react-native primitives, the compact row, the quick-schedule
+ * sheet, and the confirm hook, then test rendering states (loading, empty, with
+ * tasks), filtering, quick-schedule, and multi-select complete.
  */
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
@@ -24,6 +25,7 @@ vi.mock("react-native", () => {
   const Pressable = ({ children, ...rest }: AnyProps) => {
     const {
       onPress,
+      disabled,
       style: _,
       hitSlop: __,
       accessibilityLabel,
@@ -32,6 +34,7 @@ vi.mock("react-native", () => {
       ...safe
     } = rest as {
       onPress?: () => void;
+      disabled?: boolean;
       hitSlop?: unknown;
       accessibilityLabel?: string;
       accessibilityRole?: string;
@@ -45,7 +48,8 @@ vi.mock("react-native", () => {
       "button",
       {
         ...safe,
-        onClick: onPress,
+        onClick: disabled ? undefined : onPress,
+        disabled,
         type: "button",
         "aria-label": accessibilityLabel,
         "aria-expanded": accessibilityState?.expanded,
@@ -131,6 +135,70 @@ vi.mock("react-native-reanimated", () => ({
   FadeOut: { duration: () => undefined },
 }));
 
+// ─── react-native-svg mock ────────────────────────────────────────────────────
+// The header's search glyph and empty-state icon draw with react-native-svg;
+// the tests only need it to render inertly.
+vi.mock("react-native-svg", () => {
+  const Stub = ({ children }: { children?: React.ReactNode }) =>
+    React.createElement("svg", {}, children);
+  return { __esModule: true, default: Stub, Svg: Stub, Path: Stub, Circle: Stub };
+});
+
+// ─── compact row mock ─────────────────────────────────────────────────────────
+// Drive interactions through simple buttons keyed by task id.
+vi.mock("../components/InboxTaskRow", () => ({
+  InboxTaskRow: ({
+    task,
+    goalName,
+    selectMode,
+    selected,
+    onPress,
+    onLongPress,
+    onToggleSelect,
+    onSchedule,
+  }: {
+    task: { _id: string; title: string };
+    goalName?: string;
+    selectMode: boolean;
+    selected: boolean;
+    onPress: () => void;
+    onLongPress: () => void;
+    onToggleSelect: () => void;
+    onSchedule: () => void;
+  }) =>
+    React.createElement(
+      "div",
+      { "data-testid": `task-${task._id}` },
+      React.createElement("span", {}, task.title),
+      goalName ? React.createElement("span", { "data-testid": `goal-${task._id}` }, goalName) : null,
+      selected ? React.createElement("span", { "data-testid": `selected-${task._id}` }) : null,
+      React.createElement(
+        "button",
+        { "aria-label": `row-${task._id}`, onClick: selectMode ? onToggleSelect : onPress },
+        "row",
+      ),
+      React.createElement("button", { "aria-label": `long-${task._id}`, onClick: onLongPress }, "long"),
+      React.createElement("button", { "aria-label": `sched-${task._id}`, onClick: onSchedule }, "sched"),
+    ),
+}));
+
+// ─── quick-schedule sheet mock ────────────────────────────────────────────────
+vi.mock("../components/QuickScheduleSheet", () => ({
+  QuickScheduleSheet: ({
+    visible,
+    onPick,
+  }: {
+    visible: boolean;
+    onPick: (iso: string) => void;
+  }) =>
+    visible
+      ? React.createElement("button", { "aria-label": "quick-pick", onClick: () => onPick("2026-07-20") }, "pick")
+      : null,
+}));
+
+// ─── confirm hook mock ────────────────────────────────────────────────────────
+vi.mock("../hooks/useConfirm", () => ({ useConfirm: () => vi.fn(async () => true) }));
+
 // ─── goals hooks mock ─────────────────────────────────────────────────────────
 vi.mock("../hooks/useGoals", () => ({
   useGoals: () => ({
@@ -154,9 +222,10 @@ vi.mock("../theme/tokens", () => ({
     textPrimary: "#fff",
     textSecondary: "#ccc",
     textMuted: "#888",
+    textInverse: "#000",
   },
   spacing: { xs: 4, sm: 8, md: 16, lg: 24, xxl: 48, section: 32 },
-  typography: { headline: {}, bodyMd: {}, micro: {}, numeric: {} },
+  typography: { title: {}, headline: {}, bodyMd: {}, micro: {}, numeric: {} },
   radii: { sm: 4, md: 8, lg: 12, xl: 16, full: 999 },
   fonts: { sans: "sans", sansSemibold: "sans-semibold" },
 }));
@@ -206,15 +275,33 @@ const sampleTasks: MobileTask[] = [
   },
 ];
 
+const mockOnRefresh = vi.fn(async () => undefined);
+const mockOnCapture = vi.fn();
+const mockOnEditTask = vi.fn();
+const mockOnScheduleToDate = vi.fn();
+const mockOnMarkManyDone = vi.fn(async () => true);
+
+function renderInbox(overrides: Partial<React.ComponentProps<typeof InboxScreen>> = {}) {
+  return render(
+    <InboxScreen
+      tasks={sampleTasks}
+      isLoading={false}
+      isRefreshing={false}
+      tabBarHeight={60}
+      onRefresh={mockOnRefresh}
+      onCapture={mockOnCapture}
+      onEditTask={mockOnEditTask}
+      onScheduleToDate={mockOnScheduleToDate}
+      onMarkManyDone={mockOnMarkManyDone}
+      canAct
+      {...overrides}
+    />
+  );
+}
+
 // ─── tests ────────────────────────────────────────────────────────────────────
 
 describe("InboxScreen", () => {
-  const mockRenderItem = vi.fn((params: { item: MobileTask }) =>
-    React.createElement("div", { "data-testid": `task-${params.item._id}` }, params.item.title)
-  );
-  const mockOnRefresh = vi.fn(async () => undefined);
-  const mockOnCapture = vi.fn();
-
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -225,111 +312,90 @@ describe("InboxScreen", () => {
   });
 
   it("renders loading skeleton when isLoading is true", () => {
-    render(
-      <InboxScreen
-        tasks={[]}
-        isLoading={true}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        onCapture={mockOnCapture}
-        renderItem={mockRenderItem}
-      />
-    );
+    renderInbox({ tasks: [], isLoading: true });
 
     expect(screen.getByTestId("skeleton-inbox")).toBeTruthy();
     expect(screen.queryByText("Everything has a place.")).toBeNull();
   });
 
   it("shows empty state when no tasks and not loading", () => {
-    render(
-      <InboxScreen
-        tasks={[]}
-        isLoading={false}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        onCapture={mockOnCapture}
-        renderItem={mockRenderItem}
-      />
-    );
+    renderInbox({ tasks: [] });
 
     expect(screen.getByText("Everything has a place.")).toBeTruthy();
     expect(screen.getByText("Capture new loose work when it appears.")).toBeTruthy();
     expect(screen.getByRole("button", { name: /capture a task/i })).toBeTruthy();
   });
 
-  it("renders task list when tasks are present", () => {
-    render(
-      <InboxScreen
-        tasks={sampleTasks}
-        isLoading={false}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        onCapture={mockOnCapture}
-        renderItem={mockRenderItem}
-      />
-    );
+  it("renders a compact row per task with its linked goal", () => {
+    renderInbox();
 
     expect(screen.getByTestId("task-task1")).toBeTruthy();
     expect(screen.getByTestId("task-task2")).toBeTruthy();
     expect(screen.getByText("Task 1")).toBeTruthy();
     expect(screen.getByText("Task 2")).toBeTruthy();
-    expect(mockRenderItem).toHaveBeenCalledTimes(2);
+    // task1 is linked to Blog; task2 is unlinked.
+    expect(screen.getByTestId("goal-task1").textContent).toBe("Blog");
+    expect(screen.queryByTestId("goal-task2")).toBeNull();
+  });
+
+  it("opens the editor when a row body is tapped", () => {
+    renderInbox();
+
+    fireEvent.click(screen.getByRole("button", { name: "row-task1" }));
+
+    expect(mockOnEditTask).toHaveBeenCalledTimes(1);
+    expect(mockOnEditTask.mock.calls[0][0]._id).toBe("task1");
+  });
+
+  it("schedules a task through the quick-schedule sheet", () => {
+    renderInbox();
+
+    // No sheet until a schedule icon is pressed.
+    expect(screen.queryByRole("button", { name: "quick-pick" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "sched-task1" }));
+    fireEvent.click(screen.getByRole("button", { name: "quick-pick" }));
+
+    expect(mockOnScheduleToDate).toHaveBeenCalledWith("task1", "2026-07-20");
   });
 
   it("calls onCapture when capture button is pressed", () => {
-    render(
-      <InboxScreen
-        tasks={[]}
-        isLoading={false}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        onCapture={mockOnCapture}
-        renderItem={mockRenderItem}
-      />
-    );
+    renderInbox({ tasks: [] });
 
-    const captureBtn = screen.getByRole("button", { name: /capture a task/i });
-    fireEvent.click(captureBtn);
+    fireEvent.click(screen.getByRole("button", { name: /capture a task/i }));
 
     expect(mockOnCapture).toHaveBeenCalledTimes(1);
   });
 
   it("does not show empty state when loading", () => {
-    render(
-      <InboxScreen
-        tasks={[]}
-        isLoading={true}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        onCapture={mockOnCapture}
-        renderItem={mockRenderItem}
-      />
-    );
+    renderInbox({ tasks: [], isLoading: true });
 
     expect(screen.queryByText("Everything has a place.")).toBeNull();
     expect(screen.getByTestId("skeleton-inbox")).toBeTruthy();
   });
 
-  it("filters to tasks linked to the selected goal", () => {
-    render(
-      <InboxScreen
-        tasks={sampleTasks}
-        isLoading={false}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        onCapture={mockOnCapture}
-        renderItem={mockRenderItem}
-      />
-    );
+  it("enters select mode on long-press and bulk-completes with confirm", async () => {
+    renderInbox();
 
-    // Open the filter launcher, then the goal dropdown, then pick "Blog".
-    fireEvent.click(screen.getByRole("button", { name: /search or filter/i }));
+    // Long-press task1 → select mode with task1 selected.
+    fireEvent.click(screen.getByRole("button", { name: "long-task1" }));
+    expect(screen.getByTestId("selected-task1")).toBeTruthy();
+
+    // In select mode, tapping task2's row toggles it into the selection.
+    fireEvent.click(screen.getByRole("button", { name: "row-task2" }));
+    expect(screen.getByTestId("selected-task2")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /mark 2 tasks as done/i }));
+    });
+
+    expect(mockOnMarkManyDone).toHaveBeenCalledTimes(1);
+    expect(mockOnMarkManyDone).toHaveBeenCalledWith(["task1", "task2"]);
+  });
+
+  it("filters to tasks linked to the selected goal", () => {
+    renderInbox();
+
+    // Open the goal dropdown, then pick "Blog".
     fireEvent.click(screen.getByRole("button", { name: /goal filter/i }));
     fireEvent.click(screen.getByRole("button", { name: "Blog" }));
 
@@ -338,23 +404,8 @@ describe("InboxScreen", () => {
     expect(screen.queryByTestId("task-task2")).toBeNull();
   });
 
-  it("exposes expanded state for filter disclosures", () => {
-    render(
-      <InboxScreen
-        tasks={sampleTasks}
-        isLoading={false}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        onCapture={mockOnCapture}
-        renderItem={mockRenderItem}
-      />
-    );
-
-    const filters = screen.getByRole("button", { name: /search or filter/i });
-    expect(filters.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(filters);
-    expect(filters.getAttribute("aria-expanded")).toBe("true");
+  it("exposes expanded state for the goal disclosure", () => {
+    renderInbox();
 
     const goals = screen.getByRole("button", { name: /goal filter/i });
     expect(goals.getAttribute("aria-expanded")).toBe("false");
@@ -363,19 +414,8 @@ describe("InboxScreen", () => {
   });
 
   it("filters to unlinked tasks with the No goal option", () => {
-    render(
-      <InboxScreen
-        tasks={sampleTasks}
-        isLoading={false}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        onCapture={mockOnCapture}
-        renderItem={mockRenderItem}
-      />
-    );
+    renderInbox();
 
-    fireEvent.click(screen.getByRole("button", { name: /search or filter/i }));
     fireEvent.click(screen.getByRole("button", { name: /goal filter/i }));
     fireEvent.click(screen.getByRole("button", { name: "No goal" }));
 
@@ -396,17 +436,7 @@ describe("InboxScreen", () => {
       createdAt: index,
     }));
 
-    render(
-      <InboxScreen
-        tasks={tasks}
-        isLoading={false}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        onCapture={mockOnCapture}
-        renderItem={mockRenderItem}
-      />
-    );
+    renderInbox({ tasks });
 
     expect(screen.getByTestId("task-bulk-22")).toBeTruthy();
     expect(screen.queryByTestId("task-bulk-23")).toBeNull();

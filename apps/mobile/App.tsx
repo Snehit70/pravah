@@ -26,7 +26,7 @@ import {
 } from "@expo-google-fonts/geist";
 import { GeistMono_500Medium } from "@expo-google-fonts/geist-mono";
 import { ConvexClientProvider } from "./src/lib/convex";
-import { humanDate, isIsoDate } from "./src/lib/dates";
+import { isIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
 import {
   getDiagnosticsSnapshot,
@@ -597,12 +597,13 @@ function MobileApp() {
 
   const {
     markDone,
-    moveToToday,
     sendToInbox,
     reopenTask,
     deleteTask,
     handleSaveEdits,
     shiftTimelineTask,
+    scheduleToDate,
+    markManyDone,
   } = useTaskMutations({
     serverTasks: activeServerTasks,
     setOptimisticTasks,
@@ -872,32 +873,6 @@ function MobileApp() {
     setIsSettingsModalOpen,
   ]);
 
-  const renderInboxTaskItem = useCallback(
-    ({ item, drag, hidePriorityBadge }: RenderItemParams<MobileTask> & { hidePriorityBadge?: boolean }) => (
-      // Inbox has no day-section header, so a dated task self-describes its date.
-      <TaskCard
-        task={item}
-        dateLabel={item.deadline ? humanDate(item.deadline) : undefined}
-        onDone={canUseWorkspaceActions ? markDone : () => undefined}
-        onMoveToday={canUseWorkspaceActions ? moveToToday : undefined}
-        onSchedule={canUseWorkspaceActions ? handleEditTask : undefined}
-        onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
-        onDragHandlePress={canUseWorkspaceActions ? drag : undefined}
-        linkedGoalName={taskGoalNames.get(String(item._id))}
-        hidePriorityBadge={hidePriorityBadge}
-        swipeActionsEnabled={prefs.swipeActionsEnabled}
-      />
-    ),
-    [
-      canUseWorkspaceActions,
-      handleEditTask,
-      markDone,
-      moveToToday,
-      prefs.swipeActionsEnabled,
-      taskGoalNames,
-    ]
-  );
-
   const renderTimelineTaskItem = useCallback(
     (dateKey: string, { item, drag }: RenderItemParams<MobileTask>) => (
       // No date on timeline cards: the day-named section header owns the date.
@@ -1136,7 +1111,10 @@ function MobileApp() {
               tabBarHeight={tabBarHeight}
               onRefresh={handleRefresh}
               onCapture={() => canUseWorkspaceActions && addTaskSheetRef.current?.open()}
-              renderItem={renderInboxTaskItem}
+              onEditTask={handleEditTask}
+              onScheduleToDate={scheduleToDate}
+              onMarkManyDone={markManyDone}
+              canAct={canUseWorkspaceActions}
             />
           </ScreenErrorBoundary>
         </Animated.View>
