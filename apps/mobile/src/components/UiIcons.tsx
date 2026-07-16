@@ -48,6 +48,12 @@ export const ChevronUpIcon = icon(({ color, size, strokeWidth }) => (
   </Svg>
 ));
 
+export const ChevronDownIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="m6 9.5 6 6 6-6" />
+  </Svg>
+));
+
 export const ArrowUpRightIcon = icon(({ color, size, strokeWidth }) => (
   <Svg {...frame(color, size, strokeWidth)}>
     <Path d="M7 17 17 7" />
@@ -197,6 +203,39 @@ export const PlusIcon = icon(({ color, size, strokeWidth }) => (
   <Svg {...frame(color, size, strokeWidth)}>
     <Line x1={12} y1={6} x2={12} y2={18} />
     <Line x1={6} y1={12} x2={18} y2={12} />
+  </Svg>
+));
+
+export const CloseIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Line x1={6.5} y1={6.5} x2={17.5} y2={17.5} />
+    <Line x1={17.5} y1={6.5} x2={6.5} y2={17.5} />
+  </Svg>
+));
+
+export const PencilIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M14.5 5.5 18.5 9.5" />
+    <Path d="M16.2 3.8a2 2 0 0 1 2.8 0l1.2 1.2a2 2 0 0 1 0 2.8L8.4 20.1 3.5 21l.9-4.9Z" />
+  </Svg>
+));
+
+export const TrashIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M4.5 6.5h15" />
+    <Path d="M9 6.5V4.8A1.3 1.3 0 0 1 10.3 3.5h3.4A1.3 1.3 0 0 1 15 4.8v1.7" />
+    <Path d="M6.5 6.5 7.3 19a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4l.8-12.5" />
+    <Line x1={10} y1={10.5} x2={10} y2={16.5} />
+    <Line x1={14} y1={10.5} x2={14} y2={16.5} />
+  </Svg>
+));
+
+/** A broken link: the two halves pull apart, with the gap left open. */
+export const UnlinkIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Path d="M9.2 7.3 11 5.5a4 4 0 0 1 5.7 5.7l-1.8 1.8" />
+    <Path d="M14.8 16.7 13 18.5a4 4 0 0 1-5.7-5.7l1.8-1.8" />
+    <Line x1={4.5} y1={4.5} x2={19.5} y2={19.5} />
   </Svg>
 ));
 
