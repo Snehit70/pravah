@@ -515,6 +515,8 @@ export function useTaskMutations({
           taskIds.length === 1
             ? "Could not mark task as done."
             : "Could not mark tasks as done.",
+        retryLabel: taskIds.length === 1 ? "Retry mark done" : `Retry mark ${taskIds.length} done`,
+        retryPayload: { type: "completeTasks", taskIds },
         successFeedback: "taskCompleted",
         undo: {
           message: taskIds.length === 1 ? "Marked done" : `Marked ${taskIds.length} done`,

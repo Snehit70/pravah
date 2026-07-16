@@ -555,6 +555,12 @@ function MobileApp() {
           await completeTaskMutation({ taskId: payload.taskId });
           return;
         }
+        case "completeTasks": {
+          await Promise.all(
+            payload.taskIds.map((taskId) => completeTaskMutation({ taskId }))
+          );
+          return;
+        }
         case "moveTask": {
           await moveTaskMutation({ taskId: payload.taskId, targetDate: payload.targetDate });
           return;
