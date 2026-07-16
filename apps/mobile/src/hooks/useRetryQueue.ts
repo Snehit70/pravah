@@ -41,6 +41,10 @@ export type RetryPayload =
       targetDate: string;
     }
   | {
+      type: "rescheduleTasks";
+      updates: { taskId: Id<"tasks">; deadline: string }[];
+    }
+  | {
       type: "unscheduleTask";
       taskId: Id<"tasks">;
     }

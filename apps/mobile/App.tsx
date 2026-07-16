@@ -287,6 +287,7 @@ function MobileApp() {
   const completeTaskMutation = useMutation(api.tasks.completeTask);
   const moveTaskMutation = useMutation(api.tasks.moveTask);
   const unscheduleTaskMutation = useMutation(api.tasks.unscheduleTask);
+  const rescheduleTasksMutation = useMutation(api.tasks.rescheduleTasks);
   const reopenTaskMutation = useMutation(api.tasks.reopenTask);
   const softDeleteTaskMutation = useMutation(api.tasks.softDeleteTask);
   const restoreTaskMutation = useMutation(api.tasks.restoreTask);
@@ -565,6 +566,10 @@ function MobileApp() {
           await moveTaskMutation({ taskId: payload.taskId, targetDate: payload.targetDate });
           return;
         }
+        case "rescheduleTasks": {
+          await rescheduleTasksMutation({ updates: payload.updates });
+          return;
+        }
         case "unscheduleTask": {
           await unscheduleTaskMutation({ taskId: payload.taskId });
           return;
@@ -581,6 +586,7 @@ function MobileApp() {
       completeTaskMutation,
       moveTaskMutation,
       unscheduleTaskMutation,
+      rescheduleTasksMutation,
       reopenTaskMutation,
       setGoalLink,
     ]

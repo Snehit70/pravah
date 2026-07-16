@@ -566,6 +566,12 @@ export function useTaskMutations({
         },
         errorMessage:
           taskIds.length === 1 ? "Could not reschedule task." : "Could not reschedule tasks.",
+        retryLabel:
+          taskIds.length === 1 ? "Retry reschedule" : `Retry reschedule of ${taskIds.length}`,
+        retryPayload: {
+          type: "rescheduleTasks",
+          updates: taskIds.map((taskId) => ({ taskId, deadline: targetDate })),
+        },
         successFeedback: "light",
         undo: {
           message: taskIds.length === 1 ? "Rescheduled" : `Rescheduled ${taskIds.length}`,
