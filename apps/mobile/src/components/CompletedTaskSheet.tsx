@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { humanDate } from "../lib/dates";
@@ -26,7 +27,7 @@ function formatTimestamp(ms?: number): string | null {
 }
 
 export function CompletedTaskSheet({
-  task,
+  task: openTask,
   linkedGoalName,
   onClose,
   onDelete,
@@ -35,12 +36,21 @@ export function CompletedTaskSheet({
 }: CompletedTaskSheetProps) {
   const insets = useSafeAreaInsets();
   const confirm = useConfirm();
+
+  // Hold the last task through dismissal: the caller nulls it on close, and
+  // without this the sheet slides out blank. Visibility still follows the
+  // live prop; only the rendered content persists.
+  const [task, setTask] = useState(openTask);
+  if (openTask && openTask !== task) {
+    setTask(openTask);
+  }
+
   const completedAtLabel = formatTimestamp(task?.completedAt);
   const createdAtLabel = formatTimestamp(task?.createdAt);
 
   return (
     <Modal
-      visible={task !== null}
+      visible={openTask !== null}
       transparent
       animationType="slide"
       onRequestClose={onClose}

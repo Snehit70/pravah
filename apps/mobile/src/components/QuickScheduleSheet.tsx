@@ -44,6 +44,13 @@ export function QuickScheduleSheet({
   const reducedMotion = useReducedMotion();
   const [showDatePicker, setShowDatePicker] = useState(false);
 
+  // Hold the last title through dismissal: callers null the task on close,
+  // and without this the header blanks while the sheet is still sliding out.
+  const [displayTitle, setDisplayTitle] = useState(taskTitle);
+  if (taskTitle !== undefined && taskTitle !== displayTitle) {
+    setDisplayTitle(taskTitle);
+  }
+
   const options = useMemo(() => {
     const now = new Date();
     const today = toIsoDate(now);
@@ -82,9 +89,9 @@ export function QuickScheduleSheet({
         <View style={styles.card}>
           <View style={styles.grab} />
           <Text style={styles.kicker}>Schedule</Text>
-          {taskTitle ? (
+          {displayTitle ? (
             <Text style={styles.title} numberOfLines={1}>
-              {taskTitle}
+              {displayTitle}
             </Text>
           ) : null}
 
