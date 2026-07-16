@@ -11,8 +11,9 @@
  * only, so the whole screen stays OTA-updatable.
  */
 
-import { useMemo, useState, type JSX, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type JSX, type ReactNode } from "react";
 import {
+  AppState,
   FlatList,
   Modal,
   Pressable,
@@ -108,7 +109,16 @@ export function InsightsScreen({
   const [query, setQuery] = useState("");
   const [window, setWindow] = useState<HistoryWindow>("all");
   const [range, setRange] = useState<RangeKey>("30d");
-  const [now] = useState(() => Date.now());
+  // The anchor every aggregation window hangs off. Re-anchored on foreground
+  // and pull-to-refresh so a screen kept mounted across midnight doesn't keep
+  // reporting ranges that end on yesterday.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") setNow(Date.now());
+    });
+    return () => subscription.remove();
+  }, []);
 
   const { goals } = useGoals();
   const links = useGoalLinks();
@@ -206,7 +216,10 @@ export function InsightsScreen({
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
-            onRefresh={() => void onRefresh()}
+            onRefresh={() => {
+              setNow(Date.now());
+              void onRefresh();
+            }}
             tintColor={colors.accent}
             colors={[colors.accent]}
             progressBackgroundColor={colors.bgCard}
