@@ -993,6 +993,17 @@ function MobileApp() {
             </View>
           </View>
           <View style={styles.headerLinks}>
+            {__DEV__ ? (
+              <Pressable
+                onPress={() => setShowDiagnostics((prev) => !prev)}
+                style={({ pressed }) => [styles.diagLinkWrap, pressed && styles.pressed]}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Toggle diagnostics"
+              >
+                <Text style={styles.diagLinkText}>DIAG</Text>
+              </Pressable>
+            ) : null}
             {activeTab === "timeline" ? <TimelineLayoutToggle /> : null}
             <Pressable
               onPress={openKairo}
@@ -1516,6 +1527,17 @@ const styles = StyleSheet.create({
     fontFamily: fonts.sansSemibold,
     fontSize: 18,
     letterSpacing: 1,
+  },
+  // Dev-only diagnostics entry: a mono log-line word in the header links row,
+  // matching the settings affordance instead of floating over list content.
+  diagLinkWrap: {
+    minHeight: 32,
+    justifyContent: "center",
+    paddingVertical: spacing.xs,
+  },
+  diagLinkText: {
+    ...typography.micro,
+    color: colors.textMuted,
   },
   // Kairo entry point: a quiet square squircle chip with the accent Kairo
   // mark — reads as the AI affordance without a text label.
