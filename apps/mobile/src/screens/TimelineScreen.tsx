@@ -211,12 +211,13 @@ export function TimelineScreen({
   const rows = buildTimelineRows(visibleSections, today, tomorrow, visibleRowCount);
   const hasPendingRows = rows.length < totalRows;
 
-  // Every task currently on screen — the pool select-all and the bulk actions
-  // operate on. Collapsed "Later" sections stay out until expanded.
-  const visibleTasks = useMemo(
-    () => visibleSections.flatMap(([, tasks]) => tasks),
-    [visibleSections]
-  );
+  // The pool select-all and the bulk actions operate on: only tasks whose
+  // rows are actually released to the list. Rows still pending incremental
+  // release and collapsed "Later" sections stay out — bulk actions must never
+  // touch a task the user has not been shown.
+  const visibleTasks = rows
+    .filter((row): row is Extract<TimelineRow, { kind: "task" }> => row.kind === "task")
+    .map((row) => row.task);
 
   const canSelect = Boolean(onMarkManyDone ?? onScheduleMany);
 
