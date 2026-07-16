@@ -455,10 +455,13 @@ export function useTaskMutations({
     [runOptimisticMutation, shiftScheduledTaskPositionMutation, serverTasks, hasPriorityBoundaryViolation, showToast]
   );
 
-  // Inbox quick-schedule: place an unscheduled task on an explicit date. Undo
-  // unschedules it back to the inbox (inbox tasks have no prior date to restore).
+  // Quick-schedule: place a task on an explicit date. Inbox tasks have no
+  // prior date, so Undo unschedules them back to the inbox — but the Goals
+  // sheet reuses this for already-dated tasks, where Undo must restore the
+  // date the task had before, not dump it into the inbox.
   const scheduleToDate = useCallback(
     (taskId: Id<"tasks">, targetDate: string) => {
+      const priorDeadline = serverTasks.find((task) => task._id === taskId)?.deadline;
       void runOptimisticMutation({
         actionName: "move_task_date",
         optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
@@ -472,11 +475,28 @@ export function useTaskMutations({
         taskId,
         undo: {
           message: "Scheduled",
-          run: () => void runOptimisticMutation(unscheduleConfig(taskId)),
+          run: () =>
+            void runOptimisticMutation(
+              priorDeadline
+                ? {
+                    actionName: "move_task_date_undo",
+                    optimistic: (cur) =>
+                      patchTaskInOptimisticView(cur, taskId, { deadline: priorDeadline }, Date.now()),
+                    mutation: async () => {
+                      await moveTaskMutation({ taskId, targetDate: priorDeadline });
+                    },
+                    errorMessage: "Could not undo.",
+                    retryLabel: "Retry reschedule",
+                    retryPayload: { type: "moveTask", taskId, targetDate: priorDeadline },
+                    successFeedback: "light",
+                    taskId,
+                  }
+                : unscheduleConfig(taskId)
+            ),
         },
       });
     },
-    [runOptimisticMutation, moveTaskMutation, unscheduleConfig]
+    [runOptimisticMutation, moveTaskMutation, unscheduleConfig, serverTasks]
   );
 
   // Inbox bulk complete (also the single-select path). One optimistic removal,
