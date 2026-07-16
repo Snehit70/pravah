@@ -43,7 +43,7 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-
 
 import { colors, fonts, radii, spacing, typography } from "./src/theme/tokens";
 import { TaskCard, type MobileTask } from "./src/components/TaskCard";
-import { BottomTabBar } from "./src/components/BottomTabBar";
+import { BottomTabBar, type TabKey } from "./src/components/BottomTabBar";
 import { GridBackground } from "./src/components/GridBackground";
 import { Kairo, type KairoSheetRef } from "./src/components/Kairo";
 import { BootScreen } from "./src/components/BootScreen";
@@ -132,6 +132,11 @@ function MobileApp() {
   const didMarkInteractiveRef = useRef(false);
   const didApplyStartupTabRef = useRef(false);
   const didManuallyChangeTabRef = useRef(false);
+  // Tabs lazy-mount on first visit and then stay mounted (hidden via
+  // display:none), so revisits are instant: no remount, no re-run of the
+  // entrance cascade, and list scroll positions survive. A ref (not state)
+  // because it only ever grows and the activeTab change already re-renders.
+  const visitedTabsRef = useRef<Set<TabKey>>(new Set());
 
   const {
     session,
@@ -160,6 +165,7 @@ function MobileApp() {
     retryBootstrap,
     hasCachedSessionHint,
   } = useWorkspaceState();
+  visitedTabsRef.current.add(activeTab);
 
   const chromeDim = useSharedValue(1);
   useEffect(() => {
@@ -205,12 +211,6 @@ function MobileApp() {
 
   // ── Data ────────────────────────────────────────────────────────────
 
-  const needsFullWorkspaceCorpus =
-    isKairoActive ||
-    activeTab === "insights" ||
-    activeTab === "goals" ||
-    notificationsEnabled;
-
   const {
     today,
     tomorrow,
@@ -226,7 +226,10 @@ function MobileApp() {
     isAllTasksReady,
   } = useTaskQueries({
     isAuthenticated: Boolean(session),
-    includeAllTasks: needsFullWorkspaceCorpus,
+    // The full corpus stays subscribed for the whole session. At single-user
+    // scale it's a handful of indexed rows, and keeping it live means Goals /
+    // Progress / Kairo never pay a server round-trip on entry.
+    includeAllTasks: true,
   });
 
   const hasLiveWorkspaceData = !isInboxLoading && !isTimelineLoading && !isCompletedLoading;
@@ -1071,8 +1074,11 @@ function MobileApp() {
         <Text accessibilityLiveRegion="polite" style={styles.syncText}>Syncing</Text>
       ) : null}
 
-      {activeTab === "inbox" ? (
-        <Animated.View entering={tabEnterAnimation} style={styles.tabScreen}>
+      {visitedTabsRef.current.has("inbox") ? (
+        <Animated.View
+          entering={tabEnterAnimation}
+          style={[styles.tabScreen, activeTab !== "inbox" && styles.tabHidden]}
+        >
           <ScreenErrorBoundary screenName="Inbox">
             <InboxScreen
               tasks={visibleTasks}
@@ -1090,8 +1096,11 @@ function MobileApp() {
         </Animated.View>
       ) : null}
 
-      {activeTab === "timeline" ? (
-        <Animated.View entering={tabEnterAnimation} style={styles.tabScreen}>
+      {visitedTabsRef.current.has("timeline") ? (
+        <Animated.View
+          entering={tabEnterAnimation}
+          style={[styles.tabScreen, activeTab !== "timeline" && styles.tabHidden]}
+        >
           {/* Ambient, silent-when-healthy sync indicator. The timeline is the
               surface calendar sync feeds, so a broken sync surfaces here where
               it's actually missing events — not buried in Settings. */}
@@ -1134,8 +1143,11 @@ function MobileApp() {
         </Animated.View>
       ) : null}
 
-      {activeTab === "goals" ? (
-        <Animated.View entering={tabEnterAnimation} style={styles.tabScreen}>
+      {visitedTabsRef.current.has("goals") ? (
+        <Animated.View
+          entering={tabEnterAnimation}
+          style={[styles.tabScreen, activeTab !== "goals" && styles.tabHidden]}
+        >
           <ScreenErrorBoundary screenName="Goals">
             <GoalsScreen
               tabBarHeight={tabBarHeight}
@@ -1160,8 +1172,11 @@ function MobileApp() {
         </Animated.View>
       ) : null}
 
-      {activeTab === "insights" ? (
-        <Animated.View entering={tabEnterAnimation} style={styles.tabScreen}>
+      {visitedTabsRef.current.has("insights") ? (
+        <Animated.View
+          entering={tabEnterAnimation}
+          style={[styles.tabScreen, activeTab !== "insights" && styles.tabHidden]}
+        >
           <ScreenErrorBoundary screenName="Progress">
             <InsightsScreen
               tasks={workspaceTaskCorpus}
@@ -1433,6 +1448,11 @@ const styles = StyleSheet.create({
   },
   tabScreen: {
     flex: 1,
+  },
+  // Inactive-but-visited tabs stay mounted so revisits are instant; hiding
+  // via display:none removes them from layout and touch handling entirely.
+  tabHidden: {
+    display: "none",
   },
   chrome: {
     flex: 1,

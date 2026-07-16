@@ -11,8 +11,9 @@
  *   lists run `removeClippedSubviews` and window eviction, so rows remount on
  *   scroll — without the guard, scrolling back up would replay the intro.
  *
- * Tab switches remount the whole screen (App.tsx renders tabs conditionally),
- * so the cascade replays on every visit — the same feel as Goals.
+ * Tab screens lazy-mount on first visit and then stay mounted (App.tsx hides
+ * inactive tabs with display:none), so the cascade plays once per session per
+ * tab — revisits swap in instantly with no replayed intro.
  */
 
 import { useEffect, useState } from "react";
