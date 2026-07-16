@@ -13,7 +13,6 @@ import {
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
-import { type RenderItemParams } from "react-native-draggable-flatlist";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { authStorageReady } from "./src/lib/auth-client";
@@ -601,8 +600,8 @@ function MobileApp() {
     reopenTask,
     deleteTask,
     handleSaveEdits,
-    shiftTimelineTask,
     scheduleToDate,
+    scheduleManyToDate,
     markManyDone,
   } = useTaskMutations({
     serverTasks: activeServerTasks,
@@ -873,35 +872,6 @@ function MobileApp() {
     setIsSettingsModalOpen,
   ]);
 
-  const renderTimelineTaskItem = useCallback(
-    (dateKey: string, { item, drag }: RenderItemParams<MobileTask>) => (
-      // No date on timeline cards: the day-named section header owns the date.
-      <TaskCard
-        task={item}
-        onDone={canUseWorkspaceActions ? markDone : () => undefined}
-        onSendToInbox={canUseWorkspaceActions ? sendToInbox : undefined}
-        onReorder={
-          canUseWorkspaceActions
-            ? (taskId, direction) => shiftTimelineTask(taskId, dateKey, direction)
-            : undefined
-        }
-        onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
-        onDragHandlePress={canUseWorkspaceActions ? drag : undefined}
-        linkedGoalName={taskGoalNames.get(String(item._id))}
-        swipeActionsEnabled={prefs.swipeActionsEnabled}
-      />
-    ),
-    [
-      canUseWorkspaceActions,
-      markDone,
-      sendToInbox,
-      shiftTimelineTask,
-      handleEditTask,
-      prefs.swipeActionsEnabled,
-      taskGoalNames,
-    ]
-  );
-
   const renderProgressCompletedTaskItem = useCallback(
     ({ item }: { item: MobileTask }) => (
       <TaskCard
@@ -1148,7 +1118,6 @@ function MobileApp() {
               isRefreshing={isRefreshing}
               tabBarHeight={tabBarHeight}
               onRefresh={handleRefresh}
-              renderItem={renderTimelineTaskItem}
               overdueCount={isTimelineTriageReady ? overdueBuckets.totalOverdue : undefined}
               onOpenOverdue={
                 canUseWorkspaceActions && isTimelineTriageReady ? openOverdue : undefined
@@ -1158,6 +1127,8 @@ function MobileApp() {
               onReopenTask={canUseWorkspaceActions ? reopenTask : undefined}
               onEditTask={canUseWorkspaceActions ? handleEditTask : undefined}
               getGoalName={(taskId) => taskGoalNames.get(taskId)}
+              onScheduleMany={canUseWorkspaceActions ? scheduleManyToDate : undefined}
+              onMarkManyDone={canUseWorkspaceActions ? markManyDone : undefined}
             />
           </ScreenErrorBoundary>
         </Animated.View>
