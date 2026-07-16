@@ -25,6 +25,7 @@ import { TimelineSectionHeader } from "../components/TimelineSectionHeader";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { useConfirm } from "../hooks/useConfirm";
 import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
+import { useListIntroStagger } from "../hooks/useListIntroStagger";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useGoalLinks, useGoals } from "../hooks/useGoals";
 
@@ -150,6 +151,7 @@ export function InboxScreen({
   canAct,
 }: InboxScreenProps) {
   const reducedMotion = useReducedMotion();
+  const introStagger = useListIntroStagger();
   const confirm = useConfirm();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterValue>("all");
@@ -480,22 +482,28 @@ export function InboxScreen({
         windowSize={7}
         removeClippedSubviews
         keyExtractor={(row) => (row.kind === "header" ? `header-${row.bucket}` : row.task._id)}
-        renderItem={({ item: row }) => {
+        renderItem={({ item: row, index }) => {
           if (row.kind === "header") {
-            return <TimelineSectionHeader label={row.label} count={row.count} isToday={false} />;
+            return (
+              <Animated.View entering={introStagger(index)}>
+                <TimelineSectionHeader label={row.label} count={row.count} isToday={false} />
+              </Animated.View>
+            );
           }
           const task = row.task;
           return (
-            <InboxTaskRow
-              task={task}
-              goalName={goalNameByTask.get(String(task._id))}
-              selectMode={selectMode}
-              selected={selectedIds.has(String(task._id))}
-              onPress={() => (canAct ? onEditTask(task) : undefined)}
-              onLongPress={() => (canAct ? enterSelectModeWith(task) : undefined)}
-              onToggleSelect={() => toggleSelect(task)}
-              onSchedule={() => (canAct ? setScheduleTask(task) : undefined)}
-            />
+            <Animated.View entering={introStagger(index)}>
+              <InboxTaskRow
+                task={task}
+                goalName={goalNameByTask.get(String(task._id))}
+                selectMode={selectMode}
+                selected={selectedIds.has(String(task._id))}
+                onPress={() => (canAct ? onEditTask(task) : undefined)}
+                onLongPress={() => (canAct ? enterSelectModeWith(task) : undefined)}
+                onToggleSelect={() => toggleSelect(task)}
+                onSchedule={() => (canAct ? setScheduleTask(task) : undefined)}
+              />
+            </Animated.View>
           );
         }}
         showsVerticalScrollIndicator={false}

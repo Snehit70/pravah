@@ -97,6 +97,7 @@ vi.mock("react-native-reanimated", () => ({
   },
   FadeIn: { duration: () => undefined },
   FadeOut: { duration: () => undefined },
+  FadeInDown: { duration: () => ({ delay: () => undefined }) },
   withDelay: (_delay: number, value: unknown) => value,
   withTiming: (value: unknown) => value,
 }));

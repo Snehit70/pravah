@@ -22,6 +22,7 @@ import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { dateLabel } from "../lib/dates";
 import type { TimelineLayout } from "../lib/userPreferences";
 import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
+import { useListIntroStagger } from "../hooks/useListIntroStagger";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 
 type TimelineRow =
@@ -159,6 +160,7 @@ export function TimelineScreen({
   getGoalName,
 }: TimelineScreenProps) {
   const reducedMotion = useReducedMotion();
+  const introStagger = useListIntroStagger();
   const [showAllSections, setShowAllSections] = useState(false);
   // Entering animations also fire on first mount; the tab transition already
   // animates that, so the crossfade only arms once the layout prop changes.
@@ -239,17 +241,21 @@ export function TimelineScreen({
       renderItem={({ item: row, index }) => {
         if (row.kind === "header") {
           return (
-            <View pointerEvents="box-none">
+            <Animated.View pointerEvents="box-none" entering={introStagger(index)}>
               <TimelineSectionHeader label={row.label} count={row.count} isToday={row.isToday} />
-            </View>
+            </Animated.View>
           );
         }
-        return renderItem(row.dateKey, {
-          item: row.task,
-          drag: noopDrag,
-          isActive: false,
-          getIndex: () => index,
-        });
+        return (
+          <Animated.View entering={introStagger(index)}>
+            {renderItem(row.dateKey, {
+              item: row.task,
+              drag: noopDrag,
+              isActive: false,
+              getIndex: () => index,
+            })}
+          </Animated.View>
+        );
       }}
       showsVerticalScrollIndicator={false}
       refreshControl={
