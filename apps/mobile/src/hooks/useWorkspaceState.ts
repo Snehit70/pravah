@@ -74,7 +74,8 @@ export function useWorkspaceState() {
     void (async () => {
       // storeUser is idempotent and claimLegacyData is a one-time migration,
       // so a user who has already bootstrapped on this device gets the UI
-      // unblocked immediately while both mutations re-run in the background.
+      // unblocked immediately while storeUser refreshes the profile in the
+      // background; the already-claimed migration is skipped entirely.
       let alreadyBootstrapped = false;
       try {
         alreadyBootstrapped = (await AsyncStorage.getItem(BOOTSTRAP_DONE_KEY)) === sessionUserId;
@@ -94,8 +95,12 @@ export function useWorkspaceState() {
         });
         await storeUserMutation({});
         mobileLogger.info("bootstrap_store_user_done");
-        await claimLegacyDataMutation({});
-        mobileLogger.info("bootstrap_claim_legacy_done");
+        if (!alreadyBootstrapped) {
+          // Must stay serial after storeUser: claimLegacyData needs the user
+          // record to exist before it can stamp legacyDataClaimedAt.
+          await claimLegacyDataMutation({});
+          mobileLogger.info("bootstrap_claim_legacy_done");
+        }
         try {
           await AsyncStorage.setItem(BOOTSTRAP_DONE_KEY, sessionUserId);
         } catch (error) {

@@ -400,12 +400,21 @@ function MobileApp() {
   // ── Effects ─────────────────────────────────────────────────────────
 
   useEffect(() => {
-    void initializeDiagnostics();
     mobileLogger.info("launch_gate_start");
     return () => {
       void shutdownDiagnostics();
     };
   }, []);
+
+  // Restoring persisted diagnostics JSON-parses up to 20MB on the JS thread,
+  // so wait until the launch path has settled (workspace ready, or signed
+  // out) before paying that cost. Events logged earlier are held in the
+  // in-memory buffer and persist on the first flush after init.
+  const launchSettled = session ? isDataBootstrapReady : !sessionLoading;
+  useEffect(() => {
+    if (!launchSettled) return;
+    void initializeDiagnostics();
+  }, [launchSettled]);
 
   useEffect(() => {
     if (sessionLoading) {
@@ -413,15 +422,19 @@ function MobileApp() {
     }
   }, [sessionLoading]);
 
+  // Keyed on a derived boolean, not the session object: better-auth replaces
+  // the session identity when the cached session is confirmed server-side,
+  // which double-logged session_ready on every warm restart.
+  const sessionAvailable = Boolean(session);
   useEffect(() => {
-    if (session) {
+    if (sessionAvailable) {
       mobileLogger.info("session_ready");
       return;
     }
     if (!sessionLoading) {
       mobileLogger.info("session_absent");
     }
-  }, [session, sessionLoading]);
+  }, [sessionAvailable, sessionLoading]);
 
   useEffect(() => {
     if (!preferencesReady) return;
@@ -1351,8 +1364,16 @@ function MobileApp() {
 // a stable first paint, but they should resolve in parallel under one surface
 // instead of showing a chain of near-identical full-screen boot frames.
 
+// Fonts get a bounded head start, not a veto: diagnostics showed the bundled
+// Geist set taking ~3s on device, holding a ready session behind a blank boot
+// screen. Past this cap the shell renders with system-font fallback and text
+// picks up Geist on subsequent re-renders (RN does not retroactively restyle
+// already-mounted text, so a hard decouple would leave stale glyphs).
+const FONT_WAIT_MAX_MS = 1200;
+
 function LaunchGate({ children }: { children: ReactNode }) {
   const [storageReady, setStorageReady] = useState(false);
+  const [fontWaitExpired, setFontWaitExpired] = useState(false);
   const [fontsLoaded] = useGeistFonts({
     Geist_400Regular,
     Geist_500Medium,
@@ -1361,7 +1382,7 @@ function LaunchGate({ children }: { children: ReactNode }) {
     GeistMono_500Medium,
   });
   const reducedMotion = useReducedMotion();
-  const launchReady = fontsLoaded && storageReady;
+  const launchReady = (fontsLoaded || fontWaitExpired) && storageReady;
   const [handoffOpacity] = useState(() => new LegacyAnimated.Value(1));
   const [showHandoffOverlay, setShowHandoffOverlay] = useState(true);
 
@@ -1381,6 +1402,15 @@ function LaunchGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!fontsLoaded) return;
     mobileLogger.info("fonts_ready");
+  }, [fontsLoaded]);
+
+  useEffect(() => {
+    if (fontsLoaded) return;
+    const timer = setTimeout(() => {
+      mobileLogger.warn("fonts_wait_timeout", { capMs: FONT_WAIT_MAX_MS });
+      setFontWaitExpired(true);
+    }, FONT_WAIT_MAX_MS);
+    return () => clearTimeout(timer);
   }, [fontsLoaded]);
 
   useEffect(() => {

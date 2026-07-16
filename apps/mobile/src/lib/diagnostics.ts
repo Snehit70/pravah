@@ -170,6 +170,9 @@ export async function initializeDiagnostics(): Promise<void> {
 }
 
 export async function shutdownDiagnostics(): Promise<void> {
+  // Before init, priorSessions is empty; flushing would clobber persisted
+  // history with only the current in-memory buffer.
+  if (!isInitialized) return;
   if (flushTimer) {
     clearInterval(flushTimer);
     flushTimer = null;
