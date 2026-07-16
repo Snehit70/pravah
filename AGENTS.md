@@ -2,7 +2,6 @@
 
 ## Commit rules
 
-- Never add Codex as a co-author or collaborator in commit messages, PR descriptions, or anywhere else. Do not include any "Co-Authored-By", "Generated with", or similar lines referencing Codex in any git output.
 - Create clean commits with only the actual change.
 
 ## Project layout
