@@ -1,15 +1,18 @@
 /** @vitest-environment happy-dom */
 /**
- * GoalsScreen card tests
+ * GoalsScreen tests: the list card and the detail-sheet workbench.
  *
  * The list card is deliberately a *row*, not a preview of the detail sheet:
  * flag tile, title, the progress rule under it, then one meta line reading
- * "P1 · 2 of 11 done" with the plan action. Description, the next-task box,
- * the chevron and the "In progress" string were removed because the sheet
- * already carries all of them.
+ * "P1 · 2 of 11 done" with the plan action. These tests pin the deletions as
+ * hard as the additions — the failure mode is content creeping back on.
  *
- * These tests pin the deletions as hard as the additions — the failure mode
- * this redesign guards against is content creeping back onto the row.
+ * The detail sheet is a workbench: open tasks grouped Overdue/Today/Later/
+ * No date (ordering itself is pinned in goalTasks.test.ts), finished tasks
+ * collapsed behind a done disclosure, the date chip as the schedule
+ * affordance, and the goal's identity fields behind the pencil in
+ * GoalSettingsSheet. The old edit-mode hint and per-row Unlink buttons are
+ * pinned as absent.
  *
  * Strategy: mock react-native + FlatList with DOM equivalents and drive the
  * assertions through @testing-library queries.
@@ -114,10 +117,22 @@ vi.mock("react-native-reanimated", () => ({
   },
   FadeIn: { duration: () => undefined },
   FadeInDown: { duration: () => ({ delay: () => undefined }) },
+  FadeOut: { duration: () => undefined },
   Easing: { out: () => undefined, cubic: undefined },
   useAnimatedStyle: () => ({}),
   useSharedValue: (v: unknown) => ({ value: v }),
   withTiming: (v: unknown) => v,
+}));
+
+vi.mock("react-native-svg", () => {
+  const Stub = ({ children }: { children?: React.ReactNode }) =>
+    React.createElement("svg", {}, children);
+  return { __esModule: true, default: Stub, Svg: Stub, Path: Stub, Circle: Stub, Line: Stub };
+});
+
+vi.mock("expo-blur", () => ({
+  BlurView: ({ children }: { children?: React.ReactNode }) =>
+    React.createElement("div", {}, children),
 }));
 
 vi.mock("react-native-safe-area-context", () => ({
@@ -142,14 +157,15 @@ const goals = [
 
 vi.mock("../hooks/useGoals", () => ({
   useGoals: () => ({ goals, isHydrated: true }),
-  useGoalLinks: () => ({ t1: "g1", t2: "g1", t3: "g1" }),
+  useGoalLinks: () => ({ t1: "g1", t2: "g1", t3: "g1", t4: "g1" }),
 }));
 
 import { GoalsScreen } from "../screens/GoalsScreen";
 
-const task = (id: string, completed: boolean) => ({
+const task = (id: string, completed: boolean, deadline?: string) => ({
   _id: id,
   title: `Task ${id}`,
+  deadline,
   scheduledAt: 0,
   completedAt: completed ? 1 : undefined,
   position: 0,
@@ -157,7 +173,20 @@ const task = (id: string, completed: boolean) => ({
   createdAt: 1,
 });
 
-const tasks = [task("t1", true), task("t2", false), task("t3", false)] as never;
+// One finished, one overdue, one undated, one far future — enough to exercise
+// every group the sheet can render.
+const tasks = [
+  task("t1", true),
+  task("t2", false, "2000-02-03"),
+  task("t3", false),
+  task("t4", false, "2999-05-06"),
+] as never;
+
+const openG1Sheet = () => {
+  fireEvent.click(
+    screen.getByLabelText("Goal: Mad 2 project. Priority P1. 1 of 4 done. Open goal details.")
+  );
+};
 
 describe("GoalsScreen card (variant D2)", () => {
   it("reads priority twice — as a label, not hue alone", () => {
@@ -169,7 +198,7 @@ describe("GoalsScreen card (variant D2)", () => {
 
   it("states progress in words on the meta line", () => {
     render(<GoalsScreen tabBarHeight={0} tasks={tasks} />);
-    expect(screen.getByText("1 of 3 done")).toBeTruthy();
+    expect(screen.getByText("1 of 4 done")).toBeTruthy();
   });
 
   it("says so plainly when a goal has no linked tasks", () => {
@@ -183,7 +212,7 @@ describe("GoalsScreen card (variant D2)", () => {
     expect(screen.queryByText("Next task")).toBeNull();
     expect(screen.queryByText("In progress")).toBeNull();
     // The old count format lived opposite the title; the meta line owns it now.
-    expect(screen.queryByText("1/3")).toBeNull();
+    expect(screen.queryByText("1/4")).toBeNull();
   });
 
   it("keeps the plan action on every row", () => {
@@ -203,7 +232,61 @@ describe("GoalsScreen card (variant D2)", () => {
   it("announces priority and progress to a screen reader on the row itself", () => {
     render(<GoalsScreen tabBarHeight={0} tasks={tasks} />);
     expect(
-      screen.getByLabelText("Goal: Mad 2 project. Priority P1. 1 of 3 done. Open goal details.")
+      screen.getByLabelText("Goal: Mad 2 project. Priority P1. 1 of 4 done. Open goal details.")
     ).toBeTruthy();
+  });
+});
+
+describe("GoalDetailSheet workbench", () => {
+  it("renders the goal's title and description in the sheet header", () => {
+    render(<GoalsScreen tabBarHeight={0} tasks={tasks} />);
+    openG1Sheet();
+    // Card + sheet header both carry the title; the description only renders
+    // in the sheet (the card test above pins its absence from the list).
+    expect(screen.getAllByText("Mad 2 project").length).toBe(2);
+    expect(screen.getByText("Mad 2 college project")).toBeTruthy();
+  });
+
+  it("groups open tasks by deadline — overdue, later, undated — in that order", () => {
+    render(<GoalsScreen tabBarHeight={0} tasks={tasks} />);
+    openG1Sheet();
+    const text = document.body.textContent ?? "";
+    const sequence = ["Overdue", "Task t2", "Later", "Task t4", "No date", "Task t3"];
+    const positions = sequence.map((s) => text.indexOf(s));
+    for (const [i, pos] of positions.entries()) {
+      expect(pos, `"${sequence[i]}" missing from sheet`).toBeGreaterThan(-1);
+    }
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+
+  it("collapses finished tasks behind the done disclosure", () => {
+    render(<GoalsScreen tabBarHeight={0} tasks={tasks} />);
+    openG1Sheet();
+    expect(screen.queryByText("Task t1")).toBeNull();
+    fireEvent.click(screen.getByLabelText("1 done task"));
+    expect(screen.getByText("Task t1")).toBeTruthy();
+  });
+
+  it("makes the date chip the schedule affordance; undated rows get the calendar", () => {
+    render(<GoalsScreen tabBarHeight={0} tasks={tasks} onScheduleToDate={vi.fn()} />);
+    openG1Sheet();
+    expect(screen.getByLabelText("Reschedule Task t2, currently Feb 3")).toBeTruthy();
+    expect(screen.getByLabelText("Schedule Task t3")).toBeTruthy();
+  });
+
+  it("keeps the goal's identity fields and delete behind the pencil", () => {
+    render(<GoalsScreen tabBarHeight={0} tasks={tasks} />);
+    openG1Sheet();
+    expect(screen.queryByLabelText(/^Delete goal/)).toBeNull();
+    fireEvent.click(screen.getByLabelText("Goal settings"));
+    expect(screen.getByText("Goal settings")).toBeTruthy();
+    expect(screen.getByLabelText("Delete goal Mad 2 project")).toBeTruthy();
+  });
+
+  it("drops the edit hint and the per-row Unlink buttons", () => {
+    render(<GoalsScreen tabBarHeight={0} tasks={tasks} />);
+    openG1Sheet();
+    expect(screen.queryByText(/Tap Edit to change/)).toBeNull();
+    expect(screen.queryByText("Unlink")).toBeNull();
   });
 });

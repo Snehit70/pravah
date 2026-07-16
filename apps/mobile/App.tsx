@@ -1181,6 +1181,8 @@ function MobileApp() {
                   : undefined
               }
               onOpenTask={canUseWorkspaceActions ? handleEditTask : undefined}
+              onScheduleToDate={canUseWorkspaceActions ? scheduleToDate : undefined}
+              onMarkManyDone={canUseWorkspaceActions ? markManyDone : undefined}
               focusGoalId={focusGoalId}
             />
           </ScreenErrorBoundary>
