@@ -916,10 +916,12 @@ const detailStyles = StyleSheet.create({
     borderBottomColor: colors.borderSubtle,
   },
   title: {
-    flex: 1,
     ...typography.headline,
     color: colors.textPrimary,
   },
+  // `flex: 1` belongs on the block, which is the row's flexible child. The
+  // title inside it is a column child, where `flex: 1` would mean
+  // `flexBasis: 0%` against an auto height and collapse the text to nothing.
   titleBlock: {
     flex: 1,
     gap: 3,
