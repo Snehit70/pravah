@@ -51,6 +51,9 @@ export function QuickScheduleSheet({
     setDisplayTitle(taskTitle);
   }
 
+  // Recomputed on every open: the sheet stays mounted across sessions, and
+  // presets frozen at first mount would schedule "Today" as yesterday once
+  // the app is left running past midnight.
   const options = useMemo(() => {
     const now = new Date();
     const today = toIsoDate(now);
@@ -61,7 +64,8 @@ export function QuickScheduleSheet({
       { key: "tomorrow", label: "Tomorrow", iso: tomorrow },
       { key: "weekend", label: "This weekend", iso: weekend },
     ];
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   const handlePick = (iso: string) => {
     onPick(iso);
