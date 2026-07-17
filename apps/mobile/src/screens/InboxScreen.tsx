@@ -257,6 +257,9 @@ export function InboxScreen({
   }, [filteredTasks]);
 
   const handleMarkDone = useCallback(async () => {
+    // Entering select mode requires canAct, but the gate can flip while a
+    // selection is held (e.g. bootstrap error) — recheck before committing.
+    if (!canAct) return;
     const ids = filteredTasks
       .filter((task) => selectedIds.has(String(task._id)))
       .map((task) => task._id);
@@ -269,7 +272,7 @@ export function InboxScreen({
     if (!ok) return;
     const success = await onMarkManyDone(ids);
     if (success) exitSelectMode();
-  }, [filteredTasks, selectedIds, confirm, onMarkManyDone, exitSelectMode]);
+  }, [canAct, filteredTasks, selectedIds, confirm, onMarkManyDone, exitSelectMode]);
 
   const emptyBlock = isFiltering ? (
     <Animated.View entering={reducedMotion ? undefined : FadeIn.duration(400)} style={styles.emptyWrap}>
@@ -531,7 +534,7 @@ export function InboxScreen({
         >
           <Pressable
             onPress={() => void handleMarkDone()}
-            disabled={selectedCount === 0}
+            disabled={selectedCount === 0 || !canAct}
             accessibilityRole="button"
             accessibilityLabel={
               selectedCount <= 1 ? "Mark task as done" : `Mark ${selectedCount} tasks as done`
@@ -565,7 +568,7 @@ export function InboxScreen({
         taskTitle={scheduleTask?.title}
         onClose={() => setScheduleTask(null)}
         onPick={(iso) => {
-          if (scheduleTask) onScheduleToDate(scheduleTask._id, iso);
+          if (scheduleTask && canAct) onScheduleToDate(scheduleTask._id, iso);
         }}
       />
     </View>
