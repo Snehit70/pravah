@@ -239,45 +239,47 @@ export function InsightsScreen({
           />
         }
       >
-        <SectionHeader
-          label="Recent momentum"
-          right={
-            <View style={styles.rangeRow}>
-              {(Object.keys(RANGE_DAYS) as RangeKey[]).map((key) => {
-                const active = range === key;
-                return (
-                  <Pressable
-                    key={key}
-                    onPress={() => setRange(key)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
-                    accessibilityLabel={`Show last ${RANGE_DAYS[key]} days`}
-                    hitSlop={8}
-                    style={({ pressed }) => [
-                      styles.rangePill,
-                      active && styles.rangePillActive,
-                      pressed && { opacity: 0.7 },
-                    ]}
-                  >
-                    <Text style={[styles.rangeText, active && styles.rangeTextActive]}>
-                      {RANGE_LABELS[key]}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          }
-        />
-
-        <Wrap entering={sectionEnter(0)}>
-          <HeroVelocityChart
-            series={heroSeries}
-            rawCounts={series.map((p) => p.count)}
-            total={rangeTotal}
-            periodLabel={RANGE_PERIOD[range]}
-            comparisonLabel={RANGE_COMPARISON[range]}
-            delta={delta}
+        <Wrap>
+          <SectionHeader
+            label="Recent momentum"
+            right={
+              <View style={styles.rangeRow}>
+                {(Object.keys(RANGE_DAYS) as RangeKey[]).map((key) => {
+                  const active = range === key;
+                  return (
+                    <Pressable
+                      key={key}
+                      onPress={() => setRange(key)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={`Show last ${RANGE_DAYS[key]} days`}
+                      hitSlop={8}
+                      style={({ pressed }) => [
+                        styles.rangePill,
+                        active && styles.rangePillActive,
+                        pressed && { opacity: 0.7 },
+                      ]}
+                    >
+                      <Text style={[styles.rangeText, active && styles.rangeTextActive]}>
+                        {RANGE_LABELS[key]}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            }
           />
+
+          <Wrap entering={sectionEnter(0)}>
+            <HeroVelocityChart
+              series={heroSeries}
+              rawCounts={series.map((p) => p.count)}
+              total={rangeTotal}
+              periodLabel={RANGE_PERIOD[range]}
+              comparisonLabel={RANGE_COMPARISON[range]}
+              delta={delta}
+            />
+          </Wrap>
         </Wrap>
 
         <Wrap entering={sectionEnter(1)}>
