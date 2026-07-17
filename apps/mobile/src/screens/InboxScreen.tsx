@@ -519,7 +519,7 @@ export function InboxScreen({
             progressBackgroundColor={colors.bgCard}
           />
         }
-        ListHeaderComponent={tasks.length > 0 || isFiltering ? listHeader : null}
+        ListHeaderComponent={selectMode || tasks.length > 0 || isFiltering ? listHeader : null}
         ListFooterComponent={
           hasPendingRows ? <Text style={styles.loadingMore}>Preparing more tasks...</Text> : null
         }
