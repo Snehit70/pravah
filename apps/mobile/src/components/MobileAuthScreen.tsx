@@ -31,9 +31,9 @@ export function MobileAuthScreen({
           hitSlop={10}
           accessibilityRole="button"
           accessibilityLabel="Pravah"
-          accessibilityHint="Long press or use the diagnostics action to open diagnostics."
+          accessibilityHint="Long press or use the diagnostics action to export diagnostics."
           accessibilityActions={
-            onOpenDiagnostics ? [{ name: "longpress", label: "Open diagnostics" }] : undefined
+            onOpenDiagnostics ? [{ name: "longpress", label: "Export diagnostics" }] : undefined
           }
           onAccessibilityAction={(event) => {
             if (event.nativeEvent.actionName === "longpress") {
