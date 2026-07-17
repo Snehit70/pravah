@@ -355,7 +355,7 @@ export function TimelineScreen({
       selectMode={selectMode}
       selected={selectedIds.has(String(task._id))}
       onPress={() => onEditTask?.(task)}
-      onLongPress={() => (canSelect ? enterSelectModeWith(task) : undefined)}
+      onLongPress={canSelect ? () => enterSelectModeWith(task) : undefined}
       onToggleSelect={() => toggleSelect(task)}
       onComplete={onCompleteTask ? () => onCompleteTask(task._id) : undefined}
     />

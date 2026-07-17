@@ -26,7 +26,7 @@ type TimelineTaskRowProps = {
   /** Normal-mode tap: open the full editor. */
   onPress: () => void;
   /** Normal-mode long-press: enter select mode with this row selected. */
-  onLongPress: () => void;
+  onLongPress?: () => void;
   /** Select-mode tap: toggle this row's selection. */
   onToggleSelect: () => void;
   /** Mark this task done. Absent while workspace actions are unavailable. */
@@ -62,7 +62,11 @@ function TimelineTaskRowInner({
       accessibilityState={selectMode ? { checked: selected } : undefined}
       accessibilityLabel={task.title}
       accessibilityHint={
-        selectMode ? "Toggle selection" : "Opens the task. Long press to select."
+        selectMode
+          ? "Toggle selection"
+          : onLongPress
+            ? "Opens the task. Long press to select."
+            : "Opens the task."
       }
       hitSlop={selectMode ? 4 : 0}
       style={({ pressed }) => [styles.row, selected && styles.rowSelected, pressed && styles.rowPressed]}
