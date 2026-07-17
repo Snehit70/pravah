@@ -74,7 +74,6 @@ const RANGE_COMPARISON: Record<RangeKey, string> = {
   "30d": "vs previous 30 days",
   "90d": "vs previous 90 days",
 };
-const JOURNEY_DAYS = 365;
 const GOALS_SHOWN = 6;
 
 const HISTORY_WINDOWS: Array<{ key: HistoryWindow; label: string; days?: number }> = [
@@ -153,9 +152,21 @@ export function InsightsScreen({
   }, [tasks, now, windowDays, rangeTotal]);
 
   // ── All-time journey (heatmap) ────────────────────────────────────────
+  const journeyDays = useMemo(() => {
+    const earliestCompletion = tasks.reduce<number | null>((earliest, task) => {
+      if (task.completedAt === undefined || task.completedAt > now) return earliest;
+      return earliest === null ? task.completedAt : Math.min(earliest, task.completedAt);
+    }, null);
+    if (earliestCompletion === null) return 1;
+    const first = new Date(earliestCompletion);
+    const today = new Date(now);
+    const firstDay = Date.UTC(first.getFullYear(), first.getMonth(), first.getDate());
+    const todayDay = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+    return Math.floor((todayDay - firstDay) / 86_400_000) + 1;
+  }, [tasks, now]);
   const journeySeries = useMemo(
-    () => completionsByDay(tasks, now, JOURNEY_DAYS),
-    [tasks, now],
+    () => completionsByDay(tasks, now, journeyDays),
+    [tasks, now, journeyDays],
   );
   const streak = useMemo(() => currentStreak(tasks, now), [tasks, now]);
   const best = useMemo(() => longestStreak(tasks), [tasks]);
