@@ -126,6 +126,7 @@ type QuietPickerKind = "morningDigest" | "quietStart" | "quietEnd";
 
 type SettingsSheetProps = {
   visible: boolean;
+  isAuthenticated: boolean;
   calendarSyncEnabled: boolean;
   gmailSyncEnabled: boolean;
   gmailSyncStatus: string;
@@ -188,7 +189,7 @@ const TASK_COLOR_OPTIONS: Array<{
   label: string;
   swatch: string;
 }> = [
-  { value: "purple", label: "Indigo", swatch: colors.accent },
+  { value: "purple", label: "Ink", swatch: colors.accent },
   { value: "copper", label: "Copper", swatch: colors.deadline },
   { value: "teal", label: "Teal", swatch: "#3e7b78" },
   { value: "rose", label: "Rose", swatch: "#9d586f" },
@@ -2448,6 +2449,7 @@ function renderDetailScreen(
 
 export function SettingsSheet({
   visible,
+  isAuthenticated,
   calendarSyncEnabled,
   gmailSyncEnabled,
   gmailSyncStatus,
@@ -2525,14 +2527,20 @@ export function SettingsSheet({
   const updateCredential = useMutation(api.automation.updateCredential);
   const deleteCredential = useMutation(api.automation.deleteCredential);
   const cancelBootstrapToken = useMutation(api.automation.cancelBootstrapToken);
-  const automationCredentialsResult = useQuery(api.automation.listCredentials, {});
+  // Both automation queries require auth on the server; the sheet stays
+  // mounted through the optimistic shell and sign-out, so they must skip
+  // until the session is live or requireIdentity red-screens the app.
+  const automationCredentialsResult = useQuery(
+    api.automation.listCredentials,
+    isAuthenticated ? {} : "skip",
+  );
   const automationCredentials = useMemo(
     () => automationCredentialsResult ?? [],
     [automationCredentialsResult],
   );
   const pendingBootstrapTokensResult = useQuery(
     api.automation.listBootstrapTokens,
-    {},
+    isAuthenticated ? {} : "skip",
   );
   const pendingBootstrapTokens = useMemo(
     () => pendingBootstrapTokensResult ?? [],

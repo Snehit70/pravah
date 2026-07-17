@@ -1,5 +1,6 @@
 import type { TabKey } from "../components/BottomTabBar";
 import type { MobileTask } from "../components/TaskCard";
+import { isTaskCompleted, isTaskInInbox, isTaskOnTimeline } from "../lib/taskState";
 import type { WorkspaceSnapshot } from "../lib/workspace-snapshot";
 
 export type WorkspaceLoadingState = {
@@ -74,6 +75,8 @@ function computeIsActiveListLoading(
       return loading.inbox;
     case "insights":
       return loading.completed || !loading.allTasksReady;
+    case "goals":
+      return !loading.allTasksReady;
     default:
       return false;
   }
@@ -118,7 +121,9 @@ export function deriveDisplayWorkspace(input: DisplayWorkspaceInput): DisplayWor
       ? input.scheduledTasks
       : input.activeTab === "inbox"
         ? input.inboxTasks
-        : input.completedTasks;
+        : input.activeTab === "goals"
+          ? workspaceTaskCorpus
+          : input.completedTasks;
 
   const tabTasks =
     input.activeTab === "timeline"
@@ -126,7 +131,14 @@ export function deriveDisplayWorkspace(input: DisplayWorkspaceInput): DisplayWor
       : input.activeTab === "inbox"
         ? displayInboxTasks
         : displayCompletedTasks;
-  const tasks = input.optimisticTasks ?? tabTasks;
+  const optimisticTabTasks = input.optimisticTasks?.filter((task) =>
+    input.activeTab === "timeline"
+      ? isTaskOnTimeline(task)
+      : input.activeTab === "inbox"
+        ? isTaskInInbox(task)
+        : isTaskCompleted(task),
+  );
+  const tasks = optimisticTabTasks ?? tabTasks;
 
   const isActiveListLoading = computeIsActiveListLoading(
     input.activeTab,

@@ -40,7 +40,7 @@ export const colors = {
   // ── Borders ─────────────────────────────────────────────────────────
   border: "rgba(78,62,43,0.18)",
   borderSubtle: "rgba(78,62,43,0.09)",
-  borderFocus: "rgba(121,103,214,0.46)",
+  borderFocus: "rgba(43,32,22,0.46)",
 
   // ── Text ────────────────────────────────────────────────────────────
   textPrimary: "#201914",
@@ -50,12 +50,12 @@ export const colors = {
   textInverse: "#fffaf2",
   textCompleted: "#76695e",
 
-  // ── Accent (darkened for AA text contrast on every warm surface) ────
-  accent: "#6753c7",
-  accentHover: "#5844b8",
-  accentSoft: "rgba(103,83,199,0.16)",
-  accentGlow: "rgba(103,83,199,0.28)",
-  accentDim: "rgba(103,83,199,0.07)",
+  // ── Accent (warm ink — monochrome; reads as bold on every warm surface) ──
+  accent: "#2b2016",
+  accentHover: "#1c140d",
+  accentSoft: "rgba(43,32,22,0.16)",
+  accentGlow: "rgba(43,32,22,0.28)",
+  accentDim: "rgba(43,32,22,0.07)",
 
   // ── Priority semantics ──────────────────────────────────────────────
   // One canonical, fixed (accent-independent) muted hue ramp — red → amber →
@@ -85,7 +85,7 @@ export const colors = {
   /** @deprecated Use `textInverse`. */
   primaryInk: "#fffaf2",
   /** @deprecated Halo replaced by GridBackground; soft accent wash kept for back-compat. */
-  haloCopper: "rgba(121,103,214,0.07)",
+  haloCopper: "rgba(43,32,22,0.07)",
 } as const;
 
 /**
@@ -165,9 +165,9 @@ export const shadow = {
     elevation: 16,
   },
   glow: {
-    shadowColor: "#6753c7",
-    shadowOpacity: 0.24,
-    shadowRadius: 20,
+    shadowColor: "#2c2118",
+    shadowOpacity: 0.2,
+    shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },
     elevation: 8,
   },
@@ -229,6 +229,76 @@ export const typography = {
     fontSize: 13,
     lineHeight: 14,
   },
+} as const;
+
+/**
+ * Chart tokens for the Progress screen.
+ *
+ * Colors are not eyeballed. Text in charts always wears the ink text tokens
+ * above — a mark's color carries identity, never the number beside it.
+ *
+ * ── Gradient stops ──────────────────────────────────────────────────────
+ * Area fills are expressed as a solid `*AreaColor` plus a numeric
+ * `*AreaTopOpacity` / `*AreaBottomOpacity`, NOT as `rgba()` strings.
+ * react-native-svg reads a gradient stop's alpha from `stopOpacity`; an alpha
+ * baked into an `rgba()` passed to `stopColor` is dropped, so the fill renders
+ * fully opaque and the chart turns into a solid black blob. `FlowingWaves` and
+ * `GridBackground` already use the split form — these tokens make it the rule.
+ *
+ * ── Heatmap ramp ────────────────────────────────────────────────────────
+ * A validated single-hue ordinal scale in copper (hue 52°, chroma held at
+ * 0.115, contrast 2.07 / 3.11 / 4.62 / 6.63 on `bg`).
+ *
+ * Two earlier ramps failed here, and both failures are measurable:
+ *
+ *  - tan→brown→black: bucket 1 missed the 2:1 floor at 1.79:1, and bucket 4 sat
+ *    1.48:1 from `textPrimary` — the darkest cell *was* the ink used for text.
+ *  - `success` green: passed every check, but imports a hue the warm palette
+ *    doesn't own.
+ *
+ * The trap is that every warm hue here is already reserved (`warning`,
+ * `deadline`, `error`, `priorityP1`) and the accent is ink, which leaves only
+ * neutral tan — and neutral tan at full intensity IS text ink. Copper escapes by
+ * holding chroma instead of darkening: mud is what a warm hue becomes when you
+ * take its chroma away, so keep C ≥ 0.10 on every bucket. The darkest step stays
+ * 2.36:1 off `textPrimary`, and copper's nearest reserved neighbour
+ * (`priorityP1`, ΔE 4.6) never renders on the Progress tab. `warning` and
+ * `error` do — they live in Goals below the grid — so a ramp must stay off those
+ * two; that is what ruled out amber (ΔE 3.7 from `warning`).
+ *
+ * The empty cell stays warm, which is what keeps the grid tied to the page.
+ */
+export const chart = {
+  /** Empty/no-completion heatmap cell — faint warm track, distinct from bucket 1. */
+  heatmapEmpty: "rgba(78,62,43,0.07)",
+  /** 4-bucket copper intensity ramp, light → dark. Monotone ordinal ramp. */
+  heatmapRamp: ["#e69867", "#c27746", "#a35a28", "#844417"] as const,
+  /** Hero line + rhythm bars — the single-series mark. */
+  line: colors.accent,
+  /** Sparkline area fill; the line carries the contrast. */
+  areaColor: colors.accent,
+  areaTopOpacity: 0.12,
+  areaBottomOpacity: 0,
+  /**
+   * Hero area fill — a pale wash under a crisp line, not a filled silhouette.
+   * The line is the mark; the fill only gives the trend a body to sit in.
+   */
+  heroAreaColor: colors.accent,
+  heroAreaTopOpacity: 0.16,
+  heroAreaBottomOpacity: 0,
+  /**
+   * Rhythm bars — one mark, one colour. Every bar wears this, including the
+   * peak: bar height already says which day won, so tinting the peak spends the
+   * colour channel re-encoding what length shows. The peak is called out with a
+   * direct count label instead. (The previous `opacity: 0.5` on the non-peak
+   * bars composited ink over cream into a dead grey — an alpha channel making a
+   * colour decision, the same mistake as an rgba() gradient stop.)
+   */
+  bar: colors.accent,
+  /** Recessive gridlines / baselines. */
+  grid: colors.borderSubtle,
+  /** Scrub crosshair + focus dot. */
+  cursor: colors.accent,
 } as const;
 
 /**

@@ -2,11 +2,13 @@
 /**
  * TimelineScreen tests
  *
- * Strategy: mock react-native components and DraggableFlatList, test rendering
- * of date-grouped sections, empty states, and loading states.
+ * Strategy: mock react-native primitives, the compact row, the quick-schedule
+ * sheet, and the confirm hook, then test rendering of date-grouped sections,
+ * empty/loading states, the overdue header, and the select-mode bulk actions
+ * (mark done / reschedule).
  */
 
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,20 +24,37 @@ vi.mock("react-native", () => {
     return React.createElement("span", safe, children);
   };
   const Pressable = ({ children, ...rest }: AnyProps) => {
-    const { onPress, style: _, hitSlop: __, accessibilityLabel, accessibilityRole: ___, ...safe } =
-      rest as {
-        onPress?: () => void;
-        hitSlop?: unknown;
-        accessibilityLabel?: string;
-        accessibilityRole?: string;
-      } & AnyProps;
+    const {
+      onPress,
+      disabled,
+      style: _,
+      hitSlop: __,
+      accessibilityLabel,
+      accessibilityRole: ___,
+      accessibilityState,
+      ...safe
+    } = rest as {
+      onPress?: () => void;
+      disabled?: boolean;
+      hitSlop?: unknown;
+      accessibilityLabel?: string;
+      accessibilityRole?: string;
+      accessibilityState?: { selected?: boolean };
+    } & AnyProps;
     const resolved =
       typeof children === "function"
         ? (children as (s: { pressed: boolean }) => React.ReactNode)({ pressed: false })
         : children;
     return React.createElement(
       "button",
-      { ...safe, onClick: onPress, type: "button", "aria-label": accessibilityLabel },
+      {
+        ...safe,
+        onClick: disabled ? undefined : onPress,
+        disabled,
+        type: "button",
+        "aria-label": accessibilityLabel,
+        "aria-pressed": accessibilityState?.selected,
+      },
       resolved
     );
   };
@@ -97,6 +116,7 @@ vi.mock("react-native-reanimated", () => ({
   },
   FadeIn: { duration: () => undefined },
   FadeOut: { duration: () => undefined },
+  FadeInDown: { duration: () => ({ delay: () => undefined }) },
   withDelay: (_delay: number, value: unknown) => value,
   withTiming: (value: unknown) => value,
 }));
@@ -105,14 +125,98 @@ vi.mock("react-native-reanimated", () => ({
 vi.mock("../theme/tokens", () => ({
   colors: {
     accent: "#06f",
+    accentSoft: "#06f3",
+    bg: "#000",
     bgCard: "#111",
+    bgSurface: "#151515",
+    bgFloating: "#181818",
+    border: "#222",
+    borderSubtle: "#1a1a1a",
     textPrimary: "#fff",
     textSecondary: "#ccc",
+    textMuted: "#888",
+    textInverse: "#000",
   },
-  radii: { md: 16 },
+  radii: { sm: 4, md: 8, lg: 12, xl: 16, full: 999 },
   spacing: { xs: 4, sm: 8, md: 16, lg: 24, xxl: 48, section: 32 },
-  typography: { headline: {}, bodyMd: {}, micro: {} },
+  typography: { title: {}, headline: {}, bodyMd: {}, micro: {} },
 }));
+
+// ─── UiIcons mock ─────────────────────────────────────────────────────────────
+vi.mock("../components/UiIcons", () => ({
+  CalendarIcon: () => React.createElement("span", { "data-testid": "icon-calendar" }),
+  CheckIcon: () => React.createElement("span", { "data-testid": "icon-check" }),
+  CloseIcon: () => React.createElement("span", { "data-testid": "icon-close" }),
+}));
+
+// ─── compact row mock ─────────────────────────────────────────────────────────
+// Drive interactions through simple buttons keyed by task id.
+vi.mock("../components/TimelineTaskRow", () => ({
+  TimelineTaskRow: ({
+    task,
+    goalName,
+    selectMode,
+    selected,
+    onPress,
+    onLongPress,
+    onToggleSelect,
+    onComplete,
+  }: {
+    task: { _id: string; title: string };
+    goalName?: string;
+    selectMode: boolean;
+    selected: boolean;
+    onPress: () => void;
+    onLongPress: () => void;
+    onToggleSelect: () => void;
+    onComplete?: () => void;
+  }) =>
+    React.createElement(
+      "div",
+      { "data-testid": `task-${task._id}` },
+      React.createElement("span", {}, task.title),
+      goalName ? React.createElement("span", { "data-testid": `goal-${task._id}` }, goalName) : null,
+      selected ? React.createElement("span", { "data-testid": `selected-${task._id}` }) : null,
+      React.createElement(
+        "button",
+        { "aria-label": `row-${task._id}`, onClick: selectMode ? onToggleSelect : onPress },
+        "row"
+      ),
+      React.createElement(
+        "button",
+        { "aria-label": `long-${task._id}`, onClick: onLongPress },
+        "long"
+      ),
+      onComplete
+        ? React.createElement(
+            "button",
+            { "aria-label": `complete-${task._id}`, onClick: onComplete },
+            "done"
+          )
+        : null
+    ),
+}));
+
+// ─── quick-schedule sheet mock ────────────────────────────────────────────────
+vi.mock("../components/QuickScheduleSheet", () => ({
+  QuickScheduleSheet: ({
+    visible,
+    onPick,
+  }: {
+    visible: boolean;
+    onPick: (iso: string) => void;
+  }) =>
+    visible
+      ? React.createElement(
+          "button",
+          { "aria-label": "quick-pick", onClick: () => onPick("2026-05-09") },
+          "pick"
+        )
+      : null,
+}));
+
+// ─── confirm hook mock ────────────────────────────────────────────────────────
+vi.mock("../hooks/useConfirm", () => ({ useConfirm: () => vi.fn(async () => true) }));
 
 // ─── LoadingSkeleton mock ─────────────────────────────────────────────────────
 vi.mock("../components/LoadingSkeleton", () => ({
@@ -240,14 +344,16 @@ const extendedSections: [string, MobileTask[]][] = [
 // ─── tests ────────────────────────────────────────────────────────────────────
 
 describe("TimelineScreen", () => {
-  const mockRenderItem = vi.fn((dateKey: string, params: { item: MobileTask }) =>
-    React.createElement(
-      "div",
-      { "data-testid": `task-${params.item._id}` },
-      `${dateKey}: ${params.item.title}`
-    )
-  );
   const mockOnRefresh = vi.fn(async () => undefined);
+
+  const baseProps = {
+    today: "2026-05-04",
+    tomorrow: "2026-05-05",
+    isLoading: false,
+    isRefreshing: false,
+    tabBarHeight: 60,
+    onRefresh: mockOnRefresh,
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -259,34 +365,14 @@ describe("TimelineScreen", () => {
   });
 
   it("renders loading skeleton when isLoading is true", () => {
-    render(
-      <TimelineScreen
-        sections={[]}
-        today="2026-05-04"
-        tomorrow="2026-05-05"        isLoading={true}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        renderItem={mockRenderItem}
-      />
-    );
+    render(<TimelineScreen {...baseProps} sections={[]} isLoading={true} />);
 
     expect(screen.getByTestId("skeleton-timeline")).toBeTruthy();
     expect(screen.queryByText("Today is clear.")).toBeNull();
   });
 
   it("shows empty state when no sections and not loading", () => {
-    render(
-      <TimelineScreen
-        sections={[]}
-        today="2026-05-04"
-        tomorrow="2026-05-05"        isLoading={false}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        renderItem={mockRenderItem}
-      />
-    );
+    render(<TimelineScreen {...baseProps} sections={[]} />);
 
     expect(screen.getByText("Today is clear.")).toBeTruthy();
     expect(
@@ -296,70 +382,47 @@ describe("TimelineScreen", () => {
     ).toBeTruthy();
   });
 
-  it("renders date sections with headers and tasks", () => {
+  it("renders date sections with headers, tasks, and goal names", () => {
     render(
       <TimelineScreen
+        {...baseProps}
         sections={sampleSections}
-        today="2026-05-04"
-        tomorrow="2026-05-05"        isLoading={false}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        renderItem={mockRenderItem}
+        getGoalName={(taskId) => (taskId === "task1" ? "Blog" : undefined)}
       />
     );
 
-    // Should render section headers
     expect(screen.getByTestId("section-header-today").textContent).toContain("TODAY");
     expect(screen.getByTestId("section-header-other").textContent).toContain("TOMORROW");
 
-    // Should render tasks
     expect(screen.getByTestId("task-task1")).toBeTruthy();
     expect(screen.getByTestId("task-task2")).toBeTruthy();
     expect(screen.getByTestId("task-task3")).toBeTruthy();
 
-    // Should call renderItem with correct dateKey
-    expect(mockRenderItem).toHaveBeenCalledWith(
-      "2026-05-04",
-      expect.objectContaining({ item: expect.objectContaining({ _id: "task1" }) })
-    );
-    expect(mockRenderItem).toHaveBeenCalledWith(
-      "2026-05-05",
-      expect.objectContaining({ item: expect.objectContaining({ _id: "task3" }) })
-    );
+    expect(screen.getByTestId("goal-task1").textContent).toBe("Blog");
+    expect(screen.queryByTestId("goal-task2")).toBeNull();
   });
 
-  it("marks today section header correctly", () => {
+  it("opens the editor from a row tap and completes from the row check", () => {
+    const onEditTask = vi.fn();
+    const onCompleteTask = vi.fn();
     render(
       <TimelineScreen
+        {...baseProps}
         sections={sampleSections}
-        today="2026-05-04"
-        tomorrow="2026-05-05"        isLoading={false}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        renderItem={mockRenderItem}
+        onEditTask={onEditTask}
+        onCompleteTask={onCompleteTask}
       />
     );
 
-    // Today section should have the "today" testid
-    expect(screen.getByTestId("section-header-today")).toBeTruthy();
-    // Tomorrow section should have the "other" testid
-    expect(screen.getByTestId("section-header-other")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "row-task1" }));
+    expect(onEditTask).toHaveBeenCalledWith(expect.objectContaining({ _id: "task1" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "complete-task2" }));
+    expect(onCompleteTask).toHaveBeenCalledWith("task2");
   });
 
   it("does not show empty state when loading", () => {
-    render(
-      <TimelineScreen
-        sections={[]}
-        today="2026-05-04"
-        tomorrow="2026-05-05"        isLoading={true}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        renderItem={mockRenderItem}
-      />
-    );
+    render(<TimelineScreen {...baseProps} sections={[]} isLoading={true} />);
 
     expect(screen.queryByText("Today is clear.")).toBeNull();
     expect(screen.getByTestId("skeleton-timeline")).toBeTruthy();
@@ -387,13 +450,8 @@ describe("TimelineScreen", () => {
 
     render(
       <TimelineScreen
+        {...baseProps}
         sections={overdueSections}
-        today="2026-05-04"
-        tomorrow="2026-05-05"        isLoading={false}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        renderItem={mockRenderItem}
         overdueCount={1}
         onOpenOverdue={onOpenOverdue}
       />
@@ -427,18 +485,7 @@ describe("TimelineScreen", () => {
       ...sampleSections,
     ];
 
-    render(
-      <TimelineScreen
-        sections={overdueSections}
-        today="2026-05-04"
-        tomorrow="2026-05-05"        isLoading={false}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        renderItem={mockRenderItem}
-        overdueCount={1}
-      />
-    );
+    render(<TimelineScreen {...baseProps} sections={overdueSections} overdueCount={1} />);
 
     expect(screen.getByTestId("task-od1")).toBeTruthy();
     expect(screen.queryByText("Overdue · 1")).toBeNull();
@@ -457,17 +504,7 @@ describe("TimelineScreen", () => {
       createdAt: index,
     }));
 
-    render(
-      <TimelineScreen
-        sections={[["2026-05-04", tasks]]}
-        today="2026-05-04"
-        tomorrow="2026-05-05"        isLoading={false}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        renderItem={mockRenderItem}
-      />
-    );
+    render(<TimelineScreen {...baseProps} sections={[["2026-05-04", tasks]]} />);
 
     expect(screen.getByTestId("task-bulk-22")).toBeTruthy();
     expect(screen.queryByTestId("task-bulk-23")).toBeNull();
@@ -482,18 +519,7 @@ describe("TimelineScreen", () => {
   });
 
   it("expands later sections so hidden tasks become reachable", () => {
-    render(
-      <TimelineScreen
-        sections={extendedSections}
-        today="2026-05-04"
-        tomorrow="2026-05-05"
-        isLoading={false}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        renderItem={mockRenderItem}
-      />
-    );
+    render(<TimelineScreen {...baseProps} sections={extendedSections} />);
 
     expect(screen.queryByTestId("task-task5")).toBeNull();
 
@@ -504,37 +530,14 @@ describe("TimelineScreen", () => {
   });
 
   it("renders the compact list by default (no carousel)", () => {
-    render(
-      <TimelineScreen
-        sections={sampleSections}
-        today="2026-05-04"
-        tomorrow="2026-05-05"
-        isLoading={false}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        renderItem={mockRenderItem}
-      />
-    );
+    render(<TimelineScreen {...baseProps} sections={sampleSections} />);
 
     expect(screen.queryByTestId("day-carousel")).toBeNull();
     expect(screen.getByTestId("task-task1")).toBeTruthy();
   });
 
   it("renders the day carousel in comfortable mode", () => {
-    render(
-      <TimelineScreen
-        sections={sampleSections}
-        today="2026-05-04"
-        tomorrow="2026-05-05"
-        isLoading={false}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        renderItem={mockRenderItem}
-        layout="carousel"
-      />
-    );
+    render(<TimelineScreen {...baseProps} sections={sampleSections} layout="carousel" />);
 
     expect(screen.getByTestId("day-carousel").textContent).toBe("carousel:2");
     expect(screen.queryByTestId("task-task1")).toBeNull();
@@ -542,20 +545,124 @@ describe("TimelineScreen", () => {
 
   it("keeps the loading skeleton in carousel mode while data loads", () => {
     render(
-      <TimelineScreen
-        sections={[]}
-        today="2026-05-04"
-        tomorrow="2026-05-05"
-        isLoading={true}
-        isRefreshing={false}
-        tabBarHeight={60}
-        onRefresh={mockOnRefresh}
-        renderItem={mockRenderItem}
-        layout="carousel"
-      />
+      <TimelineScreen {...baseProps} sections={[]} isLoading={true} layout="carousel" />
     );
 
     expect(screen.getByTestId("skeleton-timeline")).toBeTruthy();
     expect(screen.queryByTestId("day-carousel")).toBeNull();
+  });
+
+  it("enters select mode from a long-press and toggles selection on tap", () => {
+    render(
+      <TimelineScreen
+        {...baseProps}
+        sections={sampleSections}
+        onMarkManyDone={vi.fn(async () => true)}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "long-task1" }));
+
+    expect(screen.getByText("1 selected")).toBeTruthy();
+    expect(screen.getByTestId("selected-task1")).toBeTruthy();
+
+    // Select-mode tap toggles another row on, then the first off.
+    fireEvent.click(screen.getByRole("button", { name: "row-task2" }));
+    expect(screen.getByText("2 selected")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "row-task1" }));
+    expect(screen.getByText("1 selected")).toBeTruthy();
+    expect(screen.queryByTestId("selected-task1")).toBeNull();
+  });
+
+  it("stays out of select mode when no bulk actions are available", () => {
+    render(<TimelineScreen {...baseProps} sections={sampleSections} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "long-task1" }));
+
+    expect(screen.queryByText("1 selected")).toBeNull();
+  });
+
+  it("marks the selection done through the confirm and exits select mode", async () => {
+    const onMarkManyDone = vi.fn(async () => true);
+    render(
+      <TimelineScreen
+        {...baseProps}
+        sections={sampleSections}
+        onMarkManyDone={onMarkManyDone}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "long-task1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select all" }));
+    expect(screen.getByText("3 selected")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark 3 tasks as done" }));
+
+    await waitFor(() => {
+      expect(onMarkManyDone).toHaveBeenCalledWith(["task1", "task2", "task3"]);
+      expect(screen.queryByText("3 selected")).toBeNull();
+    });
+  });
+
+  it("reschedules the selection through the quick-schedule sheet", async () => {
+    const onScheduleMany = vi.fn(async () => true);
+    render(
+      <TimelineScreen
+        {...baseProps}
+        sections={sampleSections}
+        onScheduleMany={onScheduleMany}
+        onMarkManyDone={vi.fn(async () => true)}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "long-task1" }));
+    fireEvent.click(screen.getByRole("button", { name: "row-task3" }));
+    expect(screen.getByText("2 selected")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reschedule 2 tasks" }));
+    fireEvent.click(screen.getByRole("button", { name: "quick-pick" }));
+
+    await waitFor(() => {
+      expect(onScheduleMany).toHaveBeenCalledWith(["task1", "task3"], "2026-05-09");
+      expect(screen.queryByText("2 selected")).toBeNull();
+    });
+  });
+
+  it("replaces the overdue header with the select bar while selecting", () => {
+    const onOpenOverdue = vi.fn();
+    const overdueSections: [string, MobileTask[]][] = [
+      [
+        "2026-05-01",
+        [
+          {
+            _id: "od1" as Id<"tasks">,
+            title: "Late task",
+            deadline: "2026-05-01",
+            scheduledAt: 1,
+            position: 0,
+            updatedAt: 1,
+            createdAt: 1,
+          },
+        ],
+      ],
+      ...sampleSections,
+    ];
+
+    render(
+      <TimelineScreen
+        {...baseProps}
+        sections={overdueSections}
+        overdueCount={1}
+        onOpenOverdue={onOpenOverdue}
+        onMarkManyDone={vi.fn(async () => true)}
+      />
+    );
+
+    expect(screen.getByText("Overdue · 1")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "long-task1" }));
+
+    expect(screen.queryByText("Overdue · 1")).toBeNull();
+    expect(screen.getByText("1 selected")).toBeTruthy();
   });
 });

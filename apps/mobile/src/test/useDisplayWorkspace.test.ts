@@ -81,12 +81,21 @@ describe("deriveDisplayWorkspace", () => {
     const display = deriveDisplayWorkspace(
       baseInput({
         activeTab: "timeline",
-        optimisticTasks: [makeTask({ _id: "optimistic", deadline: "2026-06-18" })],
+        optimisticTasks: [
+          makeTask({ _id: "optimistic", deadline: "2026-06-18" }),
+          makeTask({ _id: "other-inbox" }),
+        ],
       })
     );
 
     expect(display.activeServerTasks.map((task) => task._id)).toEqual(["live-timeline"]);
     expect(display.tasks.map((task) => task._id)).toEqual(["optimistic"]);
     expect(display.visibleTasks.map((task) => task._id)).toEqual(["optimistic"]);
+  });
+
+  it("uses the workspace corpus as the mutation base on Goals", () => {
+    const display = deriveDisplayWorkspace(baseInput({ activeTab: "goals" }));
+
+    expect(display.activeServerTasks.map((task) => task._id)).toEqual(["all-task"]);
   });
 });

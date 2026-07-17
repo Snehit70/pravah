@@ -60,6 +60,7 @@ let priorSessions: PersistedPayload["sessions"] = [];
 let flushTimer: ReturnType<typeof setInterval> | null = null;
 let appStateSubscription: NativeEventSubscription | null = null;
 let isInitialized = false;
+let initializationPromise: Promise<void> | null = null;
 let isFlushing = false;
 
 function inferFlow(event: string): DiagnosticFlow {
@@ -159,17 +160,24 @@ function handleAppStateChange(nextState: AppStateStatus): void {
 }
 
 export async function initializeDiagnostics(): Promise<void> {
-  if (isInitialized) return;
+  if (initializationPromise) return initializationPromise;
   isInitialized = true;
-  await loadPersisted();
-  recordDiagnosticEvent("app_session_started", "info", { restoredSessions: priorSessions.length });
-  appStateSubscription = AppState.addEventListener("change", handleAppStateChange);
-  flushTimer = setInterval(() => {
-    void flushNow("interval");
-  }, FLUSH_INTERVAL_MS);
+  initializationPromise = (async () => {
+    await loadPersisted();
+    recordDiagnosticEvent("app_session_started", "info", { restoredSessions: priorSessions.length });
+    appStateSubscription = AppState.addEventListener("change", handleAppStateChange);
+    flushTimer = setInterval(() => {
+      void flushNow("interval");
+    }, FLUSH_INTERVAL_MS);
+  })();
+  return initializationPromise;
 }
 
 export async function shutdownDiagnostics(): Promise<void> {
+  // Before init, priorSessions is empty; flushing would clobber persisted
+  // history with only the current in-memory buffer.
+  if (!isInitialized) return;
+  await initializationPromise;
   if (flushTimer) {
     clearInterval(flushTimer);
     flushTimer = null;

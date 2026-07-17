@@ -32,9 +32,17 @@ export type RetryPayload =
       taskId: Id<"tasks">;
     }
   | {
+      type: "completeTasks";
+      taskIds: Id<"tasks">[];
+    }
+  | {
       type: "moveTask";
       taskId: Id<"tasks">;
       targetDate: string;
+    }
+  | {
+      type: "rescheduleTasks";
+      updates: { taskId: Id<"tasks">; deadline: string }[];
     }
   | {
       type: "unscheduleTask";

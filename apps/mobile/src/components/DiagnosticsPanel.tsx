@@ -62,19 +62,9 @@ export function DiagnosticsPanel({
     return filtered.slice(-200).reverse();
   }, [enabledFilters, events]);
 
-  if (!visible) {
-    return (
-      <Pressable
-        onPress={onToggle}
-        hitSlop={12}
-        accessibilityRole="button"
-        accessibilityLabel="Show diagnostics"
-        style={({ pressed }) => [styles.toggle, pressed && { opacity: 0.7 }]}
-      >
-        <Text style={styles.toggleText}>Diag</Text>
-      </Pressable>
-    );
-  }
+  // The open affordance lives in the app header (dev-only chip) rather than a
+  // floating pill overlapping list content; hidden means fully hidden.
+  if (!visible) return null;
 
   const rows = [
     ["tab", activeTab],
@@ -174,24 +164,6 @@ export function DiagnosticsPanel({
 }
 
 const styles = StyleSheet.create({
-  toggle: {
-    position: "absolute",
-    right: spacing.lg,
-    bottom: 140,
-    zIndex: 80,
-    elevation: 80,
-    minHeight: 44,
-    justifyContent: "center",
-    paddingHorizontal: spacing.sm,
-    borderRadius: radii.full,
-    backgroundColor: colors.bgFloating,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  toggleText: {
-    ...typography.micro,
-    color: colors.accent,
-  },
   panel: {
     position: "absolute",
     left: spacing.md,

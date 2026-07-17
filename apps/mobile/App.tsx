@@ -13,7 +13,6 @@ import {
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
-import { type RenderItemParams } from "react-native-draggable-flatlist";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { authStorageReady } from "./src/lib/auth-client";
@@ -26,7 +25,7 @@ import {
 } from "@expo-google-fonts/geist";
 import { GeistMono_500Medium } from "@expo-google-fonts/geist-mono";
 import { ConvexClientProvider } from "./src/lib/convex";
-import { humanDate, isIsoDate } from "./src/lib/dates";
+import { isIsoDate } from "./src/lib/dates";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
 import {
   getDiagnosticsSnapshot,
@@ -44,7 +43,7 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-
 
 import { colors, fonts, radii, spacing, typography } from "./src/theme/tokens";
 import { TaskCard, type MobileTask } from "./src/components/TaskCard";
-import { BottomTabBar } from "./src/components/BottomTabBar";
+import { BottomTabBar, type TabKey } from "./src/components/BottomTabBar";
 import { GridBackground } from "./src/components/GridBackground";
 import { Kairo, type KairoSheetRef } from "./src/components/Kairo";
 import { BootScreen } from "./src/components/BootScreen";
@@ -133,6 +132,11 @@ function MobileApp() {
   const didMarkInteractiveRef = useRef(false);
   const didApplyStartupTabRef = useRef(false);
   const didManuallyChangeTabRef = useRef(false);
+  // Tabs lazy-mount on first visit and then stay mounted (hidden via
+  // display:none), so revisits are instant: no remount, no re-run of the
+  // entrance cascade, and list scroll positions survive. A ref (not state)
+  // because it only ever grows and the activeTab change already re-renders.
+  const visitedTabsRef = useRef<Set<TabKey>>(new Set());
 
   const {
     session,
@@ -161,6 +165,7 @@ function MobileApp() {
     retryBootstrap,
     hasCachedSessionHint,
   } = useWorkspaceState();
+  visitedTabsRef.current.add(activeTab);
 
   const chromeDim = useSharedValue(1);
   useEffect(() => {
@@ -206,12 +211,6 @@ function MobileApp() {
 
   // ── Data ────────────────────────────────────────────────────────────
 
-  const needsFullWorkspaceCorpus =
-    isKairoActive ||
-    activeTab === "insights" ||
-    activeTab === "goals" ||
-    notificationsEnabled;
-
   const {
     today,
     tomorrow,
@@ -227,7 +226,10 @@ function MobileApp() {
     isAllTasksReady,
   } = useTaskQueries({
     isAuthenticated: Boolean(session),
-    includeAllTasks: needsFullWorkspaceCorpus,
+    // The full corpus stays subscribed for the whole session. At single-user
+    // scale it's a handful of indexed rows, and keeping it live means Goals /
+    // Progress / Kairo never pay a server round-trip on entry.
+    includeAllTasks: true,
   });
 
   const hasLiveWorkspaceData = !isInboxLoading && !isTimelineLoading && !isCompletedLoading;
@@ -285,6 +287,7 @@ function MobileApp() {
   const completeTaskMutation = useMutation(api.tasks.completeTask);
   const moveTaskMutation = useMutation(api.tasks.moveTask);
   const unscheduleTaskMutation = useMutation(api.tasks.unscheduleTask);
+  const rescheduleTasksMutation = useMutation(api.tasks.rescheduleTasks);
   const reopenTaskMutation = useMutation(api.tasks.reopenTask);
   const softDeleteTaskMutation = useMutation(api.tasks.softDeleteTask);
   const restoreTaskMutation = useMutation(api.tasks.restoreTask);
@@ -398,12 +401,23 @@ function MobileApp() {
   // ── Effects ─────────────────────────────────────────────────────────
 
   useEffect(() => {
-    void initializeDiagnostics();
     mobileLogger.info("launch_gate_start");
     return () => {
       void shutdownDiagnostics();
     };
   }, []);
+
+  // Restoring persisted diagnostics JSON-parses up to 20MB on the JS thread,
+  // so wait until the launch path has settled (workspace ready, or signed
+  // out) before paying that cost. Events logged earlier are held in the
+  // in-memory buffer and persist on the first flush after init.
+  const launchSettled = session
+    ? isDataBootstrapReady || Boolean(bootstrapError)
+    : !sessionLoading;
+  useEffect(() => {
+    if (!launchSettled) return;
+    void initializeDiagnostics();
+  }, [launchSettled]);
 
   useEffect(() => {
     if (sessionLoading) {
@@ -411,15 +425,19 @@ function MobileApp() {
     }
   }, [sessionLoading]);
 
+  // Keyed on a derived boolean, not the session object: better-auth replaces
+  // the session identity when the cached session is confirmed server-side,
+  // which double-logged session_ready on every warm restart.
+  const sessionAvailable = Boolean(session);
   useEffect(() => {
-    if (session) {
+    if (sessionAvailable) {
       mobileLogger.info("session_ready");
       return;
     }
     if (!sessionLoading) {
       mobileLogger.info("session_absent");
     }
-  }, [session, sessionLoading]);
+  }, [sessionAvailable, sessionLoading]);
 
   useEffect(() => {
     if (!preferencesReady) return;
@@ -540,8 +558,18 @@ function MobileApp() {
           await completeTaskMutation({ taskId: payload.taskId });
           return;
         }
+        case "completeTasks": {
+          await Promise.all(
+            payload.taskIds.map((taskId) => completeTaskMutation({ taskId }))
+          );
+          return;
+        }
         case "moveTask": {
           await moveTaskMutation({ taskId: payload.taskId, targetDate: payload.targetDate });
+          return;
+        }
+        case "rescheduleTasks": {
+          await rescheduleTasksMutation({ updates: payload.updates });
           return;
         }
         case "unscheduleTask": {
@@ -560,6 +588,7 @@ function MobileApp() {
       completeTaskMutation,
       moveTaskMutation,
       unscheduleTaskMutation,
+      rescheduleTasksMutation,
       reopenTaskMutation,
       setGoalLink,
     ]
@@ -597,12 +626,13 @@ function MobileApp() {
 
   const {
     markDone,
-    moveToToday,
     sendToInbox,
     reopenTask,
     deleteTask,
     handleSaveEdits,
-    shiftTimelineTask,
+    scheduleToDate,
+    scheduleManyToDate,
+    markManyDone,
   } = useTaskMutations({
     serverTasks: activeServerTasks,
     setOptimisticTasks,
@@ -872,61 +902,6 @@ function MobileApp() {
     setIsSettingsModalOpen,
   ]);
 
-  const renderInboxTaskItem = useCallback(
-    ({ item, drag, hidePriorityBadge }: RenderItemParams<MobileTask> & { hidePriorityBadge?: boolean }) => (
-      // Inbox has no day-section header, so a dated task self-describes its date.
-      <TaskCard
-        task={item}
-        dateLabel={item.deadline ? humanDate(item.deadline) : undefined}
-        onDone={canUseWorkspaceActions ? markDone : () => undefined}
-        onMoveToday={canUseWorkspaceActions ? moveToToday : undefined}
-        onSchedule={canUseWorkspaceActions ? handleEditTask : undefined}
-        onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
-        onDragHandlePress={canUseWorkspaceActions ? drag : undefined}
-        linkedGoalName={taskGoalNames.get(String(item._id))}
-        hidePriorityBadge={hidePriorityBadge}
-        swipeActionsEnabled={prefs.swipeActionsEnabled}
-      />
-    ),
-    [
-      canUseWorkspaceActions,
-      handleEditTask,
-      markDone,
-      moveToToday,
-      prefs.swipeActionsEnabled,
-      taskGoalNames,
-    ]
-  );
-
-  const renderTimelineTaskItem = useCallback(
-    (dateKey: string, { item, drag }: RenderItemParams<MobileTask>) => (
-      // No date on timeline cards: the day-named section header owns the date.
-      <TaskCard
-        task={item}
-        onDone={canUseWorkspaceActions ? markDone : () => undefined}
-        onSendToInbox={canUseWorkspaceActions ? sendToInbox : undefined}
-        onReorder={
-          canUseWorkspaceActions
-            ? (taskId, direction) => shiftTimelineTask(taskId, dateKey, direction)
-            : undefined
-        }
-        onEdit={canUseWorkspaceActions ? handleEditTask : () => undefined}
-        onDragHandlePress={canUseWorkspaceActions ? drag : undefined}
-        linkedGoalName={taskGoalNames.get(String(item._id))}
-        swipeActionsEnabled={prefs.swipeActionsEnabled}
-      />
-    ),
-    [
-      canUseWorkspaceActions,
-      markDone,
-      sendToInbox,
-      shiftTimelineTask,
-      handleEditTask,
-      prefs.swipeActionsEnabled,
-      taskGoalNames,
-    ]
-  );
-
   const renderProgressCompletedTaskItem = useCallback(
     ({ item }: { item: MobileTask }) => (
       <TaskCard
@@ -1045,6 +1020,17 @@ function MobileApp() {
             </View>
           </View>
           <View style={styles.headerLinks}>
+            {__DEV__ ? (
+              <Pressable
+                onPress={() => setShowDiagnostics((prev) => !prev)}
+                style={({ pressed }) => [styles.diagLinkWrap, pressed && styles.pressed]}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Toggle diagnostics"
+              >
+                <Text style={styles.diagLinkText}>DIAG</Text>
+              </Pressable>
+            ) : null}
             {activeTab === "timeline" ? <TimelineLayoutToggle /> : null}
             <Pressable
               onPress={openKairo}
@@ -1126,8 +1112,11 @@ function MobileApp() {
         <Text accessibilityLiveRegion="polite" style={styles.syncText}>Syncing</Text>
       ) : null}
 
-      {activeTab === "inbox" ? (
-        <Animated.View entering={tabEnterAnimation} style={styles.tabScreen}>
+      {visitedTabsRef.current.has("inbox") ? (
+        <Animated.View
+          entering={tabEnterAnimation}
+          style={[styles.tabScreen, activeTab !== "inbox" && styles.tabHidden]}
+        >
           <ScreenErrorBoundary screenName="Inbox">
             <InboxScreen
               tasks={visibleTasks}
@@ -1136,14 +1125,20 @@ function MobileApp() {
               tabBarHeight={tabBarHeight}
               onRefresh={handleRefresh}
               onCapture={() => canUseWorkspaceActions && addTaskSheetRef.current?.open()}
-              renderItem={renderInboxTaskItem}
+              onEditTask={handleEditTask}
+              onScheduleToDate={scheduleToDate}
+              onMarkManyDone={markManyDone}
+              canAct={canUseWorkspaceActions}
             />
           </ScreenErrorBoundary>
         </Animated.View>
       ) : null}
 
-      {activeTab === "timeline" ? (
-        <Animated.View entering={tabEnterAnimation} style={styles.tabScreen}>
+      {visitedTabsRef.current.has("timeline") ? (
+        <Animated.View
+          entering={tabEnterAnimation}
+          style={[styles.tabScreen, activeTab !== "timeline" && styles.tabHidden]}
+        >
           {/* Ambient, silent-when-healthy sync indicator. The timeline is the
               surface calendar sync feeds, so a broken sync surfaces here where
               it's actually missing events — not buried in Settings. */}
@@ -1170,7 +1165,6 @@ function MobileApp() {
               isRefreshing={isRefreshing}
               tabBarHeight={tabBarHeight}
               onRefresh={handleRefresh}
-              renderItem={renderTimelineTaskItem}
               overdueCount={isTimelineTriageReady ? overdueBuckets.totalOverdue : undefined}
               onOpenOverdue={
                 canUseWorkspaceActions && isTimelineTriageReady ? openOverdue : undefined
@@ -1180,13 +1174,18 @@ function MobileApp() {
               onReopenTask={canUseWorkspaceActions ? reopenTask : undefined}
               onEditTask={canUseWorkspaceActions ? handleEditTask : undefined}
               getGoalName={(taskId) => taskGoalNames.get(taskId)}
+              onScheduleMany={canUseWorkspaceActions ? scheduleManyToDate : undefined}
+              onMarkManyDone={canUseWorkspaceActions ? markManyDone : undefined}
             />
           </ScreenErrorBoundary>
         </Animated.View>
       ) : null}
 
-      {activeTab === "goals" ? (
-        <Animated.View entering={tabEnterAnimation} style={styles.tabScreen}>
+      {visitedTabsRef.current.has("goals") ? (
+        <Animated.View
+          entering={tabEnterAnimation}
+          style={[styles.tabScreen, activeTab !== "goals" && styles.tabHidden]}
+        >
           <ScreenErrorBoundary screenName="Goals">
             <GoalsScreen
               tabBarHeight={tabBarHeight}
@@ -1203,14 +1202,19 @@ function MobileApp() {
                   : undefined
               }
               onOpenTask={canUseWorkspaceActions ? handleEditTask : undefined}
+              onScheduleToDate={canUseWorkspaceActions ? scheduleToDate : undefined}
+              onMarkManyDone={canUseWorkspaceActions ? markManyDone : undefined}
               focusGoalId={focusGoalId}
             />
           </ScreenErrorBoundary>
         </Animated.View>
       ) : null}
 
-      {activeTab === "insights" ? (
-        <Animated.View entering={tabEnterAnimation} style={styles.tabScreen}>
+      {visitedTabsRef.current.has("insights") ? (
+        <Animated.View
+          entering={tabEnterAnimation}
+          style={[styles.tabScreen, activeTab !== "insights" && styles.tabHidden]}
+        >
           <ScreenErrorBoundary screenName="Progress">
             <InsightsScreen
               tasks={workspaceTaskCorpus}
@@ -1288,6 +1292,7 @@ function MobileApp() {
 
       <SettingsSheet
         visible={isSettingsModalOpen}
+        isAuthenticated={Boolean(session)}
         calendarSyncEnabled={googleSyncEnabled}
         gmailSyncEnabled={gmailSyncEnabled}
         gmailSyncStatus={gmailSyncStatus}
@@ -1373,8 +1378,16 @@ function MobileApp() {
 // a stable first paint, but they should resolve in parallel under one surface
 // instead of showing a chain of near-identical full-screen boot frames.
 
+// Fonts get a bounded head start, not a veto: diagnostics showed the bundled
+// Geist set taking ~3s on device, holding a ready session behind a blank boot
+// screen. Past this cap the shell renders with system-font fallback and text
+// picks up Geist on subsequent re-renders (RN does not retroactively restyle
+// already-mounted text, so a hard decouple would leave stale glyphs).
+const FONT_WAIT_MAX_MS = 1200;
+
 function LaunchGate({ children }: { children: ReactNode }) {
   const [storageReady, setStorageReady] = useState(false);
+  const [fontWaitExpired, setFontWaitExpired] = useState(false);
   const [fontsLoaded] = useGeistFonts({
     Geist_400Regular,
     Geist_500Medium,
@@ -1383,7 +1396,7 @@ function LaunchGate({ children }: { children: ReactNode }) {
     GeistMono_500Medium,
   });
   const reducedMotion = useReducedMotion();
-  const launchReady = fontsLoaded && storageReady;
+  const launchReady = (fontsLoaded || fontWaitExpired) && storageReady;
   const [handoffOpacity] = useState(() => new LegacyAnimated.Value(1));
   const [showHandoffOverlay, setShowHandoffOverlay] = useState(true);
 
@@ -1403,6 +1416,15 @@ function LaunchGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!fontsLoaded) return;
     mobileLogger.info("fonts_ready");
+  }, [fontsLoaded]);
+
+  useEffect(() => {
+    if (fontsLoaded) return;
+    const timer = setTimeout(() => {
+      mobileLogger.warn("fonts_wait_timeout", { capMs: FONT_WAIT_MAX_MS });
+      setFontWaitExpired(true);
+    }, FONT_WAIT_MAX_MS);
+    return () => clearTimeout(timer);
   }, [fontsLoaded]);
 
   useEffect(() => {
@@ -1483,6 +1505,11 @@ const styles = StyleSheet.create({
   tabScreen: {
     flex: 1,
   },
+  // Inactive-but-visited tabs stay mounted so revisits are instant; hiding
+  // via display:none removes them from layout and touch handling entirely.
+  tabHidden: {
+    display: "none",
+  },
   chrome: {
     flex: 1,
   },
@@ -1545,6 +1572,17 @@ const styles = StyleSheet.create({
     fontFamily: fonts.sansSemibold,
     fontSize: 18,
     letterSpacing: 1,
+  },
+  // Dev-only diagnostics entry: a mono log-line word in the header links row,
+  // matching the settings affordance instead of floating over list content.
+  diagLinkWrap: {
+    minHeight: 32,
+    justifyContent: "center",
+    paddingVertical: spacing.xs,
+  },
+  diagLinkText: {
+    ...typography.micro,
+    color: colors.textMuted,
   },
   // Kairo entry point: a quiet square squircle chip with the accent Kairo
   // mark — reads as the AI affordance without a text label.

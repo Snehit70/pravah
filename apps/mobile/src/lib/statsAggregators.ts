@@ -64,18 +64,36 @@ export function completionsByDay(
 }
 
 /**
- * Right-aligned trailing rolling average. window=1 returns the input.
- * For positions where fewer than `window` samples exist, averages only
- * what's available (so the line starts immediately, not after a gap).
+ * Centered weighted rolling average (radius = floor(window/2)). window=1 returns
+ * the input. Unlike a trailing average, it introduces no directional lag — a
+ * real peak stays plotted on its own day rather than drifting later — so the
+ * smoothed hero line reads calm *and* honest. Edges weight only the samples that
+ * exist, so the line starts immediately rather than after a gap.
+ *
+ * The kernel is **triangular** (weight `radius + 1 - |i - j|`), not a boxcar.
+ * A boxcar weights every day in the window equally, which makes the curve hold a
+ * value and then step as a single busy day enters and leaves the window — those
+ * flat shelves are an artefact of the kernel, not a fact about the data. A
+ * triangular kernel is the convolution of two boxcars, so its output is
+ * continuous in the first derivative: no shelves, no kinks. It stays a true
+ * centred average (symmetric weights ⇒ no lag) and needs no wider window.
  */
 export function rollingAverage(series: DayPoint[], window: number): number[] {
   if (window <= 1) return series.map((p) => p.count);
+  const radius = Math.floor(window / 2);
+  const n = series.length;
   const out: number[] = [];
-  for (let i = 0; i < series.length; i++) {
-    const start = Math.max(0, i - window + 1);
+  for (let i = 0; i < n; i++) {
+    const start = Math.max(0, i - radius);
+    const end = Math.min(n - 1, i + radius);
     let sum = 0;
-    for (let j = start; j <= i; j++) sum += series[j].count;
-    out.push(sum / (i - start + 1));
+    let weight = 0;
+    for (let j = start; j <= end; j++) {
+      const w = radius + 1 - Math.abs(i - j);
+      sum += series[j].count * w;
+      weight += w;
+    }
+    out.push(sum / weight);
   }
   return out;
 }
@@ -137,7 +155,7 @@ export function kpis(tasks: MobileTask[], now: number): StatsKpis {
   };
 }
 
-const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+export const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 /**
  * Among completions inside the trailing `days` window, which weekday saw
@@ -190,6 +208,52 @@ export function peakHour(
   let best = 0;
   for (let i = 1; i < 24; i++) if (buckets[i] > buckets[best]) best = i;
   return { hour: best, count: buckets[best] };
+}
+
+/**
+ * Full weekday distribution of completions inside the trailing `days` window,
+ * indexed Sun(0)..Sat(6) to match WEEKDAY_LABELS. Unlike `bestWeekday`, this
+ * returns every bucket with no significance gating — the rhythm mini-chart
+ * renders all seven bars and the presentation layer decides how to treat a
+ * thin sample. `total` is provided so callers can show a low-data state.
+ */
+export function completionsByWeekday(
+  tasks: MobileTask[],
+  now: number,
+  days: number,
+): { counts: number[]; total: number } {
+  const cutoff = addCalendarDays(startOfLocalDay(now), -(days - 1)).getTime();
+  const counts = [0, 0, 0, 0, 0, 0, 0];
+  let total = 0;
+  for (const t of tasks) {
+    if (!isTaskCompleted(t) || t.completedAt === undefined) continue;
+    if (t.completedAt < cutoff || t.completedAt > now) continue;
+    counts[new Date(t.completedAt).getDay()]++;
+    total++;
+  }
+  return { counts, total };
+}
+
+/**
+ * Full hour-of-day distribution of completions inside the trailing `days`
+ * window, indexed 0..23 (local hour). Companion to `completionsByWeekday`
+ * for the "focus by hour" curve; returns every bucket, ungated.
+ */
+export function completionsByHour(
+  tasks: MobileTask[],
+  now: number,
+  days: number,
+): { counts: number[]; total: number } {
+  const cutoff = addCalendarDays(startOfLocalDay(now), -(days - 1)).getTime();
+  const counts = new Array<number>(24).fill(0);
+  let total = 0;
+  for (const t of tasks) {
+    if (!isTaskCompleted(t) || t.completedAt === undefined) continue;
+    if (t.completedAt < cutoff || t.completedAt > now) continue;
+    counts[new Date(t.completedAt).getHours()]++;
+    total++;
+  }
+  return { counts, total };
 }
 
 /**

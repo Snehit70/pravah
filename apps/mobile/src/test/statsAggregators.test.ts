@@ -9,6 +9,8 @@
 import { describe, expect, it } from "vitest";
 import {
   completionsByDay,
+  completionsByHour,
+  completionsByWeekday,
   currentStreak,
   kpis,
   rollingAverage,
@@ -85,9 +87,28 @@ describe("rollingAverage", () => {
     expect(rollingAverage(series, 1)).toEqual([1, 3, 5]);
   });
 
-  it("averages over a trailing window, partial at the start", () => {
+  it("weights the centre day double its neighbours, partial at both edges", () => {
+    // window=3 → radius 1 → triangular weights [1,2,1]: the centre day counts
+    // twice, so the smooth has no directional lag (a peak stays on its real day)
+    // and no boxcar shelf as a busy day enters or leaves the window.
     const series = [0, 2, 4, 6].map((count, i) => ({ date: `d${i}`, count }));
-    expect(rollingAverage(series, 3)).toEqual([0, 1, 2, 4]);
+    // i0:(0*2+2*1)/3      i1:(0*1+2*2+4*1)/4=2
+    // i2:(2*1+4*2+6*1)/4=4  i3:(4*1+6*2)/3
+    expect(rollingAverage(series, 3)).toEqual([2 / 3, 2, 4, 16 / 3]);
+  });
+
+  it("leaves a flat run flat — weighting never invents a slope", () => {
+    const series = [3, 3, 3, 3].map((count, i) => ({ date: `d${i}`, count }));
+    expect(rollingAverage(series, 3)).toEqual([3, 3, 3, 3]);
+  });
+
+  it("is symmetric — a centered spike smooths without directional lag", () => {
+    const series = [0, 0, 9, 0, 0].map((count, i) => ({ date: `d${i}`, count }));
+    const avg = rollingAverage(series, 3);
+    // A trailing average would drift the spike's weight to the right, breaking
+    // this mirror symmetry; a centered one keeps it balanced on the real day.
+    expect(avg).toEqual([...avg].reverse());
+    expect(Math.max(...avg)).toBe(avg[2]);
   });
 });
 
@@ -115,6 +136,57 @@ describe("currentStreak", () => {
       makeTask({ _id: `t${n}`, completedAt: daysAgo(n) }),
     );
     expect(currentStreak(tasks, NOW)).toBe(1);
+  });
+});
+
+describe("completionsByWeekday", () => {
+  it("returns seven zeroed buckets with an empty task list", () => {
+    const { counts, total } = completionsByWeekday([], NOW, 30);
+    expect(counts).toHaveLength(7);
+    expect(counts.every((c) => c === 0)).toBe(true);
+    expect(total).toBe(0);
+  });
+
+  it("buckets by local weekday, ungated, ignoring non-completed and out-of-window", () => {
+    // NOW is Sunday 2025-06-15 (getDay 0); daysAgo(2) is Friday (getDay 5).
+    const aggregationNow = daysAgo(0, 23);
+    const tasks = [
+      makeTask({ _id: "a", completedAt: daysAgo(0) }),
+      makeTask({ _id: "b", completedAt: daysAgo(0, 18) }),
+      makeTask({ _id: "c", completedAt: daysAgo(2) }),
+      makeTask({ _id: "active", updatedAt: daysAgo(0) }),
+      makeTask({ _id: "old", completedAt: daysAgo(40) }),
+      makeTask({ _id: "future", completedAt: aggregationNow + 60_000 }),
+    ];
+    const { counts, total } = completionsByWeekday(tasks, aggregationNow, 30);
+    expect(counts[0]).toBe(2); // Sunday
+    expect(counts[5]).toBe(1); // Friday
+    expect(total).toBe(3);
+  });
+});
+
+describe("completionsByHour", () => {
+  it("returns 24 zeroed buckets with an empty task list", () => {
+    const { counts, total } = completionsByHour([], NOW, 30);
+    expect(counts).toHaveLength(24);
+    expect(counts.every((c) => c === 0)).toBe(true);
+    expect(total).toBe(0);
+  });
+
+  it("buckets by local hour, ignoring non-completed and out-of-window", () => {
+    const aggregationNow = daysAgo(0, 23);
+    const tasks = [
+      makeTask({ _id: "a", completedAt: daysAgo(0, 9) }),
+      makeTask({ _id: "b", completedAt: daysAgo(1, 9) }),
+      makeTask({ _id: "c", completedAt: daysAgo(0, 18) }),
+      makeTask({ _id: "active", updatedAt: daysAgo(0) }),
+      makeTask({ _id: "old", completedAt: daysAgo(40, 9) }),
+      makeTask({ _id: "future", completedAt: aggregationNow + 60_000 }),
+    ];
+    const { counts, total } = completionsByHour(tasks, aggregationNow, 30);
+    expect(counts[9]).toBe(2);
+    expect(counts[18]).toBe(1);
+    expect(total).toBe(3);
   });
 });
 

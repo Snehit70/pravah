@@ -82,6 +82,7 @@ export function useTaskMutations({
   // Order-sensitive: useTaskMutations.test.ts mocks useMutation by call index.
   // Keep new mutations appended at the end of this list.
   const deleteTaskMutation = useMutation(api.tasks.deleteTask);
+  const rescheduleTasksMutation = useMutation(api.tasks.rescheduleTasks);
 
   const runOptimisticMutation = useCallback(
     async ({
@@ -454,9 +455,152 @@ export function useTaskMutations({
     [runOptimisticMutation, shiftScheduledTaskPositionMutation, serverTasks, hasPriorityBoundaryViolation, showToast]
   );
 
+  // Quick-schedule: place a task on an explicit date. Inbox tasks have no
+  // prior date, so Undo unschedules them back to the inbox — but the Goals
+  // sheet reuses this for already-dated tasks, where Undo must restore the
+  // date the task had before, not dump it into the inbox.
+  const scheduleToDate = useCallback(
+    (taskId: Id<"tasks">, targetDate: string) => {
+      const priorDeadline = serverTasks.find((task) => task._id === taskId)?.deadline;
+      void runOptimisticMutation({
+        actionName: "move_task_date",
+        optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
+        mutation: async () => {
+          await moveTaskMutation({ taskId, targetDate });
+        },
+        errorMessage: "Could not schedule task.",
+        retryLabel: "Retry schedule",
+        retryPayload: { type: "moveTask", taskId, targetDate },
+        successFeedback: "light",
+        taskId,
+        undo: {
+          message: "Scheduled",
+          run: () =>
+            void runOptimisticMutation(
+              priorDeadline
+                ? {
+                    actionName: "move_task_date_undo",
+                    optimistic: (cur) =>
+                      patchTaskInOptimisticView(cur, taskId, { deadline: priorDeadline }, Date.now()),
+                    mutation: async () => {
+                      await moveTaskMutation({ taskId, targetDate: priorDeadline });
+                    },
+                    errorMessage: "Could not undo.",
+                    retryLabel: "Retry reschedule",
+                    retryPayload: { type: "moveTask", taskId, targetDate: priorDeadline },
+                    successFeedback: "light",
+                    taskId,
+                  }
+                : unscheduleConfig(taskId)
+            ),
+        },
+      });
+    },
+    [runOptimisticMutation, moveTaskMutation, unscheduleConfig, serverTasks]
+  );
+
+  // Inbox bulk complete (also the single-select path). One optimistic removal,
+  // one awaited fan-out, one toast whose Undo reopens every task in the batch.
+  const markManyDone = useCallback(
+    async (taskIds: Id<"tasks">[]): Promise<boolean> => {
+      if (taskIds.length === 0) return true;
+      const ids = new Set<string>(taskIds.map(String));
+      return runOptimisticMutation({
+        actionName: "complete_tasks_bulk",
+        optimistic: (cur) => cur.filter((task) => !ids.has(String(task._id))),
+        mutation: async () => {
+          await Promise.all(taskIds.map((taskId) => completeTaskMutation({ taskId })));
+        },
+        errorMessage:
+          taskIds.length === 1
+            ? "Could not mark task as done."
+            : "Could not mark tasks as done.",
+        retryLabel: taskIds.length === 1 ? "Retry mark done" : `Retry mark ${taskIds.length} done`,
+        retryPayload: { type: "completeTasks", taskIds },
+        successFeedback: "taskCompleted",
+        undo: {
+          message: taskIds.length === 1 ? "Marked done" : `Marked ${taskIds.length} done`,
+          run: () =>
+            void runOptimisticMutation({
+              actionName: "reopen_tasks_bulk",
+              optimistic: (cur) => cur,
+              mutation: async () => {
+                await Promise.all(taskIds.map((taskId) => reopenTaskMutation({ taskId })));
+              },
+              errorMessage: "Could not undo.",
+              successFeedback: "light",
+            }),
+        },
+      });
+    },
+    [runOptimisticMutation, completeTaskMutation, reopenTaskMutation]
+  );
+
+  // Timeline bulk reschedule: move a batch onto one date in a single server
+  // call. Tasks keep their time-of-day (rescheduleTasks only patches the
+  // deadline); the optimistic view patches deadlines so rows glide to the new
+  // section instead of vanishing. Undo replays each task back to the date it
+  // left.
+  const scheduleManyToDate = useCallback(
+    async (taskIds: Id<"tasks">[], targetDate: string): Promise<boolean> => {
+      if (taskIds.length === 0) return true;
+      const priorDates = new Map<string, string>();
+      for (const taskId of taskIds) {
+        const prior = serverTasks.find((task) => task._id === taskId)?.deadline;
+        if (prior) priorDates.set(String(taskId), prior);
+      }
+      const patchAll = (view: MobileTask[], dateFor: (taskId: Id<"tasks">) => string | undefined) => {
+        const now = Date.now();
+        return taskIds.reduce((acc, taskId) => {
+          const deadline = dateFor(taskId);
+          return deadline ? patchTaskInOptimisticView(acc, taskId, { deadline }, now) : acc;
+        }, view);
+      };
+      return runOptimisticMutation({
+        actionName: "reschedule_tasks_bulk",
+        optimistic: (cur) => patchAll(cur, () => targetDate),
+        mutation: async () => {
+          await rescheduleTasksMutation({
+            updates: taskIds.map((taskId) => ({ taskId, deadline: targetDate })),
+          });
+        },
+        errorMessage:
+          taskIds.length === 1 ? "Could not reschedule task." : "Could not reschedule tasks.",
+        retryLabel:
+          taskIds.length === 1 ? "Retry reschedule" : `Retry reschedule of ${taskIds.length}`,
+        retryPayload: {
+          type: "rescheduleTasks",
+          updates: taskIds.map((taskId) => ({ taskId, deadline: targetDate })),
+        },
+        successFeedback: "light",
+        undo: {
+          message: taskIds.length === 1 ? "Rescheduled" : `Rescheduled ${taskIds.length}`,
+          run: () =>
+            void runOptimisticMutation({
+              actionName: "reschedule_tasks_bulk_undo",
+              optimistic: (cur) => patchAll(cur, (taskId) => priorDates.get(String(taskId))),
+              mutation: async () => {
+                const updates = [...priorDates.entries()].map(([taskId, deadline]) => ({
+                  taskId: taskId as Id<"tasks">,
+                  deadline,
+                }));
+                if (updates.length > 0) await rescheduleTasksMutation({ updates });
+              },
+              errorMessage: "Could not undo.",
+              successFeedback: "light",
+            }),
+        },
+      });
+    },
+    [runOptimisticMutation, rescheduleTasksMutation, serverTasks]
+  );
+
   return {
     markDone,
     moveToToday,
+    scheduleToDate,
+    scheduleManyToDate,
+    markManyDone,
     sendToInbox,
     reopenTask,
     deleteTask,
