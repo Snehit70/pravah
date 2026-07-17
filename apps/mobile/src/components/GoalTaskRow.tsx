@@ -83,13 +83,16 @@ function GoalTaskRowInner({
         {task.title}
       </Text>
 
-      {selectMode || done || (!task.deadline && !onSchedule) ? null : (
+      {selectMode || done || (!task.deadline && !onSchedule) ? null : task.deadline && !onSchedule ? (
+        <Text style={[styles.date, overdue && styles.dateOverdue]}>
+          {shortDate(task.deadline)}
+        </Text>
+      ) : (
         <Pressable
           onPress={(event) => {
             event.stopPropagation();
             onSchedule?.();
           }}
-          disabled={!onSchedule}
           hitSlop={10}
           accessibilityRole="button"
           accessibilityLabel={
