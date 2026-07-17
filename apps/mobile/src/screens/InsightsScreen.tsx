@@ -328,7 +328,7 @@ export function InsightsScreen({
           </Text>
         ) : (
           <Text style={styles.footerNote}>
-            Computed on device from your task history. No data leaves the phone.
+            Computed on device from your synced task history.
           </Text>
         )}
       </ScrollView>
