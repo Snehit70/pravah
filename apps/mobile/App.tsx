@@ -411,7 +411,9 @@ function MobileApp() {
   // so wait until the launch path has settled (workspace ready, or signed
   // out) before paying that cost. Events logged earlier are held in the
   // in-memory buffer and persist on the first flush after init.
-  const launchSettled = session ? isDataBootstrapReady : !sessionLoading;
+  const launchSettled = session
+    ? isDataBootstrapReady || Boolean(bootstrapError)
+    : !sessionLoading;
   useEffect(() => {
     if (!launchSettled) return;
     void initializeDiagnostics();
