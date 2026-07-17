@@ -39,7 +39,7 @@ const PERFORMANCE_PROPERTIES = [
 // ---------------------------------------------------------------------------
 function withPerformanceGradleProperties(config) {
   return withGradleProperties(config, (cfg) => {
-    const props = cfg.modResults;
+    const props = cfg.modResults ?? [];
 
     for (const { key, value } of PERFORMANCE_PROPERTIES) {
       const existing = props.find((p) => p[0] === key);
@@ -50,6 +50,7 @@ function withPerformanceGradleProperties(config) {
       }
     }
 
+    cfg.modResults = props;
     return cfg;
   });
 }
