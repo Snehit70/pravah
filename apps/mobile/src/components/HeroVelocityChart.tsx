@@ -536,14 +536,18 @@ function DeltaChip({
 }
 
 function accessibilitySummary(total: number, periodLabel: string, delta: Delta): string {
-  const trend =
-    delta.deltaPct == null
-      ? ""
-      : delta.deltaPct > 0
-        ? `, up ${Math.round(delta.deltaPct)}% from the previous period`
-        : delta.deltaPct < 0
-          ? `, down ${Math.round(Math.abs(delta.deltaPct))}% from the previous period`
-          : ", even with the previous period";
+  let trend = "";
+  if (delta.lastPeriod === 0 && delta.thisPeriod === 0) {
+    trend = "";
+  } else if (delta.deltaPct == null) {
+    trend = `, up by ${delta.thisPeriod} tasks from the previous period`;
+  } else if (Math.abs(delta.deltaPct) < 1) {
+    trend = ", even with the previous period";
+  } else if (delta.deltaPct > 0) {
+    trend = `, up ${Math.round(delta.deltaPct)}% from the previous period`;
+  } else {
+    trend = `, down ${Math.round(Math.abs(delta.deltaPct))}% from the previous period`;
+  }
   return `${total} tasks completed ${periodLabel}${trend}. Completion velocity chart.`;
 }
 
