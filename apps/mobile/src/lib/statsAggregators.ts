@@ -227,7 +227,7 @@ export function completionsByWeekday(
   let total = 0;
   for (const t of tasks) {
     if (!isTaskCompleted(t) || t.completedAt === undefined) continue;
-    if (t.completedAt < cutoff) continue;
+    if (t.completedAt < cutoff || t.completedAt > now) continue;
     counts[new Date(t.completedAt).getDay()]++;
     total++;
   }
@@ -249,7 +249,7 @@ export function completionsByHour(
   let total = 0;
   for (const t of tasks) {
     if (!isTaskCompleted(t) || t.completedAt === undefined) continue;
-    if (t.completedAt < cutoff) continue;
+    if (t.completedAt < cutoff || t.completedAt > now) continue;
     counts[new Date(t.completedAt).getHours()]++;
     total++;
   }

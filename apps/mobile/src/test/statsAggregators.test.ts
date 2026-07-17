@@ -155,6 +155,7 @@ describe("completionsByWeekday", () => {
       makeTask({ _id: "c", completedAt: daysAgo(2) }),
       makeTask({ _id: "active", updatedAt: daysAgo(0) }),
       makeTask({ _id: "old", completedAt: daysAgo(40) }),
+      makeTask({ _id: "future", completedAt: NOW + 60_000 }),
     ];
     const { counts, total } = completionsByWeekday(tasks, NOW, 30);
     expect(counts[0]).toBe(2); // Sunday
@@ -178,6 +179,7 @@ describe("completionsByHour", () => {
       makeTask({ _id: "c", completedAt: daysAgo(0, 18) }),
       makeTask({ _id: "active", updatedAt: daysAgo(0) }),
       makeTask({ _id: "old", completedAt: daysAgo(40, 9) }),
+      makeTask({ _id: "future", completedAt: NOW + 60_000 }),
     ];
     const { counts, total } = completionsByHour(tasks, NOW, 30);
     expect(counts[9]).toBe(2);
