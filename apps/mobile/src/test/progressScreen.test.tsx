@@ -105,7 +105,10 @@ vi.mock("react-native", () => {
     hairlineWidth: 1,
     absoluteFill: {},
   };
-  return { FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View };
+  const AppState = {
+    addEventListener: vi.fn(() => ({ remove: vi.fn() })),
+  };
+  return { AppState, FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View };
 });
 
 // Charts pull in the native SVG + animation stack; stub them to inert nodes so

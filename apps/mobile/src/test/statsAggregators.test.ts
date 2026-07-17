@@ -149,15 +149,16 @@ describe("completionsByWeekday", () => {
 
   it("buckets by local weekday, ungated, ignoring non-completed and out-of-window", () => {
     // NOW is Sunday 2025-06-15 (getDay 0); daysAgo(2) is Friday (getDay 5).
+    const aggregationNow = daysAgo(0, 23);
     const tasks = [
       makeTask({ _id: "a", completedAt: daysAgo(0) }),
       makeTask({ _id: "b", completedAt: daysAgo(0, 18) }),
       makeTask({ _id: "c", completedAt: daysAgo(2) }),
       makeTask({ _id: "active", updatedAt: daysAgo(0) }),
       makeTask({ _id: "old", completedAt: daysAgo(40) }),
-      makeTask({ _id: "future", completedAt: NOW + 60_000 }),
+      makeTask({ _id: "future", completedAt: aggregationNow + 60_000 }),
     ];
-    const { counts, total } = completionsByWeekday(tasks, NOW, 30);
+    const { counts, total } = completionsByWeekday(tasks, aggregationNow, 30);
     expect(counts[0]).toBe(2); // Sunday
     expect(counts[5]).toBe(1); // Friday
     expect(total).toBe(3);
@@ -173,15 +174,16 @@ describe("completionsByHour", () => {
   });
 
   it("buckets by local hour, ignoring non-completed and out-of-window", () => {
+    const aggregationNow = daysAgo(0, 23);
     const tasks = [
       makeTask({ _id: "a", completedAt: daysAgo(0, 9) }),
       makeTask({ _id: "b", completedAt: daysAgo(1, 9) }),
       makeTask({ _id: "c", completedAt: daysAgo(0, 18) }),
       makeTask({ _id: "active", updatedAt: daysAgo(0) }),
       makeTask({ _id: "old", completedAt: daysAgo(40, 9) }),
-      makeTask({ _id: "future", completedAt: NOW + 60_000 }),
+      makeTask({ _id: "future", completedAt: aggregationNow + 60_000 }),
     ];
-    const { counts, total } = completionsByHour(tasks, NOW, 30);
+    const { counts, total } = completionsByHour(tasks, aggregationNow, 30);
     expect(counts[9]).toBe(2);
     expect(counts[18]).toBe(1);
     expect(total).toBe(3);
