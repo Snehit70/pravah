@@ -641,10 +641,12 @@ export function GoalsScreen({
   // count); by the time this runs the user has already agreed.
   const handleDeleteGoal = useCallback(
     (goal: GoalItem) => {
-      deleteGoal(goal.id);
       setSettingsOpen(false);
       setSelectedGoalId(null);
       haptic.success();
+      // Keep the selected goal in the synced store until both native modals
+      // finish sliding out; otherwise their retained render id resolves blank.
+      setTimeout(() => deleteGoal(goal.id), 280);
     },
     [deleteGoal],
   );
