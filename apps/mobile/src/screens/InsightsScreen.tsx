@@ -144,7 +144,9 @@ export function InsightsScreen({
   }, [series, range]);
   const delta = useMemo(() => {
     // This window vs. the immediately preceding window of the same length.
-    const prev = completionsByDay(tasks, now - windowDays * 86_400_000, windowDays);
+    const previousPeriodEnd = new Date(now);
+    previousPeriodEnd.setDate(previousPeriodEnd.getDate() - windowDays);
+    const prev = completionsByDay(tasks, previousPeriodEnd.getTime(), windowDays);
     const lastPeriod = prev.reduce((s, p) => s + p.count, 0);
     const deltaPct = lastPeriod === 0 ? null : ((rangeTotal - lastPeriod) / lastPeriod) * 100;
     return { thisPeriod: rangeTotal, lastPeriod, deltaPct };
