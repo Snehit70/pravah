@@ -42,11 +42,11 @@ function withPerformanceGradleProperties(config) {
     const props = cfg.modResults ?? [];
 
     for (const { key, value } of PERFORMANCE_PROPERTIES) {
-      const existing = props.find((p) => p[0] === key);
+      const existing = props.find((p) => p.type === "property" && p.key === key);
       if (existing) {
-        existing[1] = value;
+        existing.value = value;
       } else {
-        props.push([key, value]);
+        props.push({ type: "property", key, value });
       }
     }
 
