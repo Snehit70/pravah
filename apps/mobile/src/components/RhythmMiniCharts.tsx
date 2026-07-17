@@ -232,7 +232,7 @@ function WeekdayChart({
   width: number;
 }) {
   const peak = counts.indexOf(Math.max(...counts));
-  const label = `Completions by weekday. Most on ${WEEKDAY_LABELS[peak]}s, ${counts[peak]} completed.`;
+  const label = `Completions by weekday. Peak weekday: ${WEEKDAY_LABELS[peak]}, ${counts[peak]} completed.`;
 
   return (
     <View accessible accessibilityRole="image" accessibilityLabel={label}>
