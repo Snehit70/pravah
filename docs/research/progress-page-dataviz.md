@@ -16,7 +16,7 @@ For daily count data (steps, tasks, minutes) you almost always want **monotone c
 
 Both methods convert a polyline into a sequence of SVG cubic Bézier commands (`C c1x,c1y c2x,c2y x,y`). They differ only in **how the tangent (slope) at each point is chosen**. Given a Hermite tangent `m_i` at point `i`, the Bézier control points for the segment `p_i → p_{i+1}` are placed at one-third of the x-distance:
 
-```
+```text
 dx  = (x_{i+1} - x_i) / 3
 c1  = ( x_i + dx ,       y_i + dx * m_i     )
 c2  = ( x_{i+1} - dx ,   y_{i+1} - dx * m_{i+1} )
@@ -85,6 +85,7 @@ Close the area by appending a line down to the baseline (chart bottom `y = h`) u
 
 ```ts
 export function areaPath(line: string, firstX: number, lastX: number, baselineY: number) {
+  if (!line) return '';
   return `${line}L${lastX},${baselineY}L${firstX},${baselineY}Z`;
 }
 ```
@@ -126,12 +127,14 @@ const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 `strokeDashoffset` is explicitly listed as an animatable react-native-svg property on Android/iOS/Web by the reanimated SVG guide. Source: https://docs.swmansion.com/react-native-reanimated/docs/guides/animating-svg
 
-Get the length OTA-safely without native calls by using the **control-polygon upper bound** of the Bézier segments (`|p0→c1| + |c1→c2| + |c2→p1|` per segment ≥ true arc length; over-estimating only makes the reveal finish imperceptibly early, never dashed):
+Estimate the dash length OTA-safely without native calls by using the **control-polygon length upper bound** of the Bézier segments (`|p0→c1| + |c1→c2| + |c2→p1|` per segment ≥ true arc length; over-estimating only makes the reveal finish imperceptibly early, never dashed):
 
 ```ts
 export function pathLengthUpperBound(pts: Pt[]): number {
-  const m = monotoneTangents(pts);
+  if (pts.length < 2) return 0;
   const dist = (a: Pt, b: Pt) => Math.hypot(b.x - a.x, b.y - a.y);
+  if (pts.length === 2) return dist(pts[0], pts[1]);
+  const m = monotoneTangents(pts);
   let L = 0;
   for (let i = 0; i < pts.length - 1; i++) {
     const p0 = pts[i], p1 = pts[i + 1], dx = (p1.x - p0.x) / 3;
@@ -213,24 +216,23 @@ The `firstWeekday` offset is exactly what aligns every date under its correct we
 
 (For a GitHub-style contribution graph instead — columns = weeks, rows = weekdays — swap the axes: `col = weekIndex`, `row = date.getDay()`. Same STEP math.)
 
-### 2.2 Single-hue intensity ramp
+### 2.2 Solid copper intensity ramp
 
-Quantize into a few buckets (GitHub uses ~5 including empty) so the scale reads as discrete levels rather than noisy continuous shading. Ramp a **single hue** by opacity over the theme accent, which keeps it calm and works in dark mode without a rainbow:
+Quantize into five states (empty plus four active buckets) so the scale reads as discrete levels rather than noisy continuous shading. The shipped palette uses solid copper colors for active days and a faint warm track for empty days:
 
 ```ts
-const ACCENT = '#8B5CF6';
-const EMPTY  = 'rgba(255,255,255,0.05)'; // faint track cell on dark bg
+const EMPTY = 'rgba(78,62,43,0.07)';
+const COPPER_RAMP = ['#e69867', '#c27746', '#a35a28', '#844417'] as const;
 
-/** 0 = empty; else 1..4 buckets -> increasing opacity of the single accent hue */
+/** 0 = empty; else quantize to solid copper buckets 1..4. */
 function rampColor(value: number, max: number): string {
   if (value <= 0 || max <= 0) return EMPTY;
-  const bucket = Math.min(4, Math.ceil((value / max) * 4)); // 1..4
-  const opacity = [0, 0.28, 0.5, 0.74, 1.0][bucket];
-  return `rgba(139,92,246,${opacity})`;
+  const bucket = Math.min(3, Math.ceil((value / max) * 4) - 1); // 0..3 indexes buckets 1..4
+  return COPPER_RAMP[bucket];
 }
 ```
 
-Quantize/threshold buckets are the standard sequential-scale approach (d3 `scaleQuantize` concept): https://d3js.org/d3-scale/quantize . Prefer opacity-over-accent (or a single-hue lightness ramp) rather than multi-hue, so intensity maps monotonically to "more".
+Quantize/threshold buckets are the standard sequential-scale approach (d3 `scaleQuantize` concept): https://d3js.org/d3-scale/quantize . The copper ramp varies lightness within one hue family, so intensity maps monotonically to "more" without relying on opacity or multiple hues.
 
 ### 2.3 Performance with hundreds of cells
 
@@ -278,6 +280,7 @@ function Scrubbable({ xs, ys, data, height }: {
   // but bisection is robust to non-uniform spacing (gaps / missing days).
   const update = (x: number) => {
     'worklet';
+    if (xs.length === 0) return;
     const clamped = Math.max(xs[0], Math.min(x, xs[xs.length - 1]));
     let lo = 0, hi = xs.length - 1;
     while (lo < hi) {
@@ -339,25 +342,21 @@ Notes:
 
 ## 4. Morphing between range toggles (7d / 30d / 90d)
 
-The three ranges have **different point counts and different x-domains**, so a true `d`-morph is neither meaningful nor cheap (see §1.3 caveat: animating `d` is the expensive/janky path, and mismatched command counts snap on Web). Source: https://docs.swmansion.com/react-native-reanimated/docs/guides/animating-svg
+The shipped chart uses an **anchored range morph**. All ranges end today, so today stays pinned to the right edge while the horizontal step interpolates between windows: changing 30d → 90d compresses the shared 30 days into the right third and brings the earlier 60 days in from off-screen left. This reads as widening the time window rather than replacing one unrelated line with another.
 
-What actually animates smoothly:
+To keep the path structures compatible, build both morph states over the union of days (the longer range):
 
-1. **Cross-fade + re-draw (recommended).** On toggle, compute the new static `d` (line + area) in a `useMemo` keyed on `[range, data]`, then cross-fade: fade the outgoing paths' `opacity → 0` while re-running the §1.3 draw-on for the incoming series (`strokeDashoffset` sweep + area `fillOpacity` rise). Cheap scalar props only; no `d` interpolation.
+1. Keep the same point count in both states. For the shorter state, assign older union days negative x coordinates so the SVG bounds clip them naturally.
+2. Give every union day its real y value in both states; off-screen days therefore arrive already shaped instead of growing from the baseline.
+3. Scale y independently for each range, then interpolate each point's x and y with one progress value. Rebuild the monotone line and area from those interpolated points in the UI-thread worklet. Matching point counts preserve the `M/C` command structure throughout the morph.
 
-   ```tsx
-   const d = useMemo(() => buildPaths(data, range, W, H), [data, range]);
-   useEffect(() => {                    // on range change
-     progress.value = 0;
-     progress.value = withTiming(1, { duration: 650, easing: Easing.out(Easing.cubic) });
-   }, [range]);
-   ```
+In outline, for union index `i`, `dayOffset = union.length - 1 - i` and a window of `m` days uses `x = width - dayOffset / (m - 1) * width` (with a centered single-point fallback). Interpolate the previous and next state arrays; do not add/remove points during the animation. This is the intentional exception to §1.3's static-`d` default: the bounded, matching geometry is prepared specifically for a range transition rather than recomputed during ordinary renders or interaction.
 
-2. **Fixed-slot morph (if you want continuity).** If you keep the visual x-range fixed and only change density, you can resample all ranges to the *same* number of slots (e.g. 30 samples) so the command count matches, making an `opacity` cross-fade between two overlaid `<Path>`s look like a morph without touching `d` mid-flight. Still avoid animating `d`; overlay-and-fade two static paths.
+**Fallback — cross-fade + re-draw.** If ranges do not share an end date, their data cannot form a reliable union, or the platform cannot sustain the bounded path rebuild, swap static paths instead: fade out the old path and replay the incoming draw-on (`strokeDashoffset` plus area `fillOpacity`). This remains the reduced-motion/incompatible-data fallback, not the primary range-transition strategy.
 
-3. **Container layout via `LayoutAnimation`.** For the surrounding chrome (legend, stat tiles resizing, axis labels appearing/disappearing) use `LayoutAnimation.configureNext(...)` or reanimated layout animations (`entering`/`exiting`, `Layout`) rather than manual measuring. Reanimated layout animations: https://docs.swmansion.com/react-native-reanimated/docs/layout-animations/entering-exiting-animations/
+**Container layout.** For the surrounding chrome (legend, stat tiles resizing, axis labels appearing/disappearing) use `LayoutAnimation.configureNext(...)` or reanimated layout animations (`entering`/`exiting`, `Layout`) rather than manual measuring. Reanimated layout animations: https://docs.swmansion.com/react-native-reanimated/docs/layout-animations/entering-exiting-animations/
 
-The x/y label ticks along the axis can `entering={FadeIn}` / `exiting={FadeOut}` as their count changes, which hides the fact that the underlying path was swapped, not tweened.
+The x/y label ticks along the axis can `entering={FadeIn}` / `exiting={FadeOut}` as their count changes, independently of the anchored path tween.
 
 ---
 
@@ -387,7 +386,7 @@ Because TalkBack/VoiceOver traversal of hundreds of individual SVG nodes is unre
 
 ### 5.2 Performance
 
-- **Keep `d` static; animate scalars.** Per-frame `d` recomputation is the main jank source (§1.3). Drive draw-on/morph with `strokeDashoffset`, `opacity`, `fillOpacity`, `transform`. Source: https://docs.swmansion.com/react-native-reanimated/docs/guides/animating-svg
+- **Keep `d` static by default; animate scalars.** Per-frame `d` recomputation is a main jank source (§1.3). Drive draw-on and ordinary interaction with `strokeDashoffset`, `opacity`, `fillOpacity`, and `transform`; only the bounded, equal-point anchored range transition in §4 rebuilds `d` in a worklet. Source: https://docs.swmansion.com/react-native-reanimated/docs/guides/animating-svg
 - **No React re-render during interaction.** Bind everything animated to shared values via `useAnimatedProps`/`useAnimatedStyle`; reserve `runOnJS`/setState for text and gate it on real changes. Source: https://docs.swmansion.com/react-native-reanimated/docs/fundamentals/handling-gestures/
 - **`useMemo` the geometry.** Compute `line`/`area`/`xs`/`ys`/heatmap-cells once per `[data, range, size]`; recomputing paths on every render defeats the point.
 - **`useDerivedValue` for computed shared values.** When one animated value depends on another (e.g., readout y from cursor index), derive it with `useDerivedValue` so it stays on the UI thread instead of round-tripping through JS. https://docs.swmansion.com/react-native-reanimated/docs/core/useDerivedValue/
