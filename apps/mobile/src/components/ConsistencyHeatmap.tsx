@@ -185,12 +185,13 @@ export function ConsistencyHeatmap({ series, currentStreak, bestStreak }: Props)
           Your consistency calendar fills in as you complete tasks over the days ahead.
         </Text>
       ) : (
-        <View
-          accessible
-          accessibilityRole="image"
-          accessibilityLabel={`Consistency calendar. ${activeDays} active days, current streak ${currentStreak} days, best ${bestStreak} days.`}
-        >
-          <View style={styles.gridRow} importantForAccessibility="no-hide-descendants">
+        <View>
+          <View
+            accessible
+            accessibilityRole="image"
+            accessibilityLabel={`Consistency calendar. ${activeDays} active days, current streak ${currentStreak} days, best ${bestStreak} days.`}
+            style={styles.gridRow}
+          >
             {/* Fixed weekday gutter — stays put while the weeks scroll under it. */}
             <View style={[styles.gutter, { height: gridH, marginTop: MONTH_LABEL_H }]}>
               {LABELLED_ROWS.map((row) => (
