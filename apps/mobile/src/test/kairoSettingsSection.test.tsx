@@ -366,7 +366,7 @@ describe("KairoSettingsSection", () => {
 
   it("shows an error instead of Cleared when storage delete fails", async () => {
     useCustomEndpointConfig();
-    vi.mocked(SecureStore.deleteItemAsync).mockRejectedValue(new Error("keychain unavailable"));
+    vi.mocked(SecureStore.setItemAsync).mockRejectedValue(new Error("keychain unavailable"));
 
     render(<KairoSettingsSection />);
 
@@ -378,7 +378,7 @@ describe("KairoSettingsSection", () => {
       fireEvent.click(clearBtn);
     });
 
-    expect(screen.getByText("Could not clear Kairo settings.")).toBeTruthy();
+    expect(screen.getByText("Could not clear Anthropic settings.")).toBeTruthy();
     expect(clearBtn.textContent).toBe("Clear");
   });
 

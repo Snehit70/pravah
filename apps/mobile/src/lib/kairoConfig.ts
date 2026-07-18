@@ -184,6 +184,27 @@ export async function saveKairoConfig(config: KairoConfig): Promise<void> {
   await saveKairoSettings(settings);
 }
 
+export async function clearKairoProvider(provider: KairoProviderFormat): Promise<KairoSettings> {
+  const settings = await getKairoSettings();
+  
+  // Reset the provider profile to empty defaults
+  settings.profiles[provider] = makeEmptyProfile(provider);
+  
+  // If we're clearing the current default provider, pick a new default from configured providers
+  if (settings.defaultProvider === provider) {
+    const configuredProviders = (["anthropic", "openai", "gemini"] as KairoProviderFormat[])
+      .filter((p) => p !== provider && Boolean(settings.profiles[p]?.apiKey));
+    
+    if (configuredProviders.length > 0) {
+      settings.defaultProvider = configuredProviders[0];
+    }
+    // If no other configured providers, keep current default but with cleared credentials
+  }
+  
+  await saveKairoSettings(settings);
+  return settings;
+}
+
 export async function clearKairoConfig(): Promise<void> {
   await Promise.all(
     Object.values(STORAGE_KEYS).map((k) => SecureStore.deleteItemAsync(k))

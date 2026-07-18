@@ -13,7 +13,7 @@ import Animated, {
 import {
   KAIRO_DEFAULTS,
   KairoSettingsValidationError,
-  clearKairoConfig,
+  clearKairoProvider,
   getKairoProviderLabel,
   getKairoSettings,
   hasCustomKairoEndpoint,
@@ -337,12 +337,11 @@ export function KairoSettingsSection({ onFieldFocus }: KairoSettingsSectionProps
   };
 
   const handleClear = async () => {
-    if (saveState === "saving") return;
+    if (saveState === "saving" || !activeProvider) return;
     setErrorMessage(null);
     setSaveState("saving");
     try {
-      await clearKairoConfig();
-      const cleared = await getKairoSettings();
+      const cleared = await clearKairoProvider(activeProvider);
       setSettings(cleared);
       setSavedSettings(cleared);
       setActiveProvider(null);
@@ -353,9 +352,12 @@ export function KairoSettingsSection({ onFieldFocus }: KairoSettingsSectionProps
       setTestState("idle");
       flashState("cleared");
     } catch (error) {
-      mobileLogger.warn("kairo_settings_clear_failed", { errorType: classifyError(error) });
+      mobileLogger.warn("kairo_provider_clear_failed", { 
+        errorType: classifyError(error),
+        provider: activeProvider,
+      });
       setSaveState("idle");
-      setErrorMessage("Could not clear Kairo settings.");
+      setErrorMessage(`Could not clear ${getKairoProviderLabel(activeProvider)} settings.`);
     }
   };
 
