@@ -27,6 +27,7 @@ import {
 } from "../lib/kairoConfig";
 import { testKairoConnection } from "../lib/kairoConnection";
 import { useReducedMotion } from "../hooks/useReducedMotion";
+import { useConfirm } from "../hooks/useConfirm";
 import { KairoSettingsSkeleton } from "./LoadingSkeleton";
 import { colors, motion, radii, spacing, typography } from "../theme/tokens";
 import { classifyError, mobileLogger } from "../lib/logger";
@@ -148,6 +149,7 @@ export function KairoSettingsSection({ onFieldFocus }: KairoSettingsSectionProps
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const reducedMotion = useReducedMotion();
+  const confirm = useConfirm();
 
   useEffect(() => {
     let cancelled = false;
@@ -200,6 +202,11 @@ export function KairoSettingsSection({ onFieldFocus }: KairoSettingsSectionProps
     }
     return settings.profiles[editorProvider];
   }, [editorProvider, settings]);
+
+  const activeProviderConfigured = useMemo(() => {
+    if (!activeProvider || !savedSettings) return false;
+    return isProfileConfigured(activeProvider, savedSettings.profiles[activeProvider]);
+  }, [activeProvider, savedSettings]);
 
   const flashState = (next: "saved" | "cleared") => {
     setSaveState(next);
@@ -338,6 +345,16 @@ export function KairoSettingsSection({ onFieldFocus }: KairoSettingsSectionProps
 
   const handleClear = async () => {
     if (saveState === "saving" || !activeProvider) return;
+    
+    const confirmed = await confirm({
+      title: `Clear ${getKairoProviderLabel(activeProvider)} credentials?`,
+      message: "Your API key and custom settings will be permanently removed. This can't be undone.",
+      confirmLabel: "Clear",
+      destructive: true,
+    });
+    
+    if (!confirmed) return;
+    
     setErrorMessage(null);
     setSaveState("saving");
     try {
@@ -651,11 +668,11 @@ export function KairoSettingsSection({ onFieldFocus }: KairoSettingsSectionProps
                       hitSlop={12}
                       accessibilityRole="button"
                       accessibilityLabel="Clear Kairo configuration"
-                      disabled={saveState === "saving"}
+                      disabled={saveState === "saving" || !activeProviderConfigured}
                       style={({ pressed }) => [
                         styles.clearButton,
                         pressed && styles.pressed,
-                        saveState === "saving" && styles.disabledAction,
+                        (saveState === "saving" || !activeProviderConfigured) && styles.disabledAction,
                       ]}
                     >
                       <Text style={styles.clearButtonText}>

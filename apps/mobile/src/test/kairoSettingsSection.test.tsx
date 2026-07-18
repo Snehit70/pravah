@@ -102,6 +102,11 @@ vi.mock("react-native-reanimated", () => ({
 // ─── useReducedMotion mock ────────────────────────────────────────────────────
 vi.mock("../hooks/useReducedMotion", () => ({ useReducedMotion: () => false }));
 
+// ─── useConfirm mock ──────────────────────────────────────────────────────────
+vi.mock("../hooks/useConfirm", () => ({ 
+  useConfirm: () => vi.fn(async () => true),
+}));
+
 // ─── theme tokens mock ────────────────────────────────────────────────────────
 vi.mock("../theme/tokens", () => ({
   colors: {
@@ -364,9 +369,29 @@ describe("KairoSettingsSection", () => {
     expect(saveBtn.textContent).toBe("Save");
   });
 
-  it("shows an error instead of Cleared when storage delete fails", async () => {
-    useCustomEndpointConfig();
-    vi.mocked(SecureStore.setItemAsync).mockRejectedValue(new Error("keychain unavailable"));
+  it("shows an error instead of Cleared when storage save fails", async () => {
+    useMultiProviderConfig();
+
+    render(<KairoSettingsSection />);
+
+    await waitFor(() => expect(screen.queryByTestId("kairo-skeleton")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: /edit anthropic provider profile/i }));
+
+    vi.mocked(SecureStore.setItemAsync).mockRejectedValueOnce(new Error("keychain unavailable"));
+
+    const clearBtn = screen.getByRole("button", { name: /clear kairo configuration/i });
+    await act(async () => {
+      fireEvent.click(clearBtn);
+    });
+
+    await waitFor(() =>
+      expect(screen.getByText("Could not clear Anthropic settings.")).toBeTruthy(),
+    );
+    expect(clearBtn.textContent).toBe("Clear");
+  });
+
+  it("disables the Clear button when provider is not configured", async () => {
+    useEmptyConfig();
 
     render(<KairoSettingsSection />);
 
@@ -374,12 +399,7 @@ describe("KairoSettingsSection", () => {
     fireEvent.click(screen.getByRole("button", { name: /edit anthropic provider profile/i }));
 
     const clearBtn = screen.getByRole("button", { name: /clear kairo configuration/i });
-    await act(async () => {
-      fireEvent.click(clearBtn);
-    });
-
-    expect(screen.getByText("Could not clear Anthropic settings.")).toBeTruthy();
-    expect(clearBtn.textContent).toBe("Clear");
+    expect(clearBtn).toHaveProperty("disabled", true);
   });
 
   it("shows the default provider separately from the selected provider editor", async () => {
