@@ -60,8 +60,10 @@ describe("SETTINGS_CATEGORY_CONTROLS", () => {
         "google_calendar_sync",
         "gmail_review",
         "sync_errors",
-        "sign_out",
       ]),
+    );
+    expect(SETTINGS_CATEGORY_CONTROLS.account).toEqual(
+      expect.arrayContaining(["sign_out"]),
     );
     expect(SETTINGS_CATEGORY_CONTROLS.reminders).toEqual(
       expect.arrayContaining([

@@ -6,6 +6,7 @@ export type SettingsCategoryKey =
   | "interaction"
   | "appearance"
   | "data"
+  | "account"
   | "about";
 
 export type SettingsNavigationState =
@@ -25,6 +26,7 @@ export const SETTINGS_CATEGORY_ORDER: readonly SettingsCategoryKey[] = [
   "interaction",
   "appearance",
   "data",
+  "account",
   "about",
 ];
 
@@ -60,6 +62,10 @@ export const SETTINGS_CATEGORY_META: Record<
     title: "Data & diagnostics",
     summary: "Exports, retry queue, reset",
   },
+  account: {
+    title: "Account",
+    summary: "Sign out and account",
+  },
   about: {
     title: "About",
     summary: "Version and updates",
@@ -76,7 +82,6 @@ export const SETTINGS_CATEGORY_CONTROLS: Record<
     "google_calendar_sync",
     "gmail_review",
     "sync_errors",
-    "sign_out",
   ],
   reminders: [
     "notification_permissions",
@@ -104,6 +109,9 @@ export const SETTINGS_CATEGORY_CONTROLS: Record<
     "export_diagnostics",
     "retry_queue",
     "wipe_local_data",
+  ],
+  account: [
+    "sign_out",
   ],
   about: [
     "app_version",

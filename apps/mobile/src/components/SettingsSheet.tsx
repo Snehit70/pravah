@@ -249,6 +249,10 @@ function DataIcon({ color: _color, size = 18 }: CategoryIconProps) {
   return <DataIconAsset width={size} height={size} />;
 }
 
+function AccountIcon({ color: _color, size = 18 }: CategoryIconProps) {
+  return <PravahMobileIconAsset width={size} height={size} />;
+}
+
 function InfoIcon({ color: _color, size = 18 }: CategoryIconProps) {
   return <AboutIconAsset width={size} height={size} />;
 }
@@ -263,6 +267,7 @@ const SETTINGS_CATEGORY_ICONS: Partial<
   interaction: HandIcon,
   appearance: SlidersIcon,
   data: DataIcon,
+  account: AccountIcon,
   about: InfoIcon,
 };
 
@@ -1237,7 +1242,6 @@ type SyncSectionProps = {
   calendarLastError?: string;
   gmailLastError?: string;
   onCopy: (value: string, label: string) => Promise<void>;
-  onSignOut: () => void;
 };
 
 function SyncSection({
@@ -1268,7 +1272,6 @@ function SyncSection({
   calendarLastError,
   gmailLastError,
   onCopy,
-  onSignOut,
 }: SyncSectionProps) {
   const calendarMetaLine = [
     calendarAccountEmail?.toLowerCase(),
@@ -1498,22 +1501,6 @@ function SyncSection({
           </View>
         ) : null}
         <GmailReviewSection enabled={gmailSyncEnabled} showToast={showToast} />
-      </View>
-
-      <View style={[styles.settingBlock, styles.sectionCard]}>
-        <Text style={styles.settingLabel}>Account</Text>
-        <Text style={styles.settingHelp}>
-          Sign out to switch Google accounts on this device.
-        </Text>
-        <Pressable
-          onPress={onSignOut}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel="Sign out"
-          style={({ pressed }) => [styles.softButton, pressed && { opacity: 0.6 }]}
-        >
-          <Text style={styles.softButtonText}>Sign out</Text>
-        </Pressable>
       </View>
     </View>
   );
@@ -2307,6 +2294,32 @@ function DataSection({
   );
 }
 
+type AccountSectionProps = {
+  onSignOut: () => void;
+};
+
+function AccountSection({ onSignOut }: AccountSectionProps) {
+  return (
+    <View style={styles.screenBody}>
+      <View style={[styles.settingBlock, styles.sectionCard]}>
+        <Text style={styles.settingLabel}>Account</Text>
+        <Text style={styles.settingHelp}>
+          Sign out to switch Google accounts on this device.
+        </Text>
+        <Pressable
+          onPress={onSignOut}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
+          style={({ pressed }) => [styles.softButton, pressed && { opacity: 0.6 }]}
+        >
+          <Text style={styles.softButtonText}>Sign out</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 function renderDetailScreen(
   navigation: SettingsNavigationState,
   props: {
@@ -2442,6 +2455,8 @@ function renderDetailScreen(
       return <AppearanceSection {...props} />;
     case "data":
       return <DataSection {...props} />;
+    case "account":
+      return <AccountSection onSignOut={props.onSignOut} />;
     case "about":
       return <AboutSection />;
   }
@@ -2905,6 +2920,7 @@ export function SettingsSheet({
               tone: "warning",
             }
           : { label: "All clear", tone: "success" },
+    account: { label: "", tone: "neutral" },
     about: {
       label: APP_VERSION.startsWith("v") ? APP_VERSION : `v${APP_VERSION}`,
       tone: "neutral",
