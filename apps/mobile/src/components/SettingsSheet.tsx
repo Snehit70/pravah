@@ -24,7 +24,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
 import * as SecureStore from "expo-secure-store";
-import appJson from "../../app.json";
+import * as Application from "expo-application";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { getKairoSettings } from "../lib/kairoConfig";
@@ -195,7 +195,7 @@ const TASK_COLOR_OPTIONS: Array<{
   { value: "rose", label: "Rose", swatch: "#9d586f" },
 ];
 const READ_ONLY_AUTOMATION_SCOPES = ["tasks:read", "review:read", "sync:read"] as const;
-const APP_VERSION = appJson.expo?.version ?? "—";
+const APP_VERSION = Application.nativeApplicationVersion ?? "—";
 const REPO_URL = "https://github.com/Snehit70/pravah";
 const CHANGELOG_URL = `${REPO_URL}/blob/main/apps/mobile/CHANGELOG.md`;
 const ISSUES_URL = `${REPO_URL}/issues`;
@@ -576,6 +576,7 @@ function SettingsCategoryList({
                 </View>
                 <View style={styles.categoryMeta}>
                   <Text
+                    numberOfLines={1}
                     style={[
                       styles.categoryStatus,
                       { color: settingsStatusColor(status.tone) },
@@ -3208,10 +3209,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
+    flexShrink: 0,
   },
   categoryStatus: {
     ...typography.bodyMd,
     fontFamily: "Geist_500Medium",
+    maxWidth: 140,
   },
   categoryChevron: {
     ...typography.title,
