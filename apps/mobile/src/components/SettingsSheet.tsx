@@ -2920,7 +2920,10 @@ export function SettingsSheet({
               tone: "warning",
             }
           : { label: "All clear", tone: "success" },
-    account: { label: "", tone: "neutral" },
+    account: {
+      label: calendarAccountEmail ?? gmailAccountEmail ?? "Signed in",
+      tone: "neutral",
+    },
     about: {
       label: APP_VERSION.startsWith("v") ? APP_VERSION : `v${APP_VERSION}`,
       tone: "neutral",
