@@ -444,8 +444,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
             { paddingBottom: Math.max(insets.bottom, spacing.sm) },
           ]}
         >
-          <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
-          <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
+          <BlurView intensity={38} tint="light" style={StyleSheet.absoluteFill} />
           {!hasDraftChanges ? (
             <Pressable
               accessibilityLabel="Dismiss"
@@ -898,9 +897,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.xxl,
   },
-  backdropDim: {
-    backgroundColor: "rgba(0,0,0,0.72)",
-  },
+
   card: {
     width: "100%",
     maxWidth: 480,
