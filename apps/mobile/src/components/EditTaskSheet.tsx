@@ -9,6 +9,7 @@ import {
 import {
   Keyboard,
   KeyboardAvoidingView,
+  LayoutChangeEvent,
   Modal,
   Platform,
   Pressable,
@@ -26,7 +27,6 @@ import type { MobileTask } from "./TaskCard";
 import { isTaskCompleted, isTaskOnTimeline } from "../lib/taskState";
 import { humanDate } from "../lib/dates";
 import type { Id } from "../../../../convex/_generated/dataModel";
-import { TaskMetaFields } from "./TaskMetaFields";
 import { formatTime12h, type TaskPriority } from "../lib/task-form";
 import { useConfirm } from "../hooks/useConfirm";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
@@ -34,10 +34,24 @@ import { useGoals } from "../hooks/useGoals";
 import { goalLinksStore } from "../lib/goalLinks";
 import { useGoalMutations } from "../hooks/useGoalMutations";
 import { useReducedMotion } from "../hooks/useReducedMotion";
+import {
+  CheckIcon,
+  CalendarIcon,
+  TrashIcon,
+  StarIcon,
+  FileTextIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+} from "./UiIcons";
 
 export type EditTaskSheetRef = {
   open: (task: MobileTask) => void;
   close: () => void;
+};
+
+type UndoPayload = {
+  message: string;
+  run: () => void;
 };
 
 type EditTaskSheetProps = {
@@ -55,15 +69,39 @@ type EditTaskSheetProps = {
   onReopen?: (taskId: Id<"tasks">) => void;
   onUnschedule?: (taskId: Id<"tasks">) => void;
   onDelete?: (taskId: Id<"tasks">) => void;
+  onSaveComplete?: (
+    undo: UndoPayload,
+    task: MobileTask,
+    previousState: {
+      title: string;
+      description: string;
+      deadline: string;
+      time: string;
+      priority: TaskPriority;
+      goalId: string | null;
+    }
+  ) => void;
 };
+
+const DESCRIPTION_TRUNCATE_LINES = 4;
 
 export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
   function EditTaskSheet(
-    { onSave, isValidDeadline, onSheetChange, onComplete, onReopen, onUnschedule, onDelete },
+    {
+      onSave,
+      isValidDeadline,
+      onSheetChange,
+      onComplete,
+      onReopen,
+      onUnschedule,
+      onDelete,
+      onSaveComplete,
+    },
     ref
   ) {
     const titleInputRef = useRef<TextInput>(null);
     const openSeqRef = useRef(0);
+    const currentTaskRef = useRef<MobileTask | null>(null);
     const confirm = useConfirm();
     const insets = useSafeAreaInsets();
     const reducedMotion = useReducedMotion();
@@ -71,8 +109,6 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const { setGoalLink } = useGoalMutations();
 
     const [visible, setVisible] = useState(false);
-    // Tasks open read-only (like Goals); editing is an explicit, deliberate step.
-    const [mode, setMode] = useState<"view" | "edit">("view");
     const [taskId, setTaskId] = useState<Id<"tasks"> | null>(null);
     const [taskState, setTaskState] = useState<"inbox" | "timeline" | "completed" | null>(null);
     const [title, setTitle] = useState("");
@@ -92,18 +128,21 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       goalId: string | null;
     } | null>(null);
     const [draftGoalId, setDraftGoalId] = useState<string | null>(null);
+    const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+    const [descriptionHeight, setDescriptionHeight] = useState(0);
 
     const closeModal = useCallback(
       (notify = true) => {
         Keyboard.dismiss();
         setVisible(false);
-        setMode("view");
         setTaskId(null);
         setTaskState(null);
         setTime("");
         setInitialDraft(null);
         setDraftGoalId(null);
         setShowGoalPicker(false);
+        setDescriptionExpanded(false);
+        setDescriptionHeight(0);
         if (notify) onSheetChange?.(false);
       },
       [onSheetChange]
@@ -117,7 +156,10 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           if (openSeqRef.current !== seq) return;
           const currentGoalId = goalLinksStore.goalFor(String(task._id)) ?? null;
           setTaskId(task._id);
-          setTaskState(isTaskCompleted(task) ? "completed" : isTaskOnTimeline(task) ? "timeline" : "inbox");
+          setTaskState(
+            isTaskCompleted(task) ? "completed" : isTaskOnTimeline(task) ? "timeline" : "inbox"
+          );
+          currentTaskRef.current = task;
           setTitle(task.title);
           setDescription(task.description ?? "");
           setDeadline(task.deadline ?? "");
@@ -133,7 +175,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             goalId: currentGoalId,
           });
           setError(null);
-          setMode("view");
+          setDescriptionExpanded(false);
+          setDescriptionHeight(0);
           setVisible(true);
           onSheetChange?.(true);
           haptic.light();
@@ -173,9 +216,38 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         if (initialDraft?.goalId !== draftGoalId) {
           setGoalLink(String(taskId), draftGoalId);
         }
+
+        if (onSaveComplete && initialDraft && currentTaskRef.current) {
+          const savedTask = currentTaskRef.current;
+          const previousState = { ...initialDraft };
+          onSaveComplete(
+            {
+              message: "Changes saved",
+              run: () => {},
+            },
+            savedTask,
+            previousState,
+          );
+        }
+
         closeModal();
       }
-    }, [taskId, title, description, deadline, time, priority, saving, onSave, isValidDeadline, initialDraft, draftGoalId, closeModal, setGoalLink]);
+    }, [
+      taskId,
+      title,
+      description,
+      deadline,
+      time,
+      priority,
+      saving,
+      onSave,
+      isValidDeadline,
+      initialDraft,
+      draftGoalId,
+      closeModal,
+      setGoalLink,
+      onSaveComplete,
+    ]);
 
     const hasUnsavedChanges = useMemo(() => {
       const initial = initialDraft;
@@ -190,7 +262,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       );
     }, [deadline, description, draftGoalId, initialDraft, priority, taskId, time, title]);
 
-    const canSave = useMemo(() => Boolean(title.trim()) && !saving, [title, saving]);
+    const canSave = useMemo(() => Boolean(title.trim()) && hasUnsavedChanges && !saving, [title, saving, hasUnsavedChanges]);
 
     const linkedGoalId = taskId ? draftGoalId : null;
     const linkedGoal = linkedGoalId ? goals.find((g) => g.id === linkedGoalId) ?? null : null;
@@ -210,38 +282,23 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       if (discard) closeModal();
     }, [hasUnsavedChanges, confirm, closeModal]);
 
-    const enterEditMode = useCallback(() => {
-      setMode("edit");
-    }, []);
-
-    // Leaving edit mode returns to the read-only view, discarding edits (with a
-    // guard) rather than closing the whole sheet.
-    const exitEditMode = useCallback(async () => {
-      if (hasUnsavedChanges) {
-        const discard = await confirm({
-          title: "Discard changes?",
-          message: "You have unsaved edits in this task.",
-          confirmLabel: "Discard",
-          cancelLabel: "Keep editing",
-          destructive: true,
-        });
-        if (!discard) return;
-      }
-      if (initialDraft) {
-        setTitle(initialDraft.title);
-        setDescription(initialDraft.description);
-        setDeadline(initialDraft.deadline);
-        setTime(initialDraft.time);
-        setPriority(initialDraft.priority);
-        setDraftGoalId(initialDraft.goalId);
-      }
-      setError(null);
-      setShowGoalPicker(false);
-      setMode("view");
-    }, [hasUnsavedChanges, confirm, initialDraft]);
-
     const priorityLabel =
-      priority === "p1" ? "P1" : priority === "p2" ? "P2" : priority === "p3" ? "P3" : "None";
+      priority === "p1" ? "P1" : priority === "p2" ? "P2" : priority === "p3" ? "P3" : null;
+
+    const priorityColor =
+      priority === "p1"
+        ? colors.priorityP1
+        : priority === "p2"
+          ? colors.priorityP2
+          : priority === "p3"
+            ? colors.priorityP3
+            : colors.textMuted;
+
+    const isDescriptionLong = descriptionHeight > DESCRIPTION_TRUNCATE_LINES * 22;
+
+    const onDescriptionLayout = useCallback((e: LayoutChangeEvent) => {
+      setDescriptionHeight(e.nativeEvent.layout.height);
+    }, []);
 
     return (
       <Modal
@@ -252,17 +309,13 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         onRequestClose={() => void requestClose()}
       >
         <KeyboardAvoidingView
-          // Android already resizes the modal window for the keyboard. Adding
-          // KeyboardAvoidingView's height behavior on top can push the lower
-          // edit actions outside the visible card.
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={[
             styles.overlay,
             { paddingBottom: Math.max(insets.bottom, spacing.sm) },
           ]}
         >
-          <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
-          <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
+          <BlurView intensity={38} tint="light" style={StyleSheet.absoluteFill} />
           {!hasUnsavedChanges ? (
             <Pressable
               accessibilityLabel="Dismiss"
@@ -278,44 +331,71 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              <Text style={styles.sheetKicker}>{mode === "view" ? "Task" : "Edit"}</Text>
-              <Text style={styles.sheetTitle}>{mode === "view" ? "Task" : "Edit task"}</Text>
+              {/* ── Drag handle ── */}
+              <View style={styles.handleBar} />
 
-              {mode === "view" ? (
-                <View style={styles.viewBlock}>
-                  {linkedGoal ? (
-                    <View style={styles.viewField}>
-                      <Text style={styles.viewFieldLabel}>Goal</Text>
-                      <Text style={styles.viewGoalValue}>{linkedGoal.text}</Text>
-                    </View>
-                  ) : null}
-                  <Text style={styles.viewTitle}>{title}</Text>
-                  {description.trim() ? (
-                    <Text style={styles.viewNotes}>{description.trim()}</Text>
-                  ) : null}
-                  <View style={styles.viewMetaRow}>
-                    <Text style={styles.viewMeta}>
-                      {deadline
-                        ? time
-                          ? `${humanDate(deadline)} · ${formatTime12h(time)}`
-                          : humanDate(deadline)
-                        : "No date"}
-                    </Text>
-                    <Text style={styles.viewMetaDot}>·</Text>
-                    <Text style={styles.viewMeta}>
-                      {priorityLabel === "None" ? "No priority" : priorityLabel}
-                    </Text>
+              {/* ── Goal header (only if linked) ── */}
+              {linkedGoal ? (
+                <View style={styles.goalHeader}>
+                  <View style={styles.goalIcon}>
+                    <FileTextIcon color={colors.accent} size={20} />
+                  </View>
+                  <View style={styles.goalHeaderText}>
+                    <Text style={styles.goalHeaderLabel}>GOAL</Text>
+                    <Text style={styles.goalHeaderText_value}>{linkedGoal.text}</Text>
                   </View>
                 </View>
               ) : null}
 
-              {mode === "edit" && goals.length > 0 ? (
+              {/* ── Title (always editable) ── */}
+              <TextInput
+                ref={titleInputRef}
+                value={title}
+                onChangeText={(text) => {
+                  setTitle(text);
+                  setError(null);
+                }}
+                placeholder="Task title"
+                placeholderTextColor={colors.textMuted}
+                accessibilityLabel="Task title"
+                style={styles.titleInput}
+              />
+
+              {/* ── Date + Priority row ── */}
+              <View style={styles.metaRow}>
+                <View style={styles.metaItem}>
+                  <CalendarIcon color={colors.textMuted} size={16} />
+                  <Text style={styles.metaText}>
+                    {deadline
+                      ? time
+                        ? `${humanDate(deadline)} · ${formatTime12h(time)}`
+                        : humanDate(deadline)
+                      : "No date"}
+                  </Text>
+                </View>
+                {priorityLabel ? (
+                  <>
+                    <Text style={styles.metaDot}>·</Text>
+                    <View style={styles.metaItem}>
+                      <StarIcon color={priorityColor} size={14} />
+                      <Text style={[styles.metaText, { color: priorityColor }]}>
+                        {priorityLabel}
+                      </Text>
+                    </View>
+                  </>
+                ) : null}
+              </View>
+
+              {/* ── Goal picker (always available when goals exist) ── */}
+              {goals.length > 0 ? (
                 <View style={styles.goalSection}>
                   <Pressable
                     onPress={() => setShowGoalPicker((s) => !s)}
                     hitSlop={8}
                     accessibilityRole="button"
-                    accessibilityLabel={linkedGoal ? `Goal: ${linkedGoal.text}. Tap to change.` : "Link to a goal"}
+                    accessibilityLabel={
+                      linkedGoal ? `Goal: ${linkedGoal.text}. Tap to change.` : "Link to a goal"
+                    }
                     accessibilityState={{ expanded: showGoalPicker }}
                     style={({ pressed }) => [
                       styles.goalChip,
@@ -330,7 +410,11 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                     >
                       {linkedGoal ? linkedGoal.text : "None"}
                     </Text>
-                    <Text style={styles.goalChipCaret}>{showGoalPicker ? "▾" : "▸"}</Text>
+                    {showGoalPicker ? (
+                      <ChevronUpIcon color={colors.textMuted} size={14} />
+                    ) : (
+                      <ChevronDownIcon color={colors.textMuted} size={14} />
+                    )}
                   </Pressable>
 
                   {showGoalPicker ? (
@@ -366,7 +450,12 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                           pressed && { opacity: 0.7 },
                         ]}
                       >
-                        <Text style={[styles.goalOptionText, !linkedGoalId && styles.goalOptionTextActive]}>
+                        <Text
+                          style={[
+                            styles.goalOptionText,
+                            !linkedGoalId && styles.goalOptionTextActive,
+                          ]}
+                        >
                           No goal
                         </Text>
                       </Pressable>
@@ -390,7 +479,10 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                             ]}
                           >
                             <Text
-                              style={[styles.goalOptionText, active && styles.goalOptionTextActive]}
+                              style={[
+                                styles.goalOptionText,
+                                active && styles.goalOptionTextActive,
+                              ]}
                               numberOfLines={2}
                             >
                               {g.text}
@@ -403,50 +495,40 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                 </View>
               ) : null}
 
-              {mode === "edit" ? (
-                <>
-              <TextInput
-                ref={titleInputRef}
-                value={title}
-                onChangeText={(text) => {
-                  setTitle(text);
-                  setError(null);
-                }}
-                placeholder="Task title"
-                placeholderTextColor={colors.textMuted}
-                accessibilityLabel="Task title"
-                style={styles.titleInput}
-              />
-
-              <TextInput
-                value={description}
-                onChangeText={setDescription}
-                placeholder="Notes"
-                placeholderTextColor={colors.textMuted}
-                accessibilityLabel="Task notes"
-                style={styles.notesInput}
-                multiline
-              />
-
-              <TaskMetaFields
-                key={taskId ?? "edit-task-meta-fields-closed"}
-                deadline={deadline}
-                time={time}
-                priority={priority}
-                onDeadlineChange={(v) => {
-                  setDeadline(v);
-                  if (!v) setTime("");
-                }}
-                onTimeChange={setTime}
-                onPriorityChange={setPriority}
-                onClearError={() => setError(null)}
-              />
+              {/* ── Description (always editable, truncated) ── */}
+              <View>
+                <TextInput
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Add notes..."
+                  placeholderTextColor={colors.textMuted}
+                  accessibilityLabel="Task notes"
+                  style={[
+                    styles.notesInput,
+                    !descriptionExpanded && isDescriptionLong && { height: DESCRIPTION_TRUNCATE_LINES * 22 },
+                  ]}
+                  multiline
+                  numberOfLines={!descriptionExpanded && isDescriptionLong ? DESCRIPTION_TRUNCATE_LINES : undefined}
+                  onLayout={!descriptionExpanded ? onDescriptionLayout : undefined}
+                  textAlignVertical="top"
+                />
+                {isDescriptionLong && !descriptionExpanded ? (
+                  <Pressable
+                    onPress={() => setDescriptionExpanded(true)}
+                    hitSlop={8}
+                    style={styles.expandButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="Show full notes"
+                  >
+                    <Text style={styles.expandButtonText}>Show more</Text>
+                  </Pressable>
+                ) : null}
+              </View>
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
-                </>
-              ) : null}
 
-              {mode === "view" && taskId ? (
+              {/* ── Action buttons ── */}
+              {taskId ? (
                 <View style={styles.quickActions}>
                   {taskState === "completed" ? (
                     onReopen ? (
@@ -458,9 +540,15 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                         hitSlop={12}
                         accessibilityRole="button"
                         accessibilityLabel="Reopen Task"
-                        style={({ pressed }) => [styles.quickActionItem, pressed && { opacity: 0.6 }]}
+                        style={({ pressed }) => [
+                          styles.quickActionItem,
+                          pressed && { opacity: 0.6 },
+                        ]}
                       >
-                        <Text style={styles.quickActionText}>Reopen</Text>
+                        <CheckIcon color={colors.success} size={16} />
+                        <Text style={[styles.quickActionText, { color: colors.success }]}>
+                          Reopen
+                        </Text>
                       </Pressable>
                     ) : null
                   ) : (
@@ -474,9 +562,15 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                           hitSlop={12}
                           accessibilityRole="button"
                           accessibilityLabel="Complete Task"
-                          style={({ pressed }) => [styles.quickActionItem, pressed && { opacity: 0.6 }]}
+                          style={({ pressed }) => [
+                            styles.quickActionItem,
+                            pressed && { opacity: 0.6 },
+                          ]}
                         >
-                          <Text style={styles.quickActionText}>Complete</Text>
+                          <CheckIcon color={colors.success} size={16} />
+                          <Text style={[styles.quickActionText, { color: colors.success }]}>
+                            Complete
+                          </Text>
                         </Pressable>
                       ) : null}
                       {taskState === "timeline" && onUnschedule ? (
@@ -488,9 +582,15 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                           hitSlop={12}
                           accessibilityRole="button"
                           accessibilityLabel="Move Task to Inbox"
-                          style={({ pressed }) => [styles.quickActionItem, pressed && { opacity: 0.6 }]}
+                          style={({ pressed }) => [
+                            styles.quickActionItem,
+                            pressed && { opacity: 0.6 },
+                          ]}
                         >
-                          <Text style={styles.quickActionText}>Unschedule</Text>
+                          <CalendarIcon color={colors.warning} size={16} />
+                          <Text style={[styles.quickActionText, { color: colors.warning }]}>
+                            Unschedule
+                          </Text>
                         </Pressable>
                       ) : null}
                     </>
@@ -520,64 +620,37 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                         pressed && { opacity: 0.6 },
                       ]}
                     >
+                      <TrashIcon color={colors.error} size={16} />
                       <Text style={[styles.quickActionText, styles.deleteText]}>Delete</Text>
                     </Pressable>
                   ) : null}
                 </View>
               ) : null}
 
-              <View style={styles.actions}>
-                {mode === "view" ? (
-                  <>
-                    <Pressable
-                      onPress={() => closeModal()}
-                      style={({ pressed }) => [styles.cancelButton, pressed && { opacity: 0.6 }]}
-                      hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
-                      accessibilityRole="button"
-                      accessibilityLabel="Close Task details"
-                    >
-                      <Text style={styles.cancelButtonText}>Close</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={enterEditMode}
-                      hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
-                      accessibilityRole="button"
-                      accessibilityLabel="Edit task"
-                      style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.85 }]}
-                    >
-                      <Text style={styles.primaryButtonText}>Edit</Text>
-                    </Pressable>
-                  </>
-                ) : (
-                  <>
-                    <Pressable
-                      onPress={() => void exitEditMode()}
-                      style={({ pressed }) => [styles.cancelButton, pressed && { opacity: 0.6 }]}
-                      hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
-                      accessibilityRole="button"
-                      accessibilityLabel="Cancel editing Task"
-                    >
-                      <Text style={styles.cancelButtonText}>Cancel</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => void handleSave()}
-                      disabled={!canSave}
-                      hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
-                      accessibilityRole="button"
-                      accessibilityLabel={saving ? "Saving Task" : "Save Task"}
-                      style={({ pressed }) => [
-                        styles.primaryButton,
-                        !canSave && styles.primaryButtonDisabled,
-                        pressed && { opacity: 0.85 },
-                      ]}
-                    >
-                      <Text style={[styles.primaryButtonText, !canSave && styles.primaryButtonTextDisabled]}>
-                        {saving ? "Saving…" : "Save"}
-                      </Text>
-                    </Pressable>
-                  </>
-                )}
-              </View>
+              {/* ── Save button (dirty state only) ── */}
+              {hasUnsavedChanges ? (
+                <Pressable
+                  onPress={() => void handleSave()}
+                  disabled={!canSave}
+                  hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={saving ? "Saving Task" : "Save Task"}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    !canSave && styles.primaryButtonDisabled,
+                    pressed && { opacity: 0.85 },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.primaryButtonText,
+                      !canSave && styles.primaryButtonTextDisabled,
+                    ]}
+                  >
+                    {saving ? "Saving…" : "Save"}
+                  </Text>
+                </Pressable>
+              ) : null}
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
@@ -594,9 +667,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.xxl,
   },
-  backdropDim: {
-    backgroundColor: "rgba(0,0,0,0.72)",
-  },
   card: {
     width: "100%",
     maxWidth: 480,
@@ -609,54 +679,68 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingTop: spacing.sm,
     paddingBottom: spacing.xl,
-    gap: spacing.lg,
-  },
-  sheetKicker: {
-    ...typography.micro,
-    color: colors.textMuted,
-  },
-  sheetTitle: {
-    ...typography.headline,
-    color: colors.textPrimary,
-    marginTop: -spacing.sm,
-  },
-  viewBlock: {
     gap: spacing.md,
   },
-  viewField: {
-    gap: 2,
+  handleBar: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    alignSelf: "center",
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
   },
-  viewFieldLabel: {
-    ...typography.micro,
-    color: colors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-  },
-  viewGoalValue: {
-    ...typography.bodyMd,
-    color: colors.accent,
-    fontWeight: "600",
-  },
-  viewTitle: {
-    ...typography.headline,
-    color: colors.textPrimary,
-  },
-  viewNotes: {
-    ...typography.bodyMd,
-    color: colors.textSecondary,
-  },
-  viewMetaRow: {
+  goalHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
   },
-  viewMeta: {
+  goalIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.md,
+    backgroundColor: colors.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  goalHeaderText: {
+    gap: 1,
+  },
+  goalHeaderLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
+  },
+  goalHeaderText_value: {
+    ...typography.bodyMd,
+    color: colors.accent,
+    fontWeight: "600",
+  },
+  titleInput: {
+    color: colors.textPrimary,
+    ...typography.headline,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  metaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  metaText: {
     ...typography.bodyMd,
     color: colors.textMuted,
   },
-  viewMetaDot: {
+  metaDot: {
+    ...typography.bodyMd,
     color: colors.textMuted,
   },
   goalSection: {
@@ -692,10 +776,6 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontWeight: "600",
   },
-  goalChipCaret: {
-    ...typography.micro,
-    color: colors.textMuted,
-  },
   goalPicker: {
     gap: 2,
     paddingVertical: 4,
@@ -721,24 +801,23 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontWeight: "600",
   },
-  titleInput: {
-    color: colors.textPrimary,
-    ...typography.bodyLg,
-    fontSize: 17,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: 0,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
   notesInput: {
     color: colors.textPrimary,
     ...typography.bodyMd,
-    minHeight: 80,
+    minHeight: 60,
     paddingVertical: spacing.sm,
     paddingHorizontal: 0,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     textAlignVertical: "top",
+  },
+  expandButton: {
+    paddingVertical: spacing.xs,
+  },
+  expandButtonText: {
+    ...typography.bodyMd,
+    color: colors.accent,
+    fontWeight: "600",
   },
   errorText: {
     ...typography.bodyMd,
@@ -754,6 +833,9 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   quickActionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
     minHeight: 44,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
@@ -765,7 +847,6 @@ const styles = StyleSheet.create({
   },
   quickActionText: {
     ...typography.micro,
-    color: colors.textSecondary,
     fontWeight: "700",
   },
   deleteText: {
@@ -775,30 +856,14 @@ const styles = StyleSheet.create({
     borderColor: colors.error,
     backgroundColor: colors.errorMuted,
   },
-  actions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    gap: spacing.lg,
-    marginTop: spacing.sm,
-  },
-  cancelButton: {
-    minHeight: 44,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    justifyContent: "center",
-  },
-  cancelButtonText: {
-    ...typography.title,
-    color: colors.textSecondary,
-  },
   primaryButton: {
     backgroundColor: colors.accent,
     borderRadius: radii.full,
-    minHeight: 44,
-    paddingVertical: 12,
+    minHeight: 48,
+    paddingVertical: 14,
     paddingHorizontal: 28,
     alignItems: "center",
+    marginTop: spacing.sm,
   },
   primaryButtonDisabled: {
     backgroundColor: colors.border,

@@ -50,7 +50,7 @@ vi.mock("react-native", () => {
   const Keyboard = { dismiss: vi.fn() };
   const Alert = { alert: vi.fn() };
   const Platform = { OS: "ios", select: <T,>(options: { ios?: T; android?: T; default?: T }) => options.ios ?? options.default };
-  const TextInput = ({ value, onChangeText, placeholder, ...rest }: AnyProps & { value?: string; onChangeText?: (v: string) => void; placeholder?: string }) =>
+  const TextInput = ({ value, onChangeText, placeholder, onLayout, numberOfLines, multiline, textAlignVertical, style: _style, ...rest }: AnyProps & { value?: string; onChangeText?: (v: string) => void; placeholder?: string; onLayout?: () => void; numberOfLines?: number; multiline?: boolean; textAlignVertical?: string }) =>
     React.createElement("input", {
       ...rest,
       value: value ?? "",
@@ -68,7 +68,7 @@ vi.mock("react-native", () => {
     Modal: ({ children, visible }: AnyProps & { visible?: boolean }) => (visible ? React.createElement("div", {}, children) : null),
     Platform,
     ScrollView: View,
-    StyleSheet: { create: <T,>(s: T) => s },
+    StyleSheet: { create: <T,>(s: T) => s, hairlineWidth: 1 },
     TextInput,
   };
 });
@@ -157,6 +157,38 @@ vi.mock("react-native-reanimated", () => ({
   FadeOut: { duration: () => ({}) },
 }));
 
+// ─── react-native-svg mock ────────────────────────────────────────────────────
+vi.mock("react-native-svg", () => {
+  const Stub = ({ children }: { children?: React.ReactNode }) =>
+    React.createElement("span", {}, children);
+  return { __esModule: true, default: Stub, Svg: Stub, Path: Stub, Circle: Stub, Line: Stub };
+});
+
+// ─── UiIcons mock ─────────────────────────────────────────────────────────────
+vi.mock("../components/UiIcons", () => {
+  const icon = (name: string) => {
+    const Icon = ({ color, size }: { color?: string; size?: number }) =>
+      React.createElement("span", { "data-icon": name, style: { color, fontSize: size } });
+    return Icon;
+  };
+  return {
+    CheckIcon: icon("check"),
+    CalendarIcon: icon("calendar"),
+    TrashIcon: icon("trash"),
+    StarIcon: icon("star"),
+    FileTextIcon: icon("file-text"),
+    ChevronDownIcon: icon("chevron-down"),
+    ChevronUpIcon: icon("chevron-up"),
+    ChevronLeftIcon: icon("chevron-left"),
+    ChevronRightIcon: icon("chevron-right"),
+    CloseIcon: icon("close"),
+    PencilIcon: icon("pencil"),
+    PlusIcon: icon("plus"),
+    InfoCircleIcon: icon("info"),
+    AlertCircleIcon: icon("alert"),
+  };
+});
+
 // ─── react-native-safe-area-context mock ──────────────────────────────────────
 vi.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -165,20 +197,36 @@ vi.mock("react-native-safe-area-context", () => ({
 // ─── theme tokens mock ────────────────────────────────────────────────────────
 vi.mock("../theme/tokens", () => ({
   colors: {
-    accent: "#06f",
+    bg: "#f7f1e8",
     bgFloating: "#111",
+    bgCard: "#fffaf2",
     bgInput: "#222",
     border: "#333",
     borderSubtle: "#444",
+    accent: "#06f",
+    accentSoft: "rgba(6,0,255,0.16)",
     textPrimary: "#fff",
     textSecondary: "#ccc",
     textMuted: "#999",
     textInverse: "#000",
     error: "#f00",
+    errorMuted: "rgba(255,0,0,0.13)",
+    success: "#226b4b",
+    warning: "#805712",
+    priorityP1: "#934536",
+    priorityP2: "#805712",
+    priorityP3: "#5e6662",
   },
-  radii: { md: 8, lg: 12, xl: 16 },
-  spacing: { xs: 4, sm: 8, md: 16, lg: 24 },
-  typography: { title: {}, bodyMd: {}, micro: {} },
+  radii: { sm: 4, md: 8, lg: 12, xl: 16, full: 9999 },
+  spacing: { xs: 4, sm: 8, md: 16, lg: 24, xxl: 24 },
+  typography: {
+    display: {},
+    headline: { fontSize: 20 },
+    title: {},
+    bodyLg: { fontSize: 15 },
+    bodyMd: { fontSize: 13 },
+    micro: { fontSize: 11, textTransform: "uppercase" },
+  },
 }));
 
 // ─── TaskMetaFields mock ──────────────────────────────────────────────────────
@@ -278,8 +326,8 @@ describe("EditTaskSheet", () => {
 
     expect(mockOnSheetChange).toHaveBeenCalledWith(true);
 
-    // Tasks now open read-only (like Goals); the title renders as text.
-    expect(screen.getByText("Original task")).toBeTruthy();
+    const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
+    expect(titleInput.value).toBe("Original task");
   });
 
   it("updates task title", async () => {
@@ -295,10 +343,6 @@ describe("EditTaskSheet", () => {
     await act(async () => {
       ref.current?.open(sampleTask);
       await Promise.resolve();
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByText("Edit"));
     });
 
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
@@ -359,10 +403,6 @@ describe("EditTaskSheet", () => {
       await Promise.resolve();
     });
 
-    await act(async () => {
-      fireEvent.click(screen.getByText("Edit"));
-    });
-
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
     fireEvent.change(titleInput, { target: { value: "Updated" } });
 
@@ -391,10 +431,6 @@ describe("EditTaskSheet", () => {
     await act(async () => {
       ref.current?.open(sampleTask);
       await Promise.resolve();
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByText("Edit"));
     });
 
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;

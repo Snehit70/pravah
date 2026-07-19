@@ -1258,6 +1258,25 @@ function MobileApp() {
         onReopen={reopenTask}
         onUnschedule={sendToInbox}
         onDelete={deleteTask}
+        onSaveComplete={(undo, task, previousState) => {
+          showToast({
+            kind: "info",
+            message: undo.message,
+            action: {
+              label: "Undo",
+              run: () => {
+                void handleSaveEdits({
+                  taskId: task._id,
+                  title: previousState.title,
+                  description: previousState.description || undefined,
+                  deadline: previousState.deadline || undefined,
+                  time: previousState.time || undefined,
+                  priority: previousState.priority,
+                });
+              },
+            },
+          });
+        }}
       />
 
       {/* Kairo lives at the root so its overlay sits above tabs and FAB. The
