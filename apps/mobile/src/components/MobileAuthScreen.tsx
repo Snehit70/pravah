@@ -43,7 +43,7 @@ export function MobileAuthScreen({
         >
           <Text style={styles.wordmark}>Pravah</Text>
         </Pressable>
-        <Text style={styles.tagline}>The flow of water.</Text>
+
       </View>
 
       <View style={[styles.buttonZone, { paddingBottom: insets.bottom + spacing.section }]}>
