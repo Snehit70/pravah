@@ -15,12 +15,12 @@
 import { useCallback, useMemo, useState } from "react";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
-import Svg, { Circle, Path } from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
 import { InboxTaskRow } from "../components/InboxTaskRow";
 import { QuickScheduleSheet } from "../components/QuickScheduleSheet";
-import { CheckIcon } from "../components/UiIcons";
+import { CheckIcon, SearchIcon } from "../components/UiIcons";
 import { TimelineSectionHeader } from "../components/TimelineSectionHeader";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { useConfirm } from "../hooks/useConfirm";
@@ -97,15 +97,6 @@ function buildInboxRows(tasks: MobileTask[]): InboxRow[] {
     for (const task of inBucket) rows.push({ kind: "task", task });
   }
   return rows;
-}
-
-function SearchGlyph({ size = 16 }: { size?: number }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={colors.textMuted} strokeWidth={2} strokeLinecap="round">
-      <Circle cx={11} cy={11} r={7} />
-      <Path d="M20 20l-3.2-3.2" />
-    </Svg>
-  );
 }
 
 // An open checkbox with an outsized tick — reads as "select several".
@@ -367,7 +358,7 @@ export function InboxScreen({
       </View>
 
       <View style={styles.searchField}>
-        <SearchGlyph />
+        <SearchIcon color={colors.textMuted} size={16} />
         <TextInput
           value={query}
           onChangeText={setQuery}

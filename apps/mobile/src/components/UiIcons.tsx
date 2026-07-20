@@ -54,6 +54,13 @@ export const ChevronDownIcon = icon(({ color, size, strokeWidth }) => (
   </Svg>
 ));
 
+export const SearchIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    <Circle cx={11} cy={11} r={7} />
+    <Path d="M20 20l-3.2-3.2" />
+  </Svg>
+));
+
 export const ArrowUpRightIcon = icon(({ color, size, strokeWidth }) => (
   <Svg {...frame(color, size, strokeWidth)}>
     <Path d="M7 17 17 7" />
