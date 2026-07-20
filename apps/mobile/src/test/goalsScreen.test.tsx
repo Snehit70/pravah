@@ -142,6 +142,12 @@ vi.mock("react-native-safe-area-context", () => ({
 vi.mock("../assets/icons/nav-goals.svg", () => ({
   default: () => React.createElement("svg", { "data-testid": "goal-icon" }),
 }));
+vi.mock("../assets/icons/add-new-goal.svg", () => ({
+  default: () => React.createElement("svg", { "data-testid": "add-new-goal-icon" }),
+}));
+vi.mock("../assets/icons/add-new-task.svg", () => ({
+  default: () => React.createElement("svg", { "data-testid": "add-new-task-icon" }),
+}));
 
 vi.mock("../lib/haptic", () => ({ haptic: { light: vi.fn(), success: vi.fn() } }));
 vi.mock("../hooks/useConfirm", () => ({ useConfirm: () => vi.fn(async () => true) }));

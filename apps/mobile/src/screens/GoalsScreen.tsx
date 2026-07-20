@@ -17,6 +17,8 @@ import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import NavGoalsAsset from "../assets/icons/nav-goals.svg";
+import AddNewGoalAsset from "../assets/icons/add-new-goal.svg";
+import AddNewTaskAsset from "../assets/icons/add-new-task.svg";
 import { haptic } from "../lib/haptic";
 import { shortDate, toIsoDate } from "../lib/dates";
 import Animated, {
@@ -46,7 +48,6 @@ import {
   ChevronRightIcon,
   CloseIcon,
   PencilIcon,
-  PlusIcon,
   UnlinkIcon,
 } from "../components/UiIcons";
 
@@ -400,8 +401,7 @@ function GoalDetailSheet({
                   accessibilityLabel={`Plan next task for ${goal.text}`}
                   style={({ pressed }) => [detailStyles.planNextRow, pressed && { opacity: 0.6 }]}
                 >
-                  <PlusIcon size={15} color={colors.accent} strokeWidth={2.2} />
-                  <Text style={detailStyles.planNextText}>Plan next task</Text>
+                  <AddNewTaskAsset width={22} height={22} color={colors.accent} />
                 </Pressable>
               ) : null}
 
@@ -686,14 +686,10 @@ export function GoalsScreen({
           accessibilityLabel="Create a new goal"
           style={({ pressed }) => [styles.emptyAction, pressed && { opacity: 0.75 }]}
         >
-          <Text style={styles.emptyActionText}>New goal</Text>
+          <AddNewGoalAsset width={24} height={24} color={colors.textInverse} />
         </Pressable>
       ) : null}
     </Animated.View>
-  );
-
-  const footerHint = (
-    <Text style={styles.footerHint}>Goals sync across your devices.</Text>
   );
 
   // Content follows renderGoalId (survives close); visibility follows
@@ -734,14 +730,13 @@ export function GoalsScreen({
                   accessibilityLabel="Create a new goal"
                   style={({ pressed }) => [styles.newGoalAction, pressed && { opacity: 0.7 }]}
                 >
-                  <Text style={styles.newGoalActionText}>New goal</Text>
+                  <AddNewGoalAsset width={24} height={24} color={colors.accent} />
                 </Pressable>
               ) : null}
             </View>
           ) : null
         }
         ListEmptyComponent={isHydrated ? emptyBlock : null}
-        ListFooterComponent={sortedGoals.length > 0 ? footerHint : null}
         renderItem={({ item, index }) => {
           const progress = progressByGoal.get(item.id) ?? { total: 0, done: 0, ratio: 0 };
           const hasTasks = progress.total > 0;
@@ -816,9 +811,9 @@ export function GoalsScreen({
                           hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
                           accessibilityRole="button"
                           accessibilityLabel={`Plan next task for ${item.text}`}
-                          style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+                          style={({ pressed }) => [styles.planNextAction, pressed && { opacity: 0.6 }]}
                         >
-                          <Text style={styles.planNextActionText}>Plan next task</Text>
+                          <AddNewTaskAsset width={22} height={22} color={colors.accent} />
                         </Pressable>
                       ) : null}
                     </View>
@@ -879,14 +874,10 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   newGoalAction: {
-    minHeight: 44,
+    width: 44,
+    height: 44,
+    alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
-  },
-  newGoalActionText: {
-    ...typography.bodyMd,
-    color: colors.accent,
-    fontFamily: typography.title.fontFamily,
   },
   goalCard: {
     marginHorizontal: spacing.lg,
@@ -936,10 +927,12 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingTop: 6,
   },
-  planNextActionText: {
-    ...typography.bodyMd,
-    color: colors.accent,
-    fontFamily: typography.title.fontFamily,
+  planNextAction: {
+    width: 44,
+    height: 44,
+    marginVertical: -14,
+    alignItems: "center",
+    justifyContent: "center",
   },
   progressTrack: {
     height: 4,
@@ -1020,24 +1013,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   emptyAction: {
-    minHeight: 44,
+    width: 48,
+    height: 48,
     marginTop: spacing.sm,
-    paddingHorizontal: spacing.lg,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radii.md,
     backgroundColor: colors.accent,
-  },
-  emptyActionText: {
-    ...typography.bodyMd,
-    color: colors.textInverse,
-    fontFamily: typography.title.fontFamily,
-  },
-  footerHint: {
-    ...typography.micro,
-    color: colors.textMuted,
-    textAlign: "center",
-    paddingTop: spacing.md,
   },
 });
 
@@ -1105,15 +1087,10 @@ const detailStyles = StyleSheet.create({
     color: colors.textMuted,
   },
   planNextRow: {
-    minHeight: 44,
-    flexDirection: "row",
+    width: 44,
+    height: 44,
     alignItems: "center",
-    gap: spacing.xs,
-  },
-  planNextText: {
-    ...typography.bodyMd,
-    color: colors.accent,
-    fontWeight: "600",
+    justifyContent: "center",
   },
   doneSection: {
     borderTopWidth: StyleSheet.hairlineWidth,
