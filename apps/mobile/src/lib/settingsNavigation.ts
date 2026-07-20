@@ -64,7 +64,7 @@ export const SETTINGS_CATEGORY_META: Record<
   },
   account: {
     title: "Account",
-    summary: "Sign out and account",
+    summary: "Switch account or sign out",
   },
   about: {
     title: "About",
