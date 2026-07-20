@@ -67,6 +67,8 @@ type TaskCardProps = {
   linkedGoalName?: string;
   /** Hide priority metadata when a parent group already carries that encoding. */
   hidePriorityBadge?: boolean;
+  /** Hide the trailing complete/reopen checkbox when the parent owns that action. */
+  hideCompletionControl?: boolean;
   /** Swipe gestures are opt-in. Every action must remain visible without them. */
   swipeActionsEnabled?: boolean;
 };
@@ -125,6 +127,7 @@ function TaskCardInner({
   onDragHandlePress,
   linkedGoalName,
   hidePriorityBadge,
+  hideCompletionControl = false,
   swipeActionsEnabled = false,
 }: TaskCardProps) {
   const isCompleted = isTaskCompleted(task);
@@ -416,7 +419,7 @@ function TaskCardInner({
         </View>
       ) : null}
 
-      <View style={styles.actionCol}>
+      {showScheduleButton || !hideCompletionControl ? <View style={styles.actionCol}>
         {showScheduleButton ? (
           <Pressable
             onPress={(event) => {
@@ -437,36 +440,38 @@ function TaskCardInner({
           </Pressable>
         ) : null}
 
-        <Pressable
-          onPress={(event) => {
-            event.stopPropagation();
-            checkboxRun?.();
-          }}
-          disabled={!checkboxRun}
-          hitSlop={12}
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: isCompleted }}
-          accessibilityLabel={
-            isCompleted
-              ? `Mark ${task.title} incomplete`
-              : `Mark ${task.title} complete`
-          }
-          style={({ pressed }) => [
-            styles.checkbox,
-            isCompleted && { backgroundColor: colors.success, borderColor: colors.success },
-            pressed && checkboxRun && { opacity: 0.68 },
-            !checkboxRun && { opacity: 0.45 },
-          ]}
-        >
-          {isCompleted ? (
-            <CheckIcon size={16} color={colors.textInverse} strokeWidth={2.4} />
-          ) : null}
-        </Pressable>
-      </View>
+        {!hideCompletionControl ? (
+          <Pressable
+            onPress={(event) => {
+              event.stopPropagation();
+              checkboxRun?.();
+            }}
+            disabled={!checkboxRun}
+            hitSlop={12}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: isCompleted }}
+            accessibilityLabel={
+              isCompleted
+                ? `Mark ${task.title} incomplete`
+                : `Mark ${task.title} complete`
+            }
+            style={({ pressed }) => [
+              styles.checkbox,
+              isCompleted && { backgroundColor: colors.success, borderColor: colors.success },
+              pressed && checkboxRun && { opacity: 0.68 },
+              !checkboxRun && { opacity: 0.45 },
+            ]}
+          >
+            {isCompleted ? (
+              <CheckIcon size={16} color={colors.textInverse} strokeWidth={2.4} />
+            ) : null}
+          </Pressable>
+        ) : null}
+      </View> : null}
     </Pressable>
   );
 
-  if (!swipeActionsEnabled) {
+  if (!swipeActionsEnabled || (isCompleted && !onReopen)) {
     return <View style={styles.swipeContainer}>{rowContent}</View>;
   }
 

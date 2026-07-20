@@ -907,18 +907,15 @@ function MobileApp() {
       <TaskCard
         task={item}
         onDone={canUseWorkspaceActions ? markDone : () => undefined}
-        onReopen={canUseWorkspaceActions ? reopenTask : undefined}
         onEdit={canUseWorkspaceActions ? openCompletedTaskDetail : () => undefined}
         linkedGoalName={taskGoalNames.get(String(item._id))}
-        swipeActionsEnabled={prefs.swipeActionsEnabled}
+        hideCompletionControl
       />
     ),
     [
       canUseWorkspaceActions,
       markDone,
       openCompletedTaskDetail,
-      prefs.swipeActionsEnabled,
-      reopenTask,
       taskGoalNames,
     ]
   );
@@ -1312,6 +1309,7 @@ function MobileApp() {
       <SettingsSheet
         visible={isSettingsModalOpen}
         isAuthenticated={Boolean(session)}
+        accountEmail={session?.user.email}
         calendarSyncEnabled={googleSyncEnabled}
         gmailSyncEnabled={gmailSyncEnabled}
         gmailSyncStatus={gmailSyncStatus}
