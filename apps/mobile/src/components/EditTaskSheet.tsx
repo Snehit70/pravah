@@ -34,6 +34,7 @@ import { useGoals } from "../hooks/useGoals";
 import { goalLinksStore } from "../lib/goalLinks";
 import { useGoalMutations } from "../hooks/useGoalMutations";
 import { useReducedMotion } from "../hooks/useReducedMotion";
+import { QuickScheduleSheet } from "./QuickScheduleSheet";
 import {
   CheckIcon,
   CalendarIcon,
@@ -67,6 +68,7 @@ type EditTaskSheetProps = {
   onSheetChange?: (isOpen: boolean) => void;
   onComplete?: (taskId: Id<"tasks">) => void;
   onReopen?: (taskId: Id<"tasks">) => void;
+  onScheduleToDate?: (taskId: Id<"tasks">, isoDate: string) => void;
   onUnschedule?: (taskId: Id<"tasks">) => void;
   onDelete?: (taskId: Id<"tasks">) => void;
   onSaveComplete?: (
@@ -93,6 +95,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       onSheetChange,
       onComplete,
       onReopen,
+      onScheduleToDate,
       onUnschedule,
       onDelete,
       onSaveComplete,
@@ -109,6 +112,10 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const { setGoalLink } = useGoalMutations();
 
     const [visible, setVisible] = useState(false);
+    const [scheduleTarget, setScheduleTarget] = useState<{
+      taskId: Id<"tasks">;
+      title: string;
+    } | null>(null);
     const [taskId, setTaskId] = useState<Id<"tasks"> | null>(null);
     const [taskState, setTaskState] = useState<"inbox" | "timeline" | "completed" | null>(null);
     const [title, setTitle] = useState("");
@@ -301,13 +308,14 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     }, []);
 
     return (
-      <Modal
-        visible={visible}
-        transparent
-        animationType={reducedMotion ? "none" : "slide"}
-        statusBarTranslucent
-        onRequestClose={() => void requestClose()}
-      >
+      <>
+        <Modal
+          visible={visible}
+          transparent
+          animationType={reducedMotion ? "none" : "slide"}
+          statusBarTranslucent
+          onRequestClose={() => void requestClose()}
+        >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={[
@@ -593,9 +601,28 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                           </Text>
                         </Pressable>
                       ) : null}
+                      {taskState === "inbox" && onScheduleToDate ? (
+                        <Pressable
+                          onPress={() => {
+                            setScheduleTarget({ taskId, title });
+                            closeModal();
+                          }}
+                          hitSlop={12}
+                          accessibilityRole="button"
+                          accessibilityLabel="Schedule Task"
+                          style={({ pressed }) => [
+                            styles.quickActionItem,
+                            pressed && { opacity: 0.6 },
+                          ]}
+                        >
+                          <CalendarIcon color={colors.warning} size={16} />
+                          <Text style={[styles.quickActionText, { color: colors.warning }]}>
+                            Schedule
+                          </Text>
+                        </Pressable>
+                      ) : null}
                     </>
                   )}
-                  <View style={{ flex: 1 }} />
                   {onDelete ? (
                     <Pressable
                       onPress={() => {
@@ -654,7 +681,16 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
+        </Modal>
+        <QuickScheduleSheet
+          visible={scheduleTarget !== null}
+          taskTitle={scheduleTarget?.title}
+          onClose={() => setScheduleTarget(null)}
+          onPick={(isoDate) => {
+            if (scheduleTarget) onScheduleToDate?.(scheduleTarget.taskId, isoDate);
+          }}
+        />
+      </>
     );
   }
 );
@@ -824,7 +860,7 @@ const styles = StyleSheet.create({
     color: colors.error,
   },
   quickActions: {
-    flexDirection: "row",
+    flexDirection: "row-reverse",
     alignItems: "center",
     flexWrap: "wrap",
     gap: spacing.sm,
