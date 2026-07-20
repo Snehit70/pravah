@@ -74,7 +74,6 @@ import { useReminderSync } from "./src/hooks/useReminderSync";
 import { useReducedMotion } from "./src/hooks/useReducedMotion";
 import { useDisplayWorkspace } from "./src/hooks/useDisplayWorkspace";
 import { resetPreferencesStore, useUserPreferences } from "./src/hooks/useUserPreferences";
-import { OverdueSheet } from "./src/features/overdue-triage/OverdueSheet";
 import { useOverdueTriageController } from "./src/features/overdue-triage/controller";
 import { isTaskInInbox } from "./src/lib/taskState";
 import { hasPriorityBoundaryViolation } from "./src/lib/taskLifecycle";
@@ -688,17 +687,8 @@ function MobileApp() {
   );
 
   const {
-    isOverdueSheetOpen,
     overdueBuckets,
     previewGroups,
-    selectedPreview,
-    applyDeadline,
-    setApplyDeadline,
-    openOverdue,
-    closeOverdue,
-    openPreview,
-    closePreview,
-    confirmPreview,
     rescheduleAll,
     handleManualTriage,
   } = useOverdueTriageController({
@@ -863,10 +853,6 @@ function MobileApp() {
         setSelectedCompletedTask(null);
         return true;
       }
-      if (isOverdueSheetOpen) {
-        closeOverdue();
-        return true;
-      }
       if (isSettingsModalOpen) {
         setIsSettingsModalOpen(false);
         return true;
@@ -896,9 +882,7 @@ function MobileApp() {
     isEditSheetOpen,
     isSettingsModalOpen,
     isKairoActive,
-    isOverdueSheetOpen,
     selectedCompletedTask,
-    closeOverdue,
     setIsSettingsModalOpen,
   ]);
 
@@ -1163,8 +1147,13 @@ function MobileApp() {
               tabBarHeight={tabBarHeight}
               onRefresh={handleRefresh}
               overdueCount={isTimelineTriageReady ? overdueBuckets.totalOverdue : undefined}
-              onOpenOverdue={
-                canUseWorkspaceActions && isTimelineTriageReady ? openOverdue : undefined
+              onTriageOverdue={
+                canUseWorkspaceActions && isTimelineTriageReady ? handleManualTriage : undefined
+              }
+              onRescheduleAllGoals={
+                canUseWorkspaceActions && isTimelineTriageReady && previewGroups.length > 0
+                  ? rescheduleAll
+                  : undefined
               }
               layout={prefs.timelineLayout}
               onCompleteTask={canUseWorkspaceActions ? markDone : undefined}
@@ -1253,6 +1242,7 @@ function MobileApp() {
         onSheetChange={setIsEditSheetOpen}
         onComplete={markDone}
         onReopen={reopenTask}
+        onScheduleToDate={scheduleToDate}
         onUnschedule={sendToInbox}
         onDelete={deleteTask}
         onSaveComplete={(undo, task, previousState) => {
@@ -1286,24 +1276,6 @@ function MobileApp() {
         isAllTasksReady={isAllTasksReady}
         onActiveChange={setIsKairoActive}
         onOpenSettings={openSettingsModal}
-      />
-
-      <OverdueSheet
-        visible={isOverdueSheetOpen}
-        onClose={closeOverdue}
-        groups={previewGroups}
-        orphans={overdueBuckets.orphans}
-        selectedPreview={selectedPreview}
-        applyDeadline={applyDeadline}
-        today={today}
-        tomorrow={tomorrow}
-        weekEnd={weekEnd}
-        onOpenPreview={openPreview}
-        onClosePreview={closePreview}
-        onSetApplyDeadline={setApplyDeadline}
-        onConfirmPreview={confirmPreview}
-        onRescheduleAll={rescheduleAll}
-        onManualTriage={handleManualTriage}
       />
 
       <SettingsSheet

@@ -87,7 +87,8 @@ vi.mock("react-native", () => {
       )
     );
   const useWindowDimensions = () => ({ width: 400, height: 800 });
-  return { View, Text, Pressable, StyleSheet, RefreshControl, FlatList, useWindowDimensions };
+  const ScrollView = View;
+  return { View, Text, Pressable, ScrollView, StyleSheet, RefreshControl, FlatList, useWindowDimensions };
 });
 
 // ─── react-native-reanimated mock ─────────────────────────────────────────────
@@ -208,26 +209,24 @@ describe("TimelineDayCarousel", () => {
     vi.clearAllMocks();
   });
 
-  it("renders the overdue card first with the Review door", () => {
-    const onOpenOverdue = vi.fn();
+  it("renders overdue tasks directly inside the first card", () => {
+    const onTriageOverdue = vi.fn();
     renderCarousel(
       [
         ["2026-07-01", [task("od1", "2026-07-01")]],
         [TODAY, [task("t1", TODAY)]],
       ],
-      { onOpenOverdue, overdueCount: 1 }
+      { onTriageOverdue, overdueCount: 1 }
     );
 
-    // Overdue collapses to a single muted card — its task rows never render.
-    expect(screen.queryByText("Task od1")).toBeNull();
-    const door = screen.getByRole("button", { name: "1 overdue. Open triage." });
-    fireEvent.click(door);
-    expect(onOpenOverdue).toHaveBeenCalledTimes(1);
-    // The day card is still there behind it.
+    expect(screen.getByText("Task od1")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Reschedule Task od1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Today — Task od1" }));
+    expect(onTriageOverdue).toHaveBeenCalledWith("od1", "today");
     expect(screen.getByText("Task t1")).toBeTruthy();
   });
 
-  it("drops overdue silently when the triage door is unavailable", () => {
+  it("omits the overdue card when no overdue count is supplied", () => {
     renderCarousel([
       ["2026-07-01", [task("od1", "2026-07-01")]],
       [TODAY, [task("t1", TODAY)]],

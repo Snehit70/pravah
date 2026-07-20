@@ -47,8 +47,11 @@ type TimelineScreenProps = {
   /** Total overdue count (from the workspace buckets). Falls back to a local
    *  count of the dropped sections when not supplied. */
   overdueCount?: number;
-  /** Opens the overdue triage sheet. Omitted while actions are unavailable. */
-  onOpenOverdue?: () => void;
+  onTriageOverdue?: (
+    taskId: string,
+    target: "today" | "tomorrow" | "week" | "drop"
+  ) => void;
+  onRescheduleAllGoals?: () => void;
   /** Timeline layout preference — the compact list (default) or the
    *  comfortable day-card carousel. */
   layout?: TimelineLayout;
@@ -160,7 +163,8 @@ export function TimelineScreen({
   tabBarHeight,
   onRefresh,
   overdueCount,
-  onOpenOverdue,
+  onTriageOverdue,
+  onRescheduleAllGoals,
   layout = "list",
   onCompleteTask,
   onReopenTask,
@@ -194,9 +198,8 @@ export function TimelineScreen({
       setSelectedIds(new Set());
     }
   }
-  const { future, overdueCount: localOverdue } = splitOverdue(sections, today);
-  const effectiveOverdue = overdueCount ?? localOverdue;
-  const sourceSections = onOpenOverdue ? future : sections;
+  const { future } = splitOverdue(sections, today);
+  const sourceSections = layout === "carousel" ? future : sections;
   const visibleSections = showAllSections
     ? sourceSections
     : sourceSections.slice(0, DEFAULT_VISIBLE_SECTION_COUNT);
@@ -285,21 +288,7 @@ export function TimelineScreen({
     [onScheduleMany, scheduleBatch, exitSelectMode]
   );
 
-  const overdueHeader =
-    effectiveOverdue > 0 && onOpenOverdue ? (
-      <Pressable
-        onPress={onOpenOverdue}
-        style={({ pressed }) => [styles.overdueBar, pressed && styles.overdueBarPressed]}
-        accessibilityRole="button"
-        accessibilityLabel={`${effectiveOverdue} overdue. Open triage.`}
-      >
-        <View style={styles.overdueCopy}>
-          <Text style={styles.overdueLabel}>Overdue · {effectiveOverdue}</Text>
-          <Text style={styles.overdueHelp}>Reflow or choose the next real date.</Text>
-        </View>
-        <Text style={styles.overdueChevron}>Review</Text>
-      </Pressable>
-    ) : null;
+  const overdueHeader = null;
 
   const selectHeader = (
     <View style={styles.selectBarWrap}>
@@ -434,7 +423,8 @@ export function TimelineScreen({
       tabBarHeight={tabBarHeight}
       onRefresh={onRefresh}
       overdueCount={overdueCount}
-      onOpenOverdue={onOpenOverdue}
+      onTriageOverdue={onTriageOverdue}
+      onRescheduleAllGoals={onRescheduleAllGoals}
       onCompleteTask={onCompleteTask}
       onReopenTask={onReopenTask}
       onEditTask={onEditTask}
