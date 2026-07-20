@@ -141,6 +141,8 @@ vi.mock("react-native-reanimated", () => {
     // Null reads as "not mid-morph", so the charts render their static path.
     useDerivedValue: () => ({ value: null }),
     withTiming: identity,
+    withSpring: identity,
+    interpolateColor: identity,
     runOnJS: (fn: unknown) => fn,
     Easing: { out: () => identity, cubic: identity, inOut: () => identity, quad: identity },
     FadeIn: chain(),
@@ -311,5 +313,36 @@ describe("Progress screen", () => {
     expect(screen.getAllByText("Write release notes").length).toBeGreaterThan(0);
     // No inline recent list anymore, so a filtered-out task disappears entirely.
     expect(screen.queryByText("Ship redesign")).toBeNull();
+  });
+
+  it("filters completion history by calendar day and rolling windows", () => {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const yesterday = startOfToday.getTime() - 1;
+    const eightDaysAgo = startOfToday.getTime() - 8 * 86_400_000;
+    renderScreen([
+      task("today", "Finished today", Date.now()),
+      task("yesterday", "Finished yesterday", yesterday),
+      task("older", "Finished earlier", eightDaysAgo),
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: /view completion history/i }));
+
+    expect(screen.getByRole("button", { name: "7 days" }).getAttribute("aria-pressed"))
+      .toBe("true");
+    expect(screen.getByText("Finished today")).toBeTruthy();
+    expect(screen.getByText("Finished yesterday")).toBeTruthy();
+    expect(screen.queryByText("Finished earlier")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Yesterday" }));
+    expect(screen.queryByText("Finished today")).toBeNull();
+    expect(screen.getByText("Finished yesterday")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Today" }));
+    expect(screen.getByText("Finished today")).toBeTruthy();
+    expect(screen.queryByText("Finished yesterday")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    expect(screen.getByText("Finished earlier")).toBeTruthy();
   });
 });

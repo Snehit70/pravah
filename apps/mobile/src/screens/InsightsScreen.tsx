@@ -31,7 +31,14 @@ import { HeroVelocityChart } from "../components/HeroVelocityChart";
 import { ConsistencyHeatmap } from "../components/ConsistencyHeatmap";
 import { RhythmMiniCharts } from "../components/RhythmMiniCharts";
 import { GoalsProgress } from "../components/GoalsProgress";
-import { LedgerCheckIcon } from "../components/UiIcons";
+import { SlidingSegmented, type SegmentedItem } from "../components/SlidingSegmented";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  LedgerCheckIcon,
+  SearchIcon,
+} from "../components/UiIcons";
+import CompletionHistoryIcon from "../assets/icons/completion-history.svg";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useGoalLinks, useGoals } from "../hooks/useGoals";
 import {
@@ -46,7 +53,7 @@ import {
 import { computeGoalProgress, goalsInMotion } from "../lib/goalProgress";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 
-type HistoryWindow = "all" | "7d" | "30d";
+type HistoryWindow = "today" | "yesterday" | "7d" | "30d" | "all";
 type RangeKey = "7d" | "30d" | "90d";
 
 type InsightsScreenProps = {
@@ -76,10 +83,12 @@ const RANGE_COMPARISON: Record<RangeKey, string> = {
 };
 const GOALS_SHOWN = 6;
 
-const HISTORY_WINDOWS: Array<{ key: HistoryWindow; label: string; days?: number }> = [
-  { key: "all", label: "All" },
-  { key: "7d", label: "7 days", days: 7 },
-  { key: "30d", label: "30 days", days: 30 },
+const HISTORY_WINDOWS: Array<SegmentedItem<HistoryWindow>> = [
+  { value: "today", label: "Today" },
+  { value: "yesterday", label: "Yesterday" },
+  { value: "7d", label: "7 days" },
+  { value: "30d", label: "30 days" },
+  { value: "all", label: "All" },
 ];
 
 function completionTime(task: MobileTask): number {
@@ -106,7 +115,7 @@ export function InsightsScreen({
   const reducedMotion = useReducedMotion();
   const [historyVisible, setHistoryVisible] = useState(false);
   const [query, setQuery] = useState("");
-  const [window, setWindow] = useState<HistoryWindow>("all");
+  const [window, setWindow] = useState<HistoryWindow>("7d");
   const [range, setRange] = useState<RangeKey>("30d");
   // The anchor every aggregation window hangs off. Re-anchored on foreground
   // and pull-to-refresh so a screen kept mounted across midnight doesn't keep
@@ -199,10 +208,25 @@ export function InsightsScreen({
   );
   const historyTasks = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
-    const selected = HISTORY_WINDOWS.find((option) => option.key === window);
-    const cutoff = selected?.days ? now - selected.days * 86_400_000 : null;
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
+    let start: number | null = null;
+    let end: number | null = null;
+    if (window === "today") {
+      start = startOfToday.getTime();
+    } else if (window === "yesterday") {
+      end = startOfToday.getTime();
+      startOfToday.setDate(startOfToday.getDate() - 1);
+      start = startOfToday.getTime();
+    } else if (window === "7d") {
+      start = now - 7 * 86_400_000;
+    } else if (window === "30d") {
+      start = now - 30 * 86_400_000;
+    }
     return orderedCompleted.filter((task) => {
-      if (cutoff !== null && completionTime(task) < cutoff) return false;
+      const completedAt = completionTime(task);
+      if (start !== null && completedAt < start) return false;
+      if (end !== null && completedAt >= end) return false;
       if (!normalizedQuery) return true;
       return `${task.title} ${task.description ?? ""}`
         .toLocaleLowerCase()
@@ -311,32 +335,45 @@ export function InsightsScreen({
         ) : null}
 
         {orderedCompleted.length > 0 ? (
-          <Pressable
-            onPress={() => setHistoryVisible(true)}
-            accessibilityRole="button"
-            accessibilityLabel={`View completion history, ${orderedCompleted.length} tasks`}
-            style={({ pressed }) => [styles.historyButton, pressed && { opacity: 0.7 }]}
-          >
-            <Text style={styles.historyButtonText}>View completion history</Text>
-            <Text style={styles.historyButtonMeta}>{orderedCompleted.length} →</Text>
-          </Pressable>
+          <Wrap entering={sectionEnter(4)}>
+            <SectionHeader label="Task history" />
+            <Pressable
+              onPress={() => setHistoryVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`View completion history, ${orderedCompleted.length} tasks`}
+              style={({ pressed }) => [styles.historyButton, pressed && { opacity: 0.72 }]}
+            >
+              <View style={styles.historyButtonIcon}>
+                <CompletionHistoryIcon
+                  width={20}
+                  height={20}
+                  color={colors.textSecondary}
+                />
+              </View>
+              <View style={styles.historyButtonCopy}>
+                <Text style={styles.historyButtonText}>View completion history</Text>
+                <Text style={styles.historyButtonSummary}>Browse completed tasks</Text>
+              </View>
+              <View style={styles.historyButtonMeta}>
+                <Text style={styles.historyButtonCount}>{orderedCompleted.length}</Text>
+                <ChevronRightIcon color={colors.textDim} size={16} />
+              </View>
+            </Pressable>
+          </Wrap>
         ) : null}
 
         {isLoading && orderedCompleted.length === 0 ? (
           <Text accessibilityLiveRegion="polite" style={styles.footerNote}>
             Loading your progress…
           </Text>
-        ) : (
-          <Text style={styles.footerNote}>
-            Computed on device from your synced task history.
-          </Text>
-        )}
+        ) : null}
       </ScrollView>
 
       <Modal
         visible={historyVisible}
         animationType={reducedMotion ? "none" : "slide"}
         presentationStyle="fullScreen"
+        statusBarTranslucent
         onRequestClose={() => setHistoryVisible(false)}
       >
         <View style={styles.historyRoot}>
@@ -345,13 +382,20 @@ export function InsightsScreen({
               onPress={() => setHistoryVisible(false)}
               hitSlop={12}
               accessibilityRole="button"
-              accessibilityLabel="Close completion history"
+              accessibilityLabel="Back"
               style={({ pressed }) => [styles.closeAction, pressed && { opacity: 0.65 }]}
             >
-              <Text style={styles.closeActionText}>Back</Text>
+              <ChevronLeftIcon color={colors.textPrimary} size={20} />
             </Pressable>
             <View style={styles.historyTitleBlock}>
-              <Text style={styles.historyTitle}>Completion history</Text>
+              <View style={styles.historyTitleRow}>
+                <CompletionHistoryIcon
+                  width={22}
+                  height={22}
+                  color={colors.textSecondary}
+                />
+                <Text style={styles.historyTitle}>Completion history</Text>
+              </View>
               <Text style={styles.historyCount}>
                 {historyTasks.length} {historyTasks.length === 1 ? "Task" : "Tasks"}
               </Text>
@@ -360,38 +404,26 @@ export function InsightsScreen({
           </View>
 
           <View style={styles.historyTools}>
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search completed Tasks"
-              placeholderTextColor={colors.textMuted}
-              accessibilityLabel="Search completed Tasks"
-              returnKeyType="search"
-              style={styles.searchInput}
-            />
-            <View style={styles.windowRow}>
-              {HISTORY_WINDOWS.map((option) => {
-                const active = window === option.key;
-                return (
-                  <Pressable
-                    key={option.key}
-                    onPress={() => setWindow(option.key)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
-                    accessibilityLabel={`Show ${option.label} of completion history`}
-                    style={({ pressed }) => [
-                      styles.windowOption,
-                      active && styles.windowOptionActive,
-                      pressed && { opacity: 0.7 },
-                    ]}
-                  >
-                    <Text style={[styles.windowText, active && styles.windowTextActive]}>
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+            <View style={styles.searchField}>
+              <SearchIcon color={colors.textMuted} size={16} />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Search completed Tasks"
+                placeholderTextColor={colors.textMuted}
+                accessibilityLabel="Search completed Tasks"
+                returnKeyType="search"
+                autoCorrect={false}
+                autoCapitalize="none"
+                clearButtonMode="while-editing"
+                style={styles.searchInput}
+              />
             </View>
+            <SlidingSegmented
+              options={HISTORY_WINDOWS}
+              value={window}
+              onSelect={setWindow}
+            />
           </View>
 
           <FlatList
@@ -503,24 +535,50 @@ const styles = StyleSheet.create({
   },
   historyButton: {
     marginHorizontal: spacing.lg,
-    minHeight: 52,
+    minHeight: 74,
     paddingHorizontal: spacing.lg,
+    paddingVertical: 10,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: spacing.md,
     borderRadius: radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: colors.borderSubtle,
     backgroundColor: colors.bgCard,
   },
+  historyButtonIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  historyButtonCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
   historyButtonText: {
-    ...typography.bodyLg,
+    ...typography.title,
     color: colors.textPrimary,
-    fontFamily: typography.title.fontFamily,
+  },
+  historyButtonSummary: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    lineHeight: 18,
   },
   historyButtonMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    flexShrink: 0,
+  },
+  historyButtonCount: {
     ...typography.numeric,
-    color: colors.accent,
+    color: colors.textSecondary,
   },
   footerNote: {
     ...typography.micro,
@@ -544,20 +602,23 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   closeAction: {
-    minWidth: 56,
-    minHeight: 44,
+    width: 40,
+    height: 40,
+    alignItems: "flex-start",
     justifyContent: "center",
-  },
-  closeActionText: {
-    ...typography.bodyMd,
-    color: colors.accent,
   },
   historyTitleBlock: {
     flex: 1,
     alignItems: "center",
   },
+  historyTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+  },
   historyTitle: {
-    ...typography.title,
+    ...typography.headline,
     color: colors.textPrimary,
   },
   historyCount: {
@@ -565,7 +626,8 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   headerSpacer: {
-    width: 56,
+    width: 40,
+    height: 40,
   },
   historyTools: {
     paddingHorizontal: spacing.lg,
@@ -574,42 +636,24 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderSubtle,
   },
-  searchInput: {
-    minHeight: 48,
-    paddingHorizontal: spacing.md,
+  searchField: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    minHeight: 38,
+    paddingHorizontal: spacing.sm,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     borderRadius: radii.md,
-    backgroundColor: colors.bgInput,
+    borderCurve: "continuous",
+    backgroundColor: colors.bgCard,
+  },
+  searchInput: {
+    flex: 1,
     color: colors.textPrimary,
-    ...typography.bodyLg,
-  },
-  windowRow: {
-    minHeight: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-  },
-  windowOption: {
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-  },
-  windowOptionActive: {
-    backgroundColor: colors.accentSoft,
-    borderColor: colors.borderFocus,
-  },
-  windowText: {
     ...typography.bodyMd,
-    color: colors.textMuted,
-  },
-  windowTextActive: {
-    color: colors.accent,
-    fontFamily: typography.title.fontFamily,
+    fontSize: 14,
+    paddingVertical: spacing.xs,
   },
   emptyState: {
     paddingHorizontal: spacing.xxl,
