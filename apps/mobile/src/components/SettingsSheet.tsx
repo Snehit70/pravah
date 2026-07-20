@@ -5,7 +5,6 @@ import {
   useReducer,
   useRef,
   useState,
-  type ComponentType,
   type JSX,
 } from "react";
 import {
@@ -115,6 +114,7 @@ import { GmailReviewSection } from "./GmailReviewSection";
 import { AppUpdateSection } from "./AppUpdateSection";
 import { WhatsNewSheet } from "./WhatsNewSheet";
 import { SnapWheelTimePicker } from "./SnapWheelTimePicker";
+import { SlidingSegmented, type SegmentedItem } from "./SlidingSegmented";
 import {
   summarizeSyncError,
   type GoogleCalendarOption,
@@ -127,6 +127,7 @@ type QuietPickerKind = "morningDigest" | "quietStart" | "quietEnd";
 type SettingsSheetProps = {
   visible: boolean;
   isAuthenticated: boolean;
+  accountEmail?: string;
   calendarSyncEnabled: boolean;
   gmailSyncEnabled: boolean;
   gmailSyncStatus: string;
@@ -572,11 +573,14 @@ function SettingsCategoryList({
                 ) : null}
                 <View style={styles.categoryCopy}>
                   <Text style={styles.categoryTitle}>{meta.title}</Text>
-                  <Text style={styles.categorySummary}>{meta.summary}</Text>
+                  <Text style={styles.categorySummary} numberOfLines={1}>
+                    {meta.summary}
+                  </Text>
                 </View>
                 <View style={styles.categoryMeta}>
                   <Text
                     numberOfLines={1}
+                    ellipsizeMode={category === "account" ? "middle" : "tail"}
                     style={[
                       styles.categoryStatus,
                       { color: settingsStatusColor(status.tone) },
@@ -1715,118 +1719,6 @@ function RemindersSection({
   );
 }
 
-const SEGMENT_TRACK_PADDING = 3;
-
-type SegmentedItem<T extends string | number> = {
-  value: T;
-  label: string;
-  Icon?: ComponentType<{ width?: number; height?: number; color?: string }>;
-};
-
-function SlidingSegmented<T extends string | number>({
-  options,
-  value,
-  onSelect,
-}: {
-  options: readonly SegmentedItem<T>[];
-  value: T;
-  onSelect: (value: T) => void;
-}) {
-  const reducedMotion = useReducedMotion();
-  const [innerWidth, setInnerWidth] = useState(0);
-  const index = Math.max(0, options.findIndex((option) => option.value === value));
-  const progress = useSharedValue(index);
-  // Shared (not React state) so the thumb worklet sees the measured width on
-  // the UI thread immediately; a closure over state leaves the thumb parked on
-  // the first segment until the rebuilt worklet lands.
-  const segmentWidthSv = useSharedValue(0);
-
-  useEffect(() => {
-    progress.value = reducedMotion
-      ? index
-      : withSpring(index, { damping: 15, stiffness: 220, mass: 0.7 });
-  }, [index, progress, reducedMotion]);
-
-  const segmentWidth = innerWidth > 0 ? innerWidth / options.length : 0;
-
-  const thumbStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: progress.value * segmentWidthSv.value }],
-  }));
-
-  return (
-    <View
-      style={styles.segmentedTrack}
-      onLayout={(event) => {
-        const inner = event.nativeEvent.layout.width - SEGMENT_TRACK_PADDING * 2;
-        segmentWidthSv.value = inner / options.length;
-        setInnerWidth(inner);
-      }}
-    >
-      {segmentWidth > 0 ? (
-        <Animated.View
-          style={[styles.segmentedThumb, { width: segmentWidth }, thumbStyle]}
-        />
-      ) : null}
-      {options.map((option, optionIndex) => (
-        <SegmentOption
-          key={option.value}
-          label={option.label}
-          Icon={option.Icon}
-          selected={value === option.value}
-          optionIndex={optionIndex}
-          progress={progress}
-          onPress={() => onSelect(option.value)}
-        />
-      ))}
-    </View>
-  );
-}
-
-function SegmentOption({
-  label,
-  Icon,
-  selected,
-  optionIndex,
-  progress,
-  onPress,
-}: {
-  label: string;
-  Icon?: ComponentType<{ width?: number; height?: number; color?: string }>;
-  selected: boolean;
-  optionIndex: number;
-  progress: ReturnType<typeof useSharedValue<number>>;
-  onPress: () => void;
-}) {
-  const labelStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(
-      progress.value,
-      [optionIndex - 1, optionIndex, optionIndex + 1],
-      [colors.textMuted, colors.textInverse, colors.textMuted],
-    ),
-  }));
-
-  return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={6}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      style={styles.segmentedOption}
-    >
-      <View style={styles.segmentedOptionContent}>
-        {Icon ? (
-          <Icon
-            width={15}
-            height={15}
-            color={selected ? colors.textInverse : colors.textMuted}
-          />
-        ) : null}
-        <Animated.Text style={[styles.segmentedOptionText, labelStyle]}>{label}</Animated.Text>
-      </View>
-    </Pressable>
-  );
-}
-
 const TOGGLE_TRACK_WIDTH = 46;
 const TOGGLE_TRACK_HEIGHT = 27;
 const TOGGLE_PADDING = 3;
@@ -2466,6 +2358,7 @@ function renderDetailScreen(
 export function SettingsSheet({
   visible,
   isAuthenticated,
+  accountEmail,
   calendarSyncEnabled,
   gmailSyncEnabled,
   gmailSyncStatus,
@@ -2890,6 +2783,11 @@ export function SettingsSheet({
     navigation.screen === "detail"
       ? SETTINGS_CATEGORY_ICONS[navigation.category]
       : SettingsHomeIcon;
+  const accountEmailAtIndex = accountEmail?.indexOf("@") ?? -1;
+  const accountEmailLabel =
+    accountEmail && accountEmailAtIndex > 4
+      ? `${accountEmail.slice(0, 4)}...${accountEmail.slice(accountEmailAtIndex)}`
+      : accountEmail;
 
   const settingsHomeStatuses: Record<SettingsCategoryKey, SettingsHomeStatus> = {
     kairo: kairoHomeStatus,
@@ -2922,7 +2820,7 @@ export function SettingsSheet({
             }
           : { label: "All clear", tone: "success" },
     account: {
-      label: calendarAccountEmail ?? gmailAccountEmail ?? "Signed in",
+      label: accountEmailLabel ?? "Signed in",
       tone: "neutral",
     },
     about: {
@@ -3184,6 +3082,7 @@ const styles = StyleSheet.create({
   },
   categoryCopy: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   categoryIconWrap: {
@@ -3764,37 +3663,6 @@ const styles = StyleSheet.create({
   },
   behaviorStack: {
     gap: spacing.sm,
-  },
-  segmentedTrack: {
-    flexDirection: "row",
-    padding: SEGMENT_TRACK_PADDING,
-    borderRadius: radii.md,
-    backgroundColor: colors.bgSurface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-  },
-  segmentedThumb: {
-    position: "absolute",
-    top: SEGMENT_TRACK_PADDING,
-    bottom: SEGMENT_TRACK_PADDING,
-    left: SEGMENT_TRACK_PADDING,
-    borderRadius: radii.md - SEGMENT_TRACK_PADDING,
-    backgroundColor: colors.textPrimary,
-  },
-  segmentedOption: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: spacing.sm,
-  },
-  segmentedOptionContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  segmentedOptionText: {
-    ...typography.bodyMd,
-    fontFamily: "Geist_500Medium",
   },
   toggleTrack: {
     width: TOGGLE_TRACK_WIDTH,
