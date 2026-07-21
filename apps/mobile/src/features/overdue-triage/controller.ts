@@ -193,7 +193,14 @@ export function useOverdueTriageController({
         return;
       }
 
-      const targetDate = target === "today" ? today : target === "tomorrow" ? tomorrow : weekEnd;
+      const targetDate =
+        typeof target === "object"
+          ? target.date
+          : target === "today"
+            ? today
+            : target === "tomorrow"
+              ? tomorrow
+              : weekEnd;
       void (async () => {
         try {
           await moveTaskMutation({ taskId: id, targetDate });

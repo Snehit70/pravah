@@ -1,7 +1,5 @@
 import { useMemo, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
-import { BlurView } from "expo-blur";
-import { haptic } from "../lib/haptic";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { toIsoDate } from "../lib/dates";
 import { buildMonthGrid } from "../lib/calendarGrid";
@@ -12,6 +10,8 @@ type ThemedDatePickerProps = {
   visible: boolean;
   /** Currently selected date as an ISO `YYYY-MM-DD`, if any. */
   value?: string;
+  /** Optional lower bound for scheduling. */
+  minDate?: string;
   onSelect: (iso: string) => void;
   onClose: () => void;
 };
@@ -35,9 +35,10 @@ function parseIsoParts(iso?: string): { year: number; month: number; day: number
  * Material picker so the surface matches the app and, crucially, only commits a
  * date when the user actually taps a day. Dismissing is a clean cancel.
  */
-export function ThemedDatePicker({ visible, value, onSelect, onClose }: ThemedDatePickerProps) {
+export function ThemedDatePicker({ visible, value, minDate, onSelect, onClose }: ThemedDatePickerProps) {
   const reducedMotion = useReducedMotion();
   const todayIso = toIsoDate(new Date());
+  const minimumDate = minDate ?? todayIso;
   const selected = parseIsoParts(value);
   const initial = selected ?? parseIsoParts(todayIso)!;
 
@@ -47,7 +48,6 @@ export function ThemedDatePicker({ visible, value, onSelect, onClose }: ThemedDa
   const weeks = useMemo(() => buildMonthGrid(viewYear, viewMonth), [viewYear, viewMonth]);
 
   const stepMonth = (delta: number) => {
-    haptic.selection();
     let m = viewMonth + delta;
     let y = viewYear;
     if (m < 0) {
@@ -62,7 +62,7 @@ export function ThemedDatePicker({ visible, value, onSelect, onClose }: ThemedDa
   };
 
   const pickDate = (date: Date) => {
-    haptic.light();
+    if (toIsoDate(date) < minimumDate) return;
     onSelect(toIsoDate(date));
     onClose();
   };
@@ -75,6 +75,10 @@ export function ThemedDatePicker({ visible, value, onSelect, onClose }: ThemedDa
     !!selected && selected.year === viewYear && selected.month === viewMonth && selected.day === day;
   const isToday = (day: number) =>
     toIsoDate(new Date(viewYear, viewMonth, day)) === todayIso;
+  const isBeforeMinimum = (day: number) =>
+    toIsoDate(new Date(viewYear, viewMonth, day)) < minimumDate;
+
+  if (!visible) return null;
 
   return (
     <Modal
@@ -85,7 +89,6 @@ export function ThemedDatePicker({ visible, value, onSelect, onClose }: ThemedDa
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
         <Pressable
           accessibilityRole="button"
@@ -133,10 +136,12 @@ export function ThemedDatePicker({ visible, value, onSelect, onClose }: ThemedDa
                 if (day === null) return <View key={di} style={styles.dayCell} />;
                 const selectedDay = isSelected(day);
                 const today = isToday(day);
+                const beforeMinimum = isBeforeMinimum(day);
                 return (
                   <Pressable
                     key={di}
                     onPress={() => pick(day)}
+                    disabled={beforeMinimum}
                     accessibilityRole="button"
                     accessibilityState={{ selected: selectedDay }}
                     accessibilityLabel={`${MONTHS[viewMonth]} ${day}, ${viewYear}`}
@@ -144,6 +149,7 @@ export function ThemedDatePicker({ visible, value, onSelect, onClose }: ThemedDa
                       styles.dayCell,
                       styles.dayCellTappable,
                       selectedDay && styles.daySelected,
+                      beforeMinimum && styles.dayDisabled,
                       pressed && !selectedDay && { opacity: 0.6 },
                     ]}
                   >
@@ -152,6 +158,7 @@ export function ThemedDatePicker({ visible, value, onSelect, onClose }: ThemedDa
                         styles.dayText,
                         selectedDay && styles.dayTextSelected,
                         today && !selectedDay && styles.dayTextToday,
+                        beforeMinimum && styles.dayTextDisabled,
                       ]}
                     >
                       {day}
@@ -265,6 +272,12 @@ const styles = StyleSheet.create({
   dayTextToday: {
     color: colors.accent,
     fontWeight: "700",
+  },
+  dayDisabled: {
+    opacity: 0.45,
+  },
+  dayTextDisabled: {
+    color: colors.textMuted,
   },
   todayDot: {
     position: "absolute",

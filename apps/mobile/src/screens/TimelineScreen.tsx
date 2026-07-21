@@ -49,7 +49,7 @@ type TimelineScreenProps = {
   overdueCount?: number;
   onTriageOverdue?: (
     taskId: string,
-    target: "today" | "tomorrow" | "week" | "drop"
+    target: "today" | "tomorrow" | "week" | "drop" | { date: string }
   ) => void;
   onRescheduleAllGoals?: () => void;
   /** Timeline layout preference — the compact list (default) or the
