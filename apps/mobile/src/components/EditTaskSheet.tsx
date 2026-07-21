@@ -25,9 +25,9 @@ import { haptic } from "../lib/haptic";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "./TaskCard";
 import { isTaskCompleted, isTaskOnTimeline } from "../lib/taskState";
-import { humanDate } from "../lib/dates";
 import type { Id } from "../../../../convex/_generated/dataModel";
-import { formatTime12h, type TaskPriority } from "../lib/task-form";
+import type { TaskPriority } from "../lib/task-form";
+import { TaskMetaFields } from "./TaskMetaFields";
 import { useConfirm } from "../hooks/useConfirm";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useGoals } from "../hooks/useGoals";
@@ -39,7 +39,6 @@ import {
   CheckIcon,
   CalendarIcon,
   TrashIcon,
-  StarIcon,
   FileTextIcon,
   ChevronDownIcon,
   ChevronUpIcon,
@@ -289,18 +288,6 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       if (discard) closeModal();
     }, [hasUnsavedChanges, confirm, closeModal]);
 
-    const priorityLabel =
-      priority === "p1" ? "P1" : priority === "p2" ? "P2" : priority === "p3" ? "P3" : null;
-
-    const priorityColor =
-      priority === "p1"
-        ? colors.priorityP1
-        : priority === "p2"
-          ? colors.priorityP2
-          : priority === "p3"
-            ? colors.priorityP3
-            : colors.textMuted;
-
     const isDescriptionLong = descriptionHeight > DESCRIPTION_TRUNCATE_LINES * 22;
 
     const onDescriptionLayout = useCallback((e: LayoutChangeEvent) => {
@@ -369,30 +356,18 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                 style={styles.titleInput}
               />
 
-              {/* ── Date + Priority row ── */}
-              <View style={styles.metaRow}>
-                <View style={styles.metaItem}>
-                  <CalendarIcon color={colors.textMuted} size={16} />
-                  <Text style={styles.metaText}>
-                    {deadline
-                      ? time
-                        ? `${humanDate(deadline)} · ${formatTime12h(time)}`
-                        : humanDate(deadline)
-                      : "No date"}
-                  </Text>
-                </View>
-                {priorityLabel ? (
-                  <>
-                    <Text style={styles.metaDot}>·</Text>
-                    <View style={styles.metaItem}>
-                      <StarIcon color={priorityColor} size={14} />
-                      <Text style={[styles.metaText, { color: priorityColor }]}>
-                        {priorityLabel}
-                      </Text>
-                    </View>
-                  </>
-                ) : null}
-              </View>
+              <TaskMetaFields
+                deadline={deadline}
+                time={time}
+                priority={priority}
+                onDeadlineChange={(value) => {
+                  setDeadline(value);
+                  setError(null);
+                }}
+                onTimeChange={setTime}
+                onPriorityChange={setPriority}
+                onClearError={() => setError(null)}
+              />
 
               {/* ── Goal picker (always available when goals exist) ── */}
               {goals.length > 0 ? (
@@ -760,24 +735,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
-  },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  metaItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-  },
-  metaText: {
-    ...typography.bodyMd,
-    color: colors.textMuted,
-  },
-  metaDot: {
-    ...typography.bodyMd,
-    color: colors.textMuted,
   },
   goalSection: {
     gap: spacing.sm,

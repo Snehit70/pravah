@@ -231,7 +231,22 @@ vi.mock("../theme/tokens", () => ({
 
 // ─── TaskMetaFields mock ──────────────────────────────────────────────────────
 vi.mock("../components/TaskMetaFields", () => ({
-  TaskMetaFields: () => React.createElement("div", { "data-testid": "task-meta-fields" }),
+  TaskMetaFields: ({
+    priority,
+    onPriorityChange,
+  }: {
+    priority?: string;
+    onPriorityChange: (value: string | undefined) => void;
+  }) => React.createElement(
+    "button",
+    {
+      type: "button",
+      "data-testid": "task-meta-fields",
+      "aria-label": `Priority, currently ${priority ?? "none"}`,
+      onClick: () => onPriorityChange(priority === "p1" ? "p2" : "p1"),
+    },
+    priority ?? "none",
+  ),
 }));
 
 // ─── ConfirmDialog mock ───────────────────────────────────────────────────────
@@ -363,6 +378,39 @@ describe("EditTaskSheet", () => {
       description: "Original description",
       deadline: undefined,
       priority: "p1",
+    });
+  });
+
+  it("changes priority from the editor", async () => {
+    render(
+      <EditTaskSheet
+        ref={ref}
+        onSave={mockOnSave}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+      />
+    );
+
+    await act(async () => {
+      ref.current?.open(sampleTask);
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByTestId("task-meta-fields"));
+    expect(screen.getByTestId("task-meta-fields").textContent).toContain("p2");
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Save"));
+    });
+
+    await waitFor(() => {
+      expect(mockOnSave).toHaveBeenCalledWith({
+        taskId: "task1",
+        title: "Original task",
+        description: "Original description",
+        deadline: undefined,
+        priority: "p2",
+      });
     });
   });
 
