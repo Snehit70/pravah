@@ -56,7 +56,7 @@ vi.mock("react-native", () => {
       "button",
       { ...safe, onClick: onPress },
       Object.prototype.toString.call(children) === "[object Function]"
-        ? (children as (s: unknown) => React.ReactNode)({ pressed: false })
+        ? (children as unknown as (s: unknown) => React.ReactNode)({ pressed: false })
         : children
     );
   };
