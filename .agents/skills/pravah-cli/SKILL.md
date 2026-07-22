@@ -40,10 +40,17 @@ pravah review list --status pending --limit 25 --json
 pravah sync status --provider google_calendar --json
 pravah agent context --json
 pravah agent task --task-id <id> --json
-pravah tasks add --title <title> --description <notes> --json
-pravah tasks update --task-id <task-id> <fields> --json
-pravah tasks link-goal --task-id <task-id> --goal-id <goal-id> --json
-pravah tasks unlink-goal --task-id <task-id> --json
+# For each requested write: preview first, apply with the same explicit key,
+# then read the affected task back with `agent task`.
+pravah tasks add --title <title> --description <notes> --dry-run --idempotency-key <key> --json
+pravah tasks add --title <title> --description <notes> --idempotency-key <key> --json
+pravah tasks update --task-id <task-id> <fields> --dry-run --idempotency-key <key> --json
+pravah tasks update --task-id <task-id> <fields> --idempotency-key <key> --json
+pravah tasks link-goal --task-id <task-id> --goal-id <goal-id> --dry-run --idempotency-key <key> --json
+pravah tasks link-goal --task-id <task-id> --goal-id <goal-id> --idempotency-key <key> --json
+pravah tasks unlink-goal --task-id <task-id> --dry-run --idempotency-key <key> --json
+pravah tasks unlink-goal --task-id <task-id> --idempotency-key <key> --json
+pravah agent task --task-id <task-id> --json
 ```
 
 Use `pravah capabilities --json` or `<namespace> <command> --help` to discover the current contract rather than treating this list as exhaustive.

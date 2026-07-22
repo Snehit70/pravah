@@ -27,6 +27,7 @@ import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { CalendarIcon, CheckIcon, CloseIcon } from "../components/UiIcons";
 import { dateLabel } from "../lib/dates";
 import type { TimelineLayout } from "../lib/userPreferences";
+import type { ManualTriageTarget } from "../features/overdue-triage/types";
 import { useConfirm } from "../hooks/useConfirm";
 import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
 import { useListIntroStagger } from "../hooks/useListIntroStagger";
@@ -47,10 +48,7 @@ type TimelineScreenProps = {
   /** Total overdue count (from the workspace buckets). Falls back to a local
    *  count of the dropped sections when not supplied. */
   overdueCount?: number;
-  onTriageOverdue?: (
-    taskId: string,
-    target: "today" | "tomorrow" | "week" | "drop" | { date: string }
-  ) => void;
+  onTriageOverdue?: (taskId: string, target: ManualTriageTarget) => void;
   onRescheduleAllGoals?: () => void;
   /** Timeline layout preference — the compact list (default) or the
    *  comfortable day-card carousel. */

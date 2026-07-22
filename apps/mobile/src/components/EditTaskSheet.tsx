@@ -815,7 +815,7 @@ const styles = StyleSheet.create({
     color: colors.error,
   },
   quickActions: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
     gap: spacing.sm,

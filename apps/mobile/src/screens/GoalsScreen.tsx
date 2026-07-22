@@ -434,7 +434,7 @@ function GoalDetailSheet({
               ]}
               showsVerticalScrollIndicator={false}
             >
-              {taskFilter === "open" ? (
+              {taskFilter === "open" && hasTasks ? (
                 <>
                   <View>
                     <Text style={detailStyles.groupLabel}>Next</Text>

@@ -38,7 +38,7 @@ convex/                     Backend
 apps/mobile/                Expo React Native client
   docs/                     Mobile-specific architecture and UX docs
 packages/cli/               Standalone bun-targeted authenticated automation CLI
-.agents/skills/pravah-cli/  Read-only agent workflow
+.agents/skills/pravah-cli/  Explicitly authorized read/write agent workflow
 ```
 
 ## Web UI Design System
@@ -102,7 +102,10 @@ See `convex/schema.ts` for canonical field definitions and indexes.
 - Goal writes are create, update, and delete, using scoped, idempotent automation paths.
 - Goal Link writes are link and unlink, using the same scoped, idempotent automation path.
 - Bearer-authenticated writes require idempotency keys and replay exact retries atomically.
-- The repo-local `pravah-cli` skill is intentionally read-only.
+- The repo-local `pravah-cli` skill permits authenticated writes only when the
+  user explicitly requests the corresponding mutation; otherwise the workflow
+  remains read-only. Writes use scoped authorization, idempotency keys, and
+  readback verification.
 
 ## Inbox Drag Reorder — Optimistic Flow
 
