@@ -6,7 +6,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   resolve: {
+    dedupe: ["react", "react-dom"],
     alias: {
+      react: path.resolve(__dirname, "../../node_modules/react"),
+      "react-dom": path.resolve(__dirname, "../../node_modules/react-dom"),
       "react-native-svg": path.resolve(__dirname, "src/test/mocks/react-native-svg.tsx"),
     },
   },

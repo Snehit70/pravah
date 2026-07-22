@@ -10,6 +10,10 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const { mockConfirm } = vi.hoisted(() => ({
+  mockConfirm: vi.fn(async () => true),
+}));
+
 // ─── react-native mock ────────────────────────────────────────────────────────
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
@@ -246,6 +250,10 @@ vi.mock("../hooks/useReducedMotion", () => ({
   useReducedMotion: () => false,
 }));
 
+vi.mock("../hooks/useConfirm", () => ({
+  useConfirm: () => mockConfirm,
+}));
+
 vi.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
@@ -274,6 +282,7 @@ describe("AddTaskSheet", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockConfirm.mockResolvedValue(true);
     ref = { current: null };
   });
 
@@ -625,6 +634,45 @@ describe("AddTaskSheet", () => {
     await waitFor(() => expect(mockOnAdd).toHaveBeenCalledTimes(1));
     expect(mockOnSheetChange).toHaveBeenCalledWith(false);
     expect(screen.queryByTestId("modal")).toBeNull();
+  });
+
+  it("asks to discard a dirty draft when the backdrop is tapped", async () => {
+    render(
+      <AddTaskSheet
+        ref={ref}
+        onAdd={mockOnAdd}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+      />
+    );
+
+    act(() => ref.current?.open());
+    fireEvent.change(screen.getByTestId("title-input"), { target: { value: "Keep this thought" } });
+
+    await act(async () => fireEvent.click(screen.getByLabelText("Dismiss")));
+
+    expect(mockOnSheetChange).toHaveBeenLastCalledWith(false);
+    expect(screen.queryByTestId("modal")).toBeNull();
+  });
+
+  it("keeps a dirty draft when backdrop discard is cancelled", async () => {
+    mockConfirm.mockResolvedValueOnce(false);
+    render(
+      <AddTaskSheet
+        ref={ref}
+        onAdd={mockOnAdd}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+      />
+    );
+
+    act(() => ref.current?.open());
+    fireEvent.change(screen.getByTestId("title-input"), { target: { value: "Keep this thought" } });
+    await act(async () => fireEvent.click(screen.getByLabelText("Dismiss")));
+
+    expect(screen.getByTestId("modal")).toBeTruthy();
+    expect((screen.getByTestId("title-input") as HTMLInputElement).value).toBe("Keep this thought");
+    expect(mockOnSheetChange).not.toHaveBeenCalledWith(false);
   });
 
   it("offers Done mid-burst when the title is empty and closes without saving", async () => {

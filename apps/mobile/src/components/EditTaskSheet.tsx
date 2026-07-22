@@ -25,20 +25,20 @@ import { haptic } from "../lib/haptic";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "./TaskCard";
 import { isTaskCompleted, isTaskOnTimeline } from "../lib/taskState";
-import { humanDate } from "../lib/dates";
 import type { Id } from "../../../../convex/_generated/dataModel";
-import { formatTime12h, type TaskPriority } from "../lib/task-form";
+import type { TaskPriority } from "../lib/task-form";
+import { TaskMetaFields } from "./TaskMetaFields";
 import { useConfirm } from "../hooks/useConfirm";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useGoals } from "../hooks/useGoals";
 import { goalLinksStore } from "../lib/goalLinks";
 import { useGoalMutations } from "../hooks/useGoalMutations";
 import { useReducedMotion } from "../hooks/useReducedMotion";
+import { QuickScheduleSheet } from "./QuickScheduleSheet";
 import {
   CheckIcon,
   CalendarIcon,
   TrashIcon,
-  StarIcon,
   FileTextIcon,
   ChevronDownIcon,
   ChevronUpIcon,
@@ -67,6 +67,7 @@ type EditTaskSheetProps = {
   onSheetChange?: (isOpen: boolean) => void;
   onComplete?: (taskId: Id<"tasks">) => void;
   onReopen?: (taskId: Id<"tasks">) => void;
+  onScheduleToDate?: (taskId: Id<"tasks">, isoDate: string) => void;
   onUnschedule?: (taskId: Id<"tasks">) => void;
   onDelete?: (taskId: Id<"tasks">) => void;
   onSaveComplete?: (
@@ -93,6 +94,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       onSheetChange,
       onComplete,
       onReopen,
+      onScheduleToDate,
       onUnschedule,
       onDelete,
       onSaveComplete,
@@ -109,6 +111,10 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const { setGoalLink } = useGoalMutations();
 
     const [visible, setVisible] = useState(false);
+    const [scheduleTarget, setScheduleTarget] = useState<{
+      taskId: Id<"tasks">;
+      title: string;
+    } | null>(null);
     const [taskId, setTaskId] = useState<Id<"tasks"> | null>(null);
     const [taskState, setTaskState] = useState<"inbox" | "timeline" | "completed" | null>(null);
     const [title, setTitle] = useState("");
@@ -282,18 +288,6 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       if (discard) closeModal();
     }, [hasUnsavedChanges, confirm, closeModal]);
 
-    const priorityLabel =
-      priority === "p1" ? "P1" : priority === "p2" ? "P2" : priority === "p3" ? "P3" : null;
-
-    const priorityColor =
-      priority === "p1"
-        ? colors.priorityP1
-        : priority === "p2"
-          ? colors.priorityP2
-          : priority === "p3"
-            ? colors.priorityP3
-            : colors.textMuted;
-
     const isDescriptionLong = descriptionHeight > DESCRIPTION_TRUNCATE_LINES * 22;
 
     const onDescriptionLayout = useCallback((e: LayoutChangeEvent) => {
@@ -301,13 +295,14 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     }, []);
 
     return (
-      <Modal
-        visible={visible}
-        transparent
-        animationType={reducedMotion ? "none" : "slide"}
-        statusBarTranslucent
-        onRequestClose={() => void requestClose()}
-      >
+      <>
+        <Modal
+          visible={visible}
+          transparent
+          animationType={reducedMotion ? "none" : "slide"}
+          statusBarTranslucent
+          onRequestClose={() => void requestClose()}
+        >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={[
@@ -316,14 +311,12 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           ]}
         >
           <BlurView intensity={38} tint="light" style={StyleSheet.absoluteFill} />
-          {!hasUnsavedChanges ? (
-            <Pressable
-              accessibilityLabel="Dismiss"
-              accessibilityRole="button"
-              style={StyleSheet.absoluteFill}
-              onPress={() => void requestClose()}
-            />
-          ) : null}
+          <Pressable
+            accessibilityLabel="Dismiss"
+            accessibilityRole="button"
+            style={StyleSheet.absoluteFill}
+            onPress={() => void requestClose()}
+          />
 
           <View style={styles.card}>
             <ScrollView
@@ -361,30 +354,18 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                 style={styles.titleInput}
               />
 
-              {/* ── Date + Priority row ── */}
-              <View style={styles.metaRow}>
-                <View style={styles.metaItem}>
-                  <CalendarIcon color={colors.textMuted} size={16} />
-                  <Text style={styles.metaText}>
-                    {deadline
-                      ? time
-                        ? `${humanDate(deadline)} · ${formatTime12h(time)}`
-                        : humanDate(deadline)
-                      : "No date"}
-                  </Text>
-                </View>
-                {priorityLabel ? (
-                  <>
-                    <Text style={styles.metaDot}>·</Text>
-                    <View style={styles.metaItem}>
-                      <StarIcon color={priorityColor} size={14} />
-                      <Text style={[styles.metaText, { color: priorityColor }]}>
-                        {priorityLabel}
-                      </Text>
-                    </View>
-                  </>
-                ) : null}
-              </View>
+              <TaskMetaFields
+                deadline={deadline}
+                time={time}
+                priority={priority}
+                onDeadlineChange={(value) => {
+                  setDeadline(value);
+                  setError(null);
+                }}
+                onTimeChange={setTime}
+                onPriorityChange={setPriority}
+                onClearError={() => setError(null)}
+              />
 
               {/* ── Goal picker (always available when goals exist) ── */}
               {goals.length > 0 ? (
@@ -593,9 +574,28 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                           </Text>
                         </Pressable>
                       ) : null}
+                      {taskState === "inbox" && onScheduleToDate ? (
+                        <Pressable
+                          onPress={() => {
+                            setScheduleTarget({ taskId, title });
+                            closeModal();
+                          }}
+                          hitSlop={12}
+                          accessibilityRole="button"
+                          accessibilityLabel="Schedule Task"
+                          style={({ pressed }) => [
+                            styles.quickActionItem,
+                            pressed && { opacity: 0.6 },
+                          ]}
+                        >
+                          <CalendarIcon color={colors.warning} size={16} />
+                          <Text style={[styles.quickActionText, { color: colors.warning }]}>
+                            Schedule
+                          </Text>
+                        </Pressable>
+                      ) : null}
                     </>
                   )}
-                  <View style={{ flex: 1 }} />
                   {onDelete ? (
                     <Pressable
                       onPress={() => {
@@ -654,7 +654,16 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
+        </Modal>
+        <QuickScheduleSheet
+          visible={scheduleTarget !== null}
+          taskTitle={scheduleTarget?.title}
+          onClose={() => setScheduleTarget(null)}
+          onPick={(isoDate) => {
+            if (scheduleTarget) onScheduleToDate?.(scheduleTarget.taskId, isoDate);
+          }}
+        />
+      </>
     );
   }
 );
@@ -724,24 +733,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
-  },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  metaItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-  },
-  metaText: {
-    ...typography.bodyMd,
-    color: colors.textMuted,
-  },
-  metaDot: {
-    ...typography.bodyMd,
-    color: colors.textMuted,
   },
   goalSection: {
     gap: spacing.sm,

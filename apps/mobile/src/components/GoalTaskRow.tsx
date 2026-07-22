@@ -29,6 +29,8 @@ type GoalTaskRowProps = {
    * schedule affordance. They stay selectable so bulk unlink can reach them.
    */
   done?: boolean;
+  /** Use the same raised task-card container as completion history. */
+  card?: boolean;
   selectMode: boolean;
   selected: boolean;
   /** Normal-mode tap: open the full editor. */
@@ -48,6 +50,7 @@ function GoalTaskRowInner({
   task,
   overdue = false,
   done = false,
+  card = false,
   selectMode,
   selected,
   onPress,
@@ -75,7 +78,12 @@ function GoalTaskRowInner({
         selectMode ? "Toggle selection" : "Opens the task. Long press to select."
       }
       hitSlop={selectMode ? 4 : 0}
-      style={({ pressed }) => [styles.row, selected && styles.rowSelected, pressed && styles.rowPressed]}
+      style={({ pressed }) => [
+        styles.row,
+        card && styles.rowCard,
+        selected && styles.rowSelected,
+        pressed && styles.rowPressed,
+      ]}
     >
       {leading}
 
@@ -119,29 +127,41 @@ export const GoalTaskRow = memo(GoalTaskRowInner);
 
 const styles = StyleSheet.create({
   row: {
+    minHeight: 56,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: 9,
-    paddingHorizontal: spacing.sm,
-    marginHorizontal: -spacing.sm,
-    borderRadius: radii.md,
-    borderCurve: "continuous",
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
   },
   rowSelected: {
     backgroundColor: colors.bgFloating,
+  },
+  rowCard: {
+    minHeight: 72,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    borderCurve: "continuous",
+    backgroundColor: colors.bgCard,
   },
   rowPressed: {
     backgroundColor: colors.bgSurface,
   },
   dot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: colors.border,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: colors.textMuted,
+    backgroundColor: "transparent",
   },
   dotDone: {
     backgroundColor: colors.success,
+    borderColor: colors.success,
   },
   check: {
     width: 16,
@@ -171,8 +191,8 @@ const styles = StyleSheet.create({
     textDecorationLine: "line-through",
   },
   scheduleBtn: {
-    minWidth: 32,
-    height: 30,
+    minWidth: 44,
+    height: 44,
     paddingHorizontal: spacing.xs,
     borderRadius: radii.sm,
     borderCurve: "continuous",

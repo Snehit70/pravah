@@ -428,8 +428,7 @@ describe("TimelineScreen", () => {
     expect(screen.getByTestId("skeleton-timeline")).toBeTruthy();
   });
 
-  it("collapses overdue into a tappable header and keeps it out of the list", () => {
-    const onOpenOverdue = vi.fn();
+  it("keeps overdue tasks visible inline when triage actions are available", () => {
     const overdueSections: [string, MobileTask[]][] = [
       [
         "2026-05-01",
@@ -453,17 +452,11 @@ describe("TimelineScreen", () => {
         {...baseProps}
         sections={overdueSections}
         overdueCount={1}
-        onOpenOverdue={onOpenOverdue}
+        onTriageOverdue={vi.fn()}
       />
     );
 
-    // The overdue task is not rendered inline...
-    expect(screen.queryByTestId("task-od1")).toBeNull();
-    // ...but the collapsed header is, and it opens the triage sheet on press.
-    const header = screen.getByText("Overdue · 1");
-    expect(header).toBeTruthy();
-    header.click();
-    expect(onOpenOverdue).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("task-od1")).toBeTruthy();
   });
 
   it("keeps overdue tasks visible inline when triage is unavailable", () => {
@@ -628,8 +621,7 @@ describe("TimelineScreen", () => {
     });
   });
 
-  it("replaces the overdue header with the select bar while selecting", () => {
-    const onOpenOverdue = vi.fn();
+  it("shows the select bar while overdue tasks remain inline", () => {
     const overdueSections: [string, MobileTask[]][] = [
       [
         "2026-05-01",
@@ -653,16 +645,15 @@ describe("TimelineScreen", () => {
         {...baseProps}
         sections={overdueSections}
         overdueCount={1}
-        onOpenOverdue={onOpenOverdue}
+        onTriageOverdue={vi.fn()}
         onMarkManyDone={vi.fn(async () => true)}
       />
     );
 
-    expect(screen.getByText("Overdue · 1")).toBeTruthy();
+    expect(screen.getByTestId("task-od1")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "long-task1" }));
 
-    expect(screen.queryByText("Overdue · 1")).toBeNull();
     expect(screen.getByText("1 selected")).toBeTruthy();
   });
 });

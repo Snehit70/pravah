@@ -13,10 +13,12 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { BackHandler, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import NavGoalsAsset from "../assets/icons/nav-goals.svg";
+import AddNewGoalAsset from "../assets/icons/add-new-goal.svg";
+import AddNewTaskAsset from "../assets/icons/add-new-task.svg";
 import { haptic } from "../lib/haptic";
 import { shortDate, toIsoDate } from "../lib/dates";
 import Animated, {
@@ -34,19 +36,18 @@ import { useGoals, useGoalLinks } from "../hooks/useGoals";
 import { useGoalMutations } from "../hooks/useGoalMutations";
 import { useConfirm } from "../hooks/useConfirm";
 import { useReducedMotion } from "../hooks/useReducedMotion";
-import type { MobileTask } from "../components/TaskCard";
+import { TaskCard, type MobileTask } from "../components/TaskCard";
 import { isTaskCompleted } from "../lib/taskState";
 import { groupLinkedTasks } from "../lib/goalTasks";
 import { GoalTaskRow } from "../components/GoalTaskRow";
+import { SlidingSegmented } from "../components/SlidingSegmented";
 import { GoalSettingsSheet } from "../components/GoalSettingsSheet";
 import { QuickScheduleSheet } from "../components/QuickScheduleSheet";
 import {
+  AdjustmentsIcon,
   CheckIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
+  ChevronLeftIcon,
   CloseIcon,
-  PencilIcon,
-  PlusIcon,
   UnlinkIcon,
 } from "../components/UiIcons";
 
@@ -141,11 +142,7 @@ function GoalProgressBar({
 }
 
 type GoalDetailSheetProps = {
-  /**
-   * Drives the Modal. Kept separate from `goal` so the parent can close the
-   * sheet without nulling the content — otherwise the slide-out animation
-   * plays over a blank page.
-   */
+  /** Drives the focused workspace layer inside the Goals tab. */
   visible: boolean;
   goal: GoalItem | null;
   progress: GoalProgress;
@@ -187,7 +184,9 @@ function GoalDetailSheet({
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [scheduleTask, setScheduleTask] = useState<MobileTask | null>(null);
-  const [showDone, setShowDone] = useState(false);
+  const [taskFilter, setTaskFilter] = useState<"open" | "done">("open");
+  const [sortControlsOpen, setSortControlsOpen] = useState(false);
+  const [sortMode, setSortMode] = useState<"plan" | "newest">("plan");
   // Reset interaction state on open (adjust-during-render, per React docs) —
   // the sheet stays mounted across open/close so the exit animation keeps its
   // content, which means state no longer resets by remount.
@@ -198,7 +197,8 @@ function GoalDetailSheet({
       setSelectMode(false);
       setSelectedIds(new Set());
       setScheduleTask(null);
-      setShowDone(false);
+      setTaskFilter("open");
+      setSortControlsOpen(false);
     }
   }
   const hasTasks = progress.total > 0;
@@ -209,6 +209,16 @@ function GoalDetailSheet({
     () => groupLinkedTasks(linked, todayIso),
     [linked, todayIso]
   );
+  const { nextTasks, unscheduledTasks } = useMemo(() => {
+    const sort = (tasks: MobileTask[]) =>
+      sortMode === "newest"
+        ? [...tasks].sort((a, b) => b.createdAt - a.createdAt)
+        : tasks;
+    return {
+      nextTasks: sort(groups.filter((group) => group.key !== "nodate").flatMap((group) => group.tasks)),
+      unscheduledTasks: sort(groups.find((group) => group.key === "nodate")?.tasks ?? []),
+    };
+  }, [groups, sortMode]);
 
   const exitSelectMode = useCallback(() => {
     setSelectMode(false);
@@ -277,10 +287,18 @@ function GoalDetailSheet({
 
   const handlePlanNext = useCallback(() => {
     if (!goal || !onCreateTaskForGoal) return;
-    const goalId = goal.id;
-    onClose();
-    setTimeout(() => onCreateTaskForGoal(goalId), 280);
-  }, [goal, onClose, onCreateTaskForGoal]);
+    onCreateTaskForGoal(goal.id);
+  }, [goal, onCreateTaskForGoal]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (selectMode) exitSelectMode();
+      else onClose();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [visible, selectMode, exitSelectMode, onClose]);
 
   // One line of metadata over the progress rule: priority, deadline, count.
   // Each segment keeps its own ink; separators stay muted.
@@ -309,39 +327,37 @@ function GoalDetailSheet({
     color: colors.textSecondary,
   });
 
+  if (!visible) return null;
+
   return (
-    <Modal
-      visible={visible}
-      transparent={false}
-      animationType={reducedMotion ? "none" : "slide"}
-      onRequestClose={selectMode ? exitSelectMode : onClose}
-    >
-      <View style={detailStyles.backdrop}>
+      <Animated.View
+        entering={reducedMotion ? undefined : FadeIn.duration(180)}
+        style={detailStyles.backdrop}
+      >
         {goal ? (
-          // The Modal's slide is the entrance; no second animation on top.
           <View style={detailStyles.card}>
-            {/* Identity: title, notes, one meta line over the progress rule. */}
-            <View style={[detailStyles.headerBlock, { paddingTop: Math.max(insets.top, spacing.lg) }]}>
-              <View style={detailStyles.titleRow}>
-                <Text style={detailStyles.title} numberOfLines={2}>{goal.text}</Text>
+            <View style={[detailStyles.headerBlock, { paddingTop: spacing.sm }]}>
+              <View style={detailStyles.navRow}>
+                <Pressable
+                  onPress={onClose}
+                  accessibilityRole="button"
+                  accessibilityLabel="Back to goals"
+                  style={({ pressed }) => [detailStyles.backButton, pressed && { opacity: 0.6 }]}
+                >
+                  <ChevronLeftIcon size={22} color={colors.textPrimary} strokeWidth={2} />
+                  <Text style={detailStyles.backLabel}>Goal</Text>
+                </Pressable>
                 <Pressable
                   onPress={onOpenSettings}
-                  hitSlop={8}
                   accessibilityRole="button"
                   accessibilityLabel="Goal settings"
                   style={({ pressed }) => [detailStyles.iconBtn, pressed && { opacity: 0.6 }]}
                 >
-                  <PencilIcon size={16} color={colors.textSecondary} strokeWidth={1.8} />
+                  <Text style={detailStyles.moreText}>⋮</Text>
                 </Pressable>
-                <Pressable
-                  onPress={onClose}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Close goal details"
-                  style={({ pressed }) => [detailStyles.iconBtn, pressed && { opacity: 0.6 }]}
-                >
-                  <CloseIcon size={16} color={colors.textSecondary} strokeWidth={1.9} />
-                </Pressable>
+              </View>
+              <View style={detailStyles.titleRow}>
+                <Text style={detailStyles.title} numberOfLines={2}>{goal.text}</Text>
               </View>
               {goal.description ? (
                 <Text style={detailStyles.description} numberOfLines={2}>
@@ -359,22 +375,75 @@ function GoalDetailSheet({
               <GoalProgressBar ratio={progress.ratio} isComplete={isComplete} />
             </View>
 
+            <View style={detailStyles.filterRow}>
+              <View style={detailStyles.filterControl}>
+                <SlidingSegmented
+                  options={[
+                    {
+                      value: "open",
+                      label: `Open ${groups.reduce((sum, group) => sum + group.tasks.length, 0)}`,
+                    },
+                    { value: "done", label: `Done ${done.length}` },
+                  ]}
+                  value={taskFilter}
+                  onSelect={setTaskFilter}
+                />
+              </View>
+              <Pressable
+                onPress={() => setSortControlsOpen((open) => !open)}
+                accessibilityRole="button"
+                accessibilityLabel="Sort goal tasks"
+                accessibilityState={{ expanded: sortControlsOpen }}
+                style={({ pressed }) => [detailStyles.sortButton, pressed && { opacity: 0.6 }]}
+              >
+                <AdjustmentsIcon color={colors.textSecondary} size={20} strokeWidth={1.8} />
+              </Pressable>
+            </View>
+
+            {sortControlsOpen ? (
+              <View style={detailStyles.sortPanel}>
+                <Text style={detailStyles.sortLabel}>Sort tasks</Text>
+                {(["plan", "newest"] as const).map((mode) => {
+                  const selected = sortMode === mode;
+                  return (
+                    <Pressable
+                      key={mode}
+                      onPress={() => {
+                        setSortMode(mode);
+                        setSortControlsOpen(false);
+                      }}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      style={({ pressed }) => [detailStyles.sortOption, pressed && { opacity: 0.65 }]}
+                    >
+                      <View style={[detailStyles.sortRadio, selected && detailStyles.sortRadioSelected]} />
+                      <Text style={[detailStyles.sortOptionText, selected && detailStyles.sortOptionTextSelected]}>
+                        {mode === "plan" ? "Plan order" : "Newest added"}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+
             <ScrollView
               style={detailStyles.scrollArea}
               contentContainerStyle={[
                 detailStyles.scrollContent,
-                { paddingBottom: Math.max(insets.bottom, spacing.lg) + (selectMode ? 76 : 0) },
+                { paddingBottom: Math.max(insets.bottom, spacing.lg) + 84 },
               ]}
               showsVerticalScrollIndicator={false}
             >
-              {groups.map((group) => (
-                <View key={group.key}>
-                  <Text style={detailStyles.groupLabel}>{group.label}</Text>
-                  {group.tasks.map((task) => (
+              {taskFilter === "open" && hasTasks ? (
+                <>
+                  <View>
+                    <Text style={detailStyles.groupLabel}>Next</Text>
+                    {nextTasks.length > 0 ? nextTasks.map((task) => (
                     <GoalTaskRow
                       key={String(task._id)}
                       task={task}
-                      overdue={group.key === "overdue"}
+                      card
+                      overdue={Boolean(task.deadline && task.deadline < todayIso)}
                       selectMode={selectMode}
                       selected={selectedIds.has(String(task._id))}
                       onPress={() => onOpenTask(task)}
@@ -382,52 +451,47 @@ function GoalDetailSheet({
                       onToggleSelect={() => toggleSelected(task)}
                       onSchedule={onScheduleToDate ? () => setScheduleTask(task) : undefined}
                     />
-                  ))}
-                </View>
-              ))}
-
-              {hasTasks ? null : (
-                <Text style={detailStyles.noTasksHint}>
-                  Open Capture, pick a goal while adding a task to link it here.
-                </Text>
-              )}
-
-              {onCreateTaskForGoal && !selectMode ? (
-                <Pressable
-                  onPress={handlePlanNext}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Plan next task for ${goal.text}`}
-                  style={({ pressed }) => [detailStyles.planNextRow, pressed && { opacity: 0.6 }]}
-                >
-                  <PlusIcon size={15} color={colors.accent} strokeWidth={2.2} />
-                  <Text style={detailStyles.planNextText}>Plan next task</Text>
-                </Pressable>
-              ) : null}
-
-              {/* Finished work: evidence, not workbench — collapsed by default. */}
-              {done.length > 0 ? (
-                <View style={detailStyles.doneSection}>
-                  <Pressable
-                    onPress={() => setShowDone((v) => !v)}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityState={{ expanded: showDone }}
-                    accessibilityLabel={`${done.length} done ${done.length === 1 ? "task" : "tasks"}`}
-                    style={({ pressed }) => [detailStyles.doneToggle, pressed && { opacity: 0.6 }]}
-                  >
-                    {showDone ? (
-                      <ChevronDownIcon size={14} color={colors.textMuted} strokeWidth={2} />
-                    ) : (
-                      <ChevronRightIcon size={14} color={colors.textMuted} strokeWidth={2} />
+                    )) : (
+                      <Text style={detailStyles.emptyGroupText}>Nothing scheduled next.</Text>
                     )}
-                    <Text style={detailStyles.doneToggleText}>{done.length} done</Text>
-                  </Pressable>
-                  {showDone
-                    ? done.map((task) => (
+                  </View>
+                  {unscheduledTasks.length > 0 ? (
+                    <View>
+                      <Text style={detailStyles.groupLabel}>Unscheduled {unscheduledTasks.length}</Text>
+                      {unscheduledTasks.map((task) => (
                         <GoalTaskRow
                           key={String(task._id)}
                           task={task}
+                          card
+                          selectMode={selectMode}
+                          selected={selectedIds.has(String(task._id))}
+                          onPress={() => onOpenTask(task)}
+                          onLongPress={() => enterSelectMode(task)}
+                          onToggleSelect={() => toggleSelected(task)}
+                          onSchedule={onScheduleToDate ? () => setScheduleTask(task) : undefined}
+                        />
+                      ))}
+                    </View>
+                  ) : null}
+                </>
+              ) : null}
+
+              {taskFilter === "open" && !hasTasks ? (
+                <Text style={detailStyles.noTasksHint}>
+                  Add the first task that will move this goal forward.
+                </Text>
+              ) : null}
+
+              {taskFilter === "done" ? (
+                done.length > 0 ? (
+                  <View>
+                    <Text style={detailStyles.groupLabel}>Completed</Text>
+                    {done.map((task) => (
+                      selectMode ? (
+                        <GoalTaskRow
+                          key={String(task._id)}
+                          task={task}
+                          card
                           done
                           selectMode={selectMode}
                           selected={selectedIds.has(String(task._id))}
@@ -435,11 +499,38 @@ function GoalDetailSheet({
                           onLongPress={() => enterSelectMode(task)}
                           onToggleSelect={() => toggleSelected(task)}
                         />
-                      ))
-                    : null}
-                </View>
+                      ) : (
+                        <View key={String(task._id)} style={detailStyles.completedCardWrap}>
+                          <TaskCard
+                            task={task}
+                            onDone={() => undefined}
+                            onEdit={() => onOpenTask(task)}
+                            onDragHandlePress={() => enterSelectMode(task)}
+                            hideCompletionControl
+                          />
+                        </View>
+                      )
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={detailStyles.noTasksHint}>Completed tasks will collect here.</Text>
+                )
               ) : null}
             </ScrollView>
+
+            {onCreateTaskForGoal && !selectMode ? (
+              <View style={[detailStyles.addDock, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+                <Pressable
+                  onPress={handlePlanNext}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Add task to ${goal.text}`}
+                  style={({ pressed }) => [detailStyles.addButton, pressed && { opacity: 0.86 }]}
+                >
+                  <AddNewTaskAsset width={22} height={22} color={colors.textInverse} />
+                  <Text style={detailStyles.addButtonText}>Add task</Text>
+                </Pressable>
+              </View>
+            ) : null}
 
             {selectMode ? (
               <Animated.View
@@ -534,8 +625,7 @@ function GoalDetailSheet({
             />
           </View>
         ) : null}
-      </View>
-    </Modal>
+      </Animated.View>
   );
 }
 
@@ -553,6 +643,8 @@ type GoalsScreenProps = {
   onMarkManyDone?: (taskIds: MobileTask["_id"][]) => Promise<boolean>;
   /** Optional deep-link target for opening a specific goal detail. */
   focusGoalId?: string | null;
+  /** Lets the app shell yield its tab bar while this focused workspace is open. */
+  onDetailVisibilityChange?: (visible: boolean) => void;
 };
 
 type GoalProgress = {
@@ -571,32 +663,34 @@ export function GoalsScreen({
   onScheduleToDate,
   onMarkManyDone,
   focusGoalId,
+  onDetailVisibilityChange,
 }: GoalsScreenProps) {
   const reducedMotion = useReducedMotion();
   const confirm = useConfirm();
   const { deleteGoal, updateGoal } = useGoalMutations();
   const { goals, isHydrated } = useGoals();
   const links = useGoalLinks();
-  // Two ids on purpose: `selectedGoalId` drives the Modal's visibility and
-  // nulls on close; `renderGoalId` keeps the last-opened goal so the sheet
-  // still has content while its slide-out animation plays.
+  // Keep the rendered goal separate from visibility so nested sheets can
+  // finish dismissing without briefly replacing the workspace content.
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
   const [renderGoalId, setRenderGoalId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const appliedFocusGoalIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    onDetailVisibilityChange?.(selectedGoalId !== null);
+    return () => onDetailVisibilityChange?.(false);
+  }, [selectedGoalId, onDetailVisibilityChange]);
 
   const openGoalSheet = useCallback((goalId: string) => {
     setSelectedGoalId(goalId);
     setRenderGoalId(goalId);
   }, []);
 
-  // The goal detail is a native Modal that stacks above the bottom-sheet
-  // editor, so close it first and let it dismiss before opening the task.
   const handleOpenTask = useCallback(
     (task: MobileTask) => {
       if (!onOpenTask) return;
-      setSelectedGoalId(null);
-      setTimeout(() => onOpenTask(task), 280);
+      onOpenTask(task);
     },
     [onOpenTask]
   );
@@ -686,14 +780,10 @@ export function GoalsScreen({
           accessibilityLabel="Create a new goal"
           style={({ pressed }) => [styles.emptyAction, pressed && { opacity: 0.75 }]}
         >
-          <Text style={styles.emptyActionText}>New goal</Text>
+          <AddNewGoalAsset width={24} height={24} color={colors.textInverse} />
         </Pressable>
       ) : null}
     </Animated.View>
-  );
-
-  const footerHint = (
-    <Text style={styles.footerHint}>Goals sync across your devices.</Text>
   );
 
   // Content follows renderGoalId (survives close); visibility follows
@@ -734,14 +824,13 @@ export function GoalsScreen({
                   accessibilityLabel="Create a new goal"
                   style={({ pressed }) => [styles.newGoalAction, pressed && { opacity: 0.7 }]}
                 >
-                  <Text style={styles.newGoalActionText}>New goal</Text>
+                  <AddNewGoalAsset width={24} height={24} color={colors.accent} />
                 </Pressable>
               ) : null}
             </View>
           ) : null
         }
         ListEmptyComponent={isHydrated ? emptyBlock : null}
-        ListFooterComponent={sortedGoals.length > 0 ? footerHint : null}
         renderItem={({ item, index }) => {
           const progress = progressByGoal.get(item.id) ?? { total: 0, done: 0, ratio: 0 };
           const hasTasks = progress.total > 0;
@@ -816,9 +905,9 @@ export function GoalsScreen({
                           hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
                           accessibilityRole="button"
                           accessibilityLabel={`Plan next task for ${item.text}`}
-                          style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+                          style={({ pressed }) => [styles.planNextAction, pressed && { opacity: 0.6 }]}
                         >
-                          <Text style={styles.planNextActionText}>Plan next task</Text>
+                          <AddNewTaskAsset width={22} height={22} color={colors.accent} />
                         </Pressable>
                       ) : null}
                     </View>
@@ -879,14 +968,10 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   newGoalAction: {
-    minHeight: 44,
+    width: 44,
+    height: 44,
+    alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.sm,
-  },
-  newGoalActionText: {
-    ...typography.bodyMd,
-    color: colors.accent,
-    fontFamily: typography.title.fontFamily,
   },
   goalCard: {
     marginHorizontal: spacing.lg,
@@ -936,10 +1021,12 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingTop: 6,
   },
-  planNextActionText: {
-    ...typography.bodyMd,
-    color: colors.accent,
-    fontFamily: typography.title.fontFamily,
+  planNextAction: {
+    width: 44,
+    height: 44,
+    marginVertical: -14,
+    alignItems: "center",
+    justifyContent: "center",
   },
   progressTrack: {
     height: 4,
@@ -1020,30 +1107,24 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   emptyAction: {
-    minHeight: 44,
+    width: 48,
+    height: 48,
     marginTop: spacing.sm,
-    paddingHorizontal: spacing.lg,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radii.md,
     backgroundColor: colors.accent,
   },
-  emptyActionText: {
-    ...typography.bodyMd,
-    color: colors.textInverse,
-    fontFamily: typography.title.fontFamily,
-  },
-  footerHint: {
-    ...typography.micro,
-    color: colors.textMuted,
-    textAlign: "center",
-    paddingTop: spacing.md,
-  },
 });
 
 const detailStyles = StyleSheet.create({
   backdrop: {
-    flex: 1,
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 20,
     backgroundColor: colors.bg,
   },
   card: {
@@ -1053,8 +1134,29 @@ const detailStyles = StyleSheet.create({
   },
   headerBlock: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.lg,
     gap: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
+  },
+  navRow: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacing.xs,
+  },
+  backButton: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginLeft: -spacing.sm,
+    paddingHorizontal: spacing.sm,
+  },
+  backLabel: {
+    ...typography.headline,
+    color: colors.textPrimary,
   },
   titleRow: {
     flexDirection: "row",
@@ -1063,19 +1165,22 @@ const detailStyles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    ...typography.headline,
+    ...typography.display,
     color: colors.textPrimary,
   },
   iconBtn: {
-    width: 32,
-    height: 32,
+    width: 44,
+    height: 44,
     borderRadius: radii.md,
     borderCurve: "continuous",
-    backgroundColor: colors.bgCard,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
     alignItems: "center",
     justifyContent: "center",
+  },
+  moreText: {
+    fontFamily: fonts.sansSemibold,
+    fontSize: 26,
+    lineHeight: 30,
+    color: colors.textSecondary,
   },
   description: {
     ...typography.bodyMd,
@@ -1087,49 +1192,115 @@ const detailStyles = StyleSheet.create({
   metaSeparator: {
     color: colors.textMuted,
   },
+  filterRow: {
+    minHeight: 64,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingLeft: spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
+  },
+  filterControl: {
+    flex: 1,
+  },
+  sortButton: {
+    width: 56,
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sortPanel: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    minHeight: 52,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.bgSurface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
+  },
+  sortLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
+    marginRight: "auto",
+  },
+  sortOption: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  sortRadio: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.textMuted,
+  },
+  sortRadioSelected: {
+    borderWidth: 3.5,
+    borderColor: colors.accent,
+  },
+  sortOptionText: {
+    ...typography.bodyMd,
+    color: colors.textSecondary,
+  },
+  sortOptionTextSelected: {
+    fontFamily: fonts.sansSemibold,
+    color: colors.textPrimary,
+  },
   scrollArea: {
     flex: 1,
   },
   scrollContent: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    gap: spacing.md,
+    paddingTop: spacing.lg,
+    gap: spacing.lg,
   },
   groupLabel: {
     ...typography.micro,
     color: colors.textMuted,
     marginBottom: 2,
   },
+  completedCardWrap: {
+    marginHorizontal: -spacing.lg,
+  },
   noTasksHint: {
     ...typography.bodyMd,
     color: colors.textMuted,
   },
-  planNextRow: {
-    minHeight: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-  },
-  planNextText: {
+  emptyGroupText: {
     ...typography.bodyMd,
-    color: colors.accent,
-    fontWeight: "600",
+    color: colors.textMuted,
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
   },
-  doneSection: {
+  addDock: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.bgFloating,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderSubtle,
-    paddingTop: spacing.xs,
+    borderTopColor: colors.border,
   },
-  doneToggle: {
-    minHeight: 44,
+  addButton: {
+    height: 52,
+    borderRadius: radii.lg,
+    borderCurve: "continuous",
+    backgroundColor: colors.accent,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
+    justifyContent: "center",
+    gap: spacing.sm,
   },
-  doneToggleText: {
-    ...typography.bodyMd,
-    color: colors.textSecondary,
-    fontWeight: "600",
+  addButtonText: {
+    ...typography.title,
+    color: colors.textInverse,
   },
   bulkBar: {
     position: "absolute",

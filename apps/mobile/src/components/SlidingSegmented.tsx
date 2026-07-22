@@ -5,6 +5,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  type SharedValue,
 } from "react-native-reanimated";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { colors, radii, spacing, typography } from "../theme/tokens";
@@ -82,7 +83,7 @@ function SegmentOption({
   Icon?: ComponentType<{ width?: number; height?: number; color?: string }>;
   selected: boolean;
   optionIndex: number;
-  progress: ReturnType<typeof useSharedValue<number>>;
+  progress: SharedValue<number>;
   onPress: () => void;
 }) {
   const labelStyle = useAnimatedStyle(() => ({

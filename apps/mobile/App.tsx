@@ -74,7 +74,6 @@ import { useReminderSync } from "./src/hooks/useReminderSync";
 import { useReducedMotion } from "./src/hooks/useReducedMotion";
 import { useDisplayWorkspace } from "./src/hooks/useDisplayWorkspace";
 import { resetPreferencesStore, useUserPreferences } from "./src/hooks/useUserPreferences";
-import { OverdueSheet } from "./src/features/overdue-triage/OverdueSheet";
 import { useOverdueTriageController } from "./src/features/overdue-triage/controller";
 import { isTaskInInbox } from "./src/lib/taskState";
 import { hasPriorityBoundaryViolation } from "./src/lib/taskLifecycle";
@@ -128,6 +127,7 @@ function MobileApp() {
   const [diagnosticEvents, setDiagnosticEvents] = useState<DiagnosticEvent[]>([]);
   const [selectedCompletedTask, setSelectedCompletedTask] = useState<MobileTask | null>(null);
   const [focusGoalId, setFocusGoalId] = useState<string | null>(null);
+  const [isGoalDetailOpen, setIsGoalDetailOpen] = useState(false);
   const hasLoggedPostLoginRef = useRef(false);
   const didMarkInteractiveRef = useRef(false);
   const didApplyStartupTabRef = useRef(false);
@@ -688,17 +688,8 @@ function MobileApp() {
   );
 
   const {
-    isOverdueSheetOpen,
     overdueBuckets,
     previewGroups,
-    selectedPreview,
-    applyDeadline,
-    setApplyDeadline,
-    openOverdue,
-    closeOverdue,
-    openPreview,
-    closePreview,
-    confirmPreview,
     rescheduleAll,
     handleManualTriage,
   } = useOverdueTriageController({
@@ -863,10 +854,6 @@ function MobileApp() {
         setSelectedCompletedTask(null);
         return true;
       }
-      if (isOverdueSheetOpen) {
-        closeOverdue();
-        return true;
-      }
       if (isSettingsModalOpen) {
         setIsSettingsModalOpen(false);
         return true;
@@ -896,9 +883,7 @@ function MobileApp() {
     isEditSheetOpen,
     isSettingsModalOpen,
     isKairoActive,
-    isOverdueSheetOpen,
     selectedCompletedTask,
-    closeOverdue,
     setIsSettingsModalOpen,
   ]);
 
@@ -1007,7 +992,7 @@ function MobileApp() {
       >
       {/* Compact header: brand mark + view name on one line (the mark already
           says "Pravah"; no caps label needed), subtitle tucked beneath. */}
-      <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
+      {!isGoalDetailOpen ? <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
         <View style={styles.headerMain}>
           <View style={styles.titleLockup}>
             <BrandMark size={28} />
@@ -1051,7 +1036,7 @@ function MobileApp() {
             </Pressable>
           </View>
         </View>
-      </View>
+      </View> : null}
 
       {/* Toast — left rule + line of copy, no filled pill. */}
       {toast ? (
@@ -1163,8 +1148,13 @@ function MobileApp() {
               tabBarHeight={tabBarHeight}
               onRefresh={handleRefresh}
               overdueCount={isTimelineTriageReady ? overdueBuckets.totalOverdue : undefined}
-              onOpenOverdue={
-                canUseWorkspaceActions && isTimelineTriageReady ? openOverdue : undefined
+              onTriageOverdue={
+                canUseWorkspaceActions && isTimelineTriageReady ? handleManualTriage : undefined
+              }
+              onRescheduleAllGoals={
+                canUseWorkspaceActions && isTimelineTriageReady && previewGroups.length > 0
+                  ? rescheduleAll
+                  : undefined
               }
               layout={prefs.timelineLayout}
               onCompleteTask={canUseWorkspaceActions ? markDone : undefined}
@@ -1202,6 +1192,7 @@ function MobileApp() {
               onScheduleToDate={canUseWorkspaceActions ? scheduleToDate : undefined}
               onMarkManyDone={canUseWorkspaceActions ? markManyDone : undefined}
               focusGoalId={focusGoalId}
+              onDetailVisibilityChange={setIsGoalDetailOpen}
             />
           </ScreenErrorBoundary>
         </Animated.View>
@@ -1227,14 +1218,16 @@ function MobileApp() {
       ) : null}
 
       {/* Bottom tab bar \u2014 no counts; the header subtitle carries those. */}
-      <BottomTabBar
-        active={activeTab}
-        onChange={handleTabChange}
-        onCapture={() => addTaskSheetRef.current?.open()}
-        canCapture={canUseWorkspaceActions && !isAddSheetOpen && !isEditSheetOpen}
-        bottomInset={tabBarBottomPadding}
-        tabOrder={prefs.tabOrder}
-      />
+      {!isGoalDetailOpen ? (
+        <BottomTabBar
+          active={activeTab}
+          onChange={handleTabChange}
+          onCapture={() => addTaskSheetRef.current?.open()}
+          canCapture={canUseWorkspaceActions && !isAddSheetOpen && !isEditSheetOpen}
+          bottomInset={tabBarBottomPadding}
+          tabOrder={prefs.tabOrder}
+        />
+      ) : null}
 
       </Animated.View>
 
@@ -1253,6 +1246,7 @@ function MobileApp() {
         onSheetChange={setIsEditSheetOpen}
         onComplete={markDone}
         onReopen={reopenTask}
+        onScheduleToDate={scheduleToDate}
         onUnschedule={sendToInbox}
         onDelete={deleteTask}
         onSaveComplete={(undo, task, previousState) => {
@@ -1286,24 +1280,6 @@ function MobileApp() {
         isAllTasksReady={isAllTasksReady}
         onActiveChange={setIsKairoActive}
         onOpenSettings={openSettingsModal}
-      />
-
-      <OverdueSheet
-        visible={isOverdueSheetOpen}
-        onClose={closeOverdue}
-        groups={previewGroups}
-        orphans={overdueBuckets.orphans}
-        selectedPreview={selectedPreview}
-        applyDeadline={applyDeadline}
-        today={today}
-        tomorrow={tomorrow}
-        weekEnd={weekEnd}
-        onOpenPreview={openPreview}
-        onClosePreview={closePreview}
-        onSetApplyDeadline={setApplyDeadline}
-        onConfirmPreview={confirmPreview}
-        onRescheduleAll={rescheduleAll}
-        onManualTriage={handleManualTriage}
       />
 
       <SettingsSheet

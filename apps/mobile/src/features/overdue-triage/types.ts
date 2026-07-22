@@ -1,6 +1,11 @@
 import type { ReflowAssignment } from "./reflow";
 
-export type ManualTriageTarget = "today" | "tomorrow" | "week" | "drop";
+export type ManualTriageTarget =
+  | "today"
+  | "tomorrow"
+  | "week"
+  | "drop"
+  | { date: string };
 
 export type OverduePreviewTask = {
   taskId: string;
