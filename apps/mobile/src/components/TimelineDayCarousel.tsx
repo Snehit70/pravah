@@ -396,16 +396,6 @@ function OverdueCard({
   const [datePickerTaskId, setDatePickerTaskId] = useState<string | null>(null);
   const [completedTasks, setCompletedTasks] = useState<Record<string, MobileTask>>({});
 
-  useEffect(() => {
-    setCompletedTasks((current) => {
-      const liveIds = new Set(tasks.map((task) => String(task._id)));
-      const next = Object.fromEntries(
-        Object.entries(current).filter(([id]) => !liveIds.has(id))
-      );
-      return Object.keys(next).length === Object.keys(current).length ? current : next;
-    });
-  }, [tasks]);
-
   const visibleTasks = useMemo(() => {
     const liveIds = new Set(tasks.map((task) => String(task._id)));
     return [

@@ -55,7 +55,7 @@ vi.mock("react-native", () => {
     return React.createElement(
       "button",
       { ...safe, onClick: onPress },
-      typeof children === "function"
+      Object.prototype.toString.call(children) === "[object Function]"
         ? (children as (s: unknown) => React.ReactNode)({ pressed: false })
         : children
     );
@@ -118,8 +118,10 @@ vi.mock("react-native-reanimated", () => ({
   FadeInDown: { duration: () => ({ delay: () => undefined }) },
   FadeOut: { duration: () => undefined },
   Easing: { out: () => undefined, cubic: undefined },
+  interpolateColor: () => "transparent",
   useAnimatedStyle: () => ({}),
   useSharedValue: (v: unknown) => ({ value: v }),
+  withSpring: (v: unknown) => v,
   withTiming: (v: unknown) => v,
 }));
 
@@ -128,6 +130,11 @@ vi.mock("react-native-svg", () => {
     React.createElement("svg", {}, children);
   return { __esModule: true, default: Stub, Svg: Stub, Path: Stub, Circle: Stub, Line: Stub };
 });
+
+vi.mock("react-native-gesture-handler/ReanimatedSwipeable", () => ({
+  default: ({ children }: { children?: React.ReactNode }) =>
+    React.createElement("div", {}, children),
+}));
 
 vi.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) =>
@@ -153,6 +160,35 @@ vi.mock("../hooks/useConfirm", () => ({ useConfirm: () => vi.fn(async () => true
 vi.mock("../hooks/useReducedMotion", () => ({ useReducedMotion: () => true }));
 vi.mock("../hooks/useGoalMutations", () => ({
   useGoalMutations: () => ({ deleteGoal: vi.fn(), setGoalLink: vi.fn(), updateGoal: vi.fn() }),
+}));
+vi.mock("../components/TaskCard", () => ({
+  TaskCard: ({ task }: { task: { title: string } }) =>
+    React.createElement("div", {}, task.title),
+}));
+vi.mock("../components/SlidingSegmented", () => ({
+  SlidingSegmented: ({
+    options,
+    onSelect,
+  }: {
+    options: Array<{ value: string; label: string }>;
+    onSelect: (value: string) => void;
+  }) =>
+    React.createElement(
+      "div",
+      {},
+      options.map((option) =>
+        React.createElement(
+          "button",
+          {
+            key: option.value,
+            onClick: () => onSelect(option.value),
+            role: "tab",
+            "aria-label": option.label,
+          },
+          option.label
+        )
+      )
+    ),
 }));
 
 const goals = [
