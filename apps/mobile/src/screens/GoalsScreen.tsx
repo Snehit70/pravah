@@ -36,10 +36,11 @@ import { useGoals, useGoalLinks } from "../hooks/useGoals";
 import { useGoalMutations } from "../hooks/useGoalMutations";
 import { useConfirm } from "../hooks/useConfirm";
 import { useReducedMotion } from "../hooks/useReducedMotion";
-import type { MobileTask } from "../components/TaskCard";
+import { TaskCard, type MobileTask } from "../components/TaskCard";
 import { isTaskCompleted } from "../lib/taskState";
 import { groupLinkedTasks } from "../lib/goalTasks";
 import { GoalTaskRow } from "../components/GoalTaskRow";
+import { SlidingSegmented } from "../components/SlidingSegmented";
 import { GoalSettingsSheet } from "../components/GoalSettingsSheet";
 import { QuickScheduleSheet } from "../components/QuickScheduleSheet";
 import {
@@ -375,28 +376,19 @@ function GoalDetailSheet({
             </View>
 
             <View style={detailStyles.filterRow}>
-              <Pressable
-                onPress={() => setTaskFilter("open")}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: taskFilter === "open" }}
-                style={detailStyles.filterTab}
-              >
-                <Text style={[detailStyles.filterText, taskFilter === "open" && detailStyles.filterTextActive]}>
-                  Open {groups.reduce((sum, group) => sum + group.tasks.length, 0)}
-                </Text>
-                {taskFilter === "open" ? <View style={detailStyles.filterIndicator} /> : null}
-              </Pressable>
-              <Pressable
-                onPress={() => setTaskFilter("done")}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: taskFilter === "done" }}
-                style={detailStyles.filterTab}
-              >
-                <Text style={[detailStyles.filterText, taskFilter === "done" && detailStyles.filterTextActive]}>
-                  Done {done.length}
-                </Text>
-                {taskFilter === "done" ? <View style={detailStyles.filterIndicator} /> : null}
-              </Pressable>
+              <View style={detailStyles.filterControl}>
+                <SlidingSegmented
+                  options={[
+                    {
+                      value: "open",
+                      label: `Open ${groups.reduce((sum, group) => sum + group.tasks.length, 0)}`,
+                    },
+                    { value: "done", label: `Done ${done.length}` },
+                  ]}
+                  value={taskFilter}
+                  onSelect={setTaskFilter}
+                />
+              </View>
               <Pressable
                 onPress={() => setSortControlsOpen((open) => !open)}
                 accessibilityRole="button"
@@ -493,6 +485,7 @@ function GoalDetailSheet({
                   <View>
                     <Text style={detailStyles.groupLabel}>Completed</Text>
                     {done.map((task) => (
+                      selectMode ? (
                         <GoalTaskRow
                           key={String(task._id)}
                           task={task}
@@ -503,6 +496,17 @@ function GoalDetailSheet({
                           onLongPress={() => enterSelectMode(task)}
                           onToggleSelect={() => toggleSelected(task)}
                         />
+                      ) : (
+                        <View key={String(task._id)} style={detailStyles.completedCardWrap}>
+                          <TaskCard
+                            task={task}
+                            onDone={() => undefined}
+                            onEdit={() => onOpenTask(task)}
+                            onDragHandlePress={() => enterSelectMode(task)}
+                            hideCompletionControl
+                          />
+                        </View>
+                      )
                     ))}
                   </View>
                 ) : (
@@ -1186,33 +1190,16 @@ const detailStyles = StyleSheet.create({
     color: colors.textMuted,
   },
   filterRow: {
-    height: 52,
+    minHeight: 64,
     flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingLeft: spacing.lg,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderSubtle,
   },
-  filterTab: {
+  filterControl: {
     flex: 1,
-    height: 52,
-    paddingHorizontal: spacing.lg,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  filterText: {
-    ...typography.micro,
-    color: colors.textSecondary,
-  },
-  filterTextActive: {
-    color: colors.accent,
-  },
-  filterIndicator: {
-    position: "absolute",
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: 0,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: colors.accent,
   },
   sortButton: {
     width: 56,
@@ -1272,6 +1259,9 @@ const detailStyles = StyleSheet.create({
     ...typography.micro,
     color: colors.textMuted,
     marginBottom: 2,
+  },
+  completedCardWrap: {
+    marginHorizontal: -spacing.lg,
   },
   noTasksHint: {
     ...typography.bodyMd,
