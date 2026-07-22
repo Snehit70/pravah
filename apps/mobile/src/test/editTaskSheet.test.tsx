@@ -10,6 +10,10 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const { mockConfirm } = vi.hoisted(() => ({
+  mockConfirm: vi.fn(async () => true),
+}));
+
 // ─── react-native mock ────────────────────────────────────────────────────────
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
@@ -50,7 +54,7 @@ vi.mock("react-native", () => {
   const Keyboard = { dismiss: vi.fn() };
   const Alert = { alert: vi.fn() };
   const Platform = { OS: "ios", select: <T,>(options: { ios?: T; android?: T; default?: T }) => options.ios ?? options.default };
-  const TextInput = ({ value, onChangeText, placeholder, onLayout, numberOfLines, multiline, textAlignVertical, style: _style, ...rest }: AnyProps & { value?: string; onChangeText?: (v: string) => void; placeholder?: string; onLayout?: () => void; numberOfLines?: number; multiline?: boolean; textAlignVertical?: string }) =>
+  const TextInput = ({ value, onChangeText, placeholder, onLayout: _onLayout, numberOfLines: _numberOfLines, multiline: _multiline, textAlignVertical: _textAlignVertical, style: _style, ...rest }: AnyProps & { value?: string; onChangeText?: (v: string) => void; placeholder?: string; onLayout?: () => void; numberOfLines?: number; multiline?: boolean; textAlignVertical?: string }) =>
     React.createElement("input", {
       ...rest,
       value: value ?? "",
@@ -273,7 +277,7 @@ vi.mock("../lib/goalLinks", () => ({
 }));
 
 vi.mock("../hooks/useConfirm", () => ({
-  useConfirm: () => async () => true,
+  useConfirm: () => mockConfirm,
   ConfirmProvider: ({ children }: { children?: React.ReactNode }) =>
     React.createElement("div", {}, children),
 }));
@@ -315,6 +319,7 @@ describe("EditTaskSheet", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockConfirm.mockResolvedValue(true);
     ref = { current: null };
     mockExpand.mockClear();
     mockClose.mockClear();
@@ -434,6 +439,49 @@ describe("EditTaskSheet", () => {
     });
 
     expect(mockOnSheetChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("asks to discard dirty edits when the backdrop is tapped", async () => {
+    render(
+      <EditTaskSheet
+        ref={ref}
+        onSave={mockOnSave}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+      />
+    );
+
+    await act(async () => {
+      ref.current?.open(sampleTask);
+      await Promise.resolve();
+    });
+    fireEvent.change(screen.getByTestId("title-input"), { target: { value: "Edited task" } });
+
+    await act(async () => fireEvent.click(screen.getByLabelText("Dismiss")));
+
+    expect(mockOnSheetChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("keeps dirty edits when backdrop discard is cancelled", async () => {
+    mockConfirm.mockResolvedValueOnce(false);
+    render(
+      <EditTaskSheet
+        ref={ref}
+        onSave={mockOnSave}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+      />
+    );
+
+    await act(async () => {
+      ref.current?.open(sampleTask);
+      await Promise.resolve();
+    });
+    fireEvent.change(screen.getByTestId("title-input"), { target: { value: "Edited task" } });
+    await act(async () => fireEvent.click(screen.getByLabelText("Dismiss")));
+
+    expect((screen.getByTestId("title-input") as HTMLInputElement).value).toBe("Edited task");
+    expect(mockOnSheetChange).not.toHaveBeenCalledWith(false);
   });
 
   it("closes after successful save", async () => {

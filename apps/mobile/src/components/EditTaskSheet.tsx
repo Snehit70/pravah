@@ -311,14 +311,12 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           ]}
         >
           <BlurView intensity={38} tint="light" style={StyleSheet.absoluteFill} />
-          {!hasUnsavedChanges ? (
-            <Pressable
-              accessibilityLabel="Dismiss"
-              accessibilityRole="button"
-              style={StyleSheet.absoluteFill}
-              onPress={() => void requestClose()}
-            />
-          ) : null}
+          <Pressable
+            accessibilityLabel="Dismiss"
+            accessibilityRole="button"
+            style={StyleSheet.absoluteFill}
+            onPress={() => void requestClose()}
+          />
 
           <View style={styles.card}>
             <ScrollView

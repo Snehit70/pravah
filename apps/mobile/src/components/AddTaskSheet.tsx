@@ -46,6 +46,7 @@ import { addDays, nextLaterThisWeek, toIsoDate } from "../lib/dates";
 import { expandBulkTasks, MAX_BULK_TASKS, type BulkTaskInput } from "../lib/bulkTaskCapture";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useReducedMotion } from "../hooks/useReducedMotion";
+import { useConfirm } from "../hooks/useConfirm";
 
 type ComposerMode = "inbox" | "today" | "tomorrow" | "laterThisWeek";
 
@@ -106,6 +107,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const { goals } = useGoals();
     const { prefs } = useUserPreferences();
     const reducedMotion = useReducedMotion();
+    const confirm = useConfirm();
     const insets = useSafeAreaInsets();
     const { addGoal } = useGoalMutations();
     const selectedGoal = useMemo(
@@ -388,6 +390,24 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       closeModal();
     }, [closeModal]);
 
+    const requestClose = async () => {
+      if (!hasDraftChanges) {
+        reset();
+        closeModal();
+        return;
+      }
+      const discard = await confirm({
+        title: "Discard changes?",
+        message: "You have an unsaved task or goal draft.",
+        confirmLabel: "Discard",
+        cancelLabel: "Keep editing",
+        destructive: true,
+      });
+      if (!discard) return;
+      reset();
+      closeModal();
+    };
+
     // Swipe-down to dismiss. Activates only on a clearly vertical downward
     // drag so it does not steal the sheet's inner scroll or horizontal taps;
     // an unsaved draft springs the card back instead of dismissing.
@@ -425,12 +445,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         transparent
         animationType={reducedMotion ? "none" : "slide"}
         statusBarTranslucent
-        onRequestClose={() => {
-          if (!hasDraftChanges) {
-            reset();
-            closeModal();
-          }
-        }}
+        onRequestClose={() => void requestClose()}
       >
         {/* A native Modal is its own Android window, so the app-root
             GestureHandlerRootView can't see these touches — the pan gesture
@@ -445,17 +460,12 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           ]}
         >
           <BlurView intensity={38} tint="light" style={StyleSheet.absoluteFill} />
-          {!hasDraftChanges ? (
-            <Pressable
-              accessibilityLabel="Dismiss"
-              accessibilityRole="button"
-              style={StyleSheet.absoluteFill}
-              onPress={() => {
-                reset();
-                closeModal();
-              }}
-            />
-          ) : null}
+          <Pressable
+            accessibilityLabel="Dismiss"
+            accessibilityRole="button"
+            style={StyleSheet.absoluteFill}
+            onPress={() => void requestClose()}
+          />
 
           <GestureDetector gesture={panGesture}>
           <Animated.View style={[styles.card, cardDragStyle]}>
