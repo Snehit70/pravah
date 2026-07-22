@@ -127,6 +127,7 @@ function MobileApp() {
   const [diagnosticEvents, setDiagnosticEvents] = useState<DiagnosticEvent[]>([]);
   const [selectedCompletedTask, setSelectedCompletedTask] = useState<MobileTask | null>(null);
   const [focusGoalId, setFocusGoalId] = useState<string | null>(null);
+  const [isGoalDetailOpen, setIsGoalDetailOpen] = useState(false);
   const hasLoggedPostLoginRef = useRef(false);
   const didMarkInteractiveRef = useRef(false);
   const didApplyStartupTabRef = useRef(false);
@@ -991,7 +992,7 @@ function MobileApp() {
       >
       {/* Compact header: brand mark + view name on one line (the mark already
           says "Pravah"; no caps label needed), subtitle tucked beneath. */}
-      <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
+      {!isGoalDetailOpen ? <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
         <View style={styles.headerMain}>
           <View style={styles.titleLockup}>
             <BrandMark size={28} />
@@ -1035,7 +1036,7 @@ function MobileApp() {
             </Pressable>
           </View>
         </View>
-      </View>
+      </View> : null}
 
       {/* Toast — left rule + line of copy, no filled pill. */}
       {toast ? (
@@ -1191,6 +1192,7 @@ function MobileApp() {
               onScheduleToDate={canUseWorkspaceActions ? scheduleToDate : undefined}
               onMarkManyDone={canUseWorkspaceActions ? markManyDone : undefined}
               focusGoalId={focusGoalId}
+              onDetailVisibilityChange={setIsGoalDetailOpen}
             />
           </ScreenErrorBoundary>
         </Animated.View>
@@ -1216,14 +1218,16 @@ function MobileApp() {
       ) : null}
 
       {/* Bottom tab bar \u2014 no counts; the header subtitle carries those. */}
-      <BottomTabBar
-        active={activeTab}
-        onChange={handleTabChange}
-        onCapture={() => addTaskSheetRef.current?.open()}
-        canCapture={canUseWorkspaceActions && !isAddSheetOpen && !isEditSheetOpen}
-        bottomInset={tabBarBottomPadding}
-        tabOrder={prefs.tabOrder}
-      />
+      {!isGoalDetailOpen ? (
+        <BottomTabBar
+          active={activeTab}
+          onChange={handleTabChange}
+          onCapture={() => addTaskSheetRef.current?.open()}
+          canCapture={canUseWorkspaceActions && !isAddSheetOpen && !isEditSheetOpen}
+          bottomInset={tabBarBottomPadding}
+          tabOrder={prefs.tabOrder}
+        />
+      ) : null}
 
       </Animated.View>
 

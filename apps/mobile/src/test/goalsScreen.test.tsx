@@ -7,12 +7,10 @@
  * "P1 · 2 of 11 done" with the plan action. These tests pin the deletions as
  * hard as the additions — the failure mode is content creeping back on.
  *
- * The detail sheet is a workbench: open tasks grouped Overdue/Today/Later/
- * No date (ordering itself is pinned in goalTasks.test.ts), finished tasks
- * collapsed behind a done disclosure, the date chip as the schedule
- * affordance, and the goal's identity fields behind the pencil in
- * GoalSettingsSheet. The old edit-mode hint and per-row Unlink buttons are
- * pinned as absent.
+ * The focused goal workspace groups open tasks Overdue/Today/Later/No date
+ * (ordering itself is pinned in goalTasks.test.ts), separates finished work
+ * behind a Done tab, keeps Add task persistent, and leaves goal identity
+ * fields behind the pencil in GoalSettingsSheet.
  *
  * Strategy: mock react-native + FlatList with DOM equivalents and drive the
  * assertions through @testing-library queries.
@@ -107,6 +105,7 @@ vi.mock("react-native", () => {
     Modal,
     ScrollView,
     TextInput,
+    BackHandler: { addEventListener: () => ({ remove: vi.fn() }) },
     StyleSheet: { create: (s: unknown) => s, hairlineWidth: 1 },
   };
 });
@@ -253,11 +252,11 @@ describe("GoalDetailSheet workbench", () => {
     expect(screen.getByText("Mad 2 college project")).toBeTruthy();
   });
 
-  it("groups open tasks by deadline — overdue, later, undated — in that order", () => {
+  it("groups scheduled work under Next and undated work under Unscheduled", () => {
     render(<GoalsScreen tabBarHeight={0} tasks={tasks} />);
     openG1Sheet();
     const text = document.body.textContent ?? "";
-    const sequence = ["Overdue", "Task t2", "Later", "Task t4", "No date", "Task t3"];
+    const sequence = ["Next", "Task t2", "Task t4", "Unscheduled 1", "Task t3"];
     const positions = sequence.map((s) => text.indexOf(s));
     for (const [i, pos] of positions.entries()) {
       expect(pos, `"${sequence[i]}" missing from sheet`).toBeGreaterThan(-1);
@@ -265,11 +264,19 @@ describe("GoalDetailSheet workbench", () => {
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
   });
 
-  it("collapses finished tasks behind the done disclosure", () => {
+  it("exposes the concept's sort control with plan and newest ordering", () => {
+    render(<GoalsScreen tabBarHeight={0} tasks={tasks} />);
+    openG1Sheet();
+    fireEvent.click(screen.getByLabelText("Sort goal tasks"));
+    expect(screen.getByText("Plan order")).toBeTruthy();
+    expect(screen.getByText("Newest added")).toBeTruthy();
+  });
+
+  it("separates finished tasks behind the Done tab", () => {
     render(<GoalsScreen tabBarHeight={0} tasks={tasks} />);
     openG1Sheet();
     expect(screen.queryByText("Task t1")).toBeNull();
-    fireEvent.click(screen.getByLabelText("1 done task"));
+    fireEvent.click(screen.getByRole("tab", { name: "Done 1" }));
     expect(screen.getByText("Task t1")).toBeTruthy();
   });
 
@@ -278,6 +285,27 @@ describe("GoalDetailSheet workbench", () => {
     openG1Sheet();
     expect(screen.getByLabelText("Reschedule Task t2, currently Feb 3")).toBeTruthy();
     expect(screen.getByLabelText("Schedule Task t3")).toBeTruthy();
+  });
+
+  it("keeps the goal workspace mounted when a linked task opens", () => {
+    const onOpenTask = vi.fn();
+    render(<GoalsScreen tabBarHeight={0} tasks={tasks} onOpenTask={onOpenTask} />);
+    openG1Sheet();
+    fireEvent.click(screen.getByText("Task t3"));
+    expect(onOpenTask).toHaveBeenCalledWith(expect.objectContaining({ _id: "t3" }));
+    expect(screen.getByLabelText("Back to goals")).toBeTruthy();
+    expect(screen.getByText("Mad 2 college project")).toBeTruthy();
+  });
+
+  it("exposes one persistent add-task action inside the goal", () => {
+    const onCreateTaskForGoal = vi.fn();
+    render(
+      <GoalsScreen tabBarHeight={0} tasks={tasks} onCreateTaskForGoal={onCreateTaskForGoal} />
+    );
+    openG1Sheet();
+    fireEvent.click(screen.getByLabelText("Add task to Mad 2 project"));
+    expect(onCreateTaskForGoal).toHaveBeenCalledWith("g1");
+    expect(screen.getByLabelText("Back to goals")).toBeTruthy();
   });
 
   it("keeps the goal's identity fields and delete behind the pencil", () => {

@@ -119,14 +119,13 @@ export const GoalTaskRow = memo(GoalTaskRowInner);
 
 const styles = StyleSheet.create({
   row: {
+    minHeight: 56,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: 9,
-    paddingHorizontal: spacing.sm,
-    marginHorizontal: -spacing.sm,
-    borderRadius: radii.md,
-    borderCurve: "continuous",
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
   },
   rowSelected: {
     backgroundColor: colors.bgFloating,
@@ -135,13 +134,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgSurface,
   },
   dot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: colors.border,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: colors.textMuted,
+    backgroundColor: "transparent",
   },
   dotDone: {
     backgroundColor: colors.success,
+    borderColor: colors.success,
   },
   check: {
     width: 16,
@@ -171,8 +173,8 @@ const styles = StyleSheet.create({
     textDecorationLine: "line-through",
   },
   scheduleBtn: {
-    minWidth: 32,
-    height: 30,
+    minWidth: 44,
+    height: 44,
     paddingHorizontal: spacing.xs,
     borderRadius: radii.sm,
     borderCurve: "continuous",
