@@ -442,6 +442,7 @@ function GoalDetailSheet({
                     <GoalTaskRow
                       key={String(task._id)}
                       task={task}
+                      card
                       overdue={Boolean(task.deadline && task.deadline < todayIso)}
                       selectMode={selectMode}
                       selected={selectedIds.has(String(task._id))}
@@ -461,6 +462,7 @@ function GoalDetailSheet({
                         <GoalTaskRow
                           key={String(task._id)}
                           task={task}
+                          card
                           selectMode={selectMode}
                           selected={selectedIds.has(String(task._id))}
                           onPress={() => onOpenTask(task)}
@@ -489,6 +491,7 @@ function GoalDetailSheet({
                         <GoalTaskRow
                           key={String(task._id)}
                           task={task}
+                          card
                           done
                           selectMode={selectMode}
                           selected={selectedIds.has(String(task._id))}
