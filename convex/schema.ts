@@ -3,6 +3,67 @@ import { v } from "convex/values";
 import { automationScopeValidator } from "./automationScopes";
 
 export default defineSchema({
+  mobileReleaseControl: defineTable({
+    key: v.literal("mobile"),
+    latestVersion: v.string(),
+    supportedRuntime: v.string(),
+    supportedFingerprint: v.string(),
+    minimumRuntime: v.optional(v.string()),
+    revision: v.number(),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
+  mobileReleaseAttempts: defineTable({
+    version: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("staged"),
+      v.literal("published"),
+      v.literal("failed"),
+    ),
+    delivery: v.union(
+      v.literal("ota"),
+      v.literal("native"),
+      v.literal("rollback"),
+    ),
+    sourceSha: v.string(),
+    sourceRef: v.string(),
+    title: v.string(),
+    releaseNotes: v.string(),
+    pullRequests: v.array(v.number()),
+    nativeRuntime: v.string(),
+    nativeFingerprint: v.string(),
+    easUpdateId: v.optional(v.string()),
+    easBranch: v.optional(v.string()),
+    githubTag: v.optional(v.string()),
+    artifactUrl: v.optional(v.string()),
+    checksumUrl: v.optional(v.string()),
+    rollbackOfVersion: v.optional(v.string()),
+    restoresVersion: v.optional(v.string()),
+    failureReason: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    stagedAt: v.optional(v.number()),
+    publishedAt: v.optional(v.number()),
+    failedAt: v.optional(v.number()),
+  })
+    .index("by_version", ["version"])
+    .index("by_source_sha", ["sourceSha"])
+    .index("by_source_status", ["sourceSha", "status"])
+    .index("by_runtime_status", ["nativeRuntime", "status"])
+    .index("by_status", ["status"])
+    .index("by_published_at", ["publishedAt"])
+    .index("by_status_published_at", ["status", "publishedAt"]),
+  mobileReleaseOperations: defineTable({
+    operation: v.union(
+      v.literal("set_minimum_runtime"),
+      v.literal("rollback"),
+      v.literal("reconcile"),
+    ),
+    target: v.string(),
+    reason: v.string(),
+    metadataJson: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_created_at", ["createdAt"]),
   goals: defineTable({
     clientId: v.string(),
     text: v.string(),
