@@ -36,6 +36,7 @@ import { useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { colors, fonts, motion, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { classifyError, createActionId, mobileLogger } from "../lib/logger";
 import { PlusIcon } from "./UiIcons";
 import {
@@ -198,7 +199,9 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   const insets = useSafeAreaInsets();
   const bottomInset = useKeyboardInset(insets.bottom);
   const keyboardLift = Math.max(0, bottomInset - spacing.lg);
+  const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
+  const hasPresentedRef = useRef(false);
   const [val, setVal] = useState("");
   const [thinking, setThinking] = useState(false);
   const [config, setConfig] = useState<KairoConfig | null>(null);
@@ -263,7 +266,11 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
   useImperativeHandle(
     ref,
     () => ({
-      open: () => sheetRef.current?.expand(),
+      open: () => {
+        hasPresentedRef.current = false;
+        setMounted(true);
+        setOpen(true);
+      },
       close: () => sheetRef.current?.close(),
     }),
     []
@@ -496,6 +503,11 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
 
   const handleSheetChange = useCallback((index: number) => {
     setOpen(index >= 0);
+    if (index >= 0) {
+      hasPresentedRef.current = true;
+    } else if (hasPresentedRef.current) {
+      setMounted(false);
+    }
   }, []);
 
   const renderBackdrop = useCallback(
@@ -843,10 +855,12 @@ export const Kairo = forwardRef<KairoSheetRef, KairoProps>(function Kairo(
     [activeChat?.id, clearDeferred, deleteChat, thinking]
   );
 
+  if (!mounted) return null;
+
   return (
     <BottomSheet
       ref={sheetRef}
-      index={-1}
+      index={0}
       snapPoints={snapPoints}
       // v5 defaults enableDynamicSizing to true, which makes the sheet
       // measure its children's intrinsic height and ignore snapPoints.
@@ -1279,7 +1293,7 @@ function Thinking({ label }: { label?: string | null }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   sheetBg: {
     backgroundColor: colors.bg,
     borderTopLeftRadius: radii.xl,

@@ -342,6 +342,11 @@ function useUnconfiguredKairo() {
 
 describe("Kairo", () => {
   let ref: { current: KairoSheetRef | null };
+  const openKairo = () => {
+    act(() => {
+      ref.current?.open();
+    });
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -354,7 +359,7 @@ describe("Kairo", () => {
     vi.clearAllMocks();
   });
 
-  it("renders greeting message on mount", async () => {
+  it("stays unmounted until opened, then renders the greeting", async () => {
     useConfiguredKairo();
 
     render(
@@ -365,6 +370,9 @@ describe("Kairo", () => {
         isAllTasksReady={true}
       />
     );
+
+    expect(screen.queryByTestId("bottom-sheet")).toBeNull();
+    openKairo();
 
     // Hook hydrates asynchronously; wait for the seeded greeting to land.
     await screen.findByText(/Hi, I'm Kairo/i);
@@ -411,6 +419,7 @@ describe("Kairo", () => {
       />
     );
 
+    openKairo();
     await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
@@ -450,6 +459,7 @@ describe("Kairo", () => {
       />
     );
 
+    openKairo();
     await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
@@ -499,6 +509,7 @@ describe("Kairo", () => {
       />
     );
 
+    openKairo();
     await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
@@ -532,6 +543,7 @@ describe("Kairo", () => {
       />
     );
 
+    openKairo();
     await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
@@ -591,6 +603,7 @@ describe("Kairo", () => {
       />
     );
 
+    openKairo();
     await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
@@ -650,6 +663,7 @@ describe("Kairo", () => {
       />
     );
 
+    openKairo();
     await screen.findByText(/Hi, I'm Kairo/i);
     fireEvent.change(screen.getByTestId("kairo-input"), { target: { value: "Add a task" } });
     await act(async () => {
@@ -679,6 +693,7 @@ describe("Kairo", () => {
       />
     );
 
+    openKairo();
     await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
@@ -712,6 +727,7 @@ describe("Kairo", () => {
       />
     );
 
+    openKairo();
     await screen.findByText(/Hi, I'm Kairo/i);
 
     const input = screen.getByTestId("kairo-input") as HTMLInputElement;
