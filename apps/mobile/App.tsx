@@ -82,6 +82,7 @@ import { useWorkspaceState } from "./src/hooks/useWorkspaceState";
 import { useGoogleAuth } from "./src/hooks/useGoogleAuth";
 import { useNotificationsSettings } from "./src/hooks/useNotificationsSettings";
 import { useIntegrationsSettings } from "./src/hooks/useIntegrationsSettings";
+import { useMobileRelease } from "./src/hooks/useMobileRelease";
 import { useReminderSync } from "./src/hooks/useReminderSync";
 import { useReducedMotion } from "./src/hooks/useReducedMotion";
 import { useDisplayWorkspace } from "./src/hooks/useDisplayWorkspace";
@@ -191,6 +192,7 @@ function MobileApp() {
   const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
   const { prefs, ready: preferencesReady } = useUserPreferences();
+  const mobileRelease = useMobileRelease();
   const systemAppearance = useColorScheme();
   const resolvedAppearance =
     prefs.theme === "system"
@@ -942,6 +944,15 @@ function MobileApp() {
     return <BootScreen title="Signing out" detail="Clearing your session on this device." />;
   }
 
+  if (mobileRelease.isBelowMinimumRuntime) {
+    return (
+      <BootScreen
+        title="App update required"
+        detail="This build is no longer compatible. Install the latest Pravah APK to continue."
+      />
+    );
+  }
+
   if (!session && !shouldRenderOptimisticShell) {
     return (
       <MobileAuthScreen
@@ -1008,6 +1019,13 @@ function MobileApp() {
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.container}>
+      {mobileRelease.needsNativeUpgrade ? (
+        <View style={styles.runtimeNotice}>
+          <Text style={styles.runtimeNoticeText}>
+            A newer APK is available for future updates.
+          </Text>
+        </View>
+      ) : null}
       <StatusBar
         style={resolvedAppearance === "dark" ? "light" : "dark"}
       />
@@ -1523,6 +1541,18 @@ const styles = createThemedStyles({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  runtimeNotice: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.bgSurface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  runtimeNoticeText: {
+    ...typography.caption,
+    color: colors.textMuted,
+    textAlign: "center",
   },
   tabScreen: {
     flex: 1,
