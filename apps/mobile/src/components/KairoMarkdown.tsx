@@ -12,8 +12,9 @@
  */
 
 import { Fragment, type ReactNode } from "react";
-import { StyleSheet, Text, View, type TextStyle } from "react-native";
+import { Text, View, type TextStyle } from "react-native";
 import { colors, fonts, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 
 type Props = {
   text: string;
@@ -126,7 +127,7 @@ function renderInline(text: string): ReactNode[] {
   return tokens;
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   wrap: {
     gap: spacing.sm,
   },

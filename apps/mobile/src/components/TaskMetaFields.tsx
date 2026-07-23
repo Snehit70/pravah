@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
+import { Keyboard, Pressable, Text, View } from "react-native";
 import { haptic } from "../lib/haptic";
 import { colors, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { humanDate } from "../lib/dates";
 import { ThemedDatePicker } from "./ThemedDatePicker";
 import { ThemedTimePicker } from "./ThemedTimePicker";
@@ -136,7 +137,7 @@ export function TaskMetaFields({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   metaRow: {
     flexDirection: "row",
     alignItems: "flex-end",

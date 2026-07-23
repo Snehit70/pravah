@@ -1,4 +1,5 @@
-import { Image, StyleSheet } from "react-native";
+import { Image } from "react-native";
+import { createThemedStyles } from "../theme/themeRuntime";
 import ICON_SOURCE from "../../assets/icon.png";
 
 type BrandMarkProps = {
@@ -16,7 +17,7 @@ export function BrandMark({ size = 22 }: BrandMarkProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   mark: {
     overflow: "hidden",
   },

@@ -3,6 +3,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-nati
 import { BlurView } from "expo-blur";
 import { haptic } from "../lib/haptic";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 
 type ThemedTimePickerProps = {
@@ -180,7 +181,7 @@ export function ThemedTimePicker({
 
 const SCROLL_HEIGHT = 200;
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   overlay: {
     flex: 1,
     alignItems: "center",

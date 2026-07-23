@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@react-native-async-storage/async-storage", () => ({
   default: {
@@ -13,9 +13,19 @@ vi.mock("../lib/logger", () => ({
   mobileLogger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
 }));
 
-import { DEFAULT_PREFERENCES, __testing } from "../lib/userPreferences";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  DEFAULT_PREFERENCES,
+  __testing,
+  loadPreferences,
+} from "../lib/userPreferences";
 
 const { sanitize } = __testing;
+
+beforeEach(() => {
+  vi.mocked(AsyncStorage.getItem).mockReset().mockResolvedValue(null);
+  vi.mocked(AsyncStorage.setItem).mockReset().mockResolvedValue(undefined);
+});
 
 describe("sanitize", () => {
   it("returns defaults for null / non-object input", () => {
@@ -121,5 +131,47 @@ describe("sanitize", () => {
   it("falls back to legacy dailyReminderTime when morningDigestTime is absent", () => {
     const result = sanitize({ dailyReminderTime: "08:15" });
     expect(result.morningDigestTime).toBe("08:15");
+  });
+
+  it("accepts each explicit appearance preference", () => {
+    expect(sanitize({ theme: "system" }).theme).toBe("system");
+    expect(sanitize({ theme: "light" }).theme).toBe("light");
+    expect(sanitize({ theme: "dark" }).theme).toBe("dark");
+  });
+});
+
+describe("appearance migration", () => {
+  it("moves a legacy light-only installation to System once", async () => {
+    vi.mocked(AsyncStorage.getItem).mockResolvedValue(
+      JSON.stringify({
+        ...DEFAULT_PREFERENCES,
+        theme: "light",
+        density: "compact",
+      }),
+    );
+
+    const prefs = await loadPreferences();
+
+    expect(prefs.theme).toBe("system");
+    expect(prefs.density).toBe("compact");
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+      "pravah_user_prefs_v1",
+      expect.stringContaining('"appearanceSchemaVersion":1'),
+    );
+  });
+
+  it("preserves a choice made after the migration", async () => {
+    vi.mocked(AsyncStorage.getItem).mockResolvedValue(
+      JSON.stringify({
+        ...DEFAULT_PREFERENCES,
+        theme: "dark",
+        appearanceSchemaVersion: 1,
+      }),
+    );
+
+    const prefs = await loadPreferences();
+
+    expect(prefs.theme).toBe("dark");
+    expect(AsyncStorage.setItem).not.toHaveBeenCalled();
   });
 });

@@ -12,6 +12,7 @@ import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import type { ChatMeta } from "../lib/kairoChatStorage";
 import { formatRelative } from "../lib/formatRelative";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { useConfirm } from "../hooks/useConfirm";
 import { ChatBubbleIcon, ChevronLeftIcon, PlusIcon } from "./UiIcons";
 
@@ -132,7 +133,7 @@ export function KairoChatList({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   wrap: {
     flex: 1,
   },

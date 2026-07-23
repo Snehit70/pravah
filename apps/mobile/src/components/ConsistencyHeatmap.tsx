@@ -38,6 +38,7 @@ import { haptic } from "../lib/haptic";
 import { CalendarIcon, ClockIcon, StarIcon } from "./UiIcons";
 import type { DayPoint } from "../lib/statsAggregators";
 import { chart, colors, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_LABELS = [
@@ -335,7 +336,7 @@ function JourneyStat({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   card: {
     marginHorizontal: spacing.lg,
     paddingVertical: spacing.lg,

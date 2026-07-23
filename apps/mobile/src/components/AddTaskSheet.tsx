@@ -37,7 +37,14 @@ import Animated, {
 } from "react-native-reanimated";
 import { haptic } from "../lib/haptic";
 import { feedback } from "../lib/feedback";
-import { colors, radii, spacing, typography } from "../theme/tokens";
+import {
+  colors,
+  radii,
+  spacing,
+  typography,
+} from "../theme/tokens";
+import { getThemeRuntimeSnapshot } from "../theme/themeRuntime";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { TaskMetaFields } from "./TaskMetaFields";
 import { type TaskPriority } from "../lib/task-form";
 import { useGoals } from "../hooks/useGoals";
@@ -459,7 +466,11 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
             { paddingBottom: Math.max(insets.bottom, spacing.sm) },
           ]}
         >
-          <BlurView intensity={38} tint="light" style={StyleSheet.absoluteFill} />
+          <BlurView
+            intensity={38}
+            tint={getThemeRuntimeSnapshot().appearance === "dark" ? "dark" : "light"}
+            style={StyleSheet.absoluteFill}
+          />
           <Pressable
             accessibilityLabel="Dismiss"
             accessibilityRole="button"
@@ -850,7 +861,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
   }
 );
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   gestureRoot: {
     flex: 1,
   },

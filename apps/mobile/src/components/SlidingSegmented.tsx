@@ -9,6 +9,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 
 const TRACK_PADDING = 3;
 
@@ -86,13 +87,15 @@ function SegmentOption({
   progress: SharedValue<number>;
   onPress: () => void;
 }) {
+  const mutedColor = colors.textMuted;
+  const selectedColor = colors.textInverse;
   const labelStyle = useAnimatedStyle(() => ({
     color: interpolateColor(
       progress.value,
       [optionIndex - 1, optionIndex, optionIndex + 1],
-      [colors.textMuted, colors.textInverse, colors.textMuted],
+      [mutedColor, selectedColor, mutedColor],
     ),
-  }));
+  }), [mutedColor, selectedColor]);
 
   return (
     <Pressable
@@ -116,7 +119,7 @@ function SegmentOption({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   track: {
     flexDirection: "row",
     padding: TRACK_PADDING,

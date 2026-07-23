@@ -14,6 +14,7 @@ import { memo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { CheckIcon } from "./UiIcons";
 import { colors, fonts, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { formatTime12h } from "../lib/task-form";
 import type { MobileTask } from "./TaskCard";
 
@@ -108,7 +109,7 @@ function TimelineTaskRowInner({
 
 export const TimelineTaskRow = memo(TimelineTaskRowInner);
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   row: {
     flexDirection: "row",
     alignItems: "center",

@@ -23,6 +23,7 @@ import Animated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { colors, fonts, radii, spacing } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { weekdayDate } from "../lib/dates";
 import { buildDayStrip } from "../lib/timelineDayStrip";
 import type { DayCarouselCard } from "../lib/timelineCarousel";
@@ -190,7 +191,7 @@ export function TimelineDayStrip({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   lane: {
     height: LANE_HEIGHT,
     justifyContent: "center",

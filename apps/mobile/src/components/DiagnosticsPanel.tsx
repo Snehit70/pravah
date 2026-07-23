@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useMemo, useState } from "react";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import type { DiagnosticEvent } from "../lib/diagnostics";
 
 type DiagnosticsPanelProps = {
@@ -163,7 +164,7 @@ export function DiagnosticsPanel({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   panel: {
     position: "absolute",
     left: spacing.md,

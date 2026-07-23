@@ -52,6 +52,7 @@ import {
 } from "../lib/statsAggregators";
 import { computeGoalProgress, goalsInMotion } from "../lib/goalProgress";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 
 type HistoryWindow = "today" | "yesterday" | "7d" | "30d" | "all";
 type RangeKey = "7d" | "30d" | "90d";
@@ -480,7 +481,7 @@ function SectionHeader({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   root: {
     flex: 1,
   },

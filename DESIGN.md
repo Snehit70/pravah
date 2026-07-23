@@ -19,6 +19,13 @@ colors:
   priority-one: "#934536"
   priority-two: "#805712"
   priority-three: "#5e6662"
+  dark-canvas: "#151118"
+  dark-surface: "#1c1720"
+  dark-card: "#241d28"
+  dark-floating: "#2b2230"
+  dark-ink: "#f3eaf5"
+  dark-text-secondary: "#cbbdce"
+  dark-text-muted: "#a99bab"
 typography:
   display:
     fontFamily: "Geist"
@@ -108,6 +115,10 @@ The system rejects enterprise density, playful gamification, calendar-clone
 chrome, and generic AI styling. Purple is a signature for intelligence and
 selection, not the atmosphere of every screen.
 
+At night, Pravah feels like the same planning desk under a shaded lamp: deep
+aubergine-charcoal layers reduce glare while warm text, restrained accents, and
+stable semantic colors preserve the daytime hierarchy.
+
 **Key Characteristics:**
 
 - Warm, low-chroma neutral layers with dark ink text.
@@ -143,6 +154,21 @@ Kairo. It is never background decoration.
 
 **The Semantic State Rule.** Success, warning, deadline, error, and priority
 colors keep fixed meanings. Pair every color state with text, shape, or icon.
+
+### Dark appearance
+
+- **Night Canvas** (`#151118`): App background.
+- **Night Surface** (`#1c1720`): Secondary surface and input layer.
+- **Night Card** (`#241d28`): Task rows and grouped settings.
+- **Night Floating** (`#2b2230`): Sheets and raised controls.
+- **Warm Light Ink** (`#f3eaf5`): Primary text and icons.
+- **Heather Text** (`#cbbdce`): Supporting copy.
+- **Muted Heather** (`#a99bab`): Metadata.
+
+Dark appearance keeps the restrained color strategy. The selected app accent
+changes interactive emphasis only; neutral surfaces and semantic state colors
+remain stable. System appearance follows the device live, while manual Warm
+light and Dark choices remain local to the device.
 
 ## 3. Typography
 

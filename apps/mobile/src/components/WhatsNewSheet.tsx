@@ -23,6 +23,7 @@ import { BlurView } from "expo-blur";
 import { fetchMobileReleases, type ReleaseFeedResult } from "../lib/appUpdate";
 import { parseReleaseNotes } from "../lib/releaseNotes";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { ArrowUpRightIcon } from "./UiIcons";
 
@@ -176,7 +177,7 @@ export function WhatsNewSheet({ visible, onClose, changelogUrl }: WhatsNewSheetP
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   overlay: {
     flex: 1,
     alignItems: "center",

@@ -10,6 +10,8 @@ import Animated, {
 } from "react-native-reanimated";
 import { useEffect } from "react";
 import { colors, spacing, typography } from "../theme/tokens";
+import { getThemeRuntimeSnapshot } from "../theme/themeRuntime";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { BrandMark } from "./BrandMark";
 import { GridBackground } from "./GridBackground";
@@ -49,7 +51,9 @@ export function BootScreen({
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar style="dark" />
+      <StatusBar
+        style={getThemeRuntimeSnapshot().appearance === "dark" ? "light" : "dark"}
+      />
       <GridBackground />
       <Animated.View
         entering={reducedMotion ? undefined : FadeIn.duration(400)}
@@ -77,7 +81,7 @@ export function BootScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   container: {
     flex: 1,
     backgroundColor: colors.bg,

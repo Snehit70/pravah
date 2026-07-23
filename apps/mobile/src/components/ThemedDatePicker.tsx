@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { toIsoDate } from "../lib/dates";
 import { buildMonthGrid } from "../lib/calendarGrid";
 import { useReducedMotion } from "../hooks/useReducedMotion";
@@ -201,7 +202,7 @@ export function ThemedDatePicker({ visible, value, minDate, onSelect, onClose }:
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   overlay: {
     flex: 1,
     alignItems: "center",

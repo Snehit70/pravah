@@ -15,3 +15,25 @@ A bottom-sheet modal surfaced via React Native's built-in `<Modal>` with `transp
 
 ### Capture
 The primary task/goal creation surface. Renders as a full-height bottom sheet with "New task" / "New goal" tabs. Component: `AddTaskSheet.tsx`.
+
+### Dark appearance
+Pravah's low-light visual identity: deep aubergine-charcoal surfaces, warm
+light text, and restrained purple, teal, amber, and red color used to preserve
+hierarchy and communicate meaning. It is intentionally colored rather than
+pure black or neutral gray.
+
+### System appearance
+An appearance preference that follows the device's current light or dark
+setting. It is the default for both new installations and installations
+migrated from the legacy light-only release.
+
+### Accent
+A user-selected color applied to interactive emphasis such as active
+navigation, selected controls, focus states, and primary actions. An accent
+does not recolor appearance surfaces or override semantic task-state colors.
+
+### Appearance
+The complete visual treatment of the mobile application, including every
+screen, sheet, modal, loading state, error state, Kairo surface, and adjacent
+system chrome. An appearance change is incomplete if any of these surfaces
+remain styled for another appearance.

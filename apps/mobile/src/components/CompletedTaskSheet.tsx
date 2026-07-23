@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { humanDate } from "../lib/dates";
 import { formatTime12h } from "../lib/task-form";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { useConfirm } from "../hooks/useConfirm";
 import type { MobileTask } from "./TaskCard";
 
@@ -157,7 +158,7 @@ export function CompletedTaskSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   backdrop: {
     flex: 1,
     justifyContent: "flex-end",

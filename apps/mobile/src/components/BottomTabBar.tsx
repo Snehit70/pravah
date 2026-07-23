@@ -11,6 +11,7 @@ import { haptic } from "../lib/haptic";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { resolveTabOrder, TAB_LABELS, type TabKey } from "../lib/tabOrder";
 import { colors, radii, shadow, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { TabNavIcon } from "./tabNavIcons";
 
 export type { TabKey } from "../lib/tabOrder";
@@ -258,7 +259,7 @@ function BottomTabBarInner({
 
 export const BottomTabBar = memo(BottomTabBarInner);
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   // Single hairline divider on top — no enclosing pill.
   container: {
     position: "absolute",

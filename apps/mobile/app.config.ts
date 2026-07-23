@@ -16,10 +16,10 @@ const config: ExpoConfig = {
   name: getAppName(),
   slug: "pravah-mobile",
   scheme: "pravah",
-  version: "3.0.0",
+  version: "3.0.1",
   orientation: "portrait",
   icon: "./assets/icon.png",
-  userInterfaceStyle: "light",
+  userInterfaceStyle: "automatic",
   plugins: [
     "expo-dev-client",
     [
@@ -31,7 +31,14 @@ const config: ExpoConfig = {
     ],
     "expo-font",
     "expo-secure-store",
-    "expo-audio",
+    [
+      "expo-audio",
+      {
+        microphonePermission: false,
+        recordAudioAndroid: false,
+        enableBackgroundPlayback: false,
+      },
+    ],
     "expo-image",
     "expo-asset",
     [
@@ -40,6 +47,10 @@ const config: ExpoConfig = {
         image: "./assets/splash-icon.png",
         resizeMode: "contain",
         backgroundColor: "#f7f1e8",
+        dark: {
+          image: "./assets/splash-icon.png",
+          backgroundColor: "#151118",
+        },
       },
     ],
     "./plugins/withBuildPerformance",
@@ -51,6 +62,11 @@ const config: ExpoConfig = {
   android: {
     package: getPackageName(),
     permissions: ["REQUEST_INSTALL_PACKAGES"],
+    blockedPermissions: [
+      "android.permission.RECORD_AUDIO",
+      "android.permission.FOREGROUND_SERVICE",
+      "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+    ],
     adaptiveIcon: {
       foregroundImage: "./assets/adaptive-icon.png",
       backgroundColor: "#f7f1e8",

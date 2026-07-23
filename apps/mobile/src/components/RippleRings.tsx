@@ -9,6 +9,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { colors } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 
 const RINGS = [0, 1, 2, 3];
@@ -71,7 +72,7 @@ export function RippleRings({ cx, cy }: RippleRingsProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   origin: {
     position: "absolute",
     width: 0,

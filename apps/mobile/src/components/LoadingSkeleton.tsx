@@ -10,6 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { colors, motion, radii, spacing } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 
 function SkeletonPulse({ children }: { children: React.ReactNode }) {
   const reducedMotion = useReducedMotion();
@@ -117,7 +118,7 @@ export function KairoSettingsSkeleton() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   block: {
     borderRadius: radii.sm,
     backgroundColor: colors.bgCard,

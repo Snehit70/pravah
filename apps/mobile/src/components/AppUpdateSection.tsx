@@ -5,6 +5,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { checkForAppUpdate, type UpdateAvailableResult, type UpdateCheckResult } from "../lib/appUpdate";
 import { useAppUpdateInstaller } from "../hooks/useAppUpdateInstaller";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import AppUpdatesIconAsset from "../assets/icons/about-app-updates.svg";
 
 const CANONICAL_PACKAGE = "com.pravah.mobile";
@@ -139,7 +140,7 @@ export function AppUpdateSection() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   group: {
     gap: spacing.sm,
   },

@@ -53,6 +53,7 @@ import {
 } from "../lib/chartGeometry";
 import type { DayPoint } from "../lib/statsAggregators";
 import { chart, colors, motion, radii, shadow, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const AnimatedG = Animated.createAnimatedComponent(G);
@@ -551,7 +552,7 @@ function accessibilitySummary(total: number, periodLabel: string, delta: Delta):
   return `${total} tasks completed ${periodLabel}${trend}. Completion velocity chart.`;
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   card: {
     marginHorizontal: spacing.lg,
     padding: spacing.lg,

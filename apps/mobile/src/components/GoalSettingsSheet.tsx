@@ -20,6 +20,7 @@ import { humanDate } from "../lib/dates";
 import { haptic } from "../lib/haptic";
 import type { GoalItem } from "../lib/goalsStorage";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { ThemedDatePicker } from "./ThemedDatePicker";
 import { CalendarIcon, ChevronDownIcon, CloseIcon, TrashIcon } from "./UiIcons";
 
@@ -290,7 +291,7 @@ export function GoalSettingsSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   backdrop: {
     flex: 1,
     backgroundColor: colors.bg,
