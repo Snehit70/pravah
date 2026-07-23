@@ -413,27 +413,9 @@ export const typography = {
  * `GridBackground` already use the split form — these tokens make it the rule.
  *
  * ── Heatmap ramp ────────────────────────────────────────────────────────
- * A validated single-hue ordinal scale in copper (hue 52°, chroma held at
- * 0.115, contrast 2.07 / 3.11 / 4.62 / 6.63 on `bg`).
- *
- * Two earlier ramps failed here, and both failures are measurable:
- *
- *  - tan→brown→black: bucket 1 missed the 2:1 floor at 1.79:1, and bucket 4 sat
- *    1.48:1 from `textPrimary` — the darkest cell *was* the ink used for text.
- *  - `success` green: passed every check, but imports a hue the warm palette
- *    doesn't own.
- *
- * The trap is that every warm hue here is already reserved (`warning`,
- * `deadline`, `error`, `priorityP1`) and the accent is ink, which leaves only
- * neutral tan — and neutral tan at full intensity IS text ink. Copper escapes by
- * holding chroma instead of darkening: mud is what a warm hue becomes when you
- * take its chroma away, so keep C ≥ 0.10 on every bucket. The darkest step stays
- * 2.36:1 off `textPrimary`, and copper's nearest reserved neighbour
- * (`priorityP1`, ΔE 4.6) never renders on the Progress tab. `warning` and
- * `error` do — they live in Goals below the grid — so a ramp must stay off those
- * two; that is what ruled out amber (ΔE 3.7 from `warning`).
- *
- * The empty cell stays warm, which is what keeps the grid tied to the page.
+ * Journey activity is product emphasis, not a semantic status. Its four
+ * ordinal buckets therefore follow the selected app accent, while the empty
+ * cell remains neutral so zero activity never reads as a weak positive value.
  */
 type ChartPalette = {
   heatmapEmpty: string;
@@ -486,7 +468,6 @@ const lightChart: ChartPalette = {
 const darkChart: ChartPalette = {
   ...lightChart,
   heatmapEmpty: "rgba(231,213,235,0.09)",
-  heatmapRamp: ["#6f4a65", "#955b79", "#bf718e", "#e68ba5"],
   line: darkColors.accent,
   areaColor: darkColors.accent,
   heroAreaColor: darkColors.accent,
@@ -495,9 +476,21 @@ const darkChart: ChartPalette = {
   cursor: darkColors.accent,
 };
 
+function accentRamp(accent: string): readonly [string, string, string, string] {
+  const value = accent.replace("#", "");
+  const red = Number.parseInt(value.slice(0, 2), 16);
+  const green = Number.parseInt(value.slice(2, 4), 16);
+  const blue = Number.parseInt(value.slice(4, 6), 16);
+  const rgba = (alpha: number) => `rgba(${red},${green},${blue},${alpha})`;
+  return [rgba(0.34), rgba(0.56), rgba(0.78), accent] as const;
+}
+
 export const chart = new Proxy(lightChart, {
   get(_target, property: keyof typeof lightChart) {
     const palette = getResolvedAppearance() === "dark" ? darkChart : lightChart;
+    if (property === "heatmapRamp") {
+      return accentRamp(colors.accent);
+    }
     if (
       property === "line"
       || property === "areaColor"

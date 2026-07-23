@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { colors } from "../theme/tokens";
+import { chart, colors } from "../theme/tokens";
 import {
   createThemedStyles,
   setThemeRuntime,
@@ -63,6 +63,21 @@ describe("mobile theme runtime", () => {
     expect(colors.bg).toBe(background);
     expect(colors.accent).not.toBe(purple);
     expect(colors.accent).toBe("#72c9c4");
+  });
+
+  it("keeps Journey intensity synchronized with the selected accent", () => {
+    setThemeRuntime("dark", "rose");
+    const roseRamp = [...chart.heatmapRamp];
+
+    setThemeRuntime("dark", "teal");
+
+    expect(chart.heatmapRamp).not.toEqual(roseRamp);
+    expect(chart.heatmapRamp).toEqual([
+      "rgba(114,201,196,0.34)",
+      "rgba(114,201,196,0.56)",
+      "rgba(114,201,196,0.78)",
+      "#72c9c4",
+    ]);
   });
 
   it("keeps dark text and accent roles above the agreed contrast floor", () => {
