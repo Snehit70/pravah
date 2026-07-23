@@ -173,6 +173,12 @@ evolution is additive; old behavior is removed only after deliberately
 advancing the emergency compatibility floor. Ordinary cleanup does not strand
 older APKs, so compatibility paths may remain indefinitely.
 
+Because path-only CI cannot prove that a Convex change is web-only, the
+classifier deliberately treats every `convex/**` change as mobile-affecting.
+This conservative rule prevents backend-driven mobile behavior from silently
+bypassing the ledger; demonstrably non-shipping changes use the explicit
+no-release classification.
+
 Release identities are injected at workflow time rather than committed as
 version bumps. Production workflows receive
 `EXPO_PUBLIC_MOBILE_RELEASE_VERSION` and `MOBILE_NATIVE_RUNTIME` from the

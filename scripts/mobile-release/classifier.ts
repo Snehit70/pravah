@@ -13,6 +13,7 @@ export type ClassificationInput = {
   sourceFingerprint?: string;
   supportedFingerprint?: string;
   fingerprintError?: string;
+  pullRequestBody?: string;
 };
 
 export type ClassificationResult = {
@@ -96,6 +97,9 @@ export function classifyMobileRelease(
   }
 
   if (classification === "mobile-ota") {
+    if (!/^## Mobile release notes\s*\n+\S/im.test(input.pullRequestBody ?? "")) {
+      reasons.push("mobile-ota requires a non-empty Mobile release notes section");
+    }
     if (input.fingerprintError) {
       reasons.push(`Native fingerprint generation failed: ${input.fingerprintError}`);
     } else if (!input.sourceFingerprint || !input.supportedFingerprint) {

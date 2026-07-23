@@ -49,6 +49,7 @@ export default defineSchema({
     .index("by_version", ["version"])
     .index("by_source_sha", ["sourceSha"])
     .index("by_source_status", ["sourceSha", "status"])
+    .index("by_runtime_status", ["nativeRuntime", "status"])
     .index("by_status", ["status"])
     .index("by_published_at", ["publishedAt"])
     .index("by_status_published_at", ["status", "publishedAt"]),

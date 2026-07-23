@@ -27,6 +27,7 @@ const baseSha = requiredEnv("BASE_SHA");
 const headSha = requiredEnv("HEAD_SHA");
 const labels = JSON.parse(requiredEnv("PR_LABELS_JSON")) as string[];
 const supportedFingerprint = process.env.SUPPORTED_FINGERPRINT?.trim();
+const pullRequestBody = process.env.PR_BODY ?? "";
 
 const diff = await command([
   "git",
@@ -68,6 +69,7 @@ const result = classifyMobileRelease({
   sourceFingerprint,
   supportedFingerprint,
   fingerprintError,
+  pullRequestBody,
 });
 
 const output = {

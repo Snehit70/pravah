@@ -47,5 +47,6 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_LABELS_JSON: ${{ toJson(github.event.pull_request.labels.*.name) }}
+          PR_BODY: ${{ github.event.pull_request.body }}
           SUPPORTED_FINGERPRINT: ${{ steps.release_state.outputs.fingerprint }}
         run: bun scripts/mobile-release/check-pr.ts

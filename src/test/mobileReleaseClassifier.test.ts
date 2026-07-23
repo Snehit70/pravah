@@ -9,6 +9,7 @@ describe("mobile release classification", () => {
       labels: [],
       sourceFingerprint: "fingerprint-1",
       supportedFingerprint: "fingerprint-1",
+      pullRequestBody: "## Mobile release notes\n\nCapture is faster.",
     });
 
     expect(result).toEqual({
@@ -24,6 +25,7 @@ describe("mobile release classification", () => {
       labels: ["mobile-ota"],
       sourceFingerprint: "fingerprint-2",
       supportedFingerprint: "fingerprint-1",
+      pullRequestBody: "## Mobile release notes\n\nCapture is faster.",
     });
 
     expect(result).toEqual({
@@ -63,5 +65,18 @@ describe("mobile release classification", () => {
         "mobile-no-release cannot include shipped mobile or backend behavior",
       ],
     });
+  });
+
+  it("requires OTA release notes", () => {
+    const result = classifyMobileRelease({
+      changedFiles: ["apps/mobile/src/components/TaskCard.tsx"],
+      labels: ["mobile-ota"],
+      sourceFingerprint: "fingerprint-1",
+      supportedFingerprint: "fingerprint-1",
+      pullRequestBody: "",
+    });
+    expect(result.reasons).toContain(
+      "mobile-ota requires a non-empty Mobile release notes section",
+    );
   });
 });

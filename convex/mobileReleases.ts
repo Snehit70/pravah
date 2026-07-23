@@ -20,6 +20,14 @@ function nextPatch(version: string): string {
   return `${match[1]}.${match[2]}.${Number(match[3]) + 1}`;
 }
 
+function nativeRuntimeNumber(runtime: string): number {
+  const match = /^native-(\d+)$/.exec(runtime);
+  if (!match || Number(match[1]) < 1) {
+    throw new Error(`Invalid native runtime: ${runtime}`);
+  }
+  return Number(match[1]);
+}
+
 export const getState = query({
   args: {},
   handler: async (ctx) => {
@@ -84,8 +92,24 @@ export const reserve = mutation({
             q.eq("sourceSha", args.sourceSha).eq("status", "staged"),
           )
           .first();
-    const existing = pending ?? staged;
+    const failed = pending || staged
+      ? null
+      : await ctx.db
+          .query("mobileReleaseAttempts")
+          .withIndex("by_source_status", (q) =>
+            q.eq("sourceSha", args.sourceSha).eq("status", "failed"),
+          )
+          .first();
+    const existing = pending ?? staged ?? failed;
     if (existing) {
+      if (existing.status === "failed") {
+        await ctx.db.patch(existing._id, {
+          status: "pending",
+          failureReason: undefined,
+          failedAt: undefined,
+          updatedAt: Date.now(),
+        });
+      }
       return {
         attemptId: existing._id,
         version: existing.version,
@@ -99,6 +123,13 @@ export const reserve = mutation({
       }
       if (args.nativeFingerprint !== control.supportedFingerprint) {
         throw new Error("OTA fingerprint does not match the supported runtime");
+      }
+    } else if (args.delivery === "native") {
+      if (
+        nativeRuntimeNumber(args.nativeRuntime) !==
+        nativeRuntimeNumber(control.supportedRuntime) + 1
+      ) {
+        throw new Error("Native release must use the next native runtime");
       }
     }
 
@@ -271,10 +302,26 @@ export const listPublished = query({
         title: release.title,
         releaseNotes: release.releaseNotes,
         nativeRuntime: release.nativeRuntime,
+        sourceSha: release.sourceSha,
+        pullRequests: release.pullRequests,
+        easUpdateId: release.easUpdateId,
+        easBranch: release.easBranch,
         publishedAt: release.publishedAt,
         rollbackOfVersion: release.rollbackOfVersion,
         restoresVersion: release.restoresVersion,
       }));
+  },
+});
+
+export const listAttempts = query({
+  args: { deploymentSecret: v.string(), limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    assertDeploymentAuthority(args.deploymentSecret);
+    return await ctx.db
+      .query("mobileReleaseAttempts")
+      .withIndex("by_status")
+      .order("desc")
+      .take(Math.max(1, Math.min(args.limit ?? 50, 100)));
   },
 });
 
@@ -294,6 +341,7 @@ export const seed = mutation({
   },
   handler: async (ctx, args) => {
     assertDeploymentAuthority(args.deploymentSecret);
+    nativeRuntimeNumber(args.nativeRuntime);
     const existing = await ctx.db
       .query("mobileReleaseControl")
       .withIndex("by_key", (q) => q.eq("key", controlKey))
@@ -358,6 +406,23 @@ export const setMinimumRuntime = mutation({
       .withIndex("by_key", (q) => q.eq("key", controlKey))
       .unique();
     if (!control) throw new Error("Mobile release control is not seeded");
+    const target = nativeRuntimeNumber(args.nativeRuntime);
+    const supported = nativeRuntimeNumber(control.supportedRuntime);
+    const current = control.minimumRuntime
+      ? nativeRuntimeNumber(control.minimumRuntime)
+      : 0;
+    if (target > supported || target < current) {
+      throw new Error("Minimum runtime must advance within the supported range");
+    }
+    const publishedRuntime = await ctx.db
+      .query("mobileReleaseAttempts")
+      .withIndex("by_runtime_status", (q) =>
+        q.eq("nativeRuntime", args.nativeRuntime).eq("status", "published"),
+      )
+      .first();
+    if (!publishedRuntime || publishedRuntime.delivery !== "native") {
+      throw new Error("Minimum runtime must reference a published native release");
+    }
     await ctx.db.patch(control._id, {
       minimumRuntime: args.nativeRuntime,
       revision: control.revision + 1,
@@ -373,6 +438,59 @@ export const setMinimumRuntime = mutation({
       minimumRuntime: args.nativeRuntime,
       revision: control.revision + 1,
       reason: args.reason.trim(),
+    };
+  },
+});
+
+export const reconcile = mutation({
+  args: {
+    deploymentSecret: v.string(),
+    attemptId: v.id("mobileReleaseAttempts"),
+    reason: v.string(),
+    metadataJson: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    assertDeploymentAuthority(args.deploymentSecret);
+    const attempt = await ctx.db.get(args.attemptId);
+    if (!attempt) throw new Error("Release attempt not found");
+    await ctx.db.insert("mobileReleaseOperations", {
+      operation: "reconcile",
+      target: attempt.version,
+      reason: args.reason.trim(),
+      metadataJson: args.metadataJson,
+      createdAt: Date.now(),
+    });
+    return { attemptId: args.attemptId, status: attempt.status };
+  },
+});
+
+export const requestRollback = mutation({
+  args: {
+    deploymentSecret: v.string(),
+    restoresVersion: v.string(),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    assertDeploymentAuthority(args.deploymentSecret);
+    const target = await ctx.db
+      .query("mobileReleaseAttempts")
+      .withIndex("by_version", (q) => q.eq("version", args.restoresVersion))
+      .unique();
+    if (!target || target.status !== "published") {
+      throw new Error("Rollback target must be a published release");
+    }
+    await ctx.db.insert("mobileReleaseOperations", {
+      operation: "rollback",
+      target: args.restoresVersion,
+      reason: args.reason.trim(),
+      metadataJson: JSON.stringify({ sourceSha: target.sourceSha }),
+      createdAt: Date.now(),
+    });
+    return {
+      restoresVersion: target.version,
+      sourceSha: target.sourceSha,
+      nativeRuntime: target.nativeRuntime,
+      nativeFingerprint: target.nativeFingerprint,
     };
   },
 });
