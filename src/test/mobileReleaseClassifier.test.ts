@@ -79,4 +79,17 @@ describe("mobile release classification", () => {
       "mobile-ota requires a non-empty Mobile release notes section",
     );
   });
+
+  it("allows the isolated release foundation to bootstrap without shipping", () => {
+    expect(
+      classifyMobileRelease({
+        changedFiles: [
+          "convex/mobileReleases.ts",
+          "convex/schema.ts",
+          "convex/_generated/api.d.ts",
+        ],
+        labels: ["mobile-no-release"],
+      }),
+    ).toMatchObject({ ok: true, classification: "mobile-no-release" });
+  });
 });

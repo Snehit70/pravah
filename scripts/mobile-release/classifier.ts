@@ -50,6 +50,14 @@ function isNonShipping(path: string): boolean {
   );
 }
 
+function isReleaseFoundation(path: string): boolean {
+  return (
+    path === "convex/mobileReleases.ts" ||
+    path === "convex/_generated/api.d.ts" ||
+    path === "convex/schema.ts"
+  );
+}
+
 function isNativeCritical(path: string): boolean {
   return (
     nativeCriticalPaths.includes(
@@ -88,7 +96,13 @@ export function classifyMobileRelease(
   }
 
   if (classification === "mobile-no-release") {
-    if (changedFiles.some((path) => isMobileAffecting(path) && !isNonShipping(path))) {
+    const mobileFiles = changedFiles.filter(isMobileAffecting);
+    const releaseFoundationOnly =
+      mobileFiles.length > 0 && mobileFiles.every(isReleaseFoundation);
+    if (
+      !releaseFoundationOnly &&
+      mobileFiles.some((path) => !isNonShipping(path))
+    ) {
       reasons.push(
         "mobile-no-release cannot include shipped mobile or backend behavior",
       );
