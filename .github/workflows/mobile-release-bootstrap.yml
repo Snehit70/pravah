@@ -1,0 +1,87 @@
+name: Mobile Release Bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact commit used to build mobile-v3.0.1
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: 1.3.3
+
+jobs:
+  bootstrap:
+    name: Deploy and seed mobile release control
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Deploy release foundation
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+        run: bunx convex deploy --typecheck enable
+
+      - name: Configure deployment authority
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          MOBILE_RELEASE_DEPLOY_SECRET: ${{ secrets.MOBILE_RELEASE_DEPLOY_SECRET }}
+        run: bunx convex env set --prod MOBILE_RELEASE_DEPLOY_SECRET "$MOBILE_RELEASE_DEPLOY_SECRET"
+
+      - name: Calculate baseline native fingerprint
+        id: fingerprint
+        working-directory: apps/mobile
+        run: |
+          VALUE=$(bunx fingerprint fingerprint:generate --platform android | node -e "let input=''; process.stdin.on('data', chunk => input += chunk); process.stdin.on('end', () => process.stdout.write(JSON.parse(input).hash))")
+          echo "value=$VALUE" >> "$GITHUB_OUTPUT"
+
+      - name: Seed 3.0.1 / native-1
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          MOBILE_RELEASE_DEPLOY_SECRET: ${{ secrets.MOBILE_RELEASE_DEPLOY_SECRET }}
+          NATIVE_FINGERPRINT: ${{ steps.fingerprint.outputs.value }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          RELEASE=$(gh release view mobile-v3.0.1 --json publishedAt,assets)
+          export RELEASE
+          ARGS=$(node -e '
+            const release = JSON.parse(process.env.RELEASE);
+            const apk = release.assets.find((asset) => asset.name.endsWith(".apk"));
+            const checksum = release.assets.find((asset) => asset.name.endsWith(".apk.md5"));
+            if (!apk || !checksum) throw new Error("mobile-v3.0.1 assets are incomplete");
+            process.stdout.write(JSON.stringify({
+              deploymentSecret: process.env.MOBILE_RELEASE_DEPLOY_SECRET,
+              version: "3.0.1",
+              nativeRuntime: "native-1",
+              nativeFingerprint: process.env.NATIVE_FINGERPRINT,
+              sourceSha: process.env.SOURCE_SHA,
+              title: "System-led mobile appearance",
+              releaseNotes: "Pravah Mobile 3.0.1 adds system-led light and dark appearance, selectable accents, fully themed mobile surfaces, and the native configuration required for the new appearance runtime.",
+              githubTag: "mobile-v3.0.1",
+              artifactUrl: apk.url,
+              checksumUrl: checksum.url,
+              publishedAt: Date.parse(release.publishedAt),
+            }));
+          ' )
+          bunx convex run --prod mobileReleases:seed "$ARGS"
+
+      - name: Verify seed
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+        run: bunx convex run --prod mobileReleases:getState '{}'
