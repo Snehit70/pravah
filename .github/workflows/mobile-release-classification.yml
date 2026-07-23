@@ -36,6 +36,7 @@ jobs:
 
       - name: Read supported runtime
         id: release_state
+        if: contains(github.event.pull_request.labels.*.name, 'mobile-ota')
         env:
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
         run: |
