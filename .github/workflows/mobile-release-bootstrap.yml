@@ -47,17 +47,6 @@ jobs:
         working-directory: baseline-source
         run: bun install --frozen-lockfile
 
-      - name: Deploy release foundation
-        env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-        run: bunx convex deploy --typecheck enable
-
-      - name: Configure deployment authority
-        env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-          MOBILE_RELEASE_DEPLOY_SECRET: ${{ secrets.MOBILE_RELEASE_DEPLOY_SECRET }}
-        run: bunx convex env set --prod MOBILE_RELEASE_DEPLOY_SECRET "$MOBILE_RELEASE_DEPLOY_SECRET"
-
       - name: Calculate baseline native fingerprint
         id: fingerprint
         working-directory: baseline-source/apps/mobile
@@ -67,6 +56,7 @@ jobs:
 
       - name: Recover baseline GitHub release
         env:
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
           GH_TOKEN: ${{ github.token }}
           ARTIFACT_URL: ${{ inputs.artifact_url }}
           SOURCE_SHA: ${{ inputs.source_sha }}
@@ -88,7 +78,7 @@ jobs:
 
       - name: Seed 3.0.1 / native-1
         env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
           GH_TOKEN: ${{ github.token }}
           MOBILE_RELEASE_DEPLOY_SECRET: ${{ secrets.MOBILE_RELEASE_DEPLOY_SECRET }}
           NATIVE_FINGERPRINT: ${{ steps.fingerprint.outputs.value }}
@@ -115,9 +105,9 @@ jobs:
               publishedAt: Date.parse(release.publishedAt),
             }));
           ' )
-          bunx convex run --prod mobileReleases:seed "$ARGS"
+          BASELINE_ARGS="$ARGS" bun scripts/mobile-release/seed-baseline.ts
 
       - name: Verify seed
         env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-        run: bunx convex run --prod mobileReleases:getState '{}'
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+        run: bun scripts/mobile-release/read-state.ts
