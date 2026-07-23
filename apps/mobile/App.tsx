@@ -50,8 +50,10 @@ import {
   spacing,
   typography,
 } from "./src/theme/tokens";
-import { setThemeRuntime } from "./src/theme/themeRuntime";
-import { createThemedStyles } from "./src/theme/themeRuntime";
+import {
+  createThemedStyles,
+  setThemeRuntime,
+} from "./src/theme/themeRuntime";
 import { TaskCard, type MobileTask } from "./src/components/TaskCard";
 import { BottomTabBar, type TabKey } from "./src/components/BottomTabBar";
 import { GridBackground } from "./src/components/GridBackground";
@@ -194,7 +196,10 @@ function MobileApp() {
     prefs.theme === "system"
       ? systemAppearance === "dark" ? "dark" : "light"
       : prefs.theme;
-  setThemeRuntime(resolvedAppearance, prefs.accentColor);
+
+  useEffect(() => {
+    setThemeRuntime(resolvedAppearance, prefs.accentColor);
+  }, [prefs.accentColor, resolvedAppearance]);
 
   useEffect(() => {
     Appearance.setColorScheme(

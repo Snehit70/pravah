@@ -16,7 +16,7 @@ const config: ExpoConfig = {
   name: getAppName(),
   slug: "pravah-mobile",
   scheme: "pravah",
-  version: "3.0.0",
+  version: "3.0.1",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",

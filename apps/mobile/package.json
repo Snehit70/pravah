@@ -1,6 +1,6 @@
 {
   "name": "@pravah/mobile",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
