@@ -5,6 +5,7 @@ import { haptic } from "../lib/haptic";
 import { api } from "../../../../convex/_generated/api";
 import type { Doc, Id } from "../../../../convex/_generated/dataModel";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { addDays, nextLaterThisWeek, toIsoDate } from "../lib/dates";
 import { mobileLogger, classifyError } from "../lib/logger";
 import { InboxTrayIcon } from "./UiIcons";
@@ -230,7 +231,7 @@ export function GmailReviewSection({ enabled, showToast }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   wrap: {
     gap: spacing.sm,
     marginTop: spacing.sm,

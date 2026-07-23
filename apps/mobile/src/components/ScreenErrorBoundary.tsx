@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { classifyError, describeErrorForDiagnostics, mobileLogger } from "../lib/logger";
 import { getDiagnosticsRuntimeState } from "../lib/diagnostics";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 
 type ScreenErrorBoundaryProps = {
   screenName: string;
@@ -64,7 +65,7 @@ export class ScreenErrorBoundary extends Component<
   }
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   container: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.lg,

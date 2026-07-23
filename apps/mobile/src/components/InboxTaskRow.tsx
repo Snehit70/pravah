@@ -13,6 +13,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import NavInboxAsset from "../assets/icons/nav-inbox.svg";
 import { CalendarIcon, CheckIcon } from "./UiIcons";
 import { colors, fonts, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import type { MobileTask } from "./TaskCard";
 
 type InboxTaskRowProps = {
@@ -103,7 +104,7 @@ function InboxTaskRowInner({
 
 export const InboxTaskRow = memo(InboxTaskRowInner);
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   row: {
     flexDirection: "row",
     alignItems: "center",

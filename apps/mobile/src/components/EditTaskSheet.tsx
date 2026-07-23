@@ -22,7 +22,14 @@ import {
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { haptic } from "../lib/haptic";
-import { colors, radii, spacing, typography } from "../theme/tokens";
+import {
+  colors,
+  radii,
+  spacing,
+  typography,
+} from "../theme/tokens";
+import { getThemeRuntimeSnapshot } from "../theme/themeRuntime";
+import { createThemedStyles } from "../theme/themeRuntime";
 import type { MobileTask } from "./TaskCard";
 import { isTaskCompleted, isTaskOnTimeline } from "../lib/taskState";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -310,7 +317,11 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             { paddingBottom: Math.max(insets.bottom, spacing.sm) },
           ]}
         >
-          <BlurView intensity={38} tint="light" style={StyleSheet.absoluteFill} />
+          <BlurView
+            intensity={38}
+            tint={getThemeRuntimeSnapshot().appearance === "dark" ? "dark" : "light"}
+            style={StyleSheet.absoluteFill}
+          />
           <Pressable
             accessibilityLabel="Dismiss"
             accessibilityRole="button"
@@ -668,7 +679,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
   }
 );
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   overlay: {
     flex: 1,
     alignItems: "center",

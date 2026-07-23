@@ -17,6 +17,7 @@ import Animated, { FadeIn, FadeOut, withDelay, withTiming } from "react-native-r
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import Svg, { Line, Rect } from "react-native-svg";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import type { MobileTask } from "../components/TaskCard";
 import { TimelineSectionHeader } from "../components/TimelineSectionHeader";
@@ -536,7 +537,7 @@ export function TimelineScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   layoutRoot: {
     flex: 1,
   },
@@ -637,7 +638,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
+    shadowColor: "#08050a",
     shadowOpacity: 0.18,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },
@@ -655,7 +656,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.xs,
-    shadowColor: "#000",
+    shadowColor: "#08050a",
     shadowOpacity: 0.18,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },
@@ -676,7 +677,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.xs,
-    shadowColor: "#000",
+    shadowColor: "#08050a",
     shadowOpacity: 0.18,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },

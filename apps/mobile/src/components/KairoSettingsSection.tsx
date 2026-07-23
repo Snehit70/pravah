@@ -30,6 +30,7 @@ import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useConfirm } from "../hooks/useConfirm";
 import { KairoSettingsSkeleton } from "./LoadingSkeleton";
 import { colors, motion, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { classifyError, mobileLogger } from "../lib/logger";
 import {
   AdjustmentsIcon,
@@ -741,7 +742,7 @@ export function KairoSettingsSection({ onFieldFocus }: KairoSettingsSectionProps
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   block: {
     gap: spacing.sm,
   },
@@ -934,7 +935,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.successMuted,
   },
   providerBadgeIdle: {
-    backgroundColor: "rgba(91,80,72,0.05)",
+    backgroundColor: colors.bgCardGlass,
   },
   providerBadgeText: {
     ...typography.bodyMd,
@@ -1088,7 +1089,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   testButtonPassed: {
-    borderColor: "rgba(34,107,75,0.24)",
+    borderColor: colors.success,
     backgroundColor: colors.successMuted,
   },
   testButtonText: {
@@ -1111,7 +1112,7 @@ const styles = StyleSheet.create({
   },
   saveButtonSaved: {
     backgroundColor: colors.successMuted,
-    borderColor: "rgba(34,107,75,0.24)",
+    borderColor: colors.success,
   },
   saveButtonText: {
     color: colors.textPrimary,

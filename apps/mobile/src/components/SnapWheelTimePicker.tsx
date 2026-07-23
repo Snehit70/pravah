@@ -21,6 +21,7 @@ import { scheduleOnRN } from "react-native-worklets";
 import { haptic } from "../lib/haptic";
 import { selectedIndexFromOffset } from "../lib/snapWheelTimePicker";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 
 type SnapWheelTimePickerProps = {
@@ -264,7 +265,7 @@ export function SnapWheelTimePicker({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   overlay: {
     flex: 1,
     alignItems: "center",

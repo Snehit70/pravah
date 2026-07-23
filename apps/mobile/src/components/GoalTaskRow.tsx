@@ -17,6 +17,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { shortDate } from "../lib/dates";
 import { colors, fonts, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import type { MobileTask } from "./TaskCard";
 import { CalendarIcon, CheckIcon } from "./UiIcons";
 
@@ -125,7 +126,7 @@ function GoalTaskRowInner({
 
 export const GoalTaskRow = memo(GoalTaskRowInner);
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   row: {
     minHeight: 56,
     flexDirection: "row",

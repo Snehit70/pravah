@@ -50,6 +50,7 @@ import Animated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { colors, fonts, motion, radii, shadow, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import type { MobileTask } from "./TaskCard";
 import { taskEmphasisColor } from "../lib/taskAccent";
@@ -884,7 +885,7 @@ export function TimelineDayCarousel({
 
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   container: {
     flex: 1,
   },

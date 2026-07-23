@@ -31,6 +31,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { colors, fonts, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import type { GoalItem } from "../lib/goalsStorage";
 import { useGoals, useGoalLinks } from "../hooks/useGoals";
 import { useGoalMutations } from "../hooks/useGoalMutations";
@@ -950,7 +951,7 @@ export function GoalsScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   listHeader: {
     minHeight: 44,
     paddingHorizontal: spacing.lg,
@@ -1117,7 +1118,7 @@ const styles = StyleSheet.create({
   },
 });
 
-const detailStyles = StyleSheet.create({
+const detailStyles = createThemedStyles({
   backdrop: {
     position: "absolute",
     top: 0,
@@ -1320,7 +1321,7 @@ const detailStyles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
+    shadowColor: "#08050a",
     shadowOpacity: 0.18,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },
@@ -1338,7 +1339,7 @@ const detailStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.xs,
-    shadowColor: "#000",
+    shadowColor: "#08050a",
     shadowOpacity: 0.18,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },
@@ -1359,7 +1360,7 @@ const detailStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.xs,
-    shadowColor: "#000",
+    shadowColor: "#08050a",
     shadowOpacity: 0.18,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },

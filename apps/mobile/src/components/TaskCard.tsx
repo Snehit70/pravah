@@ -18,6 +18,7 @@ import Animated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { colors, fonts, motion, radii, shadow, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { CheckIcon } from "./UiIcons";
 import { getLocalDateString } from "../lib/dates";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -500,7 +501,7 @@ function TaskCardInner({
 
 export const TaskCard = memo(TaskCardInner);
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   // Each row is its own card. Margin between rows replaces the old hairline
   // divider — visual separation comes from the card edges + grid background
   // showing through the gap.

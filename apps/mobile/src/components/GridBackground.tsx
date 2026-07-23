@@ -1,6 +1,7 @@
 import { useWindowDimensions, View, StyleSheet } from "react-native";
 import Svg, { Defs, Pattern, Path, Rect, RadialGradient, Stop } from "react-native-svg";
 import { colors } from "../theme/tokens";
+import { getThemeRuntimeSnapshot } from "../theme/themeRuntime";
 
 /**
  * A 32px warm-ink grid at low opacity,
@@ -19,7 +20,10 @@ import { colors } from "../theme/tokens";
 export function GridBackground() {
   const { width, height } = useWindowDimensions();
   const cell = 32;
-  const lineColor = "rgba(78,62,43,0.055)";
+  const lineColor =
+    getThemeRuntimeSnapshot().appearance === "dark"
+      ? "rgba(231,213,235,0.045)"
+      : "rgba(78,62,43,0.055)";
 
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>

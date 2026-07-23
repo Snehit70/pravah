@@ -54,6 +54,7 @@ import {
 } from "../lib/chartGeometry";
 import { WEEKDAY_LABELS } from "../lib/statsAggregators";
 import { chart, colors, motion, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 
 /** Full width finally has room for real day names instead of "S M T W T F S". */
 const WEEKDAY_SHORT = WEEKDAY_LABELS.map((l) => l.slice(0, 3));
@@ -506,7 +507,7 @@ function HourChart({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   card: {
     marginHorizontal: spacing.lg,
     padding: spacing.lg,

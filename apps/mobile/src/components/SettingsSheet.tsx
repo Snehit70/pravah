@@ -28,7 +28,16 @@ import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { getKairoSettings } from "../lib/kairoConfig";
 import type { NotificationPermissionState } from "../lib/notifications";
-import { colors, motion, radii, spacing, typography } from "../theme/tokens";
+import {
+  accentColorFor,
+  colors,
+  motion,
+  radii,
+  spacing,
+  typography,
+} from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
+import { getThemeRuntimeSnapshot } from "../theme/themeRuntime";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
@@ -190,7 +199,7 @@ const TASK_COLOR_OPTIONS: Array<{
   label: string;
   swatch: string;
 }> = [
-  { value: "purple", label: "Ink", swatch: colors.accent },
+  { value: "purple", label: "Purple", swatch: "#6753c7" },
   { value: "copper", label: "Copper", swatch: colors.deadline },
   { value: "teal", label: "Teal", swatch: "#3e7b78" },
   { value: "rose", label: "Rose", swatch: "#9d586f" },
@@ -214,8 +223,8 @@ type SettingsHomeStatus = {
   tone: SettingsHomeStatusTone;
 };
 
-function SyncIcon({ color: _color, size = 18 }: CategoryIconProps) {
-  return <SyncIconAsset width={size} height={size} />;
+function SyncIcon({ color, size = 18 }: CategoryIconProps) {
+  return <SyncIconAsset width={size} height={size} color={color} />;
 }
 
 function KairoIcon({ color, size = 18 }: CategoryIconProps) {
@@ -230,32 +239,32 @@ function CliIcon({ color, size = 18 }: CategoryIconProps) {
   return <CliIconAsset width={size} height={size} color={color} />;
 }
 
-function BellIcon({ color: _color, size = 18 }: CategoryIconProps) {
-  return <RemindersIconAsset width={size} height={size} />;
+function BellIcon({ color, size = 18 }: CategoryIconProps) {
+  return <RemindersIconAsset width={size} height={size} color={color} />;
 }
 
-function QuietHoursIcon({ color: _color, size = 18 }: CategoryIconProps) {
-  return <QuietHoursIconAsset width={size} height={size} />;
+function QuietHoursIcon({ color, size = 18 }: CategoryIconProps) {
+  return <QuietHoursIconAsset width={size} height={size} color={color} />;
 }
 
-function HandIcon({ color: _color, size = 18 }: CategoryIconProps) {
-  return <InteractionIconAsset width={size} height={size} />;
+function HandIcon({ color, size = 18 }: CategoryIconProps) {
+  return <InteractionIconAsset width={size} height={size} color={color} />;
 }
 
-function SlidersIcon({ color: _color, size = 18 }: CategoryIconProps) {
-  return <AppearanceIconAsset width={size} height={size} />;
+function SlidersIcon({ color, size = 18 }: CategoryIconProps) {
+  return <AppearanceIconAsset width={size} height={size} color={color} />;
 }
 
-function DataIcon({ color: _color, size = 18 }: CategoryIconProps) {
-  return <DataIconAsset width={size} height={size} />;
+function DataIcon({ color, size = 18 }: CategoryIconProps) {
+  return <DataIconAsset width={size} height={size} color={color} />;
 }
 
-function AccountIcon({ color: _color, size = 18 }: CategoryIconProps) {
-  return <PravahMobileIconAsset width={size} height={size} />;
+function AccountIcon({ color, size = 18 }: CategoryIconProps) {
+  return <PravahMobileIconAsset width={size} height={size} color={color} />;
 }
 
-function InfoIcon({ color: _color, size = 18 }: CategoryIconProps) {
-  return <AboutIconAsset width={size} height={size} />;
+function InfoIcon({ color, size = 18 }: CategoryIconProps) {
+  return <AboutIconAsset width={size} height={size} color={color} />;
 }
 
 const SETTINGS_CATEGORY_ICONS: Partial<
@@ -402,6 +411,7 @@ function SwatchChip({
 }) {
   const reducedMotion = useReducedMotion();
   const progress = useSharedValue(active ? 1 : 0);
+  const idleBorderColor = colors.borderSubtle;
 
   useEffect(() => {
     const next = active ? 1 : 0;
@@ -411,15 +421,15 @@ function SwatchChip({
   }, [active, progress, reducedMotion]);
 
   const borderStyle = useAnimatedStyle(() => ({
-    borderColor: interpolateColor(progress.value, [0, 1], [colors.borderSubtle, swatch]),
-  }));
+    borderColor: interpolateColor(progress.value, [0, 1], [idleBorderColor, swatch]),
+  }), [idleBorderColor, swatch]);
 
   return (
     <AnimatedPressable
       onPress={onSelect}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
-      accessibilityLabel={`Use ${label} task color`}
+      accessibilityLabel={`Use ${label} color`}
       style={[styles.swatchOption, borderStyle]}
     >
       <View style={[styles.swatchDot, { backgroundColor: swatch }]} />
@@ -1737,6 +1747,10 @@ function ThemedToggle({
 }) {
   const reducedMotion = useReducedMotion();
   const progress = useSharedValue(value ? 1 : 0);
+  const idleTrackColor = colors.border;
+  const activeTrackColor = colors.warningMuted;
+  const idleThumbColor = colors.textMuted;
+  const activeThumbColor = colors.warning;
 
   useEffect(() => {
     const next = value ? 1 : 0;
@@ -1749,15 +1763,15 @@ function ThemedToggle({
     backgroundColor: interpolateColor(
       progress.value,
       [0, 1],
-      [colors.border, colors.warningMuted],
+      [idleTrackColor, activeTrackColor],
     ),
-  }));
+  }), [activeTrackColor, idleTrackColor]);
 
   const thumbStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
       progress.value,
       [0, 1],
-      [colors.textMuted, colors.warning],
+      [idleThumbColor, activeThumbColor],
     ),
     transform: [
       {
@@ -1765,7 +1779,7 @@ function ThemedToggle({
           progress.value * (TOGGLE_TRACK_WIDTH - TOGGLE_THUMB_SIZE - TOGGLE_PADDING * 2),
       },
     ],
-  }));
+  }), [activeThumbColor, idleThumbColor]);
 
   return (
     <Pressable
@@ -1802,7 +1816,7 @@ function InteractionSection({ prefs, setPreference }: InteractionSectionProps) {
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <View style={styles.settingRow}>
           <View style={styles.syncIconWrap}>
-            <BulkCaptureIconAsset width={18} height={18} />
+            <BulkCaptureIconAsset width={18} height={18} color={colors.textSecondary} />
           </View>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Bulk task capture</Text>
@@ -1820,7 +1834,7 @@ function InteractionSection({ prefs, setPreference }: InteractionSectionProps) {
 
         <View style={styles.settingRow}>
           <View style={styles.syncIconWrap}>
-            <SwipeIconAsset width={22} height={22} />
+            <SwipeIconAsset width={22} height={22} color={colors.textSecondary} />
           </View>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Swipe actions</Text>
@@ -1838,7 +1852,7 @@ function InteractionSection({ prefs, setPreference }: InteractionSectionProps) {
 
         <View style={styles.settingRow}>
           <View style={styles.syncIconWrap}>
-            <HapticsIconAsset width={18} height={18} />
+            <HapticsIconAsset width={18} height={18} color={colors.textSecondary} />
           </View>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Haptics</Text>
@@ -1856,7 +1870,7 @@ function InteractionSection({ prefs, setPreference }: InteractionSectionProps) {
 
         <View style={styles.settingRow}>
           <View style={styles.syncIconWrap}>
-            <SoundIconAsset width={18} height={18} />
+            <SoundIconAsset width={18} height={18} color={colors.textSecondary} />
           </View>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Sound</Text>
@@ -1874,7 +1888,7 @@ function InteractionSection({ prefs, setPreference }: InteractionSectionProps) {
 
         <View style={styles.settingRow}>
           <View style={styles.syncIconWrap}>
-            <ReducedMotionIconAsset width={18} height={18} />
+            <ReducedMotionIconAsset width={18} height={18} color={colors.textSecondary} />
           </View>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Reduced motion</Text>
@@ -1903,7 +1917,9 @@ function AppearanceSection({
         <View style={styles.settingRow}>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Theme</Text>
-            <Text style={styles.settingHelp}>Dark theme is coming soon.</Text>
+            <Text style={styles.settingHelp}>
+              System follows this device and updates live.
+            </Text>
           </View>
         </View>
         <SlidingSegmented
@@ -1911,6 +1927,30 @@ function AppearanceSection({
           value={prefs.theme}
           onSelect={(theme) => void setPreference("theme", theme)}
         />
+        <View style={styles.sectionDivider} />
+
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>App accent</Text>
+            <Text style={styles.settingHelp}>
+              Colors active navigation, selections, and primary actions.
+            </Text>
+          </View>
+        </View>
+        <View style={styles.swatchGrid}>
+          {TASK_COLOR_OPTIONS.map((option) => (
+            <SwatchChip
+              key={option.value}
+              label={option.label}
+              swatch={accentColorFor(
+                getThemeRuntimeSnapshot().appearance,
+                option.value,
+              )}
+              active={prefs.accentColor === option.value}
+              onSelect={() => void setPreference("accentColor", option.value)}
+            />
+          ))}
+        </View>
         <View style={styles.sectionDivider} />
 
         <View style={styles.settingRow}>
@@ -2809,7 +2849,15 @@ export function SettingsSheet({
     interaction: prefs.swipeActionsEnabled
       ? { label: "Swipe on", tone: "neutral" }
       : { label: "Swipe off", tone: "neutral" },
-    appearance: { label: "Geist", tone: "neutral" },
+    appearance: {
+      label:
+        prefs.theme === "system"
+          ? "System"
+          : prefs.theme === "dark"
+            ? "Dark"
+            : "Warm light",
+      tone: "neutral",
+    },
     data:
       retryQueueCount === null
         ? { label: "", tone: "neutral" }
@@ -2969,7 +3017,7 @@ export function SettingsSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   modalRoot: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -3319,7 +3367,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.successMuted,
   },
   statusBadgeIdle: {
-    backgroundColor: "rgba(91,80,72,0.05)",
+    backgroundColor: colors.bgCardGlass,
   },
   statusBadgeError: {
     backgroundColor: colors.errorMuted,

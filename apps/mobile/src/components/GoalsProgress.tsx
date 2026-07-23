@@ -21,6 +21,7 @@ import Animated, {
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import type { GoalProgressRow } from "../lib/goalProgress";
 import { colors, motion, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 
 type Props = {
   rows: GoalProgressRow[];
@@ -112,7 +113,7 @@ function GoalRow({ row, urgency }: { row: GoalProgressRow; urgency: Urgency }) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   list: {
     marginHorizontal: spacing.lg,
     padding: spacing.md,

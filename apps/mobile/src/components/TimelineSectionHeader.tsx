@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { AccessibilityInfo, StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, Text, View } from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -8,6 +8,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { colors, fonts, motion, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 
 type Props = {
   label: string;
@@ -69,7 +70,7 @@ export function TimelineSectionHeader({ label, count, isToday }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   // Aligned to the card margin so headers and cards share one left edge.
   wrap: {
     marginTop: spacing.lg,

@@ -13,6 +13,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { addDays, toIsoDate, weekdayDate } from "../lib/dates";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { ThemedDatePicker } from "./ThemedDatePicker";
@@ -143,7 +144,7 @@ export function QuickScheduleSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   overlay: {
     flex: 1,
     justifyContent: "flex-end",

@@ -17,6 +17,7 @@ import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import type { MobileTask } from "../components/TaskCard";
 import { InboxTaskRow } from "../components/InboxTaskRow";
 import { QuickScheduleSheet } from "../components/QuickScheduleSheet";
@@ -566,7 +567,7 @@ export function InboxScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   searchWrap: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xs,
@@ -716,7 +717,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.sm,
-    shadowColor: "#000",
+    shadowColor: "#08050a",
     shadowOpacity: 0.18,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },
