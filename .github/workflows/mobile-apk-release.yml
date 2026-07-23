@@ -51,10 +51,10 @@ jobs:
       - name: Read mobile version
         id: version
         run: |
-          APP_VERSION=$(node -p "require('./app.json').expo.version")
+          APP_VERSION=$(bunx expo config --json | node -e "let input=''; process.stdin.on('data', chunk => input += chunk); process.stdin.on('end', () => console.log(JSON.parse(input).version))")
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           if [ "$APP_VERSION" != "$PACKAGE_VERSION" ]; then
-            echo "app.json version ($APP_VERSION) must match package.json version ($PACKAGE_VERSION)" >&2
+            echo "Expo config version ($APP_VERSION) must match package.json version ($PACKAGE_VERSION)" >&2
             exit 1
           fi
           echo "value=$APP_VERSION" >> "$GITHUB_OUTPUT"
