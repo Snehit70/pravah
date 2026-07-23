@@ -1550,7 +1550,7 @@ const styles = createThemedStyles({
     borderBottomColor: colors.border,
   },
   runtimeNoticeText: {
-    ...typography.caption,
+    ...typography.bodyMd,
     color: colors.textMuted,
     textAlign: "center",
   },
