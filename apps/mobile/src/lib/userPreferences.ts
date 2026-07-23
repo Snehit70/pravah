@@ -7,6 +7,7 @@ import {
 } from "./tabOrder";
 
 const STORAGE_KEY = "pravah_user_prefs_v1";
+const APPEARANCE_SCHEMA_VERSION = 1;
 
 export type KairoResponseStyle = "concise" | "detailed";
 export type ReducedMotionOverride = "system" | "always" | "never";
@@ -33,7 +34,6 @@ export interface UserPreferences {
   accentColor: AccentColor;
   density: Density;
   timelineLayout: TimelineLayout;
-  // Stored ahead of dark-theme support; rendering ignores it for now.
   theme: ThemePreference;
   swipeActionsEnabled: boolean;
   hapticsEnabled: boolean;
@@ -58,7 +58,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   accentColor: "purple",
   density: "cozy",
   timelineLayout: "list",
-  theme: "light",
+  theme: "system",
   swipeActionsEnabled: false,
   hapticsEnabled: true,
   soundEnabled: false,
@@ -147,7 +147,9 @@ function sanitize(raw: unknown): UserPreferences {
     density: r.density === "compact" ? "compact" : "cozy",
     timelineLayout: r.timelineLayout === "carousel" ? "carousel" : "list",
     theme:
-      r.theme === "system" || r.theme === "dark" ? r.theme : DEFAULT_PREFERENCES.theme,
+      r.theme === "system" || r.theme === "light" || r.theme === "dark"
+        ? r.theme
+        : DEFAULT_PREFERENCES.theme,
     swipeActionsEnabled:
       typeof r.swipeActionsEnabled === "boolean"
         ? r.swipeActionsEnabled
@@ -170,7 +172,20 @@ export async function loadPreferences(): Promise<UserPreferences> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULT_PREFERENCES };
-    return sanitize(JSON.parse(raw));
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const prefs = sanitize(parsed);
+    if (parsed.appearanceSchemaVersion !== APPEARANCE_SCHEMA_VERSION) {
+      const migrated = { ...prefs, theme: "system" as const };
+      await AsyncStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          ...migrated,
+          appearanceSchemaVersion: APPEARANCE_SCHEMA_VERSION,
+        }),
+      );
+      return migrated;
+    }
+    return prefs;
   } catch (error) {
     mobileLogger.warn("user_prefs_load_failed", { errorType: classifyError(error) });
     return { ...DEFAULT_PREFERENCES };
@@ -179,7 +194,13 @@ export async function loadPreferences(): Promise<UserPreferences> {
 
 export async function savePreferences(prefs: UserPreferences): Promise<void> {
   try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
+    await AsyncStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        ...prefs,
+        appearanceSchemaVersion: APPEARANCE_SCHEMA_VERSION,
+      }),
+    );
   } catch (error) {
     mobileLogger.warn("user_prefs_save_failed", { errorType: classifyError(error) });
   }

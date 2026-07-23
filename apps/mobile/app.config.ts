@@ -19,7 +19,7 @@ const config: ExpoConfig = {
   version: "3.0.0",
   orientation: "portrait",
   icon: "./assets/icon.png",
-  userInterfaceStyle: "light",
+  userInterfaceStyle: "automatic",
   plugins: [
     "expo-dev-client",
     [
@@ -40,6 +40,10 @@ const config: ExpoConfig = {
         image: "./assets/splash-icon.png",
         resizeMode: "contain",
         backgroundColor: "#f7f1e8",
+        dark: {
+          image: "./assets/splash-icon.png",
+          backgroundColor: "#151118",
+        },
       },
     ],
     "./plugins/withBuildPerformance",

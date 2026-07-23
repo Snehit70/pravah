@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { classifyError, describeErrorForDiagnostics, mobileLogger } from "../lib/logger";
 import { getDiagnosticsRuntimeState } from "../lib/diagnostics";
 import { shareDiagnosticsBundle } from "../lib/diagnosticsExport";
@@ -98,7 +99,7 @@ export class RootErrorBoundary extends Component<RootErrorBoundaryProps, RootErr
   }
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   container: {
     flex: 1,
     backgroundColor: colors.bg,

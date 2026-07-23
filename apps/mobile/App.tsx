@@ -3,11 +3,13 @@ import { ObserveRoot, useObserve } from "expo-observe";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Animated as LegacyAnimated,
+  Appearance,
   BackHandler,
   Pressable,
   Share,
   StyleSheet,
   Text,
+  useColorScheme,
   View,
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -41,7 +43,15 @@ import { useGoalMutations } from "./src/hooks/useGoalMutations";
 
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { colors, fonts, radii, spacing, typography } from "./src/theme/tokens";
+import {
+  colors,
+  fonts,
+  radii,
+  spacing,
+  typography,
+} from "./src/theme/tokens";
+import { setThemeRuntime } from "./src/theme/themeRuntime";
+import { createThemedStyles } from "./src/theme/themeRuntime";
 import { TaskCard, type MobileTask } from "./src/components/TaskCard";
 import { BottomTabBar, type TabKey } from "./src/components/BottomTabBar";
 import { GridBackground } from "./src/components/GridBackground";
@@ -179,6 +189,18 @@ function MobileApp() {
   const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
   const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
   const { prefs, ready: preferencesReady } = useUserPreferences();
+  const systemAppearance = useColorScheme();
+  const resolvedAppearance =
+    prefs.theme === "system"
+      ? systemAppearance === "dark" ? "dark" : "light"
+      : prefs.theme;
+  setThemeRuntime(resolvedAppearance, prefs.accentColor);
+
+  useEffect(() => {
+    Appearance.setColorScheme(
+      prefs.theme === "system" ? "unspecified" : prefs.theme,
+    );
+  }, [prefs.theme]);
 
   const handleTabChange = useCallback(
     (nextTab: typeof activeTab) => {
@@ -981,7 +1003,9 @@ function MobileApp() {
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.container}>
-      <StatusBar style="dark" />
+      <StatusBar
+        style={resolvedAppearance === "dark" ? "light" : "dark"}
+      />
 
       {/* Web-parity grid vignette behind everything. */}
       <GridBackground />
@@ -1489,7 +1513,7 @@ export default function App() {
 
 // ── Styles ──────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   // Main layout
   container: {
     flex: 1,
@@ -1696,7 +1720,7 @@ const styles = StyleSheet.create({
   },
 });
 
-const launchStyles = StyleSheet.create({
+const launchStyles = createThemedStyles({
   container: {
     flex: 1,
     backgroundColor: colors.bg,

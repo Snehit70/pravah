@@ -1,7 +1,14 @@
 import { StatusBar } from "expo-status-bar";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, shadow, spacing, typography } from "../theme/tokens";
+import {
+  colors,
+  shadow,
+  spacing,
+  typography,
+} from "../theme/tokens";
+import { getThemeRuntimeSnapshot } from "../theme/themeRuntime";
+import { createThemedStyles } from "../theme/themeRuntime";
 import { BrandMark } from "./BrandMark";
 
 type MobileAuthScreenProps = {
@@ -21,7 +28,9 @@ export function MobileAuthScreen({
 
   return (
     <View style={styles.root}>
-      <StatusBar style="dark" />
+      <StatusBar
+        style={getThemeRuntimeSnapshot().appearance === "dark" ? "light" : "dark"}
+      />
 
       <View style={[styles.brandZone, { paddingTop: insets.top + spacing.section * 2 }]}>
         <BrandMark size={64} />
@@ -70,7 +79,7 @@ export function MobileAuthScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   root: {
     flex: 1,
     backgroundColor: colors.bg,
