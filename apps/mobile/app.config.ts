@@ -9,6 +9,15 @@ if (IS_RELEASE_BUILD && (!releaseVersion || !nativeRuntime)) {
 }
 const MOBILE_RELEASE_VERSION = releaseVersion ?? "0.0.0-dev";
 const MOBILE_NATIVE_RUNTIME = nativeRuntime ?? "native-dev";
+const androidVersionCode = process.env.MOBILE_ANDROID_VERSION_CODE
+  ? Number(process.env.MOBILE_ANDROID_VERSION_CODE)
+  : undefined;
+if (
+  androidVersionCode !== undefined &&
+  (!Number.isInteger(androidVersionCode) || androidVersionCode < 1)
+) {
+  throw new Error("MOBILE_ANDROID_VERSION_CODE must be a positive integer");
+}
 
 const getPackageName = (): string => {
   if (IS_DEV) return "com.pravah.mobile.dev";
@@ -69,6 +78,7 @@ const config: ExpoConfig = {
   },
   android: {
     package: getPackageName(),
+    versionCode: androidVersionCode,
     permissions: ["REQUEST_INSTALL_PACKAGES"],
     blockedPermissions: [
       "android.permission.RECORD_AUDIO",

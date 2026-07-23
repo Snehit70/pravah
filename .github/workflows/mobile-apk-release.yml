@@ -15,6 +15,11 @@ on:
         description: Optional dispatcher introduction (merged PR notes are appended)
         required: false
         type: string
+      backend_already_deployed:
+        description: Recovery only; verify state instead of redeploying Convex
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -128,7 +133,13 @@ jobs:
       - run: bun install --frozen-lockfile
       - env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+        if: ${{ !inputs.backend_already_deployed }}
         run: bunx convex deploy --typecheck enable
+      - name: Verify predeployed release authority
+        if: ${{ inputs.backend_already_deployed }}
+        env:
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+        run: bun scripts/mobile-release/release-command.ts state
 
   build-and-stage:
     needs: prepare
@@ -153,7 +164,11 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_MOBILE_RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
           MOBILE_NATIVE_RUNTIME: ${{ needs.prepare.outputs.runtime }}
-        run: bunx eas-cli build -p android --profile preview --non-interactive --wait --json > eas-build.json
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          MOBILE_ANDROID_VERSION_CODE=$(node -e "const [major,minor,patch]=process.env.RELEASE_VERSION.split('.').map(Number); process.stdout.write(String(major*1000000+minor*1000+patch))")
+          export MOBILE_ANDROID_VERSION_CODE
+          bunx eas-cli build -p android --profile preview --non-interactive --wait --json > eas-build.json
       - name: Download and checksum APK
         working-directory: apps/mobile
         env:
