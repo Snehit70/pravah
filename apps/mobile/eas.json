@@ -20,7 +20,6 @@
       "extends": "base",
       "channel": "preview",
       "distribution": "internal",
-      "autoIncrement": true,
       "resourceClass": "medium"
     },
     "production": {
