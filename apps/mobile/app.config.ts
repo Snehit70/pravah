@@ -1,6 +1,14 @@
 import type { ExpoConfig } from "expo/config";
 
 const IS_DEV = process.env.APP_VARIANT === "dev";
+const IS_RELEASE_BUILD = Boolean(process.env.CI || process.env.EAS_BUILD_PROFILE);
+const releaseVersion = process.env.EXPO_PUBLIC_MOBILE_RELEASE_VERSION;
+const nativeRuntime = process.env.MOBILE_NATIVE_RUNTIME;
+if (IS_RELEASE_BUILD && (!releaseVersion || !nativeRuntime)) {
+  throw new Error("Mobile release builds require injected version and runtime");
+}
+const MOBILE_RELEASE_VERSION = releaseVersion ?? "0.0.0-dev";
+const MOBILE_NATIVE_RUNTIME = nativeRuntime ?? "native-dev";
 
 const getPackageName = (): string => {
   if (IS_DEV) return "com.pravah.mobile.dev";
@@ -16,7 +24,7 @@ const config: ExpoConfig = {
   name: getAppName(),
   slug: "pravah-mobile",
   scheme: "pravah",
-  version: "3.0.1",
+  version: MOBILE_RELEASE_VERSION,
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -81,9 +89,7 @@ const config: ExpoConfig = {
       projectId: "0bafd3f9-d42e-426a-8662-08828e4e9f00",
     },
   },
-  runtimeVersion: {
-    policy: "appVersion",
-  },
+  runtimeVersion: MOBILE_NATIVE_RUNTIME,
   updates: {
     url: "https://u.expo.dev/0bafd3f9-d42e-426a-8662-08828e4e9f00",
   },

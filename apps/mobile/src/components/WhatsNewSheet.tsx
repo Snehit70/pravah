@@ -1,14 +1,10 @@
 /**
  * WhatsNewSheet
  *
- * Bottom sheet listing recent mobile release notes, fetched from GitHub
- * releases (mobile-v* tags) and rendered natively via parseReleaseNotes.
- * Falls back to a link out to the changelog when the feed can't be loaded.
+ * Bottom sheet listing recent releases from the canonical Convex ledger.
  */
 
-import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Linking,
   Modal,
   Pressable,
@@ -20,7 +16,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 
-import { fetchMobileReleases, type ReleaseFeedResult } from "../lib/appUpdate";
 import { parseReleaseNotes } from "../lib/releaseNotes";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
@@ -29,51 +24,22 @@ import { ArrowUpRightIcon } from "./UiIcons";
 
 const MAX_RELEASES = 5;
 
-function feedErrorCopy(result: ReleaseFeedResult): string {
-  switch (result.status) {
-    case "offline":
-      return "Could not reach GitHub. Check your connection and try again.";
-    case "rate-limited":
-      return result.retryAfter
-        ? `GitHub rate limited this device. Try again after ${result.retryAfter}.`
-        : "GitHub rate limited this device. Try again later.";
-    case "malformed-metadata":
-      return "The release feed could not be read safely.";
-    case "ok":
-      return "No mobile releases found yet.";
-  }
-}
-
 type WhatsNewSheetProps = {
   visible: boolean;
   onClose: () => void;
   changelogUrl: string;
+  releases: Array<{ version: string; releaseNotes: string }>;
 };
 
-export function WhatsNewSheet({ visible, onClose, changelogUrl }: WhatsNewSheetProps) {
+export function WhatsNewSheet({
+  visible,
+  onClose,
+  changelogUrl,
+  releases,
+}: WhatsNewSheetProps) {
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
-  const [feed, setFeed] = useState<ReleaseFeedResult | null>(null);
-
-  useEffect(() => {
-    if (!visible) return;
-    let cancelled = false;
-    void fetchMobileReleases().then((result) => {
-      if (!cancelled) setFeed(result);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [visible]);
-
-  // Reset to the loading state on close so a reopen refetches instead of
-  // flashing stale (possibly errored) content.
-  const handleClose = () => {
-    setFeed(null);
-    onClose();
-  };
-
-  const releases = feed?.status === "ok" ? feed.releases.slice(0, MAX_RELEASES) : [];
+  const recentReleases = releases.slice(0, MAX_RELEASES);
 
   return (
     <Modal
@@ -81,7 +47,7 @@ export function WhatsNewSheet({ visible, onClose, changelogUrl }: WhatsNewSheetP
       transparent
       animationType={reducedMotion ? "none" : "slide"}
       statusBarTranslucent
-      onRequestClose={handleClose}
+      onRequestClose={onClose}
     >
       <View
         style={[styles.overlay, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}
@@ -92,14 +58,14 @@ export function WhatsNewSheet({ visible, onClose, changelogUrl }: WhatsNewSheetP
           accessibilityRole="button"
           accessibilityLabel="Dismiss what's new"
           style={StyleSheet.absoluteFill}
-          onPress={handleClose}
+          onPress={onClose}
         />
 
         <View style={styles.card}>
           <View style={styles.header}>
             <Text style={styles.title}>What's new</Text>
             <Pressable
-              onPress={handleClose}
+              onPress={onClose}
               hitSlop={12}
               accessibilityRole="button"
               accessibilityLabel="Close"
@@ -114,14 +80,9 @@ export function WhatsNewSheet({ visible, onClose, changelogUrl }: WhatsNewSheetP
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
           >
-            {feed === null ? (
+            {recentReleases.length === 0 ? (
               <View style={styles.pendingBox}>
-                <ActivityIndicator color={colors.textMuted} />
-                <Text style={styles.pendingText}>Loading release notes…</Text>
-              </View>
-            ) : feed.status !== "ok" || releases.length === 0 ? (
-              <View style={styles.pendingBox}>
-                <Text style={styles.pendingText}>{feedErrorCopy(feed)}</Text>
+                <Text style={styles.pendingText}>No mobile releases found yet.</Text>
                 <Pressable
                   onPress={() => void Linking.openURL(changelogUrl)}
                   hitSlop={12}
@@ -134,7 +95,7 @@ export function WhatsNewSheet({ visible, onClose, changelogUrl }: WhatsNewSheetP
                 </Pressable>
               </View>
             ) : (
-              releases.map((release, index) => (
+              recentReleases.map((release, index) => (
                 <View key={release.version} style={styles.release}>
                   {index > 0 ? <View style={styles.releaseDivider} /> : null}
                   <View style={styles.releaseHeader}>
@@ -145,7 +106,7 @@ export function WhatsNewSheet({ visible, onClose, changelogUrl }: WhatsNewSheetP
                       </View>
                     ) : null}
                   </View>
-                  {parseReleaseNotes(release.notes).map((block, blockIndex) => {
+                  {parseReleaseNotes(release.releaseNotes).map((block, blockIndex) => {
                     if (block.type === "heading") {
                       return (
                         <Text key={blockIndex} style={styles.noteHeading}>

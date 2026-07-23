@@ -467,11 +467,19 @@ export const reconcile = mutation({
 export const requestRollback = mutation({
   args: {
     deploymentSecret: v.string(),
+    defectiveVersion: v.string(),
     restoresVersion: v.string(),
     reason: v.string(),
   },
   handler: async (ctx, args) => {
     assertDeploymentAuthority(args.deploymentSecret);
+    const control = await ctx.db
+      .query("mobileReleaseControl")
+      .withIndex("by_key", (q) => q.eq("key", controlKey))
+      .unique();
+    if (!control || control.latestVersion !== args.defectiveVersion) {
+      throw new Error("Defective version must be the latest published release");
+    }
     const target = await ctx.db
       .query("mobileReleaseAttempts")
       .withIndex("by_version", (q) => q.eq("version", args.restoresVersion))

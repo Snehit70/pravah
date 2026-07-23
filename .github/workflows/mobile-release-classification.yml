@@ -42,6 +42,8 @@ jobs:
         run: |
           STATE=$(bun scripts/mobile-release/read-state.ts)
           echo "fingerprint=$(node -e 'const state=JSON.parse(process.argv[1]); process.stdout.write(state.supportedFingerprint)' "$STATE")" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -e 'const state=JSON.parse(process.argv[1]); process.stdout.write(state.latestVersion)' "$STATE")" >> "$GITHUB_OUTPUT"
+          echo "runtime=$(node -e 'const state=JSON.parse(process.argv[1]); process.stdout.write(state.supportedRuntime)' "$STATE")" >> "$GITHUB_OUTPUT"
 
       - name: Validate classification
         env:
@@ -50,4 +52,6 @@ jobs:
           PR_LABELS_JSON: ${{ toJson(github.event.pull_request.labels.*.name) }}
           PR_BODY: ${{ github.event.pull_request.body }}
           SUPPORTED_FINGERPRINT: ${{ steps.release_state.outputs.fingerprint }}
+          EXPO_PUBLIC_MOBILE_RELEASE_VERSION: ${{ steps.release_state.outputs.version }}
+          MOBILE_NATIVE_RUNTIME: ${{ steps.release_state.outputs.runtime }}
         run: bun scripts/mobile-release/check-pr.ts

@@ -23,7 +23,6 @@ import { useMutation, useQuery } from "convex/react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
 import * as SecureStore from "expo-secure-store";
-import * as Application from "expo-application";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { getKairoSettings } from "../lib/kairoConfig";
@@ -130,6 +129,7 @@ import {
   type IntegrationLastRunSummary,
   type SyncHealth,
 } from "../hooks/useIntegrationsSettings";
+import { useMobileRelease } from "../hooks/useMobileRelease";
 
 type QuietPickerKind = "morningDigest" | "quietStart" | "quietEnd";
 
@@ -205,7 +205,6 @@ const TASK_COLOR_OPTIONS: Array<{
   { value: "rose", label: "Rose", swatch: "#9d586f" },
 ];
 const READ_ONLY_AUTOMATION_SCOPES = ["tasks:read", "review:read", "sync:read"] as const;
-const APP_VERSION = Application.nativeApplicationVersion ?? "—";
 const REPO_URL = "https://github.com/Snehit70/pravah";
 const CHANGELOG_URL = `${REPO_URL}/blob/main/apps/mobile/CHANGELOG.md`;
 const ISSUES_URL = `${REPO_URL}/issues`;
@@ -2002,8 +2001,13 @@ function AppearanceSection({
   );
 }
 
-function AboutSection() {
+function AboutSection({
+  mobileRelease,
+}: {
+  mobileRelease: ReturnType<typeof useMobileRelease>;
+}) {
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
+  const latestPublishedRelease = mobileRelease.publishedReleases[0];
 
   return (
     <View style={styles.screenBody}>
@@ -2014,7 +2018,9 @@ function AboutSection() {
           </View>
           <View style={styles.aboutHeaderCopy}>
             <Text style={styles.settingLabel}>Pravah Mobile</Text>
-            <Text style={styles.aboutVersion}>Version {APP_VERSION}</Text>
+            <Text style={styles.aboutVersion}>
+              Version {mobileRelease.runningVersion}
+            </Text>
           </View>
           <Pressable
             onPress={() => setWhatsNewOpen(true)}
@@ -2031,7 +2037,45 @@ function AboutSection() {
           visible={whatsNewOpen}
           onClose={() => setWhatsNewOpen(false)}
           changelogUrl={CHANGELOG_URL}
+          releases={mobileRelease.publishedReleases}
         />
+
+        <View style={styles.settingRow}>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>
+              Latest release {mobileRelease.latestVersion}
+            </Text>
+            <Text style={styles.settingHelp}>
+              Runtime {mobileRelease.nativeRuntime}
+              {mobileRelease.minimumRuntime
+                ? ` · minimum ${mobileRelease.minimumRuntime}`
+                : ""}
+            </Text>
+            {latestPublishedRelease ? (
+              <Text style={styles.settingHelp}>{latestPublishedRelease.title}</Text>
+            ) : null}
+            {mobileRelease.needsNativeUpgrade ? (
+              <Text style={styles.settingHelp}>
+                {mobileRelease.isBelowMinimumRuntime
+                  ? "This app build is no longer compatible. Install the latest APK."
+                  : "A newer app build is recommended for future updates."}
+              </Text>
+            ) : null}
+          </View>
+          {mobileRelease.pendingVersion ? (
+            <Pressable
+              onPress={() => void mobileRelease.restartToUpdate()}
+              accessibilityRole="button"
+              accessibilityLabel={`Restart to update to version ${mobileRelease.pendingVersion}`}
+              style={({ pressed }) => [
+                styles.versionPill,
+                pressed && { opacity: 0.6 },
+              ]}
+            >
+              <Text style={styles.versionPillText}>Restart to update</Text>
+            </Pressable>
+          ) : null}
+        </View>
 
         <Pressable
           onPress={() => void Linking.openURL(ISSUES_URL)}
@@ -2343,6 +2387,7 @@ function renderDetailScreen(
     onSignOut: () => void;
     isWiping: boolean;
     onWipeLocalData: () => void;
+    mobileRelease: ReturnType<typeof useMobileRelease>;
   },
 ) {
   if (navigation.screen !== "detail") return null;
@@ -2391,7 +2436,7 @@ function renderDetailScreen(
     case "account":
       return <AccountSection onSignOut={props.onSignOut} />;
     case "about":
-      return <AboutSection />;
+      return <AboutSection mobileRelease={props.mobileRelease} />;
   }
 }
 
@@ -2447,6 +2492,7 @@ export function SettingsSheet({
   );
   const activeCategory = navigation.screen === "detail" ? navigation.category : null;
   const { prefs, setPreference } = useUserPreferences();
+  const mobileRelease = useMobileRelease();
   const tabOrder = resolveTabOrder(prefs.tabOrder);
   const [openPicker, setOpenPicker] = useState<QuietPickerKind | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
@@ -2872,7 +2918,9 @@ export function SettingsSheet({
       tone: "neutral",
     },
     about: {
-      label: APP_VERSION.startsWith("v") ? APP_VERSION : `v${APP_VERSION}`,
+      label: mobileRelease.runningVersion.startsWith("v")
+        ? mobileRelease.runningVersion
+        : `v${mobileRelease.runningVersion}`,
       tone: "neutral",
     },
   };
@@ -3008,6 +3056,7 @@ export function SettingsSheet({
                 onSignOut: () => void handleSignOut(),
                 isWiping,
                 onWipeLocalData: () => void handleWipeLocalData(),
+                mobileRelease,
               })
             )}
           </ScrollView>
