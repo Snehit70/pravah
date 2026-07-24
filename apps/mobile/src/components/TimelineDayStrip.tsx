@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useMemo, useRef } from "react";
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Pressable, Text, View, useWindowDimensions } from "react-native";
 import Animated, {
   interpolate,
   useAnimatedStyle,
@@ -38,7 +38,6 @@ type TimelineDayStripProps = {
   /** Carousel snap interval (card width + gap) — maps card index to scroll offset. */
   interval: number;
   /** The card the "back to today" affordance jumps to. */
-  landingIndex: number;
   reducedMotion: boolean;
   onJumpToCard: (index: number) => void;
 };
@@ -52,7 +51,6 @@ export function TimelineDayStrip({
   today,
   scrollX,
   interval,
-  landingIndex,
   reducedMotion,
   onJumpToCard,
 }: TimelineDayStripProps) {
@@ -107,15 +105,6 @@ export function TimelineDayStrip({
     );
   }, [weekKey, reducedMotion, dipOpacity]);
   const dipStyle = useAnimatedStyle(() => ({ opacity: dipOpacity.value }));
-
-  // "Back to today" affordance — fades in when the visible week isn't today's.
-  const homeVisible = week ? !week.containsToday : false;
-  const homeOpacity = useSharedValue(0);
-  useEffect(() => {
-    const target = homeVisible ? 1 : 0;
-    homeOpacity.set(reducedMotion ? target : withTiming(target, { duration: 200 }));
-  }, [homeVisible, reducedMotion, homeOpacity]);
-  const homeStyle = useAnimatedStyle(() => ({ opacity: homeOpacity.value }));
 
   if (!week) return <View style={styles.lane} />;
 
@@ -174,19 +163,6 @@ export function TimelineDayStrip({
         })}
       </Animated.View>
 
-      <Animated.View
-        style={[styles.homeWrap, homeStyle]}
-        pointerEvents={homeVisible ? "auto" : "none"}
-      >
-        <Pressable
-          onPress={() => onJumpToCard(landingIndex)}
-          style={({ pressed }) => [styles.homeButton, pressed && { opacity: 0.6 }]}
-          accessibilityRole="button"
-          accessibilityLabel="Jump back to today"
-        >
-          <Text style={styles.homeChevron}>‹</Text>
-        </Pressable>
-      </Animated.View>
     </View>
   );
 }
@@ -288,31 +264,5 @@ const styles = createThemedStyles({
     height: 4,
     borderRadius: radii.full,
     backgroundColor: colors.accent,
-  },
-  // Overlays the strip's left edge only while browsing a non-today week.
-  homeWrap: {
-    position: "absolute",
-    left: spacing.sm,
-    top: 0,
-    bottom: 0,
-    justifyContent: "center",
-  },
-  homeButton: {
-    width: 34,
-    height: 40,
-    borderRadius: radii.md,
-    borderCurve: "continuous",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.bgSurface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  homeChevron: {
-    color: colors.accent,
-    fontFamily: fonts.sansSemibold,
-    fontSize: 20,
-    lineHeight: 22,
-    marginTop: -2,
   },
 });
