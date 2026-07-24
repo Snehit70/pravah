@@ -15,6 +15,8 @@ concurrency:
 
 env:
   BUN_VERSION: 1.3.3
+  MOBILE_CONVEX_URL: https://befitting-swan-125.eu-west-1.convex.cloud
+  MOBILE_CONVEX_SITE_URL: https://befitting-swan-125.eu-west-1.convex.site
 
 jobs:
   prepare:
@@ -48,6 +50,10 @@ jobs:
       - run: bun install --frozen-lockfile
       - id: source
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Verify canonical Convex deployment
+        env:
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+        run: test "$CONVEX_URL" = "$MOBILE_CONVEX_URL"
       - id: backend
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -139,6 +145,8 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_MOBILE_RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
           MOBILE_NATIVE_RUNTIME: ${{ needs.prepare.outputs.runtime }}
+          EXPO_PUBLIC_CONVEX_URL: ${{ env.MOBILE_CONVEX_URL }}
+          EXPO_PUBLIC_CONVEX_SITE_URL: ${{ env.MOBILE_CONVEX_SITE_URL }}
           RELEASE_NOTES: ${{ needs.prepare.outputs.notes }}
         run: |
           if [ "${{ needs.prepare.outputs.status }}" = staged ]; then
@@ -147,6 +155,8 @@ jobs:
             exit 0
           fi
           BRANCH="release-candidate-${{ needs.prepare.outputs.version }}"
+          bunx eas-cli env:create preview --name EXPO_PUBLIC_CONVEX_URL --value "$EXPO_PUBLIC_CONVEX_URL" --visibility plaintext --force --non-interactive
+          bunx eas-cli env:create preview --name EXPO_PUBLIC_CONVEX_SITE_URL --value "$EXPO_PUBLIC_CONVEX_SITE_URL" --visibility plaintext --force --non-interactive
           bunx eas-cli update --branch "$BRANCH" --message "$RELEASE_NOTES" --non-interactive --json > eas-update.json
           UPDATE_ID=$(node -e "const value=require('./eas-update.json'); const item=Array.isArray(value)?value[0]:value; const id=item?.group ?? item?.id; if (!id) process.exit(1); process.stdout.write(id)")
           bunx eas-cli update:list --branch "$BRANCH" --limit 10 --non-interactive --json > eas-update-list.json
