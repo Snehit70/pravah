@@ -30,3 +30,10 @@
   - web: root `package.json`
   - mobile: `apps/mobile/package.json`
 - Mobile Expo version must stay in sync with mobile package version. This is automated through `release-please-config.json` by updating `apps/mobile/app.json` at `$.expo.version` during release PR generation.
+
+### Convex deployment target
+
+- Pravah uses `befitting-swan-125` (`https://befitting-swan-125.eu-west-1.convex.cloud`) as the single canonical Convex deployment for local development, EAS builds, OTA bundles, and release workflows.
+- Do not point the mobile app or release automation at `fortunate-dogfish-953`. That is a separate Convex deployment and is not an application environment for Pravah.
+- If a release-control function is missing from `befitting-swan-125`, deploy the backend there before publishing a mobile release. Do not “fix” the mismatch by changing the app to another deployment.
+- An OTA update can correct a wrongly bundled `EXPO_PUBLIC_CONVEX_URL` because that value is compiled into the JavaScript bundle. The target deployment must already contain the required Convex functions, and the OTA workflow must publish with the canonical EAS environment values.
