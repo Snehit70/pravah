@@ -823,7 +823,6 @@ export function TimelineDayCarousel({
         today={today}
         scrollX={scrollX}
         interval={interval}
-        landingIndex={landingIndex}
         reducedMotion={reducedMotion}
         onJumpToCard={jumpToCard}
       />
