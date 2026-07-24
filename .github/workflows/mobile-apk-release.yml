@@ -168,6 +168,9 @@ jobs:
         run: |
           MOBILE_ANDROID_VERSION_CODE=$(node -e "const [major,minor,patch]=process.env.RELEASE_VERSION.split('.').map(Number); process.stdout.write(String(major*1000000+minor*1000+patch))")
           export MOBILE_ANDROID_VERSION_CODE
+          bunx eas-cli env:create preview --name EXPO_PUBLIC_MOBILE_RELEASE_VERSION --value "$EXPO_PUBLIC_MOBILE_RELEASE_VERSION" --visibility plaintext --force --non-interactive
+          bunx eas-cli env:create preview --name MOBILE_NATIVE_RUNTIME --value "$MOBILE_NATIVE_RUNTIME" --visibility plaintext --force --non-interactive
+          bunx eas-cli env:create preview --name MOBILE_ANDROID_VERSION_CODE --value "$MOBILE_ANDROID_VERSION_CODE" --visibility plaintext --force --non-interactive
           bunx eas-cli build -p android --profile preview --non-interactive --wait --json > eas-build.json
       - name: Download and checksum APK
         working-directory: apps/mobile
@@ -176,6 +179,7 @@ jobs:
         run: |
           ARTIFACT_URL=$(node -e "const builds=require('./eas-build.json'); const build=Array.isArray(builds)?builds[0]:builds; const url=build?.artifacts?.buildUrl; if (!url) process.exit(1); process.stdout.write(url)")
           curl --fail --location "$ARTIFACT_URL" --output "pravah-$VERSION.apk"
+          md5sum "pravah-$VERSION.apk" > "pravah-$VERSION.apk.md5"
           sha256sum "pravah-$VERSION.apk" > "pravah-$VERSION.apk.sha256"
       - id: release
         name: Create verified draft release
@@ -197,6 +201,7 @@ jobs:
                 --repo "$GITHUB_REPOSITORY"
               gh release upload "$TAG" \
                 "apps/mobile/pravah-$VERSION.apk" \
+                "apps/mobile/pravah-$VERSION.apk.md5" \
                 "apps/mobile/pravah-$VERSION.apk.sha256" \
                 --clobber \
                 --repo "$GITHUB_REPOSITORY"
@@ -204,6 +209,7 @@ jobs:
           else
             gh release create "$TAG" \
               "apps/mobile/pravah-$VERSION.apk" \
+              "apps/mobile/pravah-$VERSION.apk.md5" \
               "apps/mobile/pravah-$VERSION.apk.sha256" \
               --draft \
               --title "$TAG" \
