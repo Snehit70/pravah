@@ -5,6 +5,7 @@ export type MobileReleaseControl = {
 };
 
 export type MobileReleaseState = {
+  /** Exact release embedded in the currently running JavaScript bundle. */
   runningVersion: string;
   latestVersion: string;
   pendingVersion: string | null;
