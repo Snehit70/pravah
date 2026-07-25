@@ -1,0 +1,230 @@
+name: Mobile OTA Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      defective_version:
+        description: Exact published version being reversed
+        required: true
+        type: string
+      restores_version:
+        description: Exact published version whose source should be restored
+        required: true
+        type: string
+      reason:
+        description: User-facing rollback reason
+        required: true
+        type: string
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-release
+  cancel-in-progress: false
+
+env:
+  BUN_VERSION: 1.3.3
+  MOBILE_CONVEX_URL: https://befitting-swan-125.eu-west-1.convex.cloud
+  MOBILE_CONVEX_SITE_URL: https://befitting-swan-125.eu-west-1.convex.site
+
+jobs:
+  prepare:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+       contains(github.event.pull_request.labels.*.name, 'mobile-ota-rollback'))
+    runs-on: ubuntu-latest
+    outputs:
+      attempt_id: ${{ steps.reserve.outputs.attempt_id }}
+      version: ${{ steps.reserve.outputs.version }}
+      revision: ${{ steps.reserve.outputs.revision }}
+      runtime: ${{ steps.target.outputs.runtime }}
+      source_sha: ${{ steps.target.outputs.source_sha }}
+      status: ${{ steps.reserve.outputs.status }}
+      eas_update_id: ${{ steps.reserve.outputs.eas_update_id }}
+      eas_branch: ${{ steps.reserve.outputs.eas_branch }}
+      defective_version: ${{ steps.resolve.outputs.defective_version }}
+      restores_version: ${{ steps.resolve.outputs.restores_version }}
+      reason: ${{ steps.resolve.outputs.reason }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - id: resolve
+        name: Resolve rollback request
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          INPUT_DEFECTIVE_VERSION: ${{ inputs.defective_version }}
+          INPUT_RESTORES_VERSION: ${{ inputs.restores_version }}
+          INPUT_REASON: ${{ inputs.reason }}
+        run: |
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            DEFECTIVE_VERSION="$INPUT_DEFECTIVE_VERSION"
+            RESTORES_VERSION="$INPUT_RESTORES_VERSION"
+            REASON="$INPUT_REASON"
+          else
+            DEFECTIVE_VERSION=$(printf '%s\n' "$PR_BODY" | sed -n 's/^Rollback-Defective-Version:[[:space:]]*//p' | head -n 1)
+            RESTORES_VERSION=$(printf '%s\n' "$PR_BODY" | sed -n 's/^Rollback-Restores-Version:[[:space:]]*//p' | head -n 1)
+            REASON=$(printf '%s\n' "$PR_BODY" | sed -n 's/^Rollback-Reason:[[:space:]]*//p' | head -n 1)
+          fi
+          printf '%s' "$DEFECTIVE_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
+          printf '%s' "$RESTORES_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
+          test -n "$REASON"
+          echo "defective_version=$DEFECTIVE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "restores_version=$RESTORES_VERSION" >> "$GITHUB_OUTPUT"
+          DELIMITER="REASON_$(openssl rand -hex 12)"
+          {
+            echo "reason<<$DELIMITER"
+            printf '%s\n' "$REASON"
+            echo "$DELIMITER"
+          } >> "$GITHUB_OUTPUT"
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - name: Verify canonical Convex deployment
+        env:
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+        run: test "$CONVEX_URL" = "$MOBILE_CONVEX_URL"
+      - id: state
+        env:
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+        run: bun scripts/mobile-release/release-command.ts state
+      - id: target
+        env:
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          MOBILE_RELEASE_DEPLOY_SECRET: ${{ secrets.MOBILE_RELEASE_DEPLOY_SECRET }}
+          DEFECTIVE_VERSION: ${{ steps.resolve.outputs.defective_version }}
+          RESTORES_VERSION: ${{ steps.resolve.outputs.restores_version }}
+          REASON: ${{ steps.resolve.outputs.reason }}
+        run: bun scripts/mobile-release/release-command.ts rollback-target
+      - name: Require the currently supported native runtime
+        env:
+          TARGET_RUNTIME: ${{ steps.target.outputs.runtime }}
+          SUPPORTED_RUNTIME: ${{ steps.state.outputs.runtime }}
+        run: test "$TARGET_RUNTIME" = "$SUPPORTED_RUNTIME"
+      - id: reserve
+        env:
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          MOBILE_RELEASE_DEPLOY_SECRET: ${{ secrets.MOBILE_RELEASE_DEPLOY_SECRET }}
+          EXPECTED_REVISION: ${{ steps.state.outputs.revision }}
+          DELIVERY: rollback
+          SOURCE_SHA: ${{ steps.target.outputs.source_sha }}
+          SOURCE_REF: rollback:${{ steps.resolve.outputs.restores_version }}
+          RELEASE_TITLE: Roll back ${{ steps.resolve.outputs.defective_version }}
+          RELEASE_NOTES: ${{ steps.resolve.outputs.reason }}
+          NATIVE_RUNTIME: ${{ steps.target.outputs.runtime }}
+          NATIVE_FINGERPRINT: ${{ steps.target.outputs.fingerprint }}
+          ROLLBACK_OF_VERSION: ${{ steps.resolve.outputs.defective_version }}
+          RESTORES_VERSION: ${{ steps.resolve.outputs.restores_version }}
+        run: bun scripts/mobile-release/release-command.ts reserve
+
+  stage-update:
+    needs: prepare
+    runs-on: ubuntu-latest
+    outputs:
+      branch: ${{ steps.update.outputs.branch }}
+      update_id: ${{ steps.update.outputs.update_id }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - id: update
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_MOBILE_RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          MOBILE_NATIVE_RUNTIME: ${{ needs.prepare.outputs.runtime }}
+          EXPO_PUBLIC_CONVEX_URL: ${{ env.MOBILE_CONVEX_URL }}
+          EXPO_PUBLIC_CONVEX_SITE_URL: ${{ env.MOBILE_CONVEX_SITE_URL }}
+          RELEASE_NOTES: ${{ needs.prepare.outputs.reason }}
+        run: |
+          if [ "${{ needs.prepare.outputs.status }}" = staged ]; then
+            echo "branch=${{ needs.prepare.outputs.eas_branch }}" >> "$GITHUB_OUTPUT"
+            echo "update_id=${{ needs.prepare.outputs.eas_update_id }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          BRANCH="release-candidate-${{ needs.prepare.outputs.version }}"
+          bunx eas-cli update --branch "$BRANCH" --message "$RELEASE_NOTES" --environment preview --non-interactive --json > eas-update.json
+          UPDATE_ID=$(node -e "const value=require('./eas-update.json'); const item=Array.isArray(value)?value[0]:value; const id=item?.group ?? item?.id; if (!id) process.exit(1); process.stdout.write(id)")
+          bunx eas-cli update:list --branch "$BRANCH" --limit 10 --non-interactive --json > eas-update-list.json
+          VERIFIED=$(node -e "const value=require('./eas-update-list.json'); const items=Array.isArray(value)?value:(value.currentPage??value.updates??value.data??[]); const id=process.argv[1]; process.stdout.write(items.some(item => item.group === id || item.id === id) ? 'yes' : 'no')" "$UPDATE_ID")
+          test "$VERIFIED" = yes
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "update_id=$UPDATE_ID" >> "$GITHUB_OUTPUT"
+
+  promote-and-finalize:
+    needs: [prepare, stage-update]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - name: Record staged rollback
+        env:
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          MOBILE_RELEASE_DEPLOY_SECRET: ${{ secrets.MOBILE_RELEASE_DEPLOY_SECRET }}
+          ATTEMPT_ID: ${{ needs.prepare.outputs.attempt_id }}
+          EAS_UPDATE_ID: ${{ needs.stage-update.outputs.update_id }}
+          EAS_BRANCH: ${{ needs.stage-update.outputs.branch }}
+        run: bun scripts/mobile-release/release-command.ts stage
+      - name: Promote exact rollback branch
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_MOBILE_RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          MOBILE_NATIVE_RUNTIME: ${{ needs.prepare.outputs.runtime }}
+        run: bunx eas-cli channel:edit preview --branch "${{ needs.stage-update.outputs.branch }}" --non-interactive
+      - name: Finalize rollback ledger
+        env:
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          MOBILE_RELEASE_DEPLOY_SECRET: ${{ secrets.MOBILE_RELEASE_DEPLOY_SECRET }}
+          ATTEMPT_ID: ${{ needs.prepare.outputs.attempt_id }}
+          EXPECTED_REVISION: ${{ needs.prepare.outputs.revision }}
+        run: |
+          if ! bun scripts/mobile-release/release-command.ts publish; then
+            REASON="Reconcile promoted rollback before final acknowledgement" \
+              bun scripts/mobile-release/release-command.ts reconcile
+            bun scripts/mobile-release/release-command.ts publish
+          fi
+
+  record-failure:
+    if: >-
+      always() &&
+      needs.prepare.result == 'success' &&
+      (needs.stage-update.result == 'failure' ||
+       needs.promote-and-finalize.result == 'failure')
+    needs: [prepare, stage-update, promote-and-finalize]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - env:
+          CONVEX_URL: ${{ secrets.CONVEX_URL }}
+          MOBILE_RELEASE_DEPLOY_SECRET: ${{ secrets.MOBILE_RELEASE_DEPLOY_SECRET }}
+          ATTEMPT_ID: ${{ needs.prepare.outputs.attempt_id }}
+          REASON: Rollback workflow failed; retry the same restoration target.
+        run: bun scripts/mobile-release/release-command.ts fail
