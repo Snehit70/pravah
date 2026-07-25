@@ -189,7 +189,7 @@ const styles = createThemedStyles({
     bottom: TRACK_PADDING,
     left: 0,
     borderRadius: radii.md - TRACK_PADDING,
-    backgroundColor: colors.textPrimary,
+    backgroundColor: colors.accent,
   },
   option: {
     alignItems: "center",
