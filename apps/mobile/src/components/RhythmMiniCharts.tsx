@@ -79,8 +79,8 @@ const METRICS: Array<InlineSegmentedItem<Metric>> = [
 ];
 
 const SHAPE_OPTIONS: Array<InlineSegmentedItem<Shape>> = [
-  { value: "bars", Icon: BarChartIcon },
-  { value: "line", Icon: LineChartIcon },
+  { value: "bars", accessibilityLabel: "Show as bars", Icon: BarChartIcon },
+  { value: "line", accessibilityLabel: "Show as a line", Icon: LineChartIcon },
 ];
 
 /** Each series opens in the shape that tells the truth about it. */

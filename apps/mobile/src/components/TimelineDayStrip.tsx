@@ -37,7 +37,7 @@ type TimelineDayStripProps = {
   scrollX: SharedValue<number>;
   /** Carousel snap interval (card width + gap) — maps card index to scroll offset. */
   interval: number;
-  /** The card the "back to today" affordance jumps to. */
+  /** Disables animated week transitions when reduced motion is preferred. */
   reducedMotion: boolean;
   onJumpToCard: (index: number) => void;
 };

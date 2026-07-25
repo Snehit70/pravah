@@ -9,7 +9,12 @@ vi.mock("react-native", () => {
   const strip = (rest: AnyProps): AnyProps => {
     const out: AnyProps = {};
     for (const [key, value] of Object.entries(rest)) {
-      if (key === "style" || key === "hitSlop" || key === "accessible") continue;
+      if (
+        key === "style" ||
+        key === "hitSlop" ||
+        key === "accessible" ||
+        key === "onLayout"
+      ) continue;
       if (key === "accessibilityLabel") out["aria-label"] = value;
       else if (key === "accessibilityRole") out.role = value;
       else if (key === "accessibilityState") {
@@ -50,7 +55,15 @@ vi.mock("react-native-reanimated", () => ({
   },
   interpolateColor: () => "#000",
   useAnimatedStyle: (fn: () => object) => fn(),
-  useSharedValue: (init: number) => ({ value: init }),
+  useSharedValue: (init: number) => {
+    const shared = {
+      value: init,
+      set(value: number) {
+        shared.value = value;
+      },
+    };
+    return shared;
+  },
   withSpring: (v: number) => v,
 }));
 
@@ -93,17 +106,22 @@ describe("InlineSegmented", () => {
     expect(alphaButton?.getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("renders icon-only options without label", () => {
+  it("gives icon-only options an accessible label", () => {
     const iconOptions = [
-      { value: "bars", Icon: () => React.createElement("svg") },
-      { value: "line", Icon: () => React.createElement("svg") },
+      {
+        value: "bars",
+        accessibilityLabel: "Show as bars",
+        Icon: () => React.createElement("svg"),
+      },
+      {
+        value: "line",
+        accessibilityLabel: "Show as a line",
+        Icon: () => React.createElement("svg"),
+      },
     ];
     render(<InlineSegmented options={iconOptions} value="bars" onSelect={() => {}} />);
-    const buttons = screen.getAllByRole("button");
-    expect(buttons).toHaveLength(2);
-    buttons.forEach((btn) => {
-      expect(btn.textContent?.trim()).toBe("");
-    });
+    expect(screen.getByRole("button", { name: "Show as bars" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Show as a line" })).toBeDefined();
   });
 
   it("handles mixed label and icon-only options", () => {

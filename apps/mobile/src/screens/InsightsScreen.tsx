@@ -70,9 +70,9 @@ type InsightsScreenProps = {
 
 const RANGE_DAYS: Record<RangeKey, number> = { "7d": 7, "30d": 30, "90d": 90 };
 const RANGE_OPTIONS: Array<InlineSegmentedItem<RangeKey>> = [
-  { value: "7d", label: "7D" },
-  { value: "30d", label: "30D" },
-  { value: "90d", label: "90D" },
+  { value: "7d", label: "7D", accessibilityLabel: "Show last 7 days" },
+  { value: "30d", label: "30D", accessibilityLabel: "Show last 30 days" },
+  { value: "90d", label: "90D", accessibilityLabel: "Show last 90 days" },
 ];
 // The window is a rolling N days ending today, not a calendar period — the
 // hero's own axis reads "16 Jun → 15 Jul" while the old copy said "this month".

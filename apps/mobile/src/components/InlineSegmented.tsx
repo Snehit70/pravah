@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useState, type ComponentType } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import Animated, {
   interpolateColor,
   useAnimatedStyle,
@@ -32,8 +32,11 @@ const ICON_ONLY_SIZE = 36;
 export type InlineSegmentedItem<T extends string | number> = {
   value: T;
   label?: string;
+  accessibilityLabel?: string;
   Icon?: ComponentType<{ width?: number; height?: number; color: string; size?: number; strokeWidth?: number }>;
 };
+
+type SegmentLayout = { x: number; width: number };
 
 export function InlineSegmented<T extends string | number>({
   options,
@@ -45,43 +48,67 @@ export function InlineSegmented<T extends string | number>({
   onSelect: (value: T) => void;
 }) {
   const reducedMotion = useReducedMotion();
-  const [trackWidth, setTrackWidth] = useState(0);
+  const [segmentLayouts, setSegmentLayouts] = useState<Array<SegmentLayout | undefined>>([]);
   const index = Math.max(0, options.findIndex((option) => option.value === value));
   const progress = useSharedValue(index);
-  const segmentWidthSv = useSharedValue(0);
+  const thumbX = useSharedValue(0);
+  const thumbWidth = useSharedValue(0);
+  const selectedLayout = segmentLayouts[index];
 
   useEffect(() => {
-    progress.value = reducedMotion
-      ? index
-      : withSpring(index, { damping: 15, stiffness: 220, mass: 0.7 });
+    progress.set(
+      reducedMotion
+        ? index
+        : withSpring(index, { damping: 15, stiffness: 220, mass: 0.7 }),
+    );
   }, [index, progress, reducedMotion]);
 
-  const segmentWidth = trackWidth > 0 ? trackWidth / options.length : 0;
+  useEffect(() => {
+    if (!selectedLayout) return;
+    thumbX.set(
+      reducedMotion
+        ? selectedLayout.x
+        : withSpring(selectedLayout.x, { damping: 15, stiffness: 220, mass: 0.7 }),
+    );
+    thumbWidth.set(
+      reducedMotion
+        ? selectedLayout.width
+        : withSpring(selectedLayout.width, { damping: 15, stiffness: 220, mass: 0.7 }),
+    );
+  }, [reducedMotion, selectedLayout, thumbWidth, thumbX]);
+
   const thumbStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: progress.value * segmentWidthSv.value }],
+    width: thumbWidth.value,
+    transform: [{ translateX: thumbX.value }],
   }));
 
+  const recordSegmentLayout = (optionIndex: number, event: LayoutChangeEvent) => {
+    const { x, width } = event.nativeEvent.layout;
+    setSegmentLayouts((current) => {
+      const existing = current[optionIndex];
+      if (existing?.x === x && existing.width === width) return current;
+      const next = [...current];
+      next[optionIndex] = { x, width };
+      return next;
+    });
+  };
+
   return (
-    <View
-      style={styles.track}
-      onLayout={(event) => {
-        const inner = event.nativeEvent.layout.width - TRACK_PADDING * 2;
-        segmentWidthSv.value = inner / options.length;
-        setTrackWidth(inner);
-      }}
-    >
-      {segmentWidth > 0 ? (
-        <Animated.View style={[styles.thumb, { width: segmentWidth }, thumbStyle]} />
+    <View style={styles.track}>
+      {selectedLayout ? (
+        <Animated.View style={[styles.thumb, thumbStyle]} />
       ) : null}
       {options.map((option, optionIndex) => (
         <InlineSegmentOption
           key={String(option.value)}
           label={option.label}
+          accessibilityLabel={option.accessibilityLabel}
           Icon={option.Icon}
           selected={value === option.value}
           optionIndex={optionIndex}
           progress={progress}
           onPress={() => onSelect(option.value)}
+          onLayout={(event) => recordSegmentLayout(optionIndex, event)}
         />
       ))}
     </View>
@@ -90,18 +117,22 @@ export function InlineSegmented<T extends string | number>({
 
 function InlineSegmentOption({
   label,
+  accessibilityLabel,
   Icon,
   selected,
   optionIndex,
   progress,
   onPress,
+  onLayout,
 }: {
   label?: string;
+  accessibilityLabel?: string;
   Icon?: ComponentType<{ width?: number; height?: number; color: string; size?: number; strokeWidth?: number }>;
   selected: boolean;
   optionIndex: number;
   progress: SharedValue<number>;
   onPress: () => void;
+  onLayout: (event: LayoutChangeEvent) => void;
 }) {
   const isIconOnly = !label;
   const mutedColor = colors.textMuted;
@@ -120,9 +151,11 @@ function InlineSegmentOption({
   return (
     <Pressable
       onPress={onPress}
+      onLayout={onLayout}
       hitSlop={6}
       accessibilityRole="button"
       accessibilityState={{ selected }}
+      accessibilityLabel={accessibilityLabel ?? label}
       style={[styles.option, isIconOnly && styles.optionIconOnly]}
     >
       <View style={styles.optionContent}>
@@ -154,7 +187,7 @@ const styles = createThemedStyles({
     position: "absolute",
     top: TRACK_PADDING,
     bottom: TRACK_PADDING,
-    left: TRACK_PADDING,
+    left: 0,
     borderRadius: radii.md - TRACK_PADDING,
     backgroundColor: colors.textPrimary,
   },
