@@ -8,10 +8,8 @@ import {
 } from "react";
 import {
   Keyboard,
-  KeyboardAvoidingView,
   LayoutChangeEvent,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,6 +17,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { haptic } from "../lib/haptic";
@@ -311,7 +310,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           onRequestClose={() => void requestClose()}
         >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior="padding"
+          automaticOffset
           style={[
             styles.overlay,
             { paddingBottom: Math.max(insets.bottom, spacing.sm) },
@@ -538,7 +538,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                         ]}
                       >
                         <CheckIcon color={colors.success} size={16} />
-                        <Text style={[styles.quickActionText, { color: colors.success }]}>
+                        <Text style={[styles.quickActionText, { color: colors.success }]}> 
                           Reopen
                         </Text>
                       </Pressable>
@@ -560,7 +560,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                           ]}
                         >
                           <CheckIcon color={colors.success} size={16} />
-                          <Text style={[styles.quickActionText, { color: colors.success }]}>
+                          <Text style={[styles.quickActionText, { color: colors.success }]}> 
                             Complete
                           </Text>
                         </Pressable>
@@ -580,7 +580,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                           ]}
                         >
                           <CalendarIcon color={colors.warning} size={16} />
-                          <Text style={[styles.quickActionText, { color: colors.warning }]}>
+                          <Text style={[styles.quickActionText, { color: colors.warning }]}> 
                             Unschedule
                           </Text>
                         </Pressable>
@@ -600,7 +600,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                           ]}
                         >
                           <CalendarIcon color={colors.warning} size={16} />
-                          <Text style={[styles.quickActionText, { color: colors.warning }]}>
+                          <Text style={[styles.quickActionText, { color: colors.warning }]}> 
                             Schedule
                           </Text>
                         </Pressable>
