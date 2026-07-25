@@ -28,19 +28,37 @@ export function useGoogleAuth({
 }: UseGoogleAuthOptions): UseGoogleAuthReturn {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const canGoogleSignIn = Boolean(googleWebClientId);
+  const [isGoogleSignInConfigured, setIsGoogleSignInConfigured] = useState(false);
+  const canGoogleSignIn = Boolean(googleWebClientId) && isGoogleSignInConfigured;
 
   useEffect(() => {
-    GoogleSignin.configure({
-      webClientId: googleWebClientId,
-      iosClientId: googleIosClientId,
-      scopes: ["https://www.googleapis.com/auth/calendar.readonly"],
-      offlineAccess: true,
-    });
+    if (!googleWebClientId) {
+      setIsGoogleSignInConfigured(false);
+      mobileLogger.error("google_signin_config_missing", {
+        missingVariable: "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID",
+      });
+      return;
+    }
+
+    try {
+      GoogleSignin.configure({
+        webClientId: googleWebClientId,
+        iosClientId: googleIosClientId,
+        scopes: ["https://www.googleapis.com/auth/calendar.readonly"],
+        offlineAccess: true,
+      });
+      setIsGoogleSignInConfigured(true);
+    } catch (error) {
+      setIsGoogleSignInConfigured(false);
+      mobileLogger.error("google_signin_config_failed", {
+        errorType: classifyError(error),
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+    }
   }, [googleWebClientId, googleIosClientId]);
 
   const handleGoogleSignIn = useCallback(async () => {
-    if (!googleWebClientId || isSigningIn || isSigningOut) return;
+    if (!canGoogleSignIn || isSigningIn || isSigningOut) return;
     const actionId = createActionId("auth");
     const startedAt = Date.now();
     mobileLogger.info("login_start", { actionId, provider: "google" });
@@ -100,7 +118,7 @@ export function useGoogleAuth({
     } finally {
       setIsSigningIn(false);
     }
-  }, [googleWebClientId, isSigningIn, isSigningOut, showToast]);
+  }, [canGoogleSignIn, isSigningIn, isSigningOut, showToast]);
 
   const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
     let timer: ReturnType<typeof setTimeout> | null = null;
