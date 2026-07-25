@@ -19,7 +19,6 @@
     "preview": {
       "extends": "base",
       "channel": "preview",
-      "environment": "preview",
       "distribution": "internal",
       "resourceClass": "medium"
     },
