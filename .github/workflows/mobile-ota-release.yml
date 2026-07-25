@@ -82,7 +82,7 @@ jobs:
         working-directory: apps/mobile
         env:
           SUPPORTED_FINGERPRINT: ${{ steps.state.outputs.fingerprint }}
-          EXPO_PUBLIC_MOBILE_RELEASE_VERSION: ${{ steps.state.outputs.version }}
+          EXPO_PUBLIC_MOBILE_RELEASE_VERSION: ${{ steps.history.outputs.native_version }}
           MOBILE_NATIVE_RUNTIME: ${{ steps.state.outputs.runtime }}
         run: |
           SOURCE_FINGERPRINT=$(bunx fingerprint fingerprint:generate --platform android | node -e "let input=''; process.stdin.on('data', chunk => input += chunk); process.stdin.on('end', () => process.stdout.write(JSON.parse(input).hash))")
