@@ -33,7 +33,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import { StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import Animated, {
   Easing,
   useAnimatedProps,
@@ -46,6 +46,7 @@ import Svg, { Defs, LinearGradient, Path, Stop } from "react-native-svg";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { haptic } from "../lib/haptic";
 import { BarChartIcon, LineChartIcon } from "./UiIcons";
+import { InlineSegmented, type InlineSegmentedItem } from "./InlineSegmented";
 import {
   areaPath,
   monotoneLinePath,
@@ -72,9 +73,14 @@ type Props = {
   cycleDays: number | null;
 };
 
-const METRICS: Array<{ key: Metric; label: string }> = [
-  { key: "weekday", label: "When you finish" },
-  { key: "hour", label: "Focus by hour" },
+const METRICS: Array<InlineSegmentedItem<Metric>> = [
+  { value: "weekday", label: "When you finish" },
+  { value: "hour", label: "Focus by hour" },
+];
+
+const SHAPE_OPTIONS: Array<InlineSegmentedItem<Shape>> = [
+  { value: "bars", Icon: BarChartIcon },
+  { value: "line", Icon: LineChartIcon },
 ];
 
 /** Each series opens in the shape that tells the truth about it. */
@@ -122,44 +128,16 @@ export function RhythmMiniCharts({ weekday, hour, cycleDays }: Props) {
   return (
     <View style={styles.card} onLayout={onLayout}>
       <View style={styles.controls}>
-        <View style={styles.segmented}>
-          {METRICS.map((option) => {
-            const active = metric === option.key;
-            return (
-              <Pressable
-                key={option.key}
-                onPress={() => selectMetric(option.key)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={option.label}
-                style={({ pressed }) => [
-                  styles.segment,
-                  active && styles.segmentActive,
-                  pressed && { opacity: 0.7 },
-                ]}
-              >
-                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                  {option.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <View style={styles.shapeToggle}>
-          <ShapeButton
-            shape="bars"
-            active={activeShape === "bars"}
-            label="Show as bars"
-            onPress={() => selectShape("bars")}
-          />
-          <ShapeButton
-            shape="line"
-            active={activeShape === "line"}
-            label="Show as a line"
-            onPress={() => selectShape("line")}
-          />
-        </View>
+        <InlineSegmented
+          options={METRICS}
+          value={metric}
+          onSelect={selectMetric}
+        />
+        <InlineSegmented
+          options={SHAPE_OPTIONS}
+          value={activeShape}
+          onSelect={selectShape}
+        />
       </View>
 
       {!hasSample ? (
@@ -184,40 +162,6 @@ export function RhythmMiniCharts({ weekday, hour, cycleDays }: Props) {
         </Text>
       </View>
     </View>
-  );
-}
-
-function ShapeButton({
-  shape,
-  active,
-  label,
-  onPress,
-}: {
-  shape: Shape;
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  const Icon = shape === "bars" ? BarChartIcon : LineChartIcon;
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      accessibilityLabel={label}
-      hitSlop={6}
-      style={({ pressed }) => [
-        styles.shapeButton,
-        active && styles.shapeButtonActive,
-        pressed && { opacity: 0.7 },
-      ]}
-    >
-      <Icon
-        color={active ? colors.textInverse : colors.textMuted}
-        size={16}
-        strokeWidth={1.9}
-      />
-    </Pressable>
   );
 }
 
@@ -521,50 +465,6 @@ const styles = createThemedStyles({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-  },
-  segmented: {
-    flex: 1,
-    flexDirection: "row",
-    gap: 2,
-    padding: 2,
-    borderRadius: radii.lg,
-    backgroundColor: colors.bgInput,
-  },
-  segment: {
-    flex: 1,
-    minHeight: 36,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.sm,
-    borderRadius: radii.md,
-  },
-  segmentActive: {
-    backgroundColor: colors.accent,
-  },
-  segmentText: {
-    ...typography.bodyMd,
-    color: colors.textSecondary,
-  },
-  segmentTextActive: {
-    color: colors.textInverse,
-    fontFamily: typography.title.fontFamily,
-  },
-  shapeToggle: {
-    flexDirection: "row",
-    gap: 2,
-    padding: 2,
-    borderRadius: radii.lg,
-    backgroundColor: colors.bgInput,
-  },
-  shapeButton: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radii.md,
-  },
-  shapeButtonActive: {
-    backgroundColor: colors.accent,
   },
   barFill: {
     position: "absolute",

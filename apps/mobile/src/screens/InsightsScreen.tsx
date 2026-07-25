@@ -32,6 +32,7 @@ import { ConsistencyHeatmap } from "../components/ConsistencyHeatmap";
 import { RhythmMiniCharts } from "../components/RhythmMiniCharts";
 import { GoalsProgress } from "../components/GoalsProgress";
 import { SlidingSegmented, type SegmentedItem } from "../components/SlidingSegmented";
+import { InlineSegmented, type InlineSegmentedItem } from "../components/InlineSegmented";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -68,7 +69,11 @@ type InsightsScreenProps = {
 };
 
 const RANGE_DAYS: Record<RangeKey, number> = { "7d": 7, "30d": 30, "90d": 90 };
-const RANGE_LABELS: Record<RangeKey, string> = { "7d": "7d", "30d": "30d", "90d": "90d" };
+const RANGE_OPTIONS: Array<InlineSegmentedItem<RangeKey>> = [
+  { value: "7d", label: "7D" },
+  { value: "30d", label: "30D" },
+  { value: "90d", label: "90D" },
+];
 // The window is a rolling N days ending today, not a calendar period — the
 // hero's own axis reads "16 Jun → 15 Jul" while the old copy said "this month".
 // Say what the data actually is.
@@ -268,30 +273,11 @@ export function InsightsScreen({
           <SectionHeader
             label="Recent momentum"
             right={
-              <View style={styles.rangeRow}>
-                {(Object.keys(RANGE_DAYS) as RangeKey[]).map((key) => {
-                  const active = range === key;
-                  return (
-                    <Pressable
-                      key={key}
-                      onPress={() => setRange(key)}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active }}
-                      accessibilityLabel={`Show last ${RANGE_DAYS[key]} days`}
-                      hitSlop={8}
-                      style={({ pressed }) => [
-                        styles.rangePill,
-                        active && styles.rangePillActive,
-                        pressed && { opacity: 0.7 },
-                      ]}
-                    >
-                      <Text style={[styles.rangeText, active && styles.rangeTextActive]}>
-                        {RANGE_LABELS[key]}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <InlineSegmented
+                options={RANGE_OPTIONS}
+                value={range}
+                onSelect={setRange}
+              />
             }
           />
 
@@ -484,35 +470,6 @@ function SectionHeader({
 const styles = createThemedStyles({
   root: {
     flex: 1,
-  },
-  rangeRow: {
-    flexDirection: "row",
-    gap: spacing.xs,
-  },
-  rangePill: {
-    minWidth: 44,
-    minHeight: 32,
-    justifyContent: "center",
-    paddingHorizontal: spacing.sm,
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.bgCard,
-    alignItems: "center",
-  },
-  // Inverted, not washed. `accentSoft` over `bgCard` rendered the selected pill
-  // duller than its unselected neighbours, which reads as "disabled" — the
-  // opposite of what a selection should say. Matches the active tab treatment.
-  rangePillActive: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accent,
-  },
-  rangeText: {
-    ...typography.micro,
-    color: colors.textMuted,
-  },
-  rangeTextActive: {
-    color: colors.textInverse,
   },
   sectionHeader: {
     marginHorizontal: spacing.lg,
