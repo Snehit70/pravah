@@ -538,7 +538,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                         ]}
                       >
                         <CheckIcon color={colors.success} size={16} />
-                        <Text style={[styles.quickActionText, { color: colors.success }]}> 
+                        <Text style={[styles.quickActionText, { color: colors.success }]}>
                           Reopen
                         </Text>
                       </Pressable>
@@ -560,7 +560,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                           ]}
                         >
                           <CheckIcon color={colors.success} size={16} />
-                          <Text style={[styles.quickActionText, { color: colors.success }]}> 
+                          <Text style={[styles.quickActionText, { color: colors.success }]}>
                             Complete
                           </Text>
                         </Pressable>
@@ -580,7 +580,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                           ]}
                         >
                           <CalendarIcon color={colors.warning} size={16} />
-                          <Text style={[styles.quickActionText, { color: colors.warning }]}> 
+                          <Text style={[styles.quickActionText, { color: colors.warning }]}>
                             Unschedule
                           </Text>
                         </Pressable>
@@ -600,7 +600,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                           ]}
                         >
                           <CalendarIcon color={colors.warning} size={16} />
-                          <Text style={[styles.quickActionText, { color: colors.warning }]}> 
+                          <Text style={[styles.quickActionText, { color: colors.warning }]}>
                             Schedule
                           </Text>
                         </Pressable>
