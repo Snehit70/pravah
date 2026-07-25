@@ -179,7 +179,8 @@ jobs:
           BRANCH="release-candidate-${{ needs.prepare.outputs.version }}"
           bunx eas-cli env:create preview --name EXPO_PUBLIC_CONVEX_URL --value "$EXPO_PUBLIC_CONVEX_URL" --visibility plaintext --force --non-interactive
           bunx eas-cli env:create preview --name EXPO_PUBLIC_CONVEX_SITE_URL --value "$EXPO_PUBLIC_CONVEX_SITE_URL" --visibility plaintext --force --non-interactive
-          bunx eas-cli update --branch "$BRANCH" --message "$RELEASE_NOTES" --non-interactive --json > eas-update.json
+          bunx eas-cli env:exec preview 'test -n "$EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID"' --non-interactive
+          bunx eas-cli update --branch "$BRANCH" --message "$RELEASE_NOTES" --environment preview --non-interactive --json > eas-update.json
           UPDATE_ID=$(node -e "const value=require('./eas-update.json'); const item=Array.isArray(value)?value[0]:value; const id=item?.group ?? item?.id; if (!id) process.exit(1); process.stdout.write(id)")
           bunx eas-cli update:list --branch "$BRANCH" --limit 10 --non-interactive --json > eas-update-list.json
           VERIFIED=$(node -e "const value=require('./eas-update-list.json'); const items=Array.isArray(value)?value:(value.currentPage??value.updates??value.data??[]); const id=process.argv[1]; process.stdout.write(items.some(item => item.group === id || item.id === id) ? 'yes' : 'no')" "$UPDATE_ID")
