@@ -135,7 +135,12 @@ vi.mock("react-native-reanimated", () => {
     // Text is here because the Rhythm peak label is an Animated.Text; without it
     // the first test to render a peak would die on an undefined element type.
     default: { View, Text: animated("span"), createAnimatedComponent: identity },
-    useSharedValue: (v: number) => ({ value: v }),
+    useSharedValue: (value: number) => ({
+      value,
+      set(next: number) {
+        this.value = next;
+      },
+    }),
     useAnimatedProps: () => ({}),
     useAnimatedStyle: () => ({}),
     // Null reads as "not mid-morph", so the charts render their static path.

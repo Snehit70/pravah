@@ -123,7 +123,6 @@ function renderStrip(overrides: Partial<React.ComponentProps<typeof TimelineDayS
     today: TODAY,
     scrollX,
     interval: 340,
-    landingIndex: 0,
     reducedMotion: true,
     onJumpToCard,
     ...overrides,
@@ -147,15 +146,5 @@ describe("TimelineDayStrip", () => {
     renderStrip();
     // 2026-07-07 (Tuesday) has no card, so it exposes no jump target.
     expect(screen.queryByRole("button", { name: "Jump to Tue · Jul 7" })).toBeNull();
-  });
-
-  it("jumps home from the back-to-today affordance when off today's week", () => {
-    const { onJumpToCard } = renderStrip({
-      cards: [dayCard(TODAY, 1), dayCard("2026-07-20", 1)],
-      currentIndex: 1,
-      landingIndex: 0,
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Jump back to today" }));
-    expect(onJumpToCard).toHaveBeenCalledWith(0);
   });
 });
