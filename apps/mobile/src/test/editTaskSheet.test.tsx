@@ -77,6 +77,27 @@ vi.mock("react-native", () => {
   };
 });
 
+vi.mock("react-native-keyboard-controller", () => ({
+  KeyboardAvoidingView: ({
+    children,
+    behavior,
+    automaticOffset,
+  }: {
+    children?: React.ReactNode;
+    behavior?: string;
+    automaticOffset?: boolean;
+  }) =>
+    React.createElement(
+      "div",
+      {
+        "data-testid": "keyboard-avoiding-view",
+        "data-behavior": behavior,
+        "data-automatic-offset": String(Boolean(automaticOffset)),
+      },
+      children,
+    ),
+}));
+
 // ─── @gorhom/bottom-sheet mock ────────────────────────────────────────────────
 const mockExpand = vi.fn();
 const mockClose = vi.fn();
@@ -345,6 +366,10 @@ describe("EditTaskSheet", () => {
     });
 
     expect(mockOnSheetChange).toHaveBeenCalledWith(true);
+
+    const keyboardView = screen.getByTestId("keyboard-avoiding-view");
+    expect(keyboardView.getAttribute("data-behavior")).toBe("padding");
+    expect(keyboardView.getAttribute("data-automatic-offset")).toBe("true");
 
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
     expect(titleInput.value).toBe("Original task");
