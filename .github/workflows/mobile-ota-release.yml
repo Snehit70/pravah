@@ -22,7 +22,8 @@ jobs:
   prepare:
     if: >-
       github.event.pull_request.merged == true &&
-      contains(github.event.pull_request.labels.*.name, 'mobile-ota')
+      (contains(github.event.pull_request.labels.*.name, 'mobile-ota') ||
+       contains(github.event.pull_request.labels.*.name, 'mobile-ota-recovery'))
     runs-on: ubuntu-latest
     outputs:
       attempt_id: ${{ steps.reserve.outputs.attempt_id }}
@@ -39,9 +40,30 @@ jobs:
       eas_branch: ${{ steps.reserve.outputs.eas_branch }}
       backend_changed: ${{ steps.backend.outputs.changed }}
     steps:
+      - id: target
+        name: Resolve release source
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          IS_RECOVERY: ${{ contains(github.event.pull_request.labels.*.name, 'mobile-ota-recovery') }}
+        run: |
+          if [ "$IS_RECOVERY" = true ]; then
+            SOURCE_SHA=$(printf '%s\n' "$PR_BODY" | sed -n 's/^Recovery-Source-SHA:[[:space:]]*//p' | head -n 1)
+            SOURCE_BASE_SHA=$(printf '%s\n' "$PR_BODY" | sed -n 's/^Recovery-Base-SHA:[[:space:]]*//p' | head -n 1)
+            test -n "$SOURCE_SHA"
+            test -n "$SOURCE_BASE_SHA"
+            git check-ref-format --allow-onelevel "$SOURCE_SHA" >/dev/null 2>&1 || test "${#SOURCE_SHA}" = 40
+            git check-ref-format --allow-onelevel "$SOURCE_BASE_SHA" >/dev/null 2>&1 || test "${#SOURCE_BASE_SHA}" = 40
+          else
+            SOURCE_SHA="$MERGE_SHA"
+            SOURCE_BASE_SHA="$BASE_SHA"
+          fi
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$SOURCE_BASE_SHA" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          ref: ${{ steps.target.outputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -56,7 +78,7 @@ jobs:
         run: test "$CONVEX_URL" = "$MOBILE_CONVEX_URL"
       - id: backend
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ steps.target.outputs.base_sha }}
         run: |
           if git diff --quiet "$BASE_SHA" HEAD -- convex/; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
