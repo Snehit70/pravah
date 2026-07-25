@@ -189,6 +189,8 @@ jobs:
         working-directory: apps/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_MOBILE_RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          MOBILE_NATIVE_RUNTIME: ${{ needs.prepare.outputs.runtime }}
         run: bunx eas-cli channel:edit preview --branch "${{ needs.stage-update.outputs.branch }}" --non-interactive
       - name: Finalize ledger
         env:
@@ -208,7 +210,8 @@ jobs:
       always() &&
       needs.prepare.result == 'success' &&
       (needs.deploy-backend.result == 'failure' ||
-       needs.stage-update.result == 'failure')
+       needs.stage-update.result == 'failure' ||
+       needs.promote-and-finalize.result == 'failure')
     needs: [prepare, deploy-backend, stage-update, promote-and-finalize]
     runs-on: ubuntu-latest
     steps:
