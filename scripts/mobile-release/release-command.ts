@@ -54,7 +54,12 @@ if (command === "state") {
   const pullRequests = [
     ...new Set(releases.flatMap((release) => release.pullRequests)),
   ];
-  await writeOutput({ pull_requests_json: JSON.stringify(pullRequests) });
+  const latestNative = releases.find((release) => release.delivery === "native");
+  if (!latestNative) throw new Error("Published native release history is empty");
+  await writeOutput({
+    pull_requests_json: JSON.stringify(pullRequests),
+    native_version: latestNative.version,
+  });
   process.stdout.write(`${JSON.stringify(releases)}\n`);
 } else if (command === "reserve") {
   if (!deploymentSecret) throw new Error("MOBILE_RELEASE_DEPLOY_SECRET is required");
