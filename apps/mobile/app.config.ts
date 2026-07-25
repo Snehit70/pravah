@@ -2,10 +2,15 @@ import type { ExpoConfig } from "expo/config";
 
 const IS_DEV = process.env.APP_VARIANT === "dev";
 const IS_RELEASE_BUILD = Boolean(process.env.CI || process.env.EAS_BUILD_PROFILE);
+const REQUIRE_AUTH_CONFIG = process.env.MOBILE_REQUIRE_AUTH_CONFIG === "true";
 const releaseVersion = process.env.EXPO_PUBLIC_MOBILE_RELEASE_VERSION;
 const nativeRuntime = process.env.MOBILE_NATIVE_RUNTIME;
+const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 if (IS_RELEASE_BUILD && (!releaseVersion || !nativeRuntime)) {
   throw new Error("Mobile release builds require injected version and runtime");
+}
+if (REQUIRE_AUTH_CONFIG && !googleWebClientId) {
+  throw new Error("Mobile releases require EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID");
 }
 const MOBILE_RELEASE_VERSION = releaseVersion ?? "0.0.0-dev";
 const MOBILE_NATIVE_RUNTIME = nativeRuntime ?? "native-dev";
