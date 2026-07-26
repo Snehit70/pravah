@@ -112,6 +112,22 @@ http.route({
   }),
 });
 
+// GET /automation/credential - Read the current bearer credential's live scopes.
+http.route({
+  path: "/automation/credential",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const authCheck = await requireTaskReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const { auth } = authCheck;
+    return jsonResponse({
+      label: auth.label,
+      scopes: auth.scopes,
+      ownerTokenIdentifier: auth.ownerTokenIdentifier,
+    });
+  }),
+});
+
 // GET /tasks - List all tasks
 http.route({
   path: "/tasks",

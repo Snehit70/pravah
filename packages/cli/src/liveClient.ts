@@ -11,10 +11,13 @@ interface CliEnv {
   CONVEX_HTTP_API_KEY?: string;
 }
 
+export const DEFAULT_PRAVAH_HTTP_URL = "https://befitting-swan-125.eu-west-1.convex.site";
+
 export interface LiveCliClient {
   mode: "live";
   credentialLabel: string;
   scopes: string[];
+  getCredentialStatus(): Promise<{ label: string; scopes: string[]; ownerTokenIdentifier: string }>;
   listTasks(filters: { status?: string; date?: string }): Promise<unknown>;
   listGoals(): Promise<unknown>;
   listGoalLinks(): Promise<unknown>;
@@ -110,7 +113,8 @@ export function resolveCliHttpUrl(env: CliEnv): string | undefined {
     normalizeHttpUrl(env.CONVEX_SITE_URL) ??
     normalizeHttpUrl(env.VITE_CONVEX_SITE_URL) ??
     deriveSiteUrl(env.CONVEX_URL) ??
-    deriveSiteUrl(env.VITE_CONVEX_URL)
+    deriveSiteUrl(env.VITE_CONVEX_URL) ??
+    DEFAULT_PRAVAH_HTTP_URL
   );
 }
 
@@ -170,6 +174,11 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
       "review:read",
       "sync:read",
     ],
+    async getCredentialStatus() {
+      const status = await get("/automation/credential") as { label?: unknown; scopes?: unknown; ownerTokenIdentifier?: unknown };
+      if (typeof status.label !== "string" || !Array.isArray(status.scopes) || !status.scopes.every((scope): scope is string => typeof scope === "string") || typeof status.ownerTokenIdentifier !== "string") throw new Error("Credential status response is invalid");
+      return { label: status.label, scopes: status.scopes, ownerTokenIdentifier: status.ownerTokenIdentifier };
+    },
     listTasks(filters) {
       const query = new URLSearchParams();
       if (filters.status) {

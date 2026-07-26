@@ -26,7 +26,7 @@ credential. To create the latter, issue a one-time bootstrap token from
 Settings → Automation, then exchange it locally:
 
 ```sh
-pravah auth login --url https://your-deployment.convex.site --bootstrap-token pravah_bootstrap_...
+pravah auth login --bootstrap-token pravah_bootstrap_...
 pravah auth status
 ```
 

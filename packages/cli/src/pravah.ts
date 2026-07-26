@@ -19,7 +19,7 @@ async function main() {
   let command = "help";
 
   try {
-    command = args.positionals[0] === "help" ? "help" : args.positionals.length ? resolveCommand(args) : "help";
+    command = args.options.help === true || args.positionals[0] === "help" ? "help" : args.positionals.length ? resolveCommand(args) : "help";
     const data = await executeCommand({ command, json }, args);
     if (isCliTextResult(data)) {
       process.stdout.write(`${data.text}\n`);

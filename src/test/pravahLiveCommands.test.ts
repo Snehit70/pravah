@@ -19,8 +19,8 @@ describe("Pravah CLI v2 live adapter", () => {
   it("adds linked Goal context without requesting held review or sync integrations", async () => {
     const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true, json: async () => [] } as Response);
     await executeCommand({ command: "agent context", json: true }, { positionals: ["agent", "context"], options: {} });
-    expect(fetch).toHaveBeenCalledTimes(3);
-    expect(fetch.mock.calls.map((call) => String(call[0]))).toEqual(expect.arrayContaining(["https://pravah.example.com/tasks", "https://pravah.example.com/goals", "https://pravah.example.com/goal-links"]));
+    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(fetch.mock.calls.map((call) => String(call[0]))).toEqual(expect.arrayContaining(["https://pravah.example.com/automation/credential", "https://pravah.example.com/tasks", "https://pravah.example.com/goals", "https://pravah.example.com/goal-links"]));
     expect(fetch.mock.calls.map((call) => String(call[0]).includes("review") || String(call[0]).includes("sync"))).not.toContain(true);
   });
 
@@ -44,7 +44,7 @@ describe("Pravah CLI v2 live adapter", () => {
       return { ok: true, json: async () => ({ operationId: "op_1", undoAvailable: true, undoExpiresAt: "2026-08-01T00:00:00.000Z" }) } as Response;
     });
     const result = await executeCommand({ command: "tasks edit", json: true }, { positionals: ["tasks", "edit", "Ship v2"], options: { title: "Ship better", tags: "cli", "estimated-minutes": "45", "idempotency-key": "stable" } });
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(3);
     expect(result).toMatchObject({ operation: { operationId: "op_1", undoExpiresAt: "2026-08-01T00:00:00.000Z" } });
   });
 });

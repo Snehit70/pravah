@@ -7,6 +7,8 @@ import { jsonResponse } from "./httpResponses";
 export interface AuthorizedRequest {
   kind: "admin" | "automation";
   ownerTokenIdentifier: string;
+  label: string;
+  scopes: AutomationScope[];
 }
 
 type AuthRouteCtx = Pick<ActionCtx, "runMutation">;
@@ -53,6 +55,8 @@ async function requireAuth(
         auth: {
           kind: "automation",
           ownerTokenIdentifier: credential.ownerTokenIdentifier,
+          label: credential.label,
+          scopes: credential.scopes,
         },
       };
     } catch {
@@ -83,7 +87,7 @@ async function requireAuth(
     }
     return {
       response: null,
-      auth: { kind: "admin", ownerTokenIdentifier },
+      auth: { kind: "admin", ownerTokenIdentifier, label: "admin-api-key", scopes: ["tasks:read", "tasks:write", "review:read", "sync:read"] },
     };
   }
 
