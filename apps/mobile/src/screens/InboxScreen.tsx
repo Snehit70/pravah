@@ -8,8 +8,8 @@
  * with a themed confirm, so the list never wears a checkbox at rest.
  *
  * The screen owns its row rendering and interaction state. The parent passes
- * only primitive callbacks (edit, schedule-to-date, mark-many-done) so mutation
- * wiring stays out of here.
+ * only primitive callbacks (edit, schedule-to-date, bulk completion/deletion)
+ * so mutation wiring stays out of here.
  */
 
 import { useCallback, useMemo, useState } from "react";
@@ -21,7 +21,7 @@ import { createThemedStyles } from "../theme/themeRuntime";
 import type { MobileTask } from "../components/TaskCard";
 import { InboxTaskRow } from "../components/InboxTaskRow";
 import { QuickScheduleSheet } from "../components/QuickScheduleSheet";
-import { CheckIcon, SearchIcon } from "../components/UiIcons";
+import { CheckIcon, SearchIcon, TrashIcon } from "../components/UiIcons";
 import { TimelineSectionHeader } from "../components/TimelineSectionHeader";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { useConfirm } from "../hooks/useConfirm";
@@ -57,6 +57,8 @@ type InboxScreenProps = {
   onScheduleToDate: (taskId: MobileTask["_id"], targetDate: string) => void;
   /** Mark a batch of tasks done; resolves true on success. */
   onMarkManyDone: (taskIds: MobileTask["_id"][]) => Promise<boolean>;
+  /** Recoverably delete a batch of Inbox tasks; resolves true on success. */
+  onDeleteMany: (taskIds: MobileTask["_id"][]) => Promise<boolean>;
   /** False while the workspace can't accept actions (loading / offline gate). */
   canAct: boolean;
 };
@@ -140,6 +142,7 @@ export function InboxScreen({
   onEditTask,
   onScheduleToDate,
   onMarkManyDone,
+  onDeleteMany,
   canAct,
 }: InboxScreenProps) {
   const reducedMotion = useReducedMotion();
@@ -265,6 +268,23 @@ export function InboxScreen({
     const success = await onMarkManyDone(ids);
     if (success) exitSelectMode();
   }, [canAct, filteredTasks, selectedIds, confirm, onMarkManyDone, exitSelectMode]);
+
+  const handleDelete = useCallback(async () => {
+    if (!canAct) return;
+    const ids = filteredTasks
+      .filter((task) => selectedIds.has(String(task._id)))
+      .map((task) => task._id);
+    if (ids.length === 0) return;
+    const ok = await confirm({
+      title: ids.length === 1 ? "Delete 1 task from your inbox?" : `Delete ${ids.length} tasks from your inbox?`,
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      destructive: true,
+    });
+    if (!ok) return;
+    const success = await onDeleteMany(ids);
+    if (success) exitSelectMode();
+  }, [canAct, filteredTasks, selectedIds, confirm, onDeleteMany, exitSelectMode]);
 
   const emptyBlock = isFiltering ? (
     <Animated.View entering={reducedMotion ? undefined : FadeIn.duration(400)} style={styles.emptyWrap}>
@@ -524,34 +544,68 @@ export function InboxScreen({
           exiting={reducedMotion ? undefined : FadeOut.duration(120)}
           style={[styles.bulkBar, { bottom: tabBarHeight + spacing.md }]}
         >
-          <Pressable
-            onPress={() => void handleMarkDone()}
-            disabled={selectedCount === 0 || !canAct}
-            accessibilityRole="button"
-            accessibilityLabel={
-              selectedCount <= 1 ? "Mark task as done" : `Mark ${selectedCount} tasks as done`
-            }
-            style={({ pressed }) => [
-              styles.bulkDone,
-              selectedCount === 0 && styles.bulkDoneDisabled,
-              pressed && selectedCount > 0 && { opacity: 0.85 },
-            ]}
-          >
-            <CheckIcon
-              size={18}
-              strokeWidth={2.4}
-              color={selectedCount === 0 ? colors.textMuted : colors.textInverse}
-            />
-            <Text
-              style={[styles.bulkDoneText, selectedCount === 0 && styles.bulkDoneTextDisabled]}
+          <View style={styles.bulkActions}>
+            <Pressable
+              onPress={() => void handleDelete()}
+              disabled={selectedCount === 0 || !canAct}
+              accessibilityRole="button"
+              accessibilityLabel={
+                selectedCount === 0
+                  ? "Delete tasks"
+                  : selectedCount === 1
+                    ? "Delete 1 task"
+                    : `Delete ${selectedCount} tasks`
+              }
+              style={({ pressed }) => [
+                styles.bulkDelete,
+                selectedCount === 0 && styles.bulkDeleteDisabled,
+                pressed && selectedCount > 0 && { opacity: 0.7 },
+              ]}
             >
-              {selectedCount === 0
-                ? "Mark done"
-                : selectedCount === 1
-                  ? "Mark 1 done"
-                  : `Mark ${selectedCount} done`}
-            </Text>
-          </Pressable>
+              <TrashIcon
+                size={18}
+                strokeWidth={2}
+                color={selectedCount === 0 ? colors.textMuted : colors.error}
+              />
+              <Text
+                style={[styles.bulkDeleteText, selectedCount === 0 && styles.bulkDeleteTextDisabled]}
+              >
+                {selectedCount === 0
+                  ? "Delete"
+                  : selectedCount === 1
+                    ? "Delete 1 task"
+                    : `Delete ${selectedCount} tasks`}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void handleMarkDone()}
+              disabled={selectedCount === 0 || !canAct}
+              accessibilityRole="button"
+              accessibilityLabel={
+                selectedCount <= 1 ? "Mark task as done" : `Mark ${selectedCount} tasks as done`
+              }
+              style={({ pressed }) => [
+                styles.bulkDone,
+                selectedCount === 0 && styles.bulkDoneDisabled,
+                pressed && selectedCount > 0 && { opacity: 0.85 },
+              ]}
+            >
+              <CheckIcon
+                size={18}
+                strokeWidth={2.4}
+                color={selectedCount === 0 ? colors.textMuted : colors.textInverse}
+              />
+              <Text
+                style={[styles.bulkDoneText, selectedCount === 0 && styles.bulkDoneTextDisabled]}
+              >
+                {selectedCount === 0
+                  ? "Mark done"
+                  : selectedCount === 1
+                    ? "Mark 1 done"
+                    : `Mark ${selectedCount} done`}
+              </Text>
+            </Pressable>
+          </View>
         </Animated.View>
       ) : null}
 
@@ -708,7 +762,41 @@ const styles = createThemedStyles({
     left: spacing.lg,
     right: spacing.lg,
   },
+  bulkActions: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  bulkDelete: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: radii.xl,
+    borderCurve: "continuous",
+    backgroundColor: colors.bgFloating,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.error,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    shadowColor: "#08050a",
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  bulkDeleteDisabled: {
+    borderColor: colors.border,
+    backgroundColor: colors.bgSurface,
+  },
+  bulkDeleteText: {
+    ...typography.title,
+    color: colors.error,
+  },
+  bulkDeleteTextDisabled: {
+    color: colors.textMuted,
+  },
   bulkDone: {
+    flex: 1,
     minHeight: 52,
     borderRadius: radii.xl,
     borderCurve: "continuous",

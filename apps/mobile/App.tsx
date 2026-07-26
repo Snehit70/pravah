@@ -662,6 +662,7 @@ function MobileApp() {
     scheduleToDate,
     scheduleManyToDate,
     markManyDone,
+    deleteInboxTasks,
   } = useTaskMutations({
     serverTasks: activeServerTasks,
     setOptimisticTasks,
@@ -1157,6 +1158,7 @@ function MobileApp() {
               onEditTask={handleEditTask}
               onScheduleToDate={scheduleToDate}
               onMarkManyDone={markManyDone}
+              onDeleteMany={deleteInboxTasks}
               canAct={canUseWorkspaceActions}
             />
           </ScreenErrorBoundary>

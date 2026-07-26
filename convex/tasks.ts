@@ -886,6 +886,76 @@ export const softDeleteTask = mutation({
   },
 });
 
+/** Recoverably remove an Inbox selection as one all-or-nothing operation. */
+export const bulkSoftDeleteInboxTasks = mutation({
+  args: { taskIds: v.array(v.id("tasks")) },
+  handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    const seen = new Set<string>();
+    const tasks: Doc<"tasks">[] = [];
+
+    for (const taskId of args.taskIds) {
+      if (seen.has(String(taskId))) throw new Error("Duplicate task in Inbox deletion batch");
+      seen.add(String(taskId));
+
+      const task = await getOwnedTask(ctx, taskId, tokenIdentifier);
+      if (!isInboxTask(task)) throw new Error("Task is not in Inbox");
+      tasks.push(task);
+    }
+
+    const cancelledAt = Date.now();
+    for (const task of tasks) {
+      await ctx.db.patch(task._id, {
+        cancelledAt,
+        completedAt: undefined,
+        updatedAt: cancelledAt,
+      });
+    }
+  },
+});
+
+/** Restore a deleted Inbox batch at the end of each priority section. */
+export const restoreInboxTasks = mutation({
+  args: { taskIds: v.array(v.id("tasks")) },
+  handler: async (ctx, args) => {
+    const tokenIdentifier = await requireTokenIdentifier(ctx);
+    const seen = new Set<string>();
+    const tasks: Doc<"tasks">[] = [];
+
+    for (const taskId of args.taskIds) {
+      if (seen.has(String(taskId))) throw new Error("Duplicate task in Inbox restore batch");
+      seen.add(String(taskId));
+
+      const task = await getOwnedTask(ctx, taskId, tokenIdentifier);
+      if (!isCancelledTask(task) || getTaskDeadline(task)) {
+        throw new Error("Task is not pending Inbox restoration");
+      }
+      tasks.push(task);
+    }
+
+    const nextPositionByPriority = new Map<string, number>();
+    for (const task of (await listOwnedTasks(ctx, tokenIdentifier)).filter(isInboxTask)) {
+      const priority = task.priority ?? "none";
+      nextPositionByPriority.set(
+        priority,
+        Math.max(nextPositionByPriority.get(priority) ?? 0, task.position + 1)
+      );
+    }
+
+    const updatedAt = Date.now();
+    for (const task of tasks) {
+      const priority = task.priority ?? "none";
+      const position = nextPositionByPriority.get(priority) ?? 0;
+      nextPositionByPriority.set(priority, position + 1);
+      await ctx.db.patch(task._id, {
+        cancelledAt: undefined,
+        position,
+        updatedAt,
+      });
+    }
+  },
+});
+
 export const restoreTask = mutation({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {

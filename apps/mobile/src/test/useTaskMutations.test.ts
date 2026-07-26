@@ -320,4 +320,87 @@ describe("useTaskMutations", () => {
 
     expect(optimisticState).toBeNull();
   });
+
+  it("recoverably deletes an Inbox batch and restores it through one Undo action", async () => {
+    const completeTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const moveTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const unscheduleTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const reopenTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const updateTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const reorderTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const reorderInboxTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const shiftScheduledTaskPositionMutation = vi.fn().mockResolvedValue(undefined);
+    const deleteTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const rescheduleTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const bulkSoftDeleteInboxTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const restoreInboxTasksMutation = vi.fn().mockResolvedValue(undefined);
+
+    const mutationOrder = [
+      completeTaskMutation,
+      moveTaskMutation,
+      unscheduleTaskMutation,
+      reopenTaskMutation,
+      updateTaskMutation,
+      reorderTasksMutation,
+      reorderInboxTasksMutation,
+      shiftScheduledTaskPositionMutation,
+      deleteTaskMutation,
+      rescheduleTasksMutation,
+      bulkSoftDeleteInboxTasksMutation,
+      restoreInboxTasksMutation,
+    ];
+    let mutationIndex = 0;
+    useMutationMock.mockImplementation(() => mutationOrder[mutationIndex++]);
+
+    const first = makeTask({ _id: makeId("task-1"), deadline: undefined, priority: "p1" });
+    const second = makeTask({ _id: makeId("task-2"), deadline: undefined, priority: "p2" });
+    let optimisticState: MobileTask[] | null = null;
+    const setOptimisticTasks = vi.fn((update: MobileTask[] | null | ((prev: MobileTask[] | null) => MobileTask[] | null)) => {
+      optimisticState =
+        typeof update === "function"
+          ? (update as (prev: MobileTask[] | null) => MobileTask[] | null)(optimisticState)
+          : update;
+      return optimisticState;
+    });
+    const showToast = vi.fn();
+
+    const { result } = renderHook(() =>
+      useTaskMutations({
+        serverTasks: [first, second],
+        setOptimisticTasks,
+        setPendingMutations: vi.fn(),
+        enqueueRetry: vi.fn(),
+        showToast,
+        today: "2026-04-24",
+        hasPriorityBoundaryViolation: () => false,
+      })
+    );
+
+    let success = false;
+    await act(async () => {
+      success = await result.current.deleteInboxTasks([first._id, second._id]);
+    });
+
+    expect(success).toBe(true);
+    expect(bulkSoftDeleteInboxTasksMutation).toHaveBeenCalledWith({
+      taskIds: [first._id, second._id],
+    });
+    expect(optimisticState).toEqual([]);
+
+    const toast = showToast.mock.calls.at(-1)?.[0] as {
+      message: string;
+      action?: { label: string; run: () => void };
+    };
+    expect(toast.message).toBe("Deleted 2 tasks");
+    expect(toast.action?.label).toBe("Undo");
+
+    act(() => {
+      toast.action?.run();
+    });
+    await waitFor(() => {
+      expect(restoreInboxTasksMutation).toHaveBeenCalledWith({
+        taskIds: [first._id, second._id],
+      });
+    });
+  });
 });

@@ -16,6 +16,18 @@ A bottom-sheet modal surfaced via React Native's built-in `<Modal>` with `transp
 ### Capture
 The primary task/goal creation surface. Renders as a full-height bottom sheet with "New task" / "New goal" tabs. Component: `AddTaskSheet.tsx`.
 
+### Recoverable deletion
+A task is removed from active planning surfaces but remains restorable through Undo during the recovery window. Use this as the canonical product term for the user-facing behavior commonly called a soft delete.
+_Avoid_: Permanent deletion, hard delete
+
+### Recovery window
+The 30-minute period after recoverable deletion during which a task is eligible for restoration. The Undo control is only visible briefly, but the recovery guarantee lasts for the full window.
+_Avoid_: Toast window, purge schedule
+
+### Permanent deletion
+A task is erased and cannot be restored through the product. This is distinct from recoverable deletion and must not be implied by a routine bulk action without explicit confirmation.
+_Avoid_: Recoverable deletion, soft delete
+
 ### Dark appearance
 Pravah's low-light visual identity: deep aubergine-charcoal surfaces, warm
 light text, and restrained purple, teal, amber, and red color used to preserve

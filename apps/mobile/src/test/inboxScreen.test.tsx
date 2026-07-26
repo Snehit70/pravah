@@ -11,6 +11,10 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const { mockConfirm } = vi.hoisted(() => ({
+  mockConfirm: vi.fn(async () => true),
+}));
+
 // ─── react-native mock ────────────────────────────────────────────────────────
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
@@ -142,7 +146,7 @@ vi.mock("react-native-reanimated", () => ({
 vi.mock("react-native-svg", () => {
   const Stub = ({ children }: { children?: React.ReactNode }) =>
     React.createElement("svg", {}, children);
-  return { __esModule: true, default: Stub, Svg: Stub, Path: Stub, Circle: Stub };
+  return { __esModule: true, default: Stub, Svg: Stub, Path: Stub, Circle: Stub, Line: Stub };
 });
 
 // ─── compact row mock ─────────────────────────────────────────────────────────
@@ -198,7 +202,7 @@ vi.mock("../components/QuickScheduleSheet", () => ({
 }));
 
 // ─── confirm hook mock ────────────────────────────────────────────────────────
-vi.mock("../hooks/useConfirm", () => ({ useConfirm: () => vi.fn(async () => true) }));
+vi.mock("../hooks/useConfirm", () => ({ useConfirm: () => mockConfirm }));
 
 // ─── goals hooks mock ─────────────────────────────────────────────────────────
 vi.mock("../hooks/useGoals", () => ({
@@ -281,6 +285,7 @@ const mockOnCapture = vi.fn();
 const mockOnEditTask = vi.fn();
 const mockOnScheduleToDate = vi.fn();
 const mockOnMarkManyDone = vi.fn(async () => true);
+const mockOnDeleteMany = vi.fn(async () => true);
 
 function renderInbox(overrides: Partial<React.ComponentProps<typeof InboxScreen>> = {}) {
   return render(
@@ -294,6 +299,7 @@ function renderInbox(overrides: Partial<React.ComponentProps<typeof InboxScreen>
       onEditTask={mockOnEditTask}
       onScheduleToDate={mockOnScheduleToDate}
       onMarkManyDone={mockOnMarkManyDone}
+      onDeleteMany={mockOnDeleteMany}
       canAct
       {...overrides}
     />
@@ -305,6 +311,7 @@ function renderInbox(overrides: Partial<React.ComponentProps<typeof InboxScreen>
 describe("InboxScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockConfirm.mockResolvedValue(true);
   });
 
   afterEach(() => {
@@ -391,6 +398,26 @@ describe("InboxScreen", () => {
 
     expect(mockOnMarkManyDone).toHaveBeenCalledTimes(1);
     expect(mockOnMarkManyDone).toHaveBeenCalledWith(["task1", "task2"]);
+  });
+
+  it("recoverably deletes the selected Inbox tasks and exits selection mode", async () => {
+    renderInbox();
+
+    fireEvent.click(screen.getByRole("button", { name: "long-task1" }));
+    fireEvent.click(screen.getByRole("button", { name: "row-task2" }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Delete 2 tasks" }));
+    });
+
+    expect(mockOnDeleteMany).toHaveBeenCalledWith(["task1", "task2"]);
+    expect(mockConfirm).toHaveBeenCalledWith({
+      title: "Delete 2 tasks from your inbox?",
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      destructive: true,
+    });
+    expect(screen.queryByText("2 selected")).toBeNull();
   });
 
   it("filters to tasks linked to the selected goal", () => {
