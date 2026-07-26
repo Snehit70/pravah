@@ -203,10 +203,16 @@ vi.mock("../hooks/useGoals", () => ({
 
 import { GoalsScreen } from "../screens/GoalsScreen";
 
-const task = (id: string, completed: boolean, deadline?: string) => ({
+const task = (
+  id: string,
+  completed: boolean,
+  deadline?: string,
+  priority?: "p1" | "p2" | "p3"
+) => ({
   _id: id,
   title: `Task ${id}`,
   deadline,
+  priority,
   scheduledAt: 0,
   completedAt: completed ? 1 : undefined,
   position: 0,
@@ -217,10 +223,10 @@ const task = (id: string, completed: boolean, deadline?: string) => ({
 // One finished, one overdue, one undated, one far future — enough to exercise
 // every group the sheet can render.
 const tasks = [
-  task("t1", true),
-  task("t2", false, "2000-02-03"),
-  task("t3", false),
-  task("t4", false, "2999-05-06"),
+  task("t1", true, undefined, "p2"),
+  task("t2", false, "2000-02-03", "p3"),
+  task("t3", false, undefined, "p1"),
+  task("t4", false, "2999-05-06", "p1"),
 ] as never;
 
 const openG1Sheet = () => {
@@ -292,7 +298,7 @@ describe("GoalDetailSheet workbench", () => {
     render(<GoalsScreen tabBarHeight={0} tasks={tasks} />);
     openG1Sheet();
     const text = document.body.textContent ?? "";
-    const sequence = ["Next", "Task t2", "Task t4", "Unscheduled 1", "Task t3"];
+    const sequence = ["Next", "Task t4", "Task t2", "Unscheduled 1", "Task t3"];
     const positions = sequence.map((s) => text.indexOf(s));
     for (const [i, pos] of positions.entries()) {
       expect(pos, `"${sequence[i]}" missing from sheet`).toBeGreaterThan(-1);
@@ -304,8 +310,28 @@ describe("GoalDetailSheet workbench", () => {
     render(<GoalsScreen tabBarHeight={0} tasks={tasks} />);
     openG1Sheet();
     fireEvent.click(screen.getByLabelText("Sort goal tasks"));
-    expect(screen.getByText("Plan order")).toBeTruthy();
+    expect(screen.getByText("Priority")).toBeTruthy();
     expect(screen.getByText("Newest added")).toBeTruthy();
+  });
+
+  it("orders each open section by priority and shows priority on every prioritized row", () => {
+    const priorityTasks = [
+      task("t1", true),
+      task("t2", false, "2000-02-03", "p3"),
+      task("t3", false, undefined, "p2"),
+      task("t4", false, "2999-05-06", "p1"),
+      task("t5", false, undefined, "p1"),
+    ] as never;
+    render(<GoalsScreen tabBarHeight={0} tasks={priorityTasks} />);
+    openG1Sheet();
+
+    const text = document.body.textContent ?? "";
+    expect(text.indexOf("Task t4")).toBeLessThan(text.indexOf("Task t2"));
+    expect(text.indexOf("Task t5")).toBeLessThan(text.indexOf("Task t3"));
+    // Two task labels plus the goal's own P1 metadata.
+    expect(screen.getAllByText("P1")).toHaveLength(3);
+    expect(screen.getByLabelText("Task t3, priority P2")).toBeTruthy();
+    expect(screen.getByLabelText("Task t2, priority P3")).toBeTruthy();
   });
 
   it("separates finished tasks behind the Done tab", () => {

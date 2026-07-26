@@ -214,7 +214,11 @@ function GoalDetailSheet({
     const sort = (tasks: MobileTask[]) =>
       sortMode === "newest"
         ? [...tasks].sort((a, b) => b.createdAt - a.createdAt)
-        : tasks;
+        : [...tasks].sort(
+            (a, b) =>
+              (PRIORITY_RANK[a.priority ?? ""] ?? 3) -
+              (PRIORITY_RANK[b.priority ?? ""] ?? 3)
+          );
     return {
       nextTasks: sort(groups.filter((group) => group.key !== "nodate").flatMap((group) => group.tasks)),
       unscheduledTasks: sort(groups.find((group) => group.key === "nodate")?.tasks ?? []),
@@ -419,7 +423,7 @@ function GoalDetailSheet({
                     >
                       <View style={[detailStyles.sortRadio, selected && detailStyles.sortRadioSelected]} />
                       <Text style={[detailStyles.sortOptionText, selected && detailStyles.sortOptionTextSelected]}>
-                        {mode === "plan" ? "Plan order" : "Newest added"}
+                        {mode === "plan" ? "Priority" : "Newest added"}
                       </Text>
                     </Pressable>
                   );
