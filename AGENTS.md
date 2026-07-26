@@ -1,3 +1,5 @@
+**Package manager: use Bun only. Never run pnpm, npm, or yarn in this repository.**
+
 # Pravah — Codex Configuration
 
 ## Commit rules

@@ -1833,6 +1833,22 @@ function InteractionSection({ prefs, setPreference }: InteractionSectionProps) {
 
         <View style={styles.settingRow}>
           <View style={styles.syncIconWrap}>
+            <InboxTrayIcon color={colors.textSecondary} size={18} strokeWidth={1.8} />
+          </View>
+          <View style={styles.settingCopy}>
+            <Text style={styles.settingLabel}>Hide goal tasks</Text>
+            <Text style={styles.settingHelp}>Keep linked work in Goals, not Inbox.</Text>
+          </View>
+          <ThemedToggle
+            value={prefs.hideGoalLinkedTasksFromInbox}
+            onValueChange={(next) => void setPreference("hideGoalLinkedTasksFromInbox", next)}
+            accessibilityLabel="Hide goal-linked tasks from Inbox"
+          />
+        </View>
+        <View style={styles.sectionDivider} />
+
+        <View style={styles.settingRow}>
+          <View style={styles.syncIconWrap}>
             <SwipeIconAsset width={22} height={22} color={colors.textSecondary} />
           </View>
           <View style={styles.settingCopy}>

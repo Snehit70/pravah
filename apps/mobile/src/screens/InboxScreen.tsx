@@ -12,7 +12,7 @@
  * so mutation wiring stays out of here.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
@@ -29,10 +29,7 @@ import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
 import { useListIntroStagger } from "../hooks/useListIntroStagger";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useGoalLinks, useGoals } from "../hooks/useGoals";
-
-// Goal filter sentinels. Real goal ids never collide with these.
-const GOAL_ALL = "all";
-const GOAL_NONE = "none";
+import { useUserPreferences } from "../hooks/useUserPreferences";
 
 type FilterValue = "all" | "p1" | "p2" | "p3" | "none";
 
@@ -150,9 +147,6 @@ export function InboxScreen({
   const confirm = useConfirm();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterValue>("all");
-  // "all" | "none" (unlinked) | a goal id.
-  const [goalFilter, setGoalFilter] = useState<string>(GOAL_ALL);
-  const [showGoalPicker, setShowGoalPicker] = useState(false);
 
   // Multi-select / bulk-complete mode.
   const [selectMode, setSelectMode] = useState(false);
@@ -163,6 +157,7 @@ export function InboxScreen({
 
   const { goals } = useGoals();
   const goalLinks = useGoalLinks();
+  const { prefs } = useUserPreferences();
 
   const goalNameByTask = useMemo(() => {
     const byId = new Map(goals.map((g) => [g.id, g.text]));
@@ -174,20 +169,9 @@ export function InboxScreen({
     return out;
   }, [goals, goalLinks]);
 
-  const selectedGoal = useMemo(
-    () => goals.find((g) => g.id === goalFilter),
-    [goals, goalFilter]
-  );
-  // A previously-selected goal can be deleted out from under us; fall back to
-  // "all" so we never filter against a goal that no longer exists.
-  const activeGoalFilter =
-    goalFilter === GOAL_ALL || goalFilter === GOAL_NONE || selectedGoal ? goalFilter : GOAL_ALL;
-
   const resetFilters = () => {
     setQuery("");
     setFilter("all");
-    setGoalFilter(GOAL_ALL);
-    setShowGoalPicker(false);
   };
 
   const filteredTasks = useMemo(() => {
@@ -197,32 +181,35 @@ export function InboxScreen({
         const bucket = task.priority ?? "none";
         if (bucket !== filter) return false;
       }
-      if (activeGoalFilter !== GOAL_ALL) {
-        const linkedGoalId = goalLinks[String(task._id)];
-        if (activeGoalFilter === GOAL_NONE ? Boolean(linkedGoalId) : linkedGoalId !== activeGoalFilter) {
-          return false;
-        }
+      if (prefs.hideGoalLinkedTasksFromInbox && goalLinks[String(task._id)]) {
+        return false;
       }
       if (!q) return true;
       const inTitle = task.title.toLowerCase().includes(q);
       const inDescription = task.description?.toLowerCase().includes(q) ?? false;
       return inTitle || inDescription;
     });
-  }, [tasks, query, filter, activeGoalFilter, goalLinks]);
+  }, [tasks, query, filter, goalLinks, prefs.hideGoalLinkedTasksFromInbox]);
 
-  const goalFilterLabel =
-    activeGoalFilter === GOAL_ALL
-      ? "Goal"
-      : activeGoalFilter === GOAL_NONE
-        ? "No goal"
-        : selectedGoal?.text ?? "Goal";
+  const hasHiddenGoalLinkedTasks =
+    prefs.hideGoalLinkedTasksFromInbox && tasks.some((task) => Boolean(goalLinks[String(task._id)]));
 
-  const isFiltering = query.trim() !== "" || filter !== "all" || activeGoalFilter !== GOAL_ALL;
+  const isFiltering = query.trim() !== "" || filter !== "all";
 
   const exitSelectMode = useCallback(() => {
     setSelectMode(false);
     setSelectedIds(new Set());
   }, []);
+
+  // A preference or filter change can hide selected rows. Keep bulk actions
+  // scoped to what the Inbox currently shows.
+  useEffect(() => {
+    const visibleIds = new Set(filteredTasks.map((task) => String(task._id)));
+    setSelectedIds((previous) => {
+      const next = new Set([...previous].filter((id) => visibleIds.has(id)));
+      return next.size === previous.size ? previous : next;
+    });
+  }, [filteredTasks]);
 
   const enterSelectModeWith = useCallback((task: MobileTask) => {
     setSelectMode(true);
@@ -306,7 +293,11 @@ export function InboxScreen({
         <InboxEmptyIcon />
       </View>
       <Text style={styles.emptyTitle}>Everything has a place.</Text>
-      <Text style={styles.emptyText}>Capture new loose work when it appears.</Text>
+      <Text style={styles.emptyText}>
+        {hasHiddenGoalLinkedTasks
+          ? "Goal-linked tasks are hidden. Change this in Settings → Interaction."
+          : "Capture new loose work when it appears."}
+      </Text>
       <Pressable
         onPress={onCapture}
         hitSlop={12}
@@ -414,70 +405,7 @@ export function InboxScreen({
             </Pressable>
           );
         })}
-        {goals.length > 0 ? (
-          <Pressable
-            onPress={() => setShowGoalPicker((s) => !s)}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={`Goal filter: ${goalFilterLabel}. Tap to change.`}
-            accessibilityState={{ expanded: showGoalPicker, selected: activeGoalFilter !== GOAL_ALL }}
-            style={({ pressed }) => [
-              styles.chip,
-              styles.goalChip,
-              activeGoalFilter !== GOAL_ALL && styles.chipActive,
-              pressed && { opacity: 0.7 },
-            ]}
-          >
-            <Text
-              style={[styles.chipText, activeGoalFilter !== GOAL_ALL && styles.chipTextActive]}
-              numberOfLines={1}
-            >
-              {goalFilterLabel}
-            </Text>
-            <Text style={[styles.goalCaret, activeGoalFilter !== GOAL_ALL && styles.chipTextActive]}>
-              {showGoalPicker ? " ▾" : " ▸"}
-            </Text>
-          </Pressable>
-        ) : null}
       </View>
-
-      {showGoalPicker && goals.length > 0 ? (
-        <Animated.View
-          entering={reducedMotion ? undefined : FadeIn.duration(150)}
-          exiting={reducedMotion ? undefined : FadeOut.duration(120)}
-          style={styles.goalPicker}
-        >
-          {[{ id: GOAL_ALL, text: "All goals" }, { id: GOAL_NONE, text: "No goal" }, ...goals].map(
-            (option) => {
-              const active = activeGoalFilter === option.id;
-              return (
-                <Pressable
-                  key={option.id}
-                  onPress={() => {
-                    setGoalFilter(option.id);
-                    setShowGoalPicker(false);
-                  }}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  style={({ pressed }) => [
-                    styles.goalOption,
-                    active && styles.goalOptionActive,
-                    pressed && { opacity: 0.7 },
-                  ]}
-                >
-                  <Text
-                    style={[styles.goalOptionText, active && styles.goalOptionTextActive]}
-                    numberOfLines={2}
-                  >
-                    {option.text}
-                  </Text>
-                </Pressable>
-              );
-            }
-          )}
-        </Animated.View>
-      ) : null}
     </View>
   );
 
@@ -724,38 +652,6 @@ const styles = createThemedStyles({
   },
   chipTextActive: {
     color: colors.bg,
-  },
-  goalChip: {
-    maxWidth: "52%",
-  },
-  goalCaret: {
-    ...typography.micro,
-    color: colors.textMuted,
-  },
-  goalPicker: {
-    gap: 2,
-    paddingVertical: 4,
-    paddingHorizontal: 4,
-    borderRadius: radii.md,
-    backgroundColor: colors.bgCard,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-  },
-  goalOption: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 8,
-  },
-  goalOptionActive: {
-    backgroundColor: colors.accentSoft,
-  },
-  goalOptionText: {
-    ...typography.bodyMd,
-    color: colors.textSecondary,
-  },
-  goalOptionTextActive: {
-    color: colors.accent,
-    fontWeight: "600",
   },
   bulkBar: {
     position: "absolute",

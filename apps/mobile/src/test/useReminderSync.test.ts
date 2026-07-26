@@ -35,6 +35,7 @@ const prefs: UserPreferences = {
   hapticsEnabled: true,
   soundEnabled: false,
   bulkTaskCaptureEnabled: false,
+  hideGoalLinkedTasksFromInbox: true,
   tabOrder: ["inbox", "timeline", "goals", "insights"],
 };
 

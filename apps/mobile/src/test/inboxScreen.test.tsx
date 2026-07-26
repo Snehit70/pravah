@@ -15,6 +15,8 @@ const { mockConfirm } = vi.hoisted(() => ({
   mockConfirm: vi.fn(async () => true),
 }));
 
+let hideGoalLinkedTasksFromInbox = false;
+
 // ─── react-native mock ────────────────────────────────────────────────────────
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
@@ -217,6 +219,14 @@ vi.mock("../hooks/useGoals", () => ({
   useGoalLinks: () => ({ task1: "g1" }),
 }));
 
+vi.mock("../hooks/useUserPreferences", () => ({
+  useUserPreferences: () => ({
+    prefs: { hideGoalLinkedTasksFromInbox },
+    ready: true,
+    setPreference: vi.fn(),
+  }),
+}));
+
 // ─── theme tokens mock ────────────────────────────────────────────────────────
 vi.mock("../theme/tokens", () => ({
   colors: {
@@ -312,6 +322,7 @@ describe("InboxScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConfirm.mockResolvedValue(true);
+    hideGoalLinkedTasksFromInbox = false;
   });
 
   afterEach(() => {
@@ -420,36 +431,20 @@ describe("InboxScreen", () => {
     expect(screen.queryByText("2 selected")).toBeNull();
   });
 
-  it("filters to tasks linked to the selected goal", () => {
+  it("hides goal-linked tasks and removes the Inbox Goal filter", () => {
+    hideGoalLinkedTasksFromInbox = true;
     renderInbox();
 
-    // Open the goal dropdown, then pick "Blog".
-    fireEvent.click(screen.getByRole("button", { name: /goal filter/i }));
-    fireEvent.click(screen.getByRole("button", { name: "Blog" }));
-
-    // task1 is linked to Blog; task2 (unlinked) is filtered out.
-    expect(screen.getByTestId("task-task1")).toBeTruthy();
-    expect(screen.queryByTestId("task-task2")).toBeNull();
-  });
-
-  it("exposes expanded state for the goal disclosure", () => {
-    renderInbox();
-
-    const goals = screen.getByRole("button", { name: /goal filter/i });
-    expect(goals.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(goals);
-    expect(goals.getAttribute("aria-expanded")).toBe("true");
-  });
-
-  it("filters to unlinked tasks with the No goal option", () => {
-    renderInbox();
-
-    fireEvent.click(screen.getByRole("button", { name: /goal filter/i }));
-    fireEvent.click(screen.getByRole("button", { name: "No goal" }));
-
-    // task2 has no goal link; task1 (linked to Blog) is filtered out.
     expect(screen.getByTestId("task-task2")).toBeTruthy();
     expect(screen.queryByTestId("task-task1")).toBeNull();
+    expect(screen.queryByRole("button", { name: /goal filter/i })).toBeNull();
+  });
+
+  it("explains when every Inbox task is hidden because it is goal-linked", () => {
+    hideGoalLinkedTasksFromInbox = true;
+    renderInbox({ tasks: [sampleTasks[0]] });
+
+    expect(screen.getByText(/goal-linked tasks are hidden/i)).toBeTruthy();
   });
 
   it("releases large inboxes in small batches after the first paint", () => {
