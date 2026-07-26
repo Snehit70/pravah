@@ -12,7 +12,7 @@
  * so mutation wiring stays out of here.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
@@ -201,15 +201,12 @@ export function InboxScreen({
     setSelectedIds(new Set());
   }, []);
 
-  // A preference or filter change can hide selected rows. Keep bulk actions
-  // scoped to what the Inbox currently shows.
-  useEffect(() => {
+  // Filters and preferences can hide selected rows. Derive the actionable
+  // selection from the visible tasks so bulk actions never affect hidden work.
+  const visibleSelectedIds = useMemo(() => {
     const visibleIds = new Set(filteredTasks.map((task) => String(task._id)));
-    setSelectedIds((previous) => {
-      const next = new Set([...previous].filter((id) => visibleIds.has(id)));
-      return next.size === previous.size ? previous : next;
-    });
-  }, [filteredTasks]);
+    return new Set([...selectedIds].filter((id) => visibleIds.has(id)));
+  }, [filteredTasks, selectedIds]);
 
   const enterSelectModeWith = useCallback((task: MobileTask) => {
     setSelectMode(true);
@@ -227,7 +224,7 @@ export function InboxScreen({
   }, []);
 
   const allFilteredSelected =
-    filteredTasks.length > 0 && filteredTasks.every((task) => selectedIds.has(String(task._id)));
+    filteredTasks.length > 0 && filteredTasks.every((task) => visibleSelectedIds.has(String(task._id)));
 
   const toggleSelectAll = useCallback(() => {
     setSelectedIds((prev) => {
@@ -243,7 +240,7 @@ export function InboxScreen({
     // selection is held (e.g. bootstrap error) — recheck before committing.
     if (!canAct) return;
     const ids = filteredTasks
-      .filter((task) => selectedIds.has(String(task._id)))
+      .filter((task) => visibleSelectedIds.has(String(task._id)))
       .map((task) => task._id);
     if (ids.length === 0) return;
     const ok = await confirm({
@@ -254,12 +251,12 @@ export function InboxScreen({
     if (!ok) return;
     const success = await onMarkManyDone(ids);
     if (success) exitSelectMode();
-  }, [canAct, filteredTasks, selectedIds, confirm, onMarkManyDone, exitSelectMode]);
+  }, [canAct, filteredTasks, visibleSelectedIds, confirm, onMarkManyDone, exitSelectMode]);
 
   const handleDelete = useCallback(async () => {
     if (!canAct) return;
     const ids = filteredTasks
-      .filter((task) => selectedIds.has(String(task._id)))
+      .filter((task) => visibleSelectedIds.has(String(task._id)))
       .map((task) => task._id);
     if (ids.length === 0) return;
     const ok = await confirm({
@@ -271,7 +268,7 @@ export function InboxScreen({
     if (!ok) return;
     const success = await onDeleteMany(ids);
     if (success) exitSelectMode();
-  }, [canAct, filteredTasks, selectedIds, confirm, onDeleteMany, exitSelectMode]);
+  }, [canAct, filteredTasks, visibleSelectedIds, confirm, onDeleteMany, exitSelectMode]);
 
   const emptyBlock = isFiltering ? (
     <Animated.View entering={reducedMotion ? undefined : FadeIn.duration(400)} style={styles.emptyWrap}>
@@ -316,7 +313,7 @@ export function InboxScreen({
   const rows = allRows.slice(0, visibleRowCount);
   const hasPendingRows = rows.length < allRows.length;
 
-  const selectedCount = selectedIds.size;
+  const selectedCount = visibleSelectedIds.size;
 
   const listHeader = selectMode ? (
     <View style={styles.searchWrap}>
@@ -418,7 +415,7 @@ export function InboxScreen({
           paddingBottom: tabBarHeight + (selectMode ? 132 : 84),
         }}
         data={rows}
-        extraData={selectMode ? selectedIds : false}
+        extraData={selectMode ? visibleSelectedIds : false}
         initialNumToRender={10}
         maxToRenderPerBatch={8}
         updateCellsBatchingPeriod={50}
@@ -440,7 +437,7 @@ export function InboxScreen({
                 task={task}
                 goalName={goalNameByTask.get(String(task._id))}
                 selectMode={selectMode}
-                selected={selectedIds.has(String(task._id))}
+                selected={visibleSelectedIds.has(String(task._id))}
                 onPress={() => (canAct ? onEditTask(task) : undefined)}
                 onLongPress={() => (canAct ? enterSelectModeWith(task) : undefined)}
                 onToggleSelect={() => toggleSelect(task)}
