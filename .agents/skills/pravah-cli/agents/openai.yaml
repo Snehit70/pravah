@@ -1,4 +1,4 @@
 interface:
   display_name: "Pravah CLI"
-  short_description: "Read and manage Pravah planning data safely"
-  default_prompt: "Use $pravah-cli to inspect my current Pravah planning context or apply the specific task and goal changes I request."
+  short_description: "Safely manage Pravah v2 planning data"
+  default_prompt: "Use $pravah-cli to inspect my current Pravah v2 planning context or apply the specific task, goal, or undo change I request."
