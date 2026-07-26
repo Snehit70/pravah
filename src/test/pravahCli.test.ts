@@ -1,11 +1,16 @@
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 const repoRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const entry = resolve(repoRoot, "packages/cli/src/pravah.ts");
-function run(args: string[]) { return spawnSync("bun", ["run", entry, ...args], { cwd: repoRoot, encoding: "utf8", env: { ...process.env, PRAVAH_CLI_MOCK: "1" } }); }
+const testHome = mkdtempSync(join(tmpdir(), "pravah-cli-home-"));
+afterAll(() => rmSync(testHome, { recursive: true, force: true }));
+function run(args: string[]) { return spawnSync("bun", ["run", entry, ...args], { cwd: repoRoot, encoding: "utf8", timeout: 30_000, env: { ...process.env, HOME: testHome, XDG_CONFIG_HOME: join(testHome, ".config"), XDG_STATE_HOME: join(testHome, ".local", "state"), PRAVAH_CLI_MOCK: "1" } }); }
 
 describe("Pravah CLI v2", () => {
   it("uses the human-first resource grammar by default", () => {

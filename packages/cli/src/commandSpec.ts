@@ -31,7 +31,7 @@ export const COMMAND_SPECS: readonly CommandSpec[] = [
   { path: ["today"], summary: "Show Tasks scheduled today.", kind: "read", requiredScopes: ["tasks:read"], options: [flag("long", "Show expanded details.")] },
   { path: ["overdue"], summary: "Show overdue Timeline Tasks.", kind: "read", requiredScopes: ["tasks:read"], options: [flag("long", "Show expanded details.")] },
   { path: ["upcoming"], summary: "Show the next 14 local days.", kind: "read", requiredScopes: ["tasks:read"], options: [flag("long", "Show expanded details.")] },
-  { path: ["auth", "login"], summary: "Store a local credential from a bootstrap token.", kind: "auth", requiredScopes: [], options: [value("url", "<http(s)://site>", "Deployment URL."), value("bootstrap-token", "<token>", "Bootstrap token.")] },
+  { path: ["auth", "login"], summary: "Store a local credential from a bootstrap token.", kind: "auth", requiredScopes: [], options: [value("url", "<http(s)://site>", "Optional deployment URL override."), value("bootstrap-token", "<token>", "Bootstrap token.")] },
   { path: ["auth", "logout"], summary: "Remove this host's local credential only.", kind: "auth", requiredScopes: [], options: [] },
   { path: ["auth", "status"], summary: "Show local credential health and scopes.", kind: "auth", requiredScopes: [], options: [] },
   { path: ["tasks", "list"], summary: "Show the prioritized Task horizon.", kind: "read", requiredScopes: ["tasks:read"], options: filters },

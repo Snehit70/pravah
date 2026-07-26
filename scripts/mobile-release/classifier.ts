@@ -30,10 +30,24 @@ const nativeCriticalPaths = [
   "bun.lock",
 ] as const;
 
+// The mobile app calls Convex functions directly. These files implement the
+// separate HTTP adapter used by the web and CLI clients, so changing them does
+// not alter a shipped mobile bundle's behavior.
+const mobileIndependentConvexPaths = [
+  "convex/http.ts",
+  "convex/httpContracts.ts",
+  "convex/httpResponses.ts",
+  "convex/automationHttpAuth.ts",
+  "convex/automationScopes.ts",
+] as const;
+
 function isMobileAffecting(path: string): boolean {
   return (
     path.startsWith("apps/mobile/") ||
-    path.startsWith("convex/") ||
+    (path.startsWith("convex/") &&
+      !mobileIndependentConvexPaths.includes(
+        path as (typeof mobileIndependentConvexPaths)[number],
+      )) ||
     path === "bun.lock"
   );
 }
