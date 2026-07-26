@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.18.0](https://github.com/Snehit70/pravah/compare/web-v1.17.0...web-v1.18.0) (2026-07-26)
+
+
+### Features
+
+* **cli:** refresh live credential scopes ([db16967](https://github.com/Snehit70/pravah/commit/db16967ee6e726cad88929d5c15c00eb98310c9f))
+* **cli:** refresh live credential scopes ([cbb2243](https://github.com/Snehit70/pravah/commit/cbb224327d9b283973eb233d13cd20d342132f46))
+
+
+### Bug Fixes
+
+* **ci:** exempt CLI HTTP adapter from mobile releases ([cdd2ffb](https://github.com/Snehit70/pravah/commit/cdd2ffbec1f75e79af068d145aef8eccec0844ac))
+* **cli:** harden credential refresh ([b64f4d9](https://github.com/Snehit70/pravah/commit/b64f4d964286f39424e9fbcac3d2bbea87b7c0d9))
+* **test:** isolate CLI credential home ([61c0ea2](https://github.com/Snehit70/pravah/commit/61c0ea2798f38b17e0f991e9caeb770f4de07033))
+
 ## [1.17.0](https://github.com/Snehit70/pravah/compare/web-v1.16.0...web-v1.17.0) (2026-07-26)
 
 

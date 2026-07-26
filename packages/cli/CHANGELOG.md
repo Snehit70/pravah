@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.2.0](https://github.com/Snehit70/pravah/compare/cli-v2.1.0...cli-v2.2.0) (2026-07-26)
+
+
+### Features
+
+* **cli:** refresh live credential scopes ([db16967](https://github.com/Snehit70/pravah/commit/db16967ee6e726cad88929d5c15c00eb98310c9f))
+* **cli:** refresh live credential scopes ([cbb2243](https://github.com/Snehit70/pravah/commit/cbb224327d9b283973eb233d13cd20d342132f46))
+
+
+### Bug Fixes
+
+* **cli:** harden credential refresh ([b64f4d9](https://github.com/Snehit70/pravah/commit/b64f4d964286f39424e9fbcac3d2bbea87b7c0d9))
+
 ## [2.1.0](https://github.com/Snehit70/pravah/compare/cli-v2.0.0...cli-v2.1.0) (2026-07-26)
 
 
