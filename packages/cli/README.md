@@ -4,6 +4,30 @@ Pravah CLI is a human-first terminal interface for one person's task planning.
 Commands print concise text by default; pass `--json` for the versioned machine
 envelope.
 
+## Install and authenticate
+
+```sh
+bun install --global pravah@latest
+pravah --help
+```
+
+To upgrade across major versions, install the desired version explicitly (a
+plain `bun update -g pravah` follows the previously installed semver range):
+
+```sh
+bun install --global pravah@2.0.0
+```
+
+The CLI accepts either an existing admin API-key environment configuration
+(`PRAVAH_HTTP_URL` and `CONVEX_HTTP_API_KEY`) or a stored scoped automation
+credential. To create the latter, issue a one-time bootstrap token from
+Settings → Automation, then exchange it locally:
+
+```sh
+pravah auth login --url https://your-deployment.convex.site --bootstrap-token pravah_bootstrap_...
+pravah auth status
+```
+
 ```sh
 pravah auth login --url https://your-deployment.convex.site --bootstrap-token <token>
 pravah tasks list

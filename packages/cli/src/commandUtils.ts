@@ -25,6 +25,9 @@ export function validateCommandArgs(command: string, args: ParsedArgs) {
     ? args.positionals.length === spec.path.length || args.positionals.length === expectedPositionals
     : args.positionals.length === expectedPositionals;
   if (!validPositionals) {
+    if (!spec.targetOptional && spec.target && args.positionals.length === spec.path.length) {
+      throw new Error(`Missing target for ${command}`);
+    }
     throw new Error(`Unexpected positional arguments for ${command}`);
   }
   const commandOptions = getCommandOptionKinds(command);

@@ -13,7 +13,7 @@ Authorization: Bearer pravah_cred_...
 Bearer credentials are issued by exchanging a short-lived, one-time bootstrap token:
 
 ```bash
-pravah auth import --bootstrap-token pravah_bootstrap_... --json
+pravah auth login --url https://your-deployment.convex.site --bootstrap-token pravah_bootstrap_...
 ```
 
 Settings issues read-only credentials by default. Enable **Allow task writes**
