@@ -1,10 +1,10 @@
 /// <reference types="node" />
-import { existsSync, unlinkSync } from "node:fs";
 import { readOption } from "./args";
 import { getCommandCapabilities, getCommandName, getCommandSpecFromPositionals, isKnownNamespace, readCliPackageVersion, renderCommandHelp, renderNamespaceHelp, renderTopLevelHelp, suggestClosestCommand } from "./commandSpec";
-import { getCredentialStorePath, loadStoredCredential, saveStoredCredential } from "./authStore";
+import { clearStoredCredential, loadStoredCredential, saveStoredCredential, type StoredCredential } from "./authStore";
 import { validateCommandArgs } from "./commandUtils";
 import { executeLiveCommand } from "./liveCommands";
+import { ConvexHttpError } from "./automationHttpClient";
 import { createCliAuthClient, createLiveClient, DEFAULT_PRAVAH_HTTP_URL, resolveCliHttpUrl } from "./liveClient";
 import { executeMockCommand } from "./mockCommands";
 import type { CliTextResult, CommandContext, ParsedArgs } from "./types";
@@ -12,16 +12,15 @@ import type { CliTextResult, CommandContext, ParsedArgs } from "./types";
 const text = (value: string): CliTextResult => ({ kind: "text", text: value });
 export const isCliTextResult = (value: unknown): value is CliTextResult => Boolean(value && typeof value === "object" && (value as CliTextResult).kind === "text");
 const mock = () => process.env.PRAVAH_CLI_MOCK === "1";
-export function resolveCommand(args: ParsedArgs) { if (args.positionals.length === 1 && args.positionals[0] === "status") return "auth status"; const spec = getCommandSpecFromPositionals(args.positionals); if (spec) return getCommandName(spec); const input = args.positionals.slice(0, 2).join(" "); throw new Error(`Unknown command: ${input}${suggestClosestCommand(input) ? `. Did you mean \`${suggestClosestCommand(input)}\`?` : ""}`); }
-function help(args: ParsedArgs) { if (!args.positionals.length) return text(renderTopLevelHelp()); const namespace = args.positionals[0]; if (args.positionals.length === 1 && isKnownNamespace(namespace)) return text(renderNamespaceHelp(namespace)!); const spec = getCommandSpecFromPositionals(args.positionals); if (spec) return text(renderCommandHelp(spec)); throw new Error(`Unknown command: ${args.positionals.join(" ")}`); }
+export function normalizeCommandPositionals(positionals: string[]) { return positionals.length === 1 && positionals[0] === "status" ? ["auth", "status"] : positionals; }
+export function resolveCommand(args: ParsedArgs) { const positionals = normalizeCommandPositionals(args.positionals); const spec = getCommandSpecFromPositionals(positionals); if (spec) return getCommandName(spec); const input = positionals.slice(0, 2).join(" "); throw new Error(`Unknown command: ${input}${suggestClosestCommand(input) ? `. Did you mean \`${suggestClosestCommand(input)}\`?` : ""}`); }
+function help(args: ParsedArgs) { const positionals = normalizeCommandPositionals(args.positionals); if (!positionals.length) return text(renderTopLevelHelp()); const namespace = positionals[0]; if (positionals.length === 1 && isKnownNamespace(namespace)) return text(renderNamespaceHelp(namespace)!); const spec = getCommandSpecFromPositionals(positionals); if (spec) return text(renderCommandHelp(spec)); throw new Error(`Unknown command: ${positionals.join(" ")}`); }
 async function login(args: ParsedArgs) { const providedUrl = readOption(args.options, "url") ?? DEFAULT_PRAVAH_HTTP_URL; const token = readOption(args.options, "bootstrap-token"); if (!token) throw new Error("auth login requires --bootstrap-token"); const client = createCliAuthClient({ ...process.env, PRAVAH_HTTP_URL: providedUrl }); if (!client) throw new Error("auth login requires a valid HTTP URL"); const credential = await client.exchangeBootstrapToken(token); saveStoredCredential({ ...credential, siteUrl: providedUrl.replace(/\/+$/, "") }); return { configured: true, credentialLabel: credential.label, scopes: credential.scopes, siteUrl: providedUrl.replace(/\/+$/, "") }; }
-async function refreshCredential() { const credential = loadStoredCredential(); if (!credential) return null; const client = createLiveClient(process.env); if (!client) return credential; try { const live = await client.getCredentialStatus(); const refreshed = { ...credential, label: live.label, scopes: live.scopes, ownerTokenIdentifier: live.ownerTokenIdentifier }; saveStoredCredential(refreshed); client.scopes = live.scopes; return refreshed; } catch { return credential; } }
-async function authStatus() { const credential = await refreshCredential(); let client = null; try { client = createLiveClient(process.env); } catch { client = null; } return { authenticated: Boolean(credential || client), credentialLabel: credential?.label ?? client?.credentialLabel ?? null, ownerTokenIdentifier: credential?.ownerTokenIdentifier ?? null, siteUrl: credential?.siteUrl ?? resolveCliHttpUrl(process.env) ?? null, scopes: credential?.scopes ?? client?.scopes ?? [], source: credential ? "stored" : client ? "environment" : null }; }
+async function refreshCredential(): Promise<{ credential: StoredCredential | null; authorizationFailed: boolean }> { const credential = loadStoredCredential(); if (!credential) return { credential: null, authorizationFailed: false }; const client = createLiveClient(process.env); if (!client) return { credential, authorizationFailed: false }; try { const live = await client.getCredentialStatus(); const refreshed = { ...credential, label: live.label, scopes: live.scopes, ownerTokenIdentifier: live.ownerTokenIdentifier }; saveStoredCredential(refreshed); client.scopes = live.scopes; return { credential: refreshed, authorizationFailed: false }; } catch (error) { if (error instanceof ConvexHttpError && (error.status === 401 || error.status === 403)) { clearStoredCredential(); return { credential: null, authorizationFailed: true }; } return { credential, authorizationFailed: false }; } }
+async function authStatus() { const refresh = await refreshCredential(); const credential = refresh.credential; let client = null; try { client = createLiveClient(process.env); } catch { client = null; } return { authenticated: Boolean(credential || client), credentialLabel: credential?.label ?? client?.credentialLabel ?? null, ownerTokenIdentifier: credential?.ownerTokenIdentifier ?? null, siteUrl: credential?.siteUrl ?? resolveCliHttpUrl(process.env) ?? null, scopes: credential?.scopes ?? client?.scopes ?? [], source: credential ? "stored" : client ? "environment" : null }; }
 async function doctor() { const credential = (() => { try { return loadStoredCredential(); } catch { return null; } })(); let client = null; try { client = createLiveClient(process.env); } catch { client = null; } const siteUrl = credential?.siteUrl ?? resolveCliHttpUrl(process.env) ?? null; const scopes = credential?.scopes ?? client?.scopes ?? []; const checks = [{ name: "bun", ok: process.versions.bun !== undefined, remedy: "Install Bun and rerun Pravah." }, { name: "credential", ok: Boolean(credential || client), remedy: "Set CONVEX_HTTP_API_KEY and PRAVAH_HTTP_URL, or run pravah auth login --url <site> --bootstrap-token <token>." }, { name: "endpoint", ok: Boolean(siteUrl), remedy: "Run auth login with the deployment URL." }, { name: "tasks:read", ok: scopes.includes("tasks:read"), remedy: "Create a credential with tasks:read." }]; let reachable = false; if (client && checks.slice(1).every((check) => check.ok)) { try { await client.listTasks({}); reachable = true; } catch { reachable = false; } } checks.push({ name: "endpoint-reachable", ok: reachable, remedy: "Check the deployment URL and credential, then rerun pravah doctor." }); return { healthy: checks.every((check) => check.ok), checks, siteUrl }; }
 export async function executeCommand(_context: CommandContext, args: ParsedArgs) {
-  if (args.positionals.length === 1 && args.positionals[0] === "status") {
-    return executeCommand(_context, { ...args, positionals: ["auth", "status"] });
-  }
+  args = { ...args, positionals: normalizeCommandPositionals(args.positionals) };
   if (args.options.version === true) return text(readCliPackageVersion());
   if (args.options.help === true || !args.positionals.length) return help(args);
   if (args.positionals[0] === "help") return help({ ...args, positionals: args.positionals.slice(1) });
@@ -29,10 +28,10 @@ export async function executeCommand(_context: CommandContext, args: ParsedArgs)
   if (command === "capabilities") return { contractVersion: "v2", commands: getCommandCapabilities() };
   if (command === "auth login") return login(args);
   if (command === "auth status") return authStatus();
-  if (command === "auth logout") { const path = getCredentialStorePath(); if (existsSync(path)) unlinkSync(path); return { loggedOut: true, localOnly: true }; }
+  if (command === "auth logout") { clearStoredCredential(); return { loggedOut: true, localOnly: true }; }
   if (command === "doctor") return doctor();
   if (mock()) return executeMockCommand(command, args);
   const client = createLiveClient(process.env); if (!client) throw new Error("Pravah CLI is not authenticated. Run `pravah auth login --bootstrap-token <token>`.");
-  const refreshed = await refreshCredential(); if (refreshed) client.scopes = refreshed.scopes;
+  const refresh = await refreshCredential(); if (refresh.authorizationFailed) throw new Error("Pravah CLI credential is no longer authorized. Run `pravah auth login --bootstrap-token <token>`."); if (refresh.credential) client.scopes = refresh.credential.scopes;
   const result = await executeLiveCommand(client, command, args); if (result === null) throw new Error(`Unknown command: ${command}`); return result;
 }

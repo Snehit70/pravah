@@ -19,6 +19,16 @@ interface CallConvexApiOptions {
   fetchImpl?: typeof fetch;
 }
 
+export class ConvexHttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ConvexHttpError";
+    this.status = status;
+  }
+}
+
 export async function callConvexApi({
   convexUrl,
   endpoint,
@@ -52,7 +62,8 @@ export async function callConvexApi({
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(
+    throw new ConvexHttpError(
+      response.status,
       `Convex API ${method} ${endpoint} failed (${response.status}): ${errorText}`
     );
   }

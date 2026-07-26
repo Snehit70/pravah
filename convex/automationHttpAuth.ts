@@ -98,6 +98,10 @@ export function requireTaskReadAuth(ctx: AuthRouteCtx, request: Request) {
   return requireAuth(ctx, request, ["tasks:read"]);
 }
 
+export function requireAutomationAuth(ctx: AuthRouteCtx, request: Request) {
+  return requireAuth(ctx, request, []);
+}
+
 export function requireTaskWriteAuth(ctx: AuthRouteCtx, request: Request) {
   return requireAuth(ctx, request, ["tasks:write"]);
 }

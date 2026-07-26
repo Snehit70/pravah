@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
@@ -69,6 +70,13 @@ export function saveStoredCredential(credential: StoredCredential) {
     mode: 0o600,
   });
   chmodSync(path, 0o600);
+}
+
+export function clearStoredCredential() {
+  const path = getCredentialStorePath();
+  if (existsSync(path)) {
+    unlinkSync(path);
+  }
 }
 
 export function loadStoredCredential(): StoredCredential | null {

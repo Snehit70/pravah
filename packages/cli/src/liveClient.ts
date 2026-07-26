@@ -175,9 +175,11 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
       "sync:read",
     ],
     async getCredentialStatus() {
-      const status = await get("/automation/credential") as { label?: unknown; scopes?: unknown; ownerTokenIdentifier?: unknown };
-      if (typeof status.label !== "string" || !Array.isArray(status.scopes) || !status.scopes.every((scope): scope is string => typeof scope === "string") || typeof status.ownerTokenIdentifier !== "string") throw new Error("Credential status response is invalid");
-      return { label: status.label, scopes: status.scopes, ownerTokenIdentifier: status.ownerTokenIdentifier };
+      const status = await get("/automation/credential");
+      if (!status || typeof status !== "object" || Array.isArray(status)) throw new Error("Credential status response is invalid");
+      const credential = status as { label?: unknown; scopes?: unknown; ownerTokenIdentifier?: unknown };
+      if (typeof credential.label !== "string" || !Array.isArray(credential.scopes) || !credential.scopes.every((scope): scope is string => typeof scope === "string") || typeof credential.ownerTokenIdentifier !== "string") throw new Error("Credential status response is invalid");
+      return { label: credential.label, scopes: credential.scopes, ownerTokenIdentifier: credential.ownerTokenIdentifier };
     },
     listTasks(filters) {
       const query = new URLSearchParams();

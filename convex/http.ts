@@ -30,6 +30,7 @@ import {
   updateTaskSchema,
 } from "./httpContracts";
 import {
+  requireAutomationAuth,
   requireIdempotencyKey,
   requireLegacyAuth,
   requireReviewReadAuth,
@@ -117,7 +118,7 @@ http.route({
   path: "/automation/credential",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const authCheck = await requireTaskReadAuth(ctx, request);
+    const authCheck = await requireAutomationAuth(ctx, request);
     if (authCheck.response) return authCheck.response;
     const { auth } = authCheck;
     return jsonResponse({
