@@ -45,6 +45,7 @@ function classifyErrorMessage(message: string): string {
     message.includes(" does not accept a value") ||
     message.includes("Provide exactly one of") ||
     message.includes("Provide only one of") ||
+    message.includes("cannot be used together") ||
     message.includes("operations undo requires") ||
     (message.startsWith("--confirm-") && message.includes(" is required for ")) ||
     message.includes("must be between 1 and 200 characters")

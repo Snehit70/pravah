@@ -1,0 +1,17 @@
+function taskRow(task: Record<string, unknown>, long: boolean) { const due = typeof task.deadline === "string" ? task.deadline : "INBOX"; const priority = typeof task.priority === "string" ? task.priority.toUpperCase() : "—"; const title = String(task.title ?? "Untitled"); const compact = `${due.padEnd(10)} ${priority.padEnd(3)} ${title}`; if (!long) return compact; const details = [task.time && `time ${task.time}`, Array.isArray(task.tags) && task.tags.length ? `tags ${task.tags.join(", ")}` : null, task.description && String(task.description), `id ${task.id}`].filter(Boolean).join(" · "); return `${compact}\n  ${details}`; }
+function taskList(tasks: unknown, long: boolean) { const rows = Array.isArray(tasks) ? tasks.map((task) => taskRow(task as Record<string, unknown>, long)) : []; return rows.length ? ["DUE        PRI TASK", ...rows].join("\n") : "No Tasks."; }
+export function renderHumanResult(command: string, data: unknown, long: boolean) {
+  const value = data as Record<string, unknown>;
+  if (command === "tasks list" && "overdue" in value) return ["Overdue", taskList(value.overdue, long), "", "Today", taskList(value.todayTasks, long), "", "Upcoming", taskList(value.upcoming, long), "", `Inbox: ${value.inboxCount ?? 0}`].join("\n");
+  if (["inbox", "today", "overdue", "upcoming"].includes(command) || command === "tasks list") return taskList(value.tasks, long);
+  if (command === "tasks show") return taskList([value.task], true);
+  if (command === "goals list") return Array.isArray(value.goals) ? value.goals.map((goal) => { const g = goal as Record<string, unknown>; const progress = g.progress as Record<string, unknown> | undefined; return `${String(g.priority ?? "—").toUpperCase().padEnd(3)} ${String(g.text)}  ${progress ? `${progress.completed}/${progress.active}` : "0/0"}`; }).join("\n") || "No Goals." : "No Goals.";
+  if (command === "goals show") { const goal = value.goal as Record<string, unknown>; return `${goal.text}\nProgress: ${(goal.progress as Record<string, unknown>)?.completed ?? 0}/${(goal.progress as Record<string, unknown>)?.active ?? 0}\n${taskList(goal.activeTasks, long)}`; }
+  if (command === "doctor") return Array.isArray(value.checks) ? value.checks.map((check) => { const c = check as Record<string, unknown>; return `${c.ok ? "OK" : "FAIL"} ${c.name}: ${c.ok ? "ready" : c.remedy}`; }).join("\n") : "Doctor unavailable.";
+  if (value.action && value.target) { const target = value.target as Record<string, unknown>; const operation = value.operation as Record<string, unknown> | undefined; return [`${value.action}: ${target.title ?? target.id}`, operation?.undoAvailable ? `Undo: pravah operations undo ${operation.id}` : null, operation?.expiresAt ? `Expires: ${operation.expiresAt}` : null].filter(Boolean).join("\n"); }
+  if (command === "auth status") return value.authenticated ? `Authenticated as ${value.credentialLabel}\nEndpoint: ${value.siteUrl}` : "Not authenticated. Run `pravah auth login`.";
+  if (command === "auth logout") return "Local credential removed.";
+  if (command === "operations list") return Array.isArray(value.operations) ? value.operations.map((operation) => { const op = operation as Record<string, unknown>; return `${op.operationId}  ${op.operation}  ${op.undoAvailable ? "Undo available" : "Not undoable"}`; }).join("\n") : "No operations.";
+  if (command === "agent context") return "Agent context is machine-oriented; use --json.";
+  return "Done.";
+}

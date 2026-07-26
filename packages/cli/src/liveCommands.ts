@@ -11,6 +11,7 @@ import {
   readTaskAddOptions,
   readTaskListFilters,
   readTaskUpdateOptions,
+  readTarget,
   requireOption,
 } from "./commandUtils";
 import { CliCommandError } from "./errors";
@@ -388,6 +389,68 @@ function requireScopes(client: LiveCliClient, requiredScopes: string[]) {
   }
 }
 
+function resolveLiveTask(tasks: CliTaskSummary[], target: string) {
+  const matches = tasks.filter((task) => task.id === target || task.title === target);
+  if (!matches.length) throw new CliCommandError("not_found", `Task not found: ${target}`);
+  if (matches.length > 1) throw new CliCommandError("ambiguous_target", `Task target is ambiguous: ${matches.map((task) => `${task.title} (${task.id})`).join(", ")}`);
+  return matches[0];
+}
+
+function resolveLiveGoal(goals: LiveGoalSummary[], target: string) {
+  const matches = goals.filter((goal) => goal.id === target || goal.text === target);
+  if (!matches.length) throw new CliCommandError("not_found", `Goal not found: ${target}`);
+  if (matches.length > 1) throw new CliCommandError("ambiguous_target", `Goal target is ambiguous: ${matches.map((goal) => `${goal.text} (${goal.id})`).join(", ")}`);
+  return matches[0];
+}
+
+function v2Horizon(tasks: CliTaskSummary[]) {
+  const today = getLocalDateString(); const end = new Date(`${today}T12:00:00`); end.setDate(end.getDate() + 14); const endDate = getLocalDateString(end);
+  const priority = (task: CliTaskSummary) => task.priority === "p1" ? 0 : task.priority === "p2" ? 1 : 2;
+  const active = tasks.filter((task) => task.status === "inbox" || task.status === "timeline");
+  return { today, endDate, overdue: active.filter((task) => task.deadline && task.deadline < today).sort((a,b) => priority(a) - priority(b) || a.deadline!.localeCompare(b.deadline!)), todayTasks: active.filter((task) => task.deadline === today).sort((a,b) => (a.time ?? "99:99").localeCompare(b.time ?? "99:99") || priority(a) - priority(b)), upcoming: active.filter((task) => task.deadline && task.deadline > today && task.deadline <= endDate).sort((a,b) => `${a.deadline}${a.time ?? "99:99"}`.localeCompare(`${b.deadline}${b.time ?? "99:99"}`)), inboxCount: active.filter((task) => task.status === "inbox").length };
+}
+
+async function executeV2LiveCommand(client: LiveCliClient, command: string, args: ParsedArgs): Promise<unknown | null> {
+  const taskCommands = ["tasks list", "tasks show", "inbox", "today", "overdue", "upcoming", "agent context"];
+  if (taskCommands.includes(command)) {
+    requireScopes(client, ["tasks:read"]); const tasks = normalizeTaskArray(await client.listTasks({})); const horizon = v2Horizon(tasks);
+    if (command === "tasks show") return { task: resolveLiveTask(tasks, readTarget(args, command)), source: "live" };
+    if (command === "inbox") return { tasks: tasks.filter((task) => task.status === "inbox"), source: "live" };
+    if (command === "today") return { tasks: horizon.todayTasks, today: horizon.today, source: "live" };
+    if (command === "overdue") return { tasks: horizon.overdue, today: horizon.today, source: "live" };
+    if (command === "upcoming") return { tasks: horizon.upcoming, today: horizon.today, endDate: horizon.endDate, source: "live" };
+    if (command === "agent context") { const slim = (items: CliTaskSummary[]) => items.slice(0, 3).map((task) => ({ id: task.id, title: task.title, deadline: task.deadline, priority: task.priority })); return { today: horizon.today, overdue: { count: horizon.overdue.length, tasks: slim(horizon.overdue) }, todayTasks: { count: horizon.todayTasks.length, tasks: slim(horizon.todayTasks) }, next: { count: horizon.upcoming.length, tasks: slim(horizon.upcoming) }, inbox: { count: horizon.inboxCount }, source: "live" }; }
+    return hasFlag(args.options, "all") || readOption(args.options, "status") ? { tasks, source: "live" } : { ...horizon, source: "live" };
+  }
+  if (command === "goals list" || command === "goals show") { requireScopes(client, ["tasks:read"]); const [goals, tasks, links] = await Promise.all([client.listGoals().then(normalizeLiveGoalArray), client.listTasks({}).then(normalizeTaskArray), client.listGoalLinks().then(normalizeGoalLinks)]); const summaries = goals.map((goal) => { const linked = tasks.filter((task) => links[task.id] === goal.id && task.status !== "cancelled"); return { ...goal, progress: { completed: linked.filter((task) => task.status === "completed").length, active: linked.filter((task) => task.status !== "cancelled").length }, activeTasks: linked.filter((task) => task.status === "inbox" || task.status === "timeline") }; }); if (command === "goals list") return { goals: summaries, source: "live" }; const goal = resolveLiveGoal(goals, readTarget(args, command)); return { goal: summaries.find((item) => item.id === goal.id), source: "live" }; }
+  if (command === "operations list") { requireScopes(client, ["tasks:read"]); return { operations: normalizeOperations(await client.listOperations({ limit: Number(readOption(args.options, "limit") ?? 20), operationGroupId: readOption(args.options, "group") })), source: "live" }; }
+  if (command === "operations show") { requireScopes(client, ["tasks:read"]); return { operation: normalizeOperation(await client.getOperation(readTarget(args, command))), source: "live" }; }
+  if (command === "operations undo") { requireScopes(client, ["tasks:write"]); const metadata = getWriteMetadata(args); const operationId = readOption(args.options, "group") ? undefined : readTarget(args, command); const operationGroupId = readOption(args.options, "group"); if (metadata.dryRun) return { action: "operations.undo", target: { id: operationGroupId ?? operationId! }, ...metadata, source: "dry-run" }; const result = await client.undoOperation({ operationId, operationGroupId }, metadata.idempotencyKey); return { action: "operations.undo", target: { id: operationGroupId ?? operationId! }, ...metadata, operation: normalizeOperation(result), source: "live" }; }
+  if (command.startsWith("tasks ")) {
+    requireScopes(client, ["tasks:write"]); const verb = command.slice(6); const metadata = getWriteMetadata(args); const title = readTarget(args, command); const target = verb === "add" ? { id: "pending", title } : resolveLiveTask(normalizeTaskArray(await client.listTasks({})), title);
+    if (verb === "remove" && !hasFlag(args.options, "confirm")) throw new CliCommandError("confirmation_required", "--confirm is required for tasks remove");
+    if (metadata.dryRun) return { action: `tasks.${verb}`, target, ...metadata, source: "dry-run" };
+    let result: unknown;
+    if (verb === "add") result = await client.addTask({ title, description: readOption(args.options, "description"), deadline: readOption(args.options, "deadline"), time: readOption(args.options, "time"), priority: readPriority(readOption(args.options, "priority")), tags: readOption(args.options, "tags")?.split(",").map((tag) => tag.trim()).filter(Boolean), operationGroupId: metadata.operationGroupId }, metadata.idempotencyKey);
+    else if (verb === "edit") result = await client.updateTask({ taskId: target.id, title: readOption(args.options, "title"), description: readOption(args.options, "description"), deadline: readOption(args.options, "deadline"), time: readOption(args.options, "time"), priority: readPriority(readOption(args.options, "priority")), operationGroupId: metadata.operationGroupId }, metadata.idempotencyKey);
+    else if (verb === "schedule") result = await client.moveTask({ taskId: target.id, targetDate: readOption(args.options, "date") ?? "", operationGroupId: metadata.operationGroupId }, metadata.idempotencyKey);
+    else if (verb === "complete") result = await client.completeTask({ taskId: target.id, operationGroupId: metadata.operationGroupId }, metadata.idempotencyKey);
+    else if (verb === "reopen") result = await client.reopenTask({ taskId: target.id, operationGroupId: metadata.operationGroupId }, metadata.idempotencyKey);
+    else if (verb === "unschedule") result = await client.unscheduleTask({ taskId: target.id, operationGroupId: metadata.operationGroupId }, metadata.idempotencyKey);
+    else if (verb === "remove") result = await client.deleteTask({ taskId: target.id, confirmTaskDelete: true, operationGroupId: metadata.operationGroupId }, metadata.idempotencyKey);
+    else return null;
+    return { action: `tasks.${verb}`, target, ...metadata, operation: normalizeOperation(result), source: "live" };
+  }
+  if (command.startsWith("goals ")) {
+    requireScopes(client, ["tasks:write"]); const verb = command.slice(6); const metadata = getWriteMetadata(args); const title = readTarget(args, command); const target = verb === "add" ? { id: "pending", text: title } : resolveLiveGoal(normalizeLiveGoalArray(await client.listGoals()), title);
+    if (verb === "remove" && !hasFlag(args.options, "confirm")) throw new CliCommandError("confirmation_required", "--confirm is required for goals remove");
+    if (metadata.dryRun) return { action: `goals.${verb}`, target: { id: target.id, title: target.text }, ...metadata, source: "dry-run" };
+    const result = verb === "add" ? await client.createGoal({ text: title, description: readOption(args.options, "description"), deadline: readOption(args.options, "deadline"), priority: readPriority(readOption(args.options, "priority")), operationGroupId: metadata.operationGroupId }, metadata.idempotencyKey) : verb === "edit" ? await client.updateGoal({ goalId: target.id, description: readOption(args.options, "description"), deadline: readOption(args.options, "deadline"), priority: readPriority(readOption(args.options, "priority")), operationGroupId: metadata.operationGroupId }, metadata.idempotencyKey) : verb === "remove" ? await client.deleteGoal({ goalId: target.id, confirmGoalDelete: true, operationGroupId: metadata.operationGroupId }, metadata.idempotencyKey) : null;
+    if (result === null) return null; return { action: `goals.${verb}`, target: { id: target.id, title: target.text }, ...metadata, operation: normalizeOperation(result), source: "live" };
+  }
+  return null;
+}
+
 async function executeLiveWrite<T>(
   action: string,
   idempotencyKey: string,
@@ -413,6 +476,8 @@ export async function executeLiveCommand(
   command: string,
   args: ParsedArgs
 ): Promise<unknown | null> {
+  const v2 = await executeV2LiveCommand(client, command, args);
+  if (v2 !== null) return v2;
   switch (command) {
     case "tasks list": {
       const filters = readTaskListFilters(args);

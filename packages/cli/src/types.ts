@@ -1,4 +1,4 @@
-export const CLI_CONTRACT_VERSION = "v1";
+export const CLI_CONTRACT_VERSION = "v2";
 
 export interface CliError {
   code: string;
@@ -62,6 +62,7 @@ export interface MockTask {
   createdAt?: number;
   updatedAt?: number;
   position?: number;
+  tags?: string[];
   goal?: {
     id: string;
     title: string;

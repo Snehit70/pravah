@@ -4,6 +4,7 @@ import { parseArgs } from "./args";
 import { executeCommand, isCliTextResult } from "./commands";
 import { emitError, emitSuccess } from "./envelope";
 import { toCliError } from "./errors";
+import { renderHumanResult } from "./renderer";
 
 function assertBunRuntime() {
   if (!("Bun" in globalThis)) {
@@ -24,7 +25,9 @@ async function main() {
       process.stdout.write(`${data.text}\n`);
       process.exit(0);
     }
-    emitSuccess(command, data);
+    if (json) emitSuccess(command, data);
+    process.stdout.write(`${renderHumanResult(command, data, args.options.long === true)}\n`);
+    process.exit(0);
   } catch (error: unknown) {
     emitError(command, toCliError(error), json);
   }
