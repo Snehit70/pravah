@@ -19,6 +19,19 @@ describe("mobile release classification", () => {
     });
   });
 
+  it("does not require a mobile classification for CLI-only HTTP adapter changes", () => {
+    expect(
+      classifyMobileRelease({
+        changedFiles: [
+          "packages/cli/src/commands.ts",
+          "convex/http.ts",
+          "convex/automationHttpAuth.ts",
+        ],
+        labels: [],
+      }),
+    ).toEqual({ ok: true, classification: null, reasons: [] });
+  });
+
   it("blocks OTA publication when the release source does not match the supported runtime", () => {
     const result = classifyMobileRelease({
       changedFiles: ["apps/mobile/src/components/TaskCard.tsx"],
