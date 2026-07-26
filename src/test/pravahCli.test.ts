@@ -42,6 +42,22 @@ describe("Pravah CLI v2", () => {
     expect(result.status).toBe(0); expect(result.stdout).toContain("Undo: pravah operations undo");
   });
 
+  it("requires exactly one undo target", () => {
+    const missing = run(["operations", "undo", "--json"]);
+    expect(missing.status).toBe(1);
+    expect(JSON.parse(missing.stdout).error.code).toBe("invalid_option");
+    const both = run(["operations", "undo", "op_1", "--group", "batch", "--json"]);
+    expect(both.status).toBe(1);
+    expect(JSON.parse(both.stdout).error.code).toBe("invalid_option");
+  });
+
+  it("keeps --all active unless an explicit historical status is requested", () => {
+    const active = JSON.parse(run(["tasks", "list", "--all", "--json"]).stdout).data.tasks;
+    expect(active.every((task: { status: string }) => ["inbox", "timeline"].includes(task.status))).toBe(true);
+    const completed = JSON.parse(run(["tasks", "list", "--status", "completed", "--json"]).stdout).data.tasks;
+    expect(completed.every((task: { status: string }) => task.status === "completed")).toBe(true);
+  });
+
   it("publishes a complete v2 capabilities manifest", () => {
     const result = run(["capabilities", "--json"]);
     const commands = JSON.parse(result.stdout).data.commands;

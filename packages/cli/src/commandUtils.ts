@@ -49,6 +49,13 @@ export function validateCommandArgs(command: string, args: ParsedArgs) {
   if (spec.confirmationFlag && !hasFlag(args.options, spec.confirmationFlag)) {
     throw new Error(`--${spec.confirmationFlag} is required for ${command}`);
   }
+  if (command === "operations undo") {
+    const hasTarget = args.positionals.length === expectedPositionals;
+    const hasGroup = Boolean(readOption(args.options, "group")?.trim());
+    if (hasTarget === hasGroup) {
+      throw new Error("Provide exactly one operation ID or --group");
+    }
+  }
 }
 
 export function readTarget(args: ParsedArgs, command: string) {

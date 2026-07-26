@@ -36,10 +36,10 @@ export const COMMAND_SPECS: readonly CommandSpec[] = [
   { path: ["tasks", "list"], summary: "Show the prioritized Task horizon.", kind: "read", requiredScopes: ["tasks:read"], options: filters },
   { path: ["tasks", "show"], summary: "Show one Task by ID or exact title.", kind: "read", requiredScopes: ["tasks:read"], target: { label: "<task>", kind: "task" }, options: [] },
   { path: ["tasks", "add"], summary: "Create a Task.", kind: "write", requiredScopes: ["tasks:write"], target: { label: "<title>", kind: "task" }, options: [...taskFields, ...write], supportsDryRun: true, generatedIdempotency: true },
-  { path: ["tasks", "edit"], summary: "Edit a Task.", kind: "write", requiredScopes: ["tasks:write"], target: { label: "<task>", kind: "task" }, options: [...taskFields, ...write], supportsDryRun: true, generatedIdempotency: true },
+  { path: ["tasks", "edit"], summary: "Edit a Task.", kind: "write", requiredScopes: ["tasks:write"], target: { label: "<task>", kind: "task" }, options: [value("title", "<text>", "Replacement title."), ...taskFields, ...write], supportsDryRun: true, generatedIdempotency: true },
   { path: ["tasks", "complete"], summary: "Complete a Task.", kind: "write", requiredScopes: ["tasks:write"], target: { label: "<task>", kind: "task" }, options: write, supportsDryRun: true, generatedIdempotency: true },
   { path: ["tasks", "reopen"], summary: "Reopen a completed Task.", kind: "write", requiredScopes: ["tasks:write"], target: { label: "<task>", kind: "task" }, options: write, supportsDryRun: true, generatedIdempotency: true },
-  { path: ["tasks", "schedule"], summary: "Schedule a Task on a local date.", kind: "write", requiredScopes: ["tasks:write"], target: { label: "<task>", kind: "task" }, options: [value("date", "<YYYY-MM-DD>", "New local date."), value("time", "<HH:MM>", "Optional time."), ...write], supportsDryRun: true, generatedIdempotency: true },
+  { path: ["tasks", "schedule"], summary: "Schedule a Task on a local date.", kind: "write", requiredScopes: ["tasks:write"], target: { label: "<task>", kind: "task" }, options: [value("date", "<YYYY-MM-DD>", "New local date."), ...write], supportsDryRun: true, generatedIdempotency: true },
   { path: ["tasks", "unschedule"], summary: "Move a Task to Inbox.", kind: "write", requiredScopes: ["tasks:write"], target: { label: "<task>", kind: "task" }, options: write, supportsDryRun: true, generatedIdempotency: true },
   { path: ["tasks", "remove"], summary: "Recoverably remove a Task.", kind: "write", requiredScopes: ["tasks:write"], target: { label: "<task>", kind: "task" }, options: [flag("confirm", "Confirm recoverable removal."), ...write], supportsDryRun: true, generatedIdempotency: true, confirmationFlag: "confirm" },
   { path: ["goals", "list"], summary: "Show Goals with linked-Task progress.", kind: "read", requiredScopes: ["tasks:read"], options: [flag("long", "Show expanded details.")] },
@@ -53,7 +53,7 @@ export const COMMAND_SPECS: readonly CommandSpec[] = [
   { path: ["agent", "context"], summary: "Show compact ranked task-planning context.", kind: "read", requiredScopes: ["tasks:read"], options: [] },
 ];
 
-const globalOptions = [flag("json", "Emit the v2 JSON envelope."), flag("debug", "Append sanitized diagnostics to errors."), flag("help", "Show help."), flag("version", "Show CLI version.")];
+const globalOptions = [flag("json", "Emit the v2 JSON envelope."), flag("debug", "Append sanitized diagnostics to errors."), flag("no-color", "Disable terminal colour."), flag("help", "Show help."), flag("version", "Show CLI version.")];
 export const getCommandName = (spec: CommandSpec) => spec.path.join(" ");
 export const getCommandSpec = (command: string) => COMMAND_SPECS.find((spec) => getCommandName(spec) === command) ?? null;
 export const getCommandSpecFromPositionals = (positionals: string[]) => COMMAND_SPECS.find((spec) => spec.path.every((part, i) => positionals[i] === part)) ?? null;

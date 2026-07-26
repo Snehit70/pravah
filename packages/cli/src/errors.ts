@@ -43,7 +43,7 @@ function classifyErrorMessage(message: string): string {
     message.startsWith("Unknown option --") ||
     message.includes(" requires a value") ||
     message.includes(" does not accept a value") ||
-    message.includes("Provide exactly one of") ||
+    message.includes("Provide exactly one") ||
     message.includes("Provide only one of") ||
     message.includes("cannot be used together") ||
     message.includes("operations undo requires") ||
