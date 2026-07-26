@@ -2,6 +2,100 @@
 
 ## Glossary
 
+### CLI output
+
+### Human output
+The concise, terminal-readable result format shown by default for Pravah CLI commands. It prioritizes planning information over record metadata.
+_Avoid_: Pretty JSON, default JSON
+
+### JSON envelope
+The versioned `{ ok, version, command, data | error }` machine contract emitted only when a Pravah CLI caller explicitly requests `--json`.
+_Avoid_: Human output, debug output
+
+### Inbox task
+An active task without a scheduled date. It is visible in the Inbox rather than on the Timeline.
+_Avoid_: Unscheduled, backlog
+
+### Timeline task
+An active task with a scheduled date. It is visible on the Timeline and may be overdue, due today, or upcoming.
+_Avoid_: Scheduled task
+
+### Completed task
+A task whose planned work is finished and retained as completion history.
+_Avoid_: Done task
+
+### Cancelled task
+A task removed from active planning without being completed.
+_Avoid_: Deleted task
+
+### Attention view
+A top-level CLI shortcut that answers an immediate planning question, such as `inbox`, `today`, `overdue`, or `upcoming`. An attention view is a task query, not a new task type.
+_Avoid_: Resource, status
+
+### Compact list
+The default human CLI list showing only due information, priority, and task title. It omits record metadata and extended task details.
+_Avoid_: Short JSON, summary payload
+
+### Expanded list
+The explicit long human CLI list that supplements a compact row with contextual task details such as goal, time, tags, estimate, description, and ID.
+_Avoid_: Default list, debug output
+
+### Task horizon
+The scheduled task window used by `pravah tasks list`: overdue work, work due today, and the next 14 calendar days. Inbox work is reported as a count and listed only through `pravah inbox`.
+_Avoid_: All active tasks, timeline dump
+
+### Active task
+A task still in planning: either an Inbox task or a Timeline task. Completed and Cancelled tasks are not active.
+_Avoid_: Historical task, all task
+
+### CLI resource grammar
+The canonical human command shape `pravah <resource> <verb> [target] [filters]`. A resource names the object being operated on, a verb states the operation, a target identifies one object when needed, and filters narrow a collection.
+_Avoid_: API-shaped option target, nested resource chain
+
+### Target reference
+The ID or exact unique title/name used to address one Task or Goal in a canonical v2 CLI command. An ambiguous title/name must return the matching candidates and their IDs; fuzzy lookup belongs to Search.
+_Avoid_: Silent fuzzy match, option-only ID
+
+### Goal progress
+The completed count over active linked Tasks for a Goal. Cancelled linked Tasks are excluded from the denominator.
+_Avoid_: All-time linked count, cancelled-task progress
+
+### Today view
+The attention view containing only Timeline tasks scheduled for the current local day. Overdue work belongs exclusively to the Overdue view.
+_Avoid_: Overdue-and-today view
+
+### CLI doctor
+A read-only setup diagnostic that checks whether the local Bun runtime, stored credential, endpoint configuration, and credential scopes can support Pravah CLI commands.
+_Avoid_: Repair command, auth reset
+
+### Agent context
+A compact, ranked machine briefing for an automation agent. It is distinct from human CLI lists and is introduced after the human CLI foundation as Phase 3 of the CLI redesign; the current redesign excludes held integrations and their review queues.
+_Avoid_: Full database dump, human output
+
+### Agent task summary
+The minimal task representation used in Agent context: ID, title, due date when present, priority, and linked Goal when present. Inbox is represented as a count rather than embedded task records.
+_Avoid_: Full task, duplicated priority section
+
+### Operation receipt
+The concise result of a successful CLI write: its action and target, plus a ready-to-run Undo command and expiry when the operation is recoverable.
+_Avoid_: Raw operation record, success-only message
+
+### Caller-stable idempotency key
+An optional key supplied by a CLI caller when it may retry the same write across invocations. Pravah generates an idempotency key for every write when the caller does not supply one.
+_Avoid_: Required user key, missing idempotency
+
+### Local CLI logout
+Removal of the credential stored on the current machine. It does not revoke the remote automation credential.
+_Avoid_: Credential revocation, account sign-out
+
+### CLI local day
+The calendar day in the CLI host's local timezone. It defines Today, date rendering, and the default planning horizon.
+_Avoid_: UTC day, account timezone
+
+### Task filter
+A composable constraint on a Task collection. Multi-priority and multi-tag filters are OR matches; date bounds are strict, while `--date` is an exact match.
+_Avoid_: Implicit fuzzy filter, status resource
+
 ### Backdrop
 The visual layer behind a modal/sheet that separates it from the content underneath. Composed of two independent layers in Pravah:
 

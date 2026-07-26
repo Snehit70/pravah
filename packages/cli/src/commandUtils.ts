@@ -20,7 +20,11 @@ export function validateCommandArgs(command: string, args: ParsedArgs) {
   const spec = getCommandSpec(command);
   if (!spec) return;
 
-  if (args.positionals.length !== spec.path.length) {
+  const expectedPositionals = spec.path.length + (spec.target ? 1 : 0);
+  const validPositionals = spec.targetOptional
+    ? args.positionals.length === spec.path.length || args.positionals.length === expectedPositionals
+    : args.positionals.length === expectedPositionals;
+  if (!validPositionals) {
     throw new Error(`Unexpected positional arguments for ${command}`);
   }
   const commandOptions = getCommandOptionKinds(command);
@@ -39,9 +43,25 @@ export function validateCommandArgs(command: string, args: ParsedArgs) {
     }
   }
 
+  if (hasFlag(args.options, "json") && hasFlag(args.options, "long")) {
+    throw new Error("--json and --long cannot be used together");
+  }
   if (spec.confirmationFlag && !hasFlag(args.options, spec.confirmationFlag)) {
     throw new Error(`--${spec.confirmationFlag} is required for ${command}`);
   }
+  if (command === "operations undo") {
+    const hasTarget = args.positionals.length === expectedPositionals;
+    const hasGroup = Boolean(readOption(args.options, "group")?.trim());
+    if (hasTarget === hasGroup) {
+      throw new Error("Provide exactly one operation ID or --group");
+    }
+  }
+}
+
+export function readTarget(args: ParsedArgs, command: string) {
+  const value = args.positionals.at(-1)?.trim();
+  if (!value) throw new Error(`Missing target for ${command}`);
+  return value;
 }
 
 export function requireOption(

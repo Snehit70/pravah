@@ -50,7 +50,7 @@ export function errorEnvelope(
   };
 }
 
-export function emitSuccess<T>(command: string, data: T): never {
+export function emitSuccess<T>(command: string, data: T, exitCode = 0): never {
   const envelope = successEnvelope(command, data);
   logAudit({
     timestamp: new Date().toISOString(),
@@ -58,14 +58,15 @@ export function emitSuccess<T>(command: string, data: T): never {
     ok: true,
   });
   process.stdout.write(`${JSON.stringify(envelope)}\n`);
-  process.exit(0);
+  process.exit(exitCode);
   throw new Error("Unreachable");
 }
 
 export function emitError(
   command: string,
   error: CliError,
-  _json = false
+  json = false,
+  debug = false
 ): never {
   const envelope = errorEnvelope(command, error);
   logAudit({
@@ -74,7 +75,14 @@ export function emitError(
     ok: false,
     code: error.code,
   });
-  process.stdout.write(`${JSON.stringify(envelope)}\n`);
+  if (json) process.stdout.write(`${JSON.stringify(envelope)}\n`);
+  else {
+    process.stderr.write(`Error: ${error.message}\n`);
+    if (debug && error.details !== undefined) {
+      const details = JSON.stringify(error.details);
+      process.stderr.write(`Debug: ${details.slice(0, 2000)}\n`);
+    }
+  }
   process.exit(1);
   throw new Error("Unreachable");
 }
