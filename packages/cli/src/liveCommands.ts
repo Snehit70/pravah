@@ -36,7 +36,7 @@ function readPriority(value: unknown): CliTaskSummary["priority"] { return value
 function statusOf(task: Record<string, unknown>): CliTaskStatus {
   if (task.cancelledAt || task.status === "cancelled") return "cancelled";
   if (task.completedAt || task.status === "completed") return "completed";
-  return readDate(task.deadline) ?? readDate(task.scheduledDate) ? "timeline" : "inbox";
+  return (readDate(task.deadline) ?? readDate(task.scheduledDate)) ? "timeline" : "inbox";
 }
 function toTask(value: unknown): CliTaskSummary | null {
   if (!value || typeof value !== "object") return null;
@@ -138,7 +138,7 @@ function goalWriteFields(args: ParsedArgs, editing: boolean) {
   if (editing && description === undefined && deadline === undefined && priorityRaw === undefined) throw new CliCommandError("validation_failed", "goals edit requires at least one editable field");
   return { description, deadline, priority: priorityRaw as "p1" | "p2" | "p3" | null | undefined };
 }
-async function write<T>(action: string, idempotencyKey: string, execute: () => Promise<T>) { try { return await execute(); } catch (error) { throw new CliCommandError("write_failed", error instanceof Error ? error.message : `Failed to execute ${action}`, { action, idempotencyKey, retryExactRequestWithSameIdempotencyKey: true }); } }
+async function write<T>(action: string, idempotencyKey: string, execute: () => Promise<T>) { try { return await execute(); } catch (error) { const message = error instanceof Error ? error.message : `Failed to execute ${action}`; const retryable = /fetch failed|network|ECONN|ENOTFOUND|\b5\d\d\b|server error/i.test(message); throw new CliCommandError("write_failed", message, { action, idempotencyKey, retryExactRequestWithSameIdempotencyKey: retryable }); } }
 
 export async function executeLiveCommand(client: LiveCliClient, command: string, args: ParsedArgs): Promise<unknown | null> {
   if (["tasks list", "inbox", "today", "overdue", "upcoming", "agent context", "tasks show"].includes(command)) {
@@ -160,7 +160,7 @@ export async function executeLiveCommand(client: LiveCliClient, command: string,
   }
   if (command === "operations list") { requireScopes(client, ["tasks:read"]); const raw = readOption(args.options, "limit"); const limit = raw === undefined ? 20 : Number(raw); if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new CliCommandError("validation_failed", "--limit must be an integer between 1 and 100"); return { operations: operationsOf(await client.listOperations({ limit, operationGroupId: readOption(args.options, "group") })), source: "live" }; }
   if (command === "operations show") { requireScopes(client, ["tasks:read"]); return { operation: operationOf(await client.getOperation(readTarget(args, command))), source: "live" }; }
-  if (command === "operations undo") { requireScopes(client, ["tasks:write"]); const metadata = getWriteMetadata(args); const group = readOption(args.options, "group"); const operationId = args.positionals.length === 3 ? readTarget(args, command) : undefined; if (Boolean(group) === Boolean(operationId)) throw new CliCommandError("validation_failed", "Provide exactly one operation ID or --group"); const target = { id: group ?? operationId! }; if (metadata.dryRun) return { action: "operations.undo", target, ...metadata, source: "dry-run" }; const result = await write("operations.undo", metadata.idempotencyKey, () => client.undoOperation({ operationId, operationGroupId: group }, metadata.idempotencyKey)); return { action: "operations.undo", target, ...metadata, operation: operationOf(result), source: "live" }; }
+  if (command === "operations undo") { requireScopes(client, ["tasks:write"]); const metadata = getWriteMetadata(args); const group = readOption(args.options, "group")?.trim() || undefined; const operationId = args.positionals.length === 3 ? readTarget(args, command) : undefined; const target = { id: group ?? operationId! }; if (metadata.dryRun) return { action: "operations.undo", target, ...metadata, source: "dry-run" }; const result = await write("operations.undo", metadata.idempotencyKey, () => client.undoOperation({ operationId, operationGroupId: group }, metadata.idempotencyKey)); return { action: "operations.undo", target, ...metadata, operation: operationOf(result), source: "live" }; }
   if (command.startsWith("tasks ")) {
     requireScopes(client, ["tasks:write"]); const verb = command.slice(6); const metadata = getWriteMetadata(args); const title = readTarget(args, command); const target = verb === "add" ? { id: "pending", title } : resolveTask(tasksOf(await client.listTasks({})), title);
     const fields = verb === "add" || verb === "edit" ? taskWriteFields(args, verb === "edit") : undefined;

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /// <reference types="node" />
 import { parseArgs } from "./args";
-import { executeCommand, isCliTextResult } from "./commands";
+import { executeCommand, isCliTextResult, resolveCommand } from "./commands";
 import { emitError, emitSuccess } from "./envelope";
 import { toCliError } from "./errors";
 import { renderHumanResult } from "./renderer";
@@ -15,11 +15,11 @@ function assertBunRuntime() {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const [namespace, action] = args.positionals;
   const json = args.options.json === true;
-  const command = action ? `${namespace} ${action}` : namespace ?? "help";
+  let command = "help";
 
   try {
+    command = args.positionals[0] === "help" ? "help" : args.positionals.length ? resolveCommand(args) : "help";
     const data = await executeCommand({ command, json }, args);
     if (isCliTextResult(data)) {
       process.stdout.write(`${data.text}\n`);
