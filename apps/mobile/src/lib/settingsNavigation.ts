@@ -92,6 +92,7 @@ export const SETTINGS_CATEGORY_CONTROLS: Record<
   ],
   interaction: [
     "bulk_task_capture",
+    "hide_goal_linked_inbox_tasks",
     "swipe_actions",
     "haptics",
     "sound",

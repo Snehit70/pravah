@@ -3,6 +3,7 @@ import type { Id } from "../../convex/_generated/dataModel";
 import {
   addTask,
   bulkReschedule,
+  bulkSoftDeleteInboxTasks,
   completeTask,
   getTimeline,
   listTodayCompletedTasks,
@@ -10,6 +11,7 @@ import {
   migrateNativeTasksToDeadlineModel,
   moveTask,
   reopenTask,
+  restoreInboxTasks,
   updateTask,
 } from "../../convex/tasks";
 
@@ -87,6 +89,20 @@ const bulkRescheduleHandler = (
   >
 )._handler;
 
+const bulkSoftDeleteInboxTasksHandler = (
+  bulkSoftDeleteInboxTasks as unknown as InternalHandler<
+    { taskIds: Id<"tasks">[] },
+    void
+  >
+)._handler;
+
+const restoreInboxTasksHandler = (
+  restoreInboxTasks as unknown as InternalHandler<
+    { taskIds: Id<"tasks">[] },
+    void
+  >
+)._handler;
+
 const migrateNativeTasksHandler = (
   migrateNativeTasksToDeadlineModel as unknown as InternalHandler<
     Record<string, never>,
@@ -111,6 +127,129 @@ function createAuthedCtx(db: unknown) {
 }
 
 describe("convex/tasks handlers", () => {
+  it("rejects an Inbox deletion batch without changing anything when one task is not in Inbox", async () => {
+    const inboxTask = makeId("inbox-task");
+    const scheduledTask = makeId("scheduled-task");
+    const tasksById = new Map([
+      [
+        inboxTask,
+        {
+          _id: inboxTask,
+          ownerTokenIdentifier: "user-1",
+          position: 0,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      [
+        scheduledTask,
+        {
+          _id: scheduledTask,
+          ownerTokenIdentifier: "user-1",
+          deadline: "2026-07-28",
+          position: 0,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+    ]);
+    const db = {
+      get: vi.fn(async (id: Id<"tasks">) => tasksById.get(id)),
+      patch: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await expect(
+      bulkSoftDeleteInboxTasksHandler(createAuthedCtx(db), {
+        taskIds: [inboxTask, scheduledTask],
+      })
+    ).rejects.toThrow("Task is not in Inbox");
+
+    expect(db.patch).not.toHaveBeenCalled();
+  });
+
+  it("restores a deletion batch at the end of each priority section in its original order", async () => {
+    const firstP1 = makeId("first-p1");
+    const secondP1 = makeId("second-p1");
+    const onlyP2 = makeId("only-p2");
+    const activeP1 = makeId("active-p1");
+    const activeP2 = makeId("active-p2");
+    const tasks = [
+      {
+        _id: firstP1,
+        ownerTokenIdentifier: "user-1",
+        cancelledAt: 100,
+        priority: "p1" as const,
+        position: 1,
+        createdAt: 1,
+        updatedAt: 100,
+      },
+      {
+        _id: secondP1,
+        ownerTokenIdentifier: "user-1",
+        cancelledAt: 100,
+        priority: "p1" as const,
+        position: 2,
+        createdAt: 1,
+        updatedAt: 100,
+      },
+      {
+        _id: onlyP2,
+        ownerTokenIdentifier: "user-1",
+        cancelledAt: 100,
+        priority: "p2" as const,
+        position: 0,
+        createdAt: 1,
+        updatedAt: 100,
+      },
+      {
+        _id: activeP1,
+        ownerTokenIdentifier: "user-1",
+        priority: "p1" as const,
+        position: 7,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      {
+        _id: activeP2,
+        ownerTokenIdentifier: "user-1",
+        priority: "p2" as const,
+        position: 3,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    const tasksById = new Map(tasks.map((task) => [task._id, task]));
+    const db = {
+      get: vi.fn(async (id: Id<"tasks">) => tasksById.get(id)),
+      query: vi.fn().mockReturnValue({
+        withIndex: vi.fn().mockReturnValue({
+          collect: vi.fn().mockResolvedValue(tasks),
+        }),
+      }),
+      patch: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await restoreInboxTasksHandler(createAuthedCtx(db), {
+      taskIds: [firstP1, secondP1, onlyP2],
+    });
+
+    expect(db.patch).toHaveBeenNthCalledWith(1, firstP1, {
+      cancelledAt: undefined,
+      position: 8,
+      updatedAt: expect.any(Number),
+    });
+    expect(db.patch).toHaveBeenNthCalledWith(2, secondP1, {
+      cancelledAt: undefined,
+      position: 9,
+      updatedAt: expect.any(Number),
+    });
+    expect(db.patch).toHaveBeenNthCalledWith(3, onlyP2, {
+      cancelledAt: undefined,
+      position: 4,
+      updatedAt: expect.any(Number),
+    });
+  });
+
   it("migrates native tasks onto deadline/scheduledAt/completedAt and strips legacy fields", async () => {
     const nativeScheduled = makeId("native-scheduled");
     const nativeCompleted = makeId("native-completed");

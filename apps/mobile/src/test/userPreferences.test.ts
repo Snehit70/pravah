@@ -106,6 +106,12 @@ describe("sanitize", () => {
     expect(result.soundEnabled).toBe(false);
   });
 
+  it("hides goal-linked Inbox tasks by default and preserves an explicit choice", () => {
+    expect(sanitize({}).hideGoalLinkedTasksFromInbox).toBe(true);
+    expect(sanitize({ hideGoalLinkedTasksFromInbox: false }).hideGoalLinkedTasksFromInbox).toBe(false);
+    expect(sanitize({ hideGoalLinkedTasksFromInbox: "yes" }).hideGoalLinkedTasksFromInbox).toBe(true);
+  });
+
   it("falls back to the default tab order for corrupted saved orders", () => {
     expect(sanitize({ tabOrder: ["inbox", "timeline", "goals"] }).tabOrder).toEqual(
       DEFAULT_PREFERENCES.tabOrder,

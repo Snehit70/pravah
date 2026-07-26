@@ -39,6 +39,7 @@ export interface UserPreferences {
   hapticsEnabled: boolean;
   soundEnabled: boolean;
   bulkTaskCaptureEnabled: boolean;
+  hideGoalLinkedTasksFromInbox: boolean;
   tabOrder: TabOrder;
 }
 
@@ -63,6 +64,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   hapticsEnabled: true,
   soundEnabled: false,
   bulkTaskCaptureEnabled: false,
+  hideGoalLinkedTasksFromInbox: true,
   tabOrder: [...DEFAULT_TAB_ORDER],
 };
 
@@ -164,6 +166,10 @@ function sanitize(raw: unknown): UserPreferences {
         : DEFAULT_PREFERENCES.soundEnabled,
     bulkTaskCaptureEnabled:
       typeof r.bulkTaskCaptureEnabled === "boolean" ? r.bulkTaskCaptureEnabled : false,
+    hideGoalLinkedTasksFromInbox:
+      typeof r.hideGoalLinkedTasksFromInbox === "boolean"
+        ? r.hideGoalLinkedTasksFromInbox
+        : DEFAULT_PREFERENCES.hideGoalLinkedTasksFromInbox,
     tabOrder: sanitizeTabOrder(r.tabOrder),
   };
 }

@@ -8,10 +8,8 @@ import {
 } from "react";
 import {
   Keyboard,
-  KeyboardAvoidingView,
   LayoutChangeEvent,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,6 +17,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { haptic } from "../lib/haptic";
@@ -311,7 +310,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           onRequestClose={() => void requestClose()}
         >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior="padding"
+          automaticOffset
           style={[
             styles.overlay,
             { paddingBottom: Math.max(insets.bottom, spacing.sm) },

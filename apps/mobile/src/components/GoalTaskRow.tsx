@@ -21,6 +21,12 @@ import { createThemedStyles } from "../theme/themeRuntime";
 import type { MobileTask } from "./TaskCard";
 import { CalendarIcon, CheckIcon } from "./UiIcons";
 
+const PRIORITY_META = {
+  p1: { label: "P1", color: colors.priorityP1 },
+  p2: { label: "P2", color: colors.priorityP2 },
+  p3: { label: "P3", color: colors.priorityP3 },
+} as const;
+
 type GoalTaskRowProps = {
   task: MobileTask;
   /** Overdue rows carry the date in the error ink the meta line uses. */
@@ -59,6 +65,7 @@ function GoalTaskRowInner({
   onToggleSelect,
   onSchedule,
 }: GoalTaskRowProps) {
+  const priority = task.priority ? PRIORITY_META[task.priority] : null;
   const leading = selectMode ? (
     <View style={[styles.check, selected && styles.checkOn]}>
       {selected ? <CheckIcon size={12} color={colors.textInverse} strokeWidth={2.6} /> : null}
@@ -74,7 +81,7 @@ function GoalTaskRowInner({
       delayLongPress={250}
       accessibilityRole={selectMode ? "checkbox" : "button"}
       accessibilityState={selectMode ? { checked: selected } : undefined}
-      accessibilityLabel={task.title}
+      accessibilityLabel={`${task.title}${priority ? `, priority ${priority.label}` : ""}`}
       accessibilityHint={
         selectMode ? "Toggle selection" : "Opens the task. Long press to select."
       }
@@ -91,6 +98,13 @@ function GoalTaskRowInner({
       <Text style={[styles.title, done && styles.titleDone]} numberOfLines={1} ellipsizeMode="tail">
         {task.title}
       </Text>
+
+      {!selectMode && priority ? (
+        <View style={styles.priorityMeta}>
+          <View style={[styles.priorityDot, { backgroundColor: priority.color }]} />
+          <Text style={[styles.priorityLabel, { color: priority.color }]}>{priority.label}</Text>
+        </View>
+      ) : null}
 
       {selectMode || done || (!task.deadline && !onSchedule) ? null : task.deadline && !onSchedule ? (
         <Text style={[styles.date, overdue && styles.dateOverdue]}>
@@ -190,6 +204,22 @@ const styles = createThemedStyles({
   titleDone: {
     color: colors.textMuted,
     textDecorationLine: "line-through",
+  },
+  priorityMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    flexShrink: 0,
+  },
+  priorityDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  priorityLabel: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    lineHeight: 14,
   },
   scheduleBtn: {
     minWidth: 44,

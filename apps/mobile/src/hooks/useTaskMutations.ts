@@ -83,6 +83,8 @@ export function useTaskMutations({
   // Keep new mutations appended at the end of this list.
   const deleteTaskMutation = useMutation(api.tasks.deleteTask);
   const rescheduleTasksMutation = useMutation(api.tasks.rescheduleTasks);
+  const bulkSoftDeleteInboxTasksMutation = useMutation(api.tasks.bulkSoftDeleteInboxTasks);
+  const restoreInboxTasksMutation = useMutation(api.tasks.restoreInboxTasks);
 
   const runOptimisticMutation = useCallback(
     async ({
@@ -536,6 +538,42 @@ export function useTaskMutations({
     [runOptimisticMutation, completeTaskMutation, reopenTaskMutation]
   );
 
+  const deleteInboxTasks = useCallback(
+    async (taskIds: Id<"tasks">[]): Promise<boolean> => {
+      if (taskIds.length === 0) return true;
+      const ids = new Set<string>(taskIds.map(String));
+      return runOptimisticMutation({
+        actionName: "delete_inbox_tasks_bulk",
+        optimistic: (cur) => cur.filter((task) => !ids.has(String(task._id))),
+        mutation: async () => {
+          await bulkSoftDeleteInboxTasksMutation({ taskIds });
+        },
+        errorMessage:
+          taskIds.length === 1 ? "Could not delete task." : "Could not delete tasks.",
+        retryLabel: taskIds.length === 1 ? "Retry delete" : `Retry delete of ${taskIds.length}`,
+        retryPayload: { type: "deleteInboxTasks", taskIds },
+        successFeedback: "medium",
+        undo: {
+          message: taskIds.length === 1 ? "Deleted 1 task" : `Deleted ${taskIds.length} tasks`,
+          run: () =>
+            void runOptimisticMutation({
+              actionName: "restore_inbox_tasks_bulk",
+              optimistic: (cur) => cur,
+              mutation: async () => {
+                await restoreInboxTasksMutation({ taskIds });
+              },
+              errorMessage:
+                taskIds.length === 1
+                  ? "Could not restore task."
+                  : "Could not restore tasks.",
+              successFeedback: "light",
+            }),
+        },
+      });
+    },
+    [runOptimisticMutation, bulkSoftDeleteInboxTasksMutation, restoreInboxTasksMutation]
+  );
+
   // Timeline bulk reschedule: move a batch onto one date in a single server
   // call. Tasks keep their time-of-day (rescheduleTasks only patches the
   // deadline); the optimistic view patches deadlines so rows glide to the new
@@ -601,6 +639,7 @@ export function useTaskMutations({
     scheduleToDate,
     scheduleManyToDate,
     markManyDone,
+    deleteInboxTasks,
     sendToInbox,
     reopenTask,
     deleteTask,

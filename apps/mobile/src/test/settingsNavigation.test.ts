@@ -75,6 +75,7 @@ describe("SETTINGS_CATEGORY_CONTROLS", () => {
     expect(SETTINGS_CATEGORY_CONTROLS.interaction).toEqual(
       expect.arrayContaining([
         "bulk_task_capture",
+        "hide_goal_linked_inbox_tasks",
         "swipe_actions",
         "haptics",
         "sound",
