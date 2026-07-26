@@ -403,4 +403,59 @@ describe("useTaskMutations", () => {
       });
     });
   });
+
+  it("queues a failed Inbox deletion for retry", async () => {
+    const completeTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const moveTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const unscheduleTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const reopenTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const updateTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const reorderTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const reorderInboxTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const shiftScheduledTaskPositionMutation = vi.fn().mockResolvedValue(undefined);
+    const deleteTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const rescheduleTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const bulkSoftDeleteInboxTasksMutation = vi.fn().mockRejectedValue(new Error("network"));
+    const restoreInboxTasksMutation = vi.fn().mockResolvedValue(undefined);
+
+    const mutationOrder = [
+      completeTaskMutation,
+      moveTaskMutation,
+      unscheduleTaskMutation,
+      reopenTaskMutation,
+      updateTaskMutation,
+      reorderTasksMutation,
+      reorderInboxTasksMutation,
+      shiftScheduledTaskPositionMutation,
+      deleteTaskMutation,
+      rescheduleTasksMutation,
+      bulkSoftDeleteInboxTasksMutation,
+      restoreInboxTasksMutation,
+    ];
+    let mutationIndex = 0;
+    useMutationMock.mockImplementation(() => mutationOrder[mutationIndex++]);
+
+    const task = makeTask({ _id: makeId("task-1"), deadline: undefined });
+    const enqueueRetry = vi.fn();
+    const { result } = renderHook(() =>
+      useTaskMutations({
+        serverTasks: [task],
+        setOptimisticTasks: vi.fn(),
+        setPendingMutations: vi.fn(),
+        enqueueRetry,
+        showToast: vi.fn(),
+        today: "2026-04-24",
+        hasPriorityBoundaryViolation: () => false,
+      })
+    );
+
+    await act(async () => {
+      await result.current.deleteInboxTasks([task._id]);
+    });
+
+    expect(enqueueRetry).toHaveBeenCalledWith({
+      label: "Retry delete",
+      payload: { type: "deleteInboxTasks", taskIds: [task._id] },
+    });
+  });
 });

@@ -550,6 +550,8 @@ export function useTaskMutations({
         },
         errorMessage:
           taskIds.length === 1 ? "Could not delete task." : "Could not delete tasks.",
+        retryLabel: taskIds.length === 1 ? "Retry delete" : `Retry delete of ${taskIds.length}`,
+        retryPayload: { type: "deleteInboxTasks", taskIds },
         successFeedback: "medium",
         undo: {
           message: taskIds.length === 1 ? "Deleted 1 task" : `Deleted ${taskIds.length} tasks`,

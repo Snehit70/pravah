@@ -36,6 +36,10 @@ export type RetryPayload =
       taskIds: Id<"tasks">[];
     }
   | {
+      type: "deleteInboxTasks";
+      taskIds: Id<"tasks">[];
+    }
+  | {
       type: "moveTask";
       taskId: Id<"tasks">;
       targetDate: string;

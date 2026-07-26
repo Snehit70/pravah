@@ -1,4 +1,4 @@
-**Package manager: use Bun only. Never run pnpm, npm, or yarn in this repository.**
+**Package manager: use Bun for dependency installation and repository scripts. Do not run pnpm, npm, or yarn locally; the `npm view` and `npm publish` registry commands in `.github/workflows/publish-cli.yml` are the sole release-automation exception.**
 
 # Pravah — Codex Configuration
 

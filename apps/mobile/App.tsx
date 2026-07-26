@@ -556,6 +556,8 @@ function MobileApp() {
 
   // ── Toast / retry ───────────────────────────────────────────────────
 
+  const bulkSoftDeleteInboxTasksMutation = useMutation(api.tasks.bulkSoftDeleteInboxTasks);
+
   const runRetryPayload = useCallback(
     async (payload: RetryPayload) => {
       switch (payload.type) {
@@ -593,6 +595,10 @@ function MobileApp() {
           );
           return;
         }
+        case "deleteInboxTasks": {
+          await bulkSoftDeleteInboxTasksMutation({ taskIds: payload.taskIds });
+          return;
+        }
         case "moveTask": {
           await moveTaskMutation({ taskId: payload.taskId, targetDate: payload.targetDate });
           return;
@@ -615,6 +621,7 @@ function MobileApp() {
       addTaskMutation,
       updateTaskMutation,
       completeTaskMutation,
+      bulkSoftDeleteInboxTasksMutation,
       moveTaskMutation,
       unscheduleTaskMutation,
       rescheduleTasksMutation,

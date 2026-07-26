@@ -6,7 +6,7 @@ status: accepted
 
 Inbox selection exposes a direct red `Delete {num} tasks` action beside the accent `Mark {num} done` action. Delete is recoverable rather than permanent: one atomic operation removes the selected Inbox tasks, the selection closes on success, and one Undo atomically restores the batch within the 30-minute recovery window.
 
-The confirmation remains title-only (`Delete {num} tasks from your inbox?`). Undo restores every task to the end of its original priority section while preserving the batch's relative order. A stale selection fails as a whole rather than partially changing the Inbox; this keeps the grouped Undo truthful. The Undo toast remains visible for five seconds, while physical cleanup runs later on the 72-hour purge cron.
+The confirmation remains title-only (`Delete {num} tasks from your inbox?`). Undo restores every task to the end of its original priority section while preserving the batch's relative order. A stale selection fails as a whole rather than partially changing the Inbox; this keeps the grouped Undo truthful. The Undo toast remains visible for five seconds. Cancelled tasks are eligible for physical cleanup after the 30-minute recovery window, and restoration only succeeds while the batch remains recoverable.
 
 ## Considered options
 
