@@ -11,12 +11,14 @@ bun install --global pravah@latest
 pravah --help
 ```
 
-To upgrade across major versions, install the desired version explicitly (a
+To upgrade across major versions, install the latest release explicitly (a
 plain `bun update -g pravah` follows the previously installed semver range):
 
 ```sh
-bun install --global pravah@2.0.0
+bun install --global pravah@latest
 ```
+
+To pin a particular release, replace `latest` with that version.
 
 The CLI accepts either an existing admin API-key environment configuration
 (`PRAVAH_HTTP_URL` and `CONVEX_HTTP_API_KEY`) or a stored scoped automation
