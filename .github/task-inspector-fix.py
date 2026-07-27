@@ -13,16 +13,125 @@ def replace_once(path: str, old: str, new: str) -> None:
 
 
 edit = "apps/mobile/src/components/EditTaskSheet.tsx"
-replace_once(
-    edit,
-    "  useImperativeHandle,\n  useMemo,",
-    "  useImperativeHandle,\n  useEffect,\n  useMemo,",
-)
-replace_once(
-    edit,
-    "    const requestCloseRef = useRef(requestClose);\n    requestCloseRef.current = requestClose;",
-    "    const requestCloseRef = useRef(requestClose);\n    useEffect(() => {\n      requestCloseRef.current = requestClose;\n    }, [requestClose]);",
-)
+old_handle = '''    useImperativeHandle(
+      ref,
+      () => ({
+        open: (task: MobileTask) => {
+          const seq = openSeqRef.current + 1;
+          openSeqRef.current = seq;
+          void goalLinksStore.hydrate().then(() => {
+            if (openSeqRef.current !== seq) return;
+            const currentGoalId = goalLinksStore.goalFor(String(task._id)) ?? null;
+            const nextState: TaskState = isTaskCompleted(task)
+              ? "completed"
+              : isTaskOnTimeline(task)
+                ? "timeline"
+                : "inbox";
+            const draft: DraftState = {
+              title: task.title,
+              description: task.description ?? "",
+              deadline: task.deadline ?? "",
+              time: task.time ?? "",
+              priority: task.priority,
+              goalId: currentGoalId,
+            };
+            currentTaskRef.current = task;
+            setTaskId(task._id);
+            setTaskState(nextState);
+            setTitle(draft.title);
+            setDescription(draft.description);
+            setDeadline(draft.deadline);
+            setTime(draft.time);
+            setPriority(draft.priority);
+            setDraftGoalId(draft.goalId);
+            setInitialDraft(draft);
+            setSaving(false);
+            setError(null);
+            setMode("inspector");
+            setTitleEditing(false);
+            setNotesEditing(false);
+            setGoalQuery("");
+            setOverflowOpen(false);
+            setVisible(true);
+            onSheetChange?.(true);
+            haptic.light();
+          });
+        },
+        close: () => {
+          openSeqRef.current += 1;
+          if (mode !== "inspector") {
+            setMode("inspector");
+            return;
+          }
+          void requestCloseRef.current();
+        },
+      }),
+      [mode, onSheetChange],
+    );
+
+'''
+replace_once(edit, old_handle, "")
+
+old_ref = '''    const requestCloseRef = useRef(requestClose);
+    requestCloseRef.current = requestClose;
+'''
+new_handle = '''    useImperativeHandle(
+      ref,
+      () => ({
+        open: (task: MobileTask) => {
+          const seq = openSeqRef.current + 1;
+          openSeqRef.current = seq;
+          void goalLinksStore.hydrate().then(() => {
+            if (openSeqRef.current !== seq) return;
+            const currentGoalId = goalLinksStore.goalFor(String(task._id)) ?? null;
+            const nextState: TaskState = isTaskCompleted(task)
+              ? "completed"
+              : isTaskOnTimeline(task)
+                ? "timeline"
+                : "inbox";
+            const draft: DraftState = {
+              title: task.title,
+              description: task.description ?? "",
+              deadline: task.deadline ?? "",
+              time: task.time ?? "",
+              priority: task.priority,
+              goalId: currentGoalId,
+            };
+            currentTaskRef.current = task;
+            setTaskId(task._id);
+            setTaskState(nextState);
+            setTitle(draft.title);
+            setDescription(draft.description);
+            setDeadline(draft.deadline);
+            setTime(draft.time);
+            setPriority(draft.priority);
+            setDraftGoalId(draft.goalId);
+            setInitialDraft(draft);
+            setSaving(false);
+            setError(null);
+            setMode("inspector");
+            setTitleEditing(false);
+            setNotesEditing(false);
+            setGoalQuery("");
+            setOverflowOpen(false);
+            setVisible(true);
+            onSheetChange?.(true);
+            haptic.light();
+          });
+        },
+        close: () => {
+          openSeqRef.current += 1;
+          if (mode !== "inspector") {
+            setMode("inspector");
+            return;
+          }
+          void requestClose();
+        },
+      }),
+      [mode, onSheetChange, requestClose],
+    );
+'''
+replace_once(edit, old_ref, new_handle)
 
 old_strip = '''  const strip = (rest: AnyProps) => {
     const {
