@@ -32,14 +32,14 @@ jobs:
         shell: bash
         run: |
           set +e
-          bun run lint > /tmp/lint.log 2>&1
-          lint_status=$?
           (cd apps/mobile && bun run typecheck:fast) > /tmp/typecheck.log 2>&1
           type_status=$?
-          echo "=== LINT OUTPUT ==="
-          cat /tmp/lint.log
+          bun run lint > /tmp/lint.log 2>&1
+          lint_status=$?
           echo "=== MOBILE TYPECHECK OUTPUT ==="
           cat /tmp/typecheck.log
+          echo "=== LINT ERROR LOCATIONS ==="
+          grep -E '^/|^[[:space:]]+[0-9]+:[0-9]+[[:space:]]+error' /tmp/lint.log || true
           if [ "$lint_status" -ne 0 ] || [ "$type_status" -ne 0 ]; then
             exit 1
           fi
