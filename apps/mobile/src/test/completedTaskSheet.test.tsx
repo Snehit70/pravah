@@ -9,14 +9,12 @@ const mockConfirm = vi.fn(async () => true);
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
   const strip = (rest: AnyProps) => {
-    const {
-      style: _style,
-      accessibilityRole: _role,
-      accessibilityState: _state,
-      accessibilityViewIsModal: _modal,
-      hitSlop: _hitSlop,
-      ...safe
-    } = rest;
+    const safe = { ...rest };
+    delete safe.style;
+    delete safe.accessibilityRole;
+    delete safe.accessibilityState;
+    delete safe.accessibilityViewIsModal;
+    delete safe.hitSlop;
     return safe;
   };
   const View = ({ children, ...rest }: AnyProps) => React.createElement("div", strip(rest), children);

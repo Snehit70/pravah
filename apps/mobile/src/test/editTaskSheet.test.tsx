@@ -22,14 +22,12 @@ const {
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
   const strip = (rest: AnyProps) => {
-    const {
-      style: _style,
-      accessibilityRole: _role,
-      accessibilityState: _state,
-      accessibilityViewIsModal: _modal,
-      hitSlop: _hitSlop,
-      ...safe
-    } = rest;
+    const safe = { ...rest };
+    delete safe.style;
+    delete safe.accessibilityRole;
+    delete safe.accessibilityState;
+    delete safe.accessibilityViewIsModal;
+    delete safe.hitSlop;
     return safe;
   };
   const View = ({ children, ...rest }: AnyProps) =>
@@ -90,19 +88,19 @@ vi.mock("react-native", () => {
     },
     ref,
   ) {
-    const inputRef = React.useRef<HTMLInputElement | HTMLTextAreaElement>(null);
-    React.useImperativeHandle(ref, () => ({ focus: () => inputRef.current?.focus() }));
+    React.useImperativeHandle(ref, () => ({ focus: () => undefined }));
     const props = {
       ...strip(rest),
-      ref: inputRef,
       value: value ?? "",
       placeholder,
       "aria-label": accessibilityLabel,
       onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-        onChangeText?.(event.target.value),
+        (onChangeText as ((value: string) => void) | undefined)?.(event.target.value),
       onBlur,
       onKeyDown: (event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-        if (event.key === "Enter" && !multiline) onSubmitEditing?.();
+        if (event.key === "Enter" && !multiline) {
+          (onSubmitEditing as (() => void) | undefined)?.();
+        }
       },
       "data-testid":
         placeholder === "Task title"

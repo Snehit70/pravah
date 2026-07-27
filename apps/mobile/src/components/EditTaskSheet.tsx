@@ -188,10 +188,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     },
     ref,
   ) {
-    const titleInputRef = useRef<TextInput>(null);
-    const notesInputRef = useRef<TextInput>(null);
     const openSeqRef = useRef(0);
-    const currentTaskRef = useRef<MobileTask | null>(null);
     const confirm = useConfirm();
     const insets = useSafeAreaInsets();
     const reducedMotion = useReducedMotion();
@@ -200,6 +197,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
 
     const [visible, setVisible] = useState(false);
     const [taskId, setTaskId] = useState<Id<"tasks"> | null>(null);
+    const [currentTask, setCurrentTask] = useState<MobileTask | null>(null);
     const [taskState, setTaskState] = useState<TaskState | null>(null);
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
@@ -223,6 +221,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         Keyboard.dismiss();
         setVisible(false);
         setTaskId(null);
+        setCurrentTask(null);
         setTaskState(null);
         setInitialDraft(null);
         setDraftGoalId(null);
@@ -236,62 +235,6 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         if (notify) onSheetChange?.(false);
       },
       [onSheetChange],
-    );
-
-    useImperativeHandle(
-      ref,
-      () => ({
-        open: (task: MobileTask) => {
-          const seq = openSeqRef.current + 1;
-          openSeqRef.current = seq;
-          void goalLinksStore.hydrate().then(() => {
-            if (openSeqRef.current !== seq) return;
-            const currentGoalId = goalLinksStore.goalFor(String(task._id)) ?? null;
-            const nextState: TaskState = isTaskCompleted(task)
-              ? "completed"
-              : isTaskOnTimeline(task)
-                ? "timeline"
-                : "inbox";
-            const draft: DraftState = {
-              title: task.title,
-              description: task.description ?? "",
-              deadline: task.deadline ?? "",
-              time: task.time ?? "",
-              priority: task.priority,
-              goalId: currentGoalId,
-            };
-            currentTaskRef.current = task;
-            setTaskId(task._id);
-            setTaskState(nextState);
-            setTitle(draft.title);
-            setDescription(draft.description);
-            setDeadline(draft.deadline);
-            setTime(draft.time);
-            setPriority(draft.priority);
-            setDraftGoalId(draft.goalId);
-            setInitialDraft(draft);
-            setSaving(false);
-            setError(null);
-            setMode("inspector");
-            setTitleEditing(false);
-            setNotesEditing(false);
-            setGoalQuery("");
-            setOverflowOpen(false);
-            setVisible(true);
-            onSheetChange?.(true);
-            haptic.light();
-          });
-        },
-        close: () => {
-          openSeqRef.current += 1;
-          if (mode !== "inspector") {
-            setMode("inspector");
-            return;
-          }
-          void requestCloseRef.current();
-        },
-      }),
-      [mode, onSheetChange],
     );
 
     const hasUnsavedChanges = useMemo(() => {
@@ -348,8 +291,61 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       });
       if (discard) closeModal();
     }, [closeModal, confirm, hasUnsavedChanges, initialDraft?.title, mode, title]);
-    const requestCloseRef = useRef(requestClose);
-    requestCloseRef.current = requestClose;
+    useImperativeHandle(
+      ref,
+      () => ({
+        open: (task: MobileTask) => {
+          const seq = openSeqRef.current + 1;
+          openSeqRef.current = seq;
+          void goalLinksStore.hydrate().then(() => {
+            if (openSeqRef.current !== seq) return;
+            const currentGoalId = goalLinksStore.goalFor(String(task._id)) ?? null;
+            const nextState: TaskState = isTaskCompleted(task)
+              ? "completed"
+              : isTaskOnTimeline(task)
+                ? "timeline"
+                : "inbox";
+            const draft: DraftState = {
+              title: task.title,
+              description: task.description ?? "",
+              deadline: task.deadline ?? "",
+              time: task.time ?? "",
+              priority: task.priority,
+              goalId: currentGoalId,
+            };
+            setCurrentTask(task);
+            setTaskId(task._id);
+            setTaskState(nextState);
+            setTitle(draft.title);
+            setDescription(draft.description);
+            setDeadline(draft.deadline);
+            setTime(draft.time);
+            setPriority(draft.priority);
+            setDraftGoalId(draft.goalId);
+            setInitialDraft(draft);
+            setSaving(false);
+            setError(null);
+            setMode("inspector");
+            setTitleEditing(false);
+            setNotesEditing(false);
+            setGoalQuery("");
+            setOverflowOpen(false);
+            setVisible(true);
+            onSheetChange?.(true);
+            haptic.light();
+          });
+        },
+        close: () => {
+          openSeqRef.current += 1;
+          if (mode !== "inspector") {
+            setMode("inspector");
+            return;
+          }
+          void requestClose();
+        },
+      }),
+      [mode, onSheetChange, requestClose],
+    );
 
     const handleSave = useCallback(async () => {
       if (!taskId || !initialDraft || !title.trim() || saving) return;
@@ -389,16 +385,16 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       if (previousState.goalId !== savedDraft.goalId) {
         setGoalLink(String(taskId), savedDraft.goalId);
       }
-      const sourceTask = currentTaskRef.current;
+      const sourceTask = currentTask;
       if (sourceTask) {
-        currentTaskRef.current = {
+        setCurrentTask({
           ...sourceTask,
           title: savedDraft.title,
           description: savedDraft.description || undefined,
           deadline: savedDraft.deadline || undefined,
           time: savedDraft.deadline ? savedDraft.time || undefined : undefined,
           priority: savedDraft.priority,
-        };
+        });
         onSaveComplete?.({ message: "Changes saved", run: () => {} }, sourceTask, previousState);
       }
       setInitialDraft(savedDraft);
@@ -415,6 +411,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       Keyboard.dismiss();
       haptic.success();
     }, [
+      currentTask,
       deadline,
       description,
       draftGoalId,
@@ -452,7 +449,6 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       haptic.selection();
     }, []);
 
-    const currentTask = currentTaskRef.current;
     const completed = taskState === "completed";
     const planningWhen = whenLabel(deadline, time);
     const planningPriority = priority ? `${priorityLabel(priority)} — ${priority === "p1" ? "High" : priority === "p2" ? "Medium" : "Low"}` : "No priority";
@@ -711,7 +707,6 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           <View style={styles.titleBlock}>
             {titleEditing && !completed ? (
               <TextInput
-                ref={titleInputRef}
                 value={title}
                 onChangeText={(value) => {
                   setTitle(value);
@@ -728,10 +723,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             ) : (
               <Pressable
                 disabled={completed}
-                onPress={() => {
-                  setTitleEditing(true);
-                  setTimeout(() => titleInputRef.current?.focus(), 0);
-                }}
+                onPress={() => setTitleEditing(true)}
                 accessibilityRole={completed ? undefined : "button"}
                 accessibilityLabel={completed ? undefined : "Edit task title"}
                 style={({ pressed }) => [styles.titlePressable, pressed && !completed && styles.pressed]}
@@ -749,7 +741,6 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             <Text style={styles.sectionLabel}>Notes</Text>
             {notesEditing && !completed ? (
               <TextInput
-                ref={notesInputRef}
                 value={description}
                 onChangeText={setDescription}
                 placeholder="Add notes"
@@ -764,10 +755,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             ) : (
               <Pressable
                 disabled={completed}
-                onPress={() => {
-                  setNotesEditing(true);
-                  setTimeout(() => notesInputRef.current?.focus(), 0);
-                }}
+                onPress={() => setNotesEditing(true)}
                 accessibilityRole={completed ? undefined : "button"}
                 accessibilityLabel={completed ? undefined : "Edit task notes"}
                 style={({ pressed }) => [styles.notesPreview, pressed && !completed && styles.pressed]}
