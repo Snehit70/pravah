@@ -6,9 +6,9 @@ import {
   useRef,
   useState,
 } from "react";
+import type { ReactNode } from "react";
 import {
   Keyboard,
-  LayoutChangeEvent,
   Modal,
   Pressable,
   ScrollView,
@@ -21,34 +21,39 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { haptic } from "../lib/haptic";
-import {
-  colors,
-  radii,
-  spacing,
-  typography,
-} from "../theme/tokens";
-import { getThemeRuntimeSnapshot } from "../theme/themeRuntime";
-import { createThemedStyles } from "../theme/themeRuntime";
+import { colors, radii, spacing, typography } from "../theme/tokens";
+import { createThemedStyles, getThemeRuntimeSnapshot } from "../theme/themeRuntime";
 import type { MobileTask } from "./TaskCard";
 import { isTaskCompleted, isTaskOnTimeline } from "../lib/taskState";
 import type { Id } from "../../../../convex/_generated/dataModel";
-import type { TaskPriority } from "../lib/task-form";
-import { TaskMetaFields } from "./TaskMetaFields";
+import {
+  formatTime12h,
+  priorityDotColor,
+  priorityLabel,
+  type TaskPriority,
+} from "../lib/task-form";
 import { useConfirm } from "../hooks/useConfirm";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useGoals } from "../hooks/useGoals";
 import { goalLinksStore } from "../lib/goalLinks";
 import { useGoalMutations } from "../hooks/useGoalMutations";
 import { useReducedMotion } from "../hooks/useReducedMotion";
-import { QuickScheduleSheet } from "./QuickScheduleSheet";
+import { ThemedDatePicker } from "./ThemedDatePicker";
+import { ThemedTimePicker } from "./ThemedTimePicker";
 import {
-  CheckIcon,
   CalendarIcon,
-  TrashIcon,
+  CheckIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ClockIcon,
+  CloseIcon,
   FileTextIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
+  InboxTrayIcon,
+  InfoCircleIcon,
+  PencilIcon,
+  SearchIcon,
+  TrashIcon,
 } from "./UiIcons";
+import { addDays, dateLabel, getLocalDateString, humanDate, toIsoDate } from "../lib/dates";
 
 export type EditTaskSheetRef = {
   open: (task: MobileTask) => void;
@@ -79,18 +84,94 @@ type EditTaskSheetProps = {
   onSaveComplete?: (
     undo: UndoPayload,
     task: MobileTask,
-    previousState: {
-      title: string;
-      description: string;
-      deadline: string;
-      time: string;
-      priority: TaskPriority;
-      goalId: string | null;
-    }
+    previousState: DraftState,
   ) => void;
 };
 
-const DESCRIPTION_TRUNCATE_LINES = 4;
+type TaskState = "inbox" | "timeline" | "completed";
+type SheetMode = "inspector" | "when" | "priority" | "goal" | "details";
+
+type DraftState = {
+  title: string;
+  description: string;
+  deadline: string;
+  time: string;
+  priority: TaskPriority;
+  goalId: string | null;
+};
+
+const PRIORITY_OPTIONS: Array<{ value: TaskPriority; label: string; detail: string }> = [
+  { value: undefined, label: "No priority", detail: "" },
+  { value: "p1", label: "P1", detail: "High" },
+  { value: "p2", label: "P2", detail: "Medium" },
+  { value: "p3", label: "P3", detail: "Low" },
+];
+
+function formatTimestamp(ms?: number): string | null {
+  if (!ms) return null;
+  return new Date(ms).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function whenLabel(deadline: string, time: string): string {
+  if (!deadline) return "Inbox";
+  const today = getLocalDateString();
+  const tomorrow = toIsoDate(addDays(new Date(), 1));
+  const day = dateLabel(deadline, today, tomorrow);
+  return time ? `${day} · ${formatTime12h(time)}` : day;
+}
+
+function statusLabel(state: TaskState | null, deadline: string, completedAt?: number): string {
+  if (state === "completed") {
+    return `COMPLETED${completedAt ? ` · ${formatTimestamp(completedAt)?.toUpperCase()}` : ""}`;
+  }
+  if (!deadline) return "INBOX TASK";
+  return `PLANNED · ${whenLabel(deadline, "").toUpperCase()}`;
+}
+
+function PlanningRow({
+  icon,
+  label,
+  value,
+  valueColor,
+  onPress,
+  selected,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  valueColor?: string;
+  onPress?: () => void;
+  selected?: boolean;
+}) {
+  const body = (
+    <>
+      <View style={styles.planningIcon}>{icon}</View>
+      <Text style={styles.planningLabel}>{label}</Text>
+      <Text style={[styles.planningValue, valueColor ? { color: valueColor } : null]} numberOfLines={1}>
+        {value}
+      </Text>
+      {onPress ? <ChevronRightIcon color={colors.textMuted} size={16} /> : null}
+      {selected ? <CheckIcon color={colors.accent} size={17} /> : null}
+    </>
+  );
+
+  if (!onPress) return <View style={styles.planningRow}>{body}</View>;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}, ${value}`}
+      style={({ pressed }) => [styles.planningRow, pressed && styles.pressed]}
+    >
+      {body}
+    </Pressable>
+  );
+}
 
 export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
   function EditTaskSheet(
@@ -100,14 +181,15 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       onSheetChange,
       onComplete,
       onReopen,
-      onScheduleToDate,
-      onUnschedule,
+      onScheduleToDate: _onScheduleToDate,
+      onUnschedule: _onUnschedule,
       onDelete,
       onSaveComplete,
     },
-    ref
+    ref,
   ) {
     const titleInputRef = useRef<TextInput>(null);
+    const notesInputRef = useRef<TextInput>(null);
     const openSeqRef = useRef(0);
     const currentTaskRef = useRef<MobileTask | null>(null);
     const confirm = useConfirm();
@@ -117,31 +199,24 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const { setGoalLink } = useGoalMutations();
 
     const [visible, setVisible] = useState(false);
-    const [scheduleTarget, setScheduleTarget] = useState<{
-      taskId: Id<"tasks">;
-      title: string;
-    } | null>(null);
     const [taskId, setTaskId] = useState<Id<"tasks"> | null>(null);
-    const [taskState, setTaskState] = useState<"inbox" | "timeline" | "completed" | null>(null);
+    const [taskState, setTaskState] = useState<TaskState | null>(null);
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [deadline, setDeadline] = useState("");
     const [time, setTime] = useState("");
     const [priority, setPriority] = useState<TaskPriority>(undefined);
+    const [draftGoalId, setDraftGoalId] = useState<string | null>(null);
+    const [initialDraft, setInitialDraft] = useState<DraftState | null>(null);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [showGoalPicker, setShowGoalPicker] = useState(false);
-    const [initialDraft, setInitialDraft] = useState<{
-      title: string;
-      description: string;
-      deadline: string;
-      time: string;
-      priority: TaskPriority;
-      goalId: string | null;
-    } | null>(null);
-    const [draftGoalId, setDraftGoalId] = useState<string | null>(null);
-    const [descriptionExpanded, setDescriptionExpanded] = useState(false);
-    const [descriptionHeight, setDescriptionHeight] = useState(0);
+    const [mode, setMode] = useState<SheetMode>("inspector");
+    const [titleEditing, setTitleEditing] = useState(false);
+    const [notesEditing, setNotesEditing] = useState(false);
+    const [goalQuery, setGoalQuery] = useState("");
+    const [overflowOpen, setOverflowOpen] = useState(false);
+    const [showDatePicker, setShowDatePicker] = useState(false);
+    const [showTimePicker, setShowTimePicker] = useState(false);
 
     const closeModal = useCallback(
       (notify = true) => {
@@ -149,60 +224,135 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         setVisible(false);
         setTaskId(null);
         setTaskState(null);
-        setTime("");
         setInitialDraft(null);
         setDraftGoalId(null);
-        setShowGoalPicker(false);
-        setDescriptionExpanded(false);
-        setDescriptionHeight(0);
+        setMode("inspector");
+        setTitleEditing(false);
+        setNotesEditing(false);
+        setGoalQuery("");
+        setOverflowOpen(false);
+        setShowDatePicker(false);
+        setShowTimePicker(false);
         if (notify) onSheetChange?.(false);
       },
-      [onSheetChange]
+      [onSheetChange],
     );
 
-    useImperativeHandle(ref, () => ({
-      open: (task: MobileTask) => {
-        const seq = openSeqRef.current + 1;
-        openSeqRef.current = seq;
-        void goalLinksStore.hydrate().then(() => {
-          if (openSeqRef.current !== seq) return;
-          const currentGoalId = goalLinksStore.goalFor(String(task._id)) ?? null;
-          setTaskId(task._id);
-          setTaskState(
-            isTaskCompleted(task) ? "completed" : isTaskOnTimeline(task) ? "timeline" : "inbox"
-          );
-          currentTaskRef.current = task;
-          setTitle(task.title);
-          setDescription(task.description ?? "");
-          setDeadline(task.deadline ?? "");
-          setTime(task.time ?? "");
-          setPriority(task.priority);
-          setDraftGoalId(currentGoalId);
-          setInitialDraft({
-            title: task.title,
-            description: task.description ?? "",
-            deadline: task.deadline ?? "",
-            time: task.time ?? "",
-            priority: task.priority,
-            goalId: currentGoalId,
+    useImperativeHandle(
+      ref,
+      () => ({
+        open: (task: MobileTask) => {
+          const seq = openSeqRef.current + 1;
+          openSeqRef.current = seq;
+          void goalLinksStore.hydrate().then(() => {
+            if (openSeqRef.current !== seq) return;
+            const currentGoalId = goalLinksStore.goalFor(String(task._id)) ?? null;
+            const nextState: TaskState = isTaskCompleted(task)
+              ? "completed"
+              : isTaskOnTimeline(task)
+                ? "timeline"
+                : "inbox";
+            const draft: DraftState = {
+              title: task.title,
+              description: task.description ?? "",
+              deadline: task.deadline ?? "",
+              time: task.time ?? "",
+              priority: task.priority,
+              goalId: currentGoalId,
+            };
+            currentTaskRef.current = task;
+            setTaskId(task._id);
+            setTaskState(nextState);
+            setTitle(draft.title);
+            setDescription(draft.description);
+            setDeadline(draft.deadline);
+            setTime(draft.time);
+            setPriority(draft.priority);
+            setDraftGoalId(draft.goalId);
+            setInitialDraft(draft);
+            setSaving(false);
+            setError(null);
+            setMode("inspector");
+            setTitleEditing(false);
+            setNotesEditing(false);
+            setGoalQuery("");
+            setOverflowOpen(false);
+            setVisible(true);
+            onSheetChange?.(true);
+            haptic.light();
           });
-          setError(null);
-          setDescriptionExpanded(false);
-          setDescriptionHeight(0);
-          setVisible(true);
-          onSheetChange?.(true);
-          haptic.light();
-        });
-      },
-      close: () => {
-        openSeqRef.current += 1;
+        },
+        close: () => {
+          openSeqRef.current += 1;
+          if (mode !== "inspector") {
+            setMode("inspector");
+            return;
+          }
+          void requestCloseRef.current();
+        },
+      }),
+      [mode, onSheetChange],
+    );
+
+    const hasUnsavedChanges = useMemo(() => {
+      if (!initialDraft || !taskId) return false;
+      return (
+        title !== initialDraft.title ||
+        description !== initialDraft.description ||
+        deadline !== initialDraft.deadline ||
+        time !== initialDraft.time ||
+        priority !== initialDraft.priority ||
+        draftGoalId !== initialDraft.goalId
+      );
+    }, [deadline, description, draftGoalId, initialDraft, priority, taskId, time, title]);
+
+    const canSave = Boolean(title.trim()) && hasUnsavedChanges && !saving;
+    const linkedGoal = draftGoalId ? goals.find((goal) => goal.id === draftGoalId) ?? null : null;
+    const filteredGoals = useMemo(() => {
+      const query = goalQuery.trim().toLocaleLowerCase();
+      if (!query) return goals;
+      return goals.filter((goal) => goal.text.toLocaleLowerCase().includes(query));
+    }, [goalQuery, goals]);
+
+    const restoreInitialDraft = useCallback(() => {
+      if (!initialDraft) return;
+      setTitle(initialDraft.title);
+      setDescription(initialDraft.description);
+      setDeadline(initialDraft.deadline);
+      setTime(initialDraft.time);
+      setPriority(initialDraft.priority);
+      setDraftGoalId(initialDraft.goalId);
+      setError(null);
+      setMode("inspector");
+      setTitleEditing(false);
+      setNotesEditing(false);
+      Keyboard.dismiss();
+    }, [initialDraft]);
+
+    const requestClose = useCallback(async () => {
+      if (mode !== "inspector") {
+        setMode("inspector");
+        setOverflowOpen(false);
+        return;
+      }
+      if (!hasUnsavedChanges) {
         closeModal();
-      },
-    }), [closeModal, onSheetChange]);
+        return;
+      }
+      const discard = await confirm({
+        title: "Discard your changes?",
+        message: `Changes to “${initialDraft?.title || title || "this task"}” will be lost.`,
+        confirmLabel: "Discard changes",
+        cancelLabel: "Keep editing",
+        destructive: true,
+      });
+      if (discard) closeModal();
+    }, [closeModal, confirm, hasUnsavedChanges, initialDraft?.title, mode, title]);
+    const requestCloseRef = useRef(requestClose);
+    requestCloseRef.current = requestClose;
 
     const handleSave = useCallback(async () => {
-      if (!taskId || !title.trim() || saving) return;
-
+      if (!taskId || !initialDraft || !title.trim() || saving) return;
       const deadlineResult = isValidDeadline(deadline);
       if (deadlineResult.error) {
         setError(deadlineResult.error);
@@ -210,112 +360,563 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         return;
       }
 
+      const savedDraft: DraftState = {
+        title: title.trim(),
+        description: description.trim(),
+        deadline: deadlineResult.value ?? "",
+        time: deadlineResult.value ? time.trim() : "",
+        priority,
+        goalId: draftGoalId,
+      };
+      const previousState = { ...initialDraft };
       setSaving(true);
       setError(null);
-
       const success = await onSave({
         taskId,
-        title: title.trim(),
-        description: description.trim() || undefined,
-        deadline: deadlineResult.value,
-        time: deadlineResult.value ? (time.trim() || undefined) : undefined,
-        priority,
+        title: savedDraft.title,
+        description: savedDraft.description || undefined,
+        deadline: savedDraft.deadline || undefined,
+        time: savedDraft.deadline ? savedDraft.time || undefined : undefined,
+        priority: savedDraft.priority,
       });
-
       setSaving(false);
-
-      if (success) {
-        if (initialDraft?.goalId !== draftGoalId) {
-          setGoalLink(String(taskId), draftGoalId);
-        }
-
-        if (onSaveComplete && initialDraft && currentTaskRef.current) {
-          const savedTask = currentTaskRef.current;
-          const previousState = { ...initialDraft };
-          onSaveComplete(
-            {
-              message: "Changes saved",
-              run: () => {},
-            },
-            savedTask,
-            previousState,
-          );
-        }
-
-        closeModal();
-      }
-    }, [
-      taskId,
-      title,
-      description,
-      deadline,
-      time,
-      priority,
-      saving,
-      onSave,
-      isValidDeadline,
-      initialDraft,
-      draftGoalId,
-      closeModal,
-      setGoalLink,
-      onSaveComplete,
-    ]);
-
-    const hasUnsavedChanges = useMemo(() => {
-      const initial = initialDraft;
-      if (!initial || !taskId) return false;
-      return (
-        title !== initial.title ||
-        description !== initial.description ||
-        deadline !== initial.deadline ||
-        time !== initial.time ||
-        priority !== initial.priority ||
-        draftGoalId !== initial.goalId
-      );
-    }, [deadline, description, draftGoalId, initialDraft, priority, taskId, time, title]);
-
-    const canSave = useMemo(() => Boolean(title.trim()) && hasUnsavedChanges && !saving, [title, saving, hasUnsavedChanges]);
-
-    const linkedGoalId = taskId ? draftGoalId : null;
-    const linkedGoal = linkedGoalId ? goals.find((g) => g.id === linkedGoalId) ?? null : null;
-
-    const requestClose = useCallback(async () => {
-      if (!hasUnsavedChanges) {
-        closeModal();
+      if (!success) {
+        setError("Couldn’t save changes. Try again.");
+        haptic.error();
         return;
       }
-      const discard = await confirm({
-        title: "Discard changes?",
-        message: "You have unsaved edits in this task.",
-        confirmLabel: "Discard",
-        cancelLabel: "Keep editing",
+
+      if (previousState.goalId !== savedDraft.goalId) {
+        setGoalLink(String(taskId), savedDraft.goalId);
+      }
+      const sourceTask = currentTaskRef.current;
+      if (sourceTask) {
+        currentTaskRef.current = {
+          ...sourceTask,
+          title: savedDraft.title,
+          description: savedDraft.description || undefined,
+          deadline: savedDraft.deadline || undefined,
+          time: savedDraft.deadline ? savedDraft.time || undefined : undefined,
+          priority: savedDraft.priority,
+        };
+        onSaveComplete?.({ message: "Changes saved", run: () => {} }, sourceTask, previousState);
+      }
+      setInitialDraft(savedDraft);
+      setTitle(savedDraft.title);
+      setDescription(savedDraft.description);
+      setDeadline(savedDraft.deadline);
+      setTime(savedDraft.time);
+      setTaskState((current) =>
+        current === "completed" ? current : savedDraft.deadline ? "timeline" : "inbox",
+      );
+      setMode("inspector");
+      setTitleEditing(false);
+      setNotesEditing(false);
+      Keyboard.dismiss();
+      haptic.success();
+    }, [
+      deadline,
+      description,
+      draftGoalId,
+      initialDraft,
+      isValidDeadline,
+      onSave,
+      onSaveComplete,
+      priority,
+      saving,
+      setGoalLink,
+      taskId,
+      time,
+      title,
+    ]);
+
+    const deleteTask = useCallback(async () => {
+      if (!taskId || !onDelete) return;
+      const ok = await confirm({
+        title: `Delete “${title || "task"}”?`,
+        message: "It will be removed from active planning. You can restore it for 30 minutes.",
+        confirmLabel: "Delete task",
+        cancelLabel: "Cancel",
         destructive: true,
       });
-      if (discard) closeModal();
-    }, [hasUnsavedChanges, confirm, closeModal]);
+      if (!ok) return;
+      onDelete(taskId);
+      closeModal();
+    }, [closeModal, confirm, onDelete, taskId, title]);
 
-    const isDescriptionLong = descriptionHeight > DESCRIPTION_TRUNCATE_LINES * 22;
-
-    const onDescriptionLayout = useCallback((e: LayoutChangeEvent) => {
-      setDescriptionHeight(e.nativeEvent.layout.height);
+    const chooseDeadline = useCallback((value: string) => {
+      setDeadline(value);
+      if (!value) setTime("");
+      setError(null);
+      setMode("inspector");
+      haptic.selection();
     }, []);
 
-    return (
+    const currentTask = currentTaskRef.current;
+    const completed = taskState === "completed";
+    const planningWhen = whenLabel(deadline, time);
+    const planningPriority = priority ? `${priorityLabel(priority)} — ${priority === "p1" ? "High" : priority === "p2" ? "Medium" : "Low"}` : "No priority";
+    const planningGoal = linkedGoal?.text ?? "No goal";
+
+    const renderUtilityHeader = () => (
       <>
-        <Modal
-          visible={visible}
-          transparent
-          animationType={reducedMotion ? "none" : "slide"}
-          statusBarTranslucent
-          onRequestClose={() => void requestClose()}
+        <View style={styles.handleBar} />
+        <View style={styles.utilityHeader}>
+          <Pressable
+            onPress={() => void requestClose()}
+            accessibilityRole="button"
+            accessibilityLabel="Close task inspector"
+            hitSlop={12}
+            style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+          >
+            <CloseIcon color={colors.textPrimary} size={20} />
+          </Pressable>
+          <Text style={styles.utilityLabel}>TASK</Text>
+          <Pressable
+            onPress={() => setOverflowOpen((open) => !open)}
+            accessibilityRole="button"
+            accessibilityLabel="More task actions"
+            accessibilityState={{ expanded: overflowOpen }}
+            hitSlop={12}
+            style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.moreGlyph}>•••</Text>
+          </Pressable>
+        </View>
+        {overflowOpen ? (
+          <View style={styles.overflowMenu}>
+            <Pressable
+              onPress={() => {
+                setOverflowOpen(false);
+                setMode("details");
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="View task details"
+              style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}
+            >
+              <InfoCircleIcon color={colors.textSecondary} size={18} />
+              <Text style={styles.menuItemText}>Task details</Text>
+            </Pressable>
+            {onDelete ? (
+              <Pressable
+                onPress={() => {
+                  setOverflowOpen(false);
+                  void deleteTask();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Delete task"
+                style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}
+              >
+                <TrashIcon color={colors.error} size={18} />
+                <Text style={[styles.menuItemText, { color: colors.error }]}>Delete task</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+      </>
+    );
+
+    const renderPickerHeader = (label: string) => (
+      <>
+        <View style={styles.handleBar} />
+        <View style={styles.pickerHeader}>
+          <Pressable
+            onPress={() => setMode("inspector")}
+            accessibilityRole="button"
+            accessibilityLabel="Back to task inspector"
+            hitSlop={12}
+            style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+          >
+            <ChevronLeftIcon color={colors.textPrimary} size={21} />
+          </Pressable>
+          <Text style={styles.pickerTitle}>{label}</Text>
+          <View style={styles.iconButton} />
+        </View>
+      </>
+    );
+
+    const renderWhenPicker = () => {
+      const today = getLocalDateString();
+      const tomorrow = toIsoDate(addDays(new Date(), 1));
+      const options = [
+        { label: "Inbox", value: "", icon: <InboxTrayIcon color={colors.textSecondary} size={19} /> },
+        { label: "Today", value: today, icon: <CalendarIcon color={colors.textSecondary} size={19} /> },
+        { label: "Tomorrow", value: tomorrow, icon: <CalendarIcon color={colors.warning} size={19} /> },
+      ];
+      return (
+        <>
+          {renderPickerHeader("When")}
+          <ScrollView contentContainerStyle={styles.pickerContent} keyboardShouldPersistTaps="handled">
+            <View style={styles.optionGroup}>
+              {options.map((option) => (
+                <PlanningRow
+                  key={option.label}
+                  icon={option.icon}
+                  label={option.label}
+                  value=""
+                  selected={deadline === option.value}
+                  onPress={() => chooseDeadline(option.value)}
+                />
+              ))}
+              <PlanningRow
+                icon={<CalendarIcon color={colors.textSecondary} size={19} />}
+                label="Pick a date…"
+                value=""
+                onPress={() => setShowDatePicker(true)}
+              />
+            </View>
+            {deadline ? (
+              <View style={styles.optionGroup}>
+                <PlanningRow
+                  icon={<ClockIcon color={colors.textSecondary} size={19} />}
+                  label={time ? "Time" : "Add time"}
+                  value={time ? formatTime12h(time) : ""}
+                  onPress={() => setShowTimePicker(true)}
+                />
+                <Pressable
+                  onPress={() => chooseDeadline("")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear schedule"
+                  style={({ pressed }) => [styles.clearSchedule, pressed && styles.pressed]}
+                >
+                  <TrashIcon color={colors.error} size={17} />
+                  <Text style={styles.clearScheduleText}>Clear schedule</Text>
+                </Pressable>
+              </View>
+            ) : null}
+            <View style={styles.schedulePreview}>
+              <Text style={styles.sectionKicker}>SCHEDULE PREVIEW</Text>
+              <Text style={styles.previewValue}>{planningWhen}</Text>
+              <Text style={styles.previewDetail}>{deadline ? humanDate(deadline) : "Returns this task to Inbox"}</Text>
+            </View>
+          </ScrollView>
+        </>
+      );
+    };
+
+    const renderPriorityPicker = () => (
+      <>
+        {renderPickerHeader("Priority")}
+        <ScrollView contentContainerStyle={styles.pickerContent}>
+          <View style={styles.optionGroup}>
+            {PRIORITY_OPTIONS.map((option) => {
+              const label = option.detail ? `${option.label} — ${option.detail}` : option.label;
+              return (
+                <PlanningRow
+                  key={option.label}
+                  icon={<View style={[styles.priorityDot, { backgroundColor: priorityDotColor(option.value) }]} />}
+                  label={label}
+                  value=""
+                  selected={priority === option.value}
+                  onPress={() => {
+                    setPriority(option.value);
+                    setMode("inspector");
+                    haptic.selection();
+                  }}
+                />
+              );
+            })}
+          </View>
+          <Text style={styles.helperText}>Set priority to help focus on what matters most.</Text>
+        </ScrollView>
+      </>
+    );
+
+    const renderGoalPicker = () => (
+      <>
+        {renderPickerHeader("Goal")}
+        <View style={styles.searchWrap}>
+          <SearchIcon color={colors.textMuted} size={18} />
+          <TextInput
+            value={goalQuery}
+            onChangeText={setGoalQuery}
+            placeholder="Search goals…"
+            placeholderTextColor={colors.textMuted}
+            accessibilityLabel="Search goals"
+            autoFocus
+            style={styles.searchInput}
+          />
+        </View>
+        <ScrollView contentContainerStyle={styles.goalList} keyboardShouldPersistTaps="handled">
+          <PlanningRow
+            icon={<FileTextIcon color={colors.textMuted} size={19} />}
+            label="No goal"
+            value=""
+            selected={!draftGoalId}
+            onPress={() => {
+              setDraftGoalId(null);
+              setMode("inspector");
+              Keyboard.dismiss();
+              haptic.selection();
+            }}
+          />
+          {filteredGoals.map((goal) => (
+            <PlanningRow
+              key={goal.id}
+              icon={<FileTextIcon color={colors.accent} size={19} />}
+              label={goal.text}
+              value=""
+              selected={draftGoalId === goal.id}
+              onPress={() => {
+                setDraftGoalId(goal.id);
+                setMode("inspector");
+                Keyboard.dismiss();
+                haptic.selection();
+              }}
+            />
+          ))}
+          {filteredGoals.length === 0 ? (
+            <Text style={styles.emptySearch}>No Goals match “{goalQuery.trim()}”.</Text>
+          ) : null}
+        </ScrollView>
+      </>
+    );
+
+    const renderDetails = () => (
+      <>
+        {renderPickerHeader("Task details")}
+        <ScrollView contentContainerStyle={styles.pickerContent}>
+          <View style={styles.detailsCard}>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Created</Text>
+              <Text style={styles.detailValue}>{formatTimestamp(currentTask?.createdAt) ?? "Unknown"}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Last updated</Text>
+              <Text style={styles.detailValue}>{formatTimestamp(currentTask?.updatedAt) ?? "Unknown"}</Text>
+            </View>
+            {currentTask?.completedAt ? (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Completed</Text>
+                <Text style={styles.detailValue}>{formatTimestamp(currentTask.completedAt)}</Text>
+              </View>
+            ) : null}
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Captured in</Text>
+              <Text style={styles.detailValue}>{initialDraft?.deadline ? "Timeline" : "Inbox"}</Text>
+            </View>
+          </View>
+        </ScrollView>
+      </>
+    );
+
+    const renderInspector = () => (
+      <>
+        {renderUtilityHeader()}
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
+          <View style={styles.titleBlock}>
+            {titleEditing && !completed ? (
+              <TextInput
+                ref={titleInputRef}
+                value={title}
+                onChangeText={(value) => {
+                  setTitle(value);
+                  setError(null);
+                }}
+                placeholder="Task title"
+                placeholderTextColor={colors.textMuted}
+                accessibilityLabel="Task title"
+                autoFocus
+                returnKeyType="done"
+                onSubmitEditing={() => setTitleEditing(false)}
+                style={styles.titleInput}
+              />
+            ) : (
+              <Pressable
+                disabled={completed}
+                onPress={() => {
+                  setTitleEditing(true);
+                  setTimeout(() => titleInputRef.current?.focus(), 0);
+                }}
+                accessibilityRole={completed ? undefined : "button"}
+                accessibilityLabel={completed ? undefined : "Edit task title"}
+                style={({ pressed }) => [styles.titlePressable, pressed && !completed && styles.pressed]}
+              >
+                <Text style={styles.titleText}>{title || "Untitled task"}</Text>
+                {!completed ? <PencilIcon color={colors.textMuted} size={17} /> : null}
+              </Pressable>
+            )}
+            <Text style={[styles.statusLine, completed && { color: colors.success }]}>
+              {statusLabel(taskState, deadline, currentTask?.completedAt)}
+            </Text>
+          </View>
+
+          <View style={styles.notesSection}>
+            <Text style={styles.sectionLabel}>Notes</Text>
+            {notesEditing && !completed ? (
+              <TextInput
+                ref={notesInputRef}
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Add notes"
+                placeholderTextColor={colors.textMuted}
+                accessibilityLabel="Task notes"
+                autoFocus
+                multiline
+                textAlignVertical="top"
+                onBlur={() => setNotesEditing(false)}
+                style={styles.notesInput}
+              />
+            ) : (
+              <Pressable
+                disabled={completed}
+                onPress={() => {
+                  setNotesEditing(true);
+                  setTimeout(() => notesInputRef.current?.focus(), 0);
+                }}
+                accessibilityRole={completed ? undefined : "button"}
+                accessibilityLabel={completed ? undefined : "Edit task notes"}
+                style={({ pressed }) => [styles.notesPreview, pressed && !completed && styles.pressed]}
+              >
+                <Text
+                  style={[styles.notesText, !description && styles.emptyValue]}
+                  numberOfLines={description ? 3 : 1}
+                >
+                  {description || "Add notes"}
+                </Text>
+              </Pressable>
+            )}
+          </View>
+
+          <View style={styles.planningSection}>
+            <Text style={styles.sectionLabel}>Planning</Text>
+            <View style={styles.planningCard}>
+              <PlanningRow
+                icon={<CalendarIcon color={colors.textSecondary} size={18} />}
+                label="When"
+                value={planningWhen}
+                onPress={completed ? undefined : () => setMode("when")}
+              />
+              <PlanningRow
+                icon={<View style={[styles.priorityDot, { backgroundColor: priorityDotColor(priority) }]} />}
+                label="Priority"
+                value={planningPriority}
+                valueColor={priority ? priorityDotColor(priority) : undefined}
+                onPress={completed ? undefined : () => setMode("priority")}
+              />
+              <PlanningRow
+                icon={<FileTextIcon color={draftGoalId ? colors.accent : colors.textMuted} size={18} />}
+                label="Goal"
+                value={planningGoal}
+                onPress={completed ? undefined : () => setMode("goal")}
+              />
+            </View>
+          </View>
+
+          {completed ? (
+            <View style={styles.readOnlyNotice}>
+              <InfoCircleIcon color={colors.textMuted} size={16} />
+              <Text style={styles.readOnlyText}>Editing is available after you reopen this task.</Text>
+            </View>
+          ) : null}
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        </ScrollView>
+      </>
+    );
+
+    const renderFooter = () => {
+      if (!taskId) return null;
+      if (hasUnsavedChanges) {
+        return (
+          <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+            <Pressable
+              onPress={restoreInitialDraft}
+              accessibilityRole="button"
+              accessibilityLabel="Discard changes"
+              style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.secondaryButtonText}>Discard</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void handleSave()}
+              disabled={!canSave}
+              accessibilityRole="button"
+              accessibilityLabel={saving ? "Saving changes" : "Save changes"}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                !canSave && styles.primaryButtonDisabled,
+                pressed && canSave && styles.pressed,
+              ]}
+            >
+              <Text style={[styles.primaryButtonText, !canSave && styles.primaryButtonTextDisabled]}>
+                {saving ? "Saving…" : "Save changes"}
+              </Text>
+            </Pressable>
+          </View>
+        );
+      }
+
+      if (completed) {
+        return onReopen ? (
+          <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+            <Pressable
+              onPress={() => {
+                onReopen(taskId);
+                closeModal();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Reopen task"
+              style={({ pressed }) => [styles.primaryButton, styles.singleFooterButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.primaryButtonText}>Reopen task</Text>
+            </Pressable>
+          </View>
+        ) : null;
+      }
+
+      return (
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+          <Pressable
+            onPress={() => {
+              if (taskState === "timeline") {
+                setDeadline("");
+                setTime("");
+                haptic.selection();
+              } else {
+                setMode("when");
+              }
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={taskState === "timeline" ? "Move task to Inbox" : "Schedule task"}
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.secondaryButtonText}>
+              {taskState === "timeline" ? "Move to Inbox" : "Schedule"}
+            </Text>
+          </Pressable>
+          {onComplete ? (
+            <Pressable
+              onPress={() => {
+                onComplete(taskId);
+                closeModal();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Complete task"
+              style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.primaryButtonText}>Complete</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      );
+    };
+
+    return (
+      <Modal
+        visible={visible}
+        transparent
+        animationType={reducedMotion ? "none" : "slide"}
+        statusBarTranslucent
+        onRequestClose={() => void requestClose()}
+      >
         <KeyboardAvoidingView
           behavior="padding"
           automaticOffset
-          style={[
-            styles.overlay,
-            { paddingBottom: Math.max(insets.bottom, spacing.sm) },
-          ]}
+          style={[styles.overlay, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}
         >
           <BlurView
             intensity={38}
@@ -328,553 +929,402 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             style={StyleSheet.absoluteFill}
             onPress={() => void requestClose()}
           />
-
-          <View style={styles.card}>
-            <ScrollView
-              contentContainerStyle={styles.content}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              {/* ── Drag handle ── */}
-              <View style={styles.handleBar} />
-
-              {/* ── Goal header (only if linked) ── */}
-              {linkedGoal ? (
-                <View style={styles.goalHeader}>
-                  <View style={styles.goalIcon}>
-                    <FileTextIcon color={colors.accent} size={20} />
-                  </View>
-                  <View style={styles.goalHeaderText}>
-                    <Text style={styles.goalHeaderLabel}>GOAL</Text>
-                    <Text style={styles.goalHeaderText_value}>{linkedGoal.text}</Text>
-                  </View>
-                </View>
-              ) : null}
-
-              {/* ── Title (always editable) ── */}
-              <TextInput
-                ref={titleInputRef}
-                value={title}
-                onChangeText={(text) => {
-                  setTitle(text);
-                  setError(null);
-                }}
-                placeholder="Task title"
-                placeholderTextColor={colors.textMuted}
-                accessibilityLabel="Task title"
-                style={styles.titleInput}
-              />
-
-              <TaskMetaFields
-                deadline={deadline}
-                time={time}
-                priority={priority}
-                onDeadlineChange={(value) => {
-                  setDeadline(value);
-                  setError(null);
-                }}
-                onTimeChange={setTime}
-                onPriorityChange={setPriority}
-                onClearError={() => setError(null)}
-              />
-
-              {/* ── Goal picker (always available when goals exist) ── */}
-              {goals.length > 0 ? (
-                <View style={styles.goalSection}>
-                  <Pressable
-                    onPress={() => setShowGoalPicker((s) => !s)}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      linkedGoal ? `Goal: ${linkedGoal.text}. Tap to change.` : "Link to a goal"
-                    }
-                    accessibilityState={{ expanded: showGoalPicker }}
-                    style={({ pressed }) => [
-                      styles.goalChip,
-                      linkedGoal && styles.goalChipActive,
-                      pressed && { opacity: 0.7 },
-                    ]}
-                  >
-                    <Text style={styles.goalChipKicker}>Goal</Text>
-                    <Text
-                      style={[styles.goalChipValue, linkedGoal && styles.goalChipValueActive]}
-                      numberOfLines={1}
-                    >
-                      {linkedGoal ? linkedGoal.text : "None"}
-                    </Text>
-                    {showGoalPicker ? (
-                      <ChevronUpIcon color={colors.textMuted} size={14} />
-                    ) : (
-                      <ChevronDownIcon color={colors.textMuted} size={14} />
-                    )}
-                  </Pressable>
-
-                  {showGoalPicker ? (
-                    <Animated.View
-                      entering={reducedMotion ? undefined : FadeIn.duration(150)}
-                      exiting={reducedMotion ? undefined : FadeOut.duration(120)}
-                      style={styles.goalPicker}
-                    >
-                      <Pressable
-                        onPress={() => {
-                          void (async () => {
-                            if (linkedGoalId) {
-                              const ok = await confirm({
-                                title: "Unlink task from goal?",
-                                message: "This task will no longer be linked to its goal.",
-                                confirmLabel: "Unlink",
-                                cancelLabel: "Keep linked",
-                                destructive: true,
-                              });
-                              if (!ok) return;
-                            }
-                            setDraftGoalId(null);
-                            setShowGoalPicker(false);
-                            haptic.light();
-                          })();
-                        }}
-                        hitSlop={8}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: !linkedGoalId }}
-                        style={({ pressed }) => [
-                          styles.goalOption,
-                          !linkedGoalId && styles.goalOptionActive,
-                          pressed && { opacity: 0.7 },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.goalOptionText,
-                            !linkedGoalId && styles.goalOptionTextActive,
-                          ]}
-                        >
-                          No goal
-                        </Text>
-                      </Pressable>
-                      {goals.map((g) => {
-                        const active = g.id === linkedGoalId;
-                        return (
-                          <Pressable
-                            key={g.id}
-                            onPress={() => {
-                              setDraftGoalId(g.id);
-                              setShowGoalPicker(false);
-                              haptic.light();
-                            }}
-                            hitSlop={8}
-                            accessibilityRole="button"
-                            accessibilityState={{ selected: active }}
-                            style={({ pressed }) => [
-                              styles.goalOption,
-                              active && styles.goalOptionActive,
-                              pressed && { opacity: 0.7 },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.goalOptionText,
-                                active && styles.goalOptionTextActive,
-                              ]}
-                              numberOfLines={2}
-                            >
-                              {g.text}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </Animated.View>
-                  ) : null}
-                </View>
-              ) : null}
-
-              {/* ── Description (always editable, truncated) ── */}
-              <View>
-                <TextInput
-                  value={description}
-                  onChangeText={setDescription}
-                  placeholder="Add notes..."
-                  placeholderTextColor={colors.textMuted}
-                  accessibilityLabel="Task notes"
-                  style={[
-                    styles.notesInput,
-                    !descriptionExpanded && isDescriptionLong && { height: DESCRIPTION_TRUNCATE_LINES * 22 },
-                  ]}
-                  multiline
-                  numberOfLines={!descriptionExpanded && isDescriptionLong ? DESCRIPTION_TRUNCATE_LINES : undefined}
-                  onLayout={!descriptionExpanded ? onDescriptionLayout : undefined}
-                  textAlignVertical="top"
-                />
-                {isDescriptionLong && !descriptionExpanded ? (
-                  <Pressable
-                    onPress={() => setDescriptionExpanded(true)}
-                    hitSlop={8}
-                    style={styles.expandButton}
-                    accessibilityRole="button"
-                    accessibilityLabel="Show full notes"
-                  >
-                    <Text style={styles.expandButtonText}>Show more</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-
-              {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-              {/* ── Action buttons ── */}
-              {taskId ? (
-                <View style={styles.quickActions}>
-                  {taskState === "completed" ? (
-                    onReopen ? (
-                      <Pressable
-                        onPress={() => {
-                          onReopen(taskId);
-                          closeModal();
-                        }}
-                        hitSlop={12}
-                        accessibilityRole="button"
-                        accessibilityLabel="Reopen Task"
-                        style={({ pressed }) => [
-                          styles.quickActionItem,
-                          pressed && { opacity: 0.6 },
-                        ]}
-                      >
-                        <CheckIcon color={colors.success} size={16} />
-                        <Text style={[styles.quickActionText, { color: colors.success }]}>
-                          Reopen
-                        </Text>
-                      </Pressable>
-                    ) : null
-                  ) : (
-                    <>
-                      {onComplete ? (
-                        <Pressable
-                          onPress={() => {
-                            onComplete(taskId);
-                            closeModal();
-                          }}
-                          hitSlop={12}
-                          accessibilityRole="button"
-                          accessibilityLabel="Complete Task"
-                          style={({ pressed }) => [
-                            styles.quickActionItem,
-                            pressed && { opacity: 0.6 },
-                          ]}
-                        >
-                          <CheckIcon color={colors.success} size={16} />
-                          <Text style={[styles.quickActionText, { color: colors.success }]}>
-                            Complete
-                          </Text>
-                        </Pressable>
-                      ) : null}
-                      {taskState === "timeline" && onUnschedule ? (
-                        <Pressable
-                          onPress={() => {
-                            onUnschedule(taskId);
-                            closeModal();
-                          }}
-                          hitSlop={12}
-                          accessibilityRole="button"
-                          accessibilityLabel="Move Task to Inbox"
-                          style={({ pressed }) => [
-                            styles.quickActionItem,
-                            pressed && { opacity: 0.6 },
-                          ]}
-                        >
-                          <CalendarIcon color={colors.warning} size={16} />
-                          <Text style={[styles.quickActionText, { color: colors.warning }]}>
-                            Unschedule
-                          </Text>
-                        </Pressable>
-                      ) : null}
-                      {taskState === "inbox" && onScheduleToDate ? (
-                        <Pressable
-                          onPress={() => {
-                            setScheduleTarget({ taskId, title });
-                            closeModal();
-                          }}
-                          hitSlop={12}
-                          accessibilityRole="button"
-                          accessibilityLabel="Schedule Task"
-                          style={({ pressed }) => [
-                            styles.quickActionItem,
-                            pressed && { opacity: 0.6 },
-                          ]}
-                        >
-                          <CalendarIcon color={colors.warning} size={16} />
-                          <Text style={[styles.quickActionText, { color: colors.warning }]}>
-                            Schedule
-                          </Text>
-                        </Pressable>
-                      ) : null}
-                    </>
-                  )}
-                  {onDelete ? (
-                    <Pressable
-                      onPress={() => {
-                        void (async () => {
-                          const ok = await confirm({
-                            title: "Delete task?",
-                            message: "This cannot be undone.",
-                            confirmLabel: "Delete",
-                            destructive: true,
-                          });
-                          if (!ok) return;
-                          onDelete(taskId);
-                          closeModal();
-                        })();
-                      }}
-                      hitSlop={12}
-                      accessibilityRole="button"
-                      accessibilityLabel="Delete Task"
-                      style={({ pressed }) => [
-                        styles.quickActionItem,
-                        styles.deleteActionItem,
-                        pressed && { opacity: 0.6 },
-                      ]}
-                    >
-                      <TrashIcon color={colors.error} size={16} />
-                      <Text style={[styles.quickActionText, styles.deleteText]}>Delete</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-              ) : null}
-
-              {/* ── Save button (dirty state only) ── */}
-              {hasUnsavedChanges ? (
-                <Pressable
-                  onPress={() => void handleSave()}
-                  disabled={!canSave}
-                  hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={saving ? "Saving Task" : "Save Task"}
-                  style={({ pressed }) => [
-                    styles.primaryButton,
-                    !canSave && styles.primaryButtonDisabled,
-                    pressed && { opacity: 0.85 },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.primaryButtonText,
-                      !canSave && styles.primaryButtonTextDisabled,
-                    ]}
-                  >
-                    {saving ? "Saving…" : "Save"}
-                  </Text>
-                </Pressable>
-              ) : null}
-            </ScrollView>
+          <View style={styles.card} accessibilityViewIsModal>
+            {mode === "inspector"
+              ? renderInspector()
+              : mode === "when"
+                ? renderWhenPicker()
+                : mode === "priority"
+                  ? renderPriorityPicker()
+                  : mode === "goal"
+                    ? renderGoalPicker()
+                    : renderDetails()}
+            {renderFooter()}
           </View>
         </KeyboardAvoidingView>
-        </Modal>
-        <QuickScheduleSheet
-          visible={scheduleTarget !== null}
-          taskTitle={scheduleTarget?.title}
-          onClose={() => setScheduleTarget(null)}
-          onPick={(isoDate) => {
-            if (scheduleTarget) onScheduleToDate?.(scheduleTarget.taskId, isoDate);
-          }}
-        />
-      </>
+
+        {showDatePicker ? (
+          <ThemedDatePicker
+            key={deadline || "today"}
+            visible
+            value={deadline || undefined}
+            onSelect={(value) => {
+              setShowDatePicker(false);
+              chooseDeadline(value);
+            }}
+            onClose={() => setShowDatePicker(false)}
+          />
+        ) : null}
+        {showTimePicker ? (
+          <ThemedTimePicker
+            visible
+            value={time || undefined}
+            onSelect={(value) => {
+              setTime(value);
+              setShowTimePicker(false);
+              setMode("inspector");
+            }}
+            onClear={() => setTime("")}
+            onClose={() => setShowTimePicker(false)}
+          />
+        ) : null}
+      </Modal>
     );
-  }
+  },
 );
 
 const styles = createThemedStyles({
   overlay: {
     flex: 1,
-    alignItems: "center",
     justifyContent: "flex-end",
+    alignItems: "center",
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.xxl,
+    paddingTop: spacing.section,
   },
   card: {
     width: "100%",
     maxWidth: 480,
     maxHeight: "92%",
-    backgroundColor: colors.bg,
+    backgroundColor: colors.bgCard,
     borderRadius: radii.xl,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     overflow: "hidden",
   },
-  content: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xl,
-    gap: spacing.md,
-  },
+  pressed: { opacity: 0.68 },
   handleBar: {
     width: 36,
     height: 4,
-    borderRadius: 2,
+    borderRadius: radii.full,
     backgroundColor: colors.border,
     alignSelf: "center",
-    marginTop: spacing.xs,
-    marginBottom: spacing.xs,
+    marginTop: spacing.sm,
   },
-  goalHeader: {
+  utilityHeader: {
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.md,
   },
-  goalIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: radii.md,
-    backgroundColor: colors.accentSoft,
+  pickerHeader: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
+  },
+  iconButton: {
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
   },
-  goalHeaderText: {
-    gap: 1,
-  },
-  goalHeaderLabel: {
+  utilityLabel: {
     ...typography.micro,
-    color: colors.textMuted,
+    color: colors.textSecondary,
+    letterSpacing: 0.8,
   },
-  goalHeaderText_value: {
-    ...typography.bodyMd,
-    color: colors.accent,
-    fontWeight: "600",
-  },
-  titleInput: {
+  moreGlyph: {
+    ...typography.title,
     color: colors.textPrimary,
-    ...typography.headline,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: 0,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    letterSpacing: 1,
+    transform: [{ rotate: "90deg" }],
   },
-  goalSection: {
-    gap: spacing.sm,
+  pickerTitle: {
+    ...typography.title,
+    color: colors.textPrimary,
   },
-  goalChip: {
+  overflowMenu: {
+    alignSelf: "flex-end",
+    marginRight: spacing.md,
+    marginBottom: spacing.sm,
+    minWidth: 190,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.bgFloating,
+    overflow: "hidden",
+  },
+  menuItem: {
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.bgCard,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
   },
-  goalChipActive: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accentSoft,
-  },
-  goalChipKicker: {
-    ...typography.micro,
-    color: colors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-  },
-  goalChipValue: {
-    flex: 1,
+  menuItemText: {
     ...typography.bodyMd,
-    color: colors.textMuted,
+    color: colors.textPrimary,
   },
-  goalChipValueActive: {
+  content: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
+    gap: spacing.xl,
+  },
+  titleBlock: { gap: spacing.xs },
+  titlePressable: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  titleText: {
+    flex: 1,
+    ...typography.headline,
+    color: colors.textPrimary,
+  },
+  titleInput: {
+    minHeight: 44,
+    ...typography.headline,
+    color: colors.textPrimary,
+    paddingHorizontal: 0,
+    paddingVertical: spacing.xs,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.accent,
+  },
+  statusLine: {
+    ...typography.micro,
     color: colors.accent,
+    letterSpacing: 0.7,
+  },
+  notesSection: { gap: spacing.sm },
+  sectionLabel: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
     fontWeight: "600",
   },
-  goalPicker: {
-    gap: 2,
-    paddingVertical: 4,
-    paddingHorizontal: 4,
-    borderRadius: radii.md,
-    backgroundColor: colors.bgCard,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-  },
-  goalOption: {
+  notesPreview: {
+    minHeight: 58,
+    justifyContent: "center",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: 8,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgInput,
   },
-  goalOptionActive: {
-    backgroundColor: colors.accentSoft,
+  notesText: {
+    ...typography.bodyMd,
+    color: colors.textSecondary,
+    lineHeight: 20,
   },
-  goalOptionText: {
+  emptyValue: { color: colors.textMuted },
+  notesInput: {
+    minHeight: 96,
+    maxHeight: 180,
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.bgInput,
+  },
+  planningSection: { gap: spacing.sm },
+  planningCard: {
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    backgroundColor: colors.bgSurface,
+    overflow: "hidden",
+  },
+  planningRow: {
+    minHeight: 50,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
+  },
+  planningIcon: {
+    width: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  planningLabel: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+  },
+  planningValue: {
+    flex: 1,
+    textAlign: "right",
     ...typography.bodyMd,
     color: colors.textSecondary,
   },
-  goalOptionTextActive: {
-    color: colors.accent,
-    fontWeight: "600",
+  priorityDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
-  notesInput: {
-    color: colors.textPrimary,
+  readOnlyNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  readOnlyText: {
+    flex: 1,
     ...typography.bodyMd,
-    minHeight: 60,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: 0,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-    textAlignVertical: "top",
-  },
-  expandButton: {
-    paddingVertical: spacing.xs,
-  },
-  expandButtonText: {
-    ...typography.bodyMd,
-    color: colors.accent,
-    fontWeight: "600",
+    color: colors.textMuted,
   },
   errorText: {
     ...typography.bodyMd,
     color: colors.error,
   },
-  quickActions: {
+  footer: {
+    minHeight: 64,
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
     gap: spacing.sm,
-    paddingTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
-  },
-  quickActionItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    minHeight: 44,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    justifyContent: "center",
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
     backgroundColor: colors.bgCard,
   },
-  quickActionText: {
-    ...typography.micro,
-    fontWeight: "700",
+  secondaryButton: {
+    flex: 1,
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.bgSurface,
   },
-  deleteText: {
-    color: colors.error,
-  },
-  deleteActionItem: {
-    borderColor: colors.error,
-    backgroundColor: colors.errorMuted,
+  secondaryButtonText: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+    fontWeight: "600",
   },
   primaryButton: {
-    backgroundColor: colors.accent,
-    borderRadius: radii.full,
-    minHeight: 48,
-    paddingVertical: 14,
-    paddingHorizontal: 28,
+    flex: 1,
+    minHeight: 46,
     alignItems: "center",
-    marginTop: spacing.sm,
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.accent,
   },
-  primaryButtonDisabled: {
-    backgroundColor: colors.border,
-  },
+  singleFooterButton: { flex: 1 },
+  primaryButtonDisabled: { backgroundColor: colors.border },
   primaryButtonText: {
-    ...typography.title,
-    color: colors.bg,
+    ...typography.bodyMd,
+    color: colors.textInverse,
+    fontWeight: "700",
   },
-  primaryButtonTextDisabled: {
+  primaryButtonTextDisabled: { color: colors.textMuted },
+  pickerContent: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+    gap: spacing.lg,
+  },
+  optionGroup: {
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    backgroundColor: colors.bgSurface,
+    overflow: "hidden",
+  },
+  clearSchedule: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  clearScheduleText: {
+    ...typography.bodyMd,
+    color: colors.error,
+  },
+  schedulePreview: {
+    padding: spacing.md,
+    gap: spacing.xs,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.accentSoft,
+    backgroundColor: colors.accentDim,
+  },
+  sectionKicker: {
+    ...typography.micro,
+    color: colors.accent,
+    letterSpacing: 0.7,
+  },
+  previewValue: {
+    ...typography.title,
+    color: colors.textPrimary,
+  },
+  previewDetail: {
+    ...typography.bodyMd,
     color: colors.textMuted,
+  },
+  helperText: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+  },
+  searchWrap: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.bgInput,
+  },
+  searchInput: {
+    flex: 1,
+    minHeight: 46,
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+    paddingVertical: 0,
+  },
+  goalList: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xl,
+    gap: spacing.sm,
+  },
+  emptySearch: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    textAlign: "center",
+    paddingVertical: spacing.xl,
+  },
+  detailsCard: {
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    backgroundColor: colors.bgSurface,
+    overflow: "hidden",
+  },
+  detailRow: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
+  },
+  detailLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
+  },
+  detailValue: {
+    flex: 1,
+    textAlign: "right",
+    ...typography.bodyMd,
+    color: colors.textPrimary,
   },
 });
