@@ -159,6 +159,63 @@ replace_once(
     '''                onPress={() => setNotesEditing(true)}''',
 )
 
+replace_once(edit, "    const currentTaskRef = useRef<MobileTask | null>(null);\n", "")
+replace_once(
+    edit,
+    '''    const [taskId, setTaskId] = useState<Id<"tasks"> | null>(null);
+    const [taskState, setTaskState] = useState<TaskState | null>(null);''',
+    '''    const [taskId, setTaskId] = useState<Id<"tasks"> | null>(null);
+    const [currentTask, setCurrentTask] = useState<MobileTask | null>(null);
+    const [taskState, setTaskState] = useState<TaskState | null>(null);''',
+)
+replace_once(
+    edit,
+    '''        setTaskId(null);
+        setTaskState(null);''',
+    '''        setTaskId(null);
+        setCurrentTask(null);
+        setTaskState(null);''',
+)
+replace_once(edit, "            currentTaskRef.current = task;", "            setCurrentTask(task);")
+replace_once(
+    edit,
+    '''      const sourceTask = currentTaskRef.current;
+      if (sourceTask) {
+        currentTaskRef.current = {
+          ...sourceTask,
+          title: savedDraft.title,
+          description: savedDraft.description || undefined,
+          deadline: savedDraft.deadline || undefined,
+          time: savedDraft.deadline ? savedDraft.time || undefined : undefined,
+          priority: savedDraft.priority,
+        };
+        onSaveComplete?.({ message: "Changes saved", run: () => {} }, sourceTask, previousState);
+      }''',
+    '''      const sourceTask = currentTask;
+      if (sourceTask) {
+        setCurrentTask({
+          ...sourceTask,
+          title: savedDraft.title,
+          description: savedDraft.description || undefined,
+          deadline: savedDraft.deadline || undefined,
+          time: savedDraft.deadline ? savedDraft.time || undefined : undefined,
+          priority: savedDraft.priority,
+        });
+        onSaveComplete?.({ message: "Changes saved", run: () => {} }, sourceTask, previousState);
+      }''',
+)
+replace_once(edit, "    const currentTask = currentTaskRef.current;\n", "")
+replace_once(
+    edit,
+    '''    }, [
+      deadline,
+      description,''',
+    '''    }, [
+      currentTask,
+      deadline,
+      description,''',
+)
+
 old_strip = '''  const strip = (rest: AnyProps) => {
     const {
       style: _style,
