@@ -133,6 +133,32 @@ new_handle = '''    useImperativeHandle(
 '''
 replace_once(edit, old_ref, new_handle)
 
+replace_once(
+    edit,
+    '''    const titleInputRef = useRef<TextInput>(null);
+    const notesInputRef = useRef<TextInput>(null);
+''',
+    "",
+)
+replace_once(edit, "                ref={titleInputRef}\n", "")
+replace_once(edit, "                ref={notesInputRef}\n", "")
+replace_once(
+    edit,
+    '''                onPress={() => {
+                  setTitleEditing(true);
+                  setTimeout(() => titleInputRef.current?.focus(), 0);
+                }}''',
+    '''                onPress={() => setTitleEditing(true)}''',
+)
+replace_once(
+    edit,
+    '''                onPress={() => {
+                  setNotesEditing(true);
+                  setTimeout(() => notesInputRef.current?.focus(), 0);
+                }}''',
+    '''                onPress={() => setNotesEditing(true)}''',
+)
+
 old_strip = '''  const strip = (rest: AnyProps) => {
     const {
       style: _style,
