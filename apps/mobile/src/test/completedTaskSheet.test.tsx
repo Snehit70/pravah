@@ -1,53 +1,58 @@
 /** @vitest-environment happy-dom */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockConfirm = vi.fn(async () => true);
 
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
-  const View = ({ children, ...rest }: AnyProps) => {
-    const { style: _, ...safe } = rest;
-    return React.createElement("div", safe, children);
+  const strip = (rest: AnyProps) => {
+    const safe = { ...rest };
+    delete safe.style;
+    delete safe.accessibilityRole;
+    delete safe.accessibilityState;
+    delete safe.accessibilityViewIsModal;
+    delete safe.hitSlop;
+    return safe;
   };
-  const Text = ({ children, ...rest }: AnyProps) => {
-    const { style: _, ...safe } = rest;
-    return React.createElement("span", safe, children);
-  };
+  const View = ({ children, ...rest }: AnyProps) => React.createElement("div", strip(rest), children);
+  const Text = ({ children, ...rest }: AnyProps) => React.createElement("span", strip(rest), children);
   const Pressable = ({ children, ...rest }: AnyProps) => {
-    const { onPress, style: _, accessibilityLabel, accessibilityRole, ...safe } = rest as AnyProps & {
+    const { onPress, accessibilityLabel, ...remaining } = rest as AnyProps & {
       onPress?: () => void;
       accessibilityLabel?: string;
-      accessibilityRole?: string;
     };
-    const resolved =
-      typeof children === "function"
-        ? (children as (state: { pressed: boolean }) => React.ReactNode)({ pressed: false })
-        : children;
+    const resolved = typeof children === "function"
+      ? (children as (state: { pressed: boolean }) => React.ReactNode)({ pressed: false })
+      : children;
     return React.createElement(
       "button",
       {
-        ...safe,
+        ...strip(remaining),
         type: "button",
         onClick: onPress,
         "aria-label": accessibilityLabel,
-        role: accessibilityRole,
       },
       resolved,
     );
   };
   const Modal = ({ visible, children }: AnyProps & { visible?: boolean }) =>
     visible ? React.createElement("div", { "data-testid": "completed-sheet" }, children) : null;
-  const ScrollView = ({ children }: AnyProps) => React.createElement("div", {}, children);
-  const StyleSheet = {
-    create: <T extends Record<string, unknown>>(styles: T): T => styles,
-    hairlineWidth: 1,
-    absoluteFill: {},
+  return {
+    Modal,
+    Pressable,
+    ScrollView: View,
+    StyleSheet: { create: <T,>(styles: T) => styles, hairlineWidth: 1, absoluteFill: {} },
+    Text,
+    View,
   };
-  return { Modal, Pressable, ScrollView, StyleSheet, Text, View };
 });
+
+vi.mock("expo-blur", () => ({
+  BlurView: ({ children }: { children?: React.ReactNode }) => React.createElement("div", {}, children),
+}));
 
 vi.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
@@ -59,28 +64,47 @@ vi.mock("../lib/dates", () => ({
 
 vi.mock("../lib/task-form", () => ({
   formatTime12h: (value: string) => value,
+  priorityDotColor: (value?: string) => value === "p1" ? "#f00" : "#999",
+  priorityLabel: (value?: string) => value?.toUpperCase() ?? "—",
 }));
 
 vi.mock("../theme/tokens", () => ({
   colors: {
-    backdrop: "rgba(0,0,0,0.4)",
-    bgCard: "#111",
-    bgSurface: "#181818",
+    bgCard: "#fff",
+    bgSurface: "#fafafa",
+    bgFloating: "#fff",
+    bgInput: "#eee",
     border: "#333",
-    borderSubtle: "#444",
-    textPrimary: "#fff",
-    textSecondary: "#ccc",
-    textMuted: "#999",
-    textInverse: "#000",
-    success: "#0a0",
-    accent: "#06f",
-    error: "#f44",
-    errorMuted: "#fee",
+    borderSubtle: "#ddd",
+    textPrimary: "#111",
+    textSecondary: "#555",
+    textMuted: "#777",
+    textInverse: "#fff",
+    success: "#080",
+    accent: "#60f",
+    error: "#c00",
   },
-  radii: { full: 999, lg: 12, xl: 16 },
-  spacing: { xs: 4, sm: 8, md: 12, lg: 16 },
-  typography: { micro: {}, headline: {}, bodyMd: {}, bodyLg: {}, title: { fontFamily: "Geist" } },
+  radii: { full: 999, lg: 10, xl: 16 },
+  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, section: 32 },
+  typography: { micro: {}, headline: {}, bodyMd: {}, title: {} },
 }));
+
+vi.mock("../theme/themeRuntime", () => ({
+  createThemedStyles: <T,>(styles: T) => styles,
+  getThemeRuntimeSnapshot: () => ({ appearance: "light" }),
+}));
+
+vi.mock("../components/UiIcons", () => {
+  const icon = (name: string) => () => React.createElement("span", { "data-icon": name });
+  return {
+    CalendarIcon: icon("calendar"),
+    CheckIcon: icon("check"),
+    CloseIcon: icon("close"),
+    FileTextIcon: icon("file-text"),
+    InfoCircleIcon: icon("info"),
+    TrashIcon: icon("trash"),
+  };
+});
 
 vi.mock("../hooks/useConfirm", () => ({
   useConfirm: () => mockConfirm,
@@ -98,14 +122,19 @@ const task: MobileTask = {
   time: "09:00",
   scheduledAt: 10,
   completedAt: 20,
+  priority: "p1",
   position: 0,
   updatedAt: 20,
   createdAt: 1,
 };
 
-describe("CompletedTaskSheet", () => {
-  it("renders read-only completion details and actions", () => {
+describe("CompletedTaskSheet compact workbench", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
     mockConfirm.mockResolvedValue(true);
+  });
+
+  it("renders the same read-only inspector hierarchy", () => {
     render(
       <CompletedTaskSheet
         task={task}
@@ -117,77 +146,73 @@ describe("CompletedTaskSheet", () => {
       />,
     );
 
-    expect(screen.getByText("Completed task")).toBeTruthy();
+    expect(screen.getByText("TASK")).toBeTruthy();
     expect(screen.getByText("Ship redesign")).toBeTruthy();
+    expect(screen.getByText(/COMPLETED/)).toBeTruthy();
+    expect(screen.getByText("Notes")).toBeTruthy();
+    expect(screen.getByText("Planning")).toBeTruthy();
     expect(screen.getByText("Mobile parity")).toBeTruthy();
     expect(screen.getByRole("button", { name: /reopen ship redesign/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /view linked goal for ship redesign/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /delete ship redesign/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /delete ship redesign/i })).toBeNull();
   });
 
-  it("routes actions through the selected task id", () => {
-    mockConfirm.mockResolvedValue(true);
-    const onReopen = vi.fn();
+  it("keeps Task details, linked Goal, and deletion in overflow", async () => {
     const onDelete = vi.fn();
     const onViewGoal = vi.fn();
-
     render(
       <CompletedTaskSheet
         task={task}
         linkedGoalName="Mobile parity"
         onClose={vi.fn()}
         onDelete={onDelete}
-        onReopen={onReopen}
+        onReopen={vi.fn()}
         onViewGoal={onViewGoal}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /reopen ship redesign/i }));
-    fireEvent.click(screen.getByRole("button", { name: /view linked goal for ship redesign/i }));
-    fireEvent.click(screen.getByRole("button", { name: /delete ship redesign/i }));
-
-    expect(onReopen).toHaveBeenCalledWith("task-1");
+    fireEvent.click(screen.getByLabelText("More task actions"));
+    expect(screen.getByText("Task details")).toBeTruthy();
+    fireEvent.click(screen.getByText("View linked Goal"));
     expect(onViewGoal).toHaveBeenCalledTimes(1);
-    return waitFor(() => expect(onDelete).toHaveBeenCalledWith("task-1"));
+
+    fireEvent.click(screen.getByLabelText("More task actions"));
+    await act(async () => fireEvent.click(screen.getByText("Delete task")));
+
+    expect(mockConfirm).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringContaining("restore it for 30 minutes"),
+    }));
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith("task-1"));
   });
 
-  it("does not delete when confirmation is declined", () => {
-    mockConfirm.mockResolvedValue(false);
-    const onDelete = vi.fn();
-
+  it("routes Reopen through the selected task id", () => {
+    const onReopen = vi.fn();
     render(
       <CompletedTaskSheet
         task={task}
-        linkedGoalName="Mobile parity"
+        onClose={vi.fn()}
+        onDelete={vi.fn()}
+        onReopen={onReopen}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /reopen ship redesign/i }));
+    expect(onReopen).toHaveBeenCalledWith("task-1");
+  });
+
+  it("does not delete when confirmation is declined", async () => {
+    mockConfirm.mockResolvedValue(false);
+    const onDelete = vi.fn();
+    render(
+      <CompletedTaskSheet
+        task={task}
         onClose={vi.fn()}
         onDelete={onDelete}
         onReopen={vi.fn()}
-      />
+      />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /delete ship redesign/i }));
-
+    fireEvent.click(screen.getByLabelText("More task actions"));
+    await act(async () => fireEvent.click(screen.getByText("Delete task")));
     expect(onDelete).not.toHaveBeenCalled();
-  });
-
-  it("shows inbox-capture origin and hides goal action when unlinked", () => {
-    mockConfirm.mockResolvedValue(true);
-    const noDeadlineTask = {
-      ...task,
-      deadline: undefined,
-      time: undefined,
-    };
-
-    render(
-      <CompletedTaskSheet
-        task={noDeadlineTask}
-        onClose={vi.fn()}
-        onDelete={vi.fn()}
-        onReopen={vi.fn()}
-      />
-    );
-
-    expect(screen.getByText("Inbox capture")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /view linked goal/i })).toBeNull();
   });
 });

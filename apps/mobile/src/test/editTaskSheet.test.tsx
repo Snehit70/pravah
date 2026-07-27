@@ -1,79 +1,129 @@
 /** @vitest-environment happy-dom */
-/**
- * EditTaskSheet tests
- *
- * Strategy: mock bottom sheet and test form interactions, validation,
- * and task update flow.
- */
 
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockConfirm } = vi.hoisted(() => ({
+const {
+  mockConfirm,
+  mockGoals,
+  mockGoalFor,
+  mockSetGoalLink,
+} = vi.hoisted(() => ({
   mockConfirm: vi.fn(async () => true),
+  mockGoals: [
+    { id: "goal-systemd", text: "Systemd Manager" },
+    { id: "goal-pravah", text: "Pravah Mobile Polish" },
+  ],
+  mockGoalFor: vi.fn(() => null as string | null),
+  mockSetGoalLink: vi.fn(),
 }));
 
-// ─── react-native mock ────────────────────────────────────────────────────────
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
-  const View = ({ children, ...rest }: AnyProps) => {
-    const { style: _, ...safe } = rest;
-    return React.createElement("div", safe, children);
+  const strip = (rest: AnyProps) => {
+    const safe = { ...rest };
+    delete safe.style;
+    delete safe.accessibilityRole;
+    delete safe.accessibilityState;
+    delete safe.accessibilityViewIsModal;
+    delete safe.hitSlop;
+    return safe;
   };
-  const Text = ({ children, ...rest }: AnyProps) => {
-    const { style: _, ...safe } = rest;
-    return React.createElement("span", safe, children);
-  };
+  const View = ({ children, ...rest }: AnyProps) =>
+    React.createElement("div", strip(rest), children);
+  const Text = ({ children, ...rest }: AnyProps) =>
+    React.createElement("span", strip(rest), children);
   const Pressable = ({ children, ...rest }: AnyProps) => {
     const {
       onPress,
-      style: _,
-      hitSlop: __,
       disabled,
       accessibilityLabel,
-      accessibilityRole: ___,
-      ...safe
-    } = rest as {
+      ...remaining
+    } = rest as AnyProps & {
       onPress?: () => void;
-      hitSlop?: unknown;
       disabled?: boolean;
       accessibilityLabel?: string;
-      accessibilityRole?: string;
-    } & AnyProps;
+    };
     const resolved =
       typeof children === "function"
-        ? (children as (s: { pressed: boolean }) => React.ReactNode)({ pressed: false })
+        ? (children as (state: { pressed: boolean }) => React.ReactNode)({ pressed: false })
         : children;
     return React.createElement(
       "button",
-      { ...safe, onClick: onPress, type: "button", disabled: disabled ?? false, "aria-label": accessibilityLabel },
+      {
+        ...strip(remaining),
+        type: "button",
+        disabled: Boolean(disabled),
+        onClick: onPress,
+        "aria-label": accessibilityLabel,
+      },
       resolved,
     );
   };
-  const Keyboard = { dismiss: vi.fn() };
-  const Alert = { alert: vi.fn() };
-  const Platform = { OS: "ios", select: <T,>(options: { ios?: T; android?: T; default?: T }) => options.ios ?? options.default };
-  const TextInput = ({ value, onChangeText, placeholder, onLayout: _onLayout, numberOfLines: _numberOfLines, multiline: _multiline, textAlignVertical: _textAlignVertical, style: _style, ...rest }: AnyProps & { value?: string; onChangeText?: (v: string) => void; placeholder?: string; onLayout?: () => void; numberOfLines?: number; multiline?: boolean; textAlignVertical?: string }) =>
-    React.createElement("input", {
-      ...rest,
-      value: value ?? "",
-      onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChangeText?.(e.target.value),
+  const TextInput = React.forwardRef<
+    { focus: () => void },
+    AnyProps & {
+      value?: string;
+      onChangeText?: (value: string) => void;
+      onSubmitEditing?: () => void;
+      onBlur?: () => void;
+      placeholder?: string;
+      accessibilityLabel?: string;
+      multiline?: boolean;
+    }
+  >(function MockTextInput(
+    {
+      value,
+      onChangeText,
+      onSubmitEditing,
+      onBlur,
       placeholder,
-      "data-testid": placeholder === "Task title" ? "title-input" : "description-input",
-    });
+      accessibilityLabel,
+      multiline,
+      autoFocus: _autoFocus,
+      returnKeyType: _returnKeyType,
+      textAlignVertical: _textAlignVertical,
+      ...rest
+    },
+    ref,
+  ) {
+    React.useImperativeHandle(ref, () => ({ focus: () => undefined }));
+    const props = {
+      ...strip(rest),
+      value: value ?? "",
+      placeholder,
+      "aria-label": accessibilityLabel,
+      onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+        (onChangeText as ((value: string) => void) | undefined)?.(event.target.value),
+      onBlur,
+      onKeyDown: (event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        if (event.key === "Enter" && !multiline) {
+          (onSubmitEditing as (() => void) | undefined)?.();
+        }
+      },
+      "data-testid":
+        placeholder === "Task title"
+          ? "title-input"
+          : placeholder === "Search goals…"
+            ? "goal-search"
+            : "description-input",
+    };
+    return multiline
+      ? React.createElement("textarea", props)
+      : React.createElement("input", props);
+  });
+
   return {
     View,
     Text,
     Pressable,
-    KeyboardAvoidingView: View,
-    Keyboard,
-    Alert,
-    Modal: ({ children, visible }: AnyProps & { visible?: boolean }) => (visible ? React.createElement("div", {}, children) : null),
-    Platform,
-    ScrollView: View,
-    StyleSheet: { create: <T,>(s: T) => s, hairlineWidth: 1 },
     TextInput,
+    ScrollView: View,
+    Keyboard: { dismiss: vi.fn() },
+    Modal: ({ children, visible }: AnyProps & { visible?: boolean }) =>
+      visible ? React.createElement("div", {}, children) : null,
+    StyleSheet: { hairlineWidth: 1, absoluteFill: {}, create: <T,>(styles: T) => styles },
   };
 });
 
@@ -98,226 +148,127 @@ vi.mock("react-native-keyboard-controller", () => ({
     ),
 }));
 
-// ─── @gorhom/bottom-sheet mock ────────────────────────────────────────────────
-const mockExpand = vi.fn();
-const mockClose = vi.fn();
-
-vi.mock("@gorhom/bottom-sheet", () => {
-  const BottomSheet = React.forwardRef(
-    (
-      {
-        children,
-        onChange,
-      }: {
-        children?: React.ReactNode;
-        onChange?: (index: number) => void;
-        [key: string]: unknown;
-      },
-      ref: React.Ref<{ expand: () => void; close: () => void }>
-    ) => {
-      React.useImperativeHandle(ref, () => ({
-        expand: () => {
-          mockExpand();
-          onChange?.(0);
-        },
-        close: () => {
-          mockClose();
-          onChange?.(-1);
-        },
-      }));
-      return React.createElement("div", { "data-testid": "bottom-sheet" }, children);
-    }
-  );
-  return {
-    default: BottomSheet,
-    BottomSheetBackdrop: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
-      React.createElement("div", { "data-testid": "backdrop" }, children),
-    BottomSheetView: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
-      React.createElement("div", {}, children),
-    BottomSheetTextInput: ({
-      value,
-      onChangeText,
-      onSubmitEditing,
-      placeholder,
-    }: {
-      value?: string;
-      onChangeText?: (v: string) => void;
-      onSubmitEditing?: () => void;
-      placeholder?: string;
-      [key: string]: unknown;
-    }) =>
-      React.createElement("input", {
-        value: value ?? "",
-        onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChangeText?.(e.target.value),
-        onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
-          if (e.key === "Enter") onSubmitEditing?.();
-        },
-        placeholder,
-        "data-testid": placeholder === "Task title" ? "title-input" : "description-input",
-      }),
-  };
-});
-
-// ─── expo-haptics mock ────────────────────────────────────────────────────────
-vi.mock("expo-haptics", () => ({
-  impactAsync: vi.fn(async () => undefined),
-  notificationAsync: vi.fn(async () => undefined),
-  ImpactFeedbackStyle: { Light: "light", Medium: "medium" },
-  NotificationFeedbackType: { Success: "success", Error: "error" },
-}));
-
-// ─── expo-blur mock ───────────────────────────────────────────────────────────
 vi.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
+  BlurView: ({ children }: { children?: React.ReactNode }) =>
     React.createElement("div", { "data-testid": "blur-view" }, children),
 }));
 
-// ─── react-native-reanimated mock ─────────────────────────────────────────────
-vi.mock("react-native-reanimated", () => ({
-  default: {
-    View: ({ children, ...rest }: { children?: React.ReactNode; [key: string]: unknown }) =>
-      React.createElement("div", rest, children),
-  },
-  FadeIn: { duration: () => ({}) },
-  FadeOut: { duration: () => ({}) },
+vi.mock("react-native-safe-area-context", () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
-// ─── react-native-svg mock ────────────────────────────────────────────────────
 vi.mock("react-native-svg", () => {
   const Stub = ({ children }: { children?: React.ReactNode }) =>
     React.createElement("span", {}, children);
   return { __esModule: true, default: Stub, Svg: Stub, Path: Stub, Circle: Stub, Line: Stub };
 });
 
-// ─── UiIcons mock ─────────────────────────────────────────────────────────────
 vi.mock("../components/UiIcons", () => {
-  const icon = (name: string) => {
-    const Icon = ({ color, size }: { color?: string; size?: number }) =>
-      React.createElement("span", { "data-icon": name, style: { color, fontSize: size } });
-    return Icon;
-  };
+  const icon = (name: string) => ({ color, size }: { color?: string; size?: number }) =>
+    React.createElement("span", { "data-icon": name, style: { color, fontSize: size } });
   return {
-    CheckIcon: icon("check"),
     CalendarIcon: icon("calendar"),
-    TrashIcon: icon("trash"),
-    StarIcon: icon("star"),
-    FileTextIcon: icon("file-text"),
-    ChevronDownIcon: icon("chevron-down"),
-    ChevronUpIcon: icon("chevron-up"),
+    CheckIcon: icon("check"),
     ChevronLeftIcon: icon("chevron-left"),
     ChevronRightIcon: icon("chevron-right"),
+    ClockIcon: icon("clock"),
     CloseIcon: icon("close"),
-    PencilIcon: icon("pencil"),
-    PlusIcon: icon("plus"),
+    FileTextIcon: icon("file-text"),
+    InboxTrayIcon: icon("inbox"),
     InfoCircleIcon: icon("info"),
-    AlertCircleIcon: icon("alert"),
+    PencilIcon: icon("pencil"),
+    SearchIcon: icon("search"),
+    TrashIcon: icon("trash"),
   };
 });
 
-// ─── react-native-safe-area-context mock ──────────────────────────────────────
-vi.mock("react-native-safe-area-context", () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
-}));
-
-// ─── theme tokens mock ────────────────────────────────────────────────────────
 vi.mock("../theme/tokens", () => ({
   colors: {
     bg: "#f7f1e8",
-    bgFloating: "#111",
+    bgSurface: "#fbf7ef",
     bgCard: "#fffaf2",
-    bgInput: "#222",
+    bgFloating: "#fffdf7",
+    bgInput: "rgba(0,0,0,0.04)",
     border: "#333",
     borderSubtle: "#444",
-    accent: "#06f",
-    accentSoft: "rgba(6,0,255,0.16)",
-    textPrimary: "#fff",
-    textSecondary: "#ccc",
-    textMuted: "#999",
-    textInverse: "#000",
-    error: "#f00",
-    errorMuted: "rgba(255,0,0,0.13)",
+    accent: "#6753c7",
+    accentSoft: "rgba(103,83,199,0.16)",
+    accentDim: "rgba(103,83,199,0.07)",
+    textPrimary: "#201914",
+    textSecondary: "#5b5048",
+    textMuted: "#6f6358",
+    textInverse: "#fffaf2",
+    error: "#a43f32",
     success: "#226b4b",
     warning: "#805712",
     priorityP1: "#934536",
     priorityP2: "#805712",
     priorityP3: "#5e6662",
   },
-  radii: { sm: 4, md: 8, lg: 12, xl: 16, full: 9999 },
-  spacing: { xs: 4, sm: 8, md: 16, lg: 24, xxl: 24 },
+  radii: { sm: 4, md: 6, lg: 10, xl: 16, full: 9999 },
+  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, section: 32 },
   typography: {
-    display: {},
     headline: { fontSize: 20 },
-    title: {},
-    bodyLg: { fontSize: 15 },
+    title: { fontSize: 16 },
     bodyMd: { fontSize: 13 },
-    micro: { fontSize: 11, textTransform: "uppercase" },
+    micro: { fontSize: 11 },
   },
 }));
 
-// ─── TaskMetaFields mock ──────────────────────────────────────────────────────
-vi.mock("../components/TaskMetaFields", () => ({
-  TaskMetaFields: ({
-    priority,
-    onPriorityChange,
-  }: {
-    priority?: string;
-    onPriorityChange: (value: string | undefined) => void;
-  }) => React.createElement(
-    "button",
-    {
-      type: "button",
-      "data-testid": "task-meta-fields",
-      "aria-label": `Priority, currently ${priority ?? "none"}`,
-      onClick: () => onPriorityChange(priority === "p1" ? "p2" : "p1"),
-    },
-    priority ?? "none",
-  ),
+vi.mock("../theme/themeRuntime", () => ({
+  createThemedStyles: <T,>(styles: T) => styles,
+  getThemeRuntimeSnapshot: () => ({ appearance: "light" }),
 }));
 
-// ─── ConfirmDialog mock ───────────────────────────────────────────────────────
-// Avoid pulling reanimated/worklets into the test by stubbing the hook.
-// Auto-confirm so discard flows resolve to true.
-vi.mock("../hooks/useGoals", () => ({
-  useGoals: () => ({ goals: [] }),
-}));
-
-vi.mock("../hooks/useGoalMutations", () => ({
-  useGoalMutations: () => ({
-    addGoal: vi.fn(),
-    deleteGoal: vi.fn(),
-    setGoalLink: vi.fn(),
-    clearAll: vi.fn(),
-  }),
-}));
-
-vi.mock("../lib/goalLinks", () => ({
-  goalLinksStore: {
-    hydrate: vi.fn(() => Promise.resolve()),
-    goalFor: vi.fn(() => null),
+vi.mock("../lib/haptic", () => ({
+  haptic: {
+    light: vi.fn(),
+    selection: vi.fn(),
+    success: vi.fn(),
+    error: vi.fn(),
   },
 }));
 
 vi.mock("../hooks/useConfirm", () => ({
   useConfirm: () => mockConfirm,
-  ConfirmProvider: ({ children }: { children?: React.ReactNode }) =>
-    React.createElement("div", {}, children),
+}));
+
+vi.mock("../hooks/useGoals", () => ({
+  useGoals: () => ({ goals: mockGoals }),
+}));
+
+vi.mock("../hooks/useGoalMutations", () => ({
+  useGoalMutations: () => ({ setGoalLink: mockSetGoalLink }),
+}));
+
+vi.mock("../lib/goalLinks", () => ({
+  goalLinksStore: {
+    hydrate: vi.fn(() => Promise.resolve()),
+    goalFor: mockGoalFor,
+  },
 }));
 
 vi.mock("../hooks/useReducedMotion", () => ({
   useReducedMotion: () => false,
 }));
 
-// Import component after all mocks are set up.
+vi.mock("../components/ThemedDatePicker", () => ({
+  ThemedDatePicker: () => React.createElement("div", { "data-testid": "date-picker" }),
+}));
+
+vi.mock("../components/ThemedTimePicker", () => ({
+  ThemedTimePicker: () => React.createElement("div", { "data-testid": "time-picker" }),
+}));
+
 import { EditTaskSheet, type EditTaskSheetRef } from "../components/EditTaskSheet";
 import type { MobileTask } from "../components/TaskCard";
 import type { Id } from "../../../../convex/_generated/dataModel";
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
-
-const sampleTask: MobileTask = {
+const timelineTask: MobileTask = {
   _id: "task1" as Id<"tasks">,
   title: "Original task",
   description: "Original description",
+  deadline: "2026-07-28",
   scheduledAt: 500,
   priority: "p1",
   position: 0,
@@ -325,248 +276,177 @@ const sampleTask: MobileTask = {
   createdAt: 500,
 };
 
-// ─── tests ────────────────────────────────────────────────────────────────────
+function setup(props: Record<string, unknown> = {}) {
+  const ref = { current: null as EditTaskSheetRef | null };
+  const onSave = vi.fn(async () => true);
+  const onSheetChange = vi.fn();
+  const onComplete = vi.fn();
+  const onReopen = vi.fn();
+  const onDelete = vi.fn();
+  render(
+    <EditTaskSheet
+      ref={ref}
+      onSave={onSave}
+      isValidDeadline={(raw) => ({ value: raw || undefined })}
+      onSheetChange={onSheetChange}
+      onComplete={onComplete}
+      onReopen={onReopen}
+      onDelete={onDelete}
+      {...props}
+    />,
+  );
+  return { ref, onSave, onSheetChange, onComplete, onReopen, onDelete };
+}
 
-describe("EditTaskSheet", () => {
-  let ref: { current: EditTaskSheetRef | null };
-  const mockOnSave = vi.fn(async () => true);
-  const mockIsValidDeadline = vi.fn((raw: string) => {
-    if (raw && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-      return { error: "Invalid date format" };
-    }
-    return { value: raw || undefined };
+async function open(ref: { current: EditTaskSheetRef | null }, task: MobileTask = timelineTask) {
+  await act(async () => {
+    ref.current?.open(task);
+    await Promise.resolve();
   });
-  const mockOnSheetChange = vi.fn();
+}
 
+describe("EditTaskSheet compact workbench", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConfirm.mockResolvedValue(true);
-    ref = { current: null };
-    mockExpand.mockClear();
-    mockClose.mockClear();
+    mockGoalFor.mockReturnValue(null);
   });
 
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
+  it("opens as a readable inspector instead of a permanent form", async () => {
+    const { ref, onSheetChange } = setup();
+    await open(ref);
 
-  it("opens with pre-filled task data", async () => {
-    render(
-      <EditTaskSheet
-        ref={ref}
-        onSave={mockOnSave}
-        isValidDeadline={mockIsValidDeadline}
-        onSheetChange={mockOnSheetChange}
-      />
-    );
-
-    await act(async () => {
-      ref.current?.open(sampleTask);
-      await Promise.resolve();
-    });
-
-    expect(mockOnSheetChange).toHaveBeenCalledWith(true);
+    expect(screen.getByText("Original task")).toBeTruthy();
+    expect(screen.queryByTestId("title-input")).toBeNull();
+    expect(screen.getByText(/PLANNED/)).toBeTruthy();
+    expect(screen.getByText("Planning")).toBeTruthy();
+    expect(screen.getByText("Move to Inbox")).toBeTruthy();
+    expect(screen.getByText("Complete")).toBeTruthy();
+    expect(onSheetChange).toHaveBeenCalledWith(true);
 
     const keyboardView = screen.getByTestId("keyboard-avoiding-view");
     expect(keyboardView.getAttribute("data-behavior")).toBe("padding");
     expect(keyboardView.getAttribute("data-automatic-offset")).toBe("true");
-
-    const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
-    expect(titleInput.value).toBe("Original task");
   });
 
-  it("updates task title", async () => {
-    render(
-      <EditTaskSheet
-        ref={ref}
-        onSave={mockOnSave}
-        isValidDeadline={mockIsValidDeadline}
-        onSheetChange={mockOnSheetChange}
-      />
-    );
+  it("stages title edits, saves, and remains open", async () => {
+    const { ref, onSave, onSheetChange } = setup();
+    await open(ref);
 
-    await act(async () => {
-      ref.current?.open(sampleTask);
-      await Promise.resolve();
+    fireEvent.click(screen.getByLabelText("Edit task title"));
+    fireEvent.change(screen.getByTestId("title-input"), {
+      target: { value: "Updated task" },
     });
 
-    const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
-    fireEvent.change(titleInput, { target: { value: "Updated task" } });
+    expect(screen.getByText("Discard")).toBeTruthy();
+    expect(screen.getByText("Save changes")).toBeTruthy();
 
-    const saveBtn = screen.getByText("Save");
-    await act(async () => {
-      fireEvent.click(saveBtn);
-    });
+    await act(async () => fireEvent.click(screen.getByText("Save changes")));
 
     await waitFor(() => {
-      expect(mockOnSave).toHaveBeenCalledTimes(1);
-    });
-
-    expect(mockOnSave).toHaveBeenCalledWith({
-      taskId: "task1",
-      title: "Updated task",
-      description: "Original description",
-      deadline: undefined,
-      priority: "p1",
-    });
-  });
-
-  it("changes priority from the editor", async () => {
-    render(
-      <EditTaskSheet
-        ref={ref}
-        onSave={mockOnSave}
-        isValidDeadline={mockIsValidDeadline}
-        onSheetChange={mockOnSheetChange}
-      />
-    );
-
-    await act(async () => {
-      ref.current?.open(sampleTask);
-      await Promise.resolve();
-    });
-
-    fireEvent.click(screen.getByTestId("task-meta-fields"));
-    expect(screen.getByTestId("task-meta-fields").textContent).toContain("p2");
-
-    await act(async () => {
-      fireEvent.click(screen.getByText("Save"));
-    });
-
-    await waitFor(() => {
-      expect(mockOnSave).toHaveBeenCalledWith({
+      expect(onSave).toHaveBeenCalledWith({
         taskId: "task1",
-        title: "Original task",
+        title: "Updated task",
         description: "Original description",
-        deadline: undefined,
-        priority: "p2",
+        deadline: "2026-07-28",
+        time: undefined,
+        priority: "p1",
       });
     });
+    expect(screen.getByText("Updated task")).toBeTruthy();
+    expect(screen.queryByText("Save changes")).toBeNull();
+    expect(onSheetChange).not.toHaveBeenLastCalledWith(false);
   });
 
-  it("closes via ref method", async () => {
-    render(
-      <EditTaskSheet
-        ref={ref}
-        onSave={mockOnSave}
-        isValidDeadline={mockIsValidDeadline}
-        onSheetChange={mockOnSheetChange}
-      />
-    );
+  it("uses an explicit priority selector instead of cycling", async () => {
+    const { ref, onSave } = setup();
+    await open(ref);
 
-    await act(async () => {
-      ref.current?.open(sampleTask);
-      await Promise.resolve();
+    fireEvent.click(screen.getByLabelText("Priority, P1 — High"));
+    expect(screen.getByText("Priority")).toBeTruthy();
+    fireEvent.click(screen.getByText("P2 — Medium"));
+    await act(async () => fireEvent.click(screen.getByText("Save changes")));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ priority: "p2" }));
     });
-
-    act(() => {
-      ref.current?.close();
-    });
-
-    expect(mockOnSheetChange).toHaveBeenLastCalledWith(false);
   });
 
-  it("asks to discard dirty edits when the backdrop is tapped", async () => {
-    render(
-      <EditTaskSheet
-        ref={ref}
-        onSave={mockOnSave}
-        isValidDeadline={mockIsValidDeadline}
-        onSheetChange={mockOnSheetChange}
-      />
-    );
+  it("searches and stages a Goal selection", async () => {
+    const { ref, onSave } = setup();
+    await open(ref);
 
-    await act(async () => {
-      ref.current?.open(sampleTask);
-      await Promise.resolve();
+    fireEvent.click(screen.getByLabelText("Goal, No goal"));
+    fireEvent.change(screen.getByTestId("goal-search"), {
+      target: { value: "Systemd" },
     });
-    fireEvent.change(screen.getByTestId("title-input"), { target: { value: "Edited task" } });
+    fireEvent.click(screen.getByText("Systemd Manager"));
+    await act(async () => fireEvent.click(screen.getByText("Save changes")));
 
-    await act(async () => fireEvent.click(screen.getByLabelText("Dismiss")));
-
-    expect(mockOnSheetChange).toHaveBeenLastCalledWith(false);
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(mockSetGoalLink).toHaveBeenCalledWith("task1", "goal-systemd");
   });
 
-  it("keeps dirty edits when backdrop discard is cancelled", async () => {
+  it("turns Move to Inbox into a staged scheduling edit", async () => {
+    const { ref, onSave } = setup();
+    await open(ref);
+
+    fireEvent.click(screen.getByText("Move to Inbox"));
+    expect(screen.getByText("Save changes")).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByText("Save changes")));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+        deadline: undefined,
+        time: undefined,
+      }));
+    });
+  });
+
+  it("protects dirty edits on backdrop dismissal", async () => {
     mockConfirm.mockResolvedValueOnce(false);
-    render(
-      <EditTaskSheet
-        ref={ref}
-        onSave={mockOnSave}
-        isValidDeadline={mockIsValidDeadline}
-        onSheetChange={mockOnSheetChange}
-      />
-    );
+    const { ref, onSheetChange } = setup();
+    await open(ref);
 
-    await act(async () => {
-      ref.current?.open(sampleTask);
-      await Promise.resolve();
+    fireEvent.click(screen.getByLabelText("Edit task title"));
+    fireEvent.change(screen.getByTestId("title-input"), {
+      target: { value: "Unsaved title" },
     });
-    fireEvent.change(screen.getByTestId("title-input"), { target: { value: "Edited task" } });
     await act(async () => fireEvent.click(screen.getByLabelText("Dismiss")));
 
-    expect((screen.getByTestId("title-input") as HTMLInputElement).value).toBe("Edited task");
-    expect(mockOnSheetChange).not.toHaveBeenCalledWith(false);
+    expect(mockConfirm).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Discard your changes?",
+      confirmLabel: "Discard changes",
+      cancelLabel: "Keep editing",
+    }));
+    expect((screen.getByTestId("title-input") as HTMLInputElement).value).toBe("Unsaved title");
+    expect(onSheetChange).not.toHaveBeenCalledWith(false);
   });
 
-  it("closes after successful save", async () => {
-    render(
-      <EditTaskSheet
-        ref={ref}
-        onSave={mockOnSave}
-        isValidDeadline={mockIsValidDeadline}
-        onSheetChange={mockOnSheetChange}
-      />
-    );
+  it("keeps completed tasks read-only until reopened", async () => {
+    const completedTask: MobileTask = {
+      ...timelineTask,
+      completedAt: Date.now(),
+    };
+    const { ref, onReopen } = setup();
+    await open(ref, completedTask);
 
-    await act(async () => {
-      ref.current?.open(sampleTask);
-      await Promise.resolve();
-    });
-
-    const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
-    fireEvent.change(titleInput, { target: { value: "Updated" } });
-
-    const saveBtn = screen.getByText("Save");
-    await act(async () => {
-      fireEvent.click(saveBtn);
-    });
-
-    await waitFor(() => {
-      expect(mockOnSheetChange).toHaveBeenLastCalledWith(false);
-    });
+    expect(screen.getByText(/COMPLETED/)).toBeTruthy();
+    expect(screen.queryByLabelText("Edit task title")).toBeNull();
+    fireEvent.click(screen.getByText("Reopen task"));
+    expect(onReopen).toHaveBeenCalledWith("task1");
   });
 
-  it("does not close when save fails", async () => {
-    mockOnSave.mockResolvedValueOnce(false);
+  it("keeps deletion in overflow and explains recovery", async () => {
+    const { ref, onDelete } = setup();
+    await open(ref);
 
-    render(
-      <EditTaskSheet
-        ref={ref}
-        onSave={mockOnSave}
-        isValidDeadline={mockIsValidDeadline}
-        onSheetChange={mockOnSheetChange}
-      />
-    );
+    fireEvent.click(screen.getByLabelText("More task actions"));
+    await act(async () => fireEvent.click(screen.getByText("Delete task")));
 
-    await act(async () => {
-      ref.current?.open(sampleTask);
-      await Promise.resolve();
-    });
-
-    const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
-    fireEvent.change(titleInput, { target: { value: "Updated" } });
-
-    const saveBtn = screen.getByText("Save");
-    await act(async () => {
-      fireEvent.click(saveBtn);
-    });
-
-    await waitFor(() => {
-      expect(mockOnSave).toHaveBeenCalled();
-    });
-
-    // Should not close on failure.
-    expect(mockOnSheetChange).not.toHaveBeenLastCalledWith(false);
+    expect(mockConfirm).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringContaining("restore it for 30 minutes"),
+    }));
+    expect(onDelete).toHaveBeenCalledWith("task1");
   });
 });
