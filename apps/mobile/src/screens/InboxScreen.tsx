@@ -14,14 +14,15 @@
 
 import { useCallback, useMemo, useState } from "react";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
 import type { MobileTask } from "../components/TaskCard";
 import { InboxTaskRow } from "../components/InboxTaskRow";
 import { QuickScheduleSheet } from "../components/QuickScheduleSheet";
-import { CheckIcon, SearchIcon, TrashIcon } from "../components/UiIcons";
+import { CheckIcon, TrashIcon } from "../components/UiIcons";
+import { SearchField } from "../components/SearchField";
 import { TimelineSectionHeader } from "../components/TimelineSectionHeader";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { useConfirm } from "../hooks/useConfirm";
@@ -366,20 +367,14 @@ export function InboxScreen({
         ) : null}
       </View>
 
-      <View style={styles.searchField}>
-        <SearchIcon color={colors.textMuted} size={16} />
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search inbox"
-          placeholderTextColor={colors.textMuted}
-          style={styles.searchInput}
-          returnKeyType="search"
-          autoCorrect={false}
-          autoCapitalize="none"
-          clearButtonMode="while-editing"
-        />
-      </View>
+      <SearchField
+        compact
+        value={query}
+        onChangeText={setQuery}
+        placeholder="Search inbox"
+        placeholderTextColor={colors.textMuted}
+        accessibilityLabel="Search inbox"
+      />
 
       <View style={styles.chipRow}>
         {FILTERS.map((option) => {
@@ -600,25 +595,6 @@ const styles = createThemedStyles({
   selectCount: {
     ...typography.title,
     color: colors.textPrimary,
-  },
-  searchField: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    minHeight: 38,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radii.md,
-    borderCurve: "continuous",
-    backgroundColor: colors.bgCard,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  searchInput: {
-    flex: 1,
-    color: colors.textPrimary,
-    ...typography.bodyMd,
-    fontSize: 14,
-    paddingVertical: spacing.xs,
   },
   chipRow: {
     flexDirection: "row",

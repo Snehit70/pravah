@@ -9,11 +9,10 @@ import { colors, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles, getThemeRuntimeSnapshot } from "../theme/themeRuntime";
 import { useConfirm } from "../hooks/useConfirm";
 import type { MobileTask } from "./TaskCard";
+import NavGoalsAsset from "../assets/icons/nav-goals.svg";
 import {
   CalendarIcon,
   CheckIcon,
-  CloseIcon,
-  FileTextIcon,
   InfoCircleIcon,
   TrashIcon,
 } from "./UiIcons";
@@ -129,15 +128,7 @@ export function CompletedTaskSheet({
         <View style={styles.sheet} accessibilityViewIsModal>
           <View style={styles.handleBar} />
           <View style={styles.utilityHeader}>
-            <Pressable
-              onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel="Close task inspector"
-              hitSlop={12}
-              style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-            >
-              <CloseIcon color={colors.textPrimary} size={20} />
-            </Pressable>
+            <View style={styles.iconButton} />
             <Text style={styles.utilityLabel}>TASK</Text>
             <Pressable
               onPress={() => setOverflowOpen((open) => !open)}
@@ -176,7 +167,7 @@ export function CompletedTaskSheet({
                   accessibilityLabel={`View linked goal for ${task.title}`}
                   style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}
                 >
-                  <FileTextIcon color={colors.accent} size={18} />
+                  <NavGoalsAsset color={colors.accent} width={18} height={18} />
                   <Text style={styles.menuItemText}>View linked Goal</Text>
                 </Pressable>
               ) : null}
@@ -237,7 +228,7 @@ export function CompletedTaskSheet({
                   valueColor={task.priority ? priorityDotColor(task.priority) : undefined}
                 />
                 <PlanningRow
-                  icon={<FileTextIcon color={linkedGoalName ? colors.accent : colors.textMuted} size={18} />}
+                  icon={<NavGoalsAsset color={linkedGoalName ? colors.accent : colors.textMuted} width={18} height={18} />}
                   label="Goal"
                   value={linkedGoalName ?? "No goal"}
                 />

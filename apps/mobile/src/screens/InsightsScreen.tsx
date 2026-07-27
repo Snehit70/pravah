@@ -21,7 +21,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -37,8 +36,8 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   LedgerCheckIcon,
-  SearchIcon,
 } from "../components/UiIcons";
+import { SearchField } from "../components/SearchField";
 import CompletionHistoryIcon from "../assets/icons/completion-history.svg";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useGoalLinks, useGoals } from "../hooks/useGoals";
@@ -391,21 +390,14 @@ export function InsightsScreen({
           </View>
 
           <View style={styles.historyTools}>
-            <View style={styles.searchField}>
-              <SearchIcon color={colors.textMuted} size={16} />
-              <TextInput
-                value={query}
-                onChangeText={setQuery}
-                placeholder="Search completed Tasks"
-                placeholderTextColor={colors.textMuted}
-                accessibilityLabel="Search completed Tasks"
-                returnKeyType="search"
-                autoCorrect={false}
-                autoCapitalize="none"
-                clearButtonMode="while-editing"
-                style={styles.searchInput}
-              />
-            </View>
+            <SearchField
+              compact
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search completed Tasks"
+              placeholderTextColor={colors.textMuted}
+              accessibilityLabel="Search completed Tasks"
+            />
             <SlidingSegmented
               options={HISTORY_WINDOWS}
               value={window}
@@ -593,25 +585,6 @@ const styles = createThemedStyles({
     gap: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderSubtle,
-  },
-  searchField: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    minHeight: 38,
-    paddingHorizontal: spacing.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    borderRadius: radii.md,
-    borderCurve: "continuous",
-    backgroundColor: colors.bgCard,
-  },
-  searchInput: {
-    flex: 1,
-    color: colors.textPrimary,
-    ...typography.bodyMd,
-    fontSize: 14,
-    paddingVertical: spacing.xs,
   },
   emptyState: {
     paddingHorizontal: spacing.xxl,

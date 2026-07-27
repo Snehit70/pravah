@@ -45,14 +45,13 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ClockIcon,
-  CloseIcon,
-  FileTextIcon,
-  InboxTrayIcon,
   InfoCircleIcon,
   PencilIcon,
-  SearchIcon,
   TrashIcon,
 } from "./UiIcons";
+import NavGoalsAsset from "../assets/icons/nav-goals.svg";
+import NavInboxAsset from "../assets/icons/nav-inbox.svg";
+import { SearchField } from "./SearchField";
 import { addDays, dateLabel, getLocalDateString, humanDate, toIsoDate } from "../lib/dates";
 
 export type EditTaskSheetRef = {
@@ -457,15 +456,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       <>
         <View style={styles.handleBar} />
         <View style={styles.utilityHeader}>
-          <Pressable
-            onPress={() => void requestClose()}
-            accessibilityRole="button"
-            accessibilityLabel="Close task inspector"
-            hitSlop={12}
-            style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-          >
-            <CloseIcon color={colors.textPrimary} size={20} />
-          </Pressable>
+          <View style={styles.iconButton} />
           <Text style={styles.utilityLabel}>TASK</Text>
           <Pressable
             onPress={() => setOverflowOpen((open) => !open)}
@@ -534,7 +525,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       const today = getLocalDateString();
       const tomorrow = toIsoDate(addDays(new Date(), 1));
       const options = [
-        { label: "Inbox", value: "", icon: <InboxTrayIcon color={colors.textSecondary} size={19} /> },
+        { label: "Inbox", value: "", icon: <NavInboxAsset color={colors.textSecondary} width={19} height={19} /> },
         { label: "Today", value: today, icon: <CalendarIcon color={colors.textSecondary} size={19} /> },
         { label: "Tomorrow", value: tomorrow, icon: <CalendarIcon color={colors.warning} size={19} /> },
       ];
@@ -621,20 +612,18 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       <>
         {renderPickerHeader("Goal")}
         <View style={styles.searchWrap}>
-          <SearchIcon color={colors.textMuted} size={18} />
-          <TextInput
+          <SearchField
             value={goalQuery}
             onChangeText={setGoalQuery}
             placeholder="Search goals…"
             placeholderTextColor={colors.textMuted}
             accessibilityLabel="Search goals"
             autoFocus
-            style={styles.searchInput}
           />
         </View>
         <ScrollView contentContainerStyle={styles.goalList} keyboardShouldPersistTaps="handled">
           <PlanningRow
-            icon={<FileTextIcon color={colors.textMuted} size={19} />}
+            icon={<NavGoalsAsset color={colors.textMuted} width={19} height={19} />}
             label="No goal"
             value=""
             selected={!draftGoalId}
@@ -648,7 +637,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           {filteredGoals.map((goal) => (
             <PlanningRow
               key={goal.id}
-              icon={<FileTextIcon color={colors.accent} size={19} />}
+              icon={<NavGoalsAsset color={colors.accent} width={19} height={19} />}
               label={goal.text}
               value=""
               selected={draftGoalId === goal.id}
@@ -787,7 +776,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                 onPress={completed ? undefined : () => setMode("priority")}
               />
               <PlanningRow
-                icon={<FileTextIcon color={draftGoalId ? colors.accent : colors.textMuted} size={18} />}
+                icon={<NavGoalsAsset color={draftGoalId ? colors.accent : colors.textMuted} width={18} height={18} />}
                 label="Goal"
                 value={planningGoal}
                 onPress={completed ? undefined : () => setMode("goal")}
@@ -1257,24 +1246,8 @@ const styles = createThemedStyles({
     color: colors.textMuted,
   },
   searchWrap: {
-    minHeight: 48,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.bgInput,
-  },
-  searchInput: {
-    flex: 1,
-    minHeight: 46,
-    ...typography.bodyMd,
-    color: colors.textPrimary,
-    paddingVertical: 0,
   },
   goalList: {
     paddingHorizontal: spacing.lg,
