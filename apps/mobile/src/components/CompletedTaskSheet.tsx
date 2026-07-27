@@ -159,7 +159,8 @@ export function CompletedTaskSheet({
                   setOverflowOpen(false);
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="View task details"
+                accessibilityLabel={showDetails ? "Hide task details" : "View task details"}
+                accessibilityState={{ expanded: showDetails }}
                 style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}
               >
                 <InfoCircleIcon color={colors.textSecondary} size={18} />

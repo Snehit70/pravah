@@ -62,7 +62,6 @@ export type EditTaskSheetRef = {
 
 type UndoPayload = {
   message: string;
-  run: () => void;
 };
 
 type EditTaskSheetProps = {
@@ -395,7 +394,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           time: savedDraft.deadline ? savedDraft.time || undefined : undefined,
           priority: savedDraft.priority,
         });
-        onSaveComplete?.({ message: "Changes saved", run: () => {} }, sourceTask, previousState);
+        onSaveComplete?.({ message: "Changes saved" }, sourceTask, previousState);
       }
       setInitialDraft(savedDraft);
       setTitle(savedDraft.title);
@@ -718,6 +717,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                 autoFocus
                 returnKeyType="done"
                 onSubmitEditing={() => setTitleEditing(false)}
+                onBlur={() => setTitleEditing(false)}
                 style={styles.titleInput}
               />
             ) : (
