@@ -167,7 +167,10 @@ export function CompletedTaskSheet({
               </Pressable>
               {onViewGoal ? (
                 <Pressable
-                  onPress={onViewGoal}
+                  onPress={() => {
+                    setOverflowOpen(false);
+                    onViewGoal();
+                  }}
                   accessibilityRole="button"
                   accessibilityLabel={`View linked goal for ${task.title}`}
                   style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}
@@ -263,7 +266,7 @@ export function CompletedTaskSheet({
             </View>
           </ScrollView>
 
-          <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}> 
+          <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
             <Pressable
               onPress={() => onReopen(task._id)}
               accessibilityRole="button"
