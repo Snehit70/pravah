@@ -15,16 +15,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          ref: ${{ github.head_ref }}
-          persist-credentials: true
-
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
+      - name: Clone pull request branch
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          GH_TOKEN: ${{ github.token }}
+        run: git clone --depth 1 --branch "$HEAD_REF" "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" repo
+
       - name: Apply focused fixes
+        working-directory: repo
         shell: bash
         run: |
           python - <<'PY'
@@ -41,11 +43,7 @@ jobs:
               file.write_text(text.replace(old, new))
 
           edit = "apps/mobile/src/components/EditTaskSheet.tsx"
-          replace_once(
-              edit,
-              "  useImperativeHandle,\n  useMemo,",
-              "  useImperativeHandle,\n  useEffect,\n  useMemo,",
-          )
+          replace_once(edit, "  useImperativeHandle,\n  useMemo,", "  useImperativeHandle,\n  useEffect,\n  useMemo,")
           replace_once(
               edit,
               "    const requestCloseRef = useRef(requestClose);\n    requestCloseRef.current = requestClose;",
@@ -72,7 +70,6 @@ jobs:
             delete safe.hitSlop;
             return safe;
           };'''
-
           for test in [
               "apps/mobile/src/test/editTaskSheet.test.tsx",
               "apps/mobile/src/test/completedTaskSheet.test.tsx",
@@ -102,16 +99,31 @@ jobs:
           PY
 
       - name: Install dependencies
+        working-directory: repo
         run: bun install --frozen-lockfile >/dev/null
 
-      - name: Verify lint and mobile typecheck
+      - name: Verify focused checks
+        working-directory: repo
+        shell: bash
         run: |
-          bun run lint
-          cd apps/mobile
-          bun run typecheck:fast
+          set +e
+          (cd apps/mobile && bun run typecheck:fast) > /tmp/typecheck.log 2>&1
+          type_status=$?
+          bun run lint > /tmp/lint.log 2>&1
+          lint_status=$?
+          echo "=== MOBILE TYPECHECK ==="
+          grep -E 'error TS|^src/' /tmp/typecheck.log || true
+          echo "=== LINT ERRORS ==="
+          grep -E '^/|^[[:space:]]+[0-9]+:[0-9]+[[:space:]]+error' /tmp/lint.log || true
+          if [ "$lint_status" -ne 0 ] || [ "$type_status" -ne 0 ]; then
+            exit 1
+          fi
 
       - name: Commit focused fixes
+        working-directory: repo
         shell: bash
+        env:
+          HEAD_REF: ${{ github.head_ref }}
         run: |
           if git diff --quiet; then
             exit 0
@@ -122,4 +134,4 @@ jobs:
                   apps/mobile/src/test/editTaskSheet.test.tsx \
                   apps/mobile/src/test/completedTaskSheet.test.tsx
           git commit -m "fix(mobile): satisfy task inspector checks"
-          git push origin HEAD:${{ github.head_ref }}
+          git push origin "HEAD:${HEAD_REF}"
