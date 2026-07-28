@@ -60,6 +60,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
   const [description, setDescription] = useState("");
   const [showDesc, setShowDesc] = useState(false);
   const [when, setWhen] = useState<"inbox" | "today" | "tomorrow" | "nextweek">("inbox");
+  const [time, setTime] = useState("");
   const [priority, setPriority] = useState<"p1" | "p2" | "p3" | undefined>(undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -104,6 +105,7 @@ export function QuickAdd({ onClose }: QuickAddProps) {
         title: title.trim(),
         description: description.trim() || undefined,
         deadline,
+        time: deadline ? time || undefined : undefined,
         priority,
       });
       onClose();
@@ -273,6 +275,19 @@ export function QuickAdd({ onClose }: QuickAddProps) {
             <Pill label="Tomorrow" active={when === "tomorrow"} onClick={() => setWhen("tomorrow")} dot dotColor={DEADLINE_COLOR} />
             <Pill label="+1w" active={when === "nextweek"} onClick={() => setWhen("nextweek")} dot dotColor={DEADLINE_COLOR} />
           </div>
+
+          {when !== "inbox" && (
+            <label className="mt-2.5 flex items-center gap-2 text-[11px] text-zinc-500">
+              <span className="font-mono uppercase tracking-[0.12em]">TIME</span>
+              <input
+                type="time"
+                value={time}
+                onChange={(event) => setTime(event.target.value)}
+                className="rounded-[4px] border border-white/[0.08] bg-black/25 px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-[oklch(0.78_0.14_260_/_0.45)]"
+                aria-label="Task time"
+              />
+            </label>
+          )}
 
           {/* Priority */}
           <div className="flex gap-1.5 mt-2.5 flex-wrap items-center">

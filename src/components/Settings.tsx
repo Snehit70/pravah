@@ -29,8 +29,10 @@ import type { GoogleCalendarListEntry } from "../lib/google/types";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
 import { AutomationSettingsSection } from "./AutomationSettingsSection";
+import { WebWorkspaceSettings } from "./WebWorkspaceSettings";
 import { useToast } from "./useToast";
 import { authClient } from "../lib/auth-client";
+import type { Task } from "../types";
 import {
   clearKairoConfig,
   getKairoProviderLabel,
@@ -42,6 +44,7 @@ import {
 
 interface SettingsProps {
   onClose: () => void;
+  tasks?: Task[];
 }
 
 interface ReviewPayloadPreview {
@@ -89,7 +92,7 @@ function getKairoSettingsSignature(settings: KairoSettings) {
   ].join("\n");
 }
 
-export function Settings({ onClose }: SettingsProps) {
+export function Settings({ onClose, tasks = [] }: SettingsProps) {
   const [signingOut, setSigningOut] = useState(false);
   const [kairoSettings, setKairoSettings] = useState<KairoSettings>(() => getKairoSettings());
   const [activeProvider, setActiveProvider] = useState<KairoProviderFormat>(() => getKairoSettings().defaultProvider);
@@ -823,6 +826,8 @@ export function Settings({ onClose }: SettingsProps) {
             </section>
 
             <AutomationSettingsSection />
+
+            <WebWorkspaceSettings tasks={tasks} />
 
             <section>
               <h3 className={cn(

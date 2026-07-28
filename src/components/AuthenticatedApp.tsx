@@ -24,11 +24,11 @@ import { useTaskBoardData } from "../hooks/useTaskBoardData";
 import { useTaskDragHandlers } from "../hooks/useTaskDragHandlers";
 import { useAppKeyboardShortcuts } from "../hooks/useAppKeyboardShortcuts";
 import { useAppOverlays } from "../hooks/useAppOverlays";
+import { useWebReminders } from "../hooks/useWebReminders";
 import type { AppPage } from "./TopNavbar";
 import { useBootstrapUser } from "../hooks/useBootstrapUser";
 import { useToast } from "./useToast";
 import { TopNavbar } from "./TopNavbar";
-import { getLocalDayBounds } from "../lib/utils";
 import { isWebGoalsLinkingEnabled } from "../lib/featureFlags";
 import { isTaskCompleted } from "../lib/taskState";
 
@@ -64,19 +64,19 @@ export function AuthenticatedApp() {
   } = useAppOverlays();
   const { isAuthenticated } = useConvexAuth();
   const bootstrapReady = useBootstrapUser(isAuthenticated);
-  const { showError } = useToast();
+  const { showToast, showError, showSuccess } = useToast();
 
   const boardTasks = useQuery(api.tasks.listBoardTasks, {});
-  const todayCompletedTasks = useQuery(
-    api.tasks.listTodayCompletedTasks,
-    getLocalDayBounds()
-  );
+  const completedTasks = useQuery(api.tasks.listTasks, { status: "completed" });
   const kairoTasks = useQuery(api.tasks.listTasks, kairoActive ? {} : "skip");
   const goals = useQuery(api.goals.list, webGoalsLinkingEnabled ? {} : "skip");
   const goalLinks = useQuery(api.goals.listLinks, webGoalsLinkingEnabled ? {} : "skip");
   const upsertGoal = useMutation(api.goals.upsert);
   const removeGoal = useMutation(api.goals.remove);
   const moveTask = useMutation(api.tasks.moveTask);
+  const completeTask = useMutation(api.tasks.completeTask);
+  const bulkSoftDeleteInboxTasks = useMutation(api.tasks.bulkSoftDeleteInboxTasks);
+  const restoreInboxTasks = useMutation(api.tasks.restoreInboxTasks);
   const unscheduleTask = useMutation(api.tasks.unscheduleTask);
   const reorderTasks = useMutation(api.tasks.reorderTasks);
   const reorderInboxTasks = useMutation(api.tasks.reorderInboxTasks);
@@ -128,10 +128,11 @@ export function AuthenticatedApp() {
     [activePage]
   );
 
-  const allTasksForStats = [
-    ...(boardTasks ?? []),
-    ...(todayCompletedTasks ?? []),
-  ];
+  const allTasksForStats = useMemo(
+    () => [...(boardTasks ?? []), ...(completedTasks ?? [])],
+    [boardTasks, completedTasks]
+  );
+  useWebReminders(allTasksForStats);
 
   const goalNameByTaskId = useMemo(() => {
     if (!webGoalsLinkingEnabled || !goals || !goalLinks) return {};
@@ -164,6 +165,18 @@ export function AuthenticatedApp() {
     return initial;
   }, [boardTasks, goalLinks, goals, webGoalsLinkingEnabled]);
 
+  const linkedTasksByGoalId = useMemo(() => {
+    if (!webGoalsLinkingEnabled || !goalLinks) return {};
+    const taskById = new Map(allTasksForStats.map((task) => [String(task._id), task]));
+    const mapped: Record<string, Task[]> = {};
+    for (const [taskId, goalId] of Object.entries(goalLinks)) {
+      const task = taskById.get(taskId);
+      if (!task) continue;
+      (mapped[goalId] ??= []).push(task);
+    }
+    return mapped;
+  }, [allTasksForStats, goalLinks, webGoalsLinkingEnabled]);
+
   const handleCreateGoal = useCallback(
     async (text: string) => {
       const goalId =
@@ -179,11 +192,80 @@ export function AuthenticatedApp() {
     [upsertGoal]
   );
 
+  const handleUpdateGoal = useCallback(
+    async (
+      goalId: string,
+      patch: { description?: string; deadline?: string; priority?: "p1" | "p2" | "p3" }
+    ) => {
+      const goal = goals?.find((candidate) => candidate.id === goalId);
+      if (!goal) throw new Error("Goal not found");
+      await upsertGoal({
+        clientId: goalId,
+        text: goal.text,
+        description: patch.description,
+        deadline: patch.deadline,
+        priority: patch.priority,
+        createdAt: goal.createdAt ?? Date.now(),
+      });
+    },
+    [goals, upsertGoal]
+  );
+
   const handleDeleteGoal = useCallback(
     async (goalId: string) => {
       await removeGoal({ clientId: goalId });
     },
     [removeGoal]
+  );
+
+  const handleInboxSchedule = useCallback(
+    async (taskId: Task["_id"], targetDate: string) => {
+      try {
+        await moveTask({ taskId, targetDate });
+        showSuccess(`Scheduled for ${targetDate}`);
+      } catch {
+        showError("Could not schedule task");
+      }
+    },
+    [moveTask, showError, showSuccess]
+  );
+
+  const handleCompleteManyInboxTasks = useCallback(
+    async (taskIds: Task["_id"][]) => {
+      try {
+        await Promise.all(taskIds.map((taskId) => completeTask({ taskId })));
+        showSuccess(`${taskIds.length} task${taskIds.length === 1 ? "" : "s"} completed`);
+        return true;
+      } catch {
+        showError("Could not complete the selected tasks");
+        return false;
+      }
+    },
+    [completeTask, showError, showSuccess]
+  );
+
+  const handleDeleteManyInboxTasks = useCallback(
+    async (taskIds: Task["_id"][]) => {
+      try {
+        await bulkSoftDeleteInboxTasks({ taskIds });
+        showToast(`Moved ${taskIds.length} task${taskIds.length === 1 ? "" : "s"} to trash`, "info", {
+          label: "Undo",
+          run: async () => {
+            try {
+              await restoreInboxTasks({ taskIds });
+              showSuccess("Inbox tasks restored");
+            } catch {
+              showError("Could not restore inbox tasks");
+            }
+          },
+        });
+        return true;
+      } catch {
+        showError("Could not delete the selected tasks");
+        return false;
+      }
+    },
+    [bulkSoftDeleteInboxTasks, restoreInboxTasks, showError, showSuccess, showToast]
   );
 
   if (!bootstrapReady || boardTasks === undefined) {
@@ -222,6 +304,7 @@ export function AuthenticatedApp() {
                 goalNameByTaskId={goalNameByTaskId}
                 onTaskClick={openTaskPopup}
                 onOpenQuickAdd={openQuickAdd}
+                onRescheduleTask={(taskId, targetDate) => void handleInboxSchedule(taskId, targetDate)}
               />
             ) : activePage === "goals" ? (
               <LongTermGoalsPage
@@ -230,10 +313,18 @@ export function AuthenticatedApp() {
                 serverGoals={goals ?? undefined}
                 progressByGoalId={progressByGoalId}
                 onCreateServerGoal={handleCreateGoal}
+                onUpdateServerGoal={handleUpdateGoal}
                 onDeleteServerGoal={handleDeleteGoal}
+                linkedTasksByGoalId={linkedTasksByGoalId}
+                onOpenTask={openTaskPopup}
               />
             ) : (
-              <InsightsPage tasks={allTasksForStats} />
+              <InsightsPage
+                tasks={allTasksForStats}
+                completedTasks={completedTasks ?? undefined}
+                goals={goals ?? undefined}
+                progressByGoalId={progressByGoalId}
+              />
             )}
           </main>
           <InboxSidebar
@@ -241,6 +332,9 @@ export function AuthenticatedApp() {
             goalNameByTaskId={goalNameByTaskId}
             onTaskClick={openTaskPopup}
             onOpenQuickAdd={openQuickAdd}
+            onScheduleTask={(taskId, targetDate) => void handleInboxSchedule(taskId, targetDate)}
+            onCompleteMany={handleCompleteManyInboxTasks}
+            onDeleteMany={handleDeleteManyInboxTasks}
           />
         </div>
 
@@ -285,7 +379,7 @@ export function AuthenticatedApp() {
       <Suspense fallback={null}>
         {selectedTask && <TaskPopup task={selectedTask} onClose={closeTaskPopup} />}
         {showQuickAdd && <QuickAdd onClose={closeQuickAdd} />}
-        {showSettings && <Settings onClose={closeSettings} />}
+        {showSettings && <Settings onClose={closeSettings} tasks={allTasksForStats} />}
       </Suspense>
     </div>
   );

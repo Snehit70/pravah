@@ -27,14 +27,24 @@ the May 2026 parity push and what remains open.
 - Long-term Goals page now supports backend create/delete in web.
 - Goal progress bars are derived from task-link state and completion status.
 
+5. Task workflow parity
+- Timed tasks are supported in web capture, task editing, Inbox rows, and Timeline rows.
+- Inbox has priority filters, multi-select completion/deletion, schedule-to-date controls, and recoverable bulk delete.
+- Overdue Timeline tasks have an action-first rescheduling drawer.
+
+6. Progress, goals, and workspace controls
+- Progress includes momentum bars, streaks, work-rhythm summaries, goal progress, and searchable completion history.
+- Server-backed goals expose editable description, deadline, priority, and linked next-task previews.
+- Web settings expose truthful reduced-motion, browser notification/test, and task-export controls.
+
 ## Runtime Flags
 
-Server-backed goals/linking mode on web is controlled by:
+Server-backed goals/linking mode on web is enabled by default and can be controlled by:
 
 - Env: `VITE_FF_WEB_GOALS_LINKING=1`
 - Local override: `localStorage['pravah:ff:web-goals-linking']`
 
-When disabled:
+When explicitly disabled with `VITE_FF_WEB_GOALS_LINKING=0` or the local override `0`:
 - Web falls back to legacy local goals behavior.
 
 When enabled:
@@ -69,9 +79,9 @@ Added or updated tests:
 
 ## Known Follow-Ups
 
-1. Add richer server-backed goal editing fields (description/deadline/priority) in web UI.
-2. Add e2e cross-client consistency checks (web action -> mobile reflects change).
-3. Add structured frontend telemetry for goal-link failure paths.
+1. Add e2e cross-client consistency checks (web action -> mobile reflects change).
+2. Add structured frontend telemetry for goal-link failure paths.
+3. Consider a service-worker-backed reminder scheduler for background web delivery; the current browser reminder loop requires the tab to stay open.
 
 ## Mobile Relationship
 

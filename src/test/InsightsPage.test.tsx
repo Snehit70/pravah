@@ -50,12 +50,13 @@ describe("InsightsPage", () => {
   });
 
   it("switches to Completed tab and shows only completed tasks", () => {
+    const now = Date.now();
     render(
       <InsightsPage
         tasks={[
-          makeTask({ _id: "a" as Id<"tasks">, title: "Complete me", completedAt: 20, updatedAt: 20 }),
+          makeTask({ _id: "a" as Id<"tasks">, title: "Complete me", completedAt: now - 2 * 86400000, updatedAt: now - 2 * 86400000 }),
           makeTask({ _id: "b" as Id<"tasks">, title: "Still open", deadline: "2099-01-01" }),
-          makeTask({ _id: "c" as Id<"tasks">, title: "Another done", completedAt: 30, updatedAt: 30 }),
+          makeTask({ _id: "c" as Id<"tasks">, title: "Another done", completedAt: now - 86400000, updatedAt: now - 86400000 }),
         ]}
       />
     );
@@ -66,5 +67,30 @@ describe("InsightsPage", () => {
     expect(screen.getByText("Another done")).toBeInTheDocument();
     expect(screen.getByText("Complete me")).toBeInTheDocument();
     expect(screen.queryByText("Still open")).not.toBeInTheDocument();
+  });
+
+  it("searches and filters the server-backed completion history", () => {
+    const now = Date.now();
+    render(
+      <InsightsPage
+        tasks={[]}
+        completedTasks={[
+          makeTask({ _id: "recent" as Id<"tasks">, title: "Recent report", completedAt: now - 2 * 86400000 }),
+          makeTask({ _id: "older" as Id<"tasks">, title: "Older report", completedAt: now - 45 * 86400000 }),
+        ]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "Completed" }));
+    expect(screen.getByText("Recent report")).toBeInTheDocument();
+    expect(screen.queryByText("Older report")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search completed tasks" }), {
+      target: { value: "older" },
+    });
+
+    expect(screen.getByText("Older report")).toBeInTheDocument();
+    expect(screen.queryByText("Recent report")).not.toBeInTheDocument();
   });
 });

@@ -1,10 +1,12 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useDndMonitor, useDroppable } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { CalendarDays, Check, Trash2, X } from "lucide-react";
 import type { Task } from "../types";
 import { INBOX_DROP_ID } from "../lib/taskRules";
+import { formatTaskTime, getLocalDateString } from "../lib/utils";
 import { tx } from "../lib/motion";
 
 interface InboxSidebarProps {
@@ -12,6 +14,9 @@ interface InboxSidebarProps {
   onTaskClick: (task: Task) => void;
   onOpenQuickAdd?: () => void;
   goalNameByTaskId?: Record<string, string>;
+  onScheduleTask?: (taskId: Task["_id"], targetDate: string) => void;
+  onCompleteMany?: (taskIds: Task["_id"][]) => Promise<boolean>;
+  onDeleteMany?: (taskIds: Task["_id"][]) => Promise<boolean>;
 }
 
 
@@ -39,15 +44,26 @@ function InboxTaskComponent({
   task,
   onClick,
   goalName,
+  selectMode,
+  selected,
+  onToggleSelect,
+  onSchedule,
 }: {
   task: Task;
   onClick: () => void;
   goalName?: string;
+  selectMode: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
+  onSchedule?: (date: string) => void;
 }) {
   const { setNodeRef, attributes, listeners, transform, transition: dndTransition, isDragging } = useSortable({
     id: task._id,
+    disabled: selectMode,
   });
   const [hover, setHover] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState(getLocalDateString());
 
   const barColor = task.deadline ? "oklch(0.72 0.16 30)" : "oklch(0.78 0.14 260)";
   const isAgentAdded = task.source === "ai-agent";
@@ -89,6 +105,10 @@ function InboxTaskComponent({
       onMouseLeave={() => setHover(false)}
       onClick={(e) => {
         e.stopPropagation();
+        if (selectMode) {
+          onToggleSelect();
+          return;
+        }
         const target = e.currentTarget as HTMLElement;
         type DocVT = Document & { startViewTransition?: (cb: () => void) => unknown };
         const doc = document as DocVT;
@@ -114,6 +134,34 @@ function InboxTaskComponent({
         }
       }}
     >
+      {selectMode && (
+        <button
+          type="button"
+          aria-label={selected ? `Deselect ${task.title}` : `Select ${task.title}`}
+          aria-pressed={selected}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSelect();
+          }}
+          style={{
+            position: "absolute",
+            top: 9,
+            left: 10,
+            width: 16,
+            height: 16,
+            borderRadius: 4,
+            border: `1px solid ${selected ? "oklch(0.78 0.14 260)" : "rgba(255,255,255,.2)"}`,
+            background: selected ? "oklch(0.78 0.14 260)" : "transparent",
+            color: "#101013",
+            display: "grid",
+            placeItems: "center",
+            cursor: "pointer",
+          }}
+        >
+          {selected && <Check size={11} strokeWidth={3} />}
+        </button>
+      )}
       {/* Left bar */}
       <span
         style={{
@@ -127,7 +175,7 @@ function InboxTaskComponent({
           borderRadius: 2,
         }}
       />
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5" style={{ paddingLeft: selectMode ? 22 : 0 }}>
         <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {task.title}
         </span>
@@ -157,7 +205,7 @@ function InboxTaskComponent({
           </span>
         )}
       </div>
-      {(sourceLabel || age) && (
+      {(sourceLabel || age || task.time) && (
         <div
           className="tabular"
           style={{
@@ -175,7 +223,64 @@ function InboxTaskComponent({
               {sourceLabel}
             </span>
           )}
+          {task.time && <span style={{ color: "#8b8b94" }}>{formatTaskTime(task.time)}</span>}
           {age && <span style={{ color: "#45454a" }}>{age}</span>}
+        </div>
+      )}
+      {!selectMode && onSchedule && (
+        <div className="mt-2 flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
+          {scheduleOpen ? (
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              <input
+                type="date"
+                value={scheduleDate}
+                min={getLocalDateString()}
+                onChange={(e) => setScheduleDate(e.target.value)}
+                aria-label={`Schedule ${task.title}`}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="min-w-0 flex-1 rounded-[3px] border border-white/[0.1] bg-black/25 px-1.5 py-1 text-[10px] text-zinc-200 outline-none focus:border-[oklch(0.78_0.14_260_/_0.45)]"
+              />
+              <button
+                type="button"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (scheduleDate) onSchedule(scheduleDate);
+                  setScheduleOpen(false);
+                }}
+                aria-label={`Confirm schedule for ${task.title}`}
+                className="rounded-[3px] bg-[oklch(0.78_0.14_260_/_0.18)] p-1 text-[oklch(0.78_0.14_260)] hover:bg-[oklch(0.78_0.14_260_/_0.28)]"
+              >
+                <Check size={12} />
+              </button>
+              <button
+                type="button"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setScheduleOpen(false);
+                }}
+                aria-label={`Cancel scheduling ${task.title}`}
+                className="rounded-[3px] p-1 text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setScheduleDate(getLocalDateString());
+                setScheduleOpen(true);
+              }}
+              className="inline-flex items-center gap-1 rounded-[3px] border border-white/[0.08] px-1.5 py-1 text-[10px] text-zinc-500 hover:border-white/[0.16] hover:text-zinc-200"
+            >
+              <CalendarDays size={11} />
+              Schedule
+            </button>
+          )}
         </div>
       )}
       </motion.div>
@@ -191,9 +296,15 @@ function InboxSidebarComponent({
   onTaskClick,
   onOpenQuickAdd,
   goalNameByTaskId,
+  onScheduleTask,
+  onCompleteMany,
+  onDeleteMany,
 }: InboxSidebarProps) {
   const { setNodeRef, isOver } = useDroppable({ id: INBOX_DROP_ID });
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "p1" | "p2" | "p3" | "none">("all");
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
   // Optimistic local order: set immediately on drop so the DOM already shows
   // the new order when dnd-kit clears its transforms, preventing the snap-back
@@ -256,10 +367,37 @@ function InboxSidebarComponent({
     ? (localOrder.map(id => tasks.find(t => t._id === id)).filter(Boolean) as typeof tasks)
     : tasks;
 
-  const filtered = query
-    ? orderedTasks.filter(t => t.title.toLowerCase().includes(query.toLowerCase()))
-    : orderedTasks;
+  const filtered = useMemo(
+    () => orderedTasks.filter((task) => {
+      if (filter !== "all" && (task.priority ?? "none") !== filter) return false;
+      if (!query) return true;
+      const needle = query.toLowerCase();
+      return `${task.title} ${task.description ?? ""}`.toLowerCase().includes(needle);
+    }),
+    [filter, orderedTasks, query]
+  );
+  const visibleSelectedIds = useMemo(
+    () => new Set(filtered.filter((task) => selectedIds.has(String(task._id))).map((task) => String(task._id))),
+    [filtered, selectedIds]
+  );
+  const allFilteredSelected = filtered.length > 0 && filtered.every((task) => visibleSelectedIds.has(String(task._id)));
   const kairoCount = tasks.filter(t => t.source === "ai-agent").length;
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds(allFilteredSelected ? new Set() : new Set(filtered.map((task) => String(task._id))));
+  };
+
+  const runBulk = async (action: ((taskIds: Task["_id"][]) => Promise<boolean>) | undefined) => {
+    if (!action || visibleSelectedIds.size === 0) return;
+    const selectedTasks = tasks.filter((task) => visibleSelectedIds.has(String(task._id)));
+    const succeeded = await action(selectedTasks.map((task) => task._id));
+    if (succeeded) exitSelectMode();
+  };
 
   return (
     <div
@@ -313,6 +451,23 @@ function InboxSidebarComponent({
           )}
         </div>
         <div className="flex-1" />
+        {tasks.length > 0 && (selectMode ? (
+          <button
+            type="button"
+            onClick={exitSelectMode}
+            className="inline-flex items-center gap-1 rounded-[4px] border border-white/[0.08] px-2 py-1 text-[10px] text-zinc-500 hover:text-zinc-200"
+          >
+            <X size={11} /> Cancel
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setSelectMode(true)}
+            className="rounded-[4px] border border-white/[0.08] px-2 py-1 text-[10px] text-zinc-500 hover:border-white/[0.16] hover:text-zinc-200"
+          >
+            Select
+          </button>
+        ))}
       </div>
 
       {/* Search */}
@@ -342,6 +497,27 @@ function InboxSidebarComponent({
             e.target.style.background = "rgba(0,0,0,.25)";
           }}
         />
+        <div className="mt-2 flex flex-wrap gap-1" role="group" aria-label="Inbox priority filter">
+          {([
+            ["all", "All"],
+            ["p1", "P1"],
+            ["p2", "P2"],
+            ["p3", "P3"],
+            ["none", "None"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={filter === value}
+              onClick={() => setFilter(value)}
+              className={filter === value
+                ? "rounded-[3px] border border-[oklch(0.78_0.14_260_/_0.45)] bg-[oklch(0.72_0.16_260_/_0.2)] px-2 py-1 text-[10px] text-[oklch(0.78_0.14_260)]"
+                : "rounded-[3px] border border-white/[0.07] px-2 py-1 text-[10px] text-zinc-600 hover:text-zinc-300"}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Task list */}
@@ -350,7 +526,7 @@ function InboxSidebarComponent({
         style={{ padding: "10px", display: "flex", flexDirection: "column", gap: 5 }}
       >
         <SortableContext
-          items={query ? [] : filtered.map(t => t._id)}
+          items={query || filter !== "all" || selectMode ? [] : filtered.map(t => t._id)}
           strategy={verticalListSortingStrategy}
         >
           <AnimatePresence>
@@ -359,6 +535,15 @@ function InboxSidebarComponent({
                 key={task._id}
                 task={task}
                 goalName={goalNameByTaskId?.[String(task._id)]}
+                selectMode={selectMode}
+                selected={visibleSelectedIds.has(String(task._id))}
+                onToggleSelect={() => setSelectedIds((previous) => {
+                  const next = new Set(previous);
+                  const key = String(task._id);
+                  if (next.has(key)) next.delete(key); else next.add(key);
+                  return next;
+                })}
+                onSchedule={onScheduleTask ? (date) => onScheduleTask(task._id, date) : undefined}
                 onClick={() => onTaskClick(task)}
               />
             ))}
@@ -375,6 +560,38 @@ function InboxSidebarComponent({
 
       {/* Footer */}
       <div style={{ padding: 10, borderTop: "1px solid rgba(255,255,255,.07)" }}>
+        {selectMode && (
+          <>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={toggleSelectAll}
+                className="text-[10px] text-zinc-500 hover:text-zinc-200"
+              >
+                {allFilteredSelected ? "Deselect all" : "Select all"}
+              </button>
+              <span className="text-[10px] text-zinc-600">{visibleSelectedIds.size} selected</span>
+            </div>
+            <div className="mb-2 grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                disabled={visibleSelectedIds.size === 0 || !onDeleteMany}
+                onClick={() => void runBulk(onDeleteMany)}
+                className="inline-flex items-center justify-center gap-1 rounded-[4px] border border-red-400/30 px-2 py-2 text-[10px] text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Trash2 size={11} /> Delete
+              </button>
+              <button
+                type="button"
+                disabled={visibleSelectedIds.size === 0 || !onCompleteMany}
+                onClick={() => void runBulk(onCompleteMany)}
+                className="inline-flex items-center justify-center gap-1 rounded-[4px] border border-emerald-400/30 px-2 py-2 text-[10px] text-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Check size={11} /> Mark done
+              </button>
+            </div>
+          </>
+        )}
         {onOpenQuickAdd && (
           <button
             onClick={onOpenQuickAdd}

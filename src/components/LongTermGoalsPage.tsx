@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Reorder } from "framer-motion";
-import { ArrowUpRight, GripVertical, Plus, Target, Trash2 } from "lucide-react";
+import { ArrowUpRight, GripVertical, Pencil, Plus, Target, Trash2 } from "lucide-react";
 import { cn } from "../lib/utils";
+import { isTaskCompleted } from "../lib/taskState";
+import type { Task } from "../types";
 
 const STORAGE_KEY = "pravah_long_term_goals";
 
@@ -13,6 +15,9 @@ interface GoalItem {
 interface GoalReadModel {
   id: string;
   text: string;
+  description?: string;
+  deadline?: string;
+  priority?: "p1" | "p2" | "p3";
   createdAt?: number;
 }
 
@@ -27,7 +32,10 @@ interface LongTermGoalsPageProps {
   serverGoals?: GoalReadModel[];
   progressByGoalId?: Record<string, GoalProgress>;
   onCreateServerGoal?: (text: string) => Promise<void>;
+  onUpdateServerGoal?: (goalId: string, patch: Pick<GoalReadModel, "description" | "deadline" | "priority">) => Promise<void>;
   onDeleteServerGoal?: (goalId: string) => Promise<void>;
+  linkedTasksByGoalId?: Record<string, Task[]>;
+  onOpenTask?: (task: Task) => void;
 }
 
 export function LongTermGoalsPage({
@@ -36,11 +44,18 @@ export function LongTermGoalsPage({
   serverGoals,
   progressByGoalId,
   onCreateServerGoal,
+  onUpdateServerGoal,
   onDeleteServerGoal,
+  linkedTasksByGoalId = {},
+  onOpenTask,
 }: LongTermGoalsPageProps = {}) {
   const [draft, setDraft] = useState("");
   const [serverBusy, setServerBusy] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+  const [editDescription, setEditDescription] = useState("");
+  const [editDeadline, setEditDeadline] = useState("");
+  const [editPriority, setEditPriority] = useState<"p1" | "p2" | "p3" | undefined>(undefined);
   const [goals, setGoals] = useState<GoalItem[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -118,6 +133,32 @@ export function LongTermGoalsPage({
     setGoals((prev) => prev.filter((goal) => goal.id !== goalId));
   };
 
+  const beginEdit = (goal: GoalReadModel) => {
+    setEditingGoalId(goal.id);
+    setEditDescription(goal.description ?? "");
+    setEditDeadline(goal.deadline ?? "");
+    setEditPriority(goal.priority);
+    setServerError(null);
+  };
+
+  const saveEdit = async (goal: GoalReadModel) => {
+    if (!onUpdateServerGoal) return;
+    setServerBusy(true);
+    setServerError(null);
+    try {
+      await onUpdateServerGoal(goal.id, {
+        description: editDescription.trim() || undefined,
+        deadline: editDeadline || undefined,
+        priority: editPriority,
+      });
+      setEditingGoalId(null);
+    } catch {
+      setServerError("Could not update goal. Try again.");
+    } finally {
+      setServerBusy(false);
+    }
+  };
+
   return (
     <div className="h-full overflow-y-auto bg-[#0a0a0b]">
       <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-6 py-6">
@@ -190,6 +231,10 @@ export function LongTermGoalsPage({
                 {displayGoals.map((goal) => {
                   const progress = progressByGoalId?.[goal.id] ?? { total: 0, done: 0 };
                   const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+                  const nextTasks = (linkedTasksByGoalId[goal.id] ?? [])
+                    .filter((task) => !isTaskCompleted(task))
+                    .sort((a, b) => (a.deadline ?? "\uffff").localeCompare(b.deadline ?? "\uffff"))
+                    .slice(0, 2);
                   return (
                     <div
                       key={goal.id}
@@ -200,6 +245,17 @@ export function LongTermGoalsPage({
                         <span className="tabular text-xs text-zinc-500">
                           {progress.done}/{progress.total} done
                         </span>
+                        {onUpdateServerGoal && (
+                          <button
+                            type="button"
+                            onClick={() => beginEdit(goal)}
+                            disabled={serverBusy}
+                            aria-label={`Edit goal: ${goal.text}`}
+                            className="flex-shrink-0 rounded-[5px] p-1.5 text-zinc-600 hover:bg-white/[0.06] hover:text-zinc-200"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => void removeGoal(goal.id)}
@@ -220,6 +276,66 @@ export function LongTermGoalsPage({
                           style={{ width: `${pct}%` }}
                         />
                       </div>
+                      {nextTasks.length > 0 && (
+                        <div className="mt-3 border-t border-white/[0.06] pt-2">
+                          <p className="text-[10px] uppercase tracking-[0.1em] text-zinc-600">Next</p>
+                          <div className="mt-1 space-y-1">
+                            {nextTasks.map((task) => (
+                              <button
+                                key={task._id}
+                                type="button"
+                                onClick={() => onOpenTask?.(task)}
+                                className="flex w-full items-center justify-between gap-2 rounded-[3px] px-1 py-1 text-left text-xs text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-100"
+                              >
+                                <span className="min-w-0 truncate">{task.title}</span>
+                                <span className="shrink-0 text-[10px] text-zinc-600">{task.deadline ?? "Inbox"}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {editingGoalId === goal.id && (
+                        <div className="mt-3 space-y-2 border-t border-white/[0.07] pt-3">
+                          <textarea
+                            value={editDescription}
+                            onChange={(event) => setEditDescription(event.target.value)}
+                            placeholder="What does this goal mean?"
+                            rows={2}
+                            aria-label={`Description for ${goal.text}`}
+                            className="w-full resize-none rounded-[4px] border border-white/[0.09] bg-black/25 px-2.5 py-2 text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-[oklch(0.78_0.14_260_/_0.45)]"
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <label className="text-[10px] uppercase tracking-[0.1em] text-zinc-600">
+                              Deadline
+                              <input
+                                type="date"
+                                value={editDeadline}
+                                onChange={(event) => setEditDeadline(event.target.value)}
+                                aria-label={`Deadline for ${goal.text}`}
+                                className="mt-1 w-full rounded-[4px] border border-white/[0.09] bg-black/25 px-2 py-1.5 text-xs normal-case tracking-normal text-zinc-200 outline-none focus:border-[oklch(0.78_0.14_260_/_0.45)]"
+                              />
+                            </label>
+                            <label className="text-[10px] uppercase tracking-[0.1em] text-zinc-600">
+                              Priority
+                              <select
+                                value={editPriority ?? ""}
+                                onChange={(event) => setEditPriority((event.target.value || undefined) as "p1" | "p2" | "p3" | undefined)}
+                                aria-label={`Priority for ${goal.text}`}
+                                className="mt-1 w-full rounded-[4px] border border-white/[0.09] bg-black/25 px-2 py-1.5 text-xs normal-case tracking-normal text-zinc-200 outline-none focus:border-[oklch(0.78_0.14_260_/_0.45)]"
+                              >
+                                <option value="">None</option>
+                                <option value="p1">P1</option>
+                                <option value="p2">P2</option>
+                                <option value="p3">P3</option>
+                              </select>
+                            </label>
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <button type="button" onClick={() => setEditingGoalId(null)} className="rounded-[4px] px-2.5 py-1.5 text-xs text-zinc-500 hover:text-zinc-200">Cancel</button>
+                            <button type="button" onClick={() => void saveEdit(goal)} disabled={serverBusy} className="rounded-[4px] bg-[oklch(0.78_0.14_260)] px-2.5 py-1.5 text-xs font-medium text-zinc-950 disabled:opacity-50">Save goal</button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

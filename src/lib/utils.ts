@@ -64,5 +64,14 @@ export function formatDeadline(deadline: string, today: string = getLocalDateStr
   return `Due ${parseLocalDate(deadline).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
 }
 
+/** Format a task's canonical HH:MM time in the user's local 12-hour style. */
+export function formatTaskTime(time: string): string {
+  const [hours, minutes] = time.split(":").map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return time;
+  const period = hours >= 12 ? "PM" : "AM";
+  const displayHour = hours % 12 || 12;
+  return `${displayHour}:${String(minutes).padStart(2, "0")} ${period}`;
+}
+
 /** Threshold for "due soon" - tasks due within this many days */
 export const DUE_SOON_DAYS = 3;

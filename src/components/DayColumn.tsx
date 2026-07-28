@@ -4,7 +4,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { AnimatePresence, motion } from "framer-motion";
 import { memo, useEffect, useRef, useState } from "react";
 import type { Task } from "../types";
-import { getLocalDateString, daysBetween, DUE_SOON_DAYS } from "../lib/utils";
+import { formatTaskTime, getLocalDateString, daysBetween, DUE_SOON_DAYS } from "../lib/utils";
 import { TIMELINE_COL_WIDTH } from "../lib/timelineLayout";
 import { tx, T_FAST, EASE_OUT_EXPO } from "../lib/motion";
 import { isTaskCompleted } from "../lib/taskState";
@@ -150,8 +150,13 @@ function GridTaskRow({
           }}
         />
       )}
-      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {task.title}
+      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{task.title}</span>
+        {task.time && !isCompleted && (
+          <span style={{ display: "block", marginTop: 2, fontSize: 9, color: "#8b8b94", textDecoration: "none" }}>
+            {formatTaskTime(task.time)}
+          </span>
+        )}
       </span>
       {goalName && !hover && (
         <span

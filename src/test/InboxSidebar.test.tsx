@@ -1,7 +1,7 @@
 /** @vitest-environment happy-dom */
 import { describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Task } from "../types";
 import type { Id } from "../../convex/_generated/dataModel";
 import { InboxSidebar } from "../components/InboxSidebar";
@@ -57,5 +57,33 @@ describe("InboxSidebar", () => {
     );
 
     expect(screen.getByText(/Deep Work Goal/)).toBeInTheDocument();
+  });
+
+  it("filters by priority and completes a selected inbox task", async () => {
+    const onCompleteMany = vi.fn(async () => true);
+    render(
+      <InboxSidebar
+        tasks={[
+          makeTask({ _id: "p1" as Id<"tasks">, title: "Urgent task", priority: "p1" }),
+          makeTask({ _id: "p2" as Id<"tasks">, title: "Later task", priority: "p2" }),
+        ]}
+        onTaskClick={vi.fn()}
+        onCompleteMany={onCompleteMany}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "P1" }));
+    expect(screen.getByText("Urgent task")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText("Later task")).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select Urgent task" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mark done" }));
+
+    await waitFor(() => {
+      expect(onCompleteMany).toHaveBeenCalledWith(["p1"]);
+    });
   });
 });
