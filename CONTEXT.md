@@ -310,3 +310,11 @@ A mobile release delivered as a new APK because its changes alter the native
 runtime. Native releases are started manually and may batch multiple queued
 `mobile-native` pull requests.
 _Avoid_: APK update, rebuild
+
+### Capability parity
+The same user-facing planning capabilities are available on web and mobile, even when each platform presents them through different controls and layouts.
+_Avoid_: Pixel parity, identical screens
+
+### Desktop-native web
+The web expression of Pravah's product model, optimized for keyboard, pointer, widescreen, and browser conventions rather than reproducing the mobile screen layout.
+_Avoid_: Responsive mobile clone, pixel-matched web

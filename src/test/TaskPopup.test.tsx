@@ -9,8 +9,11 @@ const updateTaskMock = vi.fn();
 const setGoalLinkMock = vi.fn();
 const completeTaskMock = vi.fn();
 const reopenTaskMock = vi.fn();
+const moveTaskMock = vi.fn();
 const unscheduleTaskMock = vi.fn();
-const deleteTaskMock = vi.fn();
+const softDeleteTaskMock = vi.fn();
+const restoreTaskMock = vi.fn();
+const showToastMock = vi.fn();
 const showErrorMock = vi.fn();
 const showSuccessMock = vi.fn();
 
@@ -19,8 +22,10 @@ const mutationMocks: Record<string, ReturnType<typeof vi.fn>> = {
   "goals.setLink": setGoalLinkMock,
   "tasks.completeTask": completeTaskMock,
   "tasks.reopenTask": reopenTaskMock,
+  "tasks.moveTask": moveTaskMock,
   "tasks.unscheduleTask": unscheduleTaskMock,
-  "tasks.deleteTask": deleteTaskMock,
+  "tasks.softDeleteTask": softDeleteTaskMock,
+  "tasks.restoreTask": restoreTaskMock,
 };
 
 vi.mock("convex/react", () => ({
@@ -42,8 +47,10 @@ vi.mock("../../convex/_generated/api", () => ({
       updateTask: "tasks.updateTask",
       completeTask: "tasks.completeTask",
       reopenTask: "tasks.reopenTask",
+      moveTask: "tasks.moveTask",
       unscheduleTask: "tasks.unscheduleTask",
-      deleteTask: "tasks.deleteTask",
+      softDeleteTask: "tasks.softDeleteTask",
+      restoreTask: "tasks.restoreTask",
     },
     goals: {
       list: "goals.list",
@@ -55,6 +62,7 @@ vi.mock("../../convex/_generated/api", () => ({
 
 vi.mock("../components/useToast", () => ({
   useToast: () => ({
+    showToast: showToastMock,
     showError: showErrorMock,
     showSuccess: showSuccessMock,
   }),
@@ -80,13 +88,17 @@ describe("TaskPopup", () => {
     setGoalLinkMock.mockReset();
     completeTaskMock.mockReset();
     reopenTaskMock.mockReset();
+    moveTaskMock.mockReset();
     unscheduleTaskMock.mockReset();
-    deleteTaskMock.mockReset();
+    softDeleteTaskMock.mockReset();
+    restoreTaskMock.mockReset();
+    showToastMock.mockReset();
     showErrorMock.mockReset();
     showSuccessMock.mockReset();
     updateTaskMock.mockResolvedValue(undefined);
     setGoalLinkMock.mockResolvedValue(undefined);
-    deleteTaskMock.mockResolvedValue(undefined);
+    softDeleteTaskMock.mockResolvedValue(undefined);
+    restoreTaskMock.mockResolvedValue(undefined);
   });
 
   it("saves changed goal link with task update", async () => {
@@ -144,6 +156,7 @@ describe("TaskPopup", () => {
         title: "Updated title",
         description: undefined,
         deadline: undefined,
+        time: undefined,
         priority: undefined,
       });
     });
@@ -158,14 +171,35 @@ describe("TaskPopup", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(screen.getByText("Delete this task?")).toBeInTheDocument();
-    expect(deleteTaskMock).not.toHaveBeenCalled();
+    expect(softDeleteTaskMock).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: /^Delete$/ }));
     await waitFor(() => {
-      expect(deleteTaskMock).toHaveBeenCalledWith({ taskId: "task_1" });
+      expect(softDeleteTaskMock).toHaveBeenCalledWith({ taskId: "task_1" });
     });
 
-    expect(showSuccessMock).toHaveBeenCalledWith("Task deleted");
+    expect(showToastMock).toHaveBeenCalledWith("Task moved to trash", "info", expect.objectContaining({ label: "Undo" }));
+    expect(onClose).toHaveBeenCalled();
+
+    const undoAction = showToastMock.mock.calls[0]?.[2] as { run: () => Promise<void> };
+    await undoAction.run();
+    expect(restoreTaskMock).toHaveBeenCalledWith({ taskId: "task_1" });
+    expect(showSuccessMock).toHaveBeenCalledWith("Task restored");
+  });
+
+  it("quick-schedules an open task without requiring Save", async () => {
+    const onClose = vi.fn();
+    render(<TaskPopup task={makeTask()} onClose={onClose} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Today" }));
+
+    await waitFor(() => {
+      expect(moveTaskMock).toHaveBeenCalledWith({
+        taskId: "task_1",
+        targetDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      });
+    });
+    expect(showSuccessMock).toHaveBeenCalledWith("Scheduled for Today");
     expect(onClose).toHaveBeenCalled();
   });
 

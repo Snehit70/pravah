@@ -21,6 +21,7 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? "");
   const [deadline, setDeadline] = useState(task.deadline ?? "");
+  const [time, setTime] = useState(task.time ?? "");
   const [priority, setPriority] = useState<"p1" | "p2" | "p3" | undefined>(task.priority);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [titleError, setTitleError] = useState("");
@@ -32,13 +33,21 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
   const setGoalLink = useMutation(api.goals.setLink);
   const completeTask = useMutation(api.tasks.completeTask);
   const reopenTask = useMutation(api.tasks.reopenTask);
+  const moveTask = useMutation(api.tasks.moveTask);
   const unscheduleTask = useMutation(api.tasks.unscheduleTask);
-  const deleteTask = useMutation(api.tasks.deleteTask);
-  const { showError, showSuccess } = useToast();
+  const softDeleteTask = useMutation(api.tasks.softDeleteTask);
+  const restoreTask = useMutation(api.tasks.restoreTask);
+  const { showToast, showError, showSuccess } = useToast();
   const minDate = getLocalDateString();
   const currentGoalId = webGoalsLinkingEnabled ? (goalLinks?.[String(task._id)] ?? "") : "";
   const selectedOrCurrentGoalId = selectedGoalId || currentGoalId;
   const selectedGoalName = goals?.find((goal) => goal.id === selectedOrCurrentGoalId)?.text;
+
+  const quickScheduleOptions = [
+    { label: "Today", date: getLocalDateString() },
+    { label: "Tomorrow", date: addDays(getLocalDateString(), 1) },
+    { label: "This weekend", date: getComingWeekendDate() },
+  ];
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -53,6 +62,7 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
         title: title.trim(),
         description: description || undefined,
         deadline: deadline || undefined,
+        time: deadline ? time || undefined : undefined,
         priority,
       });
       if (webGoalsLinkingEnabled && selectedGoalId !== currentGoalId) {
@@ -89,11 +99,31 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
       return;
     }
     try {
-      await deleteTask({ taskId: task._id });
-      showSuccess("Task deleted");
+      await softDeleteTask({ taskId: task._id });
+      showToast("Task moved to trash", "info", {
+        label: "Undo",
+        run: async () => {
+          try {
+            await restoreTask({ taskId: task._id });
+            showSuccess("Task restored");
+          } catch {
+            showError("Could not restore task");
+          }
+        },
+      });
       onClose();
     } catch {
       showError("Failed to delete task");
+    }
+  };
+
+  const handleQuickSchedule = async (date: string, label: string) => {
+    try {
+      await moveTask({ taskId: task._id, targetDate: date });
+      showSuccess(`Scheduled for ${label}`);
+      onClose();
+    } catch {
+      showError("Could not schedule task");
     }
   };
 
@@ -158,6 +188,35 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
           onChange={(e) => setDeadline(e.target.value)}
           min={minDate}
         />
+
+        {deadline && (
+          <Input
+            label="Time"
+            type="time"
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+          />
+        )}
+
+        {!isTaskCompleted(task) && (
+          <div>
+            <p className="mb-2 block text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-500">
+              Quick schedule
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {quickScheduleOptions.map((option) => (
+                <button
+                  key={option.label}
+                  type="button"
+                  onClick={() => void handleQuickSchedule(option.date, option.label)}
+                  className="rounded-[4px] border border-white/[0.08] bg-white/[0.025] px-2.5 py-1 text-[11px] text-zinc-400 transition-colors hover:border-white/[0.16] hover:bg-white/[0.06] hover:text-zinc-100"
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div>
           <p className="block text-[10px] text-zinc-500 uppercase tracking-[0.12em] font-medium mb-2">
@@ -330,4 +389,16 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
       </div>
     </Modal>
   );
+}
+
+function addDays(isoDate: string, days: number): string {
+  const date = new Date(`${isoDate}T12:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function getComingWeekendDate(): string {
+  const today = new Date(`${getLocalDateString()}T12:00:00`);
+  const untilSaturday = (6 - today.getDay() + 7) % 7;
+  return addDays(getLocalDateString(), untilSaturday === 0 ? 7 : untilSaturday);
 }

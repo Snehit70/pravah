@@ -16,6 +16,7 @@ interface TimelineProps {
   goalNameByTaskId?: Record<string, string>;
   onTaskClick: (task: Task) => void;
   onOpenQuickAdd?: () => void;
+  onRescheduleTask?: (taskId: Task["_id"], targetDate: string) => void;
 }
 
 function PulsingDot({ color, size = 7, pulseKey }: { color: string; size?: number; pulseKey?: number | string }) {
@@ -49,6 +50,7 @@ export function Timeline({
   goalNameByTaskId,
   onTaskClick,
   onOpenQuickAdd,
+  onRescheduleTask,
 }: TimelineProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [hoverDate, setHoverDate] = useState<string | null>(null);
@@ -197,9 +199,19 @@ export function Timeline({
   const allTodayTasks = (allTasks ?? []).filter((task) => task.deadline === today);
   const doneTodayCount = allTodayTasks.filter(isTaskCompleted).length;
   const todayTotalCount = allTodayTasks.length;
+  const overdueTasks = (allTasks ?? []).filter(
+    (task) => Boolean(task.deadline && task.deadline < today) && !isTaskCompleted(task)
+  );
+  const [showOverdue, setShowOverdue] = useState(false);
+
+  const dateOffset = (days: number) => {
+    const date = new Date(`${today}T12:00:00`);
+    date.setDate(date.getDate() + days);
+    return getLocalDateString(date);
+  };
 
   return (
-    <div className="h-full flex flex-col" style={{ background: "transparent" }}>
+    <div className="relative h-full flex flex-col" style={{ background: "transparent" }}>
       <div className="flex flex-1 overflow-hidden">
         {/* Left rail */}
         <div
@@ -243,6 +255,18 @@ export function Timeline({
               TODAY
             </button>
           </div>
+
+          {overdueTasks.length > 0 && onRescheduleTask && (
+            <button
+              type="button"
+              onClick={() => setShowOverdue((open) => !open)}
+              aria-expanded={showOverdue}
+              className="mx-3 mb-3 rounded-[5px] border border-red-400/25 bg-red-500/[0.08] px-3 py-2 text-left hover:bg-red-500/[0.13]"
+            >
+              <span className="block text-[10px] font-medium uppercase tracking-[0.12em] text-red-300">Overdue</span>
+              <span className="mt-1 block text-[11px] text-red-200/70">{overdueTasks.length} task{overdueTasks.length === 1 ? "" : "s"} need a new home</span>
+            </button>
+          )}
 
           <LaneLabel name="TIMELINE" count={allScheduled.length} color="oklch(0.72 0.16 30)" />
 
@@ -334,6 +358,39 @@ export function Timeline({
           </div>
         </div>
       </div>
+
+      {showOverdue && overdueTasks.length > 0 && onRescheduleTask && (
+        <aside className="absolute bottom-7 left-[180px] top-[58px] z-10 w-[330px] overflow-y-auto border-r border-white/[0.1] bg-[#101013]/95 p-3 shadow-2xl backdrop-blur-xl">
+          <div className="mb-3 flex items-start justify-between gap-3 border-b border-white/[0.07] pb-3">
+            <div>
+              <h2 className="text-sm font-medium text-zinc-100">Overdue triage</h2>
+              <p className="mt-1 text-xs text-zinc-500">Reschedule each task without leaving the timeline.</p>
+            </div>
+            <button type="button" onClick={() => setShowOverdue(false)} aria-label="Close overdue triage" className="text-zinc-500 hover:text-zinc-200">×</button>
+          </div>
+          <div className="space-y-2">
+            {overdueTasks.map((task) => (
+              <div key={task._id} className="rounded-[5px] border border-white/[0.07] bg-white/[0.025] p-2.5">
+                <button type="button" onClick={() => onTaskClick(task)} className="w-full truncate text-left text-xs text-zinc-200 hover:text-white">{task.title}</button>
+                <p className="mt-1 text-[10px] text-red-300">Was due {task.deadline}</p>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {([[0, "Today"], [1, "Tomorrow"], [7, "+1w"]] as const).map(([offset, label]) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => onRescheduleTask(task._id, dateOffset(offset))}
+                      className="rounded-[3px] border border-white/[0.08] px-2 py-1 text-[10px] text-zinc-400 hover:border-[oklch(0.78_0.14_260_/_0.45)] hover:text-[oklch(0.78_0.14_260)]"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  <input type="date" min={today} aria-label={`Reschedule ${task.title}`} onChange={(event) => event.target.value && onRescheduleTask(task._id, event.target.value)} className="min-w-0 flex-1 rounded-[3px] border border-white/[0.08] bg-black/20 px-1.5 py-1 text-[10px] text-zinc-300 outline-none" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </aside>
+      )}
 
       {/* Status bar */}
       <div

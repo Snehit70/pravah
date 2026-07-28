@@ -11,8 +11,10 @@ const addTaskMock = vi.fn();
 const updateTaskMock = vi.fn();
 const completeTaskMock = vi.fn();
 const reopenTaskMock = vi.fn();
+const moveTaskMock = vi.fn();
 const unscheduleTaskMock = vi.fn();
-const deleteTaskMock = vi.fn();
+const softDeleteTaskMock = vi.fn();
+const restoreTaskMock = vi.fn();
 const setGoalLinkMock = vi.fn();
 
 const mutationMocks: Record<string, ReturnType<typeof vi.fn>> = {
@@ -20,8 +22,10 @@ const mutationMocks: Record<string, ReturnType<typeof vi.fn>> = {
   "tasks.updateTask": updateTaskMock,
   "tasks.completeTask": completeTaskMock,
   "tasks.reopenTask": reopenTaskMock,
+  "tasks.moveTask": moveTaskMock,
   "tasks.unscheduleTask": unscheduleTaskMock,
-  "tasks.deleteTask": deleteTaskMock,
+  "tasks.softDeleteTask": softDeleteTaskMock,
+  "tasks.restoreTask": restoreTaskMock,
   "goals.setLink": setGoalLinkMock,
 };
 
@@ -41,8 +45,10 @@ vi.mock("../../convex/_generated/api", () => ({
       updateTask: "tasks.updateTask",
       completeTask: "tasks.completeTask",
       reopenTask: "tasks.reopenTask",
+      moveTask: "tasks.moveTask",
       unscheduleTask: "tasks.unscheduleTask",
-      deleteTask: "tasks.deleteTask",
+      softDeleteTask: "tasks.softDeleteTask",
+      restoreTask: "tasks.restoreTask",
     },
     goals: {
       list: "goals.list",
@@ -71,8 +77,10 @@ describe("accessibility regressions", () => {
     updateTaskMock.mockReset();
     completeTaskMock.mockReset();
     reopenTaskMock.mockReset();
+    moveTaskMock.mockReset();
     unscheduleTaskMock.mockReset();
-    deleteTaskMock.mockReset();
+    softDeleteTaskMock.mockReset();
+    restoreTaskMock.mockReset();
     setGoalLinkMock.mockReset();
 
     addTaskMock.mockResolvedValue(undefined);
@@ -80,7 +88,8 @@ describe("accessibility regressions", () => {
     completeTaskMock.mockResolvedValue(undefined);
     reopenTaskMock.mockResolvedValue(undefined);
     unscheduleTaskMock.mockResolvedValue(undefined);
-    deleteTaskMock.mockResolvedValue(undefined);
+    softDeleteTaskMock.mockResolvedValue(undefined);
+    restoreTaskMock.mockResolvedValue(undefined);
     setGoalLinkMock.mockResolvedValue(undefined);
   });
 
@@ -113,10 +122,35 @@ describe("accessibility regressions", () => {
         title: "Announced task",
         description: undefined,
         deadline: undefined,
+        time: undefined,
         priority: undefined,
       });
     });
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("captures a scheduled task time", async () => {
+    const onClose = vi.fn();
+    renderWithProviders(<QuickAdd onClose={onClose} />);
+
+    fireEvent.change(screen.getByPlaceholderText("What needs doing?"), {
+      target: { value: "Timed task" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Today" }));
+    fireEvent.change(screen.getByLabelText("Task time"), {
+      target: { value: "09:30" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add task" }));
+
+    await waitFor(() => {
+      expect(addTaskMock).toHaveBeenCalledWith({
+        title: "Timed task",
+        description: undefined,
+        deadline: expect.any(String),
+        time: "09:30",
+        priority: undefined,
+      });
+    });
   });
 
   it("announces task completion from popup mutations", async () => {

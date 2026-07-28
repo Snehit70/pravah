@@ -3,21 +3,22 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, AlertCircle, CheckCircle, Info } from "lucide-react";
 import { T_BASE, T_EXIT_BASE, useExitMotion, useMotion } from "../lib/motion";
 import { cn } from "../lib/utils";
-import { ToastContext, type ToastType } from "./useToast";
+import { ToastContext, type ToastAction, type ToastType } from "./useToast";
 
 interface Toast {
   id: string;
   message: string;
   type: ToastType;
+  action?: ToastAction;
 }
 
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const showToast = useCallback((message: string, type: ToastType = "info") => {
+  const showToast = useCallback((message: string, type: ToastType = "info", action?: ToastAction) => {
     const id = Math.random().toString(36).substring(7);
-    setToasts((prev) => [...prev, { id, message, type }]);
+    setToasts((prev) => [...prev, { id, message, type, action }]);
 
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -90,6 +91,17 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
     >
       {icons[toast.type]}
       <p className="flex-1 text-sm text-zinc-100">{toast.message}</p>
+      {toast.action && (
+        <button
+          type="button"
+          onClick={() => {
+            void Promise.resolve(toast.action?.run()).finally(onClose);
+          }}
+          className="rounded-[4px] px-2 py-1 text-xs font-medium text-[oklch(0.78_0.14_260)] hover:bg-white/[0.06]"
+        >
+          {toast.action.label}
+        </button>
+      )}
       <button
         onClick={onClose}
         aria-label="Dismiss notification"
