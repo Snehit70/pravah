@@ -11,7 +11,8 @@
 import { memo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import NavInboxAsset from "../assets/icons/nav-inbox.svg";
-import { CalendarIcon, CheckIcon } from "./UiIcons";
+import ScheduleAsset from "../assets/icons/action-schedule.svg";
+import { CheckIcon } from "./UiIcons";
 import { colors, fonts, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
 import type { MobileTask } from "./TaskCard";
@@ -94,7 +95,7 @@ function InboxTaskRowInner({
             accessibilityLabel={`Schedule ${task.title}`}
             style={({ pressed }) => [styles.scheduleBtn, pressed && { opacity: 0.68 }]}
           >
-            <CalendarIcon size={17} color={colors.textSecondary} strokeWidth={1.8} />
+            <ScheduleAsset color={colors.textSecondary} width={17} height={17} />
           </Pressable>
         )}
       </View>
