@@ -122,6 +122,7 @@ vi.mock("react-native", () => {
   const StyleSheet = {
     create: <T extends Record<string, unknown>>(styles: T): T => styles,
     hairlineWidth: 1,
+    absoluteFill: {},
   };
   return {
     View,
