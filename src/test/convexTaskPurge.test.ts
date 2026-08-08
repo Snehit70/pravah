@@ -54,7 +54,8 @@ function makeDb(rows: Record<string, Array<Record<string, unknown>>>) {
       }
     }),
     patch: vi.fn(async (id: string, patch: Record<string, unknown>) => {
-      Object.assign(byId.get(String(id)), patch);
+      const target = byId.get(String(id));
+      if (target) Object.assign(target, patch);
     }),
   };
 }
