@@ -625,8 +625,8 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     },
 
     updateCaption(uploadId: string, rawCaption: string) {
-      const draft = records.get(uploadId);
-      if (!draft) return;
+      const record = records.get(uploadId);
+      if (!record) return;
       const caption = rawCaption.trim();
       if (caption.length > 500) {
         lastError = "Caption must be 500 characters or fewer";
@@ -634,7 +634,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         return;
       }
       lastError = undefined;
-      update(draft, { caption: caption || undefined });
+      update(record, { caption: caption || undefined });
     },
 
     reorder(uploadIds: string[]) {
@@ -646,15 +646,15 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     },
 
     remove(uploadId: string) {
-      const draft = records.get(uploadId);
-      if (!draft) return;
-      draft.generation += 1;
-      draft.paused = true;
+      const record = records.get(uploadId);
+      if (!record) return;
+      record.generation += 1;
+      record.paused = true;
       const timer = timers.get(uploadId);
       if (timer) clearTimeout(timer);
       timers.delete(uploadId);
       void Promise.resolve(dependencies.abortUpload?.({ uploadId })).catch(() => undefined);
-      void removeSource(draft);
+      void removeSource(record);
       records.delete(uploadId);
       visibleUploadIds = visibleUploadIds.filter((id) => id !== uploadId);
       lastError = undefined;
@@ -672,9 +672,9 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
 
     getImageInputsForSave() {
       return visibleUploadIds.flatMap((uploadId) => {
-        const draft = records.get(uploadId);
-        return draft && (draft.state === "pending" || draft.state === "failed")
-          ? [{ uploadId: draft.uploadId, caption: draft.caption }]
+        const record = records.get(uploadId);
+        return record && (record.state === "pending" || record.state === "failed")
+          ? [{ uploadId: record.uploadId, caption: record.caption }]
           : [];
       });
     },
