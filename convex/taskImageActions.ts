@@ -1,4 +1,4 @@
-import { action } from "./_generated/server";
+import { action, internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import { makeFunctionReference } from "convex/server";
 import { requireTokenIdentifier } from "./authHelpers";
@@ -6,10 +6,37 @@ import {
   buildDeliveryUrl,
   buildUploadGrant,
   checkProviderAssetPresence,
+  deleteProviderAsset,
   verifyProviderUploadMaster,
   type ProviderUploadResult,
   type TaskImageProviderConfig,
 } from "./taskImageProvider";
+
+const listDueCleanupTombstonesRef = makeFunctionReference<
+  "query",
+  { now: number; limit: number },
+  Array<{
+    _id: string;
+    providerPublicId?: string;
+  }>
+>("taskImageCleanup:listDueCleanupTombstones");
+
+const promoteDueCleanupRetriesRef = makeFunctionReference<
+  "mutation",
+  { now: number },
+  { promoted: number }
+>("taskImageCleanup:promoteDueCleanupRetries");
+
+const recordCleanupResultRef = makeFunctionReference<
+  "mutation",
+  {
+    tombstoneId: string;
+    outcome: "deleted" | "absent" | "retry";
+    failureCode?: string;
+    now: number;
+  },
+  unknown
+>("taskImageCleanup:recordCleanupResult");
 
 declare const process: { env: Record<string, string | undefined> };
 
@@ -259,5 +286,38 @@ export const resolveTaskImage = action({
         variant: args.variant,
       }),
     };
+  },
+});
+
+export const reconcileCleanup = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    await ctx.runMutation(promoteDueCleanupRetriesRef, { now });
+    const tombstones = await ctx.runQuery(listDueCleanupTombstonesRef, { now, limit: 50 });
+    let terminal = 0;
+    let retried = 0;
+    let provider: TaskImageProviderConfig | undefined;
+    try {
+      provider = readProviderConfig();
+    } catch {
+      provider = undefined;
+    }
+    for (const tombstone of tombstones) {
+      const outcome = !tombstone.providerPublicId
+        ? "absent" as const
+        : provider
+          ? await deleteProviderAsset({ provider, publicId: tombstone.providerPublicId })
+          : "retry" as const;
+      await ctx.runMutation(recordCleanupResultRef, {
+        tombstoneId: tombstone._id,
+        outcome,
+        failureCode: outcome === "retry" ? (provider ? "provider_ambiguous" : "provider_unavailable") : undefined,
+        now,
+      });
+      if (outcome === "retry") retried += 1;
+      else terminal += 1;
+    }
+    return { inspected: tombstones.length, terminal, retried };
   },
 });

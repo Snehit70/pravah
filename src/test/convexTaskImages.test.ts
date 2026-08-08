@@ -4,6 +4,7 @@ import { addTask } from "../../convex/tasks";
 import {
   addTaskImages,
   getTaskImageCollection,
+  getDeliveryContext,
   markUploadFailed,
   removeTaskImage,
   reorderTaskImages,
@@ -115,6 +116,13 @@ const collectionHandler = (
   >
 )._handler;
 
+const deliveryContextHandler = (
+  getDeliveryContext as unknown as Handler<
+    { ownerTokenIdentifier: string; taskImageId: Id<"taskImages"> },
+    unknown
+  >
+)._handler;
+
 const addTaskImagesHandler = (
   addTaskImages as unknown as Handler<
     { taskId: Id<"tasks">; uploadIds: string[]; expectedRevision?: number },
@@ -158,6 +166,32 @@ const restoreTaskImageHandler = (
 )._handler;
 
 describe("Convex Task-image contract", () => {
+  it("denies delivery as soon as the parent Task enters recoverable deletion", async () => {
+    const db = createMemoryDb();
+    const owner = authedCtx(db);
+    await stageHandler(owner, {
+      uploadId: "upl_delivery_1",
+      encodingClass: "jpeg",
+      width: 1200,
+      height: 900,
+      bytes: 500_000,
+    });
+    const taskId = await addTaskHandler(owner, { title: "Deny deleted delivery", imageUploadId: "upl_delivery_1" });
+    const image = db.rows("taskImages")[0];
+    const upload = db.rows("taskImageUploads")[0];
+    Object.assign(db.rows("tasks")[0], { cancelledAt: Date.now() });
+    Object.assign(image, { state: "ready" });
+    Object.assign(upload, { state: "ready", providerPublicId: "private-id", providerVersion: 1, variants: {} });
+
+    await expect(
+      deliveryContextHandler(owner, {
+        ownerTokenIdentifier: "owner-1",
+        taskImageId: image._id as Id<"taskImages">,
+      })
+    ).resolves.toEqual({ kind: "not_found" });
+    expect(taskId).toBeDefined();
+  });
+
   it("claims one staged upload exactly once and exposes a redacted derived primary", async () => {
     const db = createMemoryDb();
     const owner = authedCtx(db);

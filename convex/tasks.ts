@@ -5,6 +5,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireTokenIdentifier } from "./authHelpers";
 import { runIdempotentMutation } from "./automationIdempotency";
 import { claimStagedImagesForTask, getClaimedTaskForUpload } from "./taskImages";
+import { ensureTaskImageCleanupTombstone } from "./taskImageCleanup";
 import {
   getPriorityRank,
   getTaskCancelledAt,
@@ -1042,12 +1043,51 @@ export const purgeExpiredCancelledTasks = internalMutation({
         .collect(),
     ]);
 
+    const imageRows = await ctx.db.query("taskImages").collect();
     let purged = 0;
     for (const task of dedupeTasks([...cancelledAtTasks, ...legacyCancelledTasks])) {
       const cancelledAt = getTaskCancelledAt(task);
       if (cancelledAt === undefined || cancelledAt >= cutoff) continue;
+      for (const image of imageRows.filter((candidate) => candidate.taskId === task._id)) {
+        if (!image.uploadRecordId) {
+          await ctx.db.delete(image._id);
+          continue;
+        }
+        const upload = await ctx.db.get(image.uploadRecordId);
+        if (upload) {
+          await ensureTaskImageCleanupTombstone(ctx, {
+            ownerTokenIdentifier: task.ownerTokenIdentifier ?? task.createdBy,
+            taskId: task._id,
+            taskImageId: image._id,
+            upload,
+          }, Date.now());
+        } else {
+          await ctx.db.delete(image._id);
+        }
+      }
       await ctx.db.delete(task._id);
       purged += 1;
+    }
+
+    for (const image of imageRows) {
+      if (image.removedAt === undefined || image.recoverableUntil === undefined) continue;
+      if (image.recoverableUntil >= Date.now()) continue;
+      const task = await ctx.db.get(image.taskId);
+      if (!image.uploadRecordId) {
+        await ctx.db.delete(image._id);
+        continue;
+      }
+      const upload = await ctx.db.get(image.uploadRecordId);
+      if (!upload) {
+        await ctx.db.delete(image._id);
+        continue;
+      }
+      await ensureTaskImageCleanupTombstone(ctx, {
+        ownerTokenIdentifier: task?.ownerTokenIdentifier ?? upload.ownerTokenIdentifier,
+        taskId: image.taskId,
+        taskImageId: image._id,
+        upload,
+      }, Date.now());
     }
     return { purged };
   },
