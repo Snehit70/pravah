@@ -99,7 +99,11 @@ type EditTaskSheetProps = {
     expectedRevision: number;
   }) =>
     TaskImageCollectionMutationResult | Promise<TaskImageCollectionMutationResult> | void;
-  onRestoreTaskImage?: (args: { taskId: Id<"tasks">; taskImageId: string }) =>
+  onRestoreTaskImage?: (args: {
+    taskId: Id<"tasks">;
+    taskImageId: string;
+    replaceTaskImageId?: string;
+  }) =>
     TaskImageCollectionMutationResult | Promise<TaskImageCollectionMutationResult> | void;
   onSelectTaskImage?: (args: {
     taskId: Id<"tasks">;
@@ -884,10 +888,14 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                     }
                   : undefined}
                 onRestore={onRestoreTaskImage
-                  ? (taskImageId) => {
+                  ? (taskImageId, replaceTaskImageId) => {
                       void (async () => {
                         try {
-                          const result = await onRestoreTaskImage({ taskId: currentTask._id, taskImageId });
+                          const result = await onRestoreTaskImage({
+                            taskId: currentTask._id,
+                            taskImageId,
+                            replaceTaskImageId,
+                          });
                           if (!result) return;
                           const { stale: _, ...imageCollection } = result;
                           setCurrentTask((previous) => previous ? { ...previous, imageCollection } : previous);

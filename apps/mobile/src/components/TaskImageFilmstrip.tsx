@@ -33,7 +33,7 @@ type TaskImageFilmstripProps = {
   onCaptionChange?: (taskImageId: string, caption: string) => void;
   onReorder?: (taskImageId: string, direction: "up" | "down") => void;
   onRemove?: (taskImageId: string) => void;
-  onRestore?: (taskImageId: string) => void;
+  onRestore?: (taskImageId: string, replaceTaskImageId?: string) => void;
   resolveDelivery?: (
     taskImageId: string,
     variant: "card" | "detail"
@@ -259,14 +259,28 @@ export function TaskImageFilmstrip({
               <Text style={styles.recoverableText}>
                 {image.caption || "Task image"}
               </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Restore removed Task image"
-                onPress={() => onRestore(image.taskImageId)}
-                style={styles.actionButton}
-              >
-                <Text style={styles.retryText}>Restore</Text>
-              </Pressable>
+              {ordered.length < 5 ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Restore removed Task image"
+                  onPress={() => onRestore(image.taskImageId)}
+                  style={styles.actionButton}
+                >
+                  <Text style={styles.retryText}>Restore</Text>
+                </Pressable>
+              ) : (
+                ordered.map((replacement, index) => (
+                  <Pressable
+                    key={replacement.taskImageId}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Restore removed Task image by replacing image ${index + 1}`}
+                    onPress={() => onRestore(image.taskImageId, replacement.taskImageId)}
+                    style={styles.actionButton}
+                  >
+                    <Text style={styles.retryText}>Replace {index + 1}</Text>
+                  </Pressable>
+                ))
+              )}
             </View>
           ))}
         </View>

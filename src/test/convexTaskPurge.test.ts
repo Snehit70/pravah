@@ -134,4 +134,45 @@ describe("expired Task-image lifecycle cleanup", () => {
 
     vi.restoreAllMocks();
   });
+
+  it("keeps a large child collection paged before deleting the parent", async () => {
+    const taskId = "task-large" as Id<"tasks">;
+    const images = Array.from({ length: 51 }, (_, index) => ({
+      _id: `image-${index}`,
+      taskId,
+      position: index,
+    }));
+    const db = makeDb({
+      tasks: [{ _id: taskId, ownerTokenIdentifier: "owner-1", cancelledAt: 1_000, position: 0 }],
+      taskImages: images,
+      taskImageUploads: [],
+      taskImageCleanupTombstones: [],
+    });
+    const scheduler = { runAfter: vi.fn() };
+    vi.spyOn(Date, "now").mockReturnValue(1_000 + 30 * 60 * 1000 + 1);
+
+    await expect(purgeHandler({ ...ctx(db), scheduler }, {})).resolves.toEqual({ purged: 0 });
+    expect(db.delete).not.toHaveBeenCalledWith(taskId);
+    expect(scheduler.runAfter).toHaveBeenCalledWith(0, expect.anything(), {});
+
+    vi.restoreAllMocks();
+  });
+
+  it("lets restoration win before the purge observes expiry", async () => {
+    const taskId = "task-restore-first" as Id<"tasks">;
+    const db = makeDb({
+      tasks: [{ _id: taskId, ownerTokenIdentifier: "owner-1", cancelledAt: 1_000, position: 0 }],
+      taskImages: [],
+      taskImageUploads: [],
+      taskImageCleanupTombstones: [],
+    });
+    vi.spyOn(Date, "now").mockReturnValue(2_000);
+    await restoreHandler({ ...ctx(db) }, { taskId });
+
+    vi.spyOn(Date, "now").mockReturnValue(1_000 + 30 * 60 * 1000 + 1);
+    await expect(purgeHandler(ctx(db), {})).resolves.toEqual({ purged: 0 });
+    await expect(db.get(taskId)).resolves.toMatchObject({ cancelledAt: undefined });
+
+    vi.restoreAllMocks();
+  });
 });

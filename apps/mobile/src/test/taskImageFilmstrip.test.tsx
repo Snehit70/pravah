@@ -184,4 +184,23 @@ describe("TaskImageFilmstrip", () => {
     fireEvent.click(screen.getByRole("button", { name: "Restore removed Task image" }));
     expect(onRestore).toHaveBeenCalledWith("removed-1");
   });
+
+  it("offers replacement targets when the active collection is full", () => {
+    const onRestore = vi.fn();
+    const active = Array.from({ length: 5 }, (_, index) => ({
+      taskImageId: `active-${index}`,
+      position: index,
+      state: "pending" as const,
+    }));
+    render(
+      <TaskImageFilmstrip
+        images={active}
+        recoverable={[{ taskImageId: "removed-1" }]}
+        onRestore={onRestore}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Restore removed Task image by replacing image 3" }));
+    expect(onRestore).toHaveBeenCalledWith("removed-1", "active-2");
+  });
 });

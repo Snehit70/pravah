@@ -1051,14 +1051,16 @@ export const purgeExpiredCancelledTasks = internalMutation({
       .take(50);
     let purged = 0;
     let cleanupWorkFound = false;
+    let purgeContinuationNeeded = false;
     for (const task of dedupeTasks([...cancelledAtTasks, ...legacyCancelledTasks])) {
       const cancelledAt = getTaskCancelledAt(task);
       if (cancelledAt === undefined || cancelledAt >= cutoff) continue;
       const taskImages = await ctx.db
         .query("taskImages")
         .withIndex("by_task_position", (q) => q.eq("taskId", task._id))
-        .collect();
-      for (const image of taskImages) {
+        .take(51);
+      const hasMoreTaskImages = taskImages.length > 50;
+      for (const image of taskImages.slice(0, 50)) {
         if (!image.uploadRecordId) {
           await ctx.db.delete(image._id);
           continue;
@@ -1075,6 +1077,10 @@ export const purgeExpiredCancelledTasks = internalMutation({
         } else {
           await ctx.db.delete(image._id);
         }
+      }
+      if (hasMoreTaskImages) {
+        purgeContinuationNeeded = true;
+        continue;
       }
       await ctx.db.delete(task._id);
       purged += 1;
@@ -1102,6 +1108,9 @@ export const purgeExpiredCancelledTasks = internalMutation({
     }
     if (cleanupWorkFound) {
       await ctx.scheduler.runAfter(0, internal.taskImageActions.reconcileCleanup, {});
+    }
+    if (purgeContinuationNeeded) {
+      await ctx.scheduler.runAfter(0, internal.tasks.purgeExpiredCancelledTasks, {});
     }
     return { purged };
   },

@@ -1493,9 +1493,10 @@ function MobileApp() {
             throw error;
           });
         }}
-        onRestoreTaskImage={({ taskId, taskImageId }) => {
+        onRestoreTaskImage={({ taskId, taskImageId, replaceTaskImageId }) => {
           return restoreTaskImageMutation({
             taskImageId: taskImageId as Id<"taskImages">,
+            replaceTaskImageId: replaceTaskImageId as Id<"taskImages"> | undefined,
           }).then((result) => {
             void taskImageCoordinator.resumeTaskImageUpload(String(taskId), taskImageId);
             return result;
