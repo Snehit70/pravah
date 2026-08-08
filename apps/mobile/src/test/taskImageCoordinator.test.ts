@@ -370,6 +370,35 @@ describe("Task-image mobile coordinator", () => {
     }
   });
 
+  it("uses 5 seconds, 30 seconds, and 2 minutes before remaining manually retryable", async () => {
+    vi.useFakeTimers();
+    try {
+      const dependencies = createDependencies();
+      dependencies.upload = vi.fn()
+        .mockRejectedValueOnce(Object.assign(new Error("offline"), { code: "network_error", retryable: true }))
+        .mockRejectedValueOnce(Object.assign(new Error("offline"), { code: "network_error", retryable: true }))
+        .mockRejectedValueOnce(Object.assign(new Error("offline"), { code: "network_error", retryable: true }))
+        .mockRejectedValueOnce(Object.assign(new Error("offline"), { code: "network_error", retryable: true }));
+      const coordinator = createTaskImageCoordinator(dependencies);
+      await coordinator.select("photos");
+      await coordinator.beginUploadAfterSave();
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(dependencies.upload).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(dependencies.upload).toHaveBeenCalledTimes(3);
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(dependencies.upload).toHaveBeenCalledTimes(4);
+      expect(coordinator.getViewState()).toMatchObject({
+        state: "failed",
+        failure: { code: "network_error", retryable: true },
+        retryAt: undefined,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("reconciles an ambiguous attempt before creating a new provider attempt", async () => {
     vi.useFakeTimers();
     try {
@@ -521,5 +550,51 @@ describe("Task-image mobile coordinator", () => {
 
     await coordinator.remove("upl_mobile_1");
     expect(sourceStore.remove).toHaveBeenCalledWith("source_upl_mobile_1");
+  });
+
+  it("does not let an in-flight upload complete into a recoverably paused record", async () => {
+    const dependencies = createDependencies();
+    const firstUpload = deferred<Awaited<ReturnType<TaskImageCoordinatorDependencies["upload"]>>>();
+    dependencies.upload = vi.fn()
+      .mockImplementationOnce(async () => firstUpload.promise)
+      .mockResolvedValue({
+        publicId: "provider-private-id",
+        version: 1,
+        signature: "provider-response-signature",
+        resourceType: "image",
+        deliveryType: "authenticated",
+        format: "jpg",
+        width: 1600,
+        height: 1200,
+        bytes: 2_000_000,
+        eager: [],
+      });
+    dependencies.verify = vi.fn(async () => ({ state: "ready" as const }));
+    const coordinator = createTaskImageCoordinator(dependencies);
+    await coordinator.select("photos");
+    coordinator.associateUploadsWithTask("task_1", ["upl_mobile_1"]);
+    const completion = coordinator.beginUploadAfterSave();
+    await Promise.resolve();
+
+    coordinator.pauseTaskUploads("task_1");
+    firstUpload.resolve({
+      publicId: "provider-private-id",
+      version: 1,
+      signature: "provider-response-signature",
+      resourceType: "image",
+      deliveryType: "authenticated",
+      format: "jpg",
+      width: 1600,
+      height: 1200,
+      bytes: 2_000_000,
+      eager: [],
+    });
+    await completion;
+    expect(coordinator.getViewState()).toMatchObject({ state: "pending" });
+
+    await coordinator.resumeTaskUploads("task_1");
+    await coordinator.beginUploadAfterSave();
+    expect(dependencies.upload).toHaveBeenCalledTimes(2);
+    expect(coordinator.getViewState()).toMatchObject({ state: "ready" });
   });
 });
