@@ -6,7 +6,7 @@
  * only for features that need workspace-wide context.
  */
 
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { MobileTask } from "../components/TaskCard";
@@ -34,6 +34,7 @@ export function mapTaskDoc(task: MobileTask): MobileTask {
     position: task.position,
     updatedAt: task.updatedAt,
     createdAt: task.createdAt,
+    imageCollection: task.imageCollection,
   };
 }
 
@@ -86,31 +87,54 @@ export function useTaskQueries({ isAuthenticated, includeAllTasks = true }: UseT
     api.tasks.listTasks,
     isAuthenticated && includeAllTasks ? {} : "skip"
   );
+  const imageCollectionsQuery = useQuery(
+    api.taskImages.listWorkspaceImageCollections,
+    isAuthenticated ? {} : "skip"
+  );
+
+  const imageCollections = useMemo(() => {
+    const map = new Map<string, MobileTask["imageCollection"]>();
+    for (const item of (imageCollectionsQuery ?? []) as Array<{
+      taskId: string;
+      collection: NonNullable<MobileTask["imageCollection"]>;
+    }>) {
+      map.set(item.taskId, item.collection);
+    }
+    return map;
+  }, [imageCollectionsQuery]);
+
+  const withImages = useCallback(
+    (task: MobileTask): MobileTask => ({
+      ...mapTaskDoc(task),
+      imageCollection: imageCollections.get(String(task._id)),
+    }),
+    [imageCollections]
+  );
 
   const inboxTasks = useMemo<MobileTask[]>(() => {
     return (
       (inboxQuery as MobileTask[] | undefined)
-        ?.map(mapTaskDoc)
+        ?.map(withImages)
         .sort(compareTaskOrder) ?? []
     );
-  }, [inboxQuery]);
+  }, [inboxQuery, withImages]);
 
   const scheduledTasks = useMemo<MobileTask[]>(() => {
     const flat = Object.values(timelineQuery ?? {}).flat() as MobileTask[];
-    return buildScheduledTasks(flat);
-  }, [timelineQuery]);
+    return buildScheduledTasks(flat).map(withImages);
+  }, [timelineQuery, withImages]);
 
   const completedTasks = useMemo<MobileTask[]>(() => {
     return (
       (completedQuery as MobileTask[] | undefined)
-        ?.map(mapTaskDoc)
+        ?.map(withImages)
         .sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0)) ?? []
     );
-  }, [completedQuery]);
+  }, [completedQuery, withImages]);
 
   const allWorkspaceTasks = useMemo<MobileTask[]>(
-    () => (allTasksQuery as MobileTask[] | undefined)?.map(mapTaskDoc) ?? [],
-    [allTasksQuery]
+    () => (allTasksQuery as MobileTask[] | undefined)?.map(withImages) ?? [],
+    [allTasksQuery, withImages]
   );
 
   const timelineSections = useMemo<[string, MobileTask[]][]>(() => {

@@ -44,10 +44,159 @@ import {
   runWithBadRequest,
   validationError,
 } from "./httpResponses";
+import {
+  buildEagerWebhookVerificationInput,
+  verifyProviderWebhookMaster,
+  verifyProviderWebhookResult,
+  verifyWebhookSignature,
+  type ProviderUploadResult,
+} from "./taskImageProvider";
+
+declare const process: { env: Record<string, string | undefined> };
 
 const http = httpRouter();
 
 authComponent.registerRoutes(http, createAuth, { cors: true });
+
+http.route({
+  path: "/cloudinary/task-image-callback",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const rawBody = await request.text();
+    const timestamp = Number(request.headers.get("x-cld-timestamp"));
+    const signature = request.headers.get("x-cld-signature") ?? "";
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
+    if (
+      !apiSecret ||
+      !(await verifyWebhookSignature({
+        rawBody,
+        timestamp,
+        signature,
+        apiSecret,
+        nowSeconds: Math.floor(Date.now() / 1000),
+      }))
+    ) {
+      return new Response(null, { status: 401 });
+    }
+
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(rawBody) as Record<string, unknown>;
+    } catch {
+      return new Response(null, { status: 400 });
+    }
+    const publicId = typeof payload.public_id === "string" ? payload.public_id : "";
+    const context = publicId
+      ? await ctx.runQuery(internal.taskImages.getUploadByProviderPublicId, { publicId })
+      : null;
+    if (!context) return new Response(null, { status: 204 });
+
+    const eager = Array.isArray(payload.eager)
+      ? payload.eager.flatMap((item) => {
+          if (!item || typeof item !== "object") return [];
+          const entry = item as Record<string, unknown>;
+          if (
+            typeof entry.transformation !== "string" ||
+            (entry.format !== undefined && typeof entry.format !== "string") ||
+            typeof entry.width !== "number" ||
+            typeof entry.height !== "number" ||
+            typeof entry.bytes !== "number"
+          ) {
+            return [];
+          }
+          return [{
+            transformation: entry.transformation,
+            format: typeof entry.format === "string" ? entry.format : "webp",
+            width: entry.width,
+            height: entry.height,
+            bytes: entry.bytes,
+          }];
+        })
+      : [];
+    const callbackResponse: ProviderUploadResult = {
+      publicId,
+      version: typeof payload.version === "number" ? payload.version : 0,
+      signature: typeof payload.signature === "string" ? payload.signature : "",
+      resourceType: typeof payload.resource_type === "string" ? payload.resource_type : "",
+      deliveryType: typeof payload.type === "string" ? payload.type : "",
+      format: typeof payload.format === "string" ? payload.format : "",
+      width: typeof payload.width === "number" ? payload.width : 0,
+      height: typeof payload.height === "number" ? payload.height : 0,
+      bytes: typeof payload.bytes === "number" ? payload.bytes : 0,
+      eager,
+    };
+    const expected = {
+      apiSecret,
+      expectedPublicId: context.publicId,
+      expectedEncodingClass: context.encodingClass,
+    };
+    const isEagerNotification = payload.notification_type === "eager";
+    if (
+      isEagerNotification &&
+      (payload.status === "failed" || !context.master || !context.providerVersion)
+    ) {
+      if (payload.status === "failed") {
+        await ctx.runMutation(internal.taskImages.applyUploadVerification, {
+          ownerTokenIdentifier: context.ownerTokenIdentifier,
+          uploadId: context.uploadId,
+          publicId: context.publicId,
+          version: context.providerVersion ?? 0,
+          result: { status: "failed", failureCode: "variant_too_large" },
+        });
+      }
+      return new Response(null, { status: 204 });
+    }
+    const response = isEagerNotification
+      ? buildEagerWebhookVerificationInput({
+          publicId,
+          version: context.providerVersion!,
+          master: context.master!,
+          eager,
+        })
+      : callbackResponse;
+    const verified = isEagerNotification
+      ? await verifyProviderWebhookResult(response, expected)
+      : await verifyProviderWebhookMaster(response, expected);
+
+    let verificationResult:
+      | { status: "failed"; failureCode: string }
+      | {
+          status: "verifying";
+          master: { format: "jpg" | "png"; width: number; height: number; bytes: number };
+        }
+      | {
+          status: "ready";
+          master: { format: "jpg" | "png"; width: number; height: number; bytes: number };
+          card: { format: "webp"; width: number; height: number; bytes: number };
+          detail: { format: "webp"; width: number; height: number; bytes: number };
+        };
+    if (!verified.ok) {
+      verificationResult = { status: "failed", failureCode: verified.failureCode };
+    } else if ("variants" in verified) {
+      const variants = verified.variants as {
+        card: { format: "webp"; width: number; height: number; bytes: number };
+        detail: { format: "webp"; width: number; height: number; bytes: number };
+      };
+      verificationResult = {
+        status: "ready",
+        master: verified.master,
+        card: variants.card,
+        detail: variants.detail,
+      };
+    } else {
+      verificationResult = { status: "verifying", master: verified.master };
+    }
+
+    await ctx.runMutation(internal.taskImages.applyUploadVerification, {
+      ownerTokenIdentifier: context.ownerTokenIdentifier,
+      uploadId: context.uploadId,
+      publicId: context.publicId,
+      version: response.version,
+      result: verificationResult,
+    });
+    return new Response(null, { status: 204 });
+  }),
+});
 
 function getGoogleCorsHeaders(request: Request): HeadersInit {
   const origin = request.headers.get("origin");

@@ -57,6 +57,14 @@ const config: ExpoConfig = {
       },
     ],
     "expo-image",
+    [
+      "expo-image-picker",
+      {
+        photosPermission: "Allow Pravah to select a Task image.",
+        cameraPermission: "Allow Pravah to take a Task image.",
+        microphonePermission: false,
+      },
+    ],
     "expo-asset",
     [
       "expo-splash-screen",

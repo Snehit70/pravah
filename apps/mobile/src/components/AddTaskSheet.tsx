@@ -54,6 +54,8 @@ import { expandBulkTasks, MAX_BULK_TASKS, type BulkTaskInput } from "../lib/bulk
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useConfirm } from "../hooks/useConfirm";
+import { TaskImageFilmstrip } from "./TaskImageFilmstrip";
+import type { TaskImageCoordinator } from "../lib/taskImageCoordinator";
 
 type ComposerMode = "inbox" | "today" | "tomorrow" | "laterThisWeek";
 
@@ -77,14 +79,19 @@ type AddTaskSheetProps = {
     time?: string;
     priority?: TaskPriority;
     goalId?: string;
+    imageUploadId?: string;
   }) => Promise<boolean>;
   onBulkAdd?: (tasks: BulkTaskInput[]) => Promise<boolean>;
   isValidDeadline: (raw: string) => { value?: string; error?: string };
   onSheetChange?: (isOpen: boolean) => void;
+  taskImageCoordinator?: TaskImageCoordinator;
 };
 
 export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
-  function AddTaskSheet({ onAdd, onBulkAdd, isValidDeadline, onSheetChange }, ref) {
+  function AddTaskSheet(
+    { onAdd, onBulkAdd, isValidDeadline, onSheetChange, taskImageCoordinator },
+    ref
+  ) {
     const titleInputRef = useRef<TextInput>(null);
     const [visible, setVisible] = useState(false);
     const [title, setTitle] = useState("");
@@ -108,6 +115,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     // being reused, not an unsaved draft — the dismiss guards key off that.
     const [burstCount, setBurstCount] = useState(0);
     const [savedFlash, setSavedFlash] = useState<number | null>(null);
+    const [, setTaskImageRevision] = useState(0);
     const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const dragY = useSharedValue(0);
     const titleFocus = useSharedValue(0);
@@ -117,6 +125,11 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const confirm = useConfirm();
     const insets = useSafeAreaInsets();
     const { addGoal } = useGoalMutations();
+    useEffect(() => {
+      if (!taskImageCoordinator) return;
+      return taskImageCoordinator.subscribe(() => setTaskImageRevision((value) => value + 1));
+    }, [taskImageCoordinator]);
+    const taskImageDraft = taskImageCoordinator?.getViewState() ?? null;
     const selectedGoal = useMemo(
       () => goals.find((g) => g.id === goalId),
       [goals, goalId]
@@ -131,7 +144,12 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const hasUnsavedContext =
       burstCount === 0 &&
       Boolean(
-        deadline.trim() || priority || goalId || goalIds.length > 0 || seriesEnabled
+        deadline.trim() ||
+        priority ||
+        goalId ||
+        goalIds.length > 0 ||
+        seriesEnabled ||
+        taskImageDraft
       );
     const hasDraftChanges = hasUnsavedText || hasUnsavedContext;
 
@@ -168,7 +186,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       [onSheetChange]
     );
 
-    const reset = () => {
+    const reset = useCallback(() => {
       setTitle("");
       setDescription("");
       setDeadline("");
@@ -186,11 +204,12 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setError(null);
       setBurstCount(0);
       setSavedFlash(null);
+      taskImageCoordinator?.discard();
       if (flashTimer.current) {
         clearTimeout(flashTimer.current);
         flashTimer.current = null;
       }
-    };
+    }, [taskImageCoordinator]);
 
     useImperativeHandle(ref, () => ({
       open: (initialKind = "task") => {
@@ -302,6 +321,12 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       const end = seriesEnabled ? Number(seriesEnd) : 1;
       const useBulk = prefs.bulkTaskCaptureEnabled && (seriesEnabled || goalIds.length > 1);
       if (useBulk) {
+        if (taskImageDraft) {
+          setSaving(false);
+          setError("Task images can be added to one Task at a time.");
+          haptic.error();
+          return;
+        }
         try {
           if (!onBulkAdd) throw new Error("Bulk task capture is unavailable");
           const tasks = expandBulkTasks({
@@ -326,6 +351,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         }
       }
 
+      const imageUploadId = taskImageCoordinator?.getUploadIdForSave();
       const success = await onAdd({
         title: trimmed,
         description: description.trim() || undefined,
@@ -333,21 +359,24 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         time: deadlineResult.value ? (time.trim() || undefined) : undefined,
         priority,
         goalId: prefs.bulkTaskCaptureEnabled ? goalIds[0] : goalId,
+        ...(imageUploadId ? { imageUploadId } : {}),
       });
 
       setSaving(false);
 
       if (success) {
+        void taskImageCoordinator?.beginUploadAfterSave();
         // Single-task capture is the burst path: Enter saves and keeps the
         // sheet open; only the explicit footer verb saves and closes.
         if (intent === "stay") {
+          taskImageCoordinator?.clearAfterSaveAndStay();
           finishBurstSave();
         } else {
           reset();
           closeModal();
         }
       }
-    }, [title, description, deadline, time, priority, firstTaskTitle, goalId, goalIds, seriesEnabled, seriesStart, seriesEnd, kind, saving, onAdd, onBulkAdd, isValidDeadline, closeModal, finishBurstSave, addGoal, prefs.bulkTaskCaptureEnabled]);
+    }, [title, description, deadline, time, priority, firstTaskTitle, goalId, goalIds, seriesEnabled, seriesStart, seriesEnd, kind, saving, onAdd, onBulkAdd, isValidDeadline, closeModal, finishBurstSave, addGoal, prefs.bulkTaskCaptureEnabled, taskImageCoordinator, taskImageDraft, reset]);
 
     const bulkPreview = useMemo(() => {
       if (!prefs.bulkTaskCaptureEnabled || kind !== "task" || (!seriesEnabled && goalIds.length < 2)) return null;
@@ -364,7 +393,10 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       }
     }, [goalIds, kind, prefs.bulkTaskCaptureEnabled, seriesEnabled, seriesEnd, seriesStart, title]);
 
-    const canSubmit = useMemo(() => Boolean(title.trim()) && !saving, [title, saving]);
+    const canSubmit = useMemo(
+      () => Boolean(title.trim()) && !saving && taskImageDraft?.state !== "preparing",
+      [title, saving, taskImageDraft?.state]
+    );
     const captureOutcome = useMemo(() => {
       if (kind === "goal") return "Creates a Goal you can plan from Goals.";
       if (!deadline) return "Saves to Inbox for later triage.";
@@ -395,7 +427,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const dismissBySwipe = useCallback(() => {
       reset();
       closeModal();
-    }, [closeModal]);
+    }, [closeModal, reset]);
 
     const requestClose = async () => {
       if (!hasDraftChanges) {
@@ -626,6 +658,28 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                   </Pressable>
                 </View>
               )}
+
+              {kind === "task" && taskImageCoordinator ? (
+                <TaskImageFilmstrip
+                  images={
+                    taskImageDraft
+                      ? [
+                          {
+                            taskImageId: taskImageDraft.uploadId,
+                            position: 0,
+                            state: taskImageDraft.state,
+                            previewUri: taskImageDraft.previewUri,
+                            failure: taskImageDraft.failure,
+                          },
+                        ]
+                      : []
+                  }
+                  onSelectSource={(sourceKind) => {
+                    setError(null);
+                    void taskImageCoordinator.select(sourceKind);
+                  }}
+                />
+              ) : null}
 
               {kind === "goal" ? (
                 <View style={styles.firstTaskBlock}>

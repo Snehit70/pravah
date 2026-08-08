@@ -1,6 +1,6 @@
-import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
 
-type AuthCtx = QueryCtx | MutationCtx;
+type AuthCtx = QueryCtx | MutationCtx | ActionCtx;
 
 export async function requireIdentity(ctx: AuthCtx) {
   const identity = await ctx.auth.getUserIdentity();

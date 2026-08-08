@@ -175,6 +175,11 @@ vi.mock("expo-blur", () => ({
     React.createElement("div", { "data-testid": "blur-view" }, children),
 }));
 
+vi.mock("expo-image", () => ({
+  Image: ({ source, accessibilityLabel }: { source?: { uri?: string }; accessibilityLabel?: string }) =>
+    React.createElement("img", { src: source?.uri, alt: accessibilityLabel }),
+}));
+
 // ─── theme tokens mock ────────────────────────────────────────────────────────
 vi.mock("../theme/tokens", () => ({
   colors: {
@@ -266,6 +271,7 @@ vi.mock("../lib/feedback", () => ({
 
 // Import component after all mocks are set up.
 import { AddTaskSheet, type AddTaskSheetRef } from "../components/AddTaskSheet";
+import { createTaskImageCoordinator } from "../lib/taskImageCoordinator";
 
 // ─── tests ────────────────────────────────────────────────────────────────────
 
@@ -364,6 +370,74 @@ describe("AddTaskSheet", () => {
       deadline: undefined,
       priority: undefined,
     });
+  });
+
+  it("claims one normalized image with the task, then resets while upload continues", async () => {
+    let releaseGrant!: () => void;
+    const grantPending = new Promise<void>((resolve) => {
+      releaseGrant = resolve;
+    });
+    const issueGrant = vi.fn(async () => {
+      await grantPending;
+      return {
+        uploadUrl: "https://provider.invalid/upload",
+        signature: "signature",
+        apiKey: "key",
+        signedParameters: {},
+      };
+    });
+    const coordinator = createTaskImageCoordinator({
+      createUploadId: () => "upload_one",
+      acquireSource: vi.fn(async (kind) => ({ kind, uri: "file:///source.jpg", previewUri: "file:///source.jpg" })),
+      normalize: vi.fn(async () => ({
+        uri: "file:///normalized.jpg",
+        previewUri: "file:///normalized.jpg",
+        encodingClass: "jpeg" as const,
+        width: 800,
+        height: 600,
+        bytes: 100_000,
+      })),
+      stage: vi.fn(async () => undefined),
+      issueGrant,
+      upload: vi.fn(async () => ({
+        publicId: "opaque",
+        version: 1,
+        signature: "verified",
+        resourceType: "image",
+        deliveryType: "authenticated",
+        format: "jpg",
+        width: 800,
+        height: 600,
+        bytes: 100_000,
+        eager: [],
+      })),
+      verify: vi.fn(async () => ({ state: "verifying" as const })),
+    });
+
+    render(
+      <AddTaskSheet
+        ref={ref}
+        onAdd={mockOnAdd}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+        taskImageCoordinator={coordinator}
+      />
+    );
+    act(() => ref.current?.open());
+    fireEvent.click(screen.getByRole("button", { name: "Add Task image from Photos" }));
+    expect(await screen.findByAltText("Selected Task image preview")).toBeTruthy();
+
+    const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
+    fireEvent.change(titleInput, { target: { value: "Image task" } });
+    await act(async () => fireEvent.keyDown(titleInput, { key: "Enter" }));
+
+    expect(mockOnAdd).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Image task",
+      imageUploadId: "upload_one",
+    }));
+    expect(screen.getByRole("button", { name: "Add Task image from Photos" })).toBeTruthy();
+    await waitFor(() => expect(issueGrant).toHaveBeenCalledTimes(1));
+    releaseGrant();
   });
 
   it("uses timeline shortcuts to set the single deadline field", async () => {

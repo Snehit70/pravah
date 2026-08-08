@@ -52,6 +52,18 @@ describe("mapTaskDoc", () => {
     );
     expect(mapped.time).toBe("09:30");
   });
+
+  it("preserves the redacted task image collection without adding delivery data", () => {
+    const imageCollection = {
+      revision: 1,
+      active: [{ taskImageId: "image-1", position: 0, state: "ready" as const }],
+      primary: { taskImageId: "image-1", position: 0, state: "ready" as const },
+    };
+    const mapped = mapTaskDoc(makeTask("t", { imageCollection }));
+
+    expect(mapped.imageCollection).toEqual(imageCollection);
+    expect(JSON.stringify(mapped)).not.toMatch(/cloudinary|publicId|https?:\/\//i);
+  });
 });
 
 describe("buildScheduledTasks — real Timeline data path", () => {

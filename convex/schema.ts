@@ -262,6 +262,7 @@ export default defineSchema({
     priority: v.optional(v.union(v.literal("p1"), v.literal("p2"), v.literal("p3"))),
     createdBy: v.string(),
     ownerTokenIdentifier: v.optional(v.string()),
+    imageCollectionRevision: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
     /** Set when a task is soft-deleted. A scheduled cron purges these after a
@@ -284,6 +285,82 @@ export default defineSchema({
     .index("by_owner_completed_at", ["ownerTokenIdentifier", "completedAt"])
     .index("by_owner_cancelled_at", ["ownerTokenIdentifier", "cancelledAt"])
     .index("by_owner_position", ["ownerTokenIdentifier", "position"]),
+  taskImageUploads: defineTable({
+    uploadId: v.string(),
+    ownerTokenIdentifier: v.string(),
+    state: v.union(
+      v.literal("staged"),
+      v.literal("claimed"),
+      v.literal("uploading"),
+      v.literal("verifying"),
+      v.literal("ready"),
+      v.literal("failed")
+    ),
+    safeFailureCode: v.optional(v.string()),
+    encodingClass: v.union(v.literal("jpeg"), v.literal("png")),
+    width: v.number(),
+    height: v.number(),
+    bytes: v.number(),
+    variantSet: v.literal("task-image-v1"),
+    policyHash: v.string(),
+    taskImageId: v.optional(v.id("taskImages")),
+    providerPublicId: v.optional(v.string()),
+    providerVersion: v.optional(v.number()),
+    providerAttempt: v.number(),
+    grantRequestKey: v.optional(v.string()),
+    grantIssuedAt: v.optional(v.number()),
+    sealedAt: v.optional(v.number()),
+    master: v.optional(
+      v.object({
+        format: v.union(v.literal("jpg"), v.literal("png")),
+        width: v.number(),
+        height: v.number(),
+        bytes: v.number(),
+      })
+    ),
+    variants: v.optional(
+      v.object({
+        card: v.object({
+          format: v.literal("webp"),
+          width: v.number(),
+          height: v.number(),
+          bytes: v.number(),
+        }),
+        detail: v.object({
+          format: v.literal("webp"),
+          width: v.number(),
+          height: v.number(),
+          bytes: v.number(),
+        }),
+      })
+    ),
+    verifiedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner_upload_id", ["ownerTokenIdentifier", "uploadId"])
+    .index("by_owner_state", ["ownerTokenIdentifier", "state"])
+    .index("by_provider_public_id", ["providerPublicId"]),
+  taskImages: defineTable({
+    ownerTokenIdentifier: v.string(),
+    taskId: v.id("tasks"),
+    uploadRecordId: v.optional(v.id("taskImageUploads")),
+    position: v.number(),
+    state: v.union(
+      v.literal("pending"),
+      v.literal("uploading"),
+      v.literal("verifying"),
+      v.literal("ready"),
+      v.literal("failed")
+    ),
+    safeFailureCode: v.optional(v.string()),
+    failureRetryable: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner_task", ["ownerTokenIdentifier", "taskId"])
+    .index("by_task_position", ["taskId", "position"])
+    .index("by_upload", ["uploadRecordId"]),
   integrations: defineTable({
     provider: v.union(v.literal("google_calendar"), v.literal("gmail")),
     status: v.union(

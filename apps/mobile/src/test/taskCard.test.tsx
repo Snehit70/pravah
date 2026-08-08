@@ -97,6 +97,11 @@ vi.mock("react-native-reanimated", () => ({
   withTiming: withTimingMock,
 }));
 
+vi.mock("expo-image", () => ({
+  Image: ({ source, accessibilityLabel }: { source?: { uri?: string }; accessibilityLabel?: string }) =>
+    React.createElement("img", { src: source?.uri, alt: accessibilityLabel }),
+}));
+
 vi.mock("../theme/tokens", () => ({
   colors: {
     bgCard: "#111",
@@ -265,5 +270,30 @@ describe("TaskCard", () => {
 
     expect(onSchedule).toHaveBeenCalledWith(expect.objectContaining({ title: "Ship redesign" }));
     expect(onMoveToday).not.toHaveBeenCalled();
+  });
+
+  it("resolves a ready primary image through the authenticated card boundary", async () => {
+    const resolveTaskImage = vi.fn(async () => ({
+      kind: "ready" as const,
+      url: "https://transient.example/signed-card",
+    }));
+    render(
+      <TaskCard
+        task={makeTask({
+          imageCollection: {
+            revision: 1,
+            active: [{ taskImageId: "image-1", position: 0, state: "ready" }],
+            primary: { taskImageId: "image-1", position: 0, state: "ready" },
+          },
+        })}
+        onDone={vi.fn()}
+        onEdit={vi.fn()}
+        resolveTaskImage={resolveTaskImage}
+      />
+    );
+
+    expect(await screen.findByAltText("Primary Task image")).toBeTruthy();
+    expect(resolveTaskImage).toHaveBeenCalledWith("image-1", "card");
+    expect(document.body.textContent).not.toContain("transient.example");
   });
 });

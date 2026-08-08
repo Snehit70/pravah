@@ -27,6 +27,10 @@ import { formatTime12h } from "../lib/task-form";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { taskEmphasisColor } from "../lib/taskAccent";
+import {
+  TaskImageFilmstrip,
+  type TaskImageFilmstripEntry,
+} from "./TaskImageFilmstrip";
 
 export type MobileTask = {
   _id: Id<"tasks">;
@@ -42,6 +46,11 @@ export type MobileTask = {
   position: number;
   updatedAt: number;
   createdAt: number;
+  imageCollection?: {
+    revision: number;
+    active: TaskImageFilmstripEntry[];
+    primary?: TaskImageFilmstripEntry;
+  };
 };
 
 type TaskCardProps = {
@@ -72,6 +81,14 @@ type TaskCardProps = {
   hideCompletionControl?: boolean;
   /** Swipe gestures are opt-in. Every action must remain visible without them. */
   swipeActionsEnabled?: boolean;
+  resolveTaskImage?: (
+    taskImageId: string,
+    variant: "card" | "detail"
+  ) => Promise<
+    | { kind: "ready"; url: string }
+    | { kind: "not_found" }
+    | { kind: "state"; state: string }
+  >;
 };
 
 const TASK_CARD_RADIUS = radii.lg;
@@ -130,6 +147,7 @@ function TaskCardInner({
   hidePriorityBadge,
   hideCompletionControl = false,
   swipeActionsEnabled = false,
+  resolveTaskImage,
 }: TaskCardProps) {
   const isCompleted = isTaskCompleted(task);
   const isInboxTask = isTaskInInbox(task);
@@ -372,6 +390,12 @@ function TaskCardInner({
 
       {/* Body — title + description. Both single-line by default. */}
       <View style={styles.body}>
+        {task.imageCollection?.active.length ? (
+          <TaskImageFilmstrip
+            images={task.imageCollection.active}
+            resolveDelivery={resolveTaskImage}
+          />
+        ) : null}
         <Text
           style={[
             styles.title,

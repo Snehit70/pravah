@@ -4,6 +4,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireTokenIdentifier } from "./authHelpers";
 import { runIdempotentMutation } from "./automationIdempotency";
+import { claimStagedImageForTask, getClaimedTaskForUpload } from "./taskImages";
 import {
   getPriorityRank,
   getTaskCancelledAt,
@@ -32,6 +33,7 @@ type AddTaskArgs = {
   estimatedMinutes?: number;
   tags?: string[];
   priority?: "p1" | "p2" | "p3";
+  imageUploadId?: string;
 };
 type MoveTaskArgs = {
   taskId: Id<"tasks">;
@@ -371,6 +373,7 @@ export const addTask = mutation({
     estimatedMinutes: v.optional(v.number()),
     tags: v.optional(v.array(v.string())),
     priority: v.optional(v.union(v.literal("p1"), v.literal("p2"), v.literal("p3"))),
+    imageUploadId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
@@ -472,12 +475,20 @@ export async function addTaskForOwner(
   tokenIdentifier: string,
   args: AddTaskArgs
 ) {
+  if (args.imageUploadId) {
+    const existingTaskId = await getClaimedTaskForUpload(
+      ctx,
+      tokenIdentifier,
+      args.imageUploadId
+    );
+    if (existingTaskId) return existingTaskId;
+  }
   const deadline = args.deadline;
   const time = deadline ? args.time : undefined;
   const position = await getNextPositionForLane(ctx, tokenIdentifier, deadline);
   const now = Date.now();
 
-  return await ctx.db.insert("tasks", {
+  const taskId = await ctx.db.insert("tasks", {
     title: args.title,
     description: args.description,
     deadline,
@@ -495,6 +506,10 @@ export async function addTaskForOwner(
     updatedAt: now,
     cancelledAt: undefined,
   });
+  if (args.imageUploadId) {
+    await claimStagedImageForTask(ctx, tokenIdentifier, taskId, args.imageUploadId);
+  }
+  return taskId;
 }
 
 export const moveTask = mutation({
