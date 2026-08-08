@@ -639,6 +639,42 @@ describe("Task-image mobile coordinator", () => {
     expect(coordinator.serialize().uploads[0].sourceKey).toBe("upl_mobile_1.jpg");
   });
 
+  it("restores a recoverably removed image after coordinator hydration", async () => {
+    const dependencies = createDependencies();
+    const store = {
+      load: vi.fn(async () => ({
+        version: 2,
+        uploads: [{
+          uploadId: "upl_mobile_1",
+          taskId: "task_1",
+          taskImageId: "image_1",
+          state: "pending",
+          sourceKey: "upl_mobile_1.jpg",
+          attempt: 1,
+          retryCount: 0,
+          needsReconciliation: false,
+          paused: true,
+          recoverablyRemoved: true,
+        }],
+      })),
+      save: vi.fn(async () => undefined),
+    };
+    const coordinator = createTaskImageCoordinator({
+      ...dependencies,
+      ownerScope: () => "owner-a",
+      manifestStore: store,
+      sourceStore: {
+        persist: vi.fn(async () => ({ sourceKey: "upl_mobile_1.jpg", uri: "file:///private/durable.jpg" })),
+        resolve: vi.fn(async () => "file:///private/durable.jpg"),
+        remove: vi.fn(async () => undefined),
+      },
+    });
+
+    await coordinator.hydrate();
+    expect(await coordinator.resumeTaskImageUpload("task_1", "image_1")).toBe(true);
+    expect(dependencies.issueGrant).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps an unavailable reconciliation actionable instead of issuing a duplicate attempt", async () => {
     vi.useFakeTimers();
     try {

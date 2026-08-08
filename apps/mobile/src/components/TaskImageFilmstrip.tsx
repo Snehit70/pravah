@@ -259,28 +259,30 @@ export function TaskImageFilmstrip({
               <Text style={styles.recoverableText}>
                 {image.caption || "Task image"}
               </Text>
-              {ordered.length < 5 ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Restore removed Task image"
-                  onPress={() => onRestore(image.taskImageId)}
-                  style={styles.actionButton}
-                >
-                  <Text style={styles.retryText}>Restore</Text>
-                </Pressable>
-              ) : (
-                ordered.map((replacement, index) => (
+              <View style={styles.recoverableActions}>
+                {ordered.length < 5 ? (
                   <Pressable
-                    key={replacement.taskImageId}
                     accessibilityRole="button"
-                    accessibilityLabel={`Restore removed Task image by replacing image ${index + 1}`}
-                    onPress={() => onRestore(image.taskImageId, replacement.taskImageId)}
+                    accessibilityLabel="Restore removed Task image"
+                    onPress={() => onRestore(image.taskImageId)}
                     style={styles.actionButton}
                   >
-                    <Text style={styles.retryText}>Replace {index + 1}</Text>
+                    <Text style={styles.retryText}>Restore</Text>
                   </Pressable>
-                ))
-              )}
+                ) : (
+                  ordered.map((replacement, index) => (
+                    <Pressable
+                      key={replacement.taskImageId}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Restore removed Task image by replacing image ${index + 1}`}
+                      onPress={() => onRestore(image.taskImageId, replacement.taskImageId)}
+                      style={styles.actionButton}
+                    >
+                      <Text style={styles.retryText}>Replace {index + 1}</Text>
+                    </Pressable>
+                  ))
+                )}
+              </View>
             </View>
           ))}
         </View>
@@ -396,10 +398,12 @@ const styles = createThemedStyles({
   },
   recoverableRow: {
     minHeight: 40,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
     gap: spacing.sm,
+  },
+  recoverableActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
   },
   recoverableText: {
     flex: 1,

@@ -1490,7 +1490,9 @@ function MobileApp() {
             taskImageId: taskImageId as Id<"taskImages">,
             expectedRevision,
           }).catch((error) => {
-            void taskImageCoordinator.resumeTaskImageUpload(String(taskId), taskImageId);
+            void Promise.resolve(
+              taskImageCoordinator.resumeTaskImageUpload(String(taskId), taskImageId)
+            ).catch(() => undefined);
             throw error;
           });
         }}
@@ -1499,7 +1501,18 @@ function MobileApp() {
             taskImageId: taskImageId as Id<"taskImages">,
             replaceTaskImageId: replaceTaskImageId as Id<"taskImages"> | undefined,
           }).then((result) => {
-            void taskImageCoordinator.resumeTaskImageUpload(String(taskId), taskImageId);
+            if (result.active) {
+              taskImageCoordinator.associateTaskImageOrder(
+                String(taskId),
+                result.active.map((image) => image.taskImageId)
+              );
+            }
+            if (replaceTaskImageId) {
+              taskImageCoordinator.pauseTaskImageUpload(String(taskId), replaceTaskImageId);
+            }
+            void Promise.resolve(
+              taskImageCoordinator.resumeTaskImageUpload(String(taskId), taskImageId)
+            ).catch(() => undefined);
             return result;
           });
         }}

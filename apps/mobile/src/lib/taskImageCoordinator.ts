@@ -66,6 +66,7 @@ export type TaskImageReconciliation =
 export type TaskImageManifestEntry = {
   uploadId: string;
   taskId?: string;
+  taskImageId?: string;
   state: Exclude<TaskImageState, "preparing">;
   sourceKey?: string;
   encodingClass?: "jpeg" | "png";
@@ -79,6 +80,7 @@ export type TaskImageManifestEntry = {
   retryAt?: number;
   needsReconciliation: boolean;
   paused: boolean;
+  recoverablyRemoved?: boolean;
 };
 
 export type TaskImageManifest = {
@@ -229,6 +231,8 @@ function parseManifestEntry(value: unknown): TaskImageManifestEntry | null {
   if (
     typeof raw.uploadId !== "string" ||
     !/^[A-Za-z0-9_-]{8,128}$/.test(raw.uploadId) ||
+    (raw.taskImageId !== undefined &&
+      (typeof raw.taskImageId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(raw.taskImageId))) ||
     !["pending", "uploading", "verifying", "ready", "failed"].includes(raw.state ?? "") ||
     !Number.isSafeInteger(raw.attempt) ||
     !Number.isSafeInteger(raw.retryCount) ||
@@ -246,6 +250,9 @@ function parseManifestEntry(value: unknown): TaskImageManifestEntry | null {
   return {
     uploadId: raw.uploadId,
     taskId: typeof raw.taskId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(raw.taskId) ? raw.taskId : undefined,
+    taskImageId: typeof raw.taskImageId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(raw.taskImageId)
+      ? raw.taskImageId
+      : undefined,
     state: raw.state as Exclude<TaskImageState, "preparing">,
     sourceKey: typeof raw.sourceKey === "string" && /^[A-Za-z0-9_-]{8,128}\.(?:jpg|png)$/.test(raw.sourceKey)
       ? raw.sourceKey
@@ -261,6 +268,7 @@ function parseManifestEntry(value: unknown): TaskImageManifestEntry | null {
     retryAt: Number.isSafeInteger(raw.retryAt) ? raw.retryAt : undefined,
     needsReconciliation: raw.needsReconciliation,
     paused: raw.paused,
+    recoverablyRemoved: raw.recoverablyRemoved === true,
   };
 }
 
@@ -276,6 +284,7 @@ function redactManifest(entries: Iterable<UploadRecord>, visibleUploadIds: strin
     uploads: persistedEntries.map((entry) => ({
       uploadId: entry.uploadId,
       taskId: entry.taskId,
+      taskImageId: entry.taskImageId,
       state: entry.state,
       sourceKey: entry.sourceKey,
       encodingClass: entry.encodingClass,
@@ -289,6 +298,7 @@ function redactManifest(entries: Iterable<UploadRecord>, visibleUploadIds: strin
       retryAt: entry.retryAt,
       needsReconciliation: entry.needsReconciliation,
       paused: entry.paused,
+      recoverablyRemoved: entry.recoverablyRemoved,
     })),
   };
 }
@@ -559,6 +569,10 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         generation: 0,
       };
       records.set(entry.uploadId, restored);
+      if (restored.taskId) {
+        const ordered = taskUploadOrder.get(restored.taskId) ?? [];
+        if (!ordered.includes(restored.uploadId)) taskUploadOrder.set(restored.taskId, [...ordered, restored.uploadId]);
+      }
       if (restored.state === "failed" && restored.retryAt) {
         if (restored.retryAt <= now()) {
           restored.state = "pending";
@@ -706,7 +720,9 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     },
 
     associateUploadsWithTask(taskId: string, uploadIds: string[]) {
-      taskUploadOrder.set(taskId, [...uploadIds]);
+      const existing = taskUploadOrder.get(taskId) ?? [];
+      const ordered = [...existing, ...uploadIds.filter((uploadId) => !existing.includes(uploadId))];
+      taskUploadOrder.set(taskId, ordered);
       for (const uploadId of uploadIds) {
         const entry = records.get(uploadId);
         if (entry) update(entry, { taskId });
@@ -714,12 +730,27 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     },
 
     associateTaskImageOrder(taskId: string, taskImageIds: string[]) {
-      const uploadIds = taskUploadOrder.get(taskId);
-      if (!uploadIds || uploadIds.length !== taskImageIds.length) return false;
+      const uploadIds = taskUploadOrder.get(taskId) ?? [];
+      const entriesByTaskImageId = new Map(
+        [...records.values()]
+          .filter((entry) => entry.taskId === taskId && entry.taskImageId)
+          .map((entry) => [entry.taskImageId as string, entry])
+      );
+      const mappedUploadIds = taskImageIds.flatMap((taskImageId) => {
+        const entry = entriesByTaskImageId.get(taskImageId);
+        return entry ? [entry.uploadId] : [];
+      });
+      if (mappedUploadIds.length === taskImageIds.length) {
+        taskUploadOrder.set(taskId, mappedUploadIds);
+        void persist();
+        return true;
+      }
+      if (uploadIds.length !== taskImageIds.length) return false;
       for (const [index, uploadId] of uploadIds.entries()) {
         const entry = records.get(uploadId);
         if (entry) entry.taskImageId = taskImageIds[index];
       }
+      void persist();
       return true;
     },
 

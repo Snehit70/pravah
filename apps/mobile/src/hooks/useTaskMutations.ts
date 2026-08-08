@@ -311,6 +311,7 @@ export function useTaskMutations({
               },
               errorMessage: "Could not restore task.",
               successFeedback: "light",
+              taskId,
             }),
         },
         taskId,
