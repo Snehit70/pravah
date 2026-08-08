@@ -371,6 +371,47 @@ describe("Task-image mobile coordinator", () => {
     }
   });
 
+  it("hydrates interrupted work, merges by uploadId, and does not duplicate a live attempt", async () => {
+    const dependencies = createDependencies();
+    const sourceStore = {
+      persist: vi.fn(async () => ({ sourceKey: "source_upl_mobile_1", uri: "file:///private/durable.jpg" })),
+      resolve: vi.fn(async () => "file:///private/durable.jpg"),
+      remove: vi.fn(async () => undefined),
+    };
+    const store = {
+      load: vi.fn(async () => ({
+        version: 2,
+        uploads: [{
+          uploadId: "upl_mobile_1",
+          state: "uploading",
+          sourceKey: "source_upl_mobile_1",
+          encodingClass: "jpeg",
+          width: 1600,
+          height: 1200,
+          bytes: 2_000_000,
+          attempt: 1,
+          retryCount: 0,
+          needsReconciliation: false,
+          paused: false,
+        }],
+      })),
+      save: vi.fn(async () => undefined),
+    };
+    dependencies.reconcileAttempt = vi.fn(async () => ({ status: "uploading" as const }));
+    const coordinator = createTaskImageCoordinator({
+      ...dependencies,
+      ownerScope: () => "owner-a",
+      manifestStore: store,
+      sourceStore,
+    });
+
+    await coordinator.reconcileOnForeground();
+
+    expect(dependencies.reconcileAttempt).toHaveBeenCalledWith({ uploadId: "upl_mobile_1", attempt: 1 });
+    expect(dependencies.issueGrant).not.toHaveBeenCalled();
+    expect(coordinator.getViewState()).toMatchObject({ uploadId: "upl_mobile_1", state: "verifying" });
+  });
+
   it("pauses recoverable deletion work, resumes it, and cleans app-owned sources safely", async () => {
     const dependencies = createDependencies();
     const sourceStore = {
