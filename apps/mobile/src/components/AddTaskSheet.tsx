@@ -117,7 +117,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     // being reused, not an unsaved draft — the dismiss guards key off that.
     const [burstCount, setBurstCount] = useState(0);
     const [savedFlash, setSavedFlash] = useState<number | null>(null);
-    const [, setTaskImageRevision] = useState(0);
+    const [taskImageRevision, setTaskImageRevision] = useState(0);
     const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const dragY = useSharedValue(0);
     const titleFocus = useSharedValue(0);
@@ -131,7 +131,10 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       if (!taskImageCoordinator) return;
       return taskImageCoordinator.subscribe(() => setTaskImageRevision((value) => value + 1));
     }, [taskImageCoordinator]);
-    const taskImageDrafts = taskImageCoordinator?.getViewStates() ?? [];
+    const taskImageDrafts = useMemo(
+      () => taskImageCoordinator?.getViewStates() ?? [],
+      [taskImageCoordinator, taskImageRevision],
+    );
     const selectedGoal = useMemo(
       () => goals.find((g) => g.id === goalId),
       [goals, goalId]
