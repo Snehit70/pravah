@@ -303,7 +303,7 @@ const styles = createThemedStyles({
   },
   actionText: {
     color: colors.textPrimary,
-    ...typography.bodySm,
+    ...typography.bodyMd,
   },
   removeText: {
     color: colors.error,

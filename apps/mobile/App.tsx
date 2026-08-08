@@ -320,6 +320,7 @@ function MobileApp() {
   });
 
   const addTaskMutation = useMutation(api.tasks.addTask);
+  const addTaskImagesMutation = useMutation(api.taskImages.addTaskImages);
   const stageTaskImageMutation = useMutation(api.taskImages.stageImageUpload);
   const issueTaskImageGrant = useAction(api.taskImageActions.issueUploadGrant);
   const submitTaskImageResult = useAction(api.taskImageActions.submitUploadResult);
