@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CARD_TRANSFORMATION,
   DETAIL_TRANSFORMATION,
   buildDeliveryUrl,
   buildEagerWebhookVerificationInput,
   buildUploadGrant,
+  checkProviderAssetPresence,
   verifyProviderUploadMaster,
   verifyProviderWebhookResult,
   verifyWebhookSignature,
@@ -18,6 +19,23 @@ const provider = {
 };
 
 describe("Task-image Cloudinary policy", () => {
+  it("checks authenticated image presence through the Admin API resource path", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toBe(
+        "https://api.cloudinary.com/v1_1/demo-cloud/resources/image/authenticated?public_ids[]=pravah%2Fopaque"
+      );
+      return new Response(JSON.stringify({ resources: [{}] }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(checkProviderAssetPresence({
+      provider,
+      publicId: "pravah/opaque",
+    })).resolves.toBe("present");
+
+    vi.unstubAllGlobals();
+  });
+
   it("builds one exact SHA-256 authenticated upload grant without leaking authority", async () => {
     const grant = await buildUploadGrant({
       provider,

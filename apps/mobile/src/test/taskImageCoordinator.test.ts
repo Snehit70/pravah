@@ -445,6 +445,41 @@ describe("Task-image mobile coordinator", () => {
     }
   });
 
+  it("does not advance the client attempt until the provider grant is accepted", async () => {
+    const dependencies = createDependencies();
+    dependencies.issueGrant = vi
+      .fn()
+      .mockRejectedValueOnce(Object.assign(new Error("grant unavailable"), {
+        code: "network_error",
+        retryable: true,
+      }))
+      .mockResolvedValueOnce({
+        uploadUrl: "https://api.cloudinary.example/private",
+        signature: "signed-secret-capability",
+        apiKey: "public-key",
+        signedParameters: { timestamp: "1" },
+        attempt: 1,
+      });
+    dependencies.verify = vi.fn(async () => ({ state: "ready" as const }));
+    const coordinator = createTaskImageCoordinator(dependencies);
+
+    await coordinator.select("photos");
+    await coordinator.beginUploadAfterSave();
+    expect(coordinator.serialize().uploads[0].attempt).toBe(0);
+
+    await coordinator.retry("upl_mobile_1");
+
+    expect(dependencies.issueGrant).toHaveBeenNthCalledWith(1, {
+      uploadId: "upl_mobile_1",
+      requestKey: "grant_upl_mobile_1_attempt_1",
+    });
+    expect(dependencies.issueGrant).toHaveBeenNthCalledWith(2, {
+      uploadId: "upl_mobile_1",
+      requestKey: "grant_upl_mobile_1_attempt_1",
+    });
+    expect(coordinator.serialize().uploads[0].attempt).toBe(1);
+  });
+
   it("uses 5 seconds, 30 seconds, and 2 minutes before remaining manually retryable", async () => {
     vi.useFakeTimers();
     try {
@@ -625,6 +660,23 @@ describe("Task-image mobile coordinator", () => {
     expect(sourceStore.remove).toHaveBeenCalledWith("upl_mobile_1.jpg");
 
     await coordinator.remove("upl_mobile_1");
+    expect(sourceStore.remove).toHaveBeenCalledWith("upl_mobile_1.jpg");
+  });
+
+  it("removes all task-owned records and sources after permanent deletion", async () => {
+    const dependencies = createDependencies();
+    const sourceStore = {
+      persist: vi.fn(async () => ({ sourceKey: "upl_mobile_1.jpg", uri: "file:///private/durable.jpg" })),
+      resolve: vi.fn(async () => "file:///private/durable.jpg"),
+      remove: vi.fn(async () => undefined),
+    };
+    const coordinator = createTaskImageCoordinator({ ...dependencies, sourceStore });
+    await coordinator.select("photos");
+    coordinator.associateUploadsWithTask("task_1", ["upl_mobile_1"]);
+
+    await coordinator.discardTaskUploads("task_1");
+
+    expect(coordinator.serialize().uploads).toHaveLength(0);
     expect(sourceStore.remove).toHaveBeenCalledWith("upl_mobile_1.jpg");
   });
 
