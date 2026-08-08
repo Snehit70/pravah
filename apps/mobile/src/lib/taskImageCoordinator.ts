@@ -56,6 +56,7 @@ export type AllowlistedProviderResult = {
 export type TaskImageReconciliation =
   | { status: "absent" }
   | { status: "uploading" | "verifying" }
+  | { status: "ready" }
   | { status: "ready"; result: AllowlistedProviderResult }
   | { status: "failed"; failure: { code: string; retryable?: boolean } }
   | { status: "unknown" };
@@ -325,19 +326,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       if (!failure.retryable) await removeSource(entry);
     }
     if (retryAt) {
-      const delay = Math.max(0, retryAt - now());
-      const existing = timers.get(entry.uploadId);
-      if (existing) clearTimeout(existing);
-      timers.set(
-        entry.uploadId,
-        setTimeout(() => {
-          timers.delete(entry.uploadId);
-          if (entry.state === "failed" && entry.retryAt === retryAt) {
-            update(entry, { state: "pending", retryAt: undefined, acceptedForUpload: true });
-            void pump();
-          }
-        }, delay)
-      );
+      scheduleRetry(entry, retryAt);
     }
   };
 
@@ -367,6 +356,11 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       return true;
     }
     if (result.status === "ready") {
+      if (!("result" in result)) {
+        update(entry, { state: "ready", needsReconciliation: false, retryAt: undefined });
+        await removeSource(entry);
+        return false;
+      }
       try {
         await verifyReconciledResult(entry, result.result);
       } catch (error) {
@@ -434,6 +428,21 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     resolveDrained();
   });
 
+  const scheduleRetry = (entry: Draft, retryAt: number) => {
+    const existing = timers.get(entry.uploadId);
+    if (existing) clearTimeout(existing);
+    timers.set(
+      entry.uploadId,
+      setTimeout(() => {
+        timers.delete(entry.uploadId);
+        if (entry.state === "failed" && entry.retryAt === retryAt) {
+          update(entry, { state: "pending", retryAt: undefined, acceptedForUpload: true });
+          void pump();
+        }
+      }, Math.max(0, retryAt - now()))
+    );
+  };
+
   const pump = async () => {
     if (!foreground) return;
     while (foreground && activeCount < MAX_CONCURRENT_TASK_IMAGE_UPLOADS) {
@@ -470,13 +479,23 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         ? (raw as unknown as { uploads: unknown[] }).uploads.filter(isManifestEntry)
         : [];
     for (const entry of uploads) {
-      records.set(entry.uploadId, {
+      const restored: Draft = {
         ...entry,
         state: entry.state === "uploading" || entry.state === "verifying" ? "pending" : entry.state,
         needsReconciliation: entry.needsReconciliation || entry.state === "uploading" || entry.state === "verifying",
         acceptedForUpload: entry.state !== "ready" && !entry.paused,
         generation: 0,
-      });
+      };
+      records.set(entry.uploadId, restored);
+      if (!restored.taskId) draftOrder.push(restored.uploadId);
+      if (restored.state === "failed" && restored.retryAt) {
+        if (restored.retryAt <= now()) {
+          restored.state = "pending";
+          restored.retryAt = undefined;
+        } else {
+          scheduleRetry(restored, restored.retryAt);
+        }
+      }
     }
     persist();
     notify();
@@ -650,7 +669,13 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         if (!dependencies.reconcileAttempt || entry.attempt === 0) continue;
         const reconciliation = await dependencies.reconcileAttempt({ uploadId: entry.uploadId, attempt: entry.attempt }).catch(() => ({ status: "unknown" as const }));
         if (reconciliation.status === "ready") {
-          try { await verifyReconciledResult(entry, reconciliation.result); } catch (error) { await failEntry(entry, error); }
+          try {
+            if ("result" in reconciliation) await verifyReconciledResult(entry, reconciliation.result);
+            else {
+              update(entry, { state: "ready", needsReconciliation: false, retryAt: undefined });
+              await removeSource(entry);
+            }
+          } catch (error) { await failEntry(entry, error); }
         } else if (reconciliation.status === "absent") {
           update(entry, { state: "pending", needsReconciliation: false, acceptedForUpload: !entry.paused });
         } else if (reconciliation.status === "uploading" || reconciliation.status === "verifying") {
