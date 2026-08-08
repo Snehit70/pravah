@@ -6,6 +6,11 @@
 
 - Create clean commits with only the actual change.
 
+## GitHub identities
+
+- Use verified GitHub usernames for issue and pull-request assignees; never infer usernames from internal labels, model names, or planning shorthand.
+- For GitHub mutations that need an authenticated-user identity, verify the configured login with `gh api user --jq .login`.
+
 ## Project layout
 
 - `apps/mobile/` — Expo / React Native app

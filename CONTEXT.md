@@ -48,6 +48,70 @@ _Avoid_: All active tasks, timeline dump
 A task still in planning: either an Inbox task or a Timeline task. Completed and Cancelled tasks are not active.
 _Avoid_: Historical task, all task
 
+### Task image
+An optional static visual owned by exactly one Task. It may provide supporting context or carry the Task's primary visual meaning, and may have a caption.
+_Avoid_: Attachment, cover image, media file
+
+### Task image collection
+The ordered set of zero to five active Task images owned by one Task. Recoverably removed Task images remain associated with the Task but sit outside its active collection.
+_Avoid_: Attachment list, media library
+
+### Primary Task image
+The first image in a Task image collection and the image that represents the Task when only one image is shown.
+_Avoid_: Cover image, featured attachment
+
+### Image-led Task
+A Task whose Task images carry its dominant visual identity while its text title remains required. It is a presentation characteristic, not a separate Task type.
+_Avoid_: Image Task, photo Task
+
+### Image upload
+An owner-scoped image undergoing preparation, upload, verification, or cleanup. It may exist before a Task is saved and can become exclusively associated with one Task image, but it is not itself a Task image.
+_Avoid_: Task image draft, reusable asset, media-library item
+
+### Image upload grant
+A short-lived, owner-authorized capability allowing one Provider upload attempt under an exact upload policy. It contains no reusable provider secret and cannot authorize another upload identity.
+_Avoid_: Upload credential, API key, upload token
+
+### Provider upload attempt
+A single provider-specific attempt to fulfill an Image upload under one opaque provider identity. An Image upload may receive successive non-overlapping attempts after definitive failure, but its first verified success seals it against replacement.
+_Avoid_: Image upload, upload retry, replacement upload
+
+### Image delivery URL
+A transient secret capability that allows a prepared Task-image variant to be fetched after Pravah authorizes access. It is neither Task metadata nor a durable image identity.
+_Avoid_: Public URL, image address, manifest URL
+
+### Normalized Task-image master
+The bounded, metadata-stripped, upright source retained for one Image upload after local and provider verification. It is never delivered directly and is not the originally selected image.
+_Avoid_: Original image, full-resolution image, delivery image
+
+### Task-image delivery variant
+One member of Pravah's fixed, versioned set of prepared image representations authorized for mobile display. It is derived from the Normalized Task-image master and is not created dynamically from client parameters.
+_Avoid_: Thumbnail, arbitrary transformation, resized original
+
+### Task-image variant set
+The complete versioned group of Task-image delivery variants required before an Image upload is ready. A Task image retains its assigned variant-set version until an explicit migration replaces it.
+_Avoid_: Responsive sizes, dynamic variants, transformation preset
+
+### Active Task image
+A Task image currently participating in its Task image collection, including one whose Image upload is pending or failed. Active Task images count toward the collection limit.
+_Avoid_: Uploaded image, available image
+
+### Recoverably removed Task image
+A Task image outside the active collection but restorable during its recovery window. It does not count toward the active collection limit.
+_Avoid_: Deleted image, archived image
+
+### Task-image manifest
+The provider-neutral serialized metadata describing a Task image collection without embedding image binaries, delivery URLs, provider identifiers, or device-local paths.
+_Avoid_: Image backup, media payload, signed-URL list
+
+### Task metadata export
+A portable JSON snapshot of the Tasks currently loaded by the mobile workspace, including Task-image manifests but excluding restorable image content.
+_Avoid_: Backup, full account export, image archive
+
+### Workspace snapshot
+The bounded device-local cache of last-known Task presentation metadata used while the authenticated mobile workspace refreshes. It is neither an offline workspace nor a backup.
+_Avoid_: Offline database, local backup
+
 ### CLI resource grammar
 The canonical human command shape `pravah <resource> <verb> [target] [filters]`. A resource names the object being operated on, a verb states the operation, a target identifies one object when needed, and filters narrow a collection.
 _Avoid_: API-shaped option target, nested resource chain
