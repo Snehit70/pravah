@@ -355,6 +355,7 @@ function MobileApp() {
   const reorderTaskImagesMutation = useMutation(api.taskImages.reorderTaskImages);
   const updateTaskImageCaptionMutation = useMutation(api.taskImages.updateTaskImageCaption);
   const removeTaskImageMutation = useMutation(api.taskImages.removeTaskImage);
+  const restoreTaskImageMutation = useMutation(api.taskImages.restoreTaskImage);
   const updateTaskMutation = useMutation(api.tasks.updateTask);
   const completeTaskMutation = useMutation(api.tasks.completeTask);
   const moveTaskMutation = useMutation(api.tasks.moveTask);
@@ -1481,10 +1482,23 @@ function MobileApp() {
             expectedRevision,
           });
         }}
-        onRemoveTaskImage={({ taskImageId, expectedRevision }) => {
+        onRemoveTaskImage={({ taskId, taskImageId, orderedTaskImageIds, expectedRevision }) => {
+          taskImageCoordinator.associateTaskImageOrder(String(taskId), orderedTaskImageIds);
+          taskImageCoordinator.pauseTaskImageUpload(String(taskId), taskImageId);
           return removeTaskImageMutation({
             taskImageId: taskImageId as Id<"taskImages">,
             expectedRevision,
+          }).catch((error) => {
+            void taskImageCoordinator.resumeTaskImageUpload(String(taskId), taskImageId);
+            throw error;
+          });
+        }}
+        onRestoreTaskImage={({ taskId, taskImageId }) => {
+          return restoreTaskImageMutation({
+            taskImageId: taskImageId as Id<"taskImages">,
+          }).then((result) => {
+            void taskImageCoordinator.resumeTaskImageUpload(String(taskId), taskImageId);
+            return result;
           });
         }}
         onSelectTaskImage={({ taskId, expectedRevision, kind }) => {

@@ -14,6 +14,12 @@ export type TaskImageFilmstripEntry = {
   failure?: { code: string; retryable: boolean };
 };
 
+export type RecoverableTaskImageEntry = {
+  taskImageId: string;
+  caption?: string;
+  recoverableUntil?: number;
+};
+
 type DeliveryResult =
   | { kind: "ready"; url: string }
   | { kind: "not_found" }
@@ -21,11 +27,13 @@ type DeliveryResult =
 
 type TaskImageFilmstripProps = {
   images: TaskImageFilmstripEntry[];
+  recoverable?: RecoverableTaskImageEntry[];
   onSelectSource?: (kind: TaskImageSourceKind) => void | Promise<void>;
   onRetry?: (taskImageId: string) => void;
   onCaptionChange?: (taskImageId: string, caption: string) => void;
   onReorder?: (taskImageId: string, direction: "up" | "down") => void;
   onRemove?: (taskImageId: string) => void;
+  onRestore?: (taskImageId: string) => void;
   resolveDelivery?: (
     taskImageId: string,
     variant: "card" | "detail"
@@ -137,11 +145,13 @@ function SourceButton({
 
 export function TaskImageFilmstrip({
   images,
+  recoverable = [],
   onSelectSource,
   onRetry,
   onCaptionChange,
   onReorder,
   onRemove,
+  onRestore,
   resolveDelivery,
 }: TaskImageFilmstripProps) {
   const ordered = [...images].sort((left, right) => left.position - right.position);
@@ -241,6 +251,26 @@ export function TaskImageFilmstrip({
           />
         </View>
       ) : null}
+      {onRestore && recoverable.length > 0 ? (
+        <View style={styles.recoverableSection}>
+          <Text style={styles.recoverableHeading}>Recently removed</Text>
+          {recoverable.map((image) => (
+            <View key={image.taskImageId} style={styles.recoverableRow}>
+              <Text style={styles.recoverableText}>
+                {image.caption || "Task image"}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Restore removed Task image"
+                onPress={() => onRestore(image.taskImageId)}
+                style={styles.actionButton}
+              >
+                <Text style={styles.retryText}>Restore</Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -337,6 +367,30 @@ const styles = createThemedStyles({
   retryText: {
     ...typography.micro,
     color: colors.accent,
+  },
+  recoverableSection: {
+    gap: spacing.xs,
+    padding: spacing.sm,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  recoverableHeading: {
+    ...typography.micro,
+    color: colors.textSecondary,
+  },
+  recoverableRow: {
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  recoverableText: {
+    flex: 1,
+    ...typography.bodyMd,
+    color: colors.textPrimary,
   },
   pressed: { opacity: 0.7 },
 });

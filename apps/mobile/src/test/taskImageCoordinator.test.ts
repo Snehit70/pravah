@@ -663,6 +663,27 @@ describe("Task-image mobile coordinator", () => {
     expect(sourceStore.remove).toHaveBeenCalledWith("upl_mobile_1.jpg");
   });
 
+  it("pauses only the removed Task image and keeps it paused through Task restoration", async () => {
+    const dependencies = createDependencies();
+    let nextId = 1;
+    dependencies.createUploadId = vi.fn(() => `upl_mobile_${nextId++}`);
+    dependencies.abortUpload = vi.fn();
+    const coordinator = createTaskImageCoordinator(dependencies);
+    await coordinator.select("photos");
+    await coordinator.select("camera");
+    const uploadIds = coordinator.getViewStates().map((image) => image.uploadId);
+    coordinator.associateUploadsWithTask("task_1", uploadIds);
+    expect(coordinator.associateTaskImageOrder("task_1", ["image_1", "image_2"])).toBe(true);
+
+    expect(coordinator.pauseTaskImageUpload("task_1", "image_1")).toBe(true);
+    expect(dependencies.abortUpload).toHaveBeenCalledWith({ uploadId: uploadIds[0] });
+    await coordinator.resumeTaskUploads("task_1");
+    expect(coordinator.getViewStates()[0]).toMatchObject({ state: "pending" });
+
+    await coordinator.resumeTaskImageUpload("task_1", "image_1");
+    expect(coordinator.getViewStates()[0]).toMatchObject({ state: "verifying" });
+  });
+
   it("removes all task-owned records and sources after permanent deletion", async () => {
     const dependencies = createDependencies();
     const sourceStore = {

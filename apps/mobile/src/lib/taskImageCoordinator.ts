@@ -133,6 +133,8 @@ export type TaskImageCoordinatorDependencies = {
 
 type UploadRecord = Omit<TaskImageManifestEntry, "state"> & {
   state: TaskImageState;
+  taskImageId?: string;
+  recoverablyRemoved?: boolean;
   previewUri?: string;
   normalized?: NormalizedTaskImage;
   sourceUri?: string;
@@ -293,6 +295,7 @@ function redactManifest(entries: Iterable<UploadRecord>, visibleUploadIds: strin
 
 export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDependencies) {
   const records = new Map<string, UploadRecord>();
+  const taskUploadOrder = new Map<string, string[]>();
   let visibleUploadIds: string[] = [];
   let lastError: string | undefined;
   let foreground = true;
@@ -702,10 +705,21 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     },
 
     associateUploadsWithTask(taskId: string, uploadIds: string[]) {
+      taskUploadOrder.set(taskId, [...uploadIds]);
       for (const uploadId of uploadIds) {
         const entry = records.get(uploadId);
         if (entry) update(entry, { taskId });
       }
+    },
+
+    associateTaskImageOrder(taskId: string, taskImageIds: string[]) {
+      const uploadIds = taskUploadOrder.get(taskId);
+      if (!uploadIds || uploadIds.length !== taskImageIds.length) return false;
+      for (const [index, uploadId] of uploadIds.entries()) {
+        const entry = records.get(uploadId);
+        if (entry) entry.taskImageId = taskImageIds[index];
+      }
+      return true;
     },
 
     beginUploadAfterSave() {
@@ -784,6 +798,24 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       return paused;
     },
 
+    pauseTaskImageUpload(taskId: string, taskImageId: string) {
+      const entry = [...records.values()].find(
+        (candidate) => candidate.taskId === taskId && candidate.taskImageId === taskImageId
+      );
+      if (!entry) return false;
+      entry.generation += 1;
+      entry.paused = true;
+      entry.recoverablyRemoved = true;
+      entry.acceptedForUpload = false;
+      if (entry.state === "uploading" || entry.state === "verifying") entry.state = "pending";
+      void dependencies.abortUpload?.({ uploadId: entry.uploadId });
+      const ordered = taskUploadOrder.get(taskId);
+      if (ordered) taskUploadOrder.set(taskId, ordered.filter((uploadId) => uploadId !== entry.uploadId));
+      void persist();
+      notify();
+      return true;
+    },
+
     suspendAllUploads() {
       let suspended = 0;
       for (const entry of records.values()) {
@@ -800,11 +832,29 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
 
     async resumeTaskUploads(taskId: string) {
       for (const entry of records.values()) {
-        if (entry.taskId === taskId && entry.paused) {
+        if (entry.taskId === taskId && entry.paused && !entry.recoverablyRemoved) {
           update(entry, { paused: false, acceptedForUpload: entry.state === "pending" });
         }
       }
       await pump();
+    },
+
+    async resumeTaskImageUpload(taskId: string, taskImageId: string) {
+      const entry = [...records.values()].find(
+        (candidate) => candidate.taskId === taskId && candidate.taskImageId === taskImageId
+      );
+      if (!entry || !entry.recoverablyRemoved) return false;
+      update(entry, {
+        paused: false,
+        recoverablyRemoved: false,
+        acceptedForUpload: entry.state === "pending",
+      });
+      const ordered = taskUploadOrder.get(taskId) ?? [];
+      if (!ordered.includes(entry.uploadId)) {
+        taskUploadOrder.set(taskId, [...ordered, entry.uploadId]);
+      }
+      await pump();
+      return true;
     },
 
     async discardTaskUploads(taskId: string) {

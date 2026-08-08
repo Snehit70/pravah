@@ -170,4 +170,18 @@ describe("TaskImageFilmstrip", () => {
     expect(onRemove).toHaveBeenCalledWith("image-1");
     expect(onSelectSource).toHaveBeenCalledWith("photos");
   });
+
+  it("exposes recently removed images for restoration", () => {
+    const onRestore = vi.fn();
+    render(
+      <TaskImageFilmstrip
+        images={[]}
+        recoverable={[{ taskImageId: "removed-1", caption: "Reference" }]}
+        onRestore={onRestore}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Restore removed Task image" }));
+    expect(onRestore).toHaveBeenCalledWith("removed-1");
+  });
 });

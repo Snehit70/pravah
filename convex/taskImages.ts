@@ -891,6 +891,9 @@ export const listWorkspaceImageCollections = query({
             revision: task.imageCollectionRevision ?? 0,
             active,
             primary: active[0],
+            recoverable: taskImages
+              .filter((image) => image.removedAt !== undefined && (image.recoverableUntil ?? 0) > Date.now())
+              .map(serializeRecoverableTaskImage),
           },
         };
       })
