@@ -138,6 +138,7 @@ describe("useTaskMutations", () => {
     const rescheduleTasksMutation = vi.fn().mockResolvedValue(undefined);
     const bulkSoftDeleteInboxTasksMutation = vi.fn().mockResolvedValue(undefined);
     const restoreInboxTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const restoreTaskMutation = vi.fn().mockResolvedValue(undefined);
     const mutationOrder = [
       completeTaskMutation,
       moveTaskMutation,
@@ -151,19 +152,21 @@ describe("useTaskMutations", () => {
       rescheduleTasksMutation,
       bulkSoftDeleteInboxTasksMutation,
       restoreInboxTasksMutation,
+      restoreTaskMutation,
     ];
     let mutationIndex = 0;
     useMutationMock.mockImplementation(() => mutationOrder[mutationIndex++]);
 
     const onTaskDeletionStarted = vi.fn();
     const onTaskRestored = vi.fn();
+    const showToast = vi.fn();
     const { result } = renderHook(() =>
       useTaskMutations({
         serverTasks: [makeTask()],
         setOptimisticTasks: vi.fn(),
         setPendingMutations: vi.fn(),
         enqueueRetry: vi.fn(),
-        showToast: vi.fn(),
+        showToast,
         today: "2026-04-24",
         hasPriorityBoundaryViolation: () => false,
         onTaskDeletionStarted,
@@ -180,6 +183,18 @@ describe("useTaskMutations", () => {
     });
     expect(onTaskDeletionStarted).toHaveBeenCalledWith("task-1");
     expect(onTaskRestored).not.toHaveBeenCalled();
+
+    const toastArg = showToast.mock.calls.at(-1)?.[0] as {
+      action?: { label: string; run: () => void };
+    };
+    expect(toastArg.action?.label).toBe("Undo");
+    act(() => {
+      toastArg.action?.run();
+    });
+    await waitFor(() => {
+      expect(restoreTaskMutation).toHaveBeenCalledWith({ taskId: makeId("task-1") });
+    });
+    expect(onTaskRestored).toHaveBeenCalledWith("task-1");
   });
 
   it("surfaces an Undo toast that reopens a completed task", async () => {

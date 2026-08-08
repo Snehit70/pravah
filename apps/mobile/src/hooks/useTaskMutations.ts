@@ -89,6 +89,7 @@ export function useTaskMutations({
   const rescheduleTasksMutation = useMutation(api.tasks.rescheduleTasks);
   const bulkSoftDeleteInboxTasksMutation = useMutation(api.tasks.bulkSoftDeleteInboxTasks);
   const restoreInboxTasksMutation = useMutation(api.tasks.restoreInboxTasks);
+  const restoreTaskMutation = useMutation(api.tasks.restoreTask);
 
   const runOptimisticMutation = useCallback(
     async ({
@@ -298,10 +299,24 @@ export function useTaskMutations({
         },
         errorMessage: "Could not delete task.",
         successFeedback: "medium",
+        undo: {
+          message: "Task deleted",
+          run: () =>
+            void runOptimisticMutation({
+              actionName: "restore_task",
+              optimistic: (cur) => cur,
+              mutation: async () => {
+                await restoreTaskMutation({ taskId });
+                await Promise.resolve(onTaskRestored?.(String(taskId))).catch(() => undefined);
+              },
+              errorMessage: "Could not restore task.",
+              successFeedback: "light",
+            }),
+        },
         taskId,
       });
     },
-    [runOptimisticMutation, softDeleteTaskMutation, onTaskDeletionStarted, onTaskRestored]
+    [runOptimisticMutation, softDeleteTaskMutation, restoreTaskMutation, onTaskDeletionStarted, onTaskRestored]
   );
 
   const handleSaveEdits = useCallback(
