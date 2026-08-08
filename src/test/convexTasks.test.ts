@@ -11,7 +11,9 @@ import {
   migrateNativeTasksToDeadlineModel,
   moveTask,
   reopenTask,
+  restoreTask,
   restoreInboxTasks,
+  softDeleteTask,
   updateTask,
 } from "../../convex/tasks";
 
@@ -103,6 +105,14 @@ const restoreInboxTasksHandler = (
   >
 )._handler;
 
+const softDeleteTaskHandler = (
+  softDeleteTask as unknown as InternalHandler<{ taskId: Id<"tasks"> }, void>
+)._handler;
+
+const restoreTaskHandler = (
+  restoreTask as unknown as InternalHandler<{ taskId: Id<"tasks"> }, void>
+)._handler;
+
 const migrateNativeTasksHandler = (
   migrateNativeTasksToDeadlineModel as unknown as InternalHandler<
     Record<string, never>,
@@ -127,6 +137,62 @@ function createAuthedCtx(db: unknown) {
 }
 
 describe("convex/tasks handlers", () => {
+  it("keeps a completed Task completed while it is recoverably deleted and restored", async () => {
+    const taskId = makeId("completed-task");
+    const task = {
+      _id: taskId,
+      ownerTokenIdentifier: "user-1",
+      completedAt: 1_000,
+      deadline: "2026-08-08",
+      position: 2,
+      createdAt: 1,
+      updatedAt: 1_000,
+    };
+    const db = {
+      get: vi.fn(async () => task),
+      patch: vi.fn(async (_id: Id<"tasks">, patch: Record<string, unknown>) => Object.assign(task, patch)),
+      query: vi.fn().mockReturnValue({
+        withIndex: vi.fn().mockReturnValue({ collect: vi.fn().mockResolvedValue([]) }),
+      }),
+    };
+    const ctx = createAuthedCtx(db);
+
+    vi.spyOn(Date, "now").mockReturnValue(10_000);
+    await softDeleteTaskHandler(ctx, { taskId });
+    expect(task).toMatchObject({ cancelledAt: 10_000, completedAt: 1_000 });
+
+    vi.spyOn(Date, "now").mockReturnValue(20_000);
+    await restoreTaskHandler(ctx, { taskId });
+    expect(task).toMatchObject({ cancelledAt: undefined, completedAt: 1_000 });
+    vi.restoreAllMocks();
+  });
+
+  it("does not restore a Task after the recoverable window expires", async () => {
+    const taskId = makeId("expired-task");
+    const task = {
+      _id: taskId,
+      ownerTokenIdentifier: "user-1",
+      cancelledAt: 1_000,
+      deadline: "2026-08-08",
+      position: 0,
+      createdAt: 1,
+      updatedAt: 1_000,
+    };
+    const db = {
+      get: vi.fn(async () => task),
+      patch: vi.fn(),
+      query: vi.fn().mockReturnValue({
+        withIndex: vi.fn().mockReturnValue({ collect: vi.fn().mockResolvedValue([]) }),
+      }),
+    };
+    vi.spyOn(Date, "now").mockReturnValue(1_000 + 30 * 60 * 1000);
+    await expect(restoreTaskHandler(createAuthedCtx(db), { taskId })).rejects.toThrow(
+      "Task recovery window expired"
+    );
+    expect(db.patch).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+
   it("rejects an Inbox deletion batch without changing anything when one task is not in Inbox", async () => {
     const inboxTask = makeId("inbox-task");
     const scheduledTask = makeId("scheduled-task");
@@ -168,6 +234,7 @@ describe("convex/tasks handlers", () => {
   });
 
   it("restores a deletion batch at the end of each priority section in its original order", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(120);
     const firstP1 = makeId("first-p1");
     const secondP1 = makeId("second-p1");
     const onlyP2 = makeId("only-p2");
@@ -248,6 +315,7 @@ describe("convex/tasks handlers", () => {
       position: 4,
       updatedAt: expect.any(Number),
     });
+    vi.restoreAllMocks();
   });
 
   it("migrates native tasks onto deadline/scheduledAt/completedAt and strips legacy fields", async () => {

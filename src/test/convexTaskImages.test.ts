@@ -7,6 +7,7 @@ import {
   markUploadFailed,
   removeTaskImage,
   reorderTaskImages,
+  restoreTaskImage,
   stageImageUpload,
   updateTaskImageCaption,
 } from "../../convex/taskImages";
@@ -145,6 +146,13 @@ const updateTaskImageCaptionHandler = (
 const removeTaskImageHandler = (
   removeTaskImage as unknown as Handler<
     { taskImageId: Id<"taskImages">; expectedRevision: number },
+    unknown
+  >
+)._handler;
+
+const restoreTaskImageHandler = (
+  restoreTaskImage as unknown as Handler<
+    { taskImageId: Id<"taskImages">; replaceTaskImageId?: Id<"taskImages"> },
     unknown
   >
 )._handler;
@@ -341,5 +349,91 @@ describe("Convex Task-image contract", () => {
         expectedRevision: 5,
       })
     ).rejects.toThrow("caption_too_long");
+  });
+
+  it("restores an individual image in its prior position and preserves its upload state", async () => {
+    const db = createMemoryDb();
+    const owner = authedCtx(db);
+    const uploadIds = ["upl_restore_a", "upl_restore_b", "upl_restore_c"];
+    for (const uploadId of uploadIds) {
+      await stageHandler(owner, {
+        uploadId,
+        encodingClass: "jpeg",
+        width: 1200,
+        height: 900,
+        bytes: 500_000,
+      });
+    }
+
+    const taskId = await addTaskHandler(owner, {
+      title: "Restore image order",
+      imageUploadIds: uploadIds,
+    });
+    const initial = await collectionHandler(owner, { taskId });
+    const removedId = initial.active[1]?.taskImageId as Id<"taskImages">;
+    const removed = await removeTaskImageHandler(owner, {
+      taskImageId: removedId,
+      expectedRevision: 1,
+    });
+    expect(removed).toMatchObject({ revision: 2, stale: false });
+
+    const upload = db.rows("taskImageUploads").find((row) => row.uploadId === uploadIds[1]);
+    expect(upload).toBeDefined();
+    upload!.state = "ready";
+    const image = db.rows("taskImages").find((row) => row._id === removedId);
+    image!.state = "ready";
+
+    const restored = await restoreTaskImageHandler(owner, { taskImageId: removedId });
+    expect(restored).toMatchObject({ revision: 3, stale: false });
+    expect((await collectionHandler(owner, { taskId })).active.map((entry) => entry.taskImageId)).toEqual(
+      initial.active.map((entry) => entry.taskImageId)
+    );
+    expect(image).toMatchObject({ state: "ready", removedAt: undefined, recoverableUntil: undefined });
+    expect(upload).toMatchObject({ state: "ready" });
+  });
+
+  it("atomically replaces an active image when restoring into a full collection", async () => {
+    const db = createMemoryDb();
+    const owner = authedCtx(db);
+    const uploadIds = Array.from({ length: 6 }, (_, index) => `upl_swap_${index}`);
+    for (const uploadId of uploadIds) {
+      await stageHandler(owner, {
+        uploadId,
+        encodingClass: "jpeg",
+        width: 1200,
+        height: 900,
+        bytes: 500_000,
+      });
+    }
+    const taskId = await addTaskHandler(owner, {
+      title: "Swap a removed image",
+      imageUploadIds: uploadIds.slice(0, 5),
+    });
+    const initial = await collectionHandler(owner, { taskId });
+    const removedId = initial.active[0]?.taskImageId as Id<"taskImages">;
+    await removeTaskImageHandler(owner, { taskImageId: removedId, expectedRevision: 1 });
+    const replacementId = initial.active[4]?.taskImageId as Id<"taskImages">;
+    await addTaskImagesHandler(owner, {
+      taskId,
+      uploadIds: [uploadIds[5]],
+      expectedRevision: 2,
+    });
+
+    const restored = await restoreTaskImageHandler(owner, {
+      taskImageId: removedId,
+      replaceTaskImageId: replacementId,
+    });
+    expect(restored).toMatchObject({ revision: 4, stale: false });
+    const collection = await collectionHandler(owner, { taskId });
+    expect(collection.active).toHaveLength(5);
+    expect(collection.active.map((entry) => entry.taskImageId)).toEqual([
+      ...initial.active.slice(1, 4).map((entry) => entry.taskImageId),
+      removedId,
+      expect.any(String),
+    ]);
+    expect(collection.active.map((entry) => entry.taskImageId)).not.toContain(replacementId);
+    expect(collection.recoverable).toEqual([
+      expect.objectContaining({ taskImageId: replacementId, previousPosition: 3 }),
+    ]);
   });
 });

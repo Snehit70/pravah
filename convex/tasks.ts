@@ -902,8 +902,13 @@ export const deleteTask = mutation({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    await getOwnedTask(ctx, args.taskId, tokenIdentifier);
-    await ctx.db.delete(args.taskId);
+    const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
+    if (isCancelledTask(task)) return;
+    const cancelledAt = Date.now();
+    await ctx.db.patch(args.taskId, {
+      cancelledAt,
+      updatedAt: cancelledAt,
+    });
   },
 });
 
@@ -911,11 +916,12 @@ export const softDeleteTask = mutation({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    await getOwnedTask(ctx, args.taskId, tokenIdentifier);
+    const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
+    if (isCancelledTask(task)) return;
+    const cancelledAt = Date.now();
     await ctx.db.patch(args.taskId, {
-      cancelledAt: Date.now(),
-      completedAt: undefined,
-      updatedAt: Date.now(),
+      cancelledAt,
+      updatedAt: cancelledAt,
     });
   },
 });
@@ -964,6 +970,7 @@ export const restoreInboxTasks = mutation({
       if (!isCancelledTask(task) || getTaskDeadline(task)) {
         throw new Error("Task is not pending Inbox restoration");
       }
+      assertTaskRecoveryWindow(task);
       tasks.push(task);
     }
 
@@ -998,6 +1005,7 @@ export const restoreTask = mutation({
     if (!isCancelledTask(task)) {
       throw new Error("Task is not pending deletion");
     }
+    assertTaskRecoveryWindow(task);
     const deadline = getTaskDeadline(task);
     const position = await getNextPositionForLane(ctx, tokenIdentifier, deadline);
     await ctx.db.patch(args.taskId, {
@@ -1009,6 +1017,14 @@ export const restoreTask = mutation({
 });
 
 const PURGE_GRACE_MS = 30 * 60 * 1000;
+
+function assertTaskRecoveryWindow(task: Doc<"tasks">) {
+  const cancelledAt = getTaskCancelledAt(task);
+  if (cancelledAt === undefined || Date.now() - cancelledAt >= PURGE_GRACE_MS) {
+    throw new Error("Task recovery window expired");
+  }
+}
+
 export const purgeExpiredCancelledTasks = internalMutation({
   args: {},
   handler: async (ctx) => {
