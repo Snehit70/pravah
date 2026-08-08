@@ -431,6 +431,18 @@ function MobileApp() {
       taskImageCoordinator.dispose();
     };
   }, [sessionUserId, taskImageCoordinator]);
+  useEffect(() => {
+    for (const task of workspaceTaskCorpus) {
+      const activeImages = task.imageCollection?.active;
+      if (!activeImages?.length) continue;
+      taskImageCoordinator.associateTaskImageOrder(
+        String(task._id),
+        [...activeImages]
+          .sort((left, right) => left.position - right.position)
+          .map((image) => image.taskImageId)
+      );
+    }
+  }, [taskImageCoordinator, workspaceTaskCorpus]);
   const overduePreviewData = useQuery(
     api.overdueReflow.preview,
     session && activeTab === "timeline" ? { today } : "skip"
@@ -1475,6 +1487,14 @@ function MobileApp() {
             taskId,
             orderedTaskImageIds: orderedTaskImageIds as Id<"taskImages">[],
             expectedRevision,
+          }).then((result) => {
+            if (!result.stale) {
+              taskImageCoordinator.associateTaskImageOrder(
+                String(taskId),
+                result.active.map((image) => image.taskImageId)
+              );
+            }
+            return result;
           });
         }}
         onCaptionTaskImage={({ taskImageId, caption, expectedRevision }) => {
@@ -1551,6 +1571,10 @@ function MobileApp() {
                 return result;
               }
               taskImageCoordinator.associateUploadsWithTask(String(taskId), [selected.uploadId]);
+              taskImageCoordinator.associateTaskImageOrder(
+                String(taskId),
+                result.active.map((image) => image.taskImageId)
+              );
               void taskImageCoordinator.beginUploadAfterSave();
               taskImageCoordinator.clearAfterSaveAndStay();
               return result;

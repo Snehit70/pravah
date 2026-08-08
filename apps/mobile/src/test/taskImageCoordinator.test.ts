@@ -331,6 +331,21 @@ describe("Task-image mobile coordinator", () => {
     expect(coordinator.pauseTaskImageUpload("task_1", "image_new")).toBe(true);
   });
 
+  it("preserves every local upload when the server reports fewer active images", async () => {
+    const dependencies = createDependencies();
+    let nextId = 1;
+    dependencies.createUploadId = vi.fn(() => `upl_mobile_${nextId++}`);
+    const coordinator = createTaskImageCoordinator(dependencies);
+    await coordinator.select("photos");
+    await coordinator.select("camera");
+    const uploadIds = coordinator.getViewStates().map((image) => image.uploadId);
+    coordinator.associateUploadsWithTask("task_1", uploadIds);
+
+    expect(coordinator.associateTaskImageOrder("task_1", ["image_1"])).toBe(true);
+    expect(coordinator.getViewStates()).toHaveLength(2);
+    expect(coordinator.pauseTaskUploads("task_1")).toBe(2);
+  });
+
   it("runs no more than two uploads at once and keeps verification indeterminate", async () => {
     const dependencies = createDependencies();
     let nextId = 1;

@@ -731,6 +731,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
 
     associateTaskImageOrder(taskId: string, taskImageIds: string[]) {
       const uploadIds = taskUploadOrder.get(taskId) ?? [];
+      let changed = false;
       const entriesByTaskImageId = new Map(
         [...records.values()]
           .filter((entry) => entry.taskId === taskId && entry.taskImageId)
@@ -740,10 +741,14 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         .filter((entry) => entry.taskId === taskId && !entry.taskImageId)
         .sort((left, right) => uploadIds.indexOf(left.uploadId) - uploadIds.indexOf(right.uploadId));
       const missingTaskImageIds = taskImageIds.filter((taskImageId) => !entriesByTaskImageId.has(taskImageId));
+      const alignmentOffset = Math.max(0, missingTaskImageIds.length - unassignedEntries.length);
       for (const [index, entry] of unassignedEntries.entries()) {
-        const taskImageId = missingTaskImageIds[missingTaskImageIds.length - unassignedEntries.length + index];
+        const taskImageId = missingTaskImageIds[alignmentOffset + index];
         if (taskImageId) {
-          entry.taskImageId = taskImageId;
+          if (entry.taskImageId !== taskImageId) {
+            entry.taskImageId = taskImageId;
+            changed = true;
+          }
           entriesByTaskImageId.set(taskImageId, entry);
         }
       }
@@ -751,17 +756,30 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         const entry = entriesByTaskImageId.get(taskImageId);
         return entry ? [entry.uploadId] : [];
       });
-      if (associatedUploadIds.length > 0) {
-        taskUploadOrder.set(taskId, associatedUploadIds);
-        void persist();
+      const associatedSet = new Set(associatedUploadIds);
+      const unmappedUploadIds = uploadIds.filter((uploadId) => !associatedSet.has(uploadId));
+      const nextTaskUploadOrder = [...associatedUploadIds, ...unmappedUploadIds];
+      if (nextTaskUploadOrder.length > 0) {
+        const previousOrder = taskUploadOrder.get(taskId) ?? [];
+        if (
+          previousOrder.length !== nextTaskUploadOrder.length ||
+          previousOrder.some((uploadId, index) => uploadId !== nextTaskUploadOrder[index])
+        ) {
+          taskUploadOrder.set(taskId, nextTaskUploadOrder);
+          changed = true;
+        }
+        if (changed) void persist();
         return true;
       }
       if (uploadIds.length !== taskImageIds.length) return false;
       for (const [index, uploadId] of uploadIds.entries()) {
         const entry = records.get(uploadId);
-        if (entry) entry.taskImageId = taskImageIds[index];
+        if (entry && entry.taskImageId !== taskImageIds[index]) {
+          entry.taskImageId = taskImageIds[index];
+          changed = true;
+        }
       }
-      void persist();
+      if (changed) void persist();
       return true;
     },
 

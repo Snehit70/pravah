@@ -234,17 +234,20 @@ describe("convex/tasks handlers", () => {
     };
 
     vi.spyOn(Date, "now").mockReturnValue(20_000);
-    await restoreTaskHandler(createAuthedCtx(db), { taskId });
+    try {
+      await restoreTaskHandler(createAuthedCtx(db), { taskId });
 
-    expect(db.patch).toHaveBeenNthCalledWith(1, activeTaskId, {
-      position: 2,
-      updatedAt: 20_000,
-    });
-    expect(db.patch).toHaveBeenNthCalledWith(2, taskId, {
-      cancelledAt: undefined,
-      updatedAt: 20_000,
-    });
-    vi.restoreAllMocks();
+      expect(db.patch).toHaveBeenNthCalledWith(1, activeTaskId, {
+        position: 2,
+        updatedAt: 20_000,
+      });
+      expect(db.patch).toHaveBeenNthCalledWith(2, taskId, {
+        cancelledAt: undefined,
+        updatedAt: 20_000,
+      });
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
   it("rejects an Inbox deletion batch without changing anything when one task is not in Inbox", async () => {
