@@ -410,7 +410,12 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     activeCount += 1;
     update(entry, { state: "uploading", failure: undefined, progress: undefined });
     try {
-      if (entry.needsReconciliation && !(await reconcileBeforeAttempt(entry))) return;
+      if (entry.needsReconciliation && !(await reconcileBeforeAttempt(entry))) {
+        if (entry.state === "uploading") {
+          await failEntry(entry, { code: "provider_unavailable", retryable: true });
+        }
+        return;
+      }
       const sourceUri = entry.sourceUri ?? (
         entry.sourceKey && dependencies.sourceStore
           ? await dependencies.sourceStore.resolve(entry.sourceKey)

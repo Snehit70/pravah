@@ -412,6 +412,30 @@ describe("Task-image mobile coordinator", () => {
     expect(coordinator.getViewState()).toMatchObject({ uploadId: "upl_mobile_1", state: "verifying" });
   });
 
+  it("keeps an unavailable reconciliation actionable instead of issuing a duplicate attempt", async () => {
+    vi.useFakeTimers();
+    try {
+      const dependencies = createDependencies();
+      dependencies.upload = vi.fn().mockRejectedValueOnce(
+        Object.assign(new Error("timeout"), { code: "network_error", retryable: true })
+      );
+      dependencies.reconcileAttempt = vi.fn(async () => ({ status: "unknown" as const }));
+      const coordinator = createTaskImageCoordinator(dependencies);
+      await coordinator.select("photos");
+      await coordinator.beginUploadAfterSave();
+      await vi.advanceTimersByTimeAsync(UPLOAD_RETRY_DELAYS_MS[0]);
+
+      expect(dependencies.issueGrant).toHaveBeenCalledTimes(1);
+      expect(coordinator.getViewState()).toMatchObject({
+        state: "failed",
+        failure: { code: "provider_unavailable", retryable: true },
+        retryAt: expect.any(Number),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("sanitizes malformed persisted entries before they can be written back", async () => {
     const saved: unknown[] = [];
     const coordinator = createTaskImageCoordinator({
