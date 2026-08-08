@@ -198,8 +198,8 @@ export const reconcileUploadAttempt = action({
     });
     if (!context) return { status: "absent" as const };
     if (context.state === "ready") return { status: "ready" as const };
-    if (context.providerAttempt !== args.attempt) return { status: "unknown" as const };
-    if (!context.providerPublicId) return { status: "absent" as const };
+    const providerAttempt = context.providerAttempt;
+    if (!context.providerPublicId) return { status: "absent" as const, attempt: providerAttempt };
 
     const presence = await checkProviderAssetPresence({
       provider,
@@ -209,14 +209,15 @@ export const reconcileUploadAttempt = action({
     if (presence === "present") {
       return {
         status: context.state === "verifying" ? ("verifying" as const) : ("uploading" as const),
+        attempt: providerAttempt,
       };
     }
     await ctx.runMutation(resetUploadAttemptRef, {
       ownerTokenIdentifier,
       uploadId: args.uploadId,
-      providerAttempt: args.attempt,
+      providerAttempt,
     });
-    return { status: "absent" as const };
+    return { status: "absent" as const, attempt: providerAttempt };
   },
 });
 

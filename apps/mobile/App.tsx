@@ -386,9 +386,9 @@ function MobileApp() {
         reconcileAttempt: async ({ uploadId, attempt }) => {
           const result = await reconcileTaskImageAttempt({ uploadId, attempt });
           if (result.status === "ready") return { status: "ready" as const };
-          if (result.status === "absent") return { status: "absent" as const };
+          if (result.status === "absent") return { status: "absent" as const, attempt: result.attempt };
           if (result.status === "unknown") return { status: "unknown" as const };
-          return { status: result.status };
+          return { status: result.status, attempt: result.attempt };
         },
         upload: uploadPreparedTaskImage,
         abortUpload: ({ uploadId }) => abortPreparedTaskImageUpload(uploadId),
@@ -427,6 +427,7 @@ function MobileApp() {
     return () => {
       subscription.remove();
       taskImageCoordinator.suspendAllUploads();
+      taskImageCoordinator.dispose();
     };
   }, [session, taskImageCoordinator]);
   const overduePreviewData = useQuery(

@@ -56,8 +56,8 @@ export type AllowlistedProviderResult = {
 };
 
 export type TaskImageReconciliation =
-  | { status: "absent" }
-  | { status: "uploading" | "verifying" }
+  | { status: "absent"; attempt?: number }
+  | { status: "uploading" | "verifying"; attempt?: number }
   | { status: "ready" }
   | { status: "ready"; result: AllowlistedProviderResult }
   | { status: "failed"; failure: { code: string; retryable?: boolean } }
@@ -184,7 +184,7 @@ function safeFailure(error: unknown): SafeTaskImageFailure {
   const candidate =
     error && typeof error === "object" && "code" in error && typeof error.code === "string"
       ? error.code
-      : "normalization_failed";
+      : "upload_failed";
   const code = SAFE_FAILURE_CODES.has(candidate) ? candidate : "normalization_failed";
   const explicitRetryable =
     error && typeof error === "object" && "retryable" in error && typeof error.retryable === "boolean"
@@ -305,12 +305,13 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
   const drainWaiters = new Set<() => void>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   const listeners = new Set<() => void>();
+  let disposed = false;
   const notify = () => listeners.forEach((listener) => listener());
   const now = dependencies.now ?? Date.now;
 
   let persistChain = Promise.resolve();
   const persist = () => {
-    if (!dependencies.manifestStore || !dependencies.ownerScope) return Promise.resolve();
+    if (disposed || !dependencies.manifestStore || !dependencies.ownerScope) return Promise.resolve();
     const ownerScope = dependencies.ownerScope();
     if (!ownerScope) return Promise.resolve();
     const snapshot = redactManifest(records.values(), visibleUploadIds);
@@ -370,9 +371,9 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       retryAt,
       needsReconciliation: entry.attempt > 0,
     });
-    if (!failure.retryable || !retryAt) {
+    if (!failure.retryable) {
       await Promise.resolve(dependencies.reportFailure?.({ uploadId: entry.uploadId, failureCode: failure.code })).catch(() => undefined);
-      if (!failure.retryable) await removeSource(entry);
+      await removeSource(entry);
     }
     if (retryAt) {
       scheduleRetry(entry, retryAt);
@@ -401,7 +402,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       return false;
     }
     if (result.status === "absent") {
-      update(entry, { needsReconciliation: false });
+      update(entry, { attempt: result.attempt ?? entry.attempt, needsReconciliation: false });
       return true;
     }
     if (result.status === "ready") {
@@ -575,7 +576,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         visibleUploadIds.push(restored.uploadId);
       }
     }
-    persist();
+    void persist();
     notify();
   };
 
@@ -682,7 +683,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     remove(uploadId: string) {
       const record = records.get(uploadId);
       if (!record) return;
-      void removeRecord(record).then(() => persist());
+      void removeRecord(record).then(() => void persist());
       lastError = undefined;
       notify();
     },
@@ -743,6 +744,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     },
 
     async reconcileOnForeground() {
+      if (disposed) return;
       await ensureHydrated();
       foreground = true;
       for (const entry of records.values()) {
@@ -764,13 +766,23 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
           const retryDue = entry.retryAt === undefined || entry.retryAt <= now();
           const canAutoRetry = entry.retryCount < UPLOAD_RETRY_DELAYS_MS.length;
           if (retryDue && canAutoRetry) {
-            update(entry, { state: "pending", needsReconciliation: false, acceptedForUpload: !entry.paused });
+            update(entry, {
+              attempt: reconciliation.attempt ?? entry.attempt,
+              state: "pending",
+              needsReconciliation: false,
+              acceptedForUpload: !entry.paused,
+            });
           } else {
             update(entry, { state: "failed", needsReconciliation: false, acceptedForUpload: false });
             if (entry.retryAt && entry.retryAt > now()) scheduleRetry(entry, entry.retryAt);
           }
         } else if (reconciliation.status === "uploading" || reconciliation.status === "verifying") {
-          update(entry, { state: "verifying", needsReconciliation: true, acceptedForUpload: false });
+          update(entry, {
+            attempt: reconciliation.attempt ?? entry.attempt,
+            state: "verifying",
+            needsReconciliation: true,
+            acceptedForUpload: false,
+          });
         } else if (reconciliation.status === "failed") {
           update(entry, { state: "failed", failure: safeFailure(reconciliation.failure), needsReconciliation: false });
         }
@@ -779,6 +791,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     },
 
     setForeground(isForeground: boolean) {
+      if (disposed) return;
       foreground = isForeground;
       if (foreground) void pump();
     },
@@ -794,7 +807,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         void dependencies.abortUpload?.({ uploadId: entry.uploadId });
         paused += 1;
       }
-      if (paused) { persist(); notify(); }
+      if (paused) { void persist(); notify(); }
       return paused;
     },
 
@@ -857,6 +870,22 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       return true;
     },
 
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      foreground = false;
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+      for (const entry of records.values()) {
+        entry.generation += 1;
+        entry.paused = true;
+        void dependencies.abortUpload?.({ uploadId: entry.uploadId });
+      }
+      for (const resolve of drainWaiters) resolve();
+      drainWaiters.clear();
+      listeners.clear();
+    },
+
     async discardTaskUploads(taskId: string) {
       const taskEntries = [...records.values()].filter((entry) => entry.taskId === taskId);
       for (const entry of taskEntries) await removeRecord(entry);
@@ -866,15 +895,15 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     clearAfterSaveAndStay() {
       visibleUploadIds = [];
       lastError = undefined;
-      persist();
+      void persist();
       notify();
     },
 
     discard() {
       const pending = [...records.values()].filter((entry) => !entry.taskId && !entry.acceptedForUpload);
-      visibleUploadIds = visibleUploadIds.filter((uploadId) => records.has(uploadId));
+      visibleUploadIds = [];
       lastError = undefined;
-      void Promise.all(pending.map((entry) => removeRecord(entry))).then(() => persist());
+      void Promise.all(pending.map((entry) => removeRecord(entry))).then(() => void persist());
       notify();
     },
 

@@ -10,6 +10,7 @@ const MAX_DETAIL_BYTES = 2 * 1024 * 1024;
 const MAX_MASTER_EDGE = 2560;
 const MAX_ASPECT_RATIO = 20;
 const CALLBACK_MAX_AGE_SECONDS = 2 * 60 * 60;
+const PROVIDER_REQUEST_TIMEOUT_MS = 10_000;
 
 export type TaskImageProviderConfig = {
   cloudName: string;
@@ -41,8 +42,8 @@ export async function checkProviderAssetPresence({
       headers: {
         Authorization: `Basic ${btoa(`${provider.apiKey}:${provider.apiSecret}`)}`,
       },
+      signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
     });
-    if (response.status === 404) return "absent";
     if (!response.ok) return "unknown";
     const payload = (await response.json()) as { resources?: unknown };
     return Array.isArray(payload.resources) && payload.resources.length > 0 ? "present" : "absent";
@@ -82,9 +83,14 @@ export async function deleteProviderAsset({
   try {
     const response = await fetch(
       `https://api.cloudinary.com/v1_1/${encodeURIComponent(provider.cloudName)}/image/destroy`,
-      { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body }
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+        signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
+      }
     );
-    if (response.status === 404) return "absent";
+    if (response.status === 404) return await resolveAmbiguousCleanup(provider, publicId);
     if (response.status === 408 || response.status === 429 || response.status >= 500) {
       return "retry";
     }

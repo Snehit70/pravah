@@ -205,6 +205,17 @@ describe("Task-image mobile coordinator", () => {
     expect(coordinator.getUploadIdsForSave()).toHaveLength(5);
   });
 
+  it("clears the visible draft without discarding task-owned recovery records", async () => {
+    const coordinator = createTaskImageCoordinator(createDependencies());
+    await coordinator.select("photos");
+    coordinator.associateUploadsWithTask("task_1", ["upl_mobile_1"]);
+
+    coordinator.discard();
+
+    expect(coordinator.getViewStates()).toEqual([]);
+    expect(coordinator.serialize().uploads).toHaveLength(1);
+  });
+
   it("persists a redacted owner-scoped manifest without private source or provider data", async () => {
     const dependencies = createDependencies();
     const saved: Array<[string, unknown]> = [];
@@ -488,7 +499,19 @@ describe("Task-image mobile coordinator", () => {
         .mockRejectedValueOnce(Object.assign(new Error("offline"), { code: "network_error", retryable: true }))
         .mockRejectedValueOnce(Object.assign(new Error("offline"), { code: "network_error", retryable: true }))
         .mockRejectedValueOnce(Object.assign(new Error("offline"), { code: "network_error", retryable: true }))
-        .mockRejectedValueOnce(Object.assign(new Error("offline"), { code: "network_error", retryable: true }));
+        .mockRejectedValueOnce(Object.assign(new Error("offline"), { code: "network_error", retryable: true }))
+        .mockResolvedValueOnce({
+          publicId: "provider-private-id",
+          version: 1,
+          signature: "provider-response-signature",
+          resourceType: "image",
+          deliveryType: "authenticated",
+          format: "jpg",
+          width: 1600,
+          height: 1200,
+          bytes: 2_000_000,
+          eager: [],
+        });
       const coordinator = createTaskImageCoordinator(dependencies);
       await coordinator.select("photos");
       await coordinator.beginUploadAfterSave();
@@ -504,9 +527,41 @@ describe("Task-image mobile coordinator", () => {
         failure: { code: "network_error", retryable: true },
         retryAt: undefined,
       });
+
+      await coordinator.retry("upl_mobile_1");
+      expect(dependencies.upload).toHaveBeenCalledTimes(5);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("keeps an unclassified transport failure retryable", async () => {
+    const dependencies = createDependencies();
+    const sourceStore = {
+      persist: vi.fn(async () => ({ sourceKey: "upl_mobile_1.jpg", uri: "file:///private/durable.jpg" })),
+      resolve: vi.fn(async () => "file:///private/durable.jpg"),
+      remove: vi.fn(async () => undefined),
+    };
+    dependencies.issueGrant = vi.fn()
+      .mockRejectedValueOnce(new Error("connection reset"))
+      .mockResolvedValue({
+        uploadUrl: "https://api.cloudinary.example/private",
+        signature: "signed-secret-capability",
+        apiKey: "public-key",
+        signedParameters: { timestamp: "1" },
+      });
+    const coordinator = createTaskImageCoordinator({ ...dependencies, sourceStore });
+    await coordinator.select("photos");
+    await coordinator.beginUploadAfterSave();
+
+    expect(coordinator.getViewState()).toMatchObject({
+      state: "failed",
+      failure: { code: "upload_failed", retryable: true },
+    });
+    expect(sourceStore.remove).not.toHaveBeenCalled();
+
+    await coordinator.retry("upl_mobile_1");
+    expect(dependencies.issueGrant).toHaveBeenCalledTimes(2);
   });
 
   it("reconciles an ambiguous attempt before creating a new provider attempt", async () => {
