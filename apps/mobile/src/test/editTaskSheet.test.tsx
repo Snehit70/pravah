@@ -153,6 +153,11 @@ vi.mock("expo-blur", () => ({
     React.createElement("div", { "data-testid": "blur-view" }, children),
 }));
 
+vi.mock("expo-image", () => ({
+  Image: ({ source, accessibilityLabel }: { source?: { uri?: string }; accessibilityLabel?: string }) =>
+    React.createElement("img", { src: source?.uri, alt: accessibilityLabel }),
+}));
+
 vi.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));

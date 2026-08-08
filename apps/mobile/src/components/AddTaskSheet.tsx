@@ -80,6 +80,7 @@ type AddTaskSheetProps = {
     priority?: TaskPriority;
     goalId?: string;
     imageUploadId?: string;
+    imageUploadIds?: string[];
   }) => Promise<boolean>;
   onBulkAdd?: (tasks: BulkTaskInput[]) => Promise<boolean>;
   isValidDeadline: (raw: string) => { value?: string; error?: string };
@@ -129,7 +130,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       if (!taskImageCoordinator) return;
       return taskImageCoordinator.subscribe(() => setTaskImageRevision((value) => value + 1));
     }, [taskImageCoordinator]);
-    const taskImageDraft = taskImageCoordinator?.getViewState() ?? null;
+    const taskImageDrafts = taskImageCoordinator?.getViewStates() ?? [];
     const selectedGoal = useMemo(
       () => goals.find((g) => g.id === goalId),
       [goals, goalId]
@@ -149,7 +150,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         goalId ||
         goalIds.length > 0 ||
         seriesEnabled ||
-        taskImageDraft
+        taskImageDrafts.length > 0
       );
     const hasDraftChanges = hasUnsavedText || hasUnsavedContext;
 
@@ -321,7 +322,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       const end = seriesEnabled ? Number(seriesEnd) : 1;
       const useBulk = prefs.bulkTaskCaptureEnabled && (seriesEnabled || goalIds.length > 1);
       if (useBulk) {
-        if (taskImageDraft) {
+        if (taskImageDrafts.length > 0) {
           setSaving(false);
           setError("Task images can be added to one Task at a time.");
           haptic.error();
@@ -351,7 +352,13 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         }
       }
 
-      const imageUploadId = taskImageCoordinator?.getUploadIdForSave();
+      const imageUploadIds = taskImageCoordinator?.getUploadIdsForSave() ?? [];
+      const imageArguments =
+        imageUploadIds.length === 1
+          ? { imageUploadId: imageUploadIds[0] }
+          : imageUploadIds.length > 1
+            ? { imageUploadIds }
+            : {};
       const success = await onAdd({
         title: trimmed,
         description: description.trim() || undefined,
@@ -359,7 +366,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         time: deadlineResult.value ? (time.trim() || undefined) : undefined,
         priority,
         goalId: prefs.bulkTaskCaptureEnabled ? goalIds[0] : goalId,
-        ...(imageUploadId ? { imageUploadId } : {}),
+        ...imageArguments,
       });
 
       setSaving(false);
@@ -376,7 +383,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           closeModal();
         }
       }
-    }, [title, description, deadline, time, priority, firstTaskTitle, goalId, goalIds, seriesEnabled, seriesStart, seriesEnd, kind, saving, onAdd, onBulkAdd, isValidDeadline, closeModal, finishBurstSave, addGoal, prefs.bulkTaskCaptureEnabled, taskImageCoordinator, taskImageDraft, reset]);
+    }, [title, description, deadline, time, priority, firstTaskTitle, goalId, goalIds, seriesEnabled, seriesStart, seriesEnd, kind, saving, onAdd, onBulkAdd, isValidDeadline, closeModal, finishBurstSave, addGoal, prefs.bulkTaskCaptureEnabled, taskImageCoordinator, taskImageDrafts, reset]);
 
     const bulkPreview = useMemo(() => {
       if (!prefs.bulkTaskCaptureEnabled || kind !== "task" || (!seriesEnabled && goalIds.length < 2)) return null;
@@ -394,8 +401,8 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     }, [goalIds, kind, prefs.bulkTaskCaptureEnabled, seriesEnabled, seriesEnd, seriesStart, title]);
 
     const canSubmit = useMemo(
-      () => Boolean(title.trim()) && !saving && taskImageDraft?.state !== "preparing",
-      [title, saving, taskImageDraft?.state]
+      () => Boolean(title.trim()) && !saving && !taskImageDrafts.some((image) => image.state === "preparing"),
+      [title, saving, taskImageDrafts]
     );
     const captureOutcome = useMemo(() => {
       if (kind === "goal") return "Creates a Goal you can plan from Goals.";
@@ -661,23 +668,28 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
 
               {kind === "task" && taskImageCoordinator ? (
                 <TaskImageFilmstrip
-                  images={
-                    taskImageDraft
-                      ? [
-                          {
-                            taskImageId: taskImageDraft.uploadId,
-                            position: 0,
-                            state: taskImageDraft.state,
-                            previewUri: taskImageDraft.previewUri,
-                            failure: taskImageDraft.failure,
-                          },
-                        ]
-                      : []
-                  }
+                  images={taskImageDrafts.map((image, position) => ({
+                    taskImageId: image.uploadId,
+                    position,
+                    state: image.state,
+                    previewUri: image.previewUri,
+                    caption: image.caption,
+                    failure: image.failure,
+                  }))}
                   onSelectSource={(sourceKind) => {
                     setError(null);
                     void taskImageCoordinator.select(sourceKind);
                   }}
+                  onCaptionChange={taskImageCoordinator.updateCaption}
+                  onReorder={(uploadId, direction) => {
+                    const currentIndex = taskImageDrafts.findIndex((image) => image.uploadId === uploadId);
+                    const nextIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+                    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= taskImageDrafts.length) return;
+                    const nextOrder = taskImageDrafts.map((image) => image.uploadId);
+                    [nextOrder[currentIndex], nextOrder[nextIndex]] = [nextOrder[nextIndex], nextOrder[currentIndex]];
+                    taskImageCoordinator.reorder(nextOrder);
+                  }}
+                  onRemove={taskImageCoordinator.remove}
                 />
               ) : null}
 

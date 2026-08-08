@@ -78,7 +78,10 @@ type Draft = {
   previewUri?: string;
   normalized?: NormalizedTaskImage;
   failure?: SafeTaskImageFailure;
+  caption?: string;
 };
+
+export const MAX_TASK_IMAGE_COUNT = 5 as const;
 
 const SAFE_FAILURE_CODES = new Set([
   "unsupported_format",
@@ -149,28 +152,42 @@ function allowlistedProviderResult(
 }
 
 export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDependencies) {
-  let draft: Draft | null = null;
+  let drafts: Draft[] = [];
+  let lastError: string | undefined;
   const listeners = new Set<() => void>();
   const notify = () => listeners.forEach((listener) => listener());
 
   const updateDetachedSafe = (job: Draft, patch: Partial<Draft>) => {
     Object.assign(job, patch);
-    if (draft?.uploadId === job.uploadId) Object.assign(draft, patch);
     notify();
   };
 
+  const viewState = (draft: Draft) => ({
+    uploadId: draft.uploadId,
+    state: draft.state,
+    previewUri: draft.previewUri,
+    failure: draft.failure,
+    caption: draft.caption,
+  });
+
   return {
     async select(kind: TaskImageSourceKind) {
+      if (drafts.length >= MAX_TASK_IMAGE_COUNT) {
+        lastError = "Task image limit reached";
+        notify();
+        return;
+      }
       const uploadId = dependencies.createUploadId();
       const nextDraft: Draft = { uploadId, state: "preparing" };
-      draft = nextDraft;
+      drafts = [...drafts, nextDraft];
+      lastError = undefined;
       notify();
       try {
         const source = await dependencies.acquireSource(kind);
-        if (draft !== nextDraft) return;
+        if (!drafts.includes(nextDraft)) return;
         nextDraft.previewUri = source.previewUri;
         const normalized = await dependencies.normalize(source);
-        if (draft !== nextDraft) return;
+        if (!drafts.includes(nextDraft)) return;
         await dependencies.stage({
           uploadId,
           encodingClass: normalized.encodingClass,
@@ -192,26 +209,61 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     },
 
     getViewState() {
-      if (!draft) return null;
-      return {
-        uploadId: draft.uploadId,
-        state: draft.state,
-        previewUri: draft.previewUri,
-        failure: draft.failure,
-      };
+      return drafts[0] ? viewState(drafts[0]) : null;
+    },
+
+    getViewStates() {
+      return drafts.map(viewState);
+    },
+
+    getLastError() {
+      return lastError;
+    },
+
+    updateCaption(uploadId: string, rawCaption: string) {
+      const draft = drafts.find((candidate) => candidate.uploadId === uploadId);
+      if (!draft) return;
+      const caption = rawCaption.trim();
+      if (caption.length > 500) {
+        lastError = "Caption must be 500 characters or fewer";
+        notify();
+        return;
+      }
+      lastError = undefined;
+      draft.caption = caption || undefined;
+      notify();
+    },
+
+    reorder(uploadIds: string[]) {
+      if (uploadIds.length !== drafts.length) return;
+      const byId = new Map(drafts.map((draft) => [draft.uploadId, draft]));
+      if (new Set(uploadIds).size !== uploadIds.length || uploadIds.some((id) => !byId.has(id))) return;
+      drafts = uploadIds.map((id) => byId.get(id)!);
+      notify();
+    },
+
+    remove(uploadId: string) {
+      const next = drafts.filter((draft) => draft.uploadId !== uploadId);
+      if (next.length === drafts.length) return;
+      drafts = next;
+      lastError = undefined;
+      notify();
     },
 
     getUploadIdForSave() {
-      return draft?.state === "pending" || draft?.state === "failed"
-        ? draft.uploadId
-        : undefined;
+      return this.getUploadIdsForSave()[0];
+    },
+
+    getUploadIdsForSave() {
+      return drafts
+        .filter((draft) => draft.state === "pending" || draft.state === "failed")
+        .map((draft) => draft.uploadId);
     },
 
     beginUploadAfterSave() {
-      const job = draft;
-      if (!job?.normalized || job.state !== "pending") return Promise.resolve();
-      updateDetachedSafe(job, { state: "uploading" });
-      return (async () => {
+      const jobs = drafts.filter((draft) => draft.normalized && draft.state === "pending");
+      return Promise.all(jobs.map(async (job) => {
+        updateDetachedSafe(job, { state: "uploading" });
         try {
           const grant = await dependencies.issueGrant({
             uploadId: job.uploadId,
@@ -230,16 +282,18 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         } catch (error) {
           updateDetachedSafe(job, { state: "failed", failure: safeFailure(error) });
         }
-      })();
+      }));
     },
 
     clearAfterSaveAndStay() {
-      draft = null;
+      drafts = [];
+      lastError = undefined;
       notify();
     },
 
     discard() {
-      draft = null;
+      drafts = [];
+      lastError = undefined;
       notify();
     },
 
@@ -251,6 +305,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     },
 
     serialize() {
+      const draft = drafts[0];
       return {
         version: 1 as const,
         draft: draft

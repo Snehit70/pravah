@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Image } from "expo-image";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
@@ -10,6 +10,7 @@ export type TaskImageFilmstripEntry = {
   position: number;
   state: TaskImageState;
   previewUri?: string;
+  caption?: string;
   failure?: { code: string; retryable: boolean };
 };
 
@@ -22,6 +23,9 @@ type TaskImageFilmstripProps = {
   images: TaskImageFilmstripEntry[];
   onSelectSource?: (kind: TaskImageSourceKind) => void;
   onRetry?: (taskImageId: string) => void;
+  onCaptionChange?: (taskImageId: string, caption: string) => void;
+  onReorder?: (taskImageId: string, direction: "up" | "down") => void;
+  onRemove?: (taskImageId: string) => void;
   resolveDelivery?: (
     taskImageId: string,
     variant: "card" | "detail"
@@ -135,12 +139,15 @@ export function TaskImageFilmstrip({
   images,
   onSelectSource,
   onRetry,
+  onCaptionChange,
+  onReorder,
+  onRemove,
   resolveDelivery,
 }: TaskImageFilmstripProps) {
   const ordered = [...images].sort((left, right) => left.position - right.position);
   return (
     <View style={styles.container} accessibilityLabel="Task image Filmstrip">
-      {ordered.map((image) => (
+      {ordered.map((image, index) => (
         <View key={image.taskImageId} style={styles.item}>
           {image.previewUri && image.state !== "ready" ? (
             <Image
@@ -155,6 +162,53 @@ export function TaskImageFilmstrip({
           ) : (
             <Text style={styles.stateText}>{stateCopy(image)}</Text>
           )}
+          {onCaptionChange ? (
+            <TextInput
+              defaultValue={image.caption ?? ""}
+              onChangeText={(caption) => onCaptionChange(image.taskImageId, caption)}
+              placeholder="Add a caption (optional)"
+              placeholderTextColor={colors.textMuted}
+              accessibilityLabel={`Caption for Task image ${index + 1}`}
+              maxLength={500}
+              style={styles.captionInput}
+            />
+          ) : image.caption ? (
+            <Text style={styles.captionText}>{image.caption}</Text>
+          ) : null}
+          {onReorder || onRemove ? (
+            <View style={styles.actionRow}>
+              {onReorder && index > 0 ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Move Task image up"
+                  onPress={() => onReorder(image.taskImageId, "up")}
+                  style={styles.actionButton}
+                >
+                  <Text style={styles.actionText}>↑</Text>
+                </Pressable>
+              ) : null}
+              {onReorder && index < ordered.length - 1 ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Move Task image down"
+                  onPress={() => onReorder(image.taskImageId, "down")}
+                  style={styles.actionButton}
+                >
+                  <Text style={styles.actionText}>↓</Text>
+                </Pressable>
+              ) : null}
+              {onRemove ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove Task image"
+                  onPress={() => onRemove(image.taskImageId)}
+                  style={styles.actionButton}
+                >
+                  <Text style={styles.removeText}>Remove</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
           {image.state === "failed" && image.failure?.retryable && onRetry ? (
             <Pressable
               accessibilityRole="button"
@@ -168,7 +222,7 @@ export function TaskImageFilmstrip({
         </View>
       ))}
 
-      {onSelectSource && ordered.length === 0 ? (
+      {onSelectSource && ordered.length < 5 ? (
         <View style={styles.sourceRow}>
           <SourceButton
             label="Add Task image from Photos"
@@ -213,6 +267,47 @@ const styles = createThemedStyles({
     ...typography.micro,
     color: colors.textSecondary,
     padding: spacing.md,
+  },
+  captionInput: {
+    width: "100%",
+    minHeight: 40,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    color: colors.textPrimary,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
+  },
+  captionText: {
+    width: "100%",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    color: colors.textSecondary,
+    ...typography.micro,
+  },
+  actionRow: {
+    width: "100%",
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.sm,
+  },
+  actionButton: {
+    minWidth: 36,
+    minHeight: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgFloating,
+  },
+  actionText: {
+    color: colors.textPrimary,
+    ...typography.bodySm,
+  },
+  removeText: {
+    color: colors.error,
+    ...typography.micro,
   },
   sourceRow: {
     flexDirection: "row",

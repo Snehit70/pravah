@@ -324,6 +324,9 @@ function MobileApp() {
   const issueTaskImageGrant = useAction(api.taskImageActions.issueUploadGrant);
   const submitTaskImageResult = useAction(api.taskImageActions.submitUploadResult);
   const resolveTaskImageAction = useAction(api.taskImageActions.resolveTaskImage);
+  const reorderTaskImagesMutation = useMutation(api.taskImages.reorderTaskImages);
+  const updateTaskImageCaptionMutation = useMutation(api.taskImages.updateTaskImageCaption);
+  const removeTaskImageMutation = useMutation(api.taskImages.removeTaskImage);
   const updateTaskMutation = useMutation(api.tasks.updateTask);
   const completeTaskMutation = useMutation(api.tasks.completeTask);
   const moveTaskMutation = useMutation(api.tasks.moveTask);
@@ -789,6 +792,7 @@ function MobileApp() {
       priority?: "p1" | "p2" | "p3";
       goalId?: string;
       imageUploadId?: string;
+      imageUploadIds?: string[];
     }) => {
       const actionId = createActionId("add");
       const startedAt = Date.now();
@@ -803,7 +807,11 @@ function MobileApp() {
           deadline: data.deadline,
           time: data.deadline ? data.time : undefined,
           priority: data.priority,
-          ...(data.imageUploadId ? { imageUploadId: data.imageUploadId } : {}),
+          ...(data.imageUploadIds?.length
+            ? { imageUploadIds: data.imageUploadIds }
+            : data.imageUploadId
+              ? { imageUploadId: data.imageUploadId }
+              : {}),
         });
         if (data.goalId && newTaskId) {
           setGoalLink(String(newTaskId), data.goalId);
@@ -813,7 +821,8 @@ function MobileApp() {
         return true;
       } catch (error) {
         const isOffline = classifyError(error) === "network";
-        if (isOffline && !data.imageUploadId) {
+        const hasImages = Boolean(data.imageUploadId || data.imageUploadIds?.length);
+        if (isOffline && !hasImages) {
           enqueueRetry({
             label: `Add "${data.title}"`,
             payload: {
@@ -830,7 +839,7 @@ function MobileApp() {
         } else {
           showToast({
             kind: "error",
-            message: data.imageUploadId
+            message: hasImages
               ? "Could not save task image. Please try again."
               : "Could not add task. Please try again.",
           });
@@ -839,7 +848,7 @@ function MobileApp() {
           actionId,
           elapsedMs: Date.now() - startedAt,
           errorType: classifyError(error),
-          queuedForRetry: isOffline && !data.imageUploadId,
+          queuedForRetry: isOffline && !hasImages,
         });
         feedback.error();
         return false;
@@ -1350,6 +1359,46 @@ function MobileApp() {
         onScheduleToDate={scheduleToDate}
         onUnschedule={sendToInbox}
         onDelete={deleteTask}
+        resolveTaskImage={resolveTaskImage}
+        onReorderTaskImages={({ taskId, orderedTaskImageIds, expectedRevision }) => {
+          void reorderTaskImagesMutation({
+            taskId,
+            orderedTaskImageIds: orderedTaskImageIds as Id<"taskImages">[],
+            expectedRevision,
+          });
+        }}
+        onCaptionTaskImage={({ taskImageId, caption, expectedRevision }) => {
+          void updateTaskImageCaptionMutation({
+            taskImageId: taskImageId as Id<"taskImages">,
+            caption,
+            expectedRevision,
+          });
+        }}
+        onRemoveTaskImage={({ taskImageId, expectedRevision }) => {
+          void removeTaskImageMutation({
+            taskImageId: taskImageId as Id<"taskImages">,
+            expectedRevision,
+          });
+        }}
+        onSelectTaskImage={({ taskId, expectedRevision, kind }) => {
+          void (async () => {
+            try {
+              await taskImageCoordinator.select(kind);
+              const selected = taskImageCoordinator.getViewStates().at(-1);
+              if (!selected) return;
+              await addTaskImagesMutation({
+                taskId,
+                uploadIds: [selected.uploadId],
+                expectedRevision,
+              });
+              void taskImageCoordinator.beginUploadAfterSave();
+              taskImageCoordinator.clearAfterSaveAndStay();
+            } catch {
+              showToast({ kind: "error", message: "Could not add Task image. Please try again." });
+              taskImageCoordinator.discard();
+            }
+          })();
+        }}
         onSaveComplete={(undo, task, previousState) => {
           showToast({
             kind: "info",
@@ -1443,6 +1492,7 @@ function MobileApp() {
             ? viewLinkedGoalFromCompletedTask
             : undefined
         }
+        resolveTaskImage={resolveTaskImage}
       />
 
       {__DEV__ ? (

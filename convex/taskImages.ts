@@ -311,7 +311,8 @@ export const getDeliveryContext = internalQuery({
       !task ||
       task.ownerTokenIdentifier !== args.ownerTokenIdentifier ||
       task.cancelledAt !== undefined ||
-      task.status === "cancelled"
+      task.status === "cancelled" ||
+      image.removedAt !== undefined
     ) {
       return { kind: "not_found" as const };
     }

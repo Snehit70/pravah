@@ -143,4 +143,38 @@ describe("Task-image mobile coordinator", () => {
       /content:\/\/|file:\/\/|cloudinary|signed-secret|provider-private|decoder details/
     );
   });
+
+  it("keeps five ordered Capture images with captions and replaces a removed slot", async () => {
+    const dependencies = createDependencies();
+    let nextId = 1;
+    dependencies.createUploadId = vi.fn(() => `upl_mobile_${nextId++}`);
+    const coordinator = createTaskImageCoordinator(dependencies);
+
+    await coordinator.select("photos");
+    await coordinator.select("camera");
+    await coordinator.select("paste");
+    await coordinator.select("photos");
+    await coordinator.select("camera");
+
+    expect(coordinator.getViewStates()).toHaveLength(5);
+    await coordinator.select("paste");
+    expect(coordinator.getViewStates()).toHaveLength(5);
+    expect(coordinator.getLastError()).toBe("Task image limit reached");
+
+    const ids = coordinator.getViewStates().map((image) => image.uploadId);
+    coordinator.updateCaption(ids[0], "  First reference  ");
+    coordinator.reorder([ids[1], ids[0], ...ids.slice(2)]);
+    expect(coordinator.getViewStates().map((image) => image.uploadId)).toEqual([
+      ids[1],
+      ids[0],
+      ...ids.slice(2),
+    ]);
+    expect(coordinator.getViewStates()[1].caption).toBe("First reference");
+
+    coordinator.remove(ids[0]);
+    expect(coordinator.getViewStates()).toHaveLength(4);
+    await coordinator.select("paste");
+    expect(coordinator.getViewStates()).toHaveLength(5);
+    expect(coordinator.getUploadIdsForSave()).toHaveLength(5);
+  });
 });
