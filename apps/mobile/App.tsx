@@ -321,6 +321,7 @@ function MobileApp() {
 
   const addTaskMutation = useMutation(api.tasks.addTask);
   const addTaskImagesMutation = useMutation(api.taskImages.addTaskImages);
+  const markTaskImageUploadFailedMutation = useMutation(api.taskImages.markUploadFailed);
   const stageTaskImageMutation = useMutation(api.taskImages.stageImageUpload);
   const issueTaskImageGrant = useAction(api.taskImageActions.issueUploadGrant);
   const submitTaskImageResult = useAction(api.taskImageActions.submitUploadResult);
@@ -350,8 +351,15 @@ function MobileApp() {
         issueGrant: issueTaskImageGrant,
         upload: uploadPreparedTaskImage,
         verify: submitTaskImageResult,
+        reportFailure: ({ uploadId, failureCode }) =>
+          markTaskImageUploadFailedMutation({ uploadId, failureCode }).then(() => undefined),
       }),
-    [issueTaskImageGrant, stageTaskImageMutation, submitTaskImageResult]
+    [
+      issueTaskImageGrant,
+      markTaskImageUploadFailedMutation,
+      stageTaskImageMutation,
+      submitTaskImageResult,
+    ]
   );
   const resolveTaskImage = useCallback(
     (taskImageId: string, variant: "card" | "detail") =>

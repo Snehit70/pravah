@@ -115,6 +115,27 @@ describe("Task-image mobile coordinator", () => {
     );
   });
 
+  it("reports detached upload failures after the Task has been saved", async () => {
+    const dependencies = createDependencies();
+    dependencies.issueGrant = vi.fn(async () => {
+      throw Object.assign(new Error("provider unavailable"), {
+        code: "storage_unavailable",
+      });
+    });
+    dependencies.reportFailure = vi.fn(async () => undefined);
+    const coordinator = createTaskImageCoordinator(dependencies);
+    await coordinator.select("photos");
+
+    const completion = coordinator.beginUploadAfterSave();
+    coordinator.clearAfterSaveAndStay();
+    await completion;
+
+    expect(dependencies.reportFailure).toHaveBeenCalledWith({
+      uploadId: "upl_mobile_1",
+      failureCode: "storage_unavailable",
+    });
+  });
+
   it("surfaces stable safe failures and serializes no private capabilities or paths", async () => {
     const dependencies = createDependencies();
     dependencies.normalize = vi.fn(async () => {

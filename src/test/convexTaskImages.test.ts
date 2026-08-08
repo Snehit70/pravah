@@ -4,6 +4,7 @@ import { addTask } from "../../convex/tasks";
 import {
   addTaskImages,
   getTaskImageCollection,
+  markUploadFailed,
   removeTaskImage,
   reorderTaskImages,
   stageImageUpload,
@@ -116,6 +117,13 @@ const collectionHandler = (
 const addTaskImagesHandler = (
   addTaskImages as unknown as Handler<
     { taskId: Id<"tasks">; uploadIds: string[]; expectedRevision?: number },
+    unknown
+  >
+)._handler;
+
+const markUploadFailedHandler = (
+  markUploadFailed as unknown as Handler<
+    { uploadId: string; failureCode: string },
     unknown
   >
 )._handler;
@@ -262,6 +270,15 @@ describe("Convex Task-image contract", () => {
     expect(initial.active.map((image) => image.position)).toEqual([0, 1, 2, 3, 4]);
     expect(initial.active[0].caption).toBe("Initial caption");
     expect(initial.primary).toEqual(initial.active[0]);
+
+    await expect(markUploadFailedHandler(owner, {
+      uploadId: uploadIds[0],
+      failureCode: "storage_unavailable",
+    })).resolves.toEqual({ accepted: true, state: "failed" });
+    expect((await collectionHandler(owner, { taskId })).active[0]).toMatchObject({
+      state: "failed",
+      failure: { code: "storage_unavailable", retryable: true },
+    });
 
     await expect(
       addTaskImagesHandler(owner, {

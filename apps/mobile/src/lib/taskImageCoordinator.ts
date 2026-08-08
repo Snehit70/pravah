@@ -70,6 +70,7 @@ export type TaskImageCoordinatorDependencies = {
     state: "verifying" | "ready" | "failed";
     failure?: { code: string };
   }>;
+  reportFailure?: (args: { uploadId: string; failureCode: string }) => Promise<void>;
 };
 
 type Draft = {
@@ -284,7 +285,13 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
             failure: result.failure ? safeFailure(result.failure) : undefined,
           });
         } catch (error) {
-          updateDetachedSafe(job, { state: "failed", failure: safeFailure(error) });
+          const failure = safeFailure(error);
+          updateDetachedSafe(job, { state: "failed", failure });
+          try {
+            await dependencies.reportFailure?.({ uploadId: job.uploadId, failureCode: failure.code });
+          } catch {
+            // The in-memory failure remains visible even if reporting is unavailable.
+          }
         }
       }));
     },

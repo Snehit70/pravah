@@ -28,6 +28,21 @@ type SafeFailureCode =
   | "variant_too_large"
   | "source_unavailable";
 
+const SAFE_FAILURE_CODES = new Set<SafeFailureCode>([
+  "unsupported_format",
+  "animated_image",
+  "source_too_large",
+  "dimensions_too_large",
+  "aspect_ratio_unsupported",
+  "clipboard_too_large",
+  "storage_unavailable",
+  "memory_unavailable",
+  "normalization_failed",
+  "master_too_large",
+  "variant_too_large",
+  "source_unavailable",
+]);
+
 type StageArgs = {
   uploadId: string;
   encodingClass: "jpeg" | "png";
@@ -122,6 +137,37 @@ export const stageImageUpload = mutation({
       updatedAt: now,
     });
     return { uploadId: args.uploadId, state: "pending" as const };
+  },
+});
+
+export const markUploadFailed = mutation({
+  args: {
+    uploadId: v.string(),
+    failureCode: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const ownerTokenIdentifier = await requireTokenIdentifier(ctx);
+    const upload = await findOwnedUpload(ctx, ownerTokenIdentifier, args.uploadId);
+    if (!upload || !upload.taskImageId || upload.state === "ready") {
+      return { accepted: false as const };
+    }
+    const failureCode: SafeFailureCode = SAFE_FAILURE_CODES.has(args.failureCode as SafeFailureCode)
+      ? args.failureCode as SafeFailureCode
+      : "normalization_failed";
+    const now = Date.now();
+    const failure = safeFailure(failureCode)!;
+    await ctx.db.patch(upload._id, {
+      state: "failed",
+      safeFailureCode: failure.code,
+      updatedAt: now,
+    });
+    await ctx.db.patch(upload.taskImageId, {
+      state: "failed",
+      safeFailureCode: failure.code,
+      failureRetryable: failure.retryable,
+      updatedAt: now,
+    });
+    return { accepted: true as const, state: "failed" as const };
   },
 });
 
