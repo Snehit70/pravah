@@ -1,5 +1,59 @@
 # Changelog
 
+## [1.19.0](https://github.com/Snehit70/pravah/compare/web-v1.18.0...web-v1.19.0) (2026-08-08)
+
+
+### Features
+
+* add idempotent task image cleanup tombstones ([a188e93](https://github.com/Snehit70/pravah/commit/a188e939810fbecfdbadbb3fe131a6507c801187))
+* add ordered Task-image Filmstrip management ([5996248](https://github.com/Snehit70/pravah/commit/5996248d897d318cd60f8b1643c4cfc2e3cdd933))
+* add recoverable Task-image deletion cleanup ([60efe50](https://github.com/Snehit70/pravah/commit/60efe507671c7131017946277a3f385ff186bc51))
+* add recoverable Task-image deletion cleanup ([#229](https://github.com/Snehit70/pravah/issues/229)) ([60efe50](https://github.com/Snehit70/pravah/commit/60efe507671c7131017946277a3f385ff186bc51))
+* add resumable Task-image upload recovery ([#221](https://github.com/Snehit70/pravah/issues/221)) ([c59fcf9](https://github.com/Snehit70/pravah/commit/c59fcf97e77f1c2be884935b3e2039f19117ec74))
+* add verified private task image path ([75ea3fa](https://github.com/Snehit70/pravah/commit/75ea3fa3c9accf718583a3509e48fb8ea7f1c289))
+* add verified private task image path ([0688f6b](https://github.com/Snehit70/pravah/commit/0688f6b1cf9408dc14674b0b0dfae29c81a385d1))
+* bring web task workflows up to mobile parity ([6b3c1ae](https://github.com/Snehit70/pravah/commit/6b3c1aedead95d4ea860317899e2dd437b743fb1))
+* bring web task workflows up to mobile parity ([7146e53](https://github.com/Snehit70/pravah/commit/7146e53732a0e5718ba3f1c8fbaf73e411f7bf2f))
+* manage ordered task image collections ([1b6e468](https://github.com/Snehit70/pravah/commit/1b6e468db4db325f8451b8bfaa0e71f930fb8652))
+* **mobile:** add resumable task image coordinator ([f6a0078](https://github.com/Snehit70/pravah/commit/f6a0078cef1e388d9d421a2388b40061cde0cfbe))
+* **mobile:** add task deletion undo ([b8c8422](https://github.com/Snehit70/pravah/commit/b8c84224f4677fa9e1da692a2c64c4b9f99ce4aa))
+* **mobile:** manage task image filmstrips ([304638a](https://github.com/Snehit70/pravah/commit/304638a1fdcc5020b0efdd403c2de565fffe21ba))
+* **mobile:** redesign task inspector workbench ([#205](https://github.com/Snehit70/pravah/issues/205)) ([7415bc2](https://github.com/Snehit70/pravah/commit/7415bc2ed27fbbe060e08d08089fea91a39be914))
+* **mobile:** restore removed task images ([9d7abed](https://github.com/Snehit70/pravah/commit/9d7abeddc72183df5f6b062aa2acf4084b6aa560))
+* preserve task image recovery state ([6cb1504](https://github.com/Snehit70/pravah/commit/6cb15041e2db67c11187c4956443082b1df3d169))
+* reconcile expired task image cleanup ([a274b78](https://github.com/Snehit70/pravah/commit/a274b78865f445623458e605715d916a01109783))
+* recover task image attempts across foreground ([c1edec4](https://github.com/Snehit70/pravah/commit/c1edec4afe9afe606259998728ebe4787ba5e43f))
+
+
+### Bug Fixes
+
+* address task image recovery review ([b050c58](https://github.com/Snehit70/pravah/commit/b050c585fea9dfe5534173792ab8c4d006544ce6))
+* address task image recovery review ([3d7a20c](https://github.com/Snehit70/pravah/commit/3d7a20c4b3ed22cd275b9c541558db97c4eb57ea))
+* bound hourly task image cleanup ([3b4400a](https://github.com/Snehit70/pravah/commit/3b4400ad03315b66aacd3d8b1192367e87efb2cf))
+* close task image review follow-ups ([e4f12ae](https://github.com/Snehit70/pravah/commit/e4f12ae83b397e826fd8bed9454dd6ecb0f9ce16))
+* complete task image recovery paths ([b689dfe](https://github.com/Snehit70/pravah/commit/b689dfe11b79dfb33c5305361e98fc6a3493dac0))
+* harden task image cleanup reconciliation ([9233cee](https://github.com/Snehit70/pravah/commit/9233cee9b79121a3a91d340063575bff48eeb3c7))
+* **mobile:** complete upload progress and deletion coordination ([d3c1477](https://github.com/Snehit70/pravah/commit/d3c14779db582b04c51455ddddf52a3d6864c493))
+* **mobile:** keep ambiguous upload recovery actionable ([2f98e9a](https://github.com/Snehit70/pravah/commit/2f98e9a8055a127dc5a3a72c4b25123bc6bfb7d2))
+* **mobile:** keep deleted task uploads recoverable ([00f4517](https://github.com/Snehit70/pravah/commit/00f45170e64c5c6b2c573be942bbda8e00e728b7))
+* **mobile:** keep filmstrip edits revision-safe ([2553a20](https://github.com/Snehit70/pravah/commit/2553a2074bd0ec0ded88a47d48d36c9a0d7d2ace))
+* **mobile:** preserve task image order locally ([af17894](https://github.com/Snehit70/pravah/commit/af17894186107a568c65c85af7032dd3acfc94c2))
+* **mobile:** preserve task image recovery identity ([7a14017](https://github.com/Snehit70/pravah/commit/7a1401729c4e81937af4a661f1c6ef538028625f))
+* **mobile:** reconcile task image attachments ([45fc497](https://github.com/Snehit70/pravah/commit/45fc49761b9d09ddf203be47b9c6428813928533))
+* **mobile:** resolve task image typecheck errors ([c78702b](https://github.com/Snehit70/pravah/commit/c78702b40073980ca10fbbd1fb65e4c6c3001727))
+* **mobile:** sanitize recovered image manifests ([ef8ad31](https://github.com/Snehit70/pravah/commit/ef8ad311af8ed6d5903b8b5b983a60ef8b1e2129))
+* persist detached task image failures ([ea75485](https://github.com/Snehit70/pravah/commit/ea754856fa1b9a129a2568fe57f3c94adb75720e))
+* persist task image captions on save ([22e1dfd](https://github.com/Snehit70/pravah/commit/22e1dfdd4a31b158a65b48ca9f453334ba549cf7))
+* preserve task image upload associations ([92fb309](https://github.com/Snehit70/pravah/commit/92fb3091b3080ae7c662ab4ae4e6825bb39fd08e))
+* preserve task placement on restore ([84ff635](https://github.com/Snehit70/pravah/commit/84ff635f3838207be4856c041a3f6bb0cd43516b))
+* rebase positions during task restoration ([3b65653](https://github.com/Snehit70/pravah/commit/3b65653d6b8146eeb9f15df3367c879551f56b21))
+* reconcile eager task image callbacks ([88cc6d2](https://github.com/Snehit70/pravah/commit/88cc6d26650a8db97b0c275069603f5442e20b2c))
+* satisfy task image expiry checks ([080bae4](https://github.com/Snehit70/pravah/commit/080bae46f73bb4ac1a4dffdffbc76d775f264190))
+* schedule cleanup only when needed ([87835f0](https://github.com/Snehit70/pravah/commit/87835f09cf54a44e5cc8052ccb6fd41a2f54cf8d))
+* **web:** keep a single runtime bundle ([c4f72aa](https://github.com/Snehit70/pravah/commit/c4f72aa44ebe5e18033d5efe5134b927facd0f1f))
+* **web:** prevent blank production startup ([5734c8f](https://github.com/Snehit70/pravah/commit/5734c8f06e9d91656d664865868970bd88798f2a))
+* **web:** separate vitest config from vercel build ([a189463](https://github.com/Snehit70/pravah/commit/a189463f2485ee6ddfd9a493a00071a8e3109cbe))
+
 ## [1.18.0](https://github.com/Snehit70/pravah/compare/web-v1.17.0...web-v1.18.0) (2026-07-26)
 
 
