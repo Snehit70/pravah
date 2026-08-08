@@ -157,7 +157,6 @@ describe("useTaskMutations", () => {
 
     const onTaskDeletionStarted = vi.fn();
     const onTaskRestored = vi.fn();
-    const onTaskDeleted = vi.fn();
     const { result } = renderHook(() =>
       useTaskMutations({
         serverTasks: [makeTask()],
@@ -169,7 +168,6 @@ describe("useTaskMutations", () => {
         hasPriorityBoundaryViolation: () => false,
         onTaskDeletionStarted,
         onTaskRestored,
-        onTaskDeleted,
       })
     );
 
@@ -181,7 +179,6 @@ describe("useTaskMutations", () => {
       expect(softDeleteTaskMutation).toHaveBeenCalledWith({ taskId: makeId("task-1") });
     });
     expect(onTaskDeletionStarted).toHaveBeenCalledWith("task-1");
-    expect(onTaskDeleted).not.toHaveBeenCalled();
     expect(onTaskRestored).not.toHaveBeenCalled();
   });
 
