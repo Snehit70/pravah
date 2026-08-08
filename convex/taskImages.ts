@@ -6,6 +6,8 @@ import { requireTokenIdentifier } from "./authHelpers";
 
 export const TASK_IMAGE_VARIANT_SET = "task-image-v1" as const;
 export const TASK_IMAGE_POLICY_HASH = "task-image-v1-2026-08-03";
+export const MAX_ACTIVE_TASK_IMAGES = 5 as const;
+const IMAGE_RECOVERY_WINDOW_MS = 30 * 60 * 1000;
 
 const MAX_STAGED_BYTES = 8 * 1024 * 1024;
 const MAX_NORMALIZED_EDGE = 2560;
@@ -339,46 +341,87 @@ export const getDeliveryContext = internalQuery({
   },
 });
 
+async function listTaskImages(
+  ctx: QueryCtx | MutationCtx,
+  ownerTokenIdentifier: string,
+  taskId: Id<"tasks">
+) {
+  const images = await ctx.db
+    .query("taskImages")
+    .withIndex("by_owner_task", (q) =>
+      q.eq("ownerTokenIdentifier", ownerTokenIdentifier).eq("taskId", taskId)
+    )
+    .collect();
+  return images.sort((a, b) => a.position - b.position);
+}
+
+export async function claimStagedImagesForTask(
+  ctx: MutationCtx,
+  ownerTokenIdentifier: string,
+  taskId: Id<"tasks">,
+  uploadIds: string[]
+) {
+  const activeImages = (await listTaskImages(ctx, ownerTokenIdentifier, taskId)).filter(
+    (image) => image.removedAt === undefined
+  );
+  if (activeImages.length + uploadIds.length > MAX_ACTIVE_TASK_IMAGES) {
+    throw new Error("Task image collection is full");
+  }
+
+  const uniqueUploadIds = new Set(uploadIds);
+  if (uniqueUploadIds.size !== uploadIds.length) throw new Error("duplicate_task_image");
+
+  const now = Date.now();
+  const claimedIds = [];
+  for (const [offset, uploadId] of uploadIds.entries()) {
+    const upload = await findOwnedUpload(ctx, ownerTokenIdentifier, uploadId);
+    if (!upload || upload.taskImageId) {
+      claimedIds.push(await ctx.db.insert("taskImages", {
+        ownerTokenIdentifier,
+        taskId,
+        position: activeImages.length + offset,
+        state: "failed",
+        safeFailureCode: "source_unavailable",
+        failureRetryable: true,
+        createdAt: now,
+        updatedAt: now,
+      }));
+      continue;
+    }
+
+    const taskImageId = await ctx.db.insert("taskImages", {
+      ownerTokenIdentifier,
+      taskId,
+      uploadRecordId: upload._id,
+      position: activeImages.length + offset,
+      state: uploadStateForTaskImage(upload.state),
+      safeFailureCode: upload.safeFailureCode,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.patch(upload._id, {
+      taskImageId,
+      state: upload.state === "staged" ? "claimed" : upload.state,
+      updatedAt: now,
+    });
+    claimedIds.push(taskImageId);
+  }
+
+  const task = await ctx.db.get(taskId);
+  await ctx.db.patch(taskId, {
+    imageCollectionRevision: (task?.imageCollectionRevision ?? 0) + 1,
+    updatedAt: now,
+  });
+  return claimedIds;
+}
+
 export async function claimStagedImageForTask(
   ctx: MutationCtx,
   ownerTokenIdentifier: string,
   taskId: Id<"tasks">,
   uploadId: string
 ) {
-  const upload = await findOwnedUpload(ctx, ownerTokenIdentifier, uploadId);
-  const now = Date.now();
-
-  if (!upload || upload.taskImageId) {
-    const failedImageId = await ctx.db.insert("taskImages", {
-      ownerTokenIdentifier,
-      taskId,
-      position: 0,
-      state: "failed",
-      safeFailureCode: "source_unavailable",
-      failureRetryable: true,
-      createdAt: now,
-      updatedAt: now,
-    });
-    await ctx.db.patch(taskId, { imageCollectionRevision: 1 });
-    return failedImageId;
-  }
-
-  const taskImageId = await ctx.db.insert("taskImages", {
-    ownerTokenIdentifier,
-    taskId,
-    uploadRecordId: upload._id,
-    position: 0,
-    state: uploadStateForTaskImage(upload.state),
-    safeFailureCode: upload.safeFailureCode,
-    createdAt: now,
-    updatedAt: now,
-  });
-  await ctx.db.patch(upload._id, {
-    taskImageId,
-    state: upload.state === "staged" ? "claimed" : upload.state,
-    updatedAt: now,
-  });
-  await ctx.db.patch(taskId, { imageCollectionRevision: 1 });
+  const [taskImageId] = await claimStagedImagesForTask(ctx, ownerTokenIdentifier, taskId, [uploadId]);
   return taskImageId;
 }
 
@@ -398,7 +441,7 @@ function safeFailure(code: string | undefined, retryableOverride?: boolean) {
   };
 }
 
-async function serializeTaskImage(ctx: QueryCtx, image: Doc<"taskImages">) {
+async function serializeTaskImage(ctx: QueryCtx | MutationCtx, image: Doc<"taskImages">) {
   const upload = image.uploadRecordId ? await ctx.db.get(image.uploadRecordId) : null;
   const presentation = upload
     ? {
@@ -412,33 +455,191 @@ async function serializeTaskImage(ctx: QueryCtx, image: Doc<"taskImages">) {
   return {
     taskImageId: image._id,
     position: image.position,
+    caption: image.caption,
     state: image.state,
     failure: safeFailure(image.safeFailureCode, image.failureRetryable),
     presentation,
   };
 }
 
+function serializeRecoverableTaskImage(image: Doc<"taskImages">) {
+  return {
+    taskImageId: image._id,
+    caption: image.caption,
+    removedAt: image.removedAt,
+    recoverableUntil: image.recoverableUntil,
+    previousPosition: image.previousPosition,
+  };
+}
+
+async function getTaskImageCollectionForOwner(
+  ctx: QueryCtx | MutationCtx,
+  ownerTokenIdentifier: string,
+  taskId: Id<"tasks">
+) {
+  const task = await ctx.db.get(taskId);
+  if (!task || task.ownerTokenIdentifier !== ownerTokenIdentifier) {
+    throw new Error("Task not found");
+  }
+  const images = await listTaskImages(ctx, ownerTokenIdentifier, taskId);
+  const activeImages = images.filter((image) => image.removedAt === undefined);
+  const active = await Promise.all(activeImages.map((image) => serializeTaskImage(ctx, image)));
+  return {
+    revision: task.imageCollectionRevision ?? 0,
+    active,
+    primary: active[0],
+    recoverable: images
+      .filter((image) => image.removedAt !== undefined)
+      .map(serializeRecoverableTaskImage),
+  };
+}
+
+async function getOwnedActiveTaskImage(
+  ctx: MutationCtx,
+  ownerTokenIdentifier: string,
+  taskImageId: Id<"taskImages">
+) {
+  const image = await ctx.db.get(taskImageId);
+  if (!image || image.ownerTokenIdentifier !== ownerTokenIdentifier || image.removedAt !== undefined) {
+    throw new Error("Task image not found");
+  }
+  const task = await ctx.db.get(image.taskId);
+  if (!task || task.ownerTokenIdentifier !== ownerTokenIdentifier) throw new Error("Task not found");
+  return { image, task };
+}
+
+async function staleCollection(
+  ctx: MutationCtx,
+  ownerTokenIdentifier: string,
+  taskId: Id<"tasks">,
+  expectedRevision: number
+) {
+  const current = await getTaskImageCollectionForOwner(ctx, ownerTokenIdentifier, taskId);
+  return current.revision !== expectedRevision ? { stale: true as const, ...current } : null;
+}
+
+export const addTaskImages = mutation({
+  args: {
+    taskId: v.id("tasks"),
+    uploadIds: v.array(v.string()),
+    expectedRevision: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const ownerTokenIdentifier = await requireTokenIdentifier(ctx);
+    const stale = await staleCollection(ctx, ownerTokenIdentifier, args.taskId, args.expectedRevision);
+    if (stale) return stale;
+    await claimStagedImagesForTask(ctx, ownerTokenIdentifier, args.taskId, args.uploadIds);
+    return {
+      stale: false as const,
+      ...(await getTaskImageCollectionForOwner(ctx, ownerTokenIdentifier, args.taskId)),
+    };
+  },
+});
+
+export const reorderTaskImages = mutation({
+  args: {
+    taskId: v.id("tasks"),
+    orderedTaskImageIds: v.array(v.id("taskImages")),
+    expectedRevision: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const ownerTokenIdentifier = await requireTokenIdentifier(ctx);
+    const stale = await staleCollection(ctx, ownerTokenIdentifier, args.taskId, args.expectedRevision);
+    if (stale) return stale;
+    const images = (await listTaskImages(ctx, ownerTokenIdentifier, args.taskId)).filter(
+      (image) => image.removedAt === undefined
+    );
+    const expected = new Set(images.map((image) => image._id));
+    if (
+      args.orderedTaskImageIds.length !== images.length ||
+      new Set(args.orderedTaskImageIds).size !== args.orderedTaskImageIds.length ||
+      args.orderedTaskImageIds.some((id) => !expected.has(id))
+    ) {
+      throw new Error("invalid_task_image_order");
+    }
+    const byId = new Map(images.map((image) => [image._id, image]));
+    const now = Date.now();
+    for (const [position, taskImageId] of args.orderedTaskImageIds.entries()) {
+      const image = byId.get(taskImageId);
+      if (image && image.position !== position) await ctx.db.patch(image._id, { position, updatedAt: now });
+    }
+    const task = await ctx.db.get(args.taskId);
+    await ctx.db.patch(args.taskId, {
+      imageCollectionRevision: (task?.imageCollectionRevision ?? 0) + 1,
+      updatedAt: now,
+    });
+    return {
+      stale: false as const,
+      ...(await getTaskImageCollectionForOwner(ctx, ownerTokenIdentifier, args.taskId)),
+    };
+  },
+});
+
+export const updateTaskImageCaption = mutation({
+  args: {
+    taskImageId: v.id("taskImages"),
+    caption: v.optional(v.string()),
+    expectedRevision: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const ownerTokenIdentifier = await requireTokenIdentifier(ctx);
+    const { image, task } = await getOwnedActiveTaskImage(ctx, ownerTokenIdentifier, args.taskImageId);
+    const stale = await staleCollection(ctx, ownerTokenIdentifier, task._id, args.expectedRevision);
+    if (stale) return stale;
+    const caption = args.caption?.trim() ?? "";
+    if (caption.length > 500) throw new Error("caption_too_long");
+    const now = Date.now();
+    await ctx.db.patch(image._id, { caption: caption || undefined, updatedAt: now });
+    await ctx.db.patch(task._id, {
+      imageCollectionRevision: (task.imageCollectionRevision ?? 0) + 1,
+      updatedAt: now,
+    });
+    return {
+      stale: false as const,
+      ...(await getTaskImageCollectionForOwner(ctx, ownerTokenIdentifier, task._id)),
+    };
+  },
+});
+
+export const removeTaskImage = mutation({
+  args: {
+    taskImageId: v.id("taskImages"),
+    expectedRevision: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const ownerTokenIdentifier = await requireTokenIdentifier(ctx);
+    const { image, task } = await getOwnedActiveTaskImage(ctx, ownerTokenIdentifier, args.taskImageId);
+    const stale = await staleCollection(ctx, ownerTokenIdentifier, task._id, args.expectedRevision);
+    if (stale) return stale;
+    const now = Date.now();
+    await ctx.db.patch(image._id, {
+      removedAt: now,
+      recoverableUntil: now + IMAGE_RECOVERY_WINDOW_MS,
+      previousPosition: image.position,
+      updatedAt: now,
+    });
+    const active = (await listTaskImages(ctx, ownerTokenIdentifier, task._id)).filter(
+      (candidate) => candidate._id !== image._id && candidate.removedAt === undefined
+    );
+    for (const [position, candidate] of active.entries()) {
+      if (candidate.position !== position) await ctx.db.patch(candidate._id, { position, updatedAt: now });
+    }
+    await ctx.db.patch(task._id, {
+      imageCollectionRevision: (task.imageCollectionRevision ?? 0) + 1,
+      updatedAt: now,
+    });
+    return {
+      stale: false as const,
+      ...(await getTaskImageCollectionForOwner(ctx, ownerTokenIdentifier, task._id)),
+    };
+  },
+});
+
 export const getTaskImageCollection = query({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, { taskId }) => {
     const ownerTokenIdentifier = await requireTokenIdentifier(ctx);
-    const task = await ctx.db.get(taskId);
-    if (!task || task.ownerTokenIdentifier !== ownerTokenIdentifier) {
-      throw new Error("Task not found");
-    }
-    const images = await ctx.db
-      .query("taskImages")
-      .withIndex("by_owner_task", (q) =>
-        q.eq("ownerTokenIdentifier", ownerTokenIdentifier).eq("taskId", taskId)
-      )
-      .collect();
-    images.sort((a, b) => a.position - b.position);
-    const active = await Promise.all(images.map((image) => serializeTaskImage(ctx, image)));
-    return {
-      revision: task.imageCollectionRevision ?? 0,
-      active,
-      primary: active[0],
-    };
+    return getTaskImageCollectionForOwner(ctx, ownerTokenIdentifier, taskId);
   },
 });
 
@@ -474,9 +675,11 @@ export const listWorkspaceImageCollections = query({
       [...byTask.entries()].map(async ([taskId, taskImages]) => {
         const task = await ctx.db.get(taskId);
         if (!task || task.ownerTokenIdentifier !== ownerTokenIdentifier) return null;
-        taskImages.sort((left, right) => left.position - right.position);
+        const activeTaskImages = taskImages
+          .filter((image) => image.removedAt === undefined)
+          .sort((left, right) => left.position - right.position);
         const active = await Promise.all(
-          taskImages.map((image) => serializeTaskImage(ctx, image))
+          activeTaskImages.map((image) => serializeTaskImage(ctx, image))
         );
         return {
           taskId,

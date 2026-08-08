@@ -4,7 +4,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireTokenIdentifier } from "./authHelpers";
 import { runIdempotentMutation } from "./automationIdempotency";
-import { claimStagedImageForTask, getClaimedTaskForUpload } from "./taskImages";
+import { claimStagedImagesForTask, getClaimedTaskForUpload } from "./taskImages";
 import {
   getPriorityRank,
   getTaskCancelledAt,
@@ -34,6 +34,7 @@ type AddTaskArgs = {
   tags?: string[];
   priority?: "p1" | "p2" | "p3";
   imageUploadId?: string;
+  imageUploadIds?: string[];
 };
 type MoveTaskArgs = {
   taskId: Id<"tasks">;
@@ -374,6 +375,7 @@ export const addTask = mutation({
     tags: v.optional(v.array(v.string())),
     priority: v.optional(v.union(v.literal("p1"), v.literal("p2"), v.literal("p3"))),
     imageUploadId: v.optional(v.string()),
+    imageUploadIds: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
@@ -475,11 +477,22 @@ export async function addTaskForOwner(
   tokenIdentifier: string,
   args: AddTaskArgs
 ) {
-  if (args.imageUploadId) {
+  const imageUploadIds = [
+    ...(args.imageUploadIds ?? []),
+    ...(args.imageUploadId ? [args.imageUploadId] : []),
+  ];
+  if (new Set(imageUploadIds).size !== imageUploadIds.length) {
+    throw new Error("duplicate_task_image");
+  }
+  if (imageUploadIds.length > 5) {
+    throw new Error("Task image collection is full");
+  }
+
+  if (imageUploadIds[0]) {
     const existingTaskId = await getClaimedTaskForUpload(
       ctx,
       tokenIdentifier,
-      args.imageUploadId
+      imageUploadIds[0]
     );
     if (existingTaskId) return existingTaskId;
   }
@@ -506,8 +519,8 @@ export async function addTaskForOwner(
     updatedAt: now,
     cancelledAt: undefined,
   });
-  if (args.imageUploadId) {
-    await claimStagedImageForTask(ctx, tokenIdentifier, taskId, args.imageUploadId);
+  if (imageUploadIds.length) {
+    await claimStagedImagesForTask(ctx, tokenIdentifier, taskId, imageUploadIds);
   }
   return taskId;
 }
