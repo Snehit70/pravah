@@ -193,6 +193,60 @@ describe("convex/tasks handlers", () => {
     vi.restoreAllMocks();
   });
 
+  it("shifts an active task occupying a restored task's saved position", async () => {
+    const taskId = makeId("restored-task");
+    const activeTaskId = makeId("active-task");
+    const restoredTask = {
+      _id: taskId,
+      ownerTokenIdentifier: "user-1",
+      cancelledAt: 1_000,
+      deadline: "2026-08-08",
+      priority: "p1" as const,
+      position: 1,
+      createdAt: 1,
+      updatedAt: 1_000,
+    };
+    const activeTask = {
+      _id: activeTaskId,
+      ownerTokenIdentifier: "user-1",
+      deadline: "2026-08-08",
+      priority: "p1" as const,
+      position: 1,
+      createdAt: 2,
+      updatedAt: 2,
+    };
+    const tasksById = new Map([
+      [taskId, restoredTask],
+      [activeTaskId, activeTask],
+    ]);
+    const db = {
+      get: vi.fn(async (id: Id<"tasks">) => tasksById.get(id)),
+      query: vi.fn().mockReturnValue({
+        withIndex: vi.fn().mockReturnValue({
+          collect: vi.fn().mockResolvedValue([restoredTask, activeTask]),
+        }),
+      }),
+      patch: vi.fn(async (id: Id<"tasks">, patch: Record<string, unknown>) => {
+        const task = tasksById.get(id);
+        if (!task) throw new Error(`Unknown task ${id}`);
+        Object.assign(task, patch);
+      }),
+    };
+
+    vi.spyOn(Date, "now").mockReturnValue(20_000);
+    await restoreTaskHandler(createAuthedCtx(db), { taskId });
+
+    expect(db.patch).toHaveBeenNthCalledWith(1, activeTaskId, {
+      position: 2,
+      updatedAt: 20_000,
+    });
+    expect(db.patch).toHaveBeenNthCalledWith(2, taskId, {
+      cancelledAt: undefined,
+      updatedAt: 20_000,
+    });
+    vi.restoreAllMocks();
+  });
+
   it("rejects an Inbox deletion batch without changing anything when one task is not in Inbox", async () => {
     const inboxTask = makeId("inbox-task");
     const scheduledTask = makeId("scheduled-task");
@@ -272,7 +326,7 @@ describe("convex/tasks handlers", () => {
         _id: activeP1,
         ownerTokenIdentifier: "user-1",
         priority: "p1" as const,
-        position: 7,
+        position: 1,
         createdAt: 1,
         updatedAt: 1,
       },
@@ -300,15 +354,23 @@ describe("convex/tasks handlers", () => {
       taskIds: [firstP1, secondP1, onlyP2],
     });
 
-    expect(db.patch).toHaveBeenNthCalledWith(1, firstP1, {
+    expect(db.patch).toHaveBeenNthCalledWith(1, activeP1, {
+      position: 2,
+      updatedAt: expect.any(Number),
+    });
+    expect(db.patch).toHaveBeenNthCalledWith(2, activeP2, {
+      position: 4,
+      updatedAt: expect.any(Number),
+    });
+    expect(db.patch).toHaveBeenNthCalledWith(3, firstP1, {
       cancelledAt: undefined,
       updatedAt: expect.any(Number),
     });
-    expect(db.patch).toHaveBeenNthCalledWith(2, secondP1, {
+    expect(db.patch).toHaveBeenNthCalledWith(4, secondP1, {
       cancelledAt: undefined,
       updatedAt: expect.any(Number),
     });
-    expect(db.patch).toHaveBeenNthCalledWith(3, onlyP2, {
+    expect(db.patch).toHaveBeenNthCalledWith(5, onlyP2, {
       cancelledAt: undefined,
       updatedAt: expect.any(Number),
     });

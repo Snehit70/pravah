@@ -159,6 +159,57 @@ function dedupeTasks(tasks: Doc<"tasks">[]) {
   });
 }
 
+function getTaskPositionLane(
+  task: Pick<
+    Doc<"tasks">,
+    "deadline" | "scheduledDate" | "completedAt" | "cancelledAt" | "status" | "updatedAt" | "priority"
+  >
+) {
+  const lifecycleLane = getTaskCompletedAt(task) === undefined ? "active" : "completed";
+  const deadline = getTaskDeadline(task) ?? "inbox";
+  return `${lifecycleLane}:${deadline}:${task.priority ?? "none"}`;
+}
+
+async function restoreTasksAtOriginalPositions(
+  ctx: MutationCtx,
+  tokenIdentifier: string,
+  tasksToRestore: Doc<"tasks">[]
+) {
+  const restoringIds = new Set(tasksToRestore.map((task) => String(task._id)));
+  const restoredPositionsByLane = new Map<string, number[]>();
+
+  for (const task of tasksToRestore) {
+    const lane = getTaskPositionLane(task);
+    const positions = restoredPositionsByLane.get(lane) ?? [];
+    positions.push(task.position);
+    restoredPositionsByLane.set(lane, positions);
+  }
+
+  const activeTasks = (await listOwnedTasks(ctx, tokenIdentifier)).filter(
+    (task) => !restoringIds.has(String(task._id)) && !isCancelledTask(task)
+  );
+  const positionPatches = activeTasks
+    .map((task) => {
+      const restoredPositions = restoredPositionsByLane.get(getTaskPositionLane(task));
+      const positionShift =
+        restoredPositions?.filter((position) => position <= task.position).length ?? 0;
+      return { task, position: task.position + positionShift };
+    })
+    .filter(({ task, position }) => position !== task.position);
+  const updatedAt = Date.now();
+
+  for (const { task, position } of positionPatches) {
+    await ctx.db.patch(task._id, { position, updatedAt });
+  }
+
+  for (const task of tasksToRestore) {
+    await ctx.db.patch(task._id, {
+      cancelledAt: undefined,
+      updatedAt,
+    });
+  }
+}
+
 async function getNextPositionForLane(
   ctx: TaskCtx,
   tokenIdentifier: string,
@@ -976,13 +1027,7 @@ export const restoreInboxTasks = mutation({
       tasks.push(task);
     }
 
-    const updatedAt = Date.now();
-    for (const task of tasks) {
-      await ctx.db.patch(task._id, {
-        cancelledAt: undefined,
-        updatedAt,
-      });
-    }
+    await restoreTasksAtOriginalPositions(ctx, tokenIdentifier, tasks);
   },
 });
 
@@ -995,10 +1040,7 @@ export const restoreTask = mutation({
       throw new Error("Task is not pending deletion");
     }
     assertTaskRecoveryWindow(task);
-    await ctx.db.patch(args.taskId, {
-      cancelledAt: undefined,
-      updatedAt: Date.now(),
-    });
+    await restoreTasksAtOriginalPositions(ctx, tokenIdentifier, [task]);
   },
 });
 
