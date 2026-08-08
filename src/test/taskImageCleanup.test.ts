@@ -41,7 +41,7 @@ describe("Task-image cleanup tombstones", () => {
       };
 
       await expect(
-        recordCleanupResultHandler({ db }, { tombstoneId, outcome, now: 10_000 })
+        recordCleanupResultHandler({ db, scheduler: { runAfter: vi.fn() } }, { tombstoneId, outcome, now: 10_000 })
       ).resolves.toMatchObject({ accepted: true, terminal: true });
       expect(db.delete).toHaveBeenCalledWith(imageId);
       expect(db.delete).toHaveBeenCalledWith(uploadId);
@@ -57,9 +57,10 @@ describe("Task-image cleanup tombstones", () => {
       delete: vi.fn(),
       patch: vi.fn(),
     };
+    const scheduler = { runAfter: vi.fn() };
 
     await expect(
-      recordCleanupResultHandler({ db }, {
+      recordCleanupResultHandler({ db, scheduler }, {
         tombstoneId,
         outcome: "retry",
         failureCode: "provider_timeout",
@@ -71,5 +72,6 @@ describe("Task-image cleanup tombstones", () => {
       expect.objectContaining({ state: "retry", attempts: 1, lastFailureCode: "provider_timeout" })
     );
     expect(db.delete).not.toHaveBeenCalled();
+    expect(scheduler.runAfter).toHaveBeenCalledWith(5 * 60 * 1000, expect.anything(), {});
   });
 });

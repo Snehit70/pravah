@@ -145,6 +145,24 @@ CONVEX_HTTP_API_KEY=your-http-api-key
 ALLOWED_CORS_ORIGINS=https://staging.example.com,https://preview.example.com
 ```
 
+## Task-image cleanup cadence
+
+Recoverable Task and Task-image deletion is enforced by timestamps, not by cron
+timing: delivery is denied as soon as the parent Task or image is marked
+removed, and restoration rejects records outside the 30-minute window.
+
+The existing `purge expired cancelled tasks` Convex cron remains on its
+72-hour cadence to avoid hourly reads in otherwise idle workspaces. When that
+sweep finds image cleanup work, it creates or reuses a cleanup tombstone and
+schedules reconciliation only for that work. Provider retries schedule their
+next attempt from the tombstone backoff, and batches larger than 50 schedule a
+continuation rather than relying on a recurring hourly scan.
+
+This is intentionally different from an hourly cleanup sweep: provider
+cleanup remains idempotent and retryable, while Convex I/O is spent only when
+there are expired Tasks or cleanup tombstones to process. The unrelated
+hourly automation-idempotency-key purge remains unchanged.
+
 ## Useful Paths
 
 - `src/` - web app

@@ -1,4 +1,5 @@
 import { action, internalAction } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { makeFunctionReference } from "convex/server";
 import { requireTokenIdentifier } from "./authHelpers";
@@ -317,6 +318,9 @@ export const reconcileCleanup = internalAction({
       });
       if (outcome === "retry") retried += 1;
       else terminal += 1;
+    }
+    if (tombstones.length === 50) {
+      await ctx.scheduler.runAfter(0, internal.taskImageActions.reconcileCleanup, {});
     }
     return { inspected: tombstones.length, terminal, retried };
   },

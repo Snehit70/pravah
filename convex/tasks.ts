@@ -1,4 +1,5 @@
 import { internalMutation, mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
@@ -1049,6 +1050,7 @@ export const purgeExpiredCancelledTasks = internalMutation({
       .withIndex("by_recoverable_until", (q) => q.lt("recoverableUntil", now))
       .take(50);
     let purged = 0;
+    let cleanupWorkFound = false;
     for (const task of dedupeTasks([...cancelledAtTasks, ...legacyCancelledTasks])) {
       const cancelledAt = getTaskCancelledAt(task);
       if (cancelledAt === undefined || cancelledAt >= cutoff) continue;
@@ -1069,6 +1071,7 @@ export const purgeExpiredCancelledTasks = internalMutation({
             taskImageId: image._id,
             upload,
           }, Date.now());
+          cleanupWorkFound = true;
         } else {
           await ctx.db.delete(image._id);
         }
@@ -1095,6 +1098,10 @@ export const purgeExpiredCancelledTasks = internalMutation({
         taskImageId: image._id,
         upload,
       }, Date.now());
+      cleanupWorkFound = true;
+    }
+    if (cleanupWorkFound) {
+      await ctx.scheduler.runAfter(0, internal.taskImageActions.reconcileCleanup, {});
     }
     return { purged };
   },

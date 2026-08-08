@@ -65,7 +65,11 @@ function makeDb(rows: Record<string, Array<Record<string, unknown>>>) {
 }
 
 function ctx(db: unknown) {
-  return { db, auth: { getUserIdentity: vi.fn().mockResolvedValue({ tokenIdentifier: "owner-1" }) } };
+  return {
+    db,
+    auth: { getUserIdentity: vi.fn().mockResolvedValue({ tokenIdentifier: "owner-1" }) },
+    scheduler: { runAfter: vi.fn() },
+  };
 }
 
 describe("expired Task-image lifecycle cleanup", () => {
