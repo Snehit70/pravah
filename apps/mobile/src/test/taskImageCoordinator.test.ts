@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createTaskImageCoordinator,
+  UPLOAD_RETRY_DELAYS_MS,
   type TaskImageCoordinatorDependencies,
   type TaskImageSourceKind,
 } from "../lib/taskImageCoordinator";
@@ -152,13 +153,13 @@ describe("Task-image mobile coordinator", () => {
       state: "failed",
       failure: { code: "animated_image", retryable: false },
     });
-    expect(coordinator.serialize()).toEqual({
-      version: 1,
-      draft: {
+    expect(coordinator.serialize()).toMatchObject({
+      version: 2,
+      uploads: [{
         uploadId: "upl_mobile_1",
         state: "failed",
         failure: { code: "animated_image", retryable: false },
-      },
+      }],
     });
     expect(JSON.stringify(coordinator.serialize())).not.toMatch(
       /content:\/\/|file:\/\/|cloudinary|signed-secret|provider-private|decoder details/
@@ -201,5 +202,195 @@ describe("Task-image mobile coordinator", () => {
     await coordinator.select("paste");
     expect(coordinator.getViewStates()).toHaveLength(5);
     expect(coordinator.getUploadIdsForSave()).toHaveLength(5);
+  });
+
+  it("persists a redacted owner-scoped manifest without private source or provider data", async () => {
+    const dependencies = createDependencies();
+    const saved: Array<[string, unknown]> = [];
+    const store = {
+      load: vi.fn(async () => null),
+      save: vi.fn(async (scope: string, manifest: unknown) => {
+        saved.push([scope, manifest]);
+      }),
+    };
+    const sourceStore = {
+      persist: vi.fn(async () => ({ sourceKey: "source_upl_mobile_1", uri: "file:///private/durable.jpg" })),
+      resolve: vi.fn(async () => "file:///private/durable.jpg"),
+      remove: vi.fn(async () => undefined),
+    };
+    const coordinator = createTaskImageCoordinator({
+      ...dependencies,
+      ownerScope: () => "owner-a",
+      manifestStore: store,
+      sourceStore,
+    });
+
+    await coordinator.select("photos");
+
+    expect(saved.at(-1)?.[0]).toBe("owner-a");
+    expect(saved.at(-1)?.[1]).toEqual(expect.objectContaining({ version: 2 }));
+    const serialized = JSON.stringify(saved.at(-1)?.[1]);
+    expect(serialized).toContain("source_upl_mobile_1");
+    expect(serialized).not.toMatch(/content:\/\/|file:\/\/|https:\/\/|signature|grant|secret|publicId|secureUrl/);
+  });
+
+  it("runs no more than two uploads at once and keeps verification indeterminate", async () => {
+    const dependencies = createDependencies();
+    let nextId = 1;
+    dependencies.createUploadId = vi.fn(() => `upl_mobile_${nextId++}`);
+    type UploadResult = Awaited<ReturnType<TaskImageCoordinatorDependencies["upload"]>>;
+    const uploads: Array<{ promise: Promise<UploadResult>; resolve: (value: UploadResult) => void }> = [];
+    dependencies.upload = vi.fn(() => {
+      const result = deferred<UploadResult>();
+      uploads.push(result);
+      return result.promise;
+    });
+    dependencies.verify = vi.fn(async () => ({ state: "ready" as const }));
+    const coordinator = createTaskImageCoordinator(dependencies);
+
+    for (let index = 0; index < 5; index += 1) await coordinator.select("photos");
+    const completion = coordinator.beginUploadAfterSave();
+    await Promise.resolve();
+
+    expect(dependencies.upload).toHaveBeenCalledTimes(2);
+    expect(coordinator.getViewStates().filter((image) => image.state === "uploading")).toHaveLength(2);
+    expect(coordinator.getViewStates().some((image) => image.state === "verifying")).toBe(false);
+
+    const providerResult = {
+      publicId: "provider-private-id",
+      version: 1,
+      signature: "provider-response-signature",
+      resourceType: "image",
+      deliveryType: "authenticated",
+      format: "jpg",
+      width: 1600,
+      height: 1200,
+      bytes: 2_000_000,
+      eager: [],
+    } as Awaited<ReturnType<TaskImageCoordinatorDependencies["upload"]>>;
+    uploads[0].resolve(providerResult);
+    uploads[1].resolve(providerResult);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(dependencies.upload).toHaveBeenCalledTimes(4);
+    uploads[2].resolve(providerResult);
+    uploads[3].resolve(providerResult);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(dependencies.upload).toHaveBeenCalledTimes(5);
+    uploads[4].resolve(providerResult);
+    await completion;
+  });
+
+  it("retries transient failures on the settled schedule and preserves uploadId for manual retry", async () => {
+    vi.useFakeTimers();
+    try {
+      const dependencies = createDependencies();
+      dependencies.upload = vi
+        .fn()
+        .mockRejectedValueOnce(Object.assign(new Error("offline"), { code: "network_error", retryable: true }))
+        .mockResolvedValueOnce({
+          publicId: "provider-private-id",
+          version: 1,
+          signature: "provider-response-signature",
+          resourceType: "image",
+          deliveryType: "authenticated",
+          format: "jpg",
+          width: 1600,
+          height: 1200,
+          bytes: 2_000_000,
+          eager: [],
+        });
+      dependencies.verify = vi.fn(async () => ({ state: "ready" as const }));
+      const coordinator = createTaskImageCoordinator(dependencies);
+      await coordinator.select("photos");
+      await coordinator.beginUploadAfterSave();
+
+      expect(coordinator.getViewState()).toMatchObject({
+        uploadId: "upl_mobile_1",
+        state: "failed",
+        failure: { code: "network_error", retryable: true },
+        retryAt: expect.any(Number),
+      });
+      expect(dependencies.upload).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(UPLOAD_RETRY_DELAYS_MS[0]);
+      expect(dependencies.upload).toHaveBeenCalledTimes(2);
+      expect(coordinator.getViewState()).toMatchObject({ uploadId: "upl_mobile_1", state: "ready" });
+
+      const manualDependencies = createDependencies();
+      manualDependencies.upload = vi.fn().mockRejectedValueOnce(
+        Object.assign(new Error("offline"), { code: "network_error", retryable: true })
+      );
+      const manualIssueGrant = vi.fn(manualDependencies.issueGrant);
+      manualDependencies.issueGrant = manualIssueGrant;
+      const manualCoordinator = createTaskImageCoordinator(manualDependencies);
+      await manualCoordinator.select("photos");
+      await manualCoordinator.beginUploadAfterSave();
+      await manualCoordinator.retry("upl_mobile_1");
+      expect(manualDependencies.upload).toHaveBeenCalledTimes(2);
+      expect(manualIssueGrant.mock.calls.at(-1)?.[0]).toMatchObject({
+        uploadId: "upl_mobile_1",
+        requestKey: expect.stringContaining("upl_mobile_1"),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reconciles an ambiguous attempt before creating a new provider attempt", async () => {
+    vi.useFakeTimers();
+    try {
+      const dependencies = createDependencies();
+      dependencies.upload = vi
+        .fn()
+        .mockRejectedValueOnce(Object.assign(new Error("timeout"), { code: "network_error", retryable: true }))
+        .mockResolvedValueOnce({
+          publicId: "provider-private-id",
+          version: 2,
+          signature: "provider-response-signature",
+          resourceType: "image",
+          deliveryType: "authenticated",
+          format: "jpg",
+          width: 1600,
+          height: 1200,
+          bytes: 2_000_000,
+          eager: [],
+        });
+      dependencies.reconcileAttempt = vi.fn(async () => ({ status: "absent" as const }));
+      const coordinator = createTaskImageCoordinator(dependencies);
+      await coordinator.select("photos");
+      await coordinator.beginUploadAfterSave();
+      await vi.advanceTimersByTimeAsync(UPLOAD_RETRY_DELAYS_MS[0]);
+
+      expect(dependencies.reconcileAttempt).toHaveBeenCalledWith({ uploadId: "upl_mobile_1", attempt: 1 });
+      expect(dependencies.issueGrant).toHaveBeenCalledTimes(2);
+      expect(dependencies.upload).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("pauses recoverable deletion work, resumes it, and cleans app-owned sources safely", async () => {
+    const dependencies = createDependencies();
+    const sourceStore = {
+      persist: vi.fn(async () => ({ sourceKey: "source_upl_mobile_1", uri: "file:///private/durable.jpg" })),
+      resolve: vi.fn(async () => "file:///private/durable.jpg"),
+      remove: vi.fn(async () => undefined),
+    };
+    dependencies.verify = vi.fn(async () => ({ state: "ready" as const }));
+    const coordinator = createTaskImageCoordinator({ ...dependencies, sourceStore });
+    await coordinator.select("photos");
+    coordinator.associateUploadsWithTask("task_1", ["upl_mobile_1"]);
+    const paused = coordinator.pauseTaskUploads("task_1");
+    expect(paused).toBe(1);
+    expect(coordinator.getViewState()).toMatchObject({ state: "pending" });
+
+    await coordinator.resumeTaskUploads("task_1");
+    await coordinator.beginUploadAfterSave();
+    expect(sourceStore.remove).toHaveBeenCalledWith("source_upl_mobile_1");
+
+    await coordinator.remove("upl_mobile_1");
+    expect(sourceStore.remove).toHaveBeenCalledWith("source_upl_mobile_1");
   });
 });
