@@ -49,7 +49,7 @@ describe("Task-image cleanup tombstones", () => {
     }
   );
 
-  it("keeps the tombstone and schedules a later attempt after an ambiguous provider result", async () => {
+  it("keeps the tombstone and returns a later attempt after an ambiguous provider result", async () => {
     const tombstoneId = "tombstone-retry" as Id<"taskImageCleanupTombstones">;
     const tombstone = { _id: tombstoneId, attempts: 0 };
     const db = {
@@ -66,12 +66,12 @@ describe("Task-image cleanup tombstones", () => {
         failureCode: "provider_timeout",
         now: 10_000,
       })
-    ).resolves.toMatchObject({ accepted: true, terminal: false });
+    ).resolves.toMatchObject({ accepted: true, terminal: false, nextAttemptAt: 310_000 });
     expect(db.patch).toHaveBeenCalledWith(
       tombstoneId,
       expect.objectContaining({ state: "retry", attempts: 1, lastFailureCode: "provider_timeout" })
     );
     expect(db.delete).not.toHaveBeenCalled();
-    expect(scheduler.runAfter).toHaveBeenCalledWith(5 * 60 * 1000, expect.anything(), {});
+    expect(scheduler.runAfter).not.toHaveBeenCalled();
   });
 });

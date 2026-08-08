@@ -155,8 +155,9 @@ The existing `purge expired cancelled tasks` Convex cron remains on its
 72-hour cadence to avoid hourly reads in otherwise idle workspaces. When that
 sweep finds image cleanup work, it creates or reuses a cleanup tombstone and
 schedules reconciliation only for that work. Provider retries schedule their
-next attempt from the tombstone backoff, and batches larger than 50 schedule a
-continuation rather than relying on a recurring hourly scan.
+next attempt from the tombstone backoff. When a reconciliation batch is full
+(50 tombstones), it schedules an immediate continuation rather than relying on
+a recurring hourly scan.
 
 This is intentionally different from an hourly cleanup sweep: provider
 cleanup remains idempotent and retryable, while Convex I/O is spent only when

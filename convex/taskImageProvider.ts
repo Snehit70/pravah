@@ -68,7 +68,6 @@ export async function deleteProviderAsset({
   const parameters = {
     invalidate: "true",
     public_id: publicId,
-    signature_algorithm: "sha256",
     timestamp: String(timestamp),
     type: "authenticated",
   };
@@ -77,6 +76,7 @@ export async function deleteProviderAsset({
   );
   const body = new URLSearchParams({
     ...parameters,
+    signature_algorithm: "sha256",
     api_key: provider.apiKey,
     signature,
   });

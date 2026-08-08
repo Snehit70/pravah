@@ -1038,11 +1038,18 @@ export const purgeExpiredCancelledTasks = internalMutation({
         .withIndex("by_cancelled_at", (q) =>
           q.gte("cancelledAt", 0).lt("cancelledAt", cutoff)
         )
-        .take(50),
+        .take(51),
       ctx.db
         .query("tasks")
         .withIndex("by_status", (q) => q.eq("status", "cancelled"))
-        .take(50),
+        .filter((q) => q.or(
+          q.lt(q.field("cancelledAt"), cutoff),
+          q.and(
+            q.eq(q.field("cancelledAt"), undefined),
+            q.lt(q.field("updatedAt"), cutoff)
+          )
+        ))
+        .take(51),
     ]);
 
     const expiredRemovedImages = await ctx.db
@@ -1051,8 +1058,11 @@ export const purgeExpiredCancelledTasks = internalMutation({
       .take(50);
     let purged = 0;
     let cleanupWorkFound = false;
-    let purgeContinuationNeeded = false;
-    for (const task of dedupeTasks([...cancelledAtTasks, ...legacyCancelledTasks])) {
+    let purgeContinuationNeeded = cancelledAtTasks.length > 50 || legacyCancelledTasks.length > 50;
+    for (const task of dedupeTasks([
+      ...cancelledAtTasks.slice(0, 50),
+      ...legacyCancelledTasks.slice(0, 50),
+    ])) {
       const cancelledAt = getTaskCancelledAt(task);
       if (cancelledAt === undefined || cancelledAt >= cutoff) continue;
       const taskImages = await ctx.db
@@ -1074,6 +1084,7 @@ export const purgeExpiredCancelledTasks = internalMutation({
             upload,
           }, Date.now());
           cleanupWorkFound = true;
+          await ctx.db.delete(image._id);
         } else {
           await ctx.db.delete(image._id);
         }

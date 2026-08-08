@@ -36,7 +36,7 @@ const recordCleanupResultRef = makeFunctionReference<
     failureCode?: string;
     now: number;
   },
-  unknown
+  { accepted: boolean; terminal?: boolean; nextAttemptAt?: number }
 >("taskImageCleanup:recordCleanupResult");
 
 declare const process: { env: Record<string, string | undefined> };
@@ -299,6 +299,8 @@ export const reconcileCleanup = internalAction({
     const tombstones = await ctx.runQuery(listDueCleanupTombstonesRef, { now, limit: 50 });
     let terminal = 0;
     let retried = 0;
+    let providerUnavailable = false;
+    let nextAttemptAt: number | undefined;
     let provider: TaskImageProviderConfig | undefined;
     try {
       provider = readProviderConfig();
@@ -306,23 +308,41 @@ export const reconcileCleanup = internalAction({
       provider = undefined;
     }
     for (const tombstone of tombstones) {
-      const outcome = !tombstone.providerPublicId
-        ? "absent" as const
-        : provider
-          ? await deleteProviderAsset({ provider, publicId: tombstone.providerPublicId })
-          : "retry" as const;
-      await ctx.runMutation(recordCleanupResultRef, {
-        tombstoneId: tombstone._id,
-        outcome,
-        failureCode: outcome === "retry" ? (provider ? "provider_ambiguous" : "provider_unavailable") : undefined,
-        now,
-      });
-      if (outcome === "retry") retried += 1;
-      else terminal += 1;
+      if (!provider && tombstone.providerPublicId) {
+        providerUnavailable = true;
+        nextAttemptAt = Math.min(nextAttemptAt ?? Infinity, now + 30 * 60 * 1000);
+        continue;
+      }
+      try {
+        const outcome = !tombstone.providerPublicId
+          ? "absent" as const
+          : await deleteProviderAsset({ provider: provider!, publicId: tombstone.providerPublicId });
+        const result = await ctx.runMutation(recordCleanupResultRef, {
+          tombstoneId: tombstone._id,
+          outcome,
+          failureCode: outcome === "retry" ? "provider_ambiguous" : undefined,
+          now,
+        });
+        if (outcome === "retry") retried += 1;
+        else terminal += 1;
+        if (result.nextAttemptAt !== undefined) {
+          nextAttemptAt = Math.min(nextAttemptAt ?? Infinity, result.nextAttemptAt);
+        }
+      } catch {
+        retried += 1;
+        nextAttemptAt = Math.min(nextAttemptAt ?? Infinity, now + 5 * 60 * 1000);
+      }
     }
-    if (tombstones.length === 50) {
+    if (!providerUnavailable && tombstones.length === 50) {
       await ctx.scheduler.runAfter(0, internal.taskImageActions.reconcileCleanup, {});
     }
-    return { inspected: tombstones.length, terminal, retried };
+    if (nextAttemptAt !== undefined) {
+      await ctx.scheduler.runAfter(
+        Math.max(0, nextAttemptAt - now),
+        internal.taskImageActions.reconcileCleanup,
+        {}
+      );
+    }
+    return { inspected: tombstones.length, terminal, retried, providerUnavailable };
   },
 });

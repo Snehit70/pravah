@@ -12,8 +12,11 @@ describe("Task-image provider cleanup", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("deletes the authenticated asset with CDN invalidation", async () => {
+    vi.setSystemTime(new Date(10_000));
+    let form: URLSearchParams | undefined;
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       const body = String(init?.body);
+      form = new URLSearchParams(body);
       expect(body).toContain("invalidate=true");
       expect(body).toContain("type=authenticated");
       expect(body).not.toContain("server-secret");
@@ -24,6 +27,19 @@ describe("Task-image provider cleanup", () => {
     await expect(deleteProviderAsset({ provider, publicId: "pravah-task-images/opaque" })).resolves.toBe(
       "deleted"
     );
+
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(
+        "invalidate=true&public_id=pravah-task-images/opaque&timestamp=10&type=authenticatedserver-secret"
+      )
+    );
+    const expectedSignature = [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+    expect(form?.get("signature")).toBe(expectedSignature);
+    expect(form?.get("signature_algorithm")).toBe("sha256");
+    vi.useRealTimers();
   });
 
   it.each([

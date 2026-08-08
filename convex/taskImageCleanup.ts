@@ -2,7 +2,6 @@ import { internalMutation, internalQuery } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
 
 export const CLEANUP_RETRY_DELAYS_MS = [5 * 60 * 1000, 30 * 60 * 1000, 2 * 60 * 60 * 1000] as const;
 
@@ -84,7 +83,6 @@ export const recordCleanupResult = internalMutation({
       lastFailureCode: args.failureCode ?? "provider_ambiguous",
       updatedAt: args.now,
     });
-    await ctx.scheduler.runAfter(delay, internal.taskImageActions.reconcileCleanup, {});
     return { accepted: true as const, terminal: false as const, nextAttemptAt: args.now + delay };
   },
 });

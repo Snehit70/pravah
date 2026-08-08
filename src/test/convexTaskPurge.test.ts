@@ -30,11 +30,13 @@ function makeDb(rows: Record<string, Array<Record<string, unknown>>>) {
           lt: () => q,
         };
         build(q);
-        return {
+        const indexedQuery = {
           collect: vi.fn(async () => values()),
           first: vi.fn(async () => values()[0] ?? null),
           take: vi.fn(async (limit: number) => values().slice(0, limit)),
+          filter: vi.fn(() => indexedQuery),
         };
+        return indexedQuery;
       }),
     };
     return queryObject;
@@ -73,7 +75,7 @@ function ctx(db: unknown) {
 }
 
 describe("expired Task-image lifecycle cleanup", () => {
-  it("creates a tombstone before purging the parent Task and retains child records", async () => {
+  it("creates a tombstone before purging the parent Task", async () => {
     const expiredAt = 1_000;
     const taskId = "task-expired" as Id<"tasks">;
     const imageId = "image-expired" as Id<"taskImages">;
@@ -92,7 +94,7 @@ describe("expired Task-image lifecycle cleanup", () => {
       expect.objectContaining({ taskId, taskImageId: imageId, uploadRecordId: uploadId, providerPublicId: "private-asset" })
     );
     expect(db.delete).toHaveBeenCalledWith(taskId);
-    expect(db.delete).not.toHaveBeenCalledWith(imageId);
+    expect(db.delete).toHaveBeenCalledWith(imageId);
     expect(db.delete).not.toHaveBeenCalledWith(uploadId);
     vi.restoreAllMocks();
   });
