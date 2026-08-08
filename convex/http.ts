@@ -131,28 +131,25 @@ http.route({
       expectedEncodingClass: context.encodingClass,
     };
     const isEagerNotification = payload.notification_type === "eager";
-    if (
-      isEagerNotification &&
-      (payload.status === "failed" || !context.master || !context.providerVersion)
-    ) {
-      if (payload.status === "failed") {
-        await ctx.runMutation(internal.taskImages.applyUploadVerification, {
-          ownerTokenIdentifier: context.ownerTokenIdentifier,
-          uploadId: context.uploadId,
-          publicId: context.publicId,
-          version: context.providerVersion ?? 0,
-          result: { status: "failed", failureCode: "variant_too_large" },
-        });
-      }
+    if (isEagerNotification && payload.status === "failed") {
+      await ctx.runMutation(internal.taskImages.applyUploadVerification, {
+        ownerTokenIdentifier: context.ownerTokenIdentifier,
+        uploadId: context.uploadId,
+        publicId: context.publicId,
+        version: context.providerVersion ?? callbackResponse.version,
+        result: { status: "failed", failureCode: "variant_too_large" },
+      });
       return new Response(null, { status: 204 });
     }
     const response = isEagerNotification
-      ? buildEagerWebhookVerificationInput({
-          publicId,
-          version: context.providerVersion!,
-          master: context.master!,
-          eager,
-        })
+      ? context.master && context.providerVersion !== undefined
+        ? buildEagerWebhookVerificationInput({
+            publicId,
+            version: context.providerVersion,
+            master: context.master,
+            eager,
+          })
+        : callbackResponse
       : callbackResponse;
     const verified = isEagerNotification
       ? await verifyProviderWebhookResult(response, expected)

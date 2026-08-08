@@ -115,6 +115,27 @@ describe("Task-image mobile coordinator", () => {
     );
   });
 
+  it("reports detached upload failures after the Task has been saved", async () => {
+    const dependencies = createDependencies();
+    dependencies.issueGrant = vi.fn(async () => {
+      throw Object.assign(new Error("provider unavailable"), {
+        code: "storage_unavailable",
+      });
+    });
+    dependencies.reportFailure = vi.fn(async () => undefined);
+    const coordinator = createTaskImageCoordinator(dependencies);
+    await coordinator.select("photos");
+
+    const completion = coordinator.beginUploadAfterSave();
+    coordinator.clearAfterSaveAndStay();
+    await completion;
+
+    expect(dependencies.reportFailure).toHaveBeenCalledWith({
+      uploadId: "upl_mobile_1",
+      failureCode: "storage_unavailable",
+    });
+  });
+
   it("surfaces stable safe failures and serializes no private capabilities or paths", async () => {
     const dependencies = createDependencies();
     dependencies.normalize = vi.fn(async () => {
@@ -142,5 +163,43 @@ describe("Task-image mobile coordinator", () => {
     expect(JSON.stringify(coordinator.serialize())).not.toMatch(
       /content:\/\/|file:\/\/|cloudinary|signed-secret|provider-private|decoder details/
     );
+  });
+
+  it("keeps five ordered Capture images with captions and replaces a removed slot", async () => {
+    const dependencies = createDependencies();
+    let nextId = 1;
+    dependencies.createUploadId = vi.fn(() => `upl_mobile_${nextId++}`);
+    const coordinator = createTaskImageCoordinator(dependencies);
+
+    await coordinator.select("photos");
+    await coordinator.select("camera");
+    await coordinator.select("paste");
+    await coordinator.select("photos");
+    await coordinator.select("camera");
+
+    expect(coordinator.getViewStates()).toHaveLength(5);
+    await coordinator.select("paste");
+    expect(coordinator.getViewStates()).toHaveLength(5);
+    expect(coordinator.getLastError()).toBe("Task image limit reached");
+
+    const ids = coordinator.getViewStates().map((image) => image.uploadId);
+    coordinator.updateCaption(ids[0], "  First reference  ");
+    coordinator.reorder([ids[1], ids[0], ...ids.slice(2)]);
+    expect(coordinator.getViewStates().map((image) => image.uploadId)).toEqual([
+      ids[1],
+      ids[0],
+      ...ids.slice(2),
+    ]);
+    expect(coordinator.getViewStates()[1].caption).toBe("First reference");
+    expect(coordinator.getImageInputsForSave()).toContainEqual({
+      uploadId: ids[0],
+      caption: "First reference",
+    });
+
+    coordinator.remove(ids[0]);
+    expect(coordinator.getViewStates()).toHaveLength(4);
+    await coordinator.select("paste");
+    expect(coordinator.getViewStates()).toHaveLength(5);
+    expect(coordinator.getUploadIdsForSave()).toHaveLength(5);
   });
 });

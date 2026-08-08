@@ -53,6 +53,8 @@ import NavGoalsAsset from "../assets/icons/nav-goals.svg";
 import NavInboxAsset from "../assets/icons/nav-inbox.svg";
 import { SearchField } from "./SearchField";
 import { addDays, dateLabel, getLocalDateString, humanDate, toIsoDate } from "../lib/dates";
+import { TaskImageFilmstrip } from "./TaskImageFilmstrip";
+import type { TaskImageSourceKind } from "../lib/taskImageCoordinator";
 
 export type EditTaskSheetRef = {
   open: (task: MobileTask) => void;
@@ -79,12 +81,33 @@ type EditTaskSheetProps = {
   onScheduleToDate?: (taskId: Id<"tasks">, isoDate: string) => void;
   onUnschedule?: (taskId: Id<"tasks">) => void;
   onDelete?: (taskId: Id<"tasks">) => void;
+  resolveTaskImage?: MobileTaskPropsImageResolver;
+  onReorderTaskImages?: (args: {
+    taskId: Id<"tasks">;
+    orderedTaskImageIds: string[];
+    expectedRevision: number;
+  }) => void;
+  onCaptionTaskImage?: (args: {
+    taskImageId: string;
+    caption: string;
+    expectedRevision: number;
+  }) => void;
+  onRemoveTaskImage?: (args: { taskImageId: string; expectedRevision: number }) => void;
+  onSelectTaskImage?: (args: {
+    taskId: Id<"tasks">;
+    expectedRevision: number;
+    kind: TaskImageSourceKind;
+  }) => TaskImageCollectionMutationResult | Promise<TaskImageCollectionMutationResult | undefined> | undefined;
   onSaveComplete?: (
     undo: UndoPayload,
     task: MobileTask,
     previousState: DraftState,
   ) => void;
 };
+
+type MobileTaskPropsImageResolver = NonNullable<
+  React.ComponentProps<typeof TaskImageFilmstrip>["resolveDelivery"]
+>;
 
 type TaskState = "inbox" | "timeline" | "completed";
 type SheetMode = "inspector" | "when" | "priority" | "goal" | "details";
@@ -96,6 +119,10 @@ type DraftState = {
   time: string;
   priority: TaskPriority;
   goalId: string | null;
+};
+
+type TaskImageCollectionMutationResult = NonNullable<MobileTask["imageCollection"]> & {
+  stale: boolean;
 };
 
 const PRIORITY_OPTIONS: Array<{ value: TaskPriority; label: string; detail: string }> = [
@@ -182,6 +209,11 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       onScheduleToDate: _onScheduleToDate,
       onUnschedule: _onUnschedule,
       onDelete,
+      resolveTaskImage,
+      onReorderTaskImages,
+      onCaptionTaskImage,
+      onRemoveTaskImage,
+      onSelectTaskImage,
       onSaveComplete,
     },
     ref,
@@ -759,6 +791,99 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             )}
           </View>
 
+          {currentTask && (!completed || currentTask.imageCollection?.active.length) ? (
+            <View style={styles.imagesSection}>
+              <Text style={styles.sectionLabel}>Task images</Text>
+              <TaskImageFilmstrip
+                images={currentTask.imageCollection?.active ?? []}
+                resolveDelivery={resolveTaskImage}
+                onSelectSource={onSelectTaskImage
+                  ? async (kind) => {
+                      const result = await onSelectTaskImage({
+                        taskId: currentTask._id,
+                        expectedRevision: currentTask.imageCollection?.revision ?? 0,
+                        kind,
+                      });
+                      if (!result) return;
+                      const { stale: _, ...imageCollection } = result;
+                      setCurrentTask((previous) => previous
+                        ? { ...previous, imageCollection }
+                        : previous);
+                    }
+                  : undefined}
+                onCaptionChange={!completed && onCaptionTaskImage
+                  ? (taskImageId, caption) => {
+                      const revision = currentTask.imageCollection?.revision ?? 0;
+                      onCaptionTaskImage({ taskImageId, caption, expectedRevision: revision });
+                      setCurrentTask((previous) => {
+                        if (!previous?.imageCollection) return previous;
+                        const active = previous.imageCollection.active.map((image) =>
+                          image.taskImageId === taskImageId ? { ...image, caption: caption.trim() } : image
+                        );
+                        return {
+                          ...previous,
+                          imageCollection: {
+                            ...previous.imageCollection,
+                            revision: revision + 1,
+                            active,
+                            primary: active[0],
+                          },
+                        };
+                      });
+                    }
+                  : undefined}
+                onReorder={!completed && onReorderTaskImages
+                  ? (taskImageId, direction) => {
+                      const active = [...(currentTask.imageCollection?.active ?? [])].sort(
+                        (left, right) => left.position - right.position,
+                      );
+                      const index = active.findIndex((image) => image.taskImageId === taskImageId);
+                      const nextIndex = direction === "up" ? index - 1 : index + 1;
+                      if (index < 0 || nextIndex < 0 || nextIndex >= active.length) return;
+                      [active[index], active[nextIndex]] = [active[nextIndex], active[index]];
+                      const positioned = active.map((image, position) => ({ ...image, position }));
+                      onReorderTaskImages({
+                        taskId: currentTask._id,
+                        orderedTaskImageIds: positioned.map((image) => image.taskImageId),
+                        expectedRevision: currentTask.imageCollection?.revision ?? 0,
+                      });
+                      setCurrentTask((previous) => previous
+                        ? {
+                            ...previous,
+                            imageCollection: previous.imageCollection
+                              ? { ...previous.imageCollection, revision: (previous.imageCollection.revision ?? 0) + 1, active: positioned, primary: positioned[0] }
+                              : previous.imageCollection,
+                          }
+                        : previous);
+                    }
+                  : undefined}
+                onRemove={!completed && onRemoveTaskImage
+                  ? (taskImageId) => {
+                      onRemoveTaskImage({
+                        taskImageId,
+                        expectedRevision: currentTask.imageCollection?.revision ?? 0,
+                      });
+                      setCurrentTask((previous) => {
+                        if (!previous?.imageCollection) return previous;
+                        const active = previous.imageCollection.active
+                          .filter((image) => image.taskImageId !== taskImageId)
+                          .map((image, position) => ({ ...image, position }));
+                        return {
+                          ...previous,
+                          imageCollection: {
+                            ...previous.imageCollection,
+                            revision: previous.imageCollection.revision + 1,
+                            active,
+                            primary: active[0],
+                          },
+                        };
+                      });
+                    }
+                  : undefined}
+              />
+            </View>
+          ) : null}
+
           <View style={styles.planningSection}>
             <Text style={styles.sectionLabel}>Planning</Text>
             <View style={styles.planningCard}>
@@ -1042,6 +1167,9 @@ const styles = createThemedStyles({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xl,
     gap: spacing.xl,
+  },
+  imagesSection: {
+    gap: spacing.sm,
   },
   titleBlock: { gap: spacing.xs },
   titlePressable: {

@@ -346,6 +346,10 @@ export default defineSchema({
     taskId: v.id("tasks"),
     uploadRecordId: v.optional(v.id("taskImageUploads")),
     position: v.number(),
+    caption: v.optional(v.string()),
+    removedAt: v.optional(v.number()),
+    recoverableUntil: v.optional(v.number()),
+    previousPosition: v.optional(v.number()),
     state: v.union(
       v.literal("pending"),
       v.literal("uploading"),

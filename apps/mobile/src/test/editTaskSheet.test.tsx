@@ -153,6 +153,11 @@ vi.mock("expo-blur", () => ({
     React.createElement("div", { "data-testid": "blur-view" }, children),
 }));
 
+vi.mock("expo-image", () => ({
+  Image: ({ source, accessibilityLabel }: { source?: { uri?: string }; accessibilityLabel?: string }) =>
+    React.createElement("img", { src: source?.uri, alt: accessibilityLabel }),
+}));
+
 vi.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
@@ -435,6 +440,80 @@ describe("EditTaskSheet compact workbench", () => {
     expect(screen.queryByLabelText("Edit task title")).toBeNull();
     fireEvent.click(screen.getByText("Reopen task"));
     expect(onReopen).toHaveBeenCalledWith("task1");
+  });
+
+  it("updates local image positions when reordering a Task image", async () => {
+    const onReorderTaskImages = vi.fn();
+    const taskWithImages: MobileTask = {
+      ...timelineTask,
+      imageCollection: {
+        revision: 4,
+        active: [
+          {
+            taskImageId: "image-a",
+            position: 0,
+            state: "pending",
+            previewUri: "file:///image-a.jpg",
+          },
+          {
+            taskImageId: "image-b",
+            position: 1,
+            state: "pending",
+            previewUri: "file:///image-b.jpg",
+          },
+        ],
+      },
+    };
+    const { ref } = setup({ onReorderTaskImages });
+    await open(ref, taskWithImages);
+
+    expect(screen.getAllByAltText("Selected Task image preview")[0].getAttribute("src"))
+      .toBe("file:///image-a.jpg");
+    fireEvent.click(screen.getByLabelText("Move Task image up"));
+
+    await waitFor(() => {
+      expect(screen.getAllByAltText("Selected Task image preview")[0].getAttribute("src"))
+        .toBe("file:///image-b.jpg");
+    });
+    expect(onReorderTaskImages).toHaveBeenCalledWith({
+      taskId: "task1",
+      orderedTaskImageIds: ["image-b", "image-a"],
+      expectedRevision: 4,
+    });
+  });
+
+  it("applies the returned Task image collection after attaching an image", async () => {
+    const onSelectTaskImage = vi.fn(async () => ({
+      stale: false as const,
+      revision: 5,
+      active: [{
+        taskImageId: "image-new",
+        position: 0,
+        state: "pending" as const,
+        previewUri: "file:///image-new.jpg",
+      }],
+      primary: {
+        taskImageId: "image-new",
+        position: 0,
+        state: "pending" as const,
+        previewUri: "file:///image-new.jpg",
+      },
+      recoverable: [],
+    }));
+    const { ref } = setup({ onSelectTaskImage });
+    await open(ref);
+
+    fireEvent.click(screen.getByLabelText("Add Task image from Photos"));
+
+    await waitFor(() => {
+      expect(screen.getByAltText("Selected Task image preview").getAttribute("src"))
+        .toBe("file:///image-new.jpg");
+    });
+    expect(onSelectTaskImage).toHaveBeenCalledWith({
+      taskId: "task1",
+      expectedRevision: 0,
+      kind: "photos",
+    });
   });
 
   it("keeps deletion in overflow and explains recovery", async () => {

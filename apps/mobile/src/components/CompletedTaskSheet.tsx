@@ -10,6 +10,7 @@ import { createThemedStyles, getThemeRuntimeSnapshot } from "../theme/themeRunti
 import { useConfirm } from "../hooks/useConfirm";
 import type { MobileTask } from "./TaskCard";
 import NavGoalsAsset from "../assets/icons/nav-goals.svg";
+import { TaskImageFilmstrip } from "./TaskImageFilmstrip";
 import {
   CalendarIcon,
   CheckIcon,
@@ -24,6 +25,7 @@ type CompletedTaskSheetProps = {
   onDelete: (taskId: MobileTask["_id"]) => void;
   onReopen: (taskId: MobileTask["_id"]) => void;
   onViewGoal?: () => void;
+  resolveTaskImage?: NonNullable<React.ComponentProps<typeof TaskImageFilmstrip>["resolveDelivery"]>;
 };
 
 function formatTimestamp(ms?: number): string | null {
@@ -65,6 +67,7 @@ export function CompletedTaskSheet({
   onDelete,
   onReopen,
   onViewGoal,
+  resolveTaskImage,
 }: CompletedTaskSheetProps) {
   const insets = useSafeAreaInsets();
   const confirm = useConfirm();
@@ -196,6 +199,16 @@ export function CompletedTaskSheet({
                 </Text>
               </View>
             </View>
+
+            {task.imageCollection?.active.length ? (
+              <View style={styles.imagesSection}>
+                <Text style={styles.sectionLabel}>Task images</Text>
+                <TaskImageFilmstrip
+                  images={task.imageCollection.active}
+                  resolveDelivery={resolveTaskImage}
+                />
+              </View>
+            ) : null}
 
             <View style={styles.notesSection}>
               <Text style={styles.sectionLabel}>Notes</Text>
@@ -355,6 +368,7 @@ const styles = createThemedStyles({
     gap: spacing.xl,
   },
   titleBlock: { gap: spacing.xs },
+  imagesSection: { gap: spacing.sm },
   title: {
     ...typography.headline,
     color: colors.textPrimary,

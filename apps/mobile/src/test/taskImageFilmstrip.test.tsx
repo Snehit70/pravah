@@ -8,6 +8,13 @@ vi.mock("react-native", () => {
   type Props = Record<string, unknown> & { children?: React.ReactNode };
   const View = ({ children, style: _, ...props }: Props) => React.createElement("div", props, children);
   const Text = ({ children, style: _, ...props }: Props) => React.createElement("span", props, children);
+  const TextInput = ({ value, defaultValue, onChangeText, accessibilityLabel, ...props }: Props & { value?: string; defaultValue?: string; onChangeText?: (value: string) => void }) =>
+    React.createElement("input", {
+      ...props,
+      value: value ?? defaultValue ?? "",
+      "aria-label": accessibilityLabel,
+      onChange: (event: React.ChangeEvent<HTMLInputElement>) => onChangeText?.(event.target.value),
+    });
   const Pressable = ({ children, onPress, accessibilityLabel, accessibilityRole, style: _, ...props }: Props) =>
     React.createElement(
       "button",
@@ -25,6 +32,7 @@ vi.mock("react-native", () => {
   return {
     View,
     Text,
+    TextInput,
     Pressable,
     StyleSheet: { create: <T,>(styles: T) => styles, hairlineWidth: 1 },
   };
@@ -130,5 +138,36 @@ describe("TaskImageFilmstrip", () => {
 
     await waitFor(() => expect(screen.getByText("Image unavailable")).toBeTruthy());
     expect(screen.queryByRole("img")).toBeNull();
+  });
+
+  it("keeps image actions ordered, editable, removable, and replaceable up to five", () => {
+    const onCaptionChange = vi.fn();
+    const onReorder = vi.fn();
+    const onRemove = vi.fn();
+    const onSelectSource = vi.fn();
+    render(
+      <TaskImageFilmstrip
+        images={[
+          { taskImageId: "image-2", position: 1, state: "pending", caption: "Second" },
+          { taskImageId: "image-1", position: 0, state: "ready", caption: "First" },
+        ]}
+        onCaptionChange={onCaptionChange}
+        onReorder={onReorder}
+        onRemove={onRemove}
+        onSelectSource={onSelectSource}
+      />
+    );
+
+    expect(screen.getByDisplayValue("First")).toBeTruthy();
+    expect(screen.getByDisplayValue("Second")).toBeTruthy();
+    fireEvent.change(screen.getByDisplayValue("First"), { target: { value: "Updated" } });
+    fireEvent.click(screen.getByRole("button", { name: "Move Task image down" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Remove Task image" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Add Task image from Photos" }));
+
+    expect(onCaptionChange).toHaveBeenCalledWith("image-1", "Updated");
+    expect(onReorder).toHaveBeenCalledWith("image-1", "down");
+    expect(onRemove).toHaveBeenCalledWith("image-1");
+    expect(onSelectSource).toHaveBeenCalledWith("photos");
   });
 });

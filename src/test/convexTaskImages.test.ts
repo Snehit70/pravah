@@ -2,8 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import type { Id } from "../../convex/_generated/dataModel";
 import { addTask } from "../../convex/tasks";
 import {
+  addTaskImages,
   getTaskImageCollection,
+  markUploadFailed,
+  removeTaskImage,
+  reorderTaskImages,
   stageImageUpload,
+  updateTaskImageCaption,
 } from "../../convex/taskImages";
 
 type Handler<TArgs, TResult> = {
@@ -88,7 +93,12 @@ const stageHandler = (
 
 const addTaskHandler = (
   addTask as unknown as Handler<
-    { title: string; imageUploadId?: string },
+    {
+      title: string;
+      imageUploadId?: string;
+      imageUploadIds?: string[];
+      imageInputs?: Array<{ uploadId: string; caption?: string }>;
+    },
     Id<"tasks">
   >
 )._handler;
@@ -96,7 +106,46 @@ const addTaskHandler = (
 const collectionHandler = (
   getTaskImageCollection as unknown as Handler<
     { taskId: Id<"tasks"> },
-    { active: Array<Record<string, unknown>>; primary?: Record<string, unknown> }
+    {
+      active: Array<Record<string, unknown>>;
+      primary?: Record<string, unknown>;
+      recoverable?: Array<Record<string, unknown>>;
+    }
+  >
+)._handler;
+
+const addTaskImagesHandler = (
+  addTaskImages as unknown as Handler<
+    { taskId: Id<"tasks">; uploadIds: string[]; expectedRevision?: number },
+    unknown
+  >
+)._handler;
+
+const markUploadFailedHandler = (
+  markUploadFailed as unknown as Handler<
+    { uploadId: string; failureCode: string },
+    unknown
+  >
+)._handler;
+
+const reorderTaskImagesHandler = (
+  reorderTaskImages as unknown as Handler<
+    { taskId: Id<"tasks">; orderedTaskImageIds: string[]; expectedRevision: number },
+    unknown
+  >
+)._handler;
+
+const updateTaskImageCaptionHandler = (
+  updateTaskImageCaption as unknown as Handler<
+    { taskImageId: Id<"taskImages">; caption?: string; expectedRevision: number },
+    unknown
+  >
+)._handler;
+
+const removeTaskImageHandler = (
+  removeTaskImage as unknown as Handler<
+    { taskImageId: Id<"taskImages">; expectedRevision: number },
+    unknown
   >
 )._handler;
 
@@ -192,5 +241,105 @@ describe("Convex Task-image contract", () => {
     await expect(collectionHandler(otherOwner, { taskId: emptyTaskId })).rejects.toThrow(
       "Task not found"
     );
+  });
+
+  it("manages an ordered five-image collection with derived primary, captions, stale revisions, and replacement", async () => {
+    const db = createMemoryDb();
+    const owner = authedCtx(db);
+    const uploadIds = ["upl_a_1234", "upl_b_1234", "upl_c_1234", "upl_d_1234", "upl_e_1234", "upl_f_1234"];
+
+    for (const uploadId of uploadIds) {
+      await stageHandler(owner, {
+        uploadId,
+        encodingClass: "jpeg",
+        width: 1200,
+        height: 900,
+        bytes: 500_000,
+      });
+    }
+
+    const taskId = await addTaskHandler(owner, {
+      title: "Manage the gallery",
+      imageInputs: uploadIds.slice(0, 5).map((uploadId, index) => ({
+        uploadId,
+        ...(index === 0 ? { caption: " Initial caption " } : {}),
+      })),
+    });
+    const initial = await collectionHandler(owner, { taskId });
+    expect(initial.active).toHaveLength(5);
+    expect(initial.active.map((image) => image.position)).toEqual([0, 1, 2, 3, 4]);
+    expect(initial.active[0].caption).toBe("Initial caption");
+    expect(initial.primary).toEqual(initial.active[0]);
+
+    await expect(markUploadFailedHandler(owner, {
+      uploadId: uploadIds[0],
+      failureCode: "storage_unavailable",
+    })).resolves.toEqual({ accepted: true, state: "failed" });
+    expect((await collectionHandler(owner, { taskId })).active[0]).toMatchObject({
+      state: "failed",
+      failure: { code: "storage_unavailable", retryable: true },
+    });
+
+    await expect(
+      addTaskImagesHandler(owner, {
+        taskId,
+        uploadIds: [uploadIds[5]],
+        expectedRevision: 1,
+      })
+    ).rejects.toThrow("Task image collection is full");
+    expect((await collectionHandler(owner, { taskId })).active).toHaveLength(5);
+
+    const reordered = await reorderTaskImagesHandler(owner, {
+      taskId,
+      orderedTaskImageIds: initial.active.map((image) => String(image.taskImageId)).reverse(),
+      expectedRevision: 1,
+    });
+    expect(reordered).toMatchObject({ revision: 2, stale: false });
+    expect((await collectionHandler(owner, { taskId })).primary?.taskImageId).toBe(
+      initial.active[4].taskImageId
+    );
+
+    const captioned = await updateTaskImageCaptionHandler(owner, {
+      taskImageId: initial.active[4].taskImageId as Id<"taskImages">,
+      caption: "  Primary reference  ",
+      expectedRevision: 2,
+    });
+    expect(captioned).toMatchObject({ revision: 3, stale: false });
+    expect((await collectionHandler(owner, { taskId })).primary?.caption).toBe("Primary reference");
+
+    const removed = await removeTaskImageHandler(owner, {
+      taskImageId: initial.active[4].taskImageId as Id<"taskImages">,
+      expectedRevision: 3,
+    });
+    expect(removed).toMatchObject({ revision: 4, stale: false });
+    const afterRemoval = await collectionHandler(owner, { taskId });
+    expect(afterRemoval.active).toHaveLength(4);
+    expect(afterRemoval.active.map((image) => image.position)).toEqual([0, 1, 2, 3]);
+    expect(afterRemoval.recoverable).toMatchObject([
+      { caption: "Primary reference", previousPosition: 0 },
+    ]);
+
+    const replacement = await addTaskImagesHandler(owner, {
+      taskId,
+      uploadIds: [uploadIds[5]],
+      expectedRevision: 4,
+    });
+    expect(replacement).toMatchObject({ revision: 5, stale: false });
+    expect((await collectionHandler(owner, { taskId })).active).toHaveLength(5);
+
+    const stale = await reorderTaskImagesHandler(owner, {
+      taskId,
+      orderedTaskImageIds: afterRemoval.active.map((image) => String(image.taskImageId)),
+      expectedRevision: 4,
+    });
+    expect(stale).toMatchObject({ revision: 5, stale: true });
+
+    await expect(
+      updateTaskImageCaptionHandler(owner, {
+        taskImageId: initial.active[0].taskImageId as Id<"taskImages">,
+        caption: "x".repeat(501),
+        expectedRevision: 5,
+      })
+    ).rejects.toThrow("caption_too_long");
   });
 });
