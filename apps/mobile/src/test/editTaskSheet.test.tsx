@@ -442,6 +442,46 @@ describe("EditTaskSheet compact workbench", () => {
     expect(onReopen).toHaveBeenCalledWith("task1");
   });
 
+  it("updates local image positions when reordering a Task image", async () => {
+    const onReorderTaskImages = vi.fn();
+    const taskWithImages: MobileTask = {
+      ...timelineTask,
+      imageCollection: {
+        revision: 4,
+        active: [
+          {
+            taskImageId: "image-a",
+            position: 0,
+            state: "pending",
+            previewUri: "file:///image-a.jpg",
+          },
+          {
+            taskImageId: "image-b",
+            position: 1,
+            state: "pending",
+            previewUri: "file:///image-b.jpg",
+          },
+        ],
+      },
+    };
+    const { ref } = setup({ onReorderTaskImages });
+    await open(ref, taskWithImages);
+
+    expect(screen.getAllByAltText("Selected Task image preview")[0].getAttribute("src"))
+      .toBe("file:///image-a.jpg");
+    fireEvent.click(screen.getByLabelText("Move Task image up"));
+
+    await waitFor(() => {
+      expect(screen.getAllByAltText("Selected Task image preview")[0].getAttribute("src"))
+        .toBe("file:///image-b.jpg");
+    });
+    expect(onReorderTaskImages).toHaveBeenCalledWith({
+      taskId: "task1",
+      orderedTaskImageIds: ["image-b", "image-a"],
+      expectedRevision: 4,
+    });
+  });
+
   it("keeps deletion in overflow and explains recovery", async () => {
     const { ref, onDelete } = setup();
     await open(ref);

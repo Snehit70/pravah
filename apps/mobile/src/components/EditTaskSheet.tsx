@@ -830,16 +830,17 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                       const nextIndex = direction === "up" ? index - 1 : index + 1;
                       if (index < 0 || nextIndex < 0 || nextIndex >= active.length) return;
                       [active[index], active[nextIndex]] = [active[nextIndex], active[index]];
+                      const positioned = active.map((image, position) => ({ ...image, position }));
                       onReorderTaskImages({
                         taskId: currentTask._id,
-                        orderedTaskImageIds: active.map((image) => image.taskImageId),
+                        orderedTaskImageIds: positioned.map((image) => image.taskImageId),
                         expectedRevision: currentTask.imageCollection?.revision ?? 0,
                       });
                       setCurrentTask((previous) => previous
                         ? {
                             ...previous,
                             imageCollection: previous.imageCollection
-                              ? { ...previous.imageCollection, revision: (previous.imageCollection.revision ?? 0) + 1, active, primary: active[0] }
+                              ? { ...previous.imageCollection, revision: (previous.imageCollection.revision ?? 0) + 1, active: positioned, primary: positioned[0] }
                               : previous.imageCollection,
                           }
                         : previous);
