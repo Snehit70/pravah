@@ -801,11 +801,25 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                     })
                   : undefined}
                 onCaptionChange={!completed && onCaptionTaskImage
-                  ? (taskImageId, caption) => onCaptionTaskImage({
-                      taskImageId,
-                      caption,
-                      expectedRevision: currentTask.imageCollection?.revision ?? 0,
-                    })
+                  ? (taskImageId, caption) => {
+                      const revision = currentTask.imageCollection?.revision ?? 0;
+                      onCaptionTaskImage({ taskImageId, caption, expectedRevision: revision });
+                      setCurrentTask((previous) => {
+                        if (!previous?.imageCollection) return previous;
+                        const active = previous.imageCollection.active.map((image) =>
+                          image.taskImageId === taskImageId ? { ...image, caption: caption.trim() } : image
+                        );
+                        return {
+                          ...previous,
+                          imageCollection: {
+                            ...previous.imageCollection,
+                            revision: revision + 1,
+                            active,
+                            primary: active[0],
+                          },
+                        };
+                      });
+                    }
                   : undefined}
                 onReorder={!completed && onReorderTaskImages
                   ? (taskImageId, direction) => {
@@ -821,13 +835,38 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                         orderedTaskImageIds: active.map((image) => image.taskImageId),
                         expectedRevision: currentTask.imageCollection?.revision ?? 0,
                       });
+                      setCurrentTask((previous) => previous
+                        ? {
+                            ...previous,
+                            imageCollection: previous.imageCollection
+                              ? { ...previous.imageCollection, revision: (previous.imageCollection.revision ?? 0) + 1, active, primary: active[0] }
+                              : previous.imageCollection,
+                          }
+                        : previous);
                     }
                   : undefined}
                 onRemove={!completed && onRemoveTaskImage
-                  ? (taskImageId) => onRemoveTaskImage({
-                      taskImageId,
-                      expectedRevision: currentTask.imageCollection?.revision ?? 0,
-                    })
+                  ? (taskImageId) => {
+                      onRemoveTaskImage({
+                        taskImageId,
+                        expectedRevision: currentTask.imageCollection?.revision ?? 0,
+                      });
+                      setCurrentTask((previous) => {
+                        if (!previous?.imageCollection) return previous;
+                        const active = previous.imageCollection.active
+                          .filter((image) => image.taskImageId !== taskImageId)
+                          .map((image, position) => ({ ...image, position }));
+                        return {
+                          ...previous,
+                          imageCollection: {
+                            ...previous.imageCollection,
+                            revision: previous.imageCollection.revision + 1,
+                            active,
+                            primary: active[0],
+                          },
+                        };
+                      });
+                    }
                   : undefined}
               />
             </View>
