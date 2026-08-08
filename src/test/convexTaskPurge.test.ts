@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Id } from "../../convex/_generated/dataModel";
-import { purgeExpiredCancelledTasks } from "../../convex/tasks";
+import { purgeExpiredCancelledTasks, restoreTask } from "../../convex/tasks";
 
 type Handler<TArgs, TResult> = { _handler: (ctx: unknown, args: TArgs) => Promise<TResult> };
 
 const purgeHandler = (
   purgeExpiredCancelledTasks as unknown as Handler<Record<string, never>, { purged: number }>
+)._handler;
+const restoreHandler = (
+  restoreTask as unknown as Handler<{ taskId: Id<"tasks"> }, unknown>
 )._handler;
 
 function makeDb(rows: Record<string, Array<Record<string, unknown>>>) {
@@ -30,6 +33,7 @@ function makeDb(rows: Record<string, Array<Record<string, unknown>>>) {
         return {
           collect: vi.fn(async () => values()),
           first: vi.fn(async () => values()[0] ?? null),
+          take: vi.fn(async (limit: number) => values().slice(0, limit)),
         };
       }),
     };
@@ -108,6 +112,22 @@ describe("expired Task-image lifecycle cleanup", () => {
       expect.objectContaining({ taskId, taskImageId: imageId, providerPublicId: "private-removed" })
     );
     expect(db.delete).not.toHaveBeenCalledWith(taskId);
+    vi.restoreAllMocks();
+  });
+
+  it("does not restore a Task after the purge wins the recovery race", async () => {
+    const taskId = "task-race" as Id<"tasks">;
+    const db = makeDb({
+      tasks: [{ _id: taskId, ownerTokenIdentifier: "owner-1", cancelledAt: 1_000, position: 0 }],
+      taskImages: [],
+      taskImageUploads: [],
+      taskImageCleanupTombstones: [],
+    });
+    vi.spyOn(Date, "now").mockReturnValue(1_000 + 30 * 60 * 1000 + 1);
+
+    await expect(purgeHandler(ctx(db), {})).resolves.toEqual({ purged: 1 });
+    await expect(restoreHandler(ctx(db), { taskId })).rejects.toThrow("Task not found");
+
     vi.restoreAllMocks();
   });
 });

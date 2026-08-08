@@ -364,6 +364,7 @@ export default defineSchema({
   })
     .index("by_owner_task", ["ownerTokenIdentifier", "taskId"])
     .index("by_task_position", ["taskId", "position"])
+    .index("by_recoverable_until", ["recoverableUntil"])
     .index("by_upload", ["uploadRecordId"]),
   taskImageCleanupTombstones: defineTable({
     ownerTokenIdentifier: v.string(),

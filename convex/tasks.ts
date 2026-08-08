@@ -1029,26 +1029,34 @@ function assertTaskRecoveryWindow(task: Doc<"tasks">) {
 export const purgeExpiredCancelledTasks = internalMutation({
   args: {},
   handler: async (ctx) => {
-    const cutoff = Date.now() - PURGE_GRACE_MS;
+    const now = Date.now();
+    const cutoff = now - PURGE_GRACE_MS;
     const [cancelledAtTasks, legacyCancelledTasks] = await Promise.all([
       ctx.db
         .query("tasks")
         .withIndex("by_cancelled_at", (q) =>
           q.gte("cancelledAt", 0).lt("cancelledAt", cutoff)
         )
-        .collect(),
+        .take(50),
       ctx.db
         .query("tasks")
         .withIndex("by_status", (q) => q.eq("status", "cancelled"))
-        .collect(),
+        .take(50),
     ]);
 
-    const imageRows = await ctx.db.query("taskImages").collect();
+    const expiredRemovedImages = await ctx.db
+      .query("taskImages")
+      .withIndex("by_recoverable_until", (q) => q.lt("recoverableUntil", now))
+      .take(50);
     let purged = 0;
     for (const task of dedupeTasks([...cancelledAtTasks, ...legacyCancelledTasks])) {
       const cancelledAt = getTaskCancelledAt(task);
       if (cancelledAt === undefined || cancelledAt >= cutoff) continue;
-      for (const image of imageRows.filter((candidate) => candidate.taskId === task._id)) {
+      const taskImages = await ctx.db
+        .query("taskImages")
+        .withIndex("by_task_position", (q) => q.eq("taskId", task._id))
+        .collect();
+      for (const image of taskImages) {
         if (!image.uploadRecordId) {
           await ctx.db.delete(image._id);
           continue;
@@ -1069,9 +1077,8 @@ export const purgeExpiredCancelledTasks = internalMutation({
       purged += 1;
     }
 
-    for (const image of imageRows) {
+    for (const image of expiredRemovedImages) {
       if (image.removedAt === undefined || image.recoverableUntil === undefined) continue;
-      if (image.recoverableUntil >= Date.now()) continue;
       const task = await ctx.db.get(image.taskId);
       if (!image.uploadRecordId) {
         await ctx.db.delete(image._id);

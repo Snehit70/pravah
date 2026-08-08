@@ -92,7 +92,7 @@ export const promoteDueCleanupRetries = internalMutation({
     const due = await ctx.db
       .query("taskImageCleanupTombstones")
       .withIndex("by_due", (q) => q.eq("state", "retry").lte("nextAttemptAt", args.now))
-      .collect();
+      .take(50);
     for (const tombstone of due) {
       await ctx.db.patch(tombstone._id, { state: "pending", updatedAt: args.now });
     }
