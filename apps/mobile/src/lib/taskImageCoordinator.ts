@@ -112,7 +112,8 @@ export type TaskImageCoordinatorDependencies = {
   issueGrant: (args: { uploadId: string; requestKey: string }) => Promise<TaskImageUploadGrant>;
   upload: (
     uri: string,
-    grant: TaskImageUploadGrant
+    grant: TaskImageUploadGrant,
+    options?: { uploadId: string; onProgress: (progress: number) => void }
   ) => Promise<AllowlistedProviderResult & Record<string, unknown>>;
   verify: (result: { uploadId: string } & AllowlistedProviderResult) => Promise<{
     state: "verifying" | "ready" | "failed";
@@ -127,7 +128,7 @@ export type TaskImageCoordinatorDependencies = {
   now?: () => number;
 };
 
-type Draft = Omit<TaskImageManifestEntry, "state"> & {
+type UploadRecord = Omit<TaskImageManifestEntry, "state"> & {
   state: TaskImageState;
   previewUri?: string;
   normalized?: NormalizedTaskImage;
@@ -258,9 +259,9 @@ function parseManifestEntry(value: unknown): TaskImageManifestEntry | null {
   };
 }
 
-function redactManifest(entries: Iterable<Draft>): TaskImageManifest {
+function redactManifest(entries: Iterable<UploadRecord>): TaskImageManifest {
   const persistedEntries = [...entries].filter(
-    (entry): entry is Draft & { state: Exclude<TaskImageState, "preparing"> } => entry.state !== "preparing"
+    (entry): entry is UploadRecord & { state: Exclude<TaskImageState, "preparing"> } => entry.state !== "preparing"
   );
   return {
     version: TASK_IMAGE_MANIFEST_VERSION,
@@ -285,8 +286,8 @@ function redactManifest(entries: Iterable<Draft>): TaskImageManifest {
 }
 
 export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDependencies) {
-  const records = new Map<string, Draft>();
-  let draftOrder: string[] = [];
+  const records = new Map<string, UploadRecord>();
+  let visibleUploadIds: string[] = [];
   let lastError: string | undefined;
   let foreground = true;
   let hydrated = !dependencies.manifestStore || !dependencies.ownerScope;
@@ -310,13 +311,13 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     return persistChain;
   };
 
-  const update = (entry: Draft, patch: Partial<Draft>) => {
+  const update = (entry: UploadRecord, patch: Partial<UploadRecord>) => {
     Object.assign(entry, patch);
     void persist();
     notify();
   };
 
-  const viewState = (entry: Draft) => ({
+  const viewState = (entry: UploadRecord) => ({
     uploadId: entry.uploadId,
     state: entry.state,
     previewUri: entry.previewUri,
@@ -326,7 +327,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     progress: entry.state === "uploading" ? entry.progress : undefined,
   });
 
-  const removeSource = async (entry: Draft) => {
+  const removeSource = async (entry: UploadRecord) => {
     if (!entry.sourceKey || !dependencies.sourceStore) return;
     try {
       await dependencies.sourceStore.remove(entry.sourceKey);
@@ -335,7 +336,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     }
   };
 
-  const failEntry = async (entry: Draft, error: unknown) => {
+  const failEntry = async (entry: UploadRecord, error: unknown) => {
     const failure = safeFailure(error);
     const retryCount = failure.retryable ? entry.retryCount + 1 : entry.retryCount;
     const retryAt = failure.retryable && retryCount <= UPLOAD_RETRY_DELAYS_MS.length
@@ -357,7 +358,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     }
   };
 
-  const verifyReconciledResult = async (entry: Draft, result: AllowlistedProviderResult) => {
+  const verifyReconciledResult = async (entry: UploadRecord, result: AllowlistedProviderResult) => {
     update(entry, { state: "verifying", retryAt: undefined });
     const verified = await dependencies.verify({ uploadId: entry.uploadId, ...result });
     update(entry, {
@@ -369,7 +370,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     if (verified.state === "ready") await removeSource(entry);
   };
 
-  const reconcileBeforeAttempt = async (entry: Draft) => {
+  const reconcileBeforeAttempt = async (entry: UploadRecord) => {
     if (!entry.needsReconciliation) return true;
     if (!dependencies.reconcileAttempt) return true;
     let result: TaskImageReconciliation;
@@ -405,7 +406,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     return false;
   };
 
-  const runEntry = async (entry: Draft) => {
+  const runEntry = async (entry: UploadRecord) => {
     const generation = entry.generation;
     activeCount += 1;
     update(entry, { state: "uploading", failure: undefined, progress: undefined });
@@ -428,7 +429,15 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         uploadId: entry.uploadId,
         requestKey: createGrantRequestKey(entry.uploadId, entry.attempt),
       });
-      const rawResult = await dependencies.upload(sourceUri, grant);
+      if (entry.generation !== generation || entry.paused) return;
+      const rawResult = await dependencies.upload(sourceUri, grant, {
+        uploadId: entry.uploadId,
+        onProgress: (progress) => {
+          if (entry.generation === generation && !entry.paused) {
+            update(entry, { progress: Math.max(0, Math.min(1, progress)) });
+          }
+        },
+      });
       if (entry.generation !== generation || entry.paused) return;
       await verifyReconciledResult(entry, allowlistedProviderResult(rawResult));
     } catch (error) {
@@ -460,7 +469,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     resolveDrained();
   });
 
-  const scheduleRetry = (entry: Draft, retryAt: number) => {
+  const scheduleRetry = (entry: UploadRecord, retryAt: number) => {
     const existing = timers.get(entry.uploadId);
     if (existing) clearTimeout(existing);
     timers.set(
@@ -514,7 +523,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
           })
         : [];
     for (const entry of uploads) {
-      const restored: Draft = {
+      const restored: UploadRecord = {
         ...entry,
         state: entry.state === "uploading" || entry.state === "verifying" ? "pending" : entry.state,
         needsReconciliation: entry.needsReconciliation || entry.state === "uploading" || entry.state === "verifying",
@@ -522,7 +531,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         generation: 0,
       };
       records.set(entry.uploadId, restored);
-      if (!restored.taskId) draftOrder.push(restored.uploadId);
+      if (!restored.taskId) visibleUploadIds.push(restored.uploadId);
       if (restored.state === "failed" && restored.retryAt) {
         if (restored.retryAt <= now()) {
           restored.state = "pending";
@@ -543,13 +552,13 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
 
     async select(kind: TaskImageSourceKind) {
       await ensureHydrated();
-      if (draftOrder.length >= MAX_TASK_IMAGE_COUNT) {
+      if (visibleUploadIds.length >= MAX_TASK_IMAGE_COUNT) {
         lastError = "Task image limit reached";
         notify();
         return;
       }
       const uploadId = dependencies.createUploadId();
-      const nextDraft: Draft = {
+      const nextRecord: UploadRecord = {
         uploadId,
         state: "preparing",
         attempt: 0,
@@ -559,14 +568,14 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         acceptedForUpload: false,
         generation: 0,
       };
-      records.set(uploadId, nextDraft);
-      draftOrder = [...draftOrder, uploadId];
+      records.set(uploadId, nextRecord);
+      visibleUploadIds = [...visibleUploadIds, uploadId];
       lastError = undefined;
       notify();
       try {
         const source = await dependencies.acquireSource(kind);
         if (!records.has(uploadId)) return;
-        nextDraft.previewUri = source.previewUri;
+        nextRecord.previewUri = source.previewUri;
         const normalized = await dependencies.normalize(source);
         if (!records.has(uploadId)) return;
         const durable = dependencies.sourceStore
@@ -579,7 +588,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
           height: normalized.height,
           bytes: normalized.bytes,
         });
-        Object.assign(nextDraft, {
+        Object.assign(nextRecord, {
           state: "pending" as const,
           previewUri: normalized.previewUri,
           normalized,
@@ -594,18 +603,18 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         await persist();
         notify();
       } catch (error) {
-        await failEntry(nextDraft, error);
+        await failEntry(nextRecord, error);
         notify();
       }
     },
 
     getViewState() {
-      const first = draftOrder[0] ? records.get(draftOrder[0]) : undefined;
+      const first = visibleUploadIds[0] ? records.get(visibleUploadIds[0]) : undefined;
       return first ? viewState(first) : null;
     },
 
     getViewStates() {
-      return draftOrder.flatMap((uploadId) => {
+      return visibleUploadIds.flatMap((uploadId) => {
         const entry = records.get(uploadId);
         return entry ? [viewState(entry)] : [];
       });
@@ -629,9 +638,9 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     },
 
     reorder(uploadIds: string[]) {
-      if (uploadIds.length !== draftOrder.length) return;
+      if (uploadIds.length !== visibleUploadIds.length) return;
       if (new Set(uploadIds).size !== uploadIds.length || uploadIds.some((id) => !records.has(id))) return;
-      draftOrder = [...uploadIds];
+      visibleUploadIds = [...uploadIds];
       persist();
       notify();
     },
@@ -647,7 +656,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       void Promise.resolve(dependencies.abortUpload?.({ uploadId })).catch(() => undefined);
       void removeSource(draft);
       records.delete(uploadId);
-      draftOrder = draftOrder.filter((id) => id !== uploadId);
+      visibleUploadIds = visibleUploadIds.filter((id) => id !== uploadId);
       lastError = undefined;
       void persist();
       notify();
@@ -662,7 +671,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     },
 
     getImageInputsForSave() {
-      return draftOrder.flatMap((uploadId) => {
+      return visibleUploadIds.flatMap((uploadId) => {
         const draft = records.get(uploadId);
         return draft && (draft.state === "pending" || draft.state === "failed")
           ? [{ uploadId: draft.uploadId, caption: draft.caption }]
@@ -712,7 +721,14 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
             }
           } catch (error) { await failEntry(entry, error); }
         } else if (reconciliation.status === "absent") {
-          update(entry, { state: "pending", needsReconciliation: false, acceptedForUpload: !entry.paused });
+          const retryDue = entry.retryAt === undefined || entry.retryAt <= now();
+          const canAutoRetry = entry.retryCount < UPLOAD_RETRY_DELAYS_MS.length;
+          if (retryDue && canAutoRetry) {
+            update(entry, { state: "pending", needsReconciliation: false, acceptedForUpload: !entry.paused });
+          } else {
+            update(entry, { state: "failed", needsReconciliation: false, acceptedForUpload: false });
+            if (entry.retryAt && entry.retryAt > now()) scheduleRetry(entry, entry.retryAt);
+          }
         } else if (reconciliation.status === "uploading" || reconciliation.status === "verifying") {
           update(entry, { state: "verifying", needsReconciliation: true, acceptedForUpload: false });
         } else if (reconciliation.status === "failed") {
@@ -752,7 +768,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     },
 
     clearAfterSaveAndStay() {
-      draftOrder = [];
+      visibleUploadIds = [];
       lastError = undefined;
       persist();
       notify();
@@ -760,7 +776,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
 
     discard() {
       const pending = [...records.values()];
-      draftOrder = [];
+      visibleUploadIds = [];
       records.clear();
       for (const entry of pending) {
         entry.generation += 1;

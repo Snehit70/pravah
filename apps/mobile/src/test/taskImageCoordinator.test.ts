@@ -109,7 +109,8 @@ describe("Task-image mobile coordinator", () => {
     await completion;
     expect(dependencies.upload).toHaveBeenCalledWith(
       "file:///private/normalized.jpg",
-      expect.objectContaining({ signature: "signed-secret-capability" })
+      expect.objectContaining({ signature: "signed-secret-capability" }),
+      expect.objectContaining({ uploadId: "upl_mobile_1", onProgress: expect.any(Function) })
     );
     expect(dependencies.verify).toHaveBeenCalledWith(
       expect.not.objectContaining({ secureUrl: expect.anything() })
@@ -280,6 +281,37 @@ describe("Task-image mobile coordinator", () => {
     expect(dependencies.upload).toHaveBeenCalledTimes(5);
     uploads[4].resolve(providerResult);
     await completion;
+  });
+
+  it("reports progress per image while leaving verification indeterminate", async () => {
+    const dependencies = createDependencies();
+    const result = deferred<Awaited<ReturnType<TaskImageCoordinatorDependencies["upload"]>>>();
+    dependencies.upload = vi.fn(async (_uri, _grant, options) => {
+      options?.onProgress(0.42);
+      return result.promise;
+    });
+    dependencies.verify = vi.fn(async () => ({ state: "verifying" as const }));
+    const coordinator = createTaskImageCoordinator(dependencies);
+    await coordinator.select("photos");
+    const completion = coordinator.beginUploadAfterSave();
+    await Promise.resolve();
+
+    expect(coordinator.getViewState()).toMatchObject({ state: "uploading", progress: 0.42 });
+    result.resolve({
+      publicId: "provider-private-id",
+      version: 1,
+      signature: "provider-response-signature",
+      resourceType: "image",
+      deliveryType: "authenticated",
+      format: "jpg",
+      width: 1600,
+      height: 1200,
+      bytes: 2_000_000,
+      eager: [],
+    });
+    await completion;
+    expect(coordinator.getViewState()).toMatchObject({ state: "verifying" });
+    expect(coordinator.getViewState()?.progress).toBeUndefined();
   });
 
   it("retries transient failures on the settled schedule and preserves uploadId for manual retry", async () => {

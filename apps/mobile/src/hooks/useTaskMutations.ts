@@ -25,6 +25,8 @@ type UseTaskMutationsOptions = {
   showToast: (next: ToastState) => void;
   today: string;
   hasPriorityBoundaryViolation: (original: MobileTask[], reordered: MobileTask[]) => boolean;
+  onTaskDeletionStarted?: (taskId: string) => void;
+  onTaskRestored?: (taskId: string) => Promise<void> | void;
 };
 
 type SuccessFeedback = "notification" | "light" | "medium" | "taskCompleted";
@@ -50,6 +52,8 @@ export function useTaskMutations({
   showToast,
   today,
   hasPriorityBoundaryViolation,
+  onTaskDeletionStarted,
+  onTaskRestored,
 }: UseTaskMutationsOptions) {
   const busyTaskIdsRef = useRef<Set<string>>(new Set());
 
@@ -546,7 +550,13 @@ export function useTaskMutations({
         actionName: "delete_inbox_tasks_bulk",
         optimistic: (cur) => cur.filter((task) => !ids.has(String(task._id))),
         mutation: async () => {
-          await bulkSoftDeleteInboxTasksMutation({ taskIds });
+          for (const taskId of taskIds) onTaskDeletionStarted?.(String(taskId));
+          try {
+            await bulkSoftDeleteInboxTasksMutation({ taskIds });
+          } catch (error) {
+            await Promise.all(taskIds.map((taskId) => onTaskRestored?.(String(taskId))));
+            throw error;
+          }
         },
         errorMessage:
           taskIds.length === 1 ? "Could not delete task." : "Could not delete tasks.",
@@ -561,6 +571,7 @@ export function useTaskMutations({
               optimistic: (cur) => cur,
               mutation: async () => {
                 await restoreInboxTasksMutation({ taskIds });
+                await Promise.all(taskIds.map((taskId) => onTaskRestored?.(String(taskId))));
               },
               errorMessage:
                 taskIds.length === 1
@@ -571,7 +582,7 @@ export function useTaskMutations({
         },
       });
     },
-    [runOptimisticMutation, bulkSoftDeleteInboxTasksMutation, restoreInboxTasksMutation]
+    [runOptimisticMutation, bulkSoftDeleteInboxTasksMutation, restoreInboxTasksMutation, onTaskDeletionStarted, onTaskRestored]
   );
 
   // Timeline bulk reschedule: move a batch onto one date in a single server

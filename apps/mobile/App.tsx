@@ -100,6 +100,7 @@ import { feedback } from "./src/lib/feedback";
 import { createTaskImageCoordinator } from "./src/lib/taskImageCoordinator";
 import {
   acquireTaskImageSource,
+  abortPreparedTaskImageUpload,
   normalizeTaskImage,
   persistTaskImageSource,
   removeTaskImageSource,
@@ -389,6 +390,7 @@ function MobileApp() {
           return { status: result.status };
         },
         upload: uploadPreparedTaskImage,
+        abortUpload: ({ uploadId }) => abortPreparedTaskImageUpload(uploadId),
         verify: submitTaskImageResult,
         reportFailure: ({ uploadId, failureCode }) =>
           markTaskImageUploadFailedMutation({ uploadId, failureCode }).then(() => undefined),
@@ -418,7 +420,9 @@ function MobileApp() {
     const subscription = AppState.addEventListener("change", (nextState) => {
       const isForeground = nextState === "active";
       taskImageCoordinator.setForeground(isForeground);
-      if (isForeground) void taskImageCoordinator.reconcileOnForeground();
+      if (isForeground) {
+        void authStorageReady.then(() => taskImageCoordinator.reconcileOnForeground());
+      }
     });
     return () => subscription.remove();
   }, [session, taskImageCoordinator]);
@@ -778,6 +782,8 @@ function MobileApp() {
     showToast,
     today,
     hasPriorityBoundaryViolation,
+    onTaskDeletionStarted: (taskId) => taskImageCoordinator.pauseTaskUploads(taskId),
+    onTaskRestored: (taskId) => taskImageCoordinator.resumeTaskUploads(taskId),
   });
 
   const softDeleteTaskWithImagePause = useCallback(
@@ -798,6 +804,13 @@ function MobileApp() {
       await taskImageCoordinator.resumeTaskUploads(String(taskId));
     },
     [restoreTaskMutation, taskImageCoordinator]
+  );
+  const deleteTaskWithImagePause = useCallback(
+    (taskId: Id<"tasks">) => {
+      taskImageCoordinator.pauseTaskUploads(String(taskId));
+      deleteTask(taskId);
+    },
+    [deleteTask, taskImageCoordinator]
   );
 
   const bulkCreateTasksMutation = useMutation(api.tasks.bulkCreateTasks);
@@ -1451,7 +1464,7 @@ function MobileApp() {
         onReopen={reopenTask}
         onScheduleToDate={scheduleToDate}
         onUnschedule={sendToInbox}
-        onDelete={deleteTask}
+        onDelete={deleteTaskWithImagePause}
         resolveTaskImage={resolveTaskImage}
         onReorderTaskImages={({ taskId, orderedTaskImageIds, expectedRevision }) => {
           void reorderTaskImagesMutation({
@@ -1587,7 +1600,7 @@ function MobileApp() {
         onClose={closeCompletedTaskDetail}
         onDelete={(taskId) => {
           closeCompletedTaskDetail();
-          deleteTask(taskId);
+          deleteTaskWithImagePause(taskId);
         }}
         onReopen={(taskId) => {
           closeCompletedTaskDetail();
