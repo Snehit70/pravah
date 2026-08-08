@@ -18,6 +18,37 @@ export type TaskImageProviderConfig = {
   callbackUrl: string;
 };
 
+export type ProviderAssetPresence = "present" | "absent" | "unknown";
+
+/**
+ * Checks only the expected authenticated asset identity. The response is
+ * reduced to presence so provider metadata never crosses the client boundary.
+ */
+export async function checkProviderAssetPresence({
+  provider,
+  publicId,
+}: {
+  provider: TaskImageProviderConfig;
+  publicId: string;
+}): Promise<ProviderAssetPresence> {
+  const endpoint =
+    `https://api.cloudinary.com/v1_1/${encodeURIComponent(provider.cloudName)}` +
+    `/resources/image/authenticated?public_ids[]=${encodeURIComponent(publicId)}`;
+  try {
+    const response = await fetch(endpoint, {
+      headers: {
+        Authorization: `Basic ${btoa(`${provider.apiKey}:${provider.apiSecret}`)}`,
+      },
+    });
+    if (response.status === 404) return "absent";
+    if (!response.ok) return "unknown";
+    const payload = (await response.json()) as { resources?: unknown };
+    return Array.isArray(payload.resources) && payload.resources.length > 0 ? "present" : "absent";
+  } catch {
+    return "unknown";
+  }
+}
+
 type EncodingClass = "jpeg" | "png";
 
 type ProviderVariant = {

@@ -1,5 +1,6 @@
 import * as Clipboard from "expo-clipboard";
-import { File, FileMode, Paths, UploadType } from "expo-file-system";
+import { Directory, File, FileMode, Paths, UploadType } from "expo-file-system";
+import type { UploadTask } from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
 import { SaveFormat, manipulateAsync } from "expo-image-manipulator";
 import type {
@@ -20,6 +21,8 @@ const MIN_EDGE = 32;
 const MAX_ASPECT_RATIO = 20;
 const MIN_FREE_STORAGE = 64 * 1024 * 1024;
 const HEADER_READ_BYTES = 64 * 1024;
+const TASK_IMAGE_SOURCE_DIRECTORY = "pravah-task-image-sources";
+const activeTaskImageUploads = new Map<string, UploadTask>();
 
 type HeaderInspection = {
   format: "jpeg" | "png" | "webp" | "heic";
@@ -309,14 +312,49 @@ export function normalizeTaskImage(source: AcquiredTaskImageSource) {
   return work;
 }
 
+function taskImageSourceFile(sourceKey: string) {
+  if (!/^[A-Za-z0-9_-]{8,128}\.(?:jpg|png)$/.test(sourceKey)) return null;
+  return new File(new Directory(Paths.document, TASK_IMAGE_SOURCE_DIRECTORY), sourceKey);
+}
+
+/**
+ * Copies the normalized bytes into app-private durable storage. The returned
+ * key is deliberately opaque: the coordinator may persist it, but never the
+ * device URI that resolves it.
+ */
+export async function persistTaskImageSource(
+  uploadId: string,
+  normalized: NormalizedTaskImage
+): Promise<{ sourceKey: string; uri: string }> {
+  const extension = normalized.encodingClass === "png" ? "png" : "jpg";
+  const sourceKey = `${uploadId}.${extension}`;
+  const directory = new Directory(Paths.document, TASK_IMAGE_SOURCE_DIRECTORY);
+  directory.create({ idempotent: true, intermediates: true });
+  const source = new File(normalized.uri);
+  const destination = taskImageSourceFile(sourceKey);
+  if (!destination || !source.exists) fail("source_unavailable");
+  await source.copy(destination, { overwrite: true });
+  return { sourceKey, uri: destination.uri };
+}
+
+export async function resolveTaskImageSource(sourceKey: string): Promise<string | null> {
+  const source = taskImageSourceFile(sourceKey);
+  return source?.exists ? source.uri : null;
+}
+
+export async function removeTaskImageSource(sourceKey: string): Promise<void> {
+  taskImageSourceFile(sourceKey)?.delete();
+}
+
 export async function uploadPreparedTaskImage(
   uri: string,
-  grant: TaskImageUploadGrant
+  grant: TaskImageUploadGrant,
+  options?: { uploadId: string; onProgress: (progress: number) => void }
 ): Promise<AllowlistedProviderResult> {
   const file = new File(uri);
   if (!file.exists) fail("source_unavailable");
   const format = uri.toLowerCase().endsWith(".png") ? "png" : "jpg";
-  const response = await file.upload(grant.uploadUrl, {
+  const task = file.createUploadTask(grant.uploadUrl, {
     httpMethod: "POST",
     uploadType: UploadType.MULTIPART,
     fieldName: "file",
@@ -327,7 +365,19 @@ export async function uploadPreparedTaskImage(
       signature: grant.signature,
     },
     sessionType: "foreground",
+    onProgress: ({ bytesSent, totalBytes }) => {
+      if (totalBytes > 0) {
+        options?.onProgress(bytesSent / totalBytes);
+      }
+    },
   });
+  if (options) activeTaskImageUploads.set(options.uploadId, task);
+  let response;
+  try {
+    response = await task.uploadAsync();
+  } finally {
+    if (options) activeTaskImageUploads.delete(options.uploadId);
+  }
   if (response.status < 200 || response.status >= 300) fail("normalization_failed", true);
   let payload: Record<string, unknown>;
   try {
@@ -367,4 +417,8 @@ export async function uploadPreparedTaskImage(
     bytes: typeof payload.bytes === "number" ? payload.bytes : 0,
     eager,
   };
+}
+
+export function abortPreparedTaskImageUpload(uploadId: string) {
+  activeTaskImageUploads.get(uploadId)?.cancel();
 }

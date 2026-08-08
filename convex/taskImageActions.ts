@@ -5,6 +5,7 @@ import { requireTokenIdentifier } from "./authHelpers";
 import {
   buildDeliveryUrl,
   buildUploadGrant,
+  checkProviderAssetPresence,
   verifyProviderUploadMaster,
   type ProviderUploadResult,
   type TaskImageProviderConfig,
@@ -21,7 +22,13 @@ const prepareUploadGrantRef = makeFunctionReference<
     candidatePublicId: string;
     issuedAt: number;
   },
-  { uploadId: string; publicId: string; issuedAt: number; encodingClass: "jpeg" | "png" }
+  {
+    uploadId: string;
+    publicId: string;
+    issuedAt: number;
+    encodingClass: "jpeg" | "png";
+    providerAttempt: number;
+  }
 >("taskImages:prepareUploadGrant");
 
 const getUploadVerificationContextRef = makeFunctionReference<
@@ -35,6 +42,23 @@ const getUploadVerificationContextRef = makeFunctionReference<
     state: string;
   }
 >("taskImages:getUploadVerificationContext");
+
+const getUploadAttemptContextRef = makeFunctionReference<
+  "query",
+  { ownerTokenIdentifier: string; uploadId: string },
+  null | {
+    uploadId: string;
+    providerPublicId?: string;
+    providerAttempt: number;
+    state: string;
+  }
+>("taskImages:getUploadAttemptContext");
+
+const resetUploadAttemptRef = makeFunctionReference<
+  "mutation",
+  { ownerTokenIdentifier: string; uploadId: string; providerAttempt: number },
+  { reset: boolean }
+>("taskImages:resetUploadAttempt");
 
 type VerificationMutationArgs = {
   ownerTokenIdentifier: string;
@@ -123,12 +147,48 @@ export const issueUploadGrant = action({
       candidatePublicId: randomProviderPublicId(),
       issuedAt: Math.floor(Date.now() / 1000),
     });
-    return await buildUploadGrant({
-      provider,
-      publicId: prepared.publicId,
-      timestamp: prepared.issuedAt,
-      encodingClass: prepared.encodingClass,
+    return {
+      ...(await buildUploadGrant({
+        provider,
+        publicId: prepared.publicId,
+        timestamp: prepared.issuedAt,
+        encodingClass: prepared.encodingClass,
+      })),
+      attempt: prepared.providerAttempt,
+    };
+  },
+});
+
+export const reconcileUploadAttempt = action({
+  args: { uploadId: v.string(), attempt: v.number() },
+  handler: async (ctx, args) => {
+    const ownerTokenIdentifier = await requireTokenIdentifier(ctx);
+    const provider = readProviderConfig();
+    const context = await ctx.runQuery(getUploadAttemptContextRef, {
+      ownerTokenIdentifier,
+      uploadId: args.uploadId,
     });
+    if (!context) return { status: "absent" as const };
+    if (context.state === "ready") return { status: "ready" as const };
+    if (context.providerAttempt !== args.attempt) return { status: "unknown" as const };
+    if (!context.providerPublicId) return { status: "absent" as const };
+
+    const presence = await checkProviderAssetPresence({
+      provider,
+      publicId: context.providerPublicId,
+    });
+    if (presence === "unknown") return { status: "unknown" as const };
+    if (presence === "present") {
+      return {
+        status: context.state === "verifying" ? ("verifying" as const) : ("uploading" as const),
+      };
+    }
+    await ctx.runMutation(resetUploadAttemptRef, {
+      ownerTokenIdentifier,
+      uploadId: args.uploadId,
+      providerAttempt: args.attempt,
+    });
+    return { status: "absent" as const };
   },
 });
 

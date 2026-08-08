@@ -86,13 +86,14 @@ type EditTaskSheetProps = {
     taskId: Id<"tasks">;
     orderedTaskImageIds: string[];
     expectedRevision: number;
-  }) => void;
+  }) => TaskImageCollectionMutationResult | Promise<TaskImageCollectionMutationResult> | void;
   onCaptionTaskImage?: (args: {
     taskImageId: string;
     caption: string;
     expectedRevision: number;
-  }) => void;
-  onRemoveTaskImage?: (args: { taskImageId: string; expectedRevision: number }) => void;
+  }) => TaskImageCollectionMutationResult | Promise<TaskImageCollectionMutationResult> | void;
+  onRemoveTaskImage?: (args: { taskImageId: string; expectedRevision: number }) =>
+    TaskImageCollectionMutationResult | Promise<TaskImageCollectionMutationResult> | void;
   onSelectTaskImage?: (args: {
     taskId: Id<"tasks">;
     expectedRevision: number;
@@ -814,22 +815,16 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                 onCaptionChange={!completed && onCaptionTaskImage
                   ? (taskImageId, caption) => {
                       const revision = currentTask.imageCollection?.revision ?? 0;
-                      onCaptionTaskImage({ taskImageId, caption, expectedRevision: revision });
-                      setCurrentTask((previous) => {
-                        if (!previous?.imageCollection) return previous;
-                        const active = previous.imageCollection.active.map((image) =>
-                          image.taskImageId === taskImageId ? { ...image, caption: caption.trim() } : image
-                        );
-                        return {
-                          ...previous,
-                          imageCollection: {
-                            ...previous.imageCollection,
-                            revision: revision + 1,
-                            active,
-                            primary: active[0],
-                          },
-                        };
-                      });
+                      void (async () => {
+                        try {
+                          const result = await onCaptionTaskImage({ taskImageId, caption, expectedRevision: revision });
+                          if (!result) return;
+                          const { stale: _, ...imageCollection } = result;
+                          setCurrentTask((previous) => previous ? { ...previous, imageCollection } : previous);
+                        } catch {
+                          setError("Couldn’t update Task image. Try again.");
+                        }
+                      })();
                     }
                   : undefined}
                 onReorder={!completed && onReorderTaskImages
@@ -842,42 +837,37 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                       if (index < 0 || nextIndex < 0 || nextIndex >= active.length) return;
                       [active[index], active[nextIndex]] = [active[nextIndex], active[index]];
                       const positioned = active.map((image, position) => ({ ...image, position }));
-                      onReorderTaskImages({
-                        taskId: currentTask._id,
-                        orderedTaskImageIds: positioned.map((image) => image.taskImageId),
-                        expectedRevision: currentTask.imageCollection?.revision ?? 0,
-                      });
-                      setCurrentTask((previous) => previous
-                        ? {
-                            ...previous,
-                            imageCollection: previous.imageCollection
-                              ? { ...previous.imageCollection, revision: (previous.imageCollection.revision ?? 0) + 1, active: positioned, primary: positioned[0] }
-                              : previous.imageCollection,
-                          }
-                        : previous);
+                      void (async () => {
+                        try {
+                          const result = await onReorderTaskImages({
+                            taskId: currentTask._id,
+                            orderedTaskImageIds: positioned.map((image) => image.taskImageId),
+                            expectedRevision: currentTask.imageCollection?.revision ?? 0,
+                          });
+                          if (!result) return;
+                          const { stale: _, ...imageCollection } = result;
+                          setCurrentTask((previous) => previous ? { ...previous, imageCollection } : previous);
+                        } catch {
+                          setError("Couldn’t reorder Task images. Try again.");
+                        }
+                      })();
                     }
                   : undefined}
                 onRemove={!completed && onRemoveTaskImage
                   ? (taskImageId) => {
-                      onRemoveTaskImage({
-                        taskImageId,
-                        expectedRevision: currentTask.imageCollection?.revision ?? 0,
-                      });
-                      setCurrentTask((previous) => {
-                        if (!previous?.imageCollection) return previous;
-                        const active = previous.imageCollection.active
-                          .filter((image) => image.taskImageId !== taskImageId)
-                          .map((image, position) => ({ ...image, position }));
-                        return {
-                          ...previous,
-                          imageCollection: {
-                            ...previous.imageCollection,
-                            revision: previous.imageCollection.revision + 1,
-                            active,
-                            primary: active[0],
-                          },
-                        };
-                      });
+                      void (async () => {
+                        try {
+                          const result = await onRemoveTaskImage({
+                            taskImageId,
+                            expectedRevision: currentTask.imageCollection?.revision ?? 0,
+                          });
+                          if (!result) return;
+                          const { stale: _, ...imageCollection } = result;
+                          setCurrentTask((previous) => previous ? { ...previous, imageCollection } : previous);
+                        } catch {
+                          setError("Couldn’t remove Task image. Try again.");
+                        }
+                      })();
                     }
                   : undefined}
               />

@@ -2,9 +2,11 @@ import { StatusBar } from "expo-status-bar";
 import * as Crypto from "expo-crypto";
 import { ObserveRoot, useObserve } from "expo-observe";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   Animated as LegacyAnimated,
   Appearance,
+  AppState,
   BackHandler,
   Pressable,
   Share,
@@ -98,7 +100,11 @@ import { feedback } from "./src/lib/feedback";
 import { createTaskImageCoordinator } from "./src/lib/taskImageCoordinator";
 import {
   acquireTaskImageSource,
+  abortPreparedTaskImageUpload,
   normalizeTaskImage,
+  persistTaskImageSource,
+  removeTaskImageSource,
+  resolveTaskImageSource,
   uploadPreparedTaskImage,
 } from "./src/lib/taskImageNative";
 import {
@@ -108,6 +114,25 @@ import {
 } from "./src/components/UiIcons";
 import AppSettingsIcon from "./src/assets/icons/app-settings.svg";
 import KairoMarkIcon from "./src/assets/icons/settings-kairo.svg";
+
+const TASK_IMAGE_MANIFEST_STORAGE_PREFIX = "@pravah/task-image-manifest:";
+const taskImageManifestStore = {
+  async load(ownerScope: string) {
+    const raw = await AsyncStorage.getItem(`${TASK_IMAGE_MANIFEST_STORAGE_PREFIX}${ownerScope}`);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as unknown;
+    } catch {
+      return null;
+    }
+  },
+  async save(ownerScope: string, manifest: unknown) {
+    await AsyncStorage.setItem(
+      `${TASK_IMAGE_MANIFEST_STORAGE_PREFIX}${ownerScope}`,
+      JSON.stringify(manifest)
+    );
+  },
+};
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -324,6 +349,7 @@ function MobileApp() {
   const markTaskImageUploadFailedMutation = useMutation(api.taskImages.markUploadFailed);
   const stageTaskImageMutation = useMutation(api.taskImages.stageImageUpload);
   const issueTaskImageGrant = useAction(api.taskImageActions.issueUploadGrant);
+  const reconcileTaskImageAttempt = useAction(api.taskImageActions.reconcileUploadAttempt);
   const submitTaskImageResult = useAction(api.taskImageActions.submitUploadResult);
   const resolveTaskImageAction = useAction(api.taskImageActions.resolveTaskImage);
   const reorderTaskImagesMutation = useMutation(api.taskImages.reorderTaskImages);
@@ -345,20 +371,37 @@ function MobileApp() {
         createUploadId: () => `upl_${Crypto.randomUUID().replace(/-/g, "")}`,
         acquireSource: acquireTaskImageSource,
         normalize: normalizeTaskImage,
+        sourceStore: {
+          persist: persistTaskImageSource,
+          resolve: resolveTaskImageSource,
+          remove: removeTaskImageSource,
+        },
+        ownerScope: () => session?.user?.id,
+        manifestStore: taskImageManifestStore,
         stage: async (image) => {
           await stageTaskImageMutation(image);
         },
         issueGrant: issueTaskImageGrant,
+        reconcileAttempt: async ({ uploadId, attempt }) => {
+          const result = await reconcileTaskImageAttempt({ uploadId, attempt });
+          if (result.status === "ready") return { status: "ready" as const };
+          if (result.status === "absent") return { status: "absent" as const };
+          if (result.status === "unknown") return { status: "unknown" as const };
+          return { status: result.status };
+        },
         upload: uploadPreparedTaskImage,
+        abortUpload: ({ uploadId }) => abortPreparedTaskImageUpload(uploadId),
         verify: submitTaskImageResult,
         reportFailure: ({ uploadId, failureCode }) =>
           markTaskImageUploadFailedMutation({ uploadId, failureCode }).then(() => undefined),
       }),
     [
       issueTaskImageGrant,
+      reconcileTaskImageAttempt,
       markTaskImageUploadFailedMutation,
       stageTaskImageMutation,
       submitTaskImageResult,
+      session?.user?.id,
     ]
   );
   const resolveTaskImage = useCallback(
@@ -367,7 +410,23 @@ function MobileApp() {
     [resolveTaskImageAction]
   );
   useEffect(() => {
-    if (!session) taskImageCoordinator.discard();
+    if (!session) {
+      taskImageCoordinator.setForeground(false);
+      return;
+    }
+
+    void authStorageReady.then(() => taskImageCoordinator.reconcileOnForeground());
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      const isForeground = nextState === "active";
+      taskImageCoordinator.setForeground(isForeground);
+      if (isForeground) {
+        void authStorageReady.then(() => taskImageCoordinator.reconcileOnForeground());
+      }
+    });
+    return () => {
+      subscription.remove();
+      taskImageCoordinator.suspendAllUploads();
+    };
   }, [session, taskImageCoordinator]);
   const overduePreviewData = useQuery(
     api.overdueReflow.preview,
@@ -725,7 +784,37 @@ function MobileApp() {
     showToast,
     today,
     hasPriorityBoundaryViolation,
+    onTaskDeletionStarted: (taskId) => taskImageCoordinator.pauseTaskUploads(taskId),
+    onTaskRestored: (taskId) => taskImageCoordinator.resumeTaskUploads(taskId),
+    onTaskDeleted: (taskId) => taskImageCoordinator.discardTaskUploads(taskId),
   });
+
+  const softDeleteTaskWithImagePause = useCallback(
+    async ({ taskId }: { taskId: Id<"tasks"> }) => {
+      taskImageCoordinator.pauseTaskUploads(String(taskId));
+      try {
+        await softDeleteTaskMutation({ taskId });
+      } catch (error) {
+        await taskImageCoordinator.resumeTaskUploads(String(taskId));
+        throw error;
+      }
+    },
+    [softDeleteTaskMutation, taskImageCoordinator]
+  );
+  const restoreTaskWithImageResume = useCallback(
+    async ({ taskId }: { taskId: Id<"tasks"> }) => {
+      await restoreTaskMutation({ taskId });
+      await taskImageCoordinator.resumeTaskUploads(String(taskId));
+    },
+    [restoreTaskMutation, taskImageCoordinator]
+  );
+  const deleteTaskWithImagePause = useCallback(
+    (taskId: Id<"tasks">) => {
+      taskImageCoordinator.pauseTaskUploads(String(taskId));
+      deleteTask(taskId);
+    },
+    [deleteTask, taskImageCoordinator]
+  );
 
   const bulkCreateTasksMutation = useMutation(api.tasks.bulkCreateTasks);
   const undoBulkCreateTasksMutation = useMutation(api.tasks.undoBulkCreateTasks);
@@ -784,8 +873,8 @@ function MobileApp() {
     applyReflowMutation: applyOverdueReflowMutation,
     undoReflowMutation: undoOverdueReflowMutation,
     moveTaskMutation,
-    softDeleteTaskMutation,
-    restoreTaskMutation,
+    softDeleteTaskMutation: softDeleteTaskWithImagePause,
+    restoreTaskMutation: restoreTaskWithImageResume,
     showToast,
     enqueueRetry,
   });
@@ -825,6 +914,12 @@ function MobileApp() {
               ? { imageUploadId: data.imageUploadId }
               : {}),
         });
+        const savedUploadIds = data.imageInputs?.map((image) => image.uploadId)
+          ?? data.imageUploadIds
+          ?? (data.imageUploadId ? [data.imageUploadId] : []);
+        if (newTaskId && savedUploadIds.length > 0) {
+          taskImageCoordinator.associateUploadsWithTask(String(newTaskId), savedUploadIds);
+        }
         if (data.goalId && newTaskId) {
           setGoalLink(String(newTaskId), data.goalId);
         }
@@ -868,7 +963,7 @@ function MobileApp() {
         return false;
       }
     },
-    [addTaskMutation, enqueueRetry, setGoalLink, showToast]
+    [addTaskMutation, enqueueRetry, setGoalLink, showToast, taskImageCoordinator]
   );
 
   const handleRefresh = async () => {
@@ -1372,24 +1467,24 @@ function MobileApp() {
         onReopen={reopenTask}
         onScheduleToDate={scheduleToDate}
         onUnschedule={sendToInbox}
-        onDelete={deleteTask}
+        onDelete={deleteTaskWithImagePause}
         resolveTaskImage={resolveTaskImage}
         onReorderTaskImages={({ taskId, orderedTaskImageIds, expectedRevision }) => {
-          void reorderTaskImagesMutation({
+          return reorderTaskImagesMutation({
             taskId,
             orderedTaskImageIds: orderedTaskImageIds as Id<"taskImages">[],
             expectedRevision,
           });
         }}
         onCaptionTaskImage={({ taskImageId, caption, expectedRevision }) => {
-          void updateTaskImageCaptionMutation({
+          return updateTaskImageCaptionMutation({
             taskImageId: taskImageId as Id<"taskImages">,
             caption,
             expectedRevision,
           });
         }}
         onRemoveTaskImage={({ taskImageId, expectedRevision }) => {
-          void removeTaskImageMutation({
+          return removeTaskImageMutation({
             taskImageId: taskImageId as Id<"taskImages">,
             expectedRevision,
           });
@@ -1405,6 +1500,10 @@ function MobileApp() {
                 .getViewStates()
                 .find((image) => !beforeUploadIds.has(image.uploadId));
               if (!selected) return undefined;
+              if (selected.state !== "pending") {
+                taskImageCoordinator.discard();
+                return undefined;
+              }
               const result = await addTaskImagesMutation({
                 taskId,
                 uploadIds: [selected.uploadId],
@@ -1415,6 +1514,7 @@ function MobileApp() {
                 showToast({ kind: "error", message: "Task images changed. Please try again." });
                 return result;
               }
+              taskImageCoordinator.associateUploadsWithTask(String(taskId), [selected.uploadId]);
               void taskImageCoordinator.beginUploadAfterSave();
               taskImageCoordinator.clearAfterSaveAndStay();
               return result;
@@ -1507,7 +1607,7 @@ function MobileApp() {
         onClose={closeCompletedTaskDetail}
         onDelete={(taskId) => {
           closeCompletedTaskDetail();
-          deleteTask(taskId);
+          deleteTaskWithImagePause(taskId);
         }}
         onReopen={(taskId) => {
           closeCompletedTaskDetail();

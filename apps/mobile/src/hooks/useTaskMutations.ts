@@ -25,6 +25,9 @@ type UseTaskMutationsOptions = {
   showToast: (next: ToastState) => void;
   today: string;
   hasPriorityBoundaryViolation: (original: MobileTask[], reordered: MobileTask[]) => boolean;
+  onTaskDeletionStarted?: (taskId: string) => void;
+  onTaskRestored?: (taskId: string) => Promise<void> | void;
+  onTaskDeleted?: (taskId: string) => Promise<void> | void;
 };
 
 type SuccessFeedback = "notification" | "light" | "medium" | "taskCompleted";
@@ -50,6 +53,9 @@ export function useTaskMutations({
   showToast,
   today,
   hasPriorityBoundaryViolation,
+  onTaskDeletionStarted,
+  onTaskRestored,
+  onTaskDeleted,
 }: UseTaskMutationsOptions) {
   const busyTaskIdsRef = useRef<Set<string>>(new Set());
 
@@ -284,14 +290,20 @@ export function useTaskMutations({
         actionName: "delete_task",
         optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
         mutation: async () => {
-          await deleteTaskMutation({ taskId });
+          try {
+            await deleteTaskMutation({ taskId });
+          } catch (error) {
+            await Promise.resolve(onTaskRestored?.(String(taskId))).catch(() => undefined);
+            throw error;
+          }
+          await Promise.resolve(onTaskDeleted?.(String(taskId))).catch(() => undefined);
         },
         errorMessage: "Could not delete task.",
         successFeedback: "medium",
         taskId,
       });
     },
-    [runOptimisticMutation, deleteTaskMutation]
+    [runOptimisticMutation, deleteTaskMutation, onTaskDeleted, onTaskRestored]
   );
 
   const handleSaveEdits = useCallback(
@@ -546,7 +558,17 @@ export function useTaskMutations({
         actionName: "delete_inbox_tasks_bulk",
         optimistic: (cur) => cur.filter((task) => !ids.has(String(task._id))),
         mutation: async () => {
-          await bulkSoftDeleteInboxTasksMutation({ taskIds });
+          for (const taskId of taskIds) onTaskDeletionStarted?.(String(taskId));
+          try {
+            await bulkSoftDeleteInboxTasksMutation({ taskIds });
+          } catch (error) {
+            await Promise.all(
+              taskIds.map((taskId) =>
+                Promise.resolve(onTaskRestored?.(String(taskId))).catch(() => undefined)
+              )
+            );
+            throw error;
+          }
         },
         errorMessage:
           taskIds.length === 1 ? "Could not delete task." : "Could not delete tasks.",
@@ -561,6 +583,11 @@ export function useTaskMutations({
               optimistic: (cur) => cur,
               mutation: async () => {
                 await restoreInboxTasksMutation({ taskIds });
+                await Promise.all(
+                  taskIds.map((taskId) =>
+                    Promise.resolve(onTaskRestored?.(String(taskId))).catch(() => undefined)
+                  )
+                );
               },
               errorMessage:
                 taskIds.length === 1
@@ -571,7 +598,7 @@ export function useTaskMutations({
         },
       });
     },
-    [runOptimisticMutation, bulkSoftDeleteInboxTasksMutation, restoreInboxTasksMutation]
+    [runOptimisticMutation, bulkSoftDeleteInboxTasksMutation, restoreInboxTasksMutation, onTaskDeletionStarted, onTaskRestored]
   );
 
   // Timeline bulk reschedule: move a batch onto one date in a single server

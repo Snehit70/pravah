@@ -685,6 +685,9 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                     void taskImageCoordinator.select(sourceKind);
                   }}
                   onCaptionChange={taskImageCoordinator.updateCaption}
+                  onRetry={(uploadId) => {
+                    void taskImageCoordinator.retry(uploadId);
+                  }}
                   onReorder={(uploadId, direction) => {
                     const currentIndex = taskImageDrafts.findIndex((image) => image.uploadId === uploadId);
                     const nextIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
