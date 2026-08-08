@@ -1,0 +1,70 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { deleteProviderAsset } from "../../convex/taskImageProvider";
+
+const provider = {
+  cloudName: "cleanup-cloud",
+  apiKey: "public-key",
+  apiSecret: "server-secret",
+  callbackUrl: "https://example.convex.site/cloudinary/task-image-callback",
+};
+
+describe("Task-image provider cleanup", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("deletes the authenticated asset with CDN invalidation", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = String(init?.body);
+      expect(body).toContain("invalidate=true");
+      expect(body).toContain("type=authenticated");
+      expect(body).not.toContain("server-secret");
+      return new Response(JSON.stringify({ result: "ok" }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(deleteProviderAsset({ provider, publicId: "pravah-task-images/opaque" })).resolves.toBe(
+      "deleted"
+    );
+  });
+
+  it.each([
+    ["not found", "absent"],
+    ["rate limited", "retry"],
+  ] as const)("classifies provider result %s as %s", async (kind, expected) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        kind === "not found"
+          ? new Response(JSON.stringify({ result: "not found" }), { status: 200 })
+          : new Response("slow down", { status: 429 })
+      )
+    );
+    await expect(deleteProviderAsset({ provider, publicId: "pravah-task-images/opaque" })).resolves.toBe(
+      expected
+    );
+  });
+
+  it("treats an ambiguous response as terminal only after presence confirms absence", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ result: "maybe" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ resources: [] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(deleteProviderAsset({ provider, publicId: "pravah-task-images/opaque" })).resolves.toBe(
+      "absent"
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a timeout or network ambiguity retryable when presence remains unknown", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("timeout"))
+      .mockResolvedValueOnce(new Response("provider unavailable", { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(deleteProviderAsset({ provider, publicId: "pravah-task-images/opaque" })).resolves.toBe(
+      "retry"
+    );
+  });
+});

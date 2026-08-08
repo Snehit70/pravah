@@ -365,6 +365,23 @@ export default defineSchema({
     .index("by_owner_task", ["ownerTokenIdentifier", "taskId"])
     .index("by_task_position", ["taskId", "position"])
     .index("by_upload", ["uploadRecordId"]),
+  taskImageCleanupTombstones: defineTable({
+    ownerTokenIdentifier: v.string(),
+    taskId: v.id("tasks"),
+    taskImageId: v.id("taskImages"),
+    uploadRecordId: v.id("taskImageUploads"),
+    providerPublicId: v.optional(v.string()),
+    providerVersion: v.optional(v.number()),
+    state: v.union(v.literal("pending"), v.literal("retry")),
+    attempts: v.number(),
+    nextAttemptAt: v.number(),
+    lastFailureCode: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_upload_record", ["uploadRecordId"])
+    .index("by_due", ["state", "nextAttemptAt"])
+    .index("by_task", ["taskId"]),
   integrations: defineTable({
     provider: v.union(v.literal("google_calendar"), v.literal("gmail")),
     status: v.union(

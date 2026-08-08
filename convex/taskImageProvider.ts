@@ -20,6 +20,8 @@ export type TaskImageProviderConfig = {
 
 export type ProviderAssetPresence = "present" | "absent" | "unknown";
 
+export type ProviderCleanupResult = "deleted" | "absent" | "retry";
+
 /**
  * Checks only the expected authenticated asset identity. The response is
  * reduced to presence so provider metadata never crosses the client boundary.
@@ -46,6 +48,53 @@ export async function checkProviderAssetPresence({
     return Array.isArray(payload.resources) && payload.resources.length > 0 ? "present" : "absent";
   } catch {
     return "unknown";
+  }
+}
+
+async function resolveAmbiguousCleanup(provider: TaskImageProviderConfig, publicId: string) {
+  const presence = await checkProviderAssetPresence({ provider, publicId });
+  return presence === "absent" ? ("absent" as const) : ("retry" as const);
+}
+
+export async function deleteProviderAsset({
+  provider,
+  publicId,
+}: {
+  provider: TaskImageProviderConfig;
+  publicId: string;
+}): Promise<ProviderCleanupResult> {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const parameters = {
+    invalidate: "true",
+    public_id: publicId,
+    signature_algorithm: "sha256",
+    timestamp: String(timestamp),
+    type: "authenticated",
+  };
+  const signature = await sha256Hex(
+    `${serializeSignedParameters(parameters)}${provider.apiSecret}`
+  );
+  const body = new URLSearchParams({
+    ...parameters,
+    api_key: provider.apiKey,
+    signature,
+  });
+  try {
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${encodeURIComponent(provider.cloudName)}/image/destroy`,
+      { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body }
+    );
+    if (response.status === 404) return "absent";
+    if (response.status === 408 || response.status === 429 || response.status >= 500) {
+      return "retry";
+    }
+    if (!response.ok) return await resolveAmbiguousCleanup(provider, publicId);
+    const payload = (await response.json()) as { result?: unknown };
+    if (payload.result === "ok") return "deleted";
+    if (payload.result === "not found") return "absent";
+    return await resolveAmbiguousCleanup(provider, publicId);
+  } catch {
+    return await resolveAmbiguousCleanup(provider, publicId);
   }
 }
 
