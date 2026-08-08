@@ -163,7 +163,7 @@ describe("convex/tasks handlers", () => {
 
     vi.spyOn(Date, "now").mockReturnValue(20_000);
     await restoreTaskHandler(ctx, { taskId });
-    expect(task).toMatchObject({ cancelledAt: undefined, completedAt: 1_000 });
+    expect(task).toMatchObject({ cancelledAt: undefined, completedAt: 1_000, position: 2 });
     vi.restoreAllMocks();
   });
 
@@ -233,7 +233,7 @@ describe("convex/tasks handlers", () => {
     expect(db.patch).not.toHaveBeenCalled();
   });
 
-  it("restores a deletion batch at the end of each priority section in its original order", async () => {
+  it("restores a deletion batch in its original priority-section positions", async () => {
     vi.spyOn(Date, "now").mockReturnValue(120);
     const firstP1 = makeId("first-p1");
     const secondP1 = makeId("second-p1");
@@ -302,17 +302,14 @@ describe("convex/tasks handlers", () => {
 
     expect(db.patch).toHaveBeenNthCalledWith(1, firstP1, {
       cancelledAt: undefined,
-      position: 8,
       updatedAt: expect.any(Number),
     });
     expect(db.patch).toHaveBeenNthCalledWith(2, secondP1, {
       cancelledAt: undefined,
-      position: 9,
       updatedAt: expect.any(Number),
     });
     expect(db.patch).toHaveBeenNthCalledWith(3, onlyP2, {
       cancelledAt: undefined,
-      position: 4,
       updatedAt: expect.any(Number),
     });
     vi.restoreAllMocks();

@@ -976,23 +976,10 @@ export const restoreInboxTasks = mutation({
       tasks.push(task);
     }
 
-    const nextPositionByPriority = new Map<string, number>();
-    for (const task of (await listOwnedTasks(ctx, tokenIdentifier)).filter(isInboxTask)) {
-      const priority = task.priority ?? "none";
-      nextPositionByPriority.set(
-        priority,
-        Math.max(nextPositionByPriority.get(priority) ?? 0, task.position + 1)
-      );
-    }
-
     const updatedAt = Date.now();
     for (const task of tasks) {
-      const priority = task.priority ?? "none";
-      const position = nextPositionByPriority.get(priority) ?? 0;
-      nextPositionByPriority.set(priority, position + 1);
       await ctx.db.patch(task._id, {
         cancelledAt: undefined,
-        position,
         updatedAt,
       });
     }
@@ -1008,11 +995,8 @@ export const restoreTask = mutation({
       throw new Error("Task is not pending deletion");
     }
     assertTaskRecoveryWindow(task);
-    const deadline = getTaskDeadline(task);
-    const position = await getNextPositionForLane(ctx, tokenIdentifier, deadline);
     await ctx.db.patch(args.taskId, {
       cancelledAt: undefined,
-      position,
       updatedAt: Date.now(),
     });
   },
