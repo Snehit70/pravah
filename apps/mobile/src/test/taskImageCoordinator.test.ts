@@ -412,6 +412,38 @@ describe("Task-image mobile coordinator", () => {
     expect(coordinator.getViewState()).toMatchObject({ uploadId: "upl_mobile_1", state: "verifying" });
   });
 
+  it("sanitizes malformed persisted entries before they can be written back", async () => {
+    const saved: unknown[] = [];
+    const coordinator = createTaskImageCoordinator({
+      ...createDependencies(),
+      ownerScope: () => "owner-a",
+      manifestStore: {
+        load: vi.fn(async () => ({
+          version: 2,
+          uploads: [{
+            uploadId: "upl_mobile_1",
+            state: "failed",
+            sourceKey: "file:///private/source.jpg",
+            failure: { code: "network_error", retryable: true, rawResponse: "provider-secret" },
+            attempt: 0,
+            retryCount: 0,
+            needsReconciliation: false,
+            paused: false,
+          }],
+        })),
+        save: vi.fn(async (_scope, manifest) => {
+          saved.push(manifest);
+        }),
+      },
+    });
+
+    await coordinator.hydrate();
+
+    const serialized = JSON.stringify(saved.at(-1));
+    expect(serialized).not.toMatch(/file:\/\/|rawResponse|provider-secret/);
+    expect(serialized).toContain("network_error");
+  });
+
   it("pauses recoverable deletion work, resumes it, and cleans app-owned sources safely", async () => {
     const dependencies = createDependencies();
     const sourceStore = {

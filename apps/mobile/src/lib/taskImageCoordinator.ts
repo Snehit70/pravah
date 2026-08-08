@@ -217,18 +217,45 @@ function allowlistedProviderResult(
   };
 }
 
-function isManifestEntry(value: unknown): value is TaskImageManifestEntry {
-  if (!value || typeof value !== "object") return false;
-  const entry = value as Partial<TaskImageManifestEntry>;
-  return (
-    typeof entry.uploadId === "string" &&
-    /^[A-Za-z0-9_-]{8,128}$/.test(entry.uploadId) &&
-    typeof entry.state === "string" &&
-    typeof entry.attempt === "number" &&
-    typeof entry.retryCount === "number" &&
-    typeof entry.needsReconciliation === "boolean" &&
-    typeof entry.paused === "boolean"
-  );
+function parseManifestEntry(value: unknown): TaskImageManifestEntry | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<TaskImageManifestEntry>;
+  if (
+    typeof raw.uploadId !== "string" ||
+    !/^[A-Za-z0-9_-]{8,128}$/.test(raw.uploadId) ||
+    !["pending", "uploading", "verifying", "ready", "failed"].includes(raw.state ?? "") ||
+    !Number.isSafeInteger(raw.attempt) ||
+    !Number.isSafeInteger(raw.retryCount) ||
+    typeof raw.needsReconciliation !== "boolean" ||
+    typeof raw.paused !== "boolean"
+  ) return null;
+  const failure = raw.failure && typeof raw.failure === "object"
+    ? {
+        code: typeof raw.failure.code === "string" && SAFE_FAILURE_CODES.has(raw.failure.code)
+          ? raw.failure.code
+          : "normalization_failed",
+        retryable: typeof raw.failure.retryable === "boolean" ? raw.failure.retryable : false,
+      }
+    : undefined;
+  return {
+    uploadId: raw.uploadId,
+    taskId: typeof raw.taskId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(raw.taskId) ? raw.taskId : undefined,
+    state: raw.state as Exclude<TaskImageState, "preparing">,
+    sourceKey: typeof raw.sourceKey === "string" && /^[A-Za-z0-9_-]{1,160}$/.test(raw.sourceKey)
+      ? raw.sourceKey
+      : undefined,
+    encodingClass: raw.encodingClass === "jpeg" || raw.encodingClass === "png" ? raw.encodingClass : undefined,
+    width: Number.isSafeInteger(raw.width) ? raw.width : undefined,
+    height: Number.isSafeInteger(raw.height) ? raw.height : undefined,
+    bytes: Number.isSafeInteger(raw.bytes) ? raw.bytes : undefined,
+    caption: typeof raw.caption === "string" && raw.caption.length <= 500 ? raw.caption : undefined,
+    failure,
+    attempt: raw.attempt as number,
+    retryCount: raw.retryCount as number,
+    retryAt: Number.isSafeInteger(raw.retryAt) ? raw.retryAt : undefined,
+    needsReconciliation: raw.needsReconciliation,
+    paused: raw.paused,
+  };
 }
 
 function redactManifest(entries: Iterable<Draft>): TaskImageManifest {
@@ -476,7 +503,10 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     const uploads =
       raw && typeof raw === "object" && "version" in raw && (raw as { version?: unknown }).version === 2 &&
       Array.isArray((raw as { uploads?: unknown }).uploads)
-        ? (raw as unknown as { uploads: unknown[] }).uploads.filter(isManifestEntry)
+        ? (raw as unknown as { uploads: unknown[] }).uploads.flatMap((entry) => {
+            const parsed = parseManifestEntry(entry);
+            return parsed ? [parsed] : [];
+          })
         : [];
     for (const entry of uploads) {
       const restored: Draft = {
