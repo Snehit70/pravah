@@ -49,6 +49,10 @@ vi.mock("../../convex/_generated/api", () => ({
       getIntegrationStatus: "automationTools.getIntegrationStatus",
       listReviewQueue: "automationTools.listReviewQueue",
     },
+    taskImages: {
+      getUploadByProviderPublicId: "taskImages.getUploadByProviderPublicId",
+      applyUploadVerification: "taskImages.applyUploadVerification",
+    },
   },
   api: {
     automation: {
@@ -75,6 +79,7 @@ vi.mock("../../convex/auth", () => ({
 
 import "../../convex/http";
 import { api, internal } from "../../convex/_generated/api";
+import { verifyWebhookSignature } from "../../convex/taskImageProvider";
 
 const env = (
   globalThis as typeof globalThis & {
@@ -84,6 +89,7 @@ const env = (
 const originalApiKey = env?.CONVEX_HTTP_API_KEY;
 const originalHttpOwner = env?.PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER;
 const originalGoogleClientId = env?.GOOGLE_OAUTH_CLIENT_ID;
+const originalCloudinaryApiSecret = env?.CLOUDINARY_API_SECRET;
 
 function getHandler(path: string, method: string) {
   const route = routeRegistry.find((entry) => entry.path === path && entry.method === method);
@@ -101,11 +107,20 @@ function createCtx(): MockCtx {
   };
 }
 
+async function signCloudinaryCallback(rawBody: string, timestamp: number, apiSecret: string) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`${rawBody}${timestamp}${apiSecret}`),
+  );
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 beforeAll(() => {
   if (env) {
     env.CONVEX_HTTP_API_KEY = "secret";
     env.PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER = "admin-owner";
     env.GOOGLE_OAUTH_CLIENT_ID = "client-id";
+    env.CLOUDINARY_API_SECRET = "abcd";
   }
 });
 
@@ -115,6 +130,7 @@ beforeEach(() => {
     env.CONVEX_HTTP_API_KEY = "secret";
     env.PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER = "admin-owner";
     env.GOOGLE_OAUTH_CLIENT_ID = "client-id";
+    env.CLOUDINARY_API_SECRET = "abcd";
   }
 });
 
@@ -123,10 +139,93 @@ afterAll(() => {
     env.CONVEX_HTTP_API_KEY = originalApiKey;
     env.PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER = originalHttpOwner;
     env.GOOGLE_OAUTH_CLIENT_ID = originalGoogleClientId;
+    env.CLOUDINARY_API_SECRET = originalCloudinaryApiSecret;
   }
 });
 
 describe("http route handlers", () => {
+  it("reconciles an eager callback that arrives before the master callback", async () => {
+    const handler = getHandler("/cloudinary/task-image-callback", "POST");
+    const ctx = createCtx();
+    const publicId = "pravah-task-images/opaque123";
+    const timestamp = Math.floor(Date.now() / 1000);
+    const payload = {
+      notification_type: "eager",
+      status: "complete",
+      public_id: publicId,
+      version: 123,
+      signature: "",
+      resource_type: "image",
+      type: "authenticated",
+      format: "jpg",
+      width: 1600,
+      height: 1200,
+      bytes: 2_000_000,
+      eager: [
+        {
+          transformation: "c_limit,h_640,w_640/cs_srgb,f_webp,q_auto:eco",
+          format: "webp",
+          width: 640,
+          height: 480,
+          bytes: 300_000,
+        },
+        {
+          transformation: "c_limit,h_1600,w_1600/cs_srgb,f_webp,q_auto:good",
+          format: "webp",
+          width: 1600,
+          height: 1200,
+          bytes: 1_500_000,
+        },
+      ],
+    };
+    const rawBody = JSON.stringify(payload);
+    const signature = await signCloudinaryCallback(rawBody, timestamp, "abcd");
+    ctx.runQuery.mockResolvedValue({
+      ownerTokenIdentifier: "user-1",
+      uploadId: "upl_mobile_1",
+      publicId,
+      encodingClass: "jpeg",
+      providerVersion: undefined,
+      master: undefined,
+    });
+
+    const response = await handler(
+      ctx,
+      new Request("https://example.com/cloudinary/task-image-callback", {
+        method: "POST",
+        headers: {
+          "x-cld-timestamp": String(timestamp),
+          "x-cld-signature": signature,
+        },
+        body: rawBody,
+      }),
+    );
+
+    expect(await verifyWebhookSignature({
+      rawBody,
+      timestamp,
+      signature,
+      apiSecret: "abcd",
+      nowSeconds: timestamp,
+    })).toBe(true);
+    expect(response.status).toBe(204);
+    expect(ctx.runMutation).toHaveBeenCalledWith(
+      internal.taskImages.applyUploadVerification,
+      expect.objectContaining({
+        ownerTokenIdentifier: "user-1",
+        uploadId: "upl_mobile_1",
+        publicId,
+        version: 123,
+        result: {
+          status: "ready",
+          master: { format: "jpg", width: 1600, height: 1200, bytes: 2_000_000 },
+          card: { format: "webp", width: 640, height: 480, bytes: 300_000 },
+          detail: { format: "webp", width: 1600, height: 1200, bytes: 1_500_000 },
+        },
+      }),
+    );
+  });
+
   it("exchanges bootstrap token without requiring API key", async () => {
     const handler = getHandler("/automation/bootstrap/exchange", "POST");
     const ctx = createCtx();
