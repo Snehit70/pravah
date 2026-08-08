@@ -36,6 +36,11 @@ type StageArgs = {
   bytes: number;
 };
 
+type TaskImageClaimInput = {
+  uploadId: string;
+  caption?: string;
+};
+
 function validateStagedImage(args: StageArgs): SafeFailureCode | undefined {
   if (!/^[A-Za-z0-9_-]{8,128}$/.test(args.uploadId)) return "normalization_failed";
   if (!Number.isSafeInteger(args.width) || !Number.isSafeInteger(args.height)) {
@@ -360,27 +365,31 @@ export async function claimStagedImagesForTask(
   ctx: MutationCtx,
   ownerTokenIdentifier: string,
   taskId: Id<"tasks">,
-  uploadIds: string[]
+  inputs: TaskImageClaimInput[]
 ) {
   const activeImages = (await listTaskImages(ctx, ownerTokenIdentifier, taskId)).filter(
     (image) => image.removedAt === undefined
   );
-  if (activeImages.length + uploadIds.length > MAX_ACTIVE_TASK_IMAGES) {
+  if (activeImages.length + inputs.length > MAX_ACTIVE_TASK_IMAGES) {
     throw new Error("Task image collection is full");
   }
 
-  const uniqueUploadIds = new Set(uploadIds);
-  if (uniqueUploadIds.size !== uploadIds.length) throw new Error("duplicate_task_image");
+  const uniqueUploadIds = new Set(inputs.map((input) => input.uploadId));
+  if (uniqueUploadIds.size !== inputs.length) throw new Error("duplicate_task_image");
+  const captions = inputs.map((input) => input.caption?.trim() ?? "");
+  if (captions.some((caption) => caption.length > 500)) throw new Error("caption_too_long");
 
   const now = Date.now();
   const claimedIds = [];
-  for (const [offset, uploadId] of uploadIds.entries()) {
-    const upload = await findOwnedUpload(ctx, ownerTokenIdentifier, uploadId);
+  for (const [offset, input] of inputs.entries()) {
+    const upload = await findOwnedUpload(ctx, ownerTokenIdentifier, input.uploadId);
+    const caption = captions[offset] || undefined;
     if (!upload || upload.taskImageId) {
       claimedIds.push(await ctx.db.insert("taskImages", {
         ownerTokenIdentifier,
         taskId,
         position: activeImages.length + offset,
+        caption,
         state: "failed",
         safeFailureCode: "source_unavailable",
         failureRetryable: true,
@@ -395,6 +404,7 @@ export async function claimStagedImagesForTask(
       taskId,
       uploadRecordId: upload._id,
       position: activeImages.length + offset,
+      caption,
       state: uploadStateForTaskImage(upload.state),
       safeFailureCode: upload.safeFailureCode,
       createdAt: now,
@@ -422,7 +432,7 @@ export async function claimStagedImageForTask(
   taskId: Id<"tasks">,
   uploadId: string
 ) {
-  const [taskImageId] = await claimStagedImagesForTask(ctx, ownerTokenIdentifier, taskId, [uploadId]);
+  const [taskImageId] = await claimStagedImagesForTask(ctx, ownerTokenIdentifier, taskId, [{ uploadId }]);
   return taskImageId;
 }
 
@@ -522,14 +532,24 @@ async function staleCollection(
 export const addTaskImages = mutation({
   args: {
     taskId: v.id("tasks"),
-    uploadIds: v.array(v.string()),
+    uploadIds: v.optional(v.array(v.string())),
+    imageInputs: v.optional(
+      v.array(v.object({ uploadId: v.string(), caption: v.optional(v.string()) }))
+    ),
     expectedRevision: v.number(),
   },
   handler: async (ctx, args) => {
     const ownerTokenIdentifier = await requireTokenIdentifier(ctx);
     const stale = await staleCollection(ctx, ownerTokenIdentifier, args.taskId, args.expectedRevision);
     if (stale) return stale;
-    await claimStagedImagesForTask(ctx, ownerTokenIdentifier, args.taskId, args.uploadIds);
+    const inputs = [
+      ...(args.imageInputs ?? []),
+      ...(args.uploadIds ?? []).map((uploadId) => ({ uploadId })),
+    ];
+    if (inputs.length === 0) {
+      return { stale: false as const, ...(await getTaskImageCollectionForOwner(ctx, ownerTokenIdentifier, args.taskId)) };
+    }
+    await claimStagedImagesForTask(ctx, ownerTokenIdentifier, args.taskId, inputs);
     return {
       stale: false as const,
       ...(await getTaskImageCollectionForOwner(ctx, ownerTokenIdentifier, args.taskId)),

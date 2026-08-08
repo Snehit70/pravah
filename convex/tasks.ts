@@ -35,6 +35,7 @@ type AddTaskArgs = {
   priority?: "p1" | "p2" | "p3";
   imageUploadId?: string;
   imageUploadIds?: string[];
+  imageInputs?: Array<{ uploadId: string; caption?: string }>;
 };
 type MoveTaskArgs = {
   taskId: Id<"tasks">;
@@ -376,6 +377,9 @@ export const addTask = mutation({
     priority: v.optional(v.union(v.literal("p1"), v.literal("p2"), v.literal("p3"))),
     imageUploadId: v.optional(v.string()),
     imageUploadIds: v.optional(v.array(v.string())),
+    imageInputs: v.optional(
+      v.array(v.object({ uploadId: v.string(), caption: v.optional(v.string()) }))
+    ),
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
@@ -477,10 +481,12 @@ export async function addTaskForOwner(
   tokenIdentifier: string,
   args: AddTaskArgs
 ) {
-  const imageUploadIds = [
-    ...(args.imageUploadIds ?? []),
-    ...(args.imageUploadId ? [args.imageUploadId] : []),
+  const imageInputs = [
+    ...(args.imageInputs ?? []),
+    ...(args.imageUploadIds ?? []).map((uploadId) => ({ uploadId })),
+    ...(args.imageUploadId ? [{ uploadId: args.imageUploadId }] : []),
   ];
+  const imageUploadIds = imageInputs.map((image) => image.uploadId);
   if (new Set(imageUploadIds).size !== imageUploadIds.length) {
     throw new Error("duplicate_task_image");
   }
@@ -520,7 +526,7 @@ export async function addTaskForOwner(
     cancelledAt: undefined,
   });
   if (imageUploadIds.length) {
-    await claimStagedImagesForTask(ctx, tokenIdentifier, taskId, imageUploadIds);
+    await claimStagedImagesForTask(ctx, tokenIdentifier, taskId, imageInputs);
   }
   return taskId;
 }

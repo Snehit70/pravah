@@ -255,9 +255,13 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     },
 
     getUploadIdsForSave() {
+      return this.getImageInputsForSave().map((image) => image.uploadId);
+    },
+
+    getImageInputsForSave() {
       return drafts
         .filter((draft) => draft.state === "pending" || draft.state === "failed")
-        .map((draft) => draft.uploadId);
+        .map((draft) => ({ uploadId: draft.uploadId, caption: draft.caption }));
     },
 
     beginUploadAfterSave() {

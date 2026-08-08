@@ -92,7 +92,12 @@ const stageHandler = (
 
 const addTaskHandler = (
   addTask as unknown as Handler<
-    { title: string; imageUploadId?: string; imageUploadIds?: string[] },
+    {
+      title: string;
+      imageUploadId?: string;
+      imageUploadIds?: string[];
+      imageInputs?: Array<{ uploadId: string; caption?: string }>;
+    },
     Id<"tasks">
   >
 )._handler;
@@ -247,11 +252,15 @@ describe("Convex Task-image contract", () => {
 
     const taskId = await addTaskHandler(owner, {
       title: "Manage the gallery",
-      imageUploadIds: uploadIds.slice(0, 5),
+      imageInputs: uploadIds.slice(0, 5).map((uploadId, index) => ({
+        uploadId,
+        ...(index === 0 ? { caption: " Initial caption " } : {}),
+      })),
     });
     const initial = await collectionHandler(owner, { taskId });
     expect(initial.active).toHaveLength(5);
     expect(initial.active.map((image) => image.position)).toEqual([0, 1, 2, 3, 4]);
+    expect(initial.active[0].caption).toBe("Initial caption");
     expect(initial.primary).toEqual(initial.active[0]);
 
     await expect(

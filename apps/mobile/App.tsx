@@ -793,6 +793,7 @@ function MobileApp() {
       goalId?: string;
       imageUploadId?: string;
       imageUploadIds?: string[];
+      imageInputs?: Array<{ uploadId: string; caption?: string }>;
     }) => {
       const actionId = createActionId("add");
       const startedAt = Date.now();
@@ -807,7 +808,9 @@ function MobileApp() {
           deadline: data.deadline,
           time: data.deadline ? data.time : undefined,
           priority: data.priority,
-          ...(data.imageUploadIds?.length
+          ...(data.imageInputs?.length
+            ? { imageInputs: data.imageInputs }
+            : data.imageUploadIds?.length
             ? { imageUploadIds: data.imageUploadIds }
             : data.imageUploadId
               ? { imageUploadId: data.imageUploadId }
@@ -821,7 +824,9 @@ function MobileApp() {
         return true;
       } catch (error) {
         const isOffline = classifyError(error) === "network";
-        const hasImages = Boolean(data.imageUploadId || data.imageUploadIds?.length);
+        const hasImages = Boolean(
+          data.imageUploadId || data.imageUploadIds?.length || data.imageInputs?.length
+        );
         if (isOffline && !hasImages) {
           enqueueRetry({
             label: `Add "${data.title}"`,

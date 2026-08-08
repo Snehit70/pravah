@@ -81,6 +81,7 @@ type AddTaskSheetProps = {
     goalId?: string;
     imageUploadId?: string;
     imageUploadIds?: string[];
+    imageInputs?: Array<{ uploadId: string; caption?: string }>;
   }) => Promise<boolean>;
   onBulkAdd?: (tasks: BulkTaskInput[]) => Promise<boolean>;
   isValidDeadline: (raw: string) => { value?: string; error?: string };
@@ -352,12 +353,12 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         }
       }
 
-      const imageUploadIds = taskImageCoordinator?.getUploadIdsForSave() ?? [];
+      const imageInputs = taskImageCoordinator?.getImageInputsForSave() ?? [];
       const imageArguments =
-        imageUploadIds.length === 1
-          ? { imageUploadId: imageUploadIds[0] }
-          : imageUploadIds.length > 1
-            ? { imageUploadIds }
+        imageInputs.length === 1 && !imageInputs[0].caption
+          ? { imageUploadId: imageInputs[0].uploadId }
+          : imageInputs.length > 0
+            ? { imageInputs }
             : {};
       const success = await onAdd({
         title: trimmed,

@@ -170,6 +170,10 @@ describe("Task-image mobile coordinator", () => {
       ...ids.slice(2),
     ]);
     expect(coordinator.getViewStates()[1].caption).toBe("First reference");
+    expect(coordinator.getImageInputsForSave()).toContainEqual({
+      uploadId: ids[0],
+      caption: "First reference",
+    });
 
     coordinator.remove(ids[0]);
     expect(coordinator.getViewStates()).toHaveLength(4);
