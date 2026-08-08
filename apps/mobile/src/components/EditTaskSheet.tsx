@@ -103,6 +103,7 @@ type EditTaskSheetProps = {
     taskId: Id<"tasks">;
     taskImageId: string;
     replaceTaskImageId?: string;
+    expectedRevision: number;
   }) =>
     TaskImageCollectionMutationResult | Promise<TaskImageCollectionMutationResult> | void;
   onSelectTaskImage?: (args: {
@@ -895,6 +896,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                             taskId: currentTask._id,
                             taskImageId,
                             replaceTaskImageId,
+                            expectedRevision: currentTask.imageCollection?.revision ?? 0,
                           });
                           if (!result) return;
                           const { stale: _, ...imageCollection } = result;

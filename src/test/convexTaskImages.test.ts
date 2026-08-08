@@ -160,7 +160,7 @@ const removeTaskImageHandler = (
 
 const restoreTaskImageHandler = (
   restoreTaskImage as unknown as Handler<
-    { taskImageId: Id<"taskImages">; replaceTaskImageId?: Id<"taskImages"> },
+    { taskImageId: Id<"taskImages">; replaceTaskImageId?: Id<"taskImages">; expectedRevision: number },
     unknown
   >
 )._handler;
@@ -411,13 +411,17 @@ describe("Convex Task-image contract", () => {
     });
     expect(removed).toMatchObject({ revision: 2, stale: false });
 
+    await expect(
+      restoreTaskImageHandler(owner, { taskImageId: removedId, expectedRevision: 1 })
+    ).resolves.toMatchObject({ stale: true, revision: 2 });
+
     const upload = db.rows("taskImageUploads").find((row) => row.uploadId === uploadIds[1]);
     expect(upload).toBeDefined();
     upload!.state = "ready";
     const image = db.rows("taskImages").find((row) => row._id === removedId);
     image!.state = "ready";
 
-    const restored = await restoreTaskImageHandler(owner, { taskImageId: removedId });
+    const restored = await restoreTaskImageHandler(owner, { taskImageId: removedId, expectedRevision: 2 });
     expect(restored).toMatchObject({ revision: 3, stale: false });
     expect((await collectionHandler(owner, { taskId })).active.map((entry) => entry.taskImageId)).toEqual(
       initial.active.map((entry) => entry.taskImageId)
@@ -456,6 +460,7 @@ describe("Convex Task-image contract", () => {
     const restored = await restoreTaskImageHandler(owner, {
       taskImageId: removedId,
       replaceTaskImageId: replacementId,
+      expectedRevision: 3,
     });
     expect(restored).toMatchObject({ revision: 4, stale: false });
     const collection = await collectionHandler(owner, { taskId });

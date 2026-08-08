@@ -1054,7 +1054,7 @@ export const purgeExpiredCancelledTasks = internalMutation({
 
     const expiredRemovedImages = await ctx.db
       .query("taskImages")
-      .withIndex("by_recoverable_until", (q) => q.lt("recoverableUntil", now))
+      .withIndex("by_recoverable_until", (q) => q.gte("recoverableUntil", 0).lt("recoverableUntil", now))
       .take(50);
     let purged = 0;
     let cleanupWorkFound = false;

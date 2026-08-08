@@ -154,7 +154,22 @@ export function TaskImageFilmstrip({
   onRestore,
   resolveDelivery,
 }: TaskImageFilmstripProps) {
+  const [now, setNow] = useState(() => Date.now());
   const ordered = [...images].sort((left, right) => left.position - right.position);
+  const visibleRecoverable = recoverable.filter(
+    (image) => image.recoverableUntil === undefined || image.recoverableUntil > now
+  );
+
+  useEffect(() => {
+    const nextExpiry = recoverable
+      .map((image) => image.recoverableUntil)
+      .filter((expiry): expiry is number => expiry !== undefined && expiry > now)
+      .sort((left, right) => left - right)[0];
+    if (nextExpiry === undefined) return;
+    const timer = setTimeout(() => setNow(Date.now()), Math.max(0, nextExpiry - Date.now()));
+    return () => clearTimeout(timer);
+  }, [now, recoverable]);
+
   return (
     <View style={styles.container} accessibilityLabel="Task image Filmstrip">
       {ordered.map((image, index) => (
@@ -251,10 +266,10 @@ export function TaskImageFilmstrip({
           />
         </View>
       ) : null}
-      {onRestore && recoverable.length > 0 ? (
+      {onRestore && visibleRecoverable.length > 0 ? (
         <View style={styles.recoverableSection}>
           <Text style={styles.recoverableHeading}>Recently removed</Text>
-          {recoverable.map((image) => (
+          {visibleRecoverable.map((image) => (
             <View key={image.taskImageId} style={styles.recoverableRow}>
               <Text style={styles.recoverableText}>
                 {image.caption || "Task image"}

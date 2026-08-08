@@ -736,12 +736,23 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
           .filter((entry) => entry.taskId === taskId && entry.taskImageId)
           .map((entry) => [entry.taskImageId as string, entry])
       );
-      const mappedUploadIds = taskImageIds.flatMap((taskImageId) => {
+      const unassignedEntries = [...records.values()]
+        .filter((entry) => entry.taskId === taskId && !entry.taskImageId)
+        .sort((left, right) => uploadIds.indexOf(left.uploadId) - uploadIds.indexOf(right.uploadId));
+      const missingTaskImageIds = taskImageIds.filter((taskImageId) => !entriesByTaskImageId.has(taskImageId));
+      for (const [index, entry] of unassignedEntries.entries()) {
+        const taskImageId = missingTaskImageIds[missingTaskImageIds.length - unassignedEntries.length + index];
+        if (taskImageId) {
+          entry.taskImageId = taskImageId;
+          entriesByTaskImageId.set(taskImageId, entry);
+        }
+      }
+      const associatedUploadIds = taskImageIds.flatMap((taskImageId) => {
         const entry = entriesByTaskImageId.get(taskImageId);
         return entry ? [entry.uploadId] : [];
       });
-      if (mappedUploadIds.length === taskImageIds.length) {
-        taskUploadOrder.set(taskId, mappedUploadIds);
+      if (associatedUploadIds.length > 0) {
+        taskUploadOrder.set(taskId, associatedUploadIds);
         void persist();
         return true;
       }

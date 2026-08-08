@@ -321,6 +321,16 @@ describe("Task-image mobile coordinator", () => {
     expect(coordinator.serialize().uploads.map((entry) => entry.uploadId)).toEqual([taskOwned, accepted]);
   });
 
+  it("associates a newly tracked upload when ready sibling records are not local", async () => {
+    const dependencies = createDependencies();
+    const coordinator = createTaskImageCoordinator(dependencies);
+    await coordinator.select("photos");
+    coordinator.associateUploadsWithTask("task_1", ["upl_mobile_1"]);
+
+    expect(coordinator.associateTaskImageOrder("task_1", ["ready_sibling", "image_new"])).toBe(true);
+    expect(coordinator.pauseTaskImageUpload("task_1", "image_new")).toBe(true);
+  });
+
   it("runs no more than two uploads at once and keeps verification indeterminate", async () => {
     const dependencies = createDependencies();
     let nextId = 1;

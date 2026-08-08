@@ -781,6 +781,7 @@ export const restoreTaskImage = mutation({
   args: {
     taskImageId: v.id("taskImages"),
     replaceTaskImageId: v.optional(v.id("taskImages")),
+    expectedRevision: v.number(),
   },
   handler: async (ctx, args) => {
     const ownerTokenIdentifier = await requireTokenIdentifier(ctx);
@@ -789,6 +790,8 @@ export const restoreTaskImage = mutation({
       ownerTokenIdentifier,
       args.taskImageId
     );
+    const stale = await staleCollection(ctx, ownerTokenIdentifier, task._id, args.expectedRevision);
+    if (stale) return stale;
     const active = (await listTaskImages(ctx, ownerTokenIdentifier, task._id)).filter(
       (candidate) => candidate.removedAt === undefined
     );

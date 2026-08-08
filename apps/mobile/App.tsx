@@ -429,7 +429,7 @@ function MobileApp() {
       taskImageCoordinator.suspendAllUploads();
       taskImageCoordinator.dispose();
     };
-  }, [session, taskImageCoordinator]);
+  }, [session?.user?.id, taskImageCoordinator]);
   const overduePreviewData = useQuery(
     api.overdueReflow.preview,
     session && activeTab === "timeline" ? { today } : "skip"
@@ -1486,21 +1486,29 @@ function MobileApp() {
         onRemoveTaskImage={({ taskId, taskImageId, orderedTaskImageIds, expectedRevision }) => {
           taskImageCoordinator.associateTaskImageOrder(String(taskId), orderedTaskImageIds);
           taskImageCoordinator.pauseTaskImageUpload(String(taskId), taskImageId);
-          return removeTaskImageMutation({
-            taskImageId: taskImageId as Id<"taskImages">,
-            expectedRevision,
-          }).catch((error) => {
+          const resumeRemovedImage = () => {
             void Promise.resolve(
               taskImageCoordinator.resumeTaskImageUpload(String(taskId), taskImageId)
             ).catch(() => undefined);
+          };
+          return removeTaskImageMutation({
+            taskImageId: taskImageId as Id<"taskImages">,
+            expectedRevision,
+          }).then((result) => {
+            if (result.stale) resumeRemovedImage();
+            return result;
+          }).catch((error) => {
+            resumeRemovedImage();
             throw error;
           });
         }}
-        onRestoreTaskImage={({ taskId, taskImageId, replaceTaskImageId }) => {
+        onRestoreTaskImage={({ taskId, taskImageId, replaceTaskImageId, expectedRevision }) => {
           return restoreTaskImageMutation({
             taskImageId: taskImageId as Id<"taskImages">,
             replaceTaskImageId: replaceTaskImageId as Id<"taskImages"> | undefined,
+            expectedRevision,
           }).then((result) => {
+            if (result.stale) return result;
             if (result.active) {
               taskImageCoordinator.associateTaskImageOrder(
                 String(taskId),

@@ -1,7 +1,7 @@
 /** @vitest-environment happy-dom */
 
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("react-native", () => {
@@ -202,5 +202,28 @@ describe("TaskImageFilmstrip", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Restore removed Task image by replacing image 3" }));
     expect(onRestore).toHaveBeenCalledWith("removed-1", "active-2");
+  });
+
+  it("removes expired recovery actions without waiting for a database write", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1_000);
+      render(
+        <TaskImageFilmstrip
+          images={[]}
+          recoverable={[{ taskImageId: "removed-1", recoverableUntil: 2_000 }]}
+          onRestore={vi.fn()}
+        />
+      );
+      expect(screen.getByRole("button", { name: "Restore removed Task image" })).toBeTruthy();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+
+      expect(screen.queryByRole("button", { name: "Restore removed Task image" })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
