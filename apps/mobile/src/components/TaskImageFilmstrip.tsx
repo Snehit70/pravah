@@ -166,7 +166,10 @@ export function TaskImageFilmstrip({
       .filter((expiry): expiry is number => expiry !== undefined && expiry > now)
       .sort((left, right) => left - right)[0];
     if (nextExpiry === undefined) return;
-    const timer = setTimeout(() => setNow(Date.now()), Math.max(0, nextExpiry - Date.now()));
+    const timer = setTimeout(
+      () => setNow((current) => Math.max(current, nextExpiry)),
+      Math.max(0, nextExpiry - now)
+    );
     return () => clearTimeout(timer);
   }, [now, recoverable]);
 

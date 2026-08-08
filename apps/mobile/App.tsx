@@ -410,8 +410,9 @@ function MobileApp() {
       resolveTaskImageAction({ taskImageId: taskImageId as Id<"taskImages">, variant }),
     [resolveTaskImageAction]
   );
+  const sessionUserId = session?.user?.id;
   useEffect(() => {
-    if (!session) {
+    if (!sessionUserId) {
       taskImageCoordinator.setForeground(false);
       return;
     }
@@ -429,7 +430,7 @@ function MobileApp() {
       taskImageCoordinator.suspendAllUploads();
       taskImageCoordinator.dispose();
     };
-  }, [session?.user?.id, taskImageCoordinator]);
+  }, [sessionUserId, taskImageCoordinator]);
   const overduePreviewData = useQuery(
     api.overdueReflow.preview,
     session && activeTab === "timeline" ? { today } : "skip"
