@@ -412,7 +412,6 @@ function MobileApp() {
   useEffect(() => {
     if (!session) {
       taskImageCoordinator.setForeground(false);
-      taskImageCoordinator.discard();
       return;
     }
 
@@ -424,7 +423,10 @@ function MobileApp() {
         void authStorageReady.then(() => taskImageCoordinator.reconcileOnForeground());
       }
     });
-    return () => subscription.remove();
+    return () => {
+      subscription.remove();
+      taskImageCoordinator.suspendAllUploads();
+    };
   }, [session, taskImageCoordinator]);
   const overduePreviewData = useQuery(
     api.overdueReflow.preview,
@@ -784,6 +786,7 @@ function MobileApp() {
     hasPriorityBoundaryViolation,
     onTaskDeletionStarted: (taskId) => taskImageCoordinator.pauseTaskUploads(taskId),
     onTaskRestored: (taskId) => taskImageCoordinator.resumeTaskUploads(taskId),
+    onTaskDeleted: (taskId) => taskImageCoordinator.discardTaskUploads(taskId),
   });
 
   const softDeleteTaskWithImagePause = useCallback(
@@ -1467,21 +1470,21 @@ function MobileApp() {
         onDelete={deleteTaskWithImagePause}
         resolveTaskImage={resolveTaskImage}
         onReorderTaskImages={({ taskId, orderedTaskImageIds, expectedRevision }) => {
-          void reorderTaskImagesMutation({
+          return reorderTaskImagesMutation({
             taskId,
             orderedTaskImageIds: orderedTaskImageIds as Id<"taskImages">[],
             expectedRevision,
           });
         }}
         onCaptionTaskImage={({ taskImageId, caption, expectedRevision }) => {
-          void updateTaskImageCaptionMutation({
+          return updateTaskImageCaptionMutation({
             taskImageId: taskImageId as Id<"taskImages">,
             caption,
             expectedRevision,
           });
         }}
         onRemoveTaskImage={({ taskImageId, expectedRevision }) => {
-          void removeTaskImageMutation({
+          return removeTaskImageMutation({
             taskImageId: taskImageId as Id<"taskImages">,
             expectedRevision,
           });
@@ -1497,6 +1500,10 @@ function MobileApp() {
                 .getViewStates()
                 .find((image) => !beforeUploadIds.has(image.uploadId));
               if (!selected) return undefined;
+              if (selected.state !== "pending") {
+                taskImageCoordinator.discard();
+                return undefined;
+              }
               const result = await addTaskImagesMutation({
                 taskId,
                 uploadIds: [selected.uploadId],

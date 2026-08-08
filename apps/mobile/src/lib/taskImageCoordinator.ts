@@ -28,6 +28,8 @@ export type NormalizedTaskImage = {
 };
 
 export type TaskImageUploadGrant = {
+  /** The server-owned provider attempt; optional keeps test adapters backward-compatible. */
+  attempt?: number;
   uploadUrl: string;
   signature: string;
   apiKey: string;
@@ -82,6 +84,7 @@ export type TaskImageManifestEntry = {
 export type TaskImageManifest = {
   version: 2;
   uploads: TaskImageManifestEntry[];
+  visibleUploadIds?: string[];
 };
 
 export type TaskImageManifestStore = {
@@ -242,7 +245,7 @@ function parseManifestEntry(value: unknown): TaskImageManifestEntry | null {
     uploadId: raw.uploadId,
     taskId: typeof raw.taskId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(raw.taskId) ? raw.taskId : undefined,
     state: raw.state as Exclude<TaskImageState, "preparing">,
-    sourceKey: typeof raw.sourceKey === "string" && /^[A-Za-z0-9_-]{1,160}$/.test(raw.sourceKey)
+    sourceKey: typeof raw.sourceKey === "string" && /^[A-Za-z0-9_-]{8,128}\.(?:jpg|png)$/.test(raw.sourceKey)
       ? raw.sourceKey
       : undefined,
     encodingClass: raw.encodingClass === "jpeg" || raw.encodingClass === "png" ? raw.encodingClass : undefined,
@@ -259,12 +262,15 @@ function parseManifestEntry(value: unknown): TaskImageManifestEntry | null {
   };
 }
 
-function redactManifest(entries: Iterable<UploadRecord>): TaskImageManifest {
+function redactManifest(entries: Iterable<UploadRecord>, visibleUploadIds: string[] = []): TaskImageManifest {
   const persistedEntries = [...entries].filter(
     (entry): entry is UploadRecord & { state: Exclude<TaskImageState, "preparing"> } => entry.state !== "preparing"
   );
   return {
     version: TASK_IMAGE_MANIFEST_VERSION,
+    visibleUploadIds: visibleUploadIds.filter((uploadId) =>
+      persistedEntries.some((entry) => entry.uploadId === uploadId && !entry.taskId)
+    ),
     uploads: persistedEntries.map((entry) => ({
       uploadId: entry.uploadId,
       taskId: entry.taskId,
@@ -304,7 +310,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     if (!dependencies.manifestStore || !dependencies.ownerScope) return Promise.resolve();
     const ownerScope = dependencies.ownerScope();
     if (!ownerScope) return Promise.resolve();
-    const snapshot = redactManifest(records.values());
+    const snapshot = redactManifest(records.values(), visibleUploadIds);
     persistChain = persistChain
       .catch(() => undefined)
       .then(() => dependencies.manifestStore!.save(ownerScope, snapshot));
@@ -334,6 +340,18 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     } catch {
       // Cleanup is retried by the next lifecycle reconciliation when the source remains.
     }
+  };
+
+  const removeRecord = async (entry: UploadRecord) => {
+    entry.generation += 1;
+    entry.paused = true;
+    const timer = timers.get(entry.uploadId);
+    if (timer) clearTimeout(timer);
+    timers.delete(entry.uploadId);
+    records.delete(entry.uploadId);
+    visibleUploadIds = visibleUploadIds.filter((uploadId) => uploadId !== entry.uploadId);
+    await Promise.resolve(dependencies.abortUpload?.({ uploadId: entry.uploadId })).catch(() => undefined);
+    await removeSource(entry);
   };
 
   const failEntry = async (entry: UploadRecord, error: unknown) => {
@@ -423,13 +441,14 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
           : undefined
       );
       if (!sourceUri) throw Object.assign(new Error("source_unavailable"), { code: "source_unavailable" });
-      entry.attempt += 1;
-      update(entry, { attempt: entry.attempt, needsReconciliation: false });
+      const nextAttempt = entry.attempt + 1;
       const grant = await dependencies.issueGrant({
         uploadId: entry.uploadId,
-        requestKey: createGrantRequestKey(entry.uploadId, entry.attempt),
+        requestKey: createGrantRequestKey(entry.uploadId, nextAttempt),
       });
       if (entry.generation !== generation || entry.paused) return;
+      entry.attempt = grant.attempt ?? nextAttempt;
+      update(entry, { attempt: entry.attempt, needsReconciliation: false });
       const rawResult = await dependencies.upload(sourceUri, grant, {
         uploadId: entry.uploadId,
         onProgress: (progress) => {
@@ -491,7 +510,6 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         (entry) => entry.acceptedForUpload && !entry.paused && entry.state === "pending"
       );
       if (!next) return;
-      next.acceptedForUpload = false;
       const worker = runEntry(next);
       running.add(worker);
       void worker.finally(() => {
@@ -514,6 +532,12 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     } catch {
       return;
     }
+    const manifestVisibleUploadIds =
+      raw && typeof raw === "object" && Array.isArray((raw as { visibleUploadIds?: unknown }).visibleUploadIds)
+        ? (raw as { visibleUploadIds: unknown[] }).visibleUploadIds.filter(
+            (uploadId): uploadId is string => typeof uploadId === "string"
+          )
+        : [];
     const uploads =
       raw && typeof raw === "object" && "version" in raw && (raw as { version?: unknown }).version === 2 &&
       Array.isArray((raw as { uploads?: unknown }).uploads)
@@ -531,7 +555,6 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         generation: 0,
       };
       records.set(entry.uploadId, restored);
-      if (!restored.taskId) visibleUploadIds.push(restored.uploadId);
       if (restored.state === "failed" && restored.retryAt) {
         if (restored.retryAt <= now()) {
           restored.state = "pending";
@@ -539,6 +562,14 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         } else {
           scheduleRetry(restored, restored.retryAt);
         }
+      }
+    }
+    visibleUploadIds = manifestVisibleUploadIds.filter(
+      (uploadId) => records.get(uploadId)?.taskId === undefined
+    );
+    for (const restored of records.values()) {
+      if (!restored.taskId && !visibleUploadIds.includes(restored.uploadId)) {
+        visibleUploadIds.push(restored.uploadId);
       }
     }
     persist();
@@ -641,24 +672,15 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       if (uploadIds.length !== visibleUploadIds.length) return;
       if (new Set(uploadIds).size !== uploadIds.length || uploadIds.some((id) => !records.has(id))) return;
       visibleUploadIds = [...uploadIds];
-      persist();
+      void persist();
       notify();
     },
 
     remove(uploadId: string) {
       const record = records.get(uploadId);
       if (!record) return;
-      record.generation += 1;
-      record.paused = true;
-      const timer = timers.get(uploadId);
-      if (timer) clearTimeout(timer);
-      timers.delete(uploadId);
-      void Promise.resolve(dependencies.abortUpload?.({ uploadId })).catch(() => undefined);
-      void removeSource(record);
-      records.delete(uploadId);
-      visibleUploadIds = visibleUploadIds.filter((id) => id !== uploadId);
+      void removeRecord(record).then(() => persist());
       lastError = undefined;
-      void persist();
       notify();
     },
 
@@ -710,6 +732,10 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       await ensureHydrated();
       foreground = true;
       for (const entry of records.values()) {
+        if (entry.state === "ready") {
+          if (entry.taskId) await removeRecord(entry);
+          continue;
+        }
         if (!dependencies.reconcileAttempt || entry.attempt === 0) continue;
         const reconciliation = await dependencies.reconcileAttempt({ uploadId: entry.uploadId, attempt: entry.attempt }).catch(() => ({ status: "unknown" as const }));
         if (reconciliation.status === "ready") {
@@ -758,6 +784,20 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       return paused;
     },
 
+    suspendAllUploads() {
+      let suspended = 0;
+      for (const entry of records.values()) {
+        if (entry.state === "ready" || entry.paused) continue;
+        entry.generation += 1;
+        if (entry.state === "uploading" || entry.state === "verifying") entry.state = "pending";
+        entry.needsReconciliation = entry.attempt > 0;
+        void dependencies.abortUpload?.({ uploadId: entry.uploadId });
+        suspended += 1;
+      }
+      if (suspended) { void persist(); notify(); }
+      return suspended;
+    },
+
     async resumeTaskUploads(taskId: string) {
       for (const entry of records.values()) {
         if (entry.taskId === taskId && entry.paused) {
@@ -765,6 +805,12 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         }
       }
       await pump();
+    },
+
+    async discardTaskUploads(taskId: string) {
+      const taskEntries = [...records.values()].filter((entry) => entry.taskId === taskId);
+      for (const entry of taskEntries) await removeRecord(entry);
+      if (taskEntries.length) { void persist(); notify(); }
     },
 
     clearAfterSaveAndStay() {
@@ -775,16 +821,10 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     },
 
     discard() {
-      const pending = [...records.values()];
-      visibleUploadIds = [];
-      records.clear();
-      for (const entry of pending) {
-        entry.generation += 1;
-        void dependencies.abortUpload?.({ uploadId: entry.uploadId });
-        void removeSource(entry);
-      }
+      const pending = [...records.values()].filter((entry) => !entry.taskId && !entry.acceptedForUpload);
+      visibleUploadIds = visibleUploadIds.filter((uploadId) => records.has(uploadId));
       lastError = undefined;
-      persist();
+      void Promise.all(pending.map((entry) => removeRecord(entry))).then(() => persist());
       notify();
     },
 

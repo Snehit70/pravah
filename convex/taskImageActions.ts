@@ -22,7 +22,13 @@ const prepareUploadGrantRef = makeFunctionReference<
     candidatePublicId: string;
     issuedAt: number;
   },
-  { uploadId: string; publicId: string; issuedAt: number; encodingClass: "jpeg" | "png" }
+  {
+    uploadId: string;
+    publicId: string;
+    issuedAt: number;
+    encodingClass: "jpeg" | "png";
+    providerAttempt: number;
+  }
 >("taskImages:prepareUploadGrant");
 
 const getUploadVerificationContextRef = makeFunctionReference<
@@ -141,12 +147,15 @@ export const issueUploadGrant = action({
       candidatePublicId: randomProviderPublicId(),
       issuedAt: Math.floor(Date.now() / 1000),
     });
-    return await buildUploadGrant({
-      provider,
-      publicId: prepared.publicId,
-      timestamp: prepared.issuedAt,
-      encodingClass: prepared.encodingClass,
-    });
+    return {
+      ...(await buildUploadGrant({
+        provider,
+        publicId: prepared.publicId,
+        timestamp: prepared.issuedAt,
+        encodingClass: prepared.encodingClass,
+      })),
+      attempt: prepared.providerAttempt,
+    };
   },
 });
 
@@ -159,8 +168,9 @@ export const reconcileUploadAttempt = action({
       ownerTokenIdentifier,
       uploadId: args.uploadId,
     });
-    if (!context || context.providerAttempt !== args.attempt) return { status: "absent" as const };
+    if (!context) return { status: "absent" as const };
     if (context.state === "ready") return { status: "ready" as const };
+    if (context.providerAttempt !== args.attempt) return { status: "unknown" as const };
     if (!context.providerPublicId) return { status: "absent" as const };
 
     const presence = await checkProviderAssetPresence({

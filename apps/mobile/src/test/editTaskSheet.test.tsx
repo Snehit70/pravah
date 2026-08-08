@@ -443,7 +443,31 @@ describe("EditTaskSheet compact workbench", () => {
   });
 
   it("updates local image positions when reordering a Task image", async () => {
-    const onReorderTaskImages = vi.fn();
+    const onReorderTaskImages = vi.fn(async () => ({
+      stale: false as const,
+      revision: 5,
+      active: [
+        {
+          taskImageId: "image-b",
+          position: 0,
+          state: "pending" as const,
+          previewUri: "file:///image-b.jpg",
+        },
+        {
+          taskImageId: "image-a",
+          position: 1,
+          state: "pending" as const,
+          previewUri: "file:///image-a.jpg",
+        },
+      ],
+      primary: {
+        taskImageId: "image-b",
+        position: 0,
+        state: "pending" as const,
+        previewUri: "file:///image-b.jpg",
+      },
+      recoverable: [],
+    }));
     const taskWithImages: MobileTask = {
       ...timelineTask,
       imageCollection: {

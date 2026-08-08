@@ -215,7 +215,7 @@ describe("Task-image mobile coordinator", () => {
       }),
     };
     const sourceStore = {
-      persist: vi.fn(async () => ({ sourceKey: "source_upl_mobile_1", uri: "file:///private/durable.jpg" })),
+      persist: vi.fn(async () => ({ sourceKey: "upl_mobile_1.jpg", uri: "file:///private/durable.jpg" })),
       resolve: vi.fn(async () => "file:///private/durable.jpg"),
       remove: vi.fn(async () => undefined),
     };
@@ -231,8 +231,83 @@ describe("Task-image mobile coordinator", () => {
     expect(saved.at(-1)?.[0]).toBe("owner-a");
     expect(saved.at(-1)?.[1]).toEqual(expect.objectContaining({ version: 2 }));
     const serialized = JSON.stringify(saved.at(-1)?.[1]);
-    expect(serialized).toContain("source_upl_mobile_1");
+    expect(serialized).toContain("upl_mobile_1.jpg");
     expect(serialized).not.toMatch(/content:\/\/|file:\/\/|https:\/\/|signature|grant|secret|publicId|secureUrl/);
+  });
+
+  it("restores the user-selected visible image order from the manifest", async () => {
+    const first = createDependencies();
+    let nextId = 1;
+    first.createUploadId = vi.fn(() => `upl_mobile_${nextId++}`);
+    let persisted: unknown = null;
+    const store = {
+      load: vi.fn(async () => persisted),
+      save: vi.fn(async (_scope: string, manifest: unknown) => { persisted = manifest; }),
+    };
+    const coordinator = createTaskImageCoordinator({
+      ...first,
+      ownerScope: () => "owner-a",
+      manifestStore: store,
+    });
+    await coordinator.select("photos");
+    await coordinator.select("camera");
+    const ids = coordinator.getViewStates().map((image) => image.uploadId);
+    coordinator.reorder([ids[1], ids[0]]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(persisted).toMatchObject({ visibleUploadIds: [ids[1], ids[0]] });
+
+    const restored = createTaskImageCoordinator({
+      ...createDependencies(),
+      ownerScope: () => "owner-a",
+      manifestStore: store,
+    });
+    await restored.hydrate();
+
+    expect(restored.getViewStates().map((image) => image.uploadId)).toEqual([ids[1], ids[0]]);
+  });
+
+  it("skips ready records during foreground reconciliation and prunes sealed records", async () => {
+    const dependencies = createDependencies();
+    dependencies.reconcileAttempt = vi.fn(async () => ({ status: "unknown" as const }));
+    const coordinator = createTaskImageCoordinator({
+      ...dependencies,
+      ownerScope: () => "owner-a",
+      manifestStore: {
+        load: vi.fn(async () => ({
+          version: 2,
+          uploads: [{
+            uploadId: "upl_mobile_1",
+            taskId: "task_1",
+            state: "ready",
+            attempt: 1,
+            retryCount: 0,
+            needsReconciliation: false,
+            paused: false,
+          }],
+        })),
+        save: vi.fn(async () => undefined),
+      },
+    });
+
+    await coordinator.reconcileOnForeground();
+
+    expect(dependencies.reconcileAttempt).not.toHaveBeenCalled();
+    expect(coordinator.serialize().uploads).toHaveLength(0);
+  });
+
+  it("does not discard task-owned or already accepted records", async () => {
+    const dependencies = createDependencies();
+    let nextId = 1;
+    dependencies.createUploadId = vi.fn(() => `upl_mobile_${nextId++}`);
+    const coordinator = createTaskImageCoordinator(dependencies);
+    await coordinator.select("photos");
+    await coordinator.select("camera");
+    const [taskOwned, accepted] = coordinator.getViewStates().map((image) => image.uploadId);
+    coordinator.associateUploadsWithTask("task_1", [taskOwned]);
+    coordinator.beginUploadAfterSave();
+    coordinator.discard();
+
+    expect(coordinator.serialize().uploads.map((entry) => entry.uploadId)).toEqual([taskOwned, accepted]);
   });
 
   it("runs no more than two uploads at once and keeps verification indeterminate", async () => {
@@ -435,7 +510,7 @@ describe("Task-image mobile coordinator", () => {
   it("hydrates interrupted work, merges by uploadId, and does not duplicate a live attempt", async () => {
     const dependencies = createDependencies();
     const sourceStore = {
-      persist: vi.fn(async () => ({ sourceKey: "source_upl_mobile_1", uri: "file:///private/durable.jpg" })),
+      persist: vi.fn(async () => ({ sourceKey: "upl_mobile_1.jpg", uri: "file:///private/durable.jpg" })),
       resolve: vi.fn(async () => "file:///private/durable.jpg"),
       remove: vi.fn(async () => undefined),
     };
@@ -445,7 +520,7 @@ describe("Task-image mobile coordinator", () => {
         uploads: [{
           uploadId: "upl_mobile_1",
           state: "uploading",
-          sourceKey: "source_upl_mobile_1",
+          sourceKey: "upl_mobile_1.jpg",
           encodingClass: "jpeg",
           width: 1600,
           height: 1200,
@@ -471,6 +546,7 @@ describe("Task-image mobile coordinator", () => {
     expect(dependencies.reconcileAttempt).toHaveBeenCalledWith({ uploadId: "upl_mobile_1", attempt: 1 });
     expect(dependencies.issueGrant).not.toHaveBeenCalled();
     expect(coordinator.getViewState()).toMatchObject({ uploadId: "upl_mobile_1", state: "verifying" });
+    expect(coordinator.serialize().uploads[0].sourceKey).toBe("upl_mobile_1.jpg");
   });
 
   it("keeps an unavailable reconciliation actionable instead of issuing a duplicate attempt", async () => {
@@ -532,7 +608,7 @@ describe("Task-image mobile coordinator", () => {
   it("pauses recoverable deletion work, resumes it, and cleans app-owned sources safely", async () => {
     const dependencies = createDependencies();
     const sourceStore = {
-      persist: vi.fn(async () => ({ sourceKey: "source_upl_mobile_1", uri: "file:///private/durable.jpg" })),
+      persist: vi.fn(async () => ({ sourceKey: "upl_mobile_1.jpg", uri: "file:///private/durable.jpg" })),
       resolve: vi.fn(async () => "file:///private/durable.jpg"),
       remove: vi.fn(async () => undefined),
     };
@@ -546,10 +622,10 @@ describe("Task-image mobile coordinator", () => {
 
     await coordinator.resumeTaskUploads("task_1");
     await coordinator.beginUploadAfterSave();
-    expect(sourceStore.remove).toHaveBeenCalledWith("source_upl_mobile_1");
+    expect(sourceStore.remove).toHaveBeenCalledWith("upl_mobile_1.jpg");
 
     await coordinator.remove("upl_mobile_1");
-    expect(sourceStore.remove).toHaveBeenCalledWith("source_upl_mobile_1");
+    expect(sourceStore.remove).toHaveBeenCalledWith("upl_mobile_1.jpg");
   });
 
   it("does not let an in-flight upload complete into a recoverably paused record", async () => {

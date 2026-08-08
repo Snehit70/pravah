@@ -33,7 +33,7 @@ export async function checkProviderAssetPresence({
 }): Promise<ProviderAssetPresence> {
   const endpoint =
     `https://api.cloudinary.com/v1_1/${encodeURIComponent(provider.cloudName)}` +
-    `/resources/authenticated/image?public_ids[]=${encodeURIComponent(publicId)}`;
+    `/resources/image/authenticated?public_ids[]=${encodeURIComponent(publicId)}`;
   try {
     const response = await fetch(endpoint, {
       headers: {

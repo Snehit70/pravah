@@ -197,6 +197,7 @@ export const prepareUploadGrant = internalMutation({
         publicId: upload.providerPublicId,
         issuedAt: upload.grantIssuedAt,
         encodingClass: upload.encodingClass,
+        providerAttempt: upload.providerAttempt,
       };
     }
 
@@ -215,6 +216,7 @@ export const prepareUploadGrant = internalMutation({
       publicId: args.candidatePublicId,
       issuedAt: args.issuedAt,
       encodingClass: upload.encodingClass,
+      providerAttempt: upload.providerAttempt + 1,
     };
   },
 });
@@ -270,6 +272,7 @@ export const resetUploadAttempt = internalMutation({
       master: undefined,
       variants: undefined,
       verifiedAt: undefined,
+      safeFailureCode: undefined,
       updatedAt: now,
     });
     await ctx.db.patch(upload.taskImageId, {
