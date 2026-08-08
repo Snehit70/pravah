@@ -125,6 +125,66 @@ describe("useTaskMutations", () => {
     expect(taskCompletedFeedbackMock).toHaveBeenCalledTimes(1);
   });
 
+  it("deletes an individual task through the recoverable mutation and keeps uploads recoverable", async () => {
+    const completeTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const moveTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const unscheduleTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const reopenTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const updateTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const reorderTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const reorderInboxTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const shiftScheduledTaskPositionMutation = vi.fn().mockResolvedValue(undefined);
+    const softDeleteTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const rescheduleTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const bulkSoftDeleteInboxTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const restoreInboxTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const mutationOrder = [
+      completeTaskMutation,
+      moveTaskMutation,
+      unscheduleTaskMutation,
+      reopenTaskMutation,
+      updateTaskMutation,
+      reorderTasksMutation,
+      reorderInboxTasksMutation,
+      shiftScheduledTaskPositionMutation,
+      softDeleteTaskMutation,
+      rescheduleTasksMutation,
+      bulkSoftDeleteInboxTasksMutation,
+      restoreInboxTasksMutation,
+    ];
+    let mutationIndex = 0;
+    useMutationMock.mockImplementation(() => mutationOrder[mutationIndex++]);
+
+    const onTaskDeletionStarted = vi.fn();
+    const onTaskRestored = vi.fn();
+    const onTaskDeleted = vi.fn();
+    const { result } = renderHook(() =>
+      useTaskMutations({
+        serverTasks: [makeTask()],
+        setOptimisticTasks: vi.fn(),
+        setPendingMutations: vi.fn(),
+        enqueueRetry: vi.fn(),
+        showToast: vi.fn(),
+        today: "2026-04-24",
+        hasPriorityBoundaryViolation: () => false,
+        onTaskDeletionStarted,
+        onTaskRestored,
+        onTaskDeleted,
+      })
+    );
+
+    act(() => {
+      result.current.deleteTask(makeId("task-1"));
+    });
+
+    await waitFor(() => {
+      expect(softDeleteTaskMutation).toHaveBeenCalledWith({ taskId: makeId("task-1") });
+    });
+    expect(onTaskDeletionStarted).toHaveBeenCalledWith("task-1");
+    expect(onTaskDeleted).not.toHaveBeenCalled();
+    expect(onTaskRestored).not.toHaveBeenCalled();
+  });
+
   it("surfaces an Undo toast that reopens a completed task", async () => {
     const completeTaskMutation = vi.fn().mockResolvedValue(undefined);
     const moveTaskMutation = vi.fn().mockResolvedValue(undefined);

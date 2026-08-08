@@ -786,7 +786,6 @@ function MobileApp() {
     hasPriorityBoundaryViolation,
     onTaskDeletionStarted: (taskId) => taskImageCoordinator.pauseTaskUploads(taskId),
     onTaskRestored: (taskId) => taskImageCoordinator.resumeTaskUploads(taskId),
-    onTaskDeleted: (taskId) => taskImageCoordinator.discardTaskUploads(taskId),
   });
 
   const softDeleteTaskWithImagePause = useCallback(
@@ -810,10 +809,9 @@ function MobileApp() {
   );
   const deleteTaskWithImagePause = useCallback(
     (taskId: Id<"tasks">) => {
-      taskImageCoordinator.pauseTaskUploads(String(taskId));
       deleteTask(taskId);
     },
-    [deleteTask, taskImageCoordinator]
+    [deleteTask]
   );
 
   const bulkCreateTasksMutation = useMutation(api.tasks.bulkCreateTasks);

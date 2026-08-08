@@ -27,7 +27,6 @@ type UseTaskMutationsOptions = {
   hasPriorityBoundaryViolation: (original: MobileTask[], reordered: MobileTask[]) => boolean;
   onTaskDeletionStarted?: (taskId: string) => void;
   onTaskRestored?: (taskId: string) => Promise<void> | void;
-  onTaskDeleted?: (taskId: string) => Promise<void> | void;
 };
 
 type SuccessFeedback = "notification" | "light" | "medium" | "taskCompleted";
@@ -55,7 +54,6 @@ export function useTaskMutations({
   hasPriorityBoundaryViolation,
   onTaskDeletionStarted,
   onTaskRestored,
-  onTaskDeleted,
 }: UseTaskMutationsOptions) {
   const busyTaskIdsRef = useRef<Set<string>>(new Set());
 
@@ -87,7 +85,7 @@ export function useTaskMutations({
   const shiftScheduledTaskPositionMutation = useMutation(api.tasks.shiftScheduledTaskPosition);
   // Order-sensitive: useTaskMutations.test.ts mocks useMutation by call index.
   // Keep new mutations appended at the end of this list.
-  const deleteTaskMutation = useMutation(api.tasks.deleteTask);
+  const softDeleteTaskMutation = useMutation(api.tasks.softDeleteTask);
   const rescheduleTasksMutation = useMutation(api.tasks.rescheduleTasks);
   const bulkSoftDeleteInboxTasksMutation = useMutation(api.tasks.bulkSoftDeleteInboxTasks);
   const restoreInboxTasksMutation = useMutation(api.tasks.restoreInboxTasks);
@@ -290,20 +288,20 @@ export function useTaskMutations({
         actionName: "delete_task",
         optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
         mutation: async () => {
+          onTaskDeletionStarted?.(String(taskId));
           try {
-            await deleteTaskMutation({ taskId });
+            await softDeleteTaskMutation({ taskId });
           } catch (error) {
             await Promise.resolve(onTaskRestored?.(String(taskId))).catch(() => undefined);
             throw error;
           }
-          await Promise.resolve(onTaskDeleted?.(String(taskId))).catch(() => undefined);
         },
         errorMessage: "Could not delete task.",
         successFeedback: "medium",
         taskId,
       });
     },
-    [runOptimisticMutation, deleteTaskMutation, onTaskDeleted, onTaskRestored]
+    [runOptimisticMutation, softDeleteTaskMutation, onTaskDeletionStarted, onTaskRestored]
   );
 
   const handleSaveEdits = useCallback(
