@@ -805,7 +805,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                         kind,
                       });
                       if (!result) return;
-                      const { stale: _stale, ...imageCollection } = result;
+                      const { stale: _, ...imageCollection } = result;
                       setCurrentTask((previous) => previous
                         ? { ...previous, imageCollection }
                         : previous);
