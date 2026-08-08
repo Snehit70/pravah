@@ -92,7 +92,19 @@ type EditTaskSheetProps = {
     caption: string;
     expectedRevision: number;
   }) => TaskImageCollectionMutationResult | Promise<TaskImageCollectionMutationResult> | void;
-  onRemoveTaskImage?: (args: { taskImageId: string; expectedRevision: number }) =>
+  onRemoveTaskImage?: (args: {
+    taskId: Id<"tasks">;
+    taskImageId: string;
+    orderedTaskImageIds: string[];
+    expectedRevision: number;
+  }) =>
+    TaskImageCollectionMutationResult | Promise<TaskImageCollectionMutationResult> | void;
+  onRestoreTaskImage?: (args: {
+    taskId: Id<"tasks">;
+    taskImageId: string;
+    replaceTaskImageId?: string;
+    expectedRevision: number;
+  }) =>
     TaskImageCollectionMutationResult | Promise<TaskImageCollectionMutationResult> | void;
   onSelectTaskImage?: (args: {
     taskId: Id<"tasks">;
@@ -214,6 +226,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       onReorderTaskImages,
       onCaptionTaskImage,
       onRemoveTaskImage,
+      onRestoreTaskImage,
       onSelectTaskImage,
       onSaveComplete,
     },
@@ -792,11 +805,12 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             )}
           </View>
 
-          {currentTask && (!completed || currentTask.imageCollection?.active.length) ? (
+          {currentTask && (!completed || currentTask.imageCollection?.active.length || currentTask.imageCollection?.recoverable?.length) ? (
             <View style={styles.imagesSection}>
               <Text style={styles.sectionLabel}>Task images</Text>
               <TaskImageFilmstrip
                 images={currentTask.imageCollection?.active ?? []}
+                recoverable={currentTask.imageCollection?.recoverable ?? []}
                 resolveDelivery={resolveTaskImage}
                 onSelectSource={onSelectTaskImage
                   ? async (kind) => {
@@ -858,7 +872,11 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                       void (async () => {
                         try {
                           const result = await onRemoveTaskImage({
+                            taskId: currentTask._id,
                             taskImageId,
+                            orderedTaskImageIds: [...(currentTask.imageCollection?.active ?? [])]
+                              .sort((left, right) => left.position - right.position)
+                              .map((image) => image.taskImageId),
                             expectedRevision: currentTask.imageCollection?.revision ?? 0,
                           });
                           if (!result) return;
@@ -866,6 +884,25 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                           setCurrentTask((previous) => previous ? { ...previous, imageCollection } : previous);
                         } catch {
                           setError("Couldn’t remove Task image. Try again.");
+                        }
+                      })();
+                    }
+                  : undefined}
+                onRestore={onRestoreTaskImage
+                  ? (taskImageId, replaceTaskImageId) => {
+                      void (async () => {
+                        try {
+                          const result = await onRestoreTaskImage({
+                            taskId: currentTask._id,
+                            taskImageId,
+                            replaceTaskImageId,
+                            expectedRevision: currentTask.imageCollection?.revision ?? 0,
+                          });
+                          if (!result) return;
+                          const { stale: _, ...imageCollection } = result;
+                          setCurrentTask((previous) => previous ? { ...previous, imageCollection } : previous);
+                        } catch {
+                          setError("Couldn’t restore Task image. Try again.");
                         }
                       })();
                     }

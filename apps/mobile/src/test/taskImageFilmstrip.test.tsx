@@ -1,7 +1,7 @@
 /** @vitest-environment happy-dom */
 
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("react-native", () => {
@@ -169,5 +169,61 @@ describe("TaskImageFilmstrip", () => {
     expect(onReorder).toHaveBeenCalledWith("image-1", "down");
     expect(onRemove).toHaveBeenCalledWith("image-1");
     expect(onSelectSource).toHaveBeenCalledWith("photos");
+  });
+
+  it("exposes recently removed images for restoration", () => {
+    const onRestore = vi.fn();
+    render(
+      <TaskImageFilmstrip
+        images={[]}
+        recoverable={[{ taskImageId: "removed-1", caption: "Reference" }]}
+        onRestore={onRestore}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Restore removed Task image" }));
+    expect(onRestore).toHaveBeenCalledWith("removed-1");
+  });
+
+  it("offers replacement targets when the active collection is full", () => {
+    const onRestore = vi.fn();
+    const active = Array.from({ length: 5 }, (_, index) => ({
+      taskImageId: `active-${index}`,
+      position: index,
+      state: "pending" as const,
+    }));
+    render(
+      <TaskImageFilmstrip
+        images={active}
+        recoverable={[{ taskImageId: "removed-1" }]}
+        onRestore={onRestore}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Restore removed Task image by replacing image 3" }));
+    expect(onRestore).toHaveBeenCalledWith("removed-1", "active-2");
+  });
+
+  it("removes expired recovery actions without waiting for a database write", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1_000);
+      render(
+        <TaskImageFilmstrip
+          images={[]}
+          recoverable={[{ taskImageId: "removed-1", recoverableUntil: 2_000 }]}
+          onRestore={vi.fn()}
+        />
+      );
+      expect(screen.getByRole("button", { name: "Restore removed Task image" })).toBeTruthy();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+
+      expect(screen.queryByRole("button", { name: "Restore removed Task image" })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

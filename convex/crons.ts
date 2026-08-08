@@ -3,8 +3,10 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
-// Purge soft-deleted tasks past their 30-minute undo window. Temporarily run
-// every 72 hours to reduce database I/O while we revisit the cleanup strategy.
+// Purge soft-deleted tasks past their 30-minute undo window. The purge and
+// tombstone retry paths schedule reconciliation only when cleanup work exists;
+// keep this maintenance sweep at the existing 72-hour cadence to avoid hourly
+// Convex reads for an otherwise idle workspace.
 crons.interval(
   "purge expired cancelled tasks",
   { hours: 72 },

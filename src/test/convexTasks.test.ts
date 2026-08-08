@@ -11,7 +11,9 @@ import {
   migrateNativeTasksToDeadlineModel,
   moveTask,
   reopenTask,
+  restoreTask,
   restoreInboxTasks,
+  softDeleteTask,
   updateTask,
 } from "../../convex/tasks";
 
@@ -103,6 +105,14 @@ const restoreInboxTasksHandler = (
   >
 )._handler;
 
+const softDeleteTaskHandler = (
+  softDeleteTask as unknown as InternalHandler<{ taskId: Id<"tasks"> }, void>
+)._handler;
+
+const restoreTaskHandler = (
+  restoreTask as unknown as InternalHandler<{ taskId: Id<"tasks"> }, void>
+)._handler;
+
 const migrateNativeTasksHandler = (
   migrateNativeTasksToDeadlineModel as unknown as InternalHandler<
     Record<string, never>,
@@ -127,6 +137,119 @@ function createAuthedCtx(db: unknown) {
 }
 
 describe("convex/tasks handlers", () => {
+  it("keeps a completed Task completed while it is recoverably deleted and restored", async () => {
+    const taskId = makeId("completed-task");
+    const task = {
+      _id: taskId,
+      ownerTokenIdentifier: "user-1",
+      completedAt: 1_000,
+      deadline: "2026-08-08",
+      position: 2,
+      createdAt: 1,
+      updatedAt: 1_000,
+    };
+    const db = {
+      get: vi.fn(async () => task),
+      patch: vi.fn(async (_id: Id<"tasks">, patch: Record<string, unknown>) => Object.assign(task, patch)),
+      query: vi.fn().mockReturnValue({
+        withIndex: vi.fn().mockReturnValue({ collect: vi.fn().mockResolvedValue([]) }),
+      }),
+    };
+    const ctx = createAuthedCtx(db);
+
+    vi.spyOn(Date, "now").mockReturnValue(10_000);
+    await softDeleteTaskHandler(ctx, { taskId });
+    expect(task).toMatchObject({ cancelledAt: 10_000, completedAt: 1_000 });
+
+    vi.spyOn(Date, "now").mockReturnValue(20_000);
+    await restoreTaskHandler(ctx, { taskId });
+    expect(task).toMatchObject({ cancelledAt: undefined, completedAt: 1_000, position: 2 });
+    vi.restoreAllMocks();
+  });
+
+  it("does not restore a Task after the recoverable window expires", async () => {
+    const taskId = makeId("expired-task");
+    const task = {
+      _id: taskId,
+      ownerTokenIdentifier: "user-1",
+      cancelledAt: 1_000,
+      deadline: "2026-08-08",
+      position: 0,
+      createdAt: 1,
+      updatedAt: 1_000,
+    };
+    const db = {
+      get: vi.fn(async () => task),
+      patch: vi.fn(),
+      query: vi.fn().mockReturnValue({
+        withIndex: vi.fn().mockReturnValue({ collect: vi.fn().mockResolvedValue([]) }),
+      }),
+    };
+    vi.spyOn(Date, "now").mockReturnValue(1_000 + 30 * 60 * 1000);
+    await expect(restoreTaskHandler(createAuthedCtx(db), { taskId })).rejects.toThrow(
+      "Task recovery window expired"
+    );
+    expect(db.patch).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+
+  it("shifts an active task occupying a restored task's saved position", async () => {
+    const taskId = makeId("restored-task");
+    const activeTaskId = makeId("active-task");
+    const restoredTask = {
+      _id: taskId,
+      ownerTokenIdentifier: "user-1",
+      cancelledAt: 1_000,
+      deadline: "2026-08-08",
+      priority: "p1" as const,
+      position: 1,
+      createdAt: 1,
+      updatedAt: 1_000,
+    };
+    const activeTask = {
+      _id: activeTaskId,
+      ownerTokenIdentifier: "user-1",
+      deadline: "2026-08-08",
+      priority: "p1" as const,
+      position: 1,
+      createdAt: 2,
+      updatedAt: 2,
+    };
+    const tasksById = new Map([
+      [taskId, restoredTask],
+      [activeTaskId, activeTask],
+    ]);
+    const db = {
+      get: vi.fn(async (id: Id<"tasks">) => tasksById.get(id)),
+      query: vi.fn().mockReturnValue({
+        withIndex: vi.fn().mockReturnValue({
+          collect: vi.fn().mockResolvedValue([restoredTask, activeTask]),
+        }),
+      }),
+      patch: vi.fn(async (id: Id<"tasks">, patch: Record<string, unknown>) => {
+        const task = tasksById.get(id);
+        if (!task) throw new Error(`Unknown task ${id}`);
+        Object.assign(task, patch);
+      }),
+    };
+
+    vi.spyOn(Date, "now").mockReturnValue(20_000);
+    try {
+      await restoreTaskHandler(createAuthedCtx(db), { taskId });
+
+      expect(db.patch).toHaveBeenNthCalledWith(1, activeTaskId, {
+        position: 2,
+        updatedAt: 20_000,
+      });
+      expect(db.patch).toHaveBeenNthCalledWith(2, taskId, {
+        cancelledAt: undefined,
+        updatedAt: 20_000,
+      });
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
   it("rejects an Inbox deletion batch without changing anything when one task is not in Inbox", async () => {
     const inboxTask = makeId("inbox-task");
     const scheduledTask = makeId("scheduled-task");
@@ -167,7 +290,8 @@ describe("convex/tasks handlers", () => {
     expect(db.patch).not.toHaveBeenCalled();
   });
 
-  it("restores a deletion batch at the end of each priority section in its original order", async () => {
+  it("restores a deletion batch in its original priority-section positions", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(120);
     const firstP1 = makeId("first-p1");
     const secondP1 = makeId("second-p1");
     const onlyP2 = makeId("only-p2");
@@ -205,7 +329,7 @@ describe("convex/tasks handlers", () => {
         _id: activeP1,
         ownerTokenIdentifier: "user-1",
         priority: "p1" as const,
-        position: 7,
+        position: 1,
         createdAt: 1,
         updatedAt: 1,
       },
@@ -233,21 +357,27 @@ describe("convex/tasks handlers", () => {
       taskIds: [firstP1, secondP1, onlyP2],
     });
 
-    expect(db.patch).toHaveBeenNthCalledWith(1, firstP1, {
-      cancelledAt: undefined,
-      position: 8,
+    expect(db.patch).toHaveBeenNthCalledWith(1, activeP1, {
+      position: 2,
       updatedAt: expect.any(Number),
     });
-    expect(db.patch).toHaveBeenNthCalledWith(2, secondP1, {
-      cancelledAt: undefined,
-      position: 9,
-      updatedAt: expect.any(Number),
-    });
-    expect(db.patch).toHaveBeenNthCalledWith(3, onlyP2, {
-      cancelledAt: undefined,
+    expect(db.patch).toHaveBeenNthCalledWith(2, activeP2, {
       position: 4,
       updatedAt: expect.any(Number),
     });
+    expect(db.patch).toHaveBeenNthCalledWith(3, firstP1, {
+      cancelledAt: undefined,
+      updatedAt: expect.any(Number),
+    });
+    expect(db.patch).toHaveBeenNthCalledWith(4, secondP1, {
+      cancelledAt: undefined,
+      updatedAt: expect.any(Number),
+    });
+    expect(db.patch).toHaveBeenNthCalledWith(5, onlyP2, {
+      cancelledAt: undefined,
+      updatedAt: expect.any(Number),
+    });
+    vi.restoreAllMocks();
   });
 
   it("migrates native tasks onto deadline/scheduledAt/completedAt and strips legacy fields", async () => {

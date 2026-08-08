@@ -1,4 +1,5 @@
-import { action } from "./_generated/server";
+import { action, internalAction } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { makeFunctionReference } from "convex/server";
 import { requireTokenIdentifier } from "./authHelpers";
@@ -6,10 +7,37 @@ import {
   buildDeliveryUrl,
   buildUploadGrant,
   checkProviderAssetPresence,
+  deleteProviderAsset,
   verifyProviderUploadMaster,
   type ProviderUploadResult,
   type TaskImageProviderConfig,
 } from "./taskImageProvider";
+
+const listDueCleanupTombstonesRef = makeFunctionReference<
+  "query",
+  { now: number; limit: number },
+  Array<{
+    _id: string;
+    providerPublicId?: string;
+  }>
+>("taskImageCleanup:listDueCleanupTombstones");
+
+const promoteDueCleanupRetriesRef = makeFunctionReference<
+  "mutation",
+  { now: number },
+  { promoted: number }
+>("taskImageCleanup:promoteDueCleanupRetries");
+
+const recordCleanupResultRef = makeFunctionReference<
+  "mutation",
+  {
+    tombstoneId: string;
+    outcome: "deleted" | "absent" | "retry";
+    failureCode?: string;
+    now: number;
+  },
+  { accepted: boolean; terminal?: boolean; nextAttemptAt?: number }
+>("taskImageCleanup:recordCleanupResult");
 
 declare const process: { env: Record<string, string | undefined> };
 
@@ -170,8 +198,8 @@ export const reconcileUploadAttempt = action({
     });
     if (!context) return { status: "absent" as const };
     if (context.state === "ready") return { status: "ready" as const };
-    if (context.providerAttempt !== args.attempt) return { status: "unknown" as const };
-    if (!context.providerPublicId) return { status: "absent" as const };
+    const providerAttempt = context.providerAttempt;
+    if (!context.providerPublicId) return { status: "absent" as const, attempt: providerAttempt };
 
     const presence = await checkProviderAssetPresence({
       provider,
@@ -181,14 +209,15 @@ export const reconcileUploadAttempt = action({
     if (presence === "present") {
       return {
         status: context.state === "verifying" ? ("verifying" as const) : ("uploading" as const),
+        attempt: providerAttempt,
       };
     }
     await ctx.runMutation(resetUploadAttemptRef, {
       ownerTokenIdentifier,
       uploadId: args.uploadId,
-      providerAttempt: args.attempt,
+      providerAttempt,
     });
-    return { status: "absent" as const };
+    return { status: "absent" as const, attempt: providerAttempt };
   },
 });
 
@@ -259,5 +288,61 @@ export const resolveTaskImage = action({
         variant: args.variant,
       }),
     };
+  },
+});
+
+export const reconcileCleanup = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    await ctx.runMutation(promoteDueCleanupRetriesRef, { now });
+    const tombstones = await ctx.runQuery(listDueCleanupTombstonesRef, { now, limit: 50 });
+    let terminal = 0;
+    let retried = 0;
+    let providerUnavailable = false;
+    let nextAttemptAt: number | undefined;
+    let provider: TaskImageProviderConfig | undefined;
+    try {
+      provider = readProviderConfig();
+    } catch {
+      provider = undefined;
+    }
+    for (const tombstone of tombstones) {
+      if (!provider && tombstone.providerPublicId) {
+        providerUnavailable = true;
+        nextAttemptAt = Math.min(nextAttemptAt ?? Infinity, now + 30 * 60 * 1000);
+        continue;
+      }
+      try {
+        const outcome = !tombstone.providerPublicId
+          ? "absent" as const
+          : await deleteProviderAsset({ provider: provider!, publicId: tombstone.providerPublicId });
+        const result = await ctx.runMutation(recordCleanupResultRef, {
+          tombstoneId: tombstone._id,
+          outcome,
+          failureCode: outcome === "retry" ? "provider_ambiguous" : undefined,
+          now,
+        });
+        if (outcome === "retry") retried += 1;
+        else terminal += 1;
+        if (result.nextAttemptAt !== undefined) {
+          nextAttemptAt = Math.min(nextAttemptAt ?? Infinity, result.nextAttemptAt);
+        }
+      } catch {
+        retried += 1;
+        nextAttemptAt = Math.min(nextAttemptAt ?? Infinity, now + 5 * 60 * 1000);
+      }
+    }
+    if (!providerUnavailable && tombstones.length === 50) {
+      await ctx.scheduler.runAfter(0, internal.taskImageActions.reconcileCleanup, {});
+    }
+    if (nextAttemptAt !== undefined) {
+      await ctx.scheduler.runAfter(
+        Math.max(0, nextAttemptAt - now),
+        internal.taskImageActions.reconcileCleanup,
+        {}
+      );
+    }
+    return { inspected: tombstones.length, terminal, retried, providerUnavailable };
   },
 });

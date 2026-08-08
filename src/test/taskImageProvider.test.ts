@@ -36,6 +36,16 @@ describe("Task-image Cloudinary policy", () => {
     vi.unstubAllGlobals();
   });
 
+  it("keeps an Admin API 404 indeterminate instead of resetting an upload", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("not found", { status: 404 })));
+
+    await expect(checkProviderAssetPresence({ provider, publicId: "pravah/opaque" })).resolves.toBe(
+      "unknown"
+    );
+
+    vi.unstubAllGlobals();
+  });
+
   it("builds one exact SHA-256 authenticated upload grant without leaking authority", async () => {
     const grant = await buildUploadGrant({
       provider,

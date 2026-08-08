@@ -28,6 +28,7 @@ import type * as overdueReflow from "../overdueReflow.js";
 import type * as sync from "../sync.js";
 import type * as syncActions from "../syncActions.js";
 import type * as taskImageActions from "../taskImageActions.js";
+import type * as taskImageCleanup from "../taskImageCleanup.js";
 import type * as taskImageProvider from "../taskImageProvider.js";
 import type * as taskImages from "../taskImages.js";
 import type * as taskLifecycle from "../taskLifecycle.js";
@@ -61,6 +62,7 @@ declare const fullApi: ApiFromModules<{
   sync: typeof sync;
   syncActions: typeof syncActions;
   taskImageActions: typeof taskImageActions;
+  taskImageCleanup: typeof taskImageCleanup;
   taskImageProvider: typeof taskImageProvider;
   taskImages: typeof taskImages;
   taskLifecycle: typeof taskLifecycle;

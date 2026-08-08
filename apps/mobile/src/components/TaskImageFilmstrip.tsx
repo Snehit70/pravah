@@ -14,6 +14,12 @@ export type TaskImageFilmstripEntry = {
   failure?: { code: string; retryable: boolean };
 };
 
+export type RecoverableTaskImageEntry = {
+  taskImageId: string;
+  caption?: string;
+  recoverableUntil?: number;
+};
+
 type DeliveryResult =
   | { kind: "ready"; url: string }
   | { kind: "not_found" }
@@ -21,11 +27,13 @@ type DeliveryResult =
 
 type TaskImageFilmstripProps = {
   images: TaskImageFilmstripEntry[];
+  recoverable?: RecoverableTaskImageEntry[];
   onSelectSource?: (kind: TaskImageSourceKind) => void | Promise<void>;
   onRetry?: (taskImageId: string) => void;
   onCaptionChange?: (taskImageId: string, caption: string) => void;
   onReorder?: (taskImageId: string, direction: "up" | "down") => void;
   onRemove?: (taskImageId: string) => void;
+  onRestore?: (taskImageId: string, replaceTaskImageId?: string) => void;
   resolveDelivery?: (
     taskImageId: string,
     variant: "card" | "detail"
@@ -137,14 +145,34 @@ function SourceButton({
 
 export function TaskImageFilmstrip({
   images,
+  recoverable = [],
   onSelectSource,
   onRetry,
   onCaptionChange,
   onReorder,
   onRemove,
+  onRestore,
   resolveDelivery,
 }: TaskImageFilmstripProps) {
+  const [now, setNow] = useState(() => Date.now());
   const ordered = [...images].sort((left, right) => left.position - right.position);
+  const visibleRecoverable = recoverable.filter(
+    (image) => image.recoverableUntil === undefined || image.recoverableUntil > now
+  );
+
+  useEffect(() => {
+    const nextExpiry = recoverable
+      .map((image) => image.recoverableUntil)
+      .filter((expiry): expiry is number => expiry !== undefined && expiry > now)
+      .sort((left, right) => left - right)[0];
+    if (nextExpiry === undefined) return;
+    const timer = setTimeout(
+      () => setNow((current) => Math.max(current, nextExpiry)),
+      Math.max(0, nextExpiry - now)
+    );
+    return () => clearTimeout(timer);
+  }, [now, recoverable]);
+
   return (
     <View style={styles.container} accessibilityLabel="Task image Filmstrip">
       {ordered.map((image, index) => (
@@ -239,6 +267,42 @@ export function TaskImageFilmstrip({
             shortLabel="Paste"
             onPress={() => onSelectSource("paste")}
           />
+        </View>
+      ) : null}
+      {onRestore && visibleRecoverable.length > 0 ? (
+        <View style={styles.recoverableSection}>
+          <Text style={styles.recoverableHeading}>Recently removed</Text>
+          {visibleRecoverable.map((image) => (
+            <View key={image.taskImageId} style={styles.recoverableRow}>
+              <Text style={styles.recoverableText}>
+                {image.caption || "Task image"}
+              </Text>
+              <View style={styles.recoverableActions}>
+                {ordered.length < 5 ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Restore removed Task image"
+                    onPress={() => onRestore(image.taskImageId)}
+                    style={styles.actionButton}
+                  >
+                    <Text style={styles.retryText}>Restore</Text>
+                  </Pressable>
+                ) : (
+                  ordered.map((replacement, index) => (
+                    <Pressable
+                      key={replacement.taskImageId}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Restore removed Task image by replacing image ${index + 1}`}
+                      onPress={() => onRestore(image.taskImageId, replacement.taskImageId)}
+                      style={styles.actionButton}
+                    >
+                      <Text style={styles.retryText}>Replace {index + 1}</Text>
+                    </Pressable>
+                  ))
+                )}
+              </View>
+            </View>
+          ))}
         </View>
       ) : null}
     </View>
@@ -337,6 +401,32 @@ const styles = createThemedStyles({
   retryText: {
     ...typography.micro,
     color: colors.accent,
+  },
+  recoverableSection: {
+    gap: spacing.xs,
+    padding: spacing.sm,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  recoverableHeading: {
+    ...typography.micro,
+    color: colors.textSecondary,
+  },
+  recoverableRow: {
+    minHeight: 40,
+    gap: spacing.sm,
+  },
+  recoverableActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+  },
+  recoverableText: {
+    flex: 1,
+    ...typography.bodyMd,
+    color: colors.textPrimary,
   },
   pressed: { opacity: 0.7 },
 });

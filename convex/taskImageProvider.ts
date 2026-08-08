@@ -10,6 +10,7 @@ const MAX_DETAIL_BYTES = 2 * 1024 * 1024;
 const MAX_MASTER_EDGE = 2560;
 const MAX_ASPECT_RATIO = 20;
 const CALLBACK_MAX_AGE_SECONDS = 2 * 60 * 60;
+const PROVIDER_REQUEST_TIMEOUT_MS = 10_000;
 
 export type TaskImageProviderConfig = {
   cloudName: string;
@@ -19,6 +20,8 @@ export type TaskImageProviderConfig = {
 };
 
 export type ProviderAssetPresence = "present" | "absent" | "unknown";
+
+export type ProviderCleanupResult = "deleted" | "absent" | "retry";
 
 /**
  * Checks only the expected authenticated asset identity. The response is
@@ -39,13 +42,65 @@ export async function checkProviderAssetPresence({
       headers: {
         Authorization: `Basic ${btoa(`${provider.apiKey}:${provider.apiSecret}`)}`,
       },
+      signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
     });
-    if (response.status === 404) return "absent";
     if (!response.ok) return "unknown";
     const payload = (await response.json()) as { resources?: unknown };
     return Array.isArray(payload.resources) && payload.resources.length > 0 ? "present" : "absent";
   } catch {
     return "unknown";
+  }
+}
+
+async function resolveAmbiguousCleanup(provider: TaskImageProviderConfig, publicId: string) {
+  const presence = await checkProviderAssetPresence({ provider, publicId });
+  return presence === "absent" ? ("absent" as const) : ("retry" as const);
+}
+
+export async function deleteProviderAsset({
+  provider,
+  publicId,
+}: {
+  provider: TaskImageProviderConfig;
+  publicId: string;
+}): Promise<ProviderCleanupResult> {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const parameters = {
+    invalidate: "true",
+    public_id: publicId,
+    timestamp: String(timestamp),
+    type: "authenticated",
+  };
+  const signature = await sha256Hex(
+    `${serializeSignedParameters(parameters)}${provider.apiSecret}`
+  );
+  const body = new URLSearchParams({
+    ...parameters,
+    signature_algorithm: "sha256",
+    api_key: provider.apiKey,
+    signature,
+  });
+  try {
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${encodeURIComponent(provider.cloudName)}/image/destroy`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+        signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
+      }
+    );
+    if (response.status === 404) return await resolveAmbiguousCleanup(provider, publicId);
+    if (response.status === 408 || response.status === 429 || response.status >= 500) {
+      return "retry";
+    }
+    if (!response.ok) return await resolveAmbiguousCleanup(provider, publicId);
+    const payload = (await response.json()) as { result?: unknown };
+    if (payload.result === "ok") return "deleted";
+    if (payload.result === "not found") return "absent";
+    return await resolveAmbiguousCleanup(provider, publicId);
+  } catch {
+    return await resolveAmbiguousCleanup(provider, publicId);
   }
 }
 

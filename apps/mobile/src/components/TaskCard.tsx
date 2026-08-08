@@ -50,6 +50,13 @@ export type MobileTask = {
     revision: number;
     active: TaskImageFilmstripEntry[];
     primary?: TaskImageFilmstripEntry;
+    recoverable?: Array<{
+      taskImageId: string;
+      caption?: string;
+      removedAt?: number;
+      recoverableUntil?: number;
+      previousPosition?: number;
+    }>;
   };
 };
 

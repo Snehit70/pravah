@@ -616,6 +616,30 @@ async function getOwnedActiveTaskImage(
   return { image, task };
 }
 
+async function getOwnedRecoverableTaskImage(
+  ctx: MutationCtx,
+  ownerTokenIdentifier: string,
+  taskImageId: Id<"taskImages">
+) {
+  const image = await ctx.db.get(taskImageId);
+  if (
+    !image ||
+    image.ownerTokenIdentifier !== ownerTokenIdentifier ||
+    image.removedAt === undefined
+  ) {
+    throw new Error("Task image not found");
+  }
+  const task = await ctx.db.get(image.taskId);
+  if (!task || task.ownerTokenIdentifier !== ownerTokenIdentifier) throw new Error("Task not found");
+  if (task.cancelledAt !== undefined || task.status === "cancelled") {
+    throw new Error("Task is cancelled");
+  }
+  if (image.recoverableUntil === undefined || image.recoverableUntil <= Date.now()) {
+    throw new Error("Task image recovery window expired");
+  }
+  return { image, task };
+}
+
 async function staleCollection(
   ctx: MutationCtx,
   ownerTokenIdentifier: string,
@@ -753,6 +777,71 @@ export const removeTaskImage = mutation({
   },
 });
 
+export const restoreTaskImage = mutation({
+  args: {
+    taskImageId: v.id("taskImages"),
+    replaceTaskImageId: v.optional(v.id("taskImages")),
+    expectedRevision: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const ownerTokenIdentifier = await requireTokenIdentifier(ctx);
+    const { image, task } = await getOwnedRecoverableTaskImage(
+      ctx,
+      ownerTokenIdentifier,
+      args.taskImageId
+    );
+    const stale = await staleCollection(ctx, ownerTokenIdentifier, task._id, args.expectedRevision);
+    if (stale) return stale;
+    const active = (await listTaskImages(ctx, ownerTokenIdentifier, task._id)).filter(
+      (candidate) => candidate.removedAt === undefined
+    );
+    const replacement = args.replaceTaskImageId
+      ? active.find((candidate) => candidate._id === args.replaceTaskImageId)
+      : undefined;
+    if (args.replaceTaskImageId && !replacement) throw new Error("Task image not found");
+    if (active.length >= MAX_ACTIVE_TASK_IMAGES && !replacement) {
+      throw new Error("Task image collection is full");
+    }
+
+    const now = Date.now();
+    const remaining = replacement ? active.filter((candidate) => candidate._id !== replacement._id) : active;
+    const position = replacement
+      ? replacement.position
+      : Math.min(image.previousPosition ?? remaining.length, remaining.length);
+    const ordered = [...remaining];
+    ordered.splice(position, 0, image);
+
+    if (replacement) {
+      await ctx.db.patch(replacement._id, {
+        removedAt: now,
+        recoverableUntil: now + IMAGE_RECOVERY_WINDOW_MS,
+        previousPosition: replacement.position,
+        updatedAt: now,
+      });
+    }
+    await ctx.db.patch(image._id, {
+      removedAt: undefined,
+      recoverableUntil: undefined,
+      previousPosition: undefined,
+      position,
+      updatedAt: now,
+    });
+    for (const [nextPosition, candidate] of ordered.entries()) {
+      if (candidate._id !== image._id && candidate.position !== nextPosition) {
+        await ctx.db.patch(candidate._id, { position: nextPosition, updatedAt: now });
+      }
+    }
+    await ctx.db.patch(task._id, {
+      imageCollectionRevision: (task.imageCollectionRevision ?? 0) + 1,
+      updatedAt: now,
+    });
+    return {
+      stale: false as const,
+      ...(await getTaskImageCollectionForOwner(ctx, ownerTokenIdentifier, task._id)),
+    };
+  },
+});
+
 export const getTaskImageCollection = query({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, { taskId }) => {
@@ -805,6 +894,9 @@ export const listWorkspaceImageCollections = query({
             revision: task.imageCollectionRevision ?? 0,
             active,
             primary: active[0],
+            recoverable: taskImages
+              .filter((image) => image.removedAt !== undefined && (image.recoverableUntil ?? 0) > Date.now())
+              .map(serializeRecoverableTaskImage),
           },
         };
       })

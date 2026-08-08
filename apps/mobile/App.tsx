@@ -355,6 +355,7 @@ function MobileApp() {
   const reorderTaskImagesMutation = useMutation(api.taskImages.reorderTaskImages);
   const updateTaskImageCaptionMutation = useMutation(api.taskImages.updateTaskImageCaption);
   const removeTaskImageMutation = useMutation(api.taskImages.removeTaskImage);
+  const restoreTaskImageMutation = useMutation(api.taskImages.restoreTaskImage);
   const updateTaskMutation = useMutation(api.tasks.updateTask);
   const completeTaskMutation = useMutation(api.tasks.completeTask);
   const moveTaskMutation = useMutation(api.tasks.moveTask);
@@ -385,9 +386,9 @@ function MobileApp() {
         reconcileAttempt: async ({ uploadId, attempt }) => {
           const result = await reconcileTaskImageAttempt({ uploadId, attempt });
           if (result.status === "ready") return { status: "ready" as const };
-          if (result.status === "absent") return { status: "absent" as const };
+          if (result.status === "absent") return { status: "absent" as const, attempt: result.attempt };
           if (result.status === "unknown") return { status: "unknown" as const };
-          return { status: result.status };
+          return { status: result.status, attempt: result.attempt };
         },
         upload: uploadPreparedTaskImage,
         abortUpload: ({ uploadId }) => abortPreparedTaskImageUpload(uploadId),
@@ -409,8 +410,9 @@ function MobileApp() {
       resolveTaskImageAction({ taskImageId: taskImageId as Id<"taskImages">, variant }),
     [resolveTaskImageAction]
   );
+  const sessionUserId = session?.user?.id;
   useEffect(() => {
-    if (!session) {
+    if (!sessionUserId) {
       taskImageCoordinator.setForeground(false);
       return;
     }
@@ -426,8 +428,21 @@ function MobileApp() {
     return () => {
       subscription.remove();
       taskImageCoordinator.suspendAllUploads();
+      taskImageCoordinator.dispose();
     };
-  }, [session, taskImageCoordinator]);
+  }, [sessionUserId, taskImageCoordinator]);
+  useEffect(() => {
+    for (const task of workspaceTaskCorpus) {
+      const activeImages = task.imageCollection?.active;
+      if (!activeImages?.length) continue;
+      taskImageCoordinator.associateTaskImageOrder(
+        String(task._id),
+        [...activeImages]
+          .sort((left, right) => left.position - right.position)
+          .map((image) => image.taskImageId)
+      );
+    }
+  }, [taskImageCoordinator, workspaceTaskCorpus]);
   const overduePreviewData = useQuery(
     api.overdueReflow.preview,
     session && activeTab === "timeline" ? { today } : "skip"
@@ -786,7 +801,6 @@ function MobileApp() {
     hasPriorityBoundaryViolation,
     onTaskDeletionStarted: (taskId) => taskImageCoordinator.pauseTaskUploads(taskId),
     onTaskRestored: (taskId) => taskImageCoordinator.resumeTaskUploads(taskId),
-    onTaskDeleted: (taskId) => taskImageCoordinator.discardTaskUploads(taskId),
   });
 
   const softDeleteTaskWithImagePause = useCallback(
@@ -810,10 +824,9 @@ function MobileApp() {
   );
   const deleteTaskWithImagePause = useCallback(
     (taskId: Id<"tasks">) => {
-      taskImageCoordinator.pauseTaskUploads(String(taskId));
       deleteTask(taskId);
     },
-    [deleteTask, taskImageCoordinator]
+    [deleteTask]
   );
 
   const bulkCreateTasksMutation = useMutation(api.tasks.bulkCreateTasks);
@@ -1474,6 +1487,14 @@ function MobileApp() {
             taskId,
             orderedTaskImageIds: orderedTaskImageIds as Id<"taskImages">[],
             expectedRevision,
+          }).then((result) => {
+            if (!result.stale) {
+              taskImageCoordinator.associateTaskImageOrder(
+                String(taskId),
+                result.active.map((image) => image.taskImageId)
+              );
+            }
+            return result;
           });
         }}
         onCaptionTaskImage={({ taskImageId, caption, expectedRevision }) => {
@@ -1483,10 +1504,45 @@ function MobileApp() {
             expectedRevision,
           });
         }}
-        onRemoveTaskImage={({ taskImageId, expectedRevision }) => {
+        onRemoveTaskImage={({ taskId, taskImageId, orderedTaskImageIds, expectedRevision }) => {
+          taskImageCoordinator.associateTaskImageOrder(String(taskId), orderedTaskImageIds);
+          taskImageCoordinator.pauseTaskImageUpload(String(taskId), taskImageId);
+          const resumeRemovedImage = () => {
+            void Promise.resolve(
+              taskImageCoordinator.resumeTaskImageUpload(String(taskId), taskImageId)
+            ).catch(() => undefined);
+          };
           return removeTaskImageMutation({
             taskImageId: taskImageId as Id<"taskImages">,
             expectedRevision,
+          }).then((result) => {
+            if (result.stale) resumeRemovedImage();
+            return result;
+          }).catch((error) => {
+            resumeRemovedImage();
+            throw error;
+          });
+        }}
+        onRestoreTaskImage={({ taskId, taskImageId, replaceTaskImageId, expectedRevision }) => {
+          return restoreTaskImageMutation({
+            taskImageId: taskImageId as Id<"taskImages">,
+            replaceTaskImageId: replaceTaskImageId as Id<"taskImages"> | undefined,
+            expectedRevision,
+          }).then((result) => {
+            if (result.stale) return result;
+            if (result.active) {
+              taskImageCoordinator.associateTaskImageOrder(
+                String(taskId),
+                result.active.map((image) => image.taskImageId)
+              );
+            }
+            if (replaceTaskImageId) {
+              taskImageCoordinator.pauseTaskImageUpload(String(taskId), replaceTaskImageId);
+            }
+            void Promise.resolve(
+              taskImageCoordinator.resumeTaskImageUpload(String(taskId), taskImageId)
+            ).catch(() => undefined);
+            return result;
           });
         }}
         onSelectTaskImage={({ taskId, expectedRevision, kind }) => {
@@ -1515,6 +1571,10 @@ function MobileApp() {
                 return result;
               }
               taskImageCoordinator.associateUploadsWithTask(String(taskId), [selected.uploadId]);
+              taskImageCoordinator.associateTaskImageOrder(
+                String(taskId),
+                result.active.map((image) => image.taskImageId)
+              );
               void taskImageCoordinator.beginUploadAfterSave();
               taskImageCoordinator.clearAfterSaveAndStay();
               return result;

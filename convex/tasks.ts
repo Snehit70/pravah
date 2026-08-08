@@ -1,10 +1,12 @@
 import { internalMutation, mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireTokenIdentifier } from "./authHelpers";
 import { runIdempotentMutation } from "./automationIdempotency";
 import { claimStagedImagesForTask, getClaimedTaskForUpload } from "./taskImages";
+import { ensureTaskImageCleanupTombstone } from "./taskImageCleanup";
 import {
   getPriorityRank,
   getTaskCancelledAt,
@@ -155,6 +157,57 @@ function dedupeTasks(tasks: Doc<"tasks">[]) {
     seen.add(key);
     return true;
   });
+}
+
+function getTaskPositionLane(
+  task: Pick<
+    Doc<"tasks">,
+    "deadline" | "scheduledDate" | "completedAt" | "cancelledAt" | "status" | "updatedAt" | "priority"
+  >
+) {
+  const lifecycleLane = getTaskCompletedAt(task) === undefined ? "active" : "completed";
+  const deadline = getTaskDeadline(task) ?? "inbox";
+  return `${lifecycleLane}:${deadline}:${task.priority ?? "none"}`;
+}
+
+async function restoreTasksAtOriginalPositions(
+  ctx: MutationCtx,
+  tokenIdentifier: string,
+  tasksToRestore: Doc<"tasks">[]
+) {
+  const restoringIds = new Set(tasksToRestore.map((task) => String(task._id)));
+  const restoredPositionsByLane = new Map<string, number[]>();
+
+  for (const task of tasksToRestore) {
+    const lane = getTaskPositionLane(task);
+    const positions = restoredPositionsByLane.get(lane) ?? [];
+    positions.push(task.position);
+    restoredPositionsByLane.set(lane, positions);
+  }
+
+  const activeTasks = (await listOwnedTasks(ctx, tokenIdentifier)).filter(
+    (task) => !restoringIds.has(String(task._id)) && !isCancelledTask(task)
+  );
+  const positionPatches = activeTasks
+    .map((task) => {
+      const restoredPositions = restoredPositionsByLane.get(getTaskPositionLane(task));
+      const positionShift =
+        restoredPositions?.filter((position) => position <= task.position).length ?? 0;
+      return { task, position: task.position + positionShift };
+    })
+    .filter(({ task, position }) => position !== task.position);
+  const updatedAt = Date.now();
+
+  for (const { task, position } of positionPatches) {
+    await ctx.db.patch(task._id, { position, updatedAt });
+  }
+
+  for (const task of tasksToRestore) {
+    await ctx.db.patch(task._id, {
+      cancelledAt: undefined,
+      updatedAt,
+    });
+  }
 }
 
 async function getNextPositionForLane(
@@ -902,8 +955,13 @@ export const deleteTask = mutation({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    await getOwnedTask(ctx, args.taskId, tokenIdentifier);
-    await ctx.db.delete(args.taskId);
+    const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
+    if (isCancelledTask(task)) return;
+    const cancelledAt = Date.now();
+    await ctx.db.patch(args.taskId, {
+      cancelledAt,
+      updatedAt: cancelledAt,
+    });
   },
 });
 
@@ -911,11 +969,12 @@ export const softDeleteTask = mutation({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    await getOwnedTask(ctx, args.taskId, tokenIdentifier);
+    const task = await getOwnedTask(ctx, args.taskId, tokenIdentifier);
+    if (isCancelledTask(task)) return;
+    const cancelledAt = Date.now();
     await ctx.db.patch(args.taskId, {
-      cancelledAt: Date.now(),
-      completedAt: undefined,
-      updatedAt: Date.now(),
+      cancelledAt,
+      updatedAt: cancelledAt,
     });
   },
 });
@@ -964,29 +1023,11 @@ export const restoreInboxTasks = mutation({
       if (!isCancelledTask(task) || getTaskDeadline(task)) {
         throw new Error("Task is not pending Inbox restoration");
       }
+      assertTaskRecoveryWindow(task);
       tasks.push(task);
     }
 
-    const nextPositionByPriority = new Map<string, number>();
-    for (const task of (await listOwnedTasks(ctx, tokenIdentifier)).filter(isInboxTask)) {
-      const priority = task.priority ?? "none";
-      nextPositionByPriority.set(
-        priority,
-        Math.max(nextPositionByPriority.get(priority) ?? 0, task.position + 1)
-      );
-    }
-
-    const updatedAt = Date.now();
-    for (const task of tasks) {
-      const priority = task.priority ?? "none";
-      const position = nextPositionByPriority.get(priority) ?? 0;
-      nextPositionByPriority.set(priority, position + 1);
-      await ctx.db.patch(task._id, {
-        cancelledAt: undefined,
-        position,
-        updatedAt,
-      });
-    }
+    await restoreTasksAtOriginalPositions(ctx, tokenIdentifier, tasks);
   },
 });
 
@@ -998,40 +1039,115 @@ export const restoreTask = mutation({
     if (!isCancelledTask(task)) {
       throw new Error("Task is not pending deletion");
     }
-    const deadline = getTaskDeadline(task);
-    const position = await getNextPositionForLane(ctx, tokenIdentifier, deadline);
-    await ctx.db.patch(args.taskId, {
-      cancelledAt: undefined,
-      position,
-      updatedAt: Date.now(),
-    });
+    assertTaskRecoveryWindow(task);
+    await restoreTasksAtOriginalPositions(ctx, tokenIdentifier, [task]);
   },
 });
 
 const PURGE_GRACE_MS = 30 * 60 * 1000;
+
+function assertTaskRecoveryWindow(task: Doc<"tasks">) {
+  const cancelledAt = getTaskCancelledAt(task);
+  if (cancelledAt === undefined || Date.now() - cancelledAt >= PURGE_GRACE_MS) {
+    throw new Error("Task recovery window expired");
+  }
+}
+
 export const purgeExpiredCancelledTasks = internalMutation({
   args: {},
   handler: async (ctx) => {
-    const cutoff = Date.now() - PURGE_GRACE_MS;
+    const now = Date.now();
+    const cutoff = now - PURGE_GRACE_MS;
     const [cancelledAtTasks, legacyCancelledTasks] = await Promise.all([
       ctx.db
         .query("tasks")
         .withIndex("by_cancelled_at", (q) =>
           q.gte("cancelledAt", 0).lt("cancelledAt", cutoff)
         )
-        .collect(),
+        .take(51),
       ctx.db
         .query("tasks")
         .withIndex("by_status", (q) => q.eq("status", "cancelled"))
-        .collect(),
+        .filter((q) => q.or(
+          q.lt(q.field("cancelledAt"), cutoff),
+          q.and(
+            q.eq(q.field("cancelledAt"), undefined),
+            q.lt(q.field("updatedAt"), cutoff)
+          )
+        ))
+        .take(51),
     ]);
 
+    const expiredRemovedImages = await ctx.db
+      .query("taskImages")
+      .withIndex("by_recoverable_until", (q) => q.gte("recoverableUntil", 0).lt("recoverableUntil", now))
+      .take(50);
     let purged = 0;
-    for (const task of dedupeTasks([...cancelledAtTasks, ...legacyCancelledTasks])) {
+    let cleanupWorkFound = false;
+    let purgeContinuationNeeded = cancelledAtTasks.length > 50 || legacyCancelledTasks.length > 50;
+    for (const task of dedupeTasks([
+      ...cancelledAtTasks.slice(0, 50),
+      ...legacyCancelledTasks.slice(0, 50),
+    ])) {
       const cancelledAt = getTaskCancelledAt(task);
       if (cancelledAt === undefined || cancelledAt >= cutoff) continue;
+      const taskImages = await ctx.db
+        .query("taskImages")
+        .withIndex("by_task_position", (q) => q.eq("taskId", task._id))
+        .take(51);
+      const hasMoreTaskImages = taskImages.length > 50;
+      for (const image of taskImages.slice(0, 50)) {
+        if (!image.uploadRecordId) {
+          await ctx.db.delete(image._id);
+          continue;
+        }
+        const upload = await ctx.db.get(image.uploadRecordId);
+        if (upload) {
+          await ensureTaskImageCleanupTombstone(ctx, {
+            ownerTokenIdentifier: task.ownerTokenIdentifier ?? task.createdBy,
+            taskId: task._id,
+            taskImageId: image._id,
+            upload,
+          }, Date.now());
+          cleanupWorkFound = true;
+          await ctx.db.delete(image._id);
+        } else {
+          await ctx.db.delete(image._id);
+        }
+      }
+      if (hasMoreTaskImages) {
+        purgeContinuationNeeded = true;
+        continue;
+      }
       await ctx.db.delete(task._id);
       purged += 1;
+    }
+
+    for (const image of expiredRemovedImages) {
+      if (image.removedAt === undefined || image.recoverableUntil === undefined) continue;
+      const task = await ctx.db.get(image.taskId);
+      if (!image.uploadRecordId) {
+        await ctx.db.delete(image._id);
+        continue;
+      }
+      const upload = await ctx.db.get(image.uploadRecordId);
+      if (!upload) {
+        await ctx.db.delete(image._id);
+        continue;
+      }
+      await ensureTaskImageCleanupTombstone(ctx, {
+        ownerTokenIdentifier: task?.ownerTokenIdentifier ?? upload.ownerTokenIdentifier,
+        taskId: image.taskId,
+        taskImageId: image._id,
+        upload,
+      }, Date.now());
+      cleanupWorkFound = true;
+    }
+    if (cleanupWorkFound) {
+      await ctx.scheduler.runAfter(0, internal.taskImageActions.reconcileCleanup, {});
+    }
+    if (purgeContinuationNeeded) {
+      await ctx.scheduler.runAfter(0, internal.tasks.purgeExpiredCancelledTasks, {});
     }
     return { purged };
   },

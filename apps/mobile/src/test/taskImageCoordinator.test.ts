@@ -205,6 +205,17 @@ describe("Task-image mobile coordinator", () => {
     expect(coordinator.getUploadIdsForSave()).toHaveLength(5);
   });
 
+  it("clears the visible draft without discarding task-owned recovery records", async () => {
+    const coordinator = createTaskImageCoordinator(createDependencies());
+    await coordinator.select("photos");
+    coordinator.associateUploadsWithTask("task_1", ["upl_mobile_1"]);
+
+    coordinator.discard();
+
+    expect(coordinator.getViewStates()).toEqual([]);
+    expect(coordinator.serialize().uploads).toHaveLength(1);
+  });
+
   it("persists a redacted owner-scoped manifest without private source or provider data", async () => {
     const dependencies = createDependencies();
     const saved: Array<[string, unknown]> = [];
@@ -308,6 +319,31 @@ describe("Task-image mobile coordinator", () => {
     coordinator.discard();
 
     expect(coordinator.serialize().uploads.map((entry) => entry.uploadId)).toEqual([taskOwned, accepted]);
+  });
+
+  it("associates a newly tracked upload when ready sibling records are not local", async () => {
+    const dependencies = createDependencies();
+    const coordinator = createTaskImageCoordinator(dependencies);
+    await coordinator.select("photos");
+    coordinator.associateUploadsWithTask("task_1", ["upl_mobile_1"]);
+
+    expect(coordinator.associateTaskImageOrder("task_1", ["ready_sibling", "image_new"])).toBe(true);
+    expect(coordinator.pauseTaskImageUpload("task_1", "image_new")).toBe(true);
+  });
+
+  it("preserves every local upload when the server reports fewer active images", async () => {
+    const dependencies = createDependencies();
+    let nextId = 1;
+    dependencies.createUploadId = vi.fn(() => `upl_mobile_${nextId++}`);
+    const coordinator = createTaskImageCoordinator(dependencies);
+    await coordinator.select("photos");
+    await coordinator.select("camera");
+    const uploadIds = coordinator.getViewStates().map((image) => image.uploadId);
+    coordinator.associateUploadsWithTask("task_1", uploadIds);
+
+    expect(coordinator.associateTaskImageOrder("task_1", ["image_1"])).toBe(true);
+    expect(coordinator.getViewStates()).toHaveLength(2);
+    expect(coordinator.pauseTaskUploads("task_1")).toBe(2);
   });
 
   it("runs no more than two uploads at once and keeps verification indeterminate", async () => {
@@ -488,7 +524,19 @@ describe("Task-image mobile coordinator", () => {
         .mockRejectedValueOnce(Object.assign(new Error("offline"), { code: "network_error", retryable: true }))
         .mockRejectedValueOnce(Object.assign(new Error("offline"), { code: "network_error", retryable: true }))
         .mockRejectedValueOnce(Object.assign(new Error("offline"), { code: "network_error", retryable: true }))
-        .mockRejectedValueOnce(Object.assign(new Error("offline"), { code: "network_error", retryable: true }));
+        .mockRejectedValueOnce(Object.assign(new Error("offline"), { code: "network_error", retryable: true }))
+        .mockResolvedValueOnce({
+          publicId: "provider-private-id",
+          version: 1,
+          signature: "provider-response-signature",
+          resourceType: "image",
+          deliveryType: "authenticated",
+          format: "jpg",
+          width: 1600,
+          height: 1200,
+          bytes: 2_000_000,
+          eager: [],
+        });
       const coordinator = createTaskImageCoordinator(dependencies);
       await coordinator.select("photos");
       await coordinator.beginUploadAfterSave();
@@ -504,9 +552,41 @@ describe("Task-image mobile coordinator", () => {
         failure: { code: "network_error", retryable: true },
         retryAt: undefined,
       });
+
+      await coordinator.retry("upl_mobile_1");
+      expect(dependencies.upload).toHaveBeenCalledTimes(5);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("keeps an unclassified transport failure retryable", async () => {
+    const dependencies = createDependencies();
+    const sourceStore = {
+      persist: vi.fn(async () => ({ sourceKey: "upl_mobile_1.jpg", uri: "file:///private/durable.jpg" })),
+      resolve: vi.fn(async () => "file:///private/durable.jpg"),
+      remove: vi.fn(async () => undefined),
+    };
+    dependencies.issueGrant = vi.fn()
+      .mockRejectedValueOnce(new Error("connection reset"))
+      .mockResolvedValue({
+        uploadUrl: "https://api.cloudinary.example/private",
+        signature: "signed-secret-capability",
+        apiKey: "public-key",
+        signedParameters: { timestamp: "1" },
+      });
+    const coordinator = createTaskImageCoordinator({ ...dependencies, sourceStore });
+    await coordinator.select("photos");
+    await coordinator.beginUploadAfterSave();
+
+    expect(coordinator.getViewState()).toMatchObject({
+      state: "failed",
+      failure: { code: "upload_failed", retryable: true },
+    });
+    expect(sourceStore.remove).not.toHaveBeenCalled();
+
+    await coordinator.retry("upl_mobile_1");
+    expect(dependencies.issueGrant).toHaveBeenCalledTimes(2);
   });
 
   it("reconciles an ambiguous attempt before creating a new provider attempt", async () => {
@@ -582,6 +662,42 @@ describe("Task-image mobile coordinator", () => {
     expect(dependencies.issueGrant).not.toHaveBeenCalled();
     expect(coordinator.getViewState()).toMatchObject({ uploadId: "upl_mobile_1", state: "verifying" });
     expect(coordinator.serialize().uploads[0].sourceKey).toBe("upl_mobile_1.jpg");
+  });
+
+  it("restores a recoverably removed image after coordinator hydration", async () => {
+    const dependencies = createDependencies();
+    const store = {
+      load: vi.fn(async () => ({
+        version: 2,
+        uploads: [{
+          uploadId: "upl_mobile_1",
+          taskId: "task_1",
+          taskImageId: "image_1",
+          state: "pending",
+          sourceKey: "upl_mobile_1.jpg",
+          attempt: 1,
+          retryCount: 0,
+          needsReconciliation: false,
+          paused: true,
+          recoverablyRemoved: true,
+        }],
+      })),
+      save: vi.fn(async () => undefined),
+    };
+    const coordinator = createTaskImageCoordinator({
+      ...dependencies,
+      ownerScope: () => "owner-a",
+      manifestStore: store,
+      sourceStore: {
+        persist: vi.fn(async () => ({ sourceKey: "upl_mobile_1.jpg", uri: "file:///private/durable.jpg" })),
+        resolve: vi.fn(async () => "file:///private/durable.jpg"),
+        remove: vi.fn(async () => undefined),
+      },
+    });
+
+    await coordinator.hydrate();
+    expect(await coordinator.resumeTaskImageUpload("task_1", "image_1")).toBe(true);
+    expect(dependencies.issueGrant).toHaveBeenCalledTimes(1);
   });
 
   it("keeps an unavailable reconciliation actionable instead of issuing a duplicate attempt", async () => {
@@ -661,6 +777,27 @@ describe("Task-image mobile coordinator", () => {
 
     await coordinator.remove("upl_mobile_1");
     expect(sourceStore.remove).toHaveBeenCalledWith("upl_mobile_1.jpg");
+  });
+
+  it("pauses only the removed Task image and keeps it paused through Task restoration", async () => {
+    const dependencies = createDependencies();
+    let nextId = 1;
+    dependencies.createUploadId = vi.fn(() => `upl_mobile_${nextId++}`);
+    dependencies.abortUpload = vi.fn();
+    const coordinator = createTaskImageCoordinator(dependencies);
+    await coordinator.select("photos");
+    await coordinator.select("camera");
+    const uploadIds = coordinator.getViewStates().map((image) => image.uploadId);
+    coordinator.associateUploadsWithTask("task_1", uploadIds);
+    expect(coordinator.associateTaskImageOrder("task_1", ["image_1", "image_2"])).toBe(true);
+
+    expect(coordinator.pauseTaskImageUpload("task_1", "image_1")).toBe(true);
+    expect(dependencies.abortUpload).toHaveBeenCalledWith({ uploadId: uploadIds[0] });
+    await coordinator.resumeTaskUploads("task_1");
+    expect(coordinator.getViewStates()[0]).toMatchObject({ state: "pending" });
+
+    await coordinator.resumeTaskImageUpload("task_1", "image_1");
+    expect(coordinator.getViewStates()[0]).toMatchObject({ state: "verifying" });
   });
 
   it("removes all task-owned records and sources after permanent deletion", async () => {
