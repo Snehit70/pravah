@@ -97,7 +97,7 @@ type EditTaskSheetProps = {
     taskId: Id<"tasks">;
     expectedRevision: number;
     kind: TaskImageSourceKind;
-  }) => void;
+  }) => TaskImageCollectionMutationResult | Promise<TaskImageCollectionMutationResult | undefined> | undefined;
   onSaveComplete?: (
     undo: UndoPayload,
     task: MobileTask,
@@ -119,6 +119,10 @@ type DraftState = {
   time: string;
   priority: TaskPriority;
   goalId: string | null;
+};
+
+type TaskImageCollectionMutationResult = NonNullable<MobileTask["imageCollection"]> & {
+  stale: boolean;
 };
 
 const PRIORITY_OPTIONS: Array<{ value: TaskPriority; label: string; detail: string }> = [
@@ -794,11 +798,18 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                 images={currentTask.imageCollection?.active ?? []}
                 resolveDelivery={resolveTaskImage}
                 onSelectSource={onSelectTaskImage
-                  ? (kind) => onSelectTaskImage({
-                      taskId: currentTask._id,
-                      expectedRevision: currentTask.imageCollection?.revision ?? 0,
-                      kind,
-                    })
+                  ? async (kind) => {
+                      const result = await onSelectTaskImage({
+                        taskId: currentTask._id,
+                        expectedRevision: currentTask.imageCollection?.revision ?? 0,
+                        kind,
+                      });
+                      if (!result) return;
+                      const { stale: _stale, ...imageCollection } = result;
+                      setCurrentTask((previous) => previous
+                        ? { ...previous, imageCollection }
+                        : previous);
+                    }
                   : undefined}
                 onCaptionChange={!completed && onCaptionTaskImage
                   ? (taskImageId, caption) => {

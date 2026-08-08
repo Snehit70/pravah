@@ -1387,21 +1387,33 @@ function MobileApp() {
           });
         }}
         onSelectTaskImage={({ taskId, expectedRevision, kind }) => {
-          void (async () => {
+          const beforeUploadIds = new Set(
+            taskImageCoordinator.getViewStates().map((image) => image.uploadId)
+          );
+          return (async () => {
             try {
               await taskImageCoordinator.select(kind);
-              const selected = taskImageCoordinator.getViewStates().at(-1);
-              if (!selected) return;
-              await addTaskImagesMutation({
+              const selected = taskImageCoordinator
+                .getViewStates()
+                .find((image) => !beforeUploadIds.has(image.uploadId));
+              if (!selected) return undefined;
+              const result = await addTaskImagesMutation({
                 taskId,
                 uploadIds: [selected.uploadId],
                 expectedRevision,
               });
+              if (result.stale) {
+                taskImageCoordinator.discard();
+                showToast({ kind: "error", message: "Task images changed. Please try again." });
+                return result;
+              }
               void taskImageCoordinator.beginUploadAfterSave();
               taskImageCoordinator.clearAfterSaveAndStay();
+              return result;
             } catch {
               showToast({ kind: "error", message: "Could not add Task image. Please try again." });
               taskImageCoordinator.discard();
+              return undefined;
             }
           })();
         }}

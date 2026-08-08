@@ -482,6 +482,40 @@ describe("EditTaskSheet compact workbench", () => {
     });
   });
 
+  it("applies the returned Task image collection after attaching an image", async () => {
+    const onSelectTaskImage = vi.fn(async () => ({
+      stale: false as const,
+      revision: 5,
+      active: [{
+        taskImageId: "image-new",
+        position: 0,
+        state: "pending" as const,
+        previewUri: "file:///image-new.jpg",
+      }],
+      primary: {
+        taskImageId: "image-new",
+        position: 0,
+        state: "pending" as const,
+        previewUri: "file:///image-new.jpg",
+      },
+      recoverable: [],
+    }));
+    const { ref } = setup({ onSelectTaskImage });
+    await open(ref);
+
+    fireEvent.click(screen.getByLabelText("Add Task image from Photos"));
+
+    await waitFor(() => {
+      expect(screen.getByAltText("Selected Task image preview").getAttribute("src"))
+        .toBe("file:///image-new.jpg");
+    });
+    expect(onSelectTaskImage).toHaveBeenCalledWith({
+      taskId: "task1",
+      expectedRevision: 0,
+      kind: "photos",
+    });
+  });
+
   it("keeps deletion in overflow and explains recovery", async () => {
     const { ref, onDelete } = setup();
     await open(ref);

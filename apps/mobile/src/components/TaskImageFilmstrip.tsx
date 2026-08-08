@@ -21,7 +21,7 @@ type DeliveryResult =
 
 type TaskImageFilmstripProps = {
   images: TaskImageFilmstripEntry[];
-  onSelectSource?: (kind: TaskImageSourceKind) => void;
+  onSelectSource?: (kind: TaskImageSourceKind) => void | Promise<void>;
   onRetry?: (taskImageId: string) => void;
   onCaptionChange?: (taskImageId: string, caption: string) => void;
   onReorder?: (taskImageId: string, direction: "up" | "down") => void;
