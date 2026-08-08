@@ -1,4 +1,5 @@
 import { StatusBar } from "expo-status-bar";
+import * as Crypto from "expo-crypto";
 import { ObserveRoot, useObserve } from "expo-observe";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
@@ -15,8 +16,9 @@ import {
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 import { authStorageReady } from "./src/lib/auth-client";
 import {
   useFonts as useGeistFonts,
@@ -93,6 +95,12 @@ import { hasPriorityBoundaryViolation } from "./src/lib/taskLifecycle";
 import type { BulkTaskInput } from "./src/lib/bulkTaskCapture";
 import { resolveStartupTab } from "./src/lib/tabOrder";
 import { feedback } from "./src/lib/feedback";
+import { createTaskImageCoordinator } from "./src/lib/taskImageCoordinator";
+import {
+  acquireTaskImageSource,
+  normalizeTaskImage,
+  uploadPreparedTaskImage,
+} from "./src/lib/taskImageNative";
 import {
   AlertCircleIcon,
   InfoCircleIcon,
@@ -312,6 +320,10 @@ function MobileApp() {
   });
 
   const addTaskMutation = useMutation(api.tasks.addTask);
+  const stageTaskImageMutation = useMutation(api.taskImages.stageImageUpload);
+  const issueTaskImageGrant = useAction(api.taskImageActions.issueUploadGrant);
+  const submitTaskImageResult = useAction(api.taskImageActions.submitUploadResult);
+  const resolveTaskImageAction = useAction(api.taskImageActions.resolveTaskImage);
   const updateTaskMutation = useMutation(api.tasks.updateTask);
   const completeTaskMutation = useMutation(api.tasks.completeTask);
   const moveTaskMutation = useMutation(api.tasks.moveTask);
@@ -322,6 +334,29 @@ function MobileApp() {
   const restoreTaskMutation = useMutation(api.tasks.restoreTask);
   const applyOverdueReflowMutation = useMutation(api.overdueReflow.apply);
   const undoOverdueReflowMutation = useMutation(api.overdueReflow.undo);
+  const taskImageCoordinator = useMemo(
+    () =>
+      createTaskImageCoordinator({
+        createUploadId: () => `upl_${Crypto.randomUUID().replace(/-/g, "")}`,
+        acquireSource: acquireTaskImageSource,
+        normalize: normalizeTaskImage,
+        stage: async (image) => {
+          await stageTaskImageMutation(image);
+        },
+        issueGrant: issueTaskImageGrant,
+        upload: uploadPreparedTaskImage,
+        verify: submitTaskImageResult,
+      }),
+    [issueTaskImageGrant, stageTaskImageMutation, submitTaskImageResult]
+  );
+  const resolveTaskImage = useCallback(
+    (taskImageId: string, variant: "card" | "detail") =>
+      resolveTaskImageAction({ taskImageId: taskImageId as Id<"taskImages">, variant }),
+    [resolveTaskImageAction]
+  );
+  useEffect(() => {
+    if (!session) taskImageCoordinator.discard();
+  }, [session, taskImageCoordinator]);
   const overduePreviewData = useQuery(
     api.overdueReflow.preview,
     session && activeTab === "timeline" ? { today } : "skip"
@@ -753,6 +788,7 @@ function MobileApp() {
       time?: string;
       priority?: "p1" | "p2" | "p3";
       goalId?: string;
+      imageUploadId?: string;
     }) => {
       const actionId = createActionId("add");
       const startedAt = Date.now();
@@ -767,6 +803,7 @@ function MobileApp() {
           deadline: data.deadline,
           time: data.deadline ? data.time : undefined,
           priority: data.priority,
+          ...(data.imageUploadId ? { imageUploadId: data.imageUploadId } : {}),
         });
         if (data.goalId && newTaskId) {
           setGoalLink(String(newTaskId), data.goalId);
@@ -776,7 +813,7 @@ function MobileApp() {
         return true;
       } catch (error) {
         const isOffline = classifyError(error) === "network";
-        if (isOffline) {
+        if (isOffline && !data.imageUploadId) {
           enqueueRetry({
             label: `Add "${data.title}"`,
             payload: {
@@ -791,13 +828,18 @@ function MobileApp() {
           });
           showToast({ kind: "error", message: "Offline. Task queued for retry." });
         } else {
-          showToast({ kind: "error", message: "Could not add task. Please try again." });
+          showToast({
+            kind: "error",
+            message: data.imageUploadId
+              ? "Could not save task image. Please try again."
+              : "Could not add task. Please try again.",
+          });
         }
         mobileLogger.error("add_task_failed", {
           actionId,
           elapsedMs: Date.now() - startedAt,
           errorType: classifyError(error),
-          queuedForRetry: isOffline,
+          queuedForRetry: isOffline && !data.imageUploadId,
         });
         feedback.error();
         return false;
@@ -932,12 +974,14 @@ function MobileApp() {
         onEdit={canUseWorkspaceActions ? openCompletedTaskDetail : () => undefined}
         linkedGoalName={taskGoalNames.get(String(item._id))}
         hideCompletionControl
+        resolveTaskImage={resolveTaskImage}
       />
     ),
     [
       canUseWorkspaceActions,
       markDone,
       openCompletedTaskDetail,
+      resolveTaskImage,
       taskGoalNames,
     ]
   );
@@ -1294,6 +1338,7 @@ function MobileApp() {
         onBulkAdd={handleBulkAddTasks}
         isValidDeadline={normalizeDeadlineInput}
         onSheetChange={setIsAddSheetOpen}
+        taskImageCoordinator={taskImageCoordinator}
       />
       <EditTaskSheet
         ref={editTaskSheetRef}

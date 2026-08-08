@@ -14,6 +14,9 @@ vi.mock("../../../../convex/_generated/api", () => ({
       listTasks: { __ref: "tasks.listTasks" },
       getTimeline: { __ref: "tasks.getTimeline" },
     },
+    taskImages: {
+      listWorkspaceImageCollections: { __ref: "taskImages.listWorkspaceImageCollections" },
+    },
   },
 }));
 
