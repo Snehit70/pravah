@@ -1,6 +1,7 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { authComponent, createAuth } from "./auth";
 import { getAllowedWebOrigins } from "./origins";
 import {
@@ -301,6 +302,24 @@ http.route({
     return new Response(JSON.stringify(tasks), {
       headers: { "Content-Type": "application/json" },
     });
+  }),
+});
+
+// GET /tasks/get - Read one authorized Task with its provider-neutral image manifest.
+http.route({
+  path: "/tasks/get",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const authCheck = await requireTaskReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const taskId = new URL(request.url).searchParams.get("taskId");
+    if (!taskId) return jsonResponse({ error: "taskId is required" }, 400);
+    const task = await ctx.runQuery(internal.automationTools.getTask, {
+      ownerTokenIdentifier: authCheck.auth.ownerTokenIdentifier,
+      taskId: taskId as Id<"tasks">,
+    });
+    if (!task) return jsonResponse({ error: "Task not found", taskId }, 404);
+    return jsonResponse(task);
   }),
 });
 

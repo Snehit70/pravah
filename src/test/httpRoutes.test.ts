@@ -36,6 +36,7 @@ vi.mock("../../convex/_generated/api", () => ({
   internal: {
     automationTools: {
       listTasks: "automationTools.listTasks",
+      getTask: "automationTools.getTask",
       listGoals: "automationTools.listGoals",
       listGoalLinks: "automationTools.listGoalLinks",
       updateGoal: "automationTools.updateGoal",
@@ -637,6 +638,37 @@ describe("http route handlers", () => {
     });
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual([{ _id: "task1", title: "A" }]);
+  });
+
+  it("uses a dedicated authorized detail read for full Task-image manifests", async () => {
+    const handler = getHandler("/tasks/get", "GET");
+    const ctx = createCtx();
+    ctx.runQuery.mockResolvedValue({
+      _id: "task1",
+      title: "Visual task",
+      imageCollection: {
+        revision: 2,
+        observedAt: 1_785_730_000_000,
+        active: [{ taskImageId: "image1", position: 0, state: "ready" }],
+        recoverable: [],
+      },
+    });
+
+    const response = await handler(
+      ctx,
+      new Request("https://example.com/tasks/get?taskId=task1", {
+        headers: { "x-api-key": "secret" },
+      })
+    );
+
+    expect(ctx.runQuery).toHaveBeenCalledWith(internal.automationTools.getTask, {
+      ownerTokenIdentifier: "admin-owner",
+      taskId: "task1",
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      imageCollection: { active: [{ taskImageId: "image1" }] },
+    });
   });
 
   it("rejects invalid GET /tasks filters instead of returning all tasks", async () => {

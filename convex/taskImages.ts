@@ -580,7 +580,7 @@ function serializeRecoverableTaskImage(image: Doc<"taskImages">) {
   };
 }
 
-async function getTaskImageCollectionForOwner(
+export async function getTaskImageCollectionForOwner(
   ctx: QueryCtx | MutationCtx,
   ownerTokenIdentifier: string,
   taskId: Id<"tasks">
@@ -590,16 +590,57 @@ async function getTaskImageCollectionForOwner(
     throw new Error("Task not found");
   }
   const images = await listTaskImages(ctx, ownerTokenIdentifier, taskId);
+  const observedAt = Date.now();
   const activeImages = images.filter((image) => image.removedAt === undefined);
   const active = await Promise.all(activeImages.map((image) => serializeTaskImage(ctx, image)));
   return {
     revision: task.imageCollectionRevision ?? 0,
+    observedAt,
     active,
-    primary: active[0],
     recoverable: images
-      .filter((image) => image.removedAt !== undefined)
+      .filter(
+        (image) =>
+          image.removedAt !== undefined && (image.recoverableUntil ?? 0) > observedAt
+      )
       .map(serializeRecoverableTaskImage),
   };
+}
+
+export async function getTaskImageSummaryForOwner(
+  ctx: QueryCtx,
+  ownerTokenIdentifier: string,
+  taskId: Id<"tasks">
+) {
+  return (await getTaskImageSummariesForOwner(ctx, ownerTokenIdentifier, [taskId])).get(
+    taskId
+  )!;
+}
+
+export async function getTaskImageSummariesForOwner(
+  ctx: QueryCtx,
+  ownerTokenIdentifier: string,
+  taskIds: Id<"tasks">[]
+) {
+  const summaries = new Map(
+    taskIds.map((taskId) => [
+      taskId,
+      { activeCount: 0, readyCount: 0, failedCount: 0 },
+    ])
+  );
+  if (taskIds.length === 0) return summaries;
+  const included = new Set(taskIds);
+  const images = await ctx.db
+    .query("taskImages")
+    .withIndex("by_owner_task", (q) => q.eq("ownerTokenIdentifier", ownerTokenIdentifier))
+    .collect();
+  for (const image of images) {
+    if (image.removedAt !== undefined || !included.has(image.taskId)) continue;
+    const summary = summaries.get(image.taskId)!;
+    summary.activeCount += 1;
+    if (image.state === "ready") summary.readyCount += 1;
+    if (image.state === "failed") summary.failedCount += 1;
+  }
+  return summaries;
 }
 
 async function getOwnedActiveTaskImage(
@@ -867,10 +908,17 @@ export const listWorkspaceImageCollections = query({
   args: {},
   handler: async (ctx) => {
     const ownerTokenIdentifier = await requireTokenIdentifier(ctx);
-    const images = await ctx.db
-      .query("taskImages")
-      .withIndex("by_owner_task", (q) => q.eq("ownerTokenIdentifier", ownerTokenIdentifier))
-      .collect();
+    const observedAt = Date.now();
+    const [tasks, images] = await Promise.all([
+      ctx.db
+        .query("tasks")
+        .withIndex("by_owner", (q) => q.eq("ownerTokenIdentifier", ownerTokenIdentifier))
+        .collect(),
+      ctx.db
+        .query("taskImages")
+        .withIndex("by_owner_task", (q) => q.eq("ownerTokenIdentifier", ownerTokenIdentifier))
+        .collect(),
+    ]);
     const byTask = new Map<Id<"tasks">, Doc<"taskImages">[]>();
     for (const image of images) {
       const taskId = image.taskId;
@@ -879,9 +927,9 @@ export const listWorkspaceImageCollections = query({
       byTask.set(taskId, taskImages);
     }
     const collections = await Promise.all(
-      [...byTask.entries()].map(async ([taskId, taskImages]) => {
-        const task = await ctx.db.get(taskId);
-        if (!task || task.ownerTokenIdentifier !== ownerTokenIdentifier) return null;
+      tasks.map(async (task) => {
+        const taskId = task._id;
+        const taskImages = byTask.get(taskId) ?? [];
         const activeTaskImages = taskImages
           .filter((image) => image.removedAt === undefined)
           .sort((left, right) => left.position - right.position);
@@ -892,15 +940,15 @@ export const listWorkspaceImageCollections = query({
           taskId,
           collection: {
             revision: task.imageCollectionRevision ?? 0,
+            observedAt,
             active,
-            primary: active[0],
             recoverable: taskImages
-              .filter((image) => image.removedAt !== undefined && (image.recoverableUntil ?? 0) > Date.now())
+              .filter((image) => image.removedAt !== undefined && (image.recoverableUntil ?? 0) > observedAt)
               .map(serializeRecoverableTaskImage),
           },
         };
       })
     );
-    return collections.filter((collection) => collection !== null);
+    return collections;
   },
 });
