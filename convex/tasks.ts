@@ -176,26 +176,42 @@ async function restoreTasksAtOriginalPositions(
   tasksToRestore: Doc<"tasks">[]
 ) {
   const restoringIds = new Set(tasksToRestore.map((task) => String(task._id)));
-  const restoredPositionsByLane = new Map<string, number[]>();
+  const restoredTasksByLane = new Map<string, Doc<"tasks">[]>();
 
   for (const task of tasksToRestore) {
     const lane = getTaskPositionLane(task);
-    const positions = restoredPositionsByLane.get(lane) ?? [];
-    positions.push(task.position);
-    restoredPositionsByLane.set(lane, positions);
+    const laneTasks = restoredTasksByLane.get(lane) ?? [];
+    laneTasks.push(task);
+    restoredTasksByLane.set(lane, laneTasks);
   }
 
   const activeTasks = (await listOwnedTasks(ctx, tokenIdentifier)).filter(
     (task) => !restoringIds.has(String(task._id)) && !isCancelledTask(task)
   );
-  const positionPatches = activeTasks
-    .map((task) => {
-      const restoredPositions = restoredPositionsByLane.get(getTaskPositionLane(task));
-      const positionShift =
-        restoredPositions?.filter((position) => position <= task.position).length ?? 0;
-      return { task, position: task.position + positionShift };
-    })
-    .filter(({ task, position }) => position !== task.position);
+  const activePlans = activeTasks.map((task) => ({ task, position: task.position }));
+  const restoredPositionPatches = new Map<string, number>();
+
+  for (const [lane, laneTasks] of restoredTasksByLane.entries()) {
+    const laneActivePlans = activePlans.filter(
+      ({ task }) => getTaskPositionLane(task) === lane
+    );
+    const occupiedRestoredPositions = new Set<number>();
+
+    for (const task of [...laneTasks].sort((left, right) => left.position - right.position)) {
+      let position = task.position;
+      while (occupiedRestoredPositions.has(position)) position += 1;
+      occupiedRestoredPositions.add(position);
+      if (position !== task.position) restoredPositionPatches.set(String(task._id), position);
+
+      for (const activePlan of laneActivePlans) {
+        if (activePlan.position >= position) activePlan.position += 1;
+      }
+    }
+  }
+
+  const positionPatches = activePlans.filter(
+    ({ task, position }) => position !== task.position
+  );
   const updatedAt = Date.now();
 
   for (const { task, position } of positionPatches) {
@@ -206,6 +222,9 @@ async function restoreTasksAtOriginalPositions(
     await ctx.db.patch(task._id, {
       cancelledAt: undefined,
       updatedAt,
+      ...(restoredPositionPatches.has(String(task._id))
+        ? { position: restoredPositionPatches.get(String(task._id)) }
+        : {}),
     });
   }
 }

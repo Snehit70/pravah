@@ -481,6 +481,24 @@ describe("Task-image mobile coordinator", () => {
     }
   });
 
+  it("prunes task-owned ready records after removing their durable source", async () => {
+    const dependencies = createDependencies();
+    const sourceStore = {
+      persist: vi.fn(async () => ({ sourceKey: "upl_mobile_1.jpg", uri: "file:///private/durable.jpg" })),
+      resolve: vi.fn(async () => "file:///private/durable.jpg"),
+      remove: vi.fn(async () => undefined),
+    };
+    dependencies.verify = vi.fn(async () => ({ state: "ready" as const }));
+    const coordinator = createTaskImageCoordinator({ ...dependencies, sourceStore });
+
+    await coordinator.select("photos");
+    coordinator.associateUploadsWithTask("task_1", ["upl_mobile_1"]);
+    await coordinator.beginUploadAfterSave();
+
+    expect(coordinator.serialize().uploads).toHaveLength(0);
+    expect(sourceStore.remove).toHaveBeenCalledWith("upl_mobile_1.jpg");
+  });
+
   it("does not advance the client attempt until the provider grant is accepted", async () => {
     const dependencies = createDependencies();
     dependencies.issueGrant = vi
@@ -779,6 +797,68 @@ describe("Task-image mobile coordinator", () => {
     expect(sourceStore.remove).toHaveBeenCalledWith("upl_mobile_1.jpg");
   });
 
+  it("discards paused Task uploads after the deletion recovery window expires", async () => {
+    let currentTime = 1_000;
+    const dependencies = createDependencies();
+    const sourceStore = {
+      persist: vi.fn(async () => ({ sourceKey: "upl_mobile_1.jpg", uri: "file:///private/durable.jpg" })),
+      resolve: vi.fn(async () => "file:///private/durable.jpg"),
+      remove: vi.fn(async () => undefined),
+    };
+    dependencies.now = () => currentTime;
+    dependencies.sourceStore = sourceStore;
+    const coordinator = createTaskImageCoordinator(dependencies);
+    await coordinator.select("photos");
+    coordinator.associateUploadsWithTask("task_1", ["upl_mobile_1"]);
+    expect(coordinator.pauseTaskUploads("task_1")).toBe(1);
+    expect(coordinator.serialize().uploads[0]).toMatchObject({
+      taskId: "task_1",
+      paused: true,
+    });
+
+    currentTime += 30 * 60 * 1000;
+    await coordinator.reconcileOnForeground();
+
+    expect(coordinator.serialize().uploads).toHaveLength(0);
+    expect(sourceStore.remove).toHaveBeenCalledWith("upl_mobile_1.jpg");
+  });
+
+  it("discards persisted Task uploads whose recovery deadline passed while the app was closed", async () => {
+    const sourceStore = {
+      persist: vi.fn(async () => ({ sourceKey: "upl_mobile_1.jpg", uri: "file:///private/durable.jpg" })),
+      resolve: vi.fn(async () => "file:///private/durable.jpg"),
+      remove: vi.fn(async () => undefined),
+    };
+    const coordinator = createTaskImageCoordinator({
+      ...createDependencies(),
+      now: () => 2_000,
+      ownerScope: () => "owner-a",
+      sourceStore,
+      manifestStore: {
+        load: vi.fn(async () => ({
+          version: 2,
+          uploads: [{
+            uploadId: "upl_mobile_1",
+            taskId: "task_1",
+            state: "pending",
+            sourceKey: "upl_mobile_1.jpg",
+            attempt: 0,
+            retryCount: 0,
+            taskDeletionExpiresAt: 1_000,
+            needsReconciliation: false,
+            paused: true,
+          }],
+        })),
+        save: vi.fn(async () => undefined),
+      },
+    });
+
+    await coordinator.hydrate();
+
+    expect(coordinator.serialize().uploads).toHaveLength(0);
+    expect(sourceStore.remove).toHaveBeenCalledWith("upl_mobile_1.jpg");
+  });
+
   it("pauses only the removed Task image and keeps it paused through Task restoration", async () => {
     const dependencies = createDependencies();
     let nextId = 1;
@@ -860,6 +940,7 @@ describe("Task-image mobile coordinator", () => {
     await coordinator.resumeTaskUploads("task_1");
     await coordinator.beginUploadAfterSave();
     expect(dependencies.upload).toHaveBeenCalledTimes(2);
-    expect(coordinator.getViewState()).toMatchObject({ state: "ready" });
+    expect(coordinator.getViewState()).toBeNull();
+    expect(coordinator.serialize().uploads).toHaveLength(0);
   });
 });
