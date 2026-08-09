@@ -383,6 +383,19 @@ export default defineSchema({
     .index("by_upload_record", ["uploadRecordId"])
     .index("by_due", ["state", "nextAttemptAt"])
     .index("by_task", ["taskId"]),
+  taskImageProviderState: defineTable({
+    key: v.literal("cloudinary"),
+    pooledPercentage: v.optional(v.number()),
+    transformations: v.optional(v.number()),
+    storageBytes: v.optional(v.number()),
+    bandwidthBytes: v.optional(v.number()),
+    usageObservedAt: v.optional(v.number()),
+    grantsBlocked: v.boolean(),
+    lastRefreshAttemptAt: v.number(),
+    lastRefreshSucceededAt: v.optional(v.number()),
+    lastRefreshFailureCode: v.optional(v.literal("provider_usage_unavailable")),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
   integrations: defineTable({
     provider: v.union(v.literal("google_calendar"), v.literal("gmail")),
     status: v.union(
