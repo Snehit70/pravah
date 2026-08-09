@@ -135,7 +135,16 @@ describe("workspace snapshot utils", () => {
               revision: 2,
               observedAt: 120,
               active: [
-                { taskImageId: "valid", position: 0, state: "ready" },
+                {
+                  taskImageId: "valid",
+                  position: 0,
+                  state: "failed",
+                  failure: {
+                    code: "unsupported_format",
+                    message: "This image format is not supported.",
+                    retryable: false,
+                  },
+                },
                 { taskImageId: "verifying", position: 1, state: "verifying" },
                 { taskImageId: "unknown", position: 2, state: "provider_magic" },
                 { taskImageId: 7, position: 3, state: "ready" },
@@ -158,7 +167,16 @@ describe("workspace snapshot utils", () => {
       revision: 2,
       observedAt: 120,
       active: [
-        { taskImageId: "valid", position: 0, state: "ready" },
+        {
+          taskImageId: "valid",
+          position: 0,
+          state: "failed",
+          failure: {
+            code: "unsupported_format",
+            message: "This image format is not supported.",
+            retryable: false,
+          },
+        },
         { taskImageId: "verifying", position: 1, state: "verifying" },
         { taskImageId: "unknown", position: 2, state: "unavailable" },
       ],

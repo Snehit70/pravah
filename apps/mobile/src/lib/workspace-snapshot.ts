@@ -40,11 +40,23 @@ function sanitizeActiveImage(value: unknown): TaskImageFilmstripEntry | null {
   const state = knownStates.has(String(image.state))
     ? (image.state as TaskImageFilmstripEntry["state"])
     : "unavailable";
+  const failureSource = image.failure && typeof image.failure === "object"
+    ? image.failure as Record<string, unknown>
+    : undefined;
   return {
     taskImageId: image.taskImageId,
     position: image.position as number,
     caption: typeof image.caption === "string" ? image.caption : undefined,
     state,
+    failure:
+      failureSource && typeof failureSource.code === "string"
+        ? {
+            code: failureSource.code,
+            message:
+              typeof failureSource.message === "string" ? failureSource.message : undefined,
+            retryable: failureSource.retryable === true,
+          }
+        : undefined,
     presentation: sanitizePresentation(image.presentation),
   };
 }
