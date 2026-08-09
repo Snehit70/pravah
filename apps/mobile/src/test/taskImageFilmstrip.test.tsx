@@ -254,6 +254,39 @@ describe("TaskImageFilmstrip", () => {
     expect(onSelectSource).toHaveBeenCalledWith("photos");
   });
 
+  it("hides Capture source actions at the five-image limit", () => {
+    render(
+      <TaskImageFilmstrip
+        surface="capture"
+        images={Array.from({ length: 5 }, (_, position) => ({
+          taskImageId: `image-${position}`,
+          position,
+          state: "ready" as const,
+        }))}
+        onSelectSource={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Add Task image from Photos" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Take Task image with Camera" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Paste Task image from clipboard" })).toBeNull();
+  });
+
+  it("keeps recoverable images restorable from an empty Edit surface", () => {
+    const onRestore = vi.fn();
+    render(
+      <TaskImageFilmstrip
+        surface="edit"
+        images={[]}
+        recoverable={[{ taskImageId: "removed-1", caption: "Reference" }]}
+        onRestore={onRestore}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Restore removed Task image" }));
+    expect(onRestore).toHaveBeenCalledWith("removed-1");
+  });
+
   it("renders compact Inbox and Completed presentations", () => {
     const images = [
       { taskImageId: "image-1", position: 0, state: "ready" as const },

@@ -358,6 +358,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
 
   const viewState = (entry: UploadRecord) => ({
     uploadId: entry.uploadId,
+    taskImageId: entry.taskImageId,
     state: entry.state,
     previewUri: entry.previewUri,
     failure: entry.failure,
@@ -888,13 +889,31 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       await waitForDrain();
     },
 
-    async retryTaskImageUpload(taskId: string, taskImageId: string) {
+    async retryTaskImageUpload(
+      taskId: string,
+      taskImageId: string,
+      onState?: (state: ReturnType<typeof viewState>) => void,
+    ) {
       const entry = [...records.values()].find(
         (candidate) => candidate.taskId === taskId && candidate.taskImageId === taskImageId
       );
-      if (!entry) return false;
-      await this.retry(entry.uploadId);
-      return true;
+      if (!entry) return undefined;
+
+      let latest = viewState(entry);
+      const emit = () => {
+        latest = viewState(entry);
+        onState?.(latest);
+      };
+      const listener = () => emit();
+      if (onState) listeners.add(listener);
+      try {
+        emit();
+        await this.retry(entry.uploadId);
+        emit();
+        return latest;
+      } finally {
+        if (onState) listeners.delete(listener);
+      }
     },
 
     async reconcileOnForeground() {

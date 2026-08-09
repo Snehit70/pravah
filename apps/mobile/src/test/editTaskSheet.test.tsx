@@ -448,6 +448,28 @@ describe("EditTaskSheet compact workbench", () => {
     expect(onReopen).toHaveBeenCalledWith("task1");
   });
 
+  it("keeps completed Task image editing read-only", async () => {
+    const completedTask: MobileTask = {
+      ...timelineTask,
+      completedAt: Date.now(),
+      imageCollection: {
+        revision: 1,
+        observedAt: 100,
+        active: [{ taskImageId: "image-1", position: 0, state: "ready" }],
+        recoverable: [{ taskImageId: "removed-1", caption: "Removed" }],
+      },
+    };
+    const { ref } = setup({
+      onSelectTaskImage: vi.fn(),
+      onRestoreTaskImage: vi.fn(),
+    });
+    await open(ref, completedTask);
+
+    expect(screen.queryByLabelText("Add Task image")).toBeNull();
+    expect(screen.queryByLabelText("Add Task image from Photos")).toBeNull();
+    expect(screen.queryByLabelText("Restore removed Task image")).toBeNull();
+  });
+
   it("updates local image positions when reordering a Task image", async () => {
     const onReorderTaskImages = vi.fn(async () => ({
       stale: false as const,

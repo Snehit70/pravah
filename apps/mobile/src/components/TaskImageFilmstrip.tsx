@@ -36,6 +36,11 @@ export type TaskImageFilmstripEntry = {
   };
 };
 
+export type TaskImageRetryState = Pick<
+  TaskImageFilmstripEntry,
+  "taskImageId" | "state" | "previewUri" | "caption" | "progress" | "failure"
+>;
+
 export type RecoverableTaskImageEntry = {
   taskImageId: string;
   caption?: string;
@@ -243,7 +248,7 @@ function ImagePreview({
       {image.previewUri && image.state !== "ready" ? (
         <Image source={{ uri: image.previewUri }} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory" accessibilityLabel={accessibilityLabel ?? "Selected Task image preview"} />
       ) : image.state === "ready" ? (
-        <ReadyTaskImage image={image} resolveDelivery={resolveDelivery} variant={variant} style={StyleSheet.absoluteFill} accessibilityLabel={accessibilityLabel} />
+        <ReadyTaskImage key={`${image.taskImageId}:${variant}`} image={image} resolveDelivery={resolveDelivery} variant={variant} style={StyleSheet.absoluteFill} accessibilityLabel={accessibilityLabel} />
       ) : (
         <Text style={styles.stateText}>{stateCopy(image)}</Text>
       )}
@@ -302,7 +307,7 @@ function CaptureSurface({
     <>
       <View style={styles.sectionHeaderRow}>
         <Text style={styles.sectionLabel}>Images · {images.length}/5</Text>
-        <SourceActions onSelectSource={onSelectSource} />
+        {images.length < 5 ? <SourceActions onSelectSource={onSelectSource} /> : null}
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filmstripContent}>
         {images.map((image, index) => (
@@ -344,18 +349,27 @@ function InboxSurface({ images, resolveDelivery }: TaskImageFilmstripProps & { i
 
 function EditSurface({
   images,
+  recoverable,
   onSelectSource,
   onRetry,
   onCaptionChange,
   onReorder,
   onRemove,
+  onRestore,
   resolveDelivery,
 }: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[] }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const activeSelectedIndex = Math.min(selectedIndex, Math.max(0, images.length - 1));
   const selected = images[activeSelectedIndex];
 
-  if (!selected) return <EmptyImages onSelectSource={onSelectSource} />;
+  if (!selected) {
+    return (
+      <View style={styles.editSurface}>
+        <EmptyImages onSelectSource={onSelectSource} />
+        <RecoverableSection images={recoverable ?? []} active={images} onRestore={onRestore} />
+      </View>
+    );
+  }
 
   const move = (direction: "up" | "down") => {
     const nextIndex = activeSelectedIndex + (direction === "up" ? -1 : 1);
@@ -378,7 +392,7 @@ function EditSurface({
             <Text style={styles.editThumbNumber}>{index + 1}</Text>
           </Pressable>
         ))}
-        {images.length < 5 ? <Pressable accessibilityRole="button" accessibilityLabel="Add Task image" onPress={() => void onSelectSource?.("photos")} style={styles.editAddThumb}><PlusIcon color={colors.accent} size={21} /></Pressable> : null}
+        {onSelectSource && images.length < 5 ? <Pressable accessibilityRole="button" accessibilityLabel="Add Task image" onPress={() => void onSelectSource("photos")} style={styles.editAddThumb}><PlusIcon color={colors.accent} size={21} /></Pressable> : null}
       </ScrollView>
       <View style={styles.editMetaRow}>
         <Text style={styles.sectionLabel}>{activeSelectedIndex === 0 ? "PRIMARY IMAGE" : `IMAGE ${activeSelectedIndex + 1} OF ${images.length}`}</Text>
@@ -403,6 +417,7 @@ function EditSurface({
         {onRemove ? <Pressable accessibilityRole="button" accessibilityLabel="Remove Task image" onPress={remove} style={styles.editAction}><TrashIcon color={colors.error} size={17} /><Text style={styles.removeText}>Remove</Text></Pressable> : null}
       </View>
       <SourceActions onSelectSource={onSelectSource} full />
+      <RecoverableSection images={recoverable ?? []} active={images} onRestore={onRestore} />
     </View>
   );
 }
