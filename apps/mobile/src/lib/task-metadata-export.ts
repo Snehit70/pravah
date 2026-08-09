@@ -48,7 +48,7 @@ function safeActive(value: unknown): TaskImageFilmstripEntry | null {
   if (!value || typeof value !== "object") return null;
   const source = value as Record<string, unknown>;
   if (typeof source.taskImageId !== "string" || !Number.isInteger(source.position)) return null;
-  const state = ["pending", "uploading", "ready", "failed"].includes(String(source.state))
+  const state = ["pending", "uploading", "verifying", "ready", "failed"].includes(String(source.state))
     ? source.state as TaskImageFilmstripEntry["state"]
     : "unavailable";
   return {

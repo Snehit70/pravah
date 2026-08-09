@@ -29,7 +29,7 @@ describe("Pravah CLI v2 live adapter", () => {
               revision: 1,
               observedAt: 100,
               active: [{ taskImageId: "image-1", position: 0, state: "ready" }],
-              recoverable: [],
+              recoverable: [{ taskImageId: "image-2", caption: "Removed", removedAt: 90, recoverableUntil: 120, previousPosition: 1 }],
             },
           }
         : url.endsWith("/tasks")
@@ -38,7 +38,7 @@ describe("Pravah CLI v2 live adapter", () => {
       return { ok: true, json: async () => body } as Response;
     });
     const result = await executeCommand({ command: "tasks show", json: true }, { positionals: ["tasks", "show", "Ship v2"], options: {} });
-    expect(result).toMatchObject({ source: "live", task: { id: "task_1", title: "Ship v2", imageSummary: { activeCount: 1 }, imageCollection: { active: [{ taskImageId: "image-1" }] } } });
+    expect(result).toMatchObject({ source: "live", task: { id: "task_1", title: "Ship v2", imageSummary: { activeCount: 1 }, imageCollection: { active: [{ taskImageId: "image-1" }], recoverable: [{ taskImageId: "image-2", caption: "Removed" }] } } });
     expect(fetch.mock.calls.map((call) => String(call[0]))).toContain("https://pravah.example.com/tasks/get?taskId=task_1");
   });
 

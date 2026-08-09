@@ -36,7 +36,7 @@ function sanitizeActiveImage(value: unknown): TaskImageFilmstripEntry | null {
   if (!value || typeof value !== "object") return null;
   const image = value as Record<string, unknown>;
   if (typeof image.taskImageId !== "string" || !Number.isInteger(image.position)) return null;
-  const knownStates = new Set(["pending", "uploading", "ready", "failed"]);
+  const knownStates = new Set(["pending", "uploading", "verifying", "ready", "failed"]);
   const state = knownStates.has(String(image.state))
     ? (image.state as TaskImageFilmstripEntry["state"])
     : "unavailable";

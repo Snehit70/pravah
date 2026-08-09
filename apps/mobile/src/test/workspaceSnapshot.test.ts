@@ -136,8 +136,9 @@ describe("workspace snapshot utils", () => {
               observedAt: 120,
               active: [
                 { taskImageId: "valid", position: 0, state: "ready" },
-                { taskImageId: "unknown", position: 1, state: "provider_magic" },
-                { taskImageId: 7, position: 2, state: "ready" },
+                { taskImageId: "verifying", position: 1, state: "verifying" },
+                { taskImageId: "unknown", position: 2, state: "provider_magic" },
+                { taskImageId: 7, position: 3, state: "ready" },
               ],
               recoverable: [{ taskImageId: "must-not-hydrate" }],
             } as never,
@@ -158,7 +159,8 @@ describe("workspace snapshot utils", () => {
       observedAt: 120,
       active: [
         { taskImageId: "valid", position: 0, state: "ready" },
-        { taskImageId: "unknown", position: 1, state: "unavailable" },
+        { taskImageId: "verifying", position: 1, state: "verifying" },
+        { taskImageId: "unknown", position: 2, state: "unavailable" },
       ],
     });
   });

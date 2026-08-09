@@ -314,10 +314,15 @@ http.route({
     if (authCheck.response) return authCheck.response;
     const taskId = new URL(request.url).searchParams.get("taskId");
     if (!taskId) return jsonResponse({ error: "taskId is required" }, 400);
-    const task = await ctx.runQuery(internal.automationTools.getTask, {
-      ownerTokenIdentifier: authCheck.auth.ownerTokenIdentifier,
-      taskId: taskId as Id<"tasks">,
-    });
+    let task;
+    try {
+      task = await ctx.runQuery(internal.automationTools.getTask, {
+        ownerTokenIdentifier: authCheck.auth.ownerTokenIdentifier,
+        taskId: taskId as Id<"tasks">,
+      });
+    } catch {
+      return jsonResponse({ error: "Invalid taskId", taskId }, 400);
+    }
     if (!task) return jsonResponse({ error: "Task not found", taskId }, 404);
     return jsonResponse(task);
   }),

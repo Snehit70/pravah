@@ -81,7 +81,7 @@ function imageCollectionOf(value: unknown) {
         if (typeof image.taskImageId !== "string" || !Number.isInteger(image.position)) {
           return [];
         }
-        const state = ["pending", "uploading", "ready", "failed"].includes(
+        const state = ["pending", "uploading", "verifying", "ready", "failed"].includes(
           String(image.state)
         )
           ? image.state
@@ -112,6 +112,22 @@ function imageCollectionOf(value: unknown) {
     revision: Number.isInteger(source.revision) ? source.revision as number : 0,
     observedAt: typeof source.observedAt === "number" ? source.observedAt : 0,
     active: active.sort((left, right) => (left.position as number) - (right.position as number)),
+    recoverable: Array.isArray(source.recoverable)
+      ? source.recoverable.flatMap((entry) => {
+          if (!entry || typeof entry !== "object") return [];
+          const image = entry as Record<string, unknown>;
+          if (typeof image.taskImageId !== "string") return [];
+          return [{
+            taskImageId: image.taskImageId,
+            caption: typeof image.caption === "string" ? image.caption : undefined,
+            removedAt: typeof image.removedAt === "number" ? image.removedAt : undefined,
+            recoverableUntil:
+              typeof image.recoverableUntil === "number" ? image.recoverableUntil : undefined,
+            previousPosition:
+              Number.isInteger(image.previousPosition) ? image.previousPosition : undefined,
+          }];
+        })
+      : [],
   };
 }
 function toTask(value: unknown): CliTaskSummary | null {

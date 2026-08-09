@@ -671,6 +671,25 @@ describe("http route handlers", () => {
     });
   });
 
+  it("returns JSON validation failure for malformed Task detail IDs", async () => {
+    const handler = getHandler("/tasks/get", "GET");
+    const ctx = createCtx();
+    ctx.runQuery.mockRejectedValue(new Error("ArgumentValidationError"));
+
+    const response = await handler(
+      ctx,
+      new Request("https://example.com/tasks/get?taskId=not-a-convex-id", {
+        headers: { "x-api-key": "secret" },
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Invalid taskId",
+      taskId: "not-a-convex-id",
+    });
+  });
+
   it("rejects invalid GET /tasks filters instead of returning all tasks", async () => {
     const handler = getHandler("/tasks", "GET");
     const ctx = createCtx();
