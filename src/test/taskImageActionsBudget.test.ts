@@ -242,4 +242,20 @@ describe("Task-image grant budget boundary", () => {
     });
     expect(scheduler.runAfter).toHaveBeenCalled();
   });
+
+  it("still schedules cleanup retries when outage diagnostics are unavailable", async () => {
+    vi.stubEnv("CLOUDINARY_API_SECRET", "");
+    const runMutation = vi
+      .fn()
+      .mockResolvedValueOnce({ promoted: 0 })
+      .mockRejectedValueOnce(new Error("diagnostics unavailable"));
+    const scheduler = { runAfter: vi.fn(async () => undefined) };
+
+    await expect(cleanup({
+      runMutation,
+      runQuery: vi.fn(async () => [{ _id: "tombstone-secret", providerPublicId: "provider-secret" }]),
+      scheduler,
+    }, {})).resolves.toMatchObject({ providerUnavailable: true, retried: 0 });
+    expect(scheduler.runAfter).toHaveBeenCalled();
+  });
 });

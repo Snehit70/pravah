@@ -412,11 +412,15 @@ export const submitUploadResult = action({
         version: args.version,
         result: { status: "failed", failureCode: verified.failureCode },
       });
-      await ctx.runMutation(recordOperationalEventRef, {
-        category: "verification",
-        code: verified.failureCode,
-        now: Date.now(),
-      });
+      try {
+        await ctx.runMutation(recordOperationalEventRef, {
+          category: "verification",
+          code: verified.failureCode,
+          now: Date.now(),
+        });
+      } catch {
+        // The committed verification failure must still reach the client.
+      }
       return { state: "failed" as const, failure: { code: verified.failureCode } };
     }
 
@@ -516,30 +520,42 @@ export const reconcileCleanup = internalAction({
         });
         if (outcome === "retry") retried += 1;
         else terminal += 1;
-        await ctx.runMutation(recordOperationalEventRef, {
-          category: "cleanup",
-          code: outcome === "retry" ? "provider_ambiguous" : "success",
-          now,
-        });
+        try {
+          await ctx.runMutation(recordOperationalEventRef, {
+            category: "cleanup",
+            code: outcome === "retry" ? "provider_ambiguous" : "success",
+            now,
+          });
+        } catch {
+          // Cleanup state and retry scheduling remain authoritative.
+        }
         if (result.nextAttemptAt !== undefined) {
           nextAttemptAt = Math.min(nextAttemptAt ?? Infinity, result.nextAttemptAt);
         }
       } catch {
         retried += 1;
-        await ctx.runMutation(recordOperationalEventRef, {
-          category: "cleanup",
-          code: "provider_ambiguous",
-          now,
-        });
+        try {
+          await ctx.runMutation(recordOperationalEventRef, {
+            category: "cleanup",
+            code: "provider_ambiguous",
+            now,
+          });
+        } catch {
+          // Cleanup state and retry scheduling remain authoritative.
+        }
         nextAttemptAt = Math.min(nextAttemptAt ?? Infinity, now + 5 * 60 * 1000);
       }
     }
     if (providerUnavailable) {
-      await ctx.runMutation(recordOperationalEventRef, {
-        category: "cleanup",
-        code: "provider_unavailable",
-        now,
-      });
+      try {
+        await ctx.runMutation(recordOperationalEventRef, {
+          category: "cleanup",
+          code: "provider_unavailable",
+          now,
+        });
+      } catch {
+        // Provider outage retries must not depend on aggregate diagnostics.
+      }
     }
     if (!providerUnavailable && tombstones.length === 50) {
       await ctx.scheduler.runAfter(0, internal.taskImageActions.reconcileCleanup, {});
