@@ -173,6 +173,7 @@ vi.mock("../components/UiIcons", () => {
     React.createElement("span", { "data-icon": name, style: { color, fontSize: size } });
   return {
     CalendarIcon: icon("calendar"),
+    AlertCircleIcon: icon("alert-circle"),
     CheckIcon: icon("check"),
     ChevronLeftIcon: icon("chevron-left"),
     ChevronRightIcon: icon("chevron-right"),
@@ -182,6 +183,11 @@ vi.mock("../components/UiIcons", () => {
     InboxTrayIcon: icon("inbox"),
     InfoCircleIcon: icon("info"),
     PencilIcon: icon("pencil"),
+    PlusIcon: icon("plus"),
+    CopyIcon: icon("copy"),
+    RetryArrowIcon: icon("retry"),
+    SmartphoneIcon: icon("smartphone"),
+    StackPlusIcon: icon("stack-plus"),
     SearchIcon: icon("search"),
     TrashIcon: icon("trash"),
   };
@@ -442,6 +448,28 @@ describe("EditTaskSheet compact workbench", () => {
     expect(onReopen).toHaveBeenCalledWith("task1");
   });
 
+  it("keeps completed Task image editing read-only", async () => {
+    const completedTask: MobileTask = {
+      ...timelineTask,
+      completedAt: Date.now(),
+      imageCollection: {
+        revision: 1,
+        observedAt: 100,
+        active: [{ taskImageId: "image-1", position: 0, state: "ready" }],
+        recoverable: [{ taskImageId: "removed-1", caption: "Removed" }],
+      },
+    };
+    const { ref } = setup({
+      onSelectTaskImage: vi.fn(),
+      onRestoreTaskImage: vi.fn(),
+    });
+    await open(ref, completedTask);
+
+    expect(screen.queryByLabelText("Add Task image")).toBeNull();
+    expect(screen.queryByLabelText("Add Task image from Photos")).toBeNull();
+    expect(screen.queryByLabelText("Restore removed Task image")).toBeNull();
+  });
+
   it("updates local image positions when reordering a Task image", async () => {
     const onReorderTaskImages = vi.fn(async () => ({
       stale: false as const,
@@ -494,6 +522,7 @@ describe("EditTaskSheet compact workbench", () => {
 
     expect(screen.getAllByAltText("Selected Task image preview")[0].getAttribute("src"))
       .toBe("file:///image-a.jpg");
+    fireEvent.click(screen.getByLabelText("Select Task image 2"));
     fireEvent.click(screen.getByLabelText("Move Task image up"));
 
     await waitFor(() => {

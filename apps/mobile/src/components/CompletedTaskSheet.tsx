@@ -204,6 +204,7 @@ export function CompletedTaskSheet({
               <View style={styles.imagesSection}>
                 <Text style={styles.sectionLabel}>Task images</Text>
                 <TaskImageFilmstrip
+                  surface="completed"
                   images={task.imageCollection.active}
                   resolveDelivery={resolveTaskImage}
                 />

@@ -53,7 +53,7 @@ import NavGoalsAsset from "../assets/icons/nav-goals.svg";
 import NavInboxAsset from "../assets/icons/nav-inbox.svg";
 import { SearchField } from "./SearchField";
 import { addDays, dateLabel, getLocalDateString, humanDate, toIsoDate } from "../lib/dates";
-import { TaskImageFilmstrip } from "./TaskImageFilmstrip";
+import { TaskImageFilmstrip, type TaskImageRetryState } from "./TaskImageFilmstrip";
 import type { TaskImageSourceKind } from "../lib/taskImageCoordinator";
 
 export type EditTaskSheetRef = {
@@ -111,6 +111,11 @@ type EditTaskSheetProps = {
     expectedRevision: number;
     kind: TaskImageSourceKind;
   }) => TaskImageCollectionMutationResult | Promise<TaskImageCollectionMutationResult | undefined> | undefined;
+  onRetryTaskImage?: (args: {
+    taskId: Id<"tasks">;
+    taskImageId: string;
+    onState?: (state: TaskImageRetryState) => void;
+  }) => TaskImageRetryState | undefined | void | Promise<TaskImageRetryState | undefined | void>;
   onSaveComplete?: (
     undo: UndoPayload,
     task: MobileTask,
@@ -228,6 +233,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       onRemoveTaskImage,
       onRestoreTaskImage,
       onSelectTaskImage,
+      onRetryTaskImage,
       onSaveComplete,
     },
     ref,
@@ -809,10 +815,38 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             <View style={styles.imagesSection}>
               <Text style={styles.sectionLabel}>Task images</Text>
               <TaskImageFilmstrip
+                surface="edit"
                 images={currentTask.imageCollection?.active ?? []}
                 recoverable={currentTask.imageCollection?.recoverable ?? []}
                 resolveDelivery={resolveTaskImage}
-                onSelectSource={onSelectTaskImage
+                onRetry={onRetryTaskImage
+                  ? (taskImageId) => {
+                      const applyRetryState = (state: TaskImageRetryState) => {
+                        setCurrentTask((previous) => {
+                          if (!previous?.imageCollection) return previous;
+                          return {
+                            ...previous,
+                            imageCollection: {
+                              ...previous.imageCollection,
+                              active: previous.imageCollection.active.map((image) => (
+                                image.taskImageId === state.taskImageId
+                                  ? { ...image, ...state }
+                                  : image
+                              )),
+                            },
+                          };
+                        });
+                      };
+                      void Promise.resolve(onRetryTaskImage({
+                        taskId: currentTask._id,
+                        taskImageId,
+                        onState: applyRetryState,
+                      })).then((state) => {
+                        if (state) applyRetryState(state);
+                      });
+                    }
+                  : undefined}
+                onSelectSource={!completed && onSelectTaskImage
                   ? async (kind) => {
                       const result = await onSelectTaskImage({
                         taskId: currentTask._id,
@@ -888,7 +922,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                       })();
                     }
                   : undefined}
-                onRestore={onRestoreTaskImage
+                onRestore={!completed && onRestoreTaskImage
                   ? (taskImageId, replaceTaskImageId) => {
                       void (async () => {
                         try {

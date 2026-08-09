@@ -131,10 +131,10 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       if (!taskImageCoordinator) return;
       return taskImageCoordinator.subscribe(() => setTaskImageRevision((value) => value + 1));
     }, [taskImageCoordinator]);
-    const taskImageDrafts = useMemo(
-      () => taskImageCoordinator?.getViewStates() ?? [],
-      [taskImageCoordinator, taskImageRevision],
-    );
+    const taskImageDrafts = useMemo(() => {
+      void taskImageRevision;
+      return taskImageCoordinator?.getViewStates() ?? [];
+    }, [taskImageCoordinator, taskImageRevision]);
     const selectedGoal = useMemo(
       () => goals.find((g) => g.id === goalId),
       [goals, goalId]
@@ -672,12 +672,14 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
 
               {kind === "task" && taskImageCoordinator ? (
                 <TaskImageFilmstrip
+                  surface="capture"
                   images={taskImageDrafts.map((image, position) => ({
                     taskImageId: image.uploadId,
                     position,
                     state: image.state,
                     previewUri: image.previewUri,
                     caption: image.caption,
+                    progress: image.progress,
                     failure: image.failure,
                   }))}
                   onSelectSource={(sourceKind) => {

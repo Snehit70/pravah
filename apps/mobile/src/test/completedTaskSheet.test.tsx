@@ -103,10 +103,18 @@ vi.mock("../components/UiIcons", () => {
   const icon = (name: string) => () => React.createElement("span", { "data-icon": name });
   return {
     CalendarIcon: icon("calendar"),
+    AlertCircleIcon: icon("alert-circle"),
     CheckIcon: icon("check"),
+    ChevronLeftIcon: icon("chevron-left"),
+    ChevronRightIcon: icon("chevron-right"),
     CloseIcon: icon("close"),
+    CopyIcon: icon("copy"),
     FileTextIcon: icon("file-text"),
     InfoCircleIcon: icon("info"),
+    PlusIcon: icon("plus"),
+    RetryArrowIcon: icon("retry"),
+    SmartphoneIcon: icon("smartphone"),
+    StackPlusIcon: icon("stack-plus"),
     TrashIcon: icon("trash"),
   };
 });

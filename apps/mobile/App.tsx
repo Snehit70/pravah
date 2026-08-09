@@ -67,6 +67,7 @@ import { BootScreen } from "./src/components/BootScreen";
 import { BrandMark } from "./src/components/BrandMark";
 import { AddTaskSheet, type AddTaskSheetRef } from "./src/components/AddTaskSheet";
 import { EditTaskSheet, type EditTaskSheetRef } from "./src/components/EditTaskSheet";
+import type { TaskImageRetryState } from "./src/components/TaskImageFilmstrip";
 import { MobileAuthScreen } from "./src/components/MobileAuthScreen";
 import { RootErrorBoundary } from "./src/components/RootErrorBoundary";
 import { ScreenErrorBoundary } from "./src/components/ScreenErrorBoundary";
@@ -1621,6 +1622,26 @@ function MobileApp() {
               return undefined;
             }
           })();
+        }}
+        onRetryTaskImage={async ({ taskId, taskImageId, onState }) => {
+          const emitState = (state: {
+            taskImageId?: string;
+            state: TaskImageRetryState["state"];
+            previewUri?: string;
+            caption?: string;
+            progress?: number;
+            failure?: TaskImageRetryState["failure"];
+          }) => {
+            if (state.taskImageId) {
+              onState?.({ ...state, taskImageId: state.taskImageId });
+            }
+          };
+          const result = await taskImageCoordinator.retryTaskImageUpload(
+            String(taskId),
+            taskImageId,
+            emitState,
+          );
+          return result?.taskImageId ? { ...result, taskImageId: result.taskImageId } : undefined;
         }}
         onSaveComplete={(undo, task, previousState) => {
           showToast({

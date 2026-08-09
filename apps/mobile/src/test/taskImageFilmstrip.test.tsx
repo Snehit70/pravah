@@ -27,14 +27,32 @@ vi.mock("react-native", () => {
       },
       typeof children === "function"
         ? (children as (state: { pressed: boolean }) => React.ReactNode)({ pressed: false })
-        : children
+      : children
     );
+  const ScrollView = ({ children, ...props }: Props) => React.createElement("div", props, children);
   return {
     View,
     Text,
     TextInput,
     Pressable,
+    ScrollView,
     StyleSheet: { create: <T,>(styles: T) => styles, hairlineWidth: 1 },
+  };
+});
+
+vi.mock("../components/UiIcons", () => {
+  const Icon = () => React.createElement("span");
+  return {
+    AlertCircleIcon: Icon,
+    ChevronLeftIcon: Icon,
+    ChevronRightIcon: Icon,
+    CloseIcon: Icon,
+    CopyIcon: Icon,
+    PlusIcon: Icon,
+    RetryArrowIcon: Icon,
+    SmartphoneIcon: Icon,
+    StackPlusIcon: Icon,
+    TrashIcon: Icon,
   };
 });
 
@@ -171,6 +189,47 @@ describe("TaskImageFilmstrip", () => {
     expect(onSelectSource).toHaveBeenCalledWith("photos");
   });
 
+  it("preserves capture caption spaces while exposing image reorder controls", () => {
+    const onCaptionChange = vi.fn();
+    const onReorder = vi.fn();
+    render(
+      <TaskImageFilmstrip
+        surface="capture"
+        images={[
+          { taskImageId: "image-1", position: 0, state: "pending", caption: "First" },
+          { taskImageId: "image-2", position: 1, state: "pending", caption: "Second" },
+        ]}
+        onCaptionChange={onCaptionChange}
+        onReorder={onReorder}
+      />
+    );
+
+    const caption = screen.getByDisplayValue("First");
+    fireEvent.change(caption, { target: { value: "First " } });
+    expect((caption as HTMLInputElement).value).toBe("First ");
+    fireEvent.click(screen.getAllByRole("button", { name: "Move Task image earlier" })[1]);
+    expect(onCaptionChange).toHaveBeenCalledWith("image-1", "First ");
+    expect(onReorder).toHaveBeenCalledWith("image-2", "up");
+  });
+
+  it("keeps Edit caption text local until blur commits it", () => {
+    const onCaptionChange = vi.fn();
+    render(
+      <TaskImageFilmstrip
+        surface="edit"
+        images={[{ taskImageId: "image-1", position: 0, state: "pending", caption: "First" }]}
+        onCaptionChange={onCaptionChange}
+      />
+    );
+
+    const caption = screen.getByDisplayValue("First");
+    fireEvent.change(caption, { target: { value: "Updated caption" } });
+    expect((caption as HTMLInputElement).value).toBe("Updated caption");
+    expect(onCaptionChange).not.toHaveBeenCalled();
+    fireEvent.blur(caption);
+    expect(onCaptionChange).toHaveBeenCalledWith("image-1", "Updated caption");
+  });
+
   it("exposes recently removed images for restoration", () => {
     const onRestore = vi.fn();
     render(
@@ -225,5 +284,129 @@ describe("TaskImageFilmstrip", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("renders the selected Capture Filmstrip empty state and source actions", () => {
+    const onSelectSource = vi.fn();
+    render(<TaskImageFilmstrip surface="capture" images={[]} onSelectSource={onSelectSource} />);
+
+    expect(screen.getByText("Add a visual reference")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Add Task image from Photos" }));
+    expect(onSelectSource).toHaveBeenCalledWith("photos");
+  });
+
+  it("hides Capture source actions at the five-image limit", () => {
+    render(
+      <TaskImageFilmstrip
+        surface="capture"
+        images={Array.from({ length: 5 }, (_, position) => ({
+          taskImageId: `image-${position}`,
+          position,
+          state: "ready" as const,
+        }))}
+        onSelectSource={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Add Task image from Photos" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Take Task image with Camera" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Paste Task image from clipboard" })).toBeNull();
+  });
+
+  it("keeps recoverable images restorable from an empty Edit surface", () => {
+    const onRestore = vi.fn();
+    render(
+      <TaskImageFilmstrip
+        surface="edit"
+        images={[]}
+        recoverable={[{ taskImageId: "removed-1", caption: "Reference" }]}
+        onRestore={onRestore}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Restore removed Task image" }));
+    expect(onRestore).toHaveBeenCalledWith("removed-1");
+  });
+
+  it("expires Edit recovery actions while the surface remains open", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1_000);
+      render(
+        <TaskImageFilmstrip
+          surface="edit"
+          images={[]}
+          recoverable={[{ taskImageId: "removed-1", recoverableUntil: 2_000 }]}
+          onRestore={vi.fn()}
+        />
+      );
+      expect(screen.getByRole("button", { name: "Restore removed Task image" })).toBeTruthy();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+
+      expect(screen.queryByRole("button", { name: "Restore removed Task image" })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("hides Edit source actions at the five-image limit", () => {
+    render(
+      <TaskImageFilmstrip
+        surface="edit"
+        images={Array.from({ length: 5 }, (_, position) => ({
+          taskImageId: `image-${position}`,
+          position,
+          state: "ready" as const,
+        }))}
+        onSelectSource={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Add Task image" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add Task image from Photos" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Take Task image with Camera" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Paste Task image from clipboard" })).toBeNull();
+  });
+
+  it("renders compact Inbox and Completed presentations", () => {
+    const images = [
+      { taskImageId: "image-1", position: 0, state: "ready" as const },
+      { taskImageId: "image-2", position: 1, state: "ready" as const, caption: "Second reference" },
+    ];
+
+    const { rerender } = render(<TaskImageFilmstrip surface="inbox" images={images} />);
+    expect(screen.getByText("+1")).toBeTruthy();
+
+    rerender(<TaskImageFilmstrip surface="completed" images={images} />);
+    expect(screen.getByText("2 images retained")).toBeTruthy();
+    expect(screen.getByText("Second reference")).toBeTruthy();
+  });
+
+  it("uses the detail delivery variant and exposes retry in the Edit surface", async () => {
+    const onRetry = vi.fn();
+    const resolveDelivery = vi.fn(async () => ({
+      kind: "ready" as const,
+      url: "https://transient.example/signed-detail",
+    }));
+    render(
+      <TaskImageFilmstrip
+        surface="edit"
+        images={[
+          { taskImageId: "image-1", position: 0, state: "ready" },
+          { taskImageId: "image-2", position: 1, state: "failed", failure: { code: "upload_failed", retryable: true } },
+        ]}
+        onRetry={onRetry}
+        resolveDelivery={resolveDelivery}
+      />
+    );
+
+    expect((await screen.findAllByAltText("Primary Task image")).length).toBeGreaterThan(0);
+    expect(resolveDelivery).toHaveBeenCalledWith("image-1", "detail");
+    fireEvent.click(screen.getByRole("button", { name: "Select Task image 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Retry Task image" }));
+    expect(onRetry).toHaveBeenCalledWith("image-2");
   });
 });

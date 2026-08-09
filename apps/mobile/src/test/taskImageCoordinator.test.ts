@@ -462,16 +462,30 @@ describe("Task-image mobile coordinator", () => {
       expect(coordinator.getViewState()).toMatchObject({ uploadId: "upl_mobile_1", state: "ready" });
 
       const manualDependencies = createDependencies();
-      manualDependencies.upload = vi.fn().mockRejectedValueOnce(
-        Object.assign(new Error("offline"), { code: "network_error", retryable: true })
-      );
+      const manualUpload = manualDependencies.upload;
+      manualDependencies.upload = vi.fn()
+        .mockRejectedValueOnce(Object.assign(new Error("offline"), { code: "network_error", retryable: true }))
+        .mockImplementation(manualUpload);
+      manualDependencies.verify = vi.fn(async () => ({ state: "ready" as const }));
       const manualIssueGrant = vi.fn(manualDependencies.issueGrant);
       manualDependencies.issueGrant = manualIssueGrant;
       const manualCoordinator = createTaskImageCoordinator(manualDependencies);
+      const retryStates: Array<{ taskImageId?: string; state: string }> = [];
       await manualCoordinator.select("photos");
+      manualCoordinator.associateUploadsWithTask("task_1", ["upl_mobile_1"]);
+      manualCoordinator.associateTaskImageOrder("task_1", ["image_1"]);
       await manualCoordinator.beginUploadAfterSave();
-      await manualCoordinator.retry("upl_mobile_1");
+      const retryResult = await manualCoordinator.retryTaskImageUpload(
+        "task_1",
+        "image_1",
+        (state) => retryStates.push({ taskImageId: state.taskImageId, state: state.state }),
+      );
       expect(manualDependencies.upload).toHaveBeenCalledTimes(2);
+      expect(retryResult).toMatchObject({ taskImageId: "image_1", state: "ready" });
+      expect(retryStates).toEqual(expect.arrayContaining([
+        { taskImageId: "image_1", state: "pending" },
+        { taskImageId: "image_1", state: "ready" },
+      ]));
       expect(manualIssueGrant.mock.calls.at(-1)?.[0]).toMatchObject({
         uploadId: "upl_mobile_1",
         requestKey: expect.stringContaining("upl_mobile_1"),
