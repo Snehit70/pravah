@@ -6,6 +6,7 @@ import {
   buildEagerWebhookVerificationInput,
   buildUploadGrant,
   checkProviderAssetPresence,
+  fetchProviderUsage,
   verifyProviderUploadMaster,
   verifyProviderWebhookResult,
   verifyWebhookSignature,
@@ -19,6 +20,43 @@ const provider = {
 };
 
 describe("Task-image Cloudinary policy", () => {
+  it("reduces the Admin API usage report to pooled and category aggregates", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("https://api.cloudinary.com/v1_1/demo-cloud/usage");
+      expect(new Headers(init?.headers).get("Authorization")).toBe("Basic cHVibGljLWtleTphYmNk");
+      return new Response(JSON.stringify({
+        credits: { usage: 17.5, limit: 25, used_percent: 70 },
+        transformations: { usage: 3_250 },
+        storage: { usage: 4_000_000 },
+        bandwidth: { usage: 6_000_000 },
+        resources: 99,
+        plan: "Free",
+      }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchProviderUsage(provider)).resolves.toEqual({
+      pooledPercentage: 70,
+      transformations: 3_250,
+      storageBytes: 4_000_000,
+      bandwidthBytes: 6_000_000,
+    });
+
+    vi.unstubAllGlobals();
+  });
+
+  it("rejects incomplete usage reports instead of treating them as safe", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      credits: { usage: 1, limit: 25 },
+      transformations: { usage: 10 },
+      storage: { usage: 20 },
+    }), { status: 200 })));
+
+    await expect(fetchProviderUsage(provider)).rejects.toThrow("provider_usage_unavailable");
+
+    vi.unstubAllGlobals();
+  });
+
   it("checks authenticated image presence through the Admin API resource path", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       expect(String(input)).toBe(
