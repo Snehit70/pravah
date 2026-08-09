@@ -9,6 +9,7 @@ const {
   mockGoals,
   mockGoalFor,
   mockSetGoalLink,
+  clipboardListeners,
 } = vi.hoisted(() => ({
   mockConfirm: vi.fn(async () => true),
   mockGoals: [
@@ -17,6 +18,15 @@ const {
   ],
   mockGoalFor: vi.fn(() => null as string | null),
   mockSetGoalLink: vi.fn(),
+  clipboardListeners: new Set<(event: { contentTypes: string[] }) => void>(),
+}));
+
+vi.mock("expo-clipboard", () => ({
+  ContentType: { IMAGE: "image", PLAIN_TEXT: "plain-text" },
+  addClipboardListener: vi.fn((listener: (event: { contentTypes: string[] }) => void) => {
+    clipboardListeners.add(listener);
+    return { remove: () => clipboardListeners.delete(listener) };
+  }),
 }));
 
 vi.mock("react-native", () => {
@@ -113,8 +123,20 @@ vi.mock("react-native", () => {
       ? React.createElement("textarea", props)
       : React.createElement("input", props);
   });
+  class MockAnimatedValue {
+    constructor(public value: number) {}
+    setValue(value: number) { this.value = value; }
+    stopAnimation() {}
+    interpolate() { return this.value; }
+  }
+  const Animated = {
+    View,
+    Value: MockAnimatedValue,
+    timing: () => ({ start: () => undefined }),
+  };
 
   return {
+    Animated,
     View,
     Text,
     Pressable,
@@ -204,6 +226,7 @@ vi.mock("../components/UiIcons", () => {
     FileTextIcon: icon("file-text"),
     InboxTrayIcon: icon("inbox"),
     InfoCircleIcon: icon("info"),
+    ImagePlusIcon: icon("image-plus"),
     PencilIcon: icon("pencil"),
     PlusIcon: icon("plus"),
     CopyIcon: icon("copy"),
@@ -341,6 +364,7 @@ async function open(ref: { current: EditTaskSheetRef | null }, task: MobileTask 
 describe("EditTaskSheet compact workbench", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clipboardListeners.clear();
     mockConfirm.mockResolvedValue(true);
     mockGoalFor.mockReturnValue(null);
   });
@@ -579,6 +603,7 @@ describe("EditTaskSheet compact workbench", () => {
     const { ref } = setup({ onSelectTaskImage });
     await open(ref);
 
+    fireEvent.click(screen.getByLabelText("Add Task image"));
     fireEvent.click(screen.getByLabelText("Add Task image from Photos"));
 
     await waitFor(() => {
@@ -589,6 +614,44 @@ describe("EditTaskSheet compact workbench", () => {
       taskId: "task1",
       expectedRevision: 0,
       kind: "photos",
+    });
+  });
+
+  it("routes an image clipboard paste from Notes into Task images", async () => {
+    const onSelectTaskImage = vi.fn(async () => ({
+      stale: false as const,
+      revision: 5,
+      active: [{
+        taskImageId: "image-pasted",
+        position: 0,
+        state: "pending" as const,
+        previewUri: "file:///pasted-image.png",
+      }],
+      primary: {
+        taskImageId: "image-pasted",
+        position: 0,
+        state: "pending" as const,
+        previewUri: "file:///pasted-image.png",
+      },
+      recoverable: [],
+    }));
+    const { ref } = setup({ onSelectTaskImage });
+    await open(ref);
+
+    fireEvent.click(screen.getByLabelText("Edit task notes"));
+    await act(async () => {
+      for (const listener of clipboardListeners) listener({ contentTypes: ["image"] });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByAltText("Selected Task image preview").getAttribute("src"))
+        .toBe("file:///pasted-image.png");
+    });
+    expect(onSelectTaskImage).toHaveBeenCalledWith({
+      taskId: "task1",
+      expectedRevision: 0,
+      kind: "paste",
     });
   });
 

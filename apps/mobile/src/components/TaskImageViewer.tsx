@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Modal, Pressable, Text, View, useWindowDimensions } from "react-native";
 import { Image } from "expo-image";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -39,6 +39,7 @@ function visualImages(images: TaskImageFilmstripEntry[]) {
   return images.filter((image) => image.state === "ready" || Boolean(image.previewUri));
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function hasTaskImageVisual(image: TaskImageFilmstripEntry) {
   return image.state === "ready" || Boolean(image.previewUri);
 }
@@ -275,20 +276,21 @@ const styles = createThemedStyles({
   backdrop: { flex: 1, backgroundColor: "rgba(8, 5, 10, 0.94)" },
   viewer: { flex: 1, paddingHorizontal: spacing.md, justifyContent: "space-between" },
   topBar: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  counter: { ...typography.bodySm, color: colors.textInverse },
+  counter: { ...typography.bodyMd, color: colors.textInverse },
   closeButton: { width: 48, height: 48, borderRadius: radii.full, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,250,242,0.12)" },
   imageViewport: { flex: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   imageStage: { width: "100%", height: "100%", alignItems: "center", justifyContent: "center" },
   image: { width: "100%", height: "100%" },
   unavailableState: { maxWidth: 280, alignItems: "center", gap: spacing.sm },
   stateTitle: { ...typography.title, color: colors.textInverse, textAlign: "center" },
-  stateBody: { ...typography.bodySm, color: "rgba(255,250,242,0.74)", textAlign: "center" },
+  stateBody: { ...typography.bodyMd, color: "rgba(255,250,242,0.74)", textAlign: "center" },
   bottomBar: { minHeight: 56, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   navigationButton: { width: 48, height: 48, borderRadius: radii.full, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,250,242,0.12)" },
   navigationDisabled: { opacity: 0.35 },
-  hint: { ...typography.metadata, color: "rgba(255,250,242,0.72)" },
+  hint: { ...typography.micro, color: "rgba(255,250,242,0.72)" },
 });
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function getViewerImages(images: TaskImageFilmstripEntry[]) {
   return visualImages(images);
 }

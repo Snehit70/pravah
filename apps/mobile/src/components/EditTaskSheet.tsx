@@ -1,6 +1,7 @@
 import {
   forwardRef,
   useCallback,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -8,6 +9,7 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import {
+  Animated,
   Keyboard,
   Modal,
   Pressable,
@@ -19,6 +21,7 @@ import {
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { BlurView } from "expo-blur";
+import * as Clipboard from "expo-clipboard";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { haptic } from "../lib/haptic";
 import { colors, radii, spacing, typography } from "../theme/tokens";
@@ -183,6 +186,7 @@ function PlanningRow({
   valueColor,
   onPress,
   selected,
+  showChevron = true,
 }: {
   icon: ReactNode;
   label: string;
@@ -190,6 +194,7 @@ function PlanningRow({
   valueColor?: string;
   onPress?: () => void;
   selected?: boolean;
+  showChevron?: boolean;
 }) {
   const body = (
     <>
@@ -198,8 +203,7 @@ function PlanningRow({
       <Text style={[styles.planningValue, valueColor ? { color: valueColor } : null]} numberOfLines={1}>
         {value}
       </Text>
-      {onPress ? <ChevronRightIcon color={colors.textMuted} size={16} /> : null}
-      {selected ? <CheckIcon color={colors.accent} size={17} /> : null}
+      {selected ? <CheckIcon color={colors.accent} size={17} /> : showChevron && onPress ? <ChevronRightIcon color={colors.textMuted} size={16} /> : null}
     </>
   );
 
@@ -265,6 +269,9 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const [overflowOpen, setOverflowOpen] = useState(false);
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [showTimePicker, setShowTimePicker] = useState(false);
+    const clipboardPasteInFlight = useRef(false);
+    const [screenTransition] = useState(() => new Animated.Value(1));
+    const previousMode = useRef<SheetMode>("inspector");
 
     const closeModal = useCallback(
       (notify = true) => {
@@ -306,6 +313,49 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       if (!query) return goals;
       return goals.filter((goal) => goal.text.toLocaleLowerCase().includes(query));
     }, [goalQuery, goals]);
+
+    const attachTaskImage = useCallback(async (kind: TaskImageSourceKind) => {
+      if (!currentTask || !onSelectTaskImage || isTaskCompleted(currentTask)) return;
+      const result = await onSelectTaskImage({
+        taskId: currentTask._id,
+        expectedRevision: currentTask.imageCollection?.revision ?? 0,
+        kind,
+      });
+      if (!result) return;
+      const { stale: _, ...imageCollection } = result;
+      setCurrentTask((previous) => previous ? { ...previous, imageCollection } : previous);
+    }, [currentTask, onSelectTaskImage]);
+
+    useEffect(() => {
+      if (!visible || (!titleEditing && !notesEditing) || !onSelectTaskImage || !currentTask || isTaskCompleted(currentTask)) {
+        return;
+      }
+
+      const subscription = Clipboard.addClipboardListener(({ contentTypes }) => {
+        if (!contentTypes.includes(Clipboard.ContentType.IMAGE) || clipboardPasteInFlight.current) return;
+        clipboardPasteInFlight.current = true;
+        void attachTaskImage("paste").finally(() => {
+          clipboardPasteInFlight.current = false;
+        });
+      });
+      return () => subscription.remove();
+    }, [attachTaskImage, currentTask, notesEditing, onSelectTaskImage, titleEditing, visible]);
+
+    useEffect(() => {
+      if (previousMode.current === mode) return;
+      previousMode.current = mode;
+      if (reducedMotion) {
+        screenTransition.setValue(1);
+        return;
+      }
+      screenTransition.stopAnimation();
+      screenTransition.setValue(0);
+      Animated.timing(screenTransition, {
+        toValue: 1,
+        duration: 180,
+        useNativeDriver: true,
+      }).start();
+    }, [mode, reducedMotion, screenTransition]);
 
     const restoreInitialDraft = useCallback(() => {
       if (!initialDraft) return;
@@ -593,6 +643,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                   label={option.label}
                   value=""
                   selected={deadline === option.value}
+                  showChevron={false}
                   onPress={() => chooseDeadline(option.value)}
                 />
               ))}
@@ -646,6 +697,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                   label={label}
                   value=""
                   selected={priority === option.value}
+                  showChevron={false}
                   onPress={() => {
                     setPriority(option.value);
                     setMode("inspector");
@@ -679,6 +731,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             label="No goal"
             value=""
             selected={!draftGoalId}
+            showChevron={false}
             onPress={() => {
               setDraftGoalId(null);
               setMode("inspector");
@@ -693,6 +746,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
               label={goal.text}
               value=""
               selected={draftGoalId === goal.id}
+              showChevron={false}
               onPress={() => {
                 setDraftGoalId(goal.id);
                 setMode("inspector");
@@ -847,18 +901,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                     }
                   : undefined}
                 onSelectSource={!completed && onSelectTaskImage
-                  ? async (kind) => {
-                      const result = await onSelectTaskImage({
-                        taskId: currentTask._id,
-                        expectedRevision: currentTask.imageCollection?.revision ?? 0,
-                        kind,
-                      });
-                      if (!result) return;
-                      const { stale: _, ...imageCollection } = result;
-                      setCurrentTask((previous) => previous
-                        ? { ...previous, imageCollection }
-                        : previous);
-                    }
+                  ? attachTaskImage
                   : undefined}
                 onCaptionChange={!completed && onCaptionTaskImage
                   ? (taskImageId, caption) => {
@@ -1093,15 +1136,30 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             onPress={() => void requestClose()}
           />
           <View style={styles.card} accessibilityViewIsModal>
-            {mode === "inspector"
-              ? renderInspector()
-              : mode === "when"
-                ? renderWhenPicker()
-                : mode === "priority"
-                  ? renderPriorityPicker()
-                  : mode === "goal"
-                    ? renderGoalPicker()
-                    : renderDetails()}
+            <Animated.View
+              style={[
+                styles.screenTransition,
+                {
+                  opacity: screenTransition,
+                  transform: [{
+                    translateX: screenTransition.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [mode === "inspector" ? -28 : 28, 0],
+                    }),
+                  }],
+                },
+              ]}
+            >
+              {mode === "inspector"
+                ? renderInspector()
+                : mode === "when"
+                  ? renderWhenPicker()
+                  : mode === "priority"
+                    ? renderPriorityPicker()
+                    : mode === "goal"
+                      ? renderGoalPicker()
+                      : renderDetails()}
+            </Animated.View>
             {renderFooter()}
           </View>
         </KeyboardAvoidingView>
@@ -1154,6 +1212,7 @@ const styles = createThemedStyles({
     borderColor: colors.border,
     overflow: "hidden",
   },
+  screenTransition: { flexShrink: 1 },
   pressed: { opacity: 0.68 },
   handleBar: {
     width: 36,
@@ -1201,9 +1260,11 @@ const styles = createThemedStyles({
     color: colors.textPrimary,
   },
   overflowMenu: {
-    alignSelf: "flex-end",
-    marginRight: spacing.md,
-    marginBottom: spacing.sm,
+    position: "absolute",
+    top: 58,
+    right: spacing.md,
+    zIndex: 20,
+    elevation: 8,
     minWidth: 190,
     borderRadius: radii.lg,
     borderWidth: StyleSheet.hairlineWidth,

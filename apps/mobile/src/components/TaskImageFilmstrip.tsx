@@ -621,6 +621,7 @@ function ManagementSurface({
 
 export function TaskImageFilmstrip({ surface = "management", images, ...props }: TaskImageFilmstripProps) {
   const ordered = [...images].sort((left, right) => left.position - right.position);
+  const { onSelectSource } = props;
   const [viewer, setViewer] = useState<{ images: TaskImageFilmstripEntry[]; initialIndex: number } | null>(null);
   const openViewer = useCallback((taskImageId: string) => {
     const viewerImages = getViewerImages(ordered);
@@ -630,21 +631,21 @@ export function TaskImageFilmstrip({ surface = "management", images, ...props }:
   }, [ordered]);
   const [sourceSheetVisible, setSourceSheetVisible] = useState(false);
   const openSource = useCallback(async () => {
-    if (!props.onSelectSource) return;
+    if (!onSelectSource) return;
     try {
       if (await Clipboard.hasImageAsync()) {
-        await props.onSelectSource("paste");
+        await onSelectSource("paste");
         return;
       }
     } catch {
       // Clipboard availability is optional. Fall back to the explicit source sheet.
     }
     setSourceSheetVisible(true);
-  }, [props.onSelectSource]);
+  }, [onSelectSource]);
   const surfaceProps = {
     ...props,
     onOpenImage: openViewer,
-    onOpenSource: props.onSelectSource ? openSource : undefined,
+    onOpenSource: onSelectSource ? openSource : undefined,
   };
   return (
     <>
@@ -654,7 +655,7 @@ export function TaskImageFilmstrip({ surface = "management", images, ...props }:
       {surface === "completed" ? <CompletedSurface images={ordered} {...surfaceProps} /> : null}
       {surface === "management" ? <ManagementSurface images={ordered} {...surfaceProps} /> : null}
       {viewer ? <TaskImageViewer {...viewer} visible resolveDelivery={props.resolveDelivery} onClose={() => setViewer(null)} /> : null}
-      {props.onSelectSource ? <TaskImageSourceSheet visible={sourceSheetVisible} onClose={() => setSourceSheetVisible(false)} onSelectSource={props.onSelectSource} /> : null}
+      {onSelectSource ? <TaskImageSourceSheet visible={sourceSheetVisible} onClose={() => setSourceSheetVisible(false)} onSelectSource={onSelectSource} /> : null}
     </>
   );
 }

@@ -53,6 +53,6 @@ const styles = createThemedStyles({
   iconFrame: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: radii.md, backgroundColor: colors.accentSoft },
   optionCopy: { flex: 1, gap: 2 },
   optionTitle: { ...typography.title, color: colors.textPrimary },
-  optionBody: { ...typography.bodySm, color: colors.textSecondary },
+  optionBody: { ...typography.bodyMd, color: colors.textSecondary },
   pressed: { opacity: 0.72 },
 });
