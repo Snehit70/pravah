@@ -59,6 +59,7 @@ import {
   setThemeRuntime,
 } from "./src/theme/themeRuntime";
 import { TaskCard, type MobileTask } from "./src/components/TaskCard";
+import { TaskImageBudgetNotice } from "./src/components/TaskImageBudgetNotice";
 import { BottomTabBar, type TabKey } from "./src/components/BottomTabBar";
 import { GridBackground } from "./src/components/GridBackground";
 import { Kairo, type KairoSheetRef } from "./src/components/Kairo";
@@ -296,6 +297,10 @@ function MobileApp() {
     // Progress / Kairo never pay a server round-trip on entry.
     includeAllTasks: true,
   });
+  const taskImageBudgetStatus = useQuery(
+    api.taskImageBudget.getOwnerBudgetStatus,
+    session ? {} : "skip"
+  );
 
   const hasLiveWorkspaceData =
     !isInboxLoading &&
@@ -1292,6 +1297,8 @@ function MobileApp() {
           </View>
         </View>
       </View> : null}
+
+      <TaskImageBudgetNotice status={taskImageBudgetStatus} />
 
       {/* Toast — left rule + line of copy, no filled pill. */}
       {toast ? (
