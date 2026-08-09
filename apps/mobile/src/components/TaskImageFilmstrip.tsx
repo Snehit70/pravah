@@ -11,7 +11,14 @@ export type TaskImageFilmstripEntry = {
   state: TaskImageState;
   previewUri?: string;
   caption?: string;
-  failure?: { code: string; retryable: boolean };
+  failure?: { code: string; message?: string; retryable: boolean };
+  presentation?: {
+    width?: number;
+    height?: number;
+    aspectRatio?: number;
+    hasTransparency?: boolean;
+    variantSet?: string;
+  };
 };
 
 export type RecoverableTaskImageEntry = {

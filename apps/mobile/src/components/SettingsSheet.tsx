@@ -2161,7 +2161,7 @@ function DataSection({
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Your data</Text>
             <Text style={styles.settingHelp}>
-              Export every task currently in view as JSON.
+              Export loaded Task metadata as JSON. Image files are not included and cannot be restored from this export.
             </Text>
           </View>
         </View>

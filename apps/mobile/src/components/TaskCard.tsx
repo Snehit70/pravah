@@ -48,8 +48,8 @@ export type MobileTask = {
   createdAt: number;
   imageCollection?: {
     revision: number;
+    observedAt: number;
     active: TaskImageFilmstripEntry[];
-    primary?: TaskImageFilmstripEntry;
     recoverable?: Array<{
       taskImageId: string;
       caption?: string;

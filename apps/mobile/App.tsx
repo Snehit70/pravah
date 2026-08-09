@@ -18,7 +18,7 @@ import {
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import Animated, { Easing, FadeIn, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { authStorageReady } from "./src/lib/auth-client";
@@ -98,6 +98,7 @@ import type { BulkTaskInput } from "./src/lib/bulkTaskCapture";
 import { resolveStartupTab } from "./src/lib/tabOrder";
 import { feedback } from "./src/lib/feedback";
 import { createTaskImageCoordinator } from "./src/lib/taskImageCoordinator";
+import { buildTaskMetadataExport } from "./src/lib/task-metadata-export";
 import {
   acquireTaskImageSource,
   abortPreparedTaskImageUpload,
@@ -162,6 +163,7 @@ function tabEnter() {
 
 function MobileApp() {
   const { markInteractive } = useObserve();
+  const convex = useConvex();
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
   const tabEnterAnimation = reducedMotion ? undefined : tabEnter;
@@ -523,17 +525,33 @@ function MobileApp() {
   }, [clearAllGoals, clearSnapshot, googleSignOut, setIsSettingsModalOpen]);
 
   const handleExportTasks = useCallback(async () => {
+    if (!session || !hasLiveWorkspaceData || shouldUseWorkspaceSnapshot) {
+      showToast({
+        kind: "error",
+        message: "Reconnect to export current Task metadata.",
+      });
+      return;
+    }
     try {
-      const payload = {
-        exportedAt: new Date().toISOString(),
-        version: 1,
+      const payload = await buildTaskMetadataExport({
         tasks: [...displayInboxTasks, ...displayScheduledTasks, ...displayCompletedTasks],
-      };
+        loadImageCollection: (taskId) =>
+          convex.query(api.taskImages.getTaskImageCollection, { taskId }),
+      });
       await Share.share({ message: JSON.stringify(payload, null, 2) });
     } catch {
       showToast({ kind: "error", message: "Could not share tasks export." });
     }
-  }, [displayCompletedTasks, displayInboxTasks, displayScheduledTasks, showToast]);
+  }, [
+    convex,
+    displayCompletedTasks,
+    displayInboxTasks,
+    displayScheduledTasks,
+    hasLiveWorkspaceData,
+    session,
+    shouldUseWorkspaceSnapshot,
+    showToast,
+  ]);
 
   const handleShareDiagnostics = useCallback(async () => {
     try {

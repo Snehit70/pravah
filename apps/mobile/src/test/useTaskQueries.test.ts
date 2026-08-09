@@ -56,8 +56,8 @@ describe("mapTaskDoc", () => {
   it("preserves the redacted task image collection without adding delivery data", () => {
     const imageCollection = {
       revision: 1,
+      observedAt: 100,
       active: [{ taskImageId: "image-1", position: 0, state: "ready" as const }],
-      primary: { taskImageId: "image-1", position: 0, state: "ready" as const },
     };
     const mapped = mapTaskDoc(makeTask("t", { imageCollection }));
 

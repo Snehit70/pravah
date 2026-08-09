@@ -33,8 +33,8 @@ const REDACTED = "[REDACTED]";
 const TRUNCATE_AT = 160;
 const REDACT_KEYS = new Set([
   "token",
-  "accessToken",
-  "refreshToken",
+  "accesstoken",
+  "refreshtoken",
   "authorization",
   "email",
   "phone",
@@ -42,6 +42,19 @@ const REDACT_KEYS = new Set([
   "description",
   "notes",
   "title",
+  "caption",
+  "taskimageid",
+  "uploadid",
+  "taskimageuploadid",
+  "providerpublicid",
+  "providerassetid",
+  "url",
+  "deliveryurl",
+  "localpath",
+  "previewuri",
+  "sourceuri",
+  "imagecollection",
+  "imagemanifest",
 ]);
 
 type PersistedPayload = {
@@ -88,7 +101,7 @@ function sanitizeValue(value: unknown): unknown {
   if (typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = REDACT_KEYS.has(k) ? REDACTED : sanitizeValue(v);
+      out[k] = REDACT_KEYS.has(k.toLowerCase()) ? REDACTED : sanitizeValue(v);
     }
     return out;
   }
