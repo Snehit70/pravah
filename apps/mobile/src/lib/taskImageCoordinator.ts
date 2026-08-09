@@ -168,6 +168,7 @@ const SAFE_FAILURE_CODES = new Set([
   "source_unavailable",
   "authorization_failed",
   "provider_unavailable",
+  "usage_blocked",
   "network_error",
   "upload_failed",
 ]);
@@ -189,6 +190,8 @@ function safeFailure(error: unknown): SafeTaskImageFailure {
   const candidate =
     error && typeof error === "object" && "code" in error && typeof error.code === "string"
       ? error.code
+      : error instanceof Error && error.message === "task_image_grants_blocked"
+        ? "usage_blocked"
       : "upload_failed";
   const code = SAFE_FAILURE_CODES.has(candidate) ? candidate : "normalization_failed";
   const explicitRetryable =

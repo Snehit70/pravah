@@ -280,7 +280,10 @@ export const issueUploadGrant = action({
       } catch {
         // Aggregate diagnostics must never change the blocked grant outcome.
       }
-      throw new Error("task_image_grants_blocked");
+      throw Object.assign(new Error("task_image_grants_blocked"), {
+        code: "usage_blocked",
+        retryable: true,
+      });
     }
     const prepared = await ctx.runMutation(prepareUploadGrantRef, {
       ownerTokenIdentifier,
