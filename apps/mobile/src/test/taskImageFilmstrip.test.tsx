@@ -27,14 +27,32 @@ vi.mock("react-native", () => {
       },
       typeof children === "function"
         ? (children as (state: { pressed: boolean }) => React.ReactNode)({ pressed: false })
-        : children
+      : children
     );
+  const ScrollView = ({ children, ...props }: Props) => React.createElement("div", props, children);
   return {
     View,
     Text,
     TextInput,
     Pressable,
+    ScrollView,
     StyleSheet: { create: <T,>(styles: T) => styles, hairlineWidth: 1 },
+  };
+});
+
+vi.mock("../components/UiIcons", () => {
+  const Icon = () => React.createElement("span");
+  return {
+    AlertCircleIcon: Icon,
+    ChevronLeftIcon: Icon,
+    ChevronRightIcon: Icon,
+    CloseIcon: Icon,
+    CopyIcon: Icon,
+    PlusIcon: Icon,
+    RetryArrowIcon: Icon,
+    SmartphoneIcon: Icon,
+    StackPlusIcon: Icon,
+    TrashIcon: Icon,
   };
 });
 
@@ -225,5 +243,52 @@ describe("TaskImageFilmstrip", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("renders the selected Capture Filmstrip empty state and source actions", () => {
+    const onSelectSource = vi.fn();
+    render(<TaskImageFilmstrip surface="capture" images={[]} onSelectSource={onSelectSource} />);
+
+    expect(screen.getByText("Add a visual reference")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Add Task image from Photos" }));
+    expect(onSelectSource).toHaveBeenCalledWith("photos");
+  });
+
+  it("renders compact Inbox and Completed presentations", () => {
+    const images = [
+      { taskImageId: "image-1", position: 0, state: "ready" as const },
+      { taskImageId: "image-2", position: 1, state: "ready" as const },
+    ];
+
+    const { rerender } = render(<TaskImageFilmstrip surface="inbox" images={images} />);
+    expect(screen.getByText("+1")).toBeTruthy();
+
+    rerender(<TaskImageFilmstrip surface="completed" images={images} />);
+    expect(screen.getByText("2 images retained")).toBeTruthy();
+  });
+
+  it("uses the detail delivery variant and exposes retry in the Edit surface", async () => {
+    const onRetry = vi.fn();
+    const resolveDelivery = vi.fn(async () => ({
+      kind: "ready" as const,
+      url: "https://transient.example/signed-detail",
+    }));
+    render(
+      <TaskImageFilmstrip
+        surface="edit"
+        images={[
+          { taskImageId: "image-1", position: 0, state: "ready" },
+          { taskImageId: "image-2", position: 1, state: "failed", failure: { code: "upload_failed", retryable: true } },
+        ]}
+        onRetry={onRetry}
+        resolveDelivery={resolveDelivery}
+      />
+    );
+
+    expect((await screen.findAllByAltText("Primary Task image")).length).toBeGreaterThan(0);
+    expect(resolveDelivery).toHaveBeenCalledWith("image-1", "detail");
+    fireEvent.click(screen.getByRole("button", { name: "Select Task image 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Retry Task image" }));
+    expect(onRetry).toHaveBeenCalledWith("image-2");
   });
 });

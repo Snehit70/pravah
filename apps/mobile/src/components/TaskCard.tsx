@@ -396,38 +396,41 @@ function TaskCardInner({
       <Animated.View pointerEvents="none" style={[styles.sweep, sweepStyle]} />
 
       {/* Body — title + description. Both single-line by default. */}
-      <View style={styles.body}>
+      <View style={styles.bodyWithImage}>
+        <View style={styles.body}>
+          <Text
+            style={[
+              styles.title,
+              compactDensity && styles.titleCompact,
+              isCompleted && styles.titleCompleted,
+            ]}
+            numberOfLines={titleLines}
+            ellipsizeMode="tail"
+          >
+            {task.title}
+          </Text>
+          {hasDescription ? (
+            <Text
+              style={[styles.description, compactDensity && styles.descriptionCompact]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {task.description}
+            </Text>
+          ) : null}
+          {linkedGoalName ? (
+            <Text style={styles.goalTag} numberOfLines={1} ellipsizeMode="tail">
+              <Text style={{ color: taskAccent }}>◈ </Text>
+              {linkedGoalName}
+            </Text>
+          ) : null}
+        </View>
         {task.imageCollection?.active.length ? (
           <TaskImageFilmstrip
+            surface="inbox"
             images={task.imageCollection.active}
             resolveDelivery={resolveTaskImage}
           />
-        ) : null}
-        <Text
-          style={[
-            styles.title,
-            compactDensity && styles.titleCompact,
-            isCompleted && styles.titleCompleted,
-          ]}
-          numberOfLines={titleLines}
-          ellipsizeMode="tail"
-        >
-          {task.title}
-        </Text>
-        {hasDescription ? (
-          <Text
-            style={[styles.description, compactDensity && styles.descriptionCompact]}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-          >
-            {task.description}
-          </Text>
-        ) : null}
-        {linkedGoalName ? (
-          <Text style={styles.goalTag} numberOfLines={1} ellipsizeMode="tail">
-            <Text style={{ color: taskAccent }}>◈ </Text>
-            {linkedGoalName}
-          </Text>
         ) : null}
       </View>
 
@@ -575,6 +578,12 @@ const styles = createThemedStyles({
   body: {
     flex: 1,
     minWidth: 0,
+  },
+  bodyWithImage: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
   },
   title: {
     color: colors.textPrimary,

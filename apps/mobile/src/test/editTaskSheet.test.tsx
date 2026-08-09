@@ -173,6 +173,7 @@ vi.mock("../components/UiIcons", () => {
     React.createElement("span", { "data-icon": name, style: { color, fontSize: size } });
   return {
     CalendarIcon: icon("calendar"),
+    AlertCircleIcon: icon("alert-circle"),
     CheckIcon: icon("check"),
     ChevronLeftIcon: icon("chevron-left"),
     ChevronRightIcon: icon("chevron-right"),
@@ -182,6 +183,11 @@ vi.mock("../components/UiIcons", () => {
     InboxTrayIcon: icon("inbox"),
     InfoCircleIcon: icon("info"),
     PencilIcon: icon("pencil"),
+    PlusIcon: icon("plus"),
+    CopyIcon: icon("copy"),
+    RetryArrowIcon: icon("retry"),
+    SmartphoneIcon: icon("smartphone"),
+    StackPlusIcon: icon("stack-plus"),
     SearchIcon: icon("search"),
     TrashIcon: icon("trash"),
   };
@@ -494,6 +500,7 @@ describe("EditTaskSheet compact workbench", () => {
 
     expect(screen.getAllByAltText("Selected Task image preview")[0].getAttribute("src"))
       .toBe("file:///image-a.jpg");
+    fireEvent.click(screen.getByLabelText("Select Task image 2"));
     fireEvent.click(screen.getByLabelText("Move Task image up"));
 
     await waitFor(() => {

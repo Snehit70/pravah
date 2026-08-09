@@ -111,6 +111,7 @@ type EditTaskSheetProps = {
     expectedRevision: number;
     kind: TaskImageSourceKind;
   }) => TaskImageCollectionMutationResult | Promise<TaskImageCollectionMutationResult | undefined> | undefined;
+  onRetryTaskImage?: (args: { taskId: Id<"tasks">; taskImageId: string }) => void | Promise<void>;
   onSaveComplete?: (
     undo: UndoPayload,
     task: MobileTask,
@@ -228,6 +229,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       onRemoveTaskImage,
       onRestoreTaskImage,
       onSelectTaskImage,
+      onRetryTaskImage,
       onSaveComplete,
     },
     ref,
@@ -809,9 +811,15 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             <View style={styles.imagesSection}>
               <Text style={styles.sectionLabel}>Task images</Text>
               <TaskImageFilmstrip
+                surface="edit"
                 images={currentTask.imageCollection?.active ?? []}
                 recoverable={currentTask.imageCollection?.recoverable ?? []}
                 resolveDelivery={resolveTaskImage}
+                onRetry={onRetryTaskImage
+                  ? (taskImageId) => {
+                      void onRetryTaskImage({ taskId: currentTask._id, taskImageId });
+                    }
+                  : undefined}
                 onSelectSource={onSelectTaskImage
                   ? async (kind) => {
                       const result = await onSelectTaskImage({
