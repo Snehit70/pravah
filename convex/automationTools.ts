@@ -188,6 +188,7 @@ export const getTask = internalQuery({
       ownerTokenIdentifier: _ownerTokenIdentifier,
       ...safeTask
     } = toCanonicalTaskShape(task);
+    void _ownerTokenIdentifier;
     return {
       ...safeTask,
       imageSummary: await getTaskImageSummaryForOwner(
