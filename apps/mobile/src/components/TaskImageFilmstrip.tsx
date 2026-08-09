@@ -300,8 +300,10 @@ function CaptureSurface({
   images,
   onSelectSource,
   onCaptionChange,
+  onReorder,
   onRemove,
 }: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[] }) {
+  const [captionDrafts, setCaptionDrafts] = useState<Record<string, string>>({});
   if (!images.length) return <EmptyImages onSelectSource={onSelectSource} />;
   return (
     <>
@@ -322,8 +324,43 @@ function CaptureSurface({
               ) : null}
             </View>
             {onCaptionChange ? (
-              <TextInput value={image.caption ?? ""} onChangeText={(caption) => onCaptionChange(image.taskImageId, caption)} placeholder="Add a caption" placeholderTextColor={colors.textMuted} maxLength={500} style={styles.captureCaptionInput} accessibilityLabel={`Caption for Task image ${index + 1}`} />
+              <TextInput
+                value={captionDrafts[image.taskImageId] ?? image.caption ?? ""}
+                onChangeText={(caption) => {
+                  setCaptionDrafts((current) => ({ ...current, [image.taskImageId]: caption }));
+                  onCaptionChange(image.taskImageId, caption);
+                }}
+                placeholder="Add a caption"
+                placeholderTextColor={colors.textMuted}
+                maxLength={500}
+                style={styles.captureCaptionInput}
+                accessibilityLabel={`Caption for Task image ${index + 1}`}
+              />
             ) : image.caption ? <Text numberOfLines={1} style={styles.photoCaption}>{image.caption}</Text> : null}
+            {onReorder ? (
+              <View style={styles.captureActionRow}>
+                <Pressable
+                  disabled={index === 0}
+                  accessibilityRole="button"
+                  accessibilityLabel="Move Task image earlier"
+                  onPress={() => onReorder(image.taskImageId, "up")}
+                  style={[styles.captureAction, index === 0 && styles.disabled]}
+                >
+                  <ChevronLeftIcon color={colors.textSecondary} size={16} />
+                  <Text style={styles.editActionText}>Earlier</Text>
+                </Pressable>
+                <Pressable
+                  disabled={index === images.length - 1}
+                  accessibilityRole="button"
+                  accessibilityLabel="Move Task image later"
+                  onPress={() => onReorder(image.taskImageId, "down")}
+                  style={[styles.captureAction, index === images.length - 1 && styles.disabled]}
+                >
+                  <Text style={styles.editActionText}>Later</Text>
+                  <ChevronRightIcon color={colors.textSecondary} size={16} />
+                </Pressable>
+              </View>
+            ) : null}
           </View>
         ))}
       </ScrollView>
@@ -359,6 +396,7 @@ function EditSurface({
   resolveDelivery,
 }: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[] }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [captionDrafts, setCaptionDrafts] = useState<Record<string, string>>({});
   const [now, setNow] = useState(() => Date.now());
   const visibleRecoverable = (recoverable ?? []).filter((image) => image.recoverableUntil === undefined || image.recoverableUntil > now);
   useEffect(() => {
@@ -392,6 +430,7 @@ function EditSurface({
     onRemove?.(selected.taskImageId);
     setSelectedIndex((current) => Math.min(current, Math.max(0, images.length - 2)));
   };
+  const selectedCaption = captionDrafts[selected.taskImageId] ?? selected.caption ?? "";
 
   return (
     <View style={styles.editSurface}>
@@ -409,7 +448,18 @@ function EditSurface({
         <Text style={styles.sectionLabel}>{activeSelectedIndex === 0 ? "PRIMARY IMAGE" : `IMAGE ${activeSelectedIndex + 1} OF ${images.length}`}</Text>
         <Text style={styles.sourceMeta}>Task image</Text>
       </View>
-      {onCaptionChange ? <TextInput value={selected.caption ?? ""} onChangeText={(caption) => onCaptionChange(selected.taskImageId, caption)} placeholder="Add a caption" placeholderTextColor={colors.textMuted} maxLength={500} style={styles.editCaptionInput} accessibilityLabel={`Caption for Task image ${activeSelectedIndex + 1}`} /> : selected.caption ? <Text style={styles.captionText}>{selected.caption}</Text> : null}
+      {onCaptionChange ? (
+        <TextInput
+          value={selectedCaption}
+          onChangeText={(caption) => setCaptionDrafts((current) => ({ ...current, [selected.taskImageId]: caption }))}
+          onBlur={() => onCaptionChange(selected.taskImageId, selectedCaption)}
+          placeholder="Add a caption"
+          placeholderTextColor={colors.textMuted}
+          maxLength={500}
+          style={styles.editCaptionInput}
+          accessibilityLabel={`Caption for Task image ${activeSelectedIndex + 1}`}
+        />
+      ) : selected.caption ? <Text style={styles.captionText}>{selected.caption}</Text> : null}
       {selected.state !== "ready" ? (
         <View style={[styles.statusPanel, selected.state === "failed" ? styles.statusPanelError : styles.statusPanelProgress]}>
           <View style={styles.statusPanelCopy}>
@@ -537,6 +587,8 @@ const styles = createThemedStyles({
   photoRemove: { position: "absolute", right: spacing.xs, top: spacing.xs, width: 44, height: 44, borderRadius: radii.full, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(32,25,20,0.72)" },
   photoCaption: { ...typography.bodyMd, color: colors.textSecondary, marginTop: spacing.xs },
   captureCaptionInput: { width: "100%", minHeight: 44, paddingVertical: spacing.xs, color: colors.textSecondary, ...typography.bodyMd },
+  captureActionRow: { flexDirection: "row", justifyContent: "space-between", marginTop: spacing.xs },
+  captureAction: { minWidth: 44, minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 2 },
   inboxMedia: { marginLeft: spacing.md, alignItems: "flex-end", gap: spacing.xs },
   inboxThumb: { width: 84, height: 68, borderRadius: radii.md },
   countBadge: { position: "absolute", right: 4, bottom: 4, ...typography.micro, color: colors.textInverse, backgroundColor: "rgba(32,25,20,0.72)", paddingHorizontal: 5, paddingVertical: 2, borderRadius: radii.sm, overflow: "hidden" },

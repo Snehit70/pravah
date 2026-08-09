@@ -189,6 +189,47 @@ describe("TaskImageFilmstrip", () => {
     expect(onSelectSource).toHaveBeenCalledWith("photos");
   });
 
+  it("preserves capture caption spaces while exposing image reorder controls", () => {
+    const onCaptionChange = vi.fn();
+    const onReorder = vi.fn();
+    render(
+      <TaskImageFilmstrip
+        surface="capture"
+        images={[
+          { taskImageId: "image-1", position: 0, state: "pending", caption: "First" },
+          { taskImageId: "image-2", position: 1, state: "pending", caption: "Second" },
+        ]}
+        onCaptionChange={onCaptionChange}
+        onReorder={onReorder}
+      />
+    );
+
+    const caption = screen.getByDisplayValue("First");
+    fireEvent.change(caption, { target: { value: "First " } });
+    expect((caption as HTMLInputElement).value).toBe("First ");
+    fireEvent.click(screen.getAllByRole("button", { name: "Move Task image earlier" })[1]);
+    expect(onCaptionChange).toHaveBeenCalledWith("image-1", "First ");
+    expect(onReorder).toHaveBeenCalledWith("image-2", "up");
+  });
+
+  it("keeps Edit caption text local until blur commits it", () => {
+    const onCaptionChange = vi.fn();
+    render(
+      <TaskImageFilmstrip
+        surface="edit"
+        images={[{ taskImageId: "image-1", position: 0, state: "pending", caption: "First" }]}
+        onCaptionChange={onCaptionChange}
+      />
+    );
+
+    const caption = screen.getByDisplayValue("First");
+    fireEvent.change(caption, { target: { value: "Updated caption" } });
+    expect((caption as HTMLInputElement).value).toBe("Updated caption");
+    expect(onCaptionChange).not.toHaveBeenCalled();
+    fireEvent.blur(caption);
+    expect(onCaptionChange).toHaveBeenCalledWith("image-1", "Updated caption");
+  });
+
   it("exposes recently removed images for restoration", () => {
     const onRestore = vi.fn();
     render(
