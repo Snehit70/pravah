@@ -126,7 +126,11 @@ export type TaskImageCoordinatorDependencies = {
     state: "verifying" | "ready" | "failed";
     failure?: { code: string; retryable?: boolean };
   }>;
-  reconcileAttempt?: (args: { uploadId: string; attempt: number }) => Promise<TaskImageReconciliation>;
+  reconcileAttempt?: (args: {
+    uploadId: string;
+    attempt: number;
+    restartAttempt?: boolean;
+  }) => Promise<TaskImageReconciliation>;
   reportFailure?: (args: { uploadId: string; failureCode: string }) => Promise<void>;
   abortUpload?: (args: { uploadId: string }) => Promise<void> | void;
   ownerScope?: () => string | undefined;
@@ -145,6 +149,7 @@ type UploadRecord = Omit<TaskImageManifestEntry, "state"> & {
   progress?: number;
   acceptedForUpload: boolean;
   generation: number;
+  restartAttempt?: boolean;
 };
 
 export const MAX_TASK_IMAGE_COUNT = 5 as const;
@@ -471,12 +476,16 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     }
   };
 
-  const reconcileBeforeAttempt = async (entry: UploadRecord) => {
+  const reconcileBeforeAttempt = async (entry: UploadRecord, restartAttempt: boolean) => {
     if (!entry.needsReconciliation) return true;
     if (!dependencies.reconcileAttempt) return true;
     let result: TaskImageReconciliation;
     try {
-      result = await dependencies.reconcileAttempt({ uploadId: entry.uploadId, attempt: entry.attempt });
+      result = await dependencies.reconcileAttempt({
+        uploadId: entry.uploadId,
+        attempt: entry.attempt,
+        ...(restartAttempt ? { restartAttempt: true } : {}),
+      });
     } catch {
       return false;
     }
@@ -509,10 +518,12 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
 
   const runEntry = async (entry: UploadRecord) => {
     const generation = entry.generation;
+    const restartAttempt = entry.restartAttempt === true;
+    entry.restartAttempt = undefined;
     activeCount += 1;
     update(entry, { state: "uploading", failure: undefined, progress: undefined });
     try {
-      if (entry.needsReconciliation && !(await reconcileBeforeAttempt(entry))) {
+      if (entry.needsReconciliation && !(await reconcileBeforeAttempt(entry, restartAttempt))) {
         if (entry.state === "uploading") {
           await failEntry(entry, { code: "provider_unavailable", retryable: true });
         }
@@ -884,7 +895,13 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       const timer = timers.get(uploadId);
       if (timer) clearTimeout(timer);
       timers.delete(uploadId);
-      update(entry, { state: "pending", retryAt: undefined, retryCount: 0, acceptedForUpload: true });
+      update(entry, {
+        state: "pending",
+        retryAt: undefined,
+        retryCount: 0,
+        acceptedForUpload: true,
+        restartAttempt: true,
+      });
       await pump();
       await waitForDrain();
     },

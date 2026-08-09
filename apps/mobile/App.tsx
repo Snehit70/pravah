@@ -402,8 +402,8 @@ function MobileApp() {
           await stageTaskImageMutation(image);
         },
         issueGrant: issueTaskImageGrant,
-        reconcileAttempt: async ({ uploadId, attempt }) => {
-          const result = await reconcileTaskImageAttempt({ uploadId, attempt });
+        reconcileAttempt: async ({ uploadId, attempt, restartAttempt }) => {
+          const result = await reconcileTaskImageAttempt({ uploadId, attempt, restartAttempt });
           if (result.status === "ready") return { status: "ready" as const };
           if (result.status === "absent") return { status: "absent" as const, attempt: result.attempt };
           if (result.status === "unknown") return { status: "unknown" as const };

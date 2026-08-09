@@ -673,6 +673,51 @@ describe("Task-image mobile coordinator", () => {
     }
   });
 
+  it("recycles a present provider asset on explicit retry instead of waiting forever", async () => {
+    const dependencies = createDependencies();
+    dependencies.upload = vi
+      .fn()
+      .mockRejectedValueOnce(Object.assign(new Error("callback lost"), {
+        code: "upload_failed",
+        retryable: true,
+      }))
+      .mockResolvedValueOnce({
+        publicId: "provider-private-id-2",
+        version: 2,
+        signature: "provider-response-signature",
+        resourceType: "image",
+        deliveryType: "authenticated",
+        format: "jpg",
+        width: 1600,
+        height: 1200,
+        bytes: 2_000_000,
+        eager: [],
+      });
+    dependencies.reconcileAttempt = vi.fn(async ({ restartAttempt }) =>
+      restartAttempt
+        ? { status: "absent" as const, attempt: 1 }
+        : { status: "verifying" as const, attempt: 1 }
+    );
+    dependencies.verify = vi.fn(async () => ({ state: "ready" as const }));
+    const coordinator = createTaskImageCoordinator(dependencies);
+
+    await coordinator.select("photos");
+    await coordinator.beginUploadAfterSave();
+    await coordinator.retry("upl_mobile_1");
+
+    expect(dependencies.reconcileAttempt).toHaveBeenCalledWith({
+      uploadId: "upl_mobile_1",
+      attempt: 1,
+      restartAttempt: true,
+    });
+    expect(dependencies.issueGrant).toHaveBeenCalledTimes(2);
+    expect(dependencies.upload).toHaveBeenCalledTimes(2);
+    expect(coordinator.getViewState()).toMatchObject({
+      uploadId: "upl_mobile_1",
+      state: "ready",
+    });
+  });
+
   it("hydrates interrupted work, merges by uploadId, and does not duplicate a live attempt", async () => {
     const dependencies = createDependencies();
     const sourceStore = {

@@ -231,6 +231,11 @@ async function sha256Hex(input: string) {
   return bytesToHex(new Uint8Array(digest));
 }
 
+async function sha1Hex(input: string) {
+  const digest = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(input));
+  return bytesToHex(new Uint8Array(digest));
+}
+
 function bytesToBase64Url(bytes: Uint8Array) {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -497,8 +502,15 @@ export async function verifyWebhookSignature({
   ) {
     return false;
   }
-  const expected = await sha256Hex(`${rawBody}${timestamp}${apiSecret}`);
-  return constantTimeEqual(expected, signature);
+  const signedPayload = `${rawBody}${timestamp}${apiSecret}`;
+  const [sha1Signature, sha256Signature] = await Promise.all([
+    sha1Hex(signedPayload),
+    sha256Hex(signedPayload),
+  ]);
+  return (
+    constantTimeEqual(sha1Signature, signature) ||
+    constantTimeEqual(sha256Signature, signature)
+  );
 }
 
 export async function buildDeliveryUrl({

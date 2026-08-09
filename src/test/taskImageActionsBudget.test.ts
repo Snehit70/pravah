@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   issueUploadGrant,
+  reconcileUploadAttempt,
   reconcileCleanup,
   resolveTaskImage,
 } from "../../convex/taskImageActions";
@@ -16,6 +17,12 @@ const issueGrant = (
 const resolveImage = (
   resolveTaskImage as unknown as Handler<
     { taskImageId: string; variant: "card" | "detail" },
+    Record<string, unknown>
+  >
+)._handler;
+const reconcileUpload = (
+  reconcileUploadAttempt as unknown as Handler<
+    { uploadId: string; attempt: number; restartAttempt?: boolean },
     Record<string, unknown>
   >
 )._handler;
@@ -212,6 +219,36 @@ describe("Task-image grant budget boundary", () => {
       category: "resolution",
       code: "success",
     });
+  });
+
+  it("recycles a present ambiguous provider attempt on explicit retry", async () => {
+    const fetchMock = vi.fn(async (input: unknown) => {
+      if (String(input).includes("/resources/image/authenticated")) {
+        return new Response(JSON.stringify({ resources: [{ public_id: "provider-private-id" }] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ result: "ok" }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const runMutation = vi.fn(async () => ({ reset: true }));
+
+    await expect(reconcileUpload({
+      auth,
+      runQuery: vi.fn(async () => ({
+        uploadId: "upload-1",
+        providerPublicId: "provider-private-id",
+        providerAttempt: 1,
+        state: "verifying",
+      })),
+      runMutation,
+    }, { uploadId: "upload-1", attempt: 1, restartAttempt: true })).resolves.toEqual({
+      status: "absent",
+      attempt: 1,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(runMutation).toHaveBeenCalledWith(
+      expect.anything(),
+      { ownerTokenIdentifier: "owner-token", uploadId: "upload-1", providerAttempt: 1 },
+    );
   });
 
   it("keeps cleanup authority fail-closed and the tombstone retryable during an outage", async () => {
