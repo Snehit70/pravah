@@ -25,6 +25,7 @@ import { CheckIcon, TrashIcon } from "../components/UiIcons";
 import { SearchField } from "../components/SearchField";
 import { TimelineSectionHeader } from "../components/TimelineSectionHeader";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
+import { SlidingSegmented, type SegmentedItem } from "../components/SlidingSegmented";
 import { useConfirm } from "../hooks/useConfirm";
 import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
 import { useListIntroStagger } from "../hooks/useListIntroStagger";
@@ -34,7 +35,7 @@ import { useUserPreferences } from "../hooks/useUserPreferences";
 
 type FilterValue = "all" | "p1" | "p2" | "p3" | "none";
 
-const FILTERS: { value: FilterValue; label: string }[] = [
+const FILTERS: SegmentedItem<FilterValue>[] = [
   { value: "all", label: "All" },
   { value: "p1", label: "P1" },
   { value: "p2", label: "P2" },
@@ -376,28 +377,7 @@ export function InboxScreen({
         accessibilityLabel="Search inbox"
       />
 
-      <View style={styles.chipRow}>
-        {FILTERS.map((option) => {
-          const active = filter === option.value;
-          return (
-            <Pressable
-              key={option.value}
-              onPress={() => setFilter(option.value)}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              accessibilityLabel={`Filter ${option.label}`}
-              style={({ pressed }) => [
-                styles.chip,
-                active && styles.chipActive,
-                pressed && { opacity: 0.7 },
-              ]}
-            >
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>{option.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <SlidingSegmented options={FILTERS} value={filter} onSelect={setFilter} />
     </View>
   );
 
@@ -595,36 +575,6 @@ const styles = createThemedStyles({
   selectCount: {
     ...typography.title,
     color: colors.textPrimary,
-  },
-  chipRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: 6,
-  },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 11,
-    paddingVertical: 4,
-    borderRadius: radii.sm,
-    borderCurve: "continuous",
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bgCardGlass,
-    minHeight: 28,
-    justifyContent: "center",
-  },
-  chipActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
-  },
-  chipText: {
-    ...typography.micro,
-    color: colors.textSecondary,
-  },
-  chipTextActive: {
-    color: colors.bg,
   },
   bulkBar: {
     position: "absolute",

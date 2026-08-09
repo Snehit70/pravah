@@ -142,6 +142,34 @@ vi.mock("react-native-reanimated", () => ({
   FadeInDown: { duration: () => ({ delay: () => undefined }) },
 }));
 
+vi.mock("../components/SlidingSegmented", () => ({
+  SlidingSegmented: ({
+    options,
+    value,
+    onSelect,
+  }: {
+    options: Array<{ value: string; label: string }>;
+    value: string;
+    onSelect: (value: string) => void;
+  }) =>
+    React.createElement(
+      "div",
+      { "data-testid": "inbox-filters" },
+      options.map((option) =>
+        React.createElement(
+          "button",
+          {
+            key: option.value,
+            type: "button",
+            "aria-pressed": value === option.value,
+            onClick: () => onSelect(option.value),
+          },
+          option.label,
+        ),
+      ),
+    ),
+}));
+
 // ─── react-native-svg mock ────────────────────────────────────────────────────
 // The header's search glyph and empty-state icon draw with react-native-svg;
 // the tests only need it to render inertly.
