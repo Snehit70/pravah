@@ -2,7 +2,7 @@ import { internalMutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { requireTokenIdentifier } from "./authHelpers";
-import { TASK_IMAGE_USAGE_WARNING_PERCENT } from "./taskImageBudget";
+import { evaluateTaskImageBudget } from "./taskImageBudget";
 import {
   TASK_IMAGE_SAFE_FAILURE_CODES,
   taskImageOperationalCategoryValidator,
@@ -84,6 +84,12 @@ export const getOperationalDiagnostics = query({
       }
     }
     const pooledPercentage = providerState?.pooledPercentage;
+    const decision = evaluateTaskImageBudget({
+      pooledPercentage,
+      wasBlocked: providerState?.grantsBlocked ?? false,
+      observedAt: providerState?.usageObservedAt,
+      now: Date.now(),
+    });
     return {
       usage:
         providerState && pooledPercentage !== undefined
@@ -96,10 +102,8 @@ export const getOperationalDiagnostics = query({
             }
           : null,
       grants: {
-        blocked: providerState?.grantsBlocked ?? true,
-        warning:
-          pooledPercentage !== undefined &&
-          pooledPercentage >= TASK_IMAGE_USAGE_WARNING_PERCENT,
+        blocked: decision.grantsBlocked,
+        warning: decision.warning,
       },
       uploads: uploadStates,
       failures,

@@ -110,6 +110,66 @@ describe("Task-image grant budget boundary", () => {
     });
   });
 
+  it("does not retry a recent failed usage refresh on every grant", async () => {
+    const now = Date.now();
+    vi.stubGlobal("fetch", vi.fn());
+    const runMutation = vi.fn(async () => ({ count: 1 }));
+
+    await expect(issueGrant({
+      auth,
+      runQuery: vi.fn(async () => ({
+        refreshRequired: true,
+        grantsBlocked: true,
+        usageTrusted: false,
+        snapshot: { lastRefreshAttemptAt: now },
+      })),
+      runMutation,
+    }, { uploadId: "upload-1", requestKey: "request-1" })).rejects.toThrow(
+      "task_image_grants_blocked"
+    );
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps a successful grant when aggregate diagnostics are unavailable", async () => {
+    const runMutation = vi
+      .fn()
+      .mockResolvedValueOnce({
+        uploadId: "upload-1",
+        publicId: "pravah-task-images/opaque",
+        issuedAt: Math.floor(Date.now() / 1000),
+        encodingClass: "jpeg",
+        providerAttempt: 1,
+      })
+      .mockRejectedValueOnce(new Error("diagnostics unavailable"));
+
+    await expect(issueGrant({
+      auth,
+      runQuery: vi.fn(async () => ({
+        refreshRequired: false,
+        grantsBlocked: false,
+        usageTrusted: true,
+        snapshot: { pooledPercentage: 20 },
+      })),
+      runMutation,
+    }, { uploadId: "upload-1", requestKey: "request-1" })).resolves.toMatchObject({ attempt: 1 });
+  });
+
+  it("keeps a successful resolution when aggregate diagnostics are unavailable", async () => {
+    const runMutation = vi.fn(async () => {
+      throw new Error("diagnostics unavailable");
+    });
+
+    await expect(resolveImage({
+      auth,
+      runMutation,
+      runQuery: vi.fn(async () => ({
+        kind: "ready",
+        publicId: "pravah-task-images/opaque",
+        version: 1,
+      })),
+    }, { taskImageId: "image-1", variant: "card" })).resolves.toMatchObject({ kind: "ready" });
+  });
+
   it("fails delivery closed when canonical provider authority is unavailable", async () => {
     vi.stubEnv("CLOUDINARY_API_SECRET", "");
     const runMutation = vi.fn(async (_reference: unknown, _args: unknown) => ({ count: 1 }));

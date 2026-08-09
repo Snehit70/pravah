@@ -3,6 +3,7 @@ import {
   TASK_IMAGE_USAGE_MAX_SAFE_AGE_MS,
   TASK_IMAGE_USAGE_REFRESH_INTERVAL_MS,
   evaluateTaskImageBudget,
+  shouldAttemptUsageRefresh,
 } from "../../convex/taskImageBudget";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -74,5 +75,11 @@ describe("Task-image provider budget policy", () => {
         now: 1_000 + TASK_IMAGE_USAGE_REFRESH_INTERVAL_MS,
       })
     ).toMatchObject({ grantsBlocked: true, refreshRequired: true, usageTrusted: true });
+  });
+
+  it("throttles repeated refresh attempts during an outage", () => {
+    expect(shouldAttemptUsageRefresh(undefined, 10_000)).toBe(true);
+    expect(shouldAttemptUsageRefresh(10_000, 10_000 + TASK_IMAGE_USAGE_REFRESH_INTERVAL_MS - 1)).toBe(false);
+    expect(shouldAttemptUsageRefresh(10_000, 10_000 + TASK_IMAGE_USAGE_REFRESH_INTERVAL_MS)).toBe(true);
   });
 });

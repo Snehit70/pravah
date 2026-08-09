@@ -10,6 +10,10 @@ export const TASK_IMAGE_USAGE_RESUME_PERCENT = 75;
 export const TASK_IMAGE_USAGE_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
 export const TASK_IMAGE_USAGE_MAX_SAFE_AGE_MS = 24 * 60 * 60 * 1000;
 
+export function shouldAttemptUsageRefresh(lastRefreshAttemptAt: number | undefined, now: number) {
+  return lastRefreshAttemptAt === undefined || now - lastRefreshAttemptAt >= TASK_IMAGE_USAGE_REFRESH_INTERVAL_MS;
+}
+
 export type TaskImageBudgetDecision = {
   grantsBlocked: boolean;
   warning: boolean;

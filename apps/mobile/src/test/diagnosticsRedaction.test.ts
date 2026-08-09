@@ -83,6 +83,16 @@ describe("Task-image diagnostics boundary", () => {
     );
   });
 
+  it("redacts data URIs even under neutral metadata keys", async () => {
+    recordDiagnosticEvent("task_image_data_uri", "warn", {
+      metadata: "data:image/jpeg;base64,VGhpcyBpcyBub3QgYSByZWFsIGltYWdl",
+    });
+
+    const events = await getDiagnosticsSnapshot();
+    const meta = events.findLast((event) => event.event === "task_image_data_uri")?.meta;
+    expect(meta).toEqual({ metadata: "[REDACTED]" });
+  });
+
   it("applies the same redaction before writing console logs", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 

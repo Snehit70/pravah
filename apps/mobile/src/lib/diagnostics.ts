@@ -120,7 +120,7 @@ function keyRequiresRedaction(key: string) {
 }
 
 function stringRequiresRedaction(value: string) {
-  return /(?:https?|file|content):\/\//i.test(value) || value.startsWith("/");
+  return /(?:https?|file|content):\/\/|data:/i.test(value) || value.startsWith("/");
 }
 
 function sanitizeValue(value: unknown): unknown {

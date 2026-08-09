@@ -43,6 +43,8 @@ describe("Task-image safe operational diagnostics", () => {
   });
 
   it("returns aggregate usage, failures, and backlogs without sensitive row context", async () => {
+    vi.useFakeTimers({ now: 10_000 });
+    try {
     const rows: Record<string, unknown[]> = {
       taskImageProviderState: [{
         key: "cloudinary",
@@ -109,5 +111,8 @@ describe("Task-image safe operational diagnostics", () => {
     expect(JSON.stringify(result)).not.toMatch(
       /upload-secret|image-secret|provider-secret|orphan-record|orphan-upload|tombstone-secret|owner-token/
     );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

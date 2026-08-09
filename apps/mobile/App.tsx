@@ -177,6 +177,7 @@ function MobileApp() {
   const [selectedCompletedTask, setSelectedCompletedTask] = useState<MobileTask | null>(null);
   const [focusGoalId, setFocusGoalId] = useState<string | null>(null);
   const [isGoalDetailOpen, setIsGoalDetailOpen] = useState(false);
+  const [isAuthStorageReady, setIsAuthStorageReady] = useState(false);
   const hasLoggedPostLoginRef = useRef(false);
   const didMarkInteractiveRef = useRef(false);
   const didApplyStartupTabRef = useRef(false);
@@ -214,6 +215,10 @@ function MobileApp() {
     retryBootstrap,
     hasCachedSessionHint,
   } = useWorkspaceState();
+
+  useEffect(() => {
+    void authStorageReady.then(() => setIsAuthStorageReady(true));
+  }, []);
   visitedTabsRef.current.add(activeTab);
 
   const chromeDim = useSharedValue(1);
@@ -299,7 +304,7 @@ function MobileApp() {
   });
   const taskImageBudgetStatus = useQuery(
     api.taskImageBudget.getOwnerBudgetStatus,
-    session ? {} : "skip"
+    session && isAuthStorageReady ? {} : "skip"
   );
 
   const hasLiveWorkspaceData =

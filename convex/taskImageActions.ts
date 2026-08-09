@@ -14,6 +14,7 @@ import {
   type ProviderUploadResult,
   type TaskImageProviderConfig,
 } from "./taskImageProvider";
+import { shouldAttemptUsageRefresh } from "./taskImageBudget";
 import type {
   TaskImageOperationalCategory,
   TaskImageOperationalCode,
@@ -224,15 +225,26 @@ export const issueUploadGrant = action({
     try {
       provider = readProviderConfig();
     } catch (error) {
-      await ctx.runMutation(recordOperationalEventRef, {
-        category: "grant",
-        code: "provider_unavailable",
-        now,
-      });
+      try {
+        await ctx.runMutation(recordOperationalEventRef, {
+          category: "grant",
+          code: "provider_unavailable",
+          now,
+        });
+      } catch {
+        // Aggregate diagnostics must never change the provider failure outcome.
+      }
       throw error;
     }
     let budget = await ctx.runQuery(getUsageStateRef, { now });
-    if (budget.refreshRequired) {
+    const lastRefreshAttemptAt =
+      budget.snapshot && typeof budget.snapshot === "object" && "lastRefreshAttemptAt" in budget.snapshot
+        ? (budget.snapshot as { lastRefreshAttemptAt?: unknown }).lastRefreshAttemptAt
+        : undefined;
+    if (
+      budget.refreshRequired &&
+      shouldAttemptUsageRefresh(typeof lastRefreshAttemptAt === "number" ? lastRefreshAttemptAt : undefined, now)
+    ) {
       try {
         const usage = await fetchProviderUsage(provider);
         budget = {
@@ -247,19 +259,27 @@ export const issueUploadGrant = action({
           ...(await ctx.runMutation(recordUsageRefreshFailureRef, { attemptedAt: now })),
           snapshot: budget.snapshot,
         };
-        await ctx.runMutation(recordOperationalEventRef, {
-          category: "grant",
-          code: "provider_usage_unavailable",
-          now,
-        });
+        try {
+          await ctx.runMutation(recordOperationalEventRef, {
+            category: "grant",
+            code: "provider_usage_unavailable",
+            now,
+          });
+        } catch {
+          // Aggregate diagnostics must not weaken the fail-closed grant state.
+        }
       }
     }
     if (budget.grantsBlocked) {
-      await ctx.runMutation(recordOperationalEventRef, {
-        category: "grant",
-        code: "usage_blocked",
-        now,
-      });
+      try {
+        await ctx.runMutation(recordOperationalEventRef, {
+          category: "grant",
+          code: "usage_blocked",
+          now,
+        });
+      } catch {
+        // Aggregate diagnostics must never change the blocked grant outcome.
+      }
       throw new Error("task_image_grants_blocked");
     }
     const prepared = await ctx.runMutation(prepareUploadGrantRef, {
@@ -278,11 +298,15 @@ export const issueUploadGrant = action({
       })),
       attempt: prepared.providerAttempt,
     };
-    await ctx.runMutation(recordOperationalEventRef, {
-      category: "grant",
-      code: "success",
-      now,
-    });
+    try {
+      await ctx.runMutation(recordOperationalEventRef, {
+        category: "grant",
+        code: "success",
+        now,
+      });
+    } catch {
+      // Aggregate diagnostics must never change a successful grant outcome.
+    }
     return grant;
   },
 });
@@ -420,9 +444,10 @@ export const resolveTaskImage = action({
     });
     if (context.kind !== "ready") return context;
     const now = Date.now();
+    let result: { kind: "ready"; url: string };
     try {
       const provider = readProviderConfig();
-      const result = {
+      result = {
         kind: "ready" as const,
         url: await buildDeliveryUrl({
           cloudName: provider.cloudName,
@@ -432,20 +457,28 @@ export const resolveTaskImage = action({
           variant: args.variant,
         }),
       };
+    } catch (error) {
+      try {
+        await ctx.runMutation(recordOperationalEventRef, {
+          category: "resolution",
+          code: "provider_unavailable",
+          now,
+        });
+      } catch {
+        // Preserve the provider operation's original failure.
+      }
+      throw error;
+    }
+    try {
       await ctx.runMutation(recordOperationalEventRef, {
         category: "resolution",
         code: "success",
         now,
       });
-      return result;
-    } catch (error) {
-      await ctx.runMutation(recordOperationalEventRef, {
-        category: "resolution",
-        code: "provider_unavailable",
-        now,
-      });
-      throw error;
+    } catch {
+      // Delivery remains successful when aggregate diagnostics are unavailable.
     }
+    return result;
   },
 });
 
