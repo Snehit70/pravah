@@ -25,6 +25,7 @@ import { buildTimelineWindow, useTaskQueries } from "../hooks/useTaskQueries";
 const LIST_REF = { __ref: "tasks.listTasks" };
 const TIMELINE_REF = { __ref: "tasks.getTimeline" };
 const COUNTS_REF = { __ref: "tasks.getTaskCounts" };
+const IMAGE_COLLECTIONS_REF = { __ref: "taskImages.listWorkspaceImageCollections" };
 
 function callsTo(ref: { __ref: string }, args?: unknown) {
   return useQueryMock.mock.calls.filter(([fn, payload]) => {
@@ -76,6 +77,18 @@ describe("useTaskQueries — full corpus gating", () => {
     );
 
     expect(callsTo(LIST_REF, {})).toHaveLength(1);
+  });
+
+  it("does not report image metadata readiness before its subscription resolves", () => {
+    useQueryMock.mockImplementation((ref: { __ref?: string }) =>
+      ref.__ref === IMAGE_COLLECTIONS_REF.__ref ? undefined : []
+    );
+
+    const { result } = renderHook(() =>
+      useTaskQueries({ isAuthenticated: true, includeAllTasks: false })
+    );
+
+    expect(result.current.isImageCollectionsReady).toBe(false);
   });
 
   it("omits startDate so overdue scheduled tasks remain visible in the timeline", () => {

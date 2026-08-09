@@ -288,6 +288,7 @@ function MobileApp() {
     isTimelineLoading,
     isCompletedLoading,
     isAllTasksReady,
+    isImageCollectionsReady,
   } = useTaskQueries({
     isAuthenticated: Boolean(session),
     // The full corpus stays subscribed for the whole session. At single-user
@@ -296,7 +297,11 @@ function MobileApp() {
     includeAllTasks: true,
   });
 
-  const hasLiveWorkspaceData = !isInboxLoading && !isTimelineLoading && !isCompletedLoading;
+  const hasLiveWorkspaceData =
+    !isInboxLoading &&
+    !isTimelineLoading &&
+    !isCompletedLoading &&
+    isImageCollectionsReady;
   const { snapshot: workspaceSnapshot, isHydrated: isWorkspaceSnapshotHydrated, clearSnapshot } =
     useWorkspaceSnapshot({
       canHydrate: hasCachedSessionHint,

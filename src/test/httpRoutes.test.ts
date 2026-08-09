@@ -690,6 +690,21 @@ describe("http route handlers", () => {
     });
   });
 
+  it("does not convert transient Task detail failures into validation errors", async () => {
+    const handler = getHandler("/tasks/get", "GET");
+    const ctx = createCtx();
+    ctx.runQuery.mockRejectedValue(new Error("Convex temporarily unavailable"));
+
+    await expect(
+      handler(
+        ctx,
+        new Request("https://example.com/tasks/get?taskId=task1", {
+          headers: { "x-api-key": "secret" },
+        })
+      )
+    ).rejects.toThrow("Convex temporarily unavailable");
+  });
+
   it("rejects invalid GET /tasks filters instead of returning all tasks", async () => {
     const handler = getHandler("/tasks", "GET");
     const ctx = createCtx();

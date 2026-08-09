@@ -320,8 +320,12 @@ http.route({
         ownerTokenIdentifier: authCheck.auth.ownerTokenIdentifier,
         taskId: taskId as Id<"tasks">,
       });
-    } catch {
-      return jsonResponse({ error: "Invalid taskId", taskId }, 400);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/ArgumentValidationError|invalid argument.*taskId/i.test(message)) {
+        return jsonResponse({ error: "Invalid taskId", taskId }, 400);
+      }
+      throw error;
     }
     if (!task) return jsonResponse({ error: "Task not found", taskId }, 404);
     return jsonResponse(task);
