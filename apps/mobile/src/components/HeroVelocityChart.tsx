@@ -180,6 +180,11 @@ function formatAxisTick(iso: string): string {
   return `${d} ${MONTHS[m - 1].toUpperCase()}`;
 }
 
+function formatCountAxis(value: number): string {
+  const rounded = Math.max(0, Math.ceil(value));
+  return rounded >= 1000 ? `${Math.round(rounded / 1000)}k` : String(rounded);
+}
+
 export function HeroVelocityChart({
   series,
   total,
@@ -219,6 +224,7 @@ export function HeroVelocityChart({
   const baselineY = height - PAD_BOTTOM;
   const hasData = series.some((p) => p.count > 0);
   const maxCount = Math.max(1, ...series.map((point) => point.count));
+  const axisMax = Math.max(1, Math.ceil(maxCount));
   const canScrub = geom.xs.length >= 2 && hasData;
 
   const axis = useMemo(() => {
@@ -400,8 +406,8 @@ export function HeroVelocityChart({
       <GestureDetector gesture={pan}>
         <View style={styles.chartWithAxis}>
           <View style={styles.yAxis} importantForAccessibility="no-hide-descendants">
-            <Text style={styles.yAxisLabel}>{maxCount}</Text>
-            <Text style={styles.yAxisLabel}>{Math.ceil(maxCount / 2)}</Text>
+            <Text style={styles.yAxisLabel}>{formatCountAxis(axisMax)}</Text>
+            <Text style={styles.yAxisLabel}>{formatCountAxis(axisMax / 2)}</Text>
             <Text style={styles.yAxisLabel}>0</Text>
           </View>
           <View style={styles.chartCol}>
@@ -410,7 +416,7 @@ export function HeroVelocityChart({
               onLayout={onLayout}
               importantForAccessibility="no-hide-descendants"
             >
-            {width > 0 && geom.line ? (
+              {width > 0 && geom.line ? (
               <Svg width={width} height={height}>
                 <Defs>
                   <LinearGradient id="heroArea" x1="0" y1="0" x2="0" y2="1">
@@ -478,9 +484,9 @@ export function HeroVelocityChart({
                   animatedProps={dotProps}
                 />
               </Svg>
-            ) : null}
+              ) : null}
 
-            {canScrub ? (
+              {canScrub ? (
               <Animated.View style={[styles.readout, readoutStyle]} pointerEvents="none">
                 {readout ? (
                   <>
@@ -489,13 +495,13 @@ export function HeroVelocityChart({
                   </>
                 ) : null}
               </Animated.View>
-            ) : null}
+              ) : null}
 
-            {!hasData ? (
+              {!hasData ? (
               <View style={styles.emptyOverlay} pointerEvents="none">
                 <Text style={styles.emptyText}>Momentum takes shape here.</Text>
               </View>
-            ) : null}
+              ) : null}
             </View>
 
             {axis && hasData ? (
@@ -621,6 +627,8 @@ const styles = createThemedStyles({
   yAxis: {
     width: Y_AXIS_W,
     height: 168,
+    paddingTop: PAD_TOP,
+    paddingBottom: PAD_BOTTOM,
     justifyContent: "space-between",
     alignItems: "flex-end",
   },

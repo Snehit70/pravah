@@ -27,9 +27,8 @@
  * curve is an SVG monotone line (same geometry as the hero). Both degrade to a
  * calm low-data line when the sample is too thin.
  *
- * Every bar is the same colour — see `chart.bar`. Height already encodes which
- * day won, so the peak is called out with a direct count label rather than a
- * tint.
+ * Every bar is the same colour — see `chart.bar`. The y-axis and quiet grid
+ * guides carry the scale, so bars do not need an extra peak-value annotation.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -42,7 +41,7 @@ import Animated, {
   withTiming,
   type SharedValue,
 } from "react-native-reanimated";
-import Svg, { Defs, LinearGradient, Path, Stop } from "react-native-svg";
+import Svg, { Defs, Line, LinearGradient, Path, Stop } from "react-native-svg";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { haptic } from "../lib/haptic";
 import { BarChartIcon, LineChartIcon } from "./UiIcons";
@@ -186,13 +185,12 @@ function WeekdayChart({
   return (
     <View accessible accessibilityRole="image" accessibilityLabel={label}>
       <View style={styles.chartWithAxis} importantForAccessibility="no-hide-descendants">
-        <YAxis max={max} />
+        <YAxis max={max} padTop={20} />
         <View style={{ width }}>
           <MorphChart
             counts={counts}
             shape={shape}
             width={width}
-            peak={peak}
             padTop={20}
             gap={spacing.sm}
             gradientId="weekdayArea"
@@ -254,7 +252,6 @@ function MorphChart({
   counts,
   shape,
   width,
-  peak,
   padTop,
   gap,
   gradientId,
@@ -262,7 +259,6 @@ function MorphChart({
   counts: number[];
   shape: Shape;
   width: number;
-  peak: number;
   padTop: number;
   gap: number;
   gradientId: string;
@@ -319,12 +315,13 @@ function MorphChart({
   const areaProps = useAnimatedProps(() => ({
     fillOpacity: shapeT.value * grow.value,
   }));
-  const peakLabelStyle = useAnimatedStyle(() => ({ opacity: grow.value }));
 
   if (width <= 0) return <View style={{ height: CHART_H }} />;
 
   return (
     <View style={{ height: CHART_H, width }}>
+      {shape === "bars" ? <ChartGrid width={width} padTop={padTop} /> : null}
+
       {counts.map((c, i) => (
         <MorphBar
           key={i}
@@ -362,18 +359,33 @@ function MorphChart({
         />
       </Svg>
 
-      {counts[peak] > 0 ? (
-        <Animated.Text
-          style={[
-            styles.barPeakLabel,
-            { left: geom.xs[peak] - geom.slot / 2, top: geom.ys[peak] - 18, width: geom.slot },
-            peakLabelStyle,
-          ]}
-        >
-          {counts[peak]}
-        </Animated.Text>
-      ) : null}
     </View>
+  );
+}
+
+function ChartGrid({ width, padTop }: { width: number; padTop: number }) {
+  const middle = padTop + (CHART_H - padTop) / 2;
+  return (
+    <Svg
+      width={width}
+      height={CHART_H}
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+    >
+      {[padTop, middle, CHART_H].map((y) => (
+        <Line
+          key={y}
+          x1={0}
+          x2={width}
+          y1={y}
+          y2={y}
+          stroke={chart.grid}
+          strokeWidth={1}
+          strokeDasharray="2 6"
+          opacity={0.65}
+        />
+      ))}
+    </Svg>
   );
 }
 
@@ -435,13 +447,12 @@ function HourChart({
   return (
     <View accessible accessibilityRole="image" accessibilityLabel={label}>
       <View style={styles.chartWithAxis} importantForAccessibility="no-hide-descendants">
-        <YAxis max={max} />
+        <YAxis max={max} padTop={8} />
         <View style={{ width }}>
           <MorphChart
             counts={counts}
             shape={shape}
             width={width}
-            peak={peakHour}
             padTop={8}
             gap={2}
             gradientId="hourArea"
@@ -466,11 +477,18 @@ function HourChart({
   );
 }
 
-function YAxis({ max }: { max: number }) {
+function YAxis({ max, padTop }: { max: number; padTop: number }) {
   return (
-    <View style={styles.yAxis} accessibilityLabel={`Count axis from 0 to ${max}`}>
-      <Text style={styles.yAxisLabel}>{max}</Text>
-      <Text style={styles.yAxisLabel}>{Math.ceil(max / 2)}</Text>
+    <View
+      style={[styles.yAxis, { paddingTop: padTop }]}
+      accessibilityLabel={`Count axis from 0 to ${max}`}
+    >
+      <Text style={styles.yAxisLabel} numberOfLines={1}>
+        {max}
+      </Text>
+      <Text style={styles.yAxisLabel} numberOfLines={1}>
+        {Math.ceil(max / 2)}
+      </Text>
       <Text style={styles.yAxisLabel}>0</Text>
     </View>
   );
