@@ -61,6 +61,7 @@
     "@typescript/native-preview": "7.0.0-dev.20260421.2",
     "babel-preset-expo": "~56.0.0",
     "react-native-svg-transformer": "^1.5.3",
+    "react-native-web": "~0.21.0",
     "typescript": "~6.0.3"
   },
   "private": true,
