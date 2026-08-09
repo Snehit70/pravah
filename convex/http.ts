@@ -144,11 +144,15 @@ http.route({
         version: context.providerVersion ?? callbackResponse.version,
         result: { status: "failed", failureCode: "variant_too_large" },
       });
-      await ctx.runMutation(internal.taskImageOperations.recordOperationalEvent, {
-        category: "verification",
-        code: "variant_too_large",
-        now: Date.now(),
-      });
+      try {
+        await ctx.runMutation(internal.taskImageOperations.recordOperationalEvent, {
+          category: "verification",
+          code: "variant_too_large",
+          now: Date.now(),
+        });
+      } catch {
+        // Webhook acknowledgement must not depend on aggregate diagnostics.
+      }
       return new Response(null, { status: 204 });
     }
     const response = isEagerNotification
@@ -202,17 +206,21 @@ http.route({
       result: verificationResult,
     });
     if (verificationResult.status === "ready" || verificationResult.status === "failed") {
-      await ctx.runMutation(internal.taskImageOperations.recordOperationalEvent, {
-        category: "verification",
-        code:
-          verificationResult.status === "ready"
-            ? "success"
-            : verificationResult.failureCode === "master_too_large" ||
-                verificationResult.failureCode === "variant_too_large"
-              ? verificationResult.failureCode
-              : "normalization_failed",
-        now: Date.now(),
-      });
+      try {
+        await ctx.runMutation(internal.taskImageOperations.recordOperationalEvent, {
+          category: "verification",
+          code:
+            verificationResult.status === "ready"
+              ? "success"
+              : verificationResult.failureCode === "master_too_large" ||
+                  verificationResult.failureCode === "variant_too_large"
+                ? verificationResult.failureCode
+                : "normalization_failed",
+          now: Date.now(),
+        });
+      } catch {
+        // Webhook acknowledgement must not depend on aggregate diagnostics.
+      }
     }
     return new Response(null, { status: 204 });
   }),
