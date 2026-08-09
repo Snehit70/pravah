@@ -1,4 +1,8 @@
-import { recordDiagnosticEvent, type DiagnosticLevel } from "./diagnostics";
+import {
+  recordDiagnosticEvent,
+  sanitizeDiagnosticContext,
+  type DiagnosticLevel,
+} from "./diagnostics";
 
 type LogLevel = "debug" | "info" | "warn" | "error";
 export type ErrorKind = "network" | "auth" | "validation" | "unexpected" | "unknown";
@@ -15,7 +19,7 @@ function isDevRuntime(): boolean {
 function safeStringify(context?: LogContext): string {
   if (!context) return "";
   try {
-    return ` ${JSON.stringify(context)}`;
+    return ` ${JSON.stringify(sanitizeDiagnosticContext(context))}`;
   } catch {
     return ' {"_serializationError":true}';
   }

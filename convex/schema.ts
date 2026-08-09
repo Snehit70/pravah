@@ -382,7 +382,8 @@ export default defineSchema({
   })
     .index("by_upload_record", ["uploadRecordId"])
     .index("by_due", ["state", "nextAttemptAt"])
-    .index("by_task", ["taskId"]),
+    .index("by_task", ["taskId"])
+    .index("by_owner", ["ownerTokenIdentifier"]),
   taskImageProviderState: defineTable({
     key: v.literal("cloudinary"),
     pooledPercentage: v.optional(v.number()),
@@ -394,6 +395,41 @@ export default defineSchema({
     lastRefreshAttemptAt: v.number(),
     lastRefreshSucceededAt: v.optional(v.number()),
     lastRefreshFailureCode: v.optional(v.literal("provider_usage_unavailable")),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
+  taskImageOperationalCounters: defineTable({
+    key: v.string(),
+    category: v.union(
+      v.literal("grant"),
+      v.literal("verification"),
+      v.literal("resolution"),
+      v.literal("cleanup"),
+      v.literal("normalization"),
+      v.literal("resource")
+    ),
+    code: v.union(
+      v.literal("success"),
+      v.literal("usage_blocked"),
+      v.literal("provider_unavailable"),
+      v.literal("provider_usage_unavailable"),
+      v.literal("provider_ambiguous"),
+      v.literal("normalization_failed"),
+      v.literal("master_too_large"),
+      v.literal("variant_too_large"),
+      v.literal("unsupported_format"),
+      v.literal("animated_image"),
+      v.literal("source_too_large"),
+      v.literal("dimensions_too_large"),
+      v.literal("aspect_ratio_unsupported"),
+      v.literal("clipboard_too_large"),
+      v.literal("storage_unavailable"),
+      v.literal("memory_unavailable"),
+      v.literal("source_unavailable"),
+      v.literal("authorization_failed"),
+      v.literal("network_error"),
+      v.literal("upload_failed")
+    ),
+    count: v.number(),
     updatedAt: v.number(),
   }).index("by_key", ["key"]),
   integrations: defineTable({

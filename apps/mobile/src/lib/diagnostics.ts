@@ -56,6 +56,29 @@ const REDACT_KEYS = new Set([
   "imagecollection",
   "imagemanifest",
 ]);
+const REDACT_KEY_PARTS = [
+  "secret",
+  "credential",
+  "password",
+  "signature",
+  "apikey",
+  "caption",
+  "providercontext",
+  "providerid",
+  "providerpublicid",
+  "publicid",
+  "taskimageid",
+  "uploadid",
+  "url",
+  "uri",
+  "path",
+  "binary",
+  "blob",
+  "base64",
+  "rawbody",
+  "rawresponse",
+  "message",
+] as const;
 
 type PersistedPayload = {
   sessions: {
@@ -91,21 +114,38 @@ function inferFlow(event: string): DiagnosticFlow {
   return "unknown";
 }
 
+function keyRequiresRedaction(key: string) {
+  const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return REDACT_KEYS.has(normalized) || REDACT_KEY_PARTS.some((part) => normalized.includes(part));
+}
+
+function stringRequiresRedaction(value: string) {
+  return /(?:https?|file|content):\/\//i.test(value) || value.startsWith("/");
+}
+
 function sanitizeValue(value: unknown): unknown {
   if (value == null) return value;
   if (typeof value === "string") {
+    if (stringRequiresRedaction(value)) return REDACTED;
     return value.length > TRUNCATE_AT ? `${value.slice(0, TRUNCATE_AT)}…` : value;
   }
   if (typeof value === "number" || typeof value === "boolean") return value;
+  if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return REDACTED;
   if (Array.isArray(value)) return value.slice(0, 20).map(sanitizeValue);
   if (typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = REDACT_KEYS.has(k.toLowerCase()) ? REDACTED : sanitizeValue(v);
+      out[k] = keyRequiresRedaction(k) ? REDACTED : sanitizeValue(v);
     }
     return out;
   }
   return String(value);
+}
+
+export function sanitizeDiagnosticContext(
+  context: Record<string, unknown>
+): Record<string, unknown> {
+  return sanitizeValue(context) as Record<string, unknown>;
 }
 
 function approxBytes(events: DiagnosticEvent[]): number {
@@ -219,7 +259,7 @@ export function recordDiagnosticEvent(
     level,
     screen: currentScreen,
     flow: flow ?? inferFlow(event),
-    meta: meta ? (sanitizeValue(meta) as Record<string, unknown>) : undefined,
+    meta: meta ? sanitizeDiagnosticContext(meta) : undefined,
   };
   buffer.push(item);
   if (buffer.length > MAX_EVENTS) {
