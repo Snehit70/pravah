@@ -187,15 +187,23 @@ const NON_RETRYABLE_FAILURES = new Set([
 ]);
 
 function safeFailure(error: unknown): SafeTaskImageFailure {
+  const data =
+    error && typeof error === "object" && "data" in error && typeof error.data === "object" && error.data !== null
+      ? error.data as { code?: unknown; retryable?: unknown }
+      : undefined;
   const candidate =
-    error && typeof error === "object" && "code" in error && typeof error.code === "string"
+    data && typeof data.code === "string"
+      ? data.code
+      : error && typeof error === "object" && "code" in error && typeof error.code === "string"
       ? error.code
       : error instanceof Error && error.message === "task_image_grants_blocked"
         ? "usage_blocked"
       : "upload_failed";
   const code = SAFE_FAILURE_CODES.has(candidate) ? candidate : "normalization_failed";
   const explicitRetryable =
-    error && typeof error === "object" && "retryable" in error && typeof error.retryable === "boolean"
+    data && typeof data.retryable === "boolean"
+      ? data.retryable
+      : error && typeof error === "object" && "retryable" in error && typeof error.retryable === "boolean"
       ? error.retryable
       : undefined;
   return {

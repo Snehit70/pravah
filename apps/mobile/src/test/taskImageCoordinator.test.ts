@@ -484,9 +484,8 @@ describe("Task-image mobile coordinator", () => {
   it("keeps budget-blocked uploads retryable and preserves their staged source", async () => {
     const dependencies = createDependencies();
     dependencies.issueGrant = vi.fn(async () => {
-      throw Object.assign(new Error("task_image_grants_blocked"), {
-        code: "usage_blocked",
-        retryable: true,
+      throw Object.assign(new Error("ConvexError"), {
+        data: { code: "usage_blocked", retryable: true },
       });
     });
     const coordinator = createTaskImageCoordinator(dependencies);

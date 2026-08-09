@@ -99,9 +99,9 @@ describe("Task-image grant budget boundary", () => {
       auth,
       runQuery: vi.fn(async () => ({ refreshRequired: true, grantsBlocked: false })),
       runMutation,
-    }, { uploadId: "upload-1", requestKey: "request-1" })).rejects.toThrow(
-      "task_image_grants_blocked"
-    );
+    }, { uploadId: "upload-1", requestKey: "request-1" })).rejects.toMatchObject({
+      data: { code: "usage_blocked", retryable: true },
+    });
     expect(runMutation).toHaveBeenCalledTimes(2);
     expect(runMutation.mock.calls[1]?.[1]).toEqual({
       category: "grant",
@@ -124,9 +124,9 @@ describe("Task-image grant budget boundary", () => {
         snapshot: { lastRefreshAttemptAt: now },
       })),
       runMutation,
-    }, { uploadId: "upload-1", requestKey: "request-1" })).rejects.toThrow(
-      "task_image_grants_blocked"
-    );
+    }, { uploadId: "upload-1", requestKey: "request-1" })).rejects.toMatchObject({
+      data: { code: "usage_blocked", retryable: true },
+    });
     expect(fetch).not.toHaveBeenCalled();
   });
 

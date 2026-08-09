@@ -1,6 +1,6 @@
 import { action, internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { makeFunctionReference } from "convex/server";
 import { requireTokenIdentifier } from "./authHelpers";
 import {
@@ -280,10 +280,7 @@ export const issueUploadGrant = action({
       } catch {
         // Aggregate diagnostics must never change the blocked grant outcome.
       }
-      throw Object.assign(new Error("task_image_grants_blocked"), {
-        code: "usage_blocked",
-        retryable: true,
-      });
+      throw new ConvexError({ code: "usage_blocked", retryable: true });
     }
     const prepared = await ctx.runMutation(prepareUploadGrantRef, {
       ownerTokenIdentifier,
