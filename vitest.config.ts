@@ -12,6 +12,10 @@ export default mergeConfig(
     resolve: {
       alias: [
         {
+          find: "react-native",
+          replacement: path.resolve(__dirname, "node_modules/react-native-web"),
+        },
+        {
           find: "react-native-svg",
           replacement: path.resolve(__dirname, "apps/mobile/src/test/mocks/react-native-svg.tsx"),
         },
