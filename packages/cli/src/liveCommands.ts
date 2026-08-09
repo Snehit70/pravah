@@ -16,6 +16,8 @@ interface CliTaskSummary {
   tags?: string[];
   estimatedMinutes?: number;
   goal?: { id: string; text: string };
+  imageSummary?: { activeCount: number; readyCount: number; failedCount: number };
+  imageCollection?: unknown;
 }
 
 interface LiveGoalSummary {
@@ -38,12 +40,90 @@ function statusOf(task: Record<string, unknown>): CliTaskStatus {
   if (task.completedAt || task.status === "completed") return "completed";
   return (readDate(task.deadline) ?? readDate(task.scheduledDate)) ? "timeline" : "inbox";
 }
+function imageSummaryOf(value: unknown): CliTaskSummary["imageSummary"] {
+  if (!value || typeof value !== "object") return undefined;
+  const summary = value as Record<string, unknown>;
+  if (
+    ![summary.activeCount, summary.readyCount, summary.failedCount].every(
+      (count) => Number.isInteger(count) && (count as number) >= 0
+    )
+  ) return undefined;
+  return {
+    activeCount: summary.activeCount as number,
+    readyCount: summary.readyCount as number,
+    failedCount: summary.failedCount as number,
+  };
+}
+function imagePresentationOf(value: unknown) {
+  if (!value || typeof value !== "object") return undefined;
+  const presentation = value as Record<string, unknown>;
+  const safe = {
+    width: typeof presentation.width === "number" ? presentation.width : undefined,
+    height: typeof presentation.height === "number" ? presentation.height : undefined,
+    aspectRatio:
+      typeof presentation.aspectRatio === "number" ? presentation.aspectRatio : undefined,
+    hasTransparency:
+      typeof presentation.hasTransparency === "boolean"
+        ? presentation.hasTransparency
+        : undefined,
+    variantSet:
+      typeof presentation.variantSet === "string" ? presentation.variantSet : undefined,
+  };
+  return Object.values(safe).some((entry) => entry !== undefined) ? safe : undefined;
+}
+function imageCollectionOf(value: unknown) {
+  if (!value || typeof value !== "object") return undefined;
+  const source = value as Record<string, unknown>;
+  const active = Array.isArray(source.active)
+    ? source.active.flatMap((entry) => {
+        if (!entry || typeof entry !== "object") return [];
+        const image = entry as Record<string, unknown>;
+        if (typeof image.taskImageId !== "string" || !Number.isInteger(image.position)) {
+          return [];
+        }
+        const state = ["pending", "uploading", "ready", "failed"].includes(
+          String(image.state)
+        )
+          ? image.state
+          : "unavailable";
+        const failure =
+          image.failure && typeof image.failure === "object"
+            ? image.failure as Record<string, unknown>
+            : undefined;
+        return [{
+          taskImageId: image.taskImageId,
+          position: image.position,
+          caption: typeof image.caption === "string" ? image.caption : undefined,
+          state,
+          failure:
+            failure && typeof failure.code === "string"
+              ? {
+                  code: failure.code,
+                  message:
+                    typeof failure.message === "string" ? failure.message : undefined,
+                  retryable: failure.retryable === true,
+                }
+              : undefined,
+          presentation: imagePresentationOf(image.presentation),
+        }];
+      })
+    : [];
+  return {
+    revision: Number.isInteger(source.revision) ? source.revision as number : 0,
+    observedAt: typeof source.observedAt === "number" ? source.observedAt : 0,
+    active: active.sort((left, right) => (left.position as number) - (right.position as number)),
+  };
+}
 function toTask(value: unknown): CliTaskSummary | null {
   if (!value || typeof value !== "object") return null;
   const task = value as Record<string, unknown>;
   const id = typeof task._id === "string" ? task._id : typeof task.id === "string" ? task.id : undefined;
   if (!id || typeof task.title !== "string") return null;
-  return { id, title: task.title, description: typeof task.description === "string" ? task.description : undefined, status: statusOf(task), deadline: readDate(task.deadline) ?? readDate(task.scheduledDate), time: readTime(task.time), priority: readPriority(task.priority), tags: Array.isArray(task.tags) ? task.tags.filter((tag): tag is string => typeof tag === "string") : undefined, estimatedMinutes: typeof task.estimatedMinutes === "number" ? task.estimatedMinutes : undefined };
+  return { id, title: task.title, description: typeof task.description === "string" ? task.description : undefined, status: statusOf(task), deadline: readDate(task.deadline) ?? readDate(task.scheduledDate), time: readTime(task.time), priority: readPriority(task.priority), tags: Array.isArray(task.tags) ? task.tags.filter((tag): tag is string => typeof tag === "string") : undefined, estimatedMinutes: typeof task.estimatedMinutes === "number" ? task.estimatedMinutes : undefined, imageSummary: imageSummaryOf(task.imageSummary) };
+}
+function toTaskDetail(value: unknown): CliTaskSummary | null {
+  const task = toTask(value);
+  return task ? { ...task, imageCollection: imageCollectionOf((value as Record<string, unknown>).imageCollection) } : null;
 }
 function toGoal(value: unknown): LiveGoalSummary | null {
   if (!value || typeof value !== "object") return null;
@@ -143,14 +223,14 @@ async function write<T>(action: string, idempotencyKey: string, execute: () => P
 export async function executeLiveCommand(client: LiveCliClient, command: string, args: ParsedArgs): Promise<unknown | null> {
   if (["tasks list", "inbox", "today", "overdue", "upcoming", "agent context", "tasks show"].includes(command)) {
     requireScopes(client, ["tasks:read"]);
-    if (command === "tasks show") { const [allTasks, goals, links] = await Promise.all([client.listTasks({}).then(tasksOf), client.listGoals().then(goalsOf), client.listGoalLinks().then(linksOf)]); const task = resolveTask(allTasks, readTarget(args, command)); return { task: { ...task, goal: links[task.id] ? goals.find((goal) => goal.id === links[task.id]) : undefined }, source: "live" }; }
+    if (command === "tasks show") { const allTasks = await client.listTasks({}).then(tasksOf); const summary = resolveTask(allTasks, readTarget(args, command)); const [detail, goals, links] = await Promise.all([client.getTask(summary.id).then(toTaskDetail), client.listGoals().then(goalsOf), client.listGoalLinks().then(linksOf)]); if (!detail) throw new CliCommandError("not_found", `Task not found: ${summary.id}`); return { task: { ...detail, goal: links[detail.id] ? goals.find((goal) => goal.id === links[detail.id]) : undefined }, source: "live" }; }
     const tasks = await filterTasks(client, args, command === "agent context" || args.options.long === true);
     const data = horizon(tasks);
     if (command === "inbox") return { tasks: tasks.filter((task) => task.status === "inbox"), source: "live" };
     if (command === "today") return { tasks: data.todayTasks, today: data.today, source: "live" };
     if (command === "overdue") return { tasks: data.overdue, today: data.today, source: "live" };
     if (command === "upcoming") return { tasks: data.upcoming, today: data.today, endDate: data.endDate, source: "live" };
-    if (command === "agent context") { const slim = (items: CliTaskSummary[]) => items.slice(0, 3).map(({ id, title, deadline, priority, goal }) => ({ id, title, deadline, priority, goal })); return { today: data.today, overdue: { count: data.overdue.length, tasks: slim(data.overdue) }, todayTasks: { count: data.todayTasks.length, tasks: slim(data.todayTasks) }, next: { count: data.upcoming.length, tasks: slim(data.upcoming) }, inbox: { count: data.inboxCount }, source: "live" }; }
+    if (command === "agent context") { const slim = (items: CliTaskSummary[]) => items.slice(0, 3).map(({ id, title, deadline, priority, goal, imageSummary }) => ({ id, title, deadline, priority, goal, imageSummary })); return { today: data.today, overdue: { count: data.overdue.length, tasks: slim(data.overdue) }, todayTasks: { count: data.todayTasks.length, tasks: slim(data.todayTasks) }, next: { count: data.upcoming.length, tasks: slim(data.upcoming) }, inbox: { count: data.inboxCount }, source: "live" }; }
     return hasFlag(args.options, "all") || readOption(args.options, "status") ? { tasks, source: "live" } : { ...data, source: "live" };
   }
   if (command === "goals list" || command === "goals show") {

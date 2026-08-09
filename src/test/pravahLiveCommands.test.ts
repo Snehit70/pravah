@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadStoredCredential, saveStoredCredential } from "../../packages/cli/src/authStore";
 import { executeCommand } from "../../packages/cli/src/commands";
+import { renderHumanResult } from "../../packages/cli/src/renderer";
 
 let home: string;
 let originalHome: string | undefined;
@@ -15,9 +16,30 @@ afterEach(() => { rmSync(home, { recursive: true, force: true }); vi.restoreAllM
 
 describe("Pravah CLI v2 live adapter", () => {
   it("resolves a title target after reading the existing task collection", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true, json: async () => [{ _id: "task_1", title: "Ship v2", deadline: "2026-07-26", priority: "p1" }] } as Response);
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      const body = url.includes("/tasks/get?")
+        ? {
+            _id: "task_1",
+            title: "Ship v2",
+            deadline: "2026-07-26",
+            priority: "p1",
+            imageSummary: { activeCount: 1, readyCount: 1, failedCount: 0 },
+            imageCollection: {
+              revision: 1,
+              observedAt: 100,
+              active: [{ taskImageId: "image-1", position: 0, state: "ready" }],
+              recoverable: [],
+            },
+          }
+        : url.endsWith("/tasks")
+          ? [{ _id: "task_1", title: "Ship v2", deadline: "2026-07-26", priority: "p1", imageSummary: { activeCount: 1, readyCount: 1, failedCount: 0 } }]
+          : [];
+      return { ok: true, json: async () => body } as Response;
+    });
     const result = await executeCommand({ command: "tasks show", json: true }, { positionals: ["tasks", "show", "Ship v2"], options: {} });
-    expect(result).toMatchObject({ source: "live", task: { id: "task_1", title: "Ship v2" } });
+    expect(result).toMatchObject({ source: "live", task: { id: "task_1", title: "Ship v2", imageSummary: { activeCount: 1 }, imageCollection: { active: [{ taskImageId: "image-1" }] } } });
+    expect(fetch.mock.calls.map((call) => String(call[0]))).toContain("https://pravah.example.com/tasks/get?taskId=task_1");
   });
 
   it("adds linked Goal context without requesting held review or sync integrations", async () => {
@@ -67,6 +89,24 @@ describe("Pravah CLI v2 live adapter", () => {
     });
     const result = await executeCommand({ command: "tasks list", json: true }, { positionals: ["tasks", "list"], options: { all: true, goal: "MLT", priority: "p1", date: "2026-07-27" } });
     expect(result).toMatchObject({ tasks: [{ id: "task_1", goal: { text: "MLT" } }] });
+  });
+
+  it("keeps compact output unchanged and adds only image counts to long output", () => {
+    const data = {
+      task: {
+        id: "task_1",
+        title: "Visual task",
+        status: "inbox",
+        imageSummary: { activeCount: 3, readyCount: 2, failedCount: 1 },
+      },
+    };
+
+    const compact = renderHumanResult("tasks list", { tasks: [data.task] }, false);
+    const detail = renderHumanResult("tasks show", data, true);
+
+    expect(compact).not.toContain("images");
+    expect(detail).toContain("images 3 · 1 failed");
+    expect(detail).not.toMatch(/caption|taskImageId|imageCollection/);
   });
 
   it("forwards all editable Task fields and turns remote write errors into a retryable error", async () => {
