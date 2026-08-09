@@ -312,7 +312,7 @@ describe("convex/tasks handlers", () => {
         ownerTokenIdentifier: "user-1",
         cancelledAt: 100,
         priority: "p1" as const,
-        position: 2,
+        position: 3,
         createdAt: 1,
         updatedAt: 100,
       },
@@ -329,7 +329,7 @@ describe("convex/tasks handlers", () => {
         _id: activeP1,
         ownerTokenIdentifier: "user-1",
         priority: "p1" as const,
-        position: 1,
+        position: 2,
         createdAt: 1,
         updatedAt: 1,
       },
@@ -358,7 +358,7 @@ describe("convex/tasks handlers", () => {
     });
 
     expect(db.patch).toHaveBeenNthCalledWith(1, activeP1, {
-      position: 2,
+      position: 4,
       updatedAt: expect.any(Number),
     });
     expect(db.patch).toHaveBeenNthCalledWith(2, activeP2, {

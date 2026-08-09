@@ -78,6 +78,7 @@ export type TaskImageManifestEntry = {
   attempt: number;
   retryCount: number;
   retryAt?: number;
+  taskDeletionExpiresAt?: number;
   needsReconciliation: boolean;
   paused: boolean;
   recoverablyRemoved?: boolean;
@@ -148,6 +149,7 @@ type UploadRecord = Omit<TaskImageManifestEntry, "state"> & {
 export const MAX_TASK_IMAGE_COUNT = 5 as const;
 export const MAX_CONCURRENT_TASK_IMAGE_UPLOADS = 2 as const;
 export const UPLOAD_RETRY_DELAYS_MS = [5_000, 30_000, 120_000] as const;
+export const TASK_DELETION_RECOVERY_MS = 30 * 60 * 1000;
 export const TASK_IMAGE_MANIFEST_VERSION = 2 as const;
 
 const SAFE_FAILURE_CODES = new Set([
@@ -266,6 +268,9 @@ function parseManifestEntry(value: unknown): TaskImageManifestEntry | null {
     attempt: raw.attempt as number,
     retryCount: raw.retryCount as number,
     retryAt: Number.isSafeInteger(raw.retryAt) ? raw.retryAt : undefined,
+    taskDeletionExpiresAt: Number.isSafeInteger(raw.taskDeletionExpiresAt)
+      ? raw.taskDeletionExpiresAt
+      : undefined,
     needsReconciliation: raw.needsReconciliation,
     paused: raw.paused,
     recoverablyRemoved: raw.recoverablyRemoved === true,
@@ -296,6 +301,7 @@ function redactManifest(entries: Iterable<UploadRecord>, visibleUploadIds: strin
       attempt: entry.attempt,
       retryCount: entry.retryCount,
       retryAt: entry.retryAt,
+      taskDeletionExpiresAt: entry.taskDeletionExpiresAt,
       needsReconciliation: entry.needsReconciliation,
       paused: entry.paused,
       recoverablyRemoved: entry.recoverablyRemoved,
@@ -314,6 +320,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
   const running = new Set<Promise<void>>();
   const drainWaiters = new Set<() => void>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  const taskDiscardTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const listeners = new Set<() => void>();
   let disposed = false;
   const notify = () => listeners.forEach((listener) => listener());
@@ -368,6 +375,48 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     await removeSource(entry);
   };
 
+  const pruneCompletedRecord = (entry: UploadRecord) => {
+    entry.generation += 1;
+    records.delete(entry.uploadId);
+    visibleUploadIds = visibleUploadIds.filter((uploadId) => uploadId !== entry.uploadId);
+  };
+
+  const discardTaskUploadsNow = async (taskId: string) => {
+    const discardTimer = taskDiscardTimers.get(taskId);
+    if (discardTimer) clearTimeout(discardTimer);
+    taskDiscardTimers.delete(taskId);
+    const taskEntries = [...records.values()].filter((entry) => entry.taskId === taskId);
+    for (const entry of taskEntries) await removeRecord(entry);
+    taskUploadOrder.delete(taskId);
+    if (taskEntries.length) { void persist(); notify(); }
+  };
+
+  const scheduleTaskDiscard = (taskId: string, expiresAt: number) => {
+    const existing = taskDiscardTimers.get(taskId);
+    if (existing) clearTimeout(existing);
+    taskDiscardTimers.set(
+      taskId,
+      setTimeout(() => {
+        taskDiscardTimers.delete(taskId);
+        void discardTaskUploadsNow(taskId);
+      }, Math.max(0, expiresAt - now()))
+    );
+  };
+
+  const discardExpiredTaskUploads = async () => {
+    const expiredTaskIds = new Set(
+      [...records.values()]
+        .filter(
+          (entry) =>
+            entry.taskId &&
+            entry.taskDeletionExpiresAt !== undefined &&
+            entry.taskDeletionExpiresAt <= now()
+        )
+        .map((entry) => entry.taskId as string)
+    );
+    for (const taskId of expiredTaskIds) await discardTaskUploadsNow(taskId);
+  };
+
   const failEntry = async (entry: UploadRecord, error: unknown) => {
     const failure = safeFailure(error);
     const retryCount = failure.retryable ? entry.retryCount + 1 : entry.retryCount;
@@ -399,7 +448,14 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       needsReconciliation: false,
       retryAt: undefined,
     });
-    if (verified.state === "ready") await removeSource(entry);
+    if (verified.state === "ready") {
+      await removeSource(entry);
+      if (entry.taskId || !visibleUploadIds.includes(entry.uploadId)) {
+        pruneCompletedRecord(entry);
+        void persist();
+        notify();
+      }
+    }
   };
 
   const reconcileBeforeAttempt = async (entry: UploadRecord) => {
@@ -572,6 +628,22 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       if (restored.taskId) {
         const ordered = taskUploadOrder.get(restored.taskId) ?? [];
         if (!ordered.includes(restored.uploadId)) taskUploadOrder.set(restored.taskId, [...ordered, restored.uploadId]);
+        if (restored.state === "ready" &&
+          (restored.taskId || !manifestVisibleUploadIds.includes(restored.uploadId))) {
+          await removeSource(restored);
+          pruneCompletedRecord(restored);
+          continue;
+        }
+        if (
+          restored.paused &&
+          !restored.recoverablyRemoved &&
+          restored.taskDeletionExpiresAt === undefined
+        ) {
+          restored.taskDeletionExpiresAt = now() + TASK_DELETION_RECOVERY_MS;
+        }
+        if (restored.taskDeletionExpiresAt !== undefined && restored.taskDeletionExpiresAt > now()) {
+          scheduleTaskDiscard(restored.taskId, restored.taskDeletionExpiresAt);
+        }
       }
       if (restored.state === "failed" && restored.retryAt) {
         if (restored.retryAt <= now()) {
@@ -582,6 +654,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         }
       }
     }
+    await discardExpiredTaskUploads();
     visibleUploadIds = manifestVisibleUploadIds.filter(
       (uploadId) => records.get(uploadId)?.taskId === undefined
     );
@@ -806,6 +879,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     async reconcileOnForeground() {
       if (disposed) return;
       await ensureHydrated();
+      await discardExpiredTaskUploads();
       foreground = true;
       for (const entry of records.values()) {
         if (entry.state === "ready") {
@@ -858,16 +932,21 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
 
     pauseTaskUploads(taskId: string) {
       let paused = 0;
+      const taskDeletionExpiresAt = now() + TASK_DELETION_RECOVERY_MS;
+      scheduleTaskDiscard(taskId, taskDeletionExpiresAt);
       for (const entry of records.values()) {
         if (entry.taskId !== taskId || entry.state === "ready") continue;
         entry.generation += 1;
-        entry.paused = true;
-        entry.acceptedForUpload = false;
-        if (entry.state === "uploading" || entry.state === "verifying") entry.state = "pending";
+        update(entry, {
+          paused: true,
+          acceptedForUpload: false,
+          state: entry.state === "uploading" || entry.state === "verifying" ? "pending" : entry.state,
+          taskDeletionExpiresAt,
+        });
         void dependencies.abortUpload?.({ uploadId: entry.uploadId });
         paused += 1;
       }
-      if (paused) { void persist(); notify(); }
+      if (paused) notify();
       return paused;
     },
 
@@ -904,9 +983,18 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     },
 
     async resumeTaskUploads(taskId: string) {
+      const discardTimer = taskDiscardTimers.get(taskId);
+      if (discardTimer) clearTimeout(discardTimer);
+      taskDiscardTimers.delete(taskId);
       for (const entry of records.values()) {
-        if (entry.taskId === taskId && entry.paused && !entry.recoverablyRemoved) {
-          update(entry, { paused: false, acceptedForUpload: entry.state === "pending" });
+        if (entry.taskId !== taskId) continue;
+        if (entry.taskDeletionExpiresAt !== undefined) {
+          update(entry, {
+            taskDeletionExpiresAt: undefined,
+            ...(entry.paused && !entry.recoverablyRemoved
+              ? { paused: false, acceptedForUpload: entry.state === "pending" }
+              : {}),
+          });
         }
       }
       await pump();
@@ -941,15 +1029,18 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         entry.paused = true;
         void dependencies.abortUpload?.({ uploadId: entry.uploadId });
       }
+      for (const timer of taskDiscardTimers.values()) clearTimeout(timer);
+      taskDiscardTimers.clear();
       for (const resolve of drainWaiters) resolve();
       drainWaiters.clear();
       listeners.clear();
     },
 
     async discardTaskUploads(taskId: string) {
-      const taskEntries = [...records.values()].filter((entry) => entry.taskId === taskId);
-      for (const entry of taskEntries) await removeRecord(entry);
-      if (taskEntries.length) { void persist(); notify(); }
+      const discardTimer = taskDiscardTimers.get(taskId);
+      if (discardTimer) clearTimeout(discardTimer);
+      taskDiscardTimers.delete(taskId);
+      await discardTaskUploadsNow(taskId);
     },
 
     clearAfterSaveAndStay() {
