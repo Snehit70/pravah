@@ -191,7 +191,11 @@ export function TaskImageViewer({
   const localPreview = activeImage.state !== "ready" && activeImage.previewUri ? { uri: activeImage.previewUri } : null;
   const remoteImage = delivery?.kind === "ready" ? { uri: delivery.url } : null;
   const imageSource = localPreview ?? remoteImage;
-  const unavailable = !imageSource && (activeImage.state !== "ready" || delivery?.kind === "not_found");
+  const unavailable = !imageSource && (
+    activeImage.state !== "ready" ||
+    delivery?.kind === "not_found" ||
+    delivery?.kind === "state"
+  );
 
   return (
     <Modal
