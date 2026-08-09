@@ -59,6 +59,7 @@ import {
   setThemeRuntime,
 } from "./src/theme/themeRuntime";
 import { TaskCard, type MobileTask } from "./src/components/TaskCard";
+import { TaskImageBudgetNotice } from "./src/components/TaskImageBudgetNotice";
 import { BottomTabBar, type TabKey } from "./src/components/BottomTabBar";
 import { GridBackground } from "./src/components/GridBackground";
 import { Kairo, type KairoSheetRef } from "./src/components/Kairo";
@@ -176,6 +177,7 @@ function MobileApp() {
   const [selectedCompletedTask, setSelectedCompletedTask] = useState<MobileTask | null>(null);
   const [focusGoalId, setFocusGoalId] = useState<string | null>(null);
   const [isGoalDetailOpen, setIsGoalDetailOpen] = useState(false);
+  const [isAuthStorageReady, setIsAuthStorageReady] = useState(false);
   const hasLoggedPostLoginRef = useRef(false);
   const didMarkInteractiveRef = useRef(false);
   const didApplyStartupTabRef = useRef(false);
@@ -213,6 +215,10 @@ function MobileApp() {
     retryBootstrap,
     hasCachedSessionHint,
   } = useWorkspaceState();
+
+  useEffect(() => {
+    void authStorageReady.then(() => setIsAuthStorageReady(true));
+  }, []);
   visitedTabsRef.current.add(activeTab);
 
   const chromeDim = useSharedValue(1);
@@ -296,6 +302,10 @@ function MobileApp() {
     // Progress / Kairo never pay a server round-trip on entry.
     includeAllTasks: true,
   });
+  const taskImageBudgetStatus = useQuery(
+    api.taskImageBudget.getOwnerBudgetStatus,
+    session && isAuthStorageReady ? {} : "skip"
+  );
 
   const hasLiveWorkspaceData =
     !isInboxLoading &&
@@ -1292,6 +1302,8 @@ function MobileApp() {
           </View>
         </View>
       </View> : null}
+
+      <TaskImageBudgetNotice status={taskImageBudgetStatus} />
 
       {/* Toast — left rule + line of copy, no filled pill. */}
       {toast ? (

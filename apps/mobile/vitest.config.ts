@@ -10,6 +10,7 @@ export default defineConfig({
     alias: {
       react: path.resolve(__dirname, "../../node_modules/react"),
       "react-dom": path.resolve(__dirname, "../../node_modules/react-dom"),
+      "react-native": path.resolve(__dirname, "../../node_modules/react-native-web"),
       "react-native-svg": path.resolve(__dirname, "src/test/mocks/react-native-svg.tsx"),
     },
   },

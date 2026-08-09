@@ -3,6 +3,8 @@ export const CARD_TRANSFORMATION =
 export const DETAIL_TRANSFORMATION =
   "c_limit,h_1600,w_1600/cs_srgb,f_webp,q_auto:good";
 export const EAGER_TRANSFORMATIONS = `${CARD_TRANSFORMATION}|${DETAIL_TRANSFORMATION}`;
+export const TASK_IMAGE_CANONICAL_CONVEX_SITE_URL =
+  "https://befitting-swan-125.eu-west-1.convex.site";
 
 const MAX_MASTER_BYTES = 8 * 1024 * 1024;
 const MAX_CARD_BYTES = 512 * 1024;
@@ -22,6 +24,62 @@ export type TaskImageProviderConfig = {
 export type ProviderAssetPresence = "present" | "absent" | "unknown";
 
 export type ProviderCleanupResult = "deleted" | "absent" | "retry";
+
+export type TaskImageProviderUsage = {
+  pooledPercentage: number;
+  transformations: number;
+  storageBytes: number;
+  bandwidthBytes: number;
+};
+
+function nonNegativeFinite(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+function usageValue(payload: Record<string, unknown>, key: string) {
+  const category = payload[key];
+  if (!category || typeof category !== "object") return undefined;
+  return nonNegativeFinite((category as Record<string, unknown>).usage);
+}
+
+export async function fetchProviderUsage(
+  provider: TaskImageProviderConfig
+): Promise<TaskImageProviderUsage> {
+  try {
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${encodeURIComponent(provider.cloudName)}/usage`,
+      {
+        headers: {
+          Authorization: `Basic ${btoa(`${provider.apiKey}:${provider.apiSecret}`)}`,
+        },
+        signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
+      }
+    );
+    if (!response.ok) throw new Error("provider_usage_unavailable");
+    const payload = (await response.json()) as Record<string, unknown>;
+    const credits = payload.credits;
+    const pooledPercentage =
+      credits && typeof credits === "object"
+        ? nonNegativeFinite((credits as Record<string, unknown>).used_percent)
+        : undefined;
+    const transformations = usageValue(payload, "transformations");
+    const storageBytes = usageValue(payload, "storage");
+    const bandwidthBytes = usageValue(payload, "bandwidth");
+    if (
+      pooledPercentage === undefined ||
+      transformations === undefined ||
+      storageBytes === undefined ||
+      bandwidthBytes === undefined
+    ) {
+      throw new Error("provider_usage_unavailable");
+    }
+    return { pooledPercentage, transformations, storageBytes, bandwidthBytes };
+  } catch {
+    throw new Error("provider_usage_unavailable");
+  }
+}
 
 /**
  * Checks only the expected authenticated asset identity. The response is

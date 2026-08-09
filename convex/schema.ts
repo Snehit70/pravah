@@ -1,6 +1,10 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { automationScopeValidator } from "./automationScopes";
+import {
+  taskImageOperationalCategoryValidator,
+  taskImageOperationalCodeValidator,
+} from "./taskImageOperationalValues";
 
 export default defineSchema({
   mobileReleaseControl: defineTable({
@@ -382,7 +386,28 @@ export default defineSchema({
   })
     .index("by_upload_record", ["uploadRecordId"])
     .index("by_due", ["state", "nextAttemptAt"])
-    .index("by_task", ["taskId"]),
+    .index("by_task", ["taskId"])
+    .index("by_owner", ["ownerTokenIdentifier"]),
+  taskImageProviderState: defineTable({
+    key: v.literal("cloudinary"),
+    pooledPercentage: v.optional(v.number()),
+    transformations: v.optional(v.number()),
+    storageBytes: v.optional(v.number()),
+    bandwidthBytes: v.optional(v.number()),
+    usageObservedAt: v.optional(v.number()),
+    grantsBlocked: v.boolean(),
+    lastRefreshAttemptAt: v.number(),
+    lastRefreshSucceededAt: v.optional(v.number()),
+    lastRefreshFailureCode: v.optional(v.literal("provider_usage_unavailable")),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
+  taskImageOperationalCounters: defineTable({
+    key: v.string(),
+    category: taskImageOperationalCategoryValidator,
+    code: taskImageOperationalCodeValidator,
+    count: v.number(),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
   integrations: defineTable({
     provider: v.union(v.literal("google_calendar"), v.literal("gmail")),
     status: v.union(

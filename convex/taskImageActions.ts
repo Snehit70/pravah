@@ -1,6 +1,6 @@
 import { action, internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { makeFunctionReference } from "convex/server";
 import { requireTokenIdentifier } from "./authHelpers";
 import {
@@ -8,10 +8,17 @@ import {
   buildUploadGrant,
   checkProviderAssetPresence,
   deleteProviderAsset,
+  fetchProviderUsage,
+  TASK_IMAGE_CANONICAL_CONVEX_SITE_URL,
   verifyProviderUploadMaster,
   type ProviderUploadResult,
   type TaskImageProviderConfig,
 } from "./taskImageProvider";
+import { shouldAttemptUsageRefresh } from "./taskImageBudget";
+import type {
+  TaskImageOperationalCategory,
+  TaskImageOperationalCode,
+} from "./taskImageOperationalValues";
 
 const listDueCleanupTombstonesRef = makeFunctionReference<
   "query",
@@ -58,6 +65,47 @@ const prepareUploadGrantRef = makeFunctionReference<
     providerAttempt: number;
   }
 >("taskImages:prepareUploadGrant");
+
+type BudgetDecision = {
+  grantsBlocked: boolean;
+  warning: boolean;
+  refreshRequired: boolean;
+  usageTrusted: boolean;
+};
+
+const getUsageStateRef = makeFunctionReference<
+  "query",
+  { now: number },
+  BudgetDecision & { snapshot: unknown }
+>("taskImageBudget:getUsageState");
+
+const recordUsageSnapshotRef = makeFunctionReference<
+  "mutation",
+  {
+    pooledPercentage: number;
+    transformations: number;
+    storageBytes: number;
+    bandwidthBytes: number;
+    observedAt: number;
+  },
+  BudgetDecision
+>("taskImageBudget:recordUsageSnapshot");
+
+const recordUsageRefreshFailureRef = makeFunctionReference<
+  "mutation",
+  { attemptedAt: number },
+  BudgetDecision
+>("taskImageBudget:recordUsageRefreshFailure");
+
+const recordOperationalEventRef = makeFunctionReference<
+  "mutation",
+  {
+    category: TaskImageOperationalCategory;
+    code: TaskImageOperationalCode;
+    now: number;
+  },
+  { count: number }
+>("taskImageOperations:recordOperationalEvent");
 
 const getUploadVerificationContextRef = makeFunctionReference<
   "query",
@@ -145,7 +193,12 @@ function readProviderConfig(): TaskImageProviderConfig {
   const apiKey = process.env.CLOUDINARY_API_KEY;
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
   const siteUrl = process.env.CONVEX_SITE_URL;
-  if (!cloudName || !apiKey || !apiSecret || !siteUrl || !siteUrl.startsWith("https://")) {
+  if (
+    !cloudName ||
+    !apiKey ||
+    !apiSecret ||
+    siteUrl !== TASK_IMAGE_CANONICAL_CONVEX_SITE_URL
+  ) {
     throw new Error("provider_unavailable");
   }
   return {
@@ -167,15 +220,76 @@ export const issueUploadGrant = action({
   args: { uploadId: v.string(), requestKey: v.string() },
   handler: async (ctx, args) => {
     const ownerTokenIdentifier = await requireTokenIdentifier(ctx);
-    const provider = readProviderConfig();
+    const now = Date.now();
+    let provider: TaskImageProviderConfig;
+    try {
+      provider = readProviderConfig();
+    } catch (error) {
+      try {
+        await ctx.runMutation(recordOperationalEventRef, {
+          category: "grant",
+          code: "provider_unavailable",
+          now,
+        });
+      } catch {
+        // Aggregate diagnostics must never change the provider failure outcome.
+      }
+      throw error;
+    }
+    let budget = await ctx.runQuery(getUsageStateRef, { now });
+    const lastRefreshAttemptAt =
+      budget.snapshot && typeof budget.snapshot === "object" && "lastRefreshAttemptAt" in budget.snapshot
+        ? (budget.snapshot as { lastRefreshAttemptAt?: unknown }).lastRefreshAttemptAt
+        : undefined;
+    if (
+      budget.refreshRequired &&
+      shouldAttemptUsageRefresh(typeof lastRefreshAttemptAt === "number" ? lastRefreshAttemptAt : undefined, now)
+    ) {
+      try {
+        const usage = await fetchProviderUsage(provider);
+        budget = {
+          ...(await ctx.runMutation(recordUsageSnapshotRef, {
+            ...usage,
+            observedAt: now,
+          })),
+          snapshot: usage,
+        };
+      } catch {
+        budget = {
+          ...(await ctx.runMutation(recordUsageRefreshFailureRef, { attemptedAt: now })),
+          snapshot: budget.snapshot,
+        };
+        try {
+          await ctx.runMutation(recordOperationalEventRef, {
+            category: "grant",
+            code: "provider_usage_unavailable",
+            now,
+          });
+        } catch {
+          // Aggregate diagnostics must not weaken the fail-closed grant state.
+        }
+      }
+    }
+    if (budget.grantsBlocked) {
+      try {
+        await ctx.runMutation(recordOperationalEventRef, {
+          category: "grant",
+          code: "usage_blocked",
+          now,
+        });
+      } catch {
+        // Aggregate diagnostics must never change the blocked grant outcome.
+      }
+      throw new ConvexError({ code: "usage_blocked", retryable: true });
+    }
     const prepared = await ctx.runMutation(prepareUploadGrantRef, {
       ownerTokenIdentifier,
       uploadId: args.uploadId,
       requestKey: args.requestKey,
       candidatePublicId: randomProviderPublicId(),
-      issuedAt: Math.floor(Date.now() / 1000),
+      issuedAt: Math.floor(now / 1000),
     });
-    return {
+    const grant = {
       ...(await buildUploadGrant({
         provider,
         publicId: prepared.publicId,
@@ -184,6 +298,53 @@ export const issueUploadGrant = action({
       })),
       attempt: prepared.providerAttempt,
     };
+    try {
+      await ctx.runMutation(recordOperationalEventRef, {
+        category: "grant",
+        code: "success",
+        now,
+      });
+    } catch {
+      // Aggregate diagnostics must never change a successful grant outcome.
+    }
+    return grant;
+  },
+});
+
+export const refreshProviderUsage = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const attemptedAt = Date.now();
+    let usage;
+    try {
+      usage = await fetchProviderUsage(readProviderConfig());
+    } catch {
+      const decision = await ctx.runMutation(recordUsageRefreshFailureRef, { attemptedAt });
+      try {
+        await ctx.runMutation(recordOperationalEventRef, {
+          category: "grant",
+          code: "provider_usage_unavailable",
+          now: attemptedAt,
+        });
+      } catch {
+        // Aggregate diagnostics must never weaken the fail-closed usage state.
+      }
+      return { status: "unavailable" as const, ...decision };
+    }
+    const decision = await ctx.runMutation(recordUsageSnapshotRef, {
+      ...usage,
+      observedAt: attemptedAt,
+    });
+    try {
+      await ctx.runMutation(recordOperationalEventRef, {
+        category: "grant",
+        code: "usage_refresh_success",
+        now: attemptedAt,
+      });
+    } catch {
+      // The trusted snapshot remains authoritative if diagnostics are unavailable.
+    }
+    return { status: "updated" as const, ...decision };
   },
 });
 
@@ -251,6 +412,15 @@ export const submitUploadResult = action({
         version: args.version,
         result: { status: "failed", failureCode: verified.failureCode },
       });
+      try {
+        await ctx.runMutation(recordOperationalEventRef, {
+          category: "verification",
+          code: verified.failureCode,
+          now: Date.now(),
+        });
+      } catch {
+        // The committed verification failure must still reach the client.
+      }
       return { state: "failed" as const, failure: { code: verified.failureCode } };
     }
 
@@ -277,17 +447,42 @@ export const resolveTaskImage = action({
       taskImageId: args.taskImageId,
     });
     if (context.kind !== "ready") return context;
-    const provider = readProviderConfig();
-    return {
-      kind: "ready" as const,
-      url: await buildDeliveryUrl({
-        cloudName: provider.cloudName,
-        apiSecret: provider.apiSecret,
-        publicId: context.publicId,
-        version: context.version,
-        variant: args.variant,
-      }),
-    };
+    const now = Date.now();
+    let result: { kind: "ready"; url: string };
+    try {
+      const provider = readProviderConfig();
+      result = {
+        kind: "ready" as const,
+        url: await buildDeliveryUrl({
+          cloudName: provider.cloudName,
+          apiSecret: provider.apiSecret,
+          publicId: context.publicId,
+          version: context.version,
+          variant: args.variant,
+        }),
+      };
+    } catch (error) {
+      try {
+        await ctx.runMutation(recordOperationalEventRef, {
+          category: "resolution",
+          code: "provider_unavailable",
+          now,
+        });
+      } catch {
+        // Preserve the provider operation's original failure.
+      }
+      throw error;
+    }
+    try {
+      await ctx.runMutation(recordOperationalEventRef, {
+        category: "resolution",
+        code: "success",
+        now,
+      });
+    } catch {
+      // Delivery remains successful when aggregate diagnostics are unavailable.
+    }
+    return result;
   },
 });
 
@@ -325,12 +520,41 @@ export const reconcileCleanup = internalAction({
         });
         if (outcome === "retry") retried += 1;
         else terminal += 1;
+        try {
+          await ctx.runMutation(recordOperationalEventRef, {
+            category: "cleanup",
+            code: outcome === "retry" ? "provider_ambiguous" : "success",
+            now,
+          });
+        } catch {
+          // Cleanup state and retry scheduling remain authoritative.
+        }
         if (result.nextAttemptAt !== undefined) {
           nextAttemptAt = Math.min(nextAttemptAt ?? Infinity, result.nextAttemptAt);
         }
       } catch {
         retried += 1;
+        try {
+          await ctx.runMutation(recordOperationalEventRef, {
+            category: "cleanup",
+            code: "provider_ambiguous",
+            now,
+          });
+        } catch {
+          // Cleanup state and retry scheduling remain authoritative.
+        }
         nextAttemptAt = Math.min(nextAttemptAt ?? Infinity, now + 5 * 60 * 1000);
+      }
+    }
+    if (providerUnavailable) {
+      try {
+        await ctx.runMutation(recordOperationalEventRef, {
+          category: "cleanup",
+          code: "provider_unavailable",
+          now,
+        });
+      } catch {
+        // Provider outage retries must not depend on aggregate diagnostics.
       }
     }
     if (!providerUnavailable && tombstones.length === 50) {

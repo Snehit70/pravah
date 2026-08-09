@@ -54,6 +54,9 @@ vi.mock("../../convex/_generated/api", () => ({
       getUploadByProviderPublicId: "taskImages.getUploadByProviderPublicId",
       applyUploadVerification: "taskImages.applyUploadVerification",
     },
+    taskImageOperations: {
+      recordOperationalEvent: "taskImageOperations.recordOperationalEvent",
+    },
   },
   api: {
     automation: {
@@ -91,6 +94,7 @@ const originalApiKey = env?.CONVEX_HTTP_API_KEY;
 const originalHttpOwner = env?.PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER;
 const originalGoogleClientId = env?.GOOGLE_OAUTH_CLIENT_ID;
 const originalCloudinaryApiSecret = env?.CLOUDINARY_API_SECRET;
+const originalConvexSiteUrl = env?.CONVEX_SITE_URL;
 
 function getHandler(path: string, method: string) {
   const route = routeRegistry.find((entry) => entry.path === path && entry.method === method);
@@ -122,6 +126,7 @@ beforeAll(() => {
     env.PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER = "admin-owner";
     env.GOOGLE_OAUTH_CLIENT_ID = "client-id";
     env.CLOUDINARY_API_SECRET = "abcd";
+    env.CONVEX_SITE_URL = "https://befitting-swan-125.eu-west-1.convex.site";
   }
 });
 
@@ -132,6 +137,7 @@ beforeEach(() => {
     env.PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER = "admin-owner";
     env.GOOGLE_OAUTH_CLIENT_ID = "client-id";
     env.CLOUDINARY_API_SECRET = "abcd";
+    env.CONVEX_SITE_URL = "https://befitting-swan-125.eu-west-1.convex.site";
   }
 });
 
@@ -141,10 +147,72 @@ afterAll(() => {
     env.PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER = originalHttpOwner;
     env.GOOGLE_OAUTH_CLIENT_ID = originalGoogleClientId;
     env.CLOUDINARY_API_SECRET = originalCloudinaryApiSecret;
+    env.CONVEX_SITE_URL = originalConvexSiteUrl;
   }
 });
 
 describe("http route handlers", () => {
+  it("rejects provider callbacks outside the canonical Convex authority", async () => {
+    const handler = getHandler("/cloudinary/task-image-callback", "POST");
+    const ctx = createCtx();
+    if (env) env.CONVEX_SITE_URL = "https://other-deployment.convex.site";
+
+    const response = await handler(ctx, new Request(
+      "https://example.com/cloudinary/task-image-callback",
+      { method: "POST", body: "{}" }
+    ));
+
+    expect(response.status).toBe(503);
+    expect(ctx.runQuery).not.toHaveBeenCalled();
+    expect(ctx.runMutation).not.toHaveBeenCalled();
+  });
+
+  it("acknowledges eager failure callbacks when diagnostics are unavailable", async () => {
+    const handler = getHandler("/cloudinary/task-image-callback", "POST");
+    const ctx = createCtx();
+    const timestamp = Math.floor(Date.now() / 1000);
+    const payload = {
+      notification_type: "eager",
+      status: "failed",
+      public_id: "pravah-task-images/opaque123",
+      version: 123,
+    };
+    const rawBody = JSON.stringify(payload);
+    const signature = await signCloudinaryCallback(rawBody, timestamp, "abcd");
+    ctx.runQuery.mockResolvedValue({
+      ownerTokenIdentifier: "user-1",
+      uploadId: "upl_mobile_1",
+      publicId: payload.public_id,
+      encodingClass: "jpeg",
+      providerVersion: 123,
+      master: undefined,
+    });
+    ctx.runMutation.mockImplementation(async (reference) => {
+      if (reference === internal.taskImageOperations.recordOperationalEvent) {
+        throw new Error("diagnostics unavailable");
+      }
+      return undefined;
+    });
+
+    const response = await handler(ctx, new Request(
+      "https://example.com/cloudinary/task-image-callback",
+      {
+        method: "POST",
+        headers: {
+          "x-cld-timestamp": String(timestamp),
+          "x-cld-signature": signature,
+        },
+        body: rawBody,
+      },
+    ));
+
+    expect(response.status).toBe(204);
+    expect(ctx.runMutation).toHaveBeenCalledWith(
+      internal.taskImages.applyUploadVerification,
+      expect.objectContaining({ result: { status: "failed", failureCode: "variant_too_large" } }),
+    );
+  });
+
   it("reconciles an eager callback that arrives before the master callback", async () => {
     const handler = getHandler("/cloudinary/task-image-callback", "POST");
     const ctx = createCtx();
