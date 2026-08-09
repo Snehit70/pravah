@@ -83,6 +83,8 @@ type Props = {
 const PAD_TOP = 10;
 const PAD_BOTTOM = 6;
 const READOUT_W = 104;
+const Y_AXIS_W = 28;
+const Y_AXIS_GAP = spacing.xs;
 
 /**
  * The morph's line + area for one frame, built entirely inside one worklet.
@@ -216,6 +218,7 @@ export function HeroVelocityChart({
 
   const baselineY = height - PAD_BOTTOM;
   const hasData = series.some((p) => p.count > 0);
+  const maxCount = Math.max(1, ...series.map((point) => point.count));
   const canScrub = geom.xs.length >= 2 && hasData;
 
   const axis = useMemo(() => {
@@ -395,12 +398,18 @@ export function HeroVelocityChart({
       </View>
 
       <GestureDetector gesture={pan}>
-        <View style={styles.chartCol}>
-          <View
-            style={{ height }}
-            onLayout={onLayout}
-            importantForAccessibility="no-hide-descendants"
-          >
+        <View style={styles.chartWithAxis}>
+          <View style={styles.yAxis} importantForAccessibility="no-hide-descendants">
+            <Text style={styles.yAxisLabel}>{maxCount}</Text>
+            <Text style={styles.yAxisLabel}>{Math.ceil(maxCount / 2)}</Text>
+            <Text style={styles.yAxisLabel}>0</Text>
+          </View>
+          <View style={styles.chartCol}>
+            <View
+              style={{ height }}
+              onLayout={onLayout}
+              importantForAccessibility="no-hide-descendants"
+            >
             {width > 0 && geom.line ? (
               <Svg width={width} height={height}>
                 <Defs>
@@ -487,15 +496,16 @@ export function HeroVelocityChart({
                 <Text style={styles.emptyText}>Momentum takes shape here.</Text>
               </View>
             ) : null}
-          </View>
-
-          {axis && hasData ? (
-            <View style={styles.axisRow}>
-              <Text style={styles.axisTick}>{axis.start}</Text>
-              <Text style={styles.axisTick}>{axis.mid}</Text>
-              <Text style={[styles.axisTick, styles.axisTickEnd]}>{axis.end}</Text>
             </View>
-          ) : null}
+
+            {axis && hasData ? (
+              <View style={styles.axisRow}>
+                <Text style={styles.axisTick}>{axis.start}</Text>
+                <Text style={styles.axisTick}>{axis.mid}</Text>
+                <Text style={[styles.axisTick, styles.axisTickEnd]}>{axis.end}</Text>
+              </View>
+            ) : null}
+          </View>
         </View>
       </GestureDetector>
     </View>
@@ -600,7 +610,23 @@ const styles = createThemedStyles({
     color: colors.textMuted,
   },
   chartCol: {
-    width: "100%",
+    flex: 1,
+    minWidth: 0,
+  },
+  chartWithAxis: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: Y_AXIS_GAP,
+  },
+  yAxis: {
+    width: Y_AXIS_W,
+    height: 168,
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+  },
+  yAxisLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
   },
   axisRow: {
     flexDirection: "row",

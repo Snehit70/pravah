@@ -62,6 +62,8 @@ const WEEKDAY_SHORT = WEEKDAY_LABELS.map((l) => l.slice(0, 3));
 const MIN_SAMPLE = 3;
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const CARD_PAD = spacing.lg; // must match styles.card horizontal padding
+const Y_AXIS_W = 28;
+const Y_AXIS_GAP = spacing.xs;
 const CHART_H = 148;
 
 type Metric = "weekday" | "hour";
@@ -101,14 +103,15 @@ function formatHour(h: number): string {
 export function RhythmMiniCharts({ weekday, hour, cycleDays }: Props) {
   const [width, setWidth] = useState(0);
   const [metric, setMetric] = useState<Metric>("weekday");
-  // Null until the user states a preference, so each metric can open on its own
-  // default; once they choose a shape it sticks across metric switches.
-  const [shape, setShape] = useState<Shape | null>(null);
+  // Null until the user explicitly changes the drawing. This keeps the metric
+  // and truthful default shape linked; after a manual shape choice, the user
+  // owns the drawing mode and metric switches no longer override it.
+  const [shapeOverride, setShapeOverride] = useState<Shape | null>(null);
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
 
-  const activeShape = shape ?? DEFAULT_SHAPE[metric];
+  const activeShape = shapeOverride ?? DEFAULT_SHAPE[metric];
   // `width` is the card's border-box (includes its horizontal padding).
-  const plotW = width > 0 ? width - CARD_PAD * 2 : 0;
+  const plotW = width > 0 ? width - CARD_PAD * 2 - Y_AXIS_W - Y_AXIS_GAP : 0;
 
   const series = metric === "weekday" ? weekday : hour;
   const hasSample = series.total >= MIN_SAMPLE;
@@ -122,7 +125,7 @@ export function RhythmMiniCharts({ weekday, hour, cycleDays }: Props) {
   const selectShape = (key: Shape) => {
     if (key === activeShape) return;
     haptic.selection();
-    setShape(key);
+    setShapeOverride(key);
   };
 
   return (
@@ -178,28 +181,32 @@ function WeekdayChart({
 }) {
   const peak = counts.indexOf(Math.max(...counts));
   const label = `Completions by weekday. Peak weekday: ${WEEKDAY_LABELS[peak]}, ${counts[peak]} completed.`;
+  const max = Math.max(1, ...counts);
 
   return (
     <View accessible accessibilityRole="image" accessibilityLabel={label}>
-      <View importantForAccessibility="no-hide-descendants">
-        <MorphChart
-          counts={counts}
-          shape={shape}
-          width={width}
-          peak={peak}
-          padTop={20}
-          gap={spacing.sm}
-          gradientId="weekdayArea"
-        />
-        <View style={styles.labelsRow}>
-          {WEEKDAY_SHORT.map((day, i) => (
-            <Text
-              key={i}
-              style={[styles.dayLabel, i === peak && counts[i] > 0 && styles.dayLabelPeak]}
-            >
-              {day}
-            </Text>
-          ))}
+      <View style={styles.chartWithAxis} importantForAccessibility="no-hide-descendants">
+        <YAxis max={max} />
+        <View style={{ width }}>
+          <MorphChart
+            counts={counts}
+            shape={shape}
+            width={width}
+            peak={peak}
+            padTop={20}
+            gap={spacing.sm}
+            gradientId="weekdayArea"
+          />
+          <View style={styles.labelsRow}>
+            {WEEKDAY_SHORT.map((day, i) => (
+              <Text
+                key={i}
+                style={[styles.dayLabel, i === peak && counts[i] > 0 && styles.dayLabelPeak]}
+              >
+                {day}
+              </Text>
+            ))}
+          </View>
         </View>
       </View>
     </View>
@@ -279,6 +286,10 @@ function MorphChart({
   }, [geom]);
 
   useEffect(() => {
+    if (width <= 0) {
+      grow.value = 0;
+      return;
+    }
     if (reducedMotion) {
       grow.value = 1;
       return;
@@ -288,7 +299,7 @@ function MorphChart({
       duration: motion.duration.slow,
       easing: Easing.out(Easing.cubic),
     });
-  }, [counts, reducedMotion, grow]);
+  }, [counts, reducedMotion, grow, width]);
 
   useEffect(() => {
     const target = shape === "line" ? 1 : 0;
@@ -416,37 +427,51 @@ function HourChart({
 }) {
   const peakHour = counts.indexOf(Math.max(...counts));
   const label = `Completions by hour. Peak around ${formatHour(peakHour)}.`;
+  const max = Math.max(1, ...counts);
   // Hours sit on slot centres (same geometry as the weekday chart), so a tick
   // lands under its own slot rather than on the plot edge.
   const slot = width > 0 ? width / counts.length : 0;
 
   return (
     <View accessible accessibilityRole="image" accessibilityLabel={label}>
-      <View importantForAccessibility="no-hide-descendants">
-        <MorphChart
-          counts={counts}
-          shape={shape}
-          width={width}
-          peak={peakHour}
-          padTop={8}
-          gap={2}
-          gradientId="hourArea"
-        />
-        <View style={[styles.hourTicks, { width }]}>
-          {HOUR_TICKS.map(({ hour, label: tick }) => (
-            <Text
-              key={hour}
-              style={[
-                styles.hourTick,
-                // Centre on the slot, then keep the outermost ticks inside the plot.
-                { left: Math.max(0, Math.min(width - 28, slot / 2 + hour * slot - 14)) },
-              ]}
-            >
-              {tick}
-            </Text>
-          ))}
+      <View style={styles.chartWithAxis} importantForAccessibility="no-hide-descendants">
+        <YAxis max={max} />
+        <View style={{ width }}>
+          <MorphChart
+            counts={counts}
+            shape={shape}
+            width={width}
+            peak={peakHour}
+            padTop={8}
+            gap={2}
+            gradientId="hourArea"
+          />
+          <View style={[styles.hourTicks, { width }]}>
+            {HOUR_TICKS.map(({ hour, label: tick }) => (
+              <Text
+                key={hour}
+                style={[
+                  styles.hourTick,
+                  // Centre on the slot, then keep the outermost ticks inside the plot.
+                  { left: Math.max(0, Math.min(width - 28, slot / 2 + hour * slot - 14)) },
+                ]}
+              >
+                {tick}
+              </Text>
+            ))}
+          </View>
         </View>
       </View>
+    </View>
+  );
+}
+
+function YAxis({ max }: { max: number }) {
+  return (
+    <View style={styles.yAxis} accessibilityLabel={`Count axis from 0 to ${max}`}>
+      <Text style={styles.yAxisLabel}>{max}</Text>
+      <Text style={styles.yAxisLabel}>{Math.ceil(max / 2)}</Text>
+      <Text style={styles.yAxisLabel}>0</Text>
     </View>
   );
 }
@@ -465,6 +490,21 @@ const styles = createThemedStyles({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
+  },
+  chartWithAxis: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: Y_AXIS_GAP,
+  },
+  yAxis: {
+    width: Y_AXIS_W,
+    height: CHART_H,
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+  },
+  yAxisLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
   },
   barFill: {
     position: "absolute",

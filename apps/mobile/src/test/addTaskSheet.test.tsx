@@ -424,7 +424,8 @@ describe("AddTaskSheet", () => {
       />
     );
     act(() => ref.current?.open());
-    fireEvent.click(screen.getByRole("button", { name: "Add Task image from Photos" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Task image" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add Task image from Photos" }));
     expect(await screen.findByAltText("Selected Task image preview")).toBeTruthy();
 
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
@@ -435,7 +436,7 @@ describe("AddTaskSheet", () => {
       title: "Image task",
       imageUploadId: "upload_one",
     }));
-    expect(screen.getByRole("button", { name: "Add Task image from Photos" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add Task image" })).toBeTruthy();
     await waitFor(() => expect(issueGrant).toHaveBeenCalledTimes(1));
     releaseGrant();
   });
