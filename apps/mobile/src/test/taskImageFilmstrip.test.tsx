@@ -287,10 +287,53 @@ describe("TaskImageFilmstrip", () => {
     expect(onRestore).toHaveBeenCalledWith("removed-1");
   });
 
+  it("expires Edit recovery actions while the surface remains open", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1_000);
+      render(
+        <TaskImageFilmstrip
+          surface="edit"
+          images={[]}
+          recoverable={[{ taskImageId: "removed-1", recoverableUntil: 2_000 }]}
+          onRestore={vi.fn()}
+        />
+      );
+      expect(screen.getByRole("button", { name: "Restore removed Task image" })).toBeTruthy();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+
+      expect(screen.queryByRole("button", { name: "Restore removed Task image" })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("hides Edit source actions at the five-image limit", () => {
+    render(
+      <TaskImageFilmstrip
+        surface="edit"
+        images={Array.from({ length: 5 }, (_, position) => ({
+          taskImageId: `image-${position}`,
+          position,
+          state: "ready" as const,
+        }))}
+        onSelectSource={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Add Task image" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add Task image from Photos" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Take Task image with Camera" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Paste Task image from clipboard" })).toBeNull();
+  });
+
   it("renders compact Inbox and Completed presentations", () => {
     const images = [
       { taskImageId: "image-1", position: 0, state: "ready" as const },
-      { taskImageId: "image-2", position: 1, state: "ready" as const },
+      { taskImageId: "image-2", position: 1, state: "ready" as const, caption: "Second reference" },
     ];
 
     const { rerender } = render(<TaskImageFilmstrip surface="inbox" images={images} />);
@@ -298,6 +341,7 @@ describe("TaskImageFilmstrip", () => {
 
     rerender(<TaskImageFilmstrip surface="completed" images={images} />);
     expect(screen.getByText("2 images retained")).toBeTruthy();
+    expect(screen.getByText("Second reference")).toBeTruthy();
   });
 
   it("uses the detail delivery variant and exposes retry in the Edit surface", async () => {

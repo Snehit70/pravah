@@ -359,6 +359,17 @@ function EditSurface({
   resolveDelivery,
 }: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[] }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  const visibleRecoverable = (recoverable ?? []).filter((image) => image.recoverableUntil === undefined || image.recoverableUntil > now);
+  useEffect(() => {
+    const nextExpiry = (recoverable ?? [])
+      .map((image) => image.recoverableUntil)
+      .filter((expiry): expiry is number => expiry !== undefined && expiry > now)
+      .sort((left, right) => left - right)[0];
+    if (nextExpiry === undefined) return;
+    const timer = setTimeout(() => setNow((current) => Math.max(current, nextExpiry)), Math.max(0, nextExpiry - now));
+    return () => clearTimeout(timer);
+  }, [now, recoverable]);
   const activeSelectedIndex = Math.min(selectedIndex, Math.max(0, images.length - 1));
   const selected = images[activeSelectedIndex];
 
@@ -366,7 +377,7 @@ function EditSurface({
     return (
       <View style={styles.editSurface}>
         <EmptyImages onSelectSource={onSelectSource} />
-        <RecoverableSection images={recoverable ?? []} active={images} onRestore={onRestore} />
+        <RecoverableSection images={visibleRecoverable} active={images} onRestore={onRestore} />
       </View>
     );
   }
@@ -416,8 +427,8 @@ function EditSurface({
         <Pressable disabled={activeSelectedIndex === images.length - 1} accessibilityRole="button" accessibilityLabel="Move Task image down" onPress={() => move("down")} style={[styles.editAction, activeSelectedIndex === images.length - 1 && styles.disabled]}><Text style={styles.editActionText}>Later</Text><ChevronRightIcon color={colors.textSecondary} size={18} /></Pressable>
         {onRemove ? <Pressable accessibilityRole="button" accessibilityLabel="Remove Task image" onPress={remove} style={styles.editAction}><TrashIcon color={colors.error} size={17} /><Text style={styles.removeText}>Remove</Text></Pressable> : null}
       </View>
-      <SourceActions onSelectSource={onSelectSource} full />
-      <RecoverableSection images={recoverable ?? []} active={images} onRestore={onRestore} />
+      {images.length < 5 ? <SourceActions onSelectSource={onSelectSource} full /> : null}
+      <RecoverableSection images={visibleRecoverable} active={images} onRestore={onRestore} />
     </View>
   );
 }
@@ -429,7 +440,17 @@ function CompletedSurface({ images, resolveDelivery }: TaskImageFilmstripProps &
     <View style={styles.completedRow} accessibilityLabel={`${images.length} completed Task images`}>
       <View style={styles.completedCheck}><Text style={styles.completedCheckText}>✓</Text></View>
       <View style={styles.completedCopy}><Text style={styles.completedTitle}>Task images</Text><Text style={styles.completedMeta}>{images.length} {images.length === 1 ? "image" : "images"} retained</Text></View>
-      <ImagePreview image={primary} resolveDelivery={resolveDelivery} variant="card" style={styles.completedThumb} showStatus={false} />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.completedMedia}>
+        {images.map((image, index) => (
+          <View key={image.taskImageId} style={styles.completedItem}>
+            <View>
+              <ImagePreview image={image} resolveDelivery={resolveDelivery} variant="card" style={styles.completedThumb} showStatus={false} accessibilityLabel={`Completed Task image ${index + 1}`} />
+              {index === 0 && images.length > 1 ? <Text style={styles.countBadge}>+{images.length - 1}</Text> : null}
+            </View>
+            {image.caption ? <Text numberOfLines={2} style={styles.completedCaption}>{image.caption}</Text> : null}
+          </View>
+        ))}
+      </ScrollView>
     </View>
   );
 }
@@ -550,12 +571,15 @@ const styles = createThemedStyles({
   retryButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.sm },
   retryText: { fontFamily: "Geist_600SemiBold", fontSize: 12, color: colors.accent },
   completedRow: { minHeight: 76, paddingVertical: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.borderSubtle },
+  completedMedia: { gap: spacing.sm, paddingRight: spacing.md },
+  completedItem: { width: 84, gap: spacing.xs },
   completedCheck: { width: 28, height: 28, borderRadius: radii.full, backgroundColor: colors.successMuted, alignItems: "center", justifyContent: "center" },
   completedCheckText: { color: colors.success, fontFamily: "Geist_600SemiBold", fontSize: 16 },
   completedCopy: { flex: 1, minWidth: 0 },
   completedTitle: { ...typography.title, color: colors.textPrimary },
   completedMeta: { ...typography.micro, color: colors.textMuted, marginTop: spacing.xs },
   completedThumb: { width: 84, height: 68, borderRadius: radii.md },
+  completedCaption: { ...typography.micro, color: colors.textSecondary },
   recoverableSection: { gap: spacing.xs, padding: spacing.sm, borderRadius: radii.lg, backgroundColor: colors.bgSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.borderSubtle },
   recoverableHeading: { ...typography.micro, color: colors.textSecondary },
   recoverableRow: { minHeight: 44, gap: spacing.sm },
