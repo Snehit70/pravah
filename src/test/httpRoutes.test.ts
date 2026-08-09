@@ -126,7 +126,7 @@ beforeAll(() => {
     env.PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER = "admin-owner";
     env.GOOGLE_OAUTH_CLIENT_ID = "client-id";
     env.CLOUDINARY_API_SECRET = "abcd";
-    env.CONVEX_SITE_URL = "https://befitting-swan-125.convex.site";
+    env.CONVEX_SITE_URL = "https://befitting-swan-125.eu-west-1.convex.site";
   }
 });
 
@@ -137,7 +137,7 @@ beforeEach(() => {
     env.PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER = "admin-owner";
     env.GOOGLE_OAUTH_CLIENT_ID = "client-id";
     env.CLOUDINARY_API_SECRET = "abcd";
-    env.CONVEX_SITE_URL = "https://befitting-swan-125.convex.site";
+    env.CONVEX_SITE_URL = "https://befitting-swan-125.eu-west-1.convex.site";
   }
 });
 

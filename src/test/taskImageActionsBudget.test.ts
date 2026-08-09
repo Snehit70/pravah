@@ -33,7 +33,7 @@ describe("Task-image grant budget boundary", () => {
     vi.stubEnv("CLOUDINARY_CLOUD_NAME", "demo-cloud");
     vi.stubEnv("CLOUDINARY_API_KEY", "public-key");
     vi.stubEnv("CLOUDINARY_API_SECRET", "server-secret");
-    vi.stubEnv("CONVEX_SITE_URL", "https://befitting-swan-125.convex.site");
+    vi.stubEnv("CONVEX_SITE_URL", "https://befitting-swan-125.eu-west-1.convex.site");
   });
 
   afterEach(() => {

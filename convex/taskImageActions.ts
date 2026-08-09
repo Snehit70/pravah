@@ -9,6 +9,7 @@ import {
   checkProviderAssetPresence,
   deleteProviderAsset,
   fetchProviderUsage,
+  TASK_IMAGE_CANONICAL_CONVEX_SITE_URL,
   verifyProviderUploadMaster,
   type ProviderUploadResult,
   type TaskImageProviderConfig,
@@ -212,7 +213,7 @@ function readProviderConfig(): TaskImageProviderConfig {
     !cloudName ||
     !apiKey ||
     !apiSecret ||
-    siteUrl !== "https://befitting-swan-125.convex.site"
+    siteUrl !== TASK_IMAGE_CANONICAL_CONVEX_SITE_URL
   ) {
     throw new Error("provider_unavailable");
   }
