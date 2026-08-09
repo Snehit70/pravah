@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Image } from "expo-image";
+import * as Clipboard from "expo-clipboard";
 import {
   AlertCircleIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CloseIcon,
   CopyIcon,
+  ImagePlusIcon,
   PlusIcon,
   RetryArrowIcon,
   SmartphoneIcon,
@@ -16,6 +18,7 @@ import {
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
 import { getViewerImages, hasTaskImageVisual, TaskImageViewer } from "./TaskImageViewer";
+import { TaskImageSourceSheet } from "./TaskImageSourceSheet";
 import type { TaskImageSourceKind, TaskImageState } from "../lib/taskImageCoordinator";
 
 export type TaskImageFilmstripSurface = "capture" | "inbox" | "edit" | "completed" | "management";
@@ -70,6 +73,7 @@ type TaskImageFilmstripProps = {
 };
 
 type OpenImage = (taskImageId: string) => void;
+type OpenSource = () => void;
 
 const FAILURE_COPY: Record<string, string> = {
   unsupported_format: "This image format is not supported.",
@@ -220,14 +224,24 @@ function SourceActions({
   );
 }
 
-function EmptyImages({ onSelectSource }: { onSelectSource?: (kind: TaskImageSourceKind) => void | Promise<void> }) {
+function EmptyImages({ onOpenSource }: { onOpenSource?: OpenSource }) {
+  const content = (
+    <>
+      <View style={styles.emptyImageIcon}><ImagePlusIcon color={colors.accent} size={30} /></View>
+      <Text style={styles.emptyImagesTitle}>Add an image</Text>
+      <Text style={styles.emptyImagesBody}>Tap the image area to add a visual reference.</Text>
+    </>
+  );
+  if (!onOpenSource) return <View style={styles.emptyImages}>{content}</View>;
   return (
-    <View style={styles.emptyImages}>
-      <View style={styles.emptyImageIcon}><PlusIcon color={colors.accent} size={22} /></View>
-      <Text style={styles.emptyImagesTitle}>Add a visual reference</Text>
-      <Text style={styles.emptyImagesBody}>Images stay with this Task and never carry into the next capture.</Text>
-      <SourceActions onSelectSource={onSelectSource} />
-    </View>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Add Task image"
+      onPress={onOpenSource}
+      style={({ pressed }) => [styles.emptyImages, pressed && styles.pressed]}
+    >
+      {content}
+    </Pressable>
   );
 }
 
@@ -321,9 +335,10 @@ function CaptureSurface({
   onReorder,
   onRemove,
   onOpenImage,
-}: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[]; onOpenImage?: OpenImage }) {
+  onOpenSource,
+}: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[]; onOpenImage?: OpenImage; onOpenSource?: OpenSource }) {
   const [captionDrafts, setCaptionDrafts] = useState<Record<string, string>>({});
-  if (!images.length) return <EmptyImages onSelectSource={onSelectSource} />;
+  if (!images.length) return <EmptyImages onOpenSource={onOpenSource} />;
   return (
     <>
       <View style={styles.sectionHeaderRow}>
@@ -427,7 +442,8 @@ function EditSurface({
   onRestore,
   resolveDelivery,
   onOpenImage,
-}: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[]; onOpenImage?: OpenImage }) {
+  onOpenSource,
+}: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[]; onOpenImage?: OpenImage; onOpenSource?: OpenSource }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [captionDrafts, setCaptionDrafts] = useState<Record<string, string>>({});
   const [now, setNow] = useState(() => Date.now());
@@ -447,7 +463,7 @@ function EditSurface({
   if (!selected) {
     return (
       <View style={styles.editSurface}>
-        <EmptyImages onSelectSource={onSelectSource} />
+        <EmptyImages onOpenSource={onOpenSource} />
         <RecoverableSection images={visibleRecoverable} active={images} onRestore={onRestore} />
       </View>
     );
@@ -612,7 +628,24 @@ export function TaskImageFilmstrip({ surface = "management", images, ...props }:
     if (initialIndex < 0) return;
     setViewer({ images: viewerImages, initialIndex });
   }, [ordered]);
-  const surfaceProps = { ...props, onOpenImage: openViewer };
+  const [sourceSheetVisible, setSourceSheetVisible] = useState(false);
+  const openSource = useCallback(async () => {
+    if (!props.onSelectSource) return;
+    try {
+      if (await Clipboard.hasImageAsync()) {
+        await props.onSelectSource("paste");
+        return;
+      }
+    } catch {
+      // Clipboard availability is optional. Fall back to the explicit source sheet.
+    }
+    setSourceSheetVisible(true);
+  }, [props.onSelectSource]);
+  const surfaceProps = {
+    ...props,
+    onOpenImage: openViewer,
+    onOpenSource: props.onSelectSource ? openSource : undefined,
+  };
   return (
     <>
       {surface === "capture" ? <CaptureSurface images={ordered} {...surfaceProps} /> : null}
@@ -621,6 +654,7 @@ export function TaskImageFilmstrip({ surface = "management", images, ...props }:
       {surface === "completed" ? <CompletedSurface images={ordered} {...surfaceProps} /> : null}
       {surface === "management" ? <ManagementSurface images={ordered} {...surfaceProps} /> : null}
       {viewer ? <TaskImageViewer {...viewer} visible resolveDelivery={props.resolveDelivery} onClose={() => setViewer(null)} /> : null}
+      {props.onSelectSource ? <TaskImageSourceSheet visible={sourceSheetVisible} onClose={() => setSourceSheetVisible(false)} onSelectSource={props.onSelectSource} /> : null}
     </>
   );
 }

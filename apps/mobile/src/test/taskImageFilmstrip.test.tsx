@@ -4,6 +4,10 @@ import React from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+const { hasClipboardImage } = vi.hoisted(() => ({
+  hasClipboardImage: vi.fn(async () => false),
+}));
+
 vi.mock("react-native", () => {
   type Props = Record<string, unknown> & { children?: React.ReactNode };
   const View = ({ children, style: _, accessibilityViewIsModal: __, ...props }: Props) => React.createElement("div", props, children);
@@ -81,6 +85,10 @@ vi.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 
+vi.mock("expo-clipboard", () => ({
+  hasImageAsync: hasClipboardImage,
+}));
+
 vi.mock("../components/UiIcons", () => {
   const Icon = () => React.createElement("span");
   return {
@@ -89,6 +97,7 @@ vi.mock("../components/UiIcons", () => {
     ChevronRightIcon: Icon,
     CloseIcon: Icon,
     CopyIcon: Icon,
+    ImagePlusIcon: Icon,
     PlusIcon: Icon,
     RetryArrowIcon: Icon,
     SmartphoneIcon: Icon,
@@ -327,13 +336,26 @@ describe("TaskImageFilmstrip", () => {
     }
   });
 
-  it("renders the selected Capture Filmstrip empty state and source actions", () => {
+  it("renders the selected Capture Filmstrip empty state and source actions", async () => {
     const onSelectSource = vi.fn();
     render(<TaskImageFilmstrip surface="capture" images={[]} onSelectSource={onSelectSource} />);
 
-    expect(screen.getByText("Add a visual reference")).toBeTruthy();
+    expect(screen.getByText("Add an image")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Add Task image" }));
+    await waitFor(() => expect(screen.getByText("Choose where the visual reference should come from.")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Add Task image from Photos" }));
     expect(onSelectSource).toHaveBeenCalledWith("photos");
+  });
+
+  it("pastes directly from the clipboard when the empty image area detects an image", async () => {
+    hasClipboardImage.mockResolvedValue(true);
+    const onSelectSource = vi.fn();
+    render(<TaskImageFilmstrip surface="capture" images={[]} onSelectSource={onSelectSource} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Task image" }));
+    await waitFor(() => expect(onSelectSource).toHaveBeenCalledWith("paste"));
+    expect(screen.queryByText("Choose where the visual reference should come from.")).toBeNull();
+    hasClipboardImage.mockResolvedValue(false);
   });
 
   it("hides Capture source actions at the five-image limit", () => {
