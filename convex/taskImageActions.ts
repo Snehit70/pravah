@@ -14,6 +14,10 @@ import {
   type ProviderUploadResult,
   type TaskImageProviderConfig,
 } from "./taskImageProvider";
+import type {
+  TaskImageOperationalCategory,
+  TaskImageOperationalCode,
+} from "./taskImageOperationalValues";
 
 const listDueCleanupTombstonesRef = makeFunctionReference<
   "query",
@@ -95,29 +99,8 @@ const recordUsageRefreshFailureRef = makeFunctionReference<
 const recordOperationalEventRef = makeFunctionReference<
   "mutation",
   {
-    category: "grant" | "verification" | "resolution" | "cleanup" | "normalization" | "resource";
-    code:
-      | "success"
-      | "usage_blocked"
-      | "provider_unavailable"
-      | "provider_usage_unavailable"
-      | "usage_refresh_success"
-      | "provider_ambiguous"
-      | "normalization_failed"
-      | "master_too_large"
-      | "variant_too_large"
-      | "unsupported_format"
-      | "animated_image"
-      | "source_too_large"
-      | "dimensions_too_large"
-      | "aspect_ratio_unsupported"
-      | "clipboard_too_large"
-      | "storage_unavailable"
-      | "memory_unavailable"
-      | "source_unavailable"
-      | "authorization_failed"
-      | "network_error"
-      | "upload_failed";
+    category: TaskImageOperationalCategory;
+    code: TaskImageOperationalCode;
     now: number;
   },
   { count: number }
@@ -308,27 +291,36 @@ export const refreshProviderUsage = internalAction({
   args: {},
   handler: async (ctx) => {
     const attemptedAt = Date.now();
+    let usage;
     try {
-      const usage = await fetchProviderUsage(readProviderConfig());
-      const decision = await ctx.runMutation(recordUsageSnapshotRef, {
-        ...usage,
-        observedAt: attemptedAt,
-      });
+      usage = await fetchProviderUsage(readProviderConfig());
+    } catch {
+      const decision = await ctx.runMutation(recordUsageRefreshFailureRef, { attemptedAt });
+      try {
+        await ctx.runMutation(recordOperationalEventRef, {
+          category: "grant",
+          code: "provider_usage_unavailable",
+          now: attemptedAt,
+        });
+      } catch {
+        // Aggregate diagnostics must never weaken the fail-closed usage state.
+      }
+      return { status: "unavailable" as const, ...decision };
+    }
+    const decision = await ctx.runMutation(recordUsageSnapshotRef, {
+      ...usage,
+      observedAt: attemptedAt,
+    });
+    try {
       await ctx.runMutation(recordOperationalEventRef, {
         category: "grant",
         code: "usage_refresh_success",
         now: attemptedAt,
       });
-      return { status: "updated" as const, ...decision };
     } catch {
-      const decision = await ctx.runMutation(recordUsageRefreshFailureRef, { attemptedAt });
-      await ctx.runMutation(recordOperationalEventRef, {
-        category: "grant",
-        code: "provider_usage_unavailable",
-        now: attemptedAt,
-      });
-      return { status: "unavailable" as const, ...decision };
+      // The trusted snapshot remains authoritative if diagnostics are unavailable.
     }
+    return { status: "updated" as const, ...decision };
   },
 });
 

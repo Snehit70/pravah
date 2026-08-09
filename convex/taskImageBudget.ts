@@ -1,3 +1,9 @@
+import type { Doc } from "./_generated/dataModel";
+import { internalMutation, internalQuery, query } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { v } from "convex/values";
+import { requireTokenIdentifier } from "./authHelpers";
+
 export const TASK_IMAGE_USAGE_WARNING_PERCENT = 70;
 export const TASK_IMAGE_USAGE_BLOCK_PERCENT = 85;
 export const TASK_IMAGE_USAGE_RESUME_PERCENT = 75;
@@ -134,7 +140,7 @@ export const getOwnerBudgetStatus = query({
   handler: async (ctx) => {
     await requireTokenIdentifier(ctx);
     const state = await findProviderState(ctx);
-    if (!state?.usageObservedAt || state.pooledPercentage === undefined) {
+    if (state?.usageObservedAt === undefined || state.pooledPercentage === undefined) {
       return {
         status: "unavailable" as const,
         warning: false,
@@ -163,8 +169,3 @@ export const getOwnerBudgetStatus = query({
     };
   },
 });
-import { internalMutation, internalQuery, query } from "./_generated/server";
-import type { MutationCtx, QueryCtx } from "./_generated/server";
-import type { Doc } from "./_generated/dataModel";
-import { v } from "convex/values";
-import { requireTokenIdentifier } from "./authHelpers";
