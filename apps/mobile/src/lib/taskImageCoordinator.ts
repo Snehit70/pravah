@@ -888,6 +888,15 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       await waitForDrain();
     },
 
+    async retryTaskImageUpload(taskId: string, taskImageId: string) {
+      const entry = [...records.values()].find(
+        (candidate) => candidate.taskId === taskId && candidate.taskImageId === taskImageId
+      );
+      if (!entry) return false;
+      await this.retry(entry.uploadId);
+      return true;
+    },
+
     async reconcileOnForeground() {
       if (disposed) return;
       await ensureHydrated();

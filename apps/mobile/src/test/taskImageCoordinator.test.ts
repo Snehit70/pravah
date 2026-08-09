@@ -469,8 +469,10 @@ describe("Task-image mobile coordinator", () => {
       manualDependencies.issueGrant = manualIssueGrant;
       const manualCoordinator = createTaskImageCoordinator(manualDependencies);
       await manualCoordinator.select("photos");
+      manualCoordinator.associateUploadsWithTask("task_1", ["upl_mobile_1"]);
+      manualCoordinator.associateTaskImageOrder("task_1", ["image_1"]);
       await manualCoordinator.beginUploadAfterSave();
-      await manualCoordinator.retry("upl_mobile_1");
+      await manualCoordinator.retryTaskImageUpload("task_1", "image_1");
       expect(manualDependencies.upload).toHaveBeenCalledTimes(2);
       expect(manualIssueGrant.mock.calls.at(-1)?.[0]).toMatchObject({
         uploadId: "upl_mobile_1",

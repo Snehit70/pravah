@@ -1622,6 +1622,9 @@ function MobileApp() {
             }
           })();
         }}
+        onRetryTaskImage={async ({ taskId, taskImageId }) => {
+          await taskImageCoordinator.retryTaskImageUpload(String(taskId), taskImageId);
+        }}
         onSaveComplete={(undo, task, previousState) => {
           showToast({
             kind: "info",
