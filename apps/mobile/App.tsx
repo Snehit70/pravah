@@ -345,6 +345,7 @@ function MobileApp() {
       timeline: isTimelineLoading,
       completed: isCompletedLoading,
       allTasksReady: isAllTasksReady,
+      imageCollectionsReady: isImageCollectionsReady,
     },
     snapshot: workspaceSnapshot,
     isSnapshotHydrated: isWorkspaceSnapshotHydrated,
