@@ -134,7 +134,7 @@ const styles = createThemedStyles({
     bottom: TRACK_PADDING,
     left: TRACK_PADDING,
     borderRadius: radii.md - TRACK_PADDING,
-    backgroundColor: colors.textPrimary,
+    backgroundColor: colors.accent,
   },
   option: {
     flex: 1,
