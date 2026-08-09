@@ -21,4 +21,11 @@ crons.interval(
   {}
 );
 
+crons.interval(
+  "refresh Task-image provider usage",
+  { hours: 6 },
+  internal.taskImageActions.refreshProviderUsage,
+  {}
+);
+
 export default crons;

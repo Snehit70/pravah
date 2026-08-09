@@ -8,6 +8,7 @@ import {
   buildUploadGrant,
   checkProviderAssetPresence,
   deleteProviderAsset,
+  fetchProviderUsage,
   verifyProviderUploadMaster,
   type ProviderUploadResult,
   type TaskImageProviderConfig,
@@ -58,6 +59,37 @@ const prepareUploadGrantRef = makeFunctionReference<
     providerAttempt: number;
   }
 >("taskImages:prepareUploadGrant");
+
+type BudgetDecision = {
+  grantsBlocked: boolean;
+  warning: boolean;
+  refreshRequired: boolean;
+  usageTrusted: boolean;
+};
+
+const getUsageStateRef = makeFunctionReference<
+  "query",
+  { now: number },
+  BudgetDecision & { snapshot: unknown }
+>("taskImageBudget:getUsageState");
+
+const recordUsageSnapshotRef = makeFunctionReference<
+  "mutation",
+  {
+    pooledPercentage: number;
+    transformations: number;
+    storageBytes: number;
+    bandwidthBytes: number;
+    observedAt: number;
+  },
+  BudgetDecision
+>("taskImageBudget:recordUsageSnapshot");
+
+const recordUsageRefreshFailureRef = makeFunctionReference<
+  "mutation",
+  { attemptedAt: number },
+  BudgetDecision
+>("taskImageBudget:recordUsageRefreshFailure");
 
 const getUploadVerificationContextRef = makeFunctionReference<
   "query",
@@ -145,7 +177,12 @@ function readProviderConfig(): TaskImageProviderConfig {
   const apiKey = process.env.CLOUDINARY_API_KEY;
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
   const siteUrl = process.env.CONVEX_SITE_URL;
-  if (!cloudName || !apiKey || !apiSecret || !siteUrl || !siteUrl.startsWith("https://")) {
+  if (
+    !cloudName ||
+    !apiKey ||
+    !apiSecret ||
+    siteUrl !== "https://befitting-swan-125.convex.site"
+  ) {
     throw new Error("provider_unavailable");
   }
   return {
@@ -168,12 +205,32 @@ export const issueUploadGrant = action({
   handler: async (ctx, args) => {
     const ownerTokenIdentifier = await requireTokenIdentifier(ctx);
     const provider = readProviderConfig();
+    const now = Date.now();
+    let budget = await ctx.runQuery(getUsageStateRef, { now });
+    if (budget.refreshRequired) {
+      try {
+        const usage = await fetchProviderUsage(provider);
+        budget = {
+          ...(await ctx.runMutation(recordUsageSnapshotRef, {
+            ...usage,
+            observedAt: now,
+          })),
+          snapshot: usage,
+        };
+      } catch {
+        budget = {
+          ...(await ctx.runMutation(recordUsageRefreshFailureRef, { attemptedAt: now })),
+          snapshot: budget.snapshot,
+        };
+      }
+    }
+    if (budget.grantsBlocked) throw new Error("task_image_grants_blocked");
     const prepared = await ctx.runMutation(prepareUploadGrantRef, {
       ownerTokenIdentifier,
       uploadId: args.uploadId,
       requestKey: args.requestKey,
       candidatePublicId: randomProviderPublicId(),
-      issuedAt: Math.floor(Date.now() / 1000),
+      issuedAt: Math.floor(now / 1000),
     });
     return {
       ...(await buildUploadGrant({
@@ -184,6 +241,24 @@ export const issueUploadGrant = action({
       })),
       attempt: prepared.providerAttempt,
     };
+  },
+});
+
+export const refreshProviderUsage = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const attemptedAt = Date.now();
+    try {
+      const usage = await fetchProviderUsage(readProviderConfig());
+      const decision = await ctx.runMutation(recordUsageSnapshotRef, {
+        ...usage,
+        observedAt: attemptedAt,
+      });
+      return { status: "updated" as const, ...decision };
+    } catch {
+      const decision = await ctx.runMutation(recordUsageRefreshFailureRef, { attemptedAt });
+      return { status: "unavailable" as const, ...decision };
+    }
   },
 });
 
