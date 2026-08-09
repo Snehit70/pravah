@@ -63,6 +63,9 @@ http.route({
   path: "/cloudinary/task-image-callback",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    if (process.env.CONVEX_SITE_URL !== "https://befitting-swan-125.convex.site") {
+      return new Response(null, { status: 503 });
+    }
     const rawBody = await request.text();
     const timestamp = Number(request.headers.get("x-cld-timestamp"));
     const signature = request.headers.get("x-cld-signature") ?? "";
@@ -140,6 +143,11 @@ http.route({
         version: context.providerVersion ?? callbackResponse.version,
         result: { status: "failed", failureCode: "variant_too_large" },
       });
+      await ctx.runMutation(internal.taskImageOperations.recordOperationalEvent, {
+        category: "verification",
+        code: "variant_too_large",
+        now: Date.now(),
+      });
       return new Response(null, { status: 204 });
     }
     const response = isEagerNotification
@@ -192,6 +200,19 @@ http.route({
       version: response.version,
       result: verificationResult,
     });
+    if (verificationResult.status === "ready" || verificationResult.status === "failed") {
+      await ctx.runMutation(internal.taskImageOperations.recordOperationalEvent, {
+        category: "verification",
+        code:
+          verificationResult.status === "ready"
+            ? "success"
+            : verificationResult.failureCode === "master_too_large" ||
+                verificationResult.failureCode === "variant_too_large"
+              ? verificationResult.failureCode
+              : "normalization_failed",
+        now: Date.now(),
+      });
+    }
     return new Response(null, { status: 204 });
   }),
 });

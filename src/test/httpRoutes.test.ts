@@ -54,6 +54,9 @@ vi.mock("../../convex/_generated/api", () => ({
       getUploadByProviderPublicId: "taskImages.getUploadByProviderPublicId",
       applyUploadVerification: "taskImages.applyUploadVerification",
     },
+    taskImageOperations: {
+      recordOperationalEvent: "taskImageOperations.recordOperationalEvent",
+    },
   },
   api: {
     automation: {
@@ -91,6 +94,7 @@ const originalApiKey = env?.CONVEX_HTTP_API_KEY;
 const originalHttpOwner = env?.PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER;
 const originalGoogleClientId = env?.GOOGLE_OAUTH_CLIENT_ID;
 const originalCloudinaryApiSecret = env?.CLOUDINARY_API_SECRET;
+const originalConvexSiteUrl = env?.CONVEX_SITE_URL;
 
 function getHandler(path: string, method: string) {
   const route = routeRegistry.find((entry) => entry.path === path && entry.method === method);
@@ -122,6 +126,7 @@ beforeAll(() => {
     env.PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER = "admin-owner";
     env.GOOGLE_OAUTH_CLIENT_ID = "client-id";
     env.CLOUDINARY_API_SECRET = "abcd";
+    env.CONVEX_SITE_URL = "https://befitting-swan-125.convex.site";
   }
 });
 
@@ -132,6 +137,7 @@ beforeEach(() => {
     env.PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER = "admin-owner";
     env.GOOGLE_OAUTH_CLIENT_ID = "client-id";
     env.CLOUDINARY_API_SECRET = "abcd";
+    env.CONVEX_SITE_URL = "https://befitting-swan-125.convex.site";
   }
 });
 
@@ -141,10 +147,26 @@ afterAll(() => {
     env.PRAVAH_HTTP_OWNER_TOKEN_IDENTIFIER = originalHttpOwner;
     env.GOOGLE_OAUTH_CLIENT_ID = originalGoogleClientId;
     env.CLOUDINARY_API_SECRET = originalCloudinaryApiSecret;
+    env.CONVEX_SITE_URL = originalConvexSiteUrl;
   }
 });
 
 describe("http route handlers", () => {
+  it("rejects provider callbacks outside the canonical Convex authority", async () => {
+    const handler = getHandler("/cloudinary/task-image-callback", "POST");
+    const ctx = createCtx();
+    if (env) env.CONVEX_SITE_URL = "https://other-deployment.convex.site";
+
+    const response = await handler(ctx, new Request(
+      "https://example.com/cloudinary/task-image-callback",
+      { method: "POST", body: "{}" }
+    ));
+
+    expect(response.status).toBe(503);
+    expect(ctx.runQuery).not.toHaveBeenCalled();
+    expect(ctx.runMutation).not.toHaveBeenCalled();
+  });
+
   it("reconciles an eager callback that arrives before the master callback", async () => {
     const handler = getHandler("/cloudinary/task-image-callback", "POST");
     const ctx = createCtx();

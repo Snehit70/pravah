@@ -91,6 +91,37 @@ const recordUsageRefreshFailureRef = makeFunctionReference<
   BudgetDecision
 >("taskImageBudget:recordUsageRefreshFailure");
 
+const recordOperationalEventRef = makeFunctionReference<
+  "mutation",
+  {
+    category: "grant" | "verification" | "resolution" | "cleanup" | "normalization" | "resource";
+    code:
+      | "success"
+      | "usage_blocked"
+      | "provider_unavailable"
+      | "provider_usage_unavailable"
+      | "usage_refresh_success"
+      | "provider_ambiguous"
+      | "normalization_failed"
+      | "master_too_large"
+      | "variant_too_large"
+      | "unsupported_format"
+      | "animated_image"
+      | "source_too_large"
+      | "dimensions_too_large"
+      | "aspect_ratio_unsupported"
+      | "clipboard_too_large"
+      | "storage_unavailable"
+      | "memory_unavailable"
+      | "source_unavailable"
+      | "authorization_failed"
+      | "network_error"
+      | "upload_failed";
+    now: number;
+  },
+  { count: number }
+>("taskImageOperations:recordOperationalEvent");
+
 const getUploadVerificationContextRef = makeFunctionReference<
   "query",
   { ownerTokenIdentifier: string; uploadId: string },
@@ -204,8 +235,18 @@ export const issueUploadGrant = action({
   args: { uploadId: v.string(), requestKey: v.string() },
   handler: async (ctx, args) => {
     const ownerTokenIdentifier = await requireTokenIdentifier(ctx);
-    const provider = readProviderConfig();
     const now = Date.now();
+    let provider: TaskImageProviderConfig;
+    try {
+      provider = readProviderConfig();
+    } catch (error) {
+      await ctx.runMutation(recordOperationalEventRef, {
+        category: "grant",
+        code: "provider_unavailable",
+        now,
+      });
+      throw error;
+    }
     let budget = await ctx.runQuery(getUsageStateRef, { now });
     if (budget.refreshRequired) {
       try {
@@ -222,9 +263,21 @@ export const issueUploadGrant = action({
           ...(await ctx.runMutation(recordUsageRefreshFailureRef, { attemptedAt: now })),
           snapshot: budget.snapshot,
         };
+        await ctx.runMutation(recordOperationalEventRef, {
+          category: "grant",
+          code: "provider_usage_unavailable",
+          now,
+        });
       }
     }
-    if (budget.grantsBlocked) throw new Error("task_image_grants_blocked");
+    if (budget.grantsBlocked) {
+      await ctx.runMutation(recordOperationalEventRef, {
+        category: "grant",
+        code: "usage_blocked",
+        now,
+      });
+      throw new Error("task_image_grants_blocked");
+    }
     const prepared = await ctx.runMutation(prepareUploadGrantRef, {
       ownerTokenIdentifier,
       uploadId: args.uploadId,
@@ -232,7 +285,7 @@ export const issueUploadGrant = action({
       candidatePublicId: randomProviderPublicId(),
       issuedAt: Math.floor(now / 1000),
     });
-    return {
+    const grant = {
       ...(await buildUploadGrant({
         provider,
         publicId: prepared.publicId,
@@ -241,6 +294,12 @@ export const issueUploadGrant = action({
       })),
       attempt: prepared.providerAttempt,
     };
+    await ctx.runMutation(recordOperationalEventRef, {
+      category: "grant",
+      code: "success",
+      now,
+    });
+    return grant;
   },
 });
 
@@ -254,9 +313,19 @@ export const refreshProviderUsage = internalAction({
         ...usage,
         observedAt: attemptedAt,
       });
+      await ctx.runMutation(recordOperationalEventRef, {
+        category: "grant",
+        code: "usage_refresh_success",
+        now: attemptedAt,
+      });
       return { status: "updated" as const, ...decision };
     } catch {
       const decision = await ctx.runMutation(recordUsageRefreshFailureRef, { attemptedAt });
+      await ctx.runMutation(recordOperationalEventRef, {
+        category: "grant",
+        code: "provider_usage_unavailable",
+        now: attemptedAt,
+      });
       return { status: "unavailable" as const, ...decision };
     }
   },
@@ -326,6 +395,11 @@ export const submitUploadResult = action({
         version: args.version,
         result: { status: "failed", failureCode: verified.failureCode },
       });
+      await ctx.runMutation(recordOperationalEventRef, {
+        category: "verification",
+        code: verified.failureCode,
+        now: Date.now(),
+      });
       return { state: "failed" as const, failure: { code: verified.failureCode } };
     }
 
@@ -352,17 +426,33 @@ export const resolveTaskImage = action({
       taskImageId: args.taskImageId,
     });
     if (context.kind !== "ready") return context;
-    const provider = readProviderConfig();
-    return {
-      kind: "ready" as const,
-      url: await buildDeliveryUrl({
-        cloudName: provider.cloudName,
-        apiSecret: provider.apiSecret,
-        publicId: context.publicId,
-        version: context.version,
-        variant: args.variant,
-      }),
-    };
+    const now = Date.now();
+    try {
+      const provider = readProviderConfig();
+      const result = {
+        kind: "ready" as const,
+        url: await buildDeliveryUrl({
+          cloudName: provider.cloudName,
+          apiSecret: provider.apiSecret,
+          publicId: context.publicId,
+          version: context.version,
+          variant: args.variant,
+        }),
+      };
+      await ctx.runMutation(recordOperationalEventRef, {
+        category: "resolution",
+        code: "success",
+        now,
+      });
+      return result;
+    } catch (error) {
+      await ctx.runMutation(recordOperationalEventRef, {
+        category: "resolution",
+        code: "provider_unavailable",
+        now,
+      });
+      throw error;
+    }
   },
 });
 
@@ -400,13 +490,30 @@ export const reconcileCleanup = internalAction({
         });
         if (outcome === "retry") retried += 1;
         else terminal += 1;
+        await ctx.runMutation(recordOperationalEventRef, {
+          category: "cleanup",
+          code: outcome === "retry" ? "provider_ambiguous" : "success",
+          now,
+        });
         if (result.nextAttemptAt !== undefined) {
           nextAttemptAt = Math.min(nextAttemptAt ?? Infinity, result.nextAttemptAt);
         }
       } catch {
         retried += 1;
+        await ctx.runMutation(recordOperationalEventRef, {
+          category: "cleanup",
+          code: "provider_ambiguous",
+          now,
+        });
         nextAttemptAt = Math.min(nextAttemptAt ?? Infinity, now + 5 * 60 * 1000);
       }
+    }
+    if (providerUnavailable) {
+      await ctx.runMutation(recordOperationalEventRef, {
+        category: "cleanup",
+        code: "provider_unavailable",
+        now,
+      });
     }
     if (!providerUnavailable && tombstones.length === 50) {
       await ctx.scheduler.runAfter(0, internal.taskImageActions.reconcileCleanup, {});

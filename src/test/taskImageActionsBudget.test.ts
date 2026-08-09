@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { issueUploadGrant, resolveTaskImage } from "../../convex/taskImageActions";
+import {
+  issueUploadGrant,
+  reconcileCleanup,
+  resolveTaskImage,
+} from "../../convex/taskImageActions";
 
 type Handler<TArgs, TResult> = { _handler: (ctx: unknown, args: TArgs) => Promise<TResult> };
 
@@ -14,6 +18,9 @@ const resolveImage = (
     { taskImageId: string; variant: "card" | "detail" },
     Record<string, unknown>
   >
+)._handler;
+const cleanup = (
+  reconcileCleanup as unknown as Handler<Record<string, never>, Record<string, unknown>>
 )._handler;
 
 const auth = {
@@ -51,7 +58,8 @@ describe("Task-image grant budget boundary", () => {
         issuedAt: Math.floor(Date.now() / 1000),
         encodingClass: "jpeg",
         providerAttempt: 1,
-      });
+      })
+      .mockResolvedValueOnce({ count: 1 });
 
     const result = await issueGrant({
       auth,
@@ -65,7 +73,12 @@ describe("Task-image grant budget boundary", () => {
     }, { uploadId: "upload-1", requestKey: "request-1" });
 
     expect(fetch).toHaveBeenCalledOnce();
-    expect(runMutation).toHaveBeenCalledTimes(2);
+    expect(runMutation).toHaveBeenCalledTimes(3);
+    expect(runMutation.mock.calls[2]?.[1]).toEqual({
+      category: "grant",
+      code: "success",
+      now: Date.now(),
+    });
     expect(result).toMatchObject({ attempt: 1, cloudName: "demo-cloud", apiKey: "public-key" });
     expect(JSON.stringify(result)).not.toContain("server-secret");
   });
@@ -77,11 +90,10 @@ describe("Task-image grant budget boundary", () => {
       storage: { usage: 8_000_000 },
       bandwidth: { usage: 12_000_000 },
     }), { status: 200 })));
-    const runMutation = vi.fn(async () => ({
-      grantsBlocked: true,
-      warning: true,
-      usageTrusted: true,
-    }));
+    const runMutation = vi
+      .fn()
+      .mockResolvedValueOnce({ grantsBlocked: true, warning: true, usageTrusted: true })
+      .mockResolvedValueOnce({ count: 1 });
 
     await expect(issueGrant({
       auth,
@@ -90,14 +102,21 @@ describe("Task-image grant budget boundary", () => {
     }, { uploadId: "upload-1", requestKey: "request-1" })).rejects.toThrow(
       "task_image_grants_blocked"
     );
-    expect(runMutation).toHaveBeenCalledOnce();
+    expect(runMutation).toHaveBeenCalledTimes(2);
+    expect(runMutation.mock.calls[1]?.[1]).toEqual({
+      category: "grant",
+      code: "usage_blocked",
+      now: Date.now(),
+    });
   });
 
   it("fails delivery closed when canonical provider authority is unavailable", async () => {
     vi.stubEnv("CLOUDINARY_API_SECRET", "");
+    const runMutation = vi.fn(async (_reference: unknown, _args: unknown) => ({ count: 1 }));
 
     await expect(resolveImage({
       auth,
+      runMutation,
       runQuery: vi.fn(async () => ({
         kind: "ready",
         publicId: "pravah-task-images/opaque",
@@ -106,5 +125,61 @@ describe("Task-image grant budget boundary", () => {
     }, { taskImageId: "image-1", variant: "card" })).rejects.toThrow(
       "provider_unavailable"
     );
+    expect(runMutation).toHaveBeenCalledOnce();
+    expect(runMutation.mock.calls[0]?.[1]).toEqual({
+      category: "resolution",
+      code: "provider_unavailable",
+      now: Date.now(),
+    });
+  });
+
+  it("keeps existing fixed-variant reads available when only new grants are budget-blocked", async () => {
+    const runMutation = vi.fn(async (_reference: unknown, _args: unknown) => ({ count: 1 }));
+
+    await expect(resolveImage({
+      auth,
+      runMutation,
+      runQuery: vi.fn(async () => ({
+        kind: "ready",
+        publicId: "pravah-task-images/opaque",
+        version: 1,
+      })),
+    }, { taskImageId: "image-1", variant: "card" })).resolves.toMatchObject({
+      kind: "ready",
+      url: expect.stringContaining("/image/authenticated/"),
+    });
+    expect(runMutation.mock.calls[0]?.[1]).toMatchObject({
+      category: "resolution",
+      code: "success",
+    });
+  });
+
+  it("keeps cleanup authority fail-closed and the tombstone retryable during an outage", async () => {
+    vi.stubEnv("CLOUDINARY_API_SECRET", "");
+    const runMutation = vi
+      .fn()
+      .mockResolvedValueOnce({ promoted: 0 })
+      .mockResolvedValueOnce({ count: 1 });
+    const scheduler = { runAfter: vi.fn(async () => undefined) };
+
+    await expect(cleanup({
+      runMutation,
+      runQuery: vi.fn(async () => [{
+        _id: "tombstone-secret",
+        providerPublicId: "provider-secret",
+      }]),
+      scheduler,
+    }, {})).resolves.toMatchObject({
+      inspected: 1,
+      terminal: 0,
+      providerUnavailable: true,
+    });
+    expect(runMutation).toHaveBeenCalledTimes(2);
+    expect(runMutation.mock.calls[1]?.[1]).toEqual({
+      category: "cleanup",
+      code: "provider_unavailable",
+      now: Date.now(),
+    });
+    expect(scheduler.runAfter).toHaveBeenCalled();
   });
 });

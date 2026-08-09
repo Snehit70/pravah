@@ -17,6 +17,7 @@ const operationalCodeValidator = v.union(
   v.literal("usage_blocked"),
   v.literal("provider_unavailable"),
   v.literal("provider_usage_unavailable"),
+  v.literal("usage_refresh_success"),
   v.literal("provider_ambiguous"),
   v.literal("normalization_failed"),
   v.literal("master_too_large"),
@@ -47,6 +48,7 @@ export type TaskImageOperationalCode =
   | "usage_blocked"
   | "provider_unavailable"
   | "provider_usage_unavailable"
+  | "usage_refresh_success"
   | "provider_ambiguous"
   | "normalization_failed"
   | "master_too_large"
