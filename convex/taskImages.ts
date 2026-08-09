@@ -943,7 +943,17 @@ export const listWorkspaceImageCollections = query({
             observedAt,
             active,
             recoverable: taskImages
-              .filter((image) => image.removedAt !== undefined && (image.recoverableUntil ?? 0) > observedAt)
+              .filter(
+                (image) =>
+                  image.removedAt !== undefined &&
+                  (image.recoverableUntil ?? 0) > observedAt
+              )
+              .sort(
+                (left, right) =>
+                  (left.previousPosition ?? Number.MAX_SAFE_INTEGER) -
+                    (right.previousPosition ?? Number.MAX_SAFE_INTEGER) ||
+                  String(left._id).localeCompare(String(right._id))
+              )
               .map(serializeRecoverableTaskImage),
           },
         };

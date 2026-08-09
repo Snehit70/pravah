@@ -92,7 +92,7 @@ function imageCollectionOf(value: unknown) {
             : undefined;
         return [{
           taskImageId: image.taskImageId,
-          position: image.position,
+          position: image.position as number,
           caption: typeof image.caption === "string" ? image.caption : undefined,
           state,
           failure:
@@ -109,9 +109,19 @@ function imageCollectionOf(value: unknown) {
       })
     : [];
   return {
-    revision: Number.isInteger(source.revision) ? source.revision as number : 0,
-    observedAt: typeof source.observedAt === "number" ? source.observedAt : 0,
-    active: active.sort((left, right) => (left.position as number) - (right.position as number)),
+    revision:
+      Number.isSafeInteger(source.revision) && (source.revision as number) >= 0
+        ? source.revision as number
+        : 0,
+    observedAt:
+      typeof source.observedAt === "number" &&
+      Number.isFinite(source.observedAt) &&
+      source.observedAt >= 0
+        ? source.observedAt
+        : 0,
+    active: active
+      .filter((image) => Number.isSafeInteger(image.position) && image.position >= 0)
+      .sort((left, right) => (left.position as number) - (right.position as number)),
     recoverable: Array.isArray(source.recoverable)
       ? source.recoverable.flatMap((entry) => {
           if (!entry || typeof entry !== "object") return [];

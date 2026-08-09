@@ -533,6 +533,7 @@ function MobileApp() {
       return;
     }
     try {
+      await authStorageReady;
       const payload = await buildTaskMetadataExport({
         tasks: [...displayInboxTasks, ...displayScheduledTasks, ...displayCompletedTasks],
         loadImageCollection: (taskId) =>

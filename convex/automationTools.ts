@@ -12,6 +12,7 @@ import {
   unscheduleTaskForOwner,
   updateTaskForOwner,
 } from "./tasks";
+import { toCanonicalTaskShape } from "./taskLifecycle";
 import { updateGoalForOwner } from "./goals";
 import {
   getIntegrationStatusForOwner,
@@ -183,8 +184,12 @@ export const getTask = internalQuery({
   handler: async (ctx, { ownerTokenIdentifier, taskId }) => {
     const task = await ctx.db.get(taskId);
     if (!task || task.ownerTokenIdentifier !== ownerTokenIdentifier) return null;
+    const {
+      ownerTokenIdentifier: _ownerTokenIdentifier,
+      ...safeTask
+    } = toCanonicalTaskShape(task);
     return {
-      ...task,
+      ...safeTask,
       imageSummary: await getTaskImageSummaryForOwner(
         ctx,
         ownerTokenIdentifier,
