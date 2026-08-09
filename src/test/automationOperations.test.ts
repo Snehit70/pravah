@@ -3,10 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("../../convex/_generated/server", () => ({
   internalMutation: <T>(definition: T) => definition,
   internalQuery: <T>(definition: T) => definition,
+  mutation: <T>(definition: T) => definition,
+  query: <T>(definition: T) => definition,
 }));
 
 import type { MutationCtx } from "../../convex/_generated/server";
 import { undo } from "../../convex/automationOperations";
+import { snapshotTask } from "../../convex/automationTools";
 
 function makeQuery(dbState: {
   operation: Record<string, unknown> | null;
@@ -40,6 +43,30 @@ function makeQuery(dbState: {
 }
 
 describe("automationOperations.undo", () => {
+  it("keeps Task-image manifests and private identities out of operation snapshots", () => {
+    const snapshot = snapshotTask({
+      _id: "task_1",
+      title: "Task",
+      description: "Description",
+      imageCollectionRevision: 4,
+      imageCollection: { active: [{ taskImageId: "image-secret", caption: "Private" }] },
+      taskImageId: "image-secret",
+      uploadId: "upload-secret",
+      providerPublicId: "provider-secret",
+      deliveryUrl: "https://secret.example/signed",
+      localPath: "file:///private/source.jpg",
+      position: 0,
+      scheduledAt: 1,
+      createdAt: 1,
+      updatedAt: 2,
+    } as never);
+
+    expect(snapshot).toMatchObject({ _id: "task_1", title: "Task" });
+    expect(JSON.stringify(snapshot)).not.toMatch(
+      /imageCollection|image-secret|upload-secret|provider-secret|secret\.example|file:\/\//
+    );
+  });
+
   it("allocates a fresh timeline position when restoring an active task snapshot", async () => {
     const dbState = {
       operation: {

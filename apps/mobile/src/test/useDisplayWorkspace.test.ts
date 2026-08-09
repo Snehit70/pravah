@@ -34,6 +34,7 @@ function baseInput(overrides: Partial<DisplayWorkspaceInput> = {}): DisplayWorks
       timeline: false,
       completed: false,
       allTasksReady: true,
+      imageCollectionsReady: true,
     },
     snapshot: null,
     isSnapshotHydrated: false,
@@ -55,7 +56,7 @@ describe("deriveDisplayWorkspace", () => {
   it("uses hydrated snapshot only after session is ready and live data is unavailable", () => {
     const display = deriveDisplayWorkspace(
       baseInput({
-        loading: { inbox: true, timeline: true, completed: true, allTasksReady: false },
+        loading: { inbox: true, timeline: true, completed: true, allTasksReady: false, imageCollectionsReady: false },
         snapshot: {
           capturedAt: 1,
           inboxTasks: [makeTask({ _id: "snapshot-inbox" })],
@@ -91,6 +92,24 @@ describe("deriveDisplayWorkspace", () => {
     expect(display.activeServerTasks.map((task) => task._id)).toEqual(["live-timeline"]);
     expect(display.tasks.map((task) => task._id)).toEqual(["optimistic"]);
     expect(display.visibleTasks.map((task) => task._id)).toEqual(["optimistic"]);
+  });
+
+  it("keeps live actions loading until image metadata resolves", () => {
+    const display = deriveDisplayWorkspace(
+      baseInput({
+        loading: {
+          inbox: false,
+          timeline: false,
+          completed: false,
+          allTasksReady: true,
+          imageCollectionsReady: false,
+        },
+      })
+    );
+
+    expect(display.hasLiveWorkspaceData).toBe(false);
+    expect(display.isActiveListLoading).toBe(true);
+    expect(display.isTimelineTriageReady).toBe(false);
   });
 
   it("uses the workspace corpus as the mutation base on Goals", () => {

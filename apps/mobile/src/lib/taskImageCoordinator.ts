@@ -5,7 +5,8 @@ export type TaskImageState =
   | "uploading"
   | "verifying"
   | "ready"
-  | "failed";
+  | "failed"
+  | "unavailable";
 
 export type SafeTaskImageFailure = {
   code: string;

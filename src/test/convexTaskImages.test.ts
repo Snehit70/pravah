@@ -4,6 +4,7 @@ import { addTask } from "../../convex/tasks";
 import {
   addTaskImages,
   getTaskImageCollection,
+  getTaskImageSummaryForOwner,
   getDeliveryContext,
   markUploadFailed,
   removeTaskImage,
@@ -212,7 +213,7 @@ describe("Convex Task-image contract", () => {
 
     expect(firstCollection).toMatchObject({ revision: 1 });
     expect(firstCollection.active).toHaveLength(1);
-    expect(firstCollection.primary).toEqual(firstCollection.active[0]);
+    expect(firstCollection).not.toHaveProperty("primary");
     expect(firstCollection.active[0]).toMatchObject({
       position: 0,
       state: "pending",
@@ -251,6 +252,49 @@ describe("Convex Task-image contract", () => {
     expect(await collectionHandler(owner, { taskId: firstTaskId })).toMatchObject({ revision: 1 });
   });
 
+  it("serializes freshness without persisting a primary pointer", async () => {
+    const db = createMemoryDb();
+    const owner = authedCtx(db);
+    const now = 1_785_730_000_000;
+    vi.spyOn(Date, "now").mockReturnValue(now);
+
+    await stageHandler(owner, {
+      uploadId: "upload_manifest_1",
+      encodingClass: "jpeg",
+      width: 1200,
+      height: 800,
+      bytes: 400_000,
+    });
+    const taskId = await addTaskHandler(owner, {
+      title: "Manifest task",
+      imageInputs: [{ uploadId: "upload_manifest_1", caption: "Safe caption" }],
+    });
+
+    const collection = await collectionHandler(owner, { taskId });
+
+    expect(collection).toMatchObject({
+      revision: 1,
+      observedAt: now,
+      active: [
+        {
+          taskImageId: expect.any(String),
+          position: 0,
+          caption: "Safe caption",
+          state: "pending",
+          presentation: {
+            width: 1200,
+            height: 800,
+            aspectRatio: 1.5,
+            variantSet: "task-image-v1",
+          },
+        },
+      ],
+      recoverable: [],
+    });
+    expect(collection).not.toHaveProperty("primary");
+    expect(JSON.stringify(collection)).not.toMatch(/upload_manifest_1|provider|url|path/i);
+  });
+
   it("keeps existing Tasks valid with an empty collection and denies cross-owner claims safely", async () => {
     const db = createMemoryDb();
     const owner = authedCtx(db, "owner-1");
@@ -259,7 +303,7 @@ describe("Convex Task-image contract", () => {
     const emptyTaskId = await addTaskHandler(owner, { title: "Text-only Task" });
     await expect(collectionHandler(owner, { taskId: emptyTaskId })).resolves.toMatchObject({
       active: [],
-      primary: undefined,
+      recoverable: [],
     });
 
     await stageHandler(owner, {
@@ -283,6 +327,28 @@ describe("Convex Task-image contract", () => {
     await expect(collectionHandler(otherOwner, { taskId: emptyTaskId })).rejects.toThrow(
       "Task not found"
     );
+  });
+
+  it("returns additive image counts without manifest identifiers on list reads", async () => {
+    const db = createMemoryDb();
+    const owner = authedCtx(db);
+    await stageHandler(owner, {
+      uploadId: "upload_summary_1",
+      encodingClass: "jpeg",
+      width: 640,
+      height: 480,
+      bytes: 100_000,
+    });
+    const taskId = await addTaskHandler(owner, {
+      title: "Summary task",
+      imageUploadId: "upload_summary_1",
+    });
+    Object.assign(db.rows("taskImages")[0], { state: "failed" });
+
+    const summary = await getTaskImageSummaryForOwner(owner as never, "owner-1", taskId);
+
+    expect(summary).toEqual({ activeCount: 1, readyCount: 0, failedCount: 1 });
+    expect(JSON.stringify(summary)).not.toMatch(/taskImageId|caption|upload|provider|url/i);
   });
 
   it("manages an ordered five-image collection with derived primary, captions, stale revisions, and replacement", async () => {
@@ -311,7 +377,7 @@ describe("Convex Task-image contract", () => {
     expect(initial.active).toHaveLength(5);
     expect(initial.active.map((image) => image.position)).toEqual([0, 1, 2, 3, 4]);
     expect(initial.active[0].caption).toBe("Initial caption");
-    expect(initial.primary).toEqual(initial.active[0]);
+    expect(initial).not.toHaveProperty("primary");
 
     await expect(markUploadFailedHandler(owner, {
       uploadId: uploadIds[0],
@@ -337,7 +403,7 @@ describe("Convex Task-image contract", () => {
       expectedRevision: 1,
     });
     expect(reordered).toMatchObject({ revision: 2, stale: false });
-    expect((await collectionHandler(owner, { taskId })).primary?.taskImageId).toBe(
+    expect((await collectionHandler(owner, { taskId })).active[0]?.taskImageId).toBe(
       initial.active[4].taskImageId
     );
 
@@ -347,7 +413,7 @@ describe("Convex Task-image contract", () => {
       expectedRevision: 2,
     });
     expect(captioned).toMatchObject({ revision: 3, stale: false });
-    expect((await collectionHandler(owner, { taskId })).primary?.caption).toBe("Primary reference");
+    expect((await collectionHandler(owner, { taskId })).active[0]?.caption).toBe("Primary reference");
 
     const removed = await removeTaskImageHandler(owner, {
       taskImageId: initial.active[4].taskImageId as Id<"taskImages">,

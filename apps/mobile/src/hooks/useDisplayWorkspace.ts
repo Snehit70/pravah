@@ -8,6 +8,7 @@ export type WorkspaceLoadingState = {
   timeline: boolean;
   completed: boolean;
   allTasksReady: boolean;
+  imageCollectionsReady: boolean;
 };
 
 export type DisplayWorkspaceInput = {
@@ -67,6 +68,7 @@ function computeIsActiveListLoading(
   loading: WorkspaceLoadingState,
 ): boolean {
   if (shouldUseWorkspaceSnapshot) return false;
+  if (!loading.imageCollectionsReady) return true;
 
   switch (activeTab) {
     case "timeline":
@@ -84,7 +86,10 @@ function computeIsActiveListLoading(
 
 export function deriveDisplayWorkspace(input: DisplayWorkspaceInput): DisplayWorkspace {
   const hasLiveWorkspaceData =
-    !input.loading.inbox && !input.loading.timeline && !input.loading.completed;
+    !input.loading.inbox &&
+    !input.loading.timeline &&
+    !input.loading.completed &&
+    input.loading.imageCollectionsReady;
   const shouldRenderOptimisticShell = input.sessionLoading && input.hasCachedSessionHint;
   const shouldUseWorkspaceSnapshot =
     input.sessionReady &&
@@ -164,8 +169,12 @@ export function deriveDisplayWorkspace(input: DisplayWorkspaceInput): DisplayWor
     visibleTasks: tasks,
     isActiveListLoading,
     isGoalsTaskDataLoading:
-      input.activeTab === "goals" && !shouldUseWorkspaceSnapshot && !input.loading.allTasksReady,
-    isTimelineTriageReady: shouldUseWorkspaceSnapshot || input.loading.allTasksReady,
+      input.activeTab === "goals" &&
+      !shouldUseWorkspaceSnapshot &&
+      (!input.loading.allTasksReady || !input.loading.imageCollectionsReady),
+    isTimelineTriageReady:
+      shouldUseWorkspaceSnapshot ||
+      (input.loading.allTasksReady && input.loading.imageCollectionsReady),
     isBootShellLoading:
       shouldRenderOptimisticShell && !shouldUseWorkspaceSnapshot && !input.sessionReady,
     kairoTasks: input.allWorkspaceTasks,

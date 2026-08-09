@@ -12,12 +12,18 @@ import {
   unscheduleTaskForOwner,
   updateTaskForOwner,
 } from "./tasks";
+import { toCanonicalTaskShape } from "./taskLifecycle";
 import { updateGoalForOwner } from "./goals";
 import {
   getIntegrationStatusForOwner,
   listReviewQueueForOwner,
 } from "./sync";
 import { runIdempotentMutation } from "./automationIdempotency";
+import {
+  getTaskImageCollectionForOwner,
+  getTaskImageSummaryForOwner,
+  getTaskImageSummariesForOwner,
+} from "./taskImages";
 
 const AUTOMATION_UNDO_WINDOW_MS = 30 * 60 * 1000;
 
@@ -35,7 +41,7 @@ function makeOperationId() {
   return `op_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function snapshotTask(task: Doc<"tasks"> | null) {
+export function snapshotTask(task: Doc<"tasks"> | null) {
   if (!task) return null;
   return {
     _id: String(task._id),
@@ -153,11 +159,50 @@ export const listTasks = internalQuery({
     date: v.optional(v.string()),
     status: v.optional(taskStatus),
   },
-  handler: (ctx, { ownerTokenIdentifier, status, ...args }) =>
-    listTasksForOwner(ctx, ownerTokenIdentifier, {
+  handler: async (ctx, { ownerTokenIdentifier, status, ...args }) => {
+    const tasks = await listTasksForOwner(ctx, ownerTokenIdentifier, {
       ...args,
       status: status === "timeline" ? "scheduled" : status,
-    }),
+    });
+    const summaries = await getTaskImageSummariesForOwner(
+      ctx,
+      ownerTokenIdentifier,
+      tasks.map((task) => task._id)
+    );
+    return tasks.map((task) => ({
+      ...task,
+      imageSummary: summaries.get(task._id),
+    }));
+  },
+});
+
+export const getTask = internalQuery({
+  args: {
+    ownerTokenIdentifier: v.string(),
+    taskId: v.id("tasks"),
+  },
+  handler: async (ctx, { ownerTokenIdentifier, taskId }) => {
+    const task = await ctx.db.get(taskId);
+    if (!task || task.ownerTokenIdentifier !== ownerTokenIdentifier) return null;
+    const {
+      ownerTokenIdentifier: _ownerTokenIdentifier,
+      ...safeTask
+    } = toCanonicalTaskShape(task);
+    void _ownerTokenIdentifier;
+    return {
+      ...safeTask,
+      imageSummary: await getTaskImageSummaryForOwner(
+        ctx,
+        ownerTokenIdentifier,
+        taskId
+      ),
+      imageCollection: await getTaskImageCollectionForOwner(
+        ctx,
+        ownerTokenIdentifier,
+        taskId
+      ),
+    };
+  },
 });
 
 export const listGoals = internalQuery({

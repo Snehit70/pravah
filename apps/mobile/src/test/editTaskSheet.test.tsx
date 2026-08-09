@@ -472,6 +472,7 @@ describe("EditTaskSheet compact workbench", () => {
       ...timelineTask,
       imageCollection: {
         revision: 4,
+        observedAt: 100,
         active: [
           {
             taskImageId: "image-a",

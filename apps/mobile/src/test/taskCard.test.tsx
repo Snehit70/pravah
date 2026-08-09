@@ -282,8 +282,8 @@ describe("TaskCard", () => {
         task={makeTask({
           imageCollection: {
             revision: 1,
+            observedAt: 100,
             active: [{ taskImageId: "image-1", position: 0, state: "ready" }],
-            primary: { taskImageId: "image-1", position: 0, state: "ready" },
           },
         })}
         onDone={vi.fn()}

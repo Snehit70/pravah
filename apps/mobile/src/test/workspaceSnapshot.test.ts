@@ -70,4 +70,116 @@ describe("workspace snapshot utils", () => {
     expect(snapshot.scheduledTasks).toHaveLength(160);
     expect(snapshot.completedTasks).toHaveLength(120);
   });
+
+  it("persists only the active provider-neutral image presentation manifest", () => {
+    const snapshot = prepareWorkspaceSnapshotForPersist({
+      capturedAt: 123,
+      inboxTasks: [
+        makeTask({
+          imageCollection: {
+            revision: 4,
+            observedAt: 120,
+            active: [
+              {
+                taskImageId: "image-1",
+                position: 0,
+                caption: "Reference",
+                state: "ready",
+                presentation: { width: 800, height: 600, aspectRatio: 4 / 3 },
+                url: "https://secret.example/signed",
+                uploadId: "upload-secret",
+                localPath: "file:///private/source.jpg",
+              } as never,
+            ],
+            recoverable: [
+              {
+                taskImageId: "image-2",
+                caption: "Removed",
+                removedAt: 100,
+                recoverableUntil: 200,
+                previousPosition: 1,
+              },
+            ],
+          },
+        }),
+      ],
+      scheduledTasks: [],
+      completedTasks: [],
+    });
+
+    expect(snapshot.inboxTasks[0].imageCollection).toEqual({
+      revision: 4,
+      observedAt: 120,
+      active: [
+        {
+          taskImageId: "image-1",
+          position: 0,
+          caption: "Reference",
+          state: "ready",
+          presentation: { width: 800, height: 600, aspectRatio: 4 / 3 },
+        },
+      ],
+    });
+    expect(JSON.stringify(snapshot)).not.toMatch(/recoverable|secret\.example|upload-secret|file:\/\//i);
+  });
+
+  it("hydrates old and malformed image collections as safe empty or degraded manifests", () => {
+    const hydrated = hydrateWorkspaceSnapshot(
+      JSON.stringify({
+        capturedAt: 123,
+        inboxTasks: [
+          makeTask(),
+          makeTask({
+            _id: makeId("task-2"),
+            imageCollection: {
+              revision: 2,
+              observedAt: 120,
+              active: [
+                {
+                  taskImageId: "valid",
+                  position: 0,
+                  state: "failed",
+                  failure: {
+                    code: "unsupported_format",
+                    message: "This image format is not supported.",
+                    retryable: false,
+                  },
+                },
+                { taskImageId: "verifying", position: 1, state: "verifying" },
+                { taskImageId: "unknown", position: 2, state: "provider_magic" },
+                { taskImageId: 7, position: 3, state: "ready" },
+              ],
+              recoverable: [{ taskImageId: "must-not-hydrate" }],
+            } as never,
+          }),
+        ],
+        scheduledTasks: [],
+        completedTasks: [],
+      })
+    );
+
+    expect(hydrated?.inboxTasks[0].imageCollection).toEqual({
+      revision: 0,
+      observedAt: 123,
+      active: [],
+    });
+    expect(hydrated?.inboxTasks[1].imageCollection).toEqual({
+      revision: 2,
+      observedAt: 120,
+      active: [
+        {
+          taskImageId: "valid",
+          position: 0,
+          state: "failed",
+          failure: {
+            code: "unsupported_format",
+            message: "This image format is not supported.",
+            retryable: false,
+          },
+        },
+        { taskImageId: "verifying", position: 1, state: "verifying" },
+        { taskImageId: "unknown", position: 2, state: "unavailable" },
+      ],
+    });
+  });
 });
