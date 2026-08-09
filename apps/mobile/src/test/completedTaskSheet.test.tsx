@@ -45,10 +45,32 @@ vi.mock("react-native", () => {
     Pressable,
     ScrollView: View,
     StyleSheet: { create: <T,>(styles: T) => styles, hairlineWidth: 1, absoluteFill: {} },
+    useWindowDimensions: () => ({ width: 390, height: 844, scale: 1, fontScale: 1 }),
     Text,
     View,
   };
 });
+
+vi.mock("react-native-gesture-handler", () => {
+  const gesture = () => {
+    const value: Record<string, unknown> = {};
+    for (const method of ["onUpdate", "onEnd", "onStart", "onFinalize", "numberOfTaps", "enabled", "activeOffsetX", "failOffsetY"]) value[method] = () => value;
+    return value;
+  };
+  return {
+    Gesture: { Pan: gesture, Pinch: gesture, Tap: gesture, Simultaneous: (...gestures: unknown[]) => gestures[0] ?? gesture() },
+    GestureDetector: ({ children }: { children?: React.ReactNode }) => React.createElement("div", {}, children),
+  };
+});
+
+vi.mock("react-native-reanimated", () => ({
+  __esModule: true,
+  default: { View: ({ children }: { children?: React.ReactNode }) => React.createElement("div", {}, children) },
+  runOnJS: (callback: (...args: never[]) => unknown) => callback,
+  useAnimatedStyle: () => ({}),
+  useSharedValue: <T,>(value: T) => ({ value }),
+  withTiming: <T,>(value: T) => value,
+}));
 
 vi.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => React.createElement("div", {}, children),

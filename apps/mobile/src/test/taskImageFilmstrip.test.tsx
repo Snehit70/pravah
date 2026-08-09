@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("react-native", () => {
   type Props = Record<string, unknown> & { children?: React.ReactNode };
-  const View = ({ children, style: _, ...props }: Props) => React.createElement("div", props, children);
+  const View = ({ children, style: _, accessibilityViewIsModal: __, ...props }: Props) => React.createElement("div", props, children);
   const Text = ({ children, style: _, ...props }: Props) => React.createElement("span", props, children);
   const TextInput = ({ value, defaultValue, onChangeText, accessibilityLabel, ...props }: Props & { value?: string; defaultValue?: string; onChangeText?: (value: string) => void }) =>
     React.createElement("input", {
@@ -30,15 +30,56 @@ vi.mock("react-native", () => {
       : children
     );
   const ScrollView = ({ children, ...props }: Props) => React.createElement("div", props, children);
+  const Modal = ({ children, visible, onRequestClose: _, transparent: __, animationType: ___, statusBarTranslucent: ____, ...props }: Props & { visible?: boolean }) =>
+    visible === false ? null : React.createElement("div", props, children);
   return {
     View,
     Text,
     TextInput,
     Pressable,
     ScrollView,
-    StyleSheet: { create: <T,>(styles: T) => styles, hairlineWidth: 1 },
+    Modal,
+    useWindowDimensions: () => ({ width: 390, height: 844, scale: 1, fontScale: 1 }),
+    StyleSheet: { create: <T,>(styles: T) => styles, hairlineWidth: 1, absoluteFill: {} },
   };
 });
+
+vi.mock("react-native-gesture-handler", () => {
+  const gesture = () => {
+    const value: Record<string, unknown> = {};
+    for (const method of ["onUpdate", "onEnd", "onStart", "onFinalize", "numberOfTaps", "enabled", "activeOffsetX", "failOffsetY"]) {
+      value[method] = () => value;
+    }
+    return value;
+  };
+  return {
+    Gesture: {
+      Pan: gesture,
+      Pinch: gesture,
+      Tap: gesture,
+      Simultaneous: (...gestures: unknown[]) => gestures[0] ?? gesture(),
+    },
+    GestureDetector: ({ children }: { children?: React.ReactNode }) => React.createElement("div", null, children),
+  };
+});
+
+vi.mock("react-native-reanimated", () => {
+  const AnimatedView = ({ children, style: _, ...props }: { children?: React.ReactNode; style?: unknown; [key: string]: unknown }) => React.createElement("div", props, children);
+  return {
+    default: { View: AnimatedView },
+    runOnJS: (callback: (...args: never[]) => unknown) => callback,
+    useAnimatedStyle: (factory: () => unknown) => factory(),
+    useSharedValue: <T,>(value: T) => {
+      const ref = React.useRef({ value });
+      return ref.current;
+    },
+    withTiming: <T,>(value: T) => value,
+  };
+});
+
+vi.mock("react-native-safe-area-context", () => ({
+  useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
+}));
 
 vi.mock("../components/UiIcons", () => {
   const Icon = () => React.createElement("span");
@@ -383,6 +424,91 @@ describe("TaskImageFilmstrip", () => {
     rerender(<TaskImageFilmstrip surface="completed" images={images} />);
     expect(screen.getByText("2 images retained")).toBeTruthy();
     expect(screen.getByText("Second reference")).toBeTruthy();
+  });
+
+  it("opens the viewer from Inbox and Management image previews", () => {
+    const images = [{ taskImageId: "image-1", position: 0, state: "ready" as const }];
+    const { rerender } = render(
+      <TaskImageFilmstrip
+        surface="inbox"
+        images={images}
+        resolveDelivery={vi.fn(async () => ({ kind: "ready" as const, url: "https://transient.example/image-1" }))}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open primary Task image" }));
+    expect(screen.getByText("1 of 1")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close image viewer" }));
+
+    rerender(<TaskImageFilmstrip surface="management" images={images} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open Task image 1" }));
+    expect(screen.getByText("1 of 1")).toBeTruthy();
+  });
+
+  it("opens the Edit hero in the private viewer while thumbnails only select", async () => {
+    const resolveDelivery = vi.fn(async (taskImageId: string) => ({
+      kind: "ready" as const,
+      url: `https://transient.example/${taskImageId}`,
+    }));
+    render(
+      <TaskImageFilmstrip
+        surface="edit"
+        images={[
+          { taskImageId: "image-1", position: 0, state: "ready" },
+          { taskImageId: "image-2", position: 1, state: "ready" },
+        ]}
+        resolveDelivery={resolveDelivery}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Select Task image 2" }));
+    expect(screen.getByText("IMAGE 2 OF 2")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Close image viewer" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Task image 2" }));
+    expect(screen.getByText("2 of 2")).toBeTruthy();
+    expect(await screen.findByAltText("Task image 2 of 2")).toBeTruthy();
+    expect(resolveDelivery).toHaveBeenCalledWith("image-2", "detail");
+  });
+
+  it("navigates from the tapped image and closes without persisting viewer state", async () => {
+    const resolveDelivery = vi.fn(async (taskImageId: string) => ({
+      kind: "ready" as const,
+      url: `https://transient.example/${taskImageId}`,
+    }));
+    render(
+      <TaskImageFilmstrip
+        surface="completed"
+        images={[
+          { taskImageId: "image-1", position: 0, state: "ready" },
+          { taskImageId: "image-2", position: 1, state: "ready" },
+        ]}
+        resolveDelivery={resolveDelivery}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Completed Task image 2" }));
+    expect(screen.getByText("2 of 2")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Previous Task image" }));
+    await waitFor(() => expect(screen.getByText("1 of 2")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Close image viewer" }));
+    expect(screen.queryByRole("button", { name: "Close image viewer" })).toBeNull();
+  });
+
+  it("opens a local preview without requesting secure delivery", () => {
+    const resolveDelivery = vi.fn();
+    render(
+      <TaskImageFilmstrip
+        surface="capture"
+        images={[{ taskImageId: "image-1", position: 0, state: "uploading", previewUri: "file:///preview.jpg" }]}
+        resolveDelivery={resolveDelivery}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Task image 1" }));
+    expect(screen.getByText("1 of 1")).toBeTruthy();
+    expect(resolveDelivery).not.toHaveBeenCalled();
+    expect(screen.getByAltText("Task image 1 of 1")).toBeTruthy();
   });
 
   it("uses the detail delivery variant and exposes retry in the Edit surface", async () => {

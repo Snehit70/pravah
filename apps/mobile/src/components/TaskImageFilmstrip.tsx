@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Image } from "expo-image";
 import {
@@ -15,6 +15,7 @@ import {
 } from "./UiIcons";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
+import { getViewerImages, hasTaskImageVisual, TaskImageViewer } from "./TaskImageViewer";
 import type { TaskImageSourceKind, TaskImageState } from "../lib/taskImageCoordinator";
 
 export type TaskImageFilmstripSurface = "capture" | "inbox" | "edit" | "completed" | "management";
@@ -67,6 +68,8 @@ type TaskImageFilmstripProps = {
     variant: "card" | "detail"
   ) => Promise<DeliveryResult>;
 };
+
+type OpenImage = (taskImageId: string) => void;
 
 const FAILURE_COPY: Record<string, string> = {
   unsupported_format: "This image format is not supported.",
@@ -235,6 +238,8 @@ function ImagePreview({
   style,
   showStatus = true,
   accessibilityLabel,
+  onPress,
+  onPressLabel,
 }: {
   image: TaskImageFilmstripEntry;
   resolveDelivery?: TaskImageFilmstripProps["resolveDelivery"];
@@ -242,9 +247,11 @@ function ImagePreview({
   style?: object;
   showStatus?: boolean;
   accessibilityLabel?: string;
+  onPress?: () => void;
+  onPressLabel?: string;
 }) {
-  return (
-    <View style={[styles.photoFrame, style]}>
+  const content = (
+    <>
       {image.previewUri && image.state !== "ready" ? (
         <Image source={{ uri: image.previewUri }} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory" accessibilityLabel={accessibilityLabel ?? "Selected Task image preview"} />
       ) : image.state === "ready" ? (
@@ -253,7 +260,18 @@ function ImagePreview({
         <Text style={styles.stateText}>{stateCopy(image)}</Text>
       )}
       {showStatus ? <StatusMark image={image} compact /> : null}
-    </View>
+    </>
+  );
+  if (!onPress) return <View style={[styles.photoFrame, style]}>{content}</View>;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={onPressLabel ?? "Open Task image"}
+      onPress={onPress}
+      style={[styles.photoFrame, style]}
+    >
+      {content}
+    </Pressable>
   );
 }
 
@@ -302,7 +320,8 @@ function CaptureSurface({
   onCaptionChange,
   onReorder,
   onRemove,
-}: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[] }) {
+  onOpenImage,
+}: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[]; onOpenImage?: OpenImage }) {
   const [captionDrafts, setCaptionDrafts] = useState<Record<string, string>>({});
   if (!images.length) return <EmptyImages onSelectSource={onSelectSource} />;
   return (
@@ -315,7 +334,13 @@ function CaptureSurface({
         {images.map((image, index) => (
           <View key={image.taskImageId} style={styles.filmstripItem}>
             <View style={styles.filmstripPhotoWrap}>
-              <ImagePreview image={image} variant="card" style={styles.filmstripPhoto} />
+              <ImagePreview
+                image={image}
+                variant="card"
+                style={styles.filmstripPhoto}
+                onPress={onOpenImage && hasTaskImageVisual(image) ? () => onOpenImage(image.taskImageId) : undefined}
+                onPressLabel={`Open Task image ${index + 1}`}
+              />
               {index === 0 ? <Text style={styles.primaryFlag}>Primary</Text> : null}
               {onRemove ? (
                 <Pressable accessibilityRole="button" accessibilityLabel="Remove Task image" onPress={() => onRemove(image.taskImageId)} style={styles.photoRemove}>
@@ -368,7 +393,7 @@ function CaptureSurface({
   );
 }
 
-function InboxSurface({ images, resolveDelivery }: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[] }) {
+function InboxSurface({ images, resolveDelivery, onOpenImage }: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[]; onOpenImage?: OpenImage }) {
   const primary = images[0];
   if (!primary) return null;
   const attention = images.filter((image) => image.state === "failed").length;
@@ -376,7 +401,14 @@ function InboxSurface({ images, resolveDelivery }: TaskImageFilmstripProps & { i
   return (
     <View style={styles.inboxMedia} accessibilityLabel={`${images.length} Task images`}>
       <View>
-        <ImagePreview image={primary} resolveDelivery={resolveDelivery} variant="card" style={styles.inboxThumb} />
+        <ImagePreview
+          image={primary}
+          resolveDelivery={resolveDelivery}
+          variant="card"
+          style={styles.inboxThumb}
+          onPress={onOpenImage && hasTaskImageVisual(primary) ? () => onOpenImage(primary.taskImageId) : undefined}
+          onPressLabel="Open primary Task image"
+        />
         {images.length > 1 ? <Text style={styles.countBadge}>+{images.length - 1}</Text> : null}
       </View>
       {uploading || attention ? <Text style={styles.inboxStatus}>{attention ? `${attention} needs attention` : `${uploading} uploading`}</Text> : null}
@@ -394,7 +426,8 @@ function EditSurface({
   onRemove,
   onRestore,
   resolveDelivery,
-}: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[] }) {
+  onOpenImage,
+}: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[]; onOpenImage?: OpenImage }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [captionDrafts, setCaptionDrafts] = useState<Record<string, string>>({});
   const [now, setNow] = useState(() => Date.now());
@@ -434,7 +467,14 @@ function EditSurface({
 
   return (
     <View style={styles.editSurface}>
-      <ImagePreview image={selected} resolveDelivery={resolveDelivery} variant="detail" style={styles.editHero} />
+      <ImagePreview
+        image={selected}
+        resolveDelivery={resolveDelivery}
+        variant="detail"
+        style={styles.editHero}
+        onPress={onOpenImage && hasTaskImageVisual(selected) ? () => onOpenImage(selected.taskImageId) : undefined}
+        onPressLabel={`Open Task image ${activeSelectedIndex + 1}`}
+      />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.editStrip}>
         {images.map((image, index) => (
           <Pressable key={image.taskImageId} accessibilityRole="button" accessibilityLabel={`Select Task image ${index + 1}`} onPress={() => setSelectedIndex(index)} style={[styles.editThumbWrap, index === activeSelectedIndex && styles.editThumbActive]}>
@@ -483,7 +523,7 @@ function EditSurface({
   );
 }
 
-function CompletedSurface({ images, resolveDelivery }: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[] }) {
+function CompletedSurface({ images, resolveDelivery, onOpenImage }: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[]; onOpenImage?: OpenImage }) {
   const primary = images[0];
   if (!primary) return null;
   return (
@@ -494,7 +534,16 @@ function CompletedSurface({ images, resolveDelivery }: TaskImageFilmstripProps &
         {images.map((image, index) => (
           <View key={image.taskImageId} style={styles.completedItem}>
             <View>
-              <ImagePreview image={image} resolveDelivery={resolveDelivery} variant="card" style={styles.completedThumb} showStatus={false} accessibilityLabel={`Completed Task image ${index + 1}`} />
+              <ImagePreview
+                image={image}
+                resolveDelivery={resolveDelivery}
+                variant="card"
+                style={styles.completedThumb}
+                showStatus={false}
+                accessibilityLabel={`Completed Task image ${index + 1}`}
+                onPress={onOpenImage && hasTaskImageVisual(image) ? () => onOpenImage(image.taskImageId) : undefined}
+                onPressLabel={`Open Completed Task image ${index + 1}`}
+              />
               {index === 0 && images.length > 1 ? <Text style={styles.countBadge}>+{images.length - 1}</Text> : null}
             </View>
             {image.caption ? <Text numberOfLines={2} style={styles.completedCaption}>{image.caption}</Text> : null}
@@ -515,7 +564,8 @@ function ManagementSurface({
   onRemove,
   onRestore,
   resolveDelivery,
-}: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[] }) {
+  onOpenImage,
+}: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[]; onOpenImage?: OpenImage }) {
   const ordered = [...images].sort((left, right) => left.position - right.position);
   const [now, setNow] = useState(() => Date.now());
   const visibleRecoverable = (recoverable ?? []).filter((image) => image.recoverableUntil === undefined || image.recoverableUntil > now);
@@ -531,7 +581,13 @@ function ManagementSurface({
     <View style={styles.container} accessibilityLabel="Task image Filmstrip">
       {ordered.map((image, index) => (
         <View key={image.taskImageId} style={styles.item}>
-          <ImagePreview image={image} resolveDelivery={resolveDelivery} variant="card" />
+          <ImagePreview
+            image={image}
+            resolveDelivery={resolveDelivery}
+            variant="card"
+            onPress={onOpenImage && hasTaskImageVisual(image) ? () => onOpenImage(image.taskImageId) : undefined}
+            onPressLabel={`Open Task image ${index + 1}`}
+          />
           {onCaptionChange ? <TextInput value={image.caption ?? ""} onChangeText={(caption) => onCaptionChange(image.taskImageId, caption)} placeholder="Add a caption (optional)" placeholderTextColor={colors.textMuted} accessibilityLabel={`Caption for Task image ${index + 1}`} maxLength={500} style={styles.captionInput} /> : image.caption ? <Text style={styles.captionText}>{image.caption}</Text> : null}
           {onReorder || onRemove ? <View style={styles.actionRow}>
             {onReorder && index > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="Move Task image up" onPress={() => onReorder(image.taskImageId, "up")} style={styles.touchAction}><Text style={styles.actionText}>↑</Text></Pressable> : null}
@@ -549,11 +605,24 @@ function ManagementSurface({
 
 export function TaskImageFilmstrip({ surface = "management", images, ...props }: TaskImageFilmstripProps) {
   const ordered = [...images].sort((left, right) => left.position - right.position);
-  if (surface === "capture") return <CaptureSurface images={ordered} {...props} />;
-  if (surface === "inbox") return <InboxSurface images={ordered} {...props} />;
-  if (surface === "edit") return <EditSurface images={ordered} {...props} />;
-  if (surface === "completed") return <CompletedSurface images={ordered} {...props} />;
-  return <ManagementSurface images={ordered} {...props} />;
+  const [viewer, setViewer] = useState<{ images: TaskImageFilmstripEntry[]; initialIndex: number } | null>(null);
+  const openViewer = useCallback((taskImageId: string) => {
+    const viewerImages = getViewerImages(ordered);
+    const initialIndex = viewerImages.findIndex((image) => image.taskImageId === taskImageId);
+    if (initialIndex < 0) return;
+    setViewer({ images: viewerImages, initialIndex });
+  }, [ordered]);
+  const surfaceProps = { ...props, onOpenImage: openViewer };
+  return (
+    <>
+      {surface === "capture" ? <CaptureSurface images={ordered} {...surfaceProps} /> : null}
+      {surface === "inbox" ? <InboxSurface images={ordered} {...surfaceProps} /> : null}
+      {surface === "edit" ? <EditSurface images={ordered} {...surfaceProps} /> : null}
+      {surface === "completed" ? <CompletedSurface images={ordered} {...surfaceProps} /> : null}
+      {surface === "management" ? <ManagementSurface images={ordered} {...surfaceProps} /> : null}
+      {viewer ? <TaskImageViewer {...viewer} visible resolveDelivery={props.resolveDelivery} onClose={() => setViewer(null)} /> : null}
+    </>
+  );
 }
 
 const styles = createThemedStyles({
