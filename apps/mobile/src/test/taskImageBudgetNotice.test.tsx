@@ -1,29 +1,6 @@
 /** @vitest-environment happy-dom */
-import React from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
-
-vi.mock("react-native", async () => {
-  const ReactModule = await import("react");
-  return {
-    View: ({ children, accessibilityRole, accessibilityLiveRegion, accessible: _, style: __, ...props }:
-      React.PropsWithChildren<Record<string, unknown>>) => ReactModule.createElement("div", {
-        ...props,
-        role: accessibilityRole,
-        "aria-live": accessibilityLiveRegion,
-      }, children),
-    Text: ({ children, style: _, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
-      ReactModule.createElement("span", props, children),
-    StyleSheet: { create: <T,>(styles: T) => styles, hairlineWidth: 1 },
-  };
-});
-
-vi.mock("../theme/tokens", () => ({
-  colors: { warning: "#805712", warningMuted: "#f8ead0", text: "#241a12" },
-  radii: { md: 12 },
-  spacing: { sm: 8, md: 12 },
-  typography: { bodyMd: { fontSize: 13 } },
-}));
 
 import { TaskImageBudgetNotice } from "../components/TaskImageBudgetNotice";
 

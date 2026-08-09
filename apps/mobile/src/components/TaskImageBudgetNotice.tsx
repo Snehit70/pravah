@@ -15,7 +15,9 @@ export function TaskImageBudgetNotice({
 }) {
   if (!status || status.status === "normal") return null;
 
-  const percentage = status.usage ? Math.round(status.usage.pooledPercentage) : null;
+  const percentage = status.usage
+    ? Math.round(status.usage.pooledPercentage * 10) / 10
+    : null;
   const message =
     status.status === "warning" && percentage !== null
       ? `Task image usage is at ${percentage}%. New uploads pause at 85%.`
