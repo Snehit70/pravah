@@ -75,6 +75,7 @@ import { SettingsSheet } from "./src/components/SettingsSheet";
 import { ConfirmProvider } from "./src/components/ConfirmDialog";
 import { DiagnosticsPanel } from "./src/components/DiagnosticsPanel";
 import { CompletedTaskSheet } from "./src/components/CompletedTaskSheet";
+import { OverdueTriageSheet } from "./src/components/OverdueTriageSheet";
 import { InboxScreen } from "./src/screens/InboxScreen";
 import { TimelineScreen } from "./src/screens/TimelineScreen";
 import { TimelineLayoutToggle } from "./src/components/TimelineLayoutToggle";
@@ -910,10 +911,21 @@ function MobileApp() {
   );
 
   const {
+    isOverdueSheetOpen,
     overdueBuckets,
     previewGroups,
+    selectedPreview,
+    applyDeadline,
     rescheduleAll,
+    openOverdue,
+    closeOverdue,
+    openPreview,
+    closePreview,
+    setApplyDeadline,
+    confirmPreview,
+    applySuggestedPreview,
     handleManualTriage,
+    applyManualTriageChanges,
   } = useOverdueTriageController({
     previewData: overduePreviewData,
     today,
@@ -1417,6 +1429,7 @@ function MobileApp() {
               tabBarHeight={tabBarHeight}
               onRefresh={handleRefresh}
               overdueCount={isTimelineTriageReady ? overdueBuckets.totalOverdue : undefined}
+              onOpenOverdue={canUseWorkspaceActions && isTimelineTriageReady ? openOverdue : undefined}
               onTriageOverdue={
                 canUseWorkspaceActions && isTimelineTriageReady ? handleManualTriage : undefined
               }
@@ -1426,6 +1439,7 @@ function MobileApp() {
                   : undefined
               }
               layout={prefs.timelineLayout}
+              completedTasks={displayCompletedTasks}
               onCompleteTask={canUseWorkspaceActions ? markDone : undefined}
               onReopenTask={canUseWorkspaceActions ? reopenTask : undefined}
               onEditTask={canUseWorkspaceActions ? handleEditTask : undefined}
@@ -1662,6 +1676,24 @@ function MobileApp() {
             },
           });
         }}
+      />
+
+      <OverdueTriageSheet
+        visible={isOverdueSheetOpen}
+        totalOverdue={overdueBuckets.totalOverdue}
+        groups={previewGroups}
+        orphans={overdueBuckets.orphans}
+        selectedPreview={selectedPreview}
+        applyDeadline={applyDeadline}
+        today={today}
+        onClose={closeOverdue}
+        onOpenPreview={openPreview}
+        onClosePreview={closePreview}
+        onSetApplyDeadline={setApplyDeadline}
+        onConfirmPreview={confirmPreview}
+        onApplySuggestedDates={applySuggestedPreview}
+        onRescheduleAllGoals={previewGroups.length > 1 ? rescheduleAll : undefined}
+        onApplyChanges={applyManualTriageChanges}
       />
 
       {/* Kairo lives at the root so its overlay sits above tabs and FAB. The

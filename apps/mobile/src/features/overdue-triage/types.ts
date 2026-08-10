@@ -7,6 +7,12 @@ export type ManualTriageTarget =
   | "drop"
   | { date: string };
 
+export type PendingManualTriageChange = {
+  taskId: string;
+  title: string;
+  target: ManualTriageTarget;
+};
+
 export type OverduePreviewTask = {
   taskId: string;
   title: string;
