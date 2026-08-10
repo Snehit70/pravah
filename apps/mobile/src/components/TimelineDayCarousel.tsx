@@ -59,8 +59,10 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   ChevronUpIcon,
+  PencilIcon,
   StarIcon,
   SyncLoopIcon,
+  TrashIcon,
 } from "./UiIcons";
 import { dateLabel, weekdayDate } from "../lib/dates";
 import { buildDayCards, cardKey, type DayCarouselCard } from "../lib/timelineCarousel";
@@ -398,6 +400,7 @@ function OverdueCard({
   today,
   getGoalName,
   onCompleteTask,
+  onEditTask,
   onTriage,
   onRescheduleAllGoals,
 }: {
@@ -405,6 +408,7 @@ function OverdueCard({
   today: string;
   getGoalName?: (taskId: string) => string | undefined;
   onCompleteTask?: (id: Id<"tasks">) => void;
+  onEditTask?: (task: MobileTask) => void;
   onTriage?: (
     taskId: string,
     target: "today" | "tomorrow" | "week" | "drop" | { date: string }
@@ -452,9 +456,7 @@ function OverdueCard({
             <SyncLoopIcon color={colors.accent} size={14} strokeWidth={1.8} />
             <Text style={styles.overdueBulkText}>Reflow all</Text>
           </Pressable>
-        ) : (
-          <Text style={styles.cardCount}>{tasks.length}</Text>
-        )}
+        ) : null}
       </View>
 
       <ScrollView
@@ -494,15 +496,6 @@ function OverdueCard({
                     ) : null}
                   </View>
                 </View>
-                {!isCompleted ? <Pressable
-                  onPress={() => setOverflowTaskId((current) => current === id ? null : id)}
-                  hitSlop={10}
-                  accessibilityRole="button"
-                  accessibilityLabel={`More actions for ${task.title}`}
-                  style={styles.compactHitTarget}
-                >
-                  <Text style={styles.moreText}>•••</Text>
-                </Pressable> : null}
                 {onCompleteTask && !isCompleted ? (
                   <Pressable
                     onPress={() => {
@@ -526,30 +519,32 @@ function OverdueCard({
                     </View>
                   </Pressable>
                 ) : null}
+                {!isCompleted && (onTriage || onEditTask) ? <Pressable
+                  onPress={() => setOverflowTaskId((current) => current === id ? null : id)}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel={`More actions for ${task.title}`}
+                  style={styles.compactHitTarget}
+                >
+                  <Text style={styles.moreText}>•••</Text>
+                </Pressable> : null}
               </View>
 
-              {overflowOpen && onTriage && onCompleteTask && !isCompleted ? (
+              {overflowOpen && (onTriage || onEditTask) && !isCompleted ? (
                 <View style={styles.inlineDropRow}>
-                  <Pressable
+                  {onEditTask ? <Pressable
                     onPress={() => {
                       setOverflowTaskId(null);
-                      setCompletedTasks((current) => ({ ...current, [id]: task }));
-                      onCompleteTask?.(task._id);
-                      setTimeout(() => {
-                        setCompletedTasks((current) => {
-                          const next = { ...current };
-                          delete next[id];
-                          return next;
-                        });
-                      }, 900);
+                      onEditTask(task);
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel={`Complete ${task.title}`}
+                    accessibilityLabel={`Open ${task.title}`}
                     style={({ pressed }) => [styles.inlineMenuAction, pressed && styles.rowPressed]}
                   >
-                    <Text style={styles.inlineMenuText}>Complete</Text>
-                  </Pressable>
-                  <Pressable
+                    <PencilIcon color={colors.textSecondary} size={15} strokeWidth={1.8} />
+                    <Text style={styles.inlineMenuText}>Open task</Text>
+                  </Pressable> : null}
+                  {onTriage ? <Pressable
                     onPress={() => {
                       setOverflowTaskId(null);
                       onTriage(id, "drop");
@@ -558,8 +553,9 @@ function OverdueCard({
                     accessibilityLabel={`Drop ${task.title}`}
                     style={({ pressed }) => [styles.inlineDrop, pressed && styles.rowPressed]}
                   >
+                    <TrashIcon color={colors.error} size={15} strokeWidth={1.8} />
                     <Text style={styles.inlineDropText}>Drop task</Text>
-                  </Pressable>
+                  </Pressable> : null}
                 </View>
               ) : null}
 
@@ -875,6 +871,7 @@ export function TimelineDayCarousel({
                 today={today}
                 getGoalName={getGoalName}
                 onCompleteTask={onCompleteTask}
+                onEditTask={onEditTask}
                 onTriage={onTriageOverdue}
                 onRescheduleAllGoals={onRescheduleAllGoals}
               />
@@ -1155,11 +1152,32 @@ const styles = createThemedStyles({
     alignItems: "flex-end",
     flexDirection: "row",
     justifyContent: "flex-end",
-    gap: spacing.lg,
+    alignSelf: "flex-end",
+    gap: spacing.xs,
+    padding: spacing.xs,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    borderRadius: 12,
+    backgroundColor: colors.bgFloating,
+    ...shadow.sm,
   },
-  inlineMenuAction: { minHeight: 44, justifyContent: "center" },
+  inlineMenuAction: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+  },
   inlineMenuText: { color: colors.textSecondary, ...typography.micro },
-  inlineDrop: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.md },
+  inlineDrop: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+  },
   inlineDropText: { color: colors.error, ...typography.micro },
   compactSchedule: {
     borderWidth: StyleSheet.hairlineWidth,

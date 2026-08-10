@@ -243,6 +243,27 @@ describe("TimelineDayCarousel", () => {
     expect(onCompleteTask).toHaveBeenCalledWith("t1");
   });
 
+  it("keeps completion out of the overdue overflow menu", () => {
+    const onCompleteTask = vi.fn();
+    const onEditTask = vi.fn();
+    const onTriageOverdue = vi.fn();
+    renderCarousel([
+      ["2026-07-01", [task("od1", "2026-07-01", "Overdue task")]],
+      [TODAY, [task("t1", TODAY, "Write tests")]],
+    ], {
+      onCompleteTask,
+      onEditTask,
+      onTriageOverdue,
+      overdueCount: 1,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Overdue task" }));
+
+    expect(screen.getAllByText("Complete")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Open Overdue task" }));
+    expect(onEditTask).toHaveBeenCalledWith(expect.objectContaining({ _id: "od1" }));
+  });
+
   it("renders the description and goal meta lines on the row", () => {
     renderCarousel(
       [[TODAY, [{ ...task("t1", TODAY, "Write tests"), description: "Cover the axis rules." }]]],
