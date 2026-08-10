@@ -321,6 +321,11 @@ function DayCardView({
   }, [isCurrent, justCompleted, liveIds, tasks]);
 
   const isDayClear = tasks.length === 0;
+  const completedIds = new Set(Object.keys(justCompleted));
+  const completedCount = isToday
+    ? rows.filter((task) => completedIds.has(String(task._id))).length
+    : 0;
+  const totalCount = rows.length;
 
   return (
     <View
@@ -332,9 +337,23 @@ function DayCardView({
           <Text style={[styles.cardLabel, isToday && styles.cardLabelToday]}>{label}</Text>
           {subtitle ? <Text style={styles.cardSubtitle}>{subtitle}</Text> : null}
         </View>
-        <Text style={styles.cardCount}>
-          {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
-        </Text>
+        {isToday ? (
+          <View style={styles.progressBlock} accessibilityLabel={`${completedCount} of ${totalCount} done`}>
+            <Text style={styles.progressText}>{completedCount} of {totalCount} done</Text>
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: totalCount > 0 ? `${Math.round((completedCount / totalCount) * 100)}%` : "0%" },
+                ]}
+              />
+            </View>
+          </View>
+        ) : (
+          <Text style={styles.cardCount}>
+            {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
+          </Text>
+        )}
       </View>
 
       <FlatList<MobileTask>
@@ -940,6 +959,28 @@ const styles = createThemedStyles({
     color: colors.textMuted,
     ...typography.bodyMd,
     paddingTop: 4,
+  },
+  progressBlock: {
+    minWidth: 124,
+    alignItems: "flex-end",
+    gap: spacing.xs,
+    paddingTop: 4,
+  },
+  progressText: {
+    color: colors.textSecondary,
+    ...typography.bodyMd,
+  },
+  progressTrack: {
+    width: 124,
+    height: 6,
+    borderRadius: radii.full,
+    backgroundColor: colors.borderSubtle,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: radii.full,
+    backgroundColor: colors.accent,
   },
   cardListContent: {
     paddingHorizontal: spacing.lg,

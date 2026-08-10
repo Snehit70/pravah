@@ -253,6 +253,13 @@ describe("TimelineDayCarousel", () => {
     expect(screen.getByText(/Ship carousel/)).toBeTruthy();
   });
 
+  it("shows Today progress instead of a plain task count", () => {
+    renderCarousel([[TODAY, [task("t1", TODAY, "Write tests")]]]);
+
+    expect(screen.getByText("0 of 1 done")).toBeTruthy();
+    expect(screen.queryByText("1 task")).toBeNull();
+  });
+
   it("opens the edit sheet when the row itself is tapped", () => {
     const onEditTask = vi.fn();
     renderCarousel([[TODAY, [task("t1", TODAY, "Write tests")]]], {
