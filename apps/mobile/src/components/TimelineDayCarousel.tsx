@@ -55,10 +55,12 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import type { MobileTask } from "./TaskCard";
 import { taskEmphasisColor } from "../lib/taskAccent";
 import {
+  CalendarIcon,
   CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   ChevronUpIcon,
+  ClockIcon,
   PencilIcon,
   StarIcon,
   SyncLoopIcon,
@@ -571,7 +573,10 @@ function OverdueCard({
                     accessibilityState={{ expanded }}
                     style={styles.compactScheduleHeader}
                   >
-                    <Text style={styles.compactScheduleLabel}>Reschedule</Text>
+                    <View style={styles.compactScheduleTitle}>
+                      <CalendarIcon color={colors.textSecondary} size={16} strokeWidth={1.8} />
+                      <Text style={styles.compactScheduleLabel}>Reschedule</Text>
+                    </View>
                     <View style={styles.compactSchedulePrompt}>
                       <Text style={styles.compactSchedulePromptText}>Choose a date</Text>
                       {expanded ? (
@@ -595,6 +600,11 @@ function OverdueCard({
                           style={styles.compactOptionHit}
                         >
                           <View style={styles.compactOptionVisual}>
+                            {target === "today" ? (
+                              <ClockIcon color={colors.textMuted} size={16} strokeWidth={1.8} />
+                            ) : (
+                              <CalendarIcon color={colors.textMuted} size={16} strokeWidth={1.8} />
+                            )}
                             <Text style={styles.compactOptionText}>
                               {target === "today" ? "Today" : target === "tomorrow" ? "Tomorrow" : "Weekend"}
                             </Text>
@@ -611,6 +621,7 @@ function OverdueCard({
                         style={styles.compactOptionHit}
                       >
                         <View style={styles.compactOptionVisual}>
+                          <CalendarIcon color={colors.textMuted} size={16} strokeWidth={1.8} />
                           <Text style={styles.compactOptionText}>Pick a date</Text>
                         </View>
                       </Pressable>
@@ -1182,26 +1193,35 @@ const styles = createThemedStyles({
   compactSchedule: {
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    borderRadius: radii.md,
+    borderRadius: 12,
+    backgroundColor: colors.bgCard,
     overflow: "hidden",
   },
   compactScheduleExpanded: { borderColor: colors.borderFocus },
   compactScheduleHeader: {
-    minHeight: 44,
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
-  compactScheduleLabel: { color: colors.textPrimary, ...typography.micro },
+  compactScheduleTitle: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  compactScheduleLabel: { color: colors.textPrimary, ...typography.title, fontSize: 14, lineHeight: 18 },
   compactSchedulePrompt: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
-  compactSchedulePromptText: { color: colors.textMuted, ...typography.micro },
+  compactSchedulePromptText: { color: colors.textMuted, ...typography.bodyMd },
   compactOptions: {
     flexDirection: "row",
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
+    backgroundColor: colors.bgSurface,
   },
-  compactOptionHit: { flex: 1, minHeight: 44, justifyContent: "center" },
-  compactOptionVisual: { height: 30, alignItems: "center", justifyContent: "center" },
-  compactOptionText: { color: colors.textSecondary, ...typography.micro },
+  compactOptionHit: {
+    flex: 1,
+    minHeight: 64,
+    justifyContent: "center",
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: colors.borderSubtle,
+  },
+  compactOptionVisual: { minHeight: 52, alignItems: "center", justifyContent: "center", gap: spacing.xs, paddingHorizontal: spacing.xs },
+  compactOptionText: { color: colors.textSecondary, ...typography.bodyMd, fontSize: 12, lineHeight: 16, textAlign: "center" },
 });
