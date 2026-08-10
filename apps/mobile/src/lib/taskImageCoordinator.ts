@@ -165,6 +165,7 @@ const SAFE_FAILURE_CODES = new Set([
   "dimensions_too_large",
   "aspect_ratio_unsupported",
   "clipboard_too_large",
+  "clipboard_reference_only",
   "storage_unavailable",
   "memory_unavailable",
   "normalization_failed",
@@ -185,6 +186,7 @@ const NON_RETRYABLE_FAILURES = new Set([
   "dimensions_too_large",
   "aspect_ratio_unsupported",
   "clipboard_too_large",
+  "clipboard_reference_only",
   "source_unavailable",
   "authorization_failed",
   "normalization_failed",
@@ -749,6 +751,18 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         await persist();
         notify();
       } catch (error) {
+        if (!nextRecord.previewUri && !nextRecord.normalized) {
+          const failure = safeFailure(error);
+          await removeRecord(nextRecord);
+          lastError = failure.code === "clipboard_reference_only"
+            ? "Clipboard contains a file reference, not image data. Copy the image itself and paste again."
+            : failure.code === "source_unavailable"
+              ? "No image was selected."
+              : "The image could not be selected.";
+          await persist();
+          notify();
+          return;
+        }
         await failEntry(nextRecord, error);
         notify();
       }

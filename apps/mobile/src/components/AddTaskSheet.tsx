@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import type { ReactNode } from "react";
 import {
   Keyboard,
   Modal,
@@ -45,22 +46,91 @@ import {
 } from "../theme/tokens";
 import { getThemeRuntimeSnapshot } from "../theme/themeRuntime";
 import { createThemedStyles } from "../theme/themeRuntime";
-import { TaskMetaFields } from "./TaskMetaFields";
 import { type TaskPriority } from "../lib/task-form";
 import { useGoals } from "../hooks/useGoals";
 import { useGoalMutations } from "../hooks/useGoalMutations";
-import { addDays, nextLaterThisWeek, toIsoDate } from "../lib/dates";
+import { addDays, toIsoDate } from "../lib/dates";
 import { expandBulkTasks, MAX_BULK_TASKS, type BulkTaskInput } from "../lib/bulkTaskCapture";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useConfirm } from "../hooks/useConfirm";
 import { TaskImageFilmstrip } from "./TaskImageFilmstrip";
+import { SlidingSegmented } from "./SlidingSegmented";
 import type { TaskImageCoordinator } from "../lib/taskImageCoordinator";
+import { ThemedDatePicker } from "./ThemedDatePicker";
+import { ThemedTimePicker } from "./ThemedTimePicker";
+import {
+  CalendarIcon,
+  CheckIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ClockIcon,
+} from "./UiIcons";
+import NavGoalsAsset from "../assets/icons/nav-goals.svg";
 
-type ComposerMode = "inbox" | "today" | "tomorrow" | "laterThisWeek";
+type PlanningMode = "summary" | "when" | "priority" | "goal";
 
-function weekdayShort(date: Date): string {
-  return date.toLocaleDateString(undefined, { weekday: "short" });
+const todayIso = () => toIsoDate(new Date());
+
+const PRIORITY_OPTIONS: Array<{
+  value: TaskPriority;
+  label: string;
+  detail: string;
+}> = [
+  { value: undefined, label: "No priority", detail: "" },
+  { value: "p1", label: "P1", detail: "High" },
+  { value: "p2", label: "P2", detail: "Medium" },
+  { value: "p3", label: "P3", detail: "Low" },
+];
+
+const CAPTURE_MODES = [
+  { value: "task" as const, label: "New task" },
+  { value: "goal" as const, label: "New goal" },
+];
+
+function CapturePlanningRow({
+  icon,
+  label,
+  value,
+  valueColor,
+  onPress,
+  selected,
+  showChevron = true,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  valueColor?: string;
+  onPress?: () => void;
+  selected?: boolean;
+  showChevron?: boolean;
+}) {
+  const body = (
+    <>
+      <View style={styles.planningIcon}>{icon}</View>
+      <Text style={styles.planningLabel}>{label}</Text>
+      <Text style={[styles.planningValue, valueColor ? { color: valueColor } : null]} numberOfLines={1}>
+        {value}
+      </Text>
+      {selected ? (
+        <CheckIcon color={colors.accent} size={17} />
+      ) : showChevron && onPress ? (
+        <ChevronRightIcon color={colors.textMuted} size={16} />
+      ) : null}
+    </>
+  );
+
+  if (!onPress) return <View style={styles.planningRow}>{body}</View>;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={value ? `${label}, ${value}` : label}
+      style={({ pressed }) => [styles.planningRow, pressed && styles.pressed]}
+    >
+      {body}
+    </Pressable>
+  );
 }
 
 export type AddTaskSheetRef = {
@@ -98,7 +168,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [visible, setVisible] = useState(false);
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
-    const [deadline, setDeadline] = useState("");
+    const [deadline, setDeadline] = useState(todayIso);
     const [time, setTime] = useState("");
     const [priority, setPriority] = useState<TaskPriority>(undefined);
     const [kind, setKind] = useState<"task" | "goal">("task");
@@ -108,9 +178,11 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [seriesEnabled, setSeriesEnabled] = useState(false);
     const [seriesStart, setSeriesStart] = useState("1");
     const [seriesEnd, setSeriesEnd] = useState("2");
-    const [showGoalPicker, setShowGoalPicker] = useState(false);
     const [saving, setSaving] = useState(false);
     const [showDetails, setShowDetails] = useState(false);
+    const [planningMode, setPlanningMode] = useState<PlanningMode>("summary");
+    const [showDatePicker, setShowDatePicker] = useState(false);
+    const [showTimePicker, setShowTimePicker] = useState(false);
     const [error, setError] = useState<string | null>(null);
     // Burst capture: how many tasks were saved since the sheet opened. Once
     // it is > 0 the lit when/goal/priority selections are *saved* context
@@ -149,7 +221,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const hasUnsavedContext =
       burstCount === 0 &&
       Boolean(
-        deadline.trim() ||
+        (deadline.trim() && deadline !== todayIso()) ||
         priority ||
         goalId ||
         goalIds.length > 0 ||
@@ -157,30 +229,6 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         taskImageDrafts.length > 0
       );
     const hasDraftChanges = hasUnsavedText || hasUnsavedContext;
-
-    const laterThisWeek = nextLaterThisWeek();
-    const modeOptions = useMemo<{ mode: ComposerMode; label: string }[]>(
-      () => [
-        { mode: "inbox", label: "Inbox" },
-        { mode: "today", label: "Today" },
-        { mode: "tomorrow", label: "Tomorrow" },
-        { mode: "laterThisWeek", label: `Later, ${weekdayShort(laterThisWeek)}` },
-      ],
-      [laterThisWeek],
-    );
-
-    const presetDeadlines = useMemo<Record<ComposerMode, string>>(
-      () => ({
-        inbox: "",
-        today: toIsoDate(new Date()),
-        tomorrow: toIsoDate(addDays(new Date(), 1)),
-        laterThisWeek: toIsoDate(laterThisWeek),
-      }),
-      [laterThisWeek],
-    );
-    const selectedMode = modeOptions.find(
-      (option) => presetDeadlines[option.mode] === deadline
-    )?.mode;
 
     const closeModal = useCallback(
       (notify = true) => {
@@ -194,7 +242,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const reset = useCallback(() => {
       setTitle("");
       setDescription("");
-      setDeadline("");
+      setDeadline(todayIso());
       setTime("");
       setPriority(undefined);
       setGoalId(undefined);
@@ -203,8 +251,9 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setSeriesEnabled(false);
       setSeriesStart("1");
       setSeriesEnd("2");
-      setShowGoalPicker(false);
       setShowDetails(false);
+      setPlanningMode("summary");
+      setShowTimePicker(false);
       setKind("task");
       setError(null);
       setBurstCount(0);
@@ -219,16 +268,20 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     useImperativeHandle(ref, () => ({
       open: (initialKind = "task") => {
         setKind(initialKind);
-        setShowDetails(initialKind === "goal");
+        setDeadline(todayIso());
+        setPlanningMode("summary");
+        setShowDetails(false);
         dragY.set(0);
         setVisible(true);
         onSheetChange?.(true);
       },
       openForGoal: (initialGoalId) => {
         setKind("task");
+        setDeadline(todayIso());
         setGoalId(initialGoalId);
         setGoalIds([initialGoalId]);
         setShowDetails(false);
+        setPlanningMode("summary");
         dragY.set(0);
         setVisible(true);
         onSheetChange?.(true);
@@ -408,13 +461,6 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       () => Boolean(title.trim()) && !saving && !taskImageDrafts.some((image) => image.state === "preparing"),
       [title, saving, taskImageDrafts]
     );
-    const captureOutcome = useMemo(() => {
-      if (kind === "goal") return "Creates a Goal you can plan from Goals.";
-      if (!deadline) return "Saves to Inbox for later triage.";
-      const selected = modeOptions.find((option) => presetDeadlines[option.mode] === deadline);
-      if (selected) return `Schedules for ${selected.label}.`;
-      return "Schedules for the selected date.";
-    }, [deadline, kind, modeOptions, presetDeadlines]);
     // Mid-burst with an empty title there is nothing left to save, so the
     // footer verb degrades to a plain "Done" that just closes the sheet.
     const closeOnly = kind === "task" && burstCount > 0 && !title.trim();
@@ -489,6 +535,180 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       transform: [{ scaleX: titleFocus.get() }],
     }));
 
+    const today = todayIso();
+    const tomorrow = toIsoDate(addDays(new Date(), 1));
+    const whenValue =
+      deadline === today
+        ? "Today"
+        : deadline === tomorrow
+          ? "Tomorrow"
+          : deadline
+            ? new Date(`${deadline}T00:00:00`).toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+              })
+            : "Inbox";
+    const priorityValue = PRIORITY_OPTIONS.find((option) => option.value === priority);
+    const goalValue = prefs.bulkTaskCaptureEnabled
+      ? goalIds.length > 0
+        ? `${goalIds.length} selected`
+        : "No goal"
+      : selectedGoal?.text ?? "No goal";
+
+    const renderPlanning = () => {
+      if (planningMode === "summary") {
+        return (
+          <View style={styles.planningSection}>
+            <Text style={styles.sectionLabel}>Planning</Text>
+            <View style={styles.planningCard}>
+              <CapturePlanningRow
+                icon={<CalendarIcon color={colors.textSecondary} size={19} />}
+                label="When"
+                value={whenValue}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setPlanningMode("when");
+                }}
+              />
+              <CapturePlanningRow
+                icon={<View style={[styles.priorityDot, { backgroundColor: priority ? colors.error : colors.textMuted }]} />}
+                label="Priority"
+                value={priorityValue?.label ?? "No priority"}
+                valueColor={priority ? colors.error : undefined}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setPlanningMode("priority");
+                }}
+              />
+              {kind === "task" ? (
+                <CapturePlanningRow
+                  icon={<NavGoalsAsset width={20} height={20} color={colors.accent} />}
+                  label="Goal"
+                  value={goalValue}
+                  valueColor={goalValue === "No goal" ? undefined : colors.accent}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setPlanningMode("goal");
+                  }}
+                />
+              ) : null}
+            </View>
+          </View>
+        );
+      }
+
+      const pickerTitle = planningMode === "when" ? "When" : planningMode === "priority" ? "Priority" : "Goal";
+      return (
+        <Animated.View
+          entering={reducedMotion ? undefined : FadeIn.duration(160)}
+          exiting={reducedMotion ? undefined : FadeOut.duration(120)}
+          style={styles.planningEditor}
+        >
+          <View style={styles.planningPickerHeader}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back to capture planning"
+              onPress={() => setPlanningMode("summary")}
+              hitSlop={10}
+              style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+            >
+              <ChevronLeftIcon color={colors.textPrimary} size={21} />
+            </Pressable>
+            <Text style={styles.planningPickerTitle}>{pickerTitle}</Text>
+          </View>
+
+          {planningMode === "when" ? (
+            <View style={styles.planningCard}>
+              {[
+                { label: "Inbox", value: "", icon: <CalendarIcon color={colors.textSecondary} size={19} /> },
+                { label: "Today", value: today, icon: <CalendarIcon color={colors.textSecondary} size={19} /> },
+                { label: "Tomorrow", value: tomorrow, icon: <CalendarIcon color={colors.warning} size={19} /> },
+              ].map((option) => (
+                <CapturePlanningRow
+                  key={option.label}
+                  icon={option.icon}
+                  label={option.label}
+                  value=""
+                  selected={deadline === option.value}
+                  showChevron={false}
+                  onPress={() => {
+                    setDeadline(option.value);
+                    if (!option.value) setTime("");
+                    setError(null);
+                    setPlanningMode("summary");
+                  }}
+                />
+              ))}
+              <CapturePlanningRow
+                icon={<CalendarIcon color={colors.textSecondary} size={19} />}
+                label="Pick a date..."
+                value=""
+                showChevron={false}
+                onPress={() => setShowDatePicker(true)}
+              />
+            </View>
+          ) : null}
+
+          {planningMode === "priority" ? (
+            <View style={styles.planningCard}>
+              {PRIORITY_OPTIONS.map((option) => (
+                <CapturePlanningRow
+                  key={option.label}
+                  icon={<View style={[styles.priorityDot, { backgroundColor: option.value ? colors.error : colors.textMuted }]} />}
+                  label={option.label}
+                  value={option.detail}
+                  selected={priority === option.value}
+                  showChevron={false}
+                  onPress={() => {
+                    setPriority(option.value);
+                    setPlanningMode("summary");
+                  }}
+                />
+              ))}
+            </View>
+          ) : null}
+
+          {planningMode === "goal" ? (
+            <View style={styles.planningCard}>
+              <CapturePlanningRow
+                icon={<NavGoalsAsset width={20} height={20} color={colors.textMuted} />}
+                label="No goal"
+                value=""
+                selected={prefs.bulkTaskCaptureEnabled ? goalIds.length === 0 : !goalId}
+                showChevron={false}
+                onPress={() => {
+                  if (prefs.bulkTaskCaptureEnabled) setGoalIds([]);
+                  else setGoalId(undefined);
+                  if (!prefs.bulkTaskCaptureEnabled) setPlanningMode("summary");
+                }}
+              />
+              {goals.map((goal) => {
+                const selected = prefs.bulkTaskCaptureEnabled ? goalIds.includes(goal.id) : goal.id === goalId;
+                return (
+                  <CapturePlanningRow
+                    key={goal.id}
+                    icon={<NavGoalsAsset width={20} height={20} color={colors.accent} />}
+                    label={goal.text}
+                    value=""
+                    selected={selected}
+                    showChevron={false}
+                    onPress={() => {
+                      if (prefs.bulkTaskCaptureEnabled) {
+                        setGoalIds((current) => current.includes(goal.id) ? current.filter((id) => id !== goal.id) : [...current, goal.id]);
+                      } else {
+                        setGoalId(goal.id);
+                        setPlanningMode("summary");
+                      }
+                    }}
+                  />
+                );
+              })}
+            </View>
+          ) : null}
+        </Animated.View>
+      );
+    };
+
     return (
       <Modal
         visible={visible}
@@ -544,34 +764,14 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               showsVerticalScrollIndicator={false}
             >
               <Text style={styles.sheetKicker}>Capture</Text>
-              <View style={styles.kindRow}>
-                <Pressable
-                  onPress={() => { setKind("task"); setShowDetails(false); }}
-                  hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: kind === "task" }}
-                  accessibilityLabel="New task"
-                  style={({ pressed }) => [styles.kindItem, pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={[styles.kindText, kind === "task" && styles.kindTextActive]}>
-                    New task
-                  </Text>
-                  <View style={[styles.kindRule, kind === "task" && styles.kindRuleActive]} />
-                </Pressable>
-                <Pressable
-                  onPress={() => { setKind("goal"); setShowDetails(true); }}
-                  hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: kind === "goal" }}
-                  accessibilityLabel="New goal"
-                  style={({ pressed }) => [styles.kindItem, pressed && { opacity: 0.6 }]}
-                >
-                  <Text style={[styles.kindText, kind === "goal" && styles.kindTextActive]}>
-                    New goal
-                  </Text>
-                  <View style={[styles.kindRule, kind === "goal" && styles.kindRuleActive]} />
-                </Pressable>
-              </View>
+              <SlidingSegmented
+                options={CAPTURE_MODES}
+                value={kind}
+                onSelect={(nextKind) => {
+                  setKind(nextKind);
+                  setPlanningMode("summary");
+                }}
+              />
 
               <View>
                 <TextInput
@@ -611,65 +811,6 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                 />
               </View>
 
-              {kind === "task" ? (
-                <View style={styles.modeRow}>
-                  {modeOptions.map((option) => (
-                    <Pressable
-                      key={option.mode}
-                      onPress={() => {
-                        setDeadline(presetDeadlines[option.mode]);
-                        if (!presetDeadlines[option.mode]) setTime("");
-                        setError(null);
-                      }}
-                      style={({ pressed }) => [styles.modeItem, pressed && { opacity: 0.6 }]}
-                      hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: selectedMode === option.mode }}
-                      accessibilityLabel={
-                        option.mode === "inbox"
-                          ? "Clear deadline and move to Inbox"
-                          : `Set deadline ${option.label}`
-                      }
-                    >
-                      <Text style={[styles.modeText, selectedMode === option.mode && styles.modeTextActive]}>
-                        {option.label}
-                      </Text>
-                      <View style={[styles.modeRule, selectedMode === option.mode && styles.modeRuleActive]} />
-                    </Pressable>
-                  ))}
-
-                  <View style={{ flex: 1 }} />
-
-                  <Pressable
-                    onPress={() => setShowDetails(!showDetails)}
-                    style={({ pressed }) => [styles.detailsToggle, pressed && { opacity: 0.6 }]}
-                    hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
-                    accessibilityRole="button"
-                    accessibilityLabel={showDetails ? "Hide task details" : "Show task details"}
-                    accessibilityState={{ expanded: showDetails }}
-                  >
-                    <Text style={styles.detailsToggleText}>{showDetails ? "Less" : "More"}</Text>
-                  </Pressable>
-                </View>
-              ) : (
-                <View style={styles.goalKindRow}>
-                  <Text style={styles.goalModeHint}>
-                    Create the direction first. Add a starting task now if the next move is clear.
-                  </Text>
-                  <View style={{ flex: 1 }} />
-                  <Pressable
-                    onPress={() => setShowDetails(!showDetails)}
-                    style={({ pressed }) => [styles.detailsToggle, pressed && { opacity: 0.6 }]}
-                    hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
-                    accessibilityRole="button"
-                    accessibilityLabel={showDetails ? "Hide goal details" : "Show goal details"}
-                    accessibilityState={{ expanded: showDetails }}
-                  >
-                    <Text style={styles.detailsToggleText}>{showDetails ? "Less" : "More"}</Text>
-                  </Pressable>
-                </View>
-              )}
-
               {kind === "task" && taskImageCoordinator ? (
                 <TaskImageFilmstrip
                   surface="capture"
@@ -684,7 +825,10 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                   }))}
                   onSelectSource={(sourceKind) => {
                     setError(null);
-                    void taskImageCoordinator.select(sourceKind);
+                    void taskImageCoordinator.select(sourceKind).then(() => {
+                      const sourceError = taskImageCoordinator.getLastError();
+                      if (sourceError) setError(sourceError);
+                    });
                   }}
                   onCaptionChange={taskImageCoordinator.updateCaption}
                   onRetry={(uploadId) => {
@@ -703,114 +847,50 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               ) : null}
 
               {kind === "goal" ? (
-                <View style={styles.firstTaskBlock}>
-                  <Text style={styles.goalChipKicker}>First task</Text>
+                <View style={styles.goalFields}>
+                  <TextInput
+                    value={description}
+                    onChangeText={setDescription}
+                    placeholder="Why does this matter? (optional)"
+                    placeholderTextColor={colors.textMuted}
+                    style={styles.notesInput}
+                    accessibilityLabel="Goal notes"
+                    multiline
+                  />
                   <TextInput
                     value={firstTaskTitle}
                     onChangeText={setFirstTaskTitle}
-                    placeholder="Optional next move"
+                    placeholder="What is the next move? (optional)"
                     placeholderTextColor={colors.textMuted}
                     style={styles.inlineTextInput}
                     accessibilityLabel="First linked task"
                   />
                 </View>
-              ) : null}
+              ) : (
+                <TextInput
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Notes (optional)"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.notesInput}
+                  accessibilityLabel="Task notes"
+                  multiline
+                />
+              )}
 
-              {kind === "task" && goals.length > 0 ? (
-                <View style={styles.goalSection}>
-                  <Pressable
-                    onPress={() => setShowGoalPicker((s) => !s)}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      selectedGoal ? `Goal: ${selectedGoal.text}. Tap to change.` : "Pick a goal"
-                    }
-                    accessibilityState={{ expanded: showGoalPicker }}
-                    style={({ pressed }) => [
-                      styles.goalChip,
-                      (prefs.bulkTaskCaptureEnabled ? goalIds.length > 0 : selectedGoal) && styles.goalChipActive,
-                      pressed && { opacity: 0.7 },
-                    ]}
-                  >
-                    <Text style={styles.goalChipKicker}>Goal</Text>
-                    <Text
-                      style={[
-                        styles.goalChipValue,
-                        selectedGoal && styles.goalChipValueActive,
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {prefs.bulkTaskCaptureEnabled
-                        ? goalIds.length > 0 ? `${goalIds.length} selected` : "None"
-                        : selectedGoal ? selectedGoal.text : "None"}
-                    </Text>
-                    <Text style={styles.goalChipCaret}>{showGoalPicker ? "▾" : "▸"}</Text>
-                  </Pressable>
+              {renderPlanning()}
 
-                  {showGoalPicker ? (
-                    <Animated.View
-                      entering={reducedMotion ? undefined : FadeIn.duration(150)}
-                      exiting={reducedMotion ? undefined : FadeOut.duration(120)}
-                      style={styles.goalPicker}
-                    >
-                      <Pressable
-                        onPress={() => {
-                          if (prefs.bulkTaskCaptureEnabled) setGoalIds([]); else setGoalId(undefined);
-                        }}
-                        hitSlop={8}
-                        accessibilityRole="button"
-                        accessibilityState={{
-                          selected: prefs.bulkTaskCaptureEnabled
-                            ? goalIds.length === 0
-                            : !goalId,
-                        }}
-                        style={({ pressed }) => [
-                          styles.goalOption,
-                          (prefs.bulkTaskCaptureEnabled ? goalIds.length === 0 : !goalId) && styles.goalOptionActive,
-                          pressed && { opacity: 0.7 },
-                        ]}
-                      >
-                        <Text style={[styles.goalOptionText, (prefs.bulkTaskCaptureEnabled ? goalIds.length === 0 : !goalId) && styles.goalOptionTextActive]}>
-                          No goal
-                        </Text>
-                      </Pressable>
-                      {goals.map((g) => {
-                        const active = prefs.bulkTaskCaptureEnabled ? goalIds.includes(g.id) : g.id === goalId;
-                        return (
-                          <Pressable
-                            key={g.id}
-                            onPress={() => {
-                              if (prefs.bulkTaskCaptureEnabled) {
-                                setGoalIds((current) => current.includes(g.id) ? current.filter((id) => id !== g.id) : [...current, g.id]);
-                              } else {
-                                setGoalId(g.id);
-                                setShowGoalPicker(false);
-                              }
-                            }}
-                            hitSlop={8}
-                            accessibilityRole="button"
-                            accessibilityState={{ selected: active }}
-                            style={({ pressed }) => [
-                              styles.goalOption,
-                              active && styles.goalOptionActive,
-                              pressed && { opacity: 0.7 },
-                            ]}
-                          >
-                            <Text
-                              style={[styles.goalOptionText, active && styles.goalOptionTextActive]}
-                              numberOfLines={2}
-                            >
-                              {g.text}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </Animated.View>
-                  ) : null}
-                </View>
-              ) : null}
+              <Pressable
+                onPress={() => setShowDetails((current) => !current)}
+                style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={showDetails ? "Hide more capture options" : "Show more capture options"}
+                accessibilityState={{ expanded: showDetails }}
+              >
+                <Text style={styles.moreButtonText}>{showDetails ? "Less" : "More"}</Text>
+              </Pressable>
 
-              {kind === "task" && prefs.bulkTaskCaptureEnabled ? (
+              {kind === "task" && prefs.bulkTaskCaptureEnabled && showDetails ? (
                 <View style={styles.bulkSection}>
                   <Pressable
                     onPress={() => setSeriesEnabled((current) => !current)}
@@ -842,52 +922,49 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                   exiting={reducedMotion ? undefined : FadeOut.duration(150)}
                   style={styles.detailsSection}
                 >
-                  <TextInput
-                    value={description}
-                    onChangeText={setDescription}
-                    placeholder="Notes (optional)"
-                    placeholderTextColor={colors.textMuted}
-                    style={styles.notesInput}
-                    multiline
-                  />
-
-                  <TaskMetaFields
-                    key="add-task-meta-fields"
-                    deadline={deadline}
-                    time={time}
-                    priority={priority}
-                    onDeadlineChange={(v) => {
-                      setDeadline(v);
-                      if (!v) setTime("");
-                    }}
-                    onTimeChange={setTime}
-                    onPriorityChange={setPriority}
-                    onClearError={() => setError(null)}
-                  />
+                  {deadline ? (
+                    <CapturePlanningRow
+                      icon={<ClockIcon color={colors.textSecondary} size={19} />}
+                      label="Exact time"
+                      value={time || "Not set"}
+                      onPress={() => setShowTimePicker(true)}
+                    />
+                  ) : null}
                 </Animated.View>
               ) : null}
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
-              <View style={styles.outcomeRow}>
-                <Text accessibilityLiveRegion="polite" style={styles.outcomeText}>
-                  {captureOutcome}
-                </Text>
-                {savedFlash !== null ? (
-                  <Animated.View
-                    entering={reducedMotion ? undefined : FadeIn.duration(120)}
-                    exiting={reducedMotion ? undefined : FadeOut.duration(160)}
-                    style={styles.savedFlash}
-                  >
-                    <Text
-                      accessibilityLiveRegion="polite"
-                      style={styles.savedFlashText}
-                    >
-                      ✓ Saved · {savedFlash} captured
-                    </Text>
-                  </Animated.View>
-                ) : null}
-              </View>
+              {savedFlash !== null ? (
+                <Animated.View
+                  entering={reducedMotion ? undefined : FadeIn.duration(120)}
+                  exiting={reducedMotion ? undefined : FadeOut.duration(160)}
+                  style={styles.savedFlash}
+                >
+                  <Text accessibilityLiveRegion="polite" style={styles.savedFlashText}>
+                    ✓ Saved · {savedFlash} captured
+                  </Text>
+                </Animated.View>
+              ) : null}
             </ScrollView>
+
+            <ThemedDatePicker
+              visible={showDatePicker}
+              value={deadline || today}
+              minDate={today}
+              onSelect={(value) => {
+                setDeadline(value);
+                setError(null);
+                setPlanningMode("summary");
+              }}
+              onClose={() => setShowDatePicker(false)}
+            />
+            <ThemedTimePicker
+              visible={showTimePicker}
+              value={time}
+              onSelect={setTime}
+              onClear={() => setTime("")}
+              onClose={() => setShowTimePicker(false)}
+            />
 
             {/* Sticky footer: the primary action stays pinned above the keyboard
                 instead of scrolling behind it (the most common capture friction). */}
@@ -1059,37 +1136,6 @@ const styles = createThemedStyles({
     color: colors.textMuted,
   },
 
-  kindRow: {
-    flexDirection: "row",
-    gap: spacing.lg,
-    marginTop: -spacing.sm,
-  },
-  kindItem: {
-    alignItems: "flex-start",
-    paddingBottom: 4,
-  },
-  kindText: {
-    ...typography.headline,
-    color: colors.textMuted,
-  },
-  kindTextActive: {
-    color: colors.textPrimary,
-  },
-  kindRule: {
-    marginTop: 6,
-    height: 2,
-    width: 24,
-    borderRadius: 1,
-    backgroundColor: "transparent",
-  },
-  kindRuleActive: {
-    backgroundColor: colors.accent,
-  },
-  goalKindRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
   titleInput: {
     color: colors.textPrimary,
     ...typography.bodyLg,
@@ -1100,34 +1146,18 @@ const styles = createThemedStyles({
     borderBottomColor: colors.border,
   },
 
-  modeRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: spacing.md,
-    flexWrap: "wrap",
-  },
-  modeItem: {
+  moreButton: {
+    alignSelf: "flex-end",
     minHeight: 44,
-    paddingBottom: 4,
-    alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+    marginTop: -spacing.sm,
   },
-  modeText: {
-    ...typography.title,
-    color: colors.textMuted,
-  },
-  modeTextActive: {
-    color: colors.textPrimary,
-  },
-  modeRule: {
-    marginTop: 6,
-    height: 2,
-    width: 22,
-    borderRadius: 1,
-    backgroundColor: "transparent",
-  },
-  modeRuleActive: {
-    backgroundColor: colors.accent,
+  moreButtonText: {
+    ...typography.micro,
+    color: colors.accent,
+    letterSpacing: 0.7,
+    textTransform: "uppercase",
   },
   detailsToggle: {
     minHeight: 44,
@@ -1146,12 +1176,69 @@ const styles = createThemedStyles({
     color: colors.textPrimary,
     ...typography.bodyMd,
     minHeight: 64,
+    maxHeight: 140,
     paddingVertical: spacing.sm,
-    paddingHorizontal: 0,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    backgroundColor: colors.bgInput,
     textAlignVertical: "top",
   },
+
+  goalFields: { gap: spacing.md },
+  planningSection: { gap: spacing.sm },
+  sectionLabel: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+    fontWeight: "600",
+  },
+  planningCard: {
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    backgroundColor: colors.bgSurface,
+    overflow: "hidden",
+  },
+  planningRow: {
+    minHeight: 54,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
+  },
+  planningIcon: {
+    width: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  planningLabel: {
+    flexShrink: 1,
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+  },
+  planningValue: {
+    flex: 1,
+    textAlign: "right",
+    ...typography.bodyMd,
+    color: colors.textSecondary,
+  },
+  priorityDot: { width: 10, height: 10, borderRadius: 5 },
+  planningEditor: { gap: spacing.sm },
+  planningPickerHeader: {
+    minHeight: 46,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  backButton: { padding: spacing.xs },
+  planningPickerTitle: {
+    ...typography.title,
+    color: colors.textPrimary,
+  },
+  pressed: { opacity: 0.68 },
 
   errorText: {
     ...typography.bodyMd,

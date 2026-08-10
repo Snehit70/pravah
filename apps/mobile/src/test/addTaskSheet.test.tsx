@@ -73,7 +73,7 @@ vi.mock("react-native", () => {
       "data-testid":
         placeholder === "What needs to be done?"
           ? "title-input"
-          : placeholder === "Notes (optional)"
+          : placeholder === "Notes (optional)" || placeholder === "Why does this matter? (optional)"
           ? "description-input"
           : undefined,
     });
@@ -118,6 +118,8 @@ vi.mock("react-native-reanimated", () => ({
   default: {
     View: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
       React.createElement("div", {}, children),
+    Text: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
+      React.createElement("span", {}, children),
   },
   FadeIn: { duration: () => undefined },
   FadeOut: { duration: () => undefined },
@@ -273,6 +275,13 @@ vi.mock("../lib/feedback", () => ({
 import { AddTaskSheet, type AddTaskSheetRef } from "../components/AddTaskSheet";
 import { createTaskImageCoordinator } from "../lib/taskImageCoordinator";
 
+function todayIsoForTest() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+    now.getDate()
+  ).padStart(2, "0")}`;
+}
+
 // ─── tests ────────────────────────────────────────────────────────────────────
 
 describe("AddTaskSheet", () => {
@@ -367,8 +376,39 @@ describe("AddTaskSheet", () => {
     expect(mockOnAdd).toHaveBeenCalledWith({
       title: "New task",
       description: undefined,
-      deadline: undefined,
+      deadline: todayIsoForTest(),
+      time: undefined,
       priority: undefined,
+      goalId: undefined,
+    });
+  });
+
+  it("keeps task Notes visible in the main capture flow", async () => {
+    render(
+      <AddTaskSheet
+        ref={ref}
+        onAdd={mockOnAdd}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+      />
+    );
+
+    act(() => ref.current?.open());
+
+    const notesInput = screen.getByPlaceholderText("Notes (optional)");
+    expect(notesInput).toBeTruthy();
+    fireEvent.change(notesInput, { target: { value: "Keep this context" } });
+    fireEvent.change(screen.getByTestId("title-input"), { target: { value: "Capture notes" } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Save & close"));
+    });
+
+    await waitFor(() => {
+      expect(mockOnAdd).toHaveBeenCalledWith(expect.objectContaining({
+        title: "Capture notes",
+        description: "Keep this context",
+      }));
     });
   });
 
@@ -441,7 +481,7 @@ describe("AddTaskSheet", () => {
     releaseGrant();
   });
 
-  it("uses timeline shortcuts to set the single deadline field", async () => {
+  it("uses the compact When planner to set the deadline", async () => {
     render(
       <AddTaskSheet
         ref={ref}
@@ -455,7 +495,8 @@ describe("AddTaskSheet", () => {
       ref.current?.open();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Set deadline Today" }));
+    fireEvent.click(screen.getByRole("button", { name: "When, Today" }));
+    fireEvent.click(screen.getByRole("button", { name: "Today" }));
     fireEvent.change(screen.getByTestId("title-input"), { target: { value: "Today task" } });
     fireEvent.click(screen.getByText("Save & close"));
 
@@ -468,7 +509,9 @@ describe("AddTaskSheet", () => {
         title: "Today task",
         description: undefined,
         deadline: today,
+        time: undefined,
         priority: undefined,
+        goalId: undefined,
       });
     });
   });
@@ -529,7 +572,7 @@ describe("AddTaskSheet", () => {
     fireEvent.change(screen.getByPlaceholderText("What do you want to achieve?"), {
       target: { value: "Launch parity redesign" },
     });
-    fireEvent.change(screen.getByPlaceholderText("Optional next move"), {
+    fireEvent.change(screen.getByPlaceholderText("What is the next move? (optional)"), {
       target: { value: "Fix Settings first" },
     });
 
@@ -541,7 +584,7 @@ describe("AddTaskSheet", () => {
       expect(mockOnAdd).toHaveBeenCalledWith({
         title: "Fix Settings first",
         description: undefined,
-        deadline: undefined,
+        deadline: todayIsoForTest(),
         time: undefined,
         priority: undefined,
         goalId: "g1",
@@ -568,7 +611,7 @@ describe("AddTaskSheet", () => {
     fireEvent.change(screen.getByPlaceholderText("What do you want to achieve?"), {
       target: { value: "Launch parity redesign" },
     });
-    fireEvent.change(screen.getByPlaceholderText("Optional next move"), {
+    fireEvent.change(screen.getByPlaceholderText("What is the next move? (optional)"), {
       target: { value: "Fix Settings first" },
     });
 
@@ -581,12 +624,12 @@ describe("AddTaskSheet", () => {
     expect(screen.getByPlaceholderText("What do you want to achieve?").getAttribute("value")).toBe(
       "Launch parity redesign"
     );
-    expect(screen.getByPlaceholderText("Optional next move").getAttribute("value")).toBe(
+    expect(screen.getByPlaceholderText("What is the next move? (optional)").getAttribute("value")).toBe(
       "Fix Settings first"
     );
   });
 
-  it("recomputes the later preset label when the sheet is reopened on a new day", () => {
+  it("defaults the When planner to today each time the sheet opens", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 6, 3, 10, 0, 0));
 
@@ -603,7 +646,7 @@ describe("AddTaskSheet", () => {
       ref.current?.open();
     });
 
-    expect(screen.getByText("Later, Sun")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "When, Today" })).toBeTruthy();
 
     act(() => {
       ref.current?.close();
@@ -615,7 +658,7 @@ describe("AddTaskSheet", () => {
       ref.current?.open();
     });
 
-    expect(screen.getByText("Later, Tue")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "When, Today" })).toBeTruthy();
   });
 
   it("Enter saves and keeps the sheet open with the title cleared", async () => {
@@ -658,8 +701,6 @@ describe("AddTaskSheet", () => {
     act(() => {
       ref.current?.open();
     });
-
-    fireEvent.click(screen.getByRole("button", { name: "Set deadline Today" }));
 
     const titleInput = screen.getByTestId("title-input") as HTMLInputElement;
     fireEvent.change(titleInput, { target: { value: "First" } });

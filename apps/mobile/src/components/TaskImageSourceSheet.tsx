@@ -1,6 +1,6 @@
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { SmartphoneIcon, StackPlusIcon } from "./UiIcons";
+import { CopyIcon, SmartphoneIcon, StackPlusIcon } from "./UiIcons";
 import type { TaskImageSourceKind } from "../lib/taskImageCoordinator";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
@@ -13,7 +13,7 @@ type TaskImageSourceSheetProps = {
 
 export function TaskImageSourceSheet({ visible, onClose, onSelectSource }: TaskImageSourceSheetProps) {
   const insets = useSafeAreaInsets();
-  const choose = (kind: "photos" | "camera") => {
+  const choose = (kind: "photos" | "camera" | "paste") => {
     onClose();
     void onSelectSource(kind);
   };
@@ -34,6 +34,10 @@ export function TaskImageSourceSheet({ visible, onClose, onSelectSource }: TaskI
             <Pressable accessibilityRole="button" accessibilityLabel="Take Task image with Camera" onPress={() => choose("camera")} style={({ pressed }) => [styles.option, pressed && styles.pressed]}>
               <View style={styles.iconFrame}><SmartphoneIcon color={colors.accent} size={20} /></View>
               <View style={styles.optionCopy}><Text style={styles.optionTitle}>Camera</Text><Text style={styles.optionBody}>Take a new photo</Text></View>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Paste Task image from clipboard" onPress={() => choose("paste")} style={({ pressed }) => [styles.option, pressed && styles.pressed]}>
+              <View style={styles.iconFrame}><CopyIcon color={colors.accent} size={20} /></View>
+              <View style={styles.optionCopy}><Text style={styles.optionTitle}>Paste</Text><Text style={styles.optionBody}>Use an image from your clipboard</Text></View>
             </Pressable>
           </View>
         </View>

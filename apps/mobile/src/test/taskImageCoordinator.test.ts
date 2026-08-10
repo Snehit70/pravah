@@ -167,6 +167,24 @@ describe("Task-image mobile coordinator", () => {
     );
   });
 
+  it("does not leave a placeholder when the clipboard only contains a file reference", async () => {
+    const dependencies = createDependencies();
+    dependencies.acquireSource = vi.fn(async () => {
+      throw Object.assign(new Error("clipboard_reference_only"), {
+        code: "clipboard_reference_only",
+        retryable: false,
+      });
+    });
+    const coordinator = createTaskImageCoordinator(dependencies);
+
+    await coordinator.select("paste");
+
+    expect(coordinator.getViewStates()).toEqual([]);
+    expect(coordinator.getLastError()).toBe(
+      "Clipboard contains a file reference, not image data. Copy the image itself and paste again."
+    );
+  });
+
   it("keeps five ordered Capture images with captions and replaces a removed slot", async () => {
     const dependencies = createDependencies();
     let nextId = 1;

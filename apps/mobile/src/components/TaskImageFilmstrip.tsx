@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Image } from "expo-image";
-import * as Clipboard from "expo-clipboard";
 import {
   AlertCircleIcon,
   ChevronLeftIcon,
@@ -82,6 +81,7 @@ const FAILURE_COPY: Record<string, string> = {
   dimensions_too_large: "This image's dimensions are not supported.",
   aspect_ratio_unsupported: "This image is too wide or tall to use.",
   clipboard_too_large: "The clipboard image is too large to paste safely.",
+  clipboard_reference_only: "Clipboard contains a file reference, not image data. Copy the image itself and paste again.",
   storage_unavailable: "More device storage is needed to prepare this image.",
   memory_unavailable: "This image could not be prepared within device memory limits.",
   master_too_large: "This image could not be reduced within the upload limit.",
@@ -89,6 +89,28 @@ const FAILURE_COPY: Record<string, string> = {
   source_unavailable: "The selected image is no longer available.",
   normalization_failed: "This image could not be prepared safely.",
 };
+
+const PREPARATION_FAILURE_CODES = new Set([
+  "unsupported_format",
+  "animated_image",
+  "source_too_large",
+  "dimensions_too_large",
+  "aspect_ratio_unsupported",
+  "clipboard_too_large",
+  "clipboard_reference_only",
+  "storage_unavailable",
+  "memory_unavailable",
+  "master_too_large",
+  "variant_too_large",
+  "source_unavailable",
+  "normalization_failed",
+]);
+
+function failureTitle(image: TaskImageFilmstripEntry) {
+  return PREPARATION_FAILURE_CODES.has(image.failure?.code ?? "")
+    ? "Image could not be prepared"
+    : "Upload failed";
+}
 
 function stateCopy(image: TaskImageFilmstripEntry) {
   if (image.state === "preparing") return "Preparing image";
@@ -105,7 +127,7 @@ function statusLabel(image: TaskImageFilmstripEntry) {
   if (image.state === "uploading" && image.progress !== undefined) {
     return `${Math.round(image.progress * 100)}%`;
   }
-  if (image.state === "failed") return "Upload failed";
+  if (image.state === "failed") return failureTitle(image);
   if (image.state === "verifying") return "Verifying";
   if (image.state === "pending") return "Waiting";
   if (image.state === "preparing") return "Preparing";
@@ -224,21 +246,24 @@ function SourceActions({
   );
 }
 
-function EmptyImages({ onOpenSource }: { onOpenSource?: OpenSource }) {
+function EmptyImages({ onOpenSource, compact = false }: { onOpenSource?: OpenSource; compact?: boolean }) {
   const content = (
     <>
       <View style={styles.emptyImageIcon}><ImagePlusIcon color={colors.accent} size={30} /></View>
-      <Text style={styles.emptyImagesTitle}>Add an image</Text>
-      <Text style={styles.emptyImagesBody}>Tap the image area to add a visual reference.</Text>
+      <View style={compact ? styles.compactEmptyCopy : undefined}>
+        <Text style={styles.emptyImagesTitle}>{compact ? "Add a visual reference" : "Add an image"}</Text>
+        <Text style={[styles.emptyImagesBody, compact && styles.compactEmptyBody]}>{compact ? "Tap to choose an image" : "Tap the image area to add a visual reference."}</Text>
+      </View>
+      {compact ? <ChevronRightIcon color={colors.textMuted} size={18} /> : null}
     </>
   );
-  if (!onOpenSource) return <View style={styles.emptyImages}>{content}</View>;
+  if (!onOpenSource) return <View style={compact ? styles.emptyImagesCompact : styles.emptyImages}>{content}</View>;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Add Task image"
       onPress={onOpenSource}
-      style={({ pressed }) => [styles.emptyImages, pressed && styles.pressed]}
+      style={({ pressed }) => [compact ? styles.emptyImagesCompact : styles.emptyImages, pressed && styles.pressed]}
     >
       {content}
     </Pressable>
@@ -338,7 +363,7 @@ function CaptureSurface({
   onOpenSource,
 }: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[]; onOpenImage?: OpenImage; onOpenSource?: OpenSource }) {
   const [captionDrafts, setCaptionDrafts] = useState<Record<string, string>>({});
-  if (!images.length) return <EmptyImages onOpenSource={onOpenSource} />;
+  if (!images.length) return <EmptyImages onOpenSource={onOpenSource} compact />;
   return (
     <>
       <View style={styles.sectionHeaderRow}>
@@ -521,7 +546,7 @@ function EditSurface({
           <View style={styles.statusPanelCopy}>
             {selected.state === "failed" ? <AlertCircleIcon color={colors.error} size={18} /> : null}
             <View>
-              <Text style={styles.statusPanelTitle}>{selected.state === "failed" ? "Upload failed" : `${stateCopy(selected)}${selected.progress !== undefined ? ` · ${Math.round(selected.progress * 100)}%` : ""}`}</Text>
+              <Text style={styles.statusPanelTitle}>{selected.state === "failed" ? failureTitle(selected) : `${stateCopy(selected)}${selected.progress !== undefined ? ` · ${Math.round(selected.progress * 100)}%` : ""}`}</Text>
               <Text style={styles.statusPanelBody}>{selected.state === "failed" ? "The Task is safe. Retry this image when ready." : "You can leave this screen while it finishes."}</Text>
             </View>
           </View>
@@ -630,16 +655,8 @@ export function TaskImageFilmstrip({ surface = "management", images, ...props }:
     setViewer({ images: viewerImages, initialIndex });
   }, [ordered]);
   const [sourceSheetVisible, setSourceSheetVisible] = useState(false);
-  const openSource = useCallback(async () => {
+  const openSource = useCallback(() => {
     if (!onSelectSource) return;
-    try {
-      if (await Clipboard.hasImageAsync()) {
-        await onSelectSource("paste");
-        return;
-      }
-    } catch {
-      // Clipboard availability is optional. Fall back to the explicit source sheet.
-    }
     setSourceSheetVisible(true);
   }, [onSelectSource]);
   const surfaceProps = {
@@ -680,6 +697,9 @@ const styles = createThemedStyles({
   sourceButtonFull: { flex: 1, minHeight: 58, flexDirection: "row", gap: spacing.sm, alignItems: "center", justifyContent: "center", borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, borderRadius: radii.md, backgroundColor: colors.bgSurface },
   sourceButtonText: { ...typography.micro, color: colors.textSecondary },
   emptyImages: { marginTop: spacing.lg, paddingVertical: spacing.xl, alignItems: "center", gap: spacing.sm, borderWidth: StyleSheet.hairlineWidth, borderStyle: "dashed", borderColor: colors.border, borderRadius: radii.lg },
+  emptyImagesCompact: { minHeight: 84, marginTop: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, flexDirection: "row", alignItems: "center", gap: spacing.md, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.borderSubtle, borderRadius: radii.lg, backgroundColor: colors.bgCard },
+  compactEmptyCopy: { flex: 1, gap: 2 },
+  compactEmptyBody: { textAlign: "left" },
   emptyImageIcon: { width: 44, height: 44, borderRadius: radii.full, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" },
   emptyImagesTitle: { ...typography.title, color: colors.textPrimary },
   emptyImagesBody: { ...typography.bodyMd, color: colors.textMuted, textAlign: "center", maxWidth: 260 },
