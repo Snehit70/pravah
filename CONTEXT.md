@@ -16,6 +16,14 @@ _Avoid_: Human output, debug output
 An active task without a scheduled date. It is visible in the Inbox rather than on the Timeline.
 _Avoid_: Unscheduled, backlog
 
+### Priority group
+The Inbox collection of active Inbox tasks sharing one priority level. Priority groups are visible sections that may be opened or collapsed while their task count remains available.
+_Avoid_: Priority filter, priority task type
+
+### No-priority view
+The dedicated Inbox view for active Inbox tasks that have no priority. It is reached from the Inbox summary rather than behaving like a collapsible priority group.
+_Avoid_: Unprioritized group, no-priority filter
+
 ### Timeline task
 An active task with a scheduled date. It is visible on the Timeline and may be overdue, due today, or upcoming.
 _Avoid_: Scheduled task
