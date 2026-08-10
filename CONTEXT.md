@@ -28,6 +28,18 @@ _Avoid_: Unprioritized group, no-priority filter
 An active task with a scheduled date. It is visible on the Timeline and may be overdue, due today, or upcoming.
 _Avoid_: Scheduled task
 
+### Compact Timeline
+The vertical Timeline reading mode for fast scanning across date sections. It keeps overdue work behind one review entry, then presents Today and future date groups in order.
+_Avoid_: Timeline carousel, calendar view
+
+### Overdue review
+The single Timeline entry representing all active Timeline tasks whose scheduled dates have passed. It opens overdue triage rather than presenting overdue work as ordinary date sections.
+_Avoid_: Overdue date group, overdue list
+
+### Timeline date group
+A visible group of Timeline tasks sharing one scheduled calendar date. Today and future groups use their date context as the heading; overdue tasks do not form date groups in the Compact Timeline.
+_Avoid_: Timeline bucket, overdue section
+
 ### Completed task
 A task whose planned work is finished and retained as completion history.
 _Avoid_: Done task

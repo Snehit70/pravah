@@ -1,27 +1,28 @@
 /**
  * TimelineTaskRow
  *
- * The timeline's compact row, sharing InboxTaskRow's grammar: a leading tile,
- * a single-line title, and a trailing group. Two timeline-specific differences:
- * the leading tile carries a priority mark instead of a surface icon (P1 in
- * accent, everything else muted), and the trailing action is the surface's
- * primary verb — a check button that marks the task done — where the inbox has
- * its schedule button. Time-of-day joins the trailing group as quiet metadata;
- * the date itself is owned by the day section header above the row.
+ * The compact Timeline row: one completion checkbox, a stacked title/context
+ * body, and a trailing chevron for editing. The date belongs to the section
+ * header above the row; goal, priority, and time stay quiet in the metadata
+ * line so the title remains the scan anchor.
  */
 
 import { memo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { CheckIcon } from "./UiIcons";
+import { CheckIcon, ChevronRightIcon } from "./UiIcons";
 import { colors, fonts, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
 import { formatTime12h } from "../lib/task-form";
 import type { MobileTask } from "./TaskCard";
 
+type TimelineGroupPosition = "only" | "first" | "middle" | "last";
+
 type TimelineTaskRowProps = {
   task: MobileTask;
   /** Linked goal name, shown in the trailing group. */
   goalName?: string;
+  /** Position in the date group's contiguous paper surface. */
+  groupPosition?: TimelineGroupPosition;
   selectMode: boolean;
   selected: boolean;
   /** Normal-mode tap: open the full editor. */
@@ -43,14 +44,45 @@ function TimelineTaskRowInner({
   onLongPress,
   onToggleSelect,
   onComplete,
+  groupPosition = "only",
 }: TimelineTaskRowProps) {
+  const meta = [
+    task.time ? formatTime12h(task.time) : null,
+    goalName ?? null,
+    task.priority ? task.priority.toUpperCase() : null,
+  ].filter(Boolean) as string[];
+  const groupStyle =
+    groupPosition === "only"
+      ? styles.rowOnly
+      : groupPosition === "first"
+        ? styles.rowFirst
+        : groupPosition === "middle"
+          ? styles.rowMiddle
+          : styles.rowLast;
+
   const leading = selectMode ? (
-    <View style={[styles.tile, styles.checkTile, selected && styles.checkTileOn]}>
-      {selected ? <CheckIcon size={16} color={colors.textInverse} strokeWidth={2.4} /> : null}
+    <View style={[styles.checkboxHit, styles.selectHit]}>
+      <View style={[styles.checkbox, selected && styles.checkboxOn]}>
+        {selected ? <CheckIcon size={16} color={colors.textInverse} strokeWidth={2.4} /> : null}
+      </View>
     </View>
+  ) : onComplete ? (
+    <Pressable
+      onPress={(event) => {
+        event.stopPropagation();
+        onComplete();
+      }}
+      hitSlop={4}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: false }}
+      accessibilityLabel={`Mark ${task.title} complete`}
+      style={({ pressed }) => [styles.checkboxHit, pressed && styles.checkboxPressed]}
+    >
+      <View style={styles.checkbox} />
+    </Pressable>
   ) : (
-    <View style={styles.tile}>
-      <View style={[styles.priorityDot, task.priority === "p1" && styles.priorityDotP1]} />
+    <View style={styles.checkboxHit}>
+      <View style={[styles.checkbox, styles.checkboxDisabled]} />
     </View>
   );
 
@@ -70,7 +102,12 @@ function TimelineTaskRowInner({
             : "Opens the task."
       }
       hitSlop={selectMode ? 4 : 0}
-      style={({ pressed }) => [styles.row, selected && styles.rowSelected, pressed && styles.rowPressed]}
+      style={({ pressed }) => [
+        styles.row,
+        groupStyle,
+        selected && styles.rowSelected,
+        pressed && styles.rowPressed,
+      ]}
     >
       {leading}
 
@@ -78,31 +115,19 @@ function TimelineTaskRowInner({
         <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
           {task.title}
         </Text>
-      </View>
-
-      <View style={styles.trailing}>
-        {task.time ? <Text style={styles.time}>{formatTime12h(task.time)}</Text> : null}
-        {goalName ? (
-          <Text style={styles.goal} numberOfLines={1} ellipsizeMode="tail">
-            <Text style={styles.goalDiamond}>◈ </Text>
-            {goalName}
+        {task.description ? (
+          <Text style={styles.description} numberOfLines={1} ellipsizeMode="tail">
+            {task.description}
           </Text>
         ) : null}
-        {selectMode || !onComplete ? null : (
-          <Pressable
-            onPress={(event) => {
-              event.stopPropagation();
-              onComplete();
-            }}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel={`Mark ${task.title} done`}
-            style={({ pressed }) => [styles.completeBtn, pressed && { opacity: 0.68 }]}
-          >
-            <CheckIcon size={17} color={colors.textSecondary} strokeWidth={1.8} />
-          </Pressable>
-        )}
+        {meta.length > 0 ? (
+          <Text style={styles.meta} numberOfLines={1} ellipsizeMode="tail">
+            {meta.join("  ·  ")}
+          </Text>
+        ) : null}
       </View>
+
+      {!selectMode ? <ChevronRightIcon color={colors.textMuted} size={20} strokeWidth={1.8} /> : null}
     </Pressable>
   );
 }
@@ -112,17 +137,21 @@ export const TimelineTaskRow = memo(TimelineTaskRowInner);
 const styles = createThemedStyles({
   row: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
+    alignItems: "flex-start",
+    gap: spacing.md,
     marginHorizontal: spacing.lg,
-    marginVertical: 3,
-    paddingVertical: 7,
-    paddingHorizontal: 11,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    minHeight: 72,
     backgroundColor: colors.bgCard,
     borderRadius: radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
   },
+  rowOnly: { marginVertical: 3 },
+  rowFirst: { marginTop: 3, marginBottom: 0, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+  rowMiddle: { marginVertical: 0, borderRadius: 0, borderTopWidth: 0 },
+  rowLast: { marginTop: 0, marginBottom: 3, borderTopWidth: 0, borderTopLeftRadius: 0, borderTopRightRadius: 0 },
   rowSelected: {
     backgroundColor: colors.bgFloating,
     borderColor: colors.accentSoft,
@@ -130,76 +159,54 @@ const styles = createThemedStyles({
   rowPressed: {
     backgroundColor: colors.bgFloating,
   },
-  tile: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
-    borderCurve: "continuous",
-    backgroundColor: colors.bgSurface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
+  checkboxHit: {
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
   },
-  checkTile: {
+  selectHit: {
+    marginTop: -1,
+  },
+  checkbox: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    borderCurve: "continuous",
+    backgroundColor: colors.bgSurface,
     borderWidth: 1.5,
     borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  checkTileOn: {
+  checkboxOn: {
     backgroundColor: colors.accent,
     borderColor: colors.accent,
   },
-  priorityDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.border,
-  },
-  priorityDotP1: {
-    backgroundColor: colors.accent,
-  },
+  checkboxDisabled: { opacity: 0.45 },
+  checkboxPressed: { opacity: 0.68 },
   body: {
     flex: 1,
     minWidth: 0,
+    gap: 2,
   },
   title: {
     ...typography.title,
     fontSize: 15,
-    lineHeight: 20,
+    lineHeight: 22,
     color: colors.textPrimary,
   },
-  trailing: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    flexShrink: 0,
-    maxWidth: "52%",
-  },
-  time: {
-    fontFamily: fonts.mono,
-    fontSize: 12,
-    lineHeight: 16,
-    color: colors.textMuted,
-  },
-  goal: {
+  description: {
     fontFamily: fonts.sans,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 14,
+    lineHeight: 19,
+    color: colors.textSecondary,
+  },
+  meta: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    lineHeight: 15,
+    letterSpacing: 0.2,
     color: colors.textMuted,
-    flexShrink: 1,
-  },
-  goalDiamond: {
-    color: colors.accent,
-  },
-  completeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: radii.md,
-    borderCurve: "continuous",
-    backgroundColor: colors.bgSurface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-    alignItems: "center",
-    justifyContent: "center",
   },
 });

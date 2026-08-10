@@ -25,8 +25,8 @@ import { TimelineDayCarousel } from "../components/TimelineDayCarousel";
 import { TimelineTaskRow } from "../components/TimelineTaskRow";
 import { QuickScheduleSheet } from "../components/QuickScheduleSheet";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
-import { CalendarIcon, CheckIcon, CloseIcon } from "../components/UiIcons";
-import { dateLabel } from "../lib/dates";
+import { CalendarIcon, CheckIcon, ClockIcon, CloseIcon } from "../components/UiIcons";
+import { dateLabel, weekdayDate } from "../lib/dates";
 import type { TimelineLayout } from "../lib/userPreferences";
 import type { ManualTriageTarget } from "../features/overdue-triage/types";
 import { useConfirm } from "../hooks/useConfirm";
@@ -37,6 +37,8 @@ import { useReducedMotion } from "../hooks/useReducedMotion";
 type TimelineRow =
   | { kind: "header"; dateKey: string; label: string; isToday: boolean; count: number }
   | { kind: "task"; dateKey: string; task: MobileTask };
+
+type TimelineGroupPosition = "only" | "first" | "middle" | "last";
 
 type TimelineScreenProps = {
   sections: [string, MobileTask[]][];
@@ -49,11 +51,14 @@ type TimelineScreenProps = {
   /** Total overdue count (from the workspace buckets). Falls back to a local
    *  count of the dropped sections when not supplied. */
   overdueCount?: number;
+  onOpenOverdue?: () => void;
   onTriageOverdue?: (taskId: string, target: ManualTriageTarget) => void;
   onRescheduleAllGoals?: () => void;
   /** Timeline layout preference — the compact list (default) or the
    *  comfortable day-card carousel. */
   layout?: TimelineLayout;
+  /** Completed tasks keep the Today progress denominator stable. */
+  completedTasks?: MobileTask[];
   /** Row + carousel actions. Omitted while workspace actions are unavailable. */
   onCompleteTask?: (id: Id<"tasks">) => void;
   onReopenTask?: (id: Id<"tasks">) => void;
@@ -162,9 +167,11 @@ export function TimelineScreen({
   tabBarHeight,
   onRefresh,
   overdueCount,
+  onOpenOverdue,
   onTriageOverdue,
   onRescheduleAllGoals,
   layout = "list",
+  completedTasks = [],
   onCompleteTask,
   onReopenTask,
   onEditTask,
@@ -197,13 +204,20 @@ export function TimelineScreen({
       setSelectedIds(new Set());
     }
   }
-  const { future } = splitOverdue(sections, today);
-  const sourceSections = layout === "carousel" ? future : sections;
+  const { future, overdueCount: localOverdueCount } = splitOverdue(sections, today);
+  // Compact mode is intentionally overdue-free. The carousel receives the
+  // original sections below so it can keep its dedicated overdue card.
+  const sourceSections = future;
   const visibleSections = showAllSections
     ? sourceSections
     : sourceSections.slice(0, DEFAULT_VISIBLE_SECTION_COUNT);
   const laterSections = showAllSections ? [] : sourceSections.slice(DEFAULT_VISIBLE_SECTION_COUNT);
   const laterTaskCount = laterSections.reduce((sum, [, tasks]) => sum + tasks.length, 0);
+  const todayTasks = sourceSections.find(([dateKey]) => dateKey === today)?.[1] ?? [];
+  const completedTodayCount = completedTasks.filter((task) => task.deadline === today).length;
+  const todayTotal = todayTasks.length + completedTodayCount;
+  const todayProgress = todayTotal > 0 ? completedTodayCount / todayTotal : 0;
+  const totalOverdue = overdueCount ?? localOverdueCount;
 
   const totalRows = countTimelineRows(visibleSections);
   const visibleRowCount = useIncrementalRowCount(totalRows);
@@ -287,7 +301,38 @@ export function TimelineScreen({
     [onScheduleMany, scheduleBatch, exitSelectMode]
   );
 
-  const overdueHeader = null;
+  const overdueReview = totalOverdue > 0 ? (
+    <Pressable
+      disabled={!onOpenOverdue}
+      onPress={onOpenOverdue}
+      accessibilityRole="button"
+      accessibilityLabel={`Review ${totalOverdue} overdue tasks`}
+      style={({ pressed }) => [styles.overdueBar, pressed && styles.overdueBarPressed]}
+    >
+      <View style={styles.overdueIconWrap}>
+        <ClockIcon color={colors.deadline} size={20} strokeWidth={1.9} />
+      </View>
+      <View style={styles.overdueCopy}>
+        <Text style={styles.overdueLabel}>{totalOverdue} overdue</Text>
+        <Text style={styles.overdueHelp}>Needs review</Text>
+      </View>
+      <Text style={styles.overdueAction}>Review</Text>
+    </Pressable>
+  ) : null;
+
+  const todaySummary = todayTasks.length === 0 ? (
+    <View style={styles.todayClearInline}>
+      <View>
+        <Text style={styles.todayClearTitle}>Today is clear</Text>
+        <Text style={styles.todayClearDate}>{weekdayDate(today)}</Text>
+      </View>
+      {todayTotal > 0 ? (
+        <Text style={styles.todayClearProgress}>
+          {completedTodayCount} of {todayTotal} done
+        </Text>
+      ) : null}
+    </View>
+  ) : null;
 
   const selectHeader = (
     <View style={styles.selectBarWrap}>
@@ -336,10 +381,11 @@ export function TimelineScreen({
   const entering = animateCrossfade ? layoutEntering : undefined;
   const exiting = animateCrossfade ? FadeOut.duration(180) : undefined;
 
-  const renderTaskRow = (task: MobileTask): JSX.Element => (
+  const renderTaskRow = (task: MobileTask, groupPosition: TimelineGroupPosition): JSX.Element => (
     <TimelineTaskRow
       task={task}
       goalName={getGoalName?.(String(task._id))}
+      groupPosition={groupPosition}
       selectMode={selectMode}
       selected={selectedIds.has(String(task._id))}
       onPress={() => onEditTask?.(task)}
@@ -370,12 +416,42 @@ export function TimelineScreen({
         if (row.kind === "header") {
           return (
             <Animated.View pointerEvents="box-none" entering={introStagger(index)}>
-              <TimelineSectionHeader label={row.label} count={row.count} isToday={row.isToday} />
+              {row.isToday ? (
+                <View style={styles.todayHeaderWrap}>
+                  <View style={styles.todayHeaderLine}>
+                    <View>
+                      <Text style={styles.todayHeaderTitle}>Today</Text>
+                      <Text style={styles.todayHeaderDate}>{weekdayDate(today)}</Text>
+                    </View>
+                    <Text style={styles.todayHeaderProgress}>
+                      {completedTodayCount} of {todayTotal} done
+                    </Text>
+                  </View>
+                  <View style={styles.progressTrack}>
+                    <View style={[styles.progressFill, { width: `${todayProgress * 100}%` }]} />
+                  </View>
+                </View>
+              ) : (
+                <TimelineSectionHeader
+                  label={row.label}
+                  dateKey={row.dateKey}
+                  count={row.count}
+                  isToday={row.isToday}
+                />
+              )}
             </Animated.View>
           );
         }
+        const previous = rows[index - 1];
+        const next = rows[index + 1];
+        const isFirst = previous?.kind === "header" || previous?.dateKey !== row.dateKey;
+        const isLast = !next || next.dateKey !== row.dateKey || next.kind === "header";
+        const groupPosition: TimelineGroupPosition =
+          isFirst && isLast ? "only" : isFirst ? "first" : isLast ? "last" : "middle";
         return (
-          <Animated.View entering={introStagger(index)}>{renderTaskRow(row.task)}</Animated.View>
+          <Animated.View entering={introStagger(index)}>
+            {renderTaskRow(row.task, groupPosition)}
+          </Animated.View>
         );
       }}
       showsVerticalScrollIndicator={false}
@@ -388,7 +464,12 @@ export function TimelineScreen({
           progressBackgroundColor={colors.bgCard}
         />
       }
-      ListHeaderComponent={selectMode ? selectHeader : overdueHeader}
+      ListHeaderComponent={
+        <>
+          {selectMode ? selectHeader : overdueReview}
+          {!selectMode ? todaySummary : null}
+        </>
+      }
       ListFooterComponent={
         <>
           {laterTaskCount > 0 ? (
@@ -407,7 +488,13 @@ export function TimelineScreen({
           {hasPendingRows ? <Text style={styles.loadingMore}>Preparing more tasks...</Text> : null}
         </>
       }
-      ListEmptyComponent={isLoading ? loadingBlock : emptyBlock}
+      ListEmptyComponent={
+        isLoading
+          ? loadingBlock
+          : sourceSections.length === 0 && totalOverdue === 0 && todayTotal === 0
+            ? emptyBlock
+            : null
+      }
     />
   );
 
@@ -555,22 +642,69 @@ const styles = createThemedStyles({
     alignItems: "center",
     justifyContent: "space-between",
     marginHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
-    borderRadius: radii.md,
-    backgroundColor: colors.bgSurface,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgCard,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
+    borderColor: colors.deadline,
   },
   overdueBarPressed: { opacity: 0.6 },
+  overdueIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.deadlineMuted,
+    marginRight: spacing.sm,
+  },
   overdueCopy: {
     flex: 1,
     gap: 2,
   },
-  overdueLabel: { color: colors.textPrimary, ...typography.micro },
+  overdueLabel: { color: colors.textPrimary, ...typography.title },
   overdueHelp: { color: colors.textMuted, ...typography.bodyMd },
-  overdueChevron: { color: colors.accent, ...typography.bodyMd },
+  overdueAction: { color: colors.deadline, ...typography.title },
+  todayHeaderWrap: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  todayHeaderLine: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  todayHeaderTitle: { color: colors.accent, ...typography.headline },
+  todayHeaderDate: { color: colors.textSecondary, ...typography.bodyMd, marginTop: 2 },
+  todayHeaderProgress: { color: colors.accent, ...typography.bodyMd, paddingBottom: 2 },
+  progressTrack: {
+    height: 6,
+    borderRadius: radii.full,
+    overflow: "hidden",
+    backgroundColor: colors.borderSubtle,
+  },
+  progressFill: { height: "100%", borderRadius: radii.full, backgroundColor: colors.accent },
+  todayClearInline: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
+  },
+  todayClearTitle: { color: colors.textPrimary, ...typography.headline },
+  todayClearDate: { color: colors.textMuted, ...typography.bodyMd, marginTop: 2 },
+  todayClearProgress: { color: colors.success, ...typography.bodyMd },
   selectBarWrap: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,

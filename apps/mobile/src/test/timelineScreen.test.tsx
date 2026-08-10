@@ -146,6 +146,7 @@ vi.mock("../theme/tokens", () => ({
 vi.mock("../components/UiIcons", () => ({
   CalendarIcon: () => React.createElement("span", { "data-testid": "icon-calendar" }),
   CheckIcon: () => React.createElement("span", { "data-testid": "icon-check" }),
+  ClockIcon: () => React.createElement("span", { "data-testid": "icon-clock" }),
   CloseIcon: () => React.createElement("span", { "data-testid": "icon-close" }),
 }));
 
@@ -255,6 +256,7 @@ vi.mock("../lib/dates", () => ({
     if (dateKey === tomorrow) return "TOMORROW";
     return dateKey;
   },
+  weekdayDate: () => "MON · MAY 4",
 }));
 
 // Import component after all mocks are set up.
@@ -391,7 +393,7 @@ describe("TimelineScreen", () => {
       />
     );
 
-    expect(screen.getByTestId("section-header-today").textContent).toContain("TODAY");
+    expect(screen.getByText("Today")).toBeTruthy();
     expect(screen.getByTestId("section-header-other").textContent).toContain("TOMORROW");
 
     expect(screen.getByTestId("task-task1")).toBeTruthy();
@@ -400,6 +402,29 @@ describe("TimelineScreen", () => {
 
     expect(screen.getByTestId("goal-task1").textContent).toBe("Blog");
     expect(screen.queryByTestId("goal-task2")).toBeNull();
+  });
+
+  it("keeps Today progress denominator stable with completed Today tasks", () => {
+    render(
+      <TimelineScreen
+        {...baseProps}
+        sections={sampleSections}
+        completedTasks={[
+          {
+            _id: "completed-today" as Id<"tasks">,
+            title: "Completed Today",
+            deadline: "2026-05-04",
+            scheduledAt: 1500,
+            position: 2,
+            completedAt: 2000,
+            updatedAt: 2000,
+            createdAt: 1000,
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText("1 of 3 done")).toBeTruthy();
   });
 
   it("opens the editor from a row tap and completes from the row check", () => {
@@ -428,7 +453,7 @@ describe("TimelineScreen", () => {
     expect(screen.getByTestId("skeleton-timeline")).toBeTruthy();
   });
 
-  it("keeps overdue tasks visible inline when triage actions are available", () => {
+  it("collapses overdue tasks into one review entry", () => {
     const overdueSections: [string, MobileTask[]][] = [
       [
         "2026-05-01",
@@ -447,19 +472,22 @@ describe("TimelineScreen", () => {
       ...sampleSections,
     ];
 
+    const onOpenOverdue = vi.fn();
     render(
       <TimelineScreen
         {...baseProps}
         sections={overdueSections}
         overdueCount={1}
-        onTriageOverdue={vi.fn()}
+        onOpenOverdue={onOpenOverdue}
       />
     );
 
-    expect(screen.getByTestId("task-od1")).toBeTruthy();
+    expect(screen.queryByTestId("task-od1")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Review 1 overdue tasks" }));
+    expect(onOpenOverdue).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps overdue tasks visible inline when triage is unavailable", () => {
+  it("keeps the overdue review entry visible while triage is unavailable", () => {
     const overdueSections: [string, MobileTask[]][] = [
       [
         "2026-05-01",
@@ -480,8 +508,9 @@ describe("TimelineScreen", () => {
 
     render(<TimelineScreen {...baseProps} sections={overdueSections} overdueCount={1} />);
 
-    expect(screen.getByTestId("task-od1")).toBeTruthy();
-    expect(screen.queryByText("Overdue · 1")).toBeNull();
+    expect(screen.queryByTestId("task-od1")).toBeNull();
+    expect(screen.getByText("1 overdue")).toBeTruthy();
+    expect(screen.getByText("Needs review")).toBeTruthy();
   });
 
   it("releases large timelines in small batches after the first paint", () => {
@@ -621,7 +650,7 @@ describe("TimelineScreen", () => {
     });
   });
 
-  it("shows the select bar while overdue tasks remain inline", () => {
+  it("shows the select bar while the overdue review entry remains separate", () => {
     const overdueSections: [string, MobileTask[]][] = [
       [
         "2026-05-01",
@@ -645,12 +674,12 @@ describe("TimelineScreen", () => {
         {...baseProps}
         sections={overdueSections}
         overdueCount={1}
-        onTriageOverdue={vi.fn()}
+        onOpenOverdue={vi.fn()}
         onMarkManyDone={vi.fn(async () => true)}
       />
     );
 
-    expect(screen.getByTestId("task-od1")).toBeTruthy();
+    expect(screen.queryByTestId("task-od1")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "long-task1" }));
 
