@@ -7,9 +7,9 @@
  * `timelineLayout` user preference. Icons are hand-authored per ADR-0005.
  */
 
-import { Pressable } from "react-native";
+import { Pressable, StyleSheet } from "react-native";
 import Svg, { Line, Rect } from "react-native-svg";
-import { colors, spacing } from "../theme/tokens";
+import { colors, radii } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 
@@ -77,12 +77,18 @@ export function TimelineLayoutToggle() {
 }
 
 const styles = createThemedStyles({
-  // Bare icon at the settings link's visual weight — the Kairo chip stays the
-  // only boxed affordance in the header.
+  // Layout, Kairo, and Settings share one compact button grammar in the
+  // header: identical footprint, surface, border, and continuous corners.
   wrap: {
-    minHeight: 32,
+    width: 42,
+    height: 42,
     justifyContent: "center",
-    paddingVertical: spacing.xs,
+    alignItems: "center",
+    borderRadius: radii.lg,
+    borderCurve: "continuous",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
   },
   pressed: {
     opacity: 0.55,

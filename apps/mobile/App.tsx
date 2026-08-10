@@ -1300,7 +1300,7 @@ function MobileApp() {
               accessibilityRole="button"
               accessibilityLabel="Open Kairo"
             >
-              <KairoMarkIcon width={18} height={18} color={colors.textMuted} />
+              <KairoMarkIcon width={20} height={20} color={colors.textMuted} />
             </Pressable>
             <Pressable
               onPress={openSettingsModal}
@@ -1991,13 +1991,19 @@ const styles = createThemedStyles({
   headerLinks: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.lg,
+    gap: spacing.sm,
   },
-  // Settings is a hairline-underlined word, not a button shape.
+  // Header actions share the same compact squircle button footprint.
   settingsLinkWrap: {
-    minHeight: 32,
+    width: 42,
+    height: 42,
     justifyContent: "center",
-    paddingVertical: spacing.xs,
+    alignItems: "center",
+    borderRadius: radii.lg,
+    borderCurve: "continuous",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
   },
   settingsLink: {
     color: colors.textMuted,
@@ -2016,11 +2022,11 @@ const styles = createThemedStyles({
     ...typography.micro,
     color: colors.textMuted,
   },
-  // Kairo entry point: a quiet square squircle chip with the accent Kairo
-  // mark — reads as the AI affordance without a text label.
+  // Kairo entry point: the same quiet square squircle as the other header
+  // actions, with the Kairo mark as its only label.
   kairoChip: {
-    width: 34,
-    height: 34,
+    width: 42,
+    height: 42,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radii.md,
