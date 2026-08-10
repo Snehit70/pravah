@@ -115,6 +115,7 @@ vi.mock("react-native", () => {
       ...safe,
       value: value ?? "",
       placeholder,
+      readOnly: rest.editable === false,
       onChange: (e: { target: { value: string } }) => onChangeText?.(e.target.value),
     });
   };
@@ -154,10 +155,12 @@ vi.mock("../components/SlidingSegmented", () => ({
     options,
     value,
     onSelect,
+    disabled,
   }: {
     options: Array<{ value: string; label: string }>;
     value: string;
     onSelect: (value: string) => void;
+    disabled?: boolean;
   }) =>
     React.createElement(
       "div",
@@ -169,7 +172,8 @@ vi.mock("../components/SlidingSegmented", () => ({
             key: option.value,
             type: "button",
             "aria-pressed": value === option.value,
-            onClick: () => onSelect(option.value),
+            disabled,
+            onClick: disabled ? undefined : () => onSelect(option.value),
           },
           option.label,
         ),
@@ -374,6 +378,9 @@ describe("InboxScreen", () => {
     renderInbox({ tasks: [], isLoading: true });
 
     expect(screen.getByTestId("skeleton-inbox")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Search inbox").getAttribute("readonly")).toBe("");
+    expect((screen.getByRole("button", { name: "Select tasks" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "All" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByText("Everything has a place.")).toBeNull();
   });
 

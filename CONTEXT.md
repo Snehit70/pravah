@@ -120,6 +120,26 @@ _Avoid_: Backup, full account export, image archive
 The bounded device-local cache of last-known Task presentation metadata used while the authenticated mobile workspace refreshes. It is neither an offline workspace nor a backup.
 _Avoid_: Offline database, local backup
 
+### Page skeleton
+A temporary structural representation of a primary page while its first usable data is unavailable. It preserves the page's hierarchy and approximate geometry while replacing unavailable records with neutral placeholders.
+_Avoid_: Generic loading cards, spinner page
+
+### Initial load
+The first loading state for a page when no usable page data is available to display. It may use a Page skeleton, but it must keep the destination page's identity and structure recognizable.
+_Avoid_: Refresh, sync indicator
+
+### Refreshing
+The state in which a page with usable content is checking for newer data. Existing content remains visible while the refresh runs; it does not regress to an Initial load or Page skeleton.
+_Avoid_: Reload screen, blank loading state
+
+### Skeleton section
+A page region represented by a Page skeleton while that region's authoritative data is unavailable. A Skeleton section may resolve independently without making unrelated regions wait.
+_Avoid_: Fake content, placeholder record
+
+### Section hydration
+The transition in which a Skeleton section is replaced by its authoritative page content. Section hydration may happen incrementally during Initial load, but never replaces usable cached content during Refreshing.
+_Avoid_: Partial fake load, optimistic skeleton data
+
 ### CLI resource grammar
 The canonical human command shape `pravah <resource> <verb> [target] [filters]`. A resource names the object being operated on, a verb states the operation, a target identifies one object when needed, and filters narrow a collection.
 _Avoid_: API-shaped option target, nested resource chain

@@ -23,10 +23,12 @@ export function SlidingSegmented<T extends string | number>({
   options,
   value,
   onSelect,
+  disabled = false,
 }: {
   options: readonly SegmentedItem<T>[];
   value: T;
   onSelect: (value: T) => void;
+  disabled?: boolean;
 }) {
   const reducedMotion = useReducedMotion();
   const [innerWidth, setInnerWidth] = useState(0);
@@ -63,6 +65,7 @@ export function SlidingSegmented<T extends string | number>({
           label={option.label}
           Icon={option.Icon}
           selected={value === option.value}
+          disabled={disabled}
           optionIndex={optionIndex}
           progress={progress}
           onPress={() => onSelect(option.value)}
@@ -76,6 +79,7 @@ function SegmentOption({
   label,
   Icon,
   selected,
+  disabled,
   optionIndex,
   progress,
   onPress,
@@ -83,6 +87,7 @@ function SegmentOption({
   label: string;
   Icon?: ComponentType<{ width?: number; height?: number; color?: string }>;
   selected: boolean;
+  disabled: boolean;
   optionIndex: number;
   progress: SharedValue<number>;
   onPress: () => void;
@@ -100,10 +105,11 @@ function SegmentOption({
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       hitSlop={6}
       accessibilityRole="button"
-      accessibilityState={{ selected }}
-      style={styles.option}
+      accessibilityState={{ selected, disabled }}
+      style={[styles.option, disabled && styles.optionDisabled]}
     >
       <View style={styles.optionContent}>
         {Icon ? (
@@ -150,5 +156,8 @@ const styles = createThemedStyles({
   optionText: {
     ...typography.bodyMd,
     fontFamily: "Geist_500Medium",
+  },
+  optionDisabled: {
+    opacity: 0.55,
   },
 });

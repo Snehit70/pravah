@@ -468,6 +468,7 @@ export function InboxScreen({
         <View style={styles.searchInputWrap}>
           <SearchField
             compact
+            editable={!isLoading}
             value={query}
             onChangeText={setQuery}
             placeholder="Search inbox"
@@ -475,13 +476,19 @@ export function InboxScreen({
             accessibilityLabel="Search inbox"
           />
         </View>
-        {tasks.length > 0 && canAct ? (
+        {canAct && (tasks.length > 0 || isLoading) ? (
           <Pressable
             onPress={() => setSelectMode(true)}
+            disabled={isLoading || tasks.length === 0}
             hitSlop={10}
             accessibilityRole="button"
+            accessibilityState={{ disabled: isLoading || tasks.length === 0 }}
             accessibilityLabel="Select tasks"
-            style={({ pressed }) => [styles.selectEnter, pressed && { opacity: 0.6 }]}
+            style={({ pressed }) => [
+              styles.selectEnter,
+              (isLoading || tasks.length === 0) && styles.selectEnterDisabled,
+              pressed && { opacity: 0.6 },
+            ]}
           >
             <SelectGlyph size={18} />
             <Text style={styles.selectEnterText}>Select</Text>
@@ -489,7 +496,12 @@ export function InboxScreen({
         ) : null}
       </View>
 
-      <SlidingSegmented options={FILTERS} value={filter} onSelect={setFilter} />
+      <SlidingSegmented
+        options={FILTERS}
+        value={filter}
+        onSelect={setFilter}
+        disabled={isLoading}
+      />
     </View>
   );
 
@@ -552,7 +564,7 @@ export function InboxScreen({
             progressBackgroundColor={colors.bgCard}
           />
         }
-        ListHeaderComponent={selectMode || tasks.length > 0 || isFiltering ? listHeader : null}
+        ListHeaderComponent={selectMode || tasks.length > 0 || isFiltering || isLoading ? listHeader : null}
         ListFooterComponent={
           hasPendingRows ? <Text style={styles.loadingMore}>Preparing more tasks...</Text> : null
         }
@@ -718,6 +730,9 @@ const styles = createThemedStyles({
     paddingHorizontal: spacing.sm,
     justifyContent: "center",
     flexShrink: 0,
+  },
+  selectEnterDisabled: {
+    opacity: 0.5,
   },
   selectEnterText: {
     ...typography.micro,

@@ -246,6 +246,23 @@ describe("Progress screen", () => {
     task("two", "Write release notes", Date.now() - 1000),
   ];
 
+  it("uses a structural page skeleton during an empty initial load", () => {
+    render(
+      <InsightsScreen
+        tasks={[]}
+        completedTasks={[]}
+        isLoading
+        isRefreshing={false}
+        tabBarHeight={60}
+        onRefresh={vi.fn(async () => undefined)}
+        renderCompletedTaskItem={({ item }) => <span>{item.title}</span>}
+      />,
+    );
+
+    expect(screen.getByText("Loading Progress")).toBeTruthy();
+    expect(screen.queryByText("Loading your progress…")).toBeNull();
+  });
+
   it("renders the analytics sections without legacy subtabs", () => {
     renderScreen(completed);
     expect(screen.getByText("Recent momentum")).toBeTruthy();

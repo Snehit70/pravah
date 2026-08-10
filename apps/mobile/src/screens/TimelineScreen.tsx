@@ -330,7 +330,7 @@ export function TimelineScreen({
     </Animated.View>
   );
 
-  const loadingBlock = <TaskListSkeleton variant="timeline" />;
+  const loadingBlock = <TaskListSkeleton variant="timeline" layout={layout} />;
 
   const animateCrossfade = crossfadeArmed && !reducedMotion;
   const entering = animateCrossfade ? layoutEntering : undefined;

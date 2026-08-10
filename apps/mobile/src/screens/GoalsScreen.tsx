@@ -42,6 +42,7 @@ import { GoalTaskRow } from "../components/GoalTaskRow";
 import { SlidingSegmented } from "../components/SlidingSegmented";
 import { GoalSettingsSheet } from "../components/GoalSettingsSheet";
 import { QuickScheduleSheet } from "../components/QuickScheduleSheet";
+import { GoalsPageSkeleton } from "../components/LoadingSkeleton";
 import {
   AdjustmentsIcon,
   CheckIcon,
@@ -832,7 +833,7 @@ export function GoalsScreen({
             </View>
           ) : null
         }
-        ListEmptyComponent={isHydrated ? emptyBlock : null}
+        ListEmptyComponent={isHydrated ? emptyBlock : <GoalsPageSkeleton />}
         renderItem={({ item, index }) => {
           const progress = progressByGoal.get(item.id) ?? { total: 0, done: 0, ratio: 0 };
           const hasTasks = progress.total > 0;

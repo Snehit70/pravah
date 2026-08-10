@@ -38,6 +38,7 @@ import {
   LedgerCheckIcon,
 } from "../components/UiIcons";
 import { SearchField } from "../components/SearchField";
+import { ProgressPageSkeleton } from "../components/LoadingSkeleton";
 import CompletionHistoryIcon from "../assets/icons/completion-history.svg";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useGoalLinks, useGoals } from "../hooks/useGoals";
@@ -240,6 +241,7 @@ export function InsightsScreen({
   }, [now, orderedCompleted, query, window]);
 
   const Wrap = reducedMotion ? View : Animated.View;
+  const showInitialSkeleton = isLoading && tasks.length === 0 && completedTasks.length === 0;
   const sectionEnter = (i: number) =>
     reducedMotion ? undefined : FadeInDown.duration(360).delay(60 * i);
 
@@ -268,6 +270,10 @@ export function InsightsScreen({
           />
         }
       >
+        {showInitialSkeleton ? (
+          <ProgressPageSkeleton />
+        ) : (
+          <>
         <Wrap>
           <SectionHeader
             label="Recent momentum"
@@ -353,6 +359,8 @@ export function InsightsScreen({
             Loading your progress…
           </Text>
         ) : null}
+          </>
+        )}
       </ScrollView>
 
       <Modal
