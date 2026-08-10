@@ -148,7 +148,11 @@ function PriorityGroupHeader({
       accessibilityLabel={`${label}, ${count} tasks`}
       accessibilityState={{ expanded }}
       hitSlop={8}
-      style={({ pressed }) => [styles.priorityGroupHeader, pressed && { opacity: 0.65 }]}
+      style={({ pressed }) => [
+        styles.priorityGroupHeader,
+        !expanded && styles.priorityGroupHeaderCollapsed,
+        pressed && { opacity: 0.65 },
+      ]}
     >
       <Text style={styles.priorityGroupLabel}>
         {label}
@@ -168,12 +172,15 @@ function NoPrioritySummary({ count, onPress }: { count: number; onPress: () => v
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`Open ${count} ${taskLabel} without a priority`}
-      hitSlop={8}
-      style={({ pressed }) => [styles.noPrioritySummary, pressed && { opacity: 0.7 }]}
-    >
-      <Text style={styles.noPrioritySummaryText}>
-        {count} {count === 1 ? "task" : "tasks"} without a priority
-      </Text>
+    hitSlop={8}
+    style={({ pressed }) => [styles.noPrioritySummary, pressed && { opacity: 0.7 }]}
+  >
+      <View style={styles.noPrioritySummaryCopy}>
+        <Text style={styles.noPrioritySummaryText}>
+          {count} {count === 1 ? "task" : "tasks"} without a priority
+        </Text>
+        <Text style={styles.noPrioritySummaryAction}>View task list</Text>
+      </View>
       <ChevronRightIcon color={colors.textMuted} size={18} />
     </Pressable>
   );
@@ -725,6 +732,16 @@ const styles = createThemedStyles({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  priorityGroupHeaderCollapsed: {
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
+    minHeight: 52,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+  },
   priorityGroupLabel: {
     color: colors.textSecondary,
     ...typography.title,
@@ -738,8 +755,9 @@ const styles = createThemedStyles({
   noPrioritySummary: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.lg,
-    minHeight: 52,
+    minHeight: 64,
     paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     borderRadius: radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
@@ -748,9 +766,17 @@ const styles = createThemedStyles({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  noPrioritySummaryCopy: {
+    flex: 1,
+    gap: 2,
+  },
   noPrioritySummaryText: {
     ...typography.bodyMd,
     color: colors.textSecondary,
+  },
+  noPrioritySummaryAction: {
+    ...typography.micro,
+    color: colors.accent,
   },
   noPriorityRoot: {
     flex: 1,

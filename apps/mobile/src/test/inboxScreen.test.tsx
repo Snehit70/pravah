@@ -437,6 +437,20 @@ describe("InboxScreen", () => {
     expect(screen.queryByTestId("task-task3")).toBeNull();
   });
 
+  it("labels no-priority navigation separately from priority disclosure", () => {
+    const noPriorityTask = {
+      ...sampleTasks[0],
+      _id: "task3" as Id<"tasks">,
+      title: "Task without priority",
+      priority: undefined,
+    };
+    renderInbox({ tasks: [...sampleTasks, noPriorityTask] });
+
+    expect(screen.getByText("View task list")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Priority 1, 1 tasks" }).getAttribute("aria-expanded"))
+      .toBe("true");
+  });
+
   it("opens the editor when a row body is tapped", () => {
     renderInbox();
 
