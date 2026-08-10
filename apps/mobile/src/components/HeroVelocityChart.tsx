@@ -197,18 +197,19 @@ export function HeroVelocityChart({
   const reducedMotion = useReducedMotion();
   const [width, setWidth] = useState(0);
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
+  const maxCount = Math.max(1, ...series.map((point) => point.count));
+  const axisMax = Math.max(1, Math.ceil(maxCount));
 
   const geom = useMemo(() => {
     if (width === 0 || series.length === 0) {
       return { line: "", area: "", length: 0, xs: [] as number[], ys: [] as number[] };
     }
     const innerH = Math.max(1, height - PAD_TOP - PAD_BOTTOM);
-    const max = Math.max(1, ...series.map((p) => p.count));
     const stepX = series.length > 1 ? width / (series.length - 1) : width;
     const pts: Pt[] = series.map((p, i) => ({
       x: series.length > 1 ? i * stepX : width / 2,
       // Leave a hair of headroom so the peak never clips the top stroke.
-      y: PAD_TOP + innerH - (p.count / max) * (innerH - 2),
+      y: PAD_TOP + innerH - (p.count / axisMax) * (innerH - 2),
     }));
     const line = monotoneLinePath(pts);
     const area = areaPath(line, pts[0].x, pts[pts.length - 1].x, height);
@@ -219,12 +220,10 @@ export function HeroVelocityChart({
       xs: pts.map((p) => p.x),
       ys: pts.map((p) => p.y),
     };
-  }, [series, width, height]);
+  }, [axisMax, series, width, height]);
 
   const baselineY = height - PAD_BOTTOM;
   const hasData = series.some((p) => p.count > 0);
-  const maxCount = Math.max(1, ...series.map((point) => point.count));
-  const axisMax = Math.max(1, Math.ceil(maxCount));
   const canScrub = geom.xs.length >= 2 && hasData;
 
   const axis = useMemo(() => {

@@ -132,20 +132,20 @@ function PriorityGroupHeader({
   const rotation = useSharedValue(expanded ? 1 : 0);
 
   useEffect(() => {
-    rotation.value = reducedMotion
+    rotation.set(reducedMotion
       ? expanded ? 1 : 0
-      : withTiming(expanded ? 1 : 0, { duration: motion.duration.base });
+      : withTiming(expanded ? 1 : 0, { duration: motion.duration.base }));
   }, [expanded, reducedMotion, rotation]);
 
   const chevronStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value * 90}deg` }],
+    transform: [{ rotate: `${rotation.get() * 90}deg` }],
   }));
 
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${label}, ${count} tasks`}
+      accessibilityLabel={`${label}, ${count} ${count === 1 ? "task" : "tasks"}`}
       accessibilityState={{ expanded }}
       hitSlop={8}
       style={({ pressed }) => [
@@ -177,7 +177,7 @@ function NoPrioritySummary({ count, onPress }: { count: number; onPress: () => v
   >
       <View style={styles.noPrioritySummaryCopy}>
         <Text style={styles.noPrioritySummaryText}>
-          {count} {count === 1 ? "task" : "tasks"} without a priority
+          {count} {taskLabel} without a priority
         </Text>
         <Text style={styles.noPrioritySummaryAction}>View task list</Text>
       </View>
@@ -543,7 +543,10 @@ export function InboxScreen({
               <Animated.View entering={introStagger(index)}>
                 <NoPrioritySummary
                   count={row.count}
-                  onPress={() => setNoPriorityVisible(true)}
+                  onPress={() => {
+                    if (selectMode) return;
+                    setNoPriorityVisible(true);
+                  }}
                 />
               </Animated.View>
             );

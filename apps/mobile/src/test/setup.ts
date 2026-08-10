@@ -8,5 +8,6 @@ vi.mock("expo-clipboard", () => ({
   ContentType: { IMAGE: "image", PLAIN_TEXT: "plain-text" },
   addClipboardListener: vi.fn(() => ({ remove: vi.fn() })),
   hasImageAsync: vi.fn(async () => false),
+  getStringAsync: vi.fn(async () => ""),
   getImageAsync: vi.fn(async () => null),
 }));

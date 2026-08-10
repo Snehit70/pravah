@@ -253,6 +253,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setSeriesEnd("2");
       setShowDetails(false);
       setPlanningMode("summary");
+      setShowDatePicker(false);
       setShowTimePicker(false);
       setKind("task");
       setError(null);

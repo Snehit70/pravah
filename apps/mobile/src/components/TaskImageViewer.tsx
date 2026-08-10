@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal, Pressable, Text, View, useWindowDimensions } from "react-native";
 import { Image } from "expo-image";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -54,7 +54,8 @@ export function TaskImageViewer({
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const [activeIndex, setActiveIndex] = useState(() => Math.max(0, Math.min(initialIndex, images.length - 1)));
-  const [delivery, setDelivery] = useState<DeliveryResult | null>(null);
+  const [delivery, setDelivery] = useState<{ imageId: string; result: DeliveryResult } | null>(null);
+  const deliveryRequest = useRef<{ active: boolean } | null>(null);
   const scale = useSharedValue(MIN_SCALE);
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -66,64 +67,67 @@ export function TaskImageViewer({
   useEffect(() => {
     if (!visible) return;
     setActiveIndex(Math.max(0, Math.min(initialIndex, images.length - 1)));
-    scale.value = MIN_SCALE;
-    savedScale.value = MIN_SCALE;
-    translateX.value = 0;
-    translateY.value = 0;
+    scale.set(MIN_SCALE);
+    savedScale.set(MIN_SCALE);
+    translateX.set(0);
+    translateY.set(0);
   }, [images, initialIndex, scale, savedScale, translateX, translateY, visible]);
 
   useEffect(() => {
     if (!visible || !activeImage) return;
-    let active = true;
-    setDelivery(null);
+    const request = { active: true };
+    deliveryRequest.current = request;
     if (activeImage.state !== "ready") {
       return () => {
-        active = false;
+        request.active = false;
+        if (deliveryRequest.current === request) deliveryRequest.current = null;
       };
     }
     if (!resolveDelivery) {
-      setDelivery({ kind: "not_found" });
+      setDelivery({ imageId: activeImage.taskImageId, result: { kind: "not_found" } });
       return () => {
-        active = false;
+        request.active = false;
+        if (deliveryRequest.current === request) deliveryRequest.current = null;
       };
     }
     void resolveDelivery(activeImage.taskImageId, "detail")
       .then((result) => {
-        if (active) setDelivery(result);
+        if (request.active) setDelivery({ imageId: activeImage.taskImageId, result });
       })
       .catch(() => {
-        if (active) setDelivery({ kind: "not_found" });
+        if (request.active) setDelivery({ imageId: activeImage.taskImageId, result: { kind: "not_found" } });
       });
     return () => {
-      active = false;
+      request.active = false;
+      if (deliveryRequest.current === request) deliveryRequest.current = null;
     };
   }, [activeImage, resolveDelivery, visible]);
 
-  const resetTransform = () => {
-    scale.value = withTiming(MIN_SCALE);
-    savedScale.value = MIN_SCALE;
-    translateX.value = withTiming(0);
-    translateY.value = withTiming(0);
-  };
+  const resetTransform = useCallback(() => {
+    scale.set(withTiming(MIN_SCALE));
+    savedScale.set(MIN_SCALE);
+    translateX.set(withTiming(0));
+    translateY.set(withTiming(0));
+  }, [savedScale, scale, translateX, translateY]);
 
-  const goTo = (nextIndex: number) => {
+  const goTo = useCallback((nextIndex: number) => {
     if (nextIndex < 0 || nextIndex >= count || nextIndex === activeIndex) return;
     setActiveIndex(nextIndex);
     resetTransform();
-  };
+  }, [activeIndex, count, resetTransform]);
 
   const goPrevious = () => goTo(activeIndex - 1);
   const goNext = () => goTo(activeIndex + 1);
 
-  const handleSwipe = (translationX: number) => {
+  const handleSwipe = useCallback((translationX: number) => {
     if (scale.value > MIN_SCALE + 0.05 || Math.abs(translationX) < SWIPE_DISTANCE) {
-      translateX.value = withTiming(0);
-      translateY.value = withTiming(0);
+      translateX.set(withTiming(0));
+      translateY.set(withTiming(0));
       return;
     }
-    if (translationX < 0) goNext();
-    else goPrevious();
-  };
+    if (translationX < 0) goTo(activeIndex + 1);
+    else goTo(activeIndex - 1);
+  }, [activeIndex, goTo, scale, translateX, translateY]);
 
   const pan = useMemo(
     () =>
@@ -141,7 +145,7 @@ export function TaskImageViewer({
         .onEnd((event) => {
           runOnJS(handleSwipe)(event.translationX);
         }),
-    [height, width, scale, translateX, translateY]
+    [handleSwipe, height, width, scale, translateX, translateY]
   );
 
   const pinch = useMemo(
@@ -190,12 +194,13 @@ export function TaskImageViewer({
 
   if (!activeImage) return null;
   const localPreview = activeImage.state !== "ready" && activeImage.previewUri ? { uri: activeImage.previewUri } : null;
-  const remoteImage = delivery?.kind === "ready" ? { uri: delivery.url } : null;
+  const activeDelivery = delivery?.imageId === activeImage.taskImageId ? delivery.result : null;
+  const remoteImage = activeDelivery?.kind === "ready" ? { uri: activeDelivery.url } : null;
   const imageSource = localPreview ?? remoteImage;
   const unavailable = !imageSource && (
     activeImage.state !== "ready" ||
-    delivery?.kind === "not_found" ||
-    delivery?.kind === "state"
+    activeDelivery?.kind === "not_found" ||
+    activeDelivery?.kind === "state"
   );
 
   return (

@@ -241,6 +241,15 @@ describe("Task-image Cloudinary policy", () => {
     ).toBe(true);
     expect(
       await verifyWebhookSignature({
+        rawBody: `${body} `,
+        timestamp: 1_776_245_400,
+        signature: "c64109d0be657f977d035fdab7ff497a8d004086",
+        apiSecret: "abcd",
+        nowSeconds: 1_776_245_460,
+      })
+    ).toBe(false);
+    expect(
+      await verifyWebhookSignature({
         rawBody: body,
         timestamp: 1_776_245_400,
         signature: "9a3aec295ed266cb3073d56a17136ec375cc308d9de9cfaa9ff2d8d1067df994",

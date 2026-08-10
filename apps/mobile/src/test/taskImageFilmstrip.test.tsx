@@ -70,7 +70,11 @@ vi.mock("react-native-reanimated", () => {
     runOnJS: (callback: (...args: never[]) => unknown) => callback,
     useAnimatedStyle: (factory: () => unknown) => factory(),
     useSharedValue: <T,>(value: T) => {
-      const ref = React.useRef({ value });
+      const ref = React.useRef({
+        value,
+        get() { return this.value; },
+        set(next: T) { this.value = next; },
+      });
       return ref.current;
     },
     withTiming: <T,>(value: T) => value,

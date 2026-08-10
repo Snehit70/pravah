@@ -509,6 +509,7 @@ export function TimelineScreen({
       tabBarHeight={tabBarHeight}
       onRefresh={onRefresh}
       overdueCount={overdueCount}
+      completedTasks={completedTasks}
       onTriageOverdue={onTriageOverdue}
       onRescheduleAllGoals={onRescheduleAllGoals}
       onCompleteTask={onCompleteTask}

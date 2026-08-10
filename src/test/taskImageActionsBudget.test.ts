@@ -251,6 +251,32 @@ describe("Task-image grant budget boundary", () => {
     );
   });
 
+  it("does not delete a provider asset for a stale restart attempt", async () => {
+    const fetchMock = vi.fn(async (input: unknown) => {
+      if (String(input).includes("/resources/image/authenticated")) {
+        return new Response(JSON.stringify({ resources: [{ public_id: "provider-private-id" }] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ result: "ok" }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const runMutation = vi.fn(async () => ({ reset: true }));
+
+    await expect(reconcileUpload({
+      auth,
+      runQuery: vi.fn(async () => ({
+        uploadId: "upload-1",
+        providerPublicId: "provider-private-id",
+        providerAttempt: 1,
+        state: "verifying",
+      })),
+      runMutation,
+    }, { uploadId: "upload-1", attempt: 2, restartAttempt: true })).resolves.toEqual({
+      status: "unknown",
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(runMutation).not.toHaveBeenCalled();
+  });
+
   it("keeps cleanup authority fail-closed and the tombstone retryable during an outage", async () => {
     vi.stubEnv("CLOUDINARY_API_SECRET", "");
     const runMutation = vi

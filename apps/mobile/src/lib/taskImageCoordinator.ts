@@ -492,12 +492,21 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       return false;
     }
     if (result.status === "absent") {
-      update(entry, { attempt: result.attempt ?? entry.attempt, needsReconciliation: false });
+      update(entry, {
+        attempt: result.attempt ?? entry.attempt,
+        needsReconciliation: false,
+        restartAttempt: false,
+      });
       return true;
     }
     if (result.status === "ready") {
       if (!("result" in result)) {
-        update(entry, { state: "ready", needsReconciliation: false, retryAt: undefined });
+        update(entry, {
+          state: "ready",
+          needsReconciliation: false,
+          retryAt: undefined,
+          restartAttempt: false,
+        });
         await removeSource(entry);
         return false;
       }
@@ -509,7 +518,11 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       return false;
     }
     if (result.status === "failed") {
-      update(entry, { needsReconciliation: false, failure: safeFailure(result.failure) });
+      update(entry, {
+        needsReconciliation: false,
+        failure: safeFailure(result.failure),
+        restartAttempt: false,
+      });
       return true;
     }
     if (result.status === "uploading" || result.status === "verifying") {
@@ -521,7 +534,6 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
   const runEntry = async (entry: UploadRecord) => {
     const generation = entry.generation;
     const restartAttempt = entry.restartAttempt === true;
-    entry.restartAttempt = undefined;
     activeCount += 1;
     update(entry, { state: "uploading", failure: undefined, progress: undefined });
     try {

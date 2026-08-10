@@ -81,6 +81,7 @@ type TimelineDayCarouselProps = {
   tabBarHeight: number;
   onRefresh: () => Promise<void>;
   overdueCount?: number;
+  completedTasks?: MobileTask[];
   onTriageOverdue?: (
     taskId: string,
     target: "today" | "tomorrow" | "week" | "drop" | { date: string }
@@ -286,6 +287,7 @@ type DayCardViewProps = {
   today: string;
   tomorrow: string;
   justCompleted: Record<string, MobileTask>;
+  completedTasks: MobileTask[];
   isRefreshing: boolean;
   onRefresh: () => Promise<void>;
   onToggle?: (task: MobileTask, completed: boolean) => void;
@@ -300,6 +302,7 @@ function DayCardView({
   today,
   tomorrow,
   justCompleted,
+  completedTasks,
   isRefreshing,
   onRefresh,
   onToggle,
@@ -317,15 +320,24 @@ function DayCardView({
   const liveIds = useMemo(() => new Set(tasks.map((t) => String(t._id))), [tasks]);
   const rows = useMemo(() => {
     if (!isCurrent) return tasks;
-    const held = Object.values(justCompleted).filter((t) => !liveIds.has(String(t._id)));
+    const held = [
+      ...(isToday ? completedTasks : []),
+      ...Object.values(justCompleted),
+    ].filter((t, index, all) =>
+      !liveIds.has(String(t._id)) &&
+      all.findIndex((candidate) => String(candidate._id) === String(t._id)) === index
+    );
     if (held.length === 0) return tasks;
     return [...tasks, ...held].sort(
       (a, b) => a.position - b.position || a.scheduledAt - b.scheduledAt
     );
-  }, [isCurrent, justCompleted, liveIds, tasks]);
+  }, [completedTasks, isCurrent, isToday, justCompleted, liveIds, tasks]);
 
   const isDayClear = tasks.length === 0;
-  const completedIds = new Set(Object.keys(justCompleted));
+  const completedIds = new Set([
+    ...completedTasks.filter((task) => task.deadline === today).map((task) => String(task._id)),
+    ...Object.keys(justCompleted),
+  ]);
   const completedCount = isToday
     ? rows.filter((task) => completedIds.has(String(task._id))).length
     : 0;
@@ -709,6 +721,7 @@ export function TimelineDayCarousel({
   tabBarHeight,
   onRefresh,
   overdueCount,
+  completedTasks = [],
   onTriageOverdue,
   onRescheduleAllGoals,
   onCompleteTask,
@@ -894,6 +907,7 @@ export function TimelineDayCarousel({
                 today={today}
                 tomorrow={tomorrow}
                 justCompleted={justCompleted}
+                completedTasks={completedTasks}
                 isRefreshing={isRefreshing}
                 onRefresh={onRefresh}
                 onToggle={canToggle ? handleToggle : undefined}

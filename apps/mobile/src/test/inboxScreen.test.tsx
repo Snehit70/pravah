@@ -146,7 +146,11 @@ vi.mock("react-native-reanimated", () => ({
   FadeOut: { duration: () => undefined },
   FadeInDown: { duration: () => ({ delay: () => undefined }) },
   useAnimatedStyle: (factory: () => unknown) => factory(),
-  useSharedValue: (value: number) => ({ value }),
+  useSharedValue: (value: number) => ({
+    value,
+    get: () => value,
+    set: (next: number) => { value = next; },
+  }),
   withTiming: (value: number) => value,
 }));
 
@@ -416,7 +420,7 @@ describe("InboxScreen", () => {
   it("collapses priority groups while keeping their headers available", () => {
     renderInbox();
 
-    const priorityOne = screen.getByRole("button", { name: "Priority 1, 1 tasks" });
+    const priorityOne = screen.getByRole("button", { name: "Priority 1, 1 task" });
     fireEvent.click(priorityOne);
 
     expect(screen.queryByTestId("task-task1")).toBeNull();
@@ -454,7 +458,7 @@ describe("InboxScreen", () => {
     renderInbox({ tasks: [...sampleTasks, noPriorityTask] });
 
     expect(screen.getByText("View task list")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Priority 1, 1 tasks" }).getAttribute("aria-expanded"))
+    expect(screen.getByRole("button", { name: "Priority 1, 1 task" }).getAttribute("aria-expanded"))
       .toBe("true");
   });
 

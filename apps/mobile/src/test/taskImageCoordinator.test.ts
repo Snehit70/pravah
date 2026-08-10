@@ -838,6 +838,39 @@ describe("Task-image mobile coordinator", () => {
     }
   });
 
+  it("keeps restart reconciliation armed after an unknown provider response", async () => {
+    vi.useFakeTimers();
+    try {
+      const dependencies = createDependencies();
+      dependencies.upload = vi.fn().mockRejectedValueOnce(
+        Object.assign(new Error("callback lost"), { code: "upload_failed", retryable: true })
+      );
+      dependencies.reconcileAttempt = vi
+        .fn()
+        .mockResolvedValueOnce({ status: "unknown" as const })
+        .mockResolvedValueOnce({ status: "absent" as const, attempt: 1 });
+      const coordinator = createTaskImageCoordinator(dependencies);
+
+      await coordinator.select("photos");
+      await coordinator.beginUploadAfterSave();
+      await coordinator.retry("upl_mobile_1");
+
+      expect(dependencies.reconcileAttempt).toHaveBeenNthCalledWith(1, {
+        uploadId: "upl_mobile_1",
+        attempt: 1,
+        restartAttempt: true,
+      });
+      await vi.advanceTimersByTimeAsync(UPLOAD_RETRY_DELAYS_MS[0]);
+      expect(dependencies.reconcileAttempt).toHaveBeenNthCalledWith(2, {
+        uploadId: "upl_mobile_1",
+        attempt: 1,
+        restartAttempt: true,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("sanitizes malformed persisted entries before they can be written back", async () => {
     const saved: unknown[] = [];
     const coordinator = createTaskImageCoordinator({

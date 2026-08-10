@@ -281,6 +281,15 @@ describe("TimelineDayCarousel", () => {
     expect(screen.queryByText("1 task")).toBeNull();
   });
 
+  it("keeps persisted completed Today tasks in carousel progress", () => {
+    renderCarousel([[TODAY, [task("t1", TODAY, "Write tests")]]], {
+      completedTasks: [task("done", TODAY, "Already done")],
+    });
+
+    expect(screen.getByText("1 of 2 done")).toBeTruthy();
+    expect(screen.getByText("Already done")).toBeTruthy();
+  });
+
   it("opens the edit sheet when the row itself is tapped", () => {
     const onEditTask = vi.fn();
     renderCarousel([[TODAY, [task("t1", TODAY, "Write tests")]]], {

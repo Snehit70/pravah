@@ -373,6 +373,7 @@ export const reconcileUploadAttempt = action({
     if (presence === "unknown") return { status: "unknown" as const };
     if (presence === "present") {
       if (args.restartAttempt === true) {
+        if (args.attempt !== providerAttempt) return { status: "unknown" as const };
         const cleanup = await deleteProviderAsset({
           provider,
           publicId: context.providerPublicId,

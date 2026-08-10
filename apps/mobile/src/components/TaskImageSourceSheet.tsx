@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CopyIcon, SmartphoneIcon, StackPlusIcon } from "./UiIcons";
@@ -13,9 +14,14 @@ type TaskImageSourceSheetProps = {
 
 export function TaskImageSourceSheet({ visible, onClose, onSelectSource }: TaskImageSourceSheetProps) {
   const insets = useSafeAreaInsets();
+  const selecting = useRef(false);
   const choose = (kind: "photos" | "camera" | "paste") => {
+    if (selecting.current) return;
+    selecting.current = true;
     onClose();
-    void onSelectSource(kind);
+    void Promise.resolve(onSelectSource(kind)).finally(() => {
+      selecting.current = false;
+    });
   };
 
   return (

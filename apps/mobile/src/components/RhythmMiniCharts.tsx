@@ -283,18 +283,18 @@ function MorphChart({
 
   useEffect(() => {
     if (width <= 0) {
-      grow.value = 0;
+      grow.set(0);
       return;
     }
     if (reducedMotion) {
-      grow.value = 1;
+      grow.set(1);
       return;
     }
-    grow.value = 0;
-    grow.value = withTiming(1, {
+    grow.set(0);
+    grow.set(withTiming(1, {
       duration: motion.duration.slow,
       easing: Easing.out(Easing.cubic),
-    });
+    }));
   }, [counts, reducedMotion, grow, width]);
 
   useEffect(() => {
