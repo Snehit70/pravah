@@ -457,14 +457,16 @@ export function InboxScreen({
     </View>
   ) : (
     <View style={styles.searchWrap}>
-      <View style={styles.introRow}>
-        <View style={styles.introCopy}>
-          <Text style={styles.queueTitle}>Triage queue</Text>
-          <Text style={styles.queueSubtitle}>
-            {isFiltering
-              ? `${filteredTasks.length} matching ${filteredTasks.length === 1 ? "task" : "tasks"}`
-              : `${tasks.length} task${tasks.length === 1 ? "" : "s"} without a deadline`}
-          </Text>
+      <View style={styles.searchActionsRow}>
+        <View style={styles.searchInputWrap}>
+          <SearchField
+            compact
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search inbox"
+            placeholderTextColor={colors.textMuted}
+            accessibilityLabel="Search inbox"
+          />
         </View>
         {tasks.length > 0 && canAct ? (
           <Pressable
@@ -474,20 +476,11 @@ export function InboxScreen({
             accessibilityLabel="Select tasks"
             style={({ pressed }) => [styles.selectEnter, pressed && { opacity: 0.6 }]}
           >
-            <SelectGlyph />
+            <SelectGlyph size={18} />
             <Text style={styles.selectEnterText}>Select</Text>
           </Pressable>
         ) : null}
       </View>
-
-      <SearchField
-        compact
-        value={query}
-        onChangeText={setQuery}
-        placeholder="Search inbox"
-        placeholderTextColor={colors.textMuted}
-        accessibilityLabel="Search inbox"
-      />
 
       <SlidingSegmented options={FILTERS} value={filter} onSelect={setFilter} />
     </View>
@@ -700,31 +693,24 @@ const styles = createThemedStyles({
     paddingBottom: spacing.sm,
     gap: spacing.sm,
   },
-  introRow: {
-    minHeight: 40,
+  searchActionsRow: {
     flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    gap: spacing.md,
+    alignItems: "center",
+    gap: spacing.sm,
   },
-  introCopy: {
+  searchInputWrap: {
     flex: 1,
-    gap: 2,
-  },
-  queueTitle: {
-    color: colors.textPrimary,
-    ...typography.title,
-  },
-  queueSubtitle: {
-    color: colors.textMuted,
-    ...typography.bodyMd,
+    minWidth: 0,
   },
   selectEnter: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    minHeight: 44,
+    minWidth: 78,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    justifyContent: "center",
+    flexShrink: 0,
   },
   selectEnterText: {
     ...typography.micro,

@@ -397,6 +397,15 @@ describe("InboxScreen", () => {
     expect(screen.queryByTestId("goal-task2")).toBeNull();
   });
 
+  it("keeps the Inbox controls focused without redundant queue copy", () => {
+    renderInbox();
+
+    expect(screen.queryByText("Triage queue")).toBeNull();
+    expect(screen.queryByText(/without a deadline/i)).toBeNull();
+    expect(screen.getByRole("button", { name: "Select tasks" })).toBeTruthy();
+    expect(screen.getByPlaceholderText("Search inbox")).toBeTruthy();
+  });
+
   it("collapses priority groups while keeping their headers available", () => {
     renderInbox();
 
