@@ -76,8 +76,23 @@ vi.mock("react-native", () => {
   const StyleSheet = {
     create: <T extends Record<string, unknown>>(styles: T): T => styles,
     hairlineWidth: 1,
+    absoluteFill: {},
   };
-  return { View, Text, Pressable, StyleSheet };
+  const Modal = ({ children, visible }: AnyProps & { visible?: boolean }) =>
+    visible === false ? null : React.createElement("div", {}, children);
+  return { View, Text, Pressable, Modal, StyleSheet, useWindowDimensions: () => ({ width: 390, height: 844, scale: 1, fontScale: 1 }) };
+});
+
+vi.mock("react-native-gesture-handler", () => {
+  const gesture = () => {
+    const value: Record<string, unknown> = {};
+    for (const method of ["onUpdate", "onEnd", "onStart", "onFinalize", "numberOfTaps", "enabled", "activeOffsetX", "failOffsetY"]) value[method] = () => value;
+    return value;
+  };
+  return {
+    Gesture: { Pan: gesture, Pinch: gesture, Tap: gesture, Simultaneous: (...gestures: unknown[]) => gestures[0] ?? gesture() },
+    GestureDetector: ({ children }: { children?: React.ReactNode }) => React.createElement("div", {}, children),
+  };
 });
 
 vi.mock("react-native-gesture-handler/ReanimatedSwipeable", () => ({
@@ -94,7 +109,12 @@ vi.mock("react-native-reanimated", () => ({
   interpolate: () => 0,
   useAnimatedStyle: () => ({}),
   useSharedValue: (value: number) => ({ value }),
+  runOnJS: (callback: (...args: never[]) => unknown) => callback,
   withTiming: withTimingMock,
+}));
+
+vi.mock("react-native-safe-area-context", () => ({
+  useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 
 vi.mock("expo-image", () => ({

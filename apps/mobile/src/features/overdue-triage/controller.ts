@@ -7,6 +7,7 @@ import type {
   ManualTriageTarget,
   OverduePreviewData,
   OverduePreviewGroup,
+  PendingManualTriageChange,
 } from "./types";
 
 type ShowToast = (next: ToastState) => void;
@@ -230,6 +231,17 @@ export function useOverdueTriageController({
     ]
   );
 
+  const applyManualTriageChanges = useCallback(
+    (changes: PendingManualTriageChange[]) => {
+      if (changes.length === 0) return;
+      closeOverdue();
+      for (const change of changes) {
+        handleManualTriage(change.taskId, change.target);
+      }
+    },
+    [closeOverdue, handleManualTriage]
+  );
+
   const confirmPreview = useCallback(() => {
     if (!selectedPreview) return;
     void runApply(
@@ -238,6 +250,19 @@ export function useOverdueTriageController({
       applyDeadline && selectedPreview.suggestedDeadline ? [selectedPreview.goalId] : []
     );
   }, [applyDeadline, runApply, selectedPreview]);
+
+  const applySuggestedPreview = useCallback(
+    (goalId: string) => {
+      const group = previewGroups.find((entry) => entry.goalId === goalId);
+      if (!group) return;
+      void runApply(
+        group,
+        group.planToken,
+        group.defaultApplyDeadline && group.suggestedDeadline ? [group.goalId] : []
+      );
+    },
+    [previewGroups, runApply]
+  );
 
   const rescheduleAll = useCallback(() => {
     if (!previewData) return;
@@ -260,7 +285,9 @@ export function useOverdueTriageController({
     openPreview,
     closePreview,
     confirmPreview,
+    applySuggestedPreview,
     rescheduleAll,
     handleManualTriage,
+    applyManualTriageChanges,
   };
 }

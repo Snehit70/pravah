@@ -9,10 +9,13 @@ import Animated, {
 } from "react-native-reanimated";
 import { colors, fonts, motion, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
+import { weekdayDate } from "../lib/dates";
 
 type Props = {
   label: string;
   count?: number;
+  /** ISO date for the richer compact Timeline landmark. */
+  dateKey?: string;
   /** When true, draws an accent underline that reveals on mount with a brief
    *  overshoot — the mobile port of web's todayAccentReveal keyframe. */
   isToday: boolean;
@@ -21,9 +24,10 @@ type Props = {
 /**
  * Web parity (src/index.css:238-243): the "today" column header gets a
  * one-shot accent underline that scales from 0→1 with a 1.08 overshoot, then
- * settles. Other dates render a flat label only.
+ * settles. Other dates use the weekday as the primary landmark and the exact
+ * month/day as a quieter secondary line.
  */
-export function TimelineSectionHeader({ label, count, isToday }: Props) {
+export function TimelineSectionHeader({ label, count, isToday, dateKey }: Props) {
   const scale = useSharedValue(0);
   const opacity = useSharedValue(0);
 
@@ -59,12 +63,25 @@ export function TimelineSectionHeader({ label, count, isToday }: Props) {
     opacity: opacity.value,
   }));
 
+  const exactDate = dateKey ? weekdayDate(dateKey) : "";
+  const [weekday, monthDay] = exactDate.split(" · ");
+  const hasLandmark = Boolean(dateKey && exactDate);
+
   return (
     <View style={styles.wrap}>
-      <Text style={[styles.label, isToday && styles.labelToday]}>
-        {label}
-        {typeof count === "number" ? <Text style={styles.count}>  {count}</Text> : null}
-      </Text>
+      <View style={styles.headerLine}>
+        {hasLandmark ? (
+          <View style={styles.landmark}>
+            <Text style={styles.label}>{label === "Tomorrow" ? label : weekday}</Text>
+            <Text style={styles.date}>{label === "Tomorrow" ? exactDate : monthDay}</Text>
+          </View>
+        ) : (
+          <Text style={[styles.label, isToday && styles.labelToday]}>{label}</Text>
+        )}
+        {typeof count === "number" ? (
+          <Text style={styles.count}>{count} {count === 1 ? "task" : "tasks"}</Text>
+        ) : null}
+      </View>
       {isToday ? <Animated.View style={[styles.underline, underlineStyle]} /> : null}
     </View>
   );
@@ -76,15 +93,24 @@ const styles = createThemedStyles({
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
     marginHorizontal: spacing.lg,
-    alignSelf: "flex-start",
+  },
+  headerLine: {
+    minHeight: 38,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  landmark: {
+    gap: 1,
   },
   // Sentence-case Geist, not mono caps — headers are wayfinding, not log
   // lines. Accent color is reserved for today, the "you are here" anchor.
   label: {
     color: colors.textSecondary,
     fontFamily: fonts.sansSemibold,
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: 18,
+    lineHeight: 22,
     letterSpacing: -0.1,
   },
   labelToday: {
@@ -93,7 +119,15 @@ const styles = createThemedStyles({
   count: {
     color: colors.textMuted,
     ...typography.numeric,
-    fontSize: 12,
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  date: {
+    color: colors.textMuted,
+    ...typography.numeric,
+    fontSize: 11,
+    lineHeight: 15,
+    letterSpacing: 0.5,
   },
   // 1px accent rule beneath the label. transform-origin defaults to center on
   // RN, which matches web's `transform-origin: center`.

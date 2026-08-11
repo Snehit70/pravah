@@ -55,12 +55,16 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import type { MobileTask } from "./TaskCard";
 import { taskEmphasisColor } from "../lib/taskAccent";
 import {
+  CalendarIcon,
   CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   ChevronUpIcon,
+  ClockIcon,
+  PencilIcon,
   StarIcon,
   SyncLoopIcon,
+  TrashIcon,
 } from "./UiIcons";
 import { dateLabel, weekdayDate } from "../lib/dates";
 import { buildDayCards, cardKey, type DayCarouselCard } from "../lib/timelineCarousel";
@@ -77,6 +81,7 @@ type TimelineDayCarouselProps = {
   tabBarHeight: number;
   onRefresh: () => Promise<void>;
   overdueCount?: number;
+  completedTasks?: MobileTask[];
   onTriageOverdue?: (
     taskId: string,
     target: "today" | "tomorrow" | "week" | "drop" | { date: string }
@@ -282,6 +287,7 @@ type DayCardViewProps = {
   today: string;
   tomorrow: string;
   justCompleted: Record<string, MobileTask>;
+  completedTasks: MobileTask[];
   isRefreshing: boolean;
   onRefresh: () => Promise<void>;
   onToggle?: (task: MobileTask, completed: boolean) => void;
@@ -296,6 +302,7 @@ function DayCardView({
   today,
   tomorrow,
   justCompleted,
+  completedTasks,
   isRefreshing,
   onRefresh,
   onToggle,
@@ -313,14 +320,28 @@ function DayCardView({
   const liveIds = useMemo(() => new Set(tasks.map((t) => String(t._id))), [tasks]);
   const rows = useMemo(() => {
     if (!isCurrent) return tasks;
-    const held = Object.values(justCompleted).filter((t) => !liveIds.has(String(t._id)));
+    const held = [
+      ...(isToday ? completedTasks : []),
+      ...Object.values(justCompleted),
+    ].filter((t, index, all) =>
+      !liveIds.has(String(t._id)) &&
+      all.findIndex((candidate) => String(candidate._id) === String(t._id)) === index
+    );
     if (held.length === 0) return tasks;
     return [...tasks, ...held].sort(
       (a, b) => a.position - b.position || a.scheduledAt - b.scheduledAt
     );
-  }, [isCurrent, justCompleted, liveIds, tasks]);
+  }, [completedTasks, isCurrent, isToday, justCompleted, liveIds, tasks]);
 
   const isDayClear = tasks.length === 0;
+  const completedIds = new Set([
+    ...completedTasks.filter((task) => task.deadline === today).map((task) => String(task._id)),
+    ...Object.keys(justCompleted),
+  ]);
+  const completedCount = isToday
+    ? rows.filter((task) => completedIds.has(String(task._id))).length
+    : 0;
+  const totalCount = rows.length;
 
   return (
     <View
@@ -332,9 +353,23 @@ function DayCardView({
           <Text style={[styles.cardLabel, isToday && styles.cardLabelToday]}>{label}</Text>
           {subtitle ? <Text style={styles.cardSubtitle}>{subtitle}</Text> : null}
         </View>
-        <Text style={styles.cardCount}>
-          {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
-        </Text>
+        {isToday ? (
+          <View style={styles.progressBlock} accessibilityLabel={`${completedCount} of ${totalCount} done`}>
+            <Text style={styles.progressText}>{completedCount} of {totalCount} done</Text>
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: totalCount > 0 ? `${Math.round((completedCount / totalCount) * 100)}%` : "0%" },
+                ]}
+              />
+            </View>
+          </View>
+        ) : (
+          <Text style={styles.cardCount}>
+            {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
+          </Text>
+        )}
       </View>
 
       <FlatList<MobileTask>
@@ -379,6 +414,7 @@ function OverdueCard({
   today,
   getGoalName,
   onCompleteTask,
+  onEditTask,
   onTriage,
   onRescheduleAllGoals,
 }: {
@@ -386,6 +422,7 @@ function OverdueCard({
   today: string;
   getGoalName?: (taskId: string) => string | undefined;
   onCompleteTask?: (id: Id<"tasks">) => void;
+  onEditTask?: (task: MobileTask) => void;
   onTriage?: (
     taskId: string,
     target: "today" | "tomorrow" | "week" | "drop" | { date: string }
@@ -433,9 +470,7 @@ function OverdueCard({
             <SyncLoopIcon color={colors.accent} size={14} strokeWidth={1.8} />
             <Text style={styles.overdueBulkText}>Reflow all</Text>
           </Pressable>
-        ) : (
-          <Text style={styles.cardCount}>{tasks.length}</Text>
-        )}
+        ) : null}
       </View>
 
       <ScrollView
@@ -475,15 +510,6 @@ function OverdueCard({
                     ) : null}
                   </View>
                 </View>
-                {!isCompleted ? <Pressable
-                  onPress={() => setOverflowTaskId((current) => current === id ? null : id)}
-                  hitSlop={10}
-                  accessibilityRole="button"
-                  accessibilityLabel={`More actions for ${task.title}`}
-                  style={styles.compactHitTarget}
-                >
-                  <Text style={styles.moreText}>•••</Text>
-                </Pressable> : null}
                 {onCompleteTask && !isCompleted ? (
                   <Pressable
                     onPress={() => {
@@ -507,30 +533,32 @@ function OverdueCard({
                     </View>
                   </Pressable>
                 ) : null}
+                {!isCompleted && (onTriage || onEditTask) ? <Pressable
+                  onPress={() => setOverflowTaskId((current) => current === id ? null : id)}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel={`More actions for ${task.title}`}
+                  style={styles.compactHitTarget}
+                >
+                  <Text style={styles.moreText}>•••</Text>
+                </Pressable> : null}
               </View>
 
-              {overflowOpen && onTriage && onCompleteTask && !isCompleted ? (
+              {overflowOpen && (onTriage || onEditTask) && !isCompleted ? (
                 <View style={styles.inlineDropRow}>
-                  <Pressable
+                  {onEditTask ? <Pressable
                     onPress={() => {
                       setOverflowTaskId(null);
-                      setCompletedTasks((current) => ({ ...current, [id]: task }));
-                      onCompleteTask?.(task._id);
-                      setTimeout(() => {
-                        setCompletedTasks((current) => {
-                          const next = { ...current };
-                          delete next[id];
-                          return next;
-                        });
-                      }, 900);
+                      onEditTask(task);
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel={`Complete ${task.title}`}
+                    accessibilityLabel={`Open ${task.title}`}
                     style={({ pressed }) => [styles.inlineMenuAction, pressed && styles.rowPressed]}
                   >
-                    <Text style={styles.inlineMenuText}>Complete</Text>
-                  </Pressable>
-                  <Pressable
+                    <PencilIcon color={colors.textSecondary} size={15} strokeWidth={1.8} />
+                    <Text style={styles.inlineMenuText}>Open task</Text>
+                  </Pressable> : null}
+                  {onTriage ? <Pressable
                     onPress={() => {
                       setOverflowTaskId(null);
                       onTriage(id, "drop");
@@ -539,8 +567,9 @@ function OverdueCard({
                     accessibilityLabel={`Drop ${task.title}`}
                     style={({ pressed }) => [styles.inlineDrop, pressed && styles.rowPressed]}
                   >
+                    <TrashIcon color={colors.error} size={15} strokeWidth={1.8} />
                     <Text style={styles.inlineDropText}>Drop task</Text>
-                  </Pressable>
+                  </Pressable> : null}
                 </View>
               ) : null}
 
@@ -556,7 +585,10 @@ function OverdueCard({
                     accessibilityState={{ expanded }}
                     style={styles.compactScheduleHeader}
                   >
-                    <Text style={styles.compactScheduleLabel}>Reschedule</Text>
+                    <View style={styles.compactScheduleTitle}>
+                      <CalendarIcon color={colors.textSecondary} size={16} strokeWidth={1.8} />
+                      <Text style={styles.compactScheduleLabel}>Reschedule</Text>
+                    </View>
                     <View style={styles.compactSchedulePrompt}>
                       <Text style={styles.compactSchedulePromptText}>Choose a date</Text>
                       {expanded ? (
@@ -580,6 +612,11 @@ function OverdueCard({
                           style={styles.compactOptionHit}
                         >
                           <View style={styles.compactOptionVisual}>
+                            {target === "today" ? (
+                              <ClockIcon color={colors.textMuted} size={16} strokeWidth={1.8} />
+                            ) : (
+                              <CalendarIcon color={colors.textMuted} size={16} strokeWidth={1.8} />
+                            )}
                             <Text style={styles.compactOptionText}>
                               {target === "today" ? "Today" : target === "tomorrow" ? "Tomorrow" : "Weekend"}
                             </Text>
@@ -596,6 +633,7 @@ function OverdueCard({
                         style={styles.compactOptionHit}
                       >
                         <View style={styles.compactOptionVisual}>
+                          <CalendarIcon color={colors.textMuted} size={16} strokeWidth={1.8} />
                           <Text style={styles.compactOptionText}>Pick a date</Text>
                         </View>
                       </Pressable>
@@ -683,6 +721,7 @@ export function TimelineDayCarousel({
   tabBarHeight,
   onRefresh,
   overdueCount,
+  completedTasks = [],
   onTriageOverdue,
   onRescheduleAllGoals,
   onCompleteTask,
@@ -856,6 +895,7 @@ export function TimelineDayCarousel({
                 today={today}
                 getGoalName={getGoalName}
                 onCompleteTask={onCompleteTask}
+                onEditTask={onEditTask}
                 onTriage={onTriageOverdue}
                 onRescheduleAllGoals={onRescheduleAllGoals}
               />
@@ -867,6 +907,7 @@ export function TimelineDayCarousel({
                 today={today}
                 tomorrow={tomorrow}
                 justCompleted={justCompleted}
+                completedTasks={completedTasks}
                 isRefreshing={isRefreshing}
                 onRefresh={onRefresh}
                 onToggle={canToggle ? handleToggle : undefined}
@@ -940,6 +981,28 @@ const styles = createThemedStyles({
     color: colors.textMuted,
     ...typography.bodyMd,
     paddingTop: 4,
+  },
+  progressBlock: {
+    minWidth: 124,
+    alignItems: "flex-end",
+    gap: spacing.xs,
+    paddingTop: 4,
+  },
+  progressText: {
+    color: colors.textSecondary,
+    ...typography.bodyMd,
+  },
+  progressTrack: {
+    width: 124,
+    height: 6,
+    borderRadius: radii.full,
+    backgroundColor: colors.borderSubtle,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: radii.full,
+    backgroundColor: colors.accent,
   },
   cardListContent: {
     paddingHorizontal: spacing.lg,
@@ -1114,35 +1177,65 @@ const styles = createThemedStyles({
     alignItems: "flex-end",
     flexDirection: "row",
     justifyContent: "flex-end",
-    gap: spacing.lg,
+    alignSelf: "flex-end",
+    gap: spacing.xs,
+    padding: spacing.xs,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    borderRadius: 12,
+    backgroundColor: colors.bgFloating,
+    ...shadow.sm,
   },
-  inlineMenuAction: { minHeight: 44, justifyContent: "center" },
+  inlineMenuAction: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+  },
   inlineMenuText: { color: colors.textSecondary, ...typography.micro },
-  inlineDrop: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.md },
+  inlineDrop: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+  },
   inlineDropText: { color: colors.error, ...typography.micro },
   compactSchedule: {
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    borderRadius: radii.md,
+    borderRadius: 12,
+    backgroundColor: colors.bgCard,
     overflow: "hidden",
   },
   compactScheduleExpanded: { borderColor: colors.borderFocus },
   compactScheduleHeader: {
-    minHeight: 44,
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
-  compactScheduleLabel: { color: colors.textPrimary, ...typography.micro },
+  compactScheduleTitle: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  compactScheduleLabel: { color: colors.textPrimary, ...typography.title, fontSize: 14, lineHeight: 18 },
   compactSchedulePrompt: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
-  compactSchedulePromptText: { color: colors.textMuted, ...typography.micro },
+  compactSchedulePromptText: { color: colors.textMuted, ...typography.bodyMd },
   compactOptions: {
     flexDirection: "row",
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
+    backgroundColor: colors.bgSurface,
   },
-  compactOptionHit: { flex: 1, minHeight: 44, justifyContent: "center" },
-  compactOptionVisual: { height: 30, alignItems: "center", justifyContent: "center" },
-  compactOptionText: { color: colors.textSecondary, ...typography.micro },
+  compactOptionHit: {
+    flex: 1,
+    minHeight: 64,
+    justifyContent: "center",
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: colors.borderSubtle,
+  },
+  compactOptionVisual: { minHeight: 52, alignItems: "center", justifyContent: "center", gap: spacing.xs, paddingHorizontal: spacing.xs },
+  compactOptionText: { color: colors.textSecondary, ...typography.bodyMd, fontSize: 12, lineHeight: 16, textAlign: "center" },
 });

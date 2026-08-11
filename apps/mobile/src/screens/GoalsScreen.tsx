@@ -17,8 +17,6 @@ import { BackHandler, FlatList, Pressable, ScrollView, StyleSheet, Text, View } 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import NavGoalsAsset from "../assets/icons/nav-goals.svg";
-import AddNewGoalAsset from "../assets/icons/add-new-goal.svg";
-import AddNewTaskAsset from "../assets/icons/add-new-task.svg";
 import { haptic } from "../lib/haptic";
 import { shortDate, toIsoDate } from "../lib/dates";
 import Animated, {
@@ -44,6 +42,7 @@ import { GoalTaskRow } from "../components/GoalTaskRow";
 import { SlidingSegmented } from "../components/SlidingSegmented";
 import { GoalSettingsSheet } from "../components/GoalSettingsSheet";
 import { QuickScheduleSheet } from "../components/QuickScheduleSheet";
+import { GoalsPageSkeleton } from "../components/LoadingSkeleton";
 import {
   AdjustmentsIcon,
   CheckIcon,
@@ -531,7 +530,6 @@ function GoalDetailSheet({
                   accessibilityLabel={`Add task to ${goal.text}`}
                   style={({ pressed }) => [detailStyles.addButton, pressed && { opacity: 0.86 }]}
                 >
-                  <AddNewTaskAsset width={22} height={22} color={colors.textInverse} />
                   <Text style={detailStyles.addButtonText}>Add task</Text>
                 </Pressable>
               </View>
@@ -785,7 +783,7 @@ export function GoalsScreen({
           accessibilityLabel="Create a new goal"
           style={({ pressed }) => [styles.emptyAction, pressed && { opacity: 0.75 }]}
         >
-          <AddNewGoalAsset width={24} height={24} color={colors.textInverse} />
+          <Text style={styles.emptyActionText}>Add goal</Text>
         </Pressable>
       ) : null}
     </Animated.View>
@@ -829,13 +827,13 @@ export function GoalsScreen({
                   accessibilityLabel="Create a new goal"
                   style={({ pressed }) => [styles.newGoalAction, pressed && { opacity: 0.7 }]}
                 >
-                  <AddNewGoalAsset width={24} height={24} color={colors.accent} />
+                  <Text style={styles.actionText}>Add goal</Text>
                 </Pressable>
               ) : null}
             </View>
           ) : null
         }
-        ListEmptyComponent={isHydrated ? emptyBlock : null}
+        ListEmptyComponent={isHydrated ? emptyBlock : <GoalsPageSkeleton />}
         renderItem={({ item, index }) => {
           const progress = progressByGoal.get(item.id) ?? { total: 0, done: 0, ratio: 0 };
           const hasTasks = progress.total > 0;
@@ -912,7 +910,7 @@ export function GoalsScreen({
                           accessibilityLabel={`Plan next task for ${item.text}`}
                           style={({ pressed }) => [styles.planNextAction, pressed && { opacity: 0.6 }]}
                         >
-                          <AddNewTaskAsset width={22} height={22} color={colors.accent} />
+                          <Text style={styles.planNextText}>Add task</Text>
                         </Pressable>
                       ) : null}
                     </View>
@@ -973,10 +971,15 @@ const styles = createThemedStyles({
     color: colors.textMuted,
   },
   newGoalAction: {
-    width: 44,
-    height: 44,
+    minHeight: 44,
+    paddingHorizontal: spacing.sm,
     alignItems: "center",
     justifyContent: "center",
+  },
+  actionText: {
+    ...typography.micro,
+    fontFamily: fonts.sansSemibold,
+    color: colors.accent,
   },
   goalCard: {
     marginHorizontal: spacing.lg,
@@ -1027,11 +1030,17 @@ const styles = createThemedStyles({
     paddingTop: 6,
   },
   planNextAction: {
-    width: 44,
-    height: 44,
+    minWidth: 44,
+    minHeight: 44,
+    paddingHorizontal: spacing.xs,
     marginVertical: -14,
     alignItems: "center",
     justifyContent: "center",
+  },
+  planNextText: {
+    ...typography.micro,
+    fontFamily: fonts.sansSemibold,
+    color: colors.accent,
   },
   progressTrack: {
     height: 4,
@@ -1112,13 +1121,18 @@ const styles = createThemedStyles({
     textAlign: "center",
   },
   emptyAction: {
-    width: 48,
-    height: 48,
+    minHeight: 44,
+    paddingHorizontal: spacing.lg,
     marginTop: spacing.sm,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     backgroundColor: colors.accent,
+  },
+  emptyActionText: {
+    ...typography.bodyMd,
+    fontFamily: fonts.sansSemibold,
+    color: colors.textInverse,
   },
 });
 

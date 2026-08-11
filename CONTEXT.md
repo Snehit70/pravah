@@ -16,9 +16,29 @@ _Avoid_: Human output, debug output
 An active task without a scheduled date. It is visible in the Inbox rather than on the Timeline.
 _Avoid_: Unscheduled, backlog
 
+### Priority group
+The Inbox collection of active Inbox tasks sharing one priority level. Priority groups are visible sections that may be opened or collapsed while their task count remains available.
+_Avoid_: Priority filter, priority task type
+
+### No-priority view
+The dedicated Inbox view for active Inbox tasks that have no priority. It is reached from the Inbox summary rather than behaving like a collapsible priority group.
+_Avoid_: Unprioritized group, no-priority filter
+
 ### Timeline task
 An active task with a scheduled date. It is visible on the Timeline and may be overdue, due today, or upcoming.
 _Avoid_: Scheduled task
+
+### Compact Timeline
+The vertical Timeline reading mode for fast scanning across date sections. It keeps overdue work behind one review entry, then presents Today and future date groups in order.
+_Avoid_: Timeline carousel, calendar view
+
+### Overdue review
+The single Timeline entry representing all active Timeline tasks whose scheduled dates have passed. It opens overdue triage rather than presenting overdue work as ordinary date sections.
+_Avoid_: Overdue date group, overdue list
+
+### Timeline date group
+A visible group of Timeline tasks sharing one scheduled calendar date. Today and future groups use their date context as the heading; overdue tasks do not form date groups in the Compact Timeline.
+_Avoid_: Timeline bucket, overdue section
 
 ### Completed task
 A task whose planned work is finished and retained as completion history.
@@ -111,6 +131,26 @@ _Avoid_: Backup, full account export, image archive
 ### Workspace snapshot
 The bounded device-local cache of last-known Task presentation metadata used while the authenticated mobile workspace refreshes. It is neither an offline workspace nor a backup.
 _Avoid_: Offline database, local backup
+
+### Page skeleton
+A temporary structural representation of a primary page while its first usable data is unavailable. It preserves the page's hierarchy and approximate geometry while replacing unavailable records with neutral placeholders.
+_Avoid_: Generic loading cards, spinner page
+
+### Initial load
+The first loading state for a page when no usable page data is available to display. It may use a Page skeleton, but it must keep the destination page's identity and structure recognizable.
+_Avoid_: Refresh, sync indicator
+
+### Refreshing
+The state in which a page with usable content is checking for newer data. Existing content remains visible while the refresh runs; it does not regress to an Initial load or Page skeleton.
+_Avoid_: Reload screen, blank loading state
+
+### Skeleton section
+A page region represented by a Page skeleton while that region's authoritative data is unavailable. A Skeleton section may resolve independently without making unrelated regions wait.
+_Avoid_: Fake content, placeholder record
+
+### Section hydration
+The transition in which a Skeleton section is replaced by its authoritative page content. Section hydration may happen incrementally during Initial load, but never replaces usable cached content during Refreshing.
+_Avoid_: Partial fake load, optimistic skeleton data
 
 ### CLI resource grammar
 The canonical human command shape `pravah <resource> <verb> [target] [filters]`. A resource names the object being operated on, a verb states the operation, a target identifies one object when needed, and filters narrow a collection.

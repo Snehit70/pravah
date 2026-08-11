@@ -65,6 +65,8 @@ vi.mock("react-native", () => {
     );
   };
   const RefreshControl = () => React.createElement("div", { "data-testid": "refresh-control" });
+  const Modal = ({ visible, children }: { visible?: boolean; children?: React.ReactNode }) =>
+    visible ? React.createElement("div", { "data-testid": "modal" }, children) : null;
   const FlatList = ({
     data,
     renderItem,
@@ -113,6 +115,7 @@ vi.mock("react-native", () => {
       ...safe,
       value: value ?? "",
       placeholder,
+      readOnly: rest.editable === false,
       onChange: (e: { target: { value: string } }) => onChangeText?.(e.target.value),
     });
   };
@@ -125,6 +128,7 @@ vi.mock("react-native", () => {
     Text,
     Pressable,
     RefreshControl,
+    Modal,
     FlatList,
     TextInput,
     StyleSheet,
@@ -137,9 +141,48 @@ vi.mock("react-native-reanimated", () => ({
     View: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
       React.createElement("div", {}, children),
   },
+  LinearTransition: { duration: () => undefined },
   FadeIn: { duration: () => undefined },
   FadeOut: { duration: () => undefined },
   FadeInDown: { duration: () => ({ delay: () => undefined }) },
+  useAnimatedStyle: (factory: () => unknown) => factory(),
+  useSharedValue: (value: number) => ({
+    value,
+    get: () => value,
+    set: (next: number) => { value = next; },
+  }),
+  withTiming: (value: number) => value,
+}));
+
+vi.mock("../components/SlidingSegmented", () => ({
+  SlidingSegmented: ({
+    options,
+    value,
+    onSelect,
+    disabled,
+  }: {
+    options: Array<{ value: string; label: string }>;
+    value: string;
+    onSelect: (value: string) => void;
+    disabled?: boolean;
+  }) =>
+    React.createElement(
+      "div",
+      { "data-testid": "inbox-filters" },
+      options.map((option) =>
+        React.createElement(
+          "button",
+          {
+            key: option.value,
+            type: "button",
+            "aria-pressed": value === option.value,
+            disabled,
+            onClick: disabled ? undefined : () => onSelect(option.value),
+          },
+          option.label,
+        ),
+      ),
+    ),
 }));
 
 // ─── react-native-svg mock ────────────────────────────────────────────────────
@@ -240,6 +283,7 @@ vi.mock("../theme/tokens", () => ({
     textInverse: "#000",
   },
   spacing: { xs: 4, sm: 8, md: 16, lg: 24, xxl: 48, section: 32 },
+  motion: { duration: { base: 180 } },
   typography: { title: {}, headline: {}, bodyMd: {}, micro: {}, numeric: {} },
   radii: { sm: 4, md: 8, lg: 12, xl: 16, full: 999 },
   fonts: { sans: "sans", sansSemibold: "sans-semibold" },
@@ -260,6 +304,10 @@ vi.mock("../components/LoadingSkeleton", () => ({
 
 vi.mock("../hooks/useReducedMotion", () => ({
   useReducedMotion: () => false,
+}));
+
+vi.mock("react-native-safe-area-context", () => ({
+  useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 
 // Import component after all mocks are set up.
@@ -334,6 +382,9 @@ describe("InboxScreen", () => {
     renderInbox({ tasks: [], isLoading: true });
 
     expect(screen.getByTestId("skeleton-inbox")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Search inbox").getAttribute("readonly")).toBe("");
+    expect((screen.getByRole("button", { name: "Select tasks" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "All" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByText("Everything has a place.")).toBeNull();
   });
 
@@ -355,6 +406,60 @@ describe("InboxScreen", () => {
     // task1 is linked to Blog; task2 is unlinked.
     expect(screen.getByTestId("goal-task1").textContent).toBe("Blog");
     expect(screen.queryByTestId("goal-task2")).toBeNull();
+  });
+
+  it("keeps the Inbox controls focused without redundant queue copy", () => {
+    renderInbox();
+
+    expect(screen.queryByText("Triage queue")).toBeNull();
+    expect(screen.queryByText(/without a deadline/i)).toBeNull();
+    expect(screen.getByRole("button", { name: "Select tasks" })).toBeTruthy();
+    expect(screen.getByPlaceholderText("Search inbox")).toBeTruthy();
+  });
+
+  it("collapses priority groups while keeping their headers available", () => {
+    renderInbox();
+
+    const priorityOne = screen.getByRole("button", { name: "Priority 1, 1 task" });
+    fireEvent.click(priorityOne);
+
+    expect(screen.queryByTestId("task-task1")).toBeNull();
+    expect(screen.getByTestId("task-task2")).toBeTruthy();
+
+    fireEvent.click(priorityOne);
+    expect(screen.getByTestId("task-task1")).toBeTruthy();
+  });
+
+  it("opens no-priority tasks in their dedicated view", () => {
+    const noPriorityTask = {
+      ...sampleTasks[0],
+      _id: "task3" as Id<"tasks">,
+      title: "Task without priority",
+      priority: undefined,
+    };
+    renderInbox({ tasks: [...sampleTasks, noPriorityTask] });
+
+    expect(screen.queryByTestId("task-task3")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open 1 task without a priority" }));
+    expect(screen.getByTestId("task-task3")).toBeTruthy();
+    expect(screen.getByText("No priority")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.queryByTestId("task-task3")).toBeNull();
+  });
+
+  it("labels no-priority navigation separately from priority disclosure", () => {
+    const noPriorityTask = {
+      ...sampleTasks[0],
+      _id: "task3" as Id<"tasks">,
+      title: "Task without priority",
+      priority: undefined,
+    };
+    renderInbox({ tasks: [...sampleTasks, noPriorityTask] });
+
+    expect(screen.getByText("View task list")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Priority 1, 1 task" }).getAttribute("aria-expanded"))
+      .toBe("true");
   });
 
   it("opens the editor when a row body is tapped", () => {

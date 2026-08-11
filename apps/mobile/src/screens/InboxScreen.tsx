@@ -12,29 +12,36 @@
  * so mutation wiring stays out of here.
  */
 
-import { useCallback, useMemo, useState } from "react";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Animated, {
+  FadeIn,
+  FadeOut,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
+import { FlatList, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
-import { colors, radii, spacing, typography } from "../theme/tokens";
+import { colors, motion, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
 import type { MobileTask } from "../components/TaskCard";
 import { InboxTaskRow } from "../components/InboxTaskRow";
 import { QuickScheduleSheet } from "../components/QuickScheduleSheet";
-import { CheckIcon, TrashIcon } from "../components/UiIcons";
+import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, TrashIcon } from "../components/UiIcons";
 import { SearchField } from "../components/SearchField";
-import { TimelineSectionHeader } from "../components/TimelineSectionHeader";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
+import { SlidingSegmented, type SegmentedItem } from "../components/SlidingSegmented";
 import { useConfirm } from "../hooks/useConfirm";
 import { useIncrementalRowCount } from "../hooks/useIncrementalRowCount";
 import { useListIntroStagger } from "../hooks/useListIntroStagger";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useGoalLinks, useGoals } from "../hooks/useGoals";
 import { useUserPreferences } from "../hooks/useUserPreferences";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type FilterValue = "all" | "p1" | "p2" | "p3" | "none";
 
-const FILTERS: { value: FilterValue; label: string }[] = [
+const FILTERS: SegmentedItem<FilterValue>[] = [
   { value: "all", label: "All" },
   { value: "p1", label: "P1" },
   { value: "p2", label: "P2" },
@@ -64,7 +71,13 @@ type InboxScreenProps = {
 type PriorityBucket = "p1" | "p2" | "p3" | "none";
 
 type InboxRow =
-  | { kind: "header"; bucket: PriorityBucket; label: string; count: number }
+  | {
+      kind: "header";
+      bucket: Exclude<PriorityBucket, "none">;
+      label: string;
+      count: number;
+    }
+  | { kind: "no-priority-summary"; count: number }
   | { kind: "task"; task: MobileTask };
 
 const BUCKET_ORDER: PriorityBucket[] = ["p1", "p2", "p3", "none"];
@@ -94,10 +107,83 @@ function buildInboxRows(tasks: MobileTask[]): InboxRow[] {
   for (const bucket of BUCKET_ORDER) {
     const inBucket = grouped.get(bucket);
     if (!inBucket || inBucket.length === 0) continue;
-    rows.push({ kind: "header", bucket, label: BUCKET_LABEL[bucket], count: inBucket.length });
-    for (const task of inBucket) rows.push({ kind: "task", task });
+    if (bucket === "none") {
+      rows.push({ kind: "no-priority-summary", count: inBucket.length });
+    } else {
+      rows.push({ kind: "header", bucket, label: BUCKET_LABEL[bucket], count: inBucket.length });
+      for (const task of inBucket) rows.push({ kind: "task", task });
+    }
   }
   return rows;
+}
+
+function PriorityGroupHeader({
+  label,
+  count,
+  expanded,
+  onPress,
+}: {
+  label: string;
+  count: number;
+  expanded: boolean;
+  onPress: () => void;
+}) {
+  const reducedMotion = useReducedMotion();
+  const rotation = useSharedValue(expanded ? 1 : 0);
+
+  useEffect(() => {
+    rotation.set(reducedMotion
+      ? expanded ? 1 : 0
+      : withTiming(expanded ? 1 : 0, { duration: motion.duration.base }));
+  }, [expanded, reducedMotion, rotation]);
+
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.get() * 90}deg` }],
+  }));
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}, ${count} ${count === 1 ? "task" : "tasks"}`}
+      accessibilityState={{ expanded }}
+      hitSlop={8}
+      style={({ pressed }) => [
+        styles.priorityGroupHeader,
+        !expanded && styles.priorityGroupHeaderCollapsed,
+        pressed && { opacity: 0.65 },
+      ]}
+    >
+      <Text style={styles.priorityGroupLabel}>
+        {label}
+        <Text style={styles.priorityGroupCount}>  {count}</Text>
+      </Text>
+      <Animated.View style={[styles.priorityChevron, chevronStyle]}>
+        <ChevronRightIcon color={colors.textMuted} size={18} />
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+function NoPrioritySummary({ count, onPress }: { count: number; onPress: () => void }) {
+  const taskLabel = count === 1 ? "task" : "tasks";
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${count} ${taskLabel} without a priority`}
+    hitSlop={8}
+    style={({ pressed }) => [styles.noPrioritySummary, pressed && { opacity: 0.7 }]}
+  >
+      <View style={styles.noPrioritySummaryCopy}>
+        <Text style={styles.noPrioritySummaryText}>
+          {count} {taskLabel} without a priority
+        </Text>
+        <Text style={styles.noPrioritySummaryAction}>View task list</Text>
+      </View>
+      <ChevronRightIcon color={colors.textMuted} size={18} />
+    </Pressable>
+  );
 }
 
 // An open checkbox with an outsized tick — reads as "select several".
@@ -144,10 +230,17 @@ export function InboxScreen({
   canAct,
 }: InboxScreenProps) {
   const reducedMotion = useReducedMotion();
+  const insets = useSafeAreaInsets();
   const introStagger = useListIntroStagger();
   const confirm = useConfirm();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterValue>("all");
+  const [expandedGroups, setExpandedGroups] = useState<Record<Exclude<PriorityBucket, "none">, boolean>>({
+    p1: true,
+    p2: true,
+    p3: true,
+  });
+  const [noPriorityVisible, setNoPriorityVisible] = useState(false);
 
   // Multi-select / bulk-complete mode.
   const [selectMode, setSelectMode] = useState(false);
@@ -191,6 +284,15 @@ export function InboxScreen({
       return inTitle || inDescription;
     });
   }, [tasks, query, filter, goalLinks, prefs.hideGoalLinkedTasksFromInbox]);
+
+  const noPriorityTasks = useMemo(
+    () => filteredTasks.filter((task) => bucketOf(task) === "none"),
+    [filteredTasks],
+  );
+
+  const toggleGroup = (bucket: Exclude<PriorityBucket, "none">) => {
+    setExpandedGroups((current) => ({ ...current, [bucket]: !current[bucket] }));
+  };
 
   const hasHiddenGoalLinkedTasks =
     prefs.hideGoalLinkedTasksFromInbox && tasks.some((task) => Boolean(goalLinks[String(task._id)]));
@@ -310,11 +412,29 @@ export function InboxScreen({
 
   const loadingBlock = <TaskListSkeleton variant="inbox" />;
   const allRows = buildInboxRows(filteredTasks);
-  const visibleRowCount = useIncrementalRowCount(allRows.length);
-  const rows = allRows.slice(0, visibleRowCount);
-  const hasPendingRows = rows.length < allRows.length;
+  const expandableRows = allRows.filter((row) => {
+    if (row.kind !== "task") return true;
+    const bucket = bucketOf(row.task);
+    return bucket === "none" || expandedGroups[bucket];
+  });
+  const visibleRowCount = useIncrementalRowCount(expandableRows.length);
+  const rows = expandableRows.slice(0, visibleRowCount);
+  const hasPendingRows = rows.length < expandableRows.length;
 
   const selectedCount = visibleSelectedIds.size;
+
+  const renderTaskRow = (task: MobileTask) => (
+    <InboxTaskRow
+      task={task}
+      goalName={goalNameByTask.get(String(task._id))}
+      selectMode={selectMode}
+      selected={visibleSelectedIds.has(String(task._id))}
+      onPress={() => (canAct ? onEditTask(task) : undefined)}
+      onLongPress={() => (canAct ? enterSelectModeWith(task) : undefined)}
+      onToggleSelect={() => toggleSelect(task)}
+      onSchedule={() => (canAct ? setScheduleTask(task) : undefined)}
+    />
+  );
 
   const listHeader = selectMode ? (
     <View style={styles.searchWrap}>
@@ -344,60 +464,44 @@ export function InboxScreen({
     </View>
   ) : (
     <View style={styles.searchWrap}>
-      <View style={styles.introRow}>
-        <View style={styles.introCopy}>
-          <Text style={styles.queueTitle}>Triage queue</Text>
-          <Text style={styles.queueSubtitle}>
-            {isFiltering
-              ? `${filteredTasks.length} matching ${filteredTasks.length === 1 ? "task" : "tasks"}`
-              : `${tasks.length} task${tasks.length === 1 ? "" : "s"} without a deadline`}
-          </Text>
+      <View style={styles.searchActionsRow}>
+        <View style={styles.searchInputWrap}>
+          <SearchField
+            compact
+            editable={!isLoading}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search inbox"
+            placeholderTextColor={colors.textMuted}
+            accessibilityLabel="Search inbox"
+          />
         </View>
-        {tasks.length > 0 && canAct ? (
+        {canAct && (tasks.length > 0 || isLoading) ? (
           <Pressable
             onPress={() => setSelectMode(true)}
+            disabled={isLoading || tasks.length === 0}
             hitSlop={10}
             accessibilityRole="button"
+            accessibilityState={{ disabled: isLoading || tasks.length === 0 }}
             accessibilityLabel="Select tasks"
-            style={({ pressed }) => [styles.selectEnter, pressed && { opacity: 0.6 }]}
+            style={({ pressed }) => [
+              styles.selectEnter,
+              (isLoading || tasks.length === 0) && styles.selectEnterDisabled,
+              pressed && { opacity: 0.6 },
+            ]}
           >
-            <SelectGlyph />
+            <SelectGlyph size={18} />
             <Text style={styles.selectEnterText}>Select</Text>
           </Pressable>
         ) : null}
       </View>
 
-      <SearchField
-        compact
-        value={query}
-        onChangeText={setQuery}
-        placeholder="Search inbox"
-        placeholderTextColor={colors.textMuted}
-        accessibilityLabel="Search inbox"
+      <SlidingSegmented
+        options={FILTERS}
+        value={filter}
+        onSelect={setFilter}
+        disabled={isLoading}
       />
-
-      <View style={styles.chipRow}>
-        {FILTERS.map((option) => {
-          const active = filter === option.value;
-          return (
-            <Pressable
-              key={option.value}
-              onPress={() => setFilter(option.value)}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              accessibilityLabel={`Filter ${option.label}`}
-              style={({ pressed }) => [
-                styles.chip,
-                active && styles.chipActive,
-                pressed && { opacity: 0.7 },
-              ]}
-            >
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>{option.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
     </View>
   );
 
@@ -416,28 +520,40 @@ export function InboxScreen({
         updateCellsBatchingPeriod={50}
         windowSize={7}
         removeClippedSubviews
-        keyExtractor={(row) => (row.kind === "header" ? `header-${row.bucket}` : row.task._id)}
+        keyExtractor={(row) => {
+          if (row.kind === "header") return `header-${row.bucket}`;
+          if (row.kind === "no-priority-summary") return "no-priority-summary";
+          return row.task._id;
+        }}
         renderItem={({ item: row, index }) => {
           if (row.kind === "header") {
             return (
               <Animated.View entering={introStagger(index)}>
-                <TimelineSectionHeader label={row.label} count={row.count} isToday={false} />
+                <PriorityGroupHeader
+                  label={row.label}
+                  count={row.count}
+                  expanded={expandedGroups[row.bucket]}
+                  onPress={() => toggleGroup(row.bucket)}
+                />
               </Animated.View>
             );
           }
-          const task = row.task;
+          if (row.kind === "no-priority-summary") {
+            return (
+              <Animated.View entering={introStagger(index)}>
+                <NoPrioritySummary
+                  count={row.count}
+                  onPress={() => {
+                    if (selectMode) return;
+                    setNoPriorityVisible(true);
+                  }}
+                />
+              </Animated.View>
+            );
+          }
           return (
             <Animated.View entering={introStagger(index)}>
-              <InboxTaskRow
-                task={task}
-                goalName={goalNameByTask.get(String(task._id))}
-                selectMode={selectMode}
-                selected={visibleSelectedIds.has(String(task._id))}
-                onPress={() => (canAct ? onEditTask(task) : undefined)}
-                onLongPress={() => (canAct ? enterSelectModeWith(task) : undefined)}
-                onToggleSelect={() => toggleSelect(task)}
-                onSchedule={() => (canAct ? setScheduleTask(task) : undefined)}
-              />
+              {renderTaskRow(row.task)}
             </Animated.View>
           );
         }}
@@ -451,12 +567,63 @@ export function InboxScreen({
             progressBackgroundColor={colors.bgCard}
           />
         }
-        ListHeaderComponent={selectMode || tasks.length > 0 || isFiltering ? listHeader : null}
+        ListHeaderComponent={selectMode || tasks.length > 0 || isFiltering || isLoading ? listHeader : null}
         ListFooterComponent={
           hasPendingRows ? <Text style={styles.loadingMore}>Preparing more tasks...</Text> : null
         }
         ListEmptyComponent={isLoading ? loadingBlock : emptyBlock}
       />
+
+      <Modal
+        visible={noPriorityVisible}
+        animationType={reducedMotion ? "none" : "slide"}
+        presentationStyle="fullScreen"
+        statusBarTranslucent
+        onRequestClose={() => setNoPriorityVisible(false)}
+      >
+        <View style={styles.noPriorityRoot}>
+          <View style={[styles.noPriorityHeader, { paddingTop: insets.top + spacing.sm }]}>
+            <Pressable
+              onPress={() => setNoPriorityVisible(false)}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              style={({ pressed }) => [styles.noPriorityBack, pressed && { opacity: 0.6 }]}
+            >
+              <ChevronLeftIcon color={colors.textPrimary} size={22} />
+            </Pressable>
+            <View style={styles.noPriorityTitleBlock}>
+              <Text style={styles.noPriorityTitle}>No priority</Text>
+              <Text style={styles.noPriorityCount}>
+                {noPriorityTasks.length} {noPriorityTasks.length === 1 ? "task" : "tasks"}
+              </Text>
+            </View>
+            <View style={styles.noPriorityHeaderSpacer} />
+          </View>
+          <FlatList<MobileTask>
+            data={noPriorityTasks}
+            keyExtractor={(task) => task._id}
+            renderItem={({ item, index }) => (
+              <Animated.View entering={introStagger(index)}>
+                {renderTaskRow(item)}
+              </Animated.View>
+            )}
+            contentContainerStyle={{
+              paddingTop: spacing.sm,
+              paddingBottom: Math.max(insets.bottom, spacing.lg) + spacing.lg,
+            }}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <View style={styles.noPriorityEmpty}>
+                <Text style={styles.noPriorityEmptyTitle}>No matching tasks</Text>
+                <Text style={styles.noPriorityEmptyText}>
+                  Change the search or choose another Inbox filter.
+                </Text>
+              </View>
+            }
+          />
+        </View>
+      </Modal>
 
       {selectMode ? (
         <Animated.View
@@ -548,35 +715,134 @@ const styles = createThemedStyles({
     paddingBottom: spacing.sm,
     gap: spacing.sm,
   },
-  introRow: {
-    minHeight: 40,
+  searchActionsRow: {
     flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    gap: spacing.md,
+    alignItems: "center",
+    gap: spacing.sm,
   },
-  introCopy: {
+  searchInputWrap: {
     flex: 1,
-    gap: 2,
-  },
-  queueTitle: {
-    color: colors.textPrimary,
-    ...typography.title,
-  },
-  queueSubtitle: {
-    color: colors.textMuted,
-    ...typography.bodyMd,
+    minWidth: 0,
   },
   selectEnter: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    minHeight: 44,
+    minWidth: 78,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  selectEnterDisabled: {
+    opacity: 0.5,
   },
   selectEnterText: {
     ...typography.micro,
     color: colors.accent,
+  },
+  priorityGroupHeader: {
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+    marginHorizontal: spacing.lg,
+    minHeight: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  priorityGroupHeaderCollapsed: {
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
+    minHeight: 52,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+  },
+  priorityGroupLabel: {
+    color: colors.textSecondary,
+    ...typography.title,
+  },
+  priorityGroupCount: {
+    color: colors.textMuted,
+    ...typography.numeric,
+    fontSize: 12,
+  },
+  priorityChevron: {},
+  noPrioritySummary: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    minHeight: 64,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  noPrioritySummaryCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  noPrioritySummaryText: {
+    ...typography.bodyMd,
+    color: colors.textSecondary,
+  },
+  noPrioritySummaryAction: {
+    ...typography.micro,
+    color: colors.accent,
+  },
+  noPriorityRoot: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  noPriorityHeader: {
+    minHeight: 76,
+    paddingHorizontal: spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  noPriorityBack: {
+    width: 44,
+    height: 44,
+    alignItems: "flex-start",
+    justifyContent: "center",
+  },
+  noPriorityTitleBlock: {
+    flex: 1,
+    gap: 2,
+  },
+  noPriorityTitle: {
+    ...typography.headline,
+    color: colors.textPrimary,
+  },
+  noPriorityCount: {
+    ...typography.micro,
+    color: colors.textMuted,
+  },
+  noPriorityHeaderSpacer: {
+    width: 44,
+  },
+  noPriorityEmpty: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.section,
+    alignItems: "center",
+  },
+  noPriorityEmptyTitle: {
+    ...typography.title,
+    color: colors.textPrimary,
+  },
+  noPriorityEmptyText: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    textAlign: "center",
+    marginTop: spacing.xs,
   },
   selectBar: {
     minHeight: 44,
@@ -595,36 +861,6 @@ const styles = createThemedStyles({
   selectCount: {
     ...typography.title,
     color: colors.textPrimary,
-  },
-  chipRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: 6,
-  },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 11,
-    paddingVertical: 4,
-    borderRadius: radii.sm,
-    borderCurve: "continuous",
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bgCardGlass,
-    minHeight: 28,
-    justifyContent: "center",
-  },
-  chipActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
-  },
-  chipText: {
-    ...typography.micro,
-    color: colors.textSecondary,
-  },
-  chipTextActive: {
-    color: colors.bg,
   },
   bulkBar: {
     position: "absolute",

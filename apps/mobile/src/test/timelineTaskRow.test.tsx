@@ -98,6 +98,11 @@ vi.mock("../theme/tokens", () => ({
   fonts: { sans: "sans", sansSemibold: "sans-semibold", mono: "mono" },
 }));
 
+vi.mock("../components/UiIcons", () => ({
+  CheckIcon: ({ color: _color }: { color: string }) => React.createElement("span", { "data-testid": "icon-check" }),
+  ChevronRightIcon: ({ color: _color }: { color: string }) => React.createElement("span", { "data-testid": "icon-chevron" }),
+}));
+
 // Import component after all mocks are set up.
 import { TimelineTaskRow } from "../components/TimelineTaskRow";
 import type { MobileTask } from "../components/TaskCard";
@@ -141,8 +146,7 @@ describe("TimelineTaskRow", () => {
     render(<TimelineTaskRow {...baseProps} goalName="Java" />);
 
     expect(screen.getByText("Java Quiz 1")).toBeTruthy();
-    expect(screen.getByText("9:00 AM")).toBeTruthy();
-    expect(screen.getByText("Java")).toBeTruthy();
+    expect(screen.getByText(/9:00 AM.*Java.*P1/)).toBeTruthy();
   });
 
   it("omits time and goal when the task has neither", () => {
@@ -164,10 +168,10 @@ describe("TimelineTaskRow", () => {
     expect(onToggleSelect).not.toHaveBeenCalled();
   });
 
-  it("completes from the trailing check without opening the editor", () => {
+  it("completes from the leading checkbox without opening the editor", () => {
     render(<TimelineTaskRow {...baseProps} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Mark Java Quiz 1 done" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Mark Java Quiz 1 complete" }));
 
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(onPress).not.toHaveBeenCalled();
@@ -176,7 +180,7 @@ describe("TimelineTaskRow", () => {
   it("hides the check when completing is unavailable", () => {
     render(<TimelineTaskRow {...baseProps} onComplete={undefined} />);
 
-    expect(screen.queryByRole("button", { name: "Mark Java Quiz 1 done" })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: "Mark Java Quiz 1 complete" })).toBeNull();
   });
 
   it("becomes a checkbox in select mode and toggles instead of opening", () => {

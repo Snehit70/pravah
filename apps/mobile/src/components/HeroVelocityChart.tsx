@@ -83,6 +83,8 @@ type Props = {
 const PAD_TOP = 10;
 const PAD_BOTTOM = 6;
 const READOUT_W = 104;
+const Y_AXIS_W = 28;
+const Y_AXIS_GAP = spacing.xs;
 
 /**
  * The morph's line + area for one frame, built entirely inside one worklet.
@@ -178,6 +180,11 @@ function formatAxisTick(iso: string): string {
   return `${d} ${MONTHS[m - 1].toUpperCase()}`;
 }
 
+function formatCountAxis(value: number): string {
+  const rounded = Math.max(0, Math.ceil(value));
+  return rounded >= 1000 ? `${Math.round(rounded / 1000)}k` : String(rounded);
+}
+
 export function HeroVelocityChart({
   series,
   total,
@@ -190,18 +197,19 @@ export function HeroVelocityChart({
   const reducedMotion = useReducedMotion();
   const [width, setWidth] = useState(0);
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
+  const maxCount = Math.max(1, ...series.map((point) => point.count));
+  const axisMax = Math.max(1, Math.ceil(maxCount));
 
   const geom = useMemo(() => {
     if (width === 0 || series.length === 0) {
       return { line: "", area: "", length: 0, xs: [] as number[], ys: [] as number[] };
     }
     const innerH = Math.max(1, height - PAD_TOP - PAD_BOTTOM);
-    const max = Math.max(1, ...series.map((p) => p.count));
     const stepX = series.length > 1 ? width / (series.length - 1) : width;
     const pts: Pt[] = series.map((p, i) => ({
       x: series.length > 1 ? i * stepX : width / 2,
       // Leave a hair of headroom so the peak never clips the top stroke.
-      y: PAD_TOP + innerH - (p.count / max) * (innerH - 2),
+      y: PAD_TOP + innerH - (p.count / axisMax) * (innerH - 2),
     }));
     const line = monotoneLinePath(pts);
     const area = areaPath(line, pts[0].x, pts[pts.length - 1].x, height);
@@ -212,7 +220,7 @@ export function HeroVelocityChart({
       xs: pts.map((p) => p.x),
       ys: pts.map((p) => p.y),
     };
-  }, [series, width, height]);
+  }, [axisMax, series, width, height]);
 
   const baselineY = height - PAD_BOTTOM;
   const hasData = series.some((p) => p.count > 0);
@@ -395,13 +403,19 @@ export function HeroVelocityChart({
       </View>
 
       <GestureDetector gesture={pan}>
-        <View style={styles.chartCol}>
-          <View
-            style={{ height }}
-            onLayout={onLayout}
-            importantForAccessibility="no-hide-descendants"
-          >
-            {width > 0 && geom.line ? (
+        <View style={styles.chartWithAxis}>
+          <View style={styles.yAxis} importantForAccessibility="no-hide-descendants">
+            <Text style={styles.yAxisLabel}>{formatCountAxis(axisMax)}</Text>
+            <Text style={styles.yAxisLabel}>{formatCountAxis(axisMax / 2)}</Text>
+            <Text style={styles.yAxisLabel}>0</Text>
+          </View>
+          <View style={styles.chartCol}>
+            <View
+              style={{ height }}
+              onLayout={onLayout}
+              importantForAccessibility="no-hide-descendants"
+            >
+              {width > 0 && geom.line ? (
               <Svg width={width} height={height}>
                 <Defs>
                   <LinearGradient id="heroArea" x1="0" y1="0" x2="0" y2="1">
@@ -469,9 +483,9 @@ export function HeroVelocityChart({
                   animatedProps={dotProps}
                 />
               </Svg>
-            ) : null}
+              ) : null}
 
-            {canScrub ? (
+              {canScrub ? (
               <Animated.View style={[styles.readout, readoutStyle]} pointerEvents="none">
                 {readout ? (
                   <>
@@ -480,22 +494,23 @@ export function HeroVelocityChart({
                   </>
                 ) : null}
               </Animated.View>
-            ) : null}
+              ) : null}
 
-            {!hasData ? (
+              {!hasData ? (
               <View style={styles.emptyOverlay} pointerEvents="none">
                 <Text style={styles.emptyText}>Momentum takes shape here.</Text>
               </View>
+              ) : null}
+            </View>
+
+            {axis && hasData ? (
+              <View style={styles.axisRow}>
+                <Text style={styles.axisTick}>{axis.start}</Text>
+                <Text style={styles.axisTick}>{axis.mid}</Text>
+                <Text style={[styles.axisTick, styles.axisTickEnd]}>{axis.end}</Text>
+              </View>
             ) : null}
           </View>
-
-          {axis && hasData ? (
-            <View style={styles.axisRow}>
-              <Text style={styles.axisTick}>{axis.start}</Text>
-              <Text style={styles.axisTick}>{axis.mid}</Text>
-              <Text style={[styles.axisTick, styles.axisTickEnd]}>{axis.end}</Text>
-            </View>
-          ) : null}
         </View>
       </GestureDetector>
     </View>
@@ -600,7 +615,25 @@ const styles = createThemedStyles({
     color: colors.textMuted,
   },
   chartCol: {
-    width: "100%",
+    flex: 1,
+    minWidth: 0,
+  },
+  chartWithAxis: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: Y_AXIS_GAP,
+  },
+  yAxis: {
+    width: Y_AXIS_W,
+    height: 168,
+    paddingTop: PAD_TOP,
+    paddingBottom: PAD_BOTTOM,
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+  },
+  yAxisLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
   },
   axisRow: {
     flexDirection: "row",

@@ -36,6 +36,7 @@ vi.mock("react-native-svg", () => {
 
 vi.mock("../theme/tokens", () => ({
   colors: { textMuted: "#666" },
+  radii: { lg: 12 },
   spacing: { xs: 4 },
 }));
 

@@ -243,6 +243,27 @@ describe("TimelineDayCarousel", () => {
     expect(onCompleteTask).toHaveBeenCalledWith("t1");
   });
 
+  it("keeps completion out of the overdue overflow menu", () => {
+    const onCompleteTask = vi.fn();
+    const onEditTask = vi.fn();
+    const onTriageOverdue = vi.fn();
+    renderCarousel([
+      ["2026-07-01", [task("od1", "2026-07-01", "Overdue task")]],
+      [TODAY, [task("t1", TODAY, "Write tests")]],
+    ], {
+      onCompleteTask,
+      onEditTask,
+      onTriageOverdue,
+      overdueCount: 1,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Overdue task" }));
+
+    expect(screen.getAllByText("Complete")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Open Overdue task" }));
+    expect(onEditTask).toHaveBeenCalledWith(expect.objectContaining({ _id: "od1" }));
+  });
+
   it("renders the description and goal meta lines on the row", () => {
     renderCarousel(
       [[TODAY, [{ ...task("t1", TODAY, "Write tests"), description: "Cover the axis rules." }]]],
@@ -251,6 +272,22 @@ describe("TimelineDayCarousel", () => {
 
     expect(screen.getByText("Cover the axis rules.")).toBeTruthy();
     expect(screen.getByText(/Ship carousel/)).toBeTruthy();
+  });
+
+  it("shows Today progress instead of a plain task count", () => {
+    renderCarousel([[TODAY, [task("t1", TODAY, "Write tests")]]]);
+
+    expect(screen.getByText("0 of 1 done")).toBeTruthy();
+    expect(screen.queryByText("1 task")).toBeNull();
+  });
+
+  it("keeps persisted completed Today tasks in carousel progress", () => {
+    renderCarousel([[TODAY, [task("t1", TODAY, "Write tests")]]], {
+      completedTasks: [task("done", TODAY, "Already done")],
+    });
+
+    expect(screen.getByText("1 of 2 done")).toBeTruthy();
+    expect(screen.getByText("Already done")).toBeTruthy();
   });
 
   it("opens the edit sheet when the row itself is tapped", () => {

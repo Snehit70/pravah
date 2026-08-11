@@ -8,7 +8,7 @@ Users want a second way to read the same data: one day at a time, side by side, 
 
 Add a per-user Timeline layout mode with two values:
 
-- **Compact** — the existing vertical date-sectioned list, unchanged.
+- **Compact** — the vertical date-sectioned list for fast triage, with one overdue review entry, a Today progress anchor, and grouped future date sections.
 - **Comfortable** — a horizontal **peek carousel** of day cards: each day with tasks becomes one card ~88% of screen width, the next day peeking at the trailing edge, with snap-to-card paging.
 
 The mode is flipped by an **icon-only toggle in the Timeline header** (next to the Kairo chip). Tapping it swaps the layout in place, the icon changes to represent the *other* mode's glyph target (list glyph ↔ day-cards glyph), and the choice persists as a new `timelineLayout: "list" | "carousel"` user preference. Appearance → Density is untouched and continues to control card padding only, in both modes.
@@ -28,6 +28,7 @@ Decisions from the design interview (2026-07-05), in the order they were made:
 7. **Orientation: land on Today, jump chip, dot strip.** Opening the tab centers on Today (or the first upcoming day if today has no tasks). Once the user swipes off Today, a small "‹ Today" chip fades in under the header; tapping it springs back. A subtle dot strip under the cards indicates position. No cross-session position memory.
 8. **Emptied day: stay with "Day clear" state.** Completing the last task on the currently viewed card does not remove it — the card shows a quiet all-done state (check mark + "Day clear") so the view doesn't jump and unchecking is still possible. The card leaves the axis only after the user swipes away or leaves the tab.
 9. **Refresh: pull-to-refresh inside the day card.** Each card's inner scroll hosts the same `RefreshControl` (accent spinner) and triggers the same workspace-wide refresh as compact mode. No new refresh UI.
+10. **Compact attention order.** The vertical mode keeps overdue work behind one `Overdue review` entry, then shows Today and future `Timeline date groups`. Its task rows use one completion checkbox, row-tap editing, and grouped paper surfaces. Today progress uses active plus completed tasks whose deadline is Today. The horizontal carousel is unaffected by this presentation change.
 
 ## User Stories
 
@@ -59,6 +60,6 @@ Decisions from the design interview (2026-07-05), in the order they were made:
 ## Out of scope
 
 - Drag-to-reorder across or within day cards (RNDFL@4 / Reanimated@4 incompatibility, ADR-0004).
-- Any change to compact mode's layout, the overdue triage sheet, or web Timeline.
+- Any change to the overdue triage sheet, horizontal carousel behavior, or web Timeline.
 - Cross-session carousel position memory.
 - Empty-day placeholder cards or a continuous calendar axis.

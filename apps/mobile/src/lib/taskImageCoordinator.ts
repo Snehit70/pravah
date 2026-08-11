@@ -126,7 +126,11 @@ export type TaskImageCoordinatorDependencies = {
     state: "verifying" | "ready" | "failed";
     failure?: { code: string; retryable?: boolean };
   }>;
-  reconcileAttempt?: (args: { uploadId: string; attempt: number }) => Promise<TaskImageReconciliation>;
+  reconcileAttempt?: (args: {
+    uploadId: string;
+    attempt: number;
+    restartAttempt?: boolean;
+  }) => Promise<TaskImageReconciliation>;
   reportFailure?: (args: { uploadId: string; failureCode: string }) => Promise<void>;
   abortUpload?: (args: { uploadId: string }) => Promise<void> | void;
   ownerScope?: () => string | undefined;
@@ -145,6 +149,7 @@ type UploadRecord = Omit<TaskImageManifestEntry, "state"> & {
   progress?: number;
   acceptedForUpload: boolean;
   generation: number;
+  restartAttempt?: boolean;
 };
 
 export const MAX_TASK_IMAGE_COUNT = 5 as const;
@@ -160,6 +165,7 @@ const SAFE_FAILURE_CODES = new Set([
   "dimensions_too_large",
   "aspect_ratio_unsupported",
   "clipboard_too_large",
+  "clipboard_reference_only",
   "storage_unavailable",
   "memory_unavailable",
   "normalization_failed",
@@ -180,6 +186,7 @@ const NON_RETRYABLE_FAILURES = new Set([
   "dimensions_too_large",
   "aspect_ratio_unsupported",
   "clipboard_too_large",
+  "clipboard_reference_only",
   "source_unavailable",
   "authorization_failed",
   "normalization_failed",
@@ -471,22 +478,35 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     }
   };
 
-  const reconcileBeforeAttempt = async (entry: UploadRecord) => {
+  const reconcileBeforeAttempt = async (entry: UploadRecord, restartAttempt: boolean) => {
     if (!entry.needsReconciliation) return true;
     if (!dependencies.reconcileAttempt) return true;
     let result: TaskImageReconciliation;
     try {
-      result = await dependencies.reconcileAttempt({ uploadId: entry.uploadId, attempt: entry.attempt });
+      result = await dependencies.reconcileAttempt({
+        uploadId: entry.uploadId,
+        attempt: entry.attempt,
+        ...(restartAttempt ? { restartAttempt: true } : {}),
+      });
     } catch {
       return false;
     }
     if (result.status === "absent") {
-      update(entry, { attempt: result.attempt ?? entry.attempt, needsReconciliation: false });
+      update(entry, {
+        attempt: result.attempt ?? entry.attempt,
+        needsReconciliation: false,
+        restartAttempt: false,
+      });
       return true;
     }
     if (result.status === "ready") {
       if (!("result" in result)) {
-        update(entry, { state: "ready", needsReconciliation: false, retryAt: undefined });
+        update(entry, {
+          state: "ready",
+          needsReconciliation: false,
+          retryAt: undefined,
+          restartAttempt: false,
+        });
         await removeSource(entry);
         return false;
       }
@@ -498,7 +518,11 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       return false;
     }
     if (result.status === "failed") {
-      update(entry, { needsReconciliation: false, failure: safeFailure(result.failure) });
+      update(entry, {
+        needsReconciliation: false,
+        failure: safeFailure(result.failure),
+        restartAttempt: false,
+      });
       return true;
     }
     if (result.status === "uploading" || result.status === "verifying") {
@@ -509,10 +533,11 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
 
   const runEntry = async (entry: UploadRecord) => {
     const generation = entry.generation;
+    const restartAttempt = entry.restartAttempt === true;
     activeCount += 1;
     update(entry, { state: "uploading", failure: undefined, progress: undefined });
     try {
-      if (entry.needsReconciliation && !(await reconcileBeforeAttempt(entry))) {
+      if (entry.needsReconciliation && !(await reconcileBeforeAttempt(entry, restartAttempt))) {
         if (entry.state === "uploading") {
           await failEntry(entry, { code: "provider_unavailable", retryable: true });
         }
@@ -738,6 +763,18 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         await persist();
         notify();
       } catch (error) {
+        if (!nextRecord.previewUri && !nextRecord.normalized) {
+          const failure = safeFailure(error);
+          await removeRecord(nextRecord);
+          lastError = failure.code === "clipboard_reference_only"
+            ? "Clipboard contains a file reference, not image data. Copy the image itself and paste again."
+            : failure.code === "source_unavailable"
+              ? "No image was selected."
+              : "The image could not be selected.";
+          await persist();
+          notify();
+          return;
+        }
         await failEntry(nextRecord, error);
         notify();
       }
@@ -884,7 +921,13 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       const timer = timers.get(uploadId);
       if (timer) clearTimeout(timer);
       timers.delete(uploadId);
-      update(entry, { state: "pending", retryAt: undefined, retryCount: 0, acceptedForUpload: true });
+      update(entry, {
+        state: "pending",
+        retryAt: undefined,
+        retryCount: 0,
+        acceptedForUpload: true,
+        restartAttempt: true,
+      });
       await pump();
       await waitForDrain();
     },

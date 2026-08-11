@@ -179,7 +179,11 @@ export async function acquireTaskImageSource(
 ): Promise<AcquiredTaskImageSource> {
   if (kind === "paste") {
     const image = await Clipboard.getImageAsync({ format: "png" });
-    if (!image) fail("source_unavailable");
+    if (!image) {
+      const clipboardText = await Clipboard.getStringAsync();
+      if (/^(?:file:\/\/|\/)/i.test(clipboardText.trim())) fail("clipboard_reference_only");
+      fail("source_unavailable");
+    }
     validateDimensions(image.size.width, image.size.height, MAX_CLIPBOARD_PIXELS);
     const comma = image.data.indexOf(",");
     if (comma < 0) fail("unsupported_format");

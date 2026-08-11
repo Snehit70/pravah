@@ -75,6 +75,7 @@ import { SettingsSheet } from "./src/components/SettingsSheet";
 import { ConfirmProvider } from "./src/components/ConfirmDialog";
 import { DiagnosticsPanel } from "./src/components/DiagnosticsPanel";
 import { CompletedTaskSheet } from "./src/components/CompletedTaskSheet";
+import { OverdueTriageSheet } from "./src/components/OverdueTriageSheet";
 import { InboxScreen } from "./src/screens/InboxScreen";
 import { TimelineScreen } from "./src/screens/TimelineScreen";
 import { TimelineLayoutToggle } from "./src/components/TimelineLayoutToggle";
@@ -402,8 +403,8 @@ function MobileApp() {
           await stageTaskImageMutation(image);
         },
         issueGrant: issueTaskImageGrant,
-        reconcileAttempt: async ({ uploadId, attempt }) => {
-          const result = await reconcileTaskImageAttempt({ uploadId, attempt });
+        reconcileAttempt: async ({ uploadId, attempt, restartAttempt }) => {
+          const result = await reconcileTaskImageAttempt({ uploadId, attempt, restartAttempt });
           if (result.status === "ready") return { status: "ready" as const };
           if (result.status === "absent") return { status: "absent" as const, attempt: result.attempt };
           if (result.status === "unknown") return { status: "unknown" as const };
@@ -910,10 +911,21 @@ function MobileApp() {
   );
 
   const {
+    isOverdueSheetOpen,
     overdueBuckets,
     previewGroups,
+    selectedPreview,
+    applyDeadline,
     rescheduleAll,
+    openOverdue,
+    closeOverdue,
+    openPreview,
+    closePreview,
+    setApplyDeadline,
+    confirmPreview,
+    applySuggestedPreview,
     handleManualTriage,
+    applyManualTriageChanges,
   } = useOverdueTriageController({
     previewData: overduePreviewData,
     today,
@@ -1288,7 +1300,7 @@ function MobileApp() {
               accessibilityRole="button"
               accessibilityLabel="Open Kairo"
             >
-              <KairoMarkIcon width={18} height={18} color={colors.textMuted} />
+              <KairoMarkIcon width={20} height={20} color={colors.textMuted} />
             </Pressable>
             <Pressable
               onPress={openSettingsModal}
@@ -1417,6 +1429,7 @@ function MobileApp() {
               tabBarHeight={tabBarHeight}
               onRefresh={handleRefresh}
               overdueCount={isTimelineTriageReady ? overdueBuckets.totalOverdue : undefined}
+              onOpenOverdue={canUseWorkspaceActions && isTimelineTriageReady ? openOverdue : undefined}
               onTriageOverdue={
                 canUseWorkspaceActions && isTimelineTriageReady ? handleManualTriage : undefined
               }
@@ -1426,6 +1439,7 @@ function MobileApp() {
                   : undefined
               }
               layout={prefs.timelineLayout}
+              completedTasks={displayCompletedTasks}
               onCompleteTask={canUseWorkspaceActions ? markDone : undefined}
               onReopenTask={canUseWorkspaceActions ? reopenTask : undefined}
               onEditTask={canUseWorkspaceActions ? handleEditTask : undefined}
@@ -1662,6 +1676,24 @@ function MobileApp() {
             },
           });
         }}
+      />
+
+      <OverdueTriageSheet
+        visible={isOverdueSheetOpen}
+        totalOverdue={overdueBuckets.totalOverdue}
+        groups={previewGroups}
+        orphans={overdueBuckets.orphans}
+        selectedPreview={selectedPreview}
+        applyDeadline={applyDeadline}
+        today={today}
+        onClose={closeOverdue}
+        onOpenPreview={openPreview}
+        onClosePreview={closePreview}
+        onSetApplyDeadline={setApplyDeadline}
+        onConfirmPreview={confirmPreview}
+        onApplySuggestedDates={applySuggestedPreview}
+        onRescheduleAllGoals={previewGroups.length > 1 ? rescheduleAll : undefined}
+        onApplyChanges={applyManualTriageChanges}
       />
 
       {/* Kairo lives at the root so its overlay sits above tabs and FAB. The
@@ -1959,13 +1991,19 @@ const styles = createThemedStyles({
   headerLinks: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.lg,
+    gap: spacing.sm,
   },
-  // Settings is a hairline-underlined word, not a button shape.
+  // Header actions share the same compact squircle button footprint.
   settingsLinkWrap: {
-    minHeight: 32,
+    width: 42,
+    height: 42,
     justifyContent: "center",
-    paddingVertical: spacing.xs,
+    alignItems: "center",
+    borderRadius: radii.lg,
+    borderCurve: "continuous",
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
   },
   settingsLink: {
     color: colors.textMuted,
@@ -1984,11 +2022,11 @@ const styles = createThemedStyles({
     ...typography.micro,
     color: colors.textMuted,
   },
-  // Kairo entry point: a quiet square squircle chip with the accent Kairo
-  // mark — reads as the AI affordance without a text label.
+  // Kairo entry point: the same quiet square squircle as the other header
+  // actions, with the Kairo mark as its only label.
   kairoChip: {
-    width: 34,
-    height: 34,
+    width: 42,
+    height: 42,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radii.md,

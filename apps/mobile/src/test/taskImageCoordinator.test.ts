@@ -167,6 +167,24 @@ describe("Task-image mobile coordinator", () => {
     );
   });
 
+  it("does not leave a placeholder when the clipboard only contains a file reference", async () => {
+    const dependencies = createDependencies();
+    dependencies.acquireSource = vi.fn(async () => {
+      throw Object.assign(new Error("clipboard_reference_only"), {
+        code: "clipboard_reference_only",
+        retryable: false,
+      });
+    });
+    const coordinator = createTaskImageCoordinator(dependencies);
+
+    await coordinator.select("paste");
+
+    expect(coordinator.getViewStates()).toEqual([]);
+    expect(coordinator.getLastError()).toBe(
+      "Clipboard contains a file reference, not image data. Copy the image itself and paste again."
+    );
+  });
+
   it("keeps five ordered Capture images with captions and replaces a removed slot", async () => {
     const dependencies = createDependencies();
     let nextId = 1;
@@ -673,6 +691,51 @@ describe("Task-image mobile coordinator", () => {
     }
   });
 
+  it("recycles a present provider asset on explicit retry instead of waiting forever", async () => {
+    const dependencies = createDependencies();
+    dependencies.upload = vi
+      .fn()
+      .mockRejectedValueOnce(Object.assign(new Error("callback lost"), {
+        code: "upload_failed",
+        retryable: true,
+      }))
+      .mockResolvedValueOnce({
+        publicId: "provider-private-id-2",
+        version: 2,
+        signature: "provider-response-signature",
+        resourceType: "image",
+        deliveryType: "authenticated",
+        format: "jpg",
+        width: 1600,
+        height: 1200,
+        bytes: 2_000_000,
+        eager: [],
+      });
+    dependencies.reconcileAttempt = vi.fn(async ({ restartAttempt }) =>
+      restartAttempt
+        ? { status: "absent" as const, attempt: 1 }
+        : { status: "verifying" as const, attempt: 1 }
+    );
+    dependencies.verify = vi.fn(async () => ({ state: "ready" as const }));
+    const coordinator = createTaskImageCoordinator(dependencies);
+
+    await coordinator.select("photos");
+    await coordinator.beginUploadAfterSave();
+    await coordinator.retry("upl_mobile_1");
+
+    expect(dependencies.reconcileAttempt).toHaveBeenCalledWith({
+      uploadId: "upl_mobile_1",
+      attempt: 1,
+      restartAttempt: true,
+    });
+    expect(dependencies.issueGrant).toHaveBeenCalledTimes(2);
+    expect(dependencies.upload).toHaveBeenCalledTimes(2);
+    expect(coordinator.getViewState()).toMatchObject({
+      uploadId: "upl_mobile_1",
+      state: "ready",
+    });
+  });
+
   it("hydrates interrupted work, merges by uploadId, and does not duplicate a live attempt", async () => {
     const dependencies = createDependencies();
     const sourceStore = {
@@ -769,6 +832,39 @@ describe("Task-image mobile coordinator", () => {
         state: "failed",
         failure: { code: "provider_unavailable", retryable: true },
         retryAt: expect.any(Number),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps restart reconciliation armed after an unknown provider response", async () => {
+    vi.useFakeTimers();
+    try {
+      const dependencies = createDependencies();
+      dependencies.upload = vi.fn().mockRejectedValueOnce(
+        Object.assign(new Error("callback lost"), { code: "upload_failed", retryable: true })
+      );
+      dependencies.reconcileAttempt = vi
+        .fn()
+        .mockResolvedValueOnce({ status: "unknown" as const })
+        .mockResolvedValueOnce({ status: "absent" as const, attempt: 1 });
+      const coordinator = createTaskImageCoordinator(dependencies);
+
+      await coordinator.select("photos");
+      await coordinator.beginUploadAfterSave();
+      await coordinator.retry("upl_mobile_1");
+
+      expect(dependencies.reconcileAttempt).toHaveBeenNthCalledWith(1, {
+        uploadId: "upl_mobile_1",
+        attempt: 1,
+        restartAttempt: true,
+      });
+      await vi.advanceTimersByTimeAsync(UPLOAD_RETRY_DELAYS_MS[0]);
+      expect(dependencies.reconcileAttempt).toHaveBeenNthCalledWith(2, {
+        uploadId: "upl_mobile_1",
+        attempt: 1,
+        restartAttempt: true,
       });
     } finally {
       vi.useRealTimers();

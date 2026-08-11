@@ -349,7 +349,11 @@ export const refreshProviderUsage = internalAction({
 });
 
 export const reconcileUploadAttempt = action({
-  args: { uploadId: v.string(), attempt: v.number() },
+  args: {
+    uploadId: v.string(),
+    attempt: v.number(),
+    restartAttempt: v.optional(v.boolean()),
+  },
   handler: async (ctx, args) => {
     const ownerTokenIdentifier = await requireTokenIdentifier(ctx);
     const provider = readProviderConfig();
@@ -368,6 +372,22 @@ export const reconcileUploadAttempt = action({
     });
     if (presence === "unknown") return { status: "unknown" as const };
     if (presence === "present") {
+      if (args.restartAttempt === true) {
+        if (args.attempt !== providerAttempt) return { status: "unknown" as const };
+        const cleanup = await deleteProviderAsset({
+          provider,
+          publicId: context.providerPublicId,
+        });
+        if (cleanup !== "deleted" && cleanup !== "absent") {
+          return { status: "unknown" as const };
+        }
+        await ctx.runMutation(resetUploadAttemptRef, {
+          ownerTokenIdentifier,
+          uploadId: args.uploadId,
+          providerAttempt,
+        });
+        return { status: "absent" as const, attempt: providerAttempt };
+      }
       return {
         status: context.state === "verifying" ? ("verifying" as const) : ("uploading" as const),
         attempt: providerAttempt,
