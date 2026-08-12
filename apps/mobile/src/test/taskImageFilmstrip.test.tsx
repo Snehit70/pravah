@@ -79,7 +79,7 @@ vi.mock("../lib/haptic", () => ({ haptic: { selection: vi.fn() } }));
 vi.mock("react-native-gesture-handler", () => {
   const gesture = () => {
     const value: Record<string, unknown> = {};
-    for (const method of ["onUpdate", "onEnd", "onStart", "onFinalize", "numberOfTaps", "enabled", "activeOffsetX", "failOffsetY", "minDistance"]) {
+    for (const method of ["onUpdate", "onEnd", "onStart", "onFinalize", "numberOfTaps", "enabled", "activeOffsetX", "failOffsetY", "minDistance", "activateAfterLongPress"]) {
       value[method] = () => value;
     }
     return value;
@@ -170,6 +170,7 @@ vi.mock("../theme/themeRuntime", () => ({
 }));
 
 import { TaskImageFilmstrip } from "../components/TaskImageFilmstrip";
+import { reorderTaskImagesByDrag } from "../lib/taskImageReorder";
 
 describe("TaskImageFilmstrip", () => {
   it("offers explicit Photos, Camera, and Paste actions with accessible names", () => {
@@ -312,9 +313,20 @@ describe("TaskImageFilmstrip", () => {
     expect((caption as HTMLInputElement).value).toBe("First ");
     expect(screen.queryByText("Earlier")).toBeNull();
     expect(screen.queryByText("Later")).toBeNull();
-    fireEvent.mouseDown(screen.getAllByRole("button", { name: "Hold and drag to reorder Task image" })[1]);
+    expect(screen.getAllByRole("button", { name: "Hold and drag to reorder Task image" })).toHaveLength(2);
     expect(onCaptionChange).toHaveBeenCalledWith("image-1", "First ");
-    expect(onReorder).toHaveBeenCalledWith(["image-2", "image-1"]);
+  });
+
+  it("maps horizontal drag distance to the intended image slot", () => {
+    const images = [
+      { taskImageId: "image-1", position: 0, state: "pending" as const },
+      { taskImageId: "image-2", position: 1, state: "pending" as const },
+      { taskImageId: "image-3", position: 2, state: "pending" as const },
+    ];
+
+    expect(reorderTaskImagesByDrag(images, 0, 145, 70).map((image) => image.taskImageId)).toEqual([
+      "image-2", "image-3", "image-1",
+    ]);
   });
 
   it("uses the plus tile as the Capture add-image entry point", async () => {

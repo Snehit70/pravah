@@ -19,6 +19,9 @@ import { getViewerImages, hasTaskImageVisual, TaskImageViewer } from "./TaskImag
 import { TaskImageSourceSheet } from "./TaskImageSourceSheet";
 import type { TaskImageSourceKind, TaskImageState } from "../lib/taskImageCoordinator";
 import { haptic } from "../lib/haptic";
+import { reorderTaskImagesByDrag } from "../lib/taskImageReorder";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { runOnJS } from "react-native-reanimated";
 
 export type TaskImageFilmstripSurface = "capture" | "inbox" | "edit" | "completed" | "management";
 
@@ -114,19 +117,24 @@ function moveImage(images: TaskImageFilmstripEntry[], index: number, direction: 
   return next;
 }
 
-function DragHandle({ drag, disabled, compact = false }: { drag: () => void; disabled: boolean; compact?: boolean }) {
+function DragHandle({ onDrop, disabled, slotWidth, compact = false }: { onDrop: (translationX: number) => void; disabled: boolean; slotWidth: number; compact?: boolean }) {
+  const gesture = Gesture.Pan()
+    .activateAfterLongPress(220)
+    .onStart(() => runOnJS(haptic.selection)())
+    .onEnd((event) => runOnJS(onDrop)(event.translationX));
   return (
-    <Pressable
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel="Hold and drag to reorder Task image"
-      onLongPress={drag}
-      delayLongPress={220}
-      hitSlop={4}
-      style={({ pressed }) => [compact ? styles.dragHandleCompact : styles.dragHandle, pressed && styles.dragHandlePressed]}
-    >
-      <GripHorizontalIcon color={colors.textInverse} size={compact ? 14 : 20} strokeWidth={2} />
-    </Pressable>
+    <GestureDetector gesture={gesture}>
+      <Pressable
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel="Hold and drag to reorder Task image"
+        accessibilityHint={`Drag horizontally to reposition this image. Each slot is about ${slotWidth} points wide.`}
+        hitSlop={4}
+        style={({ pressed }) => [compact ? styles.dragHandleCompact : styles.dragHandle, pressed && styles.dragHandlePressed]}
+      >
+        <GripHorizontalIcon color={colors.textInverse} size={compact ? 14 : 20} strokeWidth={2} />
+      </Pressable>
+    </GestureDetector>
   );
 }
 
@@ -417,9 +425,8 @@ function CaptureSurface({
                 onPressLabel={`Open Task image ${index + 1}`}
               />
               {index === 0 ? <Text style={styles.primaryFlag}>Primary</Text> : null}
-              {onReorder && images.length > 1 ? <DragHandle drag={() => {
-                haptic.selection();
-                const next = moveImage(images, index, index === 0 ? "down" : "up");
+              {onReorder && images.length > 1 ? <DragHandle slotWidth={130} onDrop={(translationX) => {
+                const next = reorderTaskImagesByDrag(images, index, translationX, 130);
                 onReorder(next.map((entry) => entry.taskImageId));
               }} disabled={false} /> : null}
               {onRemove ? (
@@ -569,9 +576,8 @@ function EditSurface({
                   <CloseIcon color={colors.textInverse} size={14} />
                 </Pressable>
               ) : null}
-              {onReorder && images.length > 1 ? <DragHandle drag={() => {
-                haptic.selection();
-                const next = moveImage(images, index, index === 0 ? "down" : "up");
+              {onReorder && images.length > 1 ? <DragHandle slotWidth={70} onDrop={(translationX) => {
+                const next = reorderTaskImagesByDrag(images, index, translationX, 70);
                 setSelectedIndex(next.findIndex((entry) => entry.taskImageId === selected.taskImageId));
                 onReorder(next.map((entry) => entry.taskImageId));
               }} disabled={false} compact /> : null}

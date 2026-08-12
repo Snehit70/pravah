@@ -62,6 +62,9 @@ export function TaskImageViewer({
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
   const { width, height } = useWindowDimensions();
+  const [measuredViewport, setMeasuredViewport] = useState({ width: 0, height: 0 });
+  const viewportWidth = measuredViewport.width || width;
+  const viewportHeight = measuredViewport.height || height;
   const [activeIndex, setActiveIndex] = useState(() => Math.max(0, Math.min(initialIndex, images.length - 1)));
   const [delivery, setDelivery] = useState<{ imageId: string; result: DeliveryResult } | null>(null);
   const [deliveryAttempt, setDeliveryAttempt] = useState(0);
@@ -83,7 +86,7 @@ export function TaskImageViewer({
   const contentAspectRatio = activeImage?.presentation?.aspectRatio
     ?? (activeImage?.presentation?.width && activeImage.presentation.height
       ? activeImage.presentation.width / activeImage.presentation.height
-      : width / height);
+      : viewportWidth / viewportHeight);
 
   useEffect(() => {
     if (!visible) return;
@@ -190,11 +193,11 @@ export function TaskImageViewer({
     translateY.set(0);
     savedTranslateX.set(0);
     savedTranslateY.set(0);
-    translateX.set(entryDirection * width);
+    translateX.set(entryDirection * viewportWidth);
     translateX.set(withTiming(0, { duration: 190 }));
     haptic.selection();
     void AccessibilityInfo.announceForAccessibility?.(`Image ${nextIndex + 1} of ${count}${nextIndex === 0 ? ", Primary" : ""}`);
-  }, [count, images, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, width]);
+  }, [count, images, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, viewportWidth]);
 
   const handleSwipe = useCallback((translationX: number) => {
     if (scale.value > MIN_VIEWER_SCALE + 0.05 || Math.abs(translationX) < SWIPE_DISTANCE) {
@@ -210,10 +213,10 @@ export function TaskImageViewer({
       goTo(nextIndex);
       return;
     }
-    translateX.set(withTiming(translationX < 0 ? -width : width, { duration: 160 }, (finished) => {
+    translateX.set(withTiming(translationX < 0 ? -viewportWidth : viewportWidth, { duration: 160 }, (finished) => {
       if (finished) runOnJS(completePageTransition)(nextIndex, translationX < 0 ? 1 : -1);
     }));
-  }, [activeIndex, completePageTransition, count, goTo, reducedMotion, resetTransform, scale, translateX, width]);
+  }, [activeIndex, completePageTransition, count, goTo, reducedMotion, resetTransform, scale, translateX, viewportWidth]);
 
   const finishPan = useCallback((translationXValue: number, translationYValue: number) => {
     if (scale.value > MIN_VIEWER_SCALE + 0.05) {
@@ -221,7 +224,7 @@ export function TaskImageViewer({
         scale: scale.value,
         translateX: savedTranslateX.value + translationXValue,
         translateY: savedTranslateY.value + translationYValue,
-      }, { width, height, contentAspectRatio });
+      }, { width: viewportWidth, height: viewportHeight, contentAspectRatio });
       translateX.set(withTiming(bounded.translateX, { duration: reducedMotion ? 0 : 180 }));
       translateY.set(withTiming(bounded.translateY, { duration: reducedMotion ? 0 : 180 }));
       savedTranslateX.set(bounded.translateX);
@@ -233,7 +236,7 @@ export function TaskImageViewer({
       return;
     }
     handleSwipe(translationXValue);
-  }, [contentAspectRatio, handleSwipe, height, onClose, reducedMotion, savedTranslateX, savedTranslateY, scale, translateX, translateY, width]);
+  }, [contentAspectRatio, handleSwipe, onClose, reducedMotion, savedTranslateX, savedTranslateY, scale, translateX, translateY, viewportHeight, viewportWidth]);
 
   const pan = useMemo(
     () =>
@@ -266,14 +269,14 @@ export function TaskImageViewer({
         .onUpdate((event) => {
           const nextScale = Math.max(MIN_VIEWER_SCALE, Math.min(MAX_VIEWER_SCALE, savedScale.value * event.scale));
           const ratio = nextScale / savedScale.value;
-          const centeredX = pinchOriginX.value - width / 2;
-          const centeredY = pinchOriginY.value - height / 2;
+          const centeredX = pinchOriginX.value - viewportWidth / 2;
+          const centeredY = pinchOriginY.value - viewportHeight / 2;
           scale.value = nextScale;
           const bounded = clampViewerTranslation({
             scale: nextScale,
             translateX: savedTranslateX.value * ratio + centeredX * (1 - ratio),
             translateY: savedTranslateY.value * ratio + centeredY * (1 - ratio),
-          }, { width, height, contentAspectRatio });
+          }, { width: viewportWidth, height: viewportHeight, contentAspectRatio });
           translateX.value = bounded.translateX;
           translateY.value = bounded.translateY;
         })
@@ -282,7 +285,7 @@ export function TaskImageViewer({
           savedTranslateX.value = translateX.value;
           savedTranslateY.value = translateY.value;
         }),
-    [contentAspectRatio, height, pinchOriginX, pinchOriginY, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, width]
+    [contentAspectRatio, pinchOriginX, pinchOriginY, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, viewportHeight, viewportWidth]
   );
 
   const doubleTap = useMemo(
@@ -295,7 +298,7 @@ export function TaskImageViewer({
             { scale: scale.value, translateX: translateX.value, translateY: translateY.value },
             nextScale,
             { x: event.x, y: event.y },
-            { width, height, contentAspectRatio },
+            { width: viewportWidth, height: viewportHeight, contentAspectRatio },
           );
           scale.value = withTiming(nextScale, { duration: reducedMotion ? 0 : 180 });
           savedScale.value = next.scale;
@@ -304,7 +307,7 @@ export function TaskImageViewer({
           savedTranslateX.value = next.translateX;
           savedTranslateY.value = next.translateY;
         }),
-    [contentAspectRatio, height, reducedMotion, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, width]
+    [contentAspectRatio, reducedMotion, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, viewportHeight, viewportWidth]
   );
 
   const singleTap = useMemo(() => Gesture.Tap().numberOfTaps(1).onEnd(() => {
@@ -327,8 +330,8 @@ export function TaskImageViewer({
     const next = zoomViewerAtPoint(
       { scale: scale.value, translateX: translateX.value, translateY: translateY.value },
       nextScale,
-      { x: width / 2, y: height / 2 },
-      { width, height, contentAspectRatio },
+      { x: viewportWidth / 2, y: viewportHeight / 2 },
+      { width: viewportWidth, height: viewportHeight, contentAspectRatio },
     );
     scale.set(withTiming(next.scale, { duration: reducedMotion ? 0 : 180 }));
     savedScale.set(next.scale);
@@ -336,7 +339,7 @@ export function TaskImageViewer({
     translateY.set(withTiming(next.translateY, { duration: reducedMotion ? 0 : 180 }));
     savedTranslateX.set(next.translateX);
     savedTranslateY.set(next.translateY);
-  }, [contentAspectRatio, height, reducedMotion, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, width]);
+  }, [contentAspectRatio, reducedMotion, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, viewportHeight, viewportWidth]);
 
   if (!activeImage) return null;
   const localPreview = activeImage.state !== "ready" && activeImage.previewUri ? { uri: activeImage.previewUri } : null;
@@ -378,6 +381,12 @@ export function TaskImageViewer({
           <GestureDetector gesture={gesture}>
             <View
               style={styles.imageViewport}
+              onLayout={(event) => {
+                const { width: nextWidth, height: nextHeight } = event.nativeEvent.layout;
+                setMeasuredViewport((current) => current.width === nextWidth && current.height === nextHeight
+                  ? current
+                  : { width: nextWidth, height: nextHeight });
+              }}
               accessibilityRole="adjustable"
               accessibilityLabel={`Task image ${activeIndex + 1} of ${count}${activeIndex === 0 ? ", Primary" : ""}`}
               accessibilityHint="Swipe left or right to change images. Use accessibility actions to zoom."
