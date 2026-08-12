@@ -1605,12 +1605,18 @@ function MobileApp() {
           );
           return (async () => {
             try {
-              await taskImageCoordinator.select(kind);
-              const selected = taskImageCoordinator
+              const existingCount = workspaceTaskCorpus.find((task) => String(task._id) === String(taskId))?.imageCollection?.active.length ?? 0;
+              const availableSlots = Math.max(0, 5 - existingCount);
+              await taskImageCoordinator.select(kind, availableSlots);
+              const newUploads = taskImageCoordinator
                 .getViewStates()
-                .filter((image) => !beforeUploadIds.has(image.uploadId) && image.state === "pending");
+                .filter((image) => !beforeUploadIds.has(image.uploadId));
+              const selected = newUploads.filter((image) => image.state === "pending");
+              taskImageCoordinator.discardUploads(
+                newUploads.filter((image) => image.state === "failed").map((image) => image.uploadId),
+              );
               if (selected.length === 0) {
-                taskImageCoordinator.discard();
+                taskImageCoordinator.discardUploads(newUploads.map((image) => image.uploadId));
                 return undefined;
               }
               const result = await addTaskImagesMutation({
@@ -1619,7 +1625,7 @@ function MobileApp() {
                 expectedRevision,
               });
               if (result.stale) {
-                taskImageCoordinator.discard();
+                taskImageCoordinator.discardUploads(selected.map((image) => image.uploadId));
                 showToast({ kind: "error", message: "Task images changed. Please try again." });
                 return result;
               }

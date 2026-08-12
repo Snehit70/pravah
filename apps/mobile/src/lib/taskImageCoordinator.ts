@@ -711,17 +711,19 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       await ensureHydrated();
     },
 
-    async select(kind: TaskImageSourceKind) {
+    async select(kind: TaskImageSourceKind, availableSlots: number = MAX_TASK_IMAGE_COUNT) {
       await ensureHydrated();
-      if (visibleUploadIds.length >= MAX_TASK_IMAGE_COUNT) {
+      const limit = Math.max(0, Math.min(MAX_TASK_IMAGE_COUNT, availableSlots));
+      if (limit === 0 || visibleUploadIds.length >= limit) {
         lastError = "Task image limit reached";
         notify();
         return;
       }
       if (kind === "photos" && dependencies.acquireSources) {
         try {
-          const sources = await dependencies.acquireSources(kind, MAX_TASK_IMAGE_COUNT - visibleUploadIds.length);
-          for (const source of sources.slice(0, MAX_TASK_IMAGE_COUNT - visibleUploadIds.length)) {
+          const remaining = limit - visibleUploadIds.length;
+          const sources = await dependencies.acquireSources(kind, remaining);
+          for (const source of sources.slice(0, remaining)) {
             if (disposed) return;
             const uploadId = dependencies.createUploadId();
             const entry: UploadRecord = {
@@ -1203,6 +1205,16 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       visibleUploadIds = [];
       lastError = undefined;
       void Promise.all(pending.map((entry) => removeRecord(entry))).then(() => void persist());
+      notify();
+    },
+
+    discardUploads(uploadIds: string[]) {
+      const ids = new Set(uploadIds);
+      const discardable = [...records.values()].filter(
+        (entry) => ids.has(entry.uploadId) && !entry.taskId && !entry.acceptedForUpload,
+      );
+      visibleUploadIds = visibleUploadIds.filter((uploadId) => !ids.has(uploadId));
+      void Promise.all(discardable.map((entry) => removeRecord(entry))).then(() => void persist());
       notify();
     },
 
