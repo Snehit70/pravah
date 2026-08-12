@@ -393,6 +393,38 @@ describe("Task-image mobile coordinator", () => {
     expect(coordinator.serialize().uploads).toHaveLength(0);
   });
 
+  it("keeps an unattached ready upload in the next task save payload", async () => {
+    const dependencies = createDependencies();
+    const coordinator = createTaskImageCoordinator({
+      ...dependencies,
+      manifestStore: {
+        load: vi.fn(async () => ({
+          version: 2,
+          visibleUploadIds: ["upl_mobile_1"],
+          uploads: [{
+            uploadId: "upl_mobile_1",
+            state: "ready",
+            attempt: 1,
+            retryCount: 0,
+            needsReconciliation: false,
+            paused: false,
+            acceptedForUpload: false,
+            caption: "Restored reference",
+          }],
+        })),
+        save: vi.fn(async () => undefined),
+      },
+      ownerScope: () => "owner-a",
+    });
+
+    await coordinator.hydrate();
+
+    expect(coordinator.getImageInputsForSave()).toEqual([{
+      uploadId: "upl_mobile_1",
+      caption: "Restored reference",
+    }]);
+  });
+
   it("does not discard task-owned or already accepted records", async () => {
     const dependencies = createDependencies();
     let nextId = 1;

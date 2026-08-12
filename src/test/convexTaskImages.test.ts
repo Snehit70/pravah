@@ -374,6 +374,40 @@ describe("Convex Task-image contract", () => {
     expect(JSON.stringify(collection)).not.toMatch(/upload_manifest_1|provider|url|path/i);
   });
 
+  it("claims an unattached ready upload without downgrading its state", async () => {
+    const db = createMemoryDb();
+    const owner = authedCtx(db);
+    await stageHandler(owner, {
+      uploadId: "upload_ready_1",
+      encodingClass: "jpeg",
+      width: 1200,
+      height: 800,
+      bytes: 400_000,
+    });
+    const upload = db.rows("taskImageUploads")[0];
+    Object.assign(upload, {
+      state: "ready",
+      providerPublicId: "private/provider-ready",
+      providerVersion: 7,
+      variants: { master: { width: 1200, height: 800, bytes: 400_000 } },
+    });
+
+    const taskId = await addTaskHandler(owner, {
+      title: "Restored image task",
+      imageInputs: [{ uploadId: "upload_ready_1", caption: "Restored reference" }],
+    });
+
+    expect(db.rows("taskImageUploads")[0]).toMatchObject({
+      state: "ready",
+      taskImageId: expect.any(String),
+    });
+    expect(db.rows("taskImages")[0]).toMatchObject({
+      taskId,
+      state: "ready",
+      caption: "Restored reference",
+    });
+  });
+
   it("keeps existing Tasks valid with an empty collection and denies cross-owner claims safely", async () => {
     const db = createMemoryDb();
     const owner = authedCtx(db, "owner-1");

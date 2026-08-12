@@ -905,7 +905,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     getImageInputsForSave() {
       return visibleUploadIds.flatMap((uploadId) => {
         const record = records.get(uploadId);
-        return record && (record.state === "pending" || record.state === "failed")
+        return record && (record.state === "pending" || record.state === "failed" || record.state === "ready")
           ? [{ uploadId: record.uploadId, caption: record.caption }]
           : [];
       });
