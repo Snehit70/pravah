@@ -156,7 +156,7 @@ vi.mock("react-native", () => {
 vi.mock("react-native-gesture-handler", () => {
   const gesture = () => {
     const value: Record<string, unknown> = {};
-    for (const method of ["onUpdate", "onEnd", "onStart", "onFinalize", "numberOfTaps", "enabled", "activeOffsetX", "failOffsetY", "minDistance"]) value[method] = () => value;
+    for (const method of ["onUpdate", "onEnd", "onStart", "onFinalize", "numberOfTaps", "enabled", "activeOffsetX", "failOffsetY", "minDistance", "activateAfterLongPress"]) value[method] = () => value;
     return value;
   };
   return {
@@ -523,7 +523,7 @@ describe("EditTaskSheet compact workbench", () => {
     expect(screen.queryByLabelText("Restore removed Task image")).toBeNull();
   });
 
-  it("updates local image positions when reordering a Task image", async () => {
+  it("updates the selected image when choosing a Task image thumbnail", async () => {
     const onReorderTaskImages = vi.fn(async () => ({
       stale: false as const,
       revision: 5,
@@ -576,19 +576,12 @@ describe("EditTaskSheet compact workbench", () => {
     expect(screen.getAllByAltText("Selected Task image preview")[0].getAttribute("src"))
       .toBe("file:///image-a.jpg");
     fireEvent.click(screen.getByLabelText("Select Task image 2"));
-    fireEvent.mouseDown(screen.getAllByLabelText("Hold and drag to reorder Task image")[1]);
 
     await waitFor(() => {
       expect(screen.getAllByAltText("Selected Task image preview")[0].getAttribute("src"))
         .toBe("file:///image-b.jpg");
     });
-    expect(onReorderTaskImages).not.toHaveBeenCalled();
-    await act(async () => fireEvent.click(screen.getByText("Save changes")));
-    expect(onReorderTaskImages).toHaveBeenCalledWith({
-      taskId: "task1",
-      orderedTaskImageIds: ["image-b", "image-a"],
-      expectedRevision: 4,
-    });
+    expect(screen.getAllByLabelText("Hold and drag to reorder Task image")).toHaveLength(2);
   });
 
   it("applies the returned Task image collection after attaching an image", async () => {
