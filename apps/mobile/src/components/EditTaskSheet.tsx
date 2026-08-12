@@ -264,6 +264,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     ref,
   ) {
     const openSeqRef = useRef(0);
+    const captionSessionRef = useRef(0);
+    const activeTaskIdRef = useRef<Id<"tasks"> | null>(null);
     const confirm = useConfirm();
     const insets = useSafeAreaInsets();
     const reducedMotion = useReducedMotion();
@@ -299,6 +301,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
 
     const closeModal = useCallback(
       (notify = true) => {
+        captionSessionRef.current += 1;
+        activeTaskIdRef.current = null;
         Keyboard.dismiss();
         setVisible(false);
         setTaskId(null);
@@ -361,10 +365,16 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     }, [currentTask, onSelectTaskImage]);
 
     const saveTaskImageCaption = useCallback((taskImageId: string, caption: string) => {
+      const sessionToken = captionSessionRef.current;
+      const sourceTaskId = activeTaskIdRef.current;
+      if (!sourceTaskId) return;
+      const isCurrentSession = () =>
+        captionSessionRef.current === sessionToken && activeTaskIdRef.current === sourceTaskId;
       captionSaveQueue.current = captionSaveQueue.current.catch(() => undefined).then(async () => {
+        if (!isCurrentSession()) return;
         const revision = captionRevision.current ?? currentTask?.imageCollection?.revision ?? 0;
         const result = await onCaptionTaskImage?.({ taskImageId, caption, expectedRevision: revision });
-        if (!result) return;
+        if (!result || !isCurrentSession()) return;
         if (result.stale) {
           captionRevision.current = undefined;
           setError("Task images changed while you were editing. Review the current image and try again.");
@@ -376,7 +386,9 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           ...previousTask,
           imageCollection: mergeTaskImageOrder(imageCollection, orderedTaskImageIds(previousTask.imageCollection)),
         } : previousTask);
-      }).catch(() => setError("Couldn’t update Task image. Try again."));
+      }).catch(() => {
+        if (isCurrentSession()) setError("Couldn’t update Task image. Try again.");
+      });
     }, [currentTask?.imageCollection?.revision, onCaptionTaskImage]);
 
     useEffect(() => {
@@ -462,6 +474,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         open: (task: MobileTask) => {
           const seq = openSeqRef.current + 1;
           openSeqRef.current = seq;
+          captionSessionRef.current += 1;
+          activeTaskIdRef.current = task._id;
           void goalLinksStore.hydrate().then(() => {
             if (openSeqRef.current !== seq) return;
             const currentGoalId = goalLinksStore.goalFor(String(task._id)) ?? null;
@@ -505,6 +519,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         },
         close: () => {
           openSeqRef.current += 1;
+          captionSessionRef.current += 1;
+          activeTaskIdRef.current = null;
           if (mode !== "inspector") {
             setMode("inspector");
             return;

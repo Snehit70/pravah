@@ -246,12 +246,12 @@ export function TaskImageViewer({
           if (scale.value <= MIN_VIEWER_SCALE + 0.05) {
             const pagingPastStart = activeIndex === 0 && event.translationX > 0;
             const pagingPastEnd = activeIndex === count - 1 && event.translationX < 0;
-            translateX.value = event.translationX * (pagingPastStart || pagingPastEnd ? 0.22 : 1);
-            translateY.value = reducedMotion ? 0 : event.translationY;
+            translateX.set(event.translationX * (pagingPastStart || pagingPastEnd ? 0.22 : 1));
+            translateY.set(reducedMotion ? 0 : event.translationY);
             return;
           }
-          translateX.value = savedTranslateX.value + event.translationX;
-          translateY.value = savedTranslateY.value + event.translationY;
+          translateX.set(savedTranslateX.value + event.translationX);
+          translateY.set(savedTranslateY.value + event.translationY);
         })
         .onEnd((event) => {
           runOnJS(finishPan)(event.translationX, event.translationY);
@@ -263,27 +263,27 @@ export function TaskImageViewer({
     () =>
       Gesture.Pinch()
         .onStart((event) => {
-          pinchOriginX.value = event.focalX;
-          pinchOriginY.value = event.focalY;
+          pinchOriginX.set(event.focalX);
+          pinchOriginY.set(event.focalY);
         })
         .onUpdate((event) => {
           const nextScale = Math.max(MIN_VIEWER_SCALE, Math.min(MAX_VIEWER_SCALE, savedScale.value * event.scale));
           const ratio = nextScale / savedScale.value;
           const centeredX = pinchOriginX.value - viewportWidth / 2;
           const centeredY = pinchOriginY.value - viewportHeight / 2;
-          scale.value = nextScale;
+          scale.set(nextScale);
           const bounded = clampViewerTranslation({
             scale: nextScale,
             translateX: savedTranslateX.value * ratio + centeredX * (1 - ratio),
             translateY: savedTranslateY.value * ratio + centeredY * (1 - ratio),
           }, { width: viewportWidth, height: viewportHeight, contentAspectRatio });
-          translateX.value = bounded.translateX;
-          translateY.value = bounded.translateY;
+          translateX.set(bounded.translateX);
+          translateY.set(bounded.translateY);
         })
         .onEnd(() => {
-          savedScale.value = scale.value;
-          savedTranslateX.value = translateX.value;
-          savedTranslateY.value = translateY.value;
+          savedScale.set(scale.value);
+          savedTranslateX.set(translateX.value);
+          savedTranslateY.set(translateY.value);
         }),
     [contentAspectRatio, pinchOriginX, pinchOriginY, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, viewportHeight, viewportWidth]
   );
@@ -300,12 +300,12 @@ export function TaskImageViewer({
             { x: event.x, y: event.y },
             { width: viewportWidth, height: viewportHeight, contentAspectRatio },
           );
-          scale.value = withTiming(nextScale, { duration: reducedMotion ? 0 : 180 });
-          savedScale.value = next.scale;
-          translateX.value = withTiming(next.translateX, { duration: reducedMotion ? 0 : 180 });
-          translateY.value = withTiming(next.translateY, { duration: reducedMotion ? 0 : 180 });
-          savedTranslateX.value = next.translateX;
-          savedTranslateY.value = next.translateY;
+          scale.set(withTiming(nextScale, { duration: reducedMotion ? 0 : 180 }));
+          savedScale.set(next.scale);
+          translateX.set(withTiming(next.translateX, { duration: reducedMotion ? 0 : 180 }));
+          translateY.set(withTiming(next.translateY, { duration: reducedMotion ? 0 : 180 }));
+          savedTranslateX.set(next.translateX);
+          savedTranslateY.set(next.translateY);
         }),
     [contentAspectRatio, reducedMotion, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, viewportHeight, viewportWidth]
   );
