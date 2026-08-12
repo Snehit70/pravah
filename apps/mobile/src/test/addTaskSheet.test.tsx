@@ -73,7 +73,7 @@ vi.mock("react-native", () => {
       "data-testid":
         placeholder === "What needs to be done?"
           ? "title-input"
-          : placeholder === "Notes (optional)" || placeholder === "Why does this matter? (optional)"
+          : placeholder === "Notes (optional)"
           ? "description-input"
           : undefined,
     });
@@ -572,7 +572,7 @@ describe("AddTaskSheet", () => {
     fireEvent.change(screen.getByPlaceholderText("What do you want to achieve?"), {
       target: { value: "Launch parity redesign" },
     });
-    fireEvent.change(screen.getByPlaceholderText("What is the next move? (optional)"), {
+    fireEvent.change(screen.getByPlaceholderText("Add the first task"), {
       target: { value: "Fix Settings first" },
     });
 
@@ -611,7 +611,7 @@ describe("AddTaskSheet", () => {
     fireEvent.change(screen.getByPlaceholderText("What do you want to achieve?"), {
       target: { value: "Launch parity redesign" },
     });
-    fireEvent.change(screen.getByPlaceholderText("What is the next move? (optional)"), {
+    fireEvent.change(screen.getByPlaceholderText("Add the first task"), {
       target: { value: "Fix Settings first" },
     });
 
@@ -624,7 +624,7 @@ describe("AddTaskSheet", () => {
     expect(screen.getByPlaceholderText("What do you want to achieve?").getAttribute("value")).toBe(
       "Launch parity redesign"
     );
-    expect(screen.getByPlaceholderText("What is the next move? (optional)").getAttribute("value")).toBe(
+    expect(screen.getByPlaceholderText("Add the first task").getAttribute("value")).toBe(
       "Fix Settings first"
     );
   });
@@ -659,6 +659,24 @@ describe("AddTaskSheet", () => {
     });
 
     expect(screen.getByRole("button", { name: "When, Today" })).toBeTruthy();
+  });
+
+  it("keeps Exact time in the main Planning summary", () => {
+    render(
+      <AddTaskSheet
+        ref={ref}
+        onAdd={mockOnAdd}
+        isValidDeadline={mockIsValidDeadline}
+        onSheetChange={mockOnSheetChange}
+      />
+    );
+
+    act(() => {
+      ref.current?.open();
+    });
+
+    expect(screen.getByRole("button", { name: "Exact time, Not set" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Show more capture options" })).toBeNull();
   });
 
   it("Enter saves and keeps the sheet open with the title cleared", async () => {

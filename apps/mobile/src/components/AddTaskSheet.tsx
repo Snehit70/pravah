@@ -65,6 +65,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ClockIcon,
+  PlusIcon,
 } from "./UiIcons";
 import NavGoalsAsset from "../assets/icons/nav-goals.svg";
 
@@ -165,6 +166,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     ref
   ) {
     const titleInputRef = useRef<TextInput>(null);
+    const firstTaskInputRef = useRef<TextInput>(null);
     const [visible, setVisible] = useState(false);
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
@@ -571,6 +573,14 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                   setPlanningMode("when");
                 }}
               />
+              {kind === "task" && deadline ? (
+                <CapturePlanningRow
+                  icon={<ClockIcon color={colors.textSecondary} size={19} />}
+                  label="Exact time"
+                  value={time || "Not set"}
+                  onPress={() => setShowTimePicker(true)}
+                />
+              ) : null}
               <CapturePlanningRow
                 icon={<View style={[styles.priorityDot, { backgroundColor: priority ? colors.error : colors.textMuted }]} />}
                 label="Priority"
@@ -812,6 +822,56 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                 />
               </View>
 
+              {kind === "goal" ? (
+                <View style={styles.goalFields}>
+                  <TextInput
+                    value={description}
+                    onChangeText={setDescription}
+                    placeholder="Notes (optional)"
+                    placeholderTextColor={colors.textMuted}
+                    style={styles.notesInput}
+                    accessibilityLabel="Goal notes"
+                    multiline
+                  />
+                  <View style={styles.firstTaskComposer}>
+                    <View style={styles.firstTaskCheckbox}>
+                      <View style={styles.firstTaskCheckboxInner} />
+                    </View>
+                    <View style={styles.firstTaskCopy}>
+                      <Text style={styles.firstTaskLabel}>First task (optional)</Text>
+                      <TextInput
+                        ref={firstTaskInputRef}
+                        value={firstTaskTitle}
+                        onChangeText={setFirstTaskTitle}
+                        placeholder="Add the first task"
+                        placeholderTextColor={colors.textMuted}
+                        style={styles.firstTaskInput}
+                        accessibilityLabel="First task"
+                      />
+                    </View>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Add first task"
+                      hitSlop={10}
+                      onPress={() => firstTaskInputRef.current?.focus()}
+                      style={({ pressed }) => [styles.firstTaskAdd, pressed && styles.pressed]}
+                    >
+                      <PlusIcon color={colors.accent} size={21} />
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <TextInput
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Notes (optional)"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.notesInput}
+                  accessibilityLabel="Task notes"
+                  multiline
+                />
+              )}
+
               {kind === "task" && taskImageCoordinator ? (
                 <TaskImageFilmstrip
                   surface="capture"
@@ -835,61 +895,24 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                   onRetry={(uploadId) => {
                     void taskImageCoordinator.retry(uploadId);
                   }}
-                  onReorder={(uploadId, direction) => {
-                    const currentIndex = taskImageDrafts.findIndex((image) => image.uploadId === uploadId);
-                    const nextIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
-                    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= taskImageDrafts.length) return;
-                    const nextOrder = taskImageDrafts.map((image) => image.uploadId);
-                    [nextOrder[currentIndex], nextOrder[nextIndex]] = [nextOrder[nextIndex], nextOrder[currentIndex]];
-                    taskImageCoordinator.reorder(nextOrder);
-                  }}
+                  onReorder={taskImageCoordinator.reorder}
                   onRemove={taskImageCoordinator.remove}
                 />
               ) : null}
 
-              {kind === "goal" ? (
-                <View style={styles.goalFields}>
-                  <TextInput
-                    value={description}
-                    onChangeText={setDescription}
-                    placeholder="Why does this matter? (optional)"
-                    placeholderTextColor={colors.textMuted}
-                    style={styles.notesInput}
-                    accessibilityLabel="Goal notes"
-                    multiline
-                  />
-                  <TextInput
-                    value={firstTaskTitle}
-                    onChangeText={setFirstTaskTitle}
-                    placeholder="What is the next move? (optional)"
-                    placeholderTextColor={colors.textMuted}
-                    style={styles.inlineTextInput}
-                    accessibilityLabel="First linked task"
-                  />
-                </View>
-              ) : (
-                <TextInput
-                  value={description}
-                  onChangeText={setDescription}
-                  placeholder="Notes (optional)"
-                  placeholderTextColor={colors.textMuted}
-                  style={styles.notesInput}
-                  accessibilityLabel="Task notes"
-                  multiline
-                />
-              )}
-
               {renderPlanning()}
 
-              <Pressable
-                onPress={() => setShowDetails((current) => !current)}
-                style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel={showDetails ? "Hide more capture options" : "Show more capture options"}
-                accessibilityState={{ expanded: showDetails }}
-              >
-                <Text style={styles.moreButtonText}>{showDetails ? "Less" : "More"}</Text>
-              </Pressable>
+              {kind === "task" && prefs.bulkTaskCaptureEnabled ? (
+                <Pressable
+                  onPress={() => setShowDetails((current) => !current)}
+                  style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={showDetails ? "Hide more capture options" : "Show more capture options"}
+                  accessibilityState={{ expanded: showDetails }}
+                >
+                  <Text style={styles.moreButtonText}>{showDetails ? "Less" : "More"}</Text>
+                </Pressable>
+              ) : null}
 
               {kind === "task" && prefs.bulkTaskCaptureEnabled && showDetails ? (
                 <View style={styles.bulkSection}>
@@ -915,23 +938,6 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                     </Text>
                   ) : null}
                 </View>
-              ) : null}
-
-              {showDetails ? (
-                <Animated.View
-                  entering={reducedMotion ? undefined : FadeIn.duration(200)}
-                  exiting={reducedMotion ? undefined : FadeOut.duration(150)}
-                  style={styles.detailsSection}
-                >
-                  {deadline ? (
-                    <CapturePlanningRow
-                      icon={<ClockIcon color={colors.textSecondary} size={19} />}
-                      label="Exact time"
-                      value={time || "Not set"}
-                      onPress={() => setShowTimePicker(true)}
-                    />
-                  ) : null}
-                </Animated.View>
               ) : null}
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -1188,6 +1194,48 @@ const styles = createThemedStyles({
   },
 
   goalFields: { gap: spacing.md },
+  firstTaskComposer: {
+    minHeight: 68,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    backgroundColor: colors.bgSurface,
+  },
+  firstTaskCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: colors.textMuted,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  firstTaskCheckboxInner: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.accent,
+    opacity: 0,
+  },
+  firstTaskCopy: { flex: 1, minWidth: 0, gap: 1 },
+  firstTaskLabel: { ...typography.micro, color: colors.textSecondary },
+  firstTaskInput: {
+    ...typography.bodyMd,
+    color: colors.textPrimary,
+    minHeight: 28,
+    padding: 0,
+  },
+  firstTaskAdd: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   planningSection: { gap: spacing.sm },
   sectionLabel: {
     ...typography.bodyMd,

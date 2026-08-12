@@ -12,6 +12,10 @@ export default defineConfig({
       "react-dom": path.resolve(__dirname, "../../node_modules/react-dom"),
       "react-native": path.resolve(__dirname, "../../node_modules/react-native-web"),
       "react-native-svg": path.resolve(__dirname, "src/test/mocks/react-native-svg.tsx"),
+      "react-native-draggable-flatlist": path.resolve(
+        __dirname,
+        "src/test/mocks/react-native-draggable-flatlist.tsx",
+      ),
     },
   },
   test: {

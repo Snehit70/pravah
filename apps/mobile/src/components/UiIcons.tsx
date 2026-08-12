@@ -54,6 +54,14 @@ export const ChevronDownIcon = icon(({ color, size, strokeWidth }) => (
   </Svg>
 ));
 
+export const GripHorizontalIcon = icon(({ color, size, strokeWidth }) => (
+  <Svg {...frame(color, size, strokeWidth)}>
+    {[5, 12, 19].flatMap((cx) => [9, 15].map((cy) => (
+      <Circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={1} fill={color} strokeWidth={0} />
+    )))}
+  </Svg>
+));
+
 export const SearchIcon = icon(({ color, size, strokeWidth }) => (
   <Svg {...frame(color, size, strokeWidth)}>
     <Circle cx={11} cy={11} r={7} />

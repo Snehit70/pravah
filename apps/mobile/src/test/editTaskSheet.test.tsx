@@ -47,11 +47,13 @@ vi.mock("react-native", () => {
   const Pressable = ({ children, ...rest }: AnyProps) => {
     const {
       onPress,
+      onLongPress,
       disabled,
       accessibilityLabel,
       ...remaining
     } = rest as AnyProps & {
       onPress?: () => void;
+      onLongPress?: () => void;
       disabled?: boolean;
       accessibilityLabel?: string;
     };
@@ -66,6 +68,7 @@ vi.mock("react-native", () => {
         type: "button",
         disabled: Boolean(disabled),
         onClick: onPress,
+        onMouseDown: onLongPress,
         "aria-label": accessibilityLabel,
       },
       resolved,
@@ -227,6 +230,7 @@ vi.mock("../components/UiIcons", () => {
     InboxTrayIcon: icon("inbox"),
     InfoCircleIcon: icon("info"),
     ImagePlusIcon: icon("image-plus"),
+    GripHorizontalIcon: icon("grip-horizontal"),
     PencilIcon: icon("pencil"),
     PlusIcon: icon("plus"),
     CopyIcon: icon("copy"),
@@ -377,6 +381,8 @@ describe("EditTaskSheet compact workbench", () => {
     expect(screen.queryByTestId("title-input")).toBeNull();
     expect(screen.getByText(/PLANNED/)).toBeTruthy();
     expect(screen.getByText("Planning")).toBeTruthy();
+    const content = document.body.textContent ?? "";
+    expect(content.indexOf("Notes")).toBeLessThan(content.indexOf("Visual reference"));
     expect(screen.getByText("Move to Inbox")).toBeTruthy();
     expect(screen.getByText("Complete")).toBeTruthy();
     expect(onSheetChange).toHaveBeenCalledWith(true);
@@ -569,12 +575,14 @@ describe("EditTaskSheet compact workbench", () => {
     expect(screen.getAllByAltText("Selected Task image preview")[0].getAttribute("src"))
       .toBe("file:///image-a.jpg");
     fireEvent.click(screen.getByLabelText("Select Task image 2"));
-    fireEvent.click(screen.getByLabelText("Move Task image up"));
+    fireEvent.mouseDown(screen.getAllByLabelText("Hold and drag to reorder Task image")[1]);
 
     await waitFor(() => {
       expect(screen.getAllByAltText("Selected Task image preview")[0].getAttribute("src"))
         .toBe("file:///image-b.jpg");
     });
+    expect(onReorderTaskImages).not.toHaveBeenCalled();
+    await act(async () => fireEvent.click(screen.getByText("Save changes")));
     expect(onReorderTaskImages).toHaveBeenCalledWith({
       taskId: "task1",
       orderedTaskImageIds: ["image-b", "image-a"],

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Image } from "expo-image";
+import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
 import {
   AlertCircleIcon,
-  ChevronLeftIcon,
   ChevronRightIcon,
   CloseIcon,
   CopyIcon,
+  GripHorizontalIcon,
   ImagePlusIcon,
   PlusIcon,
   RetryArrowIcon,
@@ -19,6 +20,8 @@ import { createThemedStyles } from "../theme/themeRuntime";
 import { getViewerImages, hasTaskImageVisual, TaskImageViewer } from "./TaskImageViewer";
 import { TaskImageSourceSheet } from "./TaskImageSourceSheet";
 import type { TaskImageSourceKind, TaskImageState } from "../lib/taskImageCoordinator";
+import { haptic } from "../lib/haptic";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 
 export type TaskImageFilmstripSurface = "capture" | "inbox" | "edit" | "completed" | "management";
 
@@ -62,7 +65,7 @@ type TaskImageFilmstripProps = {
   onSelectSource?: (kind: TaskImageSourceKind) => void | Promise<void>;
   onRetry?: (taskImageId: string) => void;
   onCaptionChange?: (taskImageId: string, caption: string) => void;
-  onReorder?: (taskImageId: string, direction: "up" | "down") => void;
+  onReorder?: (orderedTaskImageIds: string[]) => void;
   onRemove?: (taskImageId: string) => void;
   onRestore?: (taskImageId: string, replaceTaskImageId?: string) => void;
   resolveDelivery?: (
@@ -106,6 +109,30 @@ const PREPARATION_FAILURE_CODES = new Set([
   "normalization_failed",
 ]);
 
+function moveImage(images: TaskImageFilmstripEntry[], index: number, direction: "up" | "down") {
+  const nextIndex = index + (direction === "up" ? -1 : 1);
+  if (nextIndex < 0 || nextIndex >= images.length) return images;
+  const next = [...images];
+  [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+  return next;
+}
+
+function DragHandle({ drag, disabled }: { drag: () => void; disabled: boolean }) {
+  return (
+    <Pressable
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel="Hold and drag to reorder Task image"
+      onLongPress={drag}
+      delayLongPress={220}
+      hitSlop={4}
+      style={({ pressed }) => [styles.dragHandle, pressed && styles.dragHandlePressed]}
+    >
+      <GripHorizontalIcon color={colors.textInverse} size={20} strokeWidth={2} />
+    </Pressable>
+  );
+}
+
 function failureTitle(image: TaskImageFilmstripEntry) {
   return PREPARATION_FAILURE_CODES.has(image.failure?.code ?? "")
     ? "Image could not be prepared"
@@ -114,7 +141,7 @@ function failureTitle(image: TaskImageFilmstripEntry) {
 
 function stateCopy(image: TaskImageFilmstripEntry) {
   if (image.state === "preparing") return "Preparing image";
-  if (image.state === "pending") return "Waiting to upload";
+  if (image.state === "pending") return "Image ready";
   if (image.state === "uploading") return "Uploading image";
   if (image.state === "verifying") return "Verifying image";
   if (image.state === "failed") {
@@ -129,7 +156,6 @@ function statusLabel(image: TaskImageFilmstripEntry) {
   }
   if (image.state === "failed") return failureTitle(image);
   if (image.state === "verifying") return "Verifying";
-  if (image.state === "pending") return "Waiting";
   if (image.state === "preparing") return "Preparing";
   return "";
 }
@@ -363,16 +389,47 @@ function CaptureSurface({
   onOpenSource,
 }: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[]; onOpenImage?: OpenImage; onOpenSource?: OpenSource }) {
   const [captionDrafts, setCaptionDrafts] = useState<Record<string, string>>({});
+  const [displayImages, setDisplayImages] = useState(images);
+  const reducedMotion = useReducedMotion();
+  useEffect(() => setDisplayImages(images), [images]);
   if (!images.length) return <EmptyImages onOpenSource={onOpenSource} compact />;
   return (
     <>
       <View style={styles.sectionHeaderRow}>
         <Text style={styles.sectionLabel}>Images · {images.length}/5</Text>
-        {images.length < 5 ? <SourceActions onSelectSource={onSelectSource} /> : null}
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filmstripContent}>
-        {images.map((image, index) => (
-          <View key={image.taskImageId} style={styles.filmstripItem}>
+      <DraggableFlatList
+        horizontal
+        data={displayImages}
+        keyExtractor={(image) => image.taskImageId}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filmstripContent}
+        activationDistance={8}
+        autoscrollThreshold={56}
+        autoscrollSpeed={100}
+        onDragBegin={() => haptic.selection()}
+        onDragEnd={({ data }) => {
+          setDisplayImages(data);
+          onReorder?.(data.map((image) => image.taskImageId));
+        }}
+        renderItem={({ item: image, drag, isActive, getIndex }: RenderItemParams<TaskImageFilmstripEntry>) => {
+          const index = getIndex() ?? 0;
+          return (
+          <View
+            style={[styles.filmstripItem, isActive && !reducedMotion && styles.draggingItem]}
+            accessibilityLabel={`Task image ${index + 1} of ${displayImages.length}${index === 0 ? ", Primary" : ""}`}
+            accessibilityActions={[
+              ...(index > 0 ? [{ name: "moveEarlier", label: "Move Task image earlier" }] : []),
+              ...(index < displayImages.length - 1 ? [{ name: "moveLater", label: "Move Task image later" }] : []),
+            ]}
+            onAccessibilityAction={(event) => {
+              const direction = event.nativeEvent.actionName === "moveEarlier" ? "up" : event.nativeEvent.actionName === "moveLater" ? "down" : null;
+              if (!direction) return;
+              const next = moveImage(displayImages, index, direction);
+              setDisplayImages(next);
+              onReorder?.(next.map((entry) => entry.taskImageId));
+            }}
+          >
             <View style={styles.filmstripPhotoWrap}>
               <ImagePreview
                 image={image}
@@ -382,6 +439,7 @@ function CaptureSurface({
                 onPressLabel={`Open Task image ${index + 1}`}
               />
               {index === 0 ? <Text style={styles.primaryFlag}>Primary</Text> : null}
+              {onReorder && displayImages.length > 1 ? <DragHandle drag={drag} disabled={isActive} /> : null}
               {onRemove ? (
                 <Pressable accessibilityRole="button" accessibilityLabel="Remove Task image" onPress={() => onRemove(image.taskImageId)} style={styles.photoRemove}>
                   <CloseIcon color={colors.textInverse} size={16} />
@@ -402,33 +460,19 @@ function CaptureSurface({
                 accessibilityLabel={`Caption for Task image ${index + 1}`}
               />
             ) : image.caption ? <Text numberOfLines={1} style={styles.photoCaption}>{image.caption}</Text> : null}
-            {onReorder ? (
-              <View style={styles.captureActionRow}>
-                <Pressable
-                  disabled={index === 0}
-                  accessibilityRole="button"
-                  accessibilityLabel="Move Task image earlier"
-                  onPress={() => onReorder(image.taskImageId, "up")}
-                  style={[styles.captureAction, index === 0 && styles.disabled]}
-                >
-                  <ChevronLeftIcon color={colors.textSecondary} size={16} />
-                  <Text style={styles.editActionText}>Earlier</Text>
-                </Pressable>
-                <Pressable
-                  disabled={index === images.length - 1}
-                  accessibilityRole="button"
-                  accessibilityLabel="Move Task image later"
-                  onPress={() => onReorder(image.taskImageId, "down")}
-                  style={[styles.captureAction, index === images.length - 1 && styles.disabled]}
-                >
-                  <Text style={styles.editActionText}>Later</Text>
-                  <ChevronRightIcon color={colors.textSecondary} size={16} />
-                </Pressable>
-              </View>
-            ) : null}
           </View>
-        ))}
-      </ScrollView>
+        );}}
+        ListFooterComponent={onOpenSource && displayImages.length < 5 ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add Task image"
+            onPress={onOpenSource}
+            style={({ pressed }) => [styles.captureAddThumb, pressed && styles.pressed]}
+          >
+            <PlusIcon color={colors.accent} size={24} />
+          </Pressable>
+        ) : null}
+      />
     </>
   );
 }
@@ -471,8 +515,13 @@ function EditSurface({
 }: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[]; onOpenImage?: OpenImage; onOpenSource?: OpenSource }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [captionDrafts, setCaptionDrafts] = useState<Record<string, string>>({});
+  const [displayImages, setDisplayImages] = useState(images);
+  const reducedMotion = useReducedMotion();
   const [now, setNow] = useState(() => Date.now());
   const visibleRecoverable = (recoverable ?? []).filter((image) => image.recoverableUntil === undefined || image.recoverableUntil > now);
+  useEffect(() => {
+    setDisplayImages(images);
+  }, [images]);
   useEffect(() => {
     const nextExpiry = (recoverable ?? [])
       .map((image) => image.recoverableUntil)
@@ -482,8 +531,8 @@ function EditSurface({
     const timer = setTimeout(() => setNow((current) => Math.max(current, nextExpiry)), Math.max(0, nextExpiry - now));
     return () => clearTimeout(timer);
   }, [now, recoverable]);
-  const activeSelectedIndex = Math.min(selectedIndex, Math.max(0, images.length - 1));
-  const selected = images[activeSelectedIndex];
+  const activeSelectedIndex = Math.min(selectedIndex, Math.max(0, displayImages.length - 1));
+  const selected = displayImages[activeSelectedIndex];
 
   if (!selected) {
     return (
@@ -494,12 +543,6 @@ function EditSurface({
     );
   }
 
-  const move = (direction: "up" | "down") => {
-    const nextIndex = activeSelectedIndex + (direction === "up" ? -1 : 1);
-    if (nextIndex < 0 || nextIndex >= images.length) return;
-    onReorder?.(selected.taskImageId, direction);
-    setSelectedIndex(nextIndex);
-  };
   const remove = () => {
     onRemove?.(selected.taskImageId);
     setSelectedIndex((current) => Math.min(current, Math.max(0, images.length - 2)));
@@ -516,17 +559,53 @@ function EditSurface({
         onPress={onOpenImage && hasTaskImageVisual(selected) ? () => onOpenImage(selected.taskImageId) : undefined}
         onPressLabel={`Open Task image ${activeSelectedIndex + 1}`}
       />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.editStrip}>
-        {images.map((image, index) => (
-          <Pressable key={image.taskImageId} accessibilityRole="button" accessibilityLabel={`Select Task image ${index + 1}`} onPress={() => setSelectedIndex(index)} style={[styles.editThumbWrap, index === activeSelectedIndex && styles.editThumbActive]}>
-            <ImagePreview image={image} resolveDelivery={resolveDelivery} variant="card" style={styles.editThumb} accessibilityLabel={`Task image thumbnail ${index + 1}`} />
-            <Text style={styles.editThumbNumber}>{index + 1}</Text>
-          </Pressable>
-        ))}
-        {onSelectSource && images.length < 5 ? <Pressable accessibilityRole="button" accessibilityLabel="Add Task image" onPress={() => void onSelectSource("photos")} style={styles.editAddThumb}><PlusIcon color={colors.accent} size={21} /></Pressable> : null}
-      </ScrollView>
+      <DraggableFlatList
+        horizontal
+        data={displayImages}
+        keyExtractor={(image) => image.taskImageId}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.editStrip}
+        activationDistance={8}
+        autoscrollThreshold={56}
+        autoscrollSpeed={100}
+        onDragBegin={() => haptic.selection()}
+        onDragEnd={({ data, from, to }) => {
+          const selectedId = selected.taskImageId;
+          setDisplayImages(data);
+          setSelectedIndex(data.findIndex((image) => image.taskImageId === selectedId));
+          if (from !== to) onReorder?.(data.map((image) => image.taskImageId));
+        }}
+        renderItem={({ item: image, drag, isActive, getIndex }: RenderItemParams<TaskImageFilmstripEntry>) => {
+          const index = getIndex() ?? 0;
+          return (
+            <View
+              style={[styles.editThumbDragWrap, isActive && !reducedMotion && styles.draggingItem]}
+              accessibilityLabel={`Task image ${index + 1} of ${displayImages.length}${index === 0 ? ", Primary" : ""}`}
+              accessibilityActions={[
+                ...(index > 0 ? [{ name: "moveEarlier", label: "Move Task image earlier" }] : []),
+                ...(index < displayImages.length - 1 ? [{ name: "moveLater", label: "Move Task image later" }] : []),
+              ]}
+              onAccessibilityAction={(event) => {
+                const direction = event.nativeEvent.actionName === "moveEarlier" ? "up" : event.nativeEvent.actionName === "moveLater" ? "down" : null;
+                if (!direction) return;
+                const next = moveImage(displayImages, index, direction);
+                setDisplayImages(next);
+                setSelectedIndex(next.findIndex((entry) => entry.taskImageId === selected.taskImageId));
+                onReorder?.(next.map((entry) => entry.taskImageId));
+              }}
+            >
+              <Pressable accessibilityRole="button" accessibilityLabel={`Select Task image ${index + 1}`} onPress={() => setSelectedIndex(index)} style={[styles.editThumbWrap, index === activeSelectedIndex && styles.editThumbActive]}>
+                <ImagePreview image={image} resolveDelivery={resolveDelivery} variant="card" style={styles.editThumb} accessibilityLabel={`Task image thumbnail ${index + 1}`} />
+                <Text style={styles.editThumbNumber}>{index + 1}</Text>
+              </Pressable>
+              {onReorder && displayImages.length > 1 ? <DragHandle drag={drag} disabled={isActive} /> : null}
+            </View>
+          );
+        }}
+        ListFooterComponent={onSelectSource && displayImages.length < 5 ? <Pressable accessibilityRole="button" accessibilityLabel="Add Task image" onPress={() => void onSelectSource("photos")} style={styles.editAddThumb}><PlusIcon color={colors.accent} size={21} /></Pressable> : null}
+      />
       <View style={styles.editMetaRow}>
-        <Text style={styles.sectionLabel}>{activeSelectedIndex === 0 ? "PRIMARY IMAGE" : `IMAGE ${activeSelectedIndex + 1} OF ${images.length}`}</Text>
+        <Text style={styles.sectionLabel}>{activeSelectedIndex === 0 ? "PRIMARY IMAGE" : `IMAGE ${activeSelectedIndex + 1} OF ${displayImages.length}`}</Text>
         <Text style={styles.sourceMeta}>Task image</Text>
       </View>
       {onCaptionChange ? (
@@ -541,7 +620,7 @@ function EditSurface({
           accessibilityLabel={`Caption for Task image ${activeSelectedIndex + 1}`}
         />
       ) : selected.caption ? <Text style={styles.captionText}>{selected.caption}</Text> : null}
-      {selected.state !== "ready" ? (
+      {selected.state !== "ready" && selected.state !== "pending" ? (
         <View style={[styles.statusPanel, selected.state === "failed" ? styles.statusPanelError : styles.statusPanelProgress]}>
           <View style={styles.statusPanelCopy}>
             {selected.state === "failed" ? <AlertCircleIcon color={colors.error} size={18} /> : null}
@@ -554,8 +633,6 @@ function EditSurface({
         </View>
       ) : null}
       <View style={styles.editActionRow}>
-        <Pressable disabled={activeSelectedIndex === 0} accessibilityRole="button" accessibilityLabel="Move Task image up" onPress={() => move("up")} style={[styles.editAction, activeSelectedIndex === 0 && styles.disabled]}><ChevronLeftIcon color={colors.textSecondary} size={18} /><Text style={styles.editActionText}>Earlier</Text></Pressable>
-        <Pressable disabled={activeSelectedIndex === images.length - 1} accessibilityRole="button" accessibilityLabel="Move Task image down" onPress={() => move("down")} style={[styles.editAction, activeSelectedIndex === images.length - 1 && styles.disabled]}><Text style={styles.editActionText}>Later</Text><ChevronRightIcon color={colors.textSecondary} size={18} /></Pressable>
         {onRemove ? <Pressable accessibilityRole="button" accessibilityLabel="Remove Task image" onPress={remove} style={styles.editAction}><TrashIcon color={colors.error} size={17} /><Text style={styles.removeText}>Remove</Text></Pressable> : null}
       </View>
       {images.length < 5 ? <SourceActions onSelectSource={onSelectSource} full /> : null}
@@ -631,8 +708,8 @@ function ManagementSurface({
           />
           {onCaptionChange ? <TextInput value={image.caption ?? ""} onChangeText={(caption) => onCaptionChange(image.taskImageId, caption)} placeholder="Add a caption (optional)" placeholderTextColor={colors.textMuted} accessibilityLabel={`Caption for Task image ${index + 1}`} maxLength={500} style={styles.captionInput} /> : image.caption ? <Text style={styles.captionText}>{image.caption}</Text> : null}
           {onReorder || onRemove ? <View style={styles.actionRow}>
-            {onReorder && index > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="Move Task image up" onPress={() => onReorder(image.taskImageId, "up")} style={styles.touchAction}><Text style={styles.actionText}>↑</Text></Pressable> : null}
-            {onReorder && index < ordered.length - 1 ? <Pressable accessibilityRole="button" accessibilityLabel="Move Task image down" onPress={() => onReorder(image.taskImageId, "down")} style={styles.touchAction}><Text style={styles.actionText}>↓</Text></Pressable> : null}
+            {onReorder && index > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="Move Task image up" onPress={() => onReorder(moveImage(ordered, index, "up").map((entry) => entry.taskImageId))} style={styles.touchAction}><Text style={styles.actionText}>↑</Text></Pressable> : null}
+            {onReorder && index < ordered.length - 1 ? <Pressable accessibilityRole="button" accessibilityLabel="Move Task image down" onPress={() => onReorder(moveImage(ordered, index, "down").map((entry) => entry.taskImageId))} style={styles.touchAction}><Text style={styles.actionText}>↓</Text></Pressable> : null}
             {onRemove ? <Pressable accessibilityRole="button" accessibilityLabel="Remove Task image" onPress={() => onRemove(image.taskImageId)} style={styles.touchAction}><Text style={styles.removeText}>Remove</Text></Pressable> : null}
           </View> : null}
           {image.state === "failed" && image.failure?.retryable && onRetry ? <Pressable accessibilityRole="button" accessibilityLabel="Retry Task image" onPress={() => onRetry(image.taskImageId)} style={styles.retryButton}><RetryArrowIcon color={colors.accent} size={16} /><Text style={styles.retryText}>Retry</Text></Pressable> : null}
@@ -707,12 +784,14 @@ const styles = createThemedStyles({
   filmstripItem: { width: 122 },
   filmstripPhotoWrap: { width: 122, height: 92, borderRadius: radii.lg, overflow: "hidden" },
   filmstripPhoto: { width: 122, height: 92, borderRadius: radii.lg },
+  draggingItem: { opacity: 0.94, transform: [{ scale: 1.03 }], elevation: 8, shadowColor: colors.textPrimary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.16, shadowRadius: 12 },
+  dragHandle: { position: "absolute", left: "50%", bottom: spacing.xs, width: 44, height: 44, marginLeft: -22, borderRadius: radii.full, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(32,25,20,0.72)" },
+  dragHandlePressed: { backgroundColor: "rgba(32,25,20,0.9)" },
+  captureAddThumb: { width: 122, height: 92, alignItems: "center", justifyContent: "center", borderRadius: radii.lg, borderWidth: StyleSheet.hairlineWidth, borderStyle: "dashed", borderColor: colors.border, backgroundColor: colors.bgSurface },
   primaryFlag: { position: "absolute", left: spacing.xs, top: spacing.xs, ...typography.micro, fontSize: 9, color: colors.textInverse, backgroundColor: "rgba(32,25,20,0.72)", paddingHorizontal: 6, paddingVertical: 3, borderRadius: radii.sm, overflow: "hidden" },
   photoRemove: { position: "absolute", right: spacing.xs, top: spacing.xs, width: 44, height: 44, borderRadius: radii.full, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(32,25,20,0.72)" },
   photoCaption: { ...typography.bodyMd, color: colors.textSecondary, marginTop: spacing.xs },
   captureCaptionInput: { width: "100%", minHeight: 44, paddingVertical: spacing.xs, color: colors.textSecondary, ...typography.bodyMd },
-  captureActionRow: { flexDirection: "row", justifyContent: "space-between", marginTop: spacing.xs },
-  captureAction: { minWidth: 44, minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 2 },
   inboxMedia: { marginLeft: spacing.md, alignItems: "flex-end", gap: spacing.xs },
   inboxThumb: { width: 84, height: 68, borderRadius: radii.md },
   countBadge: { position: "absolute", right: 4, bottom: 4, ...typography.micro, color: colors.textInverse, backgroundColor: "rgba(32,25,20,0.72)", paddingHorizontal: 5, paddingVertical: 2, borderRadius: radii.sm, overflow: "hidden" },
@@ -721,6 +800,7 @@ const styles = createThemedStyles({
   editHero: { width: "100%", aspectRatio: 1.3, borderRadius: radii.lg },
   editStrip: { paddingVertical: spacing.md, gap: spacing.sm },
   editThumbWrap: { padding: 2, borderRadius: radii.md, borderWidth: 2, borderColor: "transparent" },
+  editThumbDragWrap: { position: "relative" },
   editThumbActive: { borderColor: colors.accent },
   editThumb: { width: 62, height: 54, borderRadius: radii.sm },
   editThumbNumber: { position: "absolute", left: 6, top: 6, fontFamily: "GeistMono_500Medium", fontSize: 9, color: colors.textInverse, backgroundColor: "rgba(32,25,20,0.66)", paddingHorizontal: 4, paddingVertical: 2, borderRadius: 3, overflow: "hidden" },
@@ -738,7 +818,6 @@ const styles = createThemedStyles({
   statusPanelBody: { ...typography.bodyMd, color: colors.textSecondary, maxWidth: 230 },
   editActionRow: { marginTop: spacing.lg, flexDirection: "row", justifyContent: "space-between", gap: spacing.xs },
   editAction: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3, paddingHorizontal: spacing.sm },
-  editActionText: { fontFamily: "Geist_600SemiBold", fontSize: 11, color: colors.textSecondary },
   disabled: { opacity: 0.28 },
   actionRow: { width: "100%", flexDirection: "row", justifyContent: "flex-end", gap: spacing.xs, paddingHorizontal: spacing.sm, paddingBottom: spacing.sm },
   touchAction: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.sm, borderRadius: radii.md, backgroundColor: colors.bgFloating },

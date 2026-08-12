@@ -15,7 +15,7 @@ vi.mock("react-native", () => {
       "aria-label": accessibilityLabel,
       onChange: (event: React.ChangeEvent<HTMLInputElement>) => onChangeText?.(event.target.value),
     });
-  const Pressable = ({ children, onPress, accessibilityLabel, accessibilityRole, style: _, ...props }: Props) =>
+  const Pressable = ({ children, onPress, onLongPress, accessibilityLabel, accessibilityRole, style: _, ...props }: Props) =>
     React.createElement(
       "button",
       {
@@ -24,6 +24,7 @@ vi.mock("react-native", () => {
         role: accessibilityRole,
         "aria-label": accessibilityLabel,
         onClick: onPress as React.MouseEventHandler,
+        onMouseDown: onLongPress as React.MouseEventHandler,
       },
       typeof children === "function"
         ? (children as (state: { pressed: boolean }) => React.ReactNode)({ pressed: false })
@@ -43,6 +44,36 @@ vi.mock("react-native", () => {
     StyleSheet: { create: <T,>(styles: T) => styles, hairlineWidth: 1, absoluteFill: {} },
   };
 });
+
+vi.mock("react-native-draggable-flatlist", () => ({
+  default: ({ data, renderItem, ListFooterComponent, onDragBegin, onDragEnd }: {
+    data: Array<{ taskImageId: string }>;
+    renderItem: (params: { item: { taskImageId: string }; drag: () => void; isActive: boolean; getIndex: () => number }) => React.ReactNode;
+    ListFooterComponent?: React.ReactNode;
+    onDragBegin?: (index: number) => void;
+    onDragEnd?: (params: { data: Array<{ taskImageId: string }>; from: number; to: number }) => void;
+  }) => React.createElement(
+    "div",
+    null,
+    ...data.map((item, index) => renderItem({
+      item,
+      isActive: false,
+      getIndex: () => index,
+      drag: () => {
+        onDragBegin?.(index);
+        const reordered = [...data];
+        const [moved] = reordered.splice(index, 1);
+        const to = index === 0 ? reordered.length : 0;
+        reordered.splice(to, 0, moved);
+        onDragEnd?.({ data: reordered, from: index, to });
+      },
+    })),
+    ListFooterComponent,
+  ),
+}));
+
+vi.mock("../hooks/useReducedMotion", () => ({ useReducedMotion: () => false }));
+vi.mock("../lib/haptic", () => ({ haptic: { selection: vi.fn() } }));
 
 vi.mock("react-native-gesture-handler", () => {
   const gesture = () => {
@@ -93,6 +124,7 @@ vi.mock("../components/UiIcons", () => {
     ChevronRightIcon: Icon,
     CloseIcon: Icon,
     CopyIcon: Icon,
+    GripHorizontalIcon: Icon,
     ImagePlusIcon: Icon,
     PlusIcon: Icon,
     RetryArrowIcon: Icon,
@@ -176,6 +208,23 @@ describe("TaskImageFilmstrip", () => {
     expect(document.body.textContent).not.toContain("decoder");
   });
 
+  it("does not present a locally staged image as waiting", () => {
+    render(
+      <TaskImageFilmstrip
+        surface="capture"
+        images={[{
+          taskImageId: "image-1",
+          position: 0,
+          state: "pending",
+          previewUri: "file:///private/preview.jpg",
+        }]}
+      />
+    );
+
+    expect(screen.queryByText("Waiting")).toBeNull();
+    expect(screen.queryByText("Waiting to upload")).toBeNull();
+  });
+
   it("resolves a ready image through the authenticated boundary and labels it semantically", async () => {
     const resolveDelivery = vi.fn(async () => ({
       kind: "ready" as const,
@@ -231,12 +280,12 @@ describe("TaskImageFilmstrip", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add Task image from Photos" }));
 
     expect(onCaptionChange).toHaveBeenCalledWith("image-1", "Updated");
-    expect(onReorder).toHaveBeenCalledWith("image-1", "down");
+    expect(onReorder).toHaveBeenCalledWith(["image-2", "image-1"]);
     expect(onRemove).toHaveBeenCalledWith("image-1");
     expect(onSelectSource).toHaveBeenCalledWith("photos");
   });
 
-  it("preserves capture caption spaces while exposing image reorder controls", () => {
+  it("preserves capture caption spaces while exposing direct image reordering", () => {
     const onCaptionChange = vi.fn();
     const onReorder = vi.fn();
     render(
@@ -254,9 +303,29 @@ describe("TaskImageFilmstrip", () => {
     const caption = screen.getByDisplayValue("First");
     fireEvent.change(caption, { target: { value: "First " } });
     expect((caption as HTMLInputElement).value).toBe("First ");
-    fireEvent.click(screen.getAllByRole("button", { name: "Move Task image earlier" })[1]);
+    expect(screen.queryByText("Earlier")).toBeNull();
+    expect(screen.queryByText("Later")).toBeNull();
+    fireEvent.mouseDown(screen.getAllByRole("button", { name: "Hold and drag to reorder Task image" })[1]);
     expect(onCaptionChange).toHaveBeenCalledWith("image-1", "First ");
-    expect(onReorder).toHaveBeenCalledWith("image-2", "up");
+    expect(onReorder).toHaveBeenCalledWith(["image-2", "image-1"]);
+  });
+
+  it("uses the plus tile as the Capture add-image entry point", async () => {
+    const onSelectSource = vi.fn();
+    render(
+      <TaskImageFilmstrip
+        surface="capture"
+        images={[{ taskImageId: "image-1", position: 0, state: "pending" }]}
+        onSelectSource={onSelectSource}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Add Task image from Photos" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Add Task image" }));
+    await waitFor(() => expect(screen.getByText("Choose where the visual reference should come from.")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Add Task image from Photos" }));
+
+    expect(onSelectSource).toHaveBeenCalledWith("photos");
   });
 
   it("keeps Edit caption text local until blur commits it", () => {
