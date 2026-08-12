@@ -28,10 +28,12 @@ export function clampViewerTranslation(
   const containedHeight = aspect >= viewportAspect ? viewport.width / aspect : viewport.height;
   const maxX = Math.max(0, (containedWidth * scale - viewport.width) / 2);
   const maxY = Math.max(0, (containedHeight * scale - viewport.height) / 2);
+  const boundedX = Math.max(-maxX, Math.min(maxX, transform.translateX));
+  const boundedY = Math.max(-maxY, Math.min(maxY, transform.translateY));
   return {
     scale,
-    translateX: Math.max(-maxX, Math.min(maxX, transform.translateX)),
-    translateY: Math.max(-maxY, Math.min(maxY, transform.translateY)),
+    translateX: boundedX === 0 ? 0 : boundedX,
+    translateY: boundedY === 0 ? 0 : boundedY,
   };
 }
 
