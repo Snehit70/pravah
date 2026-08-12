@@ -722,6 +722,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         try {
           const sources = await dependencies.acquireSources(kind, MAX_TASK_IMAGE_COUNT - visibleUploadIds.length);
           for (const source of sources.slice(0, MAX_TASK_IMAGE_COUNT - visibleUploadIds.length)) {
+            if (disposed) return;
             const uploadId = dependencies.createUploadId();
             const entry: UploadRecord = {
               uploadId,
@@ -739,9 +740,16 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
             notify();
             try {
               const normalized = await dependencies.normalize(source);
+              if (!records.has(uploadId)) continue;
               const durable = dependencies.sourceStore
                 ? await dependencies.sourceStore.persist(uploadId, normalized)
                 : { sourceKey: undefined, uri: normalized.uri };
+              if (!records.has(uploadId)) {
+                if (durable.sourceKey && dependencies.sourceStore) {
+                  await dependencies.sourceStore.remove(durable.sourceKey).catch(() => undefined);
+                }
+                continue;
+              }
               await dependencies.stage({
                 uploadId,
                 encodingClass: normalized.encodingClass,
@@ -749,6 +757,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
                 height: normalized.height,
                 bytes: normalized.bytes,
               });
+              if (!records.has(uploadId)) continue;
               Object.assign(entry, {
                 state: "pending" as const,
                 previewUri: normalized.previewUri,

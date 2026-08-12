@@ -320,9 +320,10 @@ function DayCardView({
   const liveIds = useMemo(() => new Set(tasks.map((t) => String(t._id))), [tasks]);
   const rows = useMemo(() => {
     if (!isCurrent) return tasks;
+    const scopedJustCompleted = Object.values(justCompleted).filter((task) => task.deadline === dateKey);
     const held = [
       ...(isToday ? completedTasks.filter((task) => task.deadline === today) : []),
-      ...Object.values(justCompleted),
+      ...scopedJustCompleted,
     ].filter((t, index, all) =>
       !liveIds.has(String(t._id)) &&
       all.findIndex((candidate) => String(candidate._id) === String(t._id)) === index
@@ -331,12 +332,13 @@ function DayCardView({
     return [...tasks, ...held].sort(
       (a, b) => a.position - b.position || a.scheduledAt - b.scheduledAt
     );
-  }, [completedTasks, isCurrent, isToday, justCompleted, liveIds, tasks, today]);
+  }, [completedTasks, dateKey, isCurrent, isToday, justCompleted, liveIds, tasks, today]);
 
   const isDayClear = tasks.length === 0;
+  const scopedJustCompleted = Object.values(justCompleted).filter((task) => task.deadline === dateKey);
   const completedIds = new Set([
     ...completedTasks.filter((task) => task.deadline === today).map((task) => String(task._id)),
-    ...Object.keys(justCompleted),
+    ...scopedJustCompleted.map((task) => String(task._id)),
   ]);
   const completedCount = isToday
     ? rows.filter((task) => completedIds.has(String(task._id))).length

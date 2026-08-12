@@ -225,6 +225,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const hasUnsavedContext =
       burstCount === 0 &&
       Boolean(
+        time.trim() ||
         (deadline.trim() && deadline !== todayIso()) ||
         priority ||
         goalId ||

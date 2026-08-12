@@ -330,6 +330,11 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       if (!result) return;
       const { stale: _, ...imageCollection } = result;
       setCurrentTask((previous) => previous ? { ...previous, imageCollection } : previous);
+      setInitialImageOrder(
+        [...imageCollection.active]
+          .sort((left, right) => left.position - right.position)
+          .map((image) => image.taskImageId),
+      );
     }, [currentTask, onSelectTaskImage]);
 
     useEffect(() => {
@@ -502,8 +507,20 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             expectedRevision: currentTask?.imageCollection?.revision ?? 0,
           });
           if (result) {
-            const { stale: _, ...imageCollection } = result;
+            const { stale, ...imageCollection } = result;
             setCurrentTask((previous) => previous ? { ...previous, imageCollection } : previous);
+            if (stale) {
+              setInitialImageOrder(
+                [...imageCollection.active]
+                  .sort((left, right) => left.position - right.position)
+                  .map((image) => image.taskImageId),
+              );
+              setSaving(false);
+              setError("Task images changed while you were editing. Review the current order and try again.");
+              haptic.error();
+              return;
+            }
+            setInitialImageOrder(orderedTaskImageIds);
           }
         } catch {
           setSaving(false);
@@ -998,6 +1015,11 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                           if (!result) return;
                           const { stale: _, ...imageCollection } = result;
                           setCurrentTask((previous) => previous ? { ...previous, imageCollection } : previous);
+                          setInitialImageOrder(
+                            [...imageCollection.active]
+                              .sort((left, right) => left.position - right.position)
+                              .map((image) => image.taskImageId),
+                          );
                         } catch {
                           setError("Couldn’t remove Task image. Try again.");
                         }

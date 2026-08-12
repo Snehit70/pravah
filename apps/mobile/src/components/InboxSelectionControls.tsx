@@ -90,7 +90,7 @@ const styles = createThemedStyles({
   selectionTitle: { ...typography.headline, color: colors.textPrimary },
   selectionMeter: { width: 116, gap: 5 },
   selectionMeterTrack: { height: 7, overflow: "hidden", borderRadius: radii.full, backgroundColor: colors.accentDim },
-  selectionMeterFill: { height: "100%", minWidth: 7, borderRadius: radii.full, backgroundColor: colors.accent },
+  selectionMeterFill: { height: "100%", borderRadius: radii.full, backgroundColor: colors.accent },
   selectionMeterLabel: { ...typography.micro, color: colors.textMuted, textAlign: "right" },
   dock: { position: "absolute", left: 0, right: 0, flexDirection: "row", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.sm, backgroundColor: colors.bg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.borderSubtle, shadowColor: "#201914", shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: -4 }, elevation: 8 },
   deleteButton: { flex: 1, minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: spacing.md, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.error, backgroundColor: colors.bgFloating },

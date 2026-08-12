@@ -67,6 +67,7 @@ export function TaskImageViewer({
   const [deliveryAttempt, setDeliveryAttempt] = useState(0);
   const [chromeVisible, setChromeVisible] = useState(true);
   const [captionExpanded, setCaptionExpanded] = useState(false);
+  const activeImageIdRef = useRef<string | undefined>(images[activeIndex]?.taskImageId);
   const deliveryRequest = useRef<{ active: boolean } | null>(null);
   const scale = useSharedValue(MIN_VIEWER_SCALE);
   const translateX = useSharedValue(0);
@@ -82,7 +83,14 @@ export function TaskImageViewer({
 
   useEffect(() => {
     if (!visible) return;
-    setActiveIndex(Math.max(0, Math.min(initialIndex, images.length - 1)));
+    const preservedIndex = activeImageIdRef.current
+      ? images.findIndex((image) => image.taskImageId === activeImageIdRef.current)
+      : -1;
+    const nextIndex = preservedIndex >= 0
+      ? preservedIndex
+      : Math.max(0, Math.min(initialIndex, images.length - 1));
+    setActiveIndex(nextIndex);
+    activeImageIdRef.current = images[nextIndex]?.taskImageId;
     scale.set(MIN_VIEWER_SCALE);
     savedScale.set(MIN_VIEWER_SCALE);
     translateX.set(0);
@@ -157,18 +165,20 @@ export function TaskImageViewer({
   const goTo = useCallback((nextIndex: number) => {
     if (nextIndex < 0 || nextIndex >= count || nextIndex === activeIndex) return;
     setActiveIndex(nextIndex);
+    activeImageIdRef.current = images[nextIndex]?.taskImageId;
     setCaptionExpanded(false);
     setChromeVisible(true);
     resetTransform();
     haptic.selection();
     void AccessibilityInfo.announceForAccessibility?.(`Image ${nextIndex + 1} of ${count}${nextIndex === 0 ? ", Primary" : ""}`);
-  }, [activeIndex, count, resetTransform]);
+  }, [activeIndex, count, images, resetTransform]);
 
   const goPrevious = () => goTo(activeIndex - 1);
   const goNext = () => goTo(activeIndex + 1);
   const toggleChrome = useCallback(() => setChromeVisible((current) => !current), []);
   const completePageTransition = useCallback((nextIndex: number, entryDirection: number) => {
     setActiveIndex(nextIndex);
+    activeImageIdRef.current = images[nextIndex]?.taskImageId;
     setCaptionExpanded(false);
     setChromeVisible(true);
     scale.set(MIN_VIEWER_SCALE);
@@ -180,7 +190,7 @@ export function TaskImageViewer({
     translateX.set(withTiming(0, { duration: 190 }));
     haptic.selection();
     void AccessibilityInfo.announceForAccessibility?.(`Image ${nextIndex + 1} of ${count}${nextIndex === 0 ? ", Primary" : ""}`);
-  }, [count, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, width]);
+  }, [count, images, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, width]);
 
   const handleSwipe = useCallback((translationX: number) => {
     if (scale.value > MIN_VIEWER_SCALE + 0.05 || Math.abs(translationX) < SWIPE_DISTANCE) {

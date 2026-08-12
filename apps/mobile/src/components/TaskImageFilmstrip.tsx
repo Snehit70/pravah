@@ -116,7 +116,7 @@ function moveImage(images: TaskImageFilmstripEntry[], index: number, direction: 
   return next;
 }
 
-function DragHandle({ drag, disabled }: { drag: () => void; disabled: boolean }) {
+function DragHandle({ drag, disabled, compact = false }: { drag: () => void; disabled: boolean; compact?: boolean }) {
   return (
     <Pressable
       disabled={disabled}
@@ -125,9 +125,9 @@ function DragHandle({ drag, disabled }: { drag: () => void; disabled: boolean })
       onLongPress={drag}
       delayLongPress={220}
       hitSlop={4}
-      style={({ pressed }) => [styles.dragHandle, pressed && styles.dragHandlePressed]}
+      style={({ pressed }) => [compact ? styles.dragHandleCompact : styles.dragHandle, pressed && styles.dragHandlePressed]}
     >
-      <GripHorizontalIcon color={colors.textInverse} size={20} strokeWidth={2} />
+      <GripHorizontalIcon color={colors.textInverse} size={compact ? 14 : 20} strokeWidth={2} />
     </Pressable>
   );
 }
@@ -596,7 +596,7 @@ function EditSurface({
                   <CloseIcon color={colors.textInverse} size={14} />
                 </Pressable>
               ) : null}
-              {onReorder && images.length > 1 ? <DragHandle drag={drag} disabled={isActive} /> : null}
+              {onReorder && images.length > 1 ? <DragHandle drag={drag} disabled={isActive} compact /> : null}
             </View>
           );
         }}
@@ -780,6 +780,7 @@ const styles = createThemedStyles({
   filmstripPhoto: { width: 122, height: 92, borderRadius: radii.lg },
   draggingItem: { opacity: 0.94, transform: [{ scale: 1.03 }], elevation: 8, shadowColor: colors.textPrimary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.16, shadowRadius: 12 },
   dragHandle: { position: "absolute", left: "50%", bottom: spacing.xs, width: 44, height: 44, marginLeft: -22, borderRadius: radii.full, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(32,25,20,0.72)" },
+  dragHandleCompact: { position: "absolute", left: "50%", bottom: -10, width: 28, height: 28, marginLeft: -14, borderRadius: radii.full, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(32,25,20,0.72)" },
   dragHandlePressed: { backgroundColor: "rgba(32,25,20,0.9)" },
   captureAddThumb: { width: 122, height: 92, alignItems: "center", justifyContent: "center", borderRadius: radii.lg, borderWidth: StyleSheet.hairlineWidth, borderStyle: "dashed", borderColor: colors.border, backgroundColor: colors.bgSurface },
   primaryFlag: { position: "absolute", left: spacing.xs, top: spacing.xs, ...typography.micro, fontSize: 9, color: colors.textInverse, backgroundColor: "rgba(32,25,20,0.72)", paddingHorizontal: 6, paddingVertical: 3, borderRadius: radii.sm, overflow: "hidden" },
