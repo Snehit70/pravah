@@ -292,7 +292,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [showTimePicker, setShowTimePicker] = useState(false);
     const clipboardPasteInFlight = useRef(false);
-    const captionSaveQueue = useRef(new Map<string, Promise<void>>());
+    const captionSaveQueue = useRef<Promise<void>>(Promise.resolve());
     const captionRevision = useRef(new Map<string, number>());
     const [screenTransition] = useState(() => new Animated.Value(1));
     const previousMode = useRef<SheetMode>("inspector");
@@ -314,7 +314,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         setOverflowOpen(false);
         setShowDatePicker(false);
         setShowTimePicker(false);
-        captionSaveQueue.current.clear();
+        captionSaveQueue.current = Promise.resolve();
         captionRevision.current.clear();
         if (notify) onSheetChange?.(false);
       },
@@ -998,8 +998,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                   : undefined}
                 onCaptionChange={!completed && onCaptionTaskImage
                   ? (taskImageId, caption) => {
-                      const previous = captionSaveQueue.current.get(taskImageId) ?? Promise.resolve();
-                      const save = previous.catch(() => undefined).then(async () => {
+                      captionSaveQueue.current = captionSaveQueue.current.catch(() => undefined).then(async () => {
                         const revision = captionRevision.current.get(taskImageId) ?? currentTask.imageCollection?.revision ?? 0;
                         const result = await onCaptionTaskImage({ taskImageId, caption, expectedRevision: revision });
                         if (!result) return;
@@ -1012,7 +1011,6 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                         const { stale: _, ...imageCollection } = result;
                         setCurrentTask((previousTask) => previousTask ? { ...previousTask, imageCollection } : previousTask);
                       }).catch(() => setError("Couldn’t update Task image. Try again."));
-                      captionSaveQueue.current.set(taskImageId, save);
                     }
                   : undefined}
                 onReorder={!completed && onReorderTaskImages

@@ -26,4 +26,11 @@ describe("Task image viewer transform", () => {
       viewport,
     )).toEqual({ scale: 2, translateX: 200, translateY: -400 });
   });
+
+  it("bounds letterboxed image axes to the contained image", () => {
+    expect(clampViewerTranslation(
+      { scale: 2, translateX: 900, translateY: -900 },
+      { ...viewport, contentAspectRatio: 4 },
+    )).toEqual({ scale: 2, translateX: 200, translateY: 0 });
+  });
 });

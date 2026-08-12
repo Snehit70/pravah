@@ -15,13 +15,19 @@ export function clampViewerScale(scale: number) {
 
 export function clampViewerTranslation(
   transform: ViewerTransform,
-  viewport: { width: number; height: number },
+  viewport: { width: number; height: number; contentAspectRatio?: number },
 ): ViewerTransform {
   "worklet";
   const scale = clampViewerScale(transform.scale);
   if (scale <= MIN_VIEWER_SCALE) return { scale: MIN_VIEWER_SCALE, translateX: 0, translateY: 0 };
-  const maxX = (viewport.width * (scale - MIN_VIEWER_SCALE)) / 2;
-  const maxY = (viewport.height * (scale - MIN_VIEWER_SCALE)) / 2;
+  const aspect = viewport.contentAspectRatio && viewport.contentAspectRatio > 0
+    ? viewport.contentAspectRatio
+    : viewport.width / viewport.height;
+  const viewportAspect = viewport.width / viewport.height;
+  const containedWidth = aspect >= viewportAspect ? viewport.width : viewport.height * aspect;
+  const containedHeight = aspect >= viewportAspect ? viewport.width / aspect : viewport.height;
+  const maxX = Math.max(0, (containedWidth * scale - viewport.width) / 2);
+  const maxY = Math.max(0, (containedHeight * scale - viewport.height) / 2);
   return {
     scale,
     translateX: Math.max(-maxX, Math.min(maxX, transform.translateX)),
@@ -33,7 +39,7 @@ export function zoomViewerAtPoint(
   current: ViewerTransform,
   nextScale: number,
   point: { x: number; y: number },
-  viewport: { width: number; height: number },
+  viewport: { width: number; height: number; contentAspectRatio?: number },
 ) {
   "worklet";
   const scale = clampViewerScale(nextScale);

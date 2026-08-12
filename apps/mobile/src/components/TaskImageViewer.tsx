@@ -80,6 +80,10 @@ export function TaskImageViewer({
 
   const activeImage = images[activeIndex];
   const count = images.length;
+  const contentAspectRatio = activeImage?.presentation?.aspectRatio
+    ?? (activeImage?.presentation?.width && activeImage.presentation.height
+      ? activeImage.presentation.width / activeImage.presentation.height
+      : width / height);
 
   useEffect(() => {
     if (!visible) return;
@@ -217,7 +221,7 @@ export function TaskImageViewer({
         scale: scale.value,
         translateX: savedTranslateX.value + translationXValue,
         translateY: savedTranslateY.value + translationYValue,
-      }, { width, height });
+      }, { width, height, contentAspectRatio });
       translateX.set(withTiming(bounded.translateX, { duration: reducedMotion ? 0 : 180 }));
       translateY.set(withTiming(bounded.translateY, { duration: reducedMotion ? 0 : 180 }));
       savedTranslateX.set(bounded.translateX);
@@ -229,7 +233,7 @@ export function TaskImageViewer({
       return;
     }
     handleSwipe(translationXValue);
-  }, [handleSwipe, height, onClose, reducedMotion, savedTranslateX, savedTranslateY, scale, translateX, translateY, width]);
+  }, [contentAspectRatio, handleSwipe, height, onClose, reducedMotion, savedTranslateX, savedTranslateY, scale, translateX, translateY, width]);
 
   const pan = useMemo(
     () =>
@@ -264,18 +268,21 @@ export function TaskImageViewer({
           const ratio = nextScale / savedScale.value;
           const centeredX = pinchOriginX.value - width / 2;
           const centeredY = pinchOriginY.value - height / 2;
-          const maxX = (width * (nextScale - MIN_VIEWER_SCALE)) / 2;
-          const maxY = (height * (nextScale - MIN_VIEWER_SCALE)) / 2;
           scale.value = nextScale;
-          translateX.value = Math.max(-maxX, Math.min(maxX, savedTranslateX.value * ratio + centeredX * (1 - ratio)));
-          translateY.value = Math.max(-maxY, Math.min(maxY, savedTranslateY.value * ratio + centeredY * (1 - ratio)));
+          const bounded = clampViewerTranslation({
+            scale: nextScale,
+            translateX: savedTranslateX.value * ratio + centeredX * (1 - ratio),
+            translateY: savedTranslateY.value * ratio + centeredY * (1 - ratio),
+          }, { width, height, contentAspectRatio });
+          translateX.value = bounded.translateX;
+          translateY.value = bounded.translateY;
         })
         .onEnd(() => {
           savedScale.value = scale.value;
           savedTranslateX.value = translateX.value;
           savedTranslateY.value = translateY.value;
         }),
-    [height, pinchOriginX, pinchOriginY, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, width]
+    [contentAspectRatio, height, pinchOriginX, pinchOriginY, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, width]
   );
 
   const doubleTap = useMemo(
@@ -284,19 +291,20 @@ export function TaskImageViewer({
         .numberOfTaps(2)
         .onEnd((event) => {
           const nextScale = scale.value > MIN_VIEWER_SCALE + 0.05 ? MIN_VIEWER_SCALE : DOUBLE_TAP_VIEWER_SCALE;
-          const ratio = nextScale / scale.value;
-          const maxX = (width * (nextScale - MIN_VIEWER_SCALE)) / 2;
-          const maxY = (height * (nextScale - MIN_VIEWER_SCALE)) / 2;
-          const nextX = nextScale === MIN_VIEWER_SCALE ? 0 : Math.max(-maxX, Math.min(maxX, translateX.value * ratio + (event.x - width / 2) * (1 - ratio)));
-          const nextY = nextScale === MIN_VIEWER_SCALE ? 0 : Math.max(-maxY, Math.min(maxY, translateY.value * ratio + (event.y - height / 2) * (1 - ratio)));
+          const next = zoomViewerAtPoint(
+            { scale: scale.value, translateX: translateX.value, translateY: translateY.value },
+            nextScale,
+            { x: event.x, y: event.y },
+            { width, height, contentAspectRatio },
+          );
           scale.value = withTiming(nextScale, { duration: reducedMotion ? 0 : 180 });
-          savedScale.value = nextScale;
-          translateX.value = withTiming(nextX, { duration: reducedMotion ? 0 : 180 });
-          translateY.value = withTiming(nextY, { duration: reducedMotion ? 0 : 180 });
-          savedTranslateX.value = nextX;
-          savedTranslateY.value = nextY;
+          savedScale.value = next.scale;
+          translateX.value = withTiming(next.translateX, { duration: reducedMotion ? 0 : 180 });
+          translateY.value = withTiming(next.translateY, { duration: reducedMotion ? 0 : 180 });
+          savedTranslateX.value = next.translateX;
+          savedTranslateY.value = next.translateY;
         }),
-    [height, reducedMotion, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, width]
+    [contentAspectRatio, height, reducedMotion, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, width]
   );
 
   const singleTap = useMemo(() => Gesture.Tap().numberOfTaps(1).onEnd(() => {
@@ -320,7 +328,7 @@ export function TaskImageViewer({
       { scale: scale.value, translateX: translateX.value, translateY: translateY.value },
       nextScale,
       { x: width / 2, y: height / 2 },
-      { width, height },
+      { width, height, contentAspectRatio },
     );
     scale.set(withTiming(next.scale, { duration: reducedMotion ? 0 : 180 }));
     savedScale.set(next.scale);
@@ -328,7 +336,7 @@ export function TaskImageViewer({
     translateY.set(withTiming(next.translateY, { duration: reducedMotion ? 0 : 180 }));
     savedTranslateX.set(next.translateX);
     savedTranslateY.set(next.translateY);
-  }, [height, reducedMotion, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, width]);
+  }, [contentAspectRatio, height, reducedMotion, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY, width]);
 
   if (!activeImage) return null;
   const localPreview = activeImage.state !== "ready" && activeImage.previewUri ? { uri: activeImage.previewUri } : null;
