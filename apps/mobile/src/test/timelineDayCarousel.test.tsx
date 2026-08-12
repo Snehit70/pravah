@@ -290,6 +290,19 @@ describe("TimelineDayCarousel", () => {
     expect(screen.getByText("Already done")).toBeTruthy();
   });
 
+  it("does not render completed tasks from other dates inside Today", () => {
+    renderCarousel([[TODAY, [task("t1", TODAY, "Write tests")]]], {
+      completedTasks: [
+        task("done-today", TODAY, "Done today"),
+        task("done-old", "2026-06-20", "Historical completion"),
+      ],
+    });
+
+    expect(screen.getByText("1 of 2 done")).toBeTruthy();
+    expect(screen.getByText("Done today")).toBeTruthy();
+    expect(screen.queryByText("Historical completion")).toBeNull();
+  });
+
   it("opens the edit sheet when the row itself is tapped", () => {
     const onEditTask = vi.fn();
     renderCarousel([[TODAY, [task("t1", TODAY, "Write tests")]]], {

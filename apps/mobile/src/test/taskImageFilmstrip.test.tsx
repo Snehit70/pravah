@@ -507,6 +507,30 @@ describe("TaskImageFilmstrip", () => {
     expect(screen.queryByRole("button", { name: "Paste Task image from clipboard" })).toBeNull();
   });
 
+  it("keeps Edit image actions on the compact filmstrip", async () => {
+    const onSelectSource = vi.fn();
+    const onRemove = vi.fn();
+    render(
+      <TaskImageFilmstrip
+        surface="edit"
+        images={[{ taskImageId: "image-1", position: 0, state: "ready" }]}
+        onSelectSource={onSelectSource}
+        onRemove={onRemove}
+      />
+    );
+
+    expect(screen.queryByText("Photos")).toBeNull();
+    expect(screen.queryByText("Camera")).toBeNull();
+    expect(screen.queryByText("Paste")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Add Task image" }));
+    await waitFor(() => expect(screen.getByText("Choose where the visual reference should come from.")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Add Task image from Photos" }));
+    expect(onSelectSource).toHaveBeenCalledWith("photos");
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Task image" }));
+    expect(onRemove).toHaveBeenCalledWith("image-1");
+  });
+
   it("renders compact Inbox and Completed presentations", () => {
     const images = [
       { taskImageId: "image-1", position: 0, state: "ready" as const },

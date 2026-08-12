@@ -13,7 +13,6 @@ import {
   RetryArrowIcon,
   SmartphoneIcon,
   StackPlusIcon,
-  TrashIcon,
 } from "./UiIcons";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
@@ -498,7 +497,6 @@ function InboxSurface({ images, resolveDelivery, onOpenImage }: TaskImageFilmstr
 function EditSurface({
   images,
   recoverable,
-  onSelectSource,
   onRetry,
   onCaptionChange,
   onReorder,
@@ -587,11 +585,22 @@ function EditSurface({
                 <ImagePreview image={image} resolveDelivery={resolveDelivery} variant="card" style={styles.editThumb} accessibilityLabel={`Task image thumbnail ${index + 1}`} />
                 <Text style={styles.editThumbNumber}>{index + 1}</Text>
               </Pressable>
+              {onRemove && index === activeSelectedIndex ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove Task image"
+                  onPress={remove}
+                  hitSlop={8}
+                  style={styles.editThumbRemove}
+                >
+                  <CloseIcon color={colors.textInverse} size={14} />
+                </Pressable>
+              ) : null}
               {onReorder && images.length > 1 ? <DragHandle drag={drag} disabled={isActive} /> : null}
             </View>
           );
         }}
-        ListFooterComponent={onSelectSource && images.length < 5 ? <Pressable accessibilityRole="button" accessibilityLabel="Add Task image" onPress={() => void onSelectSource("photos")} style={styles.editAddThumb}><PlusIcon color={colors.accent} size={21} /></Pressable> : null}
+        ListFooterComponent={onOpenSource && images.length < 5 ? <Pressable accessibilityRole="button" accessibilityLabel="Add Task image" onPress={onOpenSource} style={styles.editAddThumb}><PlusIcon color={colors.accent} size={21} /></Pressable> : null}
       />
       <View style={styles.editMetaRow}>
         <Text style={styles.sectionLabel}>{activeSelectedIndex === 0 ? "PRIMARY IMAGE" : `IMAGE ${activeSelectedIndex + 1} OF ${images.length}`}</Text>
@@ -621,10 +630,6 @@ function EditSurface({
           {selected.state === "failed" && selected.failure?.retryable && onRetry ? <Pressable accessibilityRole="button" accessibilityLabel="Retry Task image" onPress={() => onRetry(selected.taskImageId)} style={styles.retryButton}><RetryArrowIcon color={colors.error} size={16} /><Text style={styles.retryText}>Retry</Text></Pressable> : null}
         </View>
       ) : null}
-      <View style={styles.editActionRow}>
-        {onRemove ? <Pressable accessibilityRole="button" accessibilityLabel="Remove Task image" onPress={remove} style={styles.editAction}><TrashIcon color={colors.error} size={17} /><Text style={styles.removeText}>Remove</Text></Pressable> : null}
-      </View>
-      {images.length < 5 ? <SourceActions onSelectSource={onSelectSource} full /> : null}
       <RecoverableSection images={visibleRecoverable} active={images} onRestore={onRestore} />
     </View>
   );
@@ -793,6 +798,7 @@ const styles = createThemedStyles({
   editThumbActive: { borderColor: colors.accent },
   editThumb: { width: 62, height: 54, borderRadius: radii.sm },
   editThumbNumber: { position: "absolute", left: 6, top: 6, fontFamily: "GeistMono_500Medium", fontSize: 9, color: colors.textInverse, backgroundColor: "rgba(32,25,20,0.66)", paddingHorizontal: 4, paddingVertical: 2, borderRadius: 3, overflow: "hidden" },
+  editThumbRemove: { position: "absolute", right: -8, top: -8, width: 32, height: 32, borderRadius: radii.full, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(32,25,20,0.78)", zIndex: 2 },
   editAddThumb: { width: 66, height: 58, borderRadius: radii.md, borderWidth: StyleSheet.hairlineWidth, borderStyle: "dashed", borderColor: colors.border, alignItems: "center", justifyContent: "center" },
   editMetaRow: { marginTop: spacing.sm, flexDirection: "row", justifyContent: "space-between" },
   sourceMeta: { ...typography.micro, color: colors.textMuted },

@@ -321,7 +321,7 @@ function DayCardView({
   const rows = useMemo(() => {
     if (!isCurrent) return tasks;
     const held = [
-      ...(isToday ? completedTasks : []),
+      ...(isToday ? completedTasks.filter((task) => task.deadline === today) : []),
       ...Object.values(justCompleted),
     ].filter((t, index, all) =>
       !liveIds.has(String(t._id)) &&
@@ -331,7 +331,7 @@ function DayCardView({
     return [...tasks, ...held].sort(
       (a, b) => a.position - b.position || a.scheduledAt - b.scheduledAt
     );
-  }, [completedTasks, isCurrent, isToday, justCompleted, liveIds, tasks]);
+  }, [completedTasks, isCurrent, isToday, justCompleted, liveIds, tasks, today]);
 
   const isDayClear = tasks.length === 0;
   const completedIds = new Set([

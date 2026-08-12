@@ -10,6 +10,7 @@ import {
 import type { ReactNode } from "react";
 import {
   Keyboard,
+  type LayoutChangeEvent,
   Modal,
   Pressable,
   ScrollView,
@@ -183,6 +184,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [saving, setSaving] = useState(false);
     const [showDetails, setShowDetails] = useState(false);
     const [planningMode, setPlanningMode] = useState<PlanningMode>("summary");
+    const [summaryCardHeight, setSummaryCardHeight] = useState<number | null>(null);
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [showTimePicker, setShowTimePicker] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -255,6 +257,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setSeriesEnd("2");
       setShowDetails(false);
       setPlanningMode("summary");
+      setSummaryCardHeight(null);
       setShowDatePicker(false);
       setShowTimePicker(false);
       setKind("task");
@@ -273,6 +276,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         setKind(initialKind);
         setDeadline(todayIso());
         setPlanningMode("summary");
+        setSummaryCardHeight(null);
         setShowDetails(false);
         dragY.set(0);
         setVisible(true);
@@ -285,6 +289,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         setGoalIds([initialGoalId]);
         setShowDetails(false);
         setPlanningMode("summary");
+        setSummaryCardHeight(null);
         dragY.set(0);
         setVisible(true);
         onSheetChange?.(true);
@@ -626,6 +631,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               <ChevronLeftIcon color={colors.textPrimary} size={21} />
             </Pressable>
             <Text style={styles.planningPickerTitle}>{pickerTitle}</Text>
+            <View style={styles.backButton} />
           </View>
 
           {planningMode === "when" ? (
@@ -753,7 +759,20 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
           />
 
           <GestureDetector gesture={panGesture}>
-          <Animated.View style={[styles.card, cardDragStyle]}>
+          <Animated.View
+            onLayout={(event: LayoutChangeEvent) => {
+              if (planningMode !== "summary") return;
+              const nextHeight = Math.round(event.nativeEvent.layout.height);
+              setSummaryCardHeight((current) => current === nextHeight ? current : nextHeight);
+            }}
+            style={[
+              styles.card,
+              planningMode !== "summary" && summaryCardHeight
+                ? { height: summaryCardHeight }
+                : null,
+              cardDragStyle,
+            ]}
+          >
             {/* Accent hairline + soft top glow: the same accent as the tab
                 bar's `+` button, visually tying capture entry to the sheet. */}
             <LinearGradient
@@ -1277,12 +1296,14 @@ const styles = createThemedStyles({
   priorityDot: { width: 10, height: 10, borderRadius: 5 },
   planningEditor: { gap: spacing.sm },
   planningPickerHeader: {
-    minHeight: 46,
+    minHeight: 52,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    justifyContent: "space-between",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSubtle,
   },
-  backButton: { padding: spacing.xs },
+  backButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   planningPickerTitle: {
     ...typography.title,
     color: colors.textPrimary,
