@@ -82,6 +82,75 @@ describe("Task-image mobile coordinator", () => {
     }
   );
 
+  it("keeps native photo selection order and caps the picker to the remaining slots", async () => {
+    const dependencies = createDependencies();
+    let nextId = 1;
+    dependencies.createUploadId = vi.fn(() => `upl_mobile_${nextId++}`);
+    dependencies.acquireSources = vi.fn(async (_kind, limit) =>
+      Array.from({ length: limit + 1 }, (_, index) => ({
+        kind: "photos" as const,
+        uri: `content://private/photo-${index + 1}`,
+        previewUri: `file:///private/photo-${index + 1}.jpg`,
+      }))
+    );
+    const coordinator = createTaskImageCoordinator(dependencies);
+    await coordinator.select("camera");
+    await coordinator.select("camera");
+
+    await coordinator.select("photos");
+
+    expect(dependencies.acquireSources).toHaveBeenCalledWith("photos", 3);
+    expect(coordinator.getViewStates().map((image) => image.uploadId)).toEqual([
+      "upl_mobile_1",
+      "upl_mobile_2",
+      "upl_mobile_3",
+      "upl_mobile_4",
+      "upl_mobile_5",
+    ]);
+    expect(dependencies.normalize).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ uri: "content://private/photo-1" })
+    );
+    expect(dependencies.normalize).toHaveBeenNthCalledWith(
+      5,
+      expect.objectContaining({ uri: "content://private/photo-3" })
+    );
+  });
+
+  it("keeps other selected photos when one photo cannot be prepared", async () => {
+    const dependencies = createDependencies();
+    let nextId = 1;
+    dependencies.createUploadId = vi.fn(() => `upl_mobile_${nextId++}`);
+    dependencies.acquireSources = vi.fn(async () => [
+      { kind: "photos" as const, uri: "content://private/good-1", previewUri: "file:///good-1.jpg" },
+      { kind: "photos" as const, uri: "content://private/bad", previewUri: "file:///bad.jpg" },
+      { kind: "photos" as const, uri: "content://private/good-2", previewUri: "file:///good-2.jpg" },
+    ]);
+    dependencies.normalize = vi.fn(async (source) => {
+      if (source.uri.endsWith("/bad")) {
+        throw Object.assign(new Error("decoder failed"), { code: "unsupported_format" });
+      }
+      return {
+        uri: `${source.uri}/normalized.jpg`,
+        previewUri: source.previewUri,
+        encodingClass: "jpeg" as const,
+        width: 1600,
+        height: 1200,
+        bytes: 2_000_000,
+      };
+    });
+    const coordinator = createTaskImageCoordinator(dependencies);
+
+    await coordinator.select("photos");
+
+    expect(coordinator.getViewStates().map((image) => image.state)).toEqual([
+      "pending",
+      "failed",
+      "pending",
+    ]);
+    expect(dependencies.stage).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps Task save independent, clears the next Capture preview, and finishes detached upload work", async () => {
     const dependencies = createDependencies();
     const grant = deferred<Awaited<ReturnType<TaskImageCoordinatorDependencies["issueGrant"]>>>();

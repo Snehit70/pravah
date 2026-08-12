@@ -104,6 +104,7 @@ import { createTaskImageCoordinator } from "./src/lib/taskImageCoordinator";
 import { buildTaskMetadataExport } from "./src/lib/task-metadata-export";
 import {
   acquireTaskImageSource,
+  acquireTaskImageSources,
   abortPreparedTaskImageUpload,
   normalizeTaskImage,
   persistTaskImageSource,
@@ -391,6 +392,7 @@ function MobileApp() {
       createTaskImageCoordinator({
         createUploadId: () => `upl_${Crypto.randomUUID().replace(/-/g, "")}`,
         acquireSource: acquireTaskImageSource,
+        acquireSources: acquireTaskImageSources,
         normalize: normalizeTaskImage,
         sourceStore: {
           persist: persistTaskImageSource,

@@ -108,6 +108,7 @@ export type TaskImageSourceStore = {
 export type TaskImageCoordinatorDependencies = {
   createUploadId: () => string;
   acquireSource: (kind: TaskImageSourceKind) => Promise<AcquiredTaskImageSource>;
+  acquireSources?: (kind: TaskImageSourceKind, limit: number) => Promise<AcquiredTaskImageSource[]>;
   normalize: (source: AcquiredTaskImageSource) => Promise<NormalizedTaskImage>;
   stage: (image: {
     uploadId: string;
@@ -715,6 +716,61 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       if (visibleUploadIds.length >= MAX_TASK_IMAGE_COUNT) {
         lastError = "Task image limit reached";
         notify();
+        return;
+      }
+      if (kind === "photos" && dependencies.acquireSources) {
+        try {
+          const sources = await dependencies.acquireSources(kind, MAX_TASK_IMAGE_COUNT - visibleUploadIds.length);
+          for (const source of sources.slice(0, MAX_TASK_IMAGE_COUNT - visibleUploadIds.length)) {
+            const uploadId = dependencies.createUploadId();
+            const entry: UploadRecord = {
+              uploadId,
+              state: "preparing",
+              previewUri: source.previewUri,
+              attempt: 0,
+              retryCount: 0,
+              needsReconciliation: false,
+              paused: false,
+              acceptedForUpload: false,
+              generation: 0,
+            };
+            records.set(uploadId, entry);
+            visibleUploadIds = [...visibleUploadIds, uploadId];
+            notify();
+            try {
+              const normalized = await dependencies.normalize(source);
+              const durable = dependencies.sourceStore
+                ? await dependencies.sourceStore.persist(uploadId, normalized)
+                : { sourceKey: undefined, uri: normalized.uri };
+              await dependencies.stage({
+                uploadId,
+                encodingClass: normalized.encodingClass,
+                width: normalized.width,
+                height: normalized.height,
+                bytes: normalized.bytes,
+              });
+              Object.assign(entry, {
+                state: "pending" as const,
+                previewUri: normalized.previewUri,
+                normalized,
+                sourceKey: durable.sourceKey,
+                sourceUri: durable.uri,
+                encodingClass: normalized.encodingClass,
+                width: normalized.width,
+                height: normalized.height,
+                bytes: normalized.bytes,
+              });
+            } catch (error) {
+              await failEntry(entry, error);
+            }
+            await persist();
+            notify();
+          }
+          lastError = undefined;
+        } catch {
+          lastError = "No image was selected.";
+          notify();
+        }
         return;
       }
       const uploadId = dependencies.createUploadId();

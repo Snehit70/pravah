@@ -174,6 +174,40 @@ function selectedAssetToSource(
   } as AcquiredTaskImageSource;
 }
 
+function selectedAssetsToSources(
+  kind: "photos",
+  result: ImagePicker.ImagePickerResult,
+): AcquiredTaskImageSource[] {
+  if (result.canceled || !result.assets.length) fail("source_unavailable");
+  return result.assets.map((asset) => {
+    if (asset.type && asset.type !== "image") fail("unsupported_format");
+    return {
+      kind,
+      uri: asset.uri,
+      previewUri: asset.uri,
+      width: asset.width,
+      height: asset.height,
+    } as AcquiredTaskImageSource;
+  });
+}
+
+export async function acquireTaskImageSources(kind: TaskImageSourceKind, limit: number) {
+  if (kind !== "photos" || limit <= 1) return [await acquireTaskImageSource(kind)];
+  return selectedAssetsToSources(
+    kind,
+    await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsMultipleSelection: true,
+      selectionLimit: limit,
+      orderedSelection: true,
+      allowsEditing: false,
+      quality: 1,
+      exif: false,
+      base64: false,
+    }),
+  );
+}
+
 export async function acquireTaskImageSource(
   kind: TaskImageSourceKind
 ): Promise<AcquiredTaskImageSource> {
