@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Image } from "expo-image";
-import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
 import {
   AlertCircleIcon,
   ChevronRightIcon,
@@ -20,7 +19,6 @@ import { getViewerImages, hasTaskImageVisual, TaskImageViewer } from "./TaskImag
 import { TaskImageSourceSheet } from "./TaskImageSourceSheet";
 import type { TaskImageSourceKind, TaskImageState } from "../lib/taskImageCoordinator";
 import { haptic } from "../lib/haptic";
-import { useReducedMotion } from "../hooks/useReducedMotion";
 
 export type TaskImageFilmstripSurface = "capture" | "inbox" | "edit" | "completed" | "management";
 
@@ -387,31 +385,17 @@ function CaptureSurface({
   onOpenSource,
 }: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[]; onOpenImage?: OpenImage; onOpenSource?: OpenSource }) {
   const [captionDrafts, setCaptionDrafts] = useState<Record<string, string>>({});
-  const reducedMotion = useReducedMotion();
   if (!images.length) return <EmptyImages onOpenSource={onOpenSource} compact />;
   return (
     <>
       <View style={styles.sectionHeaderRow}>
         <Text style={styles.sectionLabel}>Images · {images.length}/5</Text>
       </View>
-      <DraggableFlatList
-        horizontal
-        data={images}
-        keyExtractor={(image) => image.taskImageId}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filmstripContent}
-        activationDistance={8}
-        autoscrollThreshold={56}
-        autoscrollSpeed={100}
-        onDragBegin={() => haptic.selection()}
-        onDragEnd={({ data }) => {
-          onReorder?.(data.map((image) => image.taskImageId));
-        }}
-        renderItem={({ item: image, drag, isActive, getIndex }: RenderItemParams<TaskImageFilmstripEntry>) => {
-          const index = getIndex() ?? 0;
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filmstripContent}>
+        {images.map((image, index) => {
           return (
           <View
-            style={[styles.filmstripItem, isActive && !reducedMotion && styles.draggingItem]}
+            style={styles.filmstripItem}
             accessibilityLabel={`Task image ${index + 1} of ${images.length}${index === 0 ? ", Primary" : ""}`}
             accessibilityActions={[
               ...(index > 0 ? [{ name: "moveEarlier", label: "Move Task image earlier" }] : []),
@@ -433,7 +417,11 @@ function CaptureSurface({
                 onPressLabel={`Open Task image ${index + 1}`}
               />
               {index === 0 ? <Text style={styles.primaryFlag}>Primary</Text> : null}
-              {onReorder && images.length > 1 ? <DragHandle drag={drag} disabled={isActive} /> : null}
+              {onReorder && images.length > 1 ? <DragHandle drag={() => {
+                haptic.selection();
+                const next = moveImage(images, index, index === 0 ? "down" : "up");
+                onReorder(next.map((entry) => entry.taskImageId));
+              }} disabled={false} /> : null}
               {onRemove ? (
                 <Pressable accessibilityRole="button" accessibilityLabel="Remove Task image" onPress={() => onRemove(image.taskImageId)} style={styles.photoRemove}>
                   <CloseIcon color={colors.textInverse} size={16} />
@@ -455,8 +443,9 @@ function CaptureSurface({
               />
             ) : image.caption ? <Text numberOfLines={1} style={styles.photoCaption}>{image.caption}</Text> : null}
           </View>
-        );}}
-        ListFooterComponent={onOpenSource && images.length < 5 ? (
+        );
+        })}
+        {onOpenSource && images.length < 5 ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Add Task image"
@@ -466,7 +455,7 @@ function CaptureSurface({
             <PlusIcon color={colors.accent} size={24} />
           </Pressable>
         ) : null}
-      />
+      </ScrollView>
     </>
   );
 }
@@ -508,7 +497,6 @@ function EditSurface({
 }: TaskImageFilmstripProps & { images: TaskImageFilmstripEntry[]; onOpenImage?: OpenImage; onOpenSource?: OpenSource }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [captionDrafts, setCaptionDrafts] = useState<Record<string, string>>({});
-  const reducedMotion = useReducedMotion();
   const [now, setNow] = useState(() => Date.now());
   const visibleRecoverable = (recoverable ?? []).filter((image) => image.recoverableUntil === undefined || image.recoverableUntil > now);
   useEffect(() => {
@@ -548,26 +536,11 @@ function EditSurface({
         onPress={onOpenImage && hasTaskImageVisual(selected) ? () => onOpenImage(selected.taskImageId) : undefined}
         onPressLabel={`Open Task image ${activeSelectedIndex + 1}`}
       />
-      <DraggableFlatList
-        horizontal
-        data={images}
-        keyExtractor={(image) => image.taskImageId}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.editStrip}
-        activationDistance={8}
-        autoscrollThreshold={56}
-        autoscrollSpeed={100}
-        onDragBegin={() => haptic.selection()}
-        onDragEnd={({ data, from, to }) => {
-          const selectedId = selected.taskImageId;
-          setSelectedIndex(data.findIndex((image) => image.taskImageId === selectedId));
-          if (from !== to) onReorder?.(data.map((image) => image.taskImageId));
-        }}
-        renderItem={({ item: image, drag, isActive, getIndex }: RenderItemParams<TaskImageFilmstripEntry>) => {
-          const index = getIndex() ?? 0;
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.editStrip}>
+        {images.map((image, index) => {
           return (
             <View
-              style={[styles.editThumbDragWrap, isActive && !reducedMotion && styles.draggingItem]}
+              style={styles.editThumbDragWrap}
               accessibilityLabel={`Task image ${index + 1} of ${images.length}${index === 0 ? ", Primary" : ""}`}
               accessibilityActions={[
                 ...(index > 0 ? [{ name: "moveEarlier", label: "Move Task image earlier" }] : []),
@@ -596,12 +569,17 @@ function EditSurface({
                   <CloseIcon color={colors.textInverse} size={14} />
                 </Pressable>
               ) : null}
-              {onReorder && images.length > 1 ? <DragHandle drag={drag} disabled={isActive} compact /> : null}
+              {onReorder && images.length > 1 ? <DragHandle drag={() => {
+                haptic.selection();
+                const next = moveImage(images, index, index === 0 ? "down" : "up");
+                setSelectedIndex(next.findIndex((entry) => entry.taskImageId === selected.taskImageId));
+                onReorder(next.map((entry) => entry.taskImageId));
+              }} disabled={false} compact /> : null}
             </View>
           );
-        }}
-        ListFooterComponent={onOpenSource && images.length < 5 ? <Pressable accessibilityRole="button" accessibilityLabel="Add Task image" onPress={onOpenSource} style={styles.editAddThumb}><PlusIcon color={colors.accent} size={21} /></Pressable> : null}
-      />
+        })}
+        {onOpenSource && images.length < 5 ? <Pressable accessibilityRole="button" accessibilityLabel="Add Task image" onPress={onOpenSource} style={styles.editAddThumb}><PlusIcon color={colors.accent} size={21} /></Pressable> : null}
+      </ScrollView>
       <View style={styles.editMetaRow}>
         <Text style={styles.sectionLabel}>{activeSelectedIndex === 0 ? "PRIMARY IMAGE" : `IMAGE ${activeSelectedIndex + 1} OF ${images.length}`}</Text>
         <Text style={styles.sourceMeta}>Task image</Text>
