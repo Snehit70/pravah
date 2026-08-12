@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.3.0](https://github.com/Snehit70/pravah/compare/cli-v2.2.0...cli-v2.3.0) (2026-08-12)
+
+
+### Features
+
+* add Task-image read and metadata export compatibility ([7c353f6](https://github.com/Snehit70/pravah/commit/7c353f6ebfc1d4da93a7ce00f38e3645a3b006c6))
+* expose Task-image summaries in CLI reads ([87d0661](https://github.com/Snehit70/pravah/commit/87d06613ad458bcb2e1eb89c3e112c8646fd0ecb))
+
+
+### Bug Fixes
+
+* harden Task-image metadata boundaries ([40a21c7](https://github.com/Snehit70/pravah/commit/40a21c74df5f90a141e22492f1c360c58977b085))
+* preserve Task-image read compatibility ([be1ef34](https://github.com/Snehit70/pravah/commit/be1ef34f0598a5fe38c0daec2958ba00eb13990f))
+
 ## [2.2.0](https://github.com/Snehit70/pravah/compare/cli-v2.1.0...cli-v2.2.0) (2026-07-26)
 
 
