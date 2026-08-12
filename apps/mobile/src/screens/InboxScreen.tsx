@@ -31,7 +31,7 @@ import {
   InboxSelectionHeader,
 } from "../components/InboxSelectionControls";
 import { QuickScheduleSheet } from "../components/QuickScheduleSheet";
-import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, TrashIcon } from "../components/UiIcons";
+import { ChevronLeftIcon, ChevronRightIcon } from "../components/UiIcons";
 import { SearchField } from "../components/SearchField";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { SlidingSegmented, type SegmentedItem } from "../components/SlidingSegmented";
