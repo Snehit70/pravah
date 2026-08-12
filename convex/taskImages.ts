@@ -4,7 +4,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { requireTokenIdentifier } from "./authHelpers";
-import { ensureTaskImageCleanupTombstone } from "./taskImageCleanup";
+import { ensureTaskImageCleanupTombstone, findTaskImageCleanupTombstone } from "./taskImageCleanup";
 
 export const TASK_IMAGE_VARIANT_SET = "task-image-v1" as const;
 export const TASK_IMAGE_POLICY_HASH = "task-image-v1-2026-08-03";
@@ -507,8 +507,11 @@ export async function claimStagedImagesForTask(
   const claimedIds = [];
   for (const [offset, input] of inputs.entries()) {
     const upload = await findOwnedUpload(ctx, ownerTokenIdentifier, input.uploadId);
+    const cleanupTombstone = upload
+      ? await findTaskImageCleanupTombstone(ctx, upload._id)
+      : undefined;
     const caption = captions[offset] || undefined;
-    if (!upload || upload.taskImageId) {
+    if (!upload || upload.taskImageId || cleanupTombstone) {
       claimedIds.push(await ctx.db.insert("taskImages", {
         ownerTokenIdentifier,
         taskId,

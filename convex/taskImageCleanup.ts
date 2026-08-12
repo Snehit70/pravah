@@ -12,7 +12,7 @@ type CleanupSource = {
   upload: Doc<"taskImageUploads">;
 };
 
-async function findTombstone(
+export async function findTaskImageCleanupTombstone(
   ctx: QueryCtx | MutationCtx,
   uploadRecordId: Id<"taskImageUploads">
 ) {
@@ -27,7 +27,7 @@ export async function ensureTaskImageCleanupTombstone(
   source: CleanupSource,
   now = Date.now()
 ) {
-  const existing = await findTombstone(ctx, source.upload._id);
+  const existing = await findTaskImageCleanupTombstone(ctx, source.upload._id);
   if (existing) return { id: existing._id, created: false };
   const id = await ctx.db.insert("taskImageCleanupTombstones", {
     ownerTokenIdentifier: source.ownerTokenIdentifier,

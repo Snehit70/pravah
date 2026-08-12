@@ -443,6 +443,32 @@ describe("Convex Task-image contract", () => {
     expect(db.rows("taskImageCleanupTombstones")[0]).not.toHaveProperty("taskImageId");
   });
 
+  it("does not claim an upload that has already been marked for discard", async () => {
+    const db = createMemoryDb();
+    const owner = authedCtx(db);
+    await stageHandler(owner, {
+      uploadId: "upload_discarded_before_claim",
+      encodingClass: "jpeg",
+      width: 1200,
+      height: 800,
+      bytes: 400_000,
+    });
+    Object.assign(db.rows("taskImageUploads")[0], {
+      state: "ready",
+      providerPublicId: "private/provider-raced",
+      providerVersion: 9,
+    });
+    await discardUnclaimedUploadHandler(owner, { uploadId: "upload_discarded_before_claim" });
+
+    const taskId = await addTaskHandler(owner, {
+      title: "Discard race",
+      imageInputs: [{ uploadId: "upload_discarded_before_claim" }],
+    });
+
+    expect(db.rows("taskImages")[0]).toMatchObject({ taskId, state: "failed", safeFailureCode: "source_unavailable" });
+    expect(db.rows("taskImageUploads")[0]).not.toHaveProperty("taskImageId");
+  });
+
   it("keeps existing Tasks valid with an empty collection and denies cross-owner claims safely", async () => {
     const db = createMemoryDb();
     const owner = authedCtx(db, "owner-1");
