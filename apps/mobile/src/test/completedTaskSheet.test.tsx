@@ -54,12 +54,13 @@ vi.mock("react-native", () => {
 vi.mock("react-native-gesture-handler", () => {
   const gesture = () => {
     const value: Record<string, unknown> = {};
-    for (const method of ["onUpdate", "onEnd", "onStart", "onFinalize", "numberOfTaps", "enabled", "activeOffsetX", "failOffsetY"]) value[method] = () => value;
+    for (const method of ["onUpdate", "onEnd", "onStart", "onFinalize", "numberOfTaps", "enabled", "activeOffsetX", "failOffsetY", "minDistance"]) value[method] = () => value;
     return value;
   };
   return {
-    Gesture: { Pan: gesture, Pinch: gesture, Tap: gesture, Simultaneous: (...gestures: unknown[]) => gestures[0] ?? gesture() },
+    Gesture: { Pan: gesture, Pinch: gesture, Tap: gesture, Simultaneous: (...gestures: unknown[]) => gestures[0] ?? gesture(), Exclusive: (...gestures: unknown[]) => gestures[0] ?? gesture() },
     GestureDetector: ({ children }: { children?: React.ReactNode }) => React.createElement("div", {}, children),
+    GestureHandlerRootView: ({ children }: { children?: React.ReactNode }) => React.createElement("div", {}, children),
   };
 });
 

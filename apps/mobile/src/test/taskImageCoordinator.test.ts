@@ -82,6 +82,75 @@ describe("Task-image mobile coordinator", () => {
     }
   );
 
+  it("keeps native photo selection order and caps the picker to the remaining slots", async () => {
+    const dependencies = createDependencies();
+    let nextId = 1;
+    dependencies.createUploadId = vi.fn(() => `upl_mobile_${nextId++}`);
+    dependencies.acquireSources = vi.fn(async (_kind, limit) =>
+      Array.from({ length: limit + 1 }, (_, index) => ({
+        kind: "photos" as const,
+        uri: `content://private/photo-${index + 1}`,
+        previewUri: `file:///private/photo-${index + 1}.jpg`,
+      }))
+    );
+    const coordinator = createTaskImageCoordinator(dependencies);
+    await coordinator.select("camera");
+    await coordinator.select("camera");
+
+    await coordinator.select("photos");
+
+    expect(dependencies.acquireSources).toHaveBeenCalledWith("photos", 3);
+    expect(coordinator.getViewStates().map((image) => image.uploadId)).toEqual([
+      "upl_mobile_1",
+      "upl_mobile_2",
+      "upl_mobile_3",
+      "upl_mobile_4",
+      "upl_mobile_5",
+    ]);
+    expect(dependencies.normalize).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ uri: "content://private/photo-1" })
+    );
+    expect(dependencies.normalize).toHaveBeenNthCalledWith(
+      5,
+      expect.objectContaining({ uri: "content://private/photo-3" })
+    );
+  });
+
+  it("keeps other selected photos when one photo cannot be prepared", async () => {
+    const dependencies = createDependencies();
+    let nextId = 1;
+    dependencies.createUploadId = vi.fn(() => `upl_mobile_${nextId++}`);
+    dependencies.acquireSources = vi.fn(async () => [
+      { kind: "photos" as const, uri: "content://private/good-1", previewUri: "file:///good-1.jpg" },
+      { kind: "photos" as const, uri: "content://private/bad", previewUri: "file:///bad.jpg" },
+      { kind: "photos" as const, uri: "content://private/good-2", previewUri: "file:///good-2.jpg" },
+    ]);
+    dependencies.normalize = vi.fn(async (source) => {
+      if (source.uri.endsWith("/bad")) {
+        throw Object.assign(new Error("decoder failed"), { code: "unsupported_format" });
+      }
+      return {
+        uri: `${source.uri}/normalized.jpg`,
+        previewUri: source.previewUri,
+        encodingClass: "jpeg" as const,
+        width: 1600,
+        height: 1200,
+        bytes: 2_000_000,
+      };
+    });
+    const coordinator = createTaskImageCoordinator(dependencies);
+
+    await coordinator.select("photos");
+
+    expect(coordinator.getViewStates().map((image) => image.state)).toEqual([
+      "pending",
+      "failed",
+      "pending",
+    ]);
+    expect(dependencies.stage).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps Task save independent, clears the next Capture preview, and finishes detached upload work", async () => {
     const dependencies = createDependencies();
     const grant = deferred<Awaited<ReturnType<TaskImageCoordinatorDependencies["issueGrant"]>>>();
@@ -324,11 +393,54 @@ describe("Task-image mobile coordinator", () => {
     expect(coordinator.serialize().uploads).toHaveLength(0);
   });
 
-  it("does not discard task-owned or already accepted records", async () => {
+  it("keeps an unattached ready upload in the next task save payload", async () => {
+    const dependencies = createDependencies();
+    const coordinator = createTaskImageCoordinator({
+      ...dependencies,
+      manifestStore: {
+        load: vi.fn(async () => ({
+          version: 2,
+          visibleUploadIds: ["upl_mobile_1"],
+          uploads: [{
+            uploadId: "upl_mobile_1",
+            state: "ready",
+            attempt: 1,
+            retryCount: 0,
+            needsReconciliation: false,
+            paused: false,
+            acceptedForUpload: false,
+            caption: "Restored reference",
+          }],
+        })),
+        save: vi.fn(async () => undefined),
+      },
+      ownerScope: () => "owner-a",
+    });
+
+    await coordinator.hydrate();
+
+    expect(coordinator.getImageInputsForSave()).toEqual([{
+      uploadId: "upl_mobile_1",
+      caption: "Restored reference",
+    }]);
+  });
+
+  it("requests server cleanup before removing an unattached upload", async () => {
+    const dependencies = createDependencies();
+    const discardUnclaimedUpload = vi.fn(async () => undefined);
+    const coordinator = createTaskImageCoordinator({ ...dependencies, discardUnclaimedUpload });
+
+    await coordinator.select("photos");
+    coordinator.remove("upl_mobile_1");
+    await vi.waitFor(() => expect(discardUnclaimedUpload).toHaveBeenCalledWith({ uploadId: "upl_mobile_1" }));
+  });
+
+  it("discards unattached accepted records but preserves task-owned records", async () => {
     const dependencies = createDependencies();
     let nextId = 1;
     dependencies.createUploadId = vi.fn(() => `upl_mobile_${nextId++}`);
-    const coordinator = createTaskImageCoordinator(dependencies);
+    const discardUnclaimedUpload = vi.fn(async () => undefined);
+    const coordinator = createTaskImageCoordinator({ ...dependencies, discardUnclaimedUpload });
     await coordinator.select("photos");
     await coordinator.select("camera");
     const [taskOwned, accepted] = coordinator.getViewStates().map((image) => image.uploadId);
@@ -336,7 +448,8 @@ describe("Task-image mobile coordinator", () => {
     coordinator.beginUploadAfterSave();
     coordinator.discard();
 
-    expect(coordinator.serialize().uploads.map((entry) => entry.uploadId)).toEqual([taskOwned, accepted]);
+    expect(coordinator.serialize().uploads.map((entry) => entry.uploadId)).toEqual([taskOwned]);
+    expect(discardUnclaimedUpload).toHaveBeenCalledWith({ uploadId: accepted });
   });
 
   it("associates a newly tracked upload when ready sibling records are not local", async () => {

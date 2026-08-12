@@ -15,7 +15,7 @@ vi.mock("react-native", () => {
       "aria-label": accessibilityLabel,
       onChange: (event: React.ChangeEvent<HTMLInputElement>) => onChangeText?.(event.target.value),
     });
-  const Pressable = ({ children, onPress, accessibilityLabel, accessibilityRole, style: _, ...props }: Props) =>
+  const Pressable = ({ children, onPress, onLongPress, accessibilityLabel, accessibilityRole, style: _, ...props }: Props) =>
     React.createElement(
       "button",
       {
@@ -24,6 +24,7 @@ vi.mock("react-native", () => {
         role: accessibilityRole,
         "aria-label": accessibilityLabel,
         onClick: onPress as React.MouseEventHandler,
+        onMouseDown: onLongPress as React.MouseEventHandler,
       },
       typeof children === "function"
         ? (children as (state: { pressed: boolean }) => React.ReactNode)({ pressed: false })
@@ -39,15 +40,46 @@ vi.mock("react-native", () => {
     Pressable,
     ScrollView,
     Modal,
+    AccessibilityInfo: { announceForAccessibility: vi.fn() },
     useWindowDimensions: () => ({ width: 390, height: 844, scale: 1, fontScale: 1 }),
     StyleSheet: { create: <T,>(styles: T) => styles, hairlineWidth: 1, absoluteFill: {} },
   };
 });
 
+vi.mock("react-native-draggable-flatlist", () => ({
+  default: ({ data, renderItem, ListFooterComponent, onDragBegin, onDragEnd }: {
+    data: Array<{ taskImageId: string }>;
+    renderItem: (params: { item: { taskImageId: string }; drag: () => void; isActive: boolean; getIndex: () => number }) => React.ReactNode;
+    ListFooterComponent?: React.ReactNode;
+    onDragBegin?: (index: number) => void;
+    onDragEnd?: (params: { data: Array<{ taskImageId: string }>; from: number; to: number }) => void;
+  }) => React.createElement(
+    "div",
+    null,
+    ...data.map((item, index) => renderItem({
+      item,
+      isActive: false,
+      getIndex: () => index,
+      drag: () => {
+        onDragBegin?.(index);
+        const reordered = [...data];
+        const [moved] = reordered.splice(index, 1);
+        const to = index === 0 ? reordered.length : 0;
+        reordered.splice(to, 0, moved);
+        onDragEnd?.({ data: reordered, from: index, to });
+      },
+    })),
+    ListFooterComponent,
+  ),
+}));
+
+vi.mock("../hooks/useReducedMotion", () => ({ useReducedMotion: () => false }));
+vi.mock("../lib/haptic", () => ({ haptic: { selection: vi.fn() } }));
+
 vi.mock("react-native-gesture-handler", () => {
   const gesture = () => {
     const value: Record<string, unknown> = {};
-    for (const method of ["onUpdate", "onEnd", "onStart", "onFinalize", "numberOfTaps", "enabled", "activeOffsetX", "failOffsetY"]) {
+    for (const method of ["onUpdate", "onEnd", "onStart", "onFinalize", "numberOfTaps", "enabled", "activeOffsetX", "failOffsetY", "minDistance", "activateAfterLongPress"]) {
       value[method] = () => value;
     }
     return value;
@@ -57,9 +89,11 @@ vi.mock("react-native-gesture-handler", () => {
       Pan: gesture,
       Pinch: gesture,
       Tap: gesture,
+      Exclusive: (...gestures: unknown[]) => gestures[0] ?? gesture(),
       Simultaneous: (...gestures: unknown[]) => gestures[0] ?? gesture(),
     },
     GestureDetector: ({ children }: { children?: React.ReactNode }) => React.createElement("div", null, children),
+    GestureHandlerRootView: ({ children }: { children?: React.ReactNode }) => React.createElement("div", null, children),
   };
 });
 
@@ -93,6 +127,7 @@ vi.mock("../components/UiIcons", () => {
     ChevronRightIcon: Icon,
     CloseIcon: Icon,
     CopyIcon: Icon,
+    GripHorizontalIcon: Icon,
     ImagePlusIcon: Icon,
     PlusIcon: Icon,
     RetryArrowIcon: Icon,
@@ -102,10 +137,14 @@ vi.mock("../components/UiIcons", () => {
   };
 });
 
-vi.mock("expo-image", () => ({
-  Image: ({ source, accessibilityLabel }: { source: { uri: string }; accessibilityLabel: string }) =>
-    React.createElement("img", { src: source.uri, alt: accessibilityLabel }),
-}));
+vi.mock("expo-image", () => {
+  const Image = Object.assign(
+    ({ source, accessibilityLabel }: { source: { uri: string }; accessibilityLabel: string }) =>
+      React.createElement("img", { src: source.uri, alt: accessibilityLabel }),
+    { prefetch: vi.fn(async () => true) },
+  );
+  return { Image };
+});
 
 vi.mock("../theme/tokens", () => ({
   colors: {
@@ -131,6 +170,7 @@ vi.mock("../theme/themeRuntime", () => ({
 }));
 
 import { TaskImageFilmstrip } from "../components/TaskImageFilmstrip";
+import { reorderTaskImagesByDrag } from "../lib/taskImageReorder";
 
 describe("TaskImageFilmstrip", () => {
   it("offers explicit Photos, Camera, and Paste actions with accessible names", () => {
@@ -174,6 +214,23 @@ describe("TaskImageFilmstrip", () => {
     expect(screen.getByText("Image could not be prepared")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Retry Task image" })).toBeNull();
     expect(document.body.textContent).not.toContain("decoder");
+  });
+
+  it("does not present a locally staged image as waiting", () => {
+    render(
+      <TaskImageFilmstrip
+        surface="capture"
+        images={[{
+          taskImageId: "image-1",
+          position: 0,
+          state: "pending",
+          previewUri: "file:///private/preview.jpg",
+        }]}
+      />
+    );
+
+    expect(screen.queryByText("Waiting")).toBeNull();
+    expect(screen.queryByText("Waiting to upload")).toBeNull();
   });
 
   it("resolves a ready image through the authenticated boundary and labels it semantically", async () => {
@@ -231,12 +288,12 @@ describe("TaskImageFilmstrip", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add Task image from Photos" }));
 
     expect(onCaptionChange).toHaveBeenCalledWith("image-1", "Updated");
-    expect(onReorder).toHaveBeenCalledWith("image-1", "down");
+    expect(onReorder).toHaveBeenCalledWith(["image-2", "image-1"]);
     expect(onRemove).toHaveBeenCalledWith("image-1");
     expect(onSelectSource).toHaveBeenCalledWith("photos");
   });
 
-  it("preserves capture caption spaces while exposing image reorder controls", () => {
+  it("preserves capture caption spaces while exposing direct image reordering", () => {
     const onCaptionChange = vi.fn();
     const onReorder = vi.fn();
     render(
@@ -254,9 +311,40 @@ describe("TaskImageFilmstrip", () => {
     const caption = screen.getByDisplayValue("First");
     fireEvent.change(caption, { target: { value: "First " } });
     expect((caption as HTMLInputElement).value).toBe("First ");
-    fireEvent.click(screen.getAllByRole("button", { name: "Move Task image earlier" })[1]);
+    expect(screen.queryByText("Earlier")).toBeNull();
+    expect(screen.queryByText("Later")).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Hold and drag to reorder Task image" })).toHaveLength(2);
     expect(onCaptionChange).toHaveBeenCalledWith("image-1", "First ");
-    expect(onReorder).toHaveBeenCalledWith("image-2", "up");
+  });
+
+  it("maps horizontal drag distance to the intended image slot", () => {
+    const images = [
+      { taskImageId: "image-1", position: 0, state: "pending" as const },
+      { taskImageId: "image-2", position: 1, state: "pending" as const },
+      { taskImageId: "image-3", position: 2, state: "pending" as const },
+    ];
+
+    expect(reorderTaskImagesByDrag(images, 0, 145, 70).map((image) => image.taskImageId)).toEqual([
+      "image-2", "image-3", "image-1",
+    ]);
+  });
+
+  it("uses the plus tile as the Capture add-image entry point", async () => {
+    const onSelectSource = vi.fn();
+    render(
+      <TaskImageFilmstrip
+        surface="capture"
+        images={[{ taskImageId: "image-1", position: 0, state: "pending" }]}
+        onSelectSource={onSelectSource}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Add Task image from Photos" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Add Task image" }));
+    await waitFor(() => expect(screen.getByText("Choose where the visual reference should come from.")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Add Task image from Photos" }));
+
+    expect(onSelectSource).toHaveBeenCalledWith("photos");
   });
 
   it("keeps Edit caption text local until blur commits it", () => {
@@ -431,6 +519,30 @@ describe("TaskImageFilmstrip", () => {
     expect(screen.queryByRole("button", { name: "Paste Task image from clipboard" })).toBeNull();
   });
 
+  it("keeps Edit image actions on the compact filmstrip", async () => {
+    const onSelectSource = vi.fn();
+    const onRemove = vi.fn();
+    render(
+      <TaskImageFilmstrip
+        surface="edit"
+        images={[{ taskImageId: "image-1", position: 0, state: "ready" }]}
+        onSelectSource={onSelectSource}
+        onRemove={onRemove}
+      />
+    );
+
+    expect(screen.queryByText("Photos")).toBeNull();
+    expect(screen.queryByText("Camera")).toBeNull();
+    expect(screen.queryByText("Paste")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Add Task image" }));
+    await waitFor(() => expect(screen.getByText("Choose where the visual reference should come from.")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Add Task image from Photos" }));
+    expect(onSelectSource).toHaveBeenCalledWith("photos");
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Task image" }));
+    expect(onRemove).toHaveBeenCalledWith("image-1");
+  });
+
   it("renders compact Inbox and Completed presentations", () => {
     const images = [
       { taskImageId: "image-1", position: 0, state: "ready" as const },
@@ -456,12 +568,34 @@ describe("TaskImageFilmstrip", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Open primary Task image" }));
-    expect(screen.getByText("1 of 1")).toBeTruthy();
+    expect(screen.getByText("1 of 1 · Primary")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Close image viewer" }));
 
     rerender(<TaskImageFilmstrip surface="management" images={images} />);
     fireEvent.click(screen.getByRole("button", { name: "Open Task image 1" }));
-    expect(screen.getByText("1 of 1")).toBeTruthy();
+    expect(screen.getByText("1 of 1 · Primary")).toBeTruthy();
+  });
+
+  it("shows Primary identity, captions, and retries unavailable private delivery in the viewer", async () => {
+    const resolveDelivery = vi.fn()
+      .mockResolvedValueOnce({ kind: "ready" as const, url: "https://transient.example/card" })
+      .mockResolvedValueOnce({ kind: "not_found" as const })
+      .mockResolvedValueOnce({ kind: "ready" as const, url: "https://transient.example/retried" });
+    render(
+      <TaskImageFilmstrip
+        surface="inbox"
+        images={[{ taskImageId: "image-1", position: 0, state: "ready", caption: "Error screenshot for reference" }]}
+        resolveDelivery={resolveDelivery}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open primary Task image" }));
+    expect(screen.getByText("1 of 1 · Primary")).toBeTruthy();
+    expect(screen.getByText("Error screenshot for reference")).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry loading Task image" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Retry loading Task image" }));
+    await waitFor(() => expect(screen.getByAltText("Task image 1 of 1, Primary")).toBeTruthy());
+    expect(resolveDelivery).toHaveBeenCalledTimes(3);
   });
 
   it("opens the Edit hero in the private viewer while thumbnails only select", async () => {
@@ -509,7 +643,7 @@ describe("TaskImageFilmstrip", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open Completed Task image 2" }));
     expect(screen.getByText("2 of 2")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Previous Task image" }));
-    await waitFor(() => expect(screen.getByText("1 of 2")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("1 of 2 · Primary")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Close image viewer" }));
     expect(screen.queryByRole("button", { name: "Close image viewer" })).toBeNull();
   });
@@ -525,9 +659,9 @@ describe("TaskImageFilmstrip", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Open Task image 1" }));
-    expect(screen.getByText("1 of 1")).toBeTruthy();
+    expect(screen.getByText("1 of 1 · Primary")).toBeTruthy();
     expect(resolveDelivery).not.toHaveBeenCalled();
-    expect(screen.getByAltText("Task image 1 of 1")).toBeTruthy();
+    expect(screen.getByAltText("Task image 1 of 1, Primary")).toBeTruthy();
   });
 
   it("uses the detail delivery variant and exposes retry in the Edit surface", async () => {

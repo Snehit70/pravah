@@ -145,6 +145,27 @@ type DraftState = {
 type TaskImageCollectionMutationResult = NonNullable<MobileTask["imageCollection"]> & {
   stale: boolean;
 };
+type TaskImageCollection = NonNullable<MobileTask["imageCollection"]>;
+
+function orderedTaskImageIds(collection?: TaskImageCollection) {
+  return [...(collection?.active ?? [])]
+    .sort((left, right) => left.position - right.position)
+    .map((image) => image.taskImageId);
+}
+
+function mergeTaskImageOrder(server: TaskImageCollection, localOrder: string[]): TaskImageCollection {
+  const byId = new Map(server.active.map((image) => [image.taskImageId, image]));
+  const active = [
+    ...localOrder.flatMap((id) => {
+      const image = byId.get(id);
+      return image ? [{ ...image, position: 0 }] : [];
+    }),
+    ...server.active
+      .filter((image) => !localOrder.includes(image.taskImageId))
+      .map((image, index) => ({ ...image, position: localOrder.length + index })),
+  ].map((image, position) => ({ ...image, position }));
+  return { ...server, active };
+}
 
 const PRIORITY_OPTIONS: Array<{ value: TaskPriority; label: string; detail: string }> = [
   { value: undefined, label: "No priority", detail: "" },
@@ -243,6 +264,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     ref,
   ) {
     const openSeqRef = useRef(0);
+    const captionSessionRef = useRef(0);
+    const activeTaskIdRef = useRef<Id<"tasks"> | null>(null);
     const confirm = useConfirm();
     const insets = useSafeAreaInsets();
     const reducedMotion = useReducedMotion();
@@ -252,6 +275,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const [visible, setVisible] = useState(false);
     const [taskId, setTaskId] = useState<Id<"tasks"> | null>(null);
     const [currentTask, setCurrentTask] = useState<MobileTask | null>(null);
+    const [initialImageOrder, setInitialImageOrder] = useState<string[]>([]);
     const [taskState, setTaskState] = useState<TaskState | null>(null);
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
@@ -270,15 +294,20 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [showTimePicker, setShowTimePicker] = useState(false);
     const clipboardPasteInFlight = useRef(false);
+    const captionSaveQueue = useRef<Promise<void>>(Promise.resolve());
+    const captionRevision = useRef<number | undefined>(undefined);
     const [screenTransition] = useState(() => new Animated.Value(1));
     const previousMode = useRef<SheetMode>("inspector");
 
     const closeModal = useCallback(
       (notify = true) => {
+        captionSessionRef.current += 1;
+        activeTaskIdRef.current = null;
         Keyboard.dismiss();
         setVisible(false);
         setTaskId(null);
         setCurrentTask(null);
+        setInitialImageOrder([]);
         setTaskState(null);
         setInitialDraft(null);
         setDraftGoalId(null);
@@ -289,6 +318,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         setOverflowOpen(false);
         setShowDatePicker(false);
         setShowTimePicker(false);
+        captionSaveQueue.current = Promise.resolve();
+        captionRevision.current = undefined;
         if (notify) onSheetChange?.(false);
       },
       [onSheetChange],
@@ -296,15 +327,19 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
 
     const hasUnsavedChanges = useMemo(() => {
       if (!initialDraft || !taskId) return false;
+      const currentImageOrder = [...(currentTask?.imageCollection?.active ?? [])]
+        .sort((left, right) => left.position - right.position)
+        .map((image) => image.taskImageId);
       return (
         title !== initialDraft.title ||
         description !== initialDraft.description ||
         deadline !== initialDraft.deadline ||
         time !== initialDraft.time ||
         priority !== initialDraft.priority ||
-        draftGoalId !== initialDraft.goalId
+        draftGoalId !== initialDraft.goalId ||
+        currentImageOrder.join("\u0000") !== initialImageOrder.join("\u0000")
       );
-    }, [deadline, description, draftGoalId, initialDraft, priority, taskId, time, title]);
+    }, [currentTask?.imageCollection?.active, deadline, description, draftGoalId, initialDraft, initialImageOrder, priority, taskId, time, title]);
 
     const canSave = Boolean(title.trim()) && hasUnsavedChanges && !saving;
     const linkedGoal = draftGoalId ? goals.find((goal) => goal.id === draftGoalId) ?? null : null;
@@ -316,6 +351,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
 
     const attachTaskImage = useCallback(async (kind: TaskImageSourceKind) => {
       if (!currentTask || !onSelectTaskImage || isTaskCompleted(currentTask)) return;
+      const localOrder = orderedTaskImageIds(currentTask.imageCollection);
       const result = await onSelectTaskImage({
         taskId: currentTask._id,
         expectedRevision: currentTask.imageCollection?.revision ?? 0,
@@ -323,8 +359,37 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       });
       if (!result) return;
       const { stale: _, ...imageCollection } = result;
-      setCurrentTask((previous) => previous ? { ...previous, imageCollection } : previous);
+      const mergedCollection = mergeTaskImageOrder(imageCollection, localOrder);
+      setCurrentTask((previous) => previous ? { ...previous, imageCollection: mergedCollection } : previous);
+      setInitialImageOrder(orderedTaskImageIds(imageCollection));
     }, [currentTask, onSelectTaskImage]);
+
+    const saveTaskImageCaption = useCallback((taskImageId: string, caption: string) => {
+      const sessionToken = captionSessionRef.current;
+      const sourceTaskId = activeTaskIdRef.current;
+      if (!sourceTaskId) return;
+      const isCurrentSession = () =>
+        captionSessionRef.current === sessionToken && activeTaskIdRef.current === sourceTaskId;
+      captionSaveQueue.current = captionSaveQueue.current.catch(() => undefined).then(async () => {
+        if (!isCurrentSession()) return;
+        const revision = captionRevision.current ?? currentTask?.imageCollection?.revision ?? 0;
+        const result = await onCaptionTaskImage?.({ taskImageId, caption, expectedRevision: revision });
+        if (!result || !isCurrentSession()) return;
+        if (result.stale) {
+          captionRevision.current = undefined;
+          setError("Task images changed while you were editing. Review the current image and try again.");
+          return;
+        }
+        captionRevision.current = result.revision;
+        const { stale: _, ...imageCollection } = result;
+        setCurrentTask((previousTask) => previousTask ? {
+          ...previousTask,
+          imageCollection: mergeTaskImageOrder(imageCollection, orderedTaskImageIds(previousTask.imageCollection)),
+        } : previousTask);
+      }).catch(() => {
+        if (isCurrentSession()) setError("Couldn’t update Task image. Try again.");
+      });
+    }, [currentTask?.imageCollection?.revision, onCaptionTaskImage]);
 
     useEffect(() => {
       if (!visible || (!titleEditing && !notesEditing) || !onSelectTaskImage || !currentTask || isTaskCompleted(currentTask)) {
@@ -365,12 +430,24 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       setTime(initialDraft.time);
       setPriority(initialDraft.priority);
       setDraftGoalId(initialDraft.goalId);
+      setCurrentTask((previous) => {
+        if (!previous?.imageCollection) return previous;
+        const byId = new Map(previous.imageCollection.active.map((image) => [image.taskImageId, image]));
+        const active = initialImageOrder.flatMap((taskImageId, position) => {
+          const image = byId.get(taskImageId);
+          return image ? [{ ...image, position }] : [];
+        });
+        return {
+          ...previous,
+          imageCollection: { ...previous.imageCollection, active, primary: active[0] },
+        };
+      });
       setError(null);
       setMode("inspector");
       setTitleEditing(false);
       setNotesEditing(false);
       Keyboard.dismiss();
-    }, [initialDraft]);
+    }, [initialDraft, initialImageOrder]);
 
     const requestClose = useCallback(async () => {
       if (mode !== "inspector") {
@@ -397,6 +474,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         open: (task: MobileTask) => {
           const seq = openSeqRef.current + 1;
           openSeqRef.current = seq;
+          captionSessionRef.current += 1;
+          activeTaskIdRef.current = task._id;
           void goalLinksStore.hydrate().then(() => {
             if (openSeqRef.current !== seq) return;
             const currentGoalId = goalLinksStore.goalFor(String(task._id)) ?? null;
@@ -414,6 +493,9 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
               goalId: currentGoalId,
             };
             setCurrentTask(task);
+            setInitialImageOrder([...(task.imageCollection?.active ?? [])]
+              .sort((left, right) => left.position - right.position)
+              .map((image) => image.taskImageId));
             setTaskId(task._id);
             setTaskState(nextState);
             setTitle(draft.title);
@@ -437,6 +519,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         },
         close: () => {
           openSeqRef.current += 1;
+          captionSessionRef.current += 1;
+          activeTaskIdRef.current = null;
           if (mode !== "inspector") {
             setMode("inspector");
             return;
@@ -467,6 +551,46 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       const previousState = { ...initialDraft };
       setSaving(true);
       setError(null);
+      await captionSaveQueue.current;
+      const orderedTaskImageIds = [...(currentTask?.imageCollection?.active ?? [])]
+        .sort((left, right) => left.position - right.position)
+        .map((image) => image.taskImageId);
+      let persistedImageCollection = currentTask?.imageCollection;
+      if (
+        onReorderTaskImages &&
+        orderedTaskImageIds.join("\u0000") !== initialImageOrder.join("\u0000")
+      ) {
+        try {
+          const result = await onReorderTaskImages({
+            taskId,
+            orderedTaskImageIds,
+            expectedRevision: captionRevision.current ?? currentTask?.imageCollection?.revision ?? 0,
+          });
+          if (result) {
+            const { stale, ...imageCollection } = result;
+            persistedImageCollection = imageCollection;
+            setCurrentTask((previous) => previous ? { ...previous, imageCollection } : previous);
+            if (stale) {
+              setInitialImageOrder(
+                [...imageCollection.active]
+                  .sort((left, right) => left.position - right.position)
+                  .map((image) => image.taskImageId),
+              );
+              setSaving(false);
+              setError("Task images changed while you were editing. Review the current order and try again.");
+              haptic.error();
+              return;
+            }
+            setInitialImageOrder(orderedTaskImageIds);
+            captionRevision.current = undefined;
+          }
+        } catch {
+          setSaving(false);
+          setError("Couldn’t reorder Task images. Try again.");
+          haptic.error();
+          return;
+        }
+      }
       const success = await onSave({
         taskId,
         title: savedDraft.title,
@@ -489,6 +613,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       if (sourceTask) {
         setCurrentTask({
           ...sourceTask,
+          imageCollection: persistedImageCollection ?? sourceTask.imageCollection,
           title: savedDraft.title,
           description: savedDraft.description || undefined,
           deadline: savedDraft.deadline || undefined,
@@ -498,6 +623,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         onSaveComplete?.({ message: "Changes saved" }, sourceTask, previousState);
       }
       setInitialDraft(savedDraft);
+      setInitialImageOrder(orderedTaskImageIds);
+      captionRevision.current = undefined;
       setTitle(savedDraft.title);
       setDescription(savedDraft.description);
       setDeadline(savedDraft.deadline);
@@ -519,12 +646,14 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       isValidDeadline,
       onSave,
       onSaveComplete,
+      onReorderTaskImages,
       priority,
       saving,
       setGoalLink,
       taskId,
       time,
       title,
+      initialImageOrder,
     ]);
 
     const deleteTask = useCallback(async () => {
@@ -585,7 +714,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
               <InfoCircleIcon color={colors.textSecondary} size={18} />
               <Text style={styles.menuItemText}>Task details</Text>
             </Pressable>
-            {onDelete ? (
+            {onDelete && !completed ? (
               <Pressable
                 onPress={() => {
                   setOverflowOpen(false);
@@ -867,7 +996,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
 
           {currentTask && (!completed || currentTask.imageCollection?.active.length || currentTask.imageCollection?.recoverable?.length) ? (
             <View style={styles.imagesSection}>
-              <Text style={styles.sectionLabel}>Task images</Text>
+              <Text style={styles.sectionLabel}>Visual reference</Text>
               <TaskImageFilmstrip
                 surface="edit"
                 images={currentTask.imageCollection?.active ?? []}
@@ -903,45 +1032,19 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                 onSelectSource={!completed && onSelectTaskImage
                   ? attachTaskImage
                   : undefined}
-                onCaptionChange={!completed && onCaptionTaskImage
-                  ? (taskImageId, caption) => {
-                      const revision = currentTask.imageCollection?.revision ?? 0;
-                      void (async () => {
-                        try {
-                          const result = await onCaptionTaskImage({ taskImageId, caption, expectedRevision: revision });
-                          if (!result) return;
-                          const { stale: _, ...imageCollection } = result;
-                          setCurrentTask((previous) => previous ? { ...previous, imageCollection } : previous);
-                        } catch {
-                          setError("Couldn’t update Task image. Try again.");
-                        }
-                      })();
-                    }
-                  : undefined}
+                onCaptionChange={!completed && onCaptionTaskImage ? saveTaskImageCaption : undefined}
                 onReorder={!completed && onReorderTaskImages
-                  ? (taskImageId, direction) => {
-                      const active = [...(currentTask.imageCollection?.active ?? [])].sort(
-                        (left, right) => left.position - right.position,
-                      );
-                      const index = active.findIndex((image) => image.taskImageId === taskImageId);
-                      const nextIndex = direction === "up" ? index - 1 : index + 1;
-                      if (index < 0 || nextIndex < 0 || nextIndex >= active.length) return;
-                      [active[index], active[nextIndex]] = [active[nextIndex], active[index]];
-                      const positioned = active.map((image, position) => ({ ...image, position }));
-                      void (async () => {
-                        try {
-                          const result = await onReorderTaskImages({
-                            taskId: currentTask._id,
-                            orderedTaskImageIds: positioned.map((image) => image.taskImageId),
-                            expectedRevision: currentTask.imageCollection?.revision ?? 0,
-                          });
-                          if (!result) return;
-                          const { stale: _, ...imageCollection } = result;
-                          setCurrentTask((previous) => previous ? { ...previous, imageCollection } : previous);
-                        } catch {
-                          setError("Couldn’t reorder Task images. Try again.");
-                        }
-                      })();
+                  ? (orderedTaskImageIds) => {
+                      setCurrentTask((previous) => previous ? {
+                        ...previous,
+                        imageCollection: {
+                          ...(previous.imageCollection ?? { revision: 0, observedAt: Date.now(), recoverable: [] }),
+                          active: orderedTaskImageIds.flatMap((taskImageId, position) => {
+                            const image = (previous.imageCollection?.active ?? []).find((entry) => entry.taskImageId === taskImageId);
+                            return image ? [{ ...image, position }] : [];
+                          }),
+                        },
+                      } : previous);
                     }
                   : undefined}
                 onRemove={!completed && onRemoveTaskImage
@@ -958,7 +1061,10 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                           });
                           if (!result) return;
                           const { stale: _, ...imageCollection } = result;
-                          setCurrentTask((previous) => previous ? { ...previous, imageCollection } : previous);
+                          const mergedCollection = mergeTaskImageOrder(imageCollection, orderedTaskImageIds(currentTask.imageCollection));
+                          setCurrentTask((previous) => previous ? { ...previous, imageCollection: mergedCollection } : previous);
+                          setInitialImageOrder(orderedTaskImageIds(imageCollection));
+                          captionRevision.current = undefined;
                         } catch {
                           setError("Couldn’t remove Task image. Try again.");
                         }

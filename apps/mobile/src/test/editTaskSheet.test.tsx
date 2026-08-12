@@ -47,11 +47,13 @@ vi.mock("react-native", () => {
   const Pressable = ({ children, ...rest }: AnyProps) => {
     const {
       onPress,
+      onLongPress,
       disabled,
       accessibilityLabel,
       ...remaining
     } = rest as AnyProps & {
       onPress?: () => void;
+      onLongPress?: () => void;
       disabled?: boolean;
       accessibilityLabel?: string;
     };
@@ -66,6 +68,7 @@ vi.mock("react-native", () => {
         type: "button",
         disabled: Boolean(disabled),
         onClick: onPress,
+        onMouseDown: onLongPress,
         "aria-label": accessibilityLabel,
       },
       resolved,
@@ -153,12 +156,13 @@ vi.mock("react-native", () => {
 vi.mock("react-native-gesture-handler", () => {
   const gesture = () => {
     const value: Record<string, unknown> = {};
-    for (const method of ["onUpdate", "onEnd", "onStart", "onFinalize", "numberOfTaps", "enabled", "activeOffsetX", "failOffsetY"]) value[method] = () => value;
+    for (const method of ["onUpdate", "onEnd", "onStart", "onFinalize", "numberOfTaps", "enabled", "activeOffsetX", "failOffsetY", "minDistance", "activateAfterLongPress"]) value[method] = () => value;
     return value;
   };
   return {
-    Gesture: { Pan: gesture, Pinch: gesture, Tap: gesture, Simultaneous: (...gestures: unknown[]) => gestures[0] ?? gesture() },
+    Gesture: { Pan: gesture, Pinch: gesture, Tap: gesture, Simultaneous: (...gestures: unknown[]) => gestures[0] ?? gesture(), Exclusive: (...gestures: unknown[]) => gestures[0] ?? gesture() },
     GestureDetector: ({ children }: { children?: React.ReactNode }) => React.createElement("div", {}, children),
+    GestureHandlerRootView: ({ children }: { children?: React.ReactNode }) => React.createElement("div", {}, children),
   };
 });
 
@@ -227,6 +231,7 @@ vi.mock("../components/UiIcons", () => {
     InboxTrayIcon: icon("inbox"),
     InfoCircleIcon: icon("info"),
     ImagePlusIcon: icon("image-plus"),
+    GripHorizontalIcon: icon("grip-horizontal"),
     PencilIcon: icon("pencil"),
     PlusIcon: icon("plus"),
     CopyIcon: icon("copy"),
@@ -377,6 +382,8 @@ describe("EditTaskSheet compact workbench", () => {
     expect(screen.queryByTestId("title-input")).toBeNull();
     expect(screen.getByText(/PLANNED/)).toBeTruthy();
     expect(screen.getByText("Planning")).toBeTruthy();
+    const content = document.body.textContent ?? "";
+    expect(content.indexOf("Notes")).toBeLessThan(content.indexOf("Visual reference"));
     expect(screen.getByText("Move to Inbox")).toBeTruthy();
     expect(screen.getByText("Complete")).toBeTruthy();
     expect(onSheetChange).toHaveBeenCalledWith(true);
@@ -516,7 +523,7 @@ describe("EditTaskSheet compact workbench", () => {
     expect(screen.queryByLabelText("Restore removed Task image")).toBeNull();
   });
 
-  it("updates local image positions when reordering a Task image", async () => {
+  it("updates the selected image when choosing a Task image thumbnail", async () => {
     const onReorderTaskImages = vi.fn(async () => ({
       stale: false as const,
       revision: 5,
@@ -569,17 +576,12 @@ describe("EditTaskSheet compact workbench", () => {
     expect(screen.getAllByAltText("Selected Task image preview")[0].getAttribute("src"))
       .toBe("file:///image-a.jpg");
     fireEvent.click(screen.getByLabelText("Select Task image 2"));
-    fireEvent.click(screen.getByLabelText("Move Task image up"));
 
     await waitFor(() => {
       expect(screen.getAllByAltText("Selected Task image preview")[0].getAttribute("src"))
         .toBe("file:///image-b.jpg");
     });
-    expect(onReorderTaskImages).toHaveBeenCalledWith({
-      taskId: "task1",
-      orderedTaskImageIds: ["image-b", "image-a"],
-      expectedRevision: 4,
-    });
+    expect(screen.getAllByLabelText("Hold and drag to reorder Task image")).toHaveLength(2);
   });
 
   it("applies the returned Task image collection after attaching an image", async () => {

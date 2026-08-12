@@ -3,13 +3,16 @@ import type { Id } from "../../convex/_generated/dataModel";
 import { addTask } from "../../convex/tasks";
 import {
   addTaskImages,
+  applyUploadVerification,
   getTaskImageCollection,
   getTaskImageSummaryForOwner,
   getDeliveryContext,
   markUploadFailed,
+  prepareUploadGrant,
   removeTaskImage,
   reorderTaskImages,
   restoreTaskImage,
+  discardUnclaimedUpload,
   stageImageUpload,
   updateTaskImageCaption,
 } from "../../convex/taskImages";
@@ -78,6 +81,7 @@ function authedCtx(db: ReturnType<typeof createMemoryDb>, owner = "owner-1") {
     auth: {
       getUserIdentity: vi.fn(async () => ({ tokenIdentifier: owner })),
     },
+    scheduler: { runAfter: vi.fn(async () => undefined) },
   };
 }
 
@@ -92,6 +96,41 @@ const stageHandler = (
     },
     { uploadId: string; state: string }
   >
+)._handler;
+
+const prepareUploadGrantHandler = (
+  prepareUploadGrant as unknown as Handler<
+    {
+      ownerTokenIdentifier: string;
+      uploadId: string;
+      requestKey: string;
+      candidatePublicId: string;
+      issuedAt: number;
+    },
+    { uploadId: string; publicId: string; providerAttempt: number }
+  >
+)._handler;
+
+const applyUploadVerificationHandler = (
+  applyUploadVerification as unknown as Handler<
+    {
+      ownerTokenIdentifier: string;
+      uploadId: string;
+      publicId: string;
+      version: number;
+      result: {
+        status: "ready";
+        master: { format: "jpg"; width: number; height: number; bytes: number };
+        card: { format: "webp"; width: number; height: number; bytes: number };
+        detail: { format: "webp"; width: number; height: number; bytes: number };
+      };
+    },
+    { accepted: boolean; state?: string }
+  >
+)._handler;
+
+const discardUnclaimedUploadHandler = (
+  discardUnclaimedUpload as unknown as Handler<{ uploadId: string }, { accepted: boolean }>
 )._handler;
 
 const addTaskHandler = (
@@ -167,6 +206,52 @@ const restoreTaskImageHandler = (
 )._handler;
 
 describe("Convex Task-image contract", () => {
+  it("issues an upload grant while an image is staged before its Task is saved", async () => {
+    const db = createMemoryDb();
+    const owner = authedCtx(db);
+    await stageHandler(owner, {
+      uploadId: "upload_presave_1",
+      encodingClass: "jpeg",
+      width: 1200,
+      height: 900,
+      bytes: 500_000,
+    });
+
+    const prepared = await prepareUploadGrantHandler(owner, {
+      ownerTokenIdentifier: "owner-1",
+      uploadId: "upload_presave_1",
+      requestKey: "grant_presave_1",
+      candidatePublicId: "pravah-task-images/opaque-presave-1",
+      issuedAt: 1_786_500_000,
+    });
+    expect(prepared).toMatchObject({
+      uploadId: "upload_presave_1",
+      publicId: "pravah-task-images/opaque-presave-1",
+      providerAttempt: 1,
+    });
+
+    await expect(applyUploadVerificationHandler(owner, {
+      ownerTokenIdentifier: "owner-1",
+      uploadId: "upload_presave_1",
+      publicId: prepared.publicId,
+      version: 1,
+      result: {
+        status: "ready",
+        master: { format: "jpg", width: 1200, height: 900, bytes: 500_000 },
+        card: { format: "webp", width: 640, height: 480, bytes: 80_000 },
+        detail: { format: "webp", width: 1200, height: 900, bytes: 180_000 },
+      },
+    })).resolves.toEqual({ accepted: true, state: "ready" });
+
+    const taskId = await addTaskHandler(owner, {
+      title: "Save after the image is ready",
+      imageUploadId: "upload_presave_1",
+    });
+    await expect(collectionHandler(owner, { taskId })).resolves.toMatchObject({
+      active: [{ state: "ready", position: 0 }],
+    });
+  });
+
   it("denies delivery as soon as the parent Task enters recoverable deletion", async () => {
     const db = createMemoryDb();
     const owner = authedCtx(db);
@@ -293,6 +378,95 @@ describe("Convex Task-image contract", () => {
     });
     expect(collection).not.toHaveProperty("primary");
     expect(JSON.stringify(collection)).not.toMatch(/upload_manifest_1|provider|url|path/i);
+  });
+
+  it("claims an unattached ready upload without downgrading its state", async () => {
+    const db = createMemoryDb();
+    const owner = authedCtx(db);
+    await stageHandler(owner, {
+      uploadId: "upload_ready_1",
+      encodingClass: "jpeg",
+      width: 1200,
+      height: 800,
+      bytes: 400_000,
+    });
+    const upload = db.rows("taskImageUploads")[0];
+    Object.assign(upload, {
+      state: "ready",
+      providerPublicId: "private/provider-ready",
+      providerVersion: 7,
+      variants: { master: { width: 1200, height: 800, bytes: 400_000 } },
+    });
+
+    const taskId = await addTaskHandler(owner, {
+      title: "Restored image task",
+      imageInputs: [{ uploadId: "upload_ready_1", caption: "Restored reference" }],
+    });
+
+    expect(db.rows("taskImageUploads")[0]).toMatchObject({
+      state: "ready",
+      taskImageId: expect.any(String),
+    });
+    expect(db.rows("taskImages")[0]).toMatchObject({
+      taskId,
+      state: "ready",
+      caption: "Restored reference",
+    });
+  });
+
+  it("creates cleanup work when an unattached ready upload is discarded", async () => {
+    const db = createMemoryDb();
+    const owner = authedCtx(db);
+    await stageHandler(owner, {
+      uploadId: "upload_discard_1",
+      encodingClass: "jpeg",
+      width: 1200,
+      height: 800,
+      bytes: 400_000,
+    });
+    Object.assign(db.rows("taskImageUploads")[0], {
+      state: "ready",
+      providerPublicId: "private/provider-discard",
+      providerVersion: 8,
+    });
+
+    await expect(discardUnclaimedUploadHandler(owner, { uploadId: "upload_discard_1" })).resolves.toEqual({
+      accepted: true,
+    });
+
+    expect(db.rows("taskImageCleanupTombstones")[0]).toMatchObject({
+      uploadRecordId: db.rows("taskImageUploads")[0]._id,
+      providerPublicId: "private/provider-discard",
+      state: "pending",
+    });
+    expect(db.rows("taskImageCleanupTombstones")[0]).not.toHaveProperty("taskId");
+    expect(db.rows("taskImageCleanupTombstones")[0]).not.toHaveProperty("taskImageId");
+  });
+
+  it("does not claim an upload that has already been marked for discard", async () => {
+    const db = createMemoryDb();
+    const owner = authedCtx(db);
+    await stageHandler(owner, {
+      uploadId: "upload_discarded_before_claim",
+      encodingClass: "jpeg",
+      width: 1200,
+      height: 800,
+      bytes: 400_000,
+    });
+    Object.assign(db.rows("taskImageUploads")[0], {
+      state: "ready",
+      providerPublicId: "private/provider-raced",
+      providerVersion: 9,
+    });
+    await discardUnclaimedUploadHandler(owner, { uploadId: "upload_discarded_before_claim" });
+
+    const taskId = await addTaskHandler(owner, {
+      title: "Discard race",
+      imageInputs: [{ uploadId: "upload_discarded_before_claim" }],
+    });
+
+    expect(db.rows("taskImages")[0]).toMatchObject({ taskId, state: "failed", safeFailureCode: "source_unavailable" });
+    expect(db.rows("taskImageUploads")[0]).not.toHaveProperty("taskImageId");
   });
 
   it("keeps existing Tasks valid with an empty collection and denies cross-owner claims safely", async () => {

@@ -104,6 +104,7 @@ import { createTaskImageCoordinator } from "./src/lib/taskImageCoordinator";
 import { buildTaskMetadataExport } from "./src/lib/task-metadata-export";
 import {
   acquireTaskImageSource,
+  acquireTaskImageSources,
   abortPreparedTaskImageUpload,
   normalizeTaskImage,
   persistTaskImageSource,
@@ -367,6 +368,7 @@ function MobileApp() {
   const addTaskMutation = useMutation(api.tasks.addTask);
   const addTaskImagesMutation = useMutation(api.taskImages.addTaskImages);
   const markTaskImageUploadFailedMutation = useMutation(api.taskImages.markUploadFailed);
+  const discardUnclaimedUploadMutation = useMutation(api.taskImages.discardUnclaimedUpload);
   const stageTaskImageMutation = useMutation(api.taskImages.stageImageUpload);
   const issueTaskImageGrant = useAction(api.taskImageActions.issueUploadGrant);
   const reconcileTaskImageAttempt = useAction(api.taskImageActions.reconcileUploadAttempt);
@@ -391,6 +393,7 @@ function MobileApp() {
       createTaskImageCoordinator({
         createUploadId: () => `upl_${Crypto.randomUUID().replace(/-/g, "")}`,
         acquireSource: acquireTaskImageSource,
+        acquireSources: acquireTaskImageSources,
         normalize: normalizeTaskImage,
         sourceStore: {
           persist: persistTaskImageSource,
@@ -412,6 +415,7 @@ function MobileApp() {
         },
         upload: uploadPreparedTaskImage,
         abortUpload: ({ uploadId }) => abortPreparedTaskImageUpload(uploadId),
+        discardUnclaimedUpload: ({ uploadId }) => discardUnclaimedUploadMutation({ uploadId }).then(() => undefined),
         verify: submitTaskImageResult,
         reportFailure: ({ uploadId, failureCode }) =>
           markTaskImageUploadFailedMutation({ uploadId, failureCode }).then(() => undefined),
@@ -420,6 +424,7 @@ function MobileApp() {
       issueTaskImageGrant,
       reconcileTaskImageAttempt,
       markTaskImageUploadFailedMutation,
+      discardUnclaimedUploadMutation,
       stageTaskImageMutation,
       submitTaskImageResult,
       session?.user?.id,
@@ -1603,26 +1608,34 @@ function MobileApp() {
           );
           return (async () => {
             try {
-              await taskImageCoordinator.select(kind);
-              const selected = taskImageCoordinator
+              const existingCount = workspaceTaskCorpus.find((task) => String(task._id) === String(taskId))?.imageCollection?.active.length ?? 0;
+              const availableSlots = Math.max(0, 5 - existingCount);
+              await taskImageCoordinator.select(kind, availableSlots);
+              const newUploads = taskImageCoordinator
                 .getViewStates()
-                .find((image) => !beforeUploadIds.has(image.uploadId));
-              if (!selected) return undefined;
-              if (selected.state !== "pending") {
-                taskImageCoordinator.discard();
+                .filter((image) => !beforeUploadIds.has(image.uploadId));
+              const selected = newUploads.filter((image) => image.state === "pending");
+              taskImageCoordinator.discardUploads(
+                newUploads.filter((image) => image.state === "failed").map((image) => image.uploadId),
+              );
+              if (selected.length === 0) {
+                taskImageCoordinator.discardUploads(newUploads.map((image) => image.uploadId));
                 return undefined;
               }
               const result = await addTaskImagesMutation({
                 taskId,
-                uploadIds: [selected.uploadId],
+                uploadIds: selected.map((image) => image.uploadId),
                 expectedRevision,
               });
               if (result.stale) {
-                taskImageCoordinator.discard();
+                taskImageCoordinator.discardUploads(selected.map((image) => image.uploadId));
                 showToast({ kind: "error", message: "Task images changed. Please try again." });
                 return result;
               }
-              taskImageCoordinator.associateUploadsWithTask(String(taskId), [selected.uploadId]);
+              taskImageCoordinator.associateUploadsWithTask(
+                String(taskId),
+                selected.map((image) => image.uploadId),
+              );
               taskImageCoordinator.associateTaskImageOrder(
                 String(taskId),
                 result.active.map((image) => image.taskImageId)

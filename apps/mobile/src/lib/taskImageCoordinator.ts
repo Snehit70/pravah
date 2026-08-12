@@ -108,6 +108,7 @@ export type TaskImageSourceStore = {
 export type TaskImageCoordinatorDependencies = {
   createUploadId: () => string;
   acquireSource: (kind: TaskImageSourceKind) => Promise<AcquiredTaskImageSource>;
+  acquireSources?: (kind: TaskImageSourceKind, limit: number) => Promise<AcquiredTaskImageSource[]>;
   normalize: (source: AcquiredTaskImageSource) => Promise<NormalizedTaskImage>;
   stage: (image: {
     uploadId: string;
@@ -133,6 +134,7 @@ export type TaskImageCoordinatorDependencies = {
   }) => Promise<TaskImageReconciliation>;
   reportFailure?: (args: { uploadId: string; failureCode: string }) => Promise<void>;
   abortUpload?: (args: { uploadId: string }) => Promise<void> | void;
+  discardUnclaimedUpload?: (args: { uploadId: string }) => Promise<void>;
   ownerScope?: () => string | undefined;
   manifestStore?: TaskImageManifestStore;
   sourceStore?: TaskImageSourceStore;
@@ -342,6 +344,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
   const taskDiscardTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const listeners = new Set<() => void>();
   let disposed = false;
+  let selectionGeneration = 0;
   const notify = () => listeners.forEach((listener) => listener());
   const now = dependencies.now ?? Date.now;
 
@@ -389,9 +392,13 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     const timer = timers.get(entry.uploadId);
     if (timer) clearTimeout(timer);
     timers.delete(entry.uploadId);
+    const remoteCleanup = !entry.taskId
+      ? dependencies.discardUnclaimedUpload?.({ uploadId: entry.uploadId })
+      : undefined;
     records.delete(entry.uploadId);
     visibleUploadIds = visibleUploadIds.filter((uploadId) => uploadId !== entry.uploadId);
     await Promise.resolve(dependencies.abortUpload?.({ uploadId: entry.uploadId })).catch(() => undefined);
+    await remoteCleanup?.catch(() => undefined);
     await removeSource(entry);
   };
 
@@ -710,11 +717,78 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       await ensureHydrated();
     },
 
-    async select(kind: TaskImageSourceKind) {
+    async select(kind: TaskImageSourceKind, availableSlots: number = MAX_TASK_IMAGE_COUNT) {
       await ensureHydrated();
-      if (visibleUploadIds.length >= MAX_TASK_IMAGE_COUNT) {
+      const limit = Math.max(0, Math.min(MAX_TASK_IMAGE_COUNT, availableSlots));
+      if (limit === 0 || visibleUploadIds.length >= limit) {
         lastError = "Task image limit reached";
         notify();
+        return;
+      }
+      if (kind === "photos" && dependencies.acquireSources) {
+        try {
+          const batchGeneration = selectionGeneration;
+          const remaining = limit - visibleUploadIds.length;
+          const sources = await dependencies.acquireSources(kind, remaining);
+          for (const source of sources.slice(0, remaining)) {
+            if (disposed || batchGeneration !== selectionGeneration) return;
+            const uploadId = dependencies.createUploadId();
+            const entry: UploadRecord = {
+              uploadId,
+              state: "preparing",
+              previewUri: source.previewUri,
+              attempt: 0,
+              retryCount: 0,
+              needsReconciliation: false,
+              paused: false,
+              acceptedForUpload: false,
+              generation: 0,
+            };
+            records.set(uploadId, entry);
+            visibleUploadIds = [...visibleUploadIds, uploadId];
+            notify();
+            try {
+              const normalized = await dependencies.normalize(source);
+              if (!records.has(uploadId) || batchGeneration !== selectionGeneration) continue;
+              const durable = dependencies.sourceStore
+                ? await dependencies.sourceStore.persist(uploadId, normalized)
+                : { sourceKey: undefined, uri: normalized.uri };
+              if (!records.has(uploadId) || batchGeneration !== selectionGeneration) {
+                if (durable.sourceKey && dependencies.sourceStore) {
+                  await dependencies.sourceStore.remove(durable.sourceKey).catch(() => undefined);
+                }
+                continue;
+              }
+              await dependencies.stage({
+                uploadId,
+                encodingClass: normalized.encodingClass,
+                width: normalized.width,
+                height: normalized.height,
+                bytes: normalized.bytes,
+              });
+              if (!records.has(uploadId) || batchGeneration !== selectionGeneration) continue;
+              Object.assign(entry, {
+                state: "pending" as const,
+                previewUri: normalized.previewUri,
+                normalized,
+                sourceKey: durable.sourceKey,
+                sourceUri: durable.uri,
+                encodingClass: normalized.encodingClass,
+                width: normalized.width,
+                height: normalized.height,
+                bytes: normalized.bytes,
+              });
+            } catch (error) {
+              await failEntry(entry, error);
+            }
+            await persist();
+            notify();
+          }
+          lastError = undefined;
+        } catch {
+          lastError = "No image was selected.";
+          notify();
+        }
         return;
       }
       const uploadId = dependencies.createUploadId();
@@ -836,7 +910,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     getImageInputsForSave() {
       return visibleUploadIds.flatMap((uploadId) => {
         const record = records.get(uploadId);
-        return record && (record.state === "pending" || record.state === "failed")
+        return record && (record.state === "pending" || record.state === "failed" || record.state === "ready")
           ? [{ uploadId: record.uploadId, caption: record.caption }]
           : [];
       });
@@ -1127,6 +1201,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     },
 
     clearAfterSaveAndStay() {
+      selectionGeneration += 1;
       visibleUploadIds = [];
       lastError = undefined;
       void persist();
@@ -1134,10 +1209,22 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     },
 
     discard() {
-      const pending = [...records.values()].filter((entry) => !entry.taskId && !entry.acceptedForUpload);
+      selectionGeneration += 1;
+      const pending = [...records.values()].filter((entry) => !entry.taskId);
       visibleUploadIds = [];
       lastError = undefined;
       void Promise.all(pending.map((entry) => removeRecord(entry))).then(() => void persist());
+      notify();
+    },
+
+    discardUploads(uploadIds: string[]) {
+      selectionGeneration += 1;
+      const ids = new Set(uploadIds);
+      const discardable = [...records.values()].filter(
+        (entry) => ids.has(entry.uploadId) && !entry.taskId,
+      );
+      visibleUploadIds = visibleUploadIds.filter((uploadId) => !ids.has(uploadId));
+      void Promise.all(discardable.map((entry) => removeRecord(entry))).then(() => void persist());
       notify();
     },
 

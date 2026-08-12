@@ -26,8 +26,12 @@ import { colors, motion, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
 import type { MobileTask } from "../components/TaskCard";
 import { InboxTaskRow } from "../components/InboxTaskRow";
+import {
+  InboxSelectionActionDock,
+  InboxSelectionHeader,
+} from "../components/InboxSelectionControls";
 import { QuickScheduleSheet } from "../components/QuickScheduleSheet";
-import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, TrashIcon } from "../components/UiIcons";
+import { ChevronLeftIcon, ChevronRightIcon } from "../components/UiIcons";
 import { SearchField } from "../components/SearchField";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
 import { SlidingSegmented, type SegmentedItem } from "../components/SlidingSegmented";
@@ -437,31 +441,15 @@ export function InboxScreen({
   );
 
   const listHeader = selectMode ? (
-    <View style={styles.searchWrap}>
-      <View style={styles.selectBar}>
-        <Pressable
-          onPress={exitSelectMode}
-          hitSlop={10}
-          accessibilityRole="button"
-          accessibilityLabel="Cancel selection"
-          style={({ pressed }) => [styles.selectAction, pressed && { opacity: 0.6 }]}
-        >
-          <Text style={styles.selectActionText}>Cancel</Text>
-        </Pressable>
-        <Text style={styles.selectCount}>
-          {selectedCount === 0 ? "Select tasks" : `${selectedCount} selected`}
-        </Text>
-        <Pressable
-          onPress={toggleSelectAll}
-          hitSlop={10}
-          accessibilityRole="button"
-          accessibilityLabel={allFilteredSelected ? "Deselect all" : "Select all"}
-          style={({ pressed }) => [styles.selectAction, pressed && { opacity: 0.6 }]}
-        >
-          <Text style={styles.selectActionText}>{allFilteredSelected ? "None" : "All"}</Text>
-        </Pressable>
-      </View>
-    </View>
+    <Animated.View entering={reducedMotion ? undefined : FadeIn.duration(180)}>
+      <InboxSelectionHeader
+        selectedCount={selectedCount}
+        visibleCount={filteredTasks.length}
+        allSelected={allFilteredSelected}
+        onCancel={exitSelectMode}
+        onToggleAll={toggleSelectAll}
+      />
+    </Animated.View>
   ) : (
     <View style={styles.searchWrap}>
       <View style={styles.searchActionsRow}>
@@ -627,72 +615,18 @@ export function InboxScreen({
 
       {selectMode ? (
         <Animated.View
-          entering={reducedMotion ? undefined : FadeIn.duration(150)}
+          entering={reducedMotion ? undefined : FadeIn.duration(180)}
           exiting={reducedMotion ? undefined : FadeOut.duration(120)}
-          style={[styles.bulkBar, { bottom: tabBarHeight + spacing.md }]}
+          pointerEvents="box-none"
+          style={StyleSheet.absoluteFill}
         >
-          <View style={styles.bulkActions}>
-            <Pressable
-              onPress={() => void handleDelete()}
-              disabled={selectedCount === 0 || !canAct}
-              accessibilityRole="button"
-              accessibilityLabel={
-                selectedCount === 0
-                  ? "Delete tasks"
-                  : selectedCount === 1
-                    ? "Delete 1 task"
-                    : `Delete ${selectedCount} tasks`
-              }
-              style={({ pressed }) => [
-                styles.bulkDelete,
-                selectedCount === 0 && styles.bulkDeleteDisabled,
-                pressed && selectedCount > 0 && { opacity: 0.7 },
-              ]}
-            >
-              <TrashIcon
-                size={18}
-                strokeWidth={2}
-                color={selectedCount === 0 ? colors.textMuted : colors.error}
-              />
-              <Text
-                style={[styles.bulkDeleteText, selectedCount === 0 && styles.bulkDeleteTextDisabled]}
-              >
-                {selectedCount === 0
-                  ? "Delete"
-                  : selectedCount === 1
-                    ? "Delete 1 task"
-                    : `Delete ${selectedCount} tasks`}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => void handleMarkDone()}
-              disabled={selectedCount === 0 || !canAct}
-              accessibilityRole="button"
-              accessibilityLabel={
-                selectedCount <= 1 ? "Mark task as done" : `Mark ${selectedCount} tasks as done`
-              }
-              style={({ pressed }) => [
-                styles.bulkDone,
-                selectedCount === 0 && styles.bulkDoneDisabled,
-                pressed && selectedCount > 0 && { opacity: 0.85 },
-              ]}
-            >
-              <CheckIcon
-                size={18}
-                strokeWidth={2.4}
-                color={selectedCount === 0 ? colors.textMuted : colors.textInverse}
-              />
-              <Text
-                style={[styles.bulkDoneText, selectedCount === 0 && styles.bulkDoneTextDisabled]}
-              >
-                {selectedCount === 0
-                  ? "Mark done"
-                  : selectedCount === 1
-                    ? "Mark 1 done"
-                    : `Mark ${selectedCount} done`}
-              </Text>
-            </Pressable>
-          </View>
+          <InboxSelectionActionDock
+            selectedCount={selectedCount}
+            tabBarHeight={tabBarHeight}
+            disabled={!canAct}
+            onDelete={() => void handleDelete()}
+            onMarkDone={() => void handleMarkDone()}
+          />
         </Animated.View>
       ) : null}
 
@@ -844,89 +778,35 @@ const styles = createThemedStyles({
     textAlign: "center",
     marginTop: spacing.xs,
   },
-  selectBar: {
-    minHeight: 44,
+  chipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
+  },
+  chip: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-  },
-  selectAction: {
-    minWidth: 56,
-    paddingVertical: 6,
-  },
-  selectActionText: {
-    ...typography.bodyMd,
-    color: colors.accent,
-  },
-  selectCount: {
-    ...typography.title,
-    color: colors.textPrimary,
-  },
-  bulkBar: {
-    position: "absolute",
-    left: spacing.lg,
-    right: spacing.lg,
-  },
-  bulkActions: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  bulkDelete: {
-    flex: 1,
-    minHeight: 52,
-    borderRadius: radii.xl,
+    paddingHorizontal: 11,
+    paddingVertical: 4,
+    borderRadius: radii.sm,
     borderCurve: "continuous",
-    backgroundColor: colors.bgFloating,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.error,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.xs,
-    shadowColor: "#08050a",
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
-  },
-  bulkDeleteDisabled: {
+    borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.bgSurface,
+    backgroundColor: colors.bgCardGlass,
+    minHeight: 28,
+    justifyContent: "center",
   },
-  bulkDeleteText: {
-    ...typography.title,
-    color: colors.error,
-  },
-  bulkDeleteTextDisabled: {
-    color: colors.textMuted,
-  },
-  bulkDone: {
-    flex: 1,
-    minHeight: 52,
-    borderRadius: radii.xl,
-    borderCurve: "continuous",
+  chipActive: {
     backgroundColor: colors.accent,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    shadowColor: "#08050a",
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+    borderColor: colors.accent,
   },
-  bulkDoneDisabled: {
-    backgroundColor: colors.bgFloating,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+  chipText: {
+    ...typography.micro,
+    color: colors.textSecondary,
   },
-  bulkDoneText: {
-    ...typography.title,
-    color: colors.textInverse,
-  },
-  bulkDoneTextDisabled: {
-    color: colors.textMuted,
+  chipTextActive: {
+    color: colors.bg,
   },
   emptyWrap: {
     paddingTop: spacing.section * 2,

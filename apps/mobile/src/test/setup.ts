@@ -11,3 +11,11 @@ vi.mock("expo-clipboard", () => ({
   getStringAsync: vi.fn(async () => ""),
   getImageAsync: vi.fn(async () => null),
 }));
+
+vi.mock("expo-haptics", () => ({
+  ImpactFeedbackStyle: { Light: "light", Medium: "medium", Heavy: "heavy" },
+  NotificationFeedbackType: { Success: "success", Error: "error", Warning: "warning" },
+  impactAsync: vi.fn(async () => undefined),
+  notificationAsync: vi.fn(async () => undefined),
+  selectionAsync: vi.fn(async () => undefined),
+}));
