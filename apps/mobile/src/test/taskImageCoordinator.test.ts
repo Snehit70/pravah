@@ -425,6 +425,16 @@ describe("Task-image mobile coordinator", () => {
     }]);
   });
 
+  it("requests server cleanup before removing an unattached upload", async () => {
+    const dependencies = createDependencies();
+    const discardUnclaimedUpload = vi.fn(async () => undefined);
+    const coordinator = createTaskImageCoordinator({ ...dependencies, discardUnclaimedUpload });
+
+    await coordinator.select("photos");
+    coordinator.remove("upl_mobile_1");
+    await vi.waitFor(() => expect(discardUnclaimedUpload).toHaveBeenCalledWith({ uploadId: "upl_mobile_1" }));
+  });
+
   it("does not discard task-owned or already accepted records", async () => {
     const dependencies = createDependencies();
     let nextId = 1;

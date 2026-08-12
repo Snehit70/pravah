@@ -1,8 +1,10 @@
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { requireTokenIdentifier } from "./authHelpers";
+import { ensureTaskImageCleanupTombstone } from "./taskImageCleanup";
 
 export const TASK_IMAGE_VARIANT_SET = "task-image-v1" as const;
 export const TASK_IMAGE_POLICY_HASH = "task-image-v1-2026-08-03";
@@ -137,6 +139,19 @@ export const stageImageUpload = mutation({
       updatedAt: now,
     });
     return { uploadId: args.uploadId, state: "pending" as const };
+  },
+});
+
+export const discardUnclaimedUpload = mutation({
+  args: { uploadId: v.string() },
+  handler: async (ctx, args) => {
+    const ownerTokenIdentifier = await requireTokenIdentifier(ctx);
+    const upload = await findOwnedUpload(ctx, ownerTokenIdentifier, args.uploadId);
+    if (!upload || upload.taskImageId) return { accepted: false as const };
+
+    await ensureTaskImageCleanupTombstone(ctx, { ownerTokenIdentifier, upload });
+    await ctx.scheduler.runAfter(0, internal.taskImageActions.reconcileCleanup, {});
+    return { accepted: true as const };
   },
 });
 

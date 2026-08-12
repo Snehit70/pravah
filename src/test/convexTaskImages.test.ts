@@ -12,6 +12,7 @@ import {
   removeTaskImage,
   reorderTaskImages,
   restoreTaskImage,
+  discardUnclaimedUpload,
   stageImageUpload,
   updateTaskImageCaption,
 } from "../../convex/taskImages";
@@ -80,6 +81,7 @@ function authedCtx(db: ReturnType<typeof createMemoryDb>, owner = "owner-1") {
     auth: {
       getUserIdentity: vi.fn(async () => ({ tokenIdentifier: owner })),
     },
+    scheduler: { runAfter: vi.fn(async () => undefined) },
   };
 }
 
@@ -125,6 +127,10 @@ const applyUploadVerificationHandler = (
     },
     { accepted: boolean; state?: string }
   >
+)._handler;
+
+const discardUnclaimedUploadHandler = (
+  discardUnclaimedUpload as unknown as Handler<{ uploadId: string }, { accepted: boolean }>
 )._handler;
 
 const addTaskHandler = (
@@ -406,6 +412,35 @@ describe("Convex Task-image contract", () => {
       state: "ready",
       caption: "Restored reference",
     });
+  });
+
+  it("creates cleanup work when an unattached ready upload is discarded", async () => {
+    const db = createMemoryDb();
+    const owner = authedCtx(db);
+    await stageHandler(owner, {
+      uploadId: "upload_discard_1",
+      encodingClass: "jpeg",
+      width: 1200,
+      height: 800,
+      bytes: 400_000,
+    });
+    Object.assign(db.rows("taskImageUploads")[0], {
+      state: "ready",
+      providerPublicId: "private/provider-discard",
+      providerVersion: 8,
+    });
+
+    await expect(discardUnclaimedUploadHandler(owner, { uploadId: "upload_discard_1" })).resolves.toEqual({
+      accepted: true,
+    });
+
+    expect(db.rows("taskImageCleanupTombstones")[0]).toMatchObject({
+      uploadRecordId: db.rows("taskImageUploads")[0]._id,
+      providerPublicId: "private/provider-discard",
+      state: "pending",
+    });
+    expect(db.rows("taskImageCleanupTombstones")[0]).not.toHaveProperty("taskId");
+    expect(db.rows("taskImageCleanupTombstones")[0]).not.toHaveProperty("taskImageId");
   });
 
   it("keeps existing Tasks valid with an empty collection and denies cross-owner claims safely", async () => {

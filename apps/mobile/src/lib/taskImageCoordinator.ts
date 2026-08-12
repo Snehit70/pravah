@@ -134,6 +134,7 @@ export type TaskImageCoordinatorDependencies = {
   }) => Promise<TaskImageReconciliation>;
   reportFailure?: (args: { uploadId: string; failureCode: string }) => Promise<void>;
   abortUpload?: (args: { uploadId: string }) => Promise<void> | void;
+  discardUnclaimedUpload?: (args: { uploadId: string }) => Promise<void>;
   ownerScope?: () => string | undefined;
   manifestStore?: TaskImageManifestStore;
   sourceStore?: TaskImageSourceStore;
@@ -391,9 +392,13 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     const timer = timers.get(entry.uploadId);
     if (timer) clearTimeout(timer);
     timers.delete(entry.uploadId);
+    const remoteCleanup = !entry.taskId
+      ? dependencies.discardUnclaimedUpload?.({ uploadId: entry.uploadId })
+      : undefined;
     records.delete(entry.uploadId);
     visibleUploadIds = visibleUploadIds.filter((uploadId) => uploadId !== entry.uploadId);
     await Promise.resolve(dependencies.abortUpload?.({ uploadId: entry.uploadId })).catch(() => undefined);
+    await remoteCleanup?.catch(() => undefined);
     await removeSource(entry);
   };
 

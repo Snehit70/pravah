@@ -372,8 +372,8 @@ export default defineSchema({
     .index("by_upload", ["uploadRecordId"]),
   taskImageCleanupTombstones: defineTable({
     ownerTokenIdentifier: v.string(),
-    taskId: v.id("tasks"),
-    taskImageId: v.id("taskImages"),
+    taskId: v.optional(v.id("tasks")),
+    taskImageId: v.optional(v.id("taskImages")),
     uploadRecordId: v.id("taskImageUploads"),
     providerPublicId: v.optional(v.string()),
     providerVersion: v.optional(v.number()),

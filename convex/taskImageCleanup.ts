@@ -7,8 +7,8 @@ export const CLEANUP_RETRY_DELAYS_MS = [5 * 60 * 1000, 30 * 60 * 1000, 2 * 60 * 
 
 type CleanupSource = {
   ownerTokenIdentifier: string;
-  taskId: Id<"tasks">;
-  taskImageId: Id<"taskImages">;
+  taskId?: Id<"tasks">;
+  taskImageId?: Id<"taskImages">;
   upload: Doc<"taskImageUploads">;
 };
 
@@ -31,8 +31,6 @@ export async function ensureTaskImageCleanupTombstone(
   if (existing) return { id: existing._id, created: false };
   const id = await ctx.db.insert("taskImageCleanupTombstones", {
     ownerTokenIdentifier: source.ownerTokenIdentifier,
-    taskId: source.taskId,
-    taskImageId: source.taskImageId,
     uploadRecordId: source.upload._id,
     providerPublicId: source.upload.providerPublicId,
     providerVersion: source.upload.providerVersion,
@@ -41,6 +39,8 @@ export async function ensureTaskImageCleanupTombstone(
     nextAttemptAt: now,
     createdAt: now,
     updatedAt: now,
+    ...(source.taskId ? { taskId: source.taskId } : {}),
+    ...(source.taskImageId ? { taskImageId: source.taskImageId } : {}),
   });
   return { id, created: true };
 }
@@ -66,8 +66,10 @@ export const recordCleanupResult = internalMutation({
     const tombstone = await ctx.db.get(args.tombstoneId);
     if (!tombstone) return { accepted: false as const };
     if (args.outcome === "deleted" || args.outcome === "absent") {
-      const image = await ctx.db.get(tombstone.taskImageId);
-      if (image && image.uploadRecordId === tombstone.uploadRecordId) await ctx.db.delete(image._id);
+      if (tombstone.taskImageId) {
+        const image = await ctx.db.get(tombstone.taskImageId);
+        if (image && image.uploadRecordId === tombstone.uploadRecordId) await ctx.db.delete(image._id);
+      }
       const upload = await ctx.db.get(tombstone.uploadRecordId);
       if (upload && upload.taskImageId === tombstone.taskImageId) await ctx.db.delete(upload._id);
       await ctx.db.delete(tombstone._id);

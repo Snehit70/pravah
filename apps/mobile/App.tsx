@@ -368,6 +368,7 @@ function MobileApp() {
   const addTaskMutation = useMutation(api.tasks.addTask);
   const addTaskImagesMutation = useMutation(api.taskImages.addTaskImages);
   const markTaskImageUploadFailedMutation = useMutation(api.taskImages.markUploadFailed);
+  const discardUnclaimedUploadMutation = useMutation(api.taskImages.discardUnclaimedUpload);
   const stageTaskImageMutation = useMutation(api.taskImages.stageImageUpload);
   const issueTaskImageGrant = useAction(api.taskImageActions.issueUploadGrant);
   const reconcileTaskImageAttempt = useAction(api.taskImageActions.reconcileUploadAttempt);
@@ -414,6 +415,7 @@ function MobileApp() {
         },
         upload: uploadPreparedTaskImage,
         abortUpload: ({ uploadId }) => abortPreparedTaskImageUpload(uploadId),
+        discardUnclaimedUpload: ({ uploadId }) => discardUnclaimedUploadMutation({ uploadId }).then(() => undefined),
         verify: submitTaskImageResult,
         reportFailure: ({ uploadId, failureCode }) =>
           markTaskImageUploadFailedMutation({ uploadId, failureCode }).then(() => undefined),
@@ -422,6 +424,7 @@ function MobileApp() {
       issueTaskImageGrant,
       reconcileTaskImageAttempt,
       markTaskImageUploadFailedMutation,
+      discardUnclaimedUploadMutation,
       stageTaskImageMutation,
       submitTaskImageResult,
       session?.user?.id,
