@@ -435,11 +435,12 @@ describe("Task-image mobile coordinator", () => {
     await vi.waitFor(() => expect(discardUnclaimedUpload).toHaveBeenCalledWith({ uploadId: "upl_mobile_1" }));
   });
 
-  it("does not discard task-owned or already accepted records", async () => {
+  it("discards unattached accepted records but preserves task-owned records", async () => {
     const dependencies = createDependencies();
     let nextId = 1;
     dependencies.createUploadId = vi.fn(() => `upl_mobile_${nextId++}`);
-    const coordinator = createTaskImageCoordinator(dependencies);
+    const discardUnclaimedUpload = vi.fn(async () => undefined);
+    const coordinator = createTaskImageCoordinator({ ...dependencies, discardUnclaimedUpload });
     await coordinator.select("photos");
     await coordinator.select("camera");
     const [taskOwned, accepted] = coordinator.getViewStates().map((image) => image.uploadId);
@@ -447,7 +448,8 @@ describe("Task-image mobile coordinator", () => {
     coordinator.beginUploadAfterSave();
     coordinator.discard();
 
-    expect(coordinator.serialize().uploads.map((entry) => entry.uploadId)).toEqual([taskOwned, accepted]);
+    expect(coordinator.serialize().uploads.map((entry) => entry.uploadId)).toEqual([taskOwned]);
+    expect(discardUnclaimedUpload).toHaveBeenCalledWith({ uploadId: accepted });
   });
 
   it("associates a newly tracked upload when ready sibling records are not local", async () => {

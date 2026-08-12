@@ -1210,7 +1210,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
 
     discard() {
       selectionGeneration += 1;
-      const pending = [...records.values()].filter((entry) => !entry.taskId && !entry.acceptedForUpload);
+      const pending = [...records.values()].filter((entry) => !entry.taskId);
       visibleUploadIds = [];
       lastError = undefined;
       void Promise.all(pending.map((entry) => removeRecord(entry))).then(() => void persist());
@@ -1221,7 +1221,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       selectionGeneration += 1;
       const ids = new Set(uploadIds);
       const discardable = [...records.values()].filter(
-        (entry) => ids.has(entry.uploadId) && !entry.taskId && !entry.acceptedForUpload,
+        (entry) => ids.has(entry.uploadId) && !entry.taskId,
       );
       visibleUploadIds = visibleUploadIds.filter((uploadId) => !ids.has(uploadId));
       void Promise.all(discardable.map((entry) => removeRecord(entry))).then(() => void persist());

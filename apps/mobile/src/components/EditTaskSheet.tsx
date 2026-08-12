@@ -551,6 +551,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       const previousState = { ...initialDraft };
       setSaving(true);
       setError(null);
+      await captionSaveQueue.current;
       const orderedTaskImageIds = [...(currentTask?.imageCollection?.active ?? [])]
         .sort((left, right) => left.position - right.position)
         .map((image) => image.taskImageId);
@@ -563,7 +564,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           const result = await onReorderTaskImages({
             taskId,
             orderedTaskImageIds,
-            expectedRevision: currentTask?.imageCollection?.revision ?? 0,
+            expectedRevision: captionRevision.current ?? currentTask?.imageCollection?.revision ?? 0,
           });
           if (result) {
             const { stale, ...imageCollection } = result;
