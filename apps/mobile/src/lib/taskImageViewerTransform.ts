@@ -9,6 +9,7 @@ export type ViewerTransform = {
 };
 
 export function clampViewerScale(scale: number) {
+  "worklet";
   return Math.max(MIN_VIEWER_SCALE, Math.min(MAX_VIEWER_SCALE, scale));
 }
 
@@ -16,6 +17,7 @@ export function clampViewerTranslation(
   transform: ViewerTransform,
   viewport: { width: number; height: number },
 ): ViewerTransform {
+  "worklet";
   const scale = clampViewerScale(transform.scale);
   if (scale <= MIN_VIEWER_SCALE) return { scale: MIN_VIEWER_SCALE, translateX: 0, translateY: 0 };
   const maxX = (viewport.width * (scale - MIN_VIEWER_SCALE)) / 2;
@@ -33,6 +35,7 @@ export function zoomViewerAtPoint(
   point: { x: number; y: number },
   viewport: { width: number; height: number },
 ) {
+  "worklet";
   const scale = clampViewerScale(nextScale);
   if (scale === MIN_VIEWER_SCALE) return { scale, translateX: 0, translateY: 0 };
   const ratio = scale / current.scale;
