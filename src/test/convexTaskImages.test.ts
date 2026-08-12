@@ -3,10 +3,12 @@ import type { Id } from "../../convex/_generated/dataModel";
 import { addTask } from "../../convex/tasks";
 import {
   addTaskImages,
+  applyUploadVerification,
   getTaskImageCollection,
   getTaskImageSummaryForOwner,
   getDeliveryContext,
   markUploadFailed,
+  prepareUploadGrant,
   removeTaskImage,
   reorderTaskImages,
   restoreTaskImage,
@@ -94,6 +96,37 @@ const stageHandler = (
   >
 )._handler;
 
+const prepareUploadGrantHandler = (
+  prepareUploadGrant as unknown as Handler<
+    {
+      ownerTokenIdentifier: string;
+      uploadId: string;
+      requestKey: string;
+      candidatePublicId: string;
+      issuedAt: number;
+    },
+    { uploadId: string; publicId: string; providerAttempt: number }
+  >
+)._handler;
+
+const applyUploadVerificationHandler = (
+  applyUploadVerification as unknown as Handler<
+    {
+      ownerTokenIdentifier: string;
+      uploadId: string;
+      publicId: string;
+      version: number;
+      result: {
+        status: "ready";
+        master: { format: "jpg"; width: number; height: number; bytes: number };
+        card: { format: "webp"; width: number; height: number; bytes: number };
+        detail: { format: "webp"; width: number; height: number; bytes: number };
+      };
+    },
+    { accepted: boolean; state?: string }
+  >
+)._handler;
+
 const addTaskHandler = (
   addTask as unknown as Handler<
     {
@@ -167,6 +200,52 @@ const restoreTaskImageHandler = (
 )._handler;
 
 describe("Convex Task-image contract", () => {
+  it("issues an upload grant while an image is staged before its Task is saved", async () => {
+    const db = createMemoryDb();
+    const owner = authedCtx(db);
+    await stageHandler(owner, {
+      uploadId: "upload_presave_1",
+      encodingClass: "jpeg",
+      width: 1200,
+      height: 900,
+      bytes: 500_000,
+    });
+
+    const prepared = await prepareUploadGrantHandler(owner, {
+      ownerTokenIdentifier: "owner-1",
+      uploadId: "upload_presave_1",
+      requestKey: "grant_presave_1",
+      candidatePublicId: "pravah-task-images/opaque-presave-1",
+      issuedAt: 1_786_500_000,
+    });
+    expect(prepared).toMatchObject({
+      uploadId: "upload_presave_1",
+      publicId: "pravah-task-images/opaque-presave-1",
+      providerAttempt: 1,
+    });
+
+    await expect(applyUploadVerificationHandler(owner, {
+      ownerTokenIdentifier: "owner-1",
+      uploadId: "upload_presave_1",
+      publicId: prepared.publicId,
+      version: 1,
+      result: {
+        status: "ready",
+        master: { format: "jpg", width: 1200, height: 900, bytes: 500_000 },
+        card: { format: "webp", width: 640, height: 480, bytes: 80_000 },
+        detail: { format: "webp", width: 1200, height: 900, bytes: 180_000 },
+      },
+    })).resolves.toEqual({ accepted: true, state: "ready" });
+
+    const taskId = await addTaskHandler(owner, {
+      title: "Save after the image is ready",
+      imageUploadId: "upload_presave_1",
+    });
+    await expect(collectionHandler(owner, { taskId })).resolves.toMatchObject({
+      active: [{ state: "ready", position: 0 }],
+    });
+  });
+
   it("denies delivery as soon as the parent Task enters recoverable deletion", async () => {
     const db = createMemoryDb();
     const owner = authedCtx(db);

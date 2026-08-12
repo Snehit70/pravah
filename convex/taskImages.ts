@@ -148,7 +148,7 @@ export const markUploadFailed = mutation({
   handler: async (ctx, args) => {
     const ownerTokenIdentifier = await requireTokenIdentifier(ctx);
     const upload = await findOwnedUpload(ctx, ownerTokenIdentifier, args.uploadId);
-    if (!upload || !upload.taskImageId || upload.state === "ready") {
+    if (!upload || upload.state === "ready") {
       return { accepted: false as const };
     }
     const failureCode: SafeFailureCode = SAFE_FAILURE_CODES.has(args.failureCode as SafeFailureCode)
@@ -161,12 +161,14 @@ export const markUploadFailed = mutation({
       safeFailureCode: failure.code,
       updatedAt: now,
     });
-    await ctx.db.patch(upload.taskImageId, {
-      state: "failed",
-      safeFailureCode: failure.code,
-      failureRetryable: failure.retryable,
-      updatedAt: now,
-    });
+    if (upload.taskImageId) {
+      await ctx.db.patch(upload.taskImageId, {
+        state: "failed",
+        safeFailureCode: failure.code,
+        failureRetryable: failure.retryable,
+        updatedAt: now,
+      });
+    }
     return { accepted: true as const, state: "failed" as const };
   },
 });
@@ -184,7 +186,7 @@ export const prepareUploadGrant = internalMutation({
       throw new Error("invalid_request_key");
     }
     const upload = await findOwnedUpload(ctx, args.ownerTokenIdentifier, args.uploadId);
-    if (!upload || !upload.taskImageId) throw new Error("not_found");
+    if (!upload) throw new Error("not_found");
     if (upload.state === "ready" || upload.sealedAt) throw new Error("upload_sealed");
     if (upload.state === "failed") throw new Error("upload_failed");
 
@@ -202,21 +204,24 @@ export const prepareUploadGrant = internalMutation({
     }
 
     const now = args.issuedAt * 1000;
+    const nextProviderAttempt = upload.providerAttempt + 1;
     await ctx.db.patch(upload._id, {
       state: "uploading",
       providerPublicId: args.candidatePublicId,
-      providerAttempt: upload.providerAttempt + 1,
+      providerAttempt: nextProviderAttempt,
       grantRequestKey: args.requestKey,
       grantIssuedAt: args.issuedAt,
       updatedAt: now,
     });
-    await ctx.db.patch(upload.taskImageId, { state: "uploading", updatedAt: now });
+    if (upload.taskImageId) {
+      await ctx.db.patch(upload.taskImageId, { state: "uploading", updatedAt: now });
+    }
     return {
       uploadId: upload.uploadId,
       publicId: args.candidatePublicId,
       issuedAt: args.issuedAt,
       encodingClass: upload.encodingClass,
-      providerAttempt: upload.providerAttempt + 1,
+      providerAttempt: nextProviderAttempt,
     };
   },
 });
@@ -225,7 +230,7 @@ export const getUploadVerificationContext = internalQuery({
   args: { ownerTokenIdentifier: v.string(), uploadId: v.string() },
   handler: async (ctx, args) => {
     const upload = await findOwnedUpload(ctx, args.ownerTokenIdentifier, args.uploadId);
-    if (!upload || !upload.taskImageId || !upload.providerPublicId) return null;
+    if (!upload || !upload.providerPublicId) return null;
     return {
       uploadRecordId: upload._id,
       taskImageId: upload.taskImageId,
@@ -240,7 +245,7 @@ export const getUploadAttemptContext = internalQuery({
   args: { ownerTokenIdentifier: v.string(), uploadId: v.string() },
   handler: async (ctx, args) => {
     const upload = await findOwnedUpload(ctx, args.ownerTokenIdentifier, args.uploadId);
-    if (!upload || !upload.taskImageId) return null;
+    if (!upload) return null;
     return {
       uploadId: upload.uploadId,
       providerPublicId: upload.providerPublicId,
@@ -258,13 +263,13 @@ export const resetUploadAttempt = internalMutation({
   },
   handler: async (ctx, args) => {
     const upload = await findOwnedUpload(ctx, args.ownerTokenIdentifier, args.uploadId);
-    if (!upload || !upload.taskImageId || upload.providerAttempt !== args.providerAttempt) {
+    if (!upload || upload.providerAttempt !== args.providerAttempt) {
       return { reset: false as const };
     }
     if (upload.state === "ready" || upload.sealedAt) return { reset: false as const };
     const now = Date.now();
     await ctx.db.patch(upload._id, {
-      state: "claimed",
+      state: upload.taskImageId ? "claimed" : "staged",
       providerPublicId: undefined,
       providerVersion: undefined,
       grantRequestKey: undefined,
@@ -275,12 +280,14 @@ export const resetUploadAttempt = internalMutation({
       safeFailureCode: undefined,
       updatedAt: now,
     });
-    await ctx.db.patch(upload.taskImageId, {
-      state: "pending",
-      safeFailureCode: undefined,
-      failureRetryable: undefined,
-      updatedAt: now,
-    });
+    if (upload.taskImageId) {
+      await ctx.db.patch(upload.taskImageId, {
+        state: "pending",
+        safeFailureCode: undefined,
+        failureRetryable: undefined,
+        updatedAt: now,
+      });
+    }
     return { reset: true as const };
   },
 });
@@ -345,7 +352,6 @@ export const applyUploadVerification = internalMutation({
     const upload = await findOwnedUpload(ctx, args.ownerTokenIdentifier, args.uploadId);
     if (
       !upload ||
-      !upload.taskImageId ||
       upload.providerPublicId !== args.publicId ||
       upload.state === "ready"
     ) {
@@ -358,12 +364,14 @@ export const applyUploadVerification = internalMutation({
         safeFailureCode: args.result.failureCode,
         updatedAt: now,
       });
-      await ctx.db.patch(upload.taskImageId, {
-        state: "failed",
-        safeFailureCode: args.result.failureCode,
-        failureRetryable: undefined,
-        updatedAt: now,
-      });
+      if (upload.taskImageId) {
+        await ctx.db.patch(upload.taskImageId, {
+          state: "failed",
+          safeFailureCode: args.result.failureCode,
+          failureRetryable: undefined,
+          updatedAt: now,
+        });
+      }
       return { accepted: true, state: "failed" as const };
     }
 
@@ -374,7 +382,9 @@ export const applyUploadVerification = internalMutation({
         master: args.result.master,
         updatedAt: now,
       });
-      await ctx.db.patch(upload.taskImageId, { state: "verifying", updatedAt: now });
+      if (upload.taskImageId) {
+        await ctx.db.patch(upload.taskImageId, { state: "verifying", updatedAt: now });
+      }
       return { accepted: true, state: "verifying" as const };
     }
 
@@ -388,12 +398,14 @@ export const applyUploadVerification = internalMutation({
       sealedAt: now,
       updatedAt: now,
     });
-    await ctx.db.patch(upload.taskImageId, {
-      state: "ready",
-      safeFailureCode: undefined,
-      failureRetryable: undefined,
-      updatedAt: now,
-    });
+    if (upload.taskImageId) {
+      await ctx.db.patch(upload.taskImageId, {
+        state: "ready",
+        safeFailureCode: undefined,
+        failureRetryable: undefined,
+        updatedAt: now,
+      });
+    }
     return { accepted: true, state: "ready" as const };
   },
 });
