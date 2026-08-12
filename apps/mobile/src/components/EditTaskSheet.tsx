@@ -314,6 +314,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         setOverflowOpen(false);
         setShowDatePicker(false);
         setShowTimePicker(false);
+        captionSaveQueue.current.clear();
+        captionRevision.current.clear();
         if (notify) onSheetChange?.(false);
       },
       [onSheetChange],
@@ -517,6 +519,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       const orderedTaskImageIds = [...(currentTask?.imageCollection?.active ?? [])]
         .sort((left, right) => left.position - right.position)
         .map((image) => image.taskImageId);
+      let persistedImageCollection = currentTask?.imageCollection;
       if (
         onReorderTaskImages &&
         orderedTaskImageIds.join("\u0000") !== initialImageOrder.join("\u0000")
@@ -529,6 +532,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           });
           if (result) {
             const { stale, ...imageCollection } = result;
+            persistedImageCollection = imageCollection;
             setCurrentTask((previous) => previous ? { ...previous, imageCollection } : previous);
             if (stale) {
               setInitialImageOrder(
@@ -542,6 +546,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
               return;
             }
             setInitialImageOrder(orderedTaskImageIds);
+            captionRevision.current.clear();
           }
         } catch {
           setSaving(false);
@@ -572,6 +577,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       if (sourceTask) {
         setCurrentTask({
           ...sourceTask,
+          imageCollection: persistedImageCollection ?? sourceTask.imageCollection,
           title: savedDraft.title,
           description: savedDraft.description || undefined,
           deadline: savedDraft.deadline || undefined,
@@ -582,6 +588,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       }
       setInitialDraft(savedDraft);
       setInitialImageOrder(orderedTaskImageIds);
+      captionRevision.current.clear();
       setTitle(savedDraft.title);
       setDescription(savedDraft.description);
       setDeadline(savedDraft.deadline);
@@ -996,6 +1003,11 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                         const revision = captionRevision.current.get(taskImageId) ?? currentTask.imageCollection?.revision ?? 0;
                         const result = await onCaptionTaskImage({ taskImageId, caption, expectedRevision: revision });
                         if (!result) return;
+                        if (result.stale) {
+                          captionRevision.current.delete(taskImageId);
+                          setError("Task images changed while you were editing. Review the current image and try again.");
+                          return;
+                        }
                         captionRevision.current.set(taskImageId, result.revision);
                         const { stale: _, ...imageCollection } = result;
                         setCurrentTask((previousTask) => previousTask ? { ...previousTask, imageCollection } : previousTask);
@@ -1034,6 +1046,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                           const mergedCollection = mergeTaskImageOrder(imageCollection, orderedTaskImageIds(currentTask.imageCollection));
                           setCurrentTask((previous) => previous ? { ...previous, imageCollection: mergedCollection } : previous);
                           setInitialImageOrder(orderedTaskImageIds(imageCollection));
+                          captionRevision.current.clear();
+      captionRevision.current.clear();
                         } catch {
                           setError("Couldn’t remove Task image. Try again.");
                         }

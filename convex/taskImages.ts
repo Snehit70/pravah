@@ -299,7 +299,7 @@ export const getUploadByProviderPublicId = internalQuery({
       .query("taskImageUploads")
       .withIndex("by_provider_public_id", (q) => q.eq("providerPublicId", publicId))
       .first();
-    if (!upload || !upload.taskImageId) return null;
+    if (!upload) return null;
     return {
       ownerTokenIdentifier: upload.ownerTokenIdentifier,
       uploadId: upload.uploadId,
