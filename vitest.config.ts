@@ -42,8 +42,6 @@ export default mergeConfig(
       include: [
         "src/**/*.test.{ts,tsx}",
         "src/**/*.spec.{ts,tsx}",
-        "apps/*/src/**/*.test.{ts,tsx}",
-        "apps/*/src/**/*.spec.{ts,tsx}",
       ],
       setupFiles: ["./src/test/setup.ts"],
     },
