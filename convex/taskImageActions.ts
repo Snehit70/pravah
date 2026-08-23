@@ -399,6 +399,12 @@ export const reconcileUploadAttempt = action({
         attempt: providerAttempt,
       };
     }
+    // Do not clear providerPublicId while an upload is in flight unless the
+    // client explicitly asked to restart. Foreground reconcile was wiping the
+    // id mid-multipart and submitUploadResult then failed as normalization_failed.
+    if (context.state === "uploading" && args.restartAttempt !== true) {
+      return { status: "uploading" as const, attempt: providerAttempt };
+    }
     await ctx.runMutation(resetUploadAttemptRef, {
       ownerTokenIdentifier,
       uploadId: args.uploadId,

@@ -99,7 +99,7 @@ describe("Task-image Cloudinary policy", () => {
       expiresAt: 1_776_249_000,
       discardAfter: 1_776_246_000,
       signatureAlgorithm: "sha256",
-      signature: "c8e48aa409d8538ec22620dbd54b0ea12f1986997cab47fba5a17178719cd1a4",
+      signature: "5824a084a4e28cb9d0762a38af570bf35619a3462e615b910c4cb934fc892fc4",
       signedParameters: {
         allowed_formats: "jpg,png",
         backup: "false",
@@ -112,6 +112,7 @@ describe("Task-image Cloudinary policy", () => {
         overwrite: "false",
         public_id: "pravah-task-images/opaque123",
         return_delete_token: "false",
+        signature_algorithm: "sha256",
         timestamp: "1776245400",
         transformation: "c_limit,h_2560,w_2560/cs_srgb,f_jpg,q_85",
         type: "authenticated",
