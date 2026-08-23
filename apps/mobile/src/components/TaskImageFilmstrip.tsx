@@ -150,7 +150,7 @@ function isFailedImage(image: TaskImageFilmstripEntry) {
 
 function stateCopy(image: TaskImageFilmstripEntry) {
   if (image.state === "preparing") return "Preparing image";
-  if (image.state === "pending") return "Image ready";
+  if (image.state === "pending") return "Selected image";
   if (image.state === "uploading") return "Uploading image";
   if (isFailedImage(image)) {
     return FAILURE_COPY[image.failure?.code ?? "normalization_failed"] ?? FAILURE_COPY.normalization_failed;

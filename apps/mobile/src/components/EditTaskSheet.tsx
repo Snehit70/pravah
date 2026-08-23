@@ -360,7 +360,18 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       });
       if (!result) return;
       const { stale: _, ...imageCollection } = result;
-      const mergedCollection = mergeTaskImageOrder(imageCollection, localOrder);
+      const previousById = new Map(
+        (currentTask.imageCollection?.active ?? []).map((image) => [image.taskImageId, image])
+      );
+      const withLocalPreviews = {
+        ...imageCollection,
+        active: imageCollection.active.map((image) => {
+          const previous = previousById.get(image.taskImageId);
+          const previewUri = image.previewUri ?? previous?.previewUri;
+          return previewUri ? { ...image, previewUri } : image;
+        }),
+      };
+      const mergedCollection = mergeTaskImageOrder(withLocalPreviews, localOrder);
       setCurrentTask((previous) => previous ? { ...previous, imageCollection: mergedCollection } : previous);
       setInitialImageOrder(orderedTaskImageIds(imageCollection));
     }, [currentTask, onSelectTaskImage]);
