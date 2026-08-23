@@ -245,7 +245,7 @@ export const getUploadVerificationContext = internalQuery({
   args: { ownerTokenIdentifier: v.string(), uploadId: v.string() },
   handler: async (ctx, args) => {
     const upload = await findOwnedUpload(ctx, args.ownerTokenIdentifier, args.uploadId);
-    if (!upload || !upload.providerPublicId) return null;
+    if (!upload) return null;
     return {
       uploadRecordId: upload._id,
       taskImageId: upload.taskImageId,

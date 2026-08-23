@@ -282,6 +282,7 @@ describe("Task-image grant budget boundary", () => {
     const runMutation = vi
       .fn()
       .mockResolvedValueOnce({ promoted: 0 })
+      .mockResolvedValueOnce({ failed: 0 })
       .mockResolvedValueOnce({ count: 1 });
     const scheduler = { runAfter: vi.fn(async () => undefined) };
 
@@ -297,8 +298,8 @@ describe("Task-image grant budget boundary", () => {
       terminal: 0,
       providerUnavailable: true,
     });
-    expect(runMutation).toHaveBeenCalledTimes(2);
-    expect(runMutation.mock.calls[1]?.[1]).toEqual({
+    expect(runMutation).toHaveBeenCalledTimes(3);
+    expect(runMutation.mock.calls[2]?.[1]).toEqual({
       category: "cleanup",
       code: "provider_unavailable",
       now: Date.now(),
@@ -311,6 +312,7 @@ describe("Task-image grant budget boundary", () => {
     const runMutation = vi
       .fn()
       .mockResolvedValueOnce({ promoted: 0 })
+      .mockResolvedValueOnce({ failed: 0 })
       .mockRejectedValueOnce(new Error("diagnostics unavailable"));
     const scheduler = { runAfter: vi.fn(async () => undefined) };
 

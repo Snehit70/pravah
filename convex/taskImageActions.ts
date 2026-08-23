@@ -112,12 +112,18 @@ const getUploadVerificationContextRef = makeFunctionReference<
   { ownerTokenIdentifier: string; uploadId: string },
   null | {
     uploadRecordId: string;
-    taskImageId: string;
-    publicId: string;
+    taskImageId?: string;
+    publicId?: string;
     encodingClass: "jpeg" | "png";
     state: string;
   }
 >("taskImages:getUploadVerificationContext");
+
+const markUploadFailedRef = makeFunctionReference<
+  "mutation",
+  { uploadId: string; failureCode: string },
+  { accepted: boolean; state?: "failed" }
+>("taskImages:markUploadFailed");
 
 const getUploadAttemptContextRef = makeFunctionReference<
   "query",
@@ -411,7 +417,32 @@ export const submitUploadResult = action({
       ownerTokenIdentifier,
       uploadId: args.uploadId,
     });
-    if (!context || context.publicId !== args.publicId) throw new Error("not_found");
+    // Never throw here: Convex client surfaces Uncaught Error as a console ERROR,
+    // and the edit filmstrip keeps showing Verifying/Image ready because the
+    // server row never gets marked failed.
+    if (!context || !context.publicId || context.publicId !== args.publicId) {
+      try {
+        await ctx.runMutation(markUploadFailedRef, {
+          uploadId: args.uploadId,
+          failureCode: "normalization_failed",
+        });
+      } catch {
+        // Best-effort: client still receives a failed state to show Retry.
+      }
+      try {
+        await ctx.runMutation(recordOperationalEventRef, {
+          category: "verification",
+          code: "normalization_failed",
+          now: Date.now(),
+        });
+      } catch {
+        // Aggregate diagnostics must not change the client failure outcome.
+      }
+      return {
+        state: "failed" as const,
+        failure: { code: "normalization_failed" as const },
+      };
+    }
 
     const response: ProviderUploadResult = args;
     const expected = {
@@ -428,7 +459,7 @@ export const submitUploadResult = action({
       await ctx.runMutation(applyUploadVerificationRef, {
         ownerTokenIdentifier,
         uploadId: args.uploadId,
-        publicId: args.publicId,
+        publicId: context.publicId,
         version: args.version,
         result: { status: "failed", failureCode: verified.failureCode },
       });
@@ -447,7 +478,7 @@ export const submitUploadResult = action({
     await ctx.runMutation(applyUploadVerificationRef, {
       ownerTokenIdentifier,
       uploadId: args.uploadId,
-      publicId: args.publicId,
+      publicId: context.publicId,
       version: verified.version,
       result: { status: "verifying", master: verified.master },
     });

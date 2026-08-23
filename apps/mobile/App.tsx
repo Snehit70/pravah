@@ -416,7 +416,19 @@ function MobileApp() {
         upload: uploadPreparedTaskImage,
         abortUpload: ({ uploadId }) => abortPreparedTaskImageUpload(uploadId),
         discardUnclaimedUpload: ({ uploadId }) => discardUnclaimedUploadMutation({ uploadId }).then(() => undefined),
-        verify: submitTaskImageResult,
+        verify: async (result) => {
+          try {
+            return await submitTaskImageResult(result);
+          } catch (error) {
+            // If submitUploadResult still throws, sync failed to the server so the
+            // edit filmstrip does not sit on Verifying/Image ready forever.
+            await markTaskImageUploadFailedMutation({
+              uploadId: result.uploadId,
+              failureCode: "normalization_failed",
+            }).catch(() => undefined);
+            throw error;
+          }
+        },
         reportFailure: ({ uploadId, failureCode }) =>
           markTaskImageUploadFailedMutation({ uploadId, failureCode }).then(() => undefined),
       }),
