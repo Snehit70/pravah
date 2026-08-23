@@ -53,7 +53,8 @@ const updateTaskHandler = (
       taskId: Id<"tasks">;
       title?: string;
       description?: string;
-      deadline?: string;
+      deadline?: string | null;
+      time?: string | null;
       estimatedMinutes?: number;
       tags?: string[];
       priority?: "p1" | "p2" | "p3";
@@ -610,6 +611,52 @@ describe("convex/tasks handlers", () => {
     expect(db.patch).toHaveBeenCalledWith(taskId, {
       title: "Retitle",
       deadline: undefined,
+      position: 3,
+      updatedAt: expect.any(Number),
+    });
+  });
+
+  it("clears schedule when deadline is explicitly null", async () => {
+    const taskId = makeId("task-clear-null");
+    const db = {
+      get: vi.fn().mockResolvedValue({
+        _id: taskId,
+        ownerTokenIdentifier: "user-1",
+        deadline: "2026-04-12",
+        time: "09:30",
+        position: 1,
+        scheduledAt: 111,
+        createdAt: 111,
+        updatedAt: 222,
+      }),
+      query: vi.fn().mockReturnValue({
+        withIndex: vi.fn().mockReturnValue({
+          collect: vi.fn().mockResolvedValue([
+            {
+              _id: makeId("other-inbox"),
+              ownerTokenIdentifier: "user-1",
+              deadline: undefined,
+              createdAt: 1,
+              updatedAt: 1,
+              position: 2,
+            },
+          ]),
+        }),
+      }),
+      patch: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const ctx = createAuthedCtx(db);
+    await updateTaskHandler(ctx, {
+      taskId,
+      deadline: null,
+      title: "Back to inbox",
+    });
+
+    expect(db.patch).toHaveBeenCalledWith(taskId, {
+      title: "Back to inbox",
+      deadline: undefined,
+      time: undefined,
       position: 3,
       updatedAt: expect.any(Number),
     });
