@@ -213,23 +213,17 @@ describe("http route handlers", () => {
     );
   });
 
-  it("reconciles an eager callback that arrives before the master callback", async () => {
+  it("acks an eager callback that arrives before the master without failing the upload", async () => {
     const handler = getHandler("/cloudinary/task-image-callback", "POST");
     const ctx = createCtx();
     const publicId = "pravah-task-images/opaque123";
     const timestamp = Math.floor(Date.now() / 1000);
+    // Real eager notifications omit master fields; only variants are present.
     const payload = {
       notification_type: "eager",
       status: "complete",
       public_id: publicId,
       version: 123,
-      signature: "",
-      resource_type: "image",
-      type: "authenticated",
-      format: "jpg",
-      width: 1600,
-      height: 1200,
-      bytes: 2_000_000,
       eager: [
         {
           transformation: "c_limit,h_640,w_640/cs_srgb,f_webp,q_auto:eco",
@@ -278,21 +272,7 @@ describe("http route handlers", () => {
       nowSeconds: timestamp,
     })).toBe(true);
     expect(response.status).toBe(204);
-    expect(ctx.runMutation).toHaveBeenCalledWith(
-      internal.taskImages.applyUploadVerification,
-      expect.objectContaining({
-        ownerTokenIdentifier: "user-1",
-        uploadId: "upl_mobile_1",
-        publicId,
-        version: 123,
-        result: {
-          status: "ready",
-          master: { format: "jpg", width: 1600, height: 1200, bytes: 2_000_000 },
-          card: { format: "webp", width: 640, height: 480, bytes: 300_000 },
-          detail: { format: "webp", width: 1600, height: 1200, bytes: 1_500_000 },
-        },
-      }),
-    );
+    expect(ctx.runMutation).not.toHaveBeenCalled();
   });
 
   it("exchanges bootstrap token without requiring API key", async () => {

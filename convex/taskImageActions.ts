@@ -446,7 +446,7 @@ export const submitUploadResult = action({
       }
       return {
         state: "failed" as const,
-        failure: { code: "normalization_failed" as const },
+        failure: { code: "normalization_failed" as const, retryable: true },
       };
     }
 

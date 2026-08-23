@@ -155,15 +155,19 @@ http.route({
       }
       return new Response(null, { status: 204 });
     }
+    // Eager callbacks often arrive before the master notification has stored
+    // master/providerVersion. Real eager bodies omit master fields; verifying
+    // callbackResponse here stamped normalization_failed permanently.
+    if (isEagerNotification && !(context.master && context.providerVersion !== undefined)) {
+      return new Response(null, { status: 204 });
+    }
     const response = isEagerNotification
-      ? context.master && context.providerVersion !== undefined
-        ? buildEagerWebhookVerificationInput({
-            publicId,
-            version: context.providerVersion,
-            master: context.master,
-            eager,
-          })
-        : callbackResponse
+      ? buildEagerWebhookVerificationInput({
+          publicId,
+          version: context.providerVersion!,
+          master: context.master!,
+          eager,
+        })
       : callbackResponse;
     const verified = isEagerNotification
       ? await verifyProviderWebhookResult(response, expected)

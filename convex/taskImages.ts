@@ -374,16 +374,17 @@ export const applyUploadVerification = internalMutation({
     }
     const now = Date.now();
     if (args.result.status === "failed") {
+      const failure = safeFailure(args.result.failureCode, true)!;
       await ctx.db.patch(upload._id, {
         state: "failed",
-        safeFailureCode: args.result.failureCode,
+        safeFailureCode: failure.code,
         updatedAt: now,
       });
       if (upload.taskImageId) {
         await ctx.db.patch(upload.taskImageId, {
           state: "failed",
-          safeFailureCode: args.result.failureCode,
-          failureRetryable: undefined,
+          safeFailureCode: failure.code,
+          failureRetryable: failure.retryable,
           updatedAt: now,
         });
       }

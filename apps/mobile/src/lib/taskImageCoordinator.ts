@@ -469,9 +469,18 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
   const verifyReconciledResult = async (entry: UploadRecord, result: AllowlistedProviderResult) => {
     update(entry, { state: "verifying", retryAt: undefined });
     const verified = await dependencies.verify({ uploadId: entry.uploadId, ...result });
+    if (verified.state === "failed") {
+      await failEntry(
+        entry,
+        verified.failure
+          ? { code: verified.failure.code, retryable: verified.failure.retryable ?? true }
+          : { code: "upload_failed", retryable: true },
+      );
+      return;
+    }
     update(entry, {
       state: verified.state,
-      failure: verified.failure ? safeFailure(verified.failure) : undefined,
+      failure: undefined,
       needsReconciliation: false,
       retryAt: undefined,
     });
@@ -544,7 +553,12 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     activeCount += 1;
     update(entry, { state: "uploading", failure: undefined, progress: undefined });
     try {
-      if (entry.needsReconciliation && !(await reconcileBeforeAttempt(entry, restartAttempt))) {
+      // User Retry sets needsReconciliation + restartAttempt. Auto-retry after
+      // failEntry only sets needsReconciliation.
+      if (
+        (entry.needsReconciliation || restartAttempt) &&
+        !(await reconcileBeforeAttempt(entry, restartAttempt))
+      ) {
         if (entry.state === "uploading") {
           await failEntry(entry, { code: "provider_unavailable", retryable: true });
         }
@@ -1001,6 +1015,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         retryCount: 0,
         acceptedForUpload: true,
         restartAttempt: true,
+        needsReconciliation: true,
       });
       await pump();
       await waitForDrain();
