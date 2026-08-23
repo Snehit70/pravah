@@ -413,7 +413,7 @@ describe("EditTaskSheet compact workbench", () => {
         title: "Updated task",
         description: "Original description",
         deadline: "2026-07-28",
-        time: undefined,
+        time: null,
         priority: "p1",
       });
     });
@@ -461,8 +461,8 @@ describe("EditTaskSheet compact workbench", () => {
 
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
-        deadline: undefined,
-        time: undefined,
+        deadline: null,
+        time: null,
       }));
     });
   });

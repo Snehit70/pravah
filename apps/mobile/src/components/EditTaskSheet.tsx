@@ -73,8 +73,9 @@ type EditTaskSheetProps = {
     taskId: Id<"tasks">;
     title: string;
     description?: string;
-    deadline?: string;
-    time?: string;
+    /** null clears the schedule (Convex strips undefined). */
+    deadline?: string | null;
+    time?: string | null;
     priority?: TaskPriority;
   }) => Promise<boolean>;
   isValidDeadline: (raw: string) => { value?: string; error?: string };
@@ -595,8 +596,9 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         taskId,
         title: savedDraft.title,
         description: savedDraft.description || undefined,
-        deadline: savedDraft.deadline || undefined,
-        time: savedDraft.deadline ? savedDraft.time || undefined : undefined,
+        // null (not undefined) so Convex keeps the field and clears the schedule
+        deadline: savedDraft.deadline || null,
+        time: savedDraft.deadline ? savedDraft.time || null : null,
         priority: savedDraft.priority,
       });
       setSaving(false);
