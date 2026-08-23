@@ -391,14 +391,26 @@ export const applyUploadVerification = internalMutation({
     }
 
     if (args.result.status === "verifying") {
+      // Master-only upload notifications must not resurrect a failed verification.
+      // That left rows as state=verifying with a stale safeFailureCode, and the
+      // client showed "Verifying image" forever with no Retry.
+      if (upload.state === "failed") {
+        return { accepted: false, state: "failed" as const };
+      }
       await ctx.db.patch(upload._id, {
         state: "verifying",
         providerVersion: args.version,
         master: args.result.master,
+        safeFailureCode: undefined,
         updatedAt: now,
       });
       if (upload.taskImageId) {
-        await ctx.db.patch(upload.taskImageId, { state: "verifying", updatedAt: now });
+        await ctx.db.patch(upload.taskImageId, {
+          state: "verifying",
+          safeFailureCode: undefined,
+          failureRetryable: undefined,
+          updatedAt: now,
+        });
       }
       return { accepted: true, state: "verifying" as const };
     }
@@ -422,6 +434,47 @@ export const applyUploadVerification = internalMutation({
       });
     }
     return { accepted: true, state: "ready" as const };
+  },
+});
+
+/** Mark verifying uploads that already failed (or aged out) as failed so clients show Retry. */
+export const failStaleVerifyingUploads = internalMutation({
+  args: {
+    olderThanMs: v.optional(v.number()),
+    now: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const now = args.now ?? Date.now();
+    const olderThanMs = args.olderThanMs ?? 10 * 60 * 1000;
+    const uploads = await ctx.db.query("taskImageUploads").collect();
+    let failed = 0;
+    for (const upload of uploads) {
+      if (upload.state !== "verifying") continue;
+      const staleByAge = now - upload.updatedAt >= olderThanMs;
+      const staleByFailure = Boolean(upload.safeFailureCode);
+      if (!staleByAge && !staleByFailure) continue;
+      const failureCode: SafeFailureCode = SAFE_FAILURE_CODES.has(
+        upload.safeFailureCode as SafeFailureCode
+      )
+        ? (upload.safeFailureCode as SafeFailureCode)
+        : "normalization_failed";
+      const failure = safeFailure(failureCode, true)!;
+      await ctx.db.patch(upload._id, {
+        state: "failed",
+        safeFailureCode: failure.code,
+        updatedAt: now,
+      });
+      if (upload.taskImageId) {
+        await ctx.db.patch(upload.taskImageId, {
+          state: "failed",
+          safeFailureCode: failure.code,
+          failureRetryable: true,
+          updatedAt: now,
+        });
+      }
+      failed += 1;
+    }
+    return { failed };
   },
 });
 
@@ -590,12 +643,19 @@ async function serializeTaskImage(ctx: QueryCtx | MutationCtx, image: Doc<"taskI
         variantSet: TASK_IMAGE_VARIANT_SET,
       }
     : undefined;
+  // Heal inconsistent rows: verifying + failure code meant the eager webhook
+  // failed, then a later master notification flipped state back to verifying.
+  const state =
+    image.state === "verifying" && image.safeFailureCode ? "failed" : image.state;
   return {
     taskImageId: image._id,
     position: image.position,
     caption: image.caption,
-    state: image.state,
-    failure: safeFailure(image.safeFailureCode, image.failureRetryable),
+    state,
+    failure: safeFailure(
+      image.safeFailureCode,
+      state === "failed" ? image.failureRetryable ?? true : image.failureRetryable
+    ),
     presentation,
   };
 }
@@ -668,7 +728,12 @@ export async function getTaskImageSummariesForOwner(
     const summary = summaries.get(image.taskId)!;
     summary.activeCount += 1;
     if (image.state === "ready") summary.readyCount += 1;
-    if (image.state === "failed") summary.failedCount += 1;
+    if (
+      image.state === "failed" ||
+      (image.state === "verifying" && image.safeFailureCode)
+    ) {
+      summary.failedCount += 1;
+    }
   }
   return summaries;
 }

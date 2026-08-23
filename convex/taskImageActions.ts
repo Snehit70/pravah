@@ -506,11 +506,21 @@ export const resolveTaskImage = action({
   },
 });
 
+const failStaleVerifyingUploadsRef = makeFunctionReference<
+  "mutation",
+  { olderThanMs?: number; now?: number },
+  { failed: number }
+>("taskImages:failStaleVerifyingUploads");
+
 export const reconcileCleanup = internalAction({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
     await ctx.runMutation(promoteDueCleanupRetriesRef, { now });
+    await ctx.runMutation(failStaleVerifyingUploadsRef, {
+      now,
+      olderThanMs: 10 * 60 * 1000,
+    });
     const tombstones = await ctx.runQuery(listDueCleanupTombstonesRef, { now, limit: 50 });
     let terminal = 0;
     let retried = 0;
