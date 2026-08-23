@@ -451,11 +451,24 @@ describe("EditTaskSheet compact workbench", () => {
     expect(mockSetGoalLink).toHaveBeenCalledWith("task1", "goal-systemd");
   });
 
-  it("turns Move to Inbox into a staged scheduling edit", async () => {
-    const { ref, onSave } = setup();
+  it("moves a timeline task to Inbox immediately", async () => {
+    const onUnschedule = vi.fn();
+    const { ref, onSave, onSheetChange } = setup({ onUnschedule });
     await open(ref);
 
     fireEvent.click(screen.getByText("Move to Inbox"));
+
+    expect(onUnschedule).toHaveBeenCalledWith("task1");
+    expect(onSave).not.toHaveBeenCalled();
+    expect(onSheetChange).toHaveBeenCalledWith(false);
+  });
+
+  it("stages Clear schedule through Save when onUnschedule is absent", async () => {
+    const { ref, onSave } = setup();
+    await open(ref);
+
+    fireEvent.click(screen.getByLabelText(/^When,/));
+    fireEvent.click(screen.getByLabelText("Clear schedule"));
     expect(screen.getByText("Save changes")).toBeTruthy();
     await act(async () => fireEvent.click(screen.getByText("Save changes")));
 

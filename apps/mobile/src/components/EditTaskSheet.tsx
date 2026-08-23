@@ -251,7 +251,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       onComplete,
       onReopen,
       onScheduleToDate: _onScheduleToDate,
-      onUnschedule: _onUnschedule,
+      onUnschedule,
       onDelete,
       resolveTaskImage,
       onReorderTaskImages,
@@ -1187,6 +1187,14 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           <Pressable
             onPress={() => {
               if (taskState === "timeline") {
+                // Same shape as Complete: apply immediately. Staging a blank
+                // deadline and waiting for Save was easy to miss, and Save used
+                // to drop the clear when it sent undefined through Convex.
+                if (onUnschedule) {
+                  onUnschedule(taskId);
+                  closeModal();
+                  return;
+                }
                 setDeadline("");
                 setTime("");
                 haptic.selection();

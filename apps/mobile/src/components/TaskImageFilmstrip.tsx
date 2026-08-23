@@ -403,6 +403,7 @@ function CaptureSurface({
         {images.map((image, index) => {
           return (
           <View
+            key={image.taskImageId}
             style={styles.filmstripItem}
             accessibilityLabel={`Task image ${index + 1} of ${images.length}${index === 0 ? ", Primary" : ""}`}
             accessibilityActions={[
@@ -547,6 +548,7 @@ function EditSurface({
         {images.map((image, index) => {
           return (
             <View
+              key={image.taskImageId}
               style={styles.editThumbDragWrap}
               accessibilityLabel={`Task image ${index + 1} of ${images.length}${index === 0 ? ", Primary" : ""}`}
               accessibilityActions={[
