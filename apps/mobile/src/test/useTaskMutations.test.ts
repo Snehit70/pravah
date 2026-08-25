@@ -530,4 +530,89 @@ describe("useTaskMutations", () => {
       payload: { type: "deleteInboxTasks", taskIds: [task._id] },
     });
   });
+
+  it("sends deadline null when saving a move to inbox so Convex keeps the clear", async () => {
+    const completeTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const moveTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const unscheduleTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const reopenTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const updateTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const reorderTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const reorderInboxTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const shiftScheduledTaskPositionMutation = vi.fn().mockResolvedValue(undefined);
+    const softDeleteTaskMutation = vi.fn().mockResolvedValue(undefined);
+    const rescheduleTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const bulkSoftDeleteInboxTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const restoreInboxTasksMutation = vi.fn().mockResolvedValue(undefined);
+    const restoreTaskMutation = vi.fn().mockResolvedValue(undefined);
+
+    const mutationOrder = [
+      completeTaskMutation,
+      moveTaskMutation,
+      unscheduleTaskMutation,
+      reopenTaskMutation,
+      updateTaskMutation,
+      reorderTasksMutation,
+      reorderInboxTasksMutation,
+      shiftScheduledTaskPositionMutation,
+      softDeleteTaskMutation,
+      rescheduleTasksMutation,
+      bulkSoftDeleteInboxTasksMutation,
+      restoreInboxTasksMutation,
+      restoreTaskMutation,
+    ];
+    let mutationIndex = 0;
+    useMutationMock.mockImplementation(() => {
+      const next = mutationOrder[mutationIndex % mutationOrder.length];
+      mutationIndex += 1;
+      return next;
+    });
+
+    const serverTasks = [makeTask({ deadline: "2026-04-24", time: "09:00" })];
+    let optimisticState: MobileTask[] | null = null;
+    const setOptimisticTasks = vi.fn(
+      (update: MobileTask[] | null | ((prev: MobileTask[] | null) => MobileTask[] | null)) => {
+        optimisticState =
+          typeof update === "function"
+            ? (update as (prev: MobileTask[] | null) => MobileTask[] | null)(optimisticState)
+            : update;
+        return optimisticState;
+      }
+    );
+
+    const { result } = renderHook(() =>
+      useTaskMutations({
+        serverTasks,
+        setOptimisticTasks,
+        setPendingMutations: vi.fn(),
+        enqueueRetry: vi.fn(),
+        showToast: vi.fn(),
+        today: "2026-04-24",
+        hasPriorityBoundaryViolation: () => false,
+      })
+    );
+
+    await act(async () => {
+      await result.current.handleSaveEdits({
+        taskId: makeId("task-1"),
+        title: "Task",
+        deadline: null,
+        time: null,
+      });
+    });
+
+    await waitFor(() => {
+      expect(updateTaskMutation).toHaveBeenCalledWith({
+        taskId: makeId("task-1"),
+        title: "Task",
+        description: undefined,
+        deadline: null,
+        time: null,
+        priority: undefined,
+      });
+    });
+    const patched = optimisticState?.[0] as MobileTask | undefined;
+    expect(patched?.deadline).toBeUndefined();
+    expect(patched?.time).toBeUndefined();
+  });
 });

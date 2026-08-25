@@ -144,14 +144,18 @@ function failureTitle(image: TaskImageFilmstripEntry) {
     : "Upload failed";
 }
 
+function isFailedImage(image: TaskImageFilmstripEntry) {
+  return image.state === "failed" || (image.state === "verifying" && Boolean(image.failure));
+}
+
 function stateCopy(image: TaskImageFilmstripEntry) {
   if (image.state === "preparing") return "Preparing image";
-  if (image.state === "pending") return "Image ready";
+  if (image.state === "pending") return "Selected image";
   if (image.state === "uploading") return "Uploading image";
-  if (image.state === "verifying") return "Verifying image";
-  if (image.state === "failed") {
+  if (isFailedImage(image)) {
     return FAILURE_COPY[image.failure?.code ?? "normalization_failed"] ?? FAILURE_COPY.normalization_failed;
   }
+  if (image.state === "verifying") return "Verifying image";
   return "Image unavailable";
 }
 
@@ -159,7 +163,7 @@ function statusLabel(image: TaskImageFilmstripEntry) {
   if (image.state === "uploading" && image.progress !== undefined) {
     return `${Math.round(image.progress * 100)}%`;
   }
-  if (image.state === "failed") return failureTitle(image);
+  if (isFailedImage(image)) return failureTitle(image);
   if (image.state === "verifying") return "Verifying";
   if (image.state === "preparing") return "Preparing";
   return "";
@@ -403,6 +407,7 @@ function CaptureSurface({
         {images.map((image, index) => {
           return (
           <View
+            key={image.taskImageId}
             style={styles.filmstripItem}
             accessibilityLabel={`Task image ${index + 1} of ${images.length}${index === 0 ? ", Primary" : ""}`}
             accessibilityActions={[
@@ -547,6 +552,7 @@ function EditSurface({
         {images.map((image, index) => {
           return (
             <View
+              key={image.taskImageId}
               style={styles.editThumbDragWrap}
               accessibilityLabel={`Task image ${index + 1} of ${images.length}${index === 0 ? ", Primary" : ""}`}
               accessibilityActions={[
@@ -603,15 +609,15 @@ function EditSurface({
         />
       ) : selected.caption ? <Text style={styles.captionText}>{selected.caption}</Text> : null}
       {selected.state !== "ready" && selected.state !== "pending" ? (
-        <View style={[styles.statusPanel, selected.state === "failed" ? styles.statusPanelError : styles.statusPanelProgress]}>
+        <View style={[styles.statusPanel, isFailedImage(selected) ? styles.statusPanelError : styles.statusPanelProgress]}>
           <View style={styles.statusPanelCopy}>
-            {selected.state === "failed" ? <AlertCircleIcon color={colors.error} size={18} /> : null}
+            {isFailedImage(selected) ? <AlertCircleIcon color={colors.error} size={18} /> : null}
             <View>
-              <Text style={styles.statusPanelTitle}>{selected.state === "failed" ? failureTitle(selected) : `${stateCopy(selected)}${selected.progress !== undefined ? ` · ${Math.round(selected.progress * 100)}%` : ""}`}</Text>
-              <Text style={styles.statusPanelBody}>{selected.state === "failed" ? "The Task is safe. Retry this image when ready." : "You can leave this screen while it finishes."}</Text>
+              <Text style={styles.statusPanelTitle}>{isFailedImage(selected) ? failureTitle(selected) : `${stateCopy(selected)}${selected.progress !== undefined ? ` · ${Math.round(selected.progress * 100)}%` : ""}`}</Text>
+              <Text style={styles.statusPanelBody}>{isFailedImage(selected) ? "The Task is safe. Retry this image when ready." : "You can leave this screen while it finishes."}</Text>
             </View>
           </View>
-          {selected.state === "failed" && selected.failure?.retryable && onRetry ? <Pressable accessibilityRole="button" accessibilityLabel="Retry Task image" onPress={() => onRetry(selected.taskImageId)} style={styles.retryButton}><RetryArrowIcon color={colors.error} size={16} /><Text style={styles.retryText}>Retry</Text></Pressable> : null}
+          {isFailedImage(selected) && selected.failure?.retryable && onRetry ? <Pressable accessibilityRole="button" accessibilityLabel="Retry Task image" onPress={() => onRetry(selected.taskImageId)} style={styles.retryButton}><RetryArrowIcon color={colors.error} size={16} /><Text style={styles.retryText}>Retry</Text></Pressable> : null}
         </View>
       ) : null}
       <RecoverableSection images={visibleRecoverable} active={images} onRestore={onRestore} />

@@ -416,7 +416,19 @@ function MobileApp() {
         upload: uploadPreparedTaskImage,
         abortUpload: ({ uploadId }) => abortPreparedTaskImageUpload(uploadId),
         discardUnclaimedUpload: ({ uploadId }) => discardUnclaimedUploadMutation({ uploadId }).then(() => undefined),
-        verify: submitTaskImageResult,
+        verify: async (result) => {
+          try {
+            return await submitTaskImageResult(result);
+          } catch (error) {
+            // If submitUploadResult still throws, sync failed to the server so the
+            // edit filmstrip does not sit on Verifying/Image ready forever.
+            await markTaskImageUploadFailedMutation({
+              uploadId: result.uploadId,
+              failureCode: "normalization_failed",
+            }).catch(() => undefined);
+            throw error;
+          }
+        },
         reportFailure: ({ uploadId, failureCode }) =>
           markTaskImageUploadFailedMutation({ uploadId, failureCode }).then(() => undefined),
       }),
@@ -1640,9 +1652,25 @@ function MobileApp() {
                 String(taskId),
                 result.active.map((image) => image.taskImageId)
               );
+              // Convex collections have no local previewUri. Merge from the
+              // coordinator before clearAfterSaveAndStay drops visible uploads,
+              // otherwise the edit filmstrip shows "Image ready" text only.
+              const previewByTaskImageId = new Map(
+                taskImageCoordinator
+                  .getViewStates()
+                  .flatMap((image) =>
+                    image.taskImageId && image.previewUri
+                      ? ([[image.taskImageId, image.previewUri]] as const)
+                      : []
+                  )
+              );
+              const active = result.active.map((image) => {
+                const previewUri = previewByTaskImageId.get(image.taskImageId);
+                return previewUri ? { ...image, previewUri } : image;
+              });
               void taskImageCoordinator.beginUploadAfterSave();
               taskImageCoordinator.clearAfterSaveAndStay();
-              return result;
+              return { ...result, active, primary: active[0] };
             } catch {
               showToast({ kind: "error", message: "Could not add Task image. Please try again." });
               taskImageCoordinator.discard();

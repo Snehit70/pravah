@@ -73,8 +73,9 @@ type EditTaskSheetProps = {
     taskId: Id<"tasks">;
     title: string;
     description?: string;
-    deadline?: string;
-    time?: string;
+    /** null clears the schedule (Convex strips undefined). */
+    deadline?: string | null;
+    time?: string | null;
     priority?: TaskPriority;
   }) => Promise<boolean>;
   isValidDeadline: (raw: string) => { value?: string; error?: string };
@@ -250,7 +251,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       onComplete,
       onReopen,
       onScheduleToDate: _onScheduleToDate,
-      onUnschedule: _onUnschedule,
+      onUnschedule,
       onDelete,
       resolveTaskImage,
       onReorderTaskImages,
@@ -359,7 +360,18 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       });
       if (!result) return;
       const { stale: _, ...imageCollection } = result;
-      const mergedCollection = mergeTaskImageOrder(imageCollection, localOrder);
+      const previousById = new Map(
+        (currentTask.imageCollection?.active ?? []).map((image) => [image.taskImageId, image])
+      );
+      const withLocalPreviews = {
+        ...imageCollection,
+        active: imageCollection.active.map((image) => {
+          const previous = previousById.get(image.taskImageId);
+          const previewUri = image.previewUri ?? previous?.previewUri;
+          return previewUri ? { ...image, previewUri } : image;
+        }),
+      };
+      const mergedCollection = mergeTaskImageOrder(withLocalPreviews, localOrder);
       setCurrentTask((previous) => previous ? { ...previous, imageCollection: mergedCollection } : previous);
       setInitialImageOrder(orderedTaskImageIds(imageCollection));
     }, [currentTask, onSelectTaskImage]);
@@ -595,8 +607,9 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         taskId,
         title: savedDraft.title,
         description: savedDraft.description || undefined,
-        deadline: savedDraft.deadline || undefined,
-        time: savedDraft.deadline ? savedDraft.time || undefined : undefined,
+        // null (not undefined) so Convex keeps the field and clears the schedule
+        deadline: savedDraft.deadline || null,
+        time: savedDraft.deadline ? savedDraft.time || null : null,
         priority: savedDraft.priority,
       });
       setSaving(false);
@@ -1185,6 +1198,14 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           <Pressable
             onPress={() => {
               if (taskState === "timeline") {
+                // Same shape as Complete: apply immediately. Staging a blank
+                // deadline and waiting for Save was easy to miss, and Save used
+                // to drop the clear when it sent undefined through Convex.
+                if (onUnschedule) {
+                  onUnschedule(taskId);
+                  closeModal();
+                  return;
+                }
                 setDeadline("");
                 setTime("");
                 haptic.selection();

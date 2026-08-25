@@ -885,15 +885,47 @@ export const updateTask = mutation({
     taskId: v.id("tasks"),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
-    deadline: v.optional(v.string()),
-    time: v.optional(v.string()),
+    // null clears the field. Clients cannot send `undefined` through Convex —
+    // optional undefined args are stripped before the handler runs.
+    deadline: v.optional(v.union(v.string(), v.null())),
+    time: v.optional(v.union(v.string(), v.null())),
     estimatedMinutes: v.optional(v.number()),
     tags: v.optional(v.array(v.string())),
     priority: v.optional(v.union(v.literal("p1"), v.literal("p2"), v.literal("p3"))),
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    await updateTaskForOwner(ctx, tokenIdentifier, args);
+    const patch: Parameters<typeof updateTaskForOwner>[2] = {
+      taskId: args.taskId,
+    };
+    if (Object.prototype.hasOwnProperty.call(args, "title")) {
+      patch.title = args.title;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, "description")) {
+      patch.description = args.description;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, "deadline")) {
+      patch.deadline = args.deadline ?? undefined;
+      if (
+        args.deadline === null &&
+        !Object.prototype.hasOwnProperty.call(args, "time")
+      ) {
+        patch.time = undefined;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(args, "time")) {
+      patch.time = args.time ?? undefined;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, "estimatedMinutes")) {
+      patch.estimatedMinutes = args.estimatedMinutes;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, "tags")) {
+      patch.tags = args.tags;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, "priority")) {
+      patch.priority = args.priority;
+    }
+    await updateTaskForOwner(ctx, tokenIdentifier, patch);
   },
 });
 

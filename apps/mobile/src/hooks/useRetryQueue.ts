@@ -23,8 +23,8 @@ export type RetryPayload =
       taskId: Id<"tasks">;
       title: string;
       description?: string;
-      deadline?: string;
-      time?: string;
+      deadline?: string | null;
+      time?: string | null;
       priority?: "p1" | "p2" | "p3";
     }
   | {

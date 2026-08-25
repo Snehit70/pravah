@@ -61,8 +61,9 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
         taskId: task._id,
         title: title.trim(),
         description: description || undefined,
-        deadline: deadline || undefined,
-        time: deadline ? time || undefined : undefined,
+        // null clears the schedule; undefined would be stripped by Convex
+        deadline: deadline || null,
+        time: deadline ? time || null : null,
         priority,
       });
       if (webGoalsLinkingEnabled && selectedGoalId !== currentGoalId) {

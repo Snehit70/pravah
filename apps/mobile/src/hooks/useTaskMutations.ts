@@ -325,18 +325,37 @@ export function useTaskMutations({
       taskId: Id<"tasks">;
       title: string;
       description?: string;
-      deadline?: string;
-      time?: string;
+      /** null clears schedule; undefined leaves it unchanged. */
+      deadline?: string | null;
+      time?: string | null;
       priority?: "p1" | "p2" | "p3";
     }) => {
+      const nextDeadline = data.deadline === null ? undefined : data.deadline;
+      const nextTime =
+        data.deadline === null
+          ? undefined
+          : data.deadline
+            ? data.time ?? undefined
+            : data.time === null
+              ? undefined
+              : data.time;
+      const mutationDeadline =
+        data.deadline === undefined
+          ? {}
+          : {
+              deadline: data.deadline,
+              // Clearing deadline always clears time; otherwise pass through.
+              time: data.deadline === null ? null : data.time ?? null,
+            };
       return runOptimisticMutation({
         actionName: "update_task",
         optimistic: (cur) =>
           patchTaskInOptimisticView(cur, data.taskId, {
             title: data.title,
             description: data.description,
-            deadline: data.deadline,
-            time: data.deadline ? data.time : undefined,
+            ...(data.deadline !== undefined
+              ? { deadline: nextDeadline, time: nextTime }
+              : {}),
             priority: data.priority,
           }, Date.now()),
         mutation: async () => {
@@ -344,8 +363,7 @@ export function useTaskMutations({
             taskId: data.taskId,
             title: data.title,
             description: data.description,
-            deadline: data.deadline,
-            time: data.deadline ? data.time : undefined,
+            ...mutationDeadline,
             priority: data.priority,
           });
         },
@@ -356,8 +374,7 @@ export function useTaskMutations({
           taskId: data.taskId,
           title: data.title,
           description: data.description,
-          deadline: data.deadline,
-          time: data.deadline ? data.time : undefined,
+          ...mutationDeadline,
           priority: data.priority,
         },
         successFeedback: "medium",

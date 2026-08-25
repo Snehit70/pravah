@@ -4,6 +4,7 @@ import { addTask } from "../../convex/tasks";
 import {
   addTaskImages,
   applyUploadVerification,
+  failStaleVerifyingUploads,
   getTaskImageCollection,
   getTaskImageSummaryForOwner,
   getDeliveryContext,
@@ -54,6 +55,7 @@ function createMemoryDb() {
       }
     }),
     query: vi.fn((table: string) => ({
+      collect: vi.fn(async () => rows(table)),
       withIndex: vi.fn((_index: string, build: (q: unknown) => unknown) => {
         const filters: Array<[string, unknown]> = [];
         const q = {
@@ -118,14 +120,27 @@ const applyUploadVerificationHandler = (
       uploadId: string;
       publicId: string;
       version: number;
-      result: {
-        status: "ready";
-        master: { format: "jpg"; width: number; height: number; bytes: number };
-        card: { format: "webp"; width: number; height: number; bytes: number };
-        detail: { format: "webp"; width: number; height: number; bytes: number };
-      };
+      result:
+        | {
+            status: "ready";
+            master: { format: "jpg"; width: number; height: number; bytes: number };
+            card: { format: "webp"; width: number; height: number; bytes: number };
+            detail: { format: "webp"; width: number; height: number; bytes: number };
+          }
+        | {
+            status: "verifying";
+            master: { format: "jpg"; width: number; height: number; bytes: number };
+          }
+        | { status: "failed"; failureCode: string };
     },
     { accepted: boolean; state?: string }
+  >
+)._handler;
+
+const failStaleVerifyingUploadsHandler = (
+  failStaleVerifyingUploads as unknown as Handler<
+    { olderThanMs?: number; now?: number },
+    { failed: number }
   >
 )._handler;
 
@@ -714,5 +729,134 @@ describe("Convex Task-image contract", () => {
     expect(collection.recoverable).toEqual([
       expect.objectContaining({ taskImageId: replacementId, previousPosition: 3 }),
     ]);
+  });
+
+  it("does not let a master-only verifying callback resurrect a failed upload", async () => {
+    const db = createMemoryDb();
+    const owner = authedCtx(db);
+    await stageHandler(owner, {
+      uploadId: "upl_no_resurrect",
+      encodingClass: "jpeg",
+      width: 1200,
+      height: 900,
+      bytes: 500_000,
+    });
+    const prepared = await prepareUploadGrantHandler(owner, {
+      ownerTokenIdentifier: "owner-1",
+      uploadId: "upl_no_resurrect",
+      requestKey: "grant_no_resurrect",
+      candidatePublicId: "pravah-task-images/opaque-no-resurrect",
+      issuedAt: 1_786_500_000,
+    });
+    await applyUploadVerificationHandler(owner, {
+      ownerTokenIdentifier: "owner-1",
+      uploadId: "upl_no_resurrect",
+      publicId: prepared.publicId,
+      version: 1,
+      result: { status: "failed", failureCode: "normalization_failed" },
+    });
+
+    await expect(
+      applyUploadVerificationHandler(owner, {
+        ownerTokenIdentifier: "owner-1",
+        uploadId: "upl_no_resurrect",
+        publicId: prepared.publicId,
+        version: 1,
+        result: {
+          status: "verifying",
+          master: { format: "jpg", width: 1200, height: 900, bytes: 500_000 },
+        },
+      })
+    ).resolves.toEqual({ accepted: false, state: "failed" });
+
+    expect(db.rows("taskImageUploads")[0]).toMatchObject({
+      state: "failed",
+      safeFailureCode: "normalization_failed",
+    });
+  });
+
+  it("serializes verifying images with a failure code as failed so clients can retry", async () => {
+    const db = createMemoryDb();
+    const owner = authedCtx(db);
+    await stageHandler(owner, {
+      uploadId: "upl_stuck_verify",
+      encodingClass: "jpeg",
+      width: 2400,
+      height: 1080,
+      bytes: 151_392,
+    });
+    const taskId = await addTaskHandler(owner, {
+      title: "Stuck verifying",
+      imageUploadId: "upl_stuck_verify",
+    });
+    const image = db.rows("taskImages")[0];
+    const upload = db.rows("taskImageUploads")[0];
+    Object.assign(upload, {
+      state: "verifying",
+      providerPublicId: "pravah-task-images/stuck",
+      providerVersion: 1,
+      safeFailureCode: "normalization_failed",
+      master: { format: "jpg", width: 2400, height: 1080, bytes: 122_295 },
+    });
+    Object.assign(image, {
+      state: "verifying",
+      safeFailureCode: "normalization_failed",
+      failureRetryable: true,
+      uploadRecordId: upload._id,
+    });
+
+    await expect(collectionHandler(owner, { taskId })).resolves.toMatchObject({
+      active: [
+        {
+          state: "failed",
+          failure: { code: "normalization_failed", retryable: true },
+        },
+      ],
+    });
+    await expect(
+      getTaskImageSummaryForOwner(owner as never, "owner-1", taskId)
+    ).resolves.toEqual({ activeCount: 1, readyCount: 0, failedCount: 1 });
+  });
+
+  it("fails stale verifying uploads so Retry becomes available", async () => {
+    const db = createMemoryDb();
+    const owner = authedCtx(db);
+    await stageHandler(owner, {
+      uploadId: "upl_stale_verify",
+      encodingClass: "jpeg",
+      width: 1200,
+      height: 900,
+      bytes: 500_000,
+    });
+    const taskId = await addTaskHandler(owner, {
+      title: "Stale verifying",
+      imageUploadId: "upl_stale_verify",
+    });
+    const image = db.rows("taskImages")[0];
+    const upload = db.rows("taskImageUploads")[0];
+    Object.assign(upload, {
+      state: "verifying",
+      providerPublicId: "pravah-task-images/stale",
+      providerVersion: 1,
+      safeFailureCode: "normalization_failed",
+      updatedAt: 1_000,
+      taskImageId: image._id,
+    });
+    Object.assign(image, {
+      state: "verifying",
+      safeFailureCode: "normalization_failed",
+      uploadRecordId: upload._id,
+    });
+
+    await expect(
+      failStaleVerifyingUploadsHandler(owner, { now: 1_000 + 11 * 60 * 1000 })
+    ).resolves.toEqual({ failed: 1 });
+    expect(upload).toMatchObject({ state: "failed", safeFailureCode: "normalization_failed" });
+    expect(image).toMatchObject({
+      state: "failed",
+      safeFailureCode: "normalization_failed",
+      failureRetryable: true,
+    });
+    expect(taskId).toBeDefined();
   });
 });

@@ -285,6 +285,10 @@ export async function buildUploadGrant({
     overwrite: "false",
     public_id: publicId,
     return_delete_token: "false",
+    // Require SHA-256 on both the request signature and the upload response
+    // signature. Without this, Cloudinary accepts a SHA-256 request signature
+    // but returns a SHA-1 response signature, and verifyProviderMaster fails.
+    signature_algorithm: "sha256",
     timestamp: String(timestamp),
     transformation: incomingTransformation(encodingClass),
     type: "authenticated",
@@ -346,10 +350,18 @@ async function verifyProviderMaster(
   },
   verifyResponseSignature: boolean
 ): Promise<(VerifiedMaster & { ok: true }) | { ok: false; failureCode: "normalization_failed" | "master_too_large" }> {
+  const signedPayload = `public_id=${response.publicId}&version=${response.version}${expected.apiSecret}`;
   const expectedSignature = verifyResponseSignature
-    ? await sha256Hex(
-        `public_id=${response.publicId}&version=${response.version}${expected.apiSecret}`
-      )
+    ? await (async () => {
+        // Cloudinary may return SHA-1 (default) or SHA-256 when requested.
+        const [sha1Signature, sha256Signature] = await Promise.all([
+          sha1Hex(signedPayload),
+          sha256Hex(signedPayload),
+        ]);
+        if (constantTimeEqual(sha256Signature, response.signature)) return sha256Signature;
+        if (constantTimeEqual(sha1Signature, response.signature)) return sha1Signature;
+        return sha256Signature;
+      })()
     : response.signature;
   const expectedFormat = expected.expectedEncodingClass === "jpeg" ? "jpg" : "png";
   if (

@@ -416,12 +416,34 @@ export async function uploadPreparedTaskImage(
   } finally {
     if (options) activeTaskImageUploads.delete(options.uploadId);
   }
-  if (response.status < 200 || response.status >= 300) fail("normalization_failed", true);
+  if (response.status < 200 || response.status >= 300) fail("upload_failed", true);
   let payload: Record<string, unknown>;
   try {
     payload = JSON.parse(response.body) as Record<string, unknown>;
   } catch {
-    fail("normalization_failed", true);
+    fail("upload_failed", true);
+  }
+  const grantPublicId = grant.signedParameters.public_id;
+  const responsePublicId = typeof payload.public_id === "string" ? payload.public_id : "";
+  // Prefer the grant id we signed and stored server-side. An empty/mismatched
+  // Cloudinary public_id used to make submitUploadResult mark normalization_failed.
+  const publicId = responsePublicId && (!grantPublicId || responsePublicId === grantPublicId)
+    ? responsePublicId
+    : grantPublicId;
+  if (!publicId) fail("upload_failed", true);
+  if (
+    typeof payload.version !== "number" ||
+    payload.version <= 0 ||
+    typeof payload.signature !== "string" ||
+    !payload.signature ||
+    typeof payload.resource_type !== "string" ||
+    typeof payload.type !== "string" ||
+    typeof payload.format !== "string" ||
+    typeof payload.width !== "number" ||
+    typeof payload.height !== "number" ||
+    typeof payload.bytes !== "number"
+  ) {
+    fail("upload_failed", true);
   }
   const eager = Array.isArray(payload.eager)
     ? payload.eager.flatMap((item) => {
@@ -444,7 +466,7 @@ export async function uploadPreparedTaskImage(
       })
     : [];
   return {
-    publicId: typeof payload.public_id === "string" ? payload.public_id : "",
+    publicId,
     version: typeof payload.version === "number" ? payload.version : 0,
     signature: typeof payload.signature === "string" ? payload.signature : "",
     resourceType: typeof payload.resource_type === "string" ? payload.resource_type : "",
