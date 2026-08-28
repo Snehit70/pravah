@@ -275,13 +275,6 @@ vi.mock("../lib/feedback", () => ({
 import { AddTaskSheet, type AddTaskSheetRef } from "../components/AddTaskSheet";
 import { createTaskImageCoordinator } from "../lib/taskImageCoordinator";
 
-function todayIsoForTest() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
-    now.getDate()
-  ).padStart(2, "0")}`;
-}
-
 // ─── tests ────────────────────────────────────────────────────────────────────
 
 describe("AddTaskSheet", () => {
@@ -376,7 +369,7 @@ describe("AddTaskSheet", () => {
     expect(mockOnAdd).toHaveBeenCalledWith({
       title: "New task",
       description: undefined,
-      deadline: todayIsoForTest(),
+      deadline: undefined,
       time: undefined,
       priority: undefined,
       goalId: undefined,
@@ -495,7 +488,7 @@ describe("AddTaskSheet", () => {
       ref.current?.open();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "When, Today" }));
+    fireEvent.click(screen.getByRole("button", { name: "When, Inbox" }));
     fireEvent.click(screen.getByRole("button", { name: "Today" }));
     fireEvent.change(screen.getByTestId("title-input"), { target: { value: "Today task" } });
     fireEvent.click(screen.getByText("Save & close"));
@@ -584,7 +577,7 @@ describe("AddTaskSheet", () => {
       expect(mockOnAdd).toHaveBeenCalledWith({
         title: "Fix Settings first",
         description: undefined,
-        deadline: todayIsoForTest(),
+        deadline: undefined,
         time: undefined,
         priority: undefined,
         goalId: "g1",
@@ -629,7 +622,7 @@ describe("AddTaskSheet", () => {
     );
   });
 
-  it("defaults the When planner to today each time the sheet opens", () => {
+  it("defaults the When planner to Inbox each time the sheet opens", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 6, 3, 10, 0, 0));
 
@@ -646,7 +639,7 @@ describe("AddTaskSheet", () => {
       ref.current?.open();
     });
 
-    expect(screen.getByRole("button", { name: "When, Today" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "When, Inbox" })).toBeTruthy();
 
     act(() => {
       ref.current?.close();
@@ -658,10 +651,10 @@ describe("AddTaskSheet", () => {
       ref.current?.open();
     });
 
-    expect(screen.getByRole("button", { name: "When, Today" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "When, Inbox" })).toBeTruthy();
   });
 
-  it("keeps Exact time in the main Planning summary", () => {
+  it("does not offer Exact time for an Inbox task", () => {
     render(
       <AddTaskSheet
         ref={ref}
@@ -675,7 +668,7 @@ describe("AddTaskSheet", () => {
       ref.current?.open();
     });
 
-    expect(screen.getByRole("button", { name: "Exact time, Not set" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Exact time, Not set" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Show more capture options" })).toBeNull();
   });
 
@@ -730,15 +723,11 @@ describe("AddTaskSheet", () => {
       fireEvent.keyDown(titleInput, { key: "Enter" });
     });
 
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
-      now.getDate()
-    ).padStart(2, "0")}`;
     await waitFor(() => expect(mockOnAdd).toHaveBeenCalledTimes(2));
     expect(mockOnAdd).toHaveBeenNthCalledWith(2, {
       title: "Second",
       description: undefined,
-      deadline: today,
+      deadline: undefined,
       time: undefined,
       priority: undefined,
       goalId: undefined,

@@ -171,7 +171,9 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [visible, setVisible] = useState(false);
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
-    const [deadline, setDeadline] = useState(todayIso);
+    // Newly captured tasks belong in Inbox until the user explicitly chooses
+    // a planning date.
+    const [deadline, setDeadline] = useState("");
     const [time, setTime] = useState("");
     const [priority, setPriority] = useState<TaskPriority>(undefined);
     const [kind, setKind] = useState<"task" | "goal">("task");
@@ -247,7 +249,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const reset = useCallback(() => {
       setTitle("");
       setDescription("");
-      setDeadline(todayIso());
+      setDeadline("");
       setTime("");
       setPriority(undefined);
       setGoalId(undefined);
@@ -275,7 +277,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     useImperativeHandle(ref, () => ({
       open: (initialKind = "task") => {
         setKind(initialKind);
-        setDeadline(todayIso());
+        setDeadline("");
         setPlanningMode("summary");
         setSummaryCardHeight(null);
         setShowDetails(false);
@@ -285,7 +287,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       },
       openForGoal: (initialGoalId) => {
         setKind("task");
-        setDeadline(todayIso());
+        setDeadline("");
         setGoalId(initialGoalId);
         setGoalIds([initialGoalId]);
         setShowDetails(false);
