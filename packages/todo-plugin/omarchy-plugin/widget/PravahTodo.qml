@@ -75,13 +75,13 @@ BarWidget {
     }
   }
 
-  PopupCard {
+  KeyboardPanel {
     id: popup
     anchorItem: barButton
     bar: root.bar
     owner: root
     open: root.panelOpen
-    triggerMode: "click"
+    focusTarget: newTask
     contentWidth: fittedContentWidth(390)
     contentHeight: fittedContentHeight(content.implicitHeight + Style.space(8), Style.space(560))
     function close() { root.panelOpen = false }
