@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "raja.pravah-todo",
+  "name": "Pravah Todo",
+  "version": "0.2.0",
+  "author": "Raja",
+  "license": "MIT",
+  "description": "A compact, live task list for today's Pravah tasks.",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "widget/PravahTodo.qml"
+  },
+  "barWidget": {
+    "displayName": "Pravah Todo",
+    "description": "View, add, and complete today's Pravah tasks without leaving the bar.",
+    "category": "Productivity",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "pollIntervalSec": 30
+    },
+    "schema": [
+      {
+        "key": "pollIntervalSec",
+        "type": "integer",
+        "label": "Poll interval (seconds)",
+        "min": 10,
+        "max": 600,
+        "step": 10,
+        "defaultValue": 30
+      }
+    ]
+  }
+}
