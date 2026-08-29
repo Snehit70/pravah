@@ -40,9 +40,18 @@ Add the widget to `~/.config/omarchy/shell.json`:
 
 ```json
 {
-  "id": "raja.pravah-todo"
+  "version": 1,
+  "bar": {
+    "layout": {
+      "right": [
+        { "id": "raja.pravah-todo" }
+      ]
+    }
+  }
 }
 ```
+
+Keep the other widgets already present in the `right` array and insert the Pravah entry where you want its icon to appear.
 
 Then reload local plugins:
 

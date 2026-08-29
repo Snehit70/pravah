@@ -205,14 +205,16 @@ BarWidget {
   Process {
     id: pollProc
     command: [root.cli, "today", "--json"]
-    stdout: StdioCollector { onStreamFinished: root.handlePoll(text) }
-    stderr: StdioCollector { onStreamFinished: if (String(text || "").trim() !== "") root.fail(String(text).trim()) }
+    stdout: StdioCollector { id: pollStdout; waitForEnd: true }
+    stderr: StdioCollector { id: pollStderr; waitForEnd: true }
+    onExited: function(exitCode) { root.handlePoll(exitCode, pollStdout.text, pollStderr.text) }
   }
 
   Process {
     id: actionProc
-    stdout: StdioCollector { onStreamFinished: root.handleAction(text) }
-    stderr: StdioCollector { onStreamFinished: if (String(text || "").trim() !== "") root.fail(String(text).trim()) }
+    stdout: StdioCollector { id: actionStdout; waitForEnd: true }
+    stderr: StdioCollector { id: actionStderr; waitForEnd: true }
+    onExited: function(exitCode) { root.handleAction(exitCode, actionStdout.text, actionStderr.text) }
   }
 
   function refresh() {
@@ -221,25 +223,29 @@ BarWidget {
     pollProc.running = true
   }
 
-  function handlePoll(text) {
+  function handlePoll(exitCode, stdout, stderr) {
     refreshing = false
+    if (exitCode !== 0) {
+      lastError = commandError(stdout, stderr, "Pravah could not load today")
+      return
+    }
     try {
-      var env = JSON.parse(String(text || "").trim())
-      if (!env.ok) { fail(env.error && env.error.message ? env.error.message : "Pravah could not load today"); return }
+      var env = JSON.parse(String(stdout || "").trim())
+      if (!env.ok) { lastError = env.error && env.error.message ? env.error.message : "Pravah could not load today"; return }
       var data = env.data || {}
       today = String(data.today || today)
       var list = Array.isArray(data.tasks) ? data.tasks : []
       tasks = list.map(function(t) { return { id: String(t.id || ""), title: String(t.title || "Untitled"), time: String(t.time || "") } })
       initialized = true
       lastError = ""
-    } catch (error) { fail("Pravah returned an unreadable response") }
+    } catch (error) { lastError = "Pravah returned an unreadable response" }
   }
 
   function addTask(title) {
     var clean = String(title || "").trim()
     if (busy || clean === "") return
     action = "add"; actionTitle = clean; actionTarget = ""; actionStage = "preview"; lastError = ""
-    actionProc.command = [cli, "tasks", "add", clean, "--deadline", today, "--dry-run", "--json"]
+    actionProc.command = [cli, "tasks", "add", "--deadline", today, "--dry-run", "--json", "--", clean]
     actionProc.running = true
   }
 
@@ -250,15 +256,17 @@ BarWidget {
     actionProc.running = true
   }
 
-  function handleAction(text) {
+  function handleAction(exitCode, stdout, stderr) {
+    if (action === "") return
+    if (exitCode !== 0) { failAction(commandError(stdout, stderr, "Pravah could not update the task")); return }
     var env
-    try { env = JSON.parse(String(text || "").trim()) }
-    catch (error) { fail("Pravah returned an unreadable response"); return }
-    if (!env.ok) { fail(env.error && env.error.message ? env.error.message : "Pravah could not update the task"); return }
+    try { env = JSON.parse(String(stdout || "").trim()) }
+    catch (error) { failAction("Pravah returned an unreadable response"); return }
+    if (!env.ok) { failAction(env.error && env.error.message ? env.error.message : "Pravah could not update the task"); return }
     if (actionStage === "preview") {
       actionStage = "apply"
       actionProc.command = action === "add"
-        ? [cli, "tasks", "add", actionTitle, "--deadline", today, "--json"]
+        ? [cli, "tasks", "add", "--deadline", today, "--json", "--", actionTitle]
         : [cli, "tasks", "complete", actionTarget, "--json"]
       actionProc.running = true
       return
@@ -268,8 +276,15 @@ BarWidget {
     refresh()
   }
 
-  function fail(message) {
-    refreshing = false
+  function commandError(stdout, stderr, fallback) {
+    try {
+      var env = JSON.parse(String(stdout || "").trim())
+      if (env.error && env.error.message) return String(env.error.message).slice(0, 240)
+    } catch (error) {}
+    return String(stderr || stdout || fallback).trim().slice(0, 240) || fallback
+  }
+
+  function failAction(message) {
     lastError = String(message || "Pravah command failed").slice(0, 240)
     action = ""; actionTarget = ""; actionTitle = ""; actionStage = ""
   }

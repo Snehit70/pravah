@@ -3,11 +3,16 @@ import type { ParsedArgs } from "./types";
 export function parseArgs(argv: string[]): ParsedArgs {
   const positionals: string[] = [];
   const options: Record<string, string | boolean> = {};
+  let endOfOptions = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const part = argv[index];
-    if (!part.startsWith("--")) {
+    if (endOfOptions || !part.startsWith("--")) {
       positionals.push(part);
+      continue;
+    }
+    if (part === "--") {
+      endOfOptions = true;
       continue;
     }
 
