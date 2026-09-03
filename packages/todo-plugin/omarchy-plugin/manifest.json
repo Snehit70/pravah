@@ -2,22 +2,24 @@
   "schemaVersion": 1,
   "id": "raja.pravah-todo",
   "name": "Pravah Todo",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": "Raja",
   "license": "MIT",
-  "description": "A compact, live task list for today's Pravah tasks.",
+  "description": "A full front-end for the Pravah CLI: today, inbox, upcoming, goals, and undoable history from the bar.",
   "kinds": ["bar-widget"],
   "entryPoints": {
     "barWidget": "widget/PravahTodo.qml"
   },
   "barWidget": {
     "displayName": "Pravah Todo",
-    "description": "View, add, and complete today's Pravah tasks without leaving the bar.",
+    "description": "Plan and manage Pravah tasks without leaving the bar: capture, schedule, edit, goals, and undo.",
     "category": "Productivity",
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
-      "pollIntervalSec": 30
+      "pollIntervalSec": 30,
+      "defaultTab": "today",
+      "showCompleted": "On"
     },
     "schema": [
       {
@@ -28,6 +30,20 @@
         "max": 600,
         "step": 10,
         "defaultValue": 30
+      },
+      {
+        "key": "defaultTab",
+        "type": "enum",
+        "label": "Tab opened on click",
+        "options": ["today", "inbox", "upcoming", "goals", "history"],
+        "defaultValue": "today"
+      },
+      {
+        "key": "showCompleted",
+        "type": "enum",
+        "label": "Show completed tasks on Today",
+        "options": ["On", "Off"],
+        "defaultValue": "On"
       }
     ]
   }
