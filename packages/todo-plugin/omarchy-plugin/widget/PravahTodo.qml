@@ -28,6 +28,8 @@ BarWidget {
   property var confirmAction: null
   property string lastOperationId: ""
 
+  onPanelOpenChanged: if (!panelOpen) toast.dismiss()
+
   PravahData { id: store }
 
   // ---------------------------------------------------------------- ipc ---
@@ -415,19 +417,6 @@ BarWidget {
         }
       }
 
-      // --- write error banner
-      Text {
-        id: errorBanner
-
-        visible: store.lastWriteError !== ""
-        width: parent.width
-        text: store.lastWriteError
-        color: root.urgent
-        wrapMode: Text.Wrap
-        font.family: Style.font.family
-        font.pixelSize: Style.font.caption
-      }
-
       // --- tab content
       ScrollView {
         id: scrollViewport
@@ -447,6 +436,16 @@ BarWidget {
             : root.activeTab === "upcoming" ? upcomingComp
             : goalsComp
         }
+      }
+
+      PravahToast {
+        id: toast
+
+        width: parent.width
+        fg: root.fg
+        accent: root.accent
+        urgent: root.urgent
+        onUndoRequested: root.undoLast()
       }
 
       // --- footer
@@ -508,16 +507,6 @@ BarWidget {
           focusable: false
           onClicked: goalEditor.openFor(null)
         }
-      }
-
-      PravahToast {
-        id: toast
-
-        width: parent.width
-        fg: root.fg
-        accent: root.accent
-        urgent: root.urgent
-        onUndoRequested: root.undoLast()
       }
     }
 
