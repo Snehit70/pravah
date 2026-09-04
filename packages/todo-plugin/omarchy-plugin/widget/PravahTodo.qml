@@ -28,7 +28,14 @@ BarWidget {
   property var confirmAction: null
   property string lastOperationId: ""
 
-  onPanelOpenChanged: if (!panelOpen) toast.dismiss()
+  onPanelOpenChanged: {
+    if (panelOpen) return
+    toast.dismiss()
+    editor.close()
+    goalEditor.close()
+    schedulePicker.targetTask = null
+    schedulePicker.close()
+  }
 
   PravahData { id: store }
 
@@ -134,6 +141,18 @@ BarWidget {
     askConfirm("Remove goal “" + goal.text + "”? Its tasks stay, the goal goes away.", function() {
       store.submitWrite(store.goalRemoveArgv(goal), "Removing goal…")
     })
+  }
+
+  function tasksForGoal(goal, allTasks) {
+    var out = []
+    if (!goal) return out
+    var all = allTasks || []
+    for (var i = 0; i < all.length; i++) {
+      var t = all[i]
+      if (t && t.goal && t.goal.id === goal.id && t.status !== "cancelled") out.push(t)
+    }
+    out.sort(store.byDue)
+    return out
   }
 
   function askConfirm(message, onConfirm) {
@@ -521,7 +540,7 @@ BarWidget {
       urgent: root.urgent
 
       onSaveRequested: function(fields) {
-        close()
+        editor.close()
         if (editingTask) {
           var argv = store.taskEditArgv(editingTask, fields)
           if (argv.length > 5) store.submitWrite(argv, "Saving task…")
@@ -529,7 +548,7 @@ BarWidget {
           store.submitWrite(store.taskAddArgv(fields, ""), "Adding task…")
         }
       }
-      onCanceled: close()
+      onCanceled: editor.close()
     }
 
     PravahGoalEditor {
@@ -541,11 +560,11 @@ BarWidget {
       accent: root.accent
 
       onSaveRequested: function(fields) {
-        close()
+        goalEditor.close()
         if (editingGoal) store.submitWrite(store.goalEditArgv(editingGoal, fields), "Saving goal…")
         else store.submitWrite(store.goalAddArgv(fields), "Creating goal…")
       }
-      onCanceled: close()
+      onCanceled: goalEditor.close()
     }
 
     PravahDatePicker {
@@ -561,9 +580,9 @@ BarWidget {
       onPicked: function(date) {
         if (targetTask && date !== "") store.submitWrite(store.taskScheduleArgv(targetTask, date), "Rescheduling task…")
         targetTask = null
-        close()
+        schedulePicker.close()
       }
-      onCanceled: { targetTask = null; close() }
+      onCanceled: { targetTask = null; schedulePicker.close() }
     }
 
     ConfirmDialog {
@@ -603,7 +622,7 @@ BarWidget {
       fg: root.fg
       accent: root.accent
       urgent: root.urgent
-      width: parent.width
+      width: parent ? parent.width : 0
       onToggled: root.toggleTask(modelData)
       onEditRequested: root.openEditor(modelData)
       onScheduleRequested: root.openSchedulePicker(modelData)
@@ -810,12 +829,22 @@ BarWidget {
           required property var modelData
 
           goal: modelData
+          tasks: root.tasksForGoal(modelData, store.allTasks)
+          today: store.today
+          canWrite: store.canWrite
+          pendingTaskId: root.pendingTaskId
+          writeBusy: store.writeBusy
           fg: root.fg
           accent: root.accent
           urgent: root.urgent
           width: parent.width
           onEditRequested: goalEditor.openFor(modelData)
           onRemoveRequested: root.confirmRemoveGoal(modelData)
+          onTaskToggled: function(task) { root.toggleTask(task) }
+          onTaskEditRequested: function(task) { root.openEditor(task) }
+          onTaskScheduleRequested: function(task) { root.openSchedulePicker(task) }
+          onTaskUnscheduleRequested: function(task) { root.unscheduleTask(task) }
+          onTaskRemoveRequested: function(task) { root.confirmRemoveTask(task) }
         }
       }
 
