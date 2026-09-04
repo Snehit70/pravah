@@ -25,6 +25,7 @@ BarWidget {
   property string tagFilter: ""
   property string pendingTaskId: ""
   property bool overdueExpanded: false
+  property bool completedExpanded: false
   property var confirmAction: null
   property string lastOperationId: ""
 
@@ -716,16 +717,57 @@ BarWidget {
 
       Repeater { model: root.fToday; delegate: taskDelegate }
 
-      Text {
-        visible: root.showCompleted && root.fCompletedToday.length > 0 && (root.fToday.length > 0 || root.fOverdue.length > 0)
-        text: "Completed · " + root.fCompletedToday.length
-        color: root.muted
-        font.family: Style.font.family
-        font.pixelSize: Style.font.caption
-        font.bold: true
+      Rectangle {
+        visible: root.showCompleted && root.fCompletedToday.length > 0
+        width: parent.width
+        height: Style.space(24)
+        radius: Style.space(6)
+        color: completedHeaderMouse.containsMouse ? root.faint : "transparent"
+
+        Behavior on color { ColorAnimation { duration: 100 } }
+
+        Row {
+          anchors.fill: parent
+          anchors.leftMargin: Style.space(5)
+          spacing: Style.space(5)
+
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.completedExpanded ? "󰅀" : "󰅂"
+            color: root.muted
+            font.family: Style.font.family
+            font.pixelSize: Style.font.caption
+          }
+
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: "Completed · " + root.fCompletedToday.length
+            color: root.muted
+            font.family: Style.font.family
+            font.pixelSize: Style.font.caption
+            font.bold: true
+          }
+
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.completedExpanded ? "" : "tap to expand"
+            color: root.muted
+            font.family: Style.font.family
+            font.pixelSize: Style.font.caption
+          }
+        }
+
+        MouseArea {
+          id: completedHeaderMouse
+
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.completedExpanded = !root.completedExpanded
+        }
       }
 
-      Repeater { model: root.showCompleted ? root.fCompletedToday : []; delegate: taskDelegate }
+      Repeater { model: root.showCompleted && root.completedExpanded ? root.fCompletedToday : []; delegate: taskDelegate }
 
       Item {
         visible: root.fToday.length === 0 && root.fCompletedToday.length === 0

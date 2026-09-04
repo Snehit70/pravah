@@ -89,7 +89,7 @@ Item {
 
   Rectangle {
     anchors.fill: parent
-    color: Qt.rgba(Color.background.r, Color.background.g, Color.background.b, 0.85)
+    color: Color.popups.background
 
     MouseArea { anchors.fill: parent; onClicked: {} }
 
