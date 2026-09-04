@@ -37,7 +37,6 @@ BarWidget {
     function open(): void {
       root.panelOpen = true
       store.refresh()
-      store.loadOperations()
     }
 
     function close(): void { root.panelOpen = false }
@@ -65,28 +64,16 @@ BarWidget {
     { id: "today", label: "Today", count: store.todayTasks.length },
     { id: "inbox", label: "Inbox", count: store.inboxTasks.length },
     { id: "upcoming", label: "Upcoming", count: store.upcomingTasks.length },
-    { id: "goals", label: "Goals", count: store.goals.length },
-    { id: "history", label: "History", count: 0 }
+    { id: "goals", label: "Goals", count: store.goals.length }
   ]
 
   readonly property bool isTaskTab: activeTab === "today" || activeTab === "inbox" || activeTab === "upcoming"
 
   // ------------------------------------------------------------- filters ---
-  function passesFilters(t) {
-    var q = searchText.toLowerCase()
-    if (q !== "") {
-      var hay = (t.title + " " + (t.description || "") + " " + (t.tags || []).join(" ")).toLowerCase()
-      if (hay.indexOf(q) === -1) return false
-    }
-    if (priorityFilter.length > 0 && priorityFilter.indexOf(t.priority) === -1) return false
-    if (tagFilter !== "" && (!t.tags || t.tags.indexOf(tagFilter) === -1)) return false
-    return true
-  }
-
   function filtered(list) {
     var out = []
     for (var i = 0; i < list.length; i++)
-      if (passesFilters(list[i])) out.push(list[i])
+      if (store.passesFilters(list[i], searchText, priorityFilter, tagFilter)) out.push(list[i])
     return out
   }
 
@@ -102,7 +89,7 @@ BarWidget {
       var group = store.upcomingGroups[i]
       var tasks = []
       for (var k = 0; k < group.tasks.length; k++)
-        if (passesFilters(group.tasks[k])) tasks.push(group.tasks[k])
+        if (store.passesFilters(group.tasks[k], searchText, priorityFilter, tagFilter)) tasks.push(group.tasks[k])
       if (tasks.length > 0) out.push({ date: group.date, label: group.label, tasks: tasks })
     }
     return out
@@ -176,36 +163,8 @@ BarWidget {
     return "Done"
   }
 
-  // Quick-add tokens: Fix leak !p1 @home ~30m 9:30 → fields + title.
-  function parseQuickAdd(raw) {
-    var text = String(raw || "").trim()
-    if (text === "") return null
-    var fields = { priority: "", tags: [], estimatedMinutes: 0, time: "" }
-    var tokens = text.split(/\s+/)
-    var kept = []
-    for (var i = 0; i < tokens.length; i++) {
-      var tok = tokens[i]
-      var m
-      if ((m = tok.match(/^![pP]([1-3])$/))) { fields.priority = "p" + m[1]; continue }
-      if ((m = tok.match(/^@([^\s,]+)$/))) { fields.tags.push(m[1]); continue }
-      if ((m = tok.match(/^~(\d+)(m|min|h)?$/i))) {
-        fields.estimatedMinutes = parseInt(m[1], 10) * ((m[2] && m[2].toLowerCase() === "h") ? 60 : 1)
-        continue
-      }
-      if ((m = tok.match(/^([01]?\d|2[0-3]):([0-5]\d)$/))) {
-        fields.time = (m[1].length === 1 ? "0" + m[1] : m[1]) + ":" + m[2]
-        continue
-      }
-      kept.push(tok)
-    }
-    var title = kept.join(" ")
-    if (title === "") title = text
-    fields.title = title
-    return fields
-  }
-
   function quickAdd() {
-    var parsed = parseQuickAdd(quickInput.text)
+    var parsed = store.parseQuickAdd(quickInput.text)
     if (!parsed || parsed.title.trim() === "") return
     var fields = {
       title: parsed.title,
@@ -286,7 +245,6 @@ BarWidget {
       panelOpen = !panelOpen
       if (panelOpen) {
         store.refresh()
-        store.loadOperations()
       }
     }
   }
@@ -382,7 +340,7 @@ BarWidget {
           tooltipText: "Refresh"
           focusable: false
           enabled: !store.syncing
-          onClicked: { store.refresh(); store.loadOperations() }
+          onClicked: store.refresh()
         }
 
         Button {
@@ -487,8 +445,7 @@ BarWidget {
           sourceComponent: root.activeTab === "today" ? todayComp
             : root.activeTab === "inbox" ? inboxComp
             : root.activeTab === "upcoming" ? upcomingComp
-            : root.activeTab === "goals" ? goalsComp
-            : historyComp
+            : goalsComp
         }
       }
 
@@ -553,17 +510,6 @@ BarWidget {
         }
       }
 
-      Text {
-        id: historyFooter
-
-        width: parent.width
-        visible: root.activeTab === "history"
-        text: "The last 30 changes, newest first. Undo reverses a change while its operation is still recoverable."
-        color: root.muted
-        wrapMode: Text.Wrap
-        font.family: Style.font.family
-        font.pixelSize: Style.font.caption
-      }
     }
 
     // ------------------------------------------------------- overlays ---
@@ -904,85 +850,6 @@ BarWidget {
     }
   }
 
-  Component {
-    id: historyComp
-
-    Column {
-      width: tabLoader.width
-      spacing: Style.space(3)
-
-      Repeater {
-        model: store.operations
-
-        delegate: Rectangle {
-          required property var modelData
-
-          readonly property bool undoable: modelData.undoAvailable
-          readonly property string opName: modelData.operation.replace("tasks.", "").replace("goals.", "").replace("operations.", "")
-
-          width: parent.width
-          height: Style.space(30)
-          radius: Style.space(6)
-          color: root.faint
-
-          RowLayout {
-            anchors.fill: parent
-            anchors.margins: Style.space(5)
-            spacing: Style.space(7)
-
-            Text {
-              text: opName
-              color: root.fg
-              font.family: Style.font.family
-              font.pixelSize: Style.font.bodySmall
-              font.bold: true
-            }
-
-            Text {
-              Layout.fillWidth: true
-              text: modelData.targetType + " · " + modelData.status
-              color: root.muted
-              elide: Text.ElideRight
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
-            }
-
-            Button {
-              visible: undoable
-              text: "Undo"
-              fontSize: Style.font.caption
-              enabled: store.canWrite && !store.writeBusy
-              focusable: false
-              onClicked: store.submitWrite(store.undoArgv(modelData), "Undoing…")
-            }
-
-            Text {
-              visible: !undoable
-              text: "—"
-              color: root.muted
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
-            }
-          }
-        }
-      }
-
-      Item {
-        visible: store.operations.length === 0
-        width: tabLoader.width
-        height: Style.space(92)
-
-        Column {
-          anchors.centerIn: parent
-          spacing: Style.space(7)
-
-          Text { anchors.horizontalCenter: parent.horizontalCenter; text: "⟲"; color: root.muted; font.pixelSize: 22 }
-          Text { anchors.horizontalCenter: parent.horizontalCenter; text: "No recent changes"; color: root.fg; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
-        }
-      }
-    }
-  }
-
   // ------------------------------------------------------------- wiring ---
   Connections {
     target: store
@@ -1010,7 +877,7 @@ BarWidget {
 
   Component.onCompleted: {
     var tab = String(setting("defaultTab", "today"))
-    var valid = ["today", "inbox", "upcoming", "goals", "history"]
+    var valid = ["today", "inbox", "upcoming", "goals"]
     activeTab = valid.indexOf(tab) !== -1 ? tab : "today"
   }
 }

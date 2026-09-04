@@ -200,6 +200,46 @@ QtObject {
     return (typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value)) ? value : ""
   }
 
+  // Quick-add tokens: Fix leak !p1 @home ~30m 9:30 → fields + title.
+  // Unknown tokens stay in the title. If every token is consumed, the
+  // original string is kept as the title so "!p1" still captures.
+  function parseQuickAdd(raw) {
+    var text = String(raw || "").trim()
+    if (text === "") return null
+    var fields = { title: "", priority: "", tags: [], estimatedMinutes: 0, time: "" }
+    var tokens = text.split(/\s+/)
+    var kept = []
+    for (var i = 0; i < tokens.length; i++) {
+      var tok = tokens[i]
+      var m
+      if ((m = tok.match(/^![pP]([1-3])$/))) { fields.priority = "p" + m[1]; continue }
+      if ((m = tok.match(/^@([^\s,]+)$/))) { fields.tags.push(m[1]); continue }
+      if ((m = tok.match(/^~(\d+)(m|min|h)?$/i))) {
+        fields.estimatedMinutes = parseInt(m[1], 10) * ((m[2] && m[2].toLowerCase() === "h") ? 60 : 1)
+        continue
+      }
+      if ((m = tok.match(/^([01]?\d|2[0-3]):([0-5]\d)$/))) {
+        fields.time = (m[1].length === 1 ? "0" + m[1] : m[1]) + ":" + m[2]
+        continue
+      }
+      kept.push(tok)
+    }
+    var title = kept.join(" ")
+    fields.title = title === "" ? text : title
+    return fields
+  }
+
+  function passesFilters(t, searchText, priorityFilter, tagFilter) {
+    var q = String(searchText || "").toLowerCase()
+    if (q !== "") {
+      var hay = (t.title + " " + (t.description || "") + " " + (t.tags || []).join(" ")).toLowerCase()
+      if (hay.indexOf(q) === -1) return false
+    }
+    if (priorityFilter && priorityFilter.length > 0 && priorityFilter.indexOf(t.priority) === -1) return false
+    if (tagFilter && tagFilter !== "" && (!t.tags || t.tags.indexOf(tagFilter) === -1)) return false
+    return true
+  }
+
   function normalizeTask(t) {
     if (!t || typeof t !== "object") return null
     var id = typeof t._id === "string" ? t._id : (typeof t.id === "string" ? t.id : "")
@@ -439,7 +479,6 @@ QtObject {
     lastWriteError = ""
     writeSucceeded(env)
     refresh()
-    loadOperations()
   }
 
   function failWrite(message) {

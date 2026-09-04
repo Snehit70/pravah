@@ -5,7 +5,7 @@
   "version": "0.3.0",
   "author": "Raja",
   "license": "MIT",
-  "description": "A full front-end for the Pravah CLI: today, inbox, upcoming, goals, and undoable history from the bar.",
+  "description": "A full front-end for the Pravah CLI: today, inbox, upcoming, and goals from the bar.",
   "kinds": ["bar-widget"],
   "entryPoints": {
     "barWidget": "widget/PravahTodo.qml"
@@ -35,7 +35,7 @@
         "key": "defaultTab",
         "type": "enum",
         "label": "Tab opened on click",
-        "options": ["today", "inbox", "upcoming", "goals", "history"],
+        "options": ["today", "inbox", "upcoming", "goals"],
         "defaultValue": "today"
       },
       {

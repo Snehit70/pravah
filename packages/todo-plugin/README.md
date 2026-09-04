@@ -12,7 +12,6 @@ capability in a native panel — no terminal needed for daily planning.
 - **Inbox** — unscheduled tasks for quick triage.
 - **Upcoming** — the next 14 days grouped by date, like `pravah upcoming`.
 - **Goals** — goals with linked-task progress bars, add / edit / remove.
-- **History** — the last 30 operations, each with Undo while recoverable.
 
 **Actions** (all writes go through the CLI's dry-run → apply safety flow):
 
@@ -23,7 +22,7 @@ capability in a native panel — no terminal needed for daily planning.
 - Row menu (`⋯`): change date (mini calendar), move to Inbox, remove
   (with a confirm dialog; removal stays recoverable through Undo).
 - Edit any task field, including notes, via ✎.
-- Undo the last write from the toast, or any recent write from History.
+- Undo the last write from the toast while the operation is still recoverable.
 - Search plus priority and tag filters across all task tabs.
 - Health dot in the header: `pravah doctor` / `auth status` run once at
   startup; a read-only credential disables actions with a clear message.
@@ -87,7 +86,7 @@ If Omarchy keeps an older widget instance alive after an upgrade, run
 ## Controls
 
 - Left click opens or closes the panel; right click refreshes immediately.
-- `Today | Inbox | Upcoming | Goals | History` tabs across the top.
+- `Today | Inbox | Upcoming | Goals` tabs across the top.
 - Type in the quick-add field and press Enter to capture; tokens
   `!p1`, `@tag`, `~30m`, and `9:30` are parsed out of the title.
 - Checkbox completes / reopens; ✎ edits; ⋯ opens the row menu.
@@ -112,6 +111,23 @@ widget settings UI):
 - `pollIntervalSec` — refresh cadence, default 30 (min 10).
 - `defaultTab` — which tab opens on click, default `today`.
 - `showCompleted` — show the completed section on Today, default `On`.
+
+## Tests
+
+The data layer has a QML contract suite that runs against a fake `pravah`
+stub (v2 envelope only, no network, no live writes):
+
+```bash
+bash packages/todo-plugin/tests/run.sh
+```
+
+It needs `quickshell` and a Wayland/X11 display. Machines without the
+Omarchy shell kit skip with exit 0.
+
+The suite covers envelope parsing, task/goal/operation normalization,
+today/overdue/upcoming/inbox horizons, quick-add tokens, argv builders,
+filters, health, and the dry-run → apply write pipeline with a shared
+idempotency key.
 
 ## Notes
 
