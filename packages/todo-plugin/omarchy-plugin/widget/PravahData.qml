@@ -446,6 +446,19 @@ QtObject {
     onExited: function(exitCode) { root.finishWrite(exitCode, writeStdout.text, writeStderr.text) }
   }
 
+  // Insert extra flags before `--` so they are not extra positionals
+  // after the title. tasks add / goals add end with `--` + title.
+  function withWriteFlags(baseArgv, extra) {
+    var argv = baseArgv || []
+    var flags = extra || []
+    var cut = -1
+    for (var i = 0; i < argv.length; i++) {
+      if (argv[i] === "--") { cut = i; break }
+    }
+    if (cut === -1) return argv.concat(flags)
+    return argv.slice(0, cut).concat(flags).concat(argv.slice(cut))
+  }
+
   // baseArgv must include --json but no --dry-run/--idempotency-key.
   // Returns false when a write is already in flight or the credential
   // lacks tasks:write.
@@ -455,8 +468,8 @@ QtObject {
     writeLabel = label
     lastWriteError = ""
     var key = "omarchy-widget-" + Date.now() + "-" + Math.floor(Math.random() * 1000000)
-    _write = { argv: baseArgv.concat(["--idempotency-key", key]), applied: false }
-    writeProc.command = baseArgv.concat(["--dry-run", "--idempotency-key", key])
+    _write = { argv: withWriteFlags(baseArgv, ["--idempotency-key", key]), applied: false }
+    writeProc.command = withWriteFlags(baseArgv, ["--dry-run", "--idempotency-key", key])
     writeProc.running = true
     return true
   }
