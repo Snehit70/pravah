@@ -24,6 +24,7 @@ BarWidget {
   property var priorityFilter: []
   property string tagFilter: ""
   property string pendingTaskId: ""
+  property bool overdueExpanded: false
   property var confirmAction: null
   property string lastOperationId: ""
 
@@ -376,7 +377,7 @@ BarWidget {
         }
 
         Button {
-          iconText: "↻"
+          iconText: "󰑐"
           iconSpinning: store.syncing
           tooltipText: "Refresh"
           focusable: false
@@ -385,7 +386,7 @@ BarWidget {
         }
 
         Button {
-          iconText: "✕"
+          iconText: "󰅚"
           tooltipText: "Close"
           focusable: false
           onClicked: root.panelOpen = false
@@ -520,7 +521,7 @@ BarWidget {
         }
 
         Button {
-          iconText: "⋯"
+          iconText: "󰇙"
           tooltipText: "Open the full form (description, tags, estimate…)"
           enabled: store.canWrite && !store.writeBusy
           focusable: false
@@ -701,19 +702,61 @@ BarWidget {
       width: tabLoader.width
       spacing: Style.space(4)
 
-      Text {
+      // Overdue stays collapsed until expanded — today's list stays calm.
+      Rectangle {
         visible: root.fOverdue.length > 0
-        text: "Overdue · " + root.fOverdue.length
-        color: root.urgent
-        font.family: Style.font.family
-        font.pixelSize: Style.font.caption
-        font.bold: true
+        width: parent.width
+        height: Style.space(24)
+        radius: Style.space(6)
+        color: overdueHeaderMouse.containsMouse ? root.faint : "transparent"
+
+        Behavior on color { ColorAnimation { duration: 100 } }
+
+        Row {
+          anchors.fill: parent
+          anchors.leftMargin: Style.space(5)
+          spacing: Style.space(5)
+
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.overdueExpanded ? "󰅀" : "󰅂"
+            color: root.urgent
+            font.family: Style.font.family
+            font.pixelSize: Style.font.caption
+          }
+
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: "Overdue · " + root.fOverdue.length
+            color: root.urgent
+            font.family: Style.font.family
+            font.pixelSize: Style.font.caption
+            font.bold: true
+          }
+
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.overdueExpanded ? "" : "tap to expand"
+            color: root.muted
+            font.family: Style.font.family
+            font.pixelSize: Style.font.caption
+          }
+        }
+
+        MouseArea {
+          id: overdueHeaderMouse
+
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.overdueExpanded = !root.overdueExpanded
+        }
       }
 
-      Repeater { model: root.fOverdue; delegate: taskDelegate }
+      Repeater { model: root.overdueExpanded ? root.fOverdue : []; delegate: taskDelegate }
 
       Text {
-        visible: root.fOverdue.length > 0 && (root.fToday.length > 0 || root.fCompletedToday.length > 0)
+        visible: root.overdueExpanded && root.fOverdue.length > 0 && (root.fToday.length > 0 || root.fCompletedToday.length > 0)
         text: "Today · " + root.fToday.length
         color: root.muted
         font.family: Style.font.family
@@ -735,7 +778,7 @@ BarWidget {
       Repeater { model: root.showCompleted ? root.fCompletedToday : []; delegate: taskDelegate }
 
       Item {
-        visible: root.fOverdue.length === 0 && root.fToday.length === 0 && root.fCompletedToday.length === 0
+        visible: root.fToday.length === 0 && root.fCompletedToday.length === 0
         width: tabLoader.width
         height: Style.space(92)
 
@@ -744,8 +787,8 @@ BarWidget {
           spacing: Style.space(7)
 
           Text { anchors.horizontalCenter: parent.horizontalCenter; text: "✓"; color: root.muted; font.pixelSize: 25 }
-          Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Nothing left for today"; color: root.fg; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
-          Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Capture something below, or pull from the Inbox tab."; color: root.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+          Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.fOverdue.length > 0 ? "Nothing scheduled for right now" : "Nothing left for today"; color: root.fg; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
+          Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.fOverdue.length > 0 ? "Expand Overdue above to work through delayed tasks." : "Capture something below, or pull from the Inbox tab."; color: root.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
         }
       }
     }

@@ -110,7 +110,7 @@ Item {
           font.bold: true
         }
 
-        Button { iconText: "✕"; focusable: false; onClicked: editor.canceled() }
+        Button { iconText: "󰅚"; focusable: false; onClicked: editor.canceled() }
       }
 
       TextField {
@@ -175,7 +175,7 @@ Item {
         }
 
         Button {
-          iconText: "✕"
+          iconText: "󰅚"
           tooltipText: "Clear date"
           focusable: false
           enabled: editor.selectedDate !== ""

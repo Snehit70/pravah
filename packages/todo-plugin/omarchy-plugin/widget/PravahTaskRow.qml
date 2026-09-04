@@ -6,8 +6,9 @@ import qs.Ui
 
 // One task. Left: a completion checkbox (click to complete, click again to
 // reopen). Middle: title over a meta line (priority, time, date when it
-// differs from today, tags, estimate, goal). Right, on hover: edit and an
-// action menu (change date, move to Inbox, remove).
+// differs from today, tags, estimate, goal). Right: a hover action pair
+// whose slot is ALWAYS reserved — hover only fades it in via opacity, so
+// scrolling the list never triggers reflow or jitter.
 Rectangle {
   id: row
 
@@ -27,6 +28,8 @@ Rectangle {
 
   readonly property color muted: Qt.rgba(fg.r, fg.g, fg.b, 0.55)
   readonly property color faint: Qt.rgba(fg.r, fg.g, fg.b, 0.08)
+  readonly property bool hovered: hoverArea.containsMouse
+  readonly property bool actionable: hovered && canWrite && !pending
   readonly property bool done: task ? task.status === "completed" : false
   readonly property bool overdue: task && !done && task.deadline !== "" && task.deadline < today
   readonly property bool showDate: task && task.deadline !== "" && task.deadline !== today
@@ -36,7 +39,9 @@ Rectangle {
   width: parent ? parent.width : 0
   implicitHeight: content.implicitHeight + Style.space(12)
   radius: Style.space(7)
-  color: hoverArea.containsMouse ? Qt.rgba(fg.r, fg.g, fg.b, 0.10) : faint
+  color: hovered ? Qt.rgba(fg.r, fg.g, fg.b, 0.10) : faint
+
+  Behavior on color { ColorAnimation { duration: 120 } }
 
   function pillColor(p) { return p === "p1" ? urgent : (p === "p2" ? accent : muted) }
 
@@ -176,25 +181,39 @@ Rectangle {
       }
     }
 
+    // Reserved action slot: constant geometry, hover only animates opacity.
     Row {
+      id: actions
+
       Layout.alignment: Qt.AlignVCenter
       spacing: Style.space(2)
-      visible: hoverArea.containsMouse && row.canWrite && !row.pending
+      opacity: row.actionable ? 1 : 0
+      enabled: row.actionable
+
+      Behavior on opacity { NumberAnimation { duration: 110; easing.type: Easing.OutQuad } }
 
       Button {
         anchors.verticalCenter: parent.verticalCenter
-        iconText: "✎"
+        width: Style.space(24)
+        height: Style.space(24)
+        horizontalPadding: 0
+        verticalPadding: 0
+        iconText: "󰏫"
         tooltipText: "Edit task"
-        fontSize: Style.font.caption
+        fontSize: Style.font.bodySmall
         focusable: false
         onClicked: row.editRequested()
       }
 
       Button {
         anchors.verticalCenter: parent.verticalCenter
-        iconText: "⋯"
+        width: Style.space(24)
+        height: Style.space(24)
+        horizontalPadding: 0
+        verticalPadding: 0
+        iconText: "󰇙"
         tooltipText: "More actions"
-        fontSize: Style.font.caption
+        fontSize: Style.font.bodySmall
         focusable: false
         onClicked: rowMenu.open()
       }

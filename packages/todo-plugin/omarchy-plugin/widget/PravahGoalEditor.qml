@@ -83,7 +83,7 @@ Item {
           font.bold: true
         }
 
-        Button { iconText: "✕"; focusable: false; onClicked: editor.canceled() }
+        Button { iconText: "󰅚"; focusable: false; onClicked: editor.canceled() }
       }
 
       Column {
@@ -141,7 +141,7 @@ Item {
         }
 
         Button {
-          iconText: "✕"
+          iconText: "󰅚"
           tooltipText: "Clear due date"
           focusable: false
           enabled: editor.selectedDate !== ""

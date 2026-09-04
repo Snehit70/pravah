@@ -29,6 +29,8 @@ Rectangle {
   radius: Style.space(7)
   color: hoverArea.containsMouse ? Qt.rgba(fg.r, fg.g, fg.b, 0.10) : faint
 
+  Behavior on color { ColorAnimation { duration: 120 } }
+
   ColumnLayout {
     id: content
 
@@ -50,22 +52,40 @@ Rectangle {
         elide: Text.ElideRight
       }
 
-      Button {
-        visible: hoverArea.containsMouse
-        iconText: "✎"
-        tooltipText: "Edit goal"
-        fontSize: Style.font.caption
-        focusable: false
-        onClicked: card.editRequested()
-      }
+      // Reserved slot: constant geometry, hover only fades the buttons in.
+      Row {
+        Layout.alignment: Qt.AlignVCenter
+        spacing: Style.space(2)
+        opacity: hoverArea.containsMouse ? 1 : 0
+        enabled: hoverArea.containsMouse
 
-      Button {
-        visible: hoverArea.containsMouse
-        iconText: "✕"
-        tooltipText: "Remove goal"
-        fontSize: Style.font.caption
-        focusable: false
-        onClicked: card.removeRequested()
+        Behavior on opacity { NumberAnimation { duration: 110; easing.type: Easing.OutQuad } }
+
+        Button {
+          anchors.verticalCenter: parent.verticalCenter
+          width: Style.space(24)
+          height: Style.space(24)
+          horizontalPadding: 0
+          verticalPadding: 0
+          iconText: "󰏫"
+          tooltipText: "Edit goal"
+          fontSize: Style.font.bodySmall
+          focusable: false
+          onClicked: card.editRequested()
+        }
+
+        Button {
+          anchors.verticalCenter: parent.verticalCenter
+          width: Style.space(24)
+          height: Style.space(24)
+          horizontalPadding: 0
+          verticalPadding: 0
+          iconText: "󰆴"
+          tooltipText: "Remove goal"
+          fontSize: Style.font.bodySmall
+          focusable: false
+          onClicked: card.removeRequested()
+        }
       }
     }
 
