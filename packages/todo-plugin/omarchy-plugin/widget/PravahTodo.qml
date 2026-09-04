@@ -128,8 +128,12 @@ BarWidget {
     schedulePicker.openFor(task.deadline)
   }
 
-  function openEditor(task) {
-    editor.openFor(task, task ? "" : (activeTab === "today" ? store.today : ""))
+  function openEditor(task, presetGoalId) {
+    editor.openFor(task, task ? "" : (activeTab === "today" ? store.today : ""), store.goals, presetGoalId || "")
+  }
+
+  function unlinkTask(task) {
+    store.submitWrite(store.taskUnlinkArgv(task), "Unlinking task…")
   }
 
   function confirmRemoveTask(task) {
@@ -177,6 +181,8 @@ BarWidget {
     if (action === "tasks.reopen") return "Task reopened"
     if (action === "tasks.schedule") return "Task rescheduled"
     if (action === "tasks.unschedule") return "Task moved to Inbox"
+    if (action === "tasks.link") return "Task linked to goal"
+    if (action === "tasks.unlink") return "Task unlinked from goal"
     if (action === "tasks.remove") return "Task removed"
     if (action === "goals.add") return "Goal created"
     if (action === "goals.edit") return "Goal updated"
@@ -539,6 +545,7 @@ BarWidget {
       fg: root.fg
       accent: root.accent
       urgent: root.urgent
+      goals: store.goals
 
       onSaveRequested: function(fields) {
         editor.close()
@@ -628,6 +635,8 @@ BarWidget {
       onEditRequested: root.openEditor(modelData)
       onScheduleRequested: root.openSchedulePicker(modelData)
       onUnscheduleRequested: root.unscheduleTask(modelData)
+      onLinkRequested: root.openEditor(modelData)
+      onUnlinkRequested: root.unlinkTask(modelData)
       onRemoveRequested: root.confirmRemoveTask(modelData)
     }
   }
@@ -882,10 +891,13 @@ BarWidget {
           width: parent.width
           onEditRequested: goalEditor.openFor(modelData)
           onRemoveRequested: root.confirmRemoveGoal(modelData)
+          onAddTaskRequested: root.openEditor(null, modelData.id)
           onTaskToggled: function(task) { root.toggleTask(task) }
           onTaskEditRequested: function(task) { root.openEditor(task) }
           onTaskScheduleRequested: function(task) { root.openSchedulePicker(task) }
           onTaskUnscheduleRequested: function(task) { root.unscheduleTask(task) }
+          onTaskLinkRequested: function(task) { root.openEditor(task) }
+          onTaskUnlinkRequested: function(task) { root.unlinkTask(task) }
           onTaskRemoveRequested: function(task) { root.confirmRemoveTask(task) }
         }
       }

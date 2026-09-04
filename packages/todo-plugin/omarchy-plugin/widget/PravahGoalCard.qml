@@ -22,10 +22,13 @@ Rectangle {
 
   signal editRequested()
   signal removeRequested()
+  signal addTaskRequested()
   signal taskToggled(var task)
   signal taskEditRequested(var task)
   signal taskScheduleRequested(var task)
   signal taskUnscheduleRequested(var task)
+  signal taskLinkRequested(var task)
+  signal taskUnlinkRequested(var task)
   signal taskRemoveRequested(var task)
 
   readonly property color muted: Qt.rgba(fg.r, fg.g, fg.b, 0.55)
@@ -104,6 +107,19 @@ Rectangle {
         enabled: card.canWrite
 
         Behavior on opacity { NumberAnimation { duration: 110; easing.type: Easing.OutQuad } }
+
+        Button {
+          anchors.verticalCenter: parent.verticalCenter
+          width: Style.space(24)
+          height: Style.space(24)
+          horizontalPadding: 0
+          verticalPadding: 0
+          text: "+"
+          tooltipText: "Add a task to this goal"
+          fontSize: Style.font.bodySmall
+          focusable: false
+          onClicked: card.addTaskRequested()
+        }
 
         Button {
           anchors.verticalCenter: parent.verticalCenter
@@ -220,6 +236,8 @@ Rectangle {
           onEditRequested: card.taskEditRequested(modelData)
           onScheduleRequested: card.taskScheduleRequested(modelData)
           onUnscheduleRequested: card.taskUnscheduleRequested(modelData)
+          onLinkRequested: card.taskLinkRequested(modelData)
+          onUnlinkRequested: card.taskUnlinkRequested(modelData)
           onRemoveRequested: card.taskRemoveRequested(modelData)
         }
       }

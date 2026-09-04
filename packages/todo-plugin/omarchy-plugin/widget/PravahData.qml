@@ -503,8 +503,9 @@ QtObject {
   }
 
   // --------------------------------------------------------- argv builders ---
-  // Field object: { title, description, deadline, time, priority, tags, estimatedMinutes }
-  // where "" means "unset" and tags is an array.
+  // Field object: { title, description, deadline, time, priority, tags, estimatedMinutes, goalId }
+  // where "" means "unset", tags is an array, and goalId "" means "no
+  // change" (add) while taskEditArgv diffs it against the task's link.
   function taskAddArgv(f, defaultDeadline) {
     var argv = [cli, "tasks", "add", "--json"]
     var deadline = f.deadline || defaultDeadline || ""
@@ -514,6 +515,7 @@ QtObject {
     if (f.tags && f.tags.length > 0) argv = argv.concat(["--tags", f.tags.join(",")])
     if (f.estimatedMinutes > 0) argv = argv.concat(["--estimated-minutes", String(Math.round(f.estimatedMinutes))])
     if (f.description) argv = argv.concat(["--description", f.description])
+    if (f.goalId) argv = argv.concat(["--goal", f.goalId])
     return argv.concat(["--", f.title])
   }
 
@@ -536,8 +538,15 @@ QtObject {
     var estNow = f.estimatedMinutes > 0 ? Math.round(f.estimatedMinutes) : 0
     if (estNow !== (task.estimatedMinutes || 0))
       argv = argv.concat(["--estimated-minutes", estNow === 0 ? "clear" : String(estNow)])
+    var goalNow = f.goalId || ""
+    var goalBefore = (task.goal && task.goal.id) || ""
+    if (goalNow !== goalBefore)
+      argv = argv.concat(["--goal", goalNow === "" ? "clear" : goalNow])
     return argv
   }
+
+  function taskLinkArgv(task, goalId) { return [cli, "tasks", "link", task.id, "--json", "--goal", goalId] }
+  function taskUnlinkArgv(task) { return [cli, "tasks", "unlink", task.id, "--json"] }
 
   function taskCompleteArgv(task) { return [cli, "tasks", "complete", task.id, "--json"] }
   function taskReopenArgv(task) { return [cli, "tasks", "reopen", task.id, "--json"] }

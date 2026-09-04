@@ -5,9 +5,10 @@ import qs.Commons
 import qs.Ui
 
 // Overlay form that maps to the full surface of `tasks add` / `tasks edit`:
-// title, description, deadline (date picker), time, priority, tags, and
-// estimate. Emits saveRequested(fields) with
-// { title, description, deadline, time, priority, tags, estimatedMinutes }.
+// title, description, deadline (date picker), time, priority, tags,
+// estimate, and goal link. Emits saveRequested(fields) with
+// { title, description, deadline, time, priority, tags, estimatedMinutes,
+//   goalId } where goalId "" means "no goal".
 Item {
   id: editor
 
@@ -16,6 +17,8 @@ Item {
   property color fg: Color.foreground
   property color accent: Color.accent
   property color urgent: Color.urgent
+  property var goals: []
+  property string selectedGoalId: ""
 
   signal saveRequested(var fields)
   signal canceled()
@@ -26,9 +29,17 @@ Item {
   property int selectedEstimate: 0
   property string error: ""
 
-  function openFor(task, fallbackDeadline) {
+  readonly property var goalOptions: {
+    var out = [{ value: "", label: "No goal" }]
+    for (var i = 0; i < goals.length; i++)
+      if (goals[i] && goals[i].id) out.push({ value: goals[i].id, label: goals[i].text })
+    return out
+  }
+
+  function openFor(task, fallbackDeadline, goalList, presetGoalId) {
     editingTask = task || null
     defaultDeadline = fallbackDeadline || ""
+    goals = goalList || goals
     titleInput.text = task ? task.title : ""
     descInput.text = task ? (task.description || "") : ""
     selectedDate = task ? (task.deadline || "") : (fallbackDeadline || "")
@@ -37,6 +48,8 @@ Item {
     selectedEstimate = task ? (task.estimatedMinutes || 0) : 0
     estimateField.value = selectedEstimate
     tagsInput.text = task && task.tags ? task.tags.join(", ") : ""
+    if (task) selectedGoalId = (task.goal && task.goal.id) || ""
+    else selectedGoalId = presetGoalId || ""
     error = ""
     dueButton.refreshLabel()
     visible = true
@@ -81,7 +94,8 @@ Item {
       time: timeNorm,
       priority: selectedPriority,
       tags: tags,
-      estimatedMinutes: selectedEstimate
+      estimatedMinutes: selectedEstimate,
+      goalId: selectedGoalId
     })
   }
 
@@ -242,6 +256,16 @@ Item {
         font.pixelSize: Style.font.bodySmall
         onAccepted: editor.save()
         Keys.onEscapePressed: editor.canceled()
+      }
+
+      Dropdown {
+        id: goalDropdown
+
+        width: parent.width
+        showLabel: false
+        options: editor.goalOptions
+        value: editor.selectedGoalId
+        onChanged: function(value) { editor.selectedGoalId = value }
       }
 
       Text {

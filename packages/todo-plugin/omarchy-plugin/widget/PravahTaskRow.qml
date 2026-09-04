@@ -25,6 +25,8 @@ Rectangle {
   signal editRequested()
   signal scheduleRequested()
   signal unscheduleRequested()
+  signal linkRequested()
+  signal unlinkRequested()
   signal removeRequested()
 
   readonly property color muted: Qt.rgba(fg.r, fg.g, fg.b, 0.55)
@@ -265,6 +267,25 @@ Rectangle {
           focusable: false
           visible: row.task && row.task.deadline !== ""
           onClicked: { row.menuOpen = false; row.unscheduleRequested() }
+        }
+
+        Button {
+          width: parent.width
+          text: row.task && row.task.goal ? "Change goal…" : "Link to goal…"
+          leftAlign: true
+          fontSize: Style.font.bodySmall
+          focusable: false
+          onClicked: { row.menuOpen = false; row.linkRequested() }
+        }
+
+        Button {
+          width: parent.width
+          text: "Unlink from goal"
+          leftAlign: true
+          fontSize: Style.font.bodySmall
+          focusable: false
+          visible: row.task && row.task.goal
+          onClicked: { row.menuOpen = false; row.unlinkRequested() }
         }
 
         Button {

@@ -119,4 +119,49 @@ describe("Pravah CLI v2 live adapter", () => {
     expect(fetch).toHaveBeenCalledTimes(3);
     expect(result).toMatchObject({ operation: { operationId: "op_1", undoExpiresAt: "2026-08-01T00:00:00.000Z" } });
   });
+
+  it("creates a task and links it to a goal inside one undo group", async () => {
+    const posts: Array<{ url: string; body: Record<string, unknown> }> = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/automation/credential")) return { ok: true, json: async () => ({ label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }) } as Response;
+      if (url.endsWith("/goals")) return { ok: true, json: async () => [{ id: "goal_1", text: "MLT" }] } as Response;
+      if (init?.method === "POST") {
+        posts.push({ url, body: JSON.parse(String(init.body)) });
+        if (url.endsWith("/tasks")) return { ok: true, json: async () => ({ taskId: "task_9", operationId: "op_add", undoAvailable: true }) } as Response;
+        return { ok: true, json: async () => ({ operationId: "op_link", undoAvailable: true }) } as Response;
+      }
+      return { ok: true, json: async () => [] } as Response;
+    });
+    const result = await executeCommand({ command: "tasks add", json: true }, { positionals: ["tasks", "add", "Goal task"], options: { goal: "MLT", "idempotency-key": "stable" } });
+    expect(result).toMatchObject({ action: "tasks.add", goal: { id: "goal_1" }, operation: { operationId: "op_add" }, linkOperation: { operationId: "op_link" } });
+    const groupIds = posts.map((post) => post.body.operationGroupId);
+    expect(posts.map((post) => post.url.split("/").pop())).toEqual(["tasks", "set"]);
+    expect(groupIds[0]).toMatch(/^grp_cli_/);
+    expect(groupIds[1]).toBe(groupIds[0]);
+    expect(posts[1].body).toMatchObject({ taskId: "task_9", goalId: "goal_1" });
+  });
+
+  it("links and unlinks a task through the goal-links endpoint", async () => {
+    const posts: Array<{ url: string; body: Record<string, unknown> }> = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/automation/credential")) return { ok: true, json: async () => ({ label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }) } as Response;
+      if (url.endsWith("/tasks")) return { ok: true, json: async () => [{ _id: "task_1", title: "Ship v2" }] } as Response;
+      if (url.endsWith("/goals")) return { ok: true, json: async () => [{ id: "goal_1", text: "MLT" }] } as Response;
+      if (init?.method === "POST") {
+        posts.push({ url, body: JSON.parse(String(init.body)) });
+        return { ok: true, json: async () => ({ operationId: "op_link", undoAvailable: true }) } as Response;
+      }
+      return { ok: true, json: async () => [] } as Response;
+    });
+    const linked = await executeCommand({ command: "tasks link", json: true }, { positionals: ["tasks", "link", "Ship v2"], options: { goal: "MLT", "idempotency-key": "stable" } });
+    expect(linked).toMatchObject({ action: "tasks.link", goal: { id: "goal_1" } });
+    const unlinked = await executeCommand({ command: "tasks unlink", json: true }, { positionals: ["tasks", "unlink", "Ship v2"], options: { "idempotency-key": "stable" } });
+    expect(unlinked).toMatchObject({ action: "tasks.unlink" });
+    expect(posts.map((post) => post.body)).toEqual([
+      expect.objectContaining({ taskId: "task_1", goalId: "goal_1" }),
+      expect.objectContaining({ taskId: "task_1", goalId: null }),
+    ]);
+  });
 });

@@ -188,6 +188,18 @@ ShellRoot {
     var editClear = store.taskEditArgv(task, { title: "Old", description: "", deadline: "", time: "", priority: "", tags: [], estimatedMinutes: 0 })
     argvEq("taskEdit clear", editClear, [store.cli, "tasks", "edit", "t1", "--json", "--deadline", "clear", "--time", "clear", "--priority", "clear", "--tags", "clear", "--estimated-minutes", "clear"])
 
+    var addGoal = store.taskAddArgv({ title: "Goal task", description: "", deadline: "", time: "", priority: "", tags: [], estimatedMinutes: 0, goalId: "g_ship" }, "")
+    argvEq("taskAdd goal", addGoal, [store.cli, "tasks", "add", "--json", "--goal", "g_ship", "--", "Goal task"])
+
+    var editLink = store.taskEditArgv({ id: "t1", title: "Old", description: "", deadline: "", time: "", priority: "", tags: [], estimatedMinutes: 0, goal: null }, { title: "Old", description: "", deadline: "", time: "", priority: "", tags: [], estimatedMinutes: 0, goalId: "g_ship" })
+    argvEq("taskEdit link", editLink, [store.cli, "tasks", "edit", "t1", "--json", "--goal", "g_ship"])
+
+    var editUnlink = store.taskEditArgv({ id: "t1", title: "Old", description: "", deadline: "", time: "", priority: "", tags: [], estimatedMinutes: 0, goal: { id: "g_ship" } }, { title: "Old", description: "", deadline: "", time: "", priority: "", tags: [], estimatedMinutes: 0, goalId: "" })
+    argvEq("taskEdit unlink", editUnlink, [store.cli, "tasks", "edit", "t1", "--json", "--goal", "clear"])
+
+    argvEq("link", store.taskLinkArgv(task, "g_ship"), [store.cli, "tasks", "link", "t1", "--json", "--goal", "g_ship"])
+    argvEq("unlink", store.taskUnlinkArgv(task), [store.cli, "tasks", "unlink", "t1", "--json"])
+
     argvEq("complete", store.taskCompleteArgv(task), [store.cli, "tasks", "complete", "t1", "--json"])
     argvEq("reopen", store.taskReopenArgv(task), [store.cli, "tasks", "reopen", "t1", "--json"])
     argvEq("schedule", store.taskScheduleArgv(task, "2026-09-05"), [store.cli, "tasks", "schedule", "t1", "--json", "--date", "2026-09-05"])
