@@ -313,14 +313,28 @@ ShellRoot {
     onTriggered: {
       if (phase === 0) {
         Quickshell.watchFiles = false
-        root.runSyncTests()
+        try {
+          root.runSyncTests()
+        } catch (e) {
+          root.ok("runSyncTests threw: " + e, false)
+          boot.stop()
+          root.finish()
+          return
+        }
         phase = 1
         return
       }
       if (phase === 1) {
         if (!store.initialized || !store.healthChecked || !store.canWrite) return
         if (store.syncing) return
-        root.runHorizonTests()
+        try {
+          root.runHorizonTests()
+        } catch (e) {
+          root.ok("runHorizonTests threw: " + e, false)
+          boot.stop()
+          root.finish()
+          return
+        }
         ok("blocked write without canWrite", (function() {
           store.canWrite = false
           var blocked = store.submitWrite(store.taskCompleteArgv({ id: "t_today_p1" }), "no")

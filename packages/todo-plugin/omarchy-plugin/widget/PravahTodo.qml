@@ -36,6 +36,8 @@ BarWidget {
     goalEditor.close()
     schedulePicker.targetTask = null
     schedulePicker.close()
+    confirmOverlay.opened = false
+    confirmAction = null
   }
 
   PravahData { id: store }
@@ -169,8 +171,7 @@ BarWidget {
 
   function undoLast() {
     if (lastOperationId === "") return
-    store.submitWrite(store.undoArgv({ operationId: lastOperationId }), "Undoing…")
-    lastOperationId = ""
+    if (store.submitWrite(store.undoArgv({ operationId: lastOperationId }), "Undoing…")) lastOperationId = ""
   }
 
   function messageFor(envelope) {
@@ -779,7 +780,7 @@ BarWidget {
       Repeater { model: root.showCompleted && root.completedExpanded ? root.fCompletedToday : []; delegate: taskDelegate }
 
       Item {
-        visible: root.fToday.length === 0 && root.fCompletedToday.length === 0
+        visible: root.fToday.length === 0 && (!root.showCompleted || root.fCompletedToday.length === 0)
         width: tabLoader.width
         height: Style.space(92)
 

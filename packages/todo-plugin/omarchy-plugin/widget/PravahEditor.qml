@@ -163,6 +163,12 @@ Item {
             anchors.margins: Style.space(6)
             placeholderText: "Details, links, next actions…"
             wrapMode: TextArea.Wrap
+            color: editor.fg
+            placeholderTextColor: editor.muted
+            font.family: Style.font.family
+            font.pixelSize: Style.font.bodySmall
+            selectionColor: Qt.rgba(editor.accent.r, editor.accent.g, editor.accent.b, 0.35)
+            selectedTextColor: editor.fg
             background: null
             Keys.onEscapePressed: editor.canceled()
           }

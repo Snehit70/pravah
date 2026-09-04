@@ -118,7 +118,7 @@ The data layer has a QML contract suite that runs against a fake `pravah`
 stub (v2 envelope only, no network, no live writes):
 
 ```bash
-bash packages/todo-plugin/tests/run.sh
+bun run todo-plugin:test
 ```
 
 It needs `quickshell` and a Wayland/X11 display. Machines without the
@@ -135,6 +135,8 @@ idempotency key.
   complete/reopen/schedule/unschedule/remove`, `goals …`,
   `operations list/undo`, `doctor`, `auth status`). Every write previews
   with `--dry-run` first and applies with the same argv plus a shared
-  `--idempotency-key`, so a retry of the same change is safe.
+  `--idempotency-key`, so the dry-run/apply pair for one submission is
+  safe. Each new submission mints a fresh key, so a manual retry after
+  an ambiguous result is not deduplicated.
 - `auth login` / `auth logout` are intentionally not in the panel —
   credentials should never flow through a GUI surface.

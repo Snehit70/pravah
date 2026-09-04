@@ -15,6 +15,10 @@ if [[ -z "${WAYLAND_DISPLAY:-}" && -z "${DISPLAY:-}" ]]; then
   echo "skip: no display (WAYLAND_DISPLAY/DISPLAY unset)"
   exit 0
 fi
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "skip: python3 is not installed (needed by tests/fake-pravah)"
+  exit 0
+fi
 
 WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/pravah-qtest.XXXXXX")"
 cleanup() { rm -rf "$WORKDIR"; }

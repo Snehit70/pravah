@@ -20,6 +20,7 @@
     "test:run": "vitest run",
     "test:ui": "vitest --ui",
     "pravah": "bun run packages/cli/src/pravah.ts",
+    "todo-plugin:test": "bash packages/todo-plugin/tests/run.sh",
     "mobile:env": "bun scripts/sync-mobile-env.mjs",
     "mobile:start": "bun run mobile:env && bun run --cwd apps/mobile start",
     "mobile:android": "bun run mobile:env && bun scripts/run-mobile-android.mjs",

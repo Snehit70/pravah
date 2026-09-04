@@ -11,8 +11,9 @@ import Quickshell.Io
 //   successful exit, `ok: true`, payload under `data`, errors under
 //   `error.message`.
 // - Writes always preview with --dry-run first and only then apply the
-//   exact same argv with a shared --idempotency-key, so a retry of the
-//   same intended change is safe.
+//   exact same argv with a shared --idempotency-key, so the dry-run/apply
+//   pair for one submission is safe. Each new user submission mints a fresh
+//   key, so retrying after an ambiguous apply result is not deduplicated.
 // - Horizon rules mirror the CLI's own: active = inbox|timeline,
 //   overdue = timeline deadline < today, upcoming = today < deadline
 //   <= today + 14, sorted by date, then time, then priority, then title.

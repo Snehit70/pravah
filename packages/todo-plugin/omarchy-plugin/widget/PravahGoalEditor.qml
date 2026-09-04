@@ -11,6 +11,9 @@ import qs.Ui
 Item {
   id: editor
 
+  focus: visible
+  Keys.onEscapePressed: editor.canceled()
+
   property var editingGoal: null
   property color fg: Color.foreground
   property color accent: Color.accent
@@ -32,7 +35,8 @@ Item {
     error = ""
     dateLabel.refreshLabel()
     visible = true
-    nameInput.forceActiveFocus()
+    if (editingGoal === null) nameInput.forceActiveFocus()
+    else forceActiveFocus()
   }
 
   function close() { visible = false }
