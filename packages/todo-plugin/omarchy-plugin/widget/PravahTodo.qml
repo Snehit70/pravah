@@ -510,6 +510,15 @@ BarWidget {
         }
       }
 
+      PravahToast {
+        id: toast
+
+        width: parent.width
+        fg: root.fg
+        accent: root.accent
+        urgent: root.urgent
+        onUndoRequested: root.undoLast()
+      }
     }
 
     // ------------------------------------------------------- overlays ---
@@ -588,19 +597,6 @@ BarWidget {
         if (action && action.onConfirm) action.onConfirm()
       }
       onCanceled: { opened = false; root.confirmAction = null }
-    }
-
-    PravahToast {
-      id: toast
-
-      z: 50
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.bottom: parent.bottom
-      anchors.margins: Style.space(6)
-      fg: root.fg
-      accent: root.accent
-      onUndoRequested: root.undoLast()
     }
   }
 
@@ -864,7 +860,7 @@ BarWidget {
     function onWriteFailed(message) {
       pendingTaskId = ""
       lastOperationId = ""
-      toast.dismiss()
+      toast.showError(message)
     }
   }
 

@@ -2,40 +2,66 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 
-// Inline feedback bar pinned to the bottom of the panel. Shows the outcome
-// of the last write and keeps an Undo affordance while the CLI's operation
-// receipt says the change is still reversible.
+// Reserved status bar. Always takes a slot at the bottom of the panel
+// so a result never covers the add field and never relayouts the list.
+// Idle is an empty strip; success/error fade in via opacity and color.
 Rectangle {
   id: root
 
   property color fg: Color.foreground
   property color accent: Color.accent
+  property color urgent: Color.urgent
+  property color success: "#7cb87c"
+
   property string message: ""
   property bool undoable: false
+  property bool isError: false
+  property bool active: false
 
   signal undoRequested()
 
-  readonly property color muted: Qt.rgba(fg.r, fg.g, fg.b, 0.55)
+  readonly property color tone: isError ? urgent : success
+  readonly property color muted: Qt.rgba(fg.r, fg.g, fg.b, 0.45)
 
   function show(text, withUndo) {
+    isError = false
     message = String(text || "")
     undoable = withUndo === true
-    opacity = 1
-    hideTimer.restart()
+    active = message !== ""
+    if (active) hideTimer.restart()
+    else hideTimer.stop()
+  }
+
+  function showError(text) {
+    isError = true
+    message = String(text || "")
+    undoable = false
+    active = message !== ""
+    if (active) hideTimer.restart()
+    else hideTimer.stop()
   }
 
   function dismiss() {
     hideTimer.stop()
-    opacity = 0
+    active = false
+    undoable = false
   }
 
-  visible: opacity > 0
-  opacity: 0
-  Behavior on opacity { NumberAnimation { duration: 120 } }
+  height: Style.space(28)
+  implicitHeight: height
+  radius: Style.space(6)
+  color: active ? Qt.rgba(tone.r, tone.g, tone.b, 0.14) : "transparent"
 
-  height: Style.space(30)
-  radius: Style.space(7)
-  color: Qt.rgba(fg.r, fg.g, fg.b, 0.10)
+  Behavior on color { ColorAnimation { duration: 120 } }
+
+  Rectangle {
+    anchors.top: parent.top
+    width: parent.width
+    height: 1
+    color: root.active ? Qt.rgba(root.tone.r, root.tone.g, root.tone.b, 0.40)
+                       : Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.10)
+    Behavior on color { ColorAnimation { duration: 120 } }
+  }
 
   Timer {
     id: hideTimer
@@ -44,24 +70,31 @@ Rectangle {
   }
 
   Row {
+    id: messageRow
+
     anchors.left: parent.left
-    anchors.leftMargin: Style.space(10)
+    anchors.leftMargin: Style.space(8)
+    anchors.right: undoButton.left
+    anchors.rightMargin: Style.space(6)
     anchors.verticalCenter: parent.verticalCenter
-    spacing: Style.space(8)
+    spacing: Style.space(7)
+    opacity: root.active ? 1 : 0
+
+    Behavior on opacity { NumberAnimation { duration: 120 } }
 
     Text {
       anchors.verticalCenter: parent.verticalCenter
-      text: "✓"
-      color: root.accent
+      text: root.isError ? "󰅙" : "󰄬"
+      color: root.tone
       font.family: Style.font.family
-      font.pixelSize: Style.font.bodySmall
+      font.pixelSize: Style.font.body
     }
 
     Text {
+      width: Math.max(0, messageRow.width - Style.space(22))
       anchors.verticalCenter: parent.verticalCenter
-      width: Math.min(implicitWidth, root.width - Style.space(150))
       text: root.message
-      color: root.fg
+      color: root.isError ? root.urgent : root.fg
       elide: Text.ElideRight
       font.family: Style.font.family
       font.pixelSize: Style.font.bodySmall
@@ -69,13 +102,19 @@ Rectangle {
   }
 
   Button {
+    id: undoButton
+
     anchors.right: parent.right
-    anchors.rightMargin: Style.space(8)
+    anchors.rightMargin: Style.space(2)
     anchors.verticalCenter: parent.verticalCenter
-    visible: root.undoable
-    text: "Undo"
-    fontSize: Style.font.caption
+    iconText: "󰕌"
+    tooltipText: "Undo"
     focusable: false
+    opacity: root.active && root.undoable ? 1 : 0
+    enabled: root.active && root.undoable
+
+    Behavior on opacity { NumberAnimation { duration: 120 } }
+
     onClicked: {
       root.dismiss()
       root.undoRequested()
