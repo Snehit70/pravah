@@ -93,6 +93,17 @@ If Omarchy keeps an older widget instance alive after an upgrade, run
 - Checkbox completes / reopens; ✎ edits; ⋯ opens the row menu.
 - Escape closes the panel (or the topmost overlay first).
 
+## Keybindings and scripting
+
+The widget registers an IPC target, so the panel can be summoned without
+touching the bar icon. Bind it in Hyprland, e.g.:
+
+```ini
+bindd = SUPER ALT T, exec, omarchy-shell raja.pravah-todo toggle
+```
+
+Available methods: `open`, `close`, `toggle`, `refresh`.
+
 ## Settings
 
 Configurable through the widget's settings (shell.json entry or the shell's

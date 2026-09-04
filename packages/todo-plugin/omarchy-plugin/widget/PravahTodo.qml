@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
@@ -27,6 +28,29 @@ BarWidget {
   property string lastOperationId: ""
 
   PravahData { id: store }
+
+  // ---------------------------------------------------------------- ipc ---
+  IpcHandler {
+    target: "raja.pravah-todo"
+
+    function open(): void {
+      root.panelOpen = true
+      store.refresh()
+      store.loadOperations()
+    }
+
+    function close(): void { root.panelOpen = false }
+
+    function toggle(): void {
+      if (root.panelOpen) root.panelOpen = false
+      else open()
+    }
+
+    function refresh(): string {
+      store.refresh()
+      return "ok"
+    }
+  }
 
   // ------------------------------------------------------------ palette ---
   readonly property color fg: root.bar ? root.bar.barForeground : Color.foreground
