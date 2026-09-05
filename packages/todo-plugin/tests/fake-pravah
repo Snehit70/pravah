@@ -1,0 +1,220 @@
+#!/usr/bin/env bash
+# Pravah v2 envelope stub for the Omarchy widget QML tests.
+# Emits the same {ok, version, command, data|error} contract as the real CLI.
+# Never talks to the network. Writes are recorded to $PRAVAH_FAKE_LOG.
+set -euo pipefail
+
+LOG="${PRAVAH_FAKE_LOG:-/tmp/pravah-fake.log}"
+{
+  printf '%s\n' "$*"
+} >>"$LOG"
+
+python3 - "$@" <<'PY'
+import datetime as dt
+import json
+import sys
+
+args = sys.argv[1:]
+dry_run = "--dry-run" in args
+
+cmd_parts = []
+for a in args:
+    if a.startswith("-"):
+        break
+    cmd_parts.append(a)
+if not cmd_parts:
+    command = ""
+elif cmd_parts[0] == "doctor":
+    command = "doctor"
+elif cmd_parts[0] in ("auth", "tasks", "goals", "operations") and len(cmd_parts) > 1:
+    command = cmd_parts[0] + " " + cmd_parts[1]
+else:
+    command = " ".join(cmd_parts)
+
+
+def emit(ok, data=None, error=None, exit_code=None):
+    env = {"ok": ok, "version": "v2", "command": command}
+    if ok:
+        env["data"] = data if data is not None else {}
+        print(json.dumps(env), flush=True)
+        sys.exit(0 if exit_code is None else exit_code)
+    env["error"] = error or {"code": "test", "message": "stub error"}
+    print(json.dumps(env), flush=True)
+    sys.exit(1 if exit_code is None else exit_code)
+
+
+def opt(name):
+    if name not in args:
+        return None
+    i = args.index(name)
+    if i + 1 >= len(args):
+        return ""
+    return args[i + 1]
+
+
+today = dt.date.today()
+yesterday = (today - dt.timedelta(days=1)).isoformat()
+tomorrow = (today + dt.timedelta(days=1)).isoformat()
+week = (today + dt.timedelta(days=7)).isoformat()
+far = (today + dt.timedelta(days=20)).isoformat()
+today_s = today.isoformat()
+
+tasks = [
+    {
+        "_id": "t_overdue",
+        "title": "Pay the overdue bill",
+        "status": "timeline",
+        "deadline": yesterday,
+        "time": "09:00",
+        "priority": "p1",
+        "tags": ["work"],
+        "estimatedMinutes": 15,
+    },
+    {
+        "id": "t_today_p1",
+        "title": "Draft the panel spec",
+        "status": "timeline",
+        "deadline": today_s,
+        "time": "08:00",
+        "priority": "p1",
+        "tags": ["work"],
+        "estimatedMinutes": 30,
+        "description": "Widget coverage",
+    },
+    {
+        "id": "t_today_p3",
+        "title": "Tidy the inbox",
+        "status": "timeline",
+        "deadline": today_s,
+        "time": "14:00",
+        "priority": "p3",
+        "tags": [],
+    },
+    {
+        "id": "t_tomorrow",
+        "title": "Walk after lunch",
+        "status": "timeline",
+        "deadline": tomorrow,
+        "priority": "p2",
+        "tags": ["home"],
+    },
+    {
+        "id": "t_week",
+        "title": "Ship the widget tests",
+        "status": "timeline",
+        "deadline": week,
+        "priority": "p1",
+        "tags": ["work"],
+    },
+    {
+        "id": "t_far",
+        "title": "Plan the next quarter",
+        "status": "timeline",
+        "deadline": far,
+        "priority": "p2",
+    },
+    {
+        "id": "t_inbox",
+        "title": "Capture a stray thought",
+        "status": "inbox",
+        "tags": ["work"],
+    },
+    {
+        "id": "t_done",
+        "title": "Already finished",
+        "status": "completed",
+        "deadline": today_s,
+        "completedAt": 1,
+    },
+    {
+        "id": "t_cancelled",
+        "title": "Dropped on purpose",
+        "status": "cancelled",
+        "cancelledAt": 1,
+    },
+]
+
+goals = [
+    {
+        "id": "g_ship",
+        "text": "Ship the widget",
+        "description": "Full CLI in the bar",
+        "priority": "p1",
+        "deadline": week,
+        "progress": {"completed": 1, "active": 2},
+        "activeTasks": [t for t in tasks if t.get("id") == "t_today_p1" or t.get("_id") == "t_today_p1"],
+    }
+]
+
+operations = [
+    {
+        "operationId": "op_test_1",
+        "operationGroupId": "grp_1",
+        "operation": "tasks.complete",
+        "status": "applied",
+        "targetType": "task",
+        "targetId": "t_today_p1",
+        "undoAvailable": True,
+        "undoExpiresAt": "2099-01-01T00:00:00.000Z",
+    }
+]
+
+
+if command == "doctor":
+    emit(
+        True,
+        {
+            "healthy": True,
+            "checks": [
+                {"name": "bun", "ok": True, "remedy": "Install Bun and rerun Pravah."},
+                {"name": "credential", "ok": True, "remedy": "Run auth login."},
+            ],
+        },
+    )
+
+if command == "auth status":
+    emit(
+        True,
+        {
+            "authenticated": True,
+            "credentialLabel": "stub",
+            "scopes": ["tasks:read", "tasks:write"],
+            "source": "stub",
+        },
+    )
+
+if command == "tasks list":
+    emit(True, {"tasks": tasks, "source": "stub"})
+
+if command == "goals list":
+    emit(True, {"goals": goals, "source": "stub"})
+
+if command == "operations list":
+    emit(True, {"operations": operations, "source": "stub"})
+
+if command.startswith("tasks ") or command.startswith("goals ") or command == "operations undo":
+    action = command.replace(" ", ".")
+    if command == "tasks remove" and not dry_run:
+        emit(False, error={"code": "test", "message": "stub refused remove"})
+    target_id = "t_today_p1"
+    for a in args:
+        if a.startswith("t_") or a.startswith("g_") or a.startswith("op_"):
+            target_id = a
+            break
+    key = opt("--idempotency-key") or ""
+    data = {
+        "action": action,
+        "target": {"id": target_id},
+        "idempotencyKey": key,
+        "source": "dry-run" if dry_run else "stub",
+    }
+    if not dry_run:
+        data["operation"] = {
+            "operationId": "op_test_1",
+            "undoAvailable": True,
+            "undoExpiresAt": "2099-01-01T00:00:00.000Z",
+        }
+    emit(True, data)
+
+emit(False, error={"code": "unknown_command", "message": "stub does not implement " + command})
+PY

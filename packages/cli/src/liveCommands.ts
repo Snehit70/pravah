@@ -216,7 +216,20 @@ async function filterTasks(client: LiveCliClient, args: ParsedArgs, includeGoal 
 }
 
 function clearable(value: string | undefined, name: string) { if (value === undefined) return undefined; const cleaned = value.trim(); if (!cleaned) throw new CliCommandError("validation_failed", `--${name} requires a value`); return ["clear", "none", "null"].includes(cleaned.toLowerCase()) ? null : cleaned; }
-function taskWriteFields(args: ParsedArgs, editing: boolean) {
+// --goal is resolved against live Goals separately: undefined = no change,
+// null = unlink, string = link to that Goal name or ID.
+function readGoalChange(args: ParsedArgs, editing: boolean): string | null | undefined {
+  const raw = readOption(args.options, "goal");
+  if (raw === undefined) return undefined;
+  const cleaned = raw.trim();
+  if (!cleaned) throw new CliCommandError("validation_failed", "--goal requires a value");
+  if (["clear", "none", "null"].includes(cleaned.toLowerCase())) {
+    if (!editing) throw new CliCommandError("validation_failed", "--goal cannot be cleared on tasks add; omit it instead");
+    return null;
+  }
+  return cleaned;
+}
+function taskWriteFields(args: ParsedArgs, editing: boolean, hasGoalChange = false) {
   const title = editing ? clearable(readOption(args.options, "title"), "title") : readTarget(args, "tasks add");
   if (title === null) throw new CliCommandError("validation_failed", "--title cannot be cleared");
   const description = editing ? clearable(readOption(args.options, "description"), "description") : readOption(args.options, "description")?.trim() || undefined;
@@ -232,7 +245,7 @@ function taskWriteFields(args: ParsedArgs, editing: boolean) {
   const tags = tagsRaw === null ? null : tagsRaw === undefined ? undefined : split(tagsRaw); if (tags && !tags.length) throw new CliCommandError("validation_failed", "--tags must include at least one non-empty tag"); if (tags && (tags.length > 20 || tags.some((tag) => tag.length > 50))) throw new CliCommandError("validation_failed", "--tags supports up to 20 entries of 50 characters");
   const estimatedMinutes = estimateRaw === null ? null : estimateRaw === undefined ? undefined : Number(estimateRaw); if (estimatedMinutes !== undefined && estimatedMinutes !== null && (!Number.isInteger(estimatedMinutes) || estimatedMinutes <= 0)) throw new CliCommandError("validation_failed", "--estimated-minutes must be a positive integer, or clear");
   const fields = { title: title ?? undefined, description, deadline, time, priority: priorityRaw as "p1" | "p2" | "p3" | null | undefined, tags, estimatedMinutes };
-  if (editing && Object.values(fields).every((value) => value === undefined)) throw new CliCommandError("validation_failed", "tasks edit requires at least one editable field");
+  if (editing && !hasGoalChange && Object.values(fields).every((value) => value === undefined)) throw new CliCommandError("validation_failed", "tasks edit requires at least one editable field");
   return fields;
 }
 function goalWriteFields(args: ParsedArgs, editing: boolean) {
@@ -269,19 +282,60 @@ export async function executeLiveCommand(client: LiveCliClient, command: string,
   if (command === "operations undo") { requireScopes(client, ["tasks:write"]); const metadata = getWriteMetadata(args); const group = readOption(args.options, "group")?.trim() || undefined; const operationId = args.positionals.length === 3 ? readTarget(args, command) : undefined; const target = { id: group ?? operationId! }; if (metadata.dryRun) return { action: "operations.undo", target, ...metadata, source: "dry-run" }; const result = await write("operations.undo", metadata.idempotencyKey, () => client.undoOperation({ operationId, operationGroupId: group }, metadata.idempotencyKey)); return { action: "operations.undo", target, ...metadata, operation: operationOf(result), source: "live" }; }
   if (command.startsWith("tasks ")) {
     requireScopes(client, ["tasks:write"]); const verb = command.slice(6); const metadata = getWriteMetadata(args); const title = readTarget(args, command); const target = verb === "add" ? { id: "pending", title } : resolveTask(tasksOf(await client.listTasks({})), title);
-    const fields = verb === "add" || verb === "edit" ? taskWriteFields(args, verb === "edit") : undefined;
+    const goalChange = verb === "add" || verb === "edit" || verb === "link" ? readGoalChange(args, verb === "edit") : undefined;
+    if (verb === "link" && goalChange === undefined) throw new CliCommandError("validation_failed", "tasks link requires --goal");
+    if (verb === "link" && goalChange === null) throw new CliCommandError("validation_failed", "tasks link requires a Goal; use tasks unlink to remove the link");
+    if (verb === "unlink" && readOption(args.options, "goal") !== undefined) throw new CliCommandError("validation_failed", "tasks unlink takes no --goal; it removes the current link");
+    const fields = verb === "add" || verb === "edit" ? taskWriteFields(args, verb === "edit", goalChange !== undefined) : undefined;
     const scheduleDate = verb === "schedule" ? readFilterDate("date", args) : undefined;
     if (verb === "schedule" && !scheduleDate) throw new CliCommandError("validation_failed", "tasks schedule requires --date");
-    if (metadata.dryRun) return { action: `tasks.${verb}`, target, ...metadata, source: "dry-run" };
+    // Resolve the Goal target once so dry-run previews and applies share it.
+    let goal: LiveGoalSummary | undefined;
+    if (typeof goalChange === "string") goal = resolveGoal(goalsOf(await client.listGoals()), goalChange);
+    if (metadata.dryRun) {
+      if (verb === "link") return { action: "tasks.link", target, goal: goal ? { id: goal.id, text: goal.text } : undefined, ...metadata, source: "dry-run" };
+      if (verb === "unlink") return { action: "tasks.unlink", target, ...metadata, source: "dry-run" };
+      return { action: `tasks.${verb}`, target, ...(goal ? { goal: { id: goal.id, text: goal.text } } : goalChange === null ? { goal: null } : {}), ...metadata, source: "dry-run" };
+    }
+    // A create/edit combined with a link change shares one operation group so
+    // a single `operations undo --group <id>` reverses both.
+    const groupId = (verb === "add" || verb === "edit") && goalChange !== undefined ? (metadata.operationGroupId ?? `grp_cli_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`) : metadata.operationGroupId;
+    const linkKey = `${metadata.idempotencyKey}:link`;
+    async function applyLink(taskId: string) {
+      if (goalChange === undefined) return undefined;
+      const goalId = goal ? goal.id : null;
+      return operationOf(await write(goalId === null ? "tasks.unlinkGoal" : "tasks.linkGoal", linkKey, () => client.setGoalLink({ taskId, goalId, operationGroupId: groupId }, linkKey)));
+    }
     let result: unknown;
-    if (verb === "add") { result = await write("tasks.add", metadata.idempotencyKey, () => client.addTask({ title: fields!.title!, description: fields!.description ?? undefined, deadline: fields!.deadline ?? undefined, time: fields!.time ?? undefined, priority: fields!.priority ?? undefined, tags: fields!.tags ?? undefined, estimatedMinutes: fields!.estimatedMinutes ?? undefined, operationGroupId: metadata.operationGroupId }, metadata.idempotencyKey)); }
-    else if (verb === "edit") { result = await write("tasks.edit", metadata.idempotencyKey, () => client.updateTask({ taskId: target.id, ...fields!, operationGroupId: metadata.operationGroupId }, metadata.idempotencyKey)); }
+    if (verb === "add") {
+      const created = await write("tasks.add", metadata.idempotencyKey, () => client.addTask({ title: fields!.title!, description: fields!.description ?? undefined, deadline: fields!.deadline ?? undefined, time: fields!.time ?? undefined, priority: fields!.priority ?? undefined, tags: fields!.tags ?? undefined, estimatedMinutes: fields!.estimatedMinutes ?? undefined, operationGroupId: groupId }, metadata.idempotencyKey)) as Record<string, unknown>;
+      const taskId = typeof created?.taskId === "string" ? created.taskId : undefined;
+      if (goalChange !== undefined) {
+        if (!taskId) throw new CliCommandError("write_failed", "tasks.add did not return a task id, so the Goal link was not applied");
+        const linkOperation = await applyLink(taskId);
+        return { action: "tasks.add", target: { id: taskId, title: fields!.title! }, ...(goal ? { goal: { id: goal.id, text: goal.text } } : {}), ...metadata, operationGroupId: groupId, operation: operationOf(created), linkOperation, source: "live" };
+      }
+      result = created;
+    }
+    else if (verb === "edit") {
+      const hasFieldEdits = Object.values(fields!).some((value) => value !== undefined);
+      const editResult = hasFieldEdits ? await write("tasks.edit", metadata.idempotencyKey, () => client.updateTask({ taskId: target.id, ...fields!, operationGroupId: groupId }, metadata.idempotencyKey)) : undefined;
+      if (goalChange !== undefined) {
+        const linkOperation = await applyLink(target.id);
+        return { action: "tasks.edit", target, ...(goal ? { goal: { id: goal.id, text: goal.text } } : goalChange === null ? { goal: null } : {}), ...metadata, operationGroupId: groupId, operation: editResult ? operationOf(editResult) : undefined, linkOperation, source: "live" };
+      }
+      result = editResult;
+    }
+    else if (verb === "link") result = await write("tasks.linkGoal", metadata.idempotencyKey, () => client.setGoalLink({ taskId: target.id, goalId: goal!.id, operationGroupId: metadata.operationGroupId }, metadata.idempotencyKey));
+    else if (verb === "unlink") result = await write("tasks.unlinkGoal", metadata.idempotencyKey, () => client.setGoalLink({ taskId: target.id, goalId: null, operationGroupId: metadata.operationGroupId }, metadata.idempotencyKey));
     else if (verb === "schedule") result = await write("tasks.schedule", metadata.idempotencyKey, () => client.moveTask({ taskId: target.id, targetDate: scheduleDate!, operationGroupId: metadata.operationGroupId }, metadata.idempotencyKey));
     else if (verb === "complete") result = await write("tasks.complete", metadata.idempotencyKey, () => client.completeTask({ taskId: target.id, operationGroupId: metadata.operationGroupId }, metadata.idempotencyKey));
     else if (verb === "reopen") result = await write("tasks.reopen", metadata.idempotencyKey, () => client.reopenTask({ taskId: target.id, operationGroupId: metadata.operationGroupId }, metadata.idempotencyKey));
     else if (verb === "unschedule") result = await write("tasks.unschedule", metadata.idempotencyKey, () => client.unscheduleTask({ taskId: target.id, operationGroupId: metadata.operationGroupId }, metadata.idempotencyKey));
     else if (verb === "remove") result = await write("tasks.remove", metadata.idempotencyKey, () => client.deleteTask({ taskId: target.id, confirmTaskDelete: true, operationGroupId: metadata.operationGroupId }, metadata.idempotencyKey));
     else return null;
+    if (verb === "link") return { action: "tasks.link", target, goal: { id: goal!.id, text: goal!.text }, ...metadata, operation: operationOf(result), source: "live" };
+    if (verb === "unlink") return { action: "tasks.unlink", target, ...metadata, operation: operationOf(result), source: "live" };
     return { action: `tasks.${verb}`, target, ...metadata, operation: operationOf(result), source: "live" };
   }
   if (command.startsWith("goals ")) {

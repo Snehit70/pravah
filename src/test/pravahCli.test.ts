@@ -63,6 +63,28 @@ describe("Pravah CLI v2", () => {
     expect(completed.every((task: { status: string }) => task.status === "completed")).toBe(true);
   });
 
+  it("links and unlinks tasks to goals with dry-run previews", () => {
+    const preview = JSON.parse(run(["tasks", "link", "Draft CLI contract", "--goal", "Planning", "--dry-run", "--json"]).stdout);
+    expect(preview).toMatchObject({ ok: true, data: { action: "tasks.link", goal: { id: "goal_1" } } });
+    const applied = JSON.parse(run(["tasks", "link", "Draft CLI contract", "--goal", "Planning", "--json"]).stdout);
+    expect(applied).toMatchObject({ ok: true, data: { action: "tasks.link", operation: { undoAvailable: true } } });
+    const unlinked = JSON.parse(run(["tasks", "unlink", "Draft CLI contract", "--json"]).stdout);
+    expect(unlinked).toMatchObject({ ok: true, data: { action: "tasks.unlink" } });
+  });
+
+  it("creates tasks directly linked to a goal and rejects a missing link target", () => {
+    const added = JSON.parse(run(["tasks", "add", "Goal task", "--goal", "Automation", "--json"]).stdout);
+    expect(added).toMatchObject({ ok: true, data: { action: "tasks.add", goal: { id: "goal_2" } } });
+    const missing = run(["tasks", "link", "Draft CLI contract", "--json"]);
+    expect(missing.status).toBe(1);
+    expect(JSON.parse(missing.stdout).error.code).toBe("validation_failed");
+  });
+
+  it("publishes link commands in the v2 capabilities manifest", () => {
+    const result = run(["capabilities", "--json"]);
+    const commands = JSON.parse(result.stdout).data.commands;
+    expect(commands.map((command: { command: string }) => command.command)).toEqual(expect.arrayContaining(["tasks link", "tasks unlink"]));
+  });
   it("publishes a complete v2 capabilities manifest", () => {
     const result = run(["capabilities", "--json"]);
     const commands = JSON.parse(result.stdout).data.commands;
