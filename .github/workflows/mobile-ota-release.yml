@@ -162,7 +162,8 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - run: bun install --frozen-lockfile
-      - run: bash scripts/mobile-release/install-eas-cli.sh
+      - name: Install pinned EAS CLI
+        run: npm install --global eas-cli@${EAS_CLI_VERSION}
       - id: update
         working-directory: apps/mobile
         env:
@@ -202,7 +203,8 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - run: bun install --frozen-lockfile
-      - run: bash scripts/mobile-release/install-eas-cli.sh
+      - name: Install pinned EAS CLI
+        run: npm install --global eas-cli@${EAS_CLI_VERSION}
       - name: Record staged update
         env:
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
