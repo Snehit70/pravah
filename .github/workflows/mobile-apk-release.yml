@@ -165,7 +165,8 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - run: bun install --frozen-lockfile
-      - run: bash scripts/mobile-release/install-eas-cli.sh
+      - name: Install pinned EAS CLI
+        run: npm install --global eas-cli@${EAS_CLI_VERSION}
       - name: Build exact native candidate
         working-directory: apps/mobile
         env:
