@@ -5,6 +5,7 @@ import {
   issueBootstrapToken,
   listCredentials,
   markCredentialUsed,
+  resolveAutomationCredential,
   revokeCredential,
 } from "../../convex/automation";
 
@@ -50,6 +51,18 @@ const markCredentialUsedHandler = (
   markCredentialUsed as unknown as InternalHandler<
     { credentialSecret: string },
     { label: string; scopes: string[]; ownerTokenIdentifier: string }
+  >
+)._handler;
+
+const resolveAutomationCredentialHandler = (
+  resolveAutomationCredential as unknown as InternalHandler<
+    { credentialSecret: string },
+    {
+      label: string;
+      scopes: string[];
+      ownerTokenIdentifier: string;
+      needsUsageWrite: boolean;
+    } | null
   >
 )._handler;
 
@@ -339,5 +352,59 @@ describe("automation credential handlers", () => {
 
     expect(db.patch).not.toHaveBeenCalled();
     expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it("resolves an active credential without writing usage", async () => {
+    const credentialId = makeId("cred_1");
+    const db = {
+      query: vi.fn().mockReturnValue({
+        withIndex: vi.fn().mockReturnValue({
+          first: vi.fn().mockResolvedValue({
+            _id: credentialId,
+            ownerTokenIdentifier: "user-1",
+            label: "Laptop",
+            scopes: ["tasks:read"],
+            status: "active",
+            lastUsedAt: Date.now(),
+          }),
+        }),
+      }),
+      patch: vi.fn(),
+      insert: vi.fn(),
+    };
+
+    const result = await resolveAutomationCredentialHandler(createAuthedCtx(db), {
+      credentialSecret: "pravah_cred_demo",
+    });
+
+    expect(result).toMatchObject({
+      label: "Laptop",
+      ownerTokenIdentifier: "user-1",
+      scopes: ["tasks:read"],
+      needsUsageWrite: false,
+    });
+    expect(db.patch).not.toHaveBeenCalled();
+  });
+
+  it("flags a stale credential so HTTP auth can write usage", async () => {
+    const db = {
+      query: vi.fn().mockReturnValue({
+        withIndex: vi.fn().mockReturnValue({
+          first: vi.fn().mockResolvedValue({
+            _id: makeId("cred_1"),
+            ownerTokenIdentifier: "user-1",
+            label: "Laptop",
+            scopes: ["tasks:read"],
+            status: "active",
+          }),
+        }),
+      }),
+    };
+
+    const result = await resolveAutomationCredentialHandler(createAuthedCtx(db), {
+      credentialSecret: "pravah_cred_demo",
+    });
+
+    expect(result?.needsUsageWrite).toBe(true);
   });
 });

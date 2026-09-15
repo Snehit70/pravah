@@ -62,6 +62,7 @@ vi.mock("../../convex/_generated/api", () => ({
     automation: {
       exchangeBootstrapToken: "automation.exchangeBootstrapToken",
       markCredentialUsed: "automation.markCredentialUsed",
+      resolveAutomationCredential: "automation.resolveAutomationCredential",
     },
     tasks: {
       listTasks: "tasks.listTasks",
@@ -110,6 +111,28 @@ function createCtx(): MockCtx {
     runMutation: vi.fn(),
     runAction: vi.fn(),
   };
+}
+
+const readCredential = {
+  credentialId: "cred_1",
+  label: "Laptop",
+  ownerTokenIdentifier: "user-1",
+  scopes: ["tasks:read"],
+  needsUsageWrite: false,
+};
+
+const writeCredential = {
+  ...readCredential,
+  scopes: ["tasks:write"],
+};
+
+function mockCredentialQuery(ctx: MockCtx, credential: typeof readCredential, other?: unknown) {
+  ctx.runQuery.mockImplementation(async (ref: unknown) => {
+    if (ref === api.automation.resolveAutomationCredential) {
+      return credential;
+    }
+    return other;
+  });
 }
 
 async function signCloudinaryCallback(rawBody: string, timestamp: number, apiSecret: string) {
@@ -327,12 +350,7 @@ describe("http route handlers", () => {
   it("accepts bearer automation credential for task reads", async () => {
     const handler = getHandler("/tasks", "GET");
     const ctx = createCtx();
-    ctx.runMutation.mockResolvedValue({
-      label: "Laptop",
-      ownerTokenIdentifier: "user-1",
-      scopes: ["tasks:read"],
-    });
-    ctx.runQuery.mockResolvedValue([{ _id: "task1", title: "A" }]);
+    mockCredentialQuery(ctx, readCredential, [{ _id: "task1", title: "A" }]);
 
     const response = await handler(
       ctx,
@@ -341,9 +359,10 @@ describe("http route handlers", () => {
       })
     );
 
-    expect(ctx.runMutation).toHaveBeenCalledWith(api.automation.markCredentialUsed, {
+    expect(ctx.runQuery).toHaveBeenCalledWith(api.automation.resolveAutomationCredential, {
       credentialSecret: "pravah_cred_demo",
     });
+    expect(ctx.runMutation).not.toHaveBeenCalled();
     expect(ctx.runQuery).toHaveBeenCalledWith(internal.automationTools.listTasks, {
       ownerTokenIdentifier: "user-1",
       date: undefined,
@@ -352,15 +371,29 @@ describe("http route handlers", () => {
     expect(response.status).toBe(200);
   });
 
+  it("records credential usage only when the lookup says the write window is open", async () => {
+    const handler = getHandler("/tasks", "GET");
+    const ctx = createCtx();
+    mockCredentialQuery(ctx, { ...readCredential, needsUsageWrite: true }, []);
+    ctx.runMutation.mockResolvedValue({ ...readCredential, needsUsageWrite: false });
+
+    const response = await handler(
+      ctx,
+      new Request("https://example.com/tasks", {
+        headers: { authorization: "Bearer pravah_cred_demo" },
+      })
+    );
+
+    expect(ctx.runMutation).toHaveBeenCalledWith(api.automation.markCredentialUsed, {
+      credentialSecret: "pravah_cred_demo",
+    });
+    expect(response.status).toBe(200);
+  });
+
   it("accepts bearer automation credential for goal reads", async () => {
     const handler = getHandler("/goals", "GET");
     const ctx = createCtx();
-    ctx.runMutation.mockResolvedValue({
-      label: "Laptop",
-      ownerTokenIdentifier: "user-1",
-      scopes: ["tasks:read"],
-    });
-    ctx.runQuery.mockResolvedValue([{ id: "goal_1", text: "Planning" }]);
+    mockCredentialQuery(ctx, readCredential, [{ id: "goal_1", text: "Planning" }]);
 
     const response = await handler(
       ctx,
@@ -369,9 +402,10 @@ describe("http route handlers", () => {
       })
     );
 
-    expect(ctx.runMutation).toHaveBeenCalledWith(api.automation.markCredentialUsed, {
+    expect(ctx.runQuery).toHaveBeenCalledWith(api.automation.resolveAutomationCredential, {
       credentialSecret: "pravah_cred_demo",
     });
+    expect(ctx.runMutation).not.toHaveBeenCalled();
     expect(ctx.runQuery).toHaveBeenCalledWith(internal.automationTools.listGoals, {
       ownerTokenIdentifier: "user-1",
     });
@@ -382,12 +416,7 @@ describe("http route handlers", () => {
   it("accepts bearer automation credential for goal link reads", async () => {
     const handler = getHandler("/goal-links", "GET");
     const ctx = createCtx();
-    ctx.runMutation.mockResolvedValue({
-      label: "Laptop",
-      ownerTokenIdentifier: "user-1",
-      scopes: ["tasks:read"],
-    });
-    ctx.runQuery.mockResolvedValue({ task_1: "goal_1" });
+    mockCredentialQuery(ctx, readCredential, { task_1: "goal_1" });
 
     const response = await handler(
       ctx,
@@ -406,13 +435,8 @@ describe("http route handlers", () => {
   it("passes nullable goal clears through goal updates", async () => {
     const handler = getHandler("/goals/update", "POST");
     const ctx = createCtx();
-    ctx.runMutation
-      .mockResolvedValueOnce({
-        label: "Laptop",
-        ownerTokenIdentifier: "user-1",
-        scopes: ["tasks:write"],
-      })
-      .mockResolvedValueOnce({ updated: true });
+    mockCredentialQuery(ctx, writeCredential);
+    ctx.runMutation.mockResolvedValueOnce({ updated: true });
 
     const response = await handler(
       ctx,
@@ -432,8 +456,7 @@ describe("http route handlers", () => {
       })
     );
 
-    expect(ctx.runMutation).toHaveBeenNthCalledWith(
-      2,
+    expect(ctx.runMutation).toHaveBeenCalledWith(
       internal.automationTools.updateGoal,
       {
         ownerTokenIdentifier: "user-1",
@@ -456,13 +479,8 @@ describe("http route handlers", () => {
   it("derives a stable goal clientId from the idempotency key when one is not supplied", async () => {
     const handler = getHandler("/goals", "POST");
     const ctx = createCtx();
-    ctx.runMutation
-      .mockResolvedValueOnce({
-        label: "Laptop",
-        ownerTokenIdentifier: "user-1",
-        scopes: ["tasks:write"],
-      })
-      .mockResolvedValueOnce({
+    mockCredentialQuery(ctx, writeCredential);
+    ctx.runMutation.mockResolvedValueOnce({
         result: { goalId: "goal_goal-create-123" },
         replayed: false,
       });
@@ -482,7 +500,7 @@ describe("http route handlers", () => {
       })
     );
 
-    expect(ctx.runMutation).toHaveBeenNthCalledWith(2, internal.automationTools.createGoal, {
+    expect(ctx.runMutation).toHaveBeenCalledWith(internal.automationTools.createGoal, {
       ownerTokenIdentifier: "user-1",
       idempotencyKey: "goal-create-123",
       clientId: "goal_goal-create-123",
@@ -540,11 +558,7 @@ describe("http route handlers", () => {
   it("rejects ambiguous undo requests that provide both operation targets", async () => {
     const handler = getHandler("/operations/undo", "POST");
     const ctx = createCtx();
-    ctx.runMutation.mockResolvedValueOnce({
-      label: "Laptop",
-      ownerTokenIdentifier: "user-1",
-      scopes: ["tasks:write"],
-    });
+    mockCredentialQuery(ctx, writeCredential);
 
     const response = await handler(
       ctx,
@@ -563,7 +577,7 @@ describe("http route handlers", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(ctx.runMutation).toHaveBeenCalledTimes(1);
+    expect(ctx.runMutation).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({
       error: "Provide only one of operationId or operationGroupId",
     });
@@ -572,11 +586,7 @@ describe("http route handlers", () => {
   it("rejects bearer credential missing required write scope", async () => {
     const handler = getHandler("/tasks/complete", "POST");
     const ctx = createCtx();
-    ctx.runMutation.mockResolvedValueOnce({
-      label: "Laptop",
-      ownerTokenIdentifier: "user-1",
-      scopes: ["tasks:read"],
-    });
+    mockCredentialQuery(ctx, readCredential);
 
     const response = await handler(
       ctx,
@@ -602,11 +612,7 @@ describe("http route handlers", () => {
   it("requires an idempotency key for bearer task writes", async () => {
     const handler = getHandler("/tasks/complete", "POST");
     const ctx = createCtx();
-    ctx.runMutation.mockResolvedValueOnce({
-      label: "Laptop",
-      ownerTokenIdentifier: "user-1",
-      scopes: ["tasks:write"],
-    });
+    mockCredentialQuery(ctx, writeCredential);
 
     const response = await handler(
       ctx,
@@ -621,7 +627,7 @@ describe("http route handlers", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(ctx.runMutation).toHaveBeenCalledTimes(1);
+    expect(ctx.runMutation).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({
       error: "Idempotency-Key header must be between 1 and 200 characters",
     });
@@ -630,13 +636,8 @@ describe("http route handlers", () => {
   it("passes a bearer idempotency key to task writes", async () => {
     const handler = getHandler("/tasks/complete", "POST");
     const ctx = createCtx();
-    ctx.runMutation
-      .mockResolvedValueOnce({
-        label: "Laptop",
-        ownerTokenIdentifier: "user-1",
-        scopes: ["tasks:write"],
-      })
-      .mockResolvedValueOnce({ result: { success: true }, replayed: false });
+    mockCredentialQuery(ctx, writeCredential);
+    ctx.runMutation.mockResolvedValueOnce({ result: { success: true }, replayed: false });
 
     const response = await handler(
       ctx,
@@ -651,8 +652,7 @@ describe("http route handlers", () => {
       })
     );
 
-    expect(ctx.runMutation).toHaveBeenNthCalledWith(
-      2,
+    expect(ctx.runMutation).toHaveBeenCalledWith(
       internal.automationTools.completeTask,
       {
         ownerTokenIdentifier: "user-1",
@@ -903,13 +903,8 @@ describe("http route handlers", () => {
   it("accepts bearer automation credential for bounded task updates", async () => {
     const handler = getHandler("/tasks/update", "POST");
     const ctx = createCtx();
-    ctx.runMutation
-      .mockResolvedValueOnce({
-        label: "Laptop",
-        ownerTokenIdentifier: "user-1",
-        scopes: ["tasks:write"],
-      })
-      .mockResolvedValueOnce({
+    mockCredentialQuery(ctx, writeCredential);
+    ctx.runMutation.mockResolvedValueOnce({
         result: { success: true },
         replayed: false,
       });
@@ -931,10 +926,10 @@ describe("http route handlers", () => {
       })
     );
 
-    expect(ctx.runMutation).toHaveBeenNthCalledWith(1, api.automation.markCredentialUsed, {
+    expect(ctx.runQuery).toHaveBeenCalledWith(api.automation.resolveAutomationCredential, {
       credentialSecret: "pravah_cred_demo",
     });
-    expect(ctx.runMutation).toHaveBeenNthCalledWith(2, internal.automationTools.updateTask, {
+    expect(ctx.runMutation).toHaveBeenCalledWith(internal.automationTools.updateTask, {
       ownerTokenIdentifier: "user-1",
       idempotencyKey: "task-update-123",
       taskId: "task_abc",
@@ -979,13 +974,8 @@ describe("http route handlers", () => {
   it("returns a 400 domain error when POST /tasks/update fails", async () => {
     const handler = getHandler("/tasks/update", "POST");
     const ctx = createCtx();
-    ctx.runMutation
-      .mockResolvedValueOnce({
-        label: "Laptop",
-        ownerTokenIdentifier: "user-1",
-        scopes: ["tasks:write"],
-      })
-      .mockRejectedValueOnce(new Error("Domain rejected request"));
+    mockCredentialQuery(ctx, writeCredential);
+    ctx.runMutation.mockRejectedValueOnce(new Error("Domain rejected request"));
 
     const response = await handler(
       ctx,

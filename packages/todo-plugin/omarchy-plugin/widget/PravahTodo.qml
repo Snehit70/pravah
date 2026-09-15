@@ -14,7 +14,7 @@ BarWidget {
   moduleName: "raja.pravah-todo"
 
   // ----------------------------------------------------------- settings ---
-  readonly property int pollSec: Math.max(10, Number(setting("pollIntervalSec", 30)) || 30)
+  readonly property int pollSec: Math.max(10, Number(setting("pollIntervalSec", 300)) || 300)
   readonly property bool showCompleted: String(setting("showCompleted", "On")).toLowerCase() !== "off"
 
   // -------------------------------------------------------------- state ---

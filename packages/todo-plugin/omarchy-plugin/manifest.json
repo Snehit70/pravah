@@ -17,7 +17,7 @@
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
-      "pollIntervalSec": 30,
+      "pollIntervalSec": 300,
       "defaultTab": "today",
       "showCompleted": "On"
     },
@@ -29,7 +29,7 @@
         "min": 10,
         "max": 600,
         "step": 10,
-        "defaultValue": 30
+        "defaultValue": 300
       },
       {
         "key": "defaultTab",

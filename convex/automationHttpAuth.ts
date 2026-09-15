@@ -11,7 +11,7 @@ export interface AuthorizedRequest {
   scopes: AutomationScope[];
 }
 
-type AuthRouteCtx = Pick<ActionCtx, "runMutation">;
+type AuthRouteCtx = Pick<ActionCtx, "runMutation" | "runQuery">;
 type AuthCheck =
   | { response: Response; auth?: never }
   | { response: null; auth: AuthorizedRequest };
@@ -39,9 +39,17 @@ async function requireAuth(
   const bearerToken = parseBearerToken(request);
   if (bearerToken) {
     try {
-      const credential = await ctx.runMutation(api.automation.markCredentialUsed, {
+      const credential = await ctx.runQuery(api.automation.resolveAutomationCredential, {
         credentialSecret: bearerToken,
       });
+      if (!credential) {
+        return { response: jsonResponse({ error: "Unauthorized" }, 401) };
+      }
+      if (credential.needsUsageWrite) {
+        await ctx.runMutation(api.automation.markCredentialUsed, {
+          credentialSecret: bearerToken,
+        });
+      }
       const missingScopes = requiredScopes.filter(
         (scope) => !credential.scopes.includes(scope)
       );

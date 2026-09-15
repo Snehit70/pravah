@@ -1,4 +1,4 @@
-import { mutation, query, type MutationCtx } from "./_generated/server";
+import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { requireTokenIdentifier } from "./authHelpers";
@@ -386,26 +386,69 @@ export const updateCredential = mutation({
   },
 });
 
+async function findActiveCredentialBySecret(
+  ctx: Pick<QueryCtx, "db">,
+  credentialSecret: string
+) {
+  const credentialHash = await sha256Hex(credentialSecret);
+  const credential = await ctx.db
+    .query("automationCredentials")
+    .withIndex("by_credential_hash", (q) => q.eq("credentialHash", credentialHash))
+    .first();
+
+  if (!credential || credential.status !== "active") {
+    return null;
+  }
+  return credential;
+}
+
+function credentialNeedsUsageWrite(lastUsedAt: number | undefined, now: number) {
+  return (
+    lastUsedAt === undefined || now - lastUsedAt >= CREDENTIAL_USAGE_WRITE_INTERVAL_MS
+  );
+}
+
+function toResolvedCredential(credential: {
+  _id: Id<"automationCredentials">;
+  label: string;
+  scopes: string[];
+  ownerTokenIdentifier: string;
+  lastUsedAt?: number;
+}) {
+  return {
+    credentialId: credential._id,
+    label: credential.label,
+    scopes: credential.scopes as AutomationScope[],
+    ownerTokenIdentifier: credential.ownerTokenIdentifier,
+    needsUsageWrite: credentialNeedsUsageWrite(credential.lastUsedAt, Date.now()),
+  };
+}
+
+export const resolveAutomationCredential = query({
+  args: {
+    credentialSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const credential = await findActiveCredentialBySecret(ctx, args.credentialSecret);
+    if (!credential) {
+      return null;
+    }
+    return toResolvedCredential(credential);
+  },
+});
+
 export const markCredentialUsed = mutation({
   args: {
     credentialSecret: v.string(),
   },
   handler: async (ctx, args) => {
-    const credentialHash = await sha256Hex(args.credentialSecret);
-    const credential = await ctx.db
-      .query("automationCredentials")
-      .withIndex("by_credential_hash", (q) => q.eq("credentialHash", credentialHash))
-      .first();
-
-    if (!credential || credential.status !== "active") {
+    const credential = await findActiveCredentialBySecret(ctx, args.credentialSecret);
+    if (!credential) {
       throw new Error("Credential not found");
     }
 
     const now = Date.now();
-    if (
-      credential.lastUsedAt === undefined ||
-      now - credential.lastUsedAt >= CREDENTIAL_USAGE_WRITE_INTERVAL_MS
-    ) {
+    if (credentialNeedsUsageWrite(credential.lastUsedAt, now)) {
       await ctx.db.patch(credential._id, {
         lastUsedAt: now,
         updatedAt: now,
@@ -421,11 +464,6 @@ export const markCredentialUsed = mutation({
       });
     }
 
-    return {
-      credentialId: credential._id,
-      label: credential.label,
-      scopes: credential.scopes as AutomationScope[],
-      ownerTokenIdentifier: credential.ownerTokenIdentifier,
-    };
+    return toResolvedCredential({ ...credential, lastUsedAt: now });
   },
 });

@@ -18,6 +18,7 @@ export interface StoredCredential {
   siteUrl?: string;
   userId?: string;
   email?: string;
+  scopesCheckedAt?: number;
 }
 
 function parseCredential(value: unknown, invalidMessage: string): StoredCredential {
@@ -51,6 +52,10 @@ function parseCredential(value: unknown, invalidMessage: string): StoredCredenti
     siteUrl: typeof parsed.siteUrl === "string" ? parsed.siteUrl : undefined,
     userId: typeof parsed.userId === "string" ? parsed.userId : undefined,
     email: typeof parsed.email === "string" ? parsed.email : undefined,
+    scopesCheckedAt:
+      typeof parsed.scopesCheckedAt === "number" && Number.isFinite(parsed.scopesCheckedAt)
+        ? parsed.scopesCheckedAt
+        : undefined,
   };
 }
 

@@ -196,9 +196,10 @@ function horizon(tasks: CliTaskSummary[]) {
 function split(value?: string) { return value?.split(",").map((part) => part.trim()).filter(Boolean) ?? []; }
 function readFilterDate(name: string, args: ParsedArgs) { const value = readOption(args.options, name); if (value !== undefined && !DATE.test(value)) throw new CliCommandError("validation_failed", `--${name} must use YYYY-MM-DD format`); return value; }
 async function filterTasks(client: LiveCliClient, args: ParsedArgs, includeGoal = false) {
-  const [tasks, goals, links] = await Promise.all([client.listTasks({}).then(tasksOf), includeGoal || readOption(args.options, "goal") ? client.listGoals().then(goalsOf) : Promise.resolve([] as LiveGoalSummary[]), includeGoal || readOption(args.options, "goal") ? client.listGoalLinks().then(linksOf) : Promise.resolve({} as Record<string, string>)]);
+  const date = readFilterDate("date", args);
+  const [tasks, goals, links] = await Promise.all([client.listTasks({ date }).then(tasksOf), includeGoal || readOption(args.options, "goal") ? client.listGoals().then(goalsOf) : Promise.resolve([] as LiveGoalSummary[]), includeGoal || readOption(args.options, "goal") ? client.listGoalLinks().then(linksOf) : Promise.resolve({} as Record<string, string>)]);
   const goalTarget = readOption(args.options, "goal"); const goalId = goalTarget ? resolveGoal(goals, goalTarget).id : undefined;
-  const statuses = readOption(args.options, "status"); const priorities = split(readOption(args.options, "priority")); const tags = split(readOption(args.options, "tag")); const date = readFilterDate("date", args); const before = readFilterDate("before", args); const after = readFilterDate("after", args);
+  const statuses = readOption(args.options, "status"); const priorities = split(readOption(args.options, "priority")); const tags = split(readOption(args.options, "tag")); const before = readFilterDate("before", args); const after = readFilterDate("after", args);
   if (statuses && !["active", "inbox", "timeline", "completed", "cancelled"].includes(statuses)) throw new CliCommandError("validation_failed", "--status must be one of: active, inbox, timeline, completed, cancelled");
   if (priorities.some((priority) => !["p1", "p2", "p3"].includes(priority))) throw new CliCommandError("validation_failed", "--priority must contain only p1, p2, or p3");
   const filtered = tasks.filter((task) => {
@@ -263,7 +264,8 @@ export async function executeLiveCommand(client: LiveCliClient, command: string,
   if (["tasks list", "inbox", "today", "overdue", "upcoming", "agent context", "tasks show"].includes(command)) {
     requireScopes(client, ["tasks:read"]);
     if (command === "tasks show") { const allTasks = await client.listTasks({}).then(tasksOf); const summary = resolveTask(allTasks, readTarget(args, command)); const [detail, goals, links] = await Promise.all([client.getTask(summary.id).then(toTaskDetail), client.listGoals().then(goalsOf), client.listGoalLinks().then(linksOf)]); if (!detail) throw new CliCommandError("not_found", `Task not found: ${summary.id}`); return { task: { ...detail, goal: links[detail.id] ? goals.find((goal) => goal.id === links[detail.id]) : undefined }, source: "live" }; }
-    const tasks = await filterTasks(client, args, command === "agent context" || args.options.long === true);
+    const listArgs = command === "today" ? { ...args, options: { ...args.options, date: getLocalDateString() } } : args;
+    const tasks = await filterTasks(client, listArgs, command === "agent context" || args.options.long === true);
     const data = horizon(tasks);
     if (command === "inbox") return { tasks: tasks.filter((task) => task.status === "inbox"), source: "live" };
     if (command === "today") return { tasks: data.todayTasks, today: data.today, source: "live" };

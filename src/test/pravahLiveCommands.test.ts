@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadStoredCredential, saveStoredCredential } from "../../packages/cli/src/authStore";
 import { executeCommand } from "../../packages/cli/src/commands";
+import { getLocalDateString } from "../../packages/cli/src/date";
 import { renderHumanResult } from "../../packages/cli/src/renderer";
 
 let home: string;
@@ -79,9 +80,9 @@ describe("Pravah CLI v2 live adapter", () => {
   });
 
   it("applies goal, priority, and date filters before listing live tasks", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      const body = url.endsWith("/tasks") ? [
+      const body = url.includes("/tasks") ? [
         { _id: "task_1", title: "Relevant", deadline: "2026-07-27", priority: "p1", tags: ["exam"] },
         { _id: "task_2", title: "Other", deadline: "2026-07-27", priority: "p2", tags: ["home"] },
       ] : url.endsWith("/goals") ? [{ id: "goal_1", text: "MLT" }] : { task_1: "goal_1" };
@@ -89,6 +90,7 @@ describe("Pravah CLI v2 live adapter", () => {
     });
     const result = await executeCommand({ command: "tasks list", json: true }, { positionals: ["tasks", "list"], options: { all: true, goal: "MLT", priority: "p1", date: "2026-07-27" } });
     expect(result).toMatchObject({ tasks: [{ id: "task_1", goal: { text: "MLT" } }] });
+    expect(fetch.mock.calls.map((call) => String(call[0]))).toContain("https://pravah.example.com/tasks?date=2026-07-27");
   });
 
   it("keeps compact output unchanged and adds only image counts to long output", () => {
@@ -163,5 +165,36 @@ describe("Pravah CLI v2 live adapter", () => {
       expect.objectContaining({ taskId: "task_1", goalId: "goal_1" }),
       expect.objectContaining({ taskId: "task_1", goalId: null }),
     ]);
+  });
+
+  it("asks Convex for today's deadline instead of listing every Task", async () => {
+    const today = getLocalDateString();
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      const body = url.endsWith("/automation/credential")
+        ? { label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }
+        : [];
+      return { ok: true, json: async () => body } as Response;
+    });
+    await executeCommand({ command: "today", json: true }, { positionals: ["today"], options: {} });
+    expect(fetch.mock.calls.map((call) => String(call[0]))).toContain(`https://pravah.example.com/tasks?date=${today}`);
+  });
+
+  it("reuses a freshly checked credential across consecutive today reads", async () => {
+    const today = getLocalDateString();
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      const body = url.endsWith("/automation/credential")
+        ? { label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }
+        : url.includes(`/tasks?date=${today}`)
+          ? [{ _id: "task_1", title: "Today", deadline: today }]
+          : [];
+      return { ok: true, json: async () => body } as Response;
+    });
+    await executeCommand({ command: "today", json: true }, { positionals: ["today"], options: {} });
+    await executeCommand({ command: "today", json: true }, { positionals: ["today"], options: {} });
+    const urls = fetch.mock.calls.map((call) => String(call[0]));
+    expect(urls.filter((url) => url.endsWith("/automation/credential"))).toHaveLength(1);
+    expect(urls.filter((url) => url === `https://pravah.example.com/tasks?date=${today}`)).toHaveLength(2);
   });
 });
