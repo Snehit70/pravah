@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import { readOption } from "./args";
-import { getCommandCapabilities, getCommandName, getCommandSpecFromPositionals, isKnownNamespace, readCliPackageVersion, renderCommandHelp, renderNamespaceHelp, renderTopLevelHelp, suggestClosestCommand } from "./commandSpec";
+import { COMMAND_SPECS, getCommandCapabilities, getCommandName, getCommandSpecFromPositionals, isKnownNamespace, readCliPackageVersion, renderCommandHelp, renderNamespaceHelp, renderTopLevelHelp, suggestClosestCommand } from "./commandSpec";
 import { clearStoredCredential, loadStoredCredential, saveStoredCredential, type StoredCredential } from "./authStore";
 import { validateCommandArgs } from "./commandUtils";
 import { executeLiveCommand } from "./liveCommands";
@@ -25,19 +25,9 @@ function credentialRefreshIsFresh(credential: StoredCredential) {
   );
 }
 
-const WRITE_COMMANDS = new Set([
-  "tasks add",
-  "tasks edit",
-  "tasks complete",
-  "tasks reopen",
-  "tasks schedule",
-  "tasks unschedule",
-  "tasks remove",
-  "goals add",
-  "goals edit",
-  "goals remove",
-  "operations undo",
-]);
+const WRITE_COMMANDS = new Set(
+  COMMAND_SPECS.filter((spec) => spec.kind === "write").map(getCommandName),
+);
 
 async function refreshCredential(force = false): Promise<{ credential: StoredCredential | null; authorizationFailed: boolean }> {
   const credential = loadStoredCredential();

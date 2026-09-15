@@ -39,14 +39,14 @@ async function requireAuth(
   const bearerToken = parseBearerToken(request);
   if (bearerToken) {
     try {
-      const credential = await ctx.runQuery(api.automation.resolveAutomationCredential, {
+      let credential = await ctx.runQuery(api.automation.resolveAutomationCredential, {
         credentialSecret: bearerToken,
       });
       if (!credential) {
         return { response: jsonResponse({ error: "Unauthorized" }, 401) };
       }
       if (credential.needsUsageWrite) {
-        await ctx.runMutation(api.automation.markCredentialUsed, {
+        credential = await ctx.runMutation(api.automation.markCredentialUsed, {
           credentialSecret: bearerToken,
         });
       }

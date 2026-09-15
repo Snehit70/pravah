@@ -371,6 +371,40 @@ describe("http route handlers", () => {
     expect(response.status).toBe(200);
   });
 
+  it("uses scopes from the usage write when a concurrent update dropped tasks:write", async () => {
+    const handler = getHandler("/tasks/update", "POST");
+    const ctx = createCtx();
+    mockCredentialQuery(ctx, { ...writeCredential, needsUsageWrite: true });
+    ctx.runMutation.mockResolvedValueOnce({
+      ...writeCredential,
+      scopes: ["tasks:read"],
+      needsUsageWrite: false,
+    });
+
+    const response = await handler(
+      ctx,
+      new Request("https://example.com/tasks/update", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: "Bearer pravah_cred_demo",
+          "Idempotency-Key": "task-update-stale-scope",
+        },
+        body: JSON.stringify({ taskId: "task_abc", priority: "p1" }),
+      })
+    );
+
+    expect(ctx.runMutation).toHaveBeenCalledTimes(1);
+    expect(ctx.runMutation).toHaveBeenCalledWith(api.automation.markCredentialUsed, {
+      credentialSecret: "pravah_cred_demo",
+    });
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "Forbidden",
+      missingScopes: ["tasks:write"],
+    });
+  });
+
   it("records credential usage only when the lookup says the write window is open", async () => {
     const handler = getHandler("/tasks", "GET");
     const ctx = createCtx();
