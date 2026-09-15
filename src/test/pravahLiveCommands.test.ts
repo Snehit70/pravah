@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadStoredCredential, saveStoredCredential } from "../../packages/cli/src/authStore";
 import { executeCommand } from "../../packages/cli/src/commands";
+import { getLocalDateString } from "../../packages/cli/src/date";
 import { renderHumanResult } from "../../packages/cli/src/renderer";
 
 let home: string;
@@ -79,16 +80,26 @@ describe("Pravah CLI v2 live adapter", () => {
   });
 
   it("applies goal, priority, and date filters before listing live tasks", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      const body = url.endsWith("/tasks") ? [
-        { _id: "task_1", title: "Relevant", deadline: "2026-07-27", priority: "p1", tags: ["exam"] },
-        { _id: "task_2", title: "Other", deadline: "2026-07-27", priority: "p2", tags: ["home"] },
-      ] : url.endsWith("/goals") ? [{ id: "goal_1", text: "MLT" }] : { task_1: "goal_1" };
-      return { ok: true, json: async () => body } as Response;
+      if (url.endsWith("/automation/credential")) {
+        return { ok: true, json: async () => ({ label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }) } as Response;
+      }
+      if (url === "https://pravah.example.com/tasks?date=2026-07-27") {
+        return { ok: true, json: async () => [
+          { _id: "task_1", title: "Relevant", deadline: "2026-07-27", priority: "p1", tags: ["exam"] },
+          { _id: "task_2", title: "Other", deadline: "2026-07-27", priority: "p2", tags: ["home"] },
+        ] } as Response;
+      }
+      if (url.endsWith("/goals")) return { ok: true, json: async () => [{ id: "goal_1", text: "MLT" }] } as Response;
+      if (url.endsWith("/goal-links")) return { ok: true, json: async () => ({ task_1: "goal_1" }) } as Response;
+      throw new Error(`unexpected fetch ${url}`);
     });
     const result = await executeCommand({ command: "tasks list", json: true }, { positionals: ["tasks", "list"], options: { all: true, goal: "MLT", priority: "p1", date: "2026-07-27" } });
     expect(result).toMatchObject({ tasks: [{ id: "task_1", goal: { text: "MLT" } }] });
+    expect(fetch.mock.calls.map((call) => String(call[0])).filter((url) => url.includes("/tasks"))).toEqual([
+      "https://pravah.example.com/tasks?date=2026-07-27",
+    ]);
   });
 
   it("keeps compact output unchanged and adds only image counts to long output", () => {
@@ -163,5 +174,71 @@ describe("Pravah CLI v2 live adapter", () => {
       expect.objectContaining({ taskId: "task_1", goalId: "goal_1" }),
       expect.objectContaining({ taskId: "task_1", goalId: null }),
     ]);
+  });
+
+  it("asks Convex for today's deadline instead of listing every Task", async () => {
+    const today = getLocalDateString();
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/automation/credential")) {
+        return { ok: true, json: async () => ({ label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }) } as Response;
+      }
+      if (url === `https://pravah.example.com/tasks?date=${today}`) {
+        return { ok: true, json: async () => [] } as Response;
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    await executeCommand({ command: "today", json: true }, { positionals: ["today"], options: {} });
+    expect(fetch.mock.calls.map((call) => String(call[0])).filter((url) => url.includes("/tasks"))).toEqual([
+      `https://pravah.example.com/tasks?date=${today}`,
+    ]);
+  });
+
+  it("reuses a freshly checked credential across consecutive today reads", async () => {
+    const today = getLocalDateString();
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      const body = url.endsWith("/automation/credential")
+        ? { label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }
+        : url.includes(`/tasks?date=${today}`)
+          ? [{ _id: "task_1", title: "Today", deadline: today }]
+          : [];
+      return { ok: true, json: async () => body } as Response;
+    });
+    await executeCommand({ command: "today", json: true }, { positionals: ["today"], options: {} });
+    await executeCommand({ command: "today", json: true }, { positionals: ["today"], options: {} });
+    const urls = fetch.mock.calls.map((call) => String(call[0]));
+    expect(urls.filter((url) => url.endsWith("/automation/credential"))).toHaveLength(1);
+    expect(urls.filter((url) => url === `https://pravah.example.com/tasks?date=${today}`)).toHaveLength(2);
+  });
+
+  it("still refreshes credential before a write even when the cache is fresh", async () => {
+    const writes = [
+      { command: "tasks edit", positionals: ["tasks", "edit", "Ship v2"], options: { title: "Ship better", "idempotency-key": "stable" } },
+      { command: "tasks link", positionals: ["tasks", "link", "Ship v2"], options: { goal: "MLT", "idempotency-key": "stable" } },
+      { command: "tasks unlink", positionals: ["tasks", "unlink", "Ship v2"], options: { "idempotency-key": "stable" } },
+    ] as const;
+    for (const write of writes) {
+      saveStoredCredential({
+        secret: "pravah_test",
+        label: "Stale credential",
+        scopes: ["tasks:read"],
+        ownerTokenIdentifier: "user",
+        siteUrl: "https://pravah.example.com",
+        scopesCheckedAt: Date.now(),
+      });
+      const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.endsWith("/automation/credential")) return { ok: true, json: async () => ({ label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }) } as Response;
+        if (url.endsWith("/tasks")) return { ok: true, json: async () => [{ _id: "task_1", title: "Ship v2" }] } as Response;
+        if (url.endsWith("/goals")) return { ok: true, json: async () => [{ id: "goal_1", text: "MLT" }] } as Response;
+        return { ok: true, json: async () => ({ operationId: "op_1", undoAvailable: true }) } as Response;
+      });
+      const result = await executeCommand({ command: write.command, json: true }, { positionals: [...write.positionals], options: { ...write.options } });
+      expect(result).toMatchObject({ operation: { operationId: "op_1" } });
+      expect(fetch.mock.calls.map((call) => String(call[0]))).toContain("https://pravah.example.com/automation/credential");
+      expect(loadStoredCredential()).toMatchObject({ scopes: ["tasks:read", "tasks:write"] });
+      fetch.mockRestore();
+    }
   });
 });

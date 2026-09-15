@@ -108,7 +108,7 @@ Available methods: `open`, `close`, `toggle`, `refresh`.
 Configurable through the widget's settings (shell.json entry or the shell's
 widget settings UI):
 
-- `pollIntervalSec` — refresh cadence, default 30 (min 10).
+- `pollIntervalSec` — refresh cadence, default 300 (min 10). Right click still refreshes immediately.
 - `defaultTab` — which tab opens on click, default `today`.
 - `showCompleted` — show the completed section on Today, default `On`.
 
