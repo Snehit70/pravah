@@ -345,7 +345,11 @@ export async function listTasksForOwner(
     ]);
     tasks = dedupeTasks([...cancelledTasks, ...legacyCancelledTasks]);
   } else if (args.date) {
-    tasks = await listTasksByExactDeadline(ctx, tokenIdentifier, args.date);
+    const [deadlineTasks, legacyScheduledTasks] = await Promise.all([
+      listTasksByExactDeadline(ctx, tokenIdentifier, args.date),
+      listTasksByLegacyStatus(ctx, tokenIdentifier, "scheduled"),
+    ]);
+    tasks = dedupeTasks([...deadlineTasks, ...legacyScheduledTasks]);
   } else {
     tasks = await listOwnedTasks(ctx, tokenIdentifier);
   }

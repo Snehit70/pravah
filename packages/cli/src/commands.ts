@@ -25,10 +25,24 @@ function credentialRefreshIsFresh(credential: StoredCredential) {
   );
 }
 
-async function refreshCredential(): Promise<{ credential: StoredCredential | null; authorizationFailed: boolean }> {
+const WRITE_COMMANDS = new Set([
+  "tasks add",
+  "tasks edit",
+  "tasks complete",
+  "tasks reopen",
+  "tasks schedule",
+  "tasks unschedule",
+  "tasks remove",
+  "goals add",
+  "goals edit",
+  "goals remove",
+  "operations undo",
+]);
+
+async function refreshCredential(force = false): Promise<{ credential: StoredCredential | null; authorizationFailed: boolean }> {
   const credential = loadStoredCredential();
   if (!credential) return { credential: null, authorizationFailed: false };
-  if (credentialRefreshIsFresh(credential)) return { credential, authorizationFailed: false };
+  if (!force && credentialRefreshIsFresh(credential)) return { credential, authorizationFailed: false };
   const client = createLiveClient(process.env);
   if (!client) return { credential, authorizationFailed: false };
   try {
@@ -66,7 +80,7 @@ export async function executeCommand(_context: CommandContext, args: ParsedArgs)
   if (command === "doctor") return doctor();
   if (mock()) return executeMockCommand(command, args);
   const client = createLiveClient(process.env); if (!client) throw new Error("Pravah CLI is not authenticated. Run `pravah auth login --bootstrap-token <token>`.");
-  const refresh = await refreshCredential(); if (refresh.authorizationFailed) throw new Error("Pravah CLI credential is no longer authorized. Run `pravah auth login --bootstrap-token <token>`."); if (refresh.credential) client.scopes = refresh.credential.scopes;
+  const refresh = await refreshCredential(WRITE_COMMANDS.has(command)); if (refresh.authorizationFailed) throw new Error("Pravah CLI credential is no longer authorized. Run `pravah auth login --bootstrap-token <token>`."); if (refresh.credential) client.scopes = refresh.credential.scopes;
   try {
     const result = await executeLiveCommand(client, command, args); if (result === null) throw new Error(`Unknown command: ${command}`); return result;
   } catch (error) {

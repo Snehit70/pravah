@@ -6,6 +6,7 @@ import {
   bulkSoftDeleteInboxTasks,
   completeTask,
   getTimeline,
+  listTasks,
   listTodayCompletedTasks,
   migrateAllNativeTasksToDeadlineModel,
   migrateNativeTasksToDeadlineModel,
@@ -60,6 +61,13 @@ const updateTaskHandler = (
       priority?: "p1" | "p2" | "p3";
     },
     void
+  >
+)._handler;
+
+const listTasksHandler = (
+  listTasks as unknown as InternalHandler<
+    { date?: string; status?: "inbox" | "scheduled" | "completed" | "cancelled" },
+    Array<{ _id: Id<"tasks">; deadline?: string }>
   >
 )._handler;
 
@@ -138,6 +146,49 @@ function createAuthedCtx(db: unknown) {
 }
 
 describe("convex/tasks handlers", () => {
+  it("includes legacy scheduledDate tasks when listing by date", async () => {
+    const deadlineTask = {
+      _id: makeId("deadline-task"),
+      ownerTokenIdentifier: "user-1",
+      deadline: "2026-09-15",
+      position: 0,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const legacyTask = {
+      _id: makeId("legacy-task"),
+      ownerTokenIdentifier: "user-1",
+      scheduledDate: "2026-09-15",
+      status: "scheduled",
+      position: 1,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const otherDay = {
+      _id: makeId("other-day"),
+      ownerTokenIdentifier: "user-1",
+      scheduledDate: "2026-09-16",
+      status: "scheduled",
+      position: 0,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const db = {
+      query: vi.fn().mockReturnValue({
+        withIndex: vi.fn((name: string) => ({
+          collect: vi.fn().mockResolvedValue(
+            name === "by_owner_deadline_position"
+              ? [deadlineTask]
+              : [legacyTask, otherDay]
+          ),
+        })),
+      }),
+    };
+
+    const result = await listTasksHandler(createAuthedCtx(db), { date: "2026-09-15" });
+    expect(result.map((task) => task._id)).toEqual([deadlineTask._id, legacyTask._id]);
+  });
+
   it("keeps a completed Task completed while it is recoverably deleted and restored", async () => {
     const taskId = makeId("completed-task");
     const task = {

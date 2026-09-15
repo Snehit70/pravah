@@ -197,4 +197,25 @@ describe("Pravah CLI v2 live adapter", () => {
     expect(urls.filter((url) => url.endsWith("/automation/credential"))).toHaveLength(1);
     expect(urls.filter((url) => url === `https://pravah.example.com/tasks?date=${today}`)).toHaveLength(2);
   });
+
+  it("still refreshes credential before a write even when the cache is fresh", async () => {
+    saveStoredCredential({
+      secret: "pravah_test",
+      label: "Stale credential",
+      scopes: ["tasks:read"],
+      ownerTokenIdentifier: "user",
+      siteUrl: "https://pravah.example.com",
+      scopesCheckedAt: Date.now(),
+    });
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/automation/credential")) return { ok: true, json: async () => ({ label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }) } as Response;
+      if (url.endsWith("/tasks")) return { ok: true, json: async () => [{ _id: "task_1", title: "Ship v2" }] } as Response;
+      return { ok: true, json: async () => ({ operationId: "op_1", undoAvailable: true }) } as Response;
+    });
+    const result = await executeCommand({ command: "tasks edit", json: true }, { positionals: ["tasks", "edit", "Ship v2"], options: { title: "Ship better", "idempotency-key": "stable" } });
+    expect(result).toMatchObject({ operation: { operationId: "op_1" } });
+    expect(fetch.mock.calls.map((call) => String(call[0]))).toContain("https://pravah.example.com/automation/credential");
+    expect(loadStoredCredential()).toMatchObject({ scopes: ["tasks:read", "tasks:write"] });
+  });
 });
