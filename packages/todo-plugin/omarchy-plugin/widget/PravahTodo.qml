@@ -48,7 +48,7 @@ BarWidget {
 
     function open(): void {
       root.panelOpen = true
-      store.refresh()
+      store.refresh(true)
     }
 
     function close(): void { root.panelOpen = false }
@@ -59,7 +59,7 @@ BarWidget {
     }
 
     function refresh(): string {
-      store.refresh()
+      store.refresh(true)
       return "ok"
     }
   }
@@ -270,10 +270,10 @@ BarWidget {
       }
     }
     onPressed: function(button) {
-      if (button === Qt.RightButton) { store.refresh(); return }
+      if (button === Qt.RightButton) { store.refresh(true); return }
       panelOpen = !panelOpen
       if (panelOpen) {
-        store.refresh()
+        store.refresh(true)
       }
     }
   }
@@ -369,7 +369,7 @@ BarWidget {
           tooltipText: "Refresh"
           focusable: false
           enabled: !store.syncing
-          onClicked: store.refresh()
+          onClicked: store.refresh(true)
         }
 
         Button {

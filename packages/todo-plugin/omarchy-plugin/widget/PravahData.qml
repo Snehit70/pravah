@@ -51,6 +51,10 @@ QtObject {
   property var _rawTasks: []
   property int _pendingReads: 0
   property bool _refreshQueued: false
+  property bool _queuedForce: false
+  property double _lastSuccessMs: 0
+  property double _lastFailMs: 0
+  property int _failCount: 0
   property var _readQueue: []
   property var _activeRead: null
   property var _write: null
@@ -334,9 +338,28 @@ QtObject {
   }
 
   // ------------------------------------------------------------- refresh ---
-  function refresh() {
-    today = Qt.formatDate(new Date(), "yyyy-MM-dd")
-    if (_pendingReads > 0) { _refreshQueued = true; return }
+  // Background ticks use refresh() and can be skipped when the last good
+  // snapshot is under a minute old or a failure backoff is active.
+  // User-initiated paths (open, manual refresh, write receipt) pass
+  // force=true so the panel still feels instant. A date rollover always
+  // refreshes so the badge never sticks on yesterday.
+  function backoffMs() {
+    if (_failCount <= 0) return 0
+    var shift = _failCount > 4 ? 4 : _failCount
+    var wait = 300000 * Math.pow(2, shift - 1)
+    return wait > 1800000 ? 1800000 : wait
+  }
+
+  function refresh(force) {
+    var nowDate = Qt.formatDate(new Date(), "yyyy-MM-dd")
+    var dateChanged = (nowDate !== today)
+    today = nowDate
+    if (force !== true && !dateChanged) {
+      var now = Date.now()
+      if (_lastSuccessMs > 0 && now - _lastSuccessMs < 60000) return
+      if (_failCount > 0 && now - _lastFailMs < backoffMs()) return
+    }
+    if (_pendingReads > 0) { _refreshQueued = true; _queuedForce = _queuedForce || force === true; return }
     _pendingReads = 2
     syncing = true
     enqueueRead([cli, "tasks", "list", "--all", "--json"], handleTasks)
@@ -351,8 +374,13 @@ QtObject {
     if (lastError === "") {
       initialized = true
       lastSyncAt = Qt.formatTime(new Date(), "HH:mm")
+      _lastSuccessMs = Date.now()
+      _failCount = 0
+    } else {
+      _lastFailMs = Date.now()
+      _failCount += 1
     }
-    if (_refreshQueued) { _refreshQueued = false; refresh() }
+    if (_refreshQueued) { _refreshQueued = false; var queuedForce = _queuedForce; _queuedForce = false; refresh(queuedForce) }
   }
 
   function handleTasks(exitCode, out, err) {
@@ -492,7 +520,7 @@ QtObject {
     writeLabel = ""
     lastWriteError = ""
     writeSucceeded(env)
-    refresh()
+    refresh(true)
   }
 
   function failWrite(message) {
