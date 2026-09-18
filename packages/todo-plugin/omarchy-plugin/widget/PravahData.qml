@@ -359,7 +359,7 @@ QtObject {
       if (_lastSuccessMs > 0 && now - _lastSuccessMs < 60000) return
       if (_failCount > 0 && now - _lastFailMs < backoffMs()) return
     }
-    if (_pendingReads > 0) { _refreshQueued = true; _queuedForce = _queuedForce || force === true; return }
+    if (_pendingReads > 0) { _refreshQueued = true; _queuedForce = _queuedForce || force === true || dateChanged; return }
     _pendingReads = 2
     syncing = true
     enqueueRead([cli, "tasks", "list", "--all", "--json"], handleTasks)
