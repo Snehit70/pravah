@@ -488,6 +488,7 @@ function OverdueCard({
           const expanded = expandedTaskId === id;
           const overflowOpen = overflowTaskId === id;
           const goalName = getGoalName?.(id);
+          const goalPill = goalName ? goalPillFor(goalName) : null;
           return (
             <Animated.View
               key={id}
@@ -515,9 +516,23 @@ function OverdueCard({
                       </>
                     ) : (
                       <>
-                        <Text style={styles.overdueMetaText} numberOfLines={1}>
-                          {goalName ?? "No goal"}
-                        </Text>
+                        {goalName && goalPill ? (
+                          <View
+                            style={[styles.overdueGoalPill, { backgroundColor: goalPill.backgroundColor }]}
+                          >
+                            <Text
+                              style={[styles.overdueGoalPillText, { color: goalPill.textColor }]}
+                              numberOfLines={1}
+                              ellipsizeMode="tail"
+                            >
+                              {goalName}
+                            </Text>
+                          </View>
+                        ) : (
+                          <Text style={styles.overdueMetaText} numberOfLines={1}>
+                            No goal
+                          </Text>
+                        )}
                         <View style={styles.overdueAgePill}>
                           <SyncLoopIcon color={colors.deadline} size={12} strokeWidth={1.7} />
                           <Text style={styles.overdueAgePillText}>
@@ -1299,6 +1314,19 @@ const styles = createThemedStyles({
   overdueTaskText: { flex: 1, minWidth: 0, gap: 3 },
   overdueMeta: { flexDirection: "row", alignItems: "center", gap: spacing.xs, minWidth: 0 },
   overdueMetaText: { color: colors.textMuted, ...typography.micro, flexShrink: 1 },
+  overdueGoalPill: {
+    maxWidth: 132,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.md,
+    borderCurve: "continuous",
+    flexShrink: 1,
+  },
+  overdueGoalPillText: {
+    fontFamily: fonts.sansSemibold,
+    fontSize: 11,
+    lineHeight: 14,
+  },
   overdueAgePill: {
     flexDirection: "row",
     alignItems: "center",
