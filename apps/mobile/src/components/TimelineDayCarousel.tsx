@@ -55,6 +55,7 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import type { MobileTask } from "./TaskCard";
 import NavTimelineAsset from "../assets/icons/nav-timeline.svg";
 import {
+  AlertCircleIcon,
   CalendarIcon,
   CheckIcon,
   ChevronDownIcon,
@@ -467,7 +468,11 @@ function OverdueCard({
         <View style={styles.cardHeaderText}>
           <View style={styles.overdueTitleRow}>
             <Text style={styles.overdueLabel}>Overdue</Text>
-            <Text style={styles.overdueCount}>{tasks.length}</Text>
+            <View style={styles.overdueCountPill}>
+              <Text style={styles.overdueCountPillText}>
+                {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
+              </Text>
+            </View>
           </View>
         </View>
       </View>
@@ -490,6 +495,16 @@ function OverdueCard({
               style={[styles.overdueTask, isCompleted && styles.overdueTaskCompleted]}
             >
               <View style={styles.overdueTaskTop}>
+                <View
+                  style={[styles.overdueIconTile, isCompleted && styles.overdueIconTileDone]}
+                  accessibilityElementsHidden
+                >
+                  {isCompleted ? (
+                    <CheckIcon color={colors.success} size={18} strokeWidth={2.2} />
+                  ) : (
+                    <AlertCircleIcon color={colors.error} size={18} strokeWidth={1.8} />
+                  )}
+                </View>
                 <View style={styles.overdueTaskText}>
                   <Text style={styles.rowTitle} numberOfLines={2}>{task.title}</Text>
                   <View style={styles.overdueMeta}>
@@ -1222,14 +1237,24 @@ const styles = createThemedStyles({
     lineHeight: 30,
   },
   overdueTitleRow: {
+    flex: 1,
     flexDirection: "row",
-    alignItems: "baseline",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: spacing.sm,
   },
-  overdueCount: {
-    color: colors.textMuted,
-    ...typography.numeric,
-    fontSize: 16,
+  overdueCountPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.md,
+    borderCurve: "continuous",
+    backgroundColor: colors.errorMuted,
+  },
+  overdueCountPillText: {
+    color: colors.error,
+    fontFamily: fonts.sansSemibold,
+    fontSize: 12,
+    lineHeight: 16,
   },
   overdueFooter: {
     paddingTop: spacing.sm,
@@ -1244,6 +1269,18 @@ const styles = createThemedStyles({
   },
   overdueFooterText: { color: colors.accent, ...typography.micro },
   overdueList: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
+  overdueIconTile: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: colors.errorMuted,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  overdueIconTileDone: {
+    backgroundColor: colors.successMuted,
+  },
   overdueTask: {
     paddingVertical: spacing.md,
     gap: spacing.sm,
