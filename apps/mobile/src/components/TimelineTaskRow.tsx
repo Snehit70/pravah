@@ -1,21 +1,47 @@
 /**
  * TimelineTaskRow
  *
- * The compact Timeline row: one completion checkbox, a stacked title/context
- * body, and a trailing chevron for editing. The date belongs to the section
- * header above the row; goal, priority, and time stay quiet in the metadata
- * line so the title remains the scan anchor.
+ * The Timeline task card: a completion checkbox, a timeline icon tile, a
+ * stacked title/context body, and a trailing chevron for editing. The date
+ * belongs to the section header above the card; the goal renders as a pastel
+ * pill and time/priority stay as quiet icon chips in the meta row so the
+ * title remains the scan anchor. Each row is its own separated card.
  */
 
 import { memo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { CheckIcon, ChevronRightIcon } from "./UiIcons";
+import NavTimelineAsset from "../assets/icons/nav-timeline.svg";
+import { CheckIcon, ChevronRightIcon, ClockIcon, StarIcon } from "./UiIcons";
 import { colors, fonts, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
 import { formatTime12h } from "../lib/task-form";
 import type { MobileTask } from "./TaskCard";
 
 type TimelineGroupPosition = "only" | "first" | "middle" | "last";
+
+const PRIORITY_META = {
+  p1: { label: "P1", color: colors.priorityP1, bg: colors.errorMuted },
+  p2: { label: "P2", color: colors.priorityP2, bg: colors.warningMuted },
+  p3: { label: "P3", color: colors.priorityP3, bg: colors.successMuted },
+} as const;
+
+// Pastel goal pills, cycled deterministically off the goal name so the same
+// goal always wears the same tint. Uses the muted semantic washes so pills
+// stay legible in both light and dark themes.
+const GOAL_PILLS = [
+  { backgroundColor: colors.accentSoft, textColor: colors.accent },
+  { backgroundColor: colors.successMuted, textColor: colors.success },
+  { backgroundColor: colors.warningMuted, textColor: colors.warning },
+  { backgroundColor: colors.deadlineMuted, textColor: colors.deadline },
+] as const;
+
+function goalPillFor(goalName: string): (typeof GOAL_PILLS)[number] {
+  let hash = 0;
+  for (let i = 0; i < goalName.length; i += 1) {
+    hash = (hash * 31 + goalName.charCodeAt(i)) >>> 0;
+  }
+  return GOAL_PILLS[hash % GOAL_PILLS.length];
+}
 
 type TimelineTaskRowProps = {
   task: MobileTask;
@@ -46,19 +72,15 @@ function TimelineTaskRowInner({
   onComplete,
   groupPosition = "only",
 }: TimelineTaskRowProps) {
-  const meta = [
-    task.time ? formatTime12h(task.time) : null,
-    goalName ?? null,
-    task.priority ? task.priority.toUpperCase() : null,
-  ].filter(Boolean) as string[];
-  const groupStyle =
-    groupPosition === "only"
-      ? styles.rowOnly
-      : groupPosition === "first"
-        ? styles.rowFirst
-        : groupPosition === "middle"
-          ? styles.rowMiddle
-          : styles.rowLast;
+  const priority = task.priority ? PRIORITY_META[task.priority] : null;
+  const timeLabel = task.time ? formatTime12h(task.time) : null;
+  const goalPill = goalName ? goalPillFor(goalName) : null;
+  const hasMetaRow = Boolean(goalName ?? timeLabel ?? priority);
+  // Individual cards: the group position is kept for API compatibility but
+  // no longer joins rows into a contiguous surface — every row is its own
+  // separated card with full radius and a vertical gap.
+  void groupPosition;
+  const groupStyle = styles.rowOnly;
 
   const leading = selectMode ? (
     <View style={[styles.checkboxHit, styles.selectHit]}>
@@ -86,6 +108,12 @@ function TimelineTaskRowInner({
     </View>
   );
 
+  const iconTile = selectMode ? null : (
+    <View style={styles.tile} accessibilityElementsHidden>
+      <NavTimelineAsset color={colors.accent} width={20} height={20} />
+    </View>
+  );
+
   return (
     <Pressable
       onPress={selectMode ? onToggleSelect : onPress}
@@ -110,6 +138,7 @@ function TimelineTaskRowInner({
       ]}
     >
       {leading}
+      {iconTile}
 
       <View style={styles.body}>
         <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
@@ -120,10 +149,36 @@ function TimelineTaskRowInner({
             {task.description}
           </Text>
         ) : null}
-        {meta.length > 0 ? (
-          <Text style={styles.meta} numberOfLines={1} ellipsizeMode="tail">
-            {meta.join("  ·  ")}
-          </Text>
+        {hasMetaRow ? (
+          <View style={styles.metaRow}>
+            {goalName && goalPill ? (
+              <View
+                style={[styles.goalPill, { backgroundColor: goalPill.backgroundColor }]}
+              >
+                <Text
+                  style={[styles.goalPillText, { color: goalPill.textColor }]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {goalName}
+                </Text>
+              </View>
+            ) : null}
+            {timeLabel ? (
+              <View style={styles.metaChip}>
+                <ClockIcon color={colors.textMuted} size={13} strokeWidth={1.9} />
+                <Text style={styles.metaChipText}>{timeLabel}</Text>
+              </View>
+            ) : null}
+            {priority ? (
+              <View style={[styles.priorityPill, { backgroundColor: priority.bg }]}>
+                <StarIcon color={priority.color} size={12} strokeWidth={2} />
+                <Text style={[styles.priorityPillText, { color: priority.color }]}>
+                  {priority.label}
+                </Text>
+              </View>
+            ) : null}
+          </View>
         ) : null}
       </View>
 
@@ -137,21 +192,18 @@ export const TimelineTaskRow = memo(TimelineTaskRowInner);
 const styles = createThemedStyles({
   row: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.md,
+    alignItems: "center",
+    gap: spacing.sm,
     marginHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
-    minHeight: 72,
+    minHeight: 76,
     backgroundColor: colors.bgCard,
     borderRadius: radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
   },
-  rowOnly: { marginVertical: 3 },
-  rowFirst: { marginTop: 3, marginBottom: 0, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
-  rowMiddle: { marginVertical: 0, borderRadius: 0, borderTopWidth: 0 },
-  rowLast: { marginTop: 0, marginBottom: 3, borderTopWidth: 0, borderTopLeftRadius: 0, borderTopRightRadius: 0 },
+  rowOnly: { marginVertical: 6 },
   rowSelected: {
     backgroundColor: colors.bgFloating,
     borderColor: colors.accentSoft,
@@ -185,6 +237,16 @@ const styles = createThemedStyles({
   },
   checkboxDisabled: { opacity: 0.45 },
   checkboxPressed: { opacity: 0.68 },
+  tile: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    borderCurve: "continuous",
+    backgroundColor: colors.accentDim,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
   body: {
     flex: 1,
     minWidth: 0,
@@ -202,11 +264,51 @@ const styles = createThemedStyles({
     lineHeight: 19,
     color: colors.textSecondary,
   },
-  meta: {
-    fontFamily: fonts.mono,
-    fontSize: 11,
-    lineHeight: 15,
-    letterSpacing: 0.2,
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 6,
+  },
+  goalPill: {
+    maxWidth: 140,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: radii.md,
+    borderCurve: "continuous",
+  },
+  goalPillText: {
+    fontFamily: fonts.sansSemibold,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  metaChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    flexShrink: 0,
+  },
+  metaChipText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    lineHeight: 16,
     color: colors.textMuted,
+  },
+  priorityPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.md,
+    borderCurve: "continuous",
+    flexShrink: 0,
+  },
+  priorityPillText: {
+    fontFamily: fonts.sansSemibold,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0.2,
   },
 });
