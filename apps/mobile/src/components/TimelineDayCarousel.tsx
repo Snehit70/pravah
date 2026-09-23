@@ -428,8 +428,6 @@ function OverdueCard({
   onEditTask,
   onTriage,
   onRescheduleAllGoals,
-  weekTrigger,
-  weekPanel,
 }: {
   tasks: MobileTask[];
   today: string;
@@ -441,8 +439,6 @@ function OverdueCard({
     target: "today" | "tomorrow" | "week" | "drop" | { date: string }
   ) => void;
   onRescheduleAllGoals?: () => void;
-  weekTrigger?: ReactNode;
-  weekPanel?: ReactNode;
 }) {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [overflowTaskId, setOverflowTaskId] = useState<string | null>(null);
@@ -473,23 +469,8 @@ function OverdueCard({
             <Text style={styles.overdueLabel}>Overdue</Text>
             <Text style={styles.overdueCount}>{tasks.length}</Text>
           </View>
-          {weekTrigger}
         </View>
-        {onRescheduleAllGoals ? (
-          <Pressable
-            onPress={onRescheduleAllGoals}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Reschedule all goals"
-            style={({ pressed }) => [styles.overdueBulkAction, pressed && styles.rowPressed]}
-          >
-            <SyncLoopIcon color={colors.accent} size={14} strokeWidth={1.8} />
-            <Text style={styles.overdueBulkText}>Reflow all</Text>
-          </Pressable>
-        ) : null}
       </View>
-
-      {weekPanel}
 
       <ScrollView
         nestedScrollEnabled
@@ -662,6 +643,19 @@ function OverdueCard({
             </Animated.View>
           );
         })}
+        {onRescheduleAllGoals ? (
+          <View style={styles.overdueFooter}>
+            <Pressable
+              onPress={onRescheduleAllGoals}
+              accessibilityRole="button"
+              accessibilityLabel="Reschedule all goals"
+              style={({ pressed }) => [styles.overdueFooterAction, pressed && styles.rowPressed]}
+            >
+              <SyncLoopIcon color={colors.accent} size={14} strokeWidth={1.8} />
+              <Text style={styles.overdueFooterText}>Reflow all</Text>
+            </Pressable>
+          </View>
+        ) : null}
       </ScrollView>
       <ThemedDatePicker
         visible={datePickerTaskId !== null}
@@ -888,7 +882,7 @@ export function TimelineDayCarousel({
     reducedMotion,
   };
   const weekTriggerFor = (item: DayCarouselCard): ReactNode => {
-    if (!isViewedCard(item) || weekOpen) return null;
+    if (item.kind === "overdue" || !isViewedCard(item) || weekOpen) return null;
     const isRelativeDay = item.dateKey === today || item.dateKey === tomorrow;
     const label =
       item.kind === "overdue" || !isRelativeDay
@@ -903,7 +897,7 @@ export function TimelineDayCarousel({
     );
   };
   const renderWeekPanel = (item: DayCarouselCard): ReactNode => {
-    if (!isViewedCard(item) || !weekOpen) return null;
+    if (item.kind === "overdue" || !isViewedCard(item) || !weekOpen) return null;
     return (
       <DayStripWeek
         {...weekNavProps}
@@ -945,11 +939,9 @@ export function TimelineDayCarousel({
                 getGoalName={getGoalName}
                 onCompleteTask={onCompleteTask}
                 onEditTask={onEditTask}
-                onTriage={onTriageOverdue}
-                onRescheduleAllGoals={onRescheduleAllGoals}
-                weekTrigger={weekTriggerFor(item)}
-                weekPanel={renderWeekPanel(item)}
-              />
+                 onTriage={onTriageOverdue}
+                 onRescheduleAllGoals={onRescheduleAllGoals}
+               />
             ) : (
               <DayCardView
                 dateKey={item.dateKey}
@@ -1239,13 +1231,18 @@ const styles = createThemedStyles({
     ...typography.numeric,
     fontSize: 16,
   },
-  overdueBulkAction: {
+  overdueFooter: {
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.lg,
+  },
+  overdueFooterAction: {
     minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: spacing.xs,
   },
-  overdueBulkText: { color: colors.accent, ...typography.micro },
+  overdueFooterText: { color: colors.accent, ...typography.micro },
   overdueList: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
   overdueTask: {
     paddingVertical: spacing.md,
