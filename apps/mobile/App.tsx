@@ -114,6 +114,7 @@ import {
 } from "./src/lib/taskImageNative";
 import {
   AlertCircleIcon,
+  CloseIcon,
   InfoCircleIcon,
   SyncLoopIcon,
 } from "./src/components/UiIcons";
@@ -1238,10 +1239,8 @@ function MobileApp() {
           : "Inbox";
 
   const padCount = (n: number) => (n < 10 ? `0${n}` : `${n}`);
-  const timelineSubtitle =
-    displayOverdueCount > 0
-      ? `${padCount(displayOverdueCount)} overdue · ${padCount(displayUpcomingCount)} upcoming`
-      : `${padCount(displayUpcomingCount)} upcoming`;
+  // Timeline no longer wears an overdue/upcoming counts line — overdue lives on
+  // its own card/doorway; counts wrapped to two lines and stole header height.
   const headerSubtitle =
     shouldRenderOptimisticShell
       ? "Restoring your session"
@@ -1256,7 +1255,7 @@ function MobileApp() {
         : session && !isDataBootstrapReady
           ? "Syncing your workspace"
         : activeTab === "timeline"
-          ? timelineSubtitle
+          ? ""
           : activeTab === "insights"
             ? "On-device snapshot"
             : activeTab === "goals"
@@ -1286,14 +1285,17 @@ function MobileApp() {
         pointerEvents={isKairoActive ? "none" : "auto"}
       >
       {/* Compact header: brand mark + view name on one line (the mark already
-          says "Pravah"; no caps label needed), subtitle tucked beneath. */}
-      {!isGoalDetailOpen ? <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
+          says "Pravah"; no caps label needed), subtitle tucked beneath.
+          Top inset comes from SafeAreaView — do not re-apply insets.top here. */}
+      {!isGoalDetailOpen ? <View style={styles.header}>
         <View style={styles.headerMain}>
           <View style={styles.titleLockup}>
             <BrandMark size={28} />
             <View style={styles.titleTextBlock}>
               <Text style={styles.headerTitle}>{headerViewName}</Text>
-              <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>
+              {headerSubtitle ? (
+                <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>
+              ) : null}
             </View>
           </View>
           <View style={styles.headerLinks}>
@@ -1335,33 +1337,49 @@ function MobileApp() {
 
       <TaskImageBudgetNotice status={taskImageBudgetStatus} />
 
-      {/* Toast — left rule + line of copy, no filled pill. */}
+      {/* Toast — sits under the header in flow (not an overlay). */}
       {toast ? (
         <Animated.View
           entering={reducedMotion ? undefined : FadeIn.duration(200)}
           accessibilityLiveRegion={toast.kind === "error" ? "assertive" : "polite"}
-          style={[styles.toast, toast.kind === "error" ? styles.toastError : styles.toastInfo]}
+          style={styles.toastWrap}
         >
-          {toast.kind === "error" ? (
-            <AlertCircleIcon color={colors.error} size={18} />
-          ) : (
-            <InfoCircleIcon color={colors.accent} size={18} />
-          )}
-          <Text style={styles.toastText}>{toast.message}</Text>
-          {toast.action ? (
+          <View
+            style={[
+              styles.toastCard,
+              toast.kind === "error" ? styles.toastError : styles.toastInfo,
+            ]}
+          >
+            {toast.kind === "error" ? (
+              <AlertCircleIcon color={colors.error} size={18} />
+            ) : (
+              <InfoCircleIcon color={colors.accent} size={18} />
+            )}
+            <Text style={styles.toastText}>{toast.message}</Text>
+            {toast.action ? (
+              <Pressable
+                onPress={() => {
+                  toast.action?.run();
+                  dismissToast();
+                }}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel={toast.action.label}
+                style={({ pressed }) => [styles.toastAction, pressed && { opacity: 0.6 }]}
+              >
+                <Text style={styles.toastActionText}>{toast.action.label}</Text>
+              </Pressable>
+            ) : null}
             <Pressable
-              onPress={() => {
-                toast.action?.run();
-                dismissToast();
-              }}
-              hitSlop={12}
+              onPress={dismissToast}
+              hitSlop={10}
               accessibilityRole="button"
-              accessibilityLabel={toast.action.label}
-              style={({ pressed }) => [styles.toastAction, pressed && { opacity: 0.6 }]}
+              accessibilityLabel="Dismiss notification"
+              style={({ pressed }) => [styles.toastDismiss, pressed && { opacity: 0.6 }]}
             >
-              <Text style={styles.toastActionText}>{toast.action.label}</Text>
+              <CloseIcon color={colors.textMuted} size={15} strokeWidth={1.9} />
             </Pressable>
-          ) : null}
+          </View>
         </Animated.View>
       ) : null}
 
@@ -2076,18 +2094,25 @@ const styles = createThemedStyles({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
   },
-  // Toasts use a quiet tonal fill and full hairline border so status is clear
-  // without relying on a decorative side stripe.
-  toast: {
+  // Toast — in-flow row under the header so it never covers card chrome.
+  toastWrap: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  toastCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radii.md,
+    shadowColor: "#08050a",
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
   toastError: {
     borderColor: colors.error,
@@ -2110,6 +2135,12 @@ const styles = createThemedStyles({
     ...typography.micro,
     color: colors.accent,
     fontWeight: "600",
+  },
+  toastDismiss: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 2,
+    marginRight: -4,
   },
 
   // Retry and sync surfaces share the same quiet tonal status language.
