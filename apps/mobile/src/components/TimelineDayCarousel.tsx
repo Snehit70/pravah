@@ -455,11 +455,11 @@ function OverdueCard({
   }, [completedTasks, tasks]);
 
   const overdueAge = (deadline: string | undefined) => {
-    if (!deadline) return "Overdue";
+    if (!deadline) return "No date";
     const start = new Date(`${deadline}T00:00:00`).getTime();
     const end = new Date(`${today}T00:00:00`).getTime();
     const days = Math.max(1, Math.round((end - start) / 86_400_000));
-    return days === 1 ? "Yesterday" : `${days} days overdue`;
+    return `${days}d late`;
   };
 
   return (
@@ -509,19 +509,23 @@ function OverdueCard({
                   <Text style={styles.rowTitle} numberOfLines={2}>{task.title}</Text>
                   <View style={styles.overdueMeta}>
                     {isCompleted ? (
-                      <CheckIcon color={colors.success} size={13} strokeWidth={2.4} />
-                    ) : (
-                      <SyncLoopIcon color={colors.textMuted} size={12} strokeWidth={1.7} />
-                    )}
-                    <Text style={styles.overdueMetaText} numberOfLines={1}>
-                      {isCompleted ? "Completed" : goalName ?? "No goal"}
-                    </Text>
-                    {!isCompleted ? (
                       <>
-                        <View style={styles.metaDivider} />
-                        <Text style={styles.overdueMetaText}>{overdueAge(task.deadline)}</Text>
+                        <CheckIcon color={colors.success} size={13} strokeWidth={2.4} />
+                        <Text style={styles.overdueMetaText}>Completed</Text>
                       </>
-                    ) : null}
+                    ) : (
+                      <>
+                        <Text style={styles.overdueMetaText} numberOfLines={1}>
+                          {goalName ?? "No goal"}
+                        </Text>
+                        <View style={styles.overdueAgePill}>
+                          <SyncLoopIcon color={colors.deadline} size={12} strokeWidth={1.7} />
+                          <Text style={styles.overdueAgePillText}>
+                            {overdueAge(task.deadline)}
+                          </Text>
+                        </View>
+                      </>
+                    )}
                   </View>
                 </View>
                 {onCompleteTask && !isCompleted ? (
@@ -1295,6 +1299,23 @@ const styles = createThemedStyles({
   overdueTaskText: { flex: 1, minWidth: 0, gap: 3 },
   overdueMeta: { flexDirection: "row", alignItems: "center", gap: spacing.xs, minWidth: 0 },
   overdueMetaText: { color: colors.textMuted, ...typography.micro, flexShrink: 1 },
+  overdueAgePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.md,
+    borderCurve: "continuous",
+    backgroundColor: colors.deadlineMuted,
+    flexShrink: 0,
+  },
+  overdueAgePillText: {
+    color: colors.deadline,
+    fontFamily: fonts.sansSemibold,
+    fontSize: 11,
+    lineHeight: 14,
+  },
   compactHitTarget: {
     width: 44,
     height: 44,
