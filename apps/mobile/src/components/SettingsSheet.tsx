@@ -57,7 +57,6 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CopyIcon,
-  GripHorizontalIcon,
   InboxTrayIcon,
   InfoCircleIcon,
   MailIcon,
@@ -127,7 +126,6 @@ import Animated, {
   SlideInLeft,
   SlideInRight,
   interpolateColor,
-  LinearTransition,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -424,8 +422,8 @@ type TabOrderEditorProps = {
 };
 
 const TAB_REORDER_EASING = Easing.bezier(...motion.easing.outQuart);
-const TAB_ORDER_ROW_HEIGHT = 64;
-const TAB_ORDER_SLOT_HEIGHT = TAB_ORDER_ROW_HEIGHT + spacing.sm;
+const TAB_ORDER_CAPTURE_WIDTH = 48;
+const TAB_ORDER_PREVIEW_GAP = 1;
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -469,76 +467,77 @@ function SwatchChip({
   );
 }
 
-function useTabReorderTransition() {
-  const reducedMotion = useReducedMotion();
-  return reducedMotion
-    ? undefined
-    : LinearTransition.duration(motion.duration.base).easing(TAB_REORDER_EASING);
+function tabOrderSlotOffset(index: number, slotWidth: number) {
+  return index * (slotWidth + TAB_ORDER_PREVIEW_GAP) + (index >= 2 ? TAB_ORDER_CAPTURE_WIDTH : 0);
+}
+
+function tabOrderTargetIndex(
+  fromIndex: number,
+  translation: number,
+  orderLength: number,
+  slotWidth: number,
+) {
+  if (slotWidth <= 0) return fromIndex;
+  let targetIndex = fromIndex;
+  let closestDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < orderLength; index += 1) {
+    const distance = Math.abs(translation - (tabOrderSlotOffset(index, slotWidth) - tabOrderSlotOffset(fromIndex, slotWidth)));
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      targetIndex = index;
+    }
+  }
+  return targetIndex;
 }
 
 function TabOrderPreviewItem({
   tab,
-  layout,
-}: {
-  tab: TabKey;
-  layout: ReturnType<typeof useTabReorderTransition>;
-}) {
-  return (
-    <Animated.View layout={layout} style={styles.tabPreviewItem}>
-      <TabNavIcon tab={tab} color={colors.textMuted} size={18} />
-    </Animated.View>
-  );
-}
-
-function TabOrderPreview({
-  order,
-  accentColor,
-}: {
-  order: readonly TabKey[];
-  accentColor: string;
-}) {
-  const layout = useTabReorderTransition();
-  const left = order.slice(0, 2);
-  const right = order.slice(2);
-  return (
-    <View style={styles.tabOrderPreview} testID="tab-order-preview">
-      {left.map((key) => (
-        <TabOrderPreviewItem key={key} tab={key} layout={layout} />
-      ))}
-      <View style={[styles.tabPreviewCapture, { backgroundColor: accentColor }]}>
-        <CaptureIcon color={colors.textInverse} size={22} />
-      </View>
-      {right.map((key) => (
-        <TabOrderPreviewItem key={key} tab={key} layout={layout} />
-      ))}
-    </View>
-  );
-}
-
-function TabOrderRow({
-  tab,
   index,
+  sourceIndex,
   orderLength,
-  layout,
+  slotWidth,
+  isActive,
   onMove,
+  onDragStart,
+  onTargetChange,
+  onDragCancel,
   onReorder,
   onDraggingChange,
 }: {
   tab: TabKey;
   index: number;
+  sourceIndex: number;
   orderLength: number;
-  layout: ReturnType<typeof useTabReorderTransition>;
+  slotWidth: number;
+  isActive: boolean;
   onMove: (key: TabKey, direction: "up" | "down") => void;
+  onDragStart: (sourceIndex: number) => void;
+  onTargetChange: (sourceIndex: number, targetIndex: number) => void;
+  onDragCancel: () => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
   onDraggingChange: (isDragging: boolean) => void;
 }) {
   const reducedMotion = useReducedMotion();
   const [isDragging, setIsDragging] = useState(false);
-  const dragY = useSharedValue(0);
+  const dragX = useSharedValue(0);
   const dragProgress = useSharedValue(0);
+  const slotShift = useSharedValue(0);
+  const lastTargetIndex = useRef(sourceIndex);
+
+  useEffect(() => {
+    const nextPosition = tabOrderSlotOffset(index, slotWidth);
+    if (isActive) {
+      slotShift.value = tabOrderSlotOffset(sourceIndex, slotWidth);
+      return;
+    }
+    slotShift.value = reducedMotion
+      ? nextPosition
+      : withSpring(nextPosition, { damping: 20, stiffness: 280, mass: 0.7 });
+  }, [index, isActive, reducedMotion, slotShift, slotWidth, sourceIndex]);
+
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: dragY.value },
+      { translateX: slotShift.value + (isDragging ? dragX.value : 0) },
       { scale: 1 + dragProgress.value * 0.012 },
     ],
     zIndex: dragProgress.value > 0 ? 1 : 0,
@@ -550,7 +549,9 @@ function TabOrderRow({
         onMoveShouldSetPanResponder: () => true,
         onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: () => {
+          lastTargetIndex.current = sourceIndex;
           setIsDragging(true);
+          onDragStart(sourceIndex);
           onDraggingChange(true);
           dragProgress.value = reducedMotion
             ? 1
@@ -561,19 +562,22 @@ function TabOrderRow({
           haptic.selection();
         },
         onPanResponderMove: (_, gesture) => {
-          const min = -index * TAB_ORDER_SLOT_HEIGHT;
-          const max = (orderLength - index - 1) * TAB_ORDER_SLOT_HEIGHT;
-          dragY.value = Math.max(min, Math.min(max, gesture.dy));
+          const startOffset = tabOrderSlotOffset(sourceIndex, slotWidth);
+          const min = tabOrderSlotOffset(0, slotWidth) - startOffset;
+          const max = tabOrderSlotOffset(orderLength - 1, slotWidth) - startOffset;
+          dragX.value = Math.max(min, Math.min(max, gesture.dx));
+          const targetIndex = tabOrderTargetIndex(sourceIndex, gesture.dx, orderLength, slotWidth);
+          if (lastTargetIndex.current !== targetIndex) {
+            lastTargetIndex.current = targetIndex;
+            onTargetChange(sourceIndex, targetIndex);
+          }
         },
         onPanResponderRelease: (_, gesture) => {
-          const targetIndex = Math.max(
-            0,
-            Math.min(
-              orderLength - 1,
-              index + Math.round(gesture.dy / TAB_ORDER_SLOT_HEIGHT),
-            ),
-          );
-          dragY.value = reducedMotion
+          const targetIndex = tabOrderTargetIndex(sourceIndex, gesture.dx, orderLength, slotWidth);
+          if (lastTargetIndex.current !== targetIndex) {
+            onTargetChange(sourceIndex, targetIndex);
+          }
+          dragX.value = reducedMotion
             ? 0
             : withTiming(0, {
                 duration: motion.duration.fast,
@@ -585,13 +589,13 @@ function TabOrderRow({
                 duration: motion.duration.fast,
                 easing: TAB_REORDER_EASING,
               });
-          if (targetIndex !== index) haptic.selection();
-          onReorder(index, targetIndex);
+          if (targetIndex !== sourceIndex) haptic.selection();
+          onReorder(sourceIndex, targetIndex);
           setIsDragging(false);
           onDraggingChange(false);
         },
         onPanResponderTerminate: () => {
-          dragY.value = reducedMotion
+          dragX.value = reducedMotion
             ? 0
             : withTiming(0, {
                 duration: motion.duration.fast,
@@ -605,48 +609,50 @@ function TabOrderRow({
               });
           setIsDragging(false);
           onDraggingChange(false);
+          onDragCancel();
         },
       }),
-    [dragProgress, dragY, index, onDraggingChange, onReorder, orderLength, reducedMotion],
+    [
+      dragProgress,
+      dragX,
+      onDragCancel,
+      onDragStart,
+      onDraggingChange,
+      onReorder,
+      onTargetChange,
+      orderLength,
+      reducedMotion,
+      slotWidth,
+      sourceIndex,
+    ],
   );
 
   return (
     <Animated.View
-      layout={layout}
-      style={[styles.tabOrderRow, isDragging && styles.tabOrderRowDragging, animatedStyle]}
+      {...panResponder.panHandlers}
+      accessible
+      accessibilityRole="adjustable"
+      accessibilityLabel={`Reorder ${TAB_LABELS[tab]}`}
+      accessibilityHint={`Position ${index + 1} of ${orderLength}. Drag horizontally to reorder.`}
+      accessibilityActions={[
+        { name: "decrement", label: "Move up" },
+        { name: "increment", label: "Move down" },
+      ]}
+      onAccessibilityAction={(event) => {
+        if (event.nativeEvent.actionName === "decrement") onMove(tab, "up");
+        if (event.nativeEvent.actionName === "increment") onMove(tab, "down");
+      }}
+      style={[
+        styles.tabPreviewItem,
+        { width: slotWidth || 1 },
+        isDragging && styles.tabPreviewItemDragging,
+        animatedStyle,
+      ]}
     >
-      <View
-        {...panResponder.panHandlers}
-        accessible
-        accessibilityRole="adjustable"
-        accessibilityLabel={`Reorder ${TAB_LABELS[tab]}`}
-        accessibilityHint={`Position ${index + 1} of ${orderLength}. Drag vertically to reorder.`}
-        accessibilityActions={[
-          { name: "decrement", label: "Move up" },
-          { name: "increment", label: "Move down" },
-        ]}
-        onAccessibilityAction={(event) => {
-          if (event.nativeEvent.actionName === "decrement") onMove(tab, "up");
-          if (event.nativeEvent.actionName === "increment") onMove(tab, "down");
-        }}
-        style={styles.tabOrderGrip}
-      >
-        <View style={styles.tabOrderGripIcon}>
-          <GripHorizontalIcon
-            color={isDragging ? colors.accent : colors.textMuted}
-            size={20}
-            strokeWidth={2.2}
-          />
+      <View style={styles.tabPreviewCard}>
+        <View style={styles.tabPreviewIcon}>
+          <TabNavIcon tab={tab} color={isDragging ? colors.accent : colors.textPrimary} size={24} />
         </View>
-      </View>
-      <View style={styles.tabOrderIndex}>
-        <Text style={styles.tabOrderIndexText}>{index + 1}</Text>
-      </View>
-      <View style={styles.tabOrderRowIcon}>
-        <TabNavIcon tab={tab} color={colors.textPrimary} size={20} />
-      </View>
-      <View style={styles.settingCopy}>
-        <Text style={styles.settingLabel}>{TAB_LABELS[tab]}</Text>
       </View>
     </Animated.View>
   );
@@ -654,30 +660,127 @@ function TabOrderRow({
 
 function TabOrderEditor({
   order,
+  accentColor,
   onMove,
   onReorder,
   onReset,
   onDraggingChange,
-}: TabOrderEditorProps) {
-  const layout = useTabReorderTransition();
+}: TabOrderEditorProps & { accentColor: string }) {
+  const [slotWidth, setSlotWidth] = useState(0);
+  const [visualOrder, setVisualOrder] = useState(order);
+  const [activeDrag, setActiveDrag] = useState<{
+    sourceIndex: number;
+    targetIndex: number;
+  } | null>(null);
+  const pendingOrderRef = useRef<readonly TabKey[] | null>(null);
   const isDefaultOrder = order.every((tab, index) => tab === DEFAULT_TAB_ORDER[index]);
+
+  useEffect(() => {
+    if (activeDrag) return;
+    const pendingOrder = pendingOrderRef.current;
+    if (!pendingOrder) {
+      setVisualOrder(order);
+      return;
+    }
+    if (
+      order.length === pendingOrder.length &&
+      order.every((tab, index) => tab === pendingOrder[index])
+    ) {
+      pendingOrderRef.current = null;
+      setVisualOrder(order);
+    }
+  }, [activeDrag, order]);
+
+  const handlePreviewLayout = useCallback((event: { nativeEvent: { layout: { width: number } } }) => {
+    const nextSlotWidth = Math.max(
+      0,
+      (event.nativeEvent.layout.width - TAB_ORDER_PREVIEW_GAP * 4 - TAB_ORDER_CAPTURE_WIDTH - StyleSheet.hairlineWidth * 2) / 4,
+    );
+    setSlotWidth((current) => (current === nextSlotWidth ? current : nextSlotWidth));
+  }, []);
+  const handleDragStart = useCallback(
+    (sourceIndex: number) => {
+      pendingOrderRef.current = null;
+      setVisualOrder(order);
+      setActiveDrag({ sourceIndex, targetIndex: sourceIndex });
+    },
+    [order],
+  );
+  const handleTargetChange = useCallback(
+    (sourceIndex: number, targetIndex: number) => {
+      setActiveDrag((current) => {
+        if (!current || current.sourceIndex !== sourceIndex || current.targetIndex === targetIndex) {
+          return current;
+        }
+        setVisualOrder(reorderTabOrder(order, sourceIndex, targetIndex));
+        return { sourceIndex, targetIndex };
+      });
+    },
+    [order],
+  );
+  const handleDragCancel = useCallback(() => {
+    pendingOrderRef.current = null;
+    setVisualOrder(order);
+    setActiveDrag(null);
+  }, [order]);
+  const handleDragComplete = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      const nextOrder = reorderTabOrder(order, fromIndex, toIndex);
+      pendingOrderRef.current = nextOrder;
+      setVisualOrder(nextOrder);
+      setActiveDrag(null);
+      onReorder(fromIndex, toIndex);
+    },
+    [onReorder, order],
+  );
+
+  const renderPreviewItem = (key: TabKey) => {
+    const sourceIndex = order.indexOf(key);
+    const index = visualOrder.indexOf(key);
+    const isActive = activeDrag?.sourceIndex === sourceIndex;
+    return (
+      <TabOrderPreviewItem
+        key={key}
+        tab={key}
+        index={index}
+        sourceIndex={sourceIndex}
+        orderLength={order.length}
+        slotWidth={slotWidth}
+        isActive={isActive}
+        onMove={onMove}
+        onDragStart={handleDragStart}
+        onTargetChange={handleTargetChange}
+        onDragCancel={handleDragCancel}
+        onReorder={handleDragComplete}
+        onDraggingChange={onDraggingChange}
+      />
+    );
+  };
+
   return (
     <View style={styles.tabOrderEditor}>
-      {order.map((tab, index) => (
-        <TabOrderRow
-          key={tab}
-          tab={tab}
-          index={index}
-          orderLength={order.length}
-          layout={layout}
-          onMove={onMove}
-          onReorder={onReorder}
-          onDraggingChange={onDraggingChange}
-        />
-      ))}
+      <View
+        style={styles.tabOrderPreview}
+        testID="tab-order-preview"
+        onLayout={handlePreviewLayout}
+      >
+        {order.map(renderPreviewItem)}
+        <View
+          style={[
+            styles.tabPreviewCaptureSlot,
+            { left: slotWidth * 2 + TAB_ORDER_PREVIEW_GAP * 2 },
+          ]}
+        >
+          <View style={[styles.tabPreviewCapture, { backgroundColor: accentColor }]}>
+            <CaptureIcon color={colors.textInverse} size={28} />
+          </View>
+        </View>
+      </View>
       <View style={styles.tabOrderHint}>
         <InfoCircleIcon color={colors.textMuted} size={16} />
-        <Text style={styles.tabOrderHintText}>Drag the handle to reorder</Text>
+        <Text style={styles.tabOrderHintText}>
+          Drag tabs to reorder. Capture stays fixed in the center.
+        </Text>
       </View>
       <Pressable
         onPress={onReset}
@@ -2094,9 +2197,6 @@ function AppearanceSection({
         <View style={styles.settingRow}>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Theme</Text>
-            <Text style={styles.settingHelp}>
-              System follows this device and updates live.
-            </Text>
           </View>
         </View>
         <SlidingSegmented
@@ -2109,9 +2209,6 @@ function AppearanceSection({
         <View style={styles.settingRow}>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>App accent</Text>
-            <Text style={styles.settingHelp}>
-              Colors active navigation, selections, and primary actions.
-            </Text>
           </View>
         </View>
         <View style={styles.swatchGrid}>
@@ -2133,9 +2230,6 @@ function AppearanceSection({
         <View style={styles.settingRow}>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Density</Text>
-            <Text style={styles.settingHelp}>
-              Compact tightens task rows without hiding actions.
-            </Text>
           </View>
         </View>
         <SlidingSegmented
@@ -2148,9 +2242,6 @@ function AppearanceSection({
         <View style={styles.settingRow}>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Task color</Text>
-            <Text style={styles.settingHelp}>
-              Emphasis color for task rows. Status colors keep their meanings.
-            </Text>
           </View>
         </View>
         <View style={styles.swatchGrid}>
@@ -2171,12 +2262,9 @@ function AppearanceSection({
             <Text style={styles.settingLabel}>Tab order</Text>
           </View>
         </View>
-        <TabOrderPreview
-          order={tabOrder}
-          accentColor={accentColorFor(getThemeRuntimeSnapshot().appearance, prefs.accentColor)}
-        />
         <TabOrderEditor
           order={tabOrder}
+          accentColor={accentColorFor(getThemeRuntimeSnapshot().appearance, prefs.accentColor)}
           onMove={onMoveTab}
           onReorder={handleReorderTab}
           onReset={handleResetTabOrder}
@@ -4159,24 +4247,52 @@ const styles = createThemedStyles({
     borderColor: colors.border,
   },
   tabOrderPreview: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.xs,
+    position: "relative",
+    height: 56,
     marginTop: spacing.sm,
-    padding: spacing.xs,
     borderRadius: radii.lg,
     backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    overflow: "hidden",
   },
   tabPreviewItem: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    minHeight: 56,
+  },
+  tabPreviewItemDragging: {
+    zIndex: 2,
+  },
+  tabPreviewCard: {
     flex: 1,
-    minHeight: 46,
+    minWidth: 0,
+    minHeight: 56,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    borderRadius: radii.md,
+    backgroundColor: colors.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  tabPreviewIcon: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabPreviewCaptureSlot: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: TAB_ORDER_CAPTURE_WIDTH,
     alignItems: "center",
     justifyContent: "center",
   },
   tabPreviewCapture: {
-    width: 54,
-    height: 46,
+    width: TAB_ORDER_CAPTURE_WIDTH,
+    height: TAB_ORDER_CAPTURE_WIDTH,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 16,
@@ -4186,49 +4302,6 @@ const styles = createThemedStyles({
   },
   tabOrderEditor: {
     gap: spacing.sm,
-  },
-  tabOrderRow: {
-    minHeight: TAB_ORDER_ROW_HEIGHT,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.lg,
-    backgroundColor: colors.bgSurface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-  },
-  tabOrderRowDragging: {
-    backgroundColor: colors.bgCard,
-    borderColor: colors.accent,
-    ...shadow.md,
-  },
-  tabOrderGrip: {
-    width: 32,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  tabOrderGripIcon: {
-    transform: [{ rotate: "90deg" }],
-  },
-  tabOrderIndex: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.bgInput,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  tabOrderIndexText: {
-    ...typography.bodyMd,
-    color: colors.textMuted,
-  },
-  tabOrderRowIcon: {
-    width: 24,
-    alignItems: "center",
-    justifyContent: "center",
   },
   tabOrderHint: {
     flexDirection: "row",
@@ -4240,6 +4313,7 @@ const styles = createThemedStyles({
   tabOrderHintText: {
     ...typography.bodyMd,
     color: colors.textMuted,
+    flex: 1,
   },
   tabOrderReset: {
     minHeight: 48,
