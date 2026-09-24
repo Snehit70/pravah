@@ -15,7 +15,7 @@ let updateCheckStarted = false;
 
 export function useMobileRelease() {
   const control = useQuery(api.mobileReleases.getState);
-  const publishedReleases = useQuery(api.mobileReleases.listPublished, {
+  const publishedReleasesResult = useQuery(api.mobileReleases.listPublished, {
     limit: 10,
   });
   const { isUpdatePending } = Updates.useUpdates();
@@ -45,7 +45,8 @@ export function useMobileRelease() {
       control,
       updateDownloaded: isUpdatePending,
     }),
-    publishedReleases: publishedReleases ?? [],
+    publishedReleases: publishedReleasesResult ?? [],
+    isLoadingPublishedReleases: publishedReleasesResult === undefined,
     restartToUpdate,
   };
 }
