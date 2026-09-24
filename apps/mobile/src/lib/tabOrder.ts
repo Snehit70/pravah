@@ -50,3 +50,27 @@ export function moveTabOrder(
   [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
   return next;
 }
+
+export function reorderTabOrder(
+  order: readonly TabKey[],
+  fromIndex: number,
+  toIndex: number,
+): TabOrder {
+  const next = sanitizeTabOrder(order);
+  if (
+    !Number.isInteger(fromIndex) ||
+    !Number.isInteger(toIndex) ||
+    fromIndex < 0 ||
+    fromIndex >= next.length ||
+    toIndex < 0 ||
+    toIndex >= next.length ||
+    fromIndex === toIndex
+  ) {
+    return next;
+  }
+  const moved = next[fromIndex];
+  if (!moved) return next;
+  next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, moved);
+  return next;
+}

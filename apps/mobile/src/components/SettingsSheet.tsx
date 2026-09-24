@@ -12,6 +12,7 @@ import {
   Keyboard,
   Linking,
   Modal,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -34,6 +35,7 @@ import {
   colors,
   motion,
   radii,
+  shadow,
   spacing,
   typography,
 } from "../theme/tokens";
@@ -46,6 +48,7 @@ import { useConfirm } from "../hooks/useConfirm";
 import { getOrCreateDeviceId } from "../lib/deviceIdentity";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
 import { classifyError, mobileLogger } from "../lib/logger";
+import { haptic } from "../lib/haptic";
 import {
   AlertCircleIcon,
   ArrowUpRightIcon,
@@ -54,9 +57,11 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CopyIcon,
+  GripHorizontalIcon,
   InboxTrayIcon,
   InfoCircleIcon,
   MailIcon,
+  RetryArrowIcon,
   SyncLoopIcon,
 } from "./UiIcons";
 import GithubIconAsset from "../assets/icons/about-github.svg";
@@ -93,12 +98,14 @@ import ThemeDarkIconAsset from "../assets/icons/appearance-theme-dark.svg";
 import ThemeSystemIconAsset from "../assets/icons/appearance-theme-system.svg";
 import ThemeWarmIconAsset from "../assets/icons/appearance-theme-warm.svg";
 import {
+  DEFAULT_TAB_ORDER,
   moveTabOrder,
+  reorderTabOrder,
   resolveTabOrder,
   TAB_LABELS,
   type TabKey,
 } from "../lib/tabOrder";
-import { TabNavIcon } from "./tabNavIcons";
+import { CaptureIcon, TabNavIcon } from "./tabNavIcons";
 import {
   INITIAL_SETTINGS_NAVIGATION,
   SETTINGS_CATEGORY_META,
@@ -411,9 +418,14 @@ function settingsStatusColor(tone: SettingsHomeStatusTone): string {
 type TabOrderEditorProps = {
   order: readonly TabKey[];
   onMove: (key: TabKey, direction: "up" | "down") => void;
+  onReorder: (fromIndex: number, toIndex: number) => void;
+  onReset: () => void;
+  onDraggingChange: (isDragging: boolean) => void;
 };
 
 const TAB_REORDER_EASING = Easing.bezier(...motion.easing.outQuart);
+const TAB_ORDER_ROW_HEIGHT = 64;
+const TAB_ORDER_SLOT_HEIGHT = TAB_ORDER_ROW_HEIGHT + spacing.sm;
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -473,15 +485,18 @@ function TabOrderPreviewItem({
 }) {
   return (
     <Animated.View layout={layout} style={styles.tabPreviewItem}>
-      <TabNavIcon tab={tab} color={colors.textMuted} size={14} />
-      <Text style={styles.tabPreviewText} numberOfLines={1}>
-        {TAB_LABELS[tab]}
-      </Text>
+      <TabNavIcon tab={tab} color={colors.textMuted} size={18} />
     </Animated.View>
   );
 }
 
-function TabOrderPreview({ order }: { order: readonly TabKey[] }) {
+function TabOrderPreview({
+  order,
+  accentColor,
+}: {
+  order: readonly TabKey[];
+  accentColor: string;
+}) {
   const layout = useTabReorderTransition();
   const left = order.slice(0, 2);
   const right = order.slice(2);
@@ -490,8 +505,8 @@ function TabOrderPreview({ order }: { order: readonly TabKey[] }) {
       {left.map((key) => (
         <TabOrderPreviewItem key={key} tab={key} layout={layout} />
       ))}
-      <View style={styles.tabPreviewCapture}>
-        <Text style={styles.tabPreviewCaptureText}>Capture</Text>
+      <View style={[styles.tabPreviewCapture, { backgroundColor: accentColor }]}>
+        <CaptureIcon color={colors.textInverse} size={22} />
       </View>
       {right.map((key) => (
         <TabOrderPreviewItem key={key} tab={key} layout={layout} />
@@ -500,70 +515,185 @@ function TabOrderPreview({ order }: { order: readonly TabKey[] }) {
   );
 }
 
-function TabOrderEditor({ order, onMove }: TabOrderEditorProps) {
+function TabOrderRow({
+  tab,
+  index,
+  orderLength,
+  layout,
+  onMove,
+  onReorder,
+  onDraggingChange,
+}: {
+  tab: TabKey;
+  index: number;
+  orderLength: number;
+  layout: ReturnType<typeof useTabReorderTransition>;
+  onMove: (key: TabKey, direction: "up" | "down") => void;
+  onReorder: (fromIndex: number, toIndex: number) => void;
+  onDraggingChange: (isDragging: boolean) => void;
+}) {
+  const reducedMotion = useReducedMotion();
+  const [isDragging, setIsDragging] = useState(false);
+  const dragY = useSharedValue(0);
+  const dragProgress = useSharedValue(0);
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: dragY.value },
+      { scale: 1 + dragProgress.value * 0.012 },
+    ],
+    zIndex: dragProgress.value > 0 ? 1 : 0,
+  }));
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: () => {
+          setIsDragging(true);
+          onDraggingChange(true);
+          dragProgress.value = reducedMotion
+            ? 1
+            : withTiming(1, {
+                duration: motion.duration.fast,
+                easing: TAB_REORDER_EASING,
+              });
+          haptic.selection();
+        },
+        onPanResponderMove: (_, gesture) => {
+          const min = -index * TAB_ORDER_SLOT_HEIGHT;
+          const max = (orderLength - index - 1) * TAB_ORDER_SLOT_HEIGHT;
+          dragY.value = Math.max(min, Math.min(max, gesture.dy));
+        },
+        onPanResponderRelease: (_, gesture) => {
+          const targetIndex = Math.max(
+            0,
+            Math.min(
+              orderLength - 1,
+              index + Math.round(gesture.dy / TAB_ORDER_SLOT_HEIGHT),
+            ),
+          );
+          dragY.value = reducedMotion
+            ? 0
+            : withTiming(0, {
+                duration: motion.duration.fast,
+                easing: TAB_REORDER_EASING,
+              });
+          dragProgress.value = reducedMotion
+            ? 0
+            : withTiming(0, {
+                duration: motion.duration.fast,
+                easing: TAB_REORDER_EASING,
+              });
+          if (targetIndex !== index) haptic.selection();
+          onReorder(index, targetIndex);
+          setIsDragging(false);
+          onDraggingChange(false);
+        },
+        onPanResponderTerminate: () => {
+          dragY.value = reducedMotion
+            ? 0
+            : withTiming(0, {
+                duration: motion.duration.fast,
+                easing: TAB_REORDER_EASING,
+              });
+          dragProgress.value = reducedMotion
+            ? 0
+            : withTiming(0, {
+                duration: motion.duration.fast,
+                easing: TAB_REORDER_EASING,
+              });
+          setIsDragging(false);
+          onDraggingChange(false);
+        },
+      }),
+    [dragProgress, dragY, index, onDraggingChange, onReorder, orderLength, reducedMotion],
+  );
+
+  return (
+    <Animated.View
+      layout={layout}
+      style={[styles.tabOrderRow, isDragging && styles.tabOrderRowDragging, animatedStyle]}
+    >
+      <View
+        {...panResponder.panHandlers}
+        accessible
+        accessibilityRole="adjustable"
+        accessibilityLabel={`Reorder ${TAB_LABELS[tab]}`}
+        accessibilityHint={`Position ${index + 1} of ${orderLength}. Drag vertically to reorder.`}
+        accessibilityActions={[
+          { name: "decrement", label: "Move up" },
+          { name: "increment", label: "Move down" },
+        ]}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === "decrement") onMove(tab, "up");
+          if (event.nativeEvent.actionName === "increment") onMove(tab, "down");
+        }}
+        style={styles.tabOrderGrip}
+      >
+        <View style={styles.tabOrderGripIcon}>
+          <GripHorizontalIcon
+            color={isDragging ? colors.accent : colors.textMuted}
+            size={20}
+            strokeWidth={2.2}
+          />
+        </View>
+      </View>
+      <View style={styles.tabOrderIndex}>
+        <Text style={styles.tabOrderIndexText}>{index + 1}</Text>
+      </View>
+      <View style={styles.tabOrderRowIcon}>
+        <TabNavIcon tab={tab} color={colors.textPrimary} size={20} />
+      </View>
+      <View style={styles.settingCopy}>
+        <Text style={styles.settingLabel}>{TAB_LABELS[tab]}</Text>
+      </View>
+    </Animated.View>
+  );
+}
+
+function TabOrderEditor({
+  order,
+  onMove,
+  onReorder,
+  onReset,
+  onDraggingChange,
+}: TabOrderEditorProps) {
   const layout = useTabReorderTransition();
+  const isDefaultOrder = order.every((tab, index) => tab === DEFAULT_TAB_ORDER[index]);
   return (
     <View style={styles.tabOrderEditor}>
-      {order.map((key, index) => {
-        const isFirst = index === 0;
-        const isLast = index === order.length - 1;
-        return (
-          <Animated.View key={key} layout={layout} style={styles.tabOrderRow}>
-            <View style={styles.tabOrderIndex}>
-              <Text style={styles.tabOrderIndexText}>{index + 1}</Text>
-            </View>
-            <View style={styles.settingCopy}>
-              <Text style={styles.settingLabel}>{TAB_LABELS[key]}</Text>
-            </View>
-            <View style={styles.tabOrderControls}>
-              <Pressable
-                onPress={() => onMove(key, "up")}
-                disabled={isFirst}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Move ${TAB_LABELS[key]} up`}
-                accessibilityState={{ disabled: isFirst }}
-                style={({ pressed }) => [
-                  styles.tabOrderButton,
-                  isFirst && styles.tabOrderButtonDisabled,
-                  pressed && !isFirst && { opacity: 0.65 },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.tabOrderButtonText,
-                    isFirst && styles.tabOrderButtonTextDisabled,
-                  ]}
-                >
-                  ↑
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => onMove(key, "down")}
-                disabled={isLast}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Move ${TAB_LABELS[key]} down`}
-                accessibilityState={{ disabled: isLast }}
-                style={({ pressed }) => [
-                  styles.tabOrderButton,
-                  isLast && styles.tabOrderButtonDisabled,
-                  pressed && !isLast && { opacity: 0.65 },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.tabOrderButtonText,
-                    isLast && styles.tabOrderButtonTextDisabled,
-                  ]}
-                >
-                  ↓
-                </Text>
-              </Pressable>
-            </View>
-          </Animated.View>
-        );
-      })}
+      {order.map((tab, index) => (
+        <TabOrderRow
+          key={tab}
+          tab={tab}
+          index={index}
+          orderLength={order.length}
+          layout={layout}
+          onMove={onMove}
+          onReorder={onReorder}
+          onDraggingChange={onDraggingChange}
+        />
+      ))}
+      <View style={styles.tabOrderHint}>
+        <InfoCircleIcon color={colors.textMuted} size={16} />
+        <Text style={styles.tabOrderHintText}>Drag the handle to reorder</Text>
+      </View>
+      <Pressable
+        onPress={onReset}
+        disabled={isDefaultOrder}
+        accessibilityRole="button"
+        accessibilityLabel="Reset default tab order"
+        accessibilityState={{ disabled: isDefaultOrder }}
+        style={({ pressed }) => [
+          styles.tabOrderReset,
+          isDefaultOrder && styles.tabOrderResetDisabled,
+          pressed && !isDefaultOrder && styles.tabOrderResetPressed,
+        ]}
+      >
+        <RetryArrowIcon color={colors.accent} size={18} />
+        <Text style={styles.tabOrderResetText}>Reset default order</Text>
+      </Pressable>
     </View>
   );
 }
@@ -1822,6 +1952,7 @@ type AppearanceSectionProps = {
   setPreference: ReturnType<typeof useUserPreferences>["setPreference"];
   tabOrder: readonly TabKey[];
   onMoveTab: (key: TabKey, direction: "up" | "down") => void;
+  onDraggingChange: (isDragging: boolean) => void;
 };
 
 type InteractionSectionProps = {
@@ -1945,7 +2076,18 @@ function AppearanceSection({
   setPreference,
   tabOrder,
   onMoveTab,
+  onDraggingChange,
 }: AppearanceSectionProps) {
+  const handleReorderTab = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      void setPreference("tabOrder", reorderTabOrder(tabOrder, fromIndex, toIndex));
+    },
+    [setPreference, tabOrder],
+  );
+  const handleResetTabOrder = useCallback(() => {
+    void setPreference("tabOrder", [...DEFAULT_TAB_ORDER]);
+  }, [setPreference]);
+
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
@@ -2027,11 +2169,19 @@ function AppearanceSection({
         <View style={styles.settingRow}>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Tab order</Text>
-            <Text style={styles.settingHelp}>Capture stays fixed in the center.</Text>
           </View>
         </View>
-        <TabOrderPreview order={tabOrder} />
-        <TabOrderEditor order={tabOrder} onMove={onMoveTab} />
+        <TabOrderPreview
+          order={tabOrder}
+          accentColor={accentColorFor(getThemeRuntimeSnapshot().appearance, prefs.accentColor)}
+        />
+        <TabOrderEditor
+          order={tabOrder}
+          onMove={onMoveTab}
+          onReorder={handleReorderTab}
+          onReset={handleResetTabOrder}
+          onDraggingChange={onDraggingChange}
+        />
       </View>
     </View>
   );
@@ -2418,6 +2568,7 @@ function renderDetailScreen(
     onClosePicker: () => void;
     tabOrder: readonly TabKey[];
     onMoveTab: (key: TabKey, direction: "up" | "down") => void;
+    onDraggingChange: (isDragging: boolean) => void;
     deviceId: string | null;
     onExportDiagnostics: () => void;
     calendarLastError?: string;
@@ -2552,6 +2703,7 @@ export function SettingsSheet({
     INITIAL_SETTINGS_NAVIGATION,
   );
   const [routeDirection, setRouteDirection] = useState<SettingsRouteDirection>("forward");
+  const [isTabOrderDragging, setIsTabOrderDragging] = useState(false);
   const [expandedReleaseKeys, setExpandedReleaseKeys] = useState<Record<string, boolean>>({});
   const currentRouteKey = getSettingsRouteKey(navigation);
   const scrollPositionsRef = useRef<Record<string, number>>({});
@@ -2602,7 +2754,7 @@ export function SettingsSheet({
   }, []);
   const { prefs, setPreference } = useUserPreferences();
   const mobileRelease = useMobileRelease();
-  const tabOrder = resolveTabOrder(prefs.tabOrder);
+  const tabOrder = useMemo(() => resolveTabOrder(prefs.tabOrder), [prefs.tabOrder]);
   const [openPicker, setOpenPicker] = useState<QuietPickerKind | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [isClearingRetryQueue, setIsClearingRetryQueue] = useState(false);
@@ -3129,6 +3281,7 @@ export function SettingsSheet({
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            scrollEnabled={!isTabOrderDragging}
             onContentSizeChange={restoreScrollPosition}
             onScroll={handleSettingsScroll}
             scrollEventThrottle={16}
@@ -3202,6 +3355,7 @@ export function SettingsSheet({
                 onClosePicker: () => setOpenPicker(null),
                 tabOrder,
                 onMoveTab: handleMoveTab,
+                onDraggingChange: setIsTabOrderDragging,
                 deviceId,
                 onExportDiagnostics,
                 calendarLastError,
@@ -4008,48 +4162,62 @@ const styles = createThemedStyles({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: spacing.xs,
     marginTop: spacing.sm,
-  },
-  tabPreviewItem: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: spacing.sm,
+    padding: spacing.xs,
     borderRadius: radii.lg,
     backgroundColor: colors.bgSurface,
   },
-  tabPreviewText: {
-    ...typography.bodyMd,
-    color: colors.textMuted,
+  tabPreviewItem: {
+    flex: 1,
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
   },
   tabPreviewCapture: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.md,
-    backgroundColor: colors.textPrimary,
-  },
-  tabPreviewCaptureText: {
-    ...typography.bodyMd,
-    color: colors.textInverse,
-    fontFamily: "Geist_600SemiBold",
+    width: 54,
+    height: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 16,
+    borderCurve: "continuous",
+    backgroundColor: colors.accent,
+    ...shadow.glow,
   },
   tabOrderEditor: {
     gap: spacing.sm,
   },
   tabOrderRow: {
+    minHeight: TAB_ORDER_ROW_HEIGHT,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  tabOrderRowDragging: {
+    backgroundColor: colors.bgCard,
+    borderColor: colors.accent,
+    ...shadow.md,
+  },
+  tabOrderGrip: {
+    width: 32,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabOrderGripIcon: {
+    transform: [{ rotate: "90deg" }],
   },
   tabOrderIndex: {
-    width: 28,
-    height: 28,
-    borderRadius: radii.md,
-    backgroundColor: colors.bgSurface,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.bgInput,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -4057,29 +4225,40 @@ const styles = createThemedStyles({
     ...typography.bodyMd,
     color: colors.textMuted,
   },
-  tabOrderControls: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  tabOrderButton: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.md,
+  tabOrderRowIcon: {
+    width: 24,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.bgSurface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
   },
-  tabOrderButtonDisabled: {
-    opacity: 0.5,
+  tabOrderHint: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.xs,
   },
-  tabOrderButtonText: {
+  tabOrderHintText: {
     ...typography.bodyMd,
-    color: colors.textPrimary,
+    color: colors.textMuted,
   },
-  tabOrderButtonTextDisabled: {
-    color: colors.textDim,
+  tabOrderReset: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.accentDim,
+  },
+  tabOrderResetPressed: {
+    opacity: 0.65,
+  },
+  tabOrderResetDisabled: {
+    opacity: 0.45,
+  },
+  tabOrderResetText: {
+    ...typography.title,
+    color: colors.accent,
   },
   aboutHeader: {
     flexDirection: "row",

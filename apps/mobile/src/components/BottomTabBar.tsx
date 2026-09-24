@@ -1,6 +1,5 @@
 import { memo, useCallback, useEffect } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import Svg, { Line } from "react-native-svg";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -12,7 +11,7 @@ import { useReducedMotion } from "../hooks/useReducedMotion";
 import { resolveTabOrder, TAB_LABELS, type TabKey } from "../lib/tabOrder";
 import { colors, radii, shadow, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
-import { TabNavIcon } from "./tabNavIcons";
+import { CaptureIcon, TabNavIcon } from "./tabNavIcons";
 
 export type { TabKey } from "../lib/tabOrder";
 
@@ -24,24 +23,6 @@ type BottomTabBarProps = {
   bottomInset?: number;
   tabOrder?: readonly TabKey[];
 };
-
-function CaptureIcon({ color, size }: { color: string; size: number }) {
-  return (
-    <Svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth={2.1}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <Line x1={12} y1={5.25} x2={12} y2={18.75} />
-      <Line x1={5.25} y1={12} x2={18.75} y2={12} />
-    </Svg>
-  );
-}
 
 // ── Tabs ───────────────────────────────────────────────────────────────
 // The active state is an area-fill: the filled twin of each mark is revealed

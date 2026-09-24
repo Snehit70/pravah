@@ -1,5 +1,5 @@
 import { type ComponentType } from "react";
-import { type SvgProps } from "react-native-svg";
+import Svg, { Line, type SvgProps } from "react-native-svg";
 import { type TabKey } from "../lib/tabOrder";
 import NavInboxAsset from "../assets/icons/nav-inbox.svg";
 import NavInboxFillAsset from "../assets/icons/nav-inbox-fill.svg";
@@ -27,6 +27,24 @@ const FILL_ASSETS: Record<TabKey, ComponentType<SvgProps>> = {
   goals: NavGoalsFillAsset,
   insights: NavProgressFillAsset,
 };
+
+export function CaptureIcon({ color, size }: { color: string; size: number }) {
+  return (
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={2.1}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <Line x1={12} y1={5.25} x2={12} y2={18.75} />
+      <Line x1={5.25} y1={12} x2={18.75} y2={12} />
+    </Svg>
+  );
+}
 
 export function TabNavIcon({
   tab,
