@@ -18,6 +18,8 @@ import {
   Text,
   TextInput,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
 import { useMutation, useQuery } from "convex/react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -75,6 +77,8 @@ import CliIconAsset from "../assets/icons/settings-cli.svg";
 import AppSettingsIconAsset from "../assets/icons/app-settings.svg";
 import RemindersIconAsset from "../assets/icons/settings-reminders.svg";
 import MegaphoneIconAsset from "../assets/icons/megaphone.svg";
+import ReleaseFeatIconAsset from "../assets/icons/release-feat.svg";
+import ReleaseFixIconAsset from "../assets/icons/release-fix.svg";
 import QuietHoursIconAsset from "../assets/icons/settings-quiet-hours.svg";
 import SyncIconAsset from "../assets/icons/settings-sync.svg";
 import DataIconAsset from "../assets/icons/settings-data.svg";
@@ -111,6 +115,10 @@ import type {
 } from "../lib/userPreferences";
 import Animated, {
   Easing,
+  FadeIn,
+  FadeOut,
+  SlideInLeft,
+  SlideInRight,
   interpolateColor,
   LinearTransition,
   useAnimatedStyle,
@@ -210,6 +218,13 @@ const REPO_URL = "https://github.com/Snehit70/pravah";
 const CHANGELOG_URL = `${REPO_URL}/blob/main/apps/mobile/CHANGELOG.md`;
 const ISSUES_URL = `${REPO_URL}/issues`;
 const RETRY_QUEUE_STORAGE_KEY = "pravah_mobile_retry_queue_v1";
+
+type SettingsRouteDirection = "forward" | "back";
+
+function getSettingsRouteKey(navigation: SettingsNavigationState) {
+  if (navigation.screen === "list") return "list";
+  return `detail-${navigation.category}-${navigation.page ?? "root"}`;
+}
 
 type CategoryIconProps = {
   color: string;
@@ -2022,6 +2037,17 @@ function AppearanceSection({
   );
 }
 
+function AboutReleaseIcon({ title }: { title?: string }) {
+  const normalizedTitle = title?.toLowerCase() ?? "";
+  if (/^(fix|bugfix|hotfix)\b/.test(normalizedTitle)) {
+    return <ReleaseFixIconAsset width={18} height={18} color={colors.accent} />;
+  }
+  if (/^(feat|feature)\b/.test(normalizedTitle)) {
+    return <ReleaseFeatIconAsset width={18} height={18} color={colors.accent} />;
+  }
+  return <MegaphoneIconAsset width={18} height={18} color={colors.accent} />;
+}
+
 function AboutSection({
   mobileRelease,
   onOpenWhatsNew,
@@ -2041,7 +2067,7 @@ function AboutSection({
           <View style={styles.aboutHeaderCopy}>
             <Text style={styles.settingLabel}>Pravah Mobile</Text>
             <Text style={styles.aboutVersion}>
-              Version {mobileRelease.runningVersion}
+              Installed {mobileRelease.runningVersion}
             </Text>
           </View>
           <Pressable
@@ -2055,42 +2081,42 @@ function AboutSection({
           </Pressable>
         </View>
 
-        <View style={styles.settingRow}>
-          <View style={styles.settingCopy}>
-            <Text style={styles.settingLabel}>
-              Latest release {mobileRelease.latestVersion}
-            </Text>
-            <Text style={styles.settingHelp}>
-              Runtime {mobileRelease.nativeRuntime}
-              {mobileRelease.minimumRuntime
-                ? ` · minimum ${mobileRelease.minimumRuntime}`
-                : ""}
-            </Text>
-            {latestPublishedRelease ? (
-              <Text style={styles.settingHelp}>{latestPublishedRelease.title}</Text>
-            ) : null}
+        <View style={styles.sectionDivider} />
+
+        <View style={styles.aboutReleaseRow}>
+          <View style={styles.aboutReleaseMark}>
+            <AboutReleaseIcon title={latestPublishedRelease?.title} />
+          </View>
+          <View style={styles.aboutReleaseCopy}>
+            <View style={styles.aboutReleaseHeading}>
+              <Text style={styles.aboutReleaseLabel}>Latest release</Text>
+              <Text style={styles.aboutReleaseVersion}>
+                {mobileRelease.latestVersion}
+              </Text>
+            </View>
             {mobileRelease.needsNativeUpgrade ? (
-              <Text style={styles.settingHelp}>
+              <Text style={styles.aboutReleaseWarning}>
                 {mobileRelease.isBelowMinimumRuntime
                   ? "This app build is no longer compatible. Install the latest APK."
                   : "A newer app build is recommended for future updates."}
               </Text>
             ) : null}
           </View>
-          {mobileRelease.pendingVersion ? (
-            <Pressable
-              onPress={() => void mobileRelease.restartToUpdate()}
-              accessibilityRole="button"
-              accessibilityLabel={`Restart to update to version ${mobileRelease.pendingVersion}`}
-              style={({ pressed }) => [
-                styles.versionPill,
-                pressed && { opacity: 0.6 },
-              ]}
-            >
-              <Text style={styles.versionPillText}>Restart to update</Text>
-            </Pressable>
-          ) : null}
         </View>
+
+        {mobileRelease.pendingVersion ? (
+          <Pressable
+            onPress={() => void mobileRelease.restartToUpdate()}
+            accessibilityRole="button"
+            accessibilityLabel={`Restart to update to version ${mobileRelease.pendingVersion}`}
+            style={({ pressed }) => [
+              styles.aboutReleaseUpdateAction,
+              pressed && { opacity: 0.6 },
+            ]}
+          >
+            <Text style={styles.versionPillText}>Restart to update</Text>
+          </Pressable>
+        ) : null}
 
         <Pressable
           onPress={() => void Linking.openURL(ISSUES_URL)}
@@ -2404,6 +2430,8 @@ function renderDetailScreen(
     onWipeLocalData: () => void;
     mobileRelease: ReturnType<typeof useMobileRelease>;
     onOpenWhatsNew: () => void;
+    expandedReleaseKeys: Record<string, boolean>;
+    onToggleReleaseNotes: (releaseKey: string) => void;
   },
 ) {
   if (navigation.screen !== "detail") return null;
@@ -2454,11 +2482,14 @@ function renderDetailScreen(
     case "about":
       if (navigation.page === "whats-new") {
         return (
-           <WhatsNewPage
-             changelogUrl={CHANGELOG_URL}
-             repositoryUrl={REPO_URL}
-             releases={props.mobileRelease.publishedReleases}
-           />
+          <WhatsNewPage
+            changelogUrl={CHANGELOG_URL}
+            repositoryUrl={REPO_URL}
+            releases={props.mobileRelease.publishedReleases}
+            isLoading={props.mobileRelease.isLoadingPublishedReleases}
+            expandedReleaseKeys={props.expandedReleaseKeys}
+            onToggleReleaseNotes={props.onToggleReleaseNotes}
+          />
         );
       }
       return (
@@ -2520,7 +2551,55 @@ export function SettingsSheet({
     settingsNavigationReducer,
     INITIAL_SETTINGS_NAVIGATION,
   );
+  const [routeDirection, setRouteDirection] = useState<SettingsRouteDirection>("forward");
+  const [expandedReleaseKeys, setExpandedReleaseKeys] = useState<Record<string, boolean>>({});
+  const currentRouteKey = getSettingsRouteKey(navigation);
+  const scrollPositionsRef = useRef<Record<string, number>>({});
+  const activeRouteKeyRef = useRef(currentRouteKey);
+  const pendingScrollRestoreRef = useRef<string | null>(null);
   const activeCategory = navigation.screen === "detail" ? navigation.category : null;
+  const routeTransition = useMemo(() => {
+    if (reducedMotion) return undefined;
+    const easing = TAB_REORDER_EASING;
+    if (routeDirection === "forward") {
+      return {
+        entering: SlideInRight.duration(motion.duration.fast).easing(easing),
+      };
+    }
+    return {
+      entering: SlideInLeft.duration(motion.duration.fast).easing(easing),
+    };
+  }, [reducedMotion, routeDirection]);
+  const headerTransition = useMemo(
+    () =>
+      reducedMotion
+        ? undefined
+        : {
+            entering: FadeIn.duration(motion.duration.fast).easing(TAB_REORDER_EASING),
+            exiting: FadeOut.duration(motion.duration.instant).easing(TAB_REORDER_EASING),
+          },
+    [reducedMotion],
+  );
+  const restoreScrollPosition = useCallback(() => {
+    const routeKey = pendingScrollRestoreRef.current;
+    if (!routeKey) return;
+    scrollRef.current?.scrollTo({
+      y: scrollPositionsRef.current[routeKey] ?? 0,
+      animated: false,
+    });
+    pendingScrollRestoreRef.current = null;
+  }, []);
+  const handleSettingsScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (pendingScrollRestoreRef.current) return;
+      scrollPositionsRef.current[activeRouteKeyRef.current] = event.nativeEvent.contentOffset.y;
+    },
+    [],
+  );
+  const prepareRoute = useCallback((routeKey: string) => {
+    activeRouteKeyRef.current = routeKey;
+    pendingScrollRestoreRef.current = routeKey;
+  }, []);
   const { prefs, setPreference } = useUserPreferences();
   const mobileRelease = useMobileRelease();
   const tabOrder = resolveTabOrder(prefs.tabOrder);
@@ -2604,11 +2683,26 @@ export function SettingsSheet({
     }
     if (!visible) {
       setOpenPicker(null);
+      setRouteDirection("forward");
+      setExpandedReleaseKeys({});
+      scrollPositionsRef.current = {};
+      prepareRoute("list");
       dispatchNavigation({ type: "reset" });
       return;
     }
+    prepareRoute("list");
     dispatchNavigation({ type: "reset" });
-  }, [visible]);
+  }, [prepareRoute, visible]);
+
+  useEffect(() => {
+    if (activeRouteKeyRef.current === currentRouteKey && !pendingScrollRestoreRef.current) {
+      return;
+    }
+    activeRouteKeyRef.current = currentRouteKey;
+    pendingScrollRestoreRef.current = currentRouteKey;
+    const frame = requestAnimationFrame(restoreScrollPosition);
+    return () => cancelAnimationFrame(frame);
+  }, [currentRouteKey, restoreScrollPosition]);
 
   useEffect(() => {
     if (!visible) return;
@@ -2660,23 +2754,44 @@ export function SettingsSheet({
   const handleClose = useCallback(() => {
     Keyboard.dismiss();
     setOpenPicker(null);
+    setRouteDirection("forward");
+    setExpandedReleaseKeys({});
+    prepareRoute("list");
     dispatchNavigation({ type: "reset" });
     onClose();
-  }, [onClose]);
+  }, [onClose, prepareRoute]);
 
   const handleBack = useCallback(() => {
     if (navigation.screen === "detail") {
       Keyboard.dismiss();
       setOpenPicker(null);
+      setRouteDirection("back");
+      prepareRoute(navigation.page === "whats-new" ? "detail-about-root" : "list");
       dispatchNavigation({ type: "back" });
       return;
     }
     handleClose();
-  }, [handleClose, navigation.screen]);
+  }, [handleClose, navigation, prepareRoute]);
 
   const handleOpenCategory = useCallback((category: SettingsCategoryKey) => {
     Keyboard.dismiss();
+    setRouteDirection("forward");
+    prepareRoute(`detail-${category}-root`);
     dispatchNavigation({ type: "open", category });
+  }, [prepareRoute]);
+
+  const handleOpenWhatsNew = useCallback(() => {
+    Keyboard.dismiss();
+    setRouteDirection("forward");
+    prepareRoute("detail-about-whats-new");
+    dispatchNavigation({ type: "openWhatsNew" });
+  }, [prepareRoute]);
+
+  const handleToggleReleaseNotes = useCallback((releaseKey: string) => {
+    setExpandedReleaseKeys((current) => ({
+      ...current,
+      [releaseKey]: !current[releaseKey],
+    }));
   }, []);
 
   const handleCopy = useCallback(
@@ -2988,23 +3103,23 @@ export function SettingsSheet({
               <ChevronLeftIcon color={colors.textPrimary} size={20} />
             </Pressable>
             <View style={styles.headerTitleWrap}>
-              {HeaderMarkIcon ? (
-                <HeaderMarkIcon color={colors.textSecondary} size={22} />
-              ) : null}
-              <Text style={styles.headerTitle}>{headerTitle}</Text>
+              <Animated.View
+                key={`header-${currentRouteKey}`}
+                entering={headerTransition?.entering}
+                exiting={headerTransition?.exiting}
+                style={styles.headerTitleAnimation}
+              >
+                {HeaderMarkIcon ? (
+                  <HeaderMarkIcon color={colors.textSecondary} size={22} />
+                ) : null}
+                <Text style={styles.headerTitle}>{headerTitle}</Text>
+              </Animated.View>
             </View>
             <View style={styles.headerSpacer} />
           </View>
         </View>
 
-        <View
-           key={
-             navigation.screen === "detail"
-               ? `detail-${navigation.category}-${navigation.page ?? "root"}`
-               : "list"
-           }
-          style={styles.contentWrap}
-        >
+        <View style={styles.contentWrap}>
           <ScrollView
             ref={scrollRef}
             style={styles.scroll}
@@ -3014,13 +3129,20 @@ export function SettingsSheet({
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            onContentSizeChange={restoreScrollPosition}
+            onScroll={handleSettingsScroll}
+            scrollEventThrottle={16}
           >
-            {navigation.screen === "list" ? (
-              <SettingsCategoryList
-                onOpenCategory={handleOpenCategory}
-                statuses={settingsHomeStatuses}
-              />
-            ) : (
+            <Animated.View
+              key={currentRouteKey}
+              entering={routeTransition?.entering}
+            >
+              {navigation.screen === "list" ? (
+                <SettingsCategoryList
+                  onOpenCategory={handleOpenCategory}
+                  statuses={settingsHomeStatuses}
+                />
+              ) : (
               renderDetailScreen(navigation, {
                 prefs,
                 setPreference,
@@ -3090,10 +3212,13 @@ export function SettingsSheet({
                 onSignOut: () => void handleSignOut(),
                 isWiping,
                 onWipeLocalData: () => void handleWipeLocalData(),
-                 mobileRelease,
-                 onOpenWhatsNew: () => dispatchNavigation({ type: "openWhatsNew" }),
-               })
-            )}
+                mobileRelease,
+                onOpenWhatsNew: handleOpenWhatsNew,
+                expandedReleaseKeys,
+                onToggleReleaseNotes: handleToggleReleaseNotes,
+              })
+              )}
+            </Animated.View>
           </ScrollView>
         </View>
       </View>
@@ -3130,6 +3255,18 @@ const styles = createThemedStyles({
   },
   headerTitleWrap: {
     flex: 1,
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+  },
+  headerTitleAnimation: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -3957,6 +4094,59 @@ const styles = createThemedStyles({
   aboutVersion: {
     ...typography.bodyMd,
     color: colors.textMuted,
+  },
+  aboutReleaseRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingTop: spacing.xs,
+  },
+  aboutReleaseMark: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radii.md,
+    backgroundColor: colors.accentDim,
+  },
+  aboutReleaseCopy: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 36,
+    justifyContent: "center",
+    gap: 4,
+  },
+  aboutReleaseHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  aboutReleaseLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  aboutReleaseVersion: {
+    ...typography.title,
+    color: colors.textPrimary,
+  },
+  aboutReleaseWarning: {
+    ...typography.bodyMd,
+    color: colors.warning,
+    lineHeight: 18,
+  },
+  aboutReleaseUpdateAction: {
+    alignSelf: "flex-end",
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
   },
   versionPill: {
     paddingHorizontal: spacing.md,

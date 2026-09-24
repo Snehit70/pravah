@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, type ReactNode } from "react";
 import {
   Linking,
   Pressable,
@@ -6,10 +6,19 @@ import {
   Text,
   View,
 } from "react-native";
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeInDown,
+  FadeOut,
+  FadeOutUp,
+  LinearTransition,
+} from "react-native-reanimated";
 
 import { parseReleaseNotes, type NoteBlock } from "../lib/releaseNotes";
-import { colors, radii, spacing, typography } from "../theme/tokens";
+import { colors, motion, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 import GithubIconAsset from "../assets/icons/about-github.svg";
 import ReleaseFeatIconAsset from "../assets/icons/release-feat.svg";
 import ReleaseFixIconAsset from "../assets/icons/release-fix.svg";
@@ -30,6 +39,14 @@ import {
 
 const MAX_RELEASES = 5;
 
+const whatsNewRadii = {
+  panel: 12,
+  compact: 4,
+  link: 8,
+} as const;
+
+const NOTES_EASING = Easing.bezier(...motion.easing.outQuart);
+
 type WhatsNewRelease = {
   version: string;
   releaseNotes: string;
@@ -42,6 +59,9 @@ type WhatsNewPageProps = {
   changelogUrl: string;
   repositoryUrl: string;
   releases: WhatsNewRelease[];
+  isLoading?: boolean;
+  expandedReleaseKeys: Record<string, boolean>;
+  onToggleReleaseNotes: (releaseKey: string) => void;
 };
 
 type ReleaseKind =
@@ -209,38 +229,71 @@ function PullRequestLink({
   );
 }
 
-function ReleaseNotes({ content }: { content: ReleaseContent }) {
-  const [expanded, setExpanded] = useState(false);
+function ReleaseNotes({
+  content,
+  reducedMotion,
+  expanded,
+  onToggle,
+}: {
+  content: ReleaseContent;
+  reducedMotion: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
   const canExpand = content.blocks.length > 1;
   const visibleBlocks = canExpand && !expanded ? content.blocks.slice(0, 1) : content.blocks;
+  const notesTransition = useMemo(
+    () =>
+      reducedMotion
+        ? undefined
+        : LinearTransition.duration(motion.duration.fast).easing(NOTES_EASING),
+    [reducedMotion],
+  );
+  const noteTransitions = useMemo(
+    () =>
+      reducedMotion
+        ? undefined
+        : {
+            entering: FadeInDown.duration(motion.duration.fast).easing(NOTES_EASING),
+            exiting: FadeOutUp.duration(motion.duration.instant).easing(NOTES_EASING),
+          },
+    [reducedMotion],
+  );
 
   return (
-    <>
+    <Animated.View layout={notesTransition}>
       {visibleBlocks.map((block, index) => {
+        let contentView: ReactNode;
         if (block.type === "heading") {
-          return (
-            <Text key={index} style={styles.noteHeading} accessibilityRole="header">
+          contentView = (
+            <Text style={styles.noteHeading} accessibilityRole="header">
               {block.text}
             </Text>
           );
-        }
-        if (block.type === "bullet") {
-          return (
-            <View key={index} style={styles.bulletRow}>
+        } else if (block.type === "bullet") {
+          contentView = (
+            <View style={styles.bulletRow}>
               <Text style={styles.bulletDot}>•</Text>
               <Text style={styles.noteText}>{block.text}</Text>
             </View>
           );
+        } else {
+          contentView = <Text style={styles.noteText}>{block.text}</Text>;
         }
+
         return (
-          <Text key={index} style={styles.noteText}>
-            {block.text}
-          </Text>
+          <Animated.View
+            key={index}
+            entering={noteTransitions?.entering}
+            exiting={noteTransitions?.exiting}
+          >
+            {contentView}
+          </Animated.View>
         );
       })}
       {canExpand ? (
         <Pressable
-          onPress={() => setExpanded((value) => !value)}
+          onPress={onToggle}
           hitSlop={8}
           accessibilityRole="button"
           accessibilityState={{ expanded }}
@@ -257,16 +310,43 @@ function ReleaseNotes({ content }: { content: ReleaseContent }) {
           )}
         </Pressable>
       ) : null}
-    </>
+    </Animated.View>
+  );
+}
+
+function ReleaseHistorySkeleton() {
+  return (
+    <View
+      style={styles.loadingPanel}
+      accessibilityRole="progressbar"
+      accessibilityLabel="Loading release history"
+    >
+      <View style={styles.loadingHeader}>
+        <View style={styles.loadingIcon} />
+        <View style={styles.loadingHeaderCopy}>
+          <View style={[styles.loadingLine, styles.loadingLineShort]} />
+          <View style={styles.loadingLine} />
+        </View>
+      </View>
+      <View style={[styles.loadingLine, styles.loadingLineStrong]} />
+      <View style={styles.loadingLine} />
+      <View style={[styles.loadingLine, styles.loadingLineShort]} />
+    </View>
   );
 }
 
 function LatestRelease({
   release,
   repositoryUrl,
+  reducedMotion,
+  expanded,
+  onToggle,
 }: {
   release: WhatsNewRelease;
   repositoryUrl: string;
+  reducedMotion: boolean;
+  expanded: boolean;
+  onToggle: () => void;
 }) {
   const content = getReleaseContent(release);
   const publishedDate = formatReleaseDate(release.publishedAt);
@@ -290,7 +370,12 @@ function LatestRelease({
       </View>
       {content.title ? <Text style={styles.releaseTitle}>{content.title}</Text> : null}
       <PullRequestLink release={release} repositoryUrl={repositoryUrl} />
-      <ReleaseNotes content={content} />
+      <ReleaseNotes
+        content={content}
+        reducedMotion={reducedMotion}
+        expanded={expanded}
+        onToggle={onToggle}
+      />
     </View>
   );
 }
@@ -299,10 +384,16 @@ function HistoryRelease({
   release,
   repositoryUrl,
   content,
+  reducedMotion,
+  expanded,
+  onToggle,
 }: {
   release: WhatsNewRelease;
   repositoryUrl: string;
   content: ReleaseContent;
+  reducedMotion: boolean;
+  expanded: boolean;
+  onToggle: () => void;
 }) {
   const publishedDate = formatReleaseDate(release.publishedAt);
 
@@ -317,15 +408,38 @@ function HistoryRelease({
       </View>
       {content.title ? <Text style={styles.historyItemTitle}>{content.title}</Text> : null}
       <PullRequestLink release={release} repositoryUrl={repositoryUrl} />
-      <ReleaseNotes content={content} />
+      <ReleaseNotes
+        content={content}
+        reducedMotion={reducedMotion}
+        expanded={expanded}
+        onToggle={onToggle}
+      />
     </View>
   );
 }
 
-export function WhatsNewPage({ changelogUrl, repositoryUrl, releases }: WhatsNewPageProps) {
+export function WhatsNewPage({
+  changelogUrl,
+  repositoryUrl,
+  releases,
+  isLoading = false,
+  expandedReleaseKeys,
+  onToggleReleaseNotes,
+}: WhatsNewPageProps) {
+  const reducedMotion = useReducedMotion();
   const recentReleases = releases.slice(0, MAX_RELEASES);
   const latestRelease = recentReleases[0];
   const earlierReleases = recentReleases.slice(1);
+  const contentTransition = useMemo(
+    () =>
+      reducedMotion
+        ? undefined
+        : {
+            entering: FadeIn.duration(motion.duration.fast).easing(NOTES_EASING),
+            exiting: FadeOut.duration(motion.duration.instant).easing(NOTES_EASING),
+          },
+    [reducedMotion],
+  );
 
   return (
     <View style={styles.page}>
@@ -335,61 +449,78 @@ export function WhatsNewPage({ changelogUrl, repositoryUrl, releases }: WhatsNew
         </Text>
       </View>
 
-      {latestRelease ? (
-        <>
-          <LatestRelease release={latestRelease} repositoryUrl={repositoryUrl} />
-          {earlierReleases.length > 0 ? (
-            <>
-              <View style={styles.historyHeader}>
-                <Text style={styles.historyHeaderTitle} accessibilityRole="header">
-                  Earlier releases
-                </Text>
-                <View style={styles.historyCountPill}>
-                  <MegaphoneIconAsset width={13} height={13} color={colors.accent} />
-                  <Text style={styles.historyCount}>{earlierReleases.length} updates</Text>
+      <Animated.View
+        key={isLoading ? "loading" : "loaded"}
+        entering={contentTransition?.entering}
+        exiting={contentTransition?.exiting}
+      >
+        {isLoading ? (
+          <ReleaseHistorySkeleton />
+        ) : latestRelease ? (
+          <>
+            <LatestRelease
+              release={latestRelease}
+              repositoryUrl={repositoryUrl}
+              reducedMotion={reducedMotion}
+              expanded={expandedReleaseKeys[latestRelease.version] ?? false}
+              onToggle={() => onToggleReleaseNotes(latestRelease.version)}
+            />
+            {earlierReleases.length > 0 ? (
+              <>
+                <View style={styles.historyHeader}>
+                  <Text style={styles.historyHeaderTitle} accessibilityRole="header">
+                    Earlier releases
+                  </Text>
+                  <View style={styles.historyCountPill}>
+                    <MegaphoneIconAsset width={13} height={13} color={colors.accent} />
+                    <Text style={styles.historyCount}>{earlierReleases.length} updates</Text>
+                  </View>
                 </View>
-              </View>
-              <View style={styles.historyPanel}>
-                <View style={styles.historyTimeline}>
-                  {earlierReleases.map((release, index) => {
-                    const content = getReleaseContent(release);
-                    return (
-                      <View key={release.version} style={styles.timelineItem}>
-                        <View style={styles.timelineRail}>
-                          <View style={styles.timelineTypeMark}>
-                            <ReleaseKindIcon
-                              kind={content.kind}
-                              color={colors.accent}
-                              size={16}
+                <View style={styles.historyPanel}>
+                  <View style={styles.historyTimeline}>
+                    {earlierReleases.map((release, index) => {
+                      const content = getReleaseContent(release);
+                      return (
+                        <View key={release.version} style={styles.timelineItem}>
+                          <View style={styles.timelineRail}>
+                            <View style={styles.timelineTypeMark}>
+                              <ReleaseKindIcon
+                                kind={content.kind}
+                                color={colors.accent}
+                                size={16}
+                              />
+                            </View>
+                            {index < earlierReleases.length - 1 ? (
+                              <View style={styles.timelineLine} />
+                            ) : null}
+                          </View>
+                          <View style={styles.timelineContent}>
+                            <HistoryRelease
+                              release={release}
+                              repositoryUrl={repositoryUrl}
+                              content={content}
+                              reducedMotion={reducedMotion}
+                              expanded={expandedReleaseKeys[release.version] ?? false}
+                              onToggle={() => onToggleReleaseNotes(release.version)}
                             />
                           </View>
-                          {index < earlierReleases.length - 1 ? (
-                            <View style={styles.timelineLine} />
-                          ) : null}
                         </View>
-                        <View style={styles.timelineContent}>
-                          <HistoryRelease
-                            release={release}
-                            repositoryUrl={repositoryUrl}
-                            content={content}
-                          />
-                        </View>
-                      </View>
-                    );
-                  })}
+                      );
+                    })}
+                  </View>
                 </View>
-              </View>
-            </>
-          ) : null}
-        </>
-      ) : (
-        <View style={styles.emptyPanel}>
-          <Text style={styles.emptyTitle}>No releases yet</Text>
-          <Text style={styles.emptyText}>
-            Published mobile updates will appear here as soon as they are ready.
-          </Text>
-        </View>
-      )}
+              </>
+            ) : null}
+          </>
+        ) : (
+          <View style={styles.emptyPanel}>
+            <Text style={styles.emptyTitle}>No releases yet</Text>
+            <Text style={styles.emptyText}>
+              Published mobile updates will appear here as soon as they are ready.
+            </Text>
+          </View>
+        )}
+      </Animated.View>
 
       <Pressable
         onPress={() => void Linking.openURL(changelogUrl)}
@@ -427,7 +558,7 @@ const styles = createThemedStyles({
   latestPanel: {
     gap: spacing.md,
     padding: spacing.lg,
-    borderRadius: radii.xl,
+    borderRadius: whatsNewRadii.panel,
     backgroundColor: colors.bgCard,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
@@ -466,7 +597,7 @@ const styles = createThemedStyles({
     gap: 4,
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
-    borderRadius: radii.md,
+    borderRadius: whatsNewRadii.compact,
     backgroundColor: colors.accentDim,
   },
   releaseKindText: {
@@ -484,7 +615,7 @@ const styles = createThemedStyles({
   latestPill: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 5,
-    borderRadius: radii.md,
+    borderRadius: whatsNewRadii.compact,
     backgroundColor: colors.accentDim,
   },
   latestPillText: {
@@ -515,7 +646,7 @@ const styles = createThemedStyles({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
     paddingBottom: spacing.lg,
-    borderRadius: radii.xl,
+    borderRadius: whatsNewRadii.panel,
     backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
@@ -568,7 +699,7 @@ const styles = createThemedStyles({
     gap: spacing.xs,
     paddingHorizontal: spacing.sm,
     paddingVertical: 5,
-    borderRadius: radii.md,
+    borderRadius: whatsNewRadii.compact,
     backgroundColor: colors.accentDim,
   },
   historyCount: {
@@ -643,10 +774,45 @@ const styles = createThemedStyles({
     color: colors.accent,
     fontFamily: "Geist_600SemiBold",
   },
+  loadingPanel: {
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: whatsNewRadii.panel,
+    backgroundColor: colors.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+  },
+  loadingHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  loadingIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgInput,
+  },
+  loadingHeaderCopy: {
+    flex: 1,
+    gap: spacing.sm,
+  },
+  loadingLine: {
+    height: 12,
+    borderRadius: radii.sm,
+    backgroundColor: colors.bgInput,
+  },
+  loadingLineShort: {
+    width: "58%",
+  },
+  loadingLineStrong: {
+    height: 20,
+    width: "82%",
+  },
   emptyPanel: {
     gap: spacing.sm,
     padding: spacing.lg,
-    borderRadius: radii.xl,
+    borderRadius: whatsNewRadii.panel,
     backgroundColor: colors.bgCard,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
@@ -668,7 +834,7 @@ const styles = createThemedStyles({
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    borderRadius: radii.lg,
+    borderRadius: whatsNewRadii.link,
     backgroundColor: colors.bgSurface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
