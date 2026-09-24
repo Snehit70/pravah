@@ -613,11 +613,20 @@ function OverdueCard({
                       }}
                       accessibilityRole="button"
                       accessibilityLabel={`${target === "week" ? "Weekend" : target[0].toUpperCase() + target.slice(1)} — ${task.title}`}
-                      style={styles.compactOptionHit}
+                      style={[
+                        styles.compactOptionHit,
+                        target === "today" && styles.compactOptionToday,
+                        target === "tomorrow" && styles.compactOptionTomorrow,
+                        target === "week" && styles.compactOptionWeekend,
+                      ]}
                     >
                       <View style={styles.compactOptionVisual}>
                         {target === "today" ? (
-                          <ClockIcon color={colors.textMuted} size={16} strokeWidth={1.8} />
+                          <ClockIcon
+                            color={target === "today" ? colors.accent : colors.warning}
+                            size={16}
+                            strokeWidth={1.8}
+                          />
                         ) : (
                           <CalendarIcon color={colors.textMuted} size={16} strokeWidth={1.8} />
                         )}
@@ -635,7 +644,7 @@ function OverdueCard({
                     }}
                     accessibilityRole="button"
                     accessibilityLabel={`Pick a date for ${task.title}`}
-                    style={styles.compactOptionHit}
+                    style={[styles.compactOptionHit, styles.compactOptionPickDate]}
                   >
                     <View style={styles.compactOptionVisual}>
                       <CalendarIcon color={colors.textMuted} size={16} strokeWidth={1.8} />
@@ -663,9 +672,10 @@ function OverdueCard({
         ) : null}
       </ScrollView>
       <ThemedDatePicker
-        visible={datePickerTaskId !== null}
-        minDate={today}
-        onClose={() => setDatePickerTaskId(null)}
+         visible={datePickerTaskId !== null}
+         minDate={today}
+         confirmSelection
+         onClose={() => setDatePickerTaskId(null)}
         onSelect={(date) => {
           if (datePickerTaskId) onTriage?.(datePickerTaskId, { date });
           setDatePickerTaskId(null);
@@ -890,9 +900,7 @@ export function TimelineDayCarousel({
     if (item.kind === "overdue" || !isViewedCard(item) || weekOpen) return null;
     const isRelativeDay = item.dateKey === today || item.dateKey === tomorrow;
     const label =
-      item.kind === "overdue" || !isRelativeDay
-        ? "Jump to a day"
-        : weekdayDate(item.dateKey);
+      !isRelativeDay ? "Jump to a day" : weekdayDate(item.dateKey);
     return (
       <DayStripTrigger
         label={label}
@@ -1412,6 +1420,20 @@ const styles = createThemedStyles({
     justifyContent: "center",
     borderRightWidth: StyleSheet.hairlineWidth,
     borderRightColor: colors.borderSubtle,
+  },
+  compactOptionToday: {
+    backgroundColor: colors.accentDim,
+  },
+  compactOptionTomorrow: {
+    backgroundColor: colors.warningMuted,
+  },
+  compactOptionWeekend: {
+    backgroundColor: colors.bgSurface,
+  },
+  compactOptionPickDate: {
+    backgroundColor: colors.bgCard,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: colors.accentSoft,
   },
   compactOptionVisual: { minHeight: 52, alignItems: "center", justifyContent: "center", gap: spacing.xs, paddingHorizontal: spacing.xs },
   compactOptionText: { color: colors.textSecondary, ...typography.bodyMd, fontSize: 11, lineHeight: 15, textAlign: "center" },
