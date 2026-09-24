@@ -74,6 +74,7 @@ import KairoIconAsset from "../assets/icons/settings-kairo.svg";
 import CliIconAsset from "../assets/icons/settings-cli.svg";
 import AppSettingsIconAsset from "../assets/icons/app-settings.svg";
 import RemindersIconAsset from "../assets/icons/settings-reminders.svg";
+import MegaphoneIconAsset from "../assets/icons/megaphone.svg";
 import QuietHoursIconAsset from "../assets/icons/settings-quiet-hours.svg";
 import SyncIconAsset from "../assets/icons/settings-sync.svg";
 import DataIconAsset from "../assets/icons/settings-data.svg";
@@ -120,7 +121,7 @@ import Animated, {
 import { KairoSettingsSection } from "./KairoSettingsSection";
 import { GmailReviewSection } from "./GmailReviewSection";
 import { AppUpdateSection } from "./AppUpdateSection";
-import { WhatsNewSheet } from "./WhatsNewSheet";
+import { WhatsNewPage } from "./WhatsNewSheet";
 import { SnapWheelTimePicker } from "./SnapWheelTimePicker";
 import { SlidingSegmented, type SegmentedItem } from "./SlidingSegmented";
 import {
@@ -264,6 +265,10 @@ function AccountIcon({ color, size = 18 }: CategoryIconProps) {
 
 function InfoIcon({ color, size = 18 }: CategoryIconProps) {
   return <AboutIconAsset width={size} height={size} color={color} />;
+}
+
+function WhatsNewIcon({ color, size = 20 }: CategoryIconProps) {
+  return <MegaphoneIconAsset width={size} height={size} color={color} />;
 }
 
 const SETTINGS_CATEGORY_ICONS: Partial<
@@ -2019,10 +2024,11 @@ function AppearanceSection({
 
 function AboutSection({
   mobileRelease,
+  onOpenWhatsNew,
 }: {
   mobileRelease: ReturnType<typeof useMobileRelease>;
+  onOpenWhatsNew: () => void;
 }) {
-  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const latestPublishedRelease = mobileRelease.publishedReleases[0];
 
   return (
@@ -2039,7 +2045,7 @@ function AboutSection({
             </Text>
           </View>
           <Pressable
-            onPress={() => setWhatsNewOpen(true)}
+            onPress={onOpenWhatsNew}
             hitSlop={12}
             accessibilityRole="button"
             accessibilityLabel="Show what's new"
@@ -2048,13 +2054,6 @@ function AboutSection({
             <Text style={styles.versionPillText}>What's new</Text>
           </Pressable>
         </View>
-
-        <WhatsNewSheet
-          visible={whatsNewOpen}
-          onClose={() => setWhatsNewOpen(false)}
-          changelogUrl={CHANGELOG_URL}
-          releases={mobileRelease.publishedReleases}
-        />
 
         <View style={styles.settingRow}>
           <View style={styles.settingCopy}>
@@ -2404,6 +2403,7 @@ function renderDetailScreen(
     isWiping: boolean;
     onWipeLocalData: () => void;
     mobileRelease: ReturnType<typeof useMobileRelease>;
+    onOpenWhatsNew: () => void;
   },
 ) {
   if (navigation.screen !== "detail") return null;
@@ -2452,7 +2452,21 @@ function renderDetailScreen(
     case "account":
       return <AccountSection onSignOut={props.onSignOut} />;
     case "about":
-      return <AboutSection mobileRelease={props.mobileRelease} />;
+      if (navigation.page === "whats-new") {
+        return (
+           <WhatsNewPage
+             changelogUrl={CHANGELOG_URL}
+             repositoryUrl={REPO_URL}
+             releases={props.mobileRelease.publishedReleases}
+           />
+        );
+      }
+      return (
+        <AboutSection
+          mobileRelease={props.mobileRelease}
+          onOpenWhatsNew={props.onOpenWhatsNew}
+        />
+      );
   }
 }
 
@@ -2877,12 +2891,16 @@ export function SettingsSheet({
     [setPreference, tabOrder],
   );
 
-  const headerTitle =
-    navigation.screen === "detail"
+  const isWhatsNewPage =
+    navigation.screen === "detail" && navigation.page === "whats-new";
+  const headerTitle = isWhatsNewPage
+    ? "What's new"
+    : navigation.screen === "detail"
       ? SETTINGS_CATEGORY_META[navigation.category].title
       : "Settings";
-  const HeaderMarkIcon =
-    navigation.screen === "detail"
+  const HeaderMarkIcon = isWhatsNewPage
+    ? WhatsNewIcon
+    : navigation.screen === "detail"
       ? SETTINGS_CATEGORY_ICONS[navigation.category]
       : SettingsHomeIcon;
   const accountEmailAtIndex = accountEmail?.indexOf("@") ?? -1;
@@ -2980,11 +2998,11 @@ export function SettingsSheet({
         </View>
 
         <View
-          key={
-            navigation.screen === "detail"
-              ? `detail-${navigation.category}`
-              : "list"
-          }
+           key={
+             navigation.screen === "detail"
+               ? `detail-${navigation.category}-${navigation.page ?? "root"}`
+               : "list"
+           }
           style={styles.contentWrap}
         >
           <ScrollView
@@ -3072,8 +3090,9 @@ export function SettingsSheet({
                 onSignOut: () => void handleSignOut(),
                 isWiping,
                 onWipeLocalData: () => void handleWipeLocalData(),
-                mobileRelease,
-              })
+                 mobileRelease,
+                 onOpenWhatsNew: () => dispatchNavigation({ type: "openWhatsNew" }),
+               })
             )}
           </ScrollView>
         </View>

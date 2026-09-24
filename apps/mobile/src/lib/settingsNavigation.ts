@@ -11,10 +11,11 @@ export type SettingsCategoryKey =
 
 export type SettingsNavigationState =
   | { screen: "list" }
-  | { screen: "detail"; category: SettingsCategoryKey };
+  | { screen: "detail"; category: SettingsCategoryKey; page?: "whats-new" };
 
 export type SettingsNavigationAction =
   | { type: "open"; category: SettingsCategoryKey }
+  | { type: "openWhatsNew" }
   | { type: "back" }
   | { type: "reset" };
 
@@ -130,8 +131,12 @@ export function settingsNavigationReducer(
   switch (action.type) {
     case "open":
       return { screen: "detail", category: action.category };
+    case "openWhatsNew":
+      return { screen: "detail", category: "about", page: "whats-new" };
     case "back":
-      return state.screen === "list" ? state : INITIAL_SETTINGS_NAVIGATION;
+      if (state.screen === "list") return state;
+      if (state.page === "whats-new") return { screen: "detail", category: "about" };
+      return INITIAL_SETTINGS_NAVIGATION;
     case "reset":
       return INITIAL_SETTINGS_NAVIGATION;
   }

@@ -19,6 +19,28 @@ describe("settingsNavigationReducer", () => {
     });
   });
 
+  it("opens the What's new page from About", () => {
+    expect(
+      settingsNavigationReducer(
+        { screen: "detail", category: "about" },
+        { type: "openWhatsNew" },
+      ),
+    ).toEqual({
+      screen: "detail",
+      category: "about",
+      page: "whats-new",
+    });
+  });
+
+  it("returns to About from the What's new page", () => {
+    expect(
+      settingsNavigationReducer(
+        { screen: "detail", category: "about", page: "whats-new" },
+        { type: "back" },
+      ),
+    ).toEqual({ screen: "detail", category: "about" });
+  });
+
   it("returns to the category list from a detail screen", () => {
     expect(
       settingsNavigationReducer(
