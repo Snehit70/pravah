@@ -1130,10 +1130,6 @@ function MobileApp() {
         setSelectedCompletedTask(null);
         return true;
       }
-      if (isSettingsModalOpen) {
-        setIsSettingsModalOpen(false);
-        return true;
-      }
       if (isKairoActive) {
         kairoRef.current?.close();
         return true;
@@ -1157,10 +1153,8 @@ function MobileApp() {
   }, [
     isAddSheetOpen,
     isEditSheetOpen,
-    isSettingsModalOpen,
     isKairoActive,
     selectedCompletedTask,
-    setIsSettingsModalOpen,
   ]);
 
   const renderProgressCompletedTaskItem = useCallback(
