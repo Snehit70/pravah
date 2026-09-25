@@ -12,7 +12,6 @@ import {
   Keyboard,
   Linking,
   Modal,
-  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -98,10 +97,20 @@ import ThemeSystemIconAsset from "../assets/icons/appearance-theme-system.svg";
 import ThemeWarmIconAsset from "../assets/icons/appearance-theme-warm.svg";
 import {
   DEFAULT_TAB_ORDER,
+  getDefaultTabOrder,
+  isCurrentTabOrderDragSession,
   moveTabOrder,
+  nextTabOrderDragSession,
   reorderTabOrder,
   resolveTabOrder,
   TAB_LABELS,
+  TAB_ORDER_CAPTURE_WIDTH,
+  TAB_ORDER_GESTURE_ACTIVE_OFFSET_X,
+  TAB_ORDER_GESTURE_FAIL_OFFSET_Y,
+  TAB_ORDER_PREVIEW_GAP,
+  tabOrderSlotOffset,
+  tabOrderTargetIndex,
+  tabOrderVisualIndex,
   type TabKey,
 } from "../lib/tabOrder";
 import { CaptureIcon, TabNavIcon } from "./tabNavIcons";
@@ -119,6 +128,7 @@ import type {
   ReminderLeadTimeMinutes,
   ThemePreference,
 } from "../lib/userPreferences";
+import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, {
   Easing,
   FadeIn,
@@ -126,10 +136,13 @@ import Animated, {
   SlideInLeft,
   SlideInRight,
   interpolateColor,
+  runOnJS,
+  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   withTiming,
+  type SharedValue,
 } from "react-native-reanimated";
 import { KairoSettingsSection } from "./KairoSettingsSection";
 import { GmailReviewSection } from "./GmailReviewSection";
@@ -208,15 +221,14 @@ const THEME_SEGMENTS: Array<SegmentedItem<ThemePreference>> = [
   { value: "light", label: "Warm light", Icon: ThemeWarmIconAsset },
   { value: "dark", label: "Dark", Icon: ThemeDarkIconAsset },
 ];
-const TASK_COLOR_OPTIONS: Array<{
+const ACCENT_COLOR_OPTIONS: Array<{
   value: AccentColor;
   label: string;
-  swatch: string;
 }> = [
-  { value: "purple", label: "Purple", swatch: "#6753c7" },
-  { value: "copper", label: "Copper", swatch: colors.deadline },
-  { value: "teal", label: "Teal", swatch: "#3e7b78" },
-  { value: "rose", label: "Rose", swatch: "#9d586f" },
+  { value: "purple", label: "Purple" },
+  { value: "copper", label: "Copper" },
+  { value: "teal", label: "Teal" },
+  { value: "rose", label: "Rose" },
 ];
 const READ_ONLY_AUTOMATION_SCOPES = ["tasks:read", "review:read", "sync:read"] as const;
 const REPO_URL = "https://github.com/Snehit70/pravah";
@@ -416,9 +428,8 @@ function settingsStatusColor(tone: SettingsHomeStatusTone): string {
 type TabOrderEditorProps = {
   order: readonly TabKey[];
   onMove: (key: TabKey, direction: "up" | "down") => void;
-  onReorder: (fromIndex: number, toIndex: number) => void;
+  onReorder: (order: readonly TabKey[]) => void;
   onReset: () => void;
-  onDraggingChange: (isDragging: boolean) => void;
 };
 
 const TAB_REORDER_EASING = Easing.bezier(...motion.easing.outQuart);
@@ -426,8 +437,6 @@ const TAB_REORDER_SPRING_CONFIG = {
   duration: motion.duration.instant,
   dampingRatio: 1,
 };
-const TAB_ORDER_CAPTURE_WIDTH = 48;
-const TAB_ORDER_PREVIEW_GAP = 4;
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -471,162 +480,170 @@ function SwatchChip({
   );
 }
 
-function tabOrderSlotOffset(index: number, slotWidth: number) {
-  return (
-    index * (slotWidth + TAB_ORDER_PREVIEW_GAP) +
-    (index >= 2 ? TAB_ORDER_CAPTURE_WIDTH + TAB_ORDER_PREVIEW_GAP : 0)
-  );
-}
-
-function tabOrderTargetIndex(
-  fromIndex: number,
-  translation: number,
-  orderLength: number,
-  slotWidth: number,
-) {
-  if (slotWidth <= 0) return fromIndex;
-  let targetIndex = fromIndex;
-  let closestDistance = Number.POSITIVE_INFINITY;
-  for (let index = 0; index < orderLength; index += 1) {
-    const distance = Math.abs(translation - (tabOrderSlotOffset(index, slotWidth) - tabOrderSlotOffset(fromIndex, slotWidth)));
-    if (distance < closestDistance) {
-      closestDistance = distance;
-      targetIndex = index;
-    }
-  }
-  return targetIndex;
-}
-
 function tabOrdersEqual(left: readonly TabKey[], right: readonly TabKey[]) {
   return left.length === right.length && left.every((tab, index) => tab === right[index]);
 }
 
 function TabOrderPreviewItem({
   tab,
-  index,
   sourceIndex,
+  defaultIndex,
+  displayIndex,
   orderLength,
   slotWidth,
-  isActive,
+  activeSourceIndex,
+  activeTargetIndex,
+  dragSession,
+  resetVersion,
   onMove,
   onDragStart,
   onTargetChange,
   onDragCancel,
   onReorder,
-  onDraggingChange,
 }: {
   tab: TabKey;
-  index: number;
   sourceIndex: number;
+  defaultIndex: number;
+  displayIndex: number;
   orderLength: number;
   slotWidth: number;
-  isActive: boolean;
+  activeSourceIndex: SharedValue<number>;
+  activeTargetIndex: SharedValue<number>;
+  dragSession: SharedValue<number>;
+  resetVersion: SharedValue<number>;
   onMove: (key: TabKey, direction: "up" | "down") => void;
-  onDragStart: (sourceIndex: number) => void;
-  onTargetChange: (sourceIndex: number, targetIndex: number) => void;
-  onDragCancel: () => void;
-  onReorder: (fromIndex: number, toIndex: number) => void;
-  onDraggingChange: (isDragging: boolean) => void;
+  onDragStart: (sourceIndex: number, session: number) => void;
+  onTargetChange: (sourceIndex: number, targetIndex: number, session: number) => void;
+  onDragCancel: (session: number) => void;
+  onReorder: (fromIndex: number, toIndex: number, session: number) => void;
 }) {
   const reducedMotion = useReducedMotion();
-  const [isDragging, setIsDragging] = useState(false);
   const positionX = useSharedValue(0);
   const dragProgress = useSharedValue(0);
+  const gestureSession = useSharedValue(0);
+  const completedSession = useSharedValue(0);
 
   useEffect(() => {
-    if (isActive) return;
-    const nextPosition = tabOrderSlotOffset(index, slotWidth);
-    positionX.set(
-      reducedMotion ? nextPosition : withSpring(nextPosition, TAB_REORDER_SPRING_CONFIG),
-    );
-  }, [index, isActive, positionX, reducedMotion, slotWidth]);
+    const nextPosition = tabOrderSlotOffset(sourceIndex, slotWidth);
+    positionX.value = reducedMotion
+      ? nextPosition
+      : withSpring(nextPosition, TAB_REORDER_SPRING_CONFIG);
+  }, [positionX, reducedMotion, slotWidth, sourceIndex]);
 
-  useEffect(() => () => onDraggingChange(false), [onDraggingChange]);
+  useAnimatedReaction(
+    () => ({
+      activeSource: activeSourceIndex.value,
+      activeTarget: activeTargetIndex.value,
+      reset: resetVersion.value,
+    }),
+    (current, previous) => {
+      if (current.activeSource === sourceIndex) return;
+      const resetChanged = current.reset !== previous?.reset;
+      const nextIndex = resetChanged
+        ? defaultIndex
+        : previous?.activeSource === sourceIndex && current.activeTarget >= 0
+          ? current.activeTarget
+          : tabOrderVisualIndex(sourceIndex, current.activeSource, current.activeTarget);
+      const nextPosition = tabOrderSlotOffset(nextIndex, slotWidth);
+      positionX.value = reducedMotion
+        ? nextPosition
+        : withSpring(nextPosition, TAB_REORDER_SPRING_CONFIG);
+      if (current.activeSource < 0) dragProgress.value = 0;
+    },
+    [defaultIndex, reducedMotion, slotWidth, sourceIndex, tab],
+  );
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: positionX.value }, { scale: 1 + dragProgress.value * 0.012 }],
-  }));
-  const panResponder = useMemo(
+  const panGesture = useMemo(
     () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderTerminationRequest: () => false,
-        onPanResponderGrant: () => {
-          positionX.set(tabOrderSlotOffset(sourceIndex, slotWidth));
-          setIsDragging(true);
-          onDragStart(sourceIndex);
-          onDraggingChange(true);
-          dragProgress.set(
-            reducedMotion
-              ? 1
-              : withTiming(1, {
-                  duration: motion.duration.fast,
-                  easing: TAB_REORDER_EASING,
-                }),
-          );
-          haptic.selection();
-        },
-        onPanResponderMove: (_, gesture) => {
+      Gesture.Pan()
+        .activeOffsetX([...TAB_ORDER_GESTURE_ACTIVE_OFFSET_X])
+        .failOffsetY([...TAB_ORDER_GESTURE_FAIL_OFFSET_Y])
+        .onStart(() => {
+          const session = dragSession.value + 1;
+          dragSession.value = session;
+          gestureSession.value = session;
+          activeSourceIndex.value = sourceIndex;
+          activeTargetIndex.value = sourceIndex;
+          positionX.value = tabOrderSlotOffset(sourceIndex, slotWidth);
+          dragProgress.value = reducedMotion
+            ? 1
+            : withTiming(1, {
+                duration: motion.duration.fast,
+                easing: TAB_REORDER_EASING,
+              });
+          runOnJS(onDragStart)(sourceIndex, session);
+        })
+        .onUpdate((event) => {
+          const session = gestureSession.value;
+          if (dragSession.value !== session) return;
           const startOffset = tabOrderSlotOffset(sourceIndex, slotWidth);
           const min = tabOrderSlotOffset(0, slotWidth) - startOffset;
           const max = tabOrderSlotOffset(orderLength - 1, slotWidth) - startOffset;
-          positionX.set(startOffset + Math.max(min, Math.min(max, gesture.dx)));
-          const targetIndex = tabOrderTargetIndex(sourceIndex, gesture.dx, orderLength, slotWidth);
-          if (index !== targetIndex) {
-            onTargetChange(sourceIndex, targetIndex);
+          const translation = Math.max(min, Math.min(max, event.translationX));
+          positionX.value = startOffset + translation;
+          const targetIndex = tabOrderTargetIndex(
+            sourceIndex,
+            translation,
+            orderLength,
+            slotWidth,
+          );
+          if (targetIndex !== activeTargetIndex.value) {
+            activeTargetIndex.value = targetIndex;
+            runOnJS(onTargetChange)(sourceIndex, targetIndex, session);
           }
-        },
-        onPanResponderRelease: (_, gesture) => {
-          const targetIndex = tabOrderTargetIndex(sourceIndex, gesture.dx, orderLength, slotWidth);
-          if (index !== targetIndex) {
-            onTargetChange(sourceIndex, targetIndex);
-          }
+        })
+        .onEnd((event) => {
+          const session = gestureSession.value;
+          if (dragSession.value !== session) return;
+          const targetIndex = tabOrderTargetIndex(
+            sourceIndex,
+            event.translationX,
+            orderLength,
+            slotWidth,
+          );
+          activeTargetIndex.value = targetIndex;
           const targetPosition = tabOrderSlotOffset(targetIndex, slotWidth);
-          positionX.set(
-            reducedMotion
-              ? targetPosition
-              : withSpring(targetPosition, TAB_REORDER_SPRING_CONFIG),
-          );
-          dragProgress.set(
-            reducedMotion
-              ? 0
-              : withTiming(0, {
-                  duration: motion.duration.fast,
-                  easing: TAB_REORDER_EASING,
-                }),
-          );
-          if (targetIndex !== sourceIndex) haptic.selection();
-          onReorder(sourceIndex, targetIndex);
-          setIsDragging(false);
-          onDraggingChange(false);
-        },
-        onPanResponderTerminate: () => {
-          const sourcePosition = tabOrderSlotOffset(sourceIndex, slotWidth);
-          positionX.set(
-            reducedMotion
+          positionX.value = reducedMotion
+            ? targetPosition
+            : withSpring(targetPosition, TAB_REORDER_SPRING_CONFIG);
+          dragProgress.value = reducedMotion
+            ? 0
+            : withTiming(0, {
+                duration: motion.duration.fast,
+                easing: TAB_REORDER_EASING,
+              });
+          completedSession.value = session;
+          runOnJS(onReorder)(sourceIndex, targetIndex, session);
+        })
+        .onFinalize(() => {
+          const session = gestureSession.value;
+          if (dragSession.value !== session) return;
+          if (completedSession.value !== session) {
+            activeTargetIndex.value = -1;
+            const sourcePosition = tabOrderSlotOffset(sourceIndex, slotWidth);
+            positionX.value = reducedMotion
               ? sourcePosition
-              : withSpring(sourcePosition, TAB_REORDER_SPRING_CONFIG),
-          );
-          dragProgress.set(
-            reducedMotion
+              : withSpring(sourcePosition, TAB_REORDER_SPRING_CONFIG);
+            dragProgress.value = reducedMotion
               ? 0
               : withTiming(0, {
                   duration: motion.duration.fast,
                   easing: TAB_REORDER_EASING,
-                }),
-          );
-          setIsDragging(false);
-          onDraggingChange(false);
-          onDragCancel();
-        },
-      }),
+                });
+            runOnJS(onDragCancel)(session);
+            if (activeSourceIndex.value === sourceIndex) activeSourceIndex.value = -1;
+          }
+          completedSession.value = 0;
+        }),
     [
+      activeSourceIndex,
+      activeTargetIndex,
+      completedSession,
       dragProgress,
-      index,
+      dragSession,
+      gestureSession,
       onDragCancel,
       onDragStart,
-      onDraggingChange,
       onReorder,
       onTargetChange,
       orderLength,
@@ -637,34 +654,49 @@ function TabOrderPreviewItem({
     ],
   );
 
+  const animatedStyle = useAnimatedStyle(() => {
+    const isActive = activeSourceIndex.value === sourceIndex;
+    return {
+      transform: [
+        { translateX: positionX.value },
+        { scale: reducedMotion ? 1 : 1 + dragProgress.value * 0.012 },
+      ],
+      zIndex: isActive ? 10 : 0,
+      elevation: isActive ? 4 : 0,
+    };
+  }, [activeSourceIndex, reducedMotion, sourceIndex]);
+  const cardAnimatedStyle = useAnimatedStyle(() => ({
+    borderColor: interpolateColor(dragProgress.value, [0, 1], [colors.border, colors.accent]),
+  }));
+
   return (
-    <Animated.View
-      {...panResponder.panHandlers}
-      accessible
-      accessibilityRole="adjustable"
-      accessibilityLabel={`Reorder ${TAB_LABELS[tab]}`}
-      accessibilityHint={`Position ${index + 1} of ${orderLength}. Drag horizontally to reorder.`}
-      accessibilityActions={[
-        { name: "decrement", label: "Move up" },
-        { name: "increment", label: "Move down" },
-      ]}
-      onAccessibilityAction={(event) => {
-        if (event.nativeEvent.actionName === "decrement") onMove(tab, "up");
-        if (event.nativeEvent.actionName === "increment") onMove(tab, "down");
-      }}
-      style={[
-        styles.tabPreviewItem,
-        { width: slotWidth || 1, opacity: slotWidth > 0 ? 1 : 0 },
-        isDragging && styles.tabPreviewItemDragging,
-        animatedStyle,
-      ]}
-    >
-      <View style={styles.tabPreviewCard}>
-        <View style={styles.tabPreviewIcon}>
-          <TabNavIcon tab={tab} color={isDragging ? colors.accent : colors.textPrimary} size={24} />
-        </View>
-      </View>
-    </Animated.View>
+    <GestureDetector gesture={panGesture}>
+      <Animated.View
+        accessible
+        accessibilityRole="adjustable"
+        accessibilityLabel={`Reorder ${TAB_LABELS[tab]}`}
+        accessibilityHint={`Position ${displayIndex + 1} of ${orderLength}. Drag horizontally to reorder.`}
+        accessibilityActions={[
+          { name: "decrement", label: "Move up" },
+          { name: "increment", label: "Move down" },
+        ]}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === "decrement") onMove(tab, "up");
+          if (event.nativeEvent.actionName === "increment") onMove(tab, "down");
+        }}
+        style={[
+          styles.tabPreviewItem,
+          { width: slotWidth || 1, opacity: slotWidth > 0 ? 1 : 0 },
+          animatedStyle,
+        ]}
+      >
+        <Animated.View style={[styles.tabPreviewCard, cardAnimatedStyle]}>
+          <View style={styles.tabPreviewIcon}>
+            <TabNavIcon tab={tab} color={colors.textPrimary} size={24} />
+          </View>
+        </Animated.View>
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
@@ -674,72 +706,133 @@ function TabOrderEditor({
   onMove,
   onReorder,
   onReset,
-  onDraggingChange,
 }: TabOrderEditorProps & { accentColor: string }) {
   const [slotWidth, setSlotWidth] = useState(0);
-  const [previewOrder, setPreviewOrder] = useState<readonly TabKey[] | null>(null);
   const [activeDrag, setActiveDrag] = useState<{
     sourceIndex: number;
     targetIndex: number;
+    session: number;
   } | null>(null);
-  const isDefaultOrder = tabOrdersEqual(order, DEFAULT_TAB_ORDER);
-  const renderedOrder = activeDrag
-    ? reorderTabOrder(order, activeDrag.sourceIndex, activeDrag.targetIndex)
-    : previewOrder && !tabOrdersEqual(previewOrder, order)
-      ? previewOrder
-      : order;
+  const activeSourceIndex = useSharedValue(-1);
+  const activeTargetIndex = useSharedValue(-1);
+  const dragSession = useSharedValue(0);
+  const resetVersion = useSharedValue(0);
+  const dragSessionRef = useRef(0);
+  const dragOrderRef = useRef<readonly TabKey[]>([...order]);
+  const previousOrderRef = useRef(order);
+  const isDefaultOrder =
+    tabOrdersEqual(order, DEFAULT_TAB_ORDER) &&
+    (!activeDrag || activeDrag.sourceIndex === activeDrag.targetIndex);
+
+  useEffect(() => {
+    if (tabOrdersEqual(previousOrderRef.current, order)) return;
+    previousOrderRef.current = order;
+    activeSourceIndex.set(-1);
+    activeTargetIndex.set(-1);
+  }, [activeSourceIndex, activeTargetIndex, order]);
 
   const handlePreviewLayout = useCallback((event: { nativeEvent: { layout: { width: number } } }) => {
     const nextSlotWidth = Math.max(
       0,
-      (event.nativeEvent.layout.width - TAB_ORDER_PREVIEW_GAP * 4 - TAB_ORDER_CAPTURE_WIDTH - StyleSheet.hairlineWidth * 2) / 4,
+      (event.nativeEvent.layout.width -
+        TAB_ORDER_PREVIEW_GAP * 4 -
+        TAB_ORDER_CAPTURE_WIDTH -
+        StyleSheet.hairlineWidth * 2) /
+        4,
     );
     setSlotWidth((current) => (current === nextSlotWidth ? current : nextSlotWidth));
   }, []);
-  const handleDragStart = useCallback((sourceIndex: number) => {
-    setPreviewOrder(null);
-    setActiveDrag({ sourceIndex, targetIndex: sourceIndex });
-  }, []);
-  const handleTargetChange = useCallback((sourceIndex: number, targetIndex: number) => {
-    setActiveDrag((current) => {
-      if (!current || current.sourceIndex !== sourceIndex || current.targetIndex === targetIndex) {
-        return current;
-      }
-      return { sourceIndex, targetIndex };
-    });
-  }, []);
-  const handleDragCancel = useCallback(() => {
-    setPreviewOrder(null);
-    setActiveDrag(null);
-  }, []);
-  const handleDragComplete = useCallback(
-    (fromIndex: number, toIndex: number) => {
-      setPreviewOrder(reorderTabOrder(order, fromIndex, toIndex));
-      setActiveDrag(null);
-      onReorder(fromIndex, toIndex);
+  const handleDragStart = useCallback(
+    (sourceIndex: number, session: number) => {
+      if (!isCurrentTabOrderDragSession(dragSessionRef.current, session)) return;
+      dragSessionRef.current = session;
+      dragOrderRef.current = [...order];
+      setActiveDrag({ sourceIndex, targetIndex: sourceIndex, session });
+      haptic.selection();
     },
-    [onReorder, order],
+    [order],
   );
+  const handleTargetChange = useCallback(
+    (sourceIndex: number, targetIndex: number, session: number) => {
+      if (!isCurrentTabOrderDragSession(dragSessionRef.current, session)) return;
+      if (session > dragSessionRef.current) {
+        dragSessionRef.current = session;
+        dragOrderRef.current = [...order];
+      }
+      setActiveDrag((current) => {
+        if (!current || current.sourceIndex !== sourceIndex || current.targetIndex === targetIndex) {
+          return current;
+        }
+        return { sourceIndex, targetIndex, session };
+      });
+    },
+    [order],
+  );
+  const handleDragCancel = useCallback(
+    (session: number) => {
+      if (!isCurrentTabOrderDragSession(dragSessionRef.current, session)) return;
+      setActiveDrag(null);
+      activeSourceIndex.set(-1);
+      activeTargetIndex.set(-1);
+    },
+    [activeSourceIndex, activeTargetIndex],
+  );
+  const handleDragComplete = useCallback(
+    (fromIndex: number, toIndex: number, session: number) => {
+      if (!isCurrentTabOrderDragSession(dragSessionRef.current, session)) return;
+      if (session > dragSessionRef.current) {
+        dragSessionRef.current = session;
+        dragOrderRef.current = [...order];
+      }
+      const nextOrder = reorderTabOrder(dragOrderRef.current, fromIndex, toIndex);
+      setActiveDrag(null);
+      if (fromIndex === toIndex) {
+        activeSourceIndex.set(-1);
+        activeTargetIndex.set(-1);
+        return;
+      }
+      haptic.selection();
+      onReorder(nextOrder);
+    },
+    [activeSourceIndex, activeTargetIndex, onReorder, order],
+  );
+  const handleReset = useCallback(() => {
+    const nextSession = nextTabOrderDragSession(dragSessionRef.current);
+    dragSessionRef.current = nextSession;
+    dragSession.set(nextSession);
+    activeSourceIndex.set(-1);
+    activeTargetIndex.set(-1);
+    dragOrderRef.current = getDefaultTabOrder();
+    setActiveDrag(null);
+    resetVersion.set(resetVersion.value + 1);
+    onReset();
+  }, [activeSourceIndex, activeTargetIndex, dragSession, onReset, resetVersion]);
 
   const renderPreviewItem = (key: TabKey) => {
     const sourceIndex = order.indexOf(key);
-    const index = renderedOrder.indexOf(key);
-    const isActive = activeDrag?.sourceIndex === sourceIndex;
+    const displayIndex = activeDrag
+      ? activeDrag.sourceIndex === sourceIndex
+        ? activeDrag.targetIndex
+        : tabOrderVisualIndex(sourceIndex, activeDrag.sourceIndex, activeDrag.targetIndex)
+      : sourceIndex;
     return (
       <TabOrderPreviewItem
         key={key}
         tab={key}
-        index={index}
         sourceIndex={sourceIndex}
+        defaultIndex={DEFAULT_TAB_ORDER.indexOf(key)}
+        displayIndex={displayIndex}
         orderLength={order.length}
         slotWidth={slotWidth}
-        isActive={isActive}
+        activeSourceIndex={activeSourceIndex}
+        activeTargetIndex={activeTargetIndex}
+        dragSession={dragSession}
+        resetVersion={resetVersion}
         onMove={onMove}
         onDragStart={handleDragStart}
         onTargetChange={handleTargetChange}
         onDragCancel={handleDragCancel}
         onReorder={handleDragComplete}
-        onDraggingChange={onDraggingChange}
       />
     );
   };
@@ -773,7 +866,7 @@ function TabOrderEditor({
         </Text>
       </View>
       <Pressable
-        onPress={onReset}
+        onPress={handleReset}
         disabled={isDefaultOrder}
         accessibilityRole="button"
         accessibilityLabel="Reset default tab order"
@@ -2045,7 +2138,6 @@ type AppearanceSectionProps = {
   setPreference: ReturnType<typeof useUserPreferences>["setPreference"];
   tabOrder: readonly TabKey[];
   onMoveTab: (key: TabKey, direction: "up" | "down") => void;
-  onDraggingChange: (isDragging: boolean) => void;
 };
 
 type InteractionSectionProps = {
@@ -2169,16 +2261,15 @@ function AppearanceSection({
   setPreference,
   tabOrder,
   onMoveTab,
-  onDraggingChange,
 }: AppearanceSectionProps) {
   const handleReorderTab = useCallback(
-    (fromIndex: number, toIndex: number) => {
-      void setPreference("tabOrder", reorderTabOrder(tabOrder, fromIndex, toIndex));
+    (nextOrder: readonly TabKey[]) => {
+      void setPreference("tabOrder", [...nextOrder]);
     },
-    [setPreference, tabOrder],
+    [setPreference],
   );
   const handleResetTabOrder = useCallback(() => {
-    void setPreference("tabOrder", [...DEFAULT_TAB_ORDER]);
+    void setPreference("tabOrder", getDefaultTabOrder());
   }, [setPreference]);
 
   return (
@@ -2202,7 +2293,7 @@ function AppearanceSection({
           </View>
         </View>
         <View style={styles.swatchGrid}>
-          {TASK_COLOR_OPTIONS.map((option) => (
+          {ACCENT_COLOR_OPTIONS.map((option) => (
             <SwatchChip
               key={option.value}
               label={option.label}
@@ -2231,24 +2322,6 @@ function AppearanceSection({
 
         <View style={styles.settingRow}>
           <View style={styles.settingCopy}>
-            <Text style={styles.settingLabel}>Task color</Text>
-          </View>
-        </View>
-        <View style={styles.swatchGrid}>
-          {TASK_COLOR_OPTIONS.map((option) => (
-            <SwatchChip
-              key={option.value}
-              label={option.label}
-              swatch={option.swatch}
-              active={prefs.taskColorScheme === option.value}
-              onSelect={() => void setPreference("taskColorScheme", option.value)}
-            />
-          ))}
-        </View>
-        <View style={styles.sectionDivider} />
-
-        <View style={styles.settingRow}>
-          <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Tab order</Text>
           </View>
         </View>
@@ -2257,10 +2330,10 @@ function AppearanceSection({
           accentColor={accentColorFor(getThemeRuntimeSnapshot().appearance, prefs.accentColor)}
           onMove={onMoveTab}
           onReorder={handleReorderTab}
-          onReset={handleResetTabOrder}
-          onDraggingChange={onDraggingChange}
-        />
-      </View>
+           onReset={handleResetTabOrder}
+         />
+       </View>
+
     </View>
   );
 }
@@ -2643,12 +2716,18 @@ function renderDetailScreen(
     openPicker: QuietPickerKind | null;
     onOpenPicker: (kind: QuietPickerKind) => void;
     onTimePicked: (kind: QuietPickerKind, value: string) => void;
+
     onClosePicker: () => void;
+
     tabOrder: readonly TabKey[];
+
     onMoveTab: (key: TabKey, direction: "up" | "down") => void;
-    onDraggingChange: (isDragging: boolean) => void;
+
     deviceId: string | null;
+
     onExportDiagnostics: () => void;
+
+
     calendarLastError?: string;
     gmailLastError?: string;
     isClearingRetryQueue: boolean;
@@ -2781,7 +2860,6 @@ export function SettingsSheet({
     INITIAL_SETTINGS_NAVIGATION,
   );
   const [routeDirection, setRouteDirection] = useState<SettingsRouteDirection>("forward");
-  const [isTabOrderDragging, setIsTabOrderDragging] = useState(false);
   const [expandedReleaseKeys, setExpandedReleaseKeys] = useState<Record<string, boolean>>({});
   const currentRouteKey = getSettingsRouteKey(navigation);
   const scrollPositionsRef = useRef<Record<string, number>>({});
@@ -2913,7 +2991,6 @@ export function SettingsSheet({
     }
     if (!visible) {
       setOpenPicker(null);
-      setIsTabOrderDragging(false);
       setRouteDirection("forward");
       setExpandedReleaseKeys({});
       scrollPositionsRef.current = {};
@@ -3313,7 +3390,8 @@ export function SettingsSheet({
       statusBarTranslucent
       onRequestClose={navigation.screen === "detail" ? handleBack : handleClose}
     >
-      <View style={styles.modalRoot}>
+      <GestureHandlerRootView style={styles.modalRoot}>
+        <View style={styles.modalRoot}>
         <View
           style={[
             styles.headerShell,
@@ -3360,7 +3438,6 @@ export function SettingsSheet({
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            scrollEnabled={!isTabOrderDragging}
             onContentSizeChange={restoreScrollPosition}
             onScroll={handleSettingsScroll}
             scrollEventThrottle={16}
@@ -3434,7 +3511,6 @@ export function SettingsSheet({
                 onClosePicker: () => setOpenPicker(null),
                 tabOrder,
                 onMoveTab: handleMoveTab,
-                onDraggingChange: setIsTabOrderDragging,
                 deviceId,
                 onExportDiagnostics,
                 calendarLastError,
@@ -3455,6 +3531,7 @@ export function SettingsSheet({
           </ScrollView>
         </View>
       </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -4253,9 +4330,8 @@ const styles = createThemedStyles({
     bottom: 0,
     left: 0,
     minHeight: 56,
-  },
-  tabPreviewItemDragging: {
-    zIndex: 2,
+    zIndex: 0,
+    elevation: 0,
   },
   tabPreviewCard: {
     flex: 1,
@@ -4275,7 +4351,7 @@ const styles = createThemedStyles({
   },
   tabPreviewCaptureSlot: {
     position: "absolute",
-    zIndex: 3,
+    zIndex: 4,
     top: 0,
     bottom: 0,
     width: TAB_ORDER_CAPTURE_WIDTH,

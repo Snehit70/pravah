@@ -103,7 +103,6 @@ export const SETTINGS_CATEGORY_CONTROLS: Record<
     "theme_baseline",
     "font_baseline",
     "density",
-    "task_color_scheme",
     "tab_order",
   ],
   data: [
