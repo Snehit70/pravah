@@ -133,12 +133,13 @@ function getReleaseContent(release: WhatsNewRelease): ReleaseContent {
   const blocks = parseReleaseNotes(release.releaseNotes);
   const headingIndex = blocks.findIndex((block) => block.type === "heading");
   const heading = headingIndex >= 0 ? blocks[headingIndex] : null;
-  const title = release.title?.trim() || (heading?.type === "heading" ? heading.text : null);
+  const explicitTitle = release.title?.trim() || null;
+  const title = explicitTitle ?? (heading?.type === "heading" ? heading.text : null);
 
   return {
     title,
     kind: classifyReleaseKind(title),
-    blocks: blocks.filter((_, index) => index !== headingIndex),
+    blocks: explicitTitle ? blocks : blocks.filter((_, index) => index !== headingIndex),
   };
 }
 
@@ -240,8 +241,19 @@ function ReleaseNotes({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const canExpand = content.blocks.length > 1;
-  const visibleBlocks = canExpand && !expanded ? content.blocks.slice(0, 1) : content.blocks;
+  const contentBlockCount = content.blocks.filter((block) => block.type !== "heading").length;
+  const firstContentIndex = content.blocks.findIndex((block) => block.type !== "heading");
+  const nextHeadingIndex = content.blocks.findIndex(
+    (block, index) => index > firstContentIndex && block.type === "heading",
+  );
+  const firstCollapsedBlockCount = nextHeadingIndex >= 0
+    ? nextHeadingIndex
+    : Math.max(firstContentIndex + 1, 0);
+  const canExpand = contentBlockCount > 1;
+  const visibleBlocks =
+    canExpand && !expanded
+      ? content.blocks.slice(0, firstCollapsedBlockCount)
+      : content.blocks;
   const notesTransition = useMemo(
     () =>
       reducedMotion
