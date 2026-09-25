@@ -74,19 +74,19 @@ import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 
 const PRIORITY_META = {
-  p1: { label: "P1", color: colors.priorityP1, bg: colors.errorMuted },
-  p2: { label: "P2", color: colors.priorityP2, bg: colors.warningMuted },
-  p3: { label: "P3", color: colors.priorityP3, bg: colors.successMuted },
+  p1: { label: "P1", color: () => colors.priorityP1, bg: () => colors.errorMuted },
+  p2: { label: "P2", color: () => colors.priorityP2, bg: () => colors.warningMuted },
+  p3: { label: "P3", color: () => colors.priorityP3, bg: () => colors.successMuted },
 } as const;
 
 // Pastel goal pills, cycled deterministically off the goal name so the same
 // goal always wears the same tint. Muted semantic washes stay legible in
 // both light and dark themes.
 const GOAL_PILLS = [
-  { backgroundColor: colors.accentSoft, textColor: colors.accent },
-  { backgroundColor: colors.successMuted, textColor: colors.success },
-  { backgroundColor: colors.warningMuted, textColor: colors.warning },
-  { backgroundColor: colors.deadlineMuted, textColor: colors.deadline },
+  { backgroundColor: () => colors.accentSoft, textColor: () => colors.accent },
+  { backgroundColor: () => colors.successMuted, textColor: () => colors.success },
+  { backgroundColor: () => colors.warningMuted, textColor: () => colors.warning },
+  { backgroundColor: () => colors.deadlineMuted, textColor: () => colors.deadline },
 ] as const;
 
 function goalPillFor(goalName: string): (typeof GOAL_PILLS)[number] {
@@ -139,10 +139,6 @@ type SlimTaskRowProps = {
   onPress?: (task: MobileTask) => void;
 };
 
-/** Timeline icon tile leading a stacked body: title and priority, one-line description,
- *  then a meta row (pastel goal pill, time). No resting checkbox — complete lives in
- *  the edit sheet / bulk select. Each row is its own separated card inside the day
- *  shell; tap opens Edit; no swipe actions. */
 function SlimTaskRow({ task, completed, goalName, onToggle, onPress }: SlimTaskRowProps) {
   const { prefs } = useUserPreferences();
   const reducedMotion = useReducedMotion();
@@ -168,14 +164,32 @@ function SlimTaskRow({ task, completed, goalName, onToggle, onPress }: SlimTaskR
     );
   }, [bodyOpacity, completed, reducedMotion]);
   const bodyAnimStyle = useAnimatedStyle(() => ({ opacity: bodyOpacity.value }));
-  void onToggle;
-
   const hasDescription = Boolean(task.description) && !completed;
+  const checkbox = onToggle ? (
+    <Pressable
+      onPress={(event) => {
+        event.stopPropagation();
+        onToggle(task, completed);
+      }}
+      hitSlop={4}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: completed }}
+      accessibilityLabel={`Mark ${task.title} ${completed ? "incomplete" : "complete"}`}
+      style={({ pressed }) => [
+        styles.rowCheckboxHit,
+        pressed && styles.rowCheckboxPressed,
+      ]}
+    >
+      <View style={[styles.rowCheckbox, completed && styles.rowCheckboxCompleted]}>
+        {completed ? <CheckIcon size={15} color={colors.textInverse} strokeWidth={2.4} /> : null}
+      </View>
+    </Pressable>
+  ) : null;
 
   return (
     <Pressable
       onPress={onPress ? () => onPress(task) : undefined}
-      disabled={!onPress}
+      disabled={!onPress && !onToggle}
       style={({ pressed }) => [
         styles.taskCard,
         compactDensity && styles.rowCompact,
@@ -185,6 +199,7 @@ function SlimTaskRow({ task, completed, goalName, onToggle, onPress }: SlimTaskR
       accessibilityLabel={task.title}
       accessibilityHint="Double tap to edit."
     >
+      {checkbox}
       <View style={styles.iconTile} accessibilityElementsHidden>
         <NavTimelineAsset color={colors.accent} width={18} height={18} />
       </View>
@@ -199,9 +214,9 @@ function SlimTaskRow({ task, completed, goalName, onToggle, onPress }: SlimTaskR
             {task.title}
           </Text>
           {showPriority && priority ? (
-            <View style={[styles.priorityPill, { backgroundColor: priority.bg }]}>
-              <StarIcon color={priority.color} size={12} strokeWidth={2} />
-              <Text style={[styles.priorityPillText, { color: priority.color }]}>
+            <View style={[styles.priorityPill, { backgroundColor: priority.bg() }]}>
+              <StarIcon color={priority.color()} size={12} strokeWidth={2} />
+              <Text style={[styles.priorityPillText, { color: priority.color() }]}>
                 {priority.label}
               </Text>
             </View>
@@ -215,9 +230,9 @@ function SlimTaskRow({ task, completed, goalName, onToggle, onPress }: SlimTaskR
         {hasMetaRow ? (
           <View style={styles.rowMeta}>
             {goalName && goalPill && !completed ? (
-              <View style={[styles.goalPill, { backgroundColor: goalPill.backgroundColor }]}>
+              <View style={[styles.goalPill, { backgroundColor: goalPill.backgroundColor() }]}>
                 <Text
-                  style={[styles.goalPillText, { color: goalPill.textColor }]}
+                  style={[styles.goalPillText, { color: goalPill.textColor() }]}
                   numberOfLines={1}
                   ellipsizeMode="tail"
                 >
@@ -490,57 +505,63 @@ function OverdueCard({
               key={id}
               exiting={isCompleted ? FadeOut.duration(220) : undefined}
             >
-              <Pressable
-                onPress={() => onEditTask?.(task)}
-                disabled={!onEditTask}
-                accessibilityRole={onEditTask ? "button" : undefined}
-                accessibilityLabel={onEditTask ? `Open ${task.title}` : undefined}
-                accessibilityHint={onEditTask ? "Double tap to edit." : undefined}
-                style={({ pressed }) => [
+              <View
+                style={[
                   styles.overdueTask,
                   isCompleted && styles.overdueTaskCompleted,
-                  pressed && onEditTask && styles.rowPressed,
                 ]}
               >
                 <View style={styles.overdueTaskTop}>
-                  <View
-                    style={[styles.overdueIconTile, isCompleted && styles.overdueIconTileDone]}
-                  accessibilityElementsHidden
-                >
-                  {isCompleted ? (
-                    <CheckIcon color={colors.success} size={18} strokeWidth={2.2} />
-                  ) : (
-                    <AlertCircleIcon color={colors.error} size={18} strokeWidth={1.8} />
-                  )}
-                </View>
-                <View style={styles.overdueTaskText}>
-                  <Text style={[styles.rowTitle, styles.overdueTaskTitle]} numberOfLines={2}>{task.title}</Text>
-                </View>
-                {onCompleteTask && !isCompleted ? (
                   <Pressable
-                    onPress={(event) => {
-                      event.stopPropagation();
-                      setCompletedTasks((current) => ({ ...current, [id]: task }));
-                      onCompleteTask(task._id);
-                      setTimeout(() => {
-                        setCompletedTasks((current) => {
-                          const next = { ...current };
-                          delete next[id];
-                          return next;
-                        });
-                      }, 900);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Complete ${task.title}`}
-                    style={({ pressed }) => [styles.compactCompleteHit, pressed && styles.rowPressed]}
+                    onPress={() => onEditTask?.(task)}
+                    disabled={!onEditTask}
+                    accessibilityRole={onEditTask ? "button" : undefined}
+                    accessibilityLabel={onEditTask ? `Open ${task.title}` : undefined}
+                    accessibilityHint={onEditTask ? "Double tap to edit." : undefined}
+                    style={({ pressed }) => [
+                      styles.overdueTaskMain,
+                      pressed && onEditTask && styles.rowPressed,
+                    ]}
                   >
-                    <View style={styles.compactCompleteVisual}>
-                      <CheckIcon color={colors.success} size={14} strokeWidth={2.2} />
-                      <Text style={styles.compactCompleteText}>Complete</Text>
+                    <View
+                      style={[styles.overdueIconTile, isCompleted && styles.overdueIconTileDone]}
+                      accessibilityElementsHidden
+                    >
+                      {isCompleted ? (
+                        <CheckIcon color={colors.success} size={18} strokeWidth={2.2} />
+                      ) : (
+                        <AlertCircleIcon color={colors.error} size={18} strokeWidth={1.8} />
+                      )}
+                    </View>
+                    <View style={styles.overdueTaskText}>
+                      <Text style={[styles.rowTitle, styles.overdueTaskTitle]} numberOfLines={2}>{task.title}</Text>
                     </View>
                   </Pressable>
-                ) : null}
-              </View>
+                  {onCompleteTask && !isCompleted ? (
+                    <Pressable
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        setCompletedTasks((current) => ({ ...current, [id]: task }));
+                        onCompleteTask(task._id);
+                        setTimeout(() => {
+                          setCompletedTasks((current) => {
+                            const next = { ...current };
+                            delete next[id];
+                            return next;
+                          });
+                        }, 900);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Complete ${task.title}`}
+                      style={({ pressed }) => [styles.compactCompleteHit, pressed && styles.rowPressed]}
+                    >
+                      <View style={styles.compactCompleteVisual}>
+                        <CheckIcon color={colors.success} size={14} strokeWidth={2.2} />
+                        <Text style={styles.compactCompleteText}>Complete</Text>
+                      </View>
+                    </Pressable>
+                  ) : null}
+                </View>
 
               <View style={styles.overdueMetaRow}>
                 {isCompleted ? (
@@ -552,10 +573,10 @@ function OverdueCard({
                   <>
                     {goalName && goalPill ? (
                       <View
-                        style={[styles.overdueGoalPill, { backgroundColor: goalPill.backgroundColor }]}
+                        style={[styles.overdueGoalPill, { backgroundColor: goalPill.backgroundColor() }]}
                       >
                         <Text
-                          style={[styles.overdueGoalPillText, { color: goalPill.textColor }]}
+                          style={[styles.overdueGoalPillText, { color: goalPill.textColor() }]}
                           numberOfLines={1}
                           ellipsizeMode="tail"
                         >
@@ -653,7 +674,7 @@ function OverdueCard({
                   </Pressable>
                 </View>
               ) : null}
-              </Pressable>
+              </View>
             </Animated.View>
           );
         })}
@@ -1089,9 +1110,6 @@ const styles = createThemedStyles({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
   },
-  // Task row card — icon tile leading a stacked body inside its
-  // own separated card. Description and meta (goal pill / time / priority)
-  // sit under the title. No resting checkbox.
   row: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -1109,6 +1127,31 @@ const styles = createThemedStyles({
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
+  },
+  rowCheckboxHit: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  rowCheckbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 7,
+    borderCurve: "continuous",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+  },
+  rowCheckboxCompleted: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  rowCheckboxPressed: {
+    opacity: 0.68,
   },
   iconTile: {
     width: 36,
@@ -1311,6 +1354,13 @@ const styles = createThemedStyles({
     borderColor: colors.success,
   },
   overdueTaskTop: { flexDirection: "row", alignItems: "flex-start", gap: spacing.xs },
+  overdueTaskMain: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.xs,
+  },
   overdueTaskText: { flex: 1, minWidth: 0, gap: 3 },
   overdueMetaRow: {
     flexDirection: "row",

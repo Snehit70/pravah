@@ -200,6 +200,7 @@ vi.mock("../theme/tokens", () => ({
     textInverse: "#000",
     error: "#f00",
   },
+  fonts: { sans: "sans", sansSemibold: "sans-semibold", sansBold: "sans-bold" },
   radii: { md: 8, lg: 12, xl: 16, full: 9999 },
   spacing: { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 },
   typography: { title: {}, bodyMd: {}, bodyLg: {}, headline: {}, micro: {} },

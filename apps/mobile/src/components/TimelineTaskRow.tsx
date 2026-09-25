@@ -20,19 +20,19 @@ import type { MobileTask } from "./TaskCard";
 type TimelineGroupPosition = "only" | "first" | "middle" | "last";
 
 const PRIORITY_META = {
-  p1: { label: "P1", color: colors.priorityP1, bg: colors.errorMuted },
-  p2: { label: "P2", color: colors.priorityP2, bg: colors.warningMuted },
-  p3: { label: "P3", color: colors.priorityP3, bg: colors.successMuted },
+  p1: { label: "P1", color: () => colors.priorityP1, bg: () => colors.errorMuted },
+  p2: { label: "P2", color: () => colors.priorityP2, bg: () => colors.warningMuted },
+  p3: { label: "P3", color: () => colors.priorityP3, bg: () => colors.successMuted },
 } as const;
 
 // Pastel goal pills, cycled deterministically off the goal name so the same
 // goal always wears the same tint. Uses the muted semantic washes so pills
 // stay legible in both light and dark themes.
 const GOAL_PILLS = [
-  { backgroundColor: colors.accentSoft, textColor: colors.accent },
-  { backgroundColor: colors.successMuted, textColor: colors.success },
-  { backgroundColor: colors.warningMuted, textColor: colors.warning },
-  { backgroundColor: colors.deadlineMuted, textColor: colors.deadline },
+  { backgroundColor: () => colors.accentSoft, textColor: () => colors.accent },
+  { backgroundColor: () => colors.successMuted, textColor: () => colors.success },
+  { backgroundColor: () => colors.warningMuted, textColor: () => colors.warning },
+  { backgroundColor: () => colors.deadlineMuted, textColor: () => colors.deadline },
 ] as const;
 
 function goalPillFor(goalName: string): (typeof GOAL_PILLS)[number] {
@@ -153,10 +153,10 @@ function TimelineTaskRowInner({
           <View style={styles.metaRow}>
             {goalName && goalPill ? (
               <View
-                style={[styles.goalPill, { backgroundColor: goalPill.backgroundColor }]}
+                style={[styles.goalPill, { backgroundColor: goalPill.backgroundColor() }]}
               >
                 <Text
-                  style={[styles.goalPillText, { color: goalPill.textColor }]}
+                  style={[styles.goalPillText, { color: goalPill.textColor() }]}
                   numberOfLines={1}
                   ellipsizeMode="tail"
                 >
@@ -171,9 +171,9 @@ function TimelineTaskRowInner({
               </View>
             ) : null}
             {priority ? (
-              <View style={[styles.priorityPill, { backgroundColor: priority.bg }]}>
-                <StarIcon color={priority.color} size={12} strokeWidth={2} />
-                <Text style={[styles.priorityPillText, { color: priority.color }]}>
+              <View style={[styles.priorityPill, { backgroundColor: priority.bg() }]}>
+                <StarIcon color={priority.color()} size={12} strokeWidth={2} />
+                <Text style={[styles.priorityPillText, { color: priority.color() }]}>
                   {priority.label}
                 </Text>
               </View>

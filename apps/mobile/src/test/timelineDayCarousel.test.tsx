@@ -16,9 +16,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // ─── react-native mock ────────────────────────────────────────────────────────
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
-  const View = ({ children, ...rest }: AnyProps) => {
+  const View = ({
+    children,
+    accessibilityLabel,
+    ...rest
+  }: AnyProps & { accessibilityLabel?: string }) => {
     const { style: _, pointerEvents: __, ...safe } = rest;
-    return React.createElement("div", safe, children);
+    return React.createElement("div", { ...safe, "aria-label": accessibilityLabel }, children);
   };
   const Text = ({ children, ...rest }: AnyProps) => {
     const { style: _, numberOfLines: __, ellipsizeMode: ___, ...safe } = rest;
@@ -117,6 +121,7 @@ vi.mock("react-native-reanimated", () => {
       FlatList: AnimatedFlatList,
     },
     Extrapolation: { CLAMP: "clamp" },
+    FadeOut: { duration: () => undefined },
     interpolate: () => 1,
     useAnimatedScrollHandler: () => () => {},
     useAnimatedStyle: () => ({}),
@@ -243,7 +248,7 @@ describe("TimelineDayCarousel", () => {
     expect(onCompleteTask).toHaveBeenCalledWith("t1");
   });
 
-  it("keeps completion out of the overdue overflow menu", () => {
+  it("keeps completion as a direct overdue action", () => {
     const onCompleteTask = vi.fn();
     const onEditTask = vi.fn();
     const onTriageOverdue = vi.fn();
@@ -257,9 +262,14 @@ describe("TimelineDayCarousel", () => {
       overdueCount: 1,
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "More actions for Overdue task" }));
-
-    expect(screen.getAllByText("Complete")).toHaveLength(1);
+    const open = screen.getByRole("button", { name: "Open Overdue task" });
+    const complete = screen.getByRole("button", { name: "Complete Overdue task" });
+    const reschedule = screen.getByRole("button", { name: "Reschedule Overdue task" });
+    expect(open.contains(complete)).toBe(false);
+    expect(open.contains(reschedule)).toBe(false);
+    expect(screen.queryByRole("button", { name: "More actions for Overdue task" })).toBeNull();
+    fireEvent.click(complete);
+    expect(onCompleteTask).toHaveBeenCalledWith("od1");
     fireEvent.click(screen.getByRole("button", { name: "Open Overdue task" }));
     expect(onEditTask).toHaveBeenCalledWith(expect.objectContaining({ _id: "od1" }));
   });
@@ -277,7 +287,8 @@ describe("TimelineDayCarousel", () => {
   it("shows Today progress instead of a plain task count", () => {
     renderCarousel([[TODAY, [task("t1", TODAY, "Write tests")]]]);
 
-    expect(screen.getByText("0 of 1 done")).toBeTruthy();
+    expect(screen.getByText("0 of 1")).toBeTruthy();
+    expect(screen.getByLabelText("0 of 1 done")).toBeTruthy();
     expect(screen.queryByText("1 task")).toBeNull();
   });
 
@@ -286,7 +297,8 @@ describe("TimelineDayCarousel", () => {
       completedTasks: [task("done", TODAY, "Already done")],
     });
 
-    expect(screen.getByText("1 of 2 done")).toBeTruthy();
+    expect(screen.getByText("1 of 2")).toBeTruthy();
+    expect(screen.getByLabelText("1 of 2 done")).toBeTruthy();
     expect(screen.getByText("Already done")).toBeTruthy();
   });
 
@@ -298,7 +310,8 @@ describe("TimelineDayCarousel", () => {
       ],
     });
 
-    expect(screen.getByText("1 of 2 done")).toBeTruthy();
+    expect(screen.getByText("1 of 2")).toBeTruthy();
+    expect(screen.getByLabelText("1 of 2 done")).toBeTruthy();
     expect(screen.getByText("Done today")).toBeTruthy();
     expect(screen.queryByText("Historical completion")).toBeNull();
   });
