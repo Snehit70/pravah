@@ -3375,9 +3375,9 @@ export function SettingsSheet({
       tone: "neutral",
     },
     about: {
-      label: mobileRelease.runningVersion.startsWith("v")
-        ? mobileRelease.runningVersion
-        : `v${mobileRelease.runningVersion}`,
+      label: mobileRelease.latestVersion.startsWith("v")
+        ? mobileRelease.latestVersion
+        : `v${mobileRelease.latestVersion}`,
       tone: "neutral",
     },
   };
