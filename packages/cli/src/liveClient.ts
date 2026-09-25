@@ -13,6 +13,7 @@ interface CliEnv {
 }
 
 export const DEFAULT_PRAVAH_HTTP_URL = "https://combative-zebra-261.eu-west-1.convex.site";
+const LEGACY_PRAVAH_HTTP_URL = "https://befitting-swan-125.eu-west-1.convex.site";
 
 export interface LiveCliClient {
   mode: "live";
@@ -109,6 +110,11 @@ function deriveSiteUrl(value?: string): string | undefined {
     : normalized;
 }
 
+export function resolveStoredCredentialSiteUrl(siteUrl?: string): string | undefined {
+  const normalized = normalizeHttpUrl(siteUrl);
+  return normalized === LEGACY_PRAVAH_HTTP_URL ? DEFAULT_PRAVAH_HTTP_URL : normalized;
+}
+
 export function resolveCliHttpUrl(env: CliEnv): string | undefined {
   return (
     normalizeHttpUrl(env.PRAVAH_HTTP_URL) ??
@@ -126,7 +132,7 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
   const baseUrl =
     normalizeHttpUrl(env.PRAVAH_HTTP_URL) ??
     normalizeHttpUrl(env.CONVEX_SELF_HOSTED_SITE_URL) ??
-    storedCredential?.siteUrl ??
+    resolveStoredCredentialSiteUrl(storedCredential?.siteUrl) ??
     normalizeHttpUrl(env.CONVEX_SITE_URL) ??
     normalizeHttpUrl(env.VITE_CONVEX_SITE_URL) ??
     deriveSiteUrl(env.CONVEX_URL) ??
