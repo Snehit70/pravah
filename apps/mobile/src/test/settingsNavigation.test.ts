@@ -109,10 +109,11 @@ describe("SETTINGS_CATEGORY_CONTROLS", () => {
         "theme_baseline",
         "font_baseline",
         "density",
-        "task_color_scheme",
         "tab_order",
       ]),
     );
+    expect(SETTINGS_CATEGORY_CONTROLS.appearance).not.toContain("task_color_scheme");
+
     expect(SETTINGS_CATEGORY_CONTROLS.data).toEqual(
       expect.arrayContaining([
         "export_tasks",
