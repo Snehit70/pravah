@@ -1,5 +1,29 @@
 # Changelog
 
+## [2.3.0](https://github.com/Snehit70/pravah/compare/cli-v2.2.0...cli-v2.3.0) (2026-09-25)
+
+
+### Features
+
+* add Task-image read and metadata export compatibility ([7c353f6](https://github.com/Snehit70/pravah/commit/7c353f6ebfc1d4da93a7ce00f38e3645a3b006c6))
+* expose Task-image summaries in CLI reads ([87d0661](https://github.com/Snehit70/pravah/commit/87d06613ad458bcb2e1eb89c3e112c8646fd0ecb))
+* **goals:** link tasks to goals from CLI and Omarchy widget ([c4cf1c6](https://github.com/Snehit70/pravah/commit/c4cf1c623cd2ba434be33d788e8d8ef767a57170))
+* **todo-plugin:** add Omarchy today widget ([67a69e2](https://github.com/Snehit70/pravah/commit/67a69e23aedd97fadfeed0af1ae49a689a9a0752))
+* **todo-plugin:** rebuild Omarchy widget as a full CLI front-end ([1c544df](https://github.com/Snehit70/pravah/commit/1c544dfe48ee66c7c1e7278c8c1d01ee25e43359))
+
+
+### Bug Fixes
+
+* **cli:** migrate stored credentials to new account ([8ec0de1](https://github.com/Snehit70/pravah/commit/8ec0de16759e6872d2781ca75a20d502a48abda3))
+* **cli:** migrate stored credentials to new account ([f4d4910](https://github.com/Snehit70/pravah/commit/f4d4910fa47c399d1273cd9ff833ee2ea5d23fb8))
+* cut Convex HTTP polling cost for CLI today reads ([5774c83](https://github.com/Snehit70/pravah/commit/5774c83fdcb16d9b4d07bc0515d933c30b4c060a))
+* cut Convex HTTP polling cost for CLI today reads ([9a522fe](https://github.com/Snehit70/pravah/commit/9a522fe612c4d562a36d3741858fbc991c3dc991)), closes [#240](https://github.com/Snehit70/pravah/issues/240)
+* harden Task-image metadata boundaries ([40a21c7](https://github.com/Snehit70/pravah/commit/40a21c74df5f90a141e22492f1c360c58977b085))
+* honor live scopes on usage writes and CLI link commands ([0d03af4](https://github.com/Snehit70/pravah/commit/0d03af4f9d83ba24399084978029385ad909bd7f))
+* keep today lists and writes correct after usage cuts ([d1f5e19](https://github.com/Snehit70/pravah/commit/d1f5e19a00c446706f6150eb763b580d108a40b7))
+* preserve Task-image read compatibility ([be1ef34](https://github.com/Snehit70/pravah/commit/be1ef34f0598a5fe38c0daec2958ba00eb13990f))
+* **todo-plugin:** harden CLI task actions ([788ba69](https://github.com/Snehit70/pravah/commit/788ba692d39e47a70c4d647bc31e2a7725a20c77))
+
 ## [2.2.0](https://github.com/Snehit70/pravah/compare/cli-v2.1.0...cli-v2.2.0) (2026-07-26)
 
 
