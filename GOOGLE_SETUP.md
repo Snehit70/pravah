@@ -22,13 +22,13 @@ Do not use a `Desktop` client.
 For local development add:
 
 - Authorized JavaScript origin: `http://localhost:5173`
-- Authorized redirect URI: `https://befitting-swan-125.eu-west-1.convex.site/api/auth/callback/google`
+- Authorized redirect URI: `https://combative-zebra-261.eu-west-1.convex.site/api/auth/callback/google`
 - Authorized redirect URI: `http://localhost:5173/google-callback`
 
 For production add:
 
 - Authorized JavaScript origin: `https://your-app-domain`
-- Authorized redirect URI: `https://befitting-swan-125.eu-west-1.convex.site/api/auth/callback/google`
+- Authorized redirect URI: `https://combative-zebra-261.eu-west-1.convex.site/api/auth/callback/google`
 - Authorized redirect URI: `https://your-app-domain/google-callback`
 
 ## Enable APIs

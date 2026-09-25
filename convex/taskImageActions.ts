@@ -9,7 +9,7 @@ import {
   checkProviderAssetPresence,
   deleteProviderAsset,
   fetchProviderUsage,
-  TASK_IMAGE_CANONICAL_CONVEX_SITE_URL,
+  isCanonicalTaskImageSiteUrl,
   verifyProviderUploadMaster,
   type ProviderUploadResult,
   type TaskImageProviderConfig,
@@ -200,10 +200,11 @@ function readProviderConfig(): TaskImageProviderConfig {
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
   const siteUrl = process.env.CONVEX_SITE_URL;
   if (
+    !siteUrl ||
     !cloudName ||
     !apiKey ||
     !apiSecret ||
-    siteUrl !== TASK_IMAGE_CANONICAL_CONVEX_SITE_URL
+    !isCanonicalTaskImageSiteUrl(siteUrl)
   ) {
     throw new Error("provider_unavailable");
   }

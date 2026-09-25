@@ -29,8 +29,8 @@ concurrency:
 env:
   BUN_VERSION: 1.3.3
   EAS_CLI_VERSION: 24.6.0
-  MOBILE_CONVEX_URL: https://befitting-swan-125.eu-west-1.convex.cloud
-  MOBILE_CONVEX_SITE_URL: https://befitting-swan-125.eu-west-1.convex.site
+  MOBILE_CONVEX_URL: ${{ vars.MOBILE_CONVEX_URL || 'https://combative-zebra-261.eu-west-1.convex.cloud' }}
+  MOBILE_CONVEX_SITE_URL: ${{ vars.MOBILE_CONVEX_SITE_URL || 'https://combative-zebra-261.eu-west-1.convex.site' }}
 
 jobs:
   prepare:

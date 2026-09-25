@@ -144,8 +144,8 @@ describe("google api helpers", () => {
 
     expect(
       resolveConvexHttpUrl({
-        VITE_CONVEX_URL: "https://befitting-swan-125.eu-west-1.convex.cloud",
+        VITE_CONVEX_URL: "https://combative-zebra-261.eu-west-1.convex.cloud",
       })
-    ).toBe("https://befitting-swan-125.eu-west-1.convex.site");
+    ).toBe("https://combative-zebra-261.eu-west-1.convex.site");
   });
 });

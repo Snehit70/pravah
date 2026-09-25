@@ -47,7 +47,7 @@ import {
 } from "./httpResponses";
 import {
   buildEagerWebhookVerificationInput,
-  TASK_IMAGE_CANONICAL_CONVEX_SITE_URL,
+  isCanonicalTaskImageSiteUrl,
   verifyProviderWebhookMaster,
   verifyProviderWebhookResult,
   verifyWebhookSignature,
@@ -64,7 +64,7 @@ http.route({
   path: "/cloudinary/task-image-callback",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    if (process.env.CONVEX_SITE_URL !== TASK_IMAGE_CANONICAL_CONVEX_SITE_URL) {
+    if (!isCanonicalTaskImageSiteUrl(process.env.CONVEX_SITE_URL)) {
       return new Response(null, { status: 503 });
     }
     const rawBody = await request.text();

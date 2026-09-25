@@ -22,7 +22,10 @@ To pin a particular release, replace `latest` with that version.
 
 The CLI accepts either an existing admin API-key environment configuration
 (`PRAVAH_HTTP_URL` and `CONVEX_HTTP_API_KEY`) or a stored scoped automation
-credential. To create the latter, issue a one-time bootstrap token from
+credential. For a self-hosted Convex deployment, set
+`CONVEX_SELF_HOSTED_SITE_URL` to the HTTP-actions origin. The API and
+HTTP-actions origins are separate and must not be derived from one another.
+To create a scoped credential, issue a one-time bootstrap token from
 Settings → Automation, then exchange it locally:
 
 ```sh
