@@ -82,6 +82,7 @@ vi.mock("../theme/tokens", () => ({
   colors: {
     accent: "#06f",
     accentSoft: "#06f3",
+    accentDim: "#06f1",
     bgCard: "#111",
     bgSurface: "#151515",
     bgFloating: "#181818",
@@ -91,6 +92,15 @@ vi.mock("../theme/tokens", () => ({
     textSecondary: "#ccc",
     textMuted: "#888",
     textInverse: "#000",
+    success: "#0a0",
+    successMuted: "#0a03",
+    warning: "#a80",
+    warningMuted: "#a803",
+    deadline: "#a50",
+    deadlineMuted: "#a503",
+    priorityP1: "#f00",
+    priorityP2: "#fa0",
+    priorityP3: "#888",
   },
   radii: { sm: 4, md: 8, lg: 12, xl: 16, full: 999 },
   spacing: { xs: 4, sm: 8, md: 16, lg: 24 },
@@ -98,9 +108,15 @@ vi.mock("../theme/tokens", () => ({
   fonts: { sans: "sans", sansSemibold: "sans-semibold", mono: "mono" },
 }));
 
+vi.mock("../assets/icons/nav-timeline.svg", () => ({
+  default: () => React.createElement("svg", { "data-testid": "timeline-tile-icon" }),
+}));
+
 vi.mock("../components/UiIcons", () => ({
   CheckIcon: ({ color: _color }: { color: string }) => React.createElement("span", { "data-testid": "icon-check" }),
   ChevronRightIcon: ({ color: _color }: { color: string }) => React.createElement("span", { "data-testid": "icon-chevron" }),
+  ClockIcon: ({ color: _color }: { color: string }) => React.createElement("span", { "data-testid": "icon-clock" }),
+  StarIcon: ({ color: _color }: { color: string }) => React.createElement("span", { "data-testid": "icon-star" }),
 }));
 
 // Import component after all mocks are set up.
@@ -142,18 +158,25 @@ describe("TimelineTaskRow", () => {
     vi.clearAllMocks();
   });
 
-  it("renders the title with the time and goal in the trailing group", () => {
+  it("renders the title with the time pill, goal pill, and priority chip", () => {
     render(<TimelineTaskRow {...baseProps} goalName="Java" />);
 
     expect(screen.getByText("Java Quiz 1")).toBeTruthy();
-    expect(screen.getByText(/9:00 AM.*Java.*P1/)).toBeTruthy();
+    expect(screen.getByText("9:00 AM")).toBeTruthy();
+    expect(screen.getByText("Java")).toBeTruthy();
+    expect(screen.getByText("P1")).toBeTruthy();
   });
 
   it("omits time and goal when the task has neither", () => {
-    render(<TimelineTaskRow {...baseProps} task={{ ...task, time: undefined }} />);
+    render(
+      <TimelineTaskRow
+        {...baseProps}
+        task={{ ...task, time: undefined, priority: undefined }}
+      />
+    );
 
     expect(screen.queryByText("9:00 AM")).toBeNull();
-    expect(screen.queryByText("◈ ")).toBeNull();
+    expect(screen.queryByText("P1")).toBeNull();
   });
 
   it("opens the editor on tap and enters selection on long-press", () => {

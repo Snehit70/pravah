@@ -19,6 +19,28 @@ describe("settingsNavigationReducer", () => {
     });
   });
 
+  it("opens the What's new page from About", () => {
+    expect(
+      settingsNavigationReducer(
+        { screen: "detail", category: "about" },
+        { type: "openWhatsNew" },
+      ),
+    ).toEqual({
+      screen: "detail",
+      category: "about",
+      page: "whats-new",
+    });
+  });
+
+  it("returns to About from the What's new page", () => {
+    expect(
+      settingsNavigationReducer(
+        { screen: "detail", category: "about", page: "whats-new" },
+        { type: "back" },
+      ),
+    ).toEqual({ screen: "detail", category: "about" });
+  });
+
   it("returns to the category list from a detail screen", () => {
     expect(
       settingsNavigationReducer(
@@ -87,10 +109,11 @@ describe("SETTINGS_CATEGORY_CONTROLS", () => {
         "theme_baseline",
         "font_baseline",
         "density",
-        "task_color_scheme",
         "tab_order",
       ]),
     );
+    expect(SETTINGS_CATEGORY_CONTROLS.appearance).not.toContain("task_color_scheme");
+
     expect(SETTINGS_CATEGORY_CONTROLS.data).toEqual(
       expect.arrayContaining([
         "export_tasks",

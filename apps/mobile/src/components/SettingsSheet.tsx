@@ -18,6 +18,8 @@ import {
   Text,
   TextInput,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
 import { useMutation, useQuery } from "convex/react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -32,6 +34,7 @@ import {
   colors,
   motion,
   radii,
+  shadow,
   spacing,
   typography,
 } from "../theme/tokens";
@@ -44,6 +47,7 @@ import { useConfirm } from "../hooks/useConfirm";
 import { getOrCreateDeviceId } from "../lib/deviceIdentity";
 import { retryQueueStorage } from "../lib/retry-queue-storage";
 import { classifyError, mobileLogger } from "../lib/logger";
+import { haptic } from "../lib/haptic";
 import {
   AlertCircleIcon,
   ArrowUpRightIcon,
@@ -55,6 +59,7 @@ import {
   InboxTrayIcon,
   InfoCircleIcon,
   MailIcon,
+  RetryArrowIcon,
   SyncLoopIcon,
 } from "./UiIcons";
 import GithubIconAsset from "../assets/icons/about-github.svg";
@@ -74,6 +79,9 @@ import KairoIconAsset from "../assets/icons/settings-kairo.svg";
 import CliIconAsset from "../assets/icons/settings-cli.svg";
 import AppSettingsIconAsset from "../assets/icons/app-settings.svg";
 import RemindersIconAsset from "../assets/icons/settings-reminders.svg";
+import MegaphoneIconAsset from "../assets/icons/megaphone.svg";
+import ReleaseFeatIconAsset from "../assets/icons/release-feat.svg";
+import ReleaseFixIconAsset from "../assets/icons/release-fix.svg";
 import QuietHoursIconAsset from "../assets/icons/settings-quiet-hours.svg";
 import SyncIconAsset from "../assets/icons/settings-sync.svg";
 import DataIconAsset from "../assets/icons/settings-data.svg";
@@ -88,12 +96,24 @@ import ThemeDarkIconAsset from "../assets/icons/appearance-theme-dark.svg";
 import ThemeSystemIconAsset from "../assets/icons/appearance-theme-system.svg";
 import ThemeWarmIconAsset from "../assets/icons/appearance-theme-warm.svg";
 import {
+  DEFAULT_TAB_ORDER,
+  getDefaultTabOrder,
+  isCurrentTabOrderDragSession,
   moveTabOrder,
+  nextTabOrderDragSession,
+  reorderTabOrder,
   resolveTabOrder,
   TAB_LABELS,
+  TAB_ORDER_CAPTURE_WIDTH,
+  TAB_ORDER_GESTURE_ACTIVE_OFFSET_X,
+  TAB_ORDER_GESTURE_FAIL_OFFSET_Y,
+  TAB_ORDER_PREVIEW_GAP,
+  tabOrderSlotOffset,
+  tabOrderTargetIndex,
+  tabOrderVisualIndex,
   type TabKey,
 } from "../lib/tabOrder";
-import { TabNavIcon } from "./tabNavIcons";
+import { CaptureIcon, TabNavIcon } from "./tabNavIcons";
 import {
   INITIAL_SETTINGS_NAVIGATION,
   SETTINGS_CATEGORY_META,
@@ -108,19 +128,26 @@ import type {
   ReminderLeadTimeMinutes,
   ThemePreference,
 } from "../lib/userPreferences";
+import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, {
   Easing,
+  FadeIn,
+  FadeOut,
+  SlideInLeft,
+  SlideInRight,
   interpolateColor,
-  LinearTransition,
+  runOnJS,
+  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   withTiming,
+  type SharedValue,
 } from "react-native-reanimated";
 import { KairoSettingsSection } from "./KairoSettingsSection";
 import { GmailReviewSection } from "./GmailReviewSection";
 import { AppUpdateSection } from "./AppUpdateSection";
-import { WhatsNewSheet } from "./WhatsNewSheet";
+import { WhatsNewPage } from "./WhatsNewSheet";
 import { SnapWheelTimePicker } from "./SnapWheelTimePicker";
 import { SlidingSegmented, type SegmentedItem } from "./SlidingSegmented";
 import {
@@ -194,21 +221,27 @@ const THEME_SEGMENTS: Array<SegmentedItem<ThemePreference>> = [
   { value: "light", label: "Warm light", Icon: ThemeWarmIconAsset },
   { value: "dark", label: "Dark", Icon: ThemeDarkIconAsset },
 ];
-const TASK_COLOR_OPTIONS: Array<{
+const ACCENT_COLOR_OPTIONS: Array<{
   value: AccentColor;
   label: string;
-  swatch: string;
 }> = [
-  { value: "purple", label: "Purple", swatch: "#6753c7" },
-  { value: "copper", label: "Copper", swatch: colors.deadline },
-  { value: "teal", label: "Teal", swatch: "#3e7b78" },
-  { value: "rose", label: "Rose", swatch: "#9d586f" },
+  { value: "purple", label: "Purple" },
+  { value: "copper", label: "Copper" },
+  { value: "teal", label: "Teal" },
+  { value: "rose", label: "Rose" },
 ];
 const READ_ONLY_AUTOMATION_SCOPES = ["tasks:read", "review:read", "sync:read"] as const;
 const REPO_URL = "https://github.com/Snehit70/pravah";
 const CHANGELOG_URL = `${REPO_URL}/blob/main/apps/mobile/CHANGELOG.md`;
 const ISSUES_URL = `${REPO_URL}/issues`;
 const RETRY_QUEUE_STORAGE_KEY = "pravah_mobile_retry_queue_v1";
+
+type SettingsRouteDirection = "forward" | "back";
+
+function getSettingsRouteKey(navigation: SettingsNavigationState) {
+  if (navigation.screen === "list") return "list";
+  return `detail-${navigation.category}-${navigation.page ?? "root"}`;
+}
 
 type CategoryIconProps = {
   color: string;
@@ -264,6 +297,10 @@ function AccountIcon({ color, size = 18 }: CategoryIconProps) {
 
 function InfoIcon({ color, size = 18 }: CategoryIconProps) {
   return <AboutIconAsset width={size} height={size} color={color} />;
+}
+
+function WhatsNewIcon({ color, size = 20 }: CategoryIconProps) {
+  return <MegaphoneIconAsset width={size} height={size} color={color} />;
 }
 
 const SETTINGS_CATEGORY_ICONS: Partial<
@@ -391,9 +428,15 @@ function settingsStatusColor(tone: SettingsHomeStatusTone): string {
 type TabOrderEditorProps = {
   order: readonly TabKey[];
   onMove: (key: TabKey, direction: "up" | "down") => void;
+  onReorder: (order: readonly TabKey[]) => void;
+  onReset: () => void;
 };
 
 const TAB_REORDER_EASING = Easing.bezier(...motion.easing.outQuart);
+const TAB_REORDER_SPRING_CONFIG = {
+  duration: motion.duration.instant,
+  dampingRatio: 1,
+};
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -437,113 +480,406 @@ function SwatchChip({
   );
 }
 
-function useTabReorderTransition() {
-  const reducedMotion = useReducedMotion();
-  return reducedMotion
-    ? undefined
-    : LinearTransition.duration(motion.duration.base).easing(TAB_REORDER_EASING);
+function tabOrdersEqual(left: readonly TabKey[], right: readonly TabKey[]) {
+  return left.length === right.length && left.every((tab, index) => tab === right[index]);
 }
 
 function TabOrderPreviewItem({
   tab,
-  layout,
+  sourceIndex,
+  defaultIndex,
+  displayIndex,
+  orderLength,
+  slotWidth,
+  activeSourceIndex,
+  activeTargetIndex,
+  dragSession,
+  resetVersion,
+  onMove,
+  onDragStart,
+  onTargetChange,
+  onDragCancel,
+  onReorder,
 }: {
   tab: TabKey;
-  layout: ReturnType<typeof useTabReorderTransition>;
+  sourceIndex: number;
+  defaultIndex: number;
+  displayIndex: number;
+  orderLength: number;
+  slotWidth: number;
+  activeSourceIndex: SharedValue<number>;
+  activeTargetIndex: SharedValue<number>;
+  dragSession: SharedValue<number>;
+  resetVersion: SharedValue<number>;
+  onMove: (key: TabKey, direction: "up" | "down") => void;
+  onDragStart: (sourceIndex: number, session: number) => void;
+  onTargetChange: (sourceIndex: number, targetIndex: number, session: number) => void;
+  onDragCancel: (session: number) => void;
+  onReorder: (fromIndex: number, toIndex: number, session: number) => void;
 }) {
+  const reducedMotion = useReducedMotion();
+  const positionX = useSharedValue(0);
+  const dragProgress = useSharedValue(0);
+  const gestureSession = useSharedValue(0);
+  const completedSession = useSharedValue(0);
+
+  useEffect(() => {
+    const nextPosition = tabOrderSlotOffset(sourceIndex, slotWidth);
+    positionX.value = reducedMotion
+      ? nextPosition
+      : withSpring(nextPosition, TAB_REORDER_SPRING_CONFIG);
+  }, [positionX, reducedMotion, slotWidth, sourceIndex]);
+
+  useAnimatedReaction(
+    () => ({
+      activeSource: activeSourceIndex.value,
+      activeTarget: activeTargetIndex.value,
+      reset: resetVersion.value,
+    }),
+    (current, previous) => {
+      if (current.activeSource === sourceIndex) return;
+      const resetChanged = current.reset !== previous?.reset;
+      const nextIndex = resetChanged
+        ? defaultIndex
+        : previous?.activeSource === sourceIndex && current.activeTarget >= 0
+          ? current.activeTarget
+          : tabOrderVisualIndex(sourceIndex, current.activeSource, current.activeTarget);
+      const nextPosition = tabOrderSlotOffset(nextIndex, slotWidth);
+      positionX.value = reducedMotion
+        ? nextPosition
+        : withSpring(nextPosition, TAB_REORDER_SPRING_CONFIG);
+      if (current.activeSource < 0) dragProgress.value = 0;
+    },
+    [defaultIndex, reducedMotion, slotWidth, sourceIndex, tab],
+  );
+
+  const panGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetX([...TAB_ORDER_GESTURE_ACTIVE_OFFSET_X])
+        .failOffsetY([...TAB_ORDER_GESTURE_FAIL_OFFSET_Y])
+        .onStart(() => {
+          const session = dragSession.value + 1;
+          dragSession.value = session;
+          gestureSession.value = session;
+          activeSourceIndex.value = sourceIndex;
+          activeTargetIndex.value = sourceIndex;
+          positionX.value = tabOrderSlotOffset(sourceIndex, slotWidth);
+          dragProgress.value = reducedMotion
+            ? 1
+            : withTiming(1, {
+                duration: motion.duration.fast,
+                easing: TAB_REORDER_EASING,
+              });
+          runOnJS(onDragStart)(sourceIndex, session);
+        })
+        .onUpdate((event) => {
+          const session = gestureSession.value;
+          if (dragSession.value !== session) return;
+          const startOffset = tabOrderSlotOffset(sourceIndex, slotWidth);
+          const min = tabOrderSlotOffset(0, slotWidth) - startOffset;
+          const max = tabOrderSlotOffset(orderLength - 1, slotWidth) - startOffset;
+          const translation = Math.max(min, Math.min(max, event.translationX));
+          positionX.value = startOffset + translation;
+          const targetIndex = tabOrderTargetIndex(
+            sourceIndex,
+            translation,
+            orderLength,
+            slotWidth,
+          );
+          if (targetIndex !== activeTargetIndex.value) {
+            activeTargetIndex.value = targetIndex;
+            runOnJS(onTargetChange)(sourceIndex, targetIndex, session);
+          }
+        })
+        .onEnd((event) => {
+          const session = gestureSession.value;
+          if (dragSession.value !== session) return;
+          const targetIndex = tabOrderTargetIndex(
+            sourceIndex,
+            event.translationX,
+            orderLength,
+            slotWidth,
+          );
+          activeTargetIndex.value = targetIndex;
+          const targetPosition = tabOrderSlotOffset(targetIndex, slotWidth);
+          positionX.value = reducedMotion
+            ? targetPosition
+            : withSpring(targetPosition, TAB_REORDER_SPRING_CONFIG);
+          dragProgress.value = reducedMotion
+            ? 0
+            : withTiming(0, {
+                duration: motion.duration.fast,
+                easing: TAB_REORDER_EASING,
+              });
+          completedSession.value = session;
+          runOnJS(onReorder)(sourceIndex, targetIndex, session);
+        })
+        .onFinalize(() => {
+          const session = gestureSession.value;
+          if (dragSession.value !== session) return;
+          if (completedSession.value !== session) {
+            activeTargetIndex.value = -1;
+            const sourcePosition = tabOrderSlotOffset(sourceIndex, slotWidth);
+            positionX.value = reducedMotion
+              ? sourcePosition
+              : withSpring(sourcePosition, TAB_REORDER_SPRING_CONFIG);
+            dragProgress.value = reducedMotion
+              ? 0
+              : withTiming(0, {
+                  duration: motion.duration.fast,
+                  easing: TAB_REORDER_EASING,
+                });
+            runOnJS(onDragCancel)(session);
+            if (activeSourceIndex.value === sourceIndex) activeSourceIndex.value = -1;
+          }
+          completedSession.value = 0;
+        }),
+    [
+      activeSourceIndex,
+      activeTargetIndex,
+      completedSession,
+      dragProgress,
+      dragSession,
+      gestureSession,
+      onDragCancel,
+      onDragStart,
+      onReorder,
+      onTargetChange,
+      orderLength,
+      positionX,
+      reducedMotion,
+      slotWidth,
+      sourceIndex,
+    ],
+  );
+
+  const animatedStyle = useAnimatedStyle(() => {
+    const isActive = activeSourceIndex.value === sourceIndex;
+    return {
+      transform: [
+        { translateX: positionX.value },
+        { scale: reducedMotion ? 1 : 1 + dragProgress.value * 0.012 },
+      ],
+      zIndex: isActive ? 10 : 0,
+      elevation: isActive ? 4 : 0,
+    };
+  }, [activeSourceIndex, reducedMotion, sourceIndex]);
+  const cardAnimatedStyle = useAnimatedStyle(() => ({
+    borderColor: interpolateColor(dragProgress.value, [0, 1], [colors.border, colors.accent]),
+  }));
+
   return (
-    <Animated.View layout={layout} style={styles.tabPreviewItem}>
-      <TabNavIcon tab={tab} color={colors.textMuted} size={14} />
-      <Text style={styles.tabPreviewText} numberOfLines={1}>
-        {TAB_LABELS[tab]}
-      </Text>
-    </Animated.View>
+    <GestureDetector gesture={panGesture}>
+      <Animated.View
+        accessible
+        accessibilityRole="adjustable"
+        accessibilityLabel={`Reorder ${TAB_LABELS[tab]}`}
+        accessibilityHint={`Position ${displayIndex + 1} of ${orderLength}. Drag horizontally to reorder.`}
+        accessibilityActions={[
+          { name: "decrement", label: "Move up" },
+          { name: "increment", label: "Move down" },
+        ]}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === "decrement") onMove(tab, "up");
+          if (event.nativeEvent.actionName === "increment") onMove(tab, "down");
+        }}
+        style={[
+          styles.tabPreviewItem,
+          { width: slotWidth || 1, opacity: slotWidth > 0 ? 1 : 0 },
+          animatedStyle,
+        ]}
+      >
+        <Animated.View style={[styles.tabPreviewCard, cardAnimatedStyle]}>
+          <View style={styles.tabPreviewIcon}>
+            <TabNavIcon tab={tab} color={colors.textPrimary} size={24} />
+          </View>
+        </Animated.View>
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
-function TabOrderPreview({ order }: { order: readonly TabKey[] }) {
-  const layout = useTabReorderTransition();
-  const left = order.slice(0, 2);
-  const right = order.slice(2);
-  return (
-    <View style={styles.tabOrderPreview} testID="tab-order-preview">
-      {left.map((key) => (
-        <TabOrderPreviewItem key={key} tab={key} layout={layout} />
-      ))}
-      <View style={styles.tabPreviewCapture}>
-        <Text style={styles.tabPreviewCaptureText}>Capture</Text>
-      </View>
-      {right.map((key) => (
-        <TabOrderPreviewItem key={key} tab={key} layout={layout} />
-      ))}
-    </View>
-  );
-}
+function TabOrderEditor({
+  order,
+  accentColor,
+  onMove,
+  onReorder,
+  onReset,
+}: TabOrderEditorProps & { accentColor: string }) {
+  const [slotWidth, setSlotWidth] = useState(0);
+  const [activeDrag, setActiveDrag] = useState<{
+    sourceIndex: number;
+    targetIndex: number;
+    session: number;
+  } | null>(null);
+  const activeSourceIndex = useSharedValue(-1);
+  const activeTargetIndex = useSharedValue(-1);
+  const dragSession = useSharedValue(0);
+  const resetVersion = useSharedValue(0);
+  const dragSessionRef = useRef(0);
+  const dragOrderRef = useRef<readonly TabKey[]>([...order]);
+  const previousOrderRef = useRef(order);
+  const isDefaultOrder =
+    tabOrdersEqual(order, DEFAULT_TAB_ORDER) &&
+    (!activeDrag || activeDrag.sourceIndex === activeDrag.targetIndex);
 
-function TabOrderEditor({ order, onMove }: TabOrderEditorProps) {
-  const layout = useTabReorderTransition();
+  useEffect(() => {
+    if (tabOrdersEqual(previousOrderRef.current, order)) return;
+    previousOrderRef.current = order;
+    activeSourceIndex.set(-1);
+    activeTargetIndex.set(-1);
+  }, [activeSourceIndex, activeTargetIndex, order]);
+
+  const handlePreviewLayout = useCallback((event: { nativeEvent: { layout: { width: number } } }) => {
+    const nextSlotWidth = Math.max(
+      0,
+      (event.nativeEvent.layout.width -
+        TAB_ORDER_PREVIEW_GAP * 4 -
+        TAB_ORDER_CAPTURE_WIDTH -
+        StyleSheet.hairlineWidth * 2) /
+        4,
+    );
+    setSlotWidth((current) => (current === nextSlotWidth ? current : nextSlotWidth));
+  }, []);
+  const handleDragStart = useCallback(
+    (sourceIndex: number, session: number) => {
+      if (!isCurrentTabOrderDragSession(dragSessionRef.current, session)) return;
+      dragSessionRef.current = session;
+      dragOrderRef.current = [...order];
+      setActiveDrag({ sourceIndex, targetIndex: sourceIndex, session });
+      haptic.selection();
+    },
+    [order],
+  );
+  const handleTargetChange = useCallback(
+    (sourceIndex: number, targetIndex: number, session: number) => {
+      if (!isCurrentTabOrderDragSession(dragSessionRef.current, session)) return;
+      if (session > dragSessionRef.current) {
+        dragSessionRef.current = session;
+        dragOrderRef.current = [...order];
+      }
+      setActiveDrag((current) => {
+        if (!current || current.sourceIndex !== sourceIndex || current.targetIndex === targetIndex) {
+          return current;
+        }
+        return { sourceIndex, targetIndex, session };
+      });
+    },
+    [order],
+  );
+  const handleDragCancel = useCallback(
+    (session: number) => {
+      if (!isCurrentTabOrderDragSession(dragSessionRef.current, session)) return;
+      setActiveDrag(null);
+      activeSourceIndex.set(-1);
+      activeTargetIndex.set(-1);
+    },
+    [activeSourceIndex, activeTargetIndex],
+  );
+  const handleDragComplete = useCallback(
+    (fromIndex: number, toIndex: number, session: number) => {
+      if (!isCurrentTabOrderDragSession(dragSessionRef.current, session)) return;
+      if (session > dragSessionRef.current) {
+        dragSessionRef.current = session;
+        dragOrderRef.current = [...order];
+      }
+      const nextOrder = reorderTabOrder(dragOrderRef.current, fromIndex, toIndex);
+      setActiveDrag(null);
+      if (fromIndex === toIndex) {
+        activeSourceIndex.set(-1);
+        activeTargetIndex.set(-1);
+        return;
+      }
+      haptic.selection();
+      onReorder(nextOrder);
+    },
+    [activeSourceIndex, activeTargetIndex, onReorder, order],
+  );
+  const handleReset = useCallback(() => {
+    const nextSession = nextTabOrderDragSession(dragSessionRef.current);
+    dragSessionRef.current = nextSession;
+    dragSession.set(nextSession);
+    activeSourceIndex.set(-1);
+    activeTargetIndex.set(-1);
+    dragOrderRef.current = getDefaultTabOrder();
+    setActiveDrag(null);
+    resetVersion.set(resetVersion.value + 1);
+    onReset();
+  }, [activeSourceIndex, activeTargetIndex, dragSession, onReset, resetVersion]);
+
+  const renderPreviewItem = (key: TabKey) => {
+    const sourceIndex = order.indexOf(key);
+    const displayIndex = activeDrag
+      ? activeDrag.sourceIndex === sourceIndex
+        ? activeDrag.targetIndex
+        : tabOrderVisualIndex(sourceIndex, activeDrag.sourceIndex, activeDrag.targetIndex)
+      : sourceIndex;
+    return (
+      <TabOrderPreviewItem
+        key={key}
+        tab={key}
+        sourceIndex={sourceIndex}
+        defaultIndex={DEFAULT_TAB_ORDER.indexOf(key)}
+        displayIndex={displayIndex}
+        orderLength={order.length}
+        slotWidth={slotWidth}
+        activeSourceIndex={activeSourceIndex}
+        activeTargetIndex={activeTargetIndex}
+        dragSession={dragSession}
+        resetVersion={resetVersion}
+        onMove={onMove}
+        onDragStart={handleDragStart}
+        onTargetChange={handleTargetChange}
+        onDragCancel={handleDragCancel}
+        onReorder={handleDragComplete}
+      />
+    );
+  };
+
   return (
     <View style={styles.tabOrderEditor}>
-      {order.map((key, index) => {
-        const isFirst = index === 0;
-        const isLast = index === order.length - 1;
-        return (
-          <Animated.View key={key} layout={layout} style={styles.tabOrderRow}>
-            <View style={styles.tabOrderIndex}>
-              <Text style={styles.tabOrderIndexText}>{index + 1}</Text>
-            </View>
-            <View style={styles.settingCopy}>
-              <Text style={styles.settingLabel}>{TAB_LABELS[key]}</Text>
-            </View>
-            <View style={styles.tabOrderControls}>
-              <Pressable
-                onPress={() => onMove(key, "up")}
-                disabled={isFirst}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Move ${TAB_LABELS[key]} up`}
-                accessibilityState={{ disabled: isFirst }}
-                style={({ pressed }) => [
-                  styles.tabOrderButton,
-                  isFirst && styles.tabOrderButtonDisabled,
-                  pressed && !isFirst && { opacity: 0.65 },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.tabOrderButtonText,
-                    isFirst && styles.tabOrderButtonTextDisabled,
-                  ]}
-                >
-                  ↑
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => onMove(key, "down")}
-                disabled={isLast}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Move ${TAB_LABELS[key]} down`}
-                accessibilityState={{ disabled: isLast }}
-                style={({ pressed }) => [
-                  styles.tabOrderButton,
-                  isLast && styles.tabOrderButtonDisabled,
-                  pressed && !isLast && { opacity: 0.65 },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.tabOrderButtonText,
-                    isLast && styles.tabOrderButtonTextDisabled,
-                  ]}
-                >
-                  ↓
-                </Text>
-              </Pressable>
-            </View>
-          </Animated.View>
-        );
-      })}
+      <View
+        style={styles.tabOrderPreview}
+        testID="tab-order-preview"
+        onLayout={handlePreviewLayout}
+      >
+        {order.map(renderPreviewItem)}
+        <View
+          style={[
+            styles.tabPreviewCaptureSlot,
+            {
+              left: slotWidth * 2 + TAB_ORDER_PREVIEW_GAP * 2,
+              opacity: slotWidth > 0 ? 1 : 0,
+            },
+          ]}
+        >
+          <View style={[styles.tabPreviewCapture, { backgroundColor: accentColor }]}>
+            <CaptureIcon color={colors.textInverse} size={28} />
+          </View>
+        </View>
+      </View>
+      <View style={styles.tabOrderHint}>
+        <InfoCircleIcon color={colors.textMuted} size={16} />
+        <Text style={styles.tabOrderHintText}>
+          Drag tabs to reorder. Capture stays fixed in the center.
+        </Text>
+      </View>
+      <Pressable
+        onPress={handleReset}
+        disabled={isDefaultOrder}
+        accessibilityRole="button"
+        accessibilityLabel="Reset default tab order"
+        accessibilityState={{ disabled: isDefaultOrder }}
+        style={({ pressed }) => [
+          styles.tabOrderReset,
+          isDefaultOrder && styles.tabOrderResetDisabled,
+          pressed && !isDefaultOrder && styles.tabOrderResetPressed,
+        ]}
+      >
+        <RetryArrowIcon color={colors.accent} size={18} />
+        <Text style={styles.tabOrderResetText}>Reset default order</Text>
+      </Pressable>
     </View>
   );
 }
@@ -1926,15 +2262,22 @@ function AppearanceSection({
   tabOrder,
   onMoveTab,
 }: AppearanceSectionProps) {
+  const handleReorderTab = useCallback(
+    (nextOrder: readonly TabKey[]) => {
+      void setPreference("tabOrder", [...nextOrder]);
+    },
+    [setPreference],
+  );
+  const handleResetTabOrder = useCallback(() => {
+    void setPreference("tabOrder", getDefaultTabOrder());
+  }, [setPreference]);
+
   return (
     <View style={styles.screenBody}>
       <View style={[styles.settingBlock, styles.sectionCard]}>
         <View style={styles.settingRow}>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Theme</Text>
-            <Text style={styles.settingHelp}>
-              System follows this device and updates live.
-            </Text>
           </View>
         </View>
         <SlidingSegmented
@@ -1947,13 +2290,10 @@ function AppearanceSection({
         <View style={styles.settingRow}>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>App accent</Text>
-            <Text style={styles.settingHelp}>
-              Colors active navigation, selections, and primary actions.
-            </Text>
           </View>
         </View>
         <View style={styles.swatchGrid}>
-          {TASK_COLOR_OPTIONS.map((option) => (
+          {ACCENT_COLOR_OPTIONS.map((option) => (
             <SwatchChip
               key={option.value}
               label={option.label}
@@ -1971,9 +2311,6 @@ function AppearanceSection({
         <View style={styles.settingRow}>
           <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Density</Text>
-            <Text style={styles.settingHelp}>
-              Compact tightens task rows without hiding actions.
-            </Text>
           </View>
         </View>
         <SlidingSegmented
@@ -1985,44 +2322,40 @@ function AppearanceSection({
 
         <View style={styles.settingRow}>
           <View style={styles.settingCopy}>
-            <Text style={styles.settingLabel}>Task color</Text>
-            <Text style={styles.settingHelp}>
-              Emphasis color for task rows. Status colors keep their meanings.
-            </Text>
-          </View>
-        </View>
-        <View style={styles.swatchGrid}>
-          {TASK_COLOR_OPTIONS.map((option) => (
-            <SwatchChip
-              key={option.value}
-              label={option.label}
-              swatch={option.swatch}
-              active={prefs.taskColorScheme === option.value}
-              onSelect={() => void setPreference("taskColorScheme", option.value)}
-            />
-          ))}
-        </View>
-        <View style={styles.sectionDivider} />
-
-        <View style={styles.settingRow}>
-          <View style={styles.settingCopy}>
             <Text style={styles.settingLabel}>Tab order</Text>
-            <Text style={styles.settingHelp}>Capture stays fixed in the center.</Text>
           </View>
         </View>
-        <TabOrderPreview order={tabOrder} />
-        <TabOrderEditor order={tabOrder} onMove={onMoveTab} />
-      </View>
+        <TabOrderEditor
+          order={tabOrder}
+          accentColor={accentColorFor(getThemeRuntimeSnapshot().appearance, prefs.accentColor)}
+          onMove={onMoveTab}
+          onReorder={handleReorderTab}
+           onReset={handleResetTabOrder}
+         />
+       </View>
+
     </View>
   );
 }
 
+function AboutReleaseIcon({ title }: { title?: string }) {
+  const normalizedTitle = title?.toLowerCase() ?? "";
+  if (/^(fix|bugfix|hotfix)\b/.test(normalizedTitle)) {
+    return <ReleaseFixIconAsset width={18} height={18} color={colors.accent} />;
+  }
+  if (/^(feat|feature)\b/.test(normalizedTitle)) {
+    return <ReleaseFeatIconAsset width={18} height={18} color={colors.accent} />;
+  }
+  return <MegaphoneIconAsset width={18} height={18} color={colors.accent} />;
+}
+
 function AboutSection({
   mobileRelease,
+  onOpenWhatsNew,
 }: {
   mobileRelease: ReturnType<typeof useMobileRelease>;
+  onOpenWhatsNew: () => void;
 }) {
-  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const latestPublishedRelease = mobileRelease.publishedReleases[0];
 
   return (
@@ -2035,11 +2368,11 @@ function AboutSection({
           <View style={styles.aboutHeaderCopy}>
             <Text style={styles.settingLabel}>Pravah Mobile</Text>
             <Text style={styles.aboutVersion}>
-              Version {mobileRelease.runningVersion}
+              Installed {mobileRelease.runningVersion}
             </Text>
           </View>
           <Pressable
-            onPress={() => setWhatsNewOpen(true)}
+            onPress={onOpenWhatsNew}
             hitSlop={12}
             accessibilityRole="button"
             accessibilityLabel="Show what's new"
@@ -2049,49 +2382,42 @@ function AboutSection({
           </Pressable>
         </View>
 
-        <WhatsNewSheet
-          visible={whatsNewOpen}
-          onClose={() => setWhatsNewOpen(false)}
-          changelogUrl={CHANGELOG_URL}
-          releases={mobileRelease.publishedReleases}
-        />
+        <View style={styles.sectionDivider} />
 
-        <View style={styles.settingRow}>
-          <View style={styles.settingCopy}>
-            <Text style={styles.settingLabel}>
-              Latest release {mobileRelease.latestVersion}
-            </Text>
-            <Text style={styles.settingHelp}>
-              Runtime {mobileRelease.nativeRuntime}
-              {mobileRelease.minimumRuntime
-                ? ` · minimum ${mobileRelease.minimumRuntime}`
-                : ""}
-            </Text>
-            {latestPublishedRelease ? (
-              <Text style={styles.settingHelp}>{latestPublishedRelease.title}</Text>
-            ) : null}
+        <View style={styles.aboutReleaseRow}>
+          <View style={styles.aboutReleaseMark}>
+            <AboutReleaseIcon title={latestPublishedRelease?.title} />
+          </View>
+          <View style={styles.aboutReleaseCopy}>
+            <View style={styles.aboutReleaseHeading}>
+              <Text style={styles.aboutReleaseLabel}>Latest release</Text>
+              <Text style={styles.aboutReleaseVersion}>
+                {mobileRelease.latestVersion}
+              </Text>
+            </View>
             {mobileRelease.needsNativeUpgrade ? (
-              <Text style={styles.settingHelp}>
+              <Text style={styles.aboutReleaseWarning}>
                 {mobileRelease.isBelowMinimumRuntime
                   ? "This app build is no longer compatible. Install the latest APK."
                   : "A newer app build is recommended for future updates."}
               </Text>
             ) : null}
           </View>
-          {mobileRelease.pendingVersion ? (
-            <Pressable
-              onPress={() => void mobileRelease.restartToUpdate()}
-              accessibilityRole="button"
-              accessibilityLabel={`Restart to update to version ${mobileRelease.pendingVersion}`}
-              style={({ pressed }) => [
-                styles.versionPill,
-                pressed && { opacity: 0.6 },
-              ]}
-            >
-              <Text style={styles.versionPillText}>Restart to update</Text>
-            </Pressable>
-          ) : null}
         </View>
+
+        {mobileRelease.pendingVersion ? (
+          <Pressable
+            onPress={() => void mobileRelease.restartToUpdate()}
+            accessibilityRole="button"
+            accessibilityLabel={`Restart to update to version ${mobileRelease.pendingVersion}`}
+            style={({ pressed }) => [
+              styles.aboutReleaseUpdateAction,
+              pressed && { opacity: 0.6 },
+            ]}
+          >
+            <Text style={styles.versionPillText}>Restart to update</Text>
+          </Pressable>
+        ) : null}
 
         <Pressable
           onPress={() => void Linking.openURL(ISSUES_URL)}
@@ -2390,11 +2716,18 @@ function renderDetailScreen(
     openPicker: QuietPickerKind | null;
     onOpenPicker: (kind: QuietPickerKind) => void;
     onTimePicked: (kind: QuietPickerKind, value: string) => void;
+
     onClosePicker: () => void;
+
     tabOrder: readonly TabKey[];
+
     onMoveTab: (key: TabKey, direction: "up" | "down") => void;
+
     deviceId: string | null;
+
     onExportDiagnostics: () => void;
+
+
     calendarLastError?: string;
     gmailLastError?: string;
     isClearingRetryQueue: boolean;
@@ -2404,6 +2737,9 @@ function renderDetailScreen(
     isWiping: boolean;
     onWipeLocalData: () => void;
     mobileRelease: ReturnType<typeof useMobileRelease>;
+    onOpenWhatsNew: () => void;
+    expandedReleaseKeys: Record<string, boolean>;
+    onToggleReleaseNotes: (releaseKey: string) => void;
   },
 ) {
   if (navigation.screen !== "detail") return null;
@@ -2452,7 +2788,24 @@ function renderDetailScreen(
     case "account":
       return <AccountSection onSignOut={props.onSignOut} />;
     case "about":
-      return <AboutSection mobileRelease={props.mobileRelease} />;
+      if (navigation.page === "whats-new") {
+        return (
+          <WhatsNewPage
+            changelogUrl={CHANGELOG_URL}
+            repositoryUrl={REPO_URL}
+            releases={props.mobileRelease.publishedReleases}
+            isLoading={props.mobileRelease.isLoadingPublishedReleases}
+            expandedReleaseKeys={props.expandedReleaseKeys}
+            onToggleReleaseNotes={props.onToggleReleaseNotes}
+          />
+        );
+      }
+      return (
+        <AboutSection
+          mobileRelease={props.mobileRelease}
+          onOpenWhatsNew={props.onOpenWhatsNew}
+        />
+      );
   }
 }
 
@@ -2506,10 +2859,58 @@ export function SettingsSheet({
     settingsNavigationReducer,
     INITIAL_SETTINGS_NAVIGATION,
   );
+  const [routeDirection, setRouteDirection] = useState<SettingsRouteDirection>("forward");
+  const [expandedReleaseKeys, setExpandedReleaseKeys] = useState<Record<string, boolean>>({});
+  const currentRouteKey = getSettingsRouteKey(navigation);
+  const scrollPositionsRef = useRef<Record<string, number>>({});
+  const activeRouteKeyRef = useRef(currentRouteKey);
+  const pendingScrollRestoreRef = useRef<string | null>(null);
   const activeCategory = navigation.screen === "detail" ? navigation.category : null;
+  const routeTransition = useMemo(() => {
+    if (reducedMotion) return undefined;
+    const easing = TAB_REORDER_EASING;
+    if (routeDirection === "forward") {
+      return {
+        entering: SlideInRight.duration(motion.duration.fast).easing(easing),
+      };
+    }
+    return {
+      entering: SlideInLeft.duration(motion.duration.fast).easing(easing),
+    };
+  }, [reducedMotion, routeDirection]);
+  const headerTransition = useMemo(
+    () =>
+      reducedMotion
+        ? undefined
+        : {
+            entering: FadeIn.duration(motion.duration.fast).easing(TAB_REORDER_EASING),
+            exiting: FadeOut.duration(motion.duration.instant).easing(TAB_REORDER_EASING),
+          },
+    [reducedMotion],
+  );
+  const restoreScrollPosition = useCallback(() => {
+    const routeKey = pendingScrollRestoreRef.current;
+    if (!routeKey) return;
+    scrollRef.current?.scrollTo({
+      y: scrollPositionsRef.current[routeKey] ?? 0,
+      animated: false,
+    });
+    pendingScrollRestoreRef.current = null;
+  }, []);
+  const handleSettingsScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (pendingScrollRestoreRef.current) return;
+      scrollPositionsRef.current[activeRouteKeyRef.current] = event.nativeEvent.contentOffset.y;
+    },
+    [],
+  );
+  const prepareRoute = useCallback((routeKey: string) => {
+    activeRouteKeyRef.current = routeKey;
+    pendingScrollRestoreRef.current = routeKey;
+  }, []);
   const { prefs, setPreference } = useUserPreferences();
   const mobileRelease = useMobileRelease();
-  const tabOrder = resolveTabOrder(prefs.tabOrder);
+  const tabOrder = useMemo(() => resolveTabOrder(prefs.tabOrder), [prefs.tabOrder]);
   const [openPicker, setOpenPicker] = useState<QuietPickerKind | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [isClearingRetryQueue, setIsClearingRetryQueue] = useState(false);
@@ -2590,11 +2991,26 @@ export function SettingsSheet({
     }
     if (!visible) {
       setOpenPicker(null);
+      setRouteDirection("forward");
+      setExpandedReleaseKeys({});
+      scrollPositionsRef.current = {};
+      prepareRoute("list");
       dispatchNavigation({ type: "reset" });
       return;
     }
+    prepareRoute("list");
     dispatchNavigation({ type: "reset" });
-  }, [visible]);
+  }, [prepareRoute, visible]);
+
+  useEffect(() => {
+    if (activeRouteKeyRef.current === currentRouteKey && !pendingScrollRestoreRef.current) {
+      return;
+    }
+    activeRouteKeyRef.current = currentRouteKey;
+    pendingScrollRestoreRef.current = currentRouteKey;
+    const frame = requestAnimationFrame(restoreScrollPosition);
+    return () => cancelAnimationFrame(frame);
+  }, [currentRouteKey, restoreScrollPosition]);
 
   useEffect(() => {
     if (!visible) return;
@@ -2646,23 +3062,44 @@ export function SettingsSheet({
   const handleClose = useCallback(() => {
     Keyboard.dismiss();
     setOpenPicker(null);
+    setRouteDirection("forward");
+    setExpandedReleaseKeys({});
+    prepareRoute("list");
     dispatchNavigation({ type: "reset" });
     onClose();
-  }, [onClose]);
+  }, [onClose, prepareRoute]);
 
   const handleBack = useCallback(() => {
     if (navigation.screen === "detail") {
       Keyboard.dismiss();
       setOpenPicker(null);
+      setRouteDirection("back");
+      prepareRoute(navigation.page === "whats-new" ? "detail-about-root" : "list");
       dispatchNavigation({ type: "back" });
       return;
     }
     handleClose();
-  }, [handleClose, navigation.screen]);
+  }, [handleClose, navigation, prepareRoute]);
 
   const handleOpenCategory = useCallback((category: SettingsCategoryKey) => {
     Keyboard.dismiss();
+    setRouteDirection("forward");
+    prepareRoute(`detail-${category}-root`);
     dispatchNavigation({ type: "open", category });
+  }, [prepareRoute]);
+
+  const handleOpenWhatsNew = useCallback(() => {
+    Keyboard.dismiss();
+    setRouteDirection("forward");
+    prepareRoute("detail-about-whats-new");
+    dispatchNavigation({ type: "openWhatsNew" });
+  }, [prepareRoute]);
+
+  const handleToggleReleaseNotes = useCallback((releaseKey: string) => {
+    setExpandedReleaseKeys((current) => ({
+      ...current,
+      [releaseKey]: !current[releaseKey],
+    }));
   }, []);
 
   const handleCopy = useCallback(
@@ -2877,12 +3314,16 @@ export function SettingsSheet({
     [setPreference, tabOrder],
   );
 
-  const headerTitle =
-    navigation.screen === "detail"
+  const isWhatsNewPage =
+    navigation.screen === "detail" && navigation.page === "whats-new";
+  const headerTitle = isWhatsNewPage
+    ? "What's new"
+    : navigation.screen === "detail"
       ? SETTINGS_CATEGORY_META[navigation.category].title
       : "Settings";
-  const HeaderMarkIcon =
-    navigation.screen === "detail"
+  const HeaderMarkIcon = isWhatsNewPage
+    ? WhatsNewIcon
+    : navigation.screen === "detail"
       ? SETTINGS_CATEGORY_ICONS[navigation.category]
       : SettingsHomeIcon;
   const accountEmailAtIndex = accountEmail?.indexOf("@") ?? -1;
@@ -2949,7 +3390,8 @@ export function SettingsSheet({
       statusBarTranslucent
       onRequestClose={navigation.screen === "detail" ? handleBack : handleClose}
     >
-      <View style={styles.modalRoot}>
+      <GestureHandlerRootView style={styles.modalRoot}>
+        <View style={styles.modalRoot}>
         <View
           style={[
             styles.headerShell,
@@ -2970,23 +3412,23 @@ export function SettingsSheet({
               <ChevronLeftIcon color={colors.textPrimary} size={20} />
             </Pressable>
             <View style={styles.headerTitleWrap}>
-              {HeaderMarkIcon ? (
-                <HeaderMarkIcon color={colors.textSecondary} size={22} />
-              ) : null}
-              <Text style={styles.headerTitle}>{headerTitle}</Text>
+              <Animated.View
+                key={`header-${currentRouteKey}`}
+                entering={headerTransition?.entering}
+                exiting={headerTransition?.exiting}
+                style={styles.headerTitleAnimation}
+              >
+                {HeaderMarkIcon ? (
+                  <HeaderMarkIcon color={colors.textSecondary} size={22} />
+                ) : null}
+                <Text style={styles.headerTitle}>{headerTitle}</Text>
+              </Animated.View>
             </View>
             <View style={styles.headerSpacer} />
           </View>
         </View>
 
-        <View
-          key={
-            navigation.screen === "detail"
-              ? `detail-${navigation.category}`
-              : "list"
-          }
-          style={styles.contentWrap}
-        >
+        <View style={styles.contentWrap}>
           <ScrollView
             ref={scrollRef}
             style={styles.scroll}
@@ -2996,13 +3438,20 @@ export function SettingsSheet({
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            onContentSizeChange={restoreScrollPosition}
+            onScroll={handleSettingsScroll}
+            scrollEventThrottle={16}
           >
-            {navigation.screen === "list" ? (
-              <SettingsCategoryList
-                onOpenCategory={handleOpenCategory}
-                statuses={settingsHomeStatuses}
-              />
-            ) : (
+            <Animated.View
+              key={currentRouteKey}
+              entering={routeTransition?.entering}
+            >
+              {navigation.screen === "list" ? (
+                <SettingsCategoryList
+                  onOpenCategory={handleOpenCategory}
+                  statuses={settingsHomeStatuses}
+                />
+              ) : (
               renderDetailScreen(navigation, {
                 prefs,
                 setPreference,
@@ -3073,11 +3522,16 @@ export function SettingsSheet({
                 isWiping,
                 onWipeLocalData: () => void handleWipeLocalData(),
                 mobileRelease,
+                onOpenWhatsNew: handleOpenWhatsNew,
+                expandedReleaseKeys,
+                onToggleReleaseNotes: handleToggleReleaseNotes,
               })
-            )}
+              )}
+            </Animated.View>
           </ScrollView>
         </View>
       </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -3111,6 +3565,18 @@ const styles = createThemedStyles({
   },
   headerTitleWrap: {
     flex: 1,
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+  },
+  headerTitleAnimation: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -3849,81 +4315,92 @@ const styles = createThemedStyles({
     borderColor: colors.border,
   },
   tabOrderPreview: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.sm,
+    position: "relative",
+    height: 56,
     marginTop: spacing.sm,
-  },
-  tabPreviewItem: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: spacing.sm,
     borderRadius: radii.lg,
     backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    overflow: "hidden",
   },
-  tabPreviewText: {
-    ...typography.bodyMd,
-    color: colors.textMuted,
+  tabPreviewItem: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    minHeight: 56,
+    zIndex: 0,
+    elevation: 0,
+  },
+  tabPreviewCard: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 56,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    borderRadius: radii.md,
+    backgroundColor: colors.bgCard,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  tabPreviewIcon: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabPreviewCaptureSlot: {
+    position: "absolute",
+    zIndex: 4,
+    top: 0,
+    bottom: 0,
+    width: TAB_ORDER_CAPTURE_WIDTH,
+    alignItems: "center",
+    justifyContent: "center",
   },
   tabPreviewCapture: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.md,
-    backgroundColor: colors.textPrimary,
-  },
-  tabPreviewCaptureText: {
-    ...typography.bodyMd,
-    color: colors.textInverse,
-    fontFamily: "Geist_600SemiBold",
+    width: TAB_ORDER_CAPTURE_WIDTH,
+    height: TAB_ORDER_CAPTURE_WIDTH,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    borderCurve: "continuous",
+    backgroundColor: colors.accent,
+    ...shadow.glow,
   },
   tabOrderEditor: {
     gap: spacing.sm,
   },
-  tabOrderRow: {
+  tabOrderHint: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.xs,
   },
-  tabOrderIndex: {
-    width: 28,
-    height: 28,
-    borderRadius: radii.md,
-    backgroundColor: colors.bgSurface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  tabOrderIndexText: {
+  tabOrderHintText: {
     ...typography.bodyMd,
     color: colors.textMuted,
+    flex: 1,
   },
-  tabOrderControls: {
+  tabOrderReset: {
+    minHeight: 48,
     flexDirection: "row",
-    gap: spacing.sm,
-  },
-  tabOrderButton: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.md,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.bgSurface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
+    gap: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.accentDim,
   },
-  tabOrderButtonDisabled: {
-    opacity: 0.5,
+  tabOrderResetPressed: {
+    opacity: 0.65,
   },
-  tabOrderButtonText: {
-    ...typography.bodyMd,
-    color: colors.textPrimary,
+  tabOrderResetDisabled: {
+    opacity: 0.45,
   },
-  tabOrderButtonTextDisabled: {
-    color: colors.textDim,
+  tabOrderResetText: {
+    ...typography.title,
+    color: colors.accent,
   },
   aboutHeader: {
     flexDirection: "row",
@@ -3938,6 +4415,59 @@ const styles = createThemedStyles({
   aboutVersion: {
     ...typography.bodyMd,
     color: colors.textMuted,
+  },
+  aboutReleaseRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingTop: spacing.xs,
+  },
+  aboutReleaseMark: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radii.md,
+    backgroundColor: colors.accentDim,
+  },
+  aboutReleaseCopy: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 36,
+    justifyContent: "center",
+    gap: 4,
+  },
+  aboutReleaseHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  aboutReleaseLabel: {
+    ...typography.micro,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  aboutReleaseVersion: {
+    ...typography.title,
+    color: colors.textPrimary,
+  },
+  aboutReleaseWarning: {
+    ...typography.bodyMd,
+    color: colors.warning,
+    lineHeight: 18,
+  },
+  aboutReleaseUpdateAction: {
+    alignSelf: "flex-end",
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
   },
   versionPill: {
     paddingHorizontal: spacing.md,

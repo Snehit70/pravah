@@ -5,7 +5,7 @@
  * A horizontal peek carousel of day cards: each day with tasks is one card
  * ~88% of screen width with the next day peeking in, snap paging per card.
  * Overdue collapses into a single muted leftmost card with the same "Review"
- * door as compact mode. Rows are slim (checkbox, title, goal chip, priority);
+ * door as compact mode. Rows are slim (icon tile, title, goal chip, priority);
  * per-row swipe actions are always disabled here — horizontal drags belong to
  * the carousel.
  *
@@ -53,25 +53,49 @@ import { colors, fonts, motion, radii, shadow, spacing, typography } from "../th
 import { createThemedStyles } from "../theme/themeRuntime";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import type { MobileTask } from "./TaskCard";
-import { taskEmphasisColor } from "../lib/taskAccent";
+import NavTimelineAsset from "../assets/icons/nav-timeline.svg";
 import {
+  AlertCircleIcon,
   CalendarIcon,
   CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   ChevronUpIcon,
   ClockIcon,
-  PencilIcon,
   StarIcon,
   SyncLoopIcon,
-  TrashIcon,
 } from "./UiIcons";
 import { dateLabel, weekdayDate } from "../lib/dates";
+import { formatTime12h } from "../lib/task-form";
 import { buildDayCards, cardKey, type DayCarouselCard } from "../lib/timelineCarousel";
-import { TimelineDayStrip } from "./TimelineDayStrip";
+import { DayStripTrigger, DayStripWeek } from "./TimelineDayStrip";
 import { ThemedDatePicker } from "./ThemedDatePicker";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useUserPreferences } from "../hooks/useUserPreferences";
+
+const PRIORITY_META = {
+  p1: { label: "P1", color: () => colors.priorityP1, bg: () => colors.errorMuted },
+  p2: { label: "P2", color: () => colors.priorityP2, bg: () => colors.warningMuted },
+  p3: { label: "P3", color: () => colors.priorityP3, bg: () => colors.successMuted },
+} as const;
+
+// Pastel goal pills, cycled deterministically off the goal name so the same
+// goal always wears the same tint. Muted semantic washes stay legible in
+// both light and dark themes.
+const GOAL_PILLS = [
+  { backgroundColor: () => colors.accentSoft, textColor: () => colors.accent },
+  { backgroundColor: () => colors.successMuted, textColor: () => colors.success },
+  { backgroundColor: () => colors.warningMuted, textColor: () => colors.warning },
+  { backgroundColor: () => colors.deadlineMuted, textColor: () => colors.deadline },
+] as const;
+
+function goalPillFor(goalName: string): (typeof GOAL_PILLS)[number] {
+  let hash = 0;
+  for (let i = 0; i < goalName.length; i += 1) {
+    hash = (hash * 31 + goalName.charCodeAt(i)) >>> 0;
+  }
+  return GOAL_PILLS[hash % GOAL_PILLS.length];
+}
 
 type TimelineDayCarouselProps = {
   sections: [string, MobileTask[]][];
@@ -115,55 +139,59 @@ type SlimTaskRowProps = {
   onPress?: (task: MobileTask) => void;
 };
 
-/** Checkbox leading a stacked body: title, one-line description, then a
- *  goal · priority meta line. Completion is the checkbox; tap opens Edit;
- *  no swipe actions in this layout. */
 function SlimTaskRow({ task, completed, goalName, onToggle, onPress }: SlimTaskRowProps) {
   const { prefs } = useUserPreferences();
   const reducedMotion = useReducedMotion();
   const compactDensity = prefs.density === "compact";
-  const taskAccent = taskEmphasisColor(prefs.taskColorScheme);
+  const priority = task.priority ? PRIORITY_META[task.priority] : null;
+  const timeLabel = task.time && !completed ? formatTime12h(task.time) : null;
+  const goalPill = goalName ? goalPillFor(goalName) : null;
+  const showPriority = Boolean(priority) && !completed;
+  const hasMetaRow = Boolean(goalPill && !completed) || Boolean(timeLabel);
 
-  // Check + settle: the checkbox spring-pops and the row body cross-fades to
-  // its done style in place — the row never moves (the hold design keeps it
-  // tappable for mistap undo). Skipped on first mount and under reduced motion.
-  const checkScale = useSharedValue(1);
+  // Body cross-fades to its done style in place when held-complete lands.
   const bodyOpacity = useSharedValue(1);
   const prevCompleted = useRef<boolean | null>(null);
   useEffect(() => {
     const prev = prevCompleted.current;
     prevCompleted.current = completed;
     if (prev === null || prev === completed || reducedMotion) return;
-    if (completed) {
-      checkScale.set(
-        withSequence(
-          withTiming(0.8, { duration: 60 }),
-          withSpring(1, { damping: 12, stiffness: 260 })
-        )
-      );
-    }
     bodyOpacity.set(
       withSequence(
         withTiming(0.35, { duration: 70 }),
         withTiming(1, { duration: motion.duration.fast })
       )
     );
-  }, [bodyOpacity, checkScale, completed, reducedMotion]);
-  const checkAnimStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: checkScale.value }],
-  }));
+  }, [bodyOpacity, completed, reducedMotion]);
   const bodyAnimStyle = useAnimatedStyle(() => ({ opacity: bodyOpacity.value }));
-
   const hasDescription = Boolean(task.description) && !completed;
-  const showPriority = Boolean(task.priority) && !completed;
-  const hasMetaLine = Boolean(goalName) || showPriority;
+  const checkbox = onToggle ? (
+    <Pressable
+      onPress={(event) => {
+        event.stopPropagation();
+        onToggle(task, completed);
+      }}
+      hitSlop={4}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: completed }}
+      accessibilityLabel={`Mark ${task.title} ${completed ? "incomplete" : "complete"}`}
+      style={({ pressed }) => [
+        styles.rowCheckboxHit,
+        pressed && styles.rowCheckboxPressed,
+      ]}
+    >
+      <View style={[styles.rowCheckbox, completed && styles.rowCheckboxCompleted]}>
+        {completed ? <CheckIcon size={15} color={colors.textInverse} strokeWidth={2.4} /> : null}
+      </View>
+    </Pressable>
+  ) : null;
 
   return (
     <Pressable
       onPress={onPress ? () => onPress(task) : undefined}
-      disabled={!onPress}
+      disabled={!onPress && !onToggle}
       style={({ pressed }) => [
-        styles.row,
+        styles.taskCard,
         compactDensity && styles.rowCompact,
         pressed && onPress && styles.rowPressed,
       ]}
@@ -171,68 +199,51 @@ function SlimTaskRow({ task, completed, goalName, onToggle, onPress }: SlimTaskR
       accessibilityLabel={task.title}
       accessibilityHint="Double tap to edit."
     >
-      <Animated.View style={checkAnimStyle}>
-        <Pressable
-          onPress={(event) => {
-            event.stopPropagation();
-            onToggle?.(task, completed);
-          }}
-        disabled={!onToggle}
-        hitSlop={12}
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: completed }}
-        accessibilityLabel={
-          completed ? `Mark ${task.title} incomplete` : `Mark ${task.title} complete`
-        }
-          style={({ pressed }) => [
-            styles.checkbox,
-            completed && styles.checkboxDone,
-            pressed && onToggle && { opacity: 0.68 },
-            !onToggle && { opacity: 0.45 },
-          ]}
-        >
-          {completed ? (
-            <CheckIcon size={14} color={colors.textInverse} strokeWidth={2.4} />
-          ) : null}
-        </Pressable>
-      </Animated.View>
+      {checkbox}
+      <View style={styles.iconTile} accessibilityElementsHidden>
+        <NavTimelineAsset color={colors.accent} width={18} height={18} />
+      </View>
 
       <Animated.View style={[styles.rowBody, bodyAnimStyle]}>
-        <Text
-          style={[styles.rowTitle, completed && styles.rowTitleDone]}
-          numberOfLines={hasDescription ? 1 : 2}
-          ellipsizeMode="tail"
-        >
-          {task.title}
-        </Text>
+        <View style={styles.titleLine}>
+          <Text
+            style={[styles.rowTitle, completed && styles.rowTitleDone]}
+            numberOfLines={hasDescription ? 1 : 2}
+            ellipsizeMode="tail"
+          >
+            {task.title}
+          </Text>
+          {showPriority && priority ? (
+            <View style={[styles.priorityPill, { backgroundColor: priority.bg() }]}>
+              <StarIcon color={priority.color()} size={12} strokeWidth={2} />
+              <Text style={[styles.priorityPillText, { color: priority.color() }]}>
+                {priority.label}
+              </Text>
+            </View>
+          ) : null}
+        </View>
         {hasDescription ? (
           <Text style={styles.rowDescription} numberOfLines={1} ellipsizeMode="tail">
             {task.description}
           </Text>
         ) : null}
-        {hasMetaLine ? (
+        {hasMetaRow ? (
           <View style={styles.rowMeta}>
-            {goalName ? (
-              <View style={styles.metaGroup}>
-                <SyncLoopIcon color={taskAccent} size={13} strokeWidth={1.7} />
-                <Text style={styles.metaText} numberOfLines={1} ellipsizeMode="tail">
+            {goalName && goalPill && !completed ? (
+              <View style={[styles.goalPill, { backgroundColor: goalPill.backgroundColor() }]}>
+                <Text
+                  style={[styles.goalPillText, { color: goalPill.textColor() }]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
                   {goalName}
                 </Text>
               </View>
             ) : null}
-            {goalName && showPriority ? <View style={styles.metaDivider} /> : null}
-            {showPriority ? (
+            {timeLabel ? (
               <View style={styles.metaGroup}>
-                <StarIcon
-                  color={task.priority === "p1" ? taskAccent : colors.textMuted}
-                  size={13}
-                  strokeWidth={1.7}
-                />
-                <Text
-                  style={[styles.priorityBadge, task.priority === "p1" && { color: taskAccent }]}
-                >
-                  {task.priority?.toUpperCase()}
-                </Text>
+                <ClockIcon color={colors.textMuted} size={13} strokeWidth={1.7} />
+                <Text style={styles.metaText}>{timeLabel}</Text>
               </View>
             ) : null}
           </View>
@@ -293,6 +304,10 @@ type DayCardViewProps = {
   onToggle?: (task: MobileTask, completed: boolean) => void;
   onEditTask?: (task: MobileTask) => void;
   getGoalName?: (taskId: string) => string | undefined;
+  /** Collapsed week-nav handle under the title (viewed card only). */
+  weekTrigger?: ReactNode;
+  /** Expanded week panel under the card header (viewed card only). */
+  weekPanel?: ReactNode;
 };
 
 function DayCardView({
@@ -308,12 +323,11 @@ function DayCardView({
   onToggle,
   onEditTask,
   getGoalName,
+  weekTrigger,
+  weekPanel,
 }: DayCardViewProps) {
   const label = dateLabel(dateKey, today, tomorrow);
   const isToday = dateKey === today;
-  // Today/Tomorrow carry an absolute companion line; other days already
-  // spell out "Thu · Jun 18" in the primary label.
-  const subtitle = dateKey === today || dateKey === tomorrow ? weekdayDate(dateKey) : null;
 
   // Locally completed tasks stay rendered (checked) on the current card so a
   // mistap can be undone. They leave with the hold, on swipe-away.
@@ -352,12 +366,24 @@ function DayCardView({
     >
       <View style={styles.cardHeader}>
         <View style={styles.cardHeaderText}>
-          <Text style={[styles.cardLabel, isToday && styles.cardLabelToday]}>{label}</Text>
-          {subtitle ? <Text style={styles.cardSubtitle}>{subtitle}</Text> : null}
+          <View style={styles.cardLabelRow}>
+            <CalendarIcon
+              color={isToday ? colors.accent : colors.textMuted}
+              size={18}
+              strokeWidth={1.8}
+            />
+            <Text style={[styles.cardLabel, isToday && styles.cardLabelToday]}>{label}</Text>
+          </View>
+          {weekTrigger}
         </View>
         {isToday ? (
           <View style={styles.progressBlock} accessibilityLabel={`${completedCount} of ${totalCount} done`}>
-            <Text style={styles.progressText}>{completedCount} of {totalCount} done</Text>
+            <View style={styles.progressPill}>
+              <CheckIcon color={colors.success} size={16} strokeWidth={2.4} />
+              <Text style={styles.progressPillText}>
+                {completedCount} of {totalCount}
+              </Text>
+            </View>
             <View style={styles.progressTrack}>
               <View
                 style={[
@@ -374,13 +400,14 @@ function DayCardView({
         )}
       </View>
 
+      {weekPanel}
+
       <FlatList<MobileTask>
         data={rows}
         keyExtractor={(task) => String(task._id)}
         nestedScrollEnabled
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.cardListContent}
-        ItemSeparatorComponent={RowSeparator}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -403,10 +430,6 @@ function DayCardView({
       />
     </View>
   );
-}
-
-function RowSeparator() {
-  return <View style={styles.rowSeparator} />;
 }
 
 // ─── Overdue card ───────────────────────────────────────────────────────────
@@ -432,7 +455,6 @@ function OverdueCard({
   onRescheduleAllGoals?: () => void;
 }) {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
-  const [overflowTaskId, setOverflowTaskId] = useState<string | null>(null);
   const [datePickerTaskId, setDatePickerTaskId] = useState<string | null>(null);
   const [completedTasks, setCompletedTasks] = useState<Record<string, MobileTask>>({});
 
@@ -445,34 +467,26 @@ function OverdueCard({
   }, [completedTasks, tasks]);
 
   const overdueAge = (deadline: string | undefined) => {
-    if (!deadline) return "Overdue";
+    if (!deadline) return "No date";
     const start = new Date(`${deadline}T00:00:00`).getTime();
     const end = new Date(`${today}T00:00:00`).getTime();
     const days = Math.max(1, Math.round((end - start) / 86_400_000));
-    return days === 1 ? "Yesterday" : `${days} days overdue`;
+    return `${days}d late`;
   };
 
   return (
     <View style={[styles.card, styles.overdueCard]} accessibilityLabel={`${tasks.length} overdue`}>
-      <View style={styles.cardHeader}>
+      <View style={[styles.cardHeader, styles.overdueHeader]}>
         <View style={styles.cardHeaderText}>
           <View style={styles.overdueTitleRow}>
             <Text style={styles.overdueLabel}>Overdue</Text>
-            <Text style={styles.overdueCount}>{tasks.length}</Text>
+            <View style={styles.overdueCountPill}>
+              <Text style={styles.overdueCountPillText}>
+                {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
+              </Text>
+            </View>
           </View>
         </View>
-        {onRescheduleAllGoals ? (
-          <Pressable
-            onPress={onRescheduleAllGoals}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Reschedule all goals"
-            style={({ pressed }) => [styles.overdueBulkAction, pressed && styles.rowPressed]}
-          >
-            <SyncLoopIcon color={colors.accent} size={14} strokeWidth={1.8} />
-            <Text style={styles.overdueBulkText}>Reflow all</Text>
-          </Pressable>
-        ) : null}
       </View>
 
       <ScrollView
@@ -484,173 +498,205 @@ function OverdueCard({
           const id = String(task._id);
           const isCompleted = Boolean(completedTasks[id]);
           const expanded = expandedTaskId === id;
-          const overflowOpen = overflowTaskId === id;
           const goalName = getGoalName?.(id);
+          const goalPill = goalName ? goalPillFor(goalName) : null;
           return (
             <Animated.View
               key={id}
               exiting={isCompleted ? FadeOut.duration(220) : undefined}
-              style={[styles.overdueTask, isCompleted && styles.overdueTaskCompleted]}
             >
-              <View style={styles.overdueTaskTop}>
-                <View style={styles.overdueTaskText}>
-                  <Text style={styles.rowTitle} numberOfLines={2}>{task.title}</Text>
-                  <View style={styles.overdueMeta}>
-                    {isCompleted ? (
-                      <CheckIcon color={colors.success} size={13} strokeWidth={2.4} />
-                    ) : (
-                      <SyncLoopIcon color={colors.textMuted} size={12} strokeWidth={1.7} />
-                    )}
-                    <Text style={styles.overdueMetaText} numberOfLines={1}>
-                      {isCompleted ? "Completed" : goalName ?? "No goal"}
-                    </Text>
-                    {!isCompleted ? (
-                      <>
-                        <View style={styles.metaDivider} />
-                        <Text style={styles.overdueMetaText}>{overdueAge(task.deadline)}</Text>
-                      </>
-                    ) : null}
-                  </View>
-                </View>
-                {onCompleteTask && !isCompleted ? (
+              <View
+                style={[
+                  styles.overdueTask,
+                  isCompleted && styles.overdueTaskCompleted,
+                ]}
+              >
+                <View style={styles.overdueTaskTop}>
                   <Pressable
-                    onPress={() => {
-                      setCompletedTasks((current) => ({ ...current, [id]: task }));
-                      onCompleteTask(task._id);
-                      setTimeout(() => {
-                        setCompletedTasks((current) => {
-                          const next = { ...current };
-                          delete next[id];
-                          return next;
-                        });
-                      }, 900);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Complete ${task.title}`}
-                    style={({ pressed }) => [styles.compactCompleteHit, pressed && styles.rowPressed]}
+                    onPress={() => onEditTask?.(task)}
+                    disabled={!onEditTask}
+                    accessibilityRole={onEditTask ? "button" : undefined}
+                    accessibilityLabel={onEditTask ? `Open ${task.title}` : undefined}
+                    accessibilityHint={onEditTask ? "Double tap to edit." : undefined}
+                    style={({ pressed }) => [
+                      styles.overdueTaskMain,
+                      pressed && onEditTask && styles.rowPressed,
+                    ]}
                   >
-                    <View style={styles.compactCompleteVisual}>
-                      <CheckIcon color={colors.success} size={14} strokeWidth={2.2} />
-                      <Text style={styles.compactCompleteText}>Complete</Text>
-                    </View>
-                  </Pressable>
-                ) : null}
-                {!isCompleted && (onTriage || onEditTask) ? <Pressable
-                  onPress={() => setOverflowTaskId((current) => current === id ? null : id)}
-                  hitSlop={10}
-                  accessibilityRole="button"
-                  accessibilityLabel={`More actions for ${task.title}`}
-                  style={styles.compactHitTarget}
-                >
-                  <Text style={styles.moreText}>•••</Text>
-                </Pressable> : null}
-              </View>
-
-              {overflowOpen && (onTriage || onEditTask) && !isCompleted ? (
-                <View style={styles.inlineDropRow}>
-                  {onEditTask ? <Pressable
-                    onPress={() => {
-                      setOverflowTaskId(null);
-                      onEditTask(task);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Open ${task.title}`}
-                    style={({ pressed }) => [styles.inlineMenuAction, pressed && styles.rowPressed]}
-                  >
-                    <PencilIcon color={colors.textSecondary} size={15} strokeWidth={1.8} />
-                    <Text style={styles.inlineMenuText}>Open task</Text>
-                  </Pressable> : null}
-                  {onTriage ? <Pressable
-                    onPress={() => {
-                      setOverflowTaskId(null);
-                      onTriage(id, "drop");
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Drop ${task.title}`}
-                    style={({ pressed }) => [styles.inlineDrop, pressed && styles.rowPressed]}
-                  >
-                    <TrashIcon color={colors.error} size={15} strokeWidth={1.8} />
-                    <Text style={styles.inlineDropText}>Drop task</Text>
-                  </Pressable> : null}
-                </View>
-              ) : null}
-
-              {onTriage && !isCompleted ? (
-                <View style={[styles.compactSchedule, expanded && styles.compactScheduleExpanded]}>
-                  <Pressable
-                    onPress={() => {
-                      setOverflowTaskId(null);
-                      setExpandedTaskId((current) => current === id ? null : id);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Reschedule ${task.title}`}
-                    accessibilityState={{ expanded }}
-                    style={styles.compactScheduleHeader}
-                  >
-                    <View style={styles.compactScheduleTitle}>
-                      <CalendarIcon color={colors.textSecondary} size={16} strokeWidth={1.8} />
-                      <Text style={styles.compactScheduleLabel}>Reschedule</Text>
-                    </View>
-                    <View style={styles.compactSchedulePrompt}>
-                      <Text style={styles.compactSchedulePromptText}>Choose a date</Text>
-                      {expanded ? (
-                        <ChevronUpIcon color={colors.textMuted} size={14} />
+                    <View
+                      style={[styles.overdueIconTile, isCompleted && styles.overdueIconTileDone]}
+                      accessibilityElementsHidden
+                    >
+                      {isCompleted ? (
+                        <CheckIcon color={colors.success} size={18} strokeWidth={2.2} />
                       ) : (
-                        <ChevronDownIcon color={colors.textMuted} size={14} />
+                        <AlertCircleIcon color={colors.error} size={18} strokeWidth={1.8} />
                       )}
                     </View>
-                  </Pressable>
-                  {expanded ? (
-                    <View style={styles.compactOptions}>
-                      {(["today", "tomorrow", "week"] as const).map((target) => (
-                        <Pressable
-                          key={target}
-                          onPress={() => {
-                            setExpandedTaskId(null);
-                            onTriage(id, target);
-                          }}
-                          accessibilityRole="button"
-                          accessibilityLabel={`${target === "week" ? "Weekend" : target[0].toUpperCase() + target.slice(1)} — ${task.title}`}
-                          style={styles.compactOptionHit}
-                        >
-                          <View style={styles.compactOptionVisual}>
-                            {target === "today" ? (
-                              <ClockIcon color={colors.textMuted} size={16} strokeWidth={1.8} />
-                            ) : (
-                              <CalendarIcon color={colors.textMuted} size={16} strokeWidth={1.8} />
-                            )}
-                            <Text style={styles.compactOptionText}>
-                              {target === "today" ? "Today" : target === "tomorrow" ? "Tomorrow" : "Weekend"}
-                            </Text>
-                          </View>
-                        </Pressable>
-                      ))}
-                      <Pressable
-                        onPress={() => {
-                          setExpandedTaskId(null);
-                          setDatePickerTaskId(id);
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Pick a date for ${task.title}`}
-                        style={styles.compactOptionHit}
-                      >
-                        <View style={styles.compactOptionVisual}>
-                          <CalendarIcon color={colors.textMuted} size={16} strokeWidth={1.8} />
-                          <Text style={styles.compactOptionText}>Pick a date</Text>
-                        </View>
-                      </Pressable>
+                    <View style={styles.overdueTaskText}>
+                      <Text style={[styles.rowTitle, styles.overdueTaskTitle]} numberOfLines={2}>{task.title}</Text>
                     </View>
+                  </Pressable>
+                  {onCompleteTask && !isCompleted ? (
+                    <Pressable
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        setCompletedTasks((current) => ({ ...current, [id]: task }));
+                        onCompleteTask(task._id);
+                        setTimeout(() => {
+                          setCompletedTasks((current) => {
+                            const next = { ...current };
+                            delete next[id];
+                            return next;
+                          });
+                        }, 900);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Complete ${task.title}`}
+                      style={({ pressed }) => [styles.compactCompleteHit, pressed && styles.rowPressed]}
+                    >
+                      <View style={styles.compactCompleteVisual}>
+                        <CheckIcon color={colors.success} size={14} strokeWidth={2.2} />
+                        <Text style={styles.compactCompleteText}>Complete</Text>
+                      </View>
+                    </Pressable>
                   ) : null}
                 </View>
+
+              <View style={styles.overdueMetaRow}>
+                {isCompleted ? (
+                  <>
+                    <CheckIcon color={colors.success} size={13} strokeWidth={2.4} />
+                    <Text style={styles.overdueMetaText}>Completed</Text>
+                  </>
+                ) : (
+                  <>
+                    {goalName && goalPill ? (
+                      <View
+                        style={[styles.overdueGoalPill, { backgroundColor: goalPill.backgroundColor() }]}
+                      >
+                        <Text
+                          style={[styles.overdueGoalPillText, { color: goalPill.textColor() }]}
+                          numberOfLines={1}
+                          ellipsizeMode="tail"
+                        >
+                          {goalName}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.overdueNoGoalPill}>
+                        <Text style={styles.overdueNoGoalPillText}>No goal</Text>
+                      </View>
+                    )}
+                    <View style={styles.overdueAgePill}>
+                      <SyncLoopIcon color={colors.deadline} size={12} strokeWidth={1.7} />
+                      <Text style={styles.overdueAgePillText}>
+                        {overdueAge(task.deadline)}
+                      </Text>
+                    </View>
+                    {onTriage ? (
+                      <Pressable
+                        onPress={(event) => {
+                          event.stopPropagation();
+                          setExpandedTaskId((current) => current === id ? null : id);
+                        }}
+                        hitSlop={6}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Reschedule ${task.title}`}
+                        accessibilityState={{ expanded }}
+                        style={({ pressed }) => [
+                          styles.overdueRescheduleAction,
+                          pressed && styles.rowPressed,
+                        ]}
+                      >
+                        <CalendarIcon color={colors.textSecondary} size={14} strokeWidth={1.8} />
+                        <Text style={styles.overdueRescheduleText}>Reschedule</Text>
+                        {expanded ? (
+                          <ChevronUpIcon color={colors.textMuted} size={12} />
+                        ) : (
+                          <ChevronDownIcon color={colors.textMuted} size={12} />
+                        )}
+                      </Pressable>
+                    ) : null}
+                  </>
+                )}
+              </View>
+
+              {onTriage && !isCompleted && expanded ? (
+                <View style={styles.compactOptions}>
+                  {(["today", "tomorrow", "week"] as const).map((target) => (
+                    <Pressable
+                      key={target}
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        setExpandedTaskId(null);
+                        onTriage(id, target);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${target === "week" ? "Weekend" : target[0].toUpperCase() + target.slice(1)} — ${task.title}`}
+                      style={[
+                        styles.compactOptionHit,
+                        target === "today" && styles.compactOptionToday,
+                        target === "tomorrow" && styles.compactOptionTomorrow,
+                        target === "week" && styles.compactOptionWeekend,
+                      ]}
+                    >
+                      <View style={styles.compactOptionVisual}>
+                        {target === "today" ? (
+                          <ClockIcon
+                            color={target === "today" ? colors.accent : colors.warning}
+                            size={16}
+                            strokeWidth={1.8}
+                          />
+                        ) : (
+                          <CalendarIcon color={colors.textMuted} size={16} strokeWidth={1.8} />
+                        )}
+                        <Text style={styles.compactOptionText}>
+                          {target === "today" ? "Today" : target === "tomorrow" ? "Tomorrow" : "Weekend"}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  ))}
+                  <Pressable
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      setExpandedTaskId(null);
+                      setDatePickerTaskId(id);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Pick a date for ${task.title}`}
+                    style={[styles.compactOptionHit, styles.compactOptionPickDate]}
+                  >
+                    <View style={styles.compactOptionVisual}>
+                      <CalendarIcon color={colors.textMuted} size={16} strokeWidth={1.8} />
+                      <Text style={styles.compactOptionText}>Pick a date</Text>
+                    </View>
+                  </Pressable>
+                </View>
               ) : null}
+              </View>
             </Animated.View>
           );
         })}
+        {onRescheduleAllGoals ? (
+          <View style={styles.overdueFooter}>
+            <Pressable
+              onPress={onRescheduleAllGoals}
+              accessibilityRole="button"
+              accessibilityLabel="Reschedule all goals"
+              style={({ pressed }) => [styles.overdueFooterAction, pressed && styles.rowPressed]}
+            >
+              <SyncLoopIcon color={colors.accent} size={14} strokeWidth={1.8} />
+              <Text style={styles.overdueFooterText}>Reflow all</Text>
+            </Pressable>
+          </View>
+        ) : null}
       </ScrollView>
       <ThemedDatePicker
-        visible={datePickerTaskId !== null}
-        minDate={today}
-        onClose={() => setDatePickerTaskId(null)}
+         visible={datePickerTaskId !== null}
+         minDate={today}
+         confirmSelection
+         onClose={() => setDatePickerTaskId(null)}
         onSelect={(date) => {
           if (datePickerTaskId) onTriage?.(datePickerTaskId, { date });
           setDatePickerTaskId(null);
@@ -746,6 +792,8 @@ export function TimelineDayCarousel({
   });
   const [current, setCurrent] = useState<{ key: string; index: number } | null>(null);
   const [justCompleted, setJustCompleted] = useState<Record<string, MobileTask>>({});
+  // Week accordion lives in the viewed card's header; closed by default.
+  const [weekOpen, setWeekOpen] = useState(false);
 
   const heldDateKey = current && current.key !== "overdue" ? current.key : null;
   const { cards, landingIndex } = useMemo(
@@ -812,6 +860,7 @@ export function TimelineDayCarousel({
         setCurrent({ key, index });
         // Swipe-away releases the previous card's hold and its checked rows.
         setJustCompleted({});
+        setWeekOpen(false);
       }
     },
     [cards, current, interval]
@@ -848,6 +897,7 @@ export function TimelineDayCarousel({
       setCurrent({ key: cardKey(cards[index]), index });
       // Navigating away releases the previous card's Day-clear hold.
       setJustCompleted({});
+      setWeekOpen(false);
     },
     [cards, interval, reducedMotion]
   );
@@ -856,18 +906,43 @@ export function TimelineDayCarousel({
     return <View style={styles.emptyContainer}>{emptyComponent}</View>;
   }
 
+  // Week nav pieces for the viewed card only — trigger in the title slot,
+  // expanded panel under the card header.
+  const isViewedCard = (item: DayCarouselCard) => current?.key === cardKey(item);
+  const weekNavProps = {
+    cards,
+    currentIndex: current?.index ?? null,
+    today,
+    scrollX,
+    interval,
+    reducedMotion,
+  };
+  const weekTriggerFor = (item: DayCarouselCard): ReactNode => {
+    if (item.kind === "overdue" || !isViewedCard(item) || weekOpen) return null;
+    const isRelativeDay = item.dateKey === today || item.dateKey === tomorrow;
+    const label =
+      !isRelativeDay ? "Jump to a day" : weekdayDate(item.dateKey);
+    return (
+      <DayStripTrigger
+        label={label}
+        open={false}
+        onPress={() => setWeekOpen(true)}
+      />
+    );
+  };
+  const renderWeekPanel = (item: DayCarouselCard): ReactNode => {
+    if (item.kind === "overdue" || !isViewedCard(item) || !weekOpen) return null;
+    return (
+      <DayStripWeek
+        {...weekNavProps}
+        onJumpToCard={jumpToCard}
+        onCollapse={() => setWeekOpen(false)}
+      />
+    );
+  };
+
   return (
     <View style={[styles.container, { paddingBottom: tabBarHeight + spacing.sm }]}>
-      <TimelineDayStrip
-        cards={cards}
-        currentIndex={current?.index ?? null}
-        today={today}
-        scrollX={scrollX}
-        interval={interval}
-        reducedMotion={reducedMotion}
-        onJumpToCard={jumpToCard}
-      />
-
       <Animated.FlatList<DayCarouselCard>
         ref={listRef}
         horizontal
@@ -898,9 +973,9 @@ export function TimelineDayCarousel({
                 getGoalName={getGoalName}
                 onCompleteTask={onCompleteTask}
                 onEditTask={onEditTask}
-                onTriage={onTriageOverdue}
-                onRescheduleAllGoals={onRescheduleAllGoals}
-              />
+                 onTriage={onTriageOverdue}
+                 onRescheduleAllGoals={onRescheduleAllGoals}
+               />
             ) : (
               <DayCardView
                 dateKey={item.dateKey}
@@ -915,6 +990,8 @@ export function TimelineDayCarousel({
                 onToggle={canToggle ? handleToggle : undefined}
                 onEditTask={onEditTask}
                 getGoalName={getGoalName}
+                weekTrigger={weekTriggerFor(item)}
+                weekPanel={renderWeekPanel(item)}
               />
             )}
           </CarouselCardShell>
@@ -940,8 +1017,7 @@ const styles = createThemedStyles({
   card: {
     flex: 1,
     backgroundColor: colors.bgCard,
-    borderRadius: radii.xl,
-    borderCurve: "continuous",
+    borderRadius: radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     overflow: "hidden",
@@ -961,9 +1037,19 @@ const styles = createThemedStyles({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderSubtle,
   },
+  overdueHeader: {
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+  },
   cardHeaderText: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
+  },
+  cardLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
   },
   cardLabel: {
     color: colors.textPrimary,
@@ -990,33 +1076,91 @@ const styles = createThemedStyles({
     gap: spacing.xs,
     paddingTop: 4,
   },
-  progressText: {
-    color: colors.textSecondary,
-    ...typography.bodyMd,
+  progressPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radii.md,
+    borderCurve: "continuous",
+    backgroundColor: colors.successMuted,
+  },
+  progressPillText: {
+    color: colors.success,
+    fontFamily: fonts.sansSemibold,
+    fontSize: 12,
+    lineHeight: 16,
   },
   progressTrack: {
     width: 124,
     height: 6,
-    borderRadius: radii.full,
+    borderRadius: 2,
+    borderCurve: "continuous",
     backgroundColor: colors.borderSubtle,
     overflow: "hidden",
   },
   progressFill: {
     height: "100%",
-    borderRadius: radii.full,
+    borderRadius: 2,
+    borderCurve: "continuous",
     backgroundColor: colors.accent,
   },
   cardListContent: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
   },
-  // Task row — checkbox leading a stacked body. The title owns the full
-  // width; description and goal · priority each get their own quiet line.
   row: {
     flexDirection: "row",
     alignItems: "flex-start",
     gap: spacing.md,
     paddingVertical: spacing.rowY,
+  },
+  taskCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.bgFloating,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  rowCheckboxHit: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  rowCheckbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 7,
+    borderCurve: "continuous",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgSurface,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+  },
+  rowCheckboxCompleted: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  rowCheckboxPressed: {
+    opacity: 0.68,
+  },
+  iconTile: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: colors.accentDim,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
   },
   rowCompact: {
     paddingVertical: spacing.sm,
@@ -1024,31 +1168,19 @@ const styles = createThemedStyles({
   rowPressed: {
     opacity: 0.7,
   },
-  rowSeparator: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.borderSubtle,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 7,
-    borderCurve: "continuous",
-    borderWidth: 1.5,
-    borderColor: colors.borderSubtle,
-    backgroundColor: colors.bgSurface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkboxDone: {
-    backgroundColor: colors.success,
-    borderColor: colors.success,
-  },
   rowBody: {
     flex: 1,
     minWidth: 0,
     gap: 2,
   },
+  titleLine: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.xs,
+  },
   rowTitle: {
+    flex: 1,
+    minWidth: 0,
     color: colors.textPrimary,
     ...typography.title,
   },
@@ -1063,14 +1195,28 @@ const styles = createThemedStyles({
   rowMeta: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    marginTop: 2,
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 4,
+  },
+  goalPill: {
+    maxWidth: 140,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: radii.md,
+    borderCurve: "continuous",
+  },
+  goalPillText: {
+    fontFamily: fonts.sansSemibold,
+    fontSize: 12,
+    lineHeight: 16,
   },
   metaGroup: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
     minWidth: 0,
+    flexShrink: 0,
   },
   metaText: {
     color: colors.textMuted,
@@ -1084,9 +1230,21 @@ const styles = createThemedStyles({
     height: 14,
     backgroundColor: colors.border,
   },
-  priorityBadge: {
-    color: colors.textMuted,
-    ...typography.micro,
+  priorityPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.md,
+    borderCurve: "continuous",
+    flexShrink: 0,
+  },
+  priorityPillText: {
+    fontFamily: fonts.sansSemibold,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0.2,
   },
   rowChevron: {
     minWidth: 24,
@@ -1119,50 +1277,154 @@ const styles = createThemedStyles({
     backgroundColor: colors.bgSurface,
   },
   overdueLabel: {
+    flexShrink: 0,
     color: colors.textPrimary,
     ...typography.headline,
-    fontSize: 24,
-    lineHeight: 30,
+    fontSize: 21,
+    lineHeight: 27,
+  },
+  overdueTaskTitle: {
+    fontSize: 15,
+    lineHeight: 21,
   },
   overdueTitleRow: {
+    alignSelf: "stretch",
+    minHeight: 30,
     flexDirection: "row",
-    alignItems: "baseline",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: spacing.sm,
   },
-  overdueCount: {
-    color: colors.textMuted,
-    ...typography.numeric,
-    fontSize: 16,
+  overdueCountPill: {
+    flexShrink: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.md,
+    borderCurve: "continuous",
+    backgroundColor: colors.errorMuted,
   },
-  overdueBulkAction: {
+  overdueCountPillText: {
+    color: colors.error,
+    fontFamily: fonts.sansSemibold,
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  overdueFooter: {
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.lg,
+  },
+  overdueFooterAction: {
     minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: spacing.xs,
   },
-  overdueBulkText: { color: colors.accent, ...typography.micro },
-  overdueList: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
+  overdueFooterText: { color: colors.accent, ...typography.micro },
+  overdueList: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.lg,
+  },
+  overdueIconTile: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: colors.errorMuted,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  overdueIconTileDone: {
+    backgroundColor: colors.successMuted,
+  },
   overdueTask: {
-    paddingVertical: spacing.md,
-    gap: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderSubtle,
+    marginBottom: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    gap: 6,
+    backgroundColor: colors.bgFloating,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    overflow: "hidden",
   },
   overdueTaskCompleted: {
     backgroundColor: colors.successMuted,
-    borderBottomColor: colors.success,
+    borderColor: colors.success,
   },
   overdueTaskTop: { flexDirection: "row", alignItems: "flex-start", gap: spacing.xs },
-  overdueTaskText: { flex: 1, minWidth: 0, gap: 3 },
-  overdueMeta: { flexDirection: "row", alignItems: "center", gap: spacing.xs, minWidth: 0 },
-  overdueMetaText: { color: colors.textMuted, ...typography.micro, flexShrink: 1 },
-  compactHitTarget: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
+  overdueTaskMain: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.xs,
   },
-  moreText: { color: colors.textSecondary, fontSize: 14, letterSpacing: 1 },
+  overdueTaskText: { flex: 1, minWidth: 0, gap: 3 },
+  overdueMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    minWidth: 0,
+  },
+  overdueMetaText: {
+    color: colors.textMuted,
+    fontFamily: fonts.mono,
+    fontSize: 10,
+    lineHeight: 13,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    flexShrink: 1,
+  },
+  overdueNoGoalPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    borderCurve: "continuous",
+    backgroundColor: colors.bgSurface,
+    flexShrink: 1,
+  },
+  overdueNoGoalPillText: {
+    color: colors.textMuted,
+    fontFamily: fonts.mono,
+    fontSize: 9,
+    lineHeight: 13,
+    letterSpacing: 0.6,
+  },
+  overdueGoalPill: {
+    maxWidth: 132,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.md,
+    borderCurve: "continuous",
+    flexShrink: 1,
+  },
+  overdueGoalPillText: {
+    fontFamily: fonts.sansSemibold,
+    fontSize: 10,
+    lineHeight: 13,
+  },
+  overdueAgePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.md,
+    borderCurve: "continuous",
+    backgroundColor: colors.deadlineMuted,
+    flexShrink: 0,
+  },
+  overdueAgePillText: {
+    color: colors.deadline,
+    fontFamily: fonts.sansSemibold,
+    fontSize: 10,
+    lineHeight: 13,
+  },
   compactCompleteHit: { minHeight: 44, justifyContent: "center" },
   compactCompleteVisual: {
     height: 32,
@@ -1174,57 +1436,28 @@ const styles = createThemedStyles({
     borderColor: colors.success,
     borderRadius: radii.md,
   },
-  compactCompleteText: { color: colors.success, ...typography.micro },
-  inlineDropRow: {
-    alignItems: "flex-end",
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    alignSelf: "flex-end",
-    gap: spacing.xs,
-    padding: spacing.xs,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderSubtle,
-    borderRadius: 12,
-    backgroundColor: colors.bgFloating,
-    ...shadow.sm,
+  compactCompleteText: {
+    color: colors.success,
+    fontFamily: fonts.mono,
+    fontSize: 10,
+    lineHeight: 13,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
   },
-  inlineMenuAction: {
-    minHeight: 44,
+  overdueRescheduleAction: {
+    minHeight: 32,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+    gap: 4,
+    paddingHorizontal: 4,
+    flexShrink: 0,
   },
-  inlineMenuText: { color: colors.textSecondary, ...typography.micro },
-  inlineDrop: {
-    minHeight: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    justifyContent: "center",
-    paddingHorizontal: spacing.sm,
+  overdueRescheduleText: {
+    color: colors.textSecondary,
+    fontFamily: fonts.sansSemibold,
+    fontSize: 10,
+    lineHeight: 13,
   },
-  inlineDropText: { color: colors.error, ...typography.micro },
-  compactSchedule: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    borderRadius: 12,
-    backgroundColor: colors.bgCard,
-    overflow: "hidden",
-  },
-  compactScheduleExpanded: { borderColor: colors.borderFocus },
-  compactScheduleHeader: {
-    minHeight: 48,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-  },
-  compactScheduleTitle: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  compactScheduleLabel: { color: colors.textPrimary, ...typography.title, fontSize: 14, lineHeight: 18 },
-  compactSchedulePrompt: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
-  compactSchedulePromptText: { color: colors.textMuted, ...typography.bodyMd },
   compactOptions: {
     flexDirection: "row",
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -1238,6 +1471,20 @@ const styles = createThemedStyles({
     borderRightWidth: StyleSheet.hairlineWidth,
     borderRightColor: colors.borderSubtle,
   },
+  compactOptionToday: {
+    backgroundColor: colors.accentDim,
+  },
+  compactOptionTomorrow: {
+    backgroundColor: colors.warningMuted,
+  },
+  compactOptionWeekend: {
+    backgroundColor: colors.bgSurface,
+  },
+  compactOptionPickDate: {
+    backgroundColor: colors.bgCard,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: colors.accentSoft,
+  },
   compactOptionVisual: { minHeight: 52, alignItems: "center", justifyContent: "center", gap: spacing.xs, paddingHorizontal: spacing.xs },
-  compactOptionText: { color: colors.textSecondary, ...typography.bodyMd, fontSize: 12, lineHeight: 16, textAlign: "center" },
+  compactOptionText: { color: colors.textSecondary, ...typography.bodyMd, fontSize: 11, lineHeight: 15, textAlign: "center" },
 });
