@@ -10,7 +10,6 @@ import {
 import type { ReactNode } from "react";
 import {
   Keyboard,
-  type LayoutChangeEvent,
   Modal,
   Pressable,
   ScrollView,
@@ -47,10 +46,15 @@ import {
 } from "../theme/tokens";
 import { getThemeRuntimeSnapshot } from "../theme/themeRuntime";
 import { createThemedStyles } from "../theme/themeRuntime";
-import { type TaskPriority } from "../lib/task-form";
+import {
+  formatTime12h,
+  priorityDotColor,
+  priorityLabel,
+  type TaskPriority,
+} from "../lib/task-form";
 import { useGoals } from "../hooks/useGoals";
 import { useGoalMutations } from "../hooks/useGoalMutations";
-import { addDays, toIsoDate } from "../lib/dates";
+import { addDays, dateLabel, humanDate, toIsoDate } from "../lib/dates";
 import { expandBulkTasks, MAX_BULK_TASKS, type BulkTaskInput } from "../lib/bulkTaskCapture";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import { useReducedMotion } from "../hooks/useReducedMotion";
@@ -67,8 +71,11 @@ import {
   ChevronRightIcon,
   ClockIcon,
   PlusIcon,
+  TrashIcon,
 } from "./UiIcons";
 import NavGoalsAsset from "../assets/icons/nav-goals.svg";
+import NavInboxAsset from "../assets/icons/nav-inbox.svg";
+import { SearchField } from "./SearchField";
 
 type PlanningMode = "summary" | "when" | "priority" | "goal";
 
@@ -186,7 +193,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const [saving, setSaving] = useState(false);
     const [showDetails, setShowDetails] = useState(false);
     const [planningMode, setPlanningMode] = useState<PlanningMode>("summary");
-    const [summaryCardHeight, setSummaryCardHeight] = useState<number | null>(null);
+    const [goalQuery, setGoalQuery] = useState("");
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [showTimePicker, setShowTimePicker] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -217,6 +224,11 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       () => goals.find((g) => g.id === goalId),
       [goals, goalId]
     );
+    const filteredGoals = useMemo(() => {
+      const query = goalQuery.trim().toLocaleLowerCase();
+      if (!query) return goals;
+      return goals.filter((goal) => goal.text.toLocaleLowerCase().includes(query));
+    }, [goalQuery, goals]);
     // Typed-but-not-saved text always guards dismissal. Context selections
     // (when/goal/priority/series) only guard until the first burst save —
     // after that they are sticky saved context, and every leave verb
@@ -228,7 +240,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       burstCount === 0 &&
       Boolean(
         time.trim() ||
-        (deadline.trim() && deadline !== todayIso()) ||
+        deadline.trim() ||
         priority ||
         goalId ||
         goalIds.length > 0 ||
@@ -260,7 +272,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       setSeriesEnd("2");
       setShowDetails(false);
       setPlanningMode("summary");
-      setSummaryCardHeight(null);
+      setGoalQuery("");
       setShowDatePicker(false);
       setShowTimePicker(false);
       setKind("task");
@@ -279,7 +291,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         setKind(initialKind);
         setDeadline("");
         setPlanningMode("summary");
-        setSummaryCardHeight(null);
+        setGoalQuery("");
         setShowDetails(false);
         dragY.set(0);
         setVisible(true);
@@ -292,7 +304,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         setGoalIds([initialGoalId]);
         setShowDetails(false);
         setPlanningMode("summary");
-        setSummaryCardHeight(null);
+        setGoalQuery("");
         dragY.set(0);
         setVisible(true);
         onSheetChange?.(true);
@@ -306,6 +318,18 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         Keyboard.dismiss();
       },
     }));
+
+    const openPlanningMode = useCallback((mode: PlanningMode) => {
+      Keyboard.dismiss();
+      setGoalQuery("");
+      setPlanningMode(mode);
+    }, []);
+
+    const returnToPlanningSummary = useCallback(() => {
+      Keyboard.dismiss();
+      setGoalQuery("");
+      setPlanningMode("summary");
+    }, []);
 
     // Focus title input as soon as the modal mounts — the cursor should be
     // hot before the slide-in finishes, not after (capture is a speed tool).
@@ -498,6 +522,10 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     }, [closeModal, reset]);
 
     const requestClose = async () => {
+      if (planningMode !== "summary") {
+        returnToPlanningSummary();
+        return;
+      }
       if (!hasDraftChanges) {
         reset();
         closeModal();
@@ -548,183 +576,233 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
 
     const today = todayIso();
     const tomorrow = toIsoDate(addDays(new Date(), 1));
-    const whenValue =
-      deadline === today
-        ? "Today"
-        : deadline === tomorrow
-          ? "Tomorrow"
-          : deadline
-            ? new Date(`${deadline}T00:00:00`).toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-              })
-            : "Inbox";
-    const priorityValue = PRIORITY_OPTIONS.find((option) => option.value === priority);
+    const whenValue = deadline
+      ? `${dateLabel(deadline, today, tomorrow)}${time ? ` · ${formatTime12h(time)}` : ""}`
+      : "Inbox";
+    const priorityValue = priority
+      ? `${priorityLabel(priority)} — ${priority === "p1" ? "High" : priority === "p2" ? "Medium" : "Low"}`
+      : "No priority";
     const goalValue = prefs.bulkTaskCaptureEnabled
       ? goalIds.length > 0
         ? `${goalIds.length} selected`
         : "No goal"
       : selectedGoal?.text ?? "No goal";
 
-    const renderPlanning = () => {
-      if (planningMode === "summary") {
-        return (
-          <View style={styles.planningSection}>
-            <Text style={styles.sectionLabel}>Planning</Text>
-            <View style={styles.planningCard}>
-              <CapturePlanningRow
-                icon={<CalendarIcon color={colors.textSecondary} size={19} />}
-                label="When"
-                value={whenValue}
-                onPress={() => {
-                  Keyboard.dismiss();
-                  setPlanningMode("when");
-                }}
-              />
-              {kind === "task" && deadline ? (
-                <CapturePlanningRow
-                  icon={<ClockIcon color={colors.textSecondary} size={19} />}
-                  label="Exact time"
-                  value={time || "Not set"}
-                  onPress={() => setShowTimePicker(true)}
-                />
-              ) : null}
-              <CapturePlanningRow
-                icon={<View style={[styles.priorityDot, { backgroundColor: priority ? colors.error : colors.textMuted }]} />}
-                label="Priority"
-                value={priorityValue?.label ?? "No priority"}
-                valueColor={priority ? colors.error : undefined}
-                onPress={() => {
-                  Keyboard.dismiss();
-                  setPlanningMode("priority");
-                }}
-              />
-              {kind === "task" ? (
-                <CapturePlanningRow
-                  icon={<NavGoalsAsset width={20} height={20} color={colors.accent} />}
-                  label="Goal"
-                  value={goalValue}
-                  valueColor={goalValue === "No goal" ? undefined : colors.accent}
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    setPlanningMode("goal");
-                  }}
-                />
-              ) : null}
-            </View>
-          </View>
-        );
-      }
+    const chooseDeadline = (value: string) => {
+      setDeadline(value);
+      if (!value) setTime("");
+      setError(null);
+      returnToPlanningSummary();
+      haptic.selection();
+    };
 
-      const pickerTitle = planningMode === "when" ? "When" : planningMode === "priority" ? "Priority" : "Goal";
-      return (
-        <Animated.View
-          entering={reducedMotion ? undefined : FadeIn.duration(160)}
-          exiting={reducedMotion ? undefined : FadeOut.duration(120)}
-          style={styles.planningEditor}
-        >
-          <View style={styles.planningPickerHeader}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Back to capture planning"
-              onPress={() => setPlanningMode("summary")}
-              hitSlop={10}
-              style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
-            >
-              <ChevronLeftIcon color={colors.textPrimary} size={21} />
-            </Pressable>
-            <Text style={styles.planningPickerTitle}>{pickerTitle}</Text>
-            <View style={styles.backButton} />
-          </View>
+    const renderPlanningSummary = () => (
+      <View style={styles.planningSection}>
+        <Text style={styles.sectionLabel}>Planning</Text>
+        <View style={styles.planningCard}>
+          <CapturePlanningRow
+            icon={<CalendarIcon color={colors.textSecondary} size={18} />}
+            label="When"
+            value={whenValue}
+            onPress={() => openPlanningMode("when")}
+          />
+          <CapturePlanningRow
+            icon={<View style={[styles.priorityDot, { backgroundColor: priorityDotColor(priority) }]} />}
+            label="Priority"
+            value={priorityValue}
+            valueColor={priority ? priorityDotColor(priority) : undefined}
+            onPress={() => openPlanningMode("priority")}
+          />
+          {kind === "task" ? (
+            <CapturePlanningRow
+              icon={<NavGoalsAsset width={18} height={18} color={goalValue === "No goal" ? colors.textMuted : colors.accent} />}
+              label="Goal"
+              value={goalValue}
+              valueColor={goalValue === "No goal" ? undefined : colors.accent}
+              onPress={() => openPlanningMode("goal")}
+            />
+          ) : null}
+        </View>
+      </View>
+    );
 
-          {planningMode === "when" ? (
-            <View style={styles.planningCard}>
-              {[
-                { label: "Inbox", value: "", icon: <CalendarIcon color={colors.textSecondary} size={19} /> },
-                { label: "Today", value: today, icon: <CalendarIcon color={colors.textSecondary} size={19} /> },
-                { label: "Tomorrow", value: tomorrow, icon: <CalendarIcon color={colors.warning} size={19} /> },
-              ].map((option) => (
-                <CapturePlanningRow
-                  key={option.label}
-                  icon={option.icon}
-                  label={option.label}
-                  value=""
-                  selected={deadline === option.value}
-                  showChevron={false}
-                  onPress={() => {
-                    setDeadline(option.value);
-                    if (!option.value) setTime("");
-                    setError(null);
-                    setPlanningMode("summary");
-                  }}
-                />
-              ))}
+    const renderPickerHeader = (label: string) => (
+      <>
+        <View style={styles.handleBar} />
+        <View style={styles.planningPickerHeader}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back to capture planning"
+            onPress={returnToPlanningSummary}
+            hitSlop={12}
+            style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+          >
+            <ChevronLeftIcon color={colors.textPrimary} size={21} />
+          </Pressable>
+          <Text style={styles.planningPickerTitle}>{label}</Text>
+          <View style={styles.backButton} />
+        </View>
+      </>
+    );
+
+    const renderWhenPicker = () => (
+      <>
+        {renderPickerHeader("When")}
+        <ScrollView contentContainerStyle={styles.pickerContent} keyboardShouldPersistTaps="handled">
+          <View style={styles.optionGroup}>
+            {[
+              { label: "Inbox", value: "", icon: <NavInboxAsset color={colors.textSecondary} width={19} height={19} /> },
+              { label: "Today", value: today, icon: <CalendarIcon color={colors.textSecondary} size={19} /> },
+              { label: "Tomorrow", value: tomorrow, icon: <CalendarIcon color={colors.warning} size={19} /> },
+            ].map((option) => (
               <CapturePlanningRow
-                icon={<CalendarIcon color={colors.textSecondary} size={19} />}
-                label="Pick a date..."
+                key={option.label}
+                icon={option.icon}
+                label={option.label}
                 value=""
+                selected={deadline === option.value}
                 showChevron={false}
-                onPress={() => setShowDatePicker(true)}
+                onPress={() => chooseDeadline(option.value)}
               />
+            ))}
+            <CapturePlanningRow
+              icon={<CalendarIcon color={colors.textSecondary} size={19} />}
+              label="Pick a date…"
+              value=""
+              onPress={() => setShowDatePicker(true)}
+            />
+          </View>
+          {deadline ? (
+            <View style={styles.optionGroup}>
+              <CapturePlanningRow
+                icon={<ClockIcon color={colors.textSecondary} size={19} />}
+                label={time ? "Time" : "Add time"}
+                value={time ? formatTime12h(time) : ""}
+                onPress={() => setShowTimePicker(true)}
+              />
+              <Pressable
+                onPress={() => chooseDeadline("")}
+                accessibilityRole="button"
+                accessibilityLabel="Clear schedule"
+                style={({ pressed }) => [styles.clearSchedule, pressed && styles.pressed]}
+              >
+                <TrashIcon color={colors.error} size={17} />
+                <Text style={styles.clearScheduleText}>Clear schedule</Text>
+              </Pressable>
             </View>
           ) : null}
+          <View style={styles.schedulePreview}>
+            <Text style={styles.sectionKicker}>SCHEDULE PREVIEW</Text>
+            <Text style={styles.previewValue}>{whenValue}</Text>
+            <Text style={styles.previewDetail}>{deadline ? humanDate(deadline) : "Keeps this task in Inbox"}</Text>
+          </View>
+        </ScrollView>
+      </>
+    );
 
-          {planningMode === "priority" ? (
-            <View style={styles.planningCard}>
-              {PRIORITY_OPTIONS.map((option) => (
+    const renderPriorityPicker = () => (
+      <>
+        {renderPickerHeader("Priority")}
+        <ScrollView contentContainerStyle={styles.pickerContent}>
+          <View style={styles.optionGroup}>
+            {PRIORITY_OPTIONS.map((option) => {
+              const label = option.detail ? `${option.label} — ${option.detail}` : option.label;
+              return (
                 <CapturePlanningRow
                   key={option.label}
-                  icon={<View style={[styles.priorityDot, { backgroundColor: option.value ? colors.error : colors.textMuted }]} />}
-                  label={option.label}
-                  value={option.detail}
+                  icon={<View style={[styles.priorityDot, { backgroundColor: priorityDotColor(option.value) }]} />}
+                  label={label}
+                  value=""
                   selected={priority === option.value}
                   showChevron={false}
                   onPress={() => {
                     setPriority(option.value);
-                    setPlanningMode("summary");
+                    returnToPlanningSummary();
+                    haptic.selection();
                   }}
                 />
-              ))}
-            </View>
-          ) : null}
+              );
+            })}
+          </View>
+          <Text style={styles.helperText}>Set priority to help focus on what matters most.</Text>
+        </ScrollView>
+      </>
+    );
 
-          {planningMode === "goal" ? (
-            <View style={styles.planningCard}>
+    const renderGoalPicker = () => (
+      <>
+        {renderPickerHeader("Goal")}
+        <View style={styles.searchWrap}>
+          <SearchField
+            value={goalQuery}
+            onChangeText={setGoalQuery}
+            placeholder="Search goals…"
+            placeholderTextColor={colors.textMuted}
+            accessibilityLabel="Search goals"
+            autoFocus
+          />
+        </View>
+        <ScrollView contentContainerStyle={styles.goalList} keyboardShouldPersistTaps="handled">
+          <CapturePlanningRow
+            icon={<NavGoalsAsset width={19} height={19} color={colors.textMuted} />}
+            label="No goal"
+            value=""
+            selected={prefs.bulkTaskCaptureEnabled ? goalIds.length === 0 : !goalId}
+            showChevron={false}
+            onPress={() => {
+              if (prefs.bulkTaskCaptureEnabled) {
+                setGoalIds([]);
+              } else {
+                setGoalId(undefined);
+                returnToPlanningSummary();
+              }
+              haptic.selection();
+            }}
+          />
+          {filteredGoals.map((goal) => {
+            const selected = prefs.bulkTaskCaptureEnabled ? goalIds.includes(goal.id) : goal.id === goalId;
+            return (
               <CapturePlanningRow
-                icon={<NavGoalsAsset width={20} height={20} color={colors.textMuted} />}
-                label="No goal"
+                key={goal.id}
+                icon={<NavGoalsAsset width={19} height={19} color={colors.accent} />}
+                label={goal.text}
                 value=""
-                selected={prefs.bulkTaskCaptureEnabled ? goalIds.length === 0 : !goalId}
+                selected={selected}
                 showChevron={false}
                 onPress={() => {
-                  if (prefs.bulkTaskCaptureEnabled) setGoalIds([]);
-                  else setGoalId(undefined);
-                  if (!prefs.bulkTaskCaptureEnabled) setPlanningMode("summary");
+                  if (prefs.bulkTaskCaptureEnabled) {
+                    setGoalIds((current) => current.includes(goal.id) ? current.filter((id) => id !== goal.id) : [...current, goal.id]);
+                  } else {
+                    setGoalId(goal.id);
+                    returnToPlanningSummary();
+                  }
+                  haptic.selection();
                 }}
               />
-              {goals.map((goal) => {
-                const selected = prefs.bulkTaskCaptureEnabled ? goalIds.includes(goal.id) : goal.id === goalId;
-                return (
-                  <CapturePlanningRow
-                    key={goal.id}
-                    icon={<NavGoalsAsset width={20} height={20} color={colors.accent} />}
-                    label={goal.text}
-                    value=""
-                    selected={selected}
-                    showChevron={false}
-                    onPress={() => {
-                      if (prefs.bulkTaskCaptureEnabled) {
-                        setGoalIds((current) => current.includes(goal.id) ? current.filter((id) => id !== goal.id) : [...current, goal.id]);
-                      } else {
-                        setGoalId(goal.id);
-                        setPlanningMode("summary");
-                      }
-                    }}
-                  />
-                );
-              })}
-            </View>
+            );
+          })}
+          {filteredGoals.length === 0 ? (
+            <Text style={styles.emptySearch}>
+              {goalQuery.trim() ? `No Goals match “${goalQuery.trim()}”.` : "No Goals yet."}
+            </Text>
           ) : null}
+        </ScrollView>
+      </>
+    );
+
+    const renderPlanningPicker = () => {
+      if (planningMode === "summary") return null;
+      return (
+        <Animated.View
+          entering={reducedMotion ? undefined : FadeIn.duration(160)}
+          exiting={reducedMotion ? undefined : FadeOut.duration(120)}
+          style={styles.planningScreen}
+        >
+          {planningMode === "when"
+            ? renderWhenPicker()
+            : planningMode === "priority"
+              ? renderPriorityPicker()
+              : renderGoalPicker()}
         </Animated.View>
       );
     };
@@ -763,18 +841,8 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
 
           <GestureDetector gesture={panGesture}>
           <Animated.View
-            onLayout={(event: LayoutChangeEvent) => {
-              if (planningMode !== "summary") return;
-              const nextHeight = Math.round(event.nativeEvent.layout.height);
-              setSummaryCardHeight((current) => current === nextHeight ? current : nextHeight);
-            }}
-            style={[
-              styles.card,
-              planningMode !== "summary" && summaryCardHeight
-                ? { height: summaryCardHeight }
-                : null,
-              cardDragStyle,
-            ]}
+            style={[styles.card, cardDragStyle]}
+            accessibilityViewIsModal
           >
             {/* Accent hairline + soft top glow: the same accent as the tab
                 bar's `+` button, visually tying capture entry to the sheet. */}
@@ -790,6 +858,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               colors={[colors.accentGlow, "transparent"]}
               style={styles.accentTopGlow}
             />
+            {planningMode === "summary" ? (
             <ScrollView
               style={styles.scrollArea}
               contentContainerStyle={styles.content}
@@ -802,6 +871,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                 value={kind}
                 onSelect={(nextKind) => {
                   setKind(nextKind);
+                  setGoalQuery("");
                   setPlanningMode("summary");
                 }}
               />
@@ -922,7 +992,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                 />
               ) : null}
 
-              {renderPlanning()}
+              {renderPlanningSummary()}
 
               {kind === "task" && prefs.bulkTaskCaptureEnabled ? (
                 <Pressable
@@ -975,6 +1045,9 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                 </Animated.View>
               ) : null}
             </ScrollView>
+            ) : null}
+
+            {renderPlanningPicker()}
 
             <ThemedDatePicker
               visible={showDatePicker}
@@ -983,15 +1056,21 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               onSelect={(value) => {
                 setDeadline(value);
                 setError(null);
-                setPlanningMode("summary");
+                returnToPlanningSummary();
               }}
               onClose={() => setShowDatePicker(false)}
             />
             <ThemedTimePicker
               visible={showTimePicker}
               value={time}
-              onSelect={setTime}
-              onClear={() => setTime("")}
+              onSelect={(value) => {
+                setTime(value);
+                returnToPlanningSummary();
+              }}
+              onClear={() => {
+                setTime("");
+                returnToPlanningSummary();
+              }}
               onClose={() => setShowTimePicker(false)}
             />
 
@@ -1272,7 +1351,7 @@ const styles = createThemedStyles({
     overflow: "hidden",
   },
   planningRow: {
-    minHeight: 54,
+    minHeight: 50,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
@@ -1297,12 +1376,21 @@ const styles = createThemedStyles({
     color: colors.textSecondary,
   },
   priorityDot: { width: 10, height: 10, borderRadius: 5 },
-  planningEditor: { gap: spacing.sm },
+  planningScreen: { flexShrink: 1 },
+  handleBar: {
+    width: 36,
+    height: 4,
+    borderRadius: radii.full,
+    backgroundColor: colors.border,
+    alignSelf: "center",
+    marginTop: spacing.sm,
+  },
   planningPickerHeader: {
     minHeight: 52,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    paddingHorizontal: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderSubtle,
   },
@@ -1310,6 +1398,70 @@ const styles = createThemedStyles({
   planningPickerTitle: {
     ...typography.title,
     color: colors.textPrimary,
+  },
+  pickerContent: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+    gap: spacing.lg,
+  },
+  optionGroup: {
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    backgroundColor: colors.bgSurface,
+    overflow: "hidden",
+  },
+  clearSchedule: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  clearScheduleText: {
+    ...typography.bodyMd,
+    color: colors.error,
+  },
+  schedulePreview: {
+    padding: spacing.md,
+    gap: spacing.xs,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.accentSoft,
+    backgroundColor: colors.accentDim,
+  },
+  sectionKicker: {
+    ...typography.micro,
+    color: colors.accent,
+    letterSpacing: 0.7,
+  },
+  previewValue: {
+    ...typography.title,
+    color: colors.textPrimary,
+  },
+  previewDetail: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+  },
+  helperText: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+  },
+  searchWrap: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+  },
+  goalList: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xl,
+    gap: spacing.sm,
+  },
+  emptySearch: {
+    ...typography.bodyMd,
+    color: colors.textMuted,
+    textAlign: "center",
+    paddingVertical: spacing.xl,
   },
   pressed: { opacity: 0.68 },
 

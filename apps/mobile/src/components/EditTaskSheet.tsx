@@ -464,6 +464,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const requestClose = useCallback(async () => {
       if (mode !== "inspector") {
         setMode("inspector");
+        setGoalQuery("");
         setOverflowOpen(false);
         return;
       }
@@ -535,6 +536,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           activeTaskIdRef.current = null;
           if (mode !== "inspector") {
             setMode("inspector");
+            setGoalQuery("");
             return;
           }
           void requestClose();
@@ -751,7 +753,11 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         <View style={styles.handleBar} />
         <View style={styles.pickerHeader}>
           <Pressable
-            onPress={() => setMode("inspector")}
+            onPress={() => {
+              setMode("inspector");
+              setGoalQuery("");
+              Keyboard.dismiss();
+            }}
             accessibilityRole="button"
             accessibilityLabel="Back to task inspector"
             hitSlop={12}
@@ -877,6 +883,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             onPress={() => {
               setDraftGoalId(null);
               setMode("inspector");
+              setGoalQuery("");
               Keyboard.dismiss();
               haptic.selection();
             }}
@@ -892,6 +899,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
               onPress={() => {
                 setDraftGoalId(goal.id);
                 setMode("inspector");
+                setGoalQuery("");
                 Keyboard.dismiss();
                 haptic.selection();
               }}
@@ -1127,7 +1135,10 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                 icon={<NavGoalsAsset color={draftGoalId ? colors.accent : colors.textMuted} width={18} height={18} />}
                 label="Goal"
                 value={planningGoal}
-                onPress={completed ? undefined : () => setMode("goal")}
+                onPress={completed ? undefined : () => {
+                  setGoalQuery("");
+                  setMode("goal");
+                }}
               />
             </View>
           </View>

@@ -445,10 +445,25 @@ describe("EditTaskSheet compact workbench", () => {
       target: { value: "Systemd" },
     });
     fireEvent.click(screen.getByText("Systemd Manager"));
+    fireEvent.click(screen.getByLabelText("Goal, Systemd Manager"));
+    expect((screen.getByTestId("goal-search") as HTMLInputElement).value).toBe("");
+    fireEvent.click(screen.getByLabelText("Back to task inspector"));
     await act(async () => fireEvent.click(screen.getByText("Save changes")));
 
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(mockSetGoalLink).toHaveBeenCalledWith("task1", "goal-systemd");
+  });
+
+  it("shows a clear empty state when Goal search has no matches", async () => {
+    const { ref } = setup();
+    await open(ref);
+
+    fireEvent.click(screen.getByLabelText("Goal, No goal"));
+    fireEvent.change(screen.getByTestId("goal-search"), {
+      target: { value: "missing" },
+    });
+
+    expect(screen.getByText("No Goals match “missing”.")).toBeTruthy();
   });
 
   it("moves a timeline task to Inbox immediately", async () => {
