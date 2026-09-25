@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveCliHttpUrl } from "../../packages/cli/src/liveClient";
+import { resolveCliHttpUrl, resolveStoredCredentialSiteUrl } from "../../packages/cli/src/liveClient";
 
 describe("Pravah CLI endpoint resolution", () => {
   it("uses an explicit self-hosted HTTP-actions origin", () => {
@@ -7,6 +7,12 @@ describe("Pravah CLI endpoint resolution", () => {
       CONVEX_SELF_HOSTED_SITE_URL: "https://actions.example.com/",
       CONVEX_URL: "https://api.example.com",
     })).toBe("https://actions.example.com");
+  });
+
+  it("migrates a stored credential from the previous Cloud site", () => {
+    expect(resolveStoredCredentialSiteUrl("https://befitting-swan-125.eu-west-1.convex.site")).toBe(
+      "https://combative-zebra-261.eu-west-1.convex.site"
+    );
   });
 
   it("keeps the current cloud fallback when no self-hosted origin is configured", () => {
