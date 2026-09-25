@@ -7,6 +7,7 @@ import {
   buildUploadGrant,
   checkProviderAssetPresence,
   fetchProviderUsage,
+  isCanonicalTaskImageSiteUrl,
   verifyProviderUploadMaster,
   verifyProviderWebhookResult,
   verifyWebhookSignature,
@@ -276,6 +277,13 @@ describe("Task-image Cloudinary policy", () => {
         nowSeconds: 1_776_252_601,
       })
     ).toBe(false);
+  });
+
+  it("accepts a configured self-hosted action origin", () => {
+    vi.stubEnv("PRAVAH_TASK_IMAGE_SITE_URL", "https://actions.example.com");
+    expect(isCanonicalTaskImageSiteUrl("https://actions.example.com")).toBe(true);
+    expect(isCanonicalTaskImageSiteUrl("https://other.example.com")).toBe(false);
+    vi.unstubAllEnvs();
   });
 
   it("signs only the fixed eager delivery path", async () => {

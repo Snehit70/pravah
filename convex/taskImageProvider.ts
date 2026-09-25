@@ -4,7 +4,18 @@ export const DETAIL_TRANSFORMATION =
   "c_limit,h_1600,w_1600/cs_srgb,f_webp,q_auto:good";
 export const EAGER_TRANSFORMATIONS = `${CARD_TRANSFORMATION}|${DETAIL_TRANSFORMATION}`;
 export const TASK_IMAGE_CANONICAL_CONVEX_SITE_URL =
-  "https://befitting-swan-125.eu-west-1.convex.site";
+  "https://combative-zebra-261.eu-west-1.convex.site";
+
+declare const process: { env: Record<string, string | undefined> };
+
+export function isCanonicalTaskImageSiteUrl(siteUrl: string | undefined) {
+  return (
+    siteUrl === TASK_IMAGE_CANONICAL_CONVEX_SITE_URL ||
+    (Boolean(siteUrl) &&
+      Boolean(process.env.PRAVAH_TASK_IMAGE_SITE_URL) &&
+      siteUrl === process.env.PRAVAH_TASK_IMAGE_SITE_URL)
+  );
+}
 
 const MAX_MASTER_BYTES = 8 * 1024 * 1024;
 const MAX_CARD_BYTES = 512 * 1024;

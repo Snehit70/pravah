@@ -4,6 +4,7 @@ import { loadStoredCredential, type StoredCredential } from "./authStore";
 
 interface CliEnv {
   PRAVAH_HTTP_URL?: string;
+  CONVEX_SELF_HOSTED_SITE_URL?: string;
   CONVEX_SITE_URL?: string;
   VITE_CONVEX_SITE_URL?: string;
   CONVEX_URL?: string;
@@ -11,7 +12,7 @@ interface CliEnv {
   CONVEX_HTTP_API_KEY?: string;
 }
 
-export const DEFAULT_PRAVAH_HTTP_URL = "https://befitting-swan-125.eu-west-1.convex.site";
+export const DEFAULT_PRAVAH_HTTP_URL = "https://combative-zebra-261.eu-west-1.convex.site";
 
 export interface LiveCliClient {
   mode: "live";
@@ -111,6 +112,7 @@ function deriveSiteUrl(value?: string): string | undefined {
 export function resolveCliHttpUrl(env: CliEnv): string | undefined {
   return (
     normalizeHttpUrl(env.PRAVAH_HTTP_URL) ??
+    normalizeHttpUrl(env.CONVEX_SELF_HOSTED_SITE_URL) ??
     normalizeHttpUrl(env.CONVEX_SITE_URL) ??
     normalizeHttpUrl(env.VITE_CONVEX_SITE_URL) ??
     deriveSiteUrl(env.CONVEX_URL) ??
@@ -123,6 +125,7 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
   const storedCredential = loadStoredCredential();
   const baseUrl =
     normalizeHttpUrl(env.PRAVAH_HTTP_URL) ??
+    normalizeHttpUrl(env.CONVEX_SELF_HOSTED_SITE_URL) ??
     storedCredential?.siteUrl ??
     normalizeHttpUrl(env.CONVEX_SITE_URL) ??
     normalizeHttpUrl(env.VITE_CONVEX_SITE_URL) ??
