@@ -334,8 +334,6 @@ function MobileApp() {
     workspaceTaskCorpus,
     displayTimelineSections,
     displayInboxCount,
-    displayOverdueCount,
-    displayUpcomingCount,
     displayCompletedCount,
     activeServerTasks,
     visibleTasks,

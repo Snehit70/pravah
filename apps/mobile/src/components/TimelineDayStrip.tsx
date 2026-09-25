@@ -13,8 +13,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import type { ReactNode } from "react";
+import { Pressable, Text, View } from "react-native";
 import Animated, {
   interpolate,
   useAnimatedStyle,
