@@ -5,7 +5,7 @@
  * A horizontal peek carousel of day cards: each day with tasks is one card
  * ~88% of screen width with the next day peeking in, snap paging per card.
  * Overdue collapses into a single muted leftmost card with the same "Review"
- * door as compact mode. Rows are slim (icon tile, title, goal chip, priority);
+ * door as compact mode. Rows are slim (checkbox, title, goal chip, priority);
  * per-row swipe actions are always disabled here — horizontal drags belong to
  * the carousel.
  *
@@ -53,7 +53,6 @@ import { colors, fonts, motion, radii, shadow, spacing, typography } from "../th
 import { createThemedStyles } from "../theme/themeRuntime";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import type { MobileTask } from "./TaskCard";
-import NavTimelineAsset from "../assets/icons/nav-timeline.svg";
 import {
   AlertCircleIcon,
   CalendarIcon,
@@ -200,9 +199,6 @@ function SlimTaskRow({ task, completed, goalName, onToggle, onPress }: SlimTaskR
       accessibilityHint="Double tap to edit."
     >
       {checkbox}
-      <View style={styles.iconTile} accessibilityElementsHidden>
-        <NavTimelineAsset color={colors.accent} width={18} height={18} />
-      </View>
 
       <Animated.View style={[styles.rowBody, bodyAnimStyle]}>
         <View style={styles.titleLine}>
@@ -1152,15 +1148,6 @@ const styles = createThemedStyles({
   },
   rowCheckboxPressed: {
     opacity: 0.68,
-  },
-  iconTile: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: colors.accentDim,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
   },
   rowCompact: {
     paddingVertical: spacing.sm,

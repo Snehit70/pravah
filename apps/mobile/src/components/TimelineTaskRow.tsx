@@ -1,8 +1,8 @@
 /**
  * TimelineTaskRow
  *
- * The Timeline task card: a completion checkbox, a timeline icon tile, a
- * stacked title/context body, and a trailing chevron for editing. The date
+ * The Timeline task card: a completion checkbox, a stacked title/context
+ * body, and a trailing chevron for editing. The date
  * belongs to the section header above the card; the goal renders as a pastel
  * pill and time/priority stay as quiet icon chips in the meta row so the
  * title remains the scan anchor. Each row is its own separated card.
@@ -10,7 +10,6 @@
 
 import { memo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import NavTimelineAsset from "../assets/icons/nav-timeline.svg";
 import { CheckIcon, ChevronRightIcon, ClockIcon, StarIcon } from "./UiIcons";
 import { colors, fonts, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
@@ -108,12 +107,6 @@ function TimelineTaskRowInner({
     </View>
   );
 
-  const iconTile = selectMode ? null : (
-    <View style={styles.tile} accessibilityElementsHidden>
-      <NavTimelineAsset color={colors.accent} width={20} height={20} />
-    </View>
-  );
-
   return (
     <Pressable
       onPress={selectMode ? onToggleSelect : onPress}
@@ -138,7 +131,6 @@ function TimelineTaskRowInner({
       ]}
     >
       {leading}
-      {iconTile}
 
       <View style={styles.body}>
         <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
@@ -237,16 +229,6 @@ const styles = createThemedStyles({
   },
   checkboxDisabled: { opacity: 0.45 },
   checkboxPressed: { opacity: 0.68 },
-  tile: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    borderCurve: "continuous",
-    backgroundColor: colors.accentDim,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
   body: {
     flex: 1,
     minWidth: 0,
