@@ -6,8 +6,8 @@ import qs.Commons
 import qs.Ui
 
 // Pravah for Omarchy — a full front-end for the Pravah CLI living in the
-// bar. Tabs mirror the CLI's views (Today, Inbox, Upcoming, Goals,
-// History); every mutation goes through the CLI's dry-run → apply
+// bar. Tabs mirror the CLI's views (Today, Inbox, Upcoming, Goals);
+// every mutation goes through the CLI's dry-run → apply
 // pipeline (see PravahData) and offers Undo from the operation receipt.
 BarWidget {
   id: root
@@ -570,7 +570,10 @@ BarWidget {
 
       onSaveRequested: function(fields) {
         goalEditor.close()
-        if (editingGoal) store.submitWrite(store.goalEditArgv(editingGoal, fields), "Saving goal…")
+        if (editingGoal) {
+          var argv = store.goalEditArgv(editingGoal, fields)
+          if (argv.length > 5) store.submitWrite(argv, "Saving goal…")
+        }
         else store.submitWrite(store.goalAddArgv(fields), "Creating goal…")
       }
       onCanceled: goalEditor.close()
