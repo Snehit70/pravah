@@ -208,6 +208,15 @@ ShellRoot {
 
     var goalAdd = store.goalAddArgv({ title: "Ship", description: "why", deadline: "2026-09-11", priority: "p1" })
     argvEq("goalAdd", goalAdd, [store.cli, "goals", "add", "--json", "--deadline", "2026-09-11", "--priority", "p1", "--description", "why", "--", "Ship"])
+    var goal = { id: "g1", text: "Ship", description: "why", deadline: "2026-09-11", priority: "p1" }
+    var goalEdit = store.goalEditArgv(goal, { title: "Ship", description: "new why", deadline: "2026-09-11", priority: "p1" })
+    argvEq("goalEdit description", goalEdit, [store.cli, "goals", "edit", "g1", "--json", "--description", "new why"])
+    var goalClear = store.goalEditArgv(goal, { title: "Ship", description: "", deadline: "", priority: "" })
+    argvEq("goalEdit clear", goalClear, [store.cli, "goals", "edit", "g1", "--json", "--description", "clear", "--deadline", "clear", "--priority", "clear"])
+    var goalNoChange = store.goalEditArgv(goal, { title: "Ship", description: "why", deadline: "2026-09-11", priority: "p1" })
+    argvEq("goalEdit no-change stays base argv", goalNoChange, [store.cli, "goals", "edit", "g1", "--json"])
+    var goalRenameIgnored = store.goalEditArgv(goal, { title: "Renamed", description: "why", deadline: "2026-09-11", priority: "p1" })
+    argvEq("goalEdit ignores title", goalRenameIgnored, [store.cli, "goals", "edit", "g1", "--json"])
     argvEq("goalRemove", store.goalRemoveArgv({ id: "g1" }), [store.cli, "goals", "remove", "g1", "--json", "--confirm"])
     argvEq("undo", store.undoArgv({ operationId: "op1" }), [store.cli, "operations", "undo", "op1", "--json"])
 
