@@ -309,12 +309,19 @@ describe("stale snapshots", () => {
 });
 
 describe("formatWaybarSegment", () => {
-  it("leads with overdue work and flags the class", () => {
+  it("shows the next due task with icon, count, and title", () => {
     const snapshot = buildSnapshot({
       convexUrl: "https://x.convex.cloud",
       boardTasks: [
         { id: "t1", title: "Late", status: "timeline", deadline: "2026-09-01" },
-        { id: "t2", title: "Soon", status: "timeline", deadline: "2026-09-28" },
+        {
+          id: "t2",
+          title: "Soon",
+          status: "timeline",
+          deadline: "2026-09-28",
+          time: "09:05",
+          priority: "p1",
+        },
         { id: "t3", title: "Queued", status: "inbox" },
       ],
       completedToday: [],
@@ -323,26 +330,69 @@ describe("formatWaybarSegment", () => {
       now: NOW,
     });
     const segment = formatWaybarSegment(snapshot);
-    expect(segment.text).toBe("1 overdue 2 +1");
-    expect(segment.class).toBe("pravah-overdue");
-    expect(segment.tooltip).toContain("1 overdue");
-    expect(segment.tooltip).toContain("2026-09-28");
+    expect(segment.text).toContain("󰃭");
+    expect(segment.text).toContain("Soon");
+    expect(segment.text).toContain("9:05");
+    expect(segment.text).toContain("#f1c27d");
+    expect(segment.class).toBe("has-tasks");
+    expect(segment.tooltip).toContain("Today · 1 left");
+    expect(segment.tooltip).toContain("28 Sep");
+    // waybar parses one JSON object per line, so the shape must survive a round trip.
+    expect(JSON.parse(JSON.stringify(segment))).toEqual(segment);
   });
 
-  it("omits a clean inbox from the text", () => {
+  it("shows only the icon when nothing is due today", () => {
     const snapshot = buildSnapshot({
       convexUrl: "https://x.convex.cloud",
-      boardTasks: [{ id: "t2", title: "Soon", status: "timeline" }],
+      boardTasks: [
+        { id: "t1", title: "Late", status: "timeline", deadline: "2026-09-01" },
+        { id: "t3", title: "Queued", status: "inbox" },
+      ],
       completedToday: [],
       goals: [],
       goalLinks: {},
       now: NOW,
     });
     const segment = formatWaybarSegment(snapshot);
-    expect(segment.text).toBe("1");
-    expect(segment.class).toBe("pravah-ok");
-    // waybar parses one JSON object per line, so the shape must survive a round trip.
-    expect(JSON.parse(JSON.stringify(segment))).toEqual(segment);
+    expect(segment.text).toBe("󰃭");
+    expect(segment.class).toBe("clear");
+    expect(segment.tooltip).toContain("Nothing left today");
+  });
+
+  it("escapes pango markup in titles", () => {
+    const snapshot = buildSnapshot({
+      convexUrl: "https://x.convex.cloud",
+      boardTasks: [
+        { id: "t2", title: "Fish & <Chips>", status: "timeline", deadline: "2026-09-28" },
+      ],
+      completedToday: [],
+      goals: [],
+      goalLinks: {},
+      now: NOW,
+    });
+    const segment = formatWaybarSegment(snapshot);
+    expect(segment.text).toContain("Fish &amp; &lt;Chips&gt;");
+    expect(segment.text).not.toContain("Fish & <Chips>");
+  });
+
+  it("flags degraded snapshots with the error class", () => {
+    const snapshot = {
+      ...buildSnapshot({
+        convexUrl: "https://x.convex.cloud",
+        boardTasks: [
+          { id: "t2", title: "Soon", status: "timeline", deadline: "2026-09-28" },
+        ],
+        completedToday: [],
+        goals: [],
+        goalLinks: {},
+        now: NOW,
+      }),
+      errors: ["goals:list"],
+    };
+    const segment = formatWaybarSegment(snapshot);
+    expect(segment.class).toBe("error");
+    expect(segment.text).toContain("Soon");
+    expect(segment.tooltip).toContain("goals:list");
   });
 });
 
