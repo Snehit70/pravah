@@ -2,6 +2,7 @@
 import { readOption } from "./args";
 import { emitSuccess, successEnvelope } from "./envelope";
 import { loadStoredCredential } from "./authStore";
+import { resolveStoredCredentialSiteUrl } from "./liveClient";
 import { formatWaybarSegment } from "./watchFormat";
 import { runWatch } from "./watchClient";
 import { acquireWatchLock } from "./watchLock";
@@ -54,10 +55,15 @@ function requireStoredCredential() {
       "Pravah CLI is not authenticated. Run `pravah auth login --bootstrap-token <token>`."
     );
   }
-  if (!credential.siteUrl) {
+  // Stored credentials from before the production migration still point at the
+  // legacy deployment. Every other command migrates them through
+  // `resolveStoredCredentialSiteUrl`; `watch` must do the same or it opens its
+  // websocket against a deployment that no longer serves the token route.
+  const siteUrl = resolveStoredCredentialSiteUrl(credential.siteUrl);
+  if (!siteUrl) {
     throw new Error("Stored Pravah credential has no site URL. Run `pravah auth login` again.");
   }
-  return { secret: credential.secret, siteUrl: credential.siteUrl };
+  return { secret: credential.secret, siteUrl };
 }
 
 function writeStreamLine(snapshot: WatchSnapshot, plan: WatchCommandPlan) {
