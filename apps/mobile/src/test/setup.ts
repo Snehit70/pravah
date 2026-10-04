@@ -4,6 +4,8 @@
 // fallback narrow; individual clipboard-focused suites can override it.
 import { vi } from "vitest";
 
+vi.mock("../lib/taskImageInput", () => ({ taskImageInput: null }));
+
 vi.mock("expo-clipboard", () => ({
   ContentType: { IMAGE: "image", PLAIN_TEXT: "plain-text" },
   addClipboardListener: vi.fn(() => ({ remove: vi.fn() })),

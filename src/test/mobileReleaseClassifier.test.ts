@@ -3,6 +3,17 @@ import { describe, expect, it } from "vitest";
 import { classifyMobileRelease } from "../../scripts/mobile-release/classifier";
 
 describe("mobile release classification", () => {
+  it("requires a native release for local Expo module changes even if fingerprints match", () => {
+    const path = "apps/mobile/modules/pravah-image-input/android/src/main/java/PravahImageInputModule.kt";
+    const result = classifyMobileRelease({
+      changedFiles: [path], labels: ["mobile-ota"],
+      sourceFingerprint: "same", supportedFingerprint: "same",
+      pullRequestBody: "## Mobile release notes\n\nKeyboard image paste.",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.reasons).toContain(`OTA includes native-critical paths: ${path}`);
+  });
+
   it("requires exactly one classification for shipped mobile changes", () => {
     const result = classifyMobileRelease({
       changedFiles: ["apps/mobile/src/components/TaskCard.tsx"],

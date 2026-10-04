@@ -61,7 +61,8 @@ import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useConfirm } from "../hooks/useConfirm";
 import { TaskImageFilmstrip } from "./TaskImageFilmstrip";
 import { SlidingSegmented } from "./SlidingSegmented";
-import type { TaskImageCoordinator } from "../lib/taskImageCoordinator";
+import type { AcquiredTaskImageSource, TaskImageCoordinator } from "../lib/taskImageCoordinator";
+import { TaskImagePasteInput } from "./TaskImagePasteInput";
 import { ThemedDatePicker } from "./ThemedDatePicker";
 import { ThemedTimePicker } from "./ThemedTimePicker";
 import {
@@ -216,6 +217,13 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       if (!taskImageCoordinator) return;
       return taskImageCoordinator.subscribe(() => setTaskImageRevision((value) => value + 1));
     }, [taskImageCoordinator]);
+    const pasteTaskImage = useCallback(async (source: AcquiredTaskImageSource) => {
+      if (!taskImageCoordinator) return;
+      setError(null);
+      await taskImageCoordinator.select("paste", 5, source);
+      const sourceError = taskImageCoordinator.getLastError();
+      if (sourceError) setError(sourceError);
+    }, [taskImageCoordinator]);
     const taskImageDrafts = useMemo(() => {
       void taskImageRevision;
       return taskImageCoordinator?.getViewStates() ?? [];
@@ -247,7 +255,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
         seriesEnabled ||
         taskImageDrafts.length > 0
       );
-    const hasDraftChanges = hasUnsavedText || hasUnsavedContext;
+    const hasDraftChanges = hasUnsavedText || hasUnsavedContext || taskImageDrafts.length > 0;
 
     const closeModal = useCallback(
       (notify = true) => {
@@ -363,7 +371,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
 
     const handleAdd = useCallback(async (intent: "stay" | "close" = "close") => {
       const trimmed = title.trim();
-      if (!trimmed || saving) return;
+      if (!trimmed || saving || taskImageDrafts.some((image) => image.state === "preparing")) return;
 
       const deadlineResult = isValidDeadline(deadline);
       if (deadlineResult.error) {
@@ -498,7 +506,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     );
     // Mid-burst with an empty title there is nothing left to save, so the
     // footer verb degrades to a plain "Done" that just closes the sheet.
-    const closeOnly = kind === "task" && burstCount > 0 && !title.trim();
+    const closeOnly = kind === "task" && burstCount > 0 && !title.trim() && taskImageDrafts.length === 0;
     const submitLabel = saving
       ? "Saving..."
       : kind === "goal"
@@ -877,8 +885,11 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               />
 
               <View>
-                <TextInput
+                <TaskImagePasteInput
                   ref={titleInputRef}
+                  imagePasteEnabled={visible && kind === "task" && !saving && !!taskImageCoordinator && !(prefs.bulkTaskCaptureEnabled && (seriesEnabled || goalIds.length > 1))}
+                  onPasteImage={pasteTaskImage}
+                  onPasteError={setError}
                   value={title}
                   onChangeText={(text) => {
                     setTitle(text);
@@ -953,8 +964,11 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                   </View>
                 </View>
               ) : (
-                <TextInput
+                <TaskImagePasteInput
                   value={description}
+                  imagePasteEnabled={visible && !saving && !!taskImageCoordinator && !(prefs.bulkTaskCaptureEnabled && (seriesEnabled || goalIds.length > 1))}
+                  onPasteImage={pasteTaskImage}
+                  onPasteError={setError}
                   onChangeText={setDescription}
                   placeholder="Notes (optional)"
                   placeholderTextColor={colors.textMuted}

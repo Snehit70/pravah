@@ -16,12 +16,10 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { BlurView } from "expo-blur";
-import * as Clipboard from "expo-clipboard";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { haptic } from "../lib/haptic";
 import { colors, radii, spacing, typography } from "../theme/tokens";
@@ -57,7 +55,8 @@ import NavInboxAsset from "../assets/icons/nav-inbox.svg";
 import { SearchField } from "./SearchField";
 import { addDays, dateLabel, getLocalDateString, humanDate, toIsoDate } from "../lib/dates";
 import { TaskImageFilmstrip, type TaskImageRetryState } from "./TaskImageFilmstrip";
-import type { TaskImageSourceKind } from "../lib/taskImageCoordinator";
+import type { AcquiredTaskImageSource, TaskImageSourceKind } from "../lib/taskImageCoordinator";
+import { TaskImagePasteInput } from "./TaskImagePasteInput";
 
 export type EditTaskSheetRef = {
   open: (task: MobileTask) => void;
@@ -114,6 +113,7 @@ type EditTaskSheetProps = {
     taskId: Id<"tasks">;
     expectedRevision: number;
     kind: TaskImageSourceKind;
+    source?: AcquiredTaskImageSource;
   }) => TaskImageCollectionMutationResult | Promise<TaskImageCollectionMutationResult | undefined> | undefined;
   onRetryTaskImage?: (args: {
     taskId: Id<"tasks">;
@@ -294,9 +294,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const [overflowOpen, setOverflowOpen] = useState(false);
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [showTimePicker, setShowTimePicker] = useState(false);
-    const clipboardPasteInFlight = useRef(false);
-    const captionSaveQueue = useRef<Promise<void>>(Promise.resolve());
-    const captionRevision = useRef<number | undefined>(undefined);
+    const imageMutationQueue = useRef<Promise<void>>(Promise.resolve());
+    const imageRevision = useRef<number | undefined>(undefined);
     const [screenTransition] = useState(() => new Animated.Value(1));
     const previousMode = useRef<SheetMode>("inspector");
 
@@ -319,8 +318,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         setOverflowOpen(false);
         setShowDatePicker(false);
         setShowTimePicker(false);
-        captionSaveQueue.current = Promise.resolve();
-        captionRevision.current = undefined;
+        imageMutationQueue.current = Promise.resolve();
+        imageRevision.current = undefined;
         if (notify) onSheetChange?.(false);
       },
       [onSheetChange],
@@ -350,31 +349,51 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       return goals.filter((goal) => goal.text.toLocaleLowerCase().includes(query));
     }, [goalQuery, goals]);
 
-    const attachTaskImage = useCallback(async (kind: TaskImageSourceKind) => {
-      if (!currentTask || !onSelectTaskImage || isTaskCompleted(currentTask)) return;
-      const localOrder = orderedTaskImageIds(currentTask.imageCollection);
-      const result = await onSelectTaskImage({
-        taskId: currentTask._id,
-        expectedRevision: currentTask.imageCollection?.revision ?? 0,
-        kind,
+    const attachTaskImage = useCallback((kind: TaskImageSourceKind, source?: AcquiredTaskImageSource) => {
+      if (!currentTask || !onSelectTaskImage || isTaskCompleted(currentTask)) return Promise.resolve();
+      const session = captionSessionRef.current;
+      const sourceTaskId = currentTask._id;
+      const isCurrentSession = () =>
+        session === captionSessionRef.current && activeTaskIdRef.current === sourceTaskId;
+      const work = imageMutationQueue.current.catch(() => undefined).then(async () => {
+        if (!isCurrentSession()) return;
+        const result = await onSelectTaskImage({
+          taskId: sourceTaskId,
+          expectedRevision: imageRevision.current ?? currentTask.imageCollection?.revision ?? 0,
+          kind,
+          ...(source ? { source } : {}),
+        });
+        if (!result || !isCurrentSession()) return;
+        imageRevision.current = result.revision;
+        const { stale, ...imageCollection } = result;
+        setCurrentTask((previous) => {
+          if (!previous) return previous;
+          const previousById = new Map(
+            (previous.imageCollection?.active ?? []).map((image) => [image.taskImageId, image])
+          );
+          const withLocalPreviews = {
+            ...imageCollection,
+            active: imageCollection.active.map((image) => {
+              const previewUri = image.previewUri ?? previousById.get(image.taskImageId)?.previewUri;
+              return previewUri ? { ...image, previewUri } : image;
+            }),
+          };
+          return {
+            ...previous,
+            imageCollection: mergeTaskImageOrder(withLocalPreviews, orderedTaskImageIds(previous.imageCollection)),
+          };
+        });
+        setInitialImageOrder(orderedTaskImageIds(imageCollection));
+        if (stale) setError("Task images changed. Please try again.");
       });
-      if (!result) return;
-      const { stale: _, ...imageCollection } = result;
-      const previousById = new Map(
-        (currentTask.imageCollection?.active ?? []).map((image) => [image.taskImageId, image])
-      );
-      const withLocalPreviews = {
-        ...imageCollection,
-        active: imageCollection.active.map((image) => {
-          const previous = previousById.get(image.taskImageId);
-          const previewUri = image.previewUri ?? previous?.previewUri;
-          return previewUri ? { ...image, previewUri } : image;
-        }),
-      };
-      const mergedCollection = mergeTaskImageOrder(withLocalPreviews, localOrder);
-      setCurrentTask((previous) => previous ? { ...previous, imageCollection: mergedCollection } : previous);
-      setInitialImageOrder(orderedTaskImageIds(imageCollection));
+      imageMutationQueue.current = work.catch(() => undefined);
+      return work;
     }, [currentTask, onSelectTaskImage]);
+
+    const pasteTaskImage = useCallback(async (source: AcquiredTaskImageSource) => {
+      setError(null);
+      await attachTaskImage("paste", source);
+    }, [attachTaskImage]);
 
     const saveTaskImageCaption = useCallback((taskImageId: string, caption: string) => {
       const sessionToken = captionSessionRef.current;
@@ -382,17 +401,17 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       if (!sourceTaskId) return;
       const isCurrentSession = () =>
         captionSessionRef.current === sessionToken && activeTaskIdRef.current === sourceTaskId;
-      captionSaveQueue.current = captionSaveQueue.current.catch(() => undefined).then(async () => {
+      imageMutationQueue.current = imageMutationQueue.current.catch(() => undefined).then(async () => {
         if (!isCurrentSession()) return;
-        const revision = captionRevision.current ?? currentTask?.imageCollection?.revision ?? 0;
+        const revision = imageRevision.current ?? currentTask?.imageCollection?.revision ?? 0;
         const result = await onCaptionTaskImage?.({ taskImageId, caption, expectedRevision: revision });
         if (!result || !isCurrentSession()) return;
         if (result.stale) {
-          captionRevision.current = undefined;
+          imageRevision.current = undefined;
           setError("Task images changed while you were editing. Review the current image and try again.");
           return;
         }
-        captionRevision.current = result.revision;
+        imageRevision.current = result.revision;
         const { stale: _, ...imageCollection } = result;
         setCurrentTask((previousTask) => previousTask ? {
           ...previousTask,
@@ -402,21 +421,6 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         if (isCurrentSession()) setError("Couldn’t update Task image. Try again.");
       });
     }, [currentTask?.imageCollection?.revision, onCaptionTaskImage]);
-
-    useEffect(() => {
-      if (!visible || (!titleEditing && !notesEditing) || !onSelectTaskImage || !currentTask || isTaskCompleted(currentTask)) {
-        return;
-      }
-
-      const subscription = Clipboard.addClipboardListener(({ contentTypes }) => {
-        if (!contentTypes.includes(Clipboard.ContentType.IMAGE) || clipboardPasteInFlight.current) return;
-        clipboardPasteInFlight.current = true;
-        void attachTaskImage("paste").finally(() => {
-          clipboardPasteInFlight.current = false;
-        });
-      });
-      return () => subscription.remove();
-    }, [attachTaskImage, currentTask, notesEditing, onSelectTaskImage, titleEditing, visible]);
 
     useEffect(() => {
       if (previousMode.current === mode) return;
@@ -489,6 +493,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           openSeqRef.current = seq;
           captionSessionRef.current += 1;
           activeTaskIdRef.current = task._id;
+          imageMutationQueue.current = Promise.resolve();
+          imageRevision.current = undefined;
           void goalLinksStore.hydrate().then(() => {
             if (openSeqRef.current !== seq) return;
             const currentGoalId = goalLinksStore.goalFor(String(task._id)) ?? null;
@@ -565,7 +571,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       const previousState = { ...initialDraft };
       setSaving(true);
       setError(null);
-      await captionSaveQueue.current;
+      await imageMutationQueue.current;
       const orderedTaskImageIds = [...(currentTask?.imageCollection?.active ?? [])]
         .sort((left, right) => left.position - right.position)
         .map((image) => image.taskImageId);
@@ -578,7 +584,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           const result = await onReorderTaskImages({
             taskId,
             orderedTaskImageIds,
-            expectedRevision: captionRevision.current ?? currentTask?.imageCollection?.revision ?? 0,
+            expectedRevision: imageRevision.current ?? currentTask?.imageCollection?.revision ?? 0,
           });
           if (result) {
             const { stale, ...imageCollection } = result;
@@ -596,7 +602,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
               return;
             }
             setInitialImageOrder(orderedTaskImageIds);
-            captionRevision.current = undefined;
+            imageRevision.current = undefined;
           }
         } catch {
           setSaving(false);
@@ -639,7 +645,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       }
       setInitialDraft(savedDraft);
       setInitialImageOrder(orderedTaskImageIds);
-      captionRevision.current = undefined;
+      imageRevision.current = undefined;
       setTitle(savedDraft.title);
       setDescription(savedDraft.description);
       setDeadline(savedDraft.deadline);
@@ -950,7 +956,11 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         >
           <View style={styles.titleBlock}>
             {titleEditing && !completed ? (
-              <TextInput
+              <TaskImagePasteInput
+                imagePasteEnabled={visible && !saving && !!onSelectTaskImage}
+                pasteSession={taskId ?? undefined}
+                onPasteImage={pasteTaskImage}
+                onPasteError={setError}
                 value={title}
                 onChangeText={(value) => {
                   setTitle(value);
@@ -985,7 +995,11 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           <View style={styles.notesSection}>
             <Text style={styles.sectionLabel}>Notes</Text>
             {notesEditing && !completed ? (
-              <TextInput
+              <TaskImagePasteInput
+                imagePasteEnabled={visible && !saving && !!onSelectTaskImage}
+                pasteSession={taskId ?? undefined}
+                onPasteImage={pasteTaskImage}
+                onPasteError={setError}
                 value={description}
                 onChangeText={setDescription}
                 placeholder="Add notes"
@@ -1085,7 +1099,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                           const mergedCollection = mergeTaskImageOrder(imageCollection, orderedTaskImageIds(currentTask.imageCollection));
                           setCurrentTask((previous) => previous ? { ...previous, imageCollection: mergedCollection } : previous);
                           setInitialImageOrder(orderedTaskImageIds(imageCollection));
-                          captionRevision.current = undefined;
+                          imageRevision.current = undefined;
                         } catch {
                           setError("Couldn’t remove Task image. Try again.");
                         }

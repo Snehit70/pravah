@@ -9,7 +9,7 @@ const {
   mockGoals,
   mockGoalFor,
   mockSetGoalLink,
-  clipboardListeners,
+  imagePasteHandlers,
 } = vi.hoisted(() => ({
   mockConfirm: vi.fn(async () => true),
   mockGoals: [
@@ -18,16 +18,24 @@ const {
   ],
   mockGoalFor: vi.fn(() => null as string | null),
   mockSetGoalLink: vi.fn(),
-  clipboardListeners: new Set<(event: { contentTypes: string[] }) => void>(),
+  imagePasteHandlers: new Set<(source: { kind: "paste"; uri: string; previewUri: string }) => Promise<void>>(),
 }));
 
-vi.mock("expo-clipboard", () => ({
-  ContentType: { IMAGE: "image", PLAIN_TEXT: "plain-text" },
-  addClipboardListener: vi.fn((listener: (event: { contentTypes: string[] }) => void) => {
-    clipboardListeners.add(listener);
-    return { remove: () => clipboardListeners.delete(listener) };
-  }),
-}));
+vi.mock("../components/TaskImagePasteInput", async () => {
+  const { TextInput } = await import("react-native");
+  return {
+    TaskImagePasteInput: React.forwardRef(function PasteInput(
+      { imagePasteEnabled, pasteSession: _, onPasteImage, onPasteError: __, ...props }: React.ComponentProps<typeof import("../components/TaskImagePasteInput").TaskImagePasteInput>, ref: React.Ref<import("react-native").TextInput>,
+    ) {
+      React.useEffect(() => {
+        if (!imagePasteEnabled) return;
+        imagePasteHandlers.add(onPasteImage);
+        return () => { imagePasteHandlers.delete(onPasteImage); };
+      }, [imagePasteEnabled, onPasteImage]);
+      return <TextInput {...props} ref={ref} />;
+    }),
+  };
+});
 
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
@@ -369,7 +377,7 @@ async function open(ref: { current: EditTaskSheetRef | null }, task: MobileTask 
 describe("EditTaskSheet compact workbench", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    clipboardListeners.clear();
+    imagePasteHandlers.clear();
     mockConfirm.mockResolvedValue(true);
     mockGoalFor.mockReturnValue(null);
   });
@@ -647,7 +655,7 @@ describe("EditTaskSheet compact workbench", () => {
     });
   });
 
-  it("routes an image clipboard paste from Notes into Task images", async () => {
+  it("routes the exact keyboard image from Notes into Task images", async () => {
     const onSelectTaskImage = vi.fn(async () => ({
       stale: false as const,
       revision: 5,
@@ -670,8 +678,9 @@ describe("EditTaskSheet compact workbench", () => {
 
     fireEvent.click(screen.getByLabelText("Edit task notes"));
     await act(async () => {
-      for (const listener of clipboardListeners) listener({ contentTypes: ["image"] });
-      await Promise.resolve();
+      for (const handler of [...imagePasteHandlers]) {
+        await handler({ kind: "paste", uri: "file:///keyboard-image.png", previewUri: "file:///keyboard-image.png" });
+      }
     });
 
     await waitFor(() => {
@@ -682,7 +691,59 @@ describe("EditTaskSheet compact workbench", () => {
       taskId: "task1",
       expectedRevision: 0,
       kind: "paste",
+      source: { kind: "paste", uri: "file:///keyboard-image.png", previewUri: "file:///keyboard-image.png" },
     });
+  });
+
+  it("serializes rapid keyboard pastes with the revision returned by the previous attachment", async () => {
+    let finishFirst!: (value: { stale: false; revision: number; active: []; recoverable: [] }) => void;
+    const firstResult = new Promise<{ stale: false; revision: number; active: []; recoverable: [] }>((resolve) => { finishFirst = resolve; });
+    const onSelectTaskImage = vi.fn()
+      .mockImplementationOnce(() => firstResult)
+      .mockResolvedValue({ stale: false, revision: 10, active: [], recoverable: [] });
+    const { ref } = setup({ onSelectTaskImage });
+    await open(ref);
+    fireEvent.click(screen.getByLabelText("Edit task notes"));
+    const handler = [...imagePasteHandlers][0];
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    await act(async () => {
+      first = handler({ kind: "paste", uri: "file:///first.png", previewUri: "file:///first.png" });
+      second = handler({ kind: "paste", uri: "file:///second.png", previewUri: "file:///second.png" });
+    });
+    expect(onSelectTaskImage).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      finishFirst({ stale: false, revision: 9, active: [], recoverable: [] });
+      await Promise.all([first, second]);
+    });
+    expect(onSelectTaskImage).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      taskId: "task1", expectedRevision: 9,
+      source: expect.objectContaining({ uri: "file:///second.png" }),
+    }));
+  });
+
+  it("does not apply an attachment result or start queued pastes after switching Tasks", async () => {
+    let finishFirst!: (value: unknown) => void;
+    const result = new Promise((resolve) => { finishFirst = resolve; });
+    const onSelectTaskImage = vi.fn(() => result);
+    const { ref } = setup({ onSelectTaskImage });
+    await open(ref);
+    fireEvent.click(screen.getByLabelText("Edit task notes"));
+    const handler = [...imagePasteHandlers][0];
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    await act(async () => {
+      first = handler({ kind: "paste", uri: "file:///first.png", previewUri: "file:///first.png" });
+      second = handler({ kind: "paste", uri: "file:///second.png", previewUri: "file:///second.png" });
+    });
+    await open(ref, { ...timelineTask, _id: "task2" as MobileTask["_id"], title: "Another Task" });
+    await act(async () => {
+      finishFirst({ stale: false, revision: 9, active: [{ taskImageId: "old-image", position: 0, state: "pending", previewUri: "file:///old.png" }], recoverable: [] });
+      await Promise.all([first, second]);
+    });
+    expect(onSelectTaskImage).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Another Task")).toBeTruthy();
+    expect(screen.queryByAltText("Selected Task image preview")).toBeNull();
   });
 
   it("keeps deletion in overflow and explains recovery", async () => {

@@ -77,7 +77,7 @@ vi.mock("react-native", () => {
     [key: string]: unknown;
   }) => {
     if (data.length === 0 && ListEmptyComponent) {
-      return React.createElement("div", { "data-testid": "flatlist" }, ListEmptyComponent);
+      return React.createElement("div", { "data-testid": "flatlist" }, ListHeaderComponent, ListEmptyComponent);
     }
     return React.createElement(
       "div",
@@ -96,7 +96,13 @@ vi.mock("react-native", () => {
   const Modal = ({ children, visible }: AnyProps & { visible?: boolean }) =>
     visible ? React.createElement("div", {}, children) : null;
   const ScrollView = ({ children }: AnyProps) => React.createElement("div", {}, children);
-  const TextInput = () => React.createElement("input", {});
+  const TextInput = ({ value, onChangeText, placeholder, accessibilityLabel, editable }: {
+    value?: string; onChangeText?: (text: string) => void; placeholder?: string;
+    accessibilityLabel?: string; editable?: boolean;
+  }) => React.createElement("input", {
+    value: value ?? "", placeholder, "aria-label": accessibilityLabel, disabled: editable === false,
+    onChange: (event: React.ChangeEvent<HTMLInputElement>) => onChangeText?.(event.target.value),
+  });
   return {
     View,
     Text,
@@ -105,6 +111,7 @@ vi.mock("react-native", () => {
     Modal,
     ScrollView,
     TextInput,
+    Keyboard: { dismiss: vi.fn() },
     BackHandler: { addEventListener: () => ({ remove: vi.fn() }) },
     StyleSheet: { create: (s: unknown) => s, hairlineWidth: 1 },
   };
@@ -236,6 +243,35 @@ const openG1Sheet = () => {
 };
 
 describe("GoalsScreen card (variant D2)", () => {
+  it("searches goal titles and notes without changing their order or progress", () => {
+    render(<GoalsScreen tabBarHeight={0} tasks={tasks} />);
+    const search = screen.getByLabelText("Search goals");
+    fireEvent.change(search, { target: { value: "  KAIRO  " } });
+    expect(screen.getByText("Kairo tool-calling rebuild")).toBeTruthy();
+    expect(screen.queryByText("Mad 2 project")).toBeNull();
+    expect(screen.getByText("1 of 2 goals")).toBeTruthy();
+    fireEvent.change(search, { target: { value: "college" } });
+    expect(screen.getByText("Mad 2 project")).toBeTruthy();
+    expect(screen.getByText("1 of 4 done")).toBeTruthy();
+    expect(screen.queryByText("Kairo tool-calling rebuild")).toBeNull();
+    fireEvent.change(search, { target: { value: "   " } });
+    expect(screen.getAllByTestId(/^goal-item-/).map((row) => row.textContent)).toEqual([
+      expect.stringContaining("Mad 2 project"), expect.stringContaining("Kairo tool-calling rebuild"),
+    ]);
+  });
+
+  it("keeps search available when there are no matches and restores goals when cleared", () => {
+    render(<GoalsScreen tabBarHeight={0} tasks={tasks} />);
+    fireEvent.change(screen.getByLabelText("Search goals"), { target: { value: "missing goal" } });
+    expect(screen.getByText("No matching goals")).toBeTruthy();
+    expect(screen.queryByText("No goals yet.")).toBeNull();
+    expect(screen.getByLabelText("Search goals")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Clear goal search"));
+    expect(screen.getByText("Mad 2 project")).toBeTruthy();
+    expect(screen.getByText("Kairo tool-calling rebuild")).toBeTruthy();
+    expect(screen.queryByText("No matching goals")).toBeNull();
+  });
+
   it("reads priority twice — as a label, not hue alone", () => {
     render(<GoalsScreen tabBarHeight={0} tasks={tasks} />);
     // The letters must be present; a coloured dot alone would leave a

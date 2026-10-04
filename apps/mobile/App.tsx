@@ -1435,8 +1435,8 @@ function MobileApp() {
             {toast.action ? (
               <Pressable
                 onPress={() => {
-                  toast.action?.run();
                   dismissToast();
+                  toast.action?.run();
                 }}
                 hitSlop={12}
                 accessibilityRole="button"
@@ -1453,7 +1453,7 @@ function MobileApp() {
               accessibilityLabel="Dismiss notification"
               style={({ pressed }) => [styles.toastDismiss, pressed && { opacity: 0.6 }]}
             >
-              <CloseIcon color={colors.textMuted} size={15} strokeWidth={1.9} />
+              <CloseIcon color={colors.textMuted} size={18} strokeWidth={1.9} />
             </Pressable>
           </View>
         </Animated.View>
@@ -1704,24 +1704,25 @@ function MobileApp() {
             return result;
           });
         }}
-        onSelectTaskImage={({ taskId, expectedRevision, kind }) => {
-          const beforeUploadIds = new Set(
-            taskImageCoordinator.getViewStates().map((image) => image.uploadId)
-          );
+        onSelectTaskImage={({ taskId, expectedRevision, kind, source }) => {
           return (async () => {
+            let selectedUploadIds: string[] = [];
             try {
               const existingCount = workspaceTaskCorpus.find((task) => String(task._id) === String(taskId))?.imageCollection?.active.length ?? 0;
               const availableSlots = Math.max(0, 5 - existingCount);
-              await taskImageCoordinator.select(kind, availableSlots);
+              selectedUploadIds = await taskImageCoordinator.select(kind, availableSlots, source);
+              const selectionIds = new Set(selectedUploadIds);
               const newUploads = taskImageCoordinator
                 .getViewStates()
-                .filter((image) => !beforeUploadIds.has(image.uploadId));
+                .filter((image) => selectionIds.has(image.uploadId));
               const selected = newUploads.filter((image) => image.state === "pending");
               taskImageCoordinator.discardUploads(
                 newUploads.filter((image) => image.state === "failed").map((image) => image.uploadId),
               );
               if (selected.length === 0) {
                 taskImageCoordinator.discardUploads(newUploads.map((image) => image.uploadId));
+                const sourceError = taskImageCoordinator.getLastError();
+                if (sourceError) showToast({ kind: "error", message: sourceError });
                 return undefined;
               }
               const result = await addTaskImagesMutation({
@@ -1759,11 +1760,11 @@ function MobileApp() {
                 return previewUri ? { ...image, previewUri } : image;
               });
               void taskImageCoordinator.beginUploadAfterSave();
-              taskImageCoordinator.clearAfterSaveAndStay();
+              taskImageCoordinator.clearAfterSaveAndStay(selectedUploadIds);
               return { ...result, active, primary: active[0] };
             } catch {
               showToast({ kind: "error", message: "Could not add Task image. Please try again." });
-              taskImageCoordinator.discard();
+              taskImageCoordinator.discardUploads(selectedUploadIds);
               return undefined;
             }
           })();
@@ -2176,24 +2177,19 @@ const styles = createThemedStyles({
   toastCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radii.md,
-    shadowColor: "#08050a",
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    borderCurve: "continuous",
+    backgroundColor: colors.bgFloating,
   },
   toastError: {
     borderColor: colors.error,
-    backgroundColor: colors.errorMuted,
   },
   toastInfo: {
-    borderColor: colors.borderFocus,
-    backgroundColor: colors.accentDim,
+    borderColor: colors.border,
   },
   toastText: {
     flex: 1,
@@ -2201,8 +2197,11 @@ const styles = createThemedStyles({
     ...typography.bodyMd,
   },
   toastAction: {
+    minHeight: 44,
+    minWidth: 44,
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
   },
   toastActionText: {
     ...typography.micro,
@@ -2210,10 +2209,11 @@ const styles = createThemedStyles({
     fontWeight: "600",
   },
   toastDismiss: {
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
-    padding: 2,
-    marginRight: -4,
+    marginRight: -spacing.sm,
   },
 
   // Retry and sync surfaces share the same quiet tonal status language.

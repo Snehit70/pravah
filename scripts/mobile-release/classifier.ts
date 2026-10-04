@@ -100,6 +100,7 @@ function isNativeCritical(path: string): boolean {
       path as (typeof nativeCriticalPaths)[number],
     ) ||
     path.startsWith("apps/mobile/plugins/") ||
+    path.startsWith("apps/mobile/modules/") ||
     path.startsWith("apps/mobile/android/") ||
     path.startsWith("apps/mobile/ios/") ||
     isNativeCriticalAsset(path)

@@ -24,6 +24,7 @@ tmp/
 *.sln
 *.sw?
 .env.local
+.env*.bak*
 .convex/
 .vercel
 .expo/
@@ -63,5 +64,6 @@ skills/
 skills-lock.json
 
 # Agent tooling local state
+.zcodeignore
 .impeccable/hook.cache.json
 .grok/
