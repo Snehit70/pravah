@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BackHandler, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { BackHandler, FlatList, Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import NavGoalsAsset from "../assets/icons/nav-goals.svg";
@@ -43,6 +43,7 @@ import { SlidingSegmented } from "../components/SlidingSegmented";
 import { GoalSettingsSheet } from "../components/GoalSettingsSheet";
 import { QuickScheduleSheet } from "../components/QuickScheduleSheet";
 import { GoalsPageSkeleton } from "../components/LoadingSkeleton";
+import { SearchField } from "../components/SearchField";
 import {
   AdjustmentsIcon,
   CheckIcon,
@@ -673,6 +674,7 @@ export function GoalsScreen({
   const { deleteGoal, updateGoal } = useGoalMutations();
   const { goals, isHydrated } = useGoals();
   const links = useGoalLinks();
+  const [query, setQuery] = useState("");
   // Keep the rendered goal separate from visibility so nested sheets can
   // finish dismissing without briefly replacing the workspace content.
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
@@ -686,6 +688,7 @@ export function GoalsScreen({
   }, [selectedGoalId, onDetailVisibilityChange]);
 
   const openGoalSheet = useCallback((goalId: string) => {
+    Keyboard.dismiss();
     setSelectedGoalId(goalId);
     setRenderGoalId(goalId);
   }, []);
@@ -721,6 +724,16 @@ export function GoalsScreen({
       return (a.createdAt ?? 0) - (b.createdAt ?? 0);
     });
   }, [goals]);
+
+  const filteredGoals = useMemo(() => {
+    const search = query.trim().toLowerCase();
+    if (!search) return sortedGoals;
+    return sortedGoals.filter((goal) =>
+      goal.text.toLowerCase().includes(search) ||
+      (goal.description?.toLowerCase().includes(search) ?? false)
+    );
+  }, [query, sortedGoals]);
+  const isSearching = query.trim().length > 0;
 
   const progressByGoal = useMemo(() => {
     const out = new Map<string, GoalProgress>();
@@ -789,6 +802,21 @@ export function GoalsScreen({
     </Animated.View>
   );
 
+  const noResultsBlock = (
+    <View style={styles.emptyWrap}>
+      <Text style={styles.emptyTitle}>No matching goals</Text>
+      <Text style={styles.emptyText}>Try another word or clear your search.</Text>
+      <Pressable
+        onPress={() => setQuery("")}
+        accessibilityRole="button"
+        accessibilityLabel="Clear goal search"
+        style={({ pressed }) => [styles.emptyAction, pressed && { opacity: 0.75 }]}
+      >
+        <Text style={styles.emptyActionText}>Clear search</Text>
+      </Pressable>
+    </View>
+  );
+
   // Content follows renderGoalId (survives close); visibility follows
   // selectedGoalId.
   const selectedGoal = sortedGoals.find((g) => g.id === renderGoalId) ?? null;
@@ -814,26 +842,43 @@ export function GoalsScreen({
           paddingTop: spacing.md,
           paddingBottom: tabBarHeight + 84,
         }}
-        data={sortedGoals}
+        data={filteredGoals}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         keyExtractor={(item) => item.id}
         ListHeaderComponent={
-          sortedGoals.length > 0 ? (
-            <View style={styles.listHeader}>
-              <Text style={styles.sectionMeta}>{`${sortedGoals.length} active`}</Text>
-              {onCreateGoal ? (
-                <Pressable
-                  onPress={onCreateGoal}
-                  accessibilityRole="button"
-                  accessibilityLabel="Create a new goal"
-                  style={({ pressed }) => [styles.newGoalAction, pressed && { opacity: 0.7 }]}
-                >
-                  <Text style={styles.actionText}>Add goal</Text>
-                </Pressable>
-              ) : null}
+          <View>
+            <View style={styles.searchWrap}>
+              <SearchField
+                compact
+                editable={isHydrated}
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Search goals"
+                placeholderTextColor={colors.textMuted}
+                accessibilityLabel="Search goals"
+              />
             </View>
-          ) : null
+            {sortedGoals.length > 0 ? (
+              <View style={styles.listHeader}>
+                <Text style={styles.sectionMeta}>
+                  {isSearching ? `${filteredGoals.length} of ${sortedGoals.length} goals` : `${sortedGoals.length} active`}
+                </Text>
+                {onCreateGoal ? (
+                  <Pressable
+                    onPress={onCreateGoal}
+                    accessibilityRole="button"
+                    accessibilityLabel="Create a new goal"
+                    style={({ pressed }) => [styles.newGoalAction, pressed && { opacity: 0.7 }]}
+                  >
+                    <Text style={styles.actionText}>Add goal</Text>
+                  </Pressable>
+                ) : null}
+            </View>
+          ) : null}
+          </View>
         }
-        ListEmptyComponent={isHydrated ? emptyBlock : <GoalsPageSkeleton />}
+        ListEmptyComponent={!isHydrated ? <GoalsPageSkeleton /> : isSearching ? noResultsBlock : emptyBlock}
         renderItem={({ item, index }) => {
           const progress = progressByGoal.get(item.id) ?? { total: 0, done: 0, ratio: 0 };
           const hasTasks = progress.total > 0;
@@ -954,6 +999,11 @@ export function GoalsScreen({
 }
 
 const styles = createThemedStyles({
+  searchWrap: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
   listHeader: {
     minHeight: 44,
     paddingHorizontal: spacing.lg,
