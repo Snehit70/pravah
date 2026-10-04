@@ -330,6 +330,7 @@ vi.mock("../components/ThemedTimePicker", () => ({
 }));
 
 import { EditTaskSheet, type EditTaskSheetRef } from "../components/EditTaskSheet";
+import { createTaskImageCoordinator, type TaskImageCoordinatorDependencies } from "../lib/taskImageCoordinator";
 import type { MobileTask } from "../components/TaskCard";
 import type { Id } from "../../../../convex/_generated/dataModel";
 
@@ -693,6 +694,89 @@ describe("EditTaskSheet compact workbench", () => {
       kind: "paste",
       source: { kind: "paste", uri: "file:///keyboard-image.png", previewUri: "file:///keyboard-image.png" },
     });
+  });
+
+  it("updates upload status from live collections while keeping the notes draft", async () => {
+    const task = {
+      ...timelineTask,
+      imageCollection: {
+        revision: 5,
+        observedAt: 1000,
+        active: [{ taskImageId: "image-pasted", position: 0, state: "uploading" as const }],
+        recoverable: [],
+      },
+    };
+    const ref = React.createRef<EditTaskSheetRef>();
+    const props = { ref, onSave: vi.fn(async () => true), isValidDeadline: (raw: string) => ({ value: raw }) };
+    const { rerender } = render(<EditTaskSheet {...props} imageCollections={new Map([["task1", task.imageCollection]])} />);
+    await open(ref, task);
+    expect(screen.getAllByText("Uploading image").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByLabelText("Edit task notes"));
+    fireEvent.change(screen.getByTestId("description-input"), { target: { value: "Unsaved notes" } });
+
+    rerender(<EditTaskSheet {...props} imageCollections={new Map([["task1", {
+      ...task.imageCollection,
+      active: [{ taskImageId: "image-pasted", position: 0, state: "failed", failure: { code: "network_error", retryable: true } }],
+    }]])} />);
+    await waitFor(() => expect(screen.queryAllByText("Uploading image")).toHaveLength(0));
+    expect(screen.getAllByText("Upload failed").length).toBeGreaterThan(0);
+    expect((screen.getByTestId("description-input") as HTMLTextAreaElement).value).toBe("Unsaved notes");
+  });
+
+  it("keeps a hidden upload running when closed and restores its preview and percentage", async () => {
+    let finishUpload!: (value: Awaited<ReturnType<TaskImageCoordinatorDependencies["upload"]>>) => void;
+    const uploaded = new Promise<Awaited<ReturnType<TaskImageCoordinatorDependencies["upload"]>>>((resolve) => { finishUpload = resolve; });
+    let reportProgress!: (progress: number) => void;
+    const coordinator = createTaskImageCoordinator({
+      createUploadId: () => "upl_mobile_1",
+      acquireSource: async () => ({ kind: "paste", uri: "file:///clipboard.png", previewUri: "file:///clipboard.png" }),
+      normalize: async () => ({ uri: "file:///normalized.png", previewUri: "file:///normalized.png", encodingClass: "png", width: 800, height: 600, bytes: 1000 }),
+      sourceStore: {
+        persist: async () => ({ sourceKey: "upl_mobile_1.png", uri: "file:///durable.png" }),
+        resolve: async () => "file:///durable.png",
+        remove: vi.fn(async () => undefined),
+      },
+      stage: async () => undefined,
+      issueGrant: async () => ({ uploadUrl: "https://upload.example", signature: "signature", apiKey: "key", signedParameters: {} }),
+      upload: async (_uri, _grant, options) => {
+        reportProgress = options!.onProgress;
+        reportProgress(0.42);
+        return uploaded;
+      },
+      verify: async () => ({ state: "verifying" }),
+    });
+    try {
+      const selected = await coordinator.select("paste");
+      coordinator.associateUploadsWithTask("task1", selected);
+      coordinator.associateTaskImageOrder("task1", ["image-pasted"]);
+      coordinator.clearAfterSaveAndStay(selected);
+      expect(coordinator.getViewStates()).toEqual([]);
+      const task: MobileTask = { ...timelineTask, imageCollection: {
+        revision: 5, observedAt: 1000,
+        active: [{ taskImageId: "image-pasted", position: 0, state: "uploading" }], recoverable: [],
+      } };
+      const { ref } = setup({ taskImageCoordinator: coordinator });
+      await open(ref, task);
+      let completion!: Promise<void>;
+      await act(async () => { completion = coordinator.beginUploadAfterSave(); });
+      expect(screen.getByText("Uploading · 42%")).toBeTruthy();
+
+      await act(async () => { ref.current?.close(); });
+      expect(screen.queryByText("Original task")).toBeNull();
+      expect(coordinator.getTaskImageViewStates("task1")[0].state).toBe("uploading");
+      await act(async () => { reportProgress(0.73); });
+      await open(ref, task);
+      expect(screen.getByAltText("Selected Task image preview").getAttribute("src")).toBe("file:///durable.png");
+      expect(screen.getByText("Uploading · 73%")).toBeTruthy();
+
+      await act(async () => {
+        finishUpload({ publicId: "provider-id", version: 1, signature: "signature", resourceType: "image", deliveryType: "authenticated", format: "png", width: 800, height: 600, bytes: 1000, eager: [] });
+        await completion;
+      });
+      expect(screen.getByText("Finishing upload…")).toBeTruthy();
+    } finally {
+      coordinator.dispose();
+    }
   });
 
   it("serializes rapid keyboard pastes with the revision returned by the previous attachment", async () => {

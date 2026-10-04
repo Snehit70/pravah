@@ -55,7 +55,7 @@ import NavInboxAsset from "../assets/icons/nav-inbox.svg";
 import { SearchField } from "./SearchField";
 import { addDays, dateLabel, getLocalDateString, humanDate, toIsoDate } from "../lib/dates";
 import { TaskImageFilmstrip, type TaskImageRetryState } from "./TaskImageFilmstrip";
-import type { AcquiredTaskImageSource, TaskImageSourceKind } from "../lib/taskImageCoordinator";
+import type { AcquiredTaskImageSource, TaskImageCoordinator, TaskImageSourceKind } from "../lib/taskImageCoordinator";
 import { TaskImagePasteInput } from "./TaskImagePasteInput";
 
 export type EditTaskSheetRef = {
@@ -85,6 +85,8 @@ type EditTaskSheetProps = {
   onUnschedule?: (taskId: Id<"tasks">) => void;
   onDelete?: (taskId: Id<"tasks">) => void;
   resolveTaskImage?: MobileTaskPropsImageResolver;
+  imageCollections?: ReadonlyMap<string, NonNullable<MobileTask["imageCollection"]>>;
+  taskImageCoordinator?: TaskImageCoordinator;
   onReorderTaskImages?: (args: {
     taskId: Id<"tasks">;
     orderedTaskImageIds: string[];
@@ -254,6 +256,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       onUnschedule,
       onDelete,
       resolveTaskImage,
+      imageCollections,
+      taskImageCoordinator,
       onReorderTaskImages,
       onCaptionTaskImage,
       onRemoveTaskImage,
@@ -298,6 +302,56 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const imageRevision = useRef<number | undefined>(undefined);
     const [screenTransition] = useState(() => new Animated.Value(1));
     const previousMode = useRef<SheetMode>("inspector");
+    const [uploadRevision, setUploadRevision] = useState(0);
+
+    useEffect(() => {
+      if (!visible || !taskImageCoordinator) return;
+      return taskImageCoordinator.subscribe(() => setUploadRevision((revision) => revision + 1));
+    }, [taskImageCoordinator, visible]);
+
+    const taskImages = useMemo(() => {
+      void uploadRevision;
+      const local = new Map(taskImageCoordinator?.getTaskImageViewStates(String(taskId))
+        .flatMap((image) => image.taskImageId ? [[image.taskImageId, image] as const] : []));
+      return (currentTask?.imageCollection?.active ?? []).map((image) => {
+        const upload = local.get(image.taskImageId);
+        if (!upload || image.state === "ready") return image;
+        return {
+          ...image,
+          state: upload.state,
+          previewUri: upload.previewUri ?? image.previewUri,
+          progress: upload.progress,
+          failure: upload.failure,
+        };
+      });
+    }, [currentTask?.imageCollection?.active, taskId, taskImageCoordinator, uploadRevision]);
+
+    useEffect(() => {
+      if (!visible || !taskId) return;
+      const collection = imageCollections?.get(String(taskId));
+      if (!collection || collection.revision < (imageRevision.current ?? 0)) return;
+      setCurrentTask((previous) => {
+        if (!previous || previous._id !== taskId) return previous;
+        if (collection.revision < (previous.imageCollection?.revision ?? 0)) return previous;
+        const previousImages = new Map(previous.imageCollection?.active.map((image) => [image.taskImageId, image]));
+        const withPreviews = {
+          ...collection,
+          active: collection.active.map((image) => {
+            const previewUri = image.previewUri ?? previousImages.get(image.taskImageId)?.previewUri;
+            return previewUri ? { ...image, previewUri } : image;
+          }),
+        };
+        const currentOrder = orderedTaskImageIds(previous.imageCollection);
+        const hasDraftOrder = currentOrder.join("\u0000") !== initialImageOrder.join("\u0000");
+        const next = hasDraftOrder ? mergeTaskImageOrder(withPreviews, currentOrder) : withPreviews;
+        imageRevision.current = collection.revision;
+        return { ...previous, imageCollection: { ...next, primary: next.active[0] } };
+      });
+      setInitialImageOrder((current) => {
+        const next = orderedTaskImageIds(collection);
+        return current.join("\u0000") === next.join("\u0000") ? current : next;
+      });
+    }, [imageCollections, initialImageOrder, taskId, visible]);
 
     const closeModal = useCallback(
       (notify = true) => {
@@ -494,7 +548,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           captionSessionRef.current += 1;
           activeTaskIdRef.current = task._id;
           imageMutationQueue.current = Promise.resolve();
-          imageRevision.current = undefined;
+          imageRevision.current = task.imageCollection?.revision;
           void goalLinksStore.hydrate().then(() => {
             if (openSeqRef.current !== seq) return;
             const currentGoalId = goalLinksStore.goalFor(String(task._id)) ?? null;
@@ -1034,7 +1088,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
               <Text style={styles.sectionLabel}>Visual reference</Text>
               <TaskImageFilmstrip
                 surface="edit"
-                images={currentTask.imageCollection?.active ?? []}
+                images={taskImages}
                 recoverable={currentTask.imageCollection?.recoverable ?? []}
                 resolveDelivery={resolveTaskImage}
                 onRetry={onRetryTaskImage

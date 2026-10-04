@@ -125,6 +125,7 @@ vi.mock("../components/UiIcons", () => {
     AlertCircleIcon: Icon,
     ChevronLeftIcon: Icon,
     ChevronRightIcon: Icon,
+    CheckIcon: Icon,
     CloseIcon: Icon,
     CopyIcon: Icon,
     GripHorizontalIcon: Icon,
@@ -173,6 +174,58 @@ import { TaskImageFilmstrip } from "../components/TaskImageFilmstrip";
 import { reorderTaskImagesByDrag } from "../lib/taskImageReorder";
 
 describe("TaskImageFilmstrip", () => {
+  it("shows upload percentage over the preview, then finishing and completion", async () => {
+    vi.useFakeTimers();
+    try {
+      const image = { taskImageId: "image-flow", position: 0, previewUri: "file:///durable.png" };
+      const resolveDelivery = vi.fn(async () => ({ kind: "ready" as const, url: "file:///library/image-flow.png" }));
+      const { rerender } = render(<TaskImageFilmstrip surface="edit" images={[{ ...image, state: "uploading", progress: 0.42 }]} resolveDelivery={resolveDelivery} />);
+      expect(screen.getByText("Uploading · 42%")).toBeTruthy();
+      expect(screen.getByText("42%")).toBeTruthy();
+      expect(screen.getByAltText("Selected Task image preview")).toBeTruthy();
+      expect(screen.getByText("You can close this task. Upload continues while you use Pravah.")).toBeTruthy();
+
+      rerender(<TaskImageFilmstrip surface="edit" images={[{ ...image, state: "verifying" }]} resolveDelivery={resolveDelivery} />);
+      expect(screen.getByText("Finishing upload…")).toBeTruthy();
+      expect(screen.queryByText("42%")).toBeNull();
+      rerender(<TaskImageFilmstrip surface="edit" images={[{ ...image, state: "ready" }]} resolveDelivery={resolveDelivery} />);
+      await act(async () => { await Promise.resolve(); });
+      expect(screen.getByText("Image uploaded")).toBeTruthy();
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_500); });
+      expect(screen.queryByText("Image uploaded")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("restores a local image after reopening while its upload is still running", async () => {
+    const resolveDelivery = vi.fn(async () => ({
+      kind: "ready" as const,
+      url: "file:///private/durable-paste.png",
+    }));
+    const { unmount } = render(
+      <TaskImageFilmstrip surface="edit" images={[{
+        taskImageId: "image-pasted", position: 0, state: "uploading",
+        previewUri: "file:///private/durable-paste.png",
+      }]} resolveDelivery={resolveDelivery} />,
+    );
+    expect(screen.getByAltText("Selected Task image preview")).toBeTruthy();
+    unmount();
+
+    render(<TaskImageFilmstrip surface="edit" images={[{
+      taskImageId: "image-pasted", position: 0, state: "uploading",
+    }]} resolveDelivery={resolveDelivery} />);
+
+    await waitFor(() => {
+      expect(screen.getByAltText("Selected Task image preview")).toBeTruthy();
+    });
+    expect(resolveDelivery).toHaveBeenCalledWith("image-pasted", "detail", { download: false });
+    // Keep the upload status below the image, rather than replacing the image.
+    expect(screen.queryAllByText("Uploading image")).toHaveLength(0);
+    expect(screen.getByText("Saved on this device")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open Task image 1" })).toBeTruthy();
+  });
+
   it("offers explicit Photos, Camera, and Paste actions with accessible names", () => {
     const onSelectSource = vi.fn();
     render(<TaskImageFilmstrip images={[]} onSelectSource={onSelectSource} />);

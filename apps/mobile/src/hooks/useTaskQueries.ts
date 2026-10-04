@@ -178,7 +178,7 @@ export function useTaskQueries({
   }, [queryRowsKey]);
 
   const imageCollections = useMemo(() => {
-    const map = new Map<string, MobileTask["imageCollection"]>();
+    const map = new Map<string, NonNullable<MobileTask["imageCollection"]>>();
     for (const item of (imageCollectionsQuery ?? []) as Array<{
       taskId: string;
       collection: NonNullable<MobileTask["imageCollection"]>;
@@ -293,6 +293,7 @@ export function useTaskQueries({
     isCompletedLoading,
     isAllTasksReady,
     isImageCollectionsReady,
+    imageCollections,
     retainedImageIds,
   };
 }

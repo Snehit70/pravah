@@ -4,6 +4,7 @@ import { Image } from "expo-image";
 import {
   AlertCircleIcon,
   ChevronRightIcon,
+  CheckIcon,
   CloseIcon,
   CopyIcon,
   GripHorizontalIcon,
@@ -103,6 +104,11 @@ const FAILURE_COPY: Record<string, string> = {
   variant_too_large: "The prepared image did not meet delivery limits.",
   source_unavailable: "The selected image is no longer available.",
   normalization_failed: "This image could not be prepared safely.",
+  network_error: "Upload interrupted. Try again when you're connected.",
+  upload_failed: "This image could not be uploaded. Try again.",
+  provider_unavailable: "The image service is unavailable. Try again shortly.",
+  authorization_failed: "Sign in again to upload this image.",
+  usage_blocked: "Image uploads are paused. Try again later.",
 };
 
 const PREPARATION_FAILURE_CODES = new Set([
@@ -156,6 +162,28 @@ function failureTitle(image: TaskImageFilmstripEntry) {
     : "Upload failed";
 }
 
+function uploadStatusCopy(image: TaskImageFilmstripEntry) {
+  if (isFailedImage(image)) {
+    let body = "Choose another image to try again.";
+    if (image.failure?.retryable) {
+      body = image.previewUri
+        ? "Your image is saved on this device. Try uploading again."
+        : "Your task is safe. Retry this image when ready.";
+    }
+    return { title: failureTitle(image), body };
+  }
+  if (image.state === "verifying") {
+    return { title: "Upload received", body: "Finishing up. You can close this task." };
+  }
+  if (image.state === "preparing") {
+    return { title: "Preparing image", body: "Saving a local copy of your image." };
+  }
+  return {
+    title: image.previewUri ? "Saved on this device" : "Upload in progress",
+    body: "You can close this task. Upload continues while you use Pravah.",
+  };
+}
+
 function isFailedImage(image: TaskImageFilmstripEntry) {
   return image.state === "failed" || (image.state === "verifying" && Boolean(image.failure));
 }
@@ -176,19 +204,61 @@ function statusLabel(image: TaskImageFilmstripEntry) {
     return `${Math.round(image.progress * 100)}%`;
   }
   if (isFailedImage(image)) return failureTitle(image);
-  if (image.state === "verifying") return image.previewUri ? "" : "Verifying";
+  if (image.state === "uploading") return "Uploading";
+  if (image.state === "verifying") return "Finishing";
   if (image.state === "preparing") return "Preparing";
   return "";
 }
 
 function StatusMark({ image, compact = false }: { image: TaskImageFilmstripEntry; compact?: boolean }) {
+  const [completion, setCompletion] = useState({ state: image.state, visible: false });
+  if (completion.state !== image.state) {
+    setCompletion({ state: image.state, visible: image.state === "ready" });
+  }
+  useEffect(() => {
+    if (!completion.visible) return;
+    const timer = setTimeout(() => setCompletion((current) => ({ ...current, visible: false })), 2_500);
+    return () => clearTimeout(timer);
+  }, [completion.visible]);
+  if (image.state === "ready" && completion.visible) {
+    return (
+      <View style={[styles.statusMark, styles.statusSuccess]} accessibilityLabel="Image uploaded" accessibilityLiveRegion="polite">
+        <CheckIcon color={colors.textInverse} size={compact ? 13 : 16} />
+        {!compact ? <Text style={[styles.statusMarkText, styles.statusSuccessText]}>Image uploaded</Text> : null}
+      </View>
+    );
+  }
   const label = statusLabel(image);
   if (!label) return null;
-  const failed = image.state === "failed";
+  const failed = isFailedImage(image);
+  const percentage = image.state === "uploading" && image.progress !== undefined
+    ? Math.round(Math.max(0, Math.min(1, image.progress)) * 100)
+    : undefined;
+  if (!compact && !failed) {
+    const title = image.state === "uploading"
+      ? `Uploading${percentage === undefined ? "…" : ` · ${percentage}%`}`
+      : image.state === "verifying" ? "Finishing upload…" : "Preparing image…";
+    return (
+      <View
+        style={styles.uploadOverlay}
+        accessible
+        accessibilityRole="progressbar"
+        accessibilityLabel={title}
+        accessibilityValue={percentage === undefined ? { text: title } : { min: 0, max: 100, now: percentage }}
+      >
+        <Text style={styles.uploadOverlayText}>{title}</Text>
+        {percentage !== undefined ? (
+          <View style={styles.uploadTrack}>
+            <View style={[styles.uploadFill, { width: `${percentage}%` }]} />
+          </View>
+        ) : null}
+      </View>
+    );
+  }
   return (
     <View style={[styles.statusMark, compact && styles.statusMarkCompact, failed ? styles.statusFailed : styles.statusUploading]}>
       {failed ? <AlertCircleIcon color={colors.error} size={compact ? 13 : 16} /> : null}
-      <Text style={[styles.statusMarkText, failed && styles.statusFailedText]}>{label}</Text>
+      <Text numberOfLines={1} style={[styles.statusMarkText, failed && styles.statusFailedText]}>{compact && failed ? "Failed" : label}</Text>
     </View>
   );
 }
@@ -341,6 +411,7 @@ function ImagePreview({
   download = true,
   style,
   showStatus = true,
+  compactStatus = true,
   accessibilityLabel,
   onPress,
   onPressLabel,
@@ -351,6 +422,7 @@ function ImagePreview({
   download?: boolean;
   style?: object;
   showStatus?: boolean;
+  compactStatus?: boolean;
   accessibilityLabel?: string;
   onPress?: () => void;
   onPressLabel?: string;
@@ -364,7 +436,7 @@ function ImagePreview({
       ) : (
         <Text style={styles.stateText}>{stateCopy(image)}</Text>
       )}
-      {showStatus ? <StatusMark image={image} compact /> : null}
+      {showStatus ? <StatusMark key={image.taskImageId} image={image} compact={compactStatus} /> : null}
     </>
   );
   if (!onPress) return <View style={[styles.photoFrame, style]}>{content}</View>;
@@ -569,6 +641,7 @@ function EditSurface({
     setSelectedIndex((current) => Math.min(current, Math.max(0, images.length - 2)));
   };
   const selectedCaption = captionDrafts[selected.taskImageId] ?? selected.caption ?? "";
+  const uploadStatus = uploadStatusCopy(selected);
 
   return (
     <View style={styles.editSurface}>
@@ -577,6 +650,7 @@ function EditSurface({
         resolveDelivery={resolveDelivery}
         variant="detail"
         style={styles.editHero}
+        compactStatus={false}
         onPress={onOpenImage && hasTaskImageVisual(selected) ? () => onOpenImage(selected.taskImageId) : undefined}
         onPressLabel={`Open Task image ${activeSelectedIndex + 1}`}
       />
@@ -645,8 +719,8 @@ function EditSurface({
           <View style={styles.statusPanelCopy}>
             {isFailedImage(selected) ? <AlertCircleIcon color={colors.error} size={18} /> : null}
             <View>
-              <Text style={styles.statusPanelTitle}>{isFailedImage(selected) ? failureTitle(selected) : `${stateCopy(selected)}${selected.progress !== undefined ? ` · ${Math.round(selected.progress * 100)}%` : ""}`}</Text>
-              <Text style={styles.statusPanelBody}>{isFailedImage(selected) ? "The Task is safe. Retry this image when ready." : "You can leave this screen while it finishes."}</Text>
+              <Text style={styles.statusPanelTitle}>{uploadStatus.title}</Text>
+              <Text style={styles.statusPanelBody}>{uploadStatus.body}</Text>
             </View>
           </View>
           {isFailedImage(selected) && selected.failure?.retryable && onRetry ? <Pressable accessibilityRole="button" accessibilityLabel="Retry Task image" onPress={() => onRetry(selected.taskImageId)} style={styles.retryButton}><RetryArrowIcon color={colors.error} size={16} /><Text style={styles.retryText}>Retry</Text></Pressable> : null}
@@ -719,6 +793,7 @@ function ManagementSurface({
             image={image}
             resolveDelivery={resolveDelivery}
             variant="card"
+            compactStatus={false}
             onPress={onOpenImage && hasTaskImageVisual(image) ? () => onOpenImage(image.taskImageId) : undefined}
             onPressLabel={`Open Task image ${index + 1}`}
           />
@@ -738,7 +813,30 @@ function ManagementSurface({
 }
 
 export function TaskImageFilmstrip({ surface = "management", images, ...props }: TaskImageFilmstripProps) {
-  const ordered = [...images].sort((left, right) => left.position - right.position);
+  const [localPreviews, setLocalPreviews] = useState<Record<string, string>>({});
+  const { resolveDelivery } = props;
+  useEffect(() => {
+    if (!resolveDelivery) return;
+    let active = true;
+    const missing = images.filter((image) => !image.previewUri && image.state !== "ready");
+    void Promise.all(missing.map(async (image) => {
+      const delivery = await resolveDelivery(image.taskImageId, "detail", { download: false }).catch(() => null);
+      return delivery?.kind === "ready" ? [image.taskImageId, delivery.url] as const : null;
+    })).then((resolved) => {
+      if (!active) return;
+      const next = Object.fromEntries(resolved.filter((entry) => entry !== null));
+      setLocalPreviews((previous) => {
+        const ids = Object.keys(next);
+        return ids.length === Object.keys(previous).length && ids.every((id) => next[id] === previous[id])
+          ? previous : next;
+      });
+    });
+    return () => { active = false; };
+  }, [images, resolveDelivery]);
+  const ordered = images.map((image) => {
+    const previewUri = image.previewUri ?? localPreviews[image.taskImageId];
+    return previewUri ? { ...image, previewUri } : image;
+  }).sort((left, right) => left.position - right.position);
   const { onSelectSource } = props;
   const [viewer, setViewer] = useState<{ images: TaskImageFilmstripEntry[]; initialIndex: number } | null>(null);
   const openViewer = useCallback((taskImageId: string) => {
@@ -778,9 +876,15 @@ const styles = createThemedStyles({
   stateText: { ...typography.micro, color: colors.textSecondary, padding: spacing.md },
   statusMark: { position: "absolute", right: spacing.xs, bottom: spacing.xs, flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 6, paddingVertical: 3, borderRadius: radii.sm },
   statusMarkCompact: { paddingHorizontal: 5, paddingVertical: 2 },
-  statusUploading: { backgroundColor: "rgba(32,25,20,0.74)" },
-  statusFailed: { backgroundColor: "rgba(255,250,242,0.94)" },
-  statusMarkText: { fontFamily: "GeistMono_500Medium", fontSize: 9, color: colors.textInverse },
+  statusUploading: { backgroundColor: colors.bgFloating },
+  statusFailed: { backgroundColor: colors.bgFloating },
+  statusSuccess: { backgroundColor: colors.success },
+  statusMarkText: { fontFamily: "GeistMono_500Medium", fontSize: 9, color: colors.textPrimary },
+  statusSuccessText: { color: colors.textInverse },
+  uploadOverlay: { position: "absolute", left: spacing.md, right: spacing.md, bottom: spacing.md, padding: spacing.md, gap: spacing.sm, borderRadius: radii.md, backgroundColor: colors.bgFloating },
+  uploadOverlayText: { fontFamily: "Geist_600SemiBold", fontSize: 14, color: colors.textPrimary },
+  uploadTrack: { height: 3, width: "100%", borderRadius: radii.full, overflow: "hidden", backgroundColor: colors.border },
+  uploadFill: { height: "100%", backgroundColor: colors.accent, borderRadius: radii.full },
   statusFailedText: { color: colors.error },
   sectionHeaderRow: { marginTop: spacing.lg, marginBottom: spacing.sm, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   sectionLabel: { ...typography.micro, color: colors.textMuted },

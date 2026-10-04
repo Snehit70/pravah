@@ -670,7 +670,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     }
   };
 
-  const ensureHydrated = async () => {
+  const hydrateManifest = async () => {
     if (hydrated) return;
     hydrated = true;
     const ownerScope = dependencies.ownerScope?.();
@@ -746,6 +746,11 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     notify();
   };
 
+  // Preview reads and foreground reconciliation can start together. Every
+  // caller must wait until the manifest has finished loading.
+  let hydration: Promise<void> | undefined;
+  const ensureHydrated = () => hydration ??= hydrateManifest();
+
   return {
     async hydrate() {
       await ensureHydrated();
@@ -810,7 +815,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
               if (batchGeneration !== selectionGeneration) continue;
               Object.assign(entry, {
                 state: "pending" as const,
-                previewUri: normalized.previewUri,
+                previewUri: dependencies.sourceStore ? durable.uri : normalized.previewUri,
                 normalized,
                 sourceKey: durable.sourceKey,
                 sourceUri: durable.uri,
@@ -877,7 +882,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         }
         Object.assign(nextRecord, {
           state: "pending" as const,
-          previewUri: normalized.previewUri,
+          previewUri: dependencies.sourceStore ? durable.uri : normalized.previewUri,
           normalized,
           sourceKey: durable.sourceKey,
           sourceUri: durable.uri,
@@ -918,6 +923,22 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         const entry = records.get(uploadId);
         return entry ? [viewState(entry)] : [];
       });
+    },
+
+    getTaskImageViewStates(taskId: string) {
+      return [...records.values()]
+        .filter((entry) => entry.taskId === taskId && !entry.paused && !entry.recoverablyRemoved)
+        .map(viewState);
+    },
+
+    async resolveLocalTaskImage(taskImageId: string): Promise<string | null> {
+      await ensureHydrated();
+      const entry = [...records.values()].find((record) => record.taskImageId === taskImageId);
+      if (!entry || entry.paused || entry.recoverablyRemoved) return null;
+      if (entry.sourceKey && dependencies.sourceStore) {
+        return dependencies.sourceStore.resolve(entry.sourceKey).catch(() => null);
+      }
+      return entry.sourceUri ?? null;
     },
 
     getLastError() {

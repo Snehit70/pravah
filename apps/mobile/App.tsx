@@ -300,6 +300,7 @@ function MobileApp() {
     isCompletedLoading,
     isAllTasksReady,
     isImageCollectionsReady,
+    imageCollections,
     retainedImageIds,
   } = useTaskQueries({
     isAuthenticated: Boolean(session),
@@ -459,7 +460,13 @@ function MobileApp() {
     ]
   );
   const taskImageByteStore = useMemo(() => ({
-    read: readLocalTaskImage,
+    read: async (taskImageId: string) => {
+      const local = await readLocalTaskImage(taskImageId);
+      if (local) return local;
+      const staged = await taskImageCoordinator.resolveLocalTaskImage(taskImageId);
+      // Hydration may have archived a completed upload into the library.
+      return staged ?? readLocalTaskImage(taskImageId);
+    },
     writeFromFile: async (taskImageId: string, sourceUri: string) => {
       const stored = await writeLocalTaskImage(taskImageId, sourceUri);
       if (stored) {
@@ -482,7 +489,7 @@ function MobileApp() {
       }
       return stored;
     },
-  }), []);
+  }), [taskImageCoordinator]);
   const resolveTaskImage = useCallback(
     (taskImageId: string, variant: "card" | "detail", options?: { download?: boolean }) =>
       resolveTaskImageBytes({
@@ -1641,6 +1648,8 @@ function MobileApp() {
         onUnschedule={sendToInbox}
         onDelete={deleteTaskWithImagePause}
         resolveTaskImage={resolveTaskImage}
+        imageCollections={imageCollections}
+        taskImageCoordinator={taskImageCoordinator}
         onReorderTaskImages={({ taskId, orderedTaskImageIds, expectedRevision }) => {
           return reorderTaskImagesMutation({
             taskId,
