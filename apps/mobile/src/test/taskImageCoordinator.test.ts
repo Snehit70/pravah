@@ -14,6 +14,34 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+describe("keyboard image insertion", () => {
+  it("normalizes the exact image supplied by the keyboard without reading the clipboard", async () => {
+    const dependencies = createDependencies();
+    const coordinator = createTaskImageCoordinator(dependencies);
+    const source = { kind: "paste" as const, uri: "file:///keyboard-image.png", previewUri: "file:///keyboard-image.png" };
+    await coordinator.select("paste", 5, source);
+    expect(dependencies.acquireSource).not.toHaveBeenCalled();
+    expect(dependencies.normalize).toHaveBeenCalledWith(source);
+    expect(coordinator.getViewState()?.state).toBe("pending");
+  });
+
+  it("drops a keyboard image if the capture is discarded while its source is being persisted", async () => {
+    const dependencies = createDependencies();
+    const persisted = deferred<{ sourceKey: string; uri: string }>();
+    const remove = vi.fn(async () => undefined);
+    dependencies.sourceStore = { persist: vi.fn(() => persisted.promise), remove, resolve: vi.fn(async () => null) };
+    const coordinator = createTaskImageCoordinator(dependencies);
+    const selection = coordinator.select("paste", 5, { kind: "paste", uri: "file:///keyboard.png", previewUri: "file:///keyboard.png" });
+    await vi.waitFor(() => expect(dependencies.sourceStore?.persist).toHaveBeenCalled());
+    coordinator.discard();
+    persisted.resolve({ sourceKey: "discarded-image", uri: "file:///durable.png" });
+    await selection;
+    expect(dependencies.stage).not.toHaveBeenCalled();
+    expect(remove).toHaveBeenCalledWith("discarded-image");
+    expect(coordinator.getViewStates()).toEqual([]);
+  });
+});
+
 function createDependencies(): TaskImageCoordinatorDependencies {
   return {
     createUploadId: vi.fn(() => "upl_mobile_1"),
