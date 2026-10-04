@@ -76,3 +76,24 @@ Native validation from `apps/mobile/android`:
 On the phone, validate Capture and an existing Task through title and Notes:
 image preview, upload completion, text paste, image-limit feedback, and closing
 or switching while an image is being prepared.
+
+## Review and verification
+
+- The updated debug APK was installed on the attached Android 13 phone, and
+  the user confirmed that keyboard image paste works.
+- All 626 mobile tests pass. New regressions cover overlapping selections,
+  source cleanup during staging, serialized attachment revisions, and switching
+  Tasks before an attachment finishes. The overlapping-selection and staging
+  cleanup checks failed before the review fixes and passed afterward.
+- Each selection returns its own upload IDs. Saving or failing an attachment
+  clears only those IDs, preserving images being prepared by another selection.
+  Attachments and caption edits share a per-Task mutation queue.
+- Native cache files remain owned during coroutine cancellation and are cleaned
+  up on release or module destruction. The revised APK built successfully with
+  572 Gradle tasks already up to date and was installed without wiping app data.
+- Local Expo module changes are classified as requiring a native release, even
+  if a supplied fingerprint unexpectedly matches an earlier runtime.
+- Physical-device checks also confirmed Goals search result counts and the
+  no-match state. Upload recovery, normalization limits, and collection mutations
+  are covered by automated tests; this verification did not create personal
+  Tasks or change their completion state.
