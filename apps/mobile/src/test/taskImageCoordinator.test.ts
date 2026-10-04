@@ -15,6 +15,36 @@ function deferred<T>() {
 }
 
 describe("keyboard image insertion", () => {
+  it("restores hidden staged images and waits for concurrent preview hydration", async () => {
+    const loaded = deferred<unknown>();
+    const manifestStore = {
+      load: vi.fn(() => loaded.promise),
+      save: vi.fn(async () => undefined),
+    };
+    const sourceStore = {
+      persist: vi.fn(async () => ({ sourceKey: "upl_mobile_1.png", uri: "file:///durable.png" })),
+      resolve: vi.fn(async () => "file:///durable.png"),
+      remove: vi.fn(async () => undefined),
+    };
+    const coordinator = createTaskImageCoordinator({
+      ...createDependencies(), manifestStore, sourceStore, ownerScope: () => "owner-a",
+    });
+    const hero = coordinator.resolveLocalTaskImage("image_1");
+    const thumbnail = coordinator.resolveLocalTaskImage("image_1");
+    loaded.resolve({ version: 2, visibleUploadIds: [], uploads: [{
+      uploadId: "upl_mobile_1", taskId: "task_1", taskImageId: "image_1",
+      state: "uploading", sourceKey: "upl_mobile_1.png", attempt: 1,
+      retryCount: 0, needsReconciliation: false, paused: false,
+    }] });
+    await expect(Promise.all([hero, thumbnail])).resolves.toEqual(["file:///durable.png", "file:///durable.png"]);
+    expect(manifestStore.load).toHaveBeenCalledTimes(1);
+    expect(coordinator.getViewStates()).toEqual([]);
+    expect(coordinator.getTaskImageViewStates("task_1")).toMatchObject([{ taskImageId: "image_1", state: "pending" }]);
+    expect(coordinator.pauseTaskImageUpload("task_1", "image_1")).toBe(true);
+    await expect(coordinator.resolveLocalTaskImage("image_1")).resolves.toBeNull();
+    expect(coordinator.getTaskImageViewStates("task_1")).toEqual([]);
+  });
+
   it("returns only the uploads from each overlapping selection and clears only the saved selection", async () => {
     const dependencies = createDependencies();
     let nextId = 0;
