@@ -50,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   authHelpers: typeof authHelpers;
   automation: typeof automation;
+  automationCredentialUsage: typeof automationCredentialUsage;
   automationHttpAuth: typeof automationHttpAuth;
   automationIdempotency: typeof automationIdempotency;
   automationOperations: typeof automationOperations;
@@ -64,6 +65,7 @@ declare const fullApi: ApiFromModules<{
   mobileReleases: typeof mobileReleases;
   origins: typeof origins;
   overdueReflow: typeof overdueReflow;
+  ownerConvexToken: typeof ownerConvexToken;
   sync: typeof sync;
   syncActions: typeof syncActions;
   taskImageActions: typeof taskImageActions;

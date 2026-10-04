@@ -104,9 +104,12 @@
     },
     "packages/cli": {
       "name": "pravah",
-      "version": "2.2.0",
+      "version": "2.5.0",
       "bin": {
         "pravah": "./dist/pravah.js",
+      },
+      "devDependencies": {
+        "convex": "^1.34.1",
       },
     },
   },
