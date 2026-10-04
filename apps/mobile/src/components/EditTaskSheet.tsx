@@ -16,12 +16,10 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { BlurView } from "expo-blur";
-import * as Clipboard from "expo-clipboard";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { haptic } from "../lib/haptic";
 import { colors, radii, spacing, typography } from "../theme/tokens";
@@ -57,7 +55,8 @@ import NavInboxAsset from "../assets/icons/nav-inbox.svg";
 import { SearchField } from "./SearchField";
 import { addDays, dateLabel, getLocalDateString, humanDate, toIsoDate } from "../lib/dates";
 import { TaskImageFilmstrip, type TaskImageRetryState } from "./TaskImageFilmstrip";
-import type { TaskImageSourceKind } from "../lib/taskImageCoordinator";
+import type { AcquiredTaskImageSource, TaskImageSourceKind } from "../lib/taskImageCoordinator";
+import { TaskImagePasteInput } from "./TaskImagePasteInput";
 
 export type EditTaskSheetRef = {
   open: (task: MobileTask) => void;
@@ -114,6 +113,7 @@ type EditTaskSheetProps = {
     taskId: Id<"tasks">;
     expectedRevision: number;
     kind: TaskImageSourceKind;
+    source?: AcquiredTaskImageSource;
   }) => TaskImageCollectionMutationResult | Promise<TaskImageCollectionMutationResult | undefined> | undefined;
   onRetryTaskImage?: (args: {
     taskId: Id<"tasks">;
@@ -294,7 +294,6 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const [overflowOpen, setOverflowOpen] = useState(false);
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [showTimePicker, setShowTimePicker] = useState(false);
-    const clipboardPasteInFlight = useRef(false);
     const captionSaveQueue = useRef<Promise<void>>(Promise.resolve());
     const captionRevision = useRef<number | undefined>(undefined);
     const [screenTransition] = useState(() => new Animated.Value(1));
@@ -350,15 +349,22 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       return goals.filter((goal) => goal.text.toLocaleLowerCase().includes(query));
     }, [goalQuery, goals]);
 
-    const attachTaskImage = useCallback(async (kind: TaskImageSourceKind) => {
+    const attachTaskImage = useCallback(async (kind: TaskImageSourceKind, source?: AcquiredTaskImageSource) => {
       if (!currentTask || !onSelectTaskImage || isTaskCompleted(currentTask)) return;
+      const session = captionSessionRef.current;
+      const sourceTaskId = currentTask._id;
       const localOrder = orderedTaskImageIds(currentTask.imageCollection);
       const result = await onSelectTaskImage({
         taskId: currentTask._id,
         expectedRevision: currentTask.imageCollection?.revision ?? 0,
         kind,
+        ...(source ? { source } : {}),
       });
-      if (!result) return;
+      if (!result || session !== captionSessionRef.current || activeTaskIdRef.current !== sourceTaskId) return;
+      if (result.stale) {
+        setError("Task images changed. Please try again.");
+        return;
+      }
       const { stale: _, ...imageCollection } = result;
       const previousById = new Map(
         (currentTask.imageCollection?.active ?? []).map((image) => [image.taskImageId, image])
@@ -375,6 +381,11 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       setCurrentTask((previous) => previous ? { ...previous, imageCollection: mergedCollection } : previous);
       setInitialImageOrder(orderedTaskImageIds(imageCollection));
     }, [currentTask, onSelectTaskImage]);
+
+    const pasteTaskImage = useCallback(async (source: AcquiredTaskImageSource) => {
+      setError(null);
+      await attachTaskImage("paste", source);
+    }, [attachTaskImage]);
 
     const saveTaskImageCaption = useCallback((taskImageId: string, caption: string) => {
       const sessionToken = captionSessionRef.current;
@@ -402,21 +413,6 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         if (isCurrentSession()) setError("Couldn’t update Task image. Try again.");
       });
     }, [currentTask?.imageCollection?.revision, onCaptionTaskImage]);
-
-    useEffect(() => {
-      if (!visible || (!titleEditing && !notesEditing) || !onSelectTaskImage || !currentTask || isTaskCompleted(currentTask)) {
-        return;
-      }
-
-      const subscription = Clipboard.addClipboardListener(({ contentTypes }) => {
-        if (!contentTypes.includes(Clipboard.ContentType.IMAGE) || clipboardPasteInFlight.current) return;
-        clipboardPasteInFlight.current = true;
-        void attachTaskImage("paste").finally(() => {
-          clipboardPasteInFlight.current = false;
-        });
-      });
-      return () => subscription.remove();
-    }, [attachTaskImage, currentTask, notesEditing, onSelectTaskImage, titleEditing, visible]);
 
     useEffect(() => {
       if (previousMode.current === mode) return;
@@ -950,7 +946,11 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         >
           <View style={styles.titleBlock}>
             {titleEditing && !completed ? (
-              <TextInput
+              <TaskImagePasteInput
+                imagePasteEnabled={visible && !saving && !!onSelectTaskImage}
+                pasteSession={taskId ?? undefined}
+                onPasteImage={pasteTaskImage}
+                onPasteError={setError}
                 value={title}
                 onChangeText={(value) => {
                   setTitle(value);
@@ -985,7 +985,11 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           <View style={styles.notesSection}>
             <Text style={styles.sectionLabel}>Notes</Text>
             {notesEditing && !completed ? (
-              <TextInput
+              <TaskImagePasteInput
+                imagePasteEnabled={visible && !saving && !!onSelectTaskImage}
+                pasteSession={taskId ?? undefined}
+                onPasteImage={pasteTaskImage}
+                onPasteError={setError}
                 value={description}
                 onChangeText={setDescription}
                 placeholder="Add notes"

@@ -751,7 +751,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       await ensureHydrated();
     },
 
-    async select(kind: TaskImageSourceKind, availableSlots: number = MAX_TASK_IMAGE_COUNT) {
+    async select(kind: TaskImageSourceKind, availableSlots: number = MAX_TASK_IMAGE_COUNT, suppliedSource?: AcquiredTaskImageSource) {
       await ensureHydrated();
       const limit = Math.max(0, Math.min(MAX_TASK_IMAGE_COUNT, availableSlots));
       if (limit === 0 || visibleUploadIds.length >= limit) {
@@ -759,7 +759,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         notify();
         return;
       }
-      if (kind === "photos" && dependencies.acquireSources) {
+      if (!suppliedSource && kind === "photos" && dependencies.acquireSources) {
         try {
           const batchGeneration = selectionGeneration;
           const remaining = limit - visibleUploadIds.length;
@@ -841,7 +841,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       lastError = undefined;
       notify();
       try {
-        const source = await dependencies.acquireSource(kind);
+        const source = suppliedSource ?? await dependencies.acquireSource(kind);
         if (!records.has(uploadId)) return;
         nextRecord.previewUri = source.previewUri;
         const normalized = await dependencies.normalize(source);
@@ -849,6 +849,12 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         const durable = dependencies.sourceStore
           ? await dependencies.sourceStore.persist(uploadId, normalized)
           : { sourceKey: undefined, uri: normalized.uri };
+        if (!records.has(uploadId)) {
+          if (durable.sourceKey && dependencies.sourceStore) {
+            await dependencies.sourceStore.remove(durable.sourceKey).catch(() => undefined);
+          }
+          return;
+        }
         await dependencies.stage({
           uploadId,
           encodingClass: normalized.encodingClass,
@@ -856,6 +862,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
           height: normalized.height,
           bytes: normalized.bytes,
         });
+        if (!records.has(uploadId)) return;
         Object.assign(nextRecord, {
           state: "pending" as const,
           previewUri: normalized.previewUri,

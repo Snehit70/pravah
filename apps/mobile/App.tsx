@@ -1704,7 +1704,7 @@ function MobileApp() {
             return result;
           });
         }}
-        onSelectTaskImage={({ taskId, expectedRevision, kind }) => {
+        onSelectTaskImage={({ taskId, expectedRevision, kind, source }) => {
           const beforeUploadIds = new Set(
             taskImageCoordinator.getViewStates().map((image) => image.uploadId)
           );
@@ -1712,7 +1712,7 @@ function MobileApp() {
             try {
               const existingCount = workspaceTaskCorpus.find((task) => String(task._id) === String(taskId))?.imageCollection?.active.length ?? 0;
               const availableSlots = Math.max(0, 5 - existingCount);
-              await taskImageCoordinator.select(kind, availableSlots);
+              await taskImageCoordinator.select(kind, availableSlots, source);
               const newUploads = taskImageCoordinator
                 .getViewStates()
                 .filter((image) => !beforeUploadIds.has(image.uploadId));
@@ -1722,6 +1722,8 @@ function MobileApp() {
               );
               if (selected.length === 0) {
                 taskImageCoordinator.discardUploads(newUploads.map((image) => image.uploadId));
+                const sourceError = taskImageCoordinator.getLastError();
+                if (sourceError) showToast({ kind: "error", message: sourceError });
                 return undefined;
               }
               const result = await addTaskImagesMutation({
