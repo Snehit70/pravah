@@ -16,18 +16,27 @@ const { FakeConvexClient } = vi.hoisted(() => {
     static instances: FakeConvexClient[] = [];
 
     readonly url: string;
-    authFetcher: (() => Promise<string>) | null = null;
+    authFetcher: ((options?: { forceRefreshToken: boolean }) => Promise<string | null>) | null = null;
+    authChange: ((authenticated: boolean) => void) | null = null;
+    static authenticateOnSetup = true;
     subscriptions: Subscription[] = [];
     closed = false;
     onUpdateCalls = 0;
+    connected = true;
+
+    connectionState() {
+      return { isWebSocketConnected: this.connected };
+    }
 
     constructor(url: string) {
       this.url = url;
       FakeConvexClient.instances.push(this);
     }
 
-    setAuth(fetcher: () => Promise<string>) {
-      this.authFetcher = fetcher;
+    setAuth(fetcher: (options: { forceRefreshToken: boolean }) => Promise<string | null>, onChange?: (authenticated: boolean) => void) {
+      this.authFetcher = (options = { forceRefreshToken: false }) => fetcher(options);
+      this.authChange = onChange ?? null;
+      if (FakeConvexClient.authenticateOnSetup) onChange?.(true);
     }
 
     onUpdate(
@@ -113,6 +122,7 @@ describe("runWatch", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     FakeConvexClient.instances = [];
+    FakeConvexClient.authenticateOnSetup = true;
     tokenCalls = [];
     snapshots = [];
     logs = [];
@@ -243,6 +253,51 @@ describe("runWatch", () => {
     expect(snapshots).toHaveLength(1);
   });
 
+  it("stops refreshing cached data while disconnected and resumes after reconnecting", async () => {
+    const handle = await start();
+    for (const [name, value] of [
+      ["tasks:listBoardTasks", BOARD],
+      ["tasks:listTodayCompletedTasks", DONE],
+      ["goals:list", GOALS],
+      ["goals:listLinks", LINKS],
+    ] as const) client().named(name)[0]!.onValue(value);
+    expect(snapshots).toHaveLength(1);
+
+    client().connected = false;
+    clock += 11 * 60 * 1000;
+    vi.advanceTimersByTime(11 * 60 * 1000);
+    expect(snapshots).toHaveLength(1);
+    expect(clock - snapshots[0]!.generatedAt).toBeGreaterThan(10 * 60 * 1000);
+
+    client().connected = true;
+    vi.advanceTimersByTime(60 * 1000);
+    expect(snapshots).toHaveLength(2);
+    expect(snapshots[1]!.generatedAt).toBe(clock);
+    await handle.close();
+  });
+
+  it("stops healthy heartbeats once the retained token expires after a failed refresh", async () => {
+    const handle = await start();
+    for (const [name, value] of [
+      ["tasks:listBoardTasks", BOARD],
+      ["tasks:listTodayCompletedTasks", DONE],
+      ["goals:list", GOALS],
+      ["goals:listLinks", LINKS],
+    ] as const) client().named(name)[0]!.onValue(value);
+    clock = tokenCalls[0]!.expiresAt;
+    respondWithStatus(503);
+    await client().authFetcher!();
+    vi.advanceTimersByTime(60 * 1000);
+    expect(snapshots).toHaveLength(1);
+
+    respondWithToken("token-2", clock + 15 * 60 * 1000);
+    await client().authFetcher!();
+    client().authChange!(true);
+    vi.advanceTimersByTime(60 * 1000);
+    expect(snapshots).toHaveLength(2);
+    await handle.close();
+  });
+
   it("marks the snapshot degraded on subscription error and withholds heartbeats until fresh results", async () => {
     await start();
     for (const [name, value] of [
@@ -316,12 +371,45 @@ describe("runWatch", () => {
     expect(tokenCalls).toHaveLength(2);
   });
 
-  it("keeps the current token when a refresh fails, so the socket survives", async () => {
+  it("honors a forced token refresh even far before expiry", async () => {
     await start();
+    respondWithToken("token-2", clock + 15 * 60 * 1000);
+    expect(await client().authFetcher!({ forceRefreshToken: true })).toBe("token-2");
+    expect(tokenCalls).toHaveLength(2);
+  });
+
+  it("reports transient refresh failure for restart rather than returning a cached token", async () => {
+    const authErrors: Error[] = [];
+    await start({ onAuthError: (error) => authErrors.push(error) });
     const fetchToken = client().authFetcher!;
     clock = tokenCalls[0]!.expiresAt - 30 * 1000;
     respondWithStatus(503);
-    expect(await fetchToken()).toBe("token-1");
+    expect(await fetchToken()).toBeNull();
+    expect(authErrors).toHaveLength(1);
+    expect(authErrors[0]!.message).toContain("restart");
+  });
+
+  it("withholds publication before authentication and after the SDK rejects it", async () => {
+    FakeConvexClient.authenticateOnSetup = false;
+    const authErrors: Error[] = [];
+    const handle = await start({ onAuthError: (error) => authErrors.push(error) });
+    for (const [name, value] of [
+      ["tasks:listBoardTasks", BOARD],
+      ["tasks:listTodayCompletedTasks", DONE],
+      ["goals:list", GOALS],
+      ["goals:listLinks", LINKS],
+    ] as const) client().named(name)[0]!.onValue(value);
+    vi.advanceTimersByTime(60 * 1000);
+    expect(snapshots).toHaveLength(0);
+    client().authChange!(true);
+    vi.advanceTimersByTime(60 * 1000);
+    expect(snapshots).toHaveLength(1);
+    client().authChange!(false);
+    client().authChange!(false);
+    vi.advanceTimersByTime(60 * 1000);
+    expect(snapshots).toHaveLength(1);
+    expect(authErrors).toHaveLength(1);
+    await handle.close();
   });
 
   it("reports a revoked credential without throwing from the callback", async () => {

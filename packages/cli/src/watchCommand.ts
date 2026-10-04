@@ -155,8 +155,8 @@ export async function runWatchCommand(args: ParsedArgs): Promise<void> {
       siteUrl: credential.siteUrl,
       bearerToken: credential.secret,
       onSnapshot,
-      // A revoked credential cannot be recovered from mid-subscription, so stop
-      // with a message rather than holding a socket that will never refresh.
+      // Stop on auth failure so a supervisor retries the token exchange instead
+      // of leaving a live process with an unauthenticated subscription.
       onAuthError: (error) => {
         void shutdown(1, error.message);
       },

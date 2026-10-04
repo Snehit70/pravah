@@ -15,6 +15,12 @@ ExecStart=%h/.local/bin/pravah watch
 Restart=always
 RestartSec=5
 
+# Create the snapshot directory before mount sandboxing, including on login.
+RuntimeDirectory=pravah
+RuntimeDirectoryMode=0700
+# Keep the last snapshot visible while the socket reconnects after a restart.
+RuntimeDirectoryPreserve=restart
+
 # `pravah watch` holds one Convex socket and writes a snapshot file. It needs no
 # privileges, so keep the sandbox tight.
 NoNewPrivileges=true

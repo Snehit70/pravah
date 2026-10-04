@@ -1,8 +1,34 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("better-auth/plugins/jwt", () => ({
+  signJWT: async (_ctx: unknown, { payload }: { payload: unknown }) => JSON.stringify(payload),
+}));
 import {
   deriveConvexCloudUrl,
+  ownerConvexTokenPlugin,
   splitOwnerTokenIdentifier,
 } from "../../convex/ownerConvexToken";
+
+describe("owner token minting", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("gives same-second mints distinct claims without changing owner identity", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-04T06:00:00Z"));
+    const mint = ownerConvexTokenPlugin({ convexSiteUrl: "https://owner.convex.site" }).endpoints.mintOwnerConvexToken;
+    const first = await mint({ body: { subject: "owner", ttlSeconds: 900 } });
+    const second = await mint({ body: { subject: "owner", ttlSeconds: 900 } });
+    expect(first.token).not.toBe(second.token);
+    const claims = JSON.parse(first.token);
+    const nextClaims = JSON.parse(second.token);
+    expect(claims.iat).toBe(nextClaims.iat);
+    expect(claims.sub).toBe("owner");
+    expect(nextClaims.sub).toBe(claims.sub);
+    expect(nextClaims.iss).toBe(claims.iss);
+    expect(claims.jti).toEqual(expect.any(String));
+    expect(first.expiresAt).toBe(second.expiresAt);
+  });
+});
 
 describe("splitOwnerTokenIdentifier", () => {
   it("splits a Convex tokenIdentifier back into its claims", () => {

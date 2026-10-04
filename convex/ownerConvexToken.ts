@@ -121,6 +121,9 @@ export function ownerConvexTokenPlugin({
               iss: convexSiteUrl,
               aud: "convex",
               iat: issuedAt,
+              // Convex schedules refresh only when the replacement JWT differs.
+              // Immediate forced refreshes can mint twice in the same second.
+              jti: crypto.randomUUID(),
               // Not a Better Auth session. Convex never reads it, but the Convex
               // plugin's own payload shape includes one.
               sessionId: `pravah-cli-${issuedAt}`,

@@ -103,9 +103,8 @@ export interface RunWatchOptions {
   bearerToken: string;
   onSnapshot: (snapshot: WatchSnapshot) => void;
   /**
-   * Called when the credential stops being authorized. The subscription cannot
-   * recover from this, so the caller is expected to shut down; throwing from
-   * inside a websocket callback would only produce an unhandled rejection.
+   * Called when authentication fails, including token refresh failures. The
+   * caller must stop so a supervisor can restart with a fresh token exchange.
    */
   onAuthError?: (error: Error) => void;
   log?: WatchLogger;
@@ -177,20 +176,8 @@ export async function runWatch({
     throw error;
   };
 
-  client.setAuth(async () => {
-    if (ownerToken.expiresAt - TOKEN_REFRESH_SKEW_MS <= now()) {
-      try {
-        ownerToken = await fetchOwnerToken(siteUrl, bearerToken);
-      } catch (error) {
-        reportAsync(error);
-        // Returning a token we already hold keeps the socket usable while the
-        // caller shuts down; the next refresh attempt reports the real reason.
-        return ownerToken.token;
-      }
-    }
-    return ownerToken.token;
-  });
-
+  let authenticated = false;
+  let authFailureReported = false;
   let unsubscribes: Array<() => void> = [];
   const latest = emptySources();
   // Only publish once every subscription has produced its first value, so a
@@ -205,6 +192,9 @@ export async function runWatch({
   let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
 
   const publish = () => {
+    // Cached query values survive a dropped socket. They cannot prove that
+    // the daemon is still receiving updates, nor can an expired auth token.
+    if (!authenticated || !client.connectionState().isWebSocketConnected || ownerToken.expiresAt <= now()) return;
     if (!SOURCE_KEYS.every((key) => ready[key])) return;
     hasPublished = true;
     onSnapshot(
@@ -315,6 +305,35 @@ export async function runWatch({
     }
     scheduleMidnightResubscribe();
   };
+
+  const failAuthentication = (error: Error) => {
+    authenticated = false;
+    if (authFailureReported) return;
+    authFailureReported = true;
+    if (onAuthError) onAuthError(error);
+    else log(`watch: ${error.message}`);
+  };
+
+  client.setAuth(async ({ forceRefreshToken }) => {
+    if (forceRefreshToken || ownerToken.expiresAt - TOKEN_REFRESH_SKEW_MS <= now()) {
+      try {
+        ownerToken = await fetchOwnerToken(siteUrl, bearerToken);
+      } catch (error) {
+        failAuthentication(asAuthError(error) ?? new Error(
+          `Pravah watch token refresh failed; restart \`pravah watch\` to retry: ${String(error)}`
+        ));
+        // A cached JWT disables the SDK's future refresh scheduling. Let it
+        // report failure instead; the CLI exits and systemd retries the mint.
+        return null;
+      }
+    }
+    return ownerToken.token;
+  }, (isAuthenticated) => {
+    authenticated = isAuthenticated;
+    if (!isAuthenticated) failAuthentication(new Error(
+      "Pravah watch authentication failed; restart `pravah watch` to retry."
+    ));
+  });
 
   try {
     unsubscribes = subscribe();

@@ -106,6 +106,11 @@ systemctl --user daemon-reload
 systemctl --user enable --now pravah-watch.service
 ```
 
+The unit creates the private runtime directory before applying its filesystem
+sandbox and preserves the last snapshot across restarts. After updating an
+existing installation, copy the unit again, run `daemon-reload`, and restart
+`pravah-watch.service`.
+
 Check it:
 
 ```bash
@@ -142,8 +147,8 @@ Available methods: `open`, `close`, `toggle`, `refresh`.
 Configurable through the widget's settings (shell.json entry or the shell's
 widget settings UI):
 
-- `transport` — read transport, default `cli`. Set to `watch` to read the
-  snapshot that `pravah watch` maintains instead of polling the HTTP API.
+- `transport` — read transport, default `watch`. Set to `cli` to poll the
+  HTTP API instead of reading the snapshot that `pravah watch` maintains.
 - `pollIntervalSec` — refresh cadence, default 300 (min 10). Right click still refreshes immediately. Ignored in `watch` transport.
 - `defaultTab` — which tab opens on click, default `today`.
 - `showCompleted` — show the completed section on Today, default `On`.
@@ -188,6 +193,17 @@ The suite covers envelope parsing, task/goal/operation normalization,
 today/overdue/upcoming/inbox horizons, quick-add tokens, argv builders,
 filters, health, and the dry-run → apply write pipeline with a shared
 idempotency key.
+
+On a Linux host with a running user systemd manager, verify the actual service
+sandbox and runtime-directory lifecycle separately:
+
+```bash
+python3 packages/todo-plugin/tests/watch-service.py
+```
+
+Run this from the repository root. It starts an isolated synthetic writer and
+checks first-start publication, directory permissions, restart preservation,
+and stop cleanup without touching credentials or production data.
 
 ## Notes
 

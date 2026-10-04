@@ -76,6 +76,16 @@ QtObject {
   property string snapshotPath: ""
   property bool snapshotResolved: false
   property bool snapshotStale: false
+  property bool _started: false
+
+  onWatchingChanged: {
+    if (!_started) return
+    snapshotStale = false
+    lastError = ""
+    _lastSuccessMs = 0
+    _failCount = 0
+    refresh(true)
+  }
 
   readonly property var allTasks: {
     var byTask = {}
@@ -428,6 +438,7 @@ QtObject {
   }
 
   function handleTasks(exitCode, out, err) {
+    if (watching) { _pendingReads = Math.max(0, _pendingReads - 1); return }
     if (exitCode !== 0) lastError = commandError(out, err, "Pravah could not load tasks")
     else {
       var env = parseEnvelope(out)
@@ -447,6 +458,7 @@ QtObject {
   }
 
   function handleGoals(exitCode, out, err) {
+    if (watching) { _pendingReads = Math.max(0, _pendingReads - 1); return }
     if (exitCode !== 0) { /* goals failures don't block the task lists */ }
     else {
       var env = parseEnvelope(out)
@@ -476,12 +488,13 @@ QtObject {
   // parse must happen in onLoaded, otherwise updates reread stale text.
   property FileView snapshotView: FileView {
     id: snapshotView
-    path: root.snapshotPath
-    watchChanges: true
+    path: root.watching ? root.snapshotPath : ""
+    watchChanges: root.watching
     blockLoading: false
     onLoaded: function() { root.applySnapshotText(snapshotView.text()) }
     onFileChanged: function() { snapshotView.reload() }
     onLoadFailed: function() {
+      if (!root.watching) return
       root.syncing = false
       root.snapshotStale = false
       root.lastError = "pravah watch is not publishing a snapshot — start it with `pravah watch`"
@@ -533,18 +546,18 @@ QtObject {
     if (!watching || snapshotResolved) return
     enqueueRead([cli, "watch", "--path"], function(exitCode, out, err) {
       if (exitCode !== 0) {
-        snapshotResolved = true
         lastError = "Pravah could not resolve the watch snapshot path"
         return
       }
       var path = String(out).trim()
-      snapshotResolved = true
+      snapshotResolved = path !== ""
       if (path === "") lastError = "Pravah reported an empty watch snapshot path"
       else snapshotPath = path
     })
   }
 
   function applySnapshotText(raw) {
+    if (!watching) return
     var snap = null
     try { snap = JSON.parse(String(raw)) } catch (e) { snap = null }
     if (!snap || typeof snap !== "object" || snap.version !== 1) {
@@ -801,6 +814,7 @@ QtObject {
   function undoArgv(operation) { return [cli, "operations", "undo", operation.operationId, "--json"] }
 
   Component.onCompleted: {
+    _started = true
     checkHealth()
     if (watching) resolveSnapshotPathFromCli()
     else refresh()

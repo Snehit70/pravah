@@ -324,7 +324,7 @@ ShellRoot {
       if (phase !== 4) return
       eq("fail message", message, "stub refused remove")
       eq("writeBusy after fail", store.writeBusy, false)
-      finish()
+      phase = 6
     }
   }
 
@@ -474,6 +474,16 @@ ShellRoot {
 
     // The point of the watch transport: no HTTP reads at all.
     ok("watch store never spawned a read", watchStore._readQueue.length === 0)
+
+    watchStore.transport = "cli"
+    watchStore._rawTasks = [{ id: "http-only", title: "HTTP result", status: "inbox" }]
+    watchStore.lastError = "HTTP error"
+    var tasksBeforeSwitch = JSON.stringify(watchStore._rawTasks)
+    var errorBeforeSwitch = watchStore.lastError
+    watchStore.applySnapshotText(JSON.stringify({ version: 1, tasks: [], goals: [], generatedAt: Date.now() }))
+    eq("CLI transport ignores watch snapshots", JSON.stringify(watchStore._rawTasks), tasksBeforeSwitch)
+    watchStore.applySnapshotText("{not json")
+    eq("CLI transport ignores watch parse errors", watchStore.lastError, errorBeforeSwitch)
   }
 
   function writeLines(log, needle) {
