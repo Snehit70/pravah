@@ -10,6 +10,30 @@ and uploads after the Task is saved. An existing Task attaches and starts its
 upload immediately. Text paste keeps its usual behavior. Copying an image alone
 does not attach it.
 
+## Upload feedback and reopening
+
+After preparation, the preview uses the image copied into durable app storage.
+The Task inspector displays the image with a live upload percentage and progress
+bar. Verification shows a finishing state, success briefly shows a completion
+check, and retryable failures offer Retry.
+
+Closing the Task inspector keeps the upload running while Pravah is active.
+Reopening restores the saved image and current upload state, including uploads
+that are no longer visible in Capture. If the app is suspended, existing
+foreground reconciliation resumes interrupted work when Pravah returns.
+
+Image retrieval checks the local library and staged source before requesting
+remote delivery. Concurrent preview reads share manifest hydration. The open
+inspector receives coordinator progress and live server collection updates
+while preserving unsaved notes and image order.
+
+This feedback and recovery change uses existing native capabilities and is
+classified `mobile-ota`. Its source fingerprint matches the supported `native-5`
+runtime. Regression tests cover close/reopen at 42% and 73% progress, concurrent
+hydration, restoring a preview without a device URI in server metadata, and
+live failure updates without losing draft notes. The revised indicators have
+not yet been checked on a physical phone.
+
 ## Findings
 
 - The physical phone runs Android 13, API 33. The focused Pravah capture input
