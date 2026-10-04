@@ -15,6 +15,48 @@ function deferred<T>() {
 }
 
 describe("keyboard image insertion", () => {
+  it("returns only the uploads from each overlapping selection and clears only the saved selection", async () => {
+    const dependencies = createDependencies();
+    let nextId = 0;
+    dependencies.createUploadId = vi.fn(() => `upload-${++nextId}`);
+    const firstImage = deferred<Awaited<ReturnType<typeof dependencies.normalize>>>();
+    const normalize = dependencies.normalize;
+    dependencies.normalize = vi.fn((source) => source.uri === "file:///first.png"
+      ? firstImage.promise : normalize(source));
+    const coordinator = createTaskImageCoordinator(dependencies);
+    const first = coordinator.select("paste", 5, { kind: "paste", uri: "file:///first.png", previewUri: "file:///first.png" });
+    await vi.waitFor(() => expect(dependencies.normalize).toHaveBeenCalledTimes(1));
+    const second = await coordinator.select("paste", 5, { kind: "paste", uri: "file:///second.png", previewUri: "file:///second.png" });
+    expect(second).toEqual(["upload-2"]);
+    coordinator.clearAfterSaveAndStay(second);
+    expect(coordinator.getViewStates().map((image) => image.uploadId)).toEqual(["upload-1"]);
+    firstImage.resolve(await normalize({ kind: "paste", uri: "file:///first.png", previewUri: "file:///first.png" }));
+    expect(await first).toEqual(["upload-1"]);
+    expect(coordinator.getViewStates()[0].state).toBe("pending");
+  });
+
+  it("cleans the durable source and remote stage when a selection is discarded during staging", async () => {
+    const dependencies = createDependencies();
+    const stage = deferred<void>();
+    dependencies.stage = vi.fn(() => stage.promise);
+    const remove = vi.fn(async () => undefined);
+    const discardUnclaimedUpload = vi.fn(async () => undefined);
+    dependencies.discardUnclaimedUpload = discardUnclaimedUpload;
+    dependencies.sourceStore = {
+      persist: vi.fn(async () => ({ sourceKey: "discarded-image", uri: "file:///durable.png" })),
+      remove, resolve: vi.fn(async () => null),
+    };
+    const coordinator = createTaskImageCoordinator(dependencies);
+    const selection = coordinator.select("paste", 5, { kind: "paste", uri: "file:///keyboard.png", previewUri: "file:///keyboard.png" });
+    await vi.waitFor(() => expect(dependencies.stage).toHaveBeenCalled());
+    coordinator.discard();
+    stage.resolve();
+    await selection;
+    await vi.waitFor(() => expect(remove).toHaveBeenCalledWith("discarded-image"));
+    expect(discardUnclaimedUpload).toHaveBeenCalledTimes(2);
+    expect(coordinator.getViewStates()).toEqual([]);
+  });
+
   it("normalizes the exact image supplied by the keyboard without reading the clipboard", async () => {
     const dependencies = createDependencies();
     const coordinator = createTaskImageCoordinator(dependencies);

@@ -1705,17 +1705,16 @@ function MobileApp() {
           });
         }}
         onSelectTaskImage={({ taskId, expectedRevision, kind, source }) => {
-          const beforeUploadIds = new Set(
-            taskImageCoordinator.getViewStates().map((image) => image.uploadId)
-          );
           return (async () => {
+            let selectedUploadIds: string[] = [];
             try {
               const existingCount = workspaceTaskCorpus.find((task) => String(task._id) === String(taskId))?.imageCollection?.active.length ?? 0;
               const availableSlots = Math.max(0, 5 - existingCount);
-              await taskImageCoordinator.select(kind, availableSlots, source);
+              selectedUploadIds = await taskImageCoordinator.select(kind, availableSlots, source);
+              const selectionIds = new Set(selectedUploadIds);
               const newUploads = taskImageCoordinator
                 .getViewStates()
-                .filter((image) => !beforeUploadIds.has(image.uploadId));
+                .filter((image) => selectionIds.has(image.uploadId));
               const selected = newUploads.filter((image) => image.state === "pending");
               taskImageCoordinator.discardUploads(
                 newUploads.filter((image) => image.state === "failed").map((image) => image.uploadId),
@@ -1761,11 +1760,11 @@ function MobileApp() {
                 return previewUri ? { ...image, previewUri } : image;
               });
               void taskImageCoordinator.beginUploadAfterSave();
-              taskImageCoordinator.clearAfterSaveAndStay();
+              taskImageCoordinator.clearAfterSaveAndStay(selectedUploadIds);
               return { ...result, active, primary: active[0] };
             } catch {
               showToast({ kind: "error", message: "Could not add Task image. Please try again." });
-              taskImageCoordinator.discard();
+              taskImageCoordinator.discardUploads(selectedUploadIds);
               return undefined;
             }
           })();

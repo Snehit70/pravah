@@ -12,6 +12,7 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,7 +23,8 @@ import kotlinx.coroutines.withContext
 /** Adds rich-content support to existing RN/AppCompat inputs without replacing them. */
 class PravahImageInputModule : Module() {
   private data class Registration(val view: View, val session: String)
-  private val registrations = mutableMapOf<Int, Registration>()
+  private val registrations = ConcurrentHashMap<Int, Registration>()
+  private val cachedImages = ConcurrentHashMap<String, File>()
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
   override fun definition() = ModuleDefinition {
@@ -46,12 +48,16 @@ class PravahImageInputModule : Module() {
               if (registrations[viewTag] !== registration) break
               var file: File? = null
               try {
-                file = withContext(Dispatchers.IO) { copyImage(view.context, images, index) }
+                // Assign inside IO so cancellation during the return to Main still owns the file.
+                withContext(Dispatchers.IO) { file = copyImage(view.context, images, index) }
+                val copiedFile = requireNotNull(file)
                 if (registrations[viewTag] !== registration) {
-                  file.delete()
+                  copiedFile.delete()
                   continue
                 }
-                sendEvent("onImagePaste", mapOf("session" to session, "uri" to Uri.fromFile(file).toString()))
+                val uri = Uri.fromFile(copiedFile).toString()
+                cachedImages[uri] = copiedFile
+                sendEvent("onImagePaste", mapOf("session" to session, "uri" to uri))
               } catch (_: Exception) {
                 file?.delete()
                 if (registrations[viewTag] === registration) {
@@ -81,7 +87,10 @@ class PravahImageInputModule : Module() {
       if (uri.scheme == "file") {
         val file = File(uri.path ?: return@AsyncFunction)
         val directory = File(context.cacheDir, "keyboard-task-images")
-        if (file.parentFile?.canonicalFile == directory.canonicalFile) file.delete()
+        if (file.parentFile?.canonicalFile == directory.canonicalFile) {
+          file.delete()
+          cachedImages.remove(rawUri)
+        }
       }
     }
 
@@ -89,6 +98,8 @@ class PravahImageInputModule : Module() {
       scope.cancel()
       val views = registrations.values.map { it.view }
       registrations.clear()
+      cachedImages.values.forEach { it.delete() }
+      cachedImages.clear()
       views.forEach { view -> view.post { ViewCompat.setOnReceiveContentListener(view, null, null) } }
     }
   }

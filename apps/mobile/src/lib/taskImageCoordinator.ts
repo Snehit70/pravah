@@ -751,13 +751,14 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       await ensureHydrated();
     },
 
-    async select(kind: TaskImageSourceKind, availableSlots: number = MAX_TASK_IMAGE_COUNT, suppliedSource?: AcquiredTaskImageSource) {
+    async select(kind: TaskImageSourceKind, availableSlots: number = MAX_TASK_IMAGE_COUNT, suppliedSource?: AcquiredTaskImageSource): Promise<string[]> {
+      const selectedUploadIds: string[] = [];
       await ensureHydrated();
       const limit = Math.max(0, Math.min(MAX_TASK_IMAGE_COUNT, availableSlots));
       if (limit === 0 || visibleUploadIds.length >= limit) {
         lastError = "Task image limit reached";
         notify();
-        return;
+        return selectedUploadIds;
       }
       if (!suppliedSource && kind === "photos" && dependencies.acquireSources) {
         try {
@@ -765,7 +766,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
           const remaining = limit - visibleUploadIds.length;
           const sources = await dependencies.acquireSources(kind, remaining);
           for (const source of sources.slice(0, remaining)) {
-            if (disposed || batchGeneration !== selectionGeneration) return;
+            if (disposed || batchGeneration !== selectionGeneration) return selectedUploadIds;
             const uploadId = dependencies.createUploadId();
             const entry: UploadRecord = {
               uploadId,
@@ -779,6 +780,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
               generation: 0,
             };
             records.set(uploadId, entry);
+            selectedUploadIds.push(uploadId);
             visibleUploadIds = [...visibleUploadIds, uploadId];
             notify();
             try {
@@ -793,6 +795,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
                 }
                 continue;
               }
+              Object.assign(entry, { normalized, sourceKey: durable.sourceKey, sourceUri: durable.uri });
               await dependencies.stage({
                 uploadId,
                 encodingClass: normalized.encodingClass,
@@ -800,7 +803,11 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
                 height: normalized.height,
                 bytes: normalized.bytes,
               });
-              if (!records.has(uploadId) || batchGeneration !== selectionGeneration) continue;
+              if (!records.has(uploadId)) {
+                await dependencies.discardUnclaimedUpload?.({ uploadId }).catch(() => undefined);
+                continue;
+              }
+              if (batchGeneration !== selectionGeneration) continue;
               Object.assign(entry, {
                 state: "pending" as const,
                 previewUri: normalized.previewUri,
@@ -823,7 +830,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
           lastError = "No image was selected.";
           notify();
         }
-        return;
+        return selectedUploadIds;
       }
       const uploadId = dependencies.createUploadId();
       const nextRecord: UploadRecord = {
@@ -837,15 +844,16 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         generation: 0,
       };
       records.set(uploadId, nextRecord);
+      selectedUploadIds.push(uploadId);
       visibleUploadIds = [...visibleUploadIds, uploadId];
       lastError = undefined;
       notify();
       try {
         const source = suppliedSource ?? await dependencies.acquireSource(kind);
-        if (!records.has(uploadId)) return;
+        if (!records.has(uploadId)) return selectedUploadIds;
         nextRecord.previewUri = source.previewUri;
         const normalized = await dependencies.normalize(source);
-        if (!records.has(uploadId)) return;
+        if (!records.has(uploadId)) return selectedUploadIds;
         const durable = dependencies.sourceStore
           ? await dependencies.sourceStore.persist(uploadId, normalized)
           : { sourceKey: undefined, uri: normalized.uri };
@@ -853,8 +861,9 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
           if (durable.sourceKey && dependencies.sourceStore) {
             await dependencies.sourceStore.remove(durable.sourceKey).catch(() => undefined);
           }
-          return;
+          return selectedUploadIds;
         }
+        Object.assign(nextRecord, { normalized, sourceKey: durable.sourceKey, sourceUri: durable.uri });
         await dependencies.stage({
           uploadId,
           encodingClass: normalized.encodingClass,
@@ -862,7 +871,10 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
           height: normalized.height,
           bytes: normalized.bytes,
         });
-        if (!records.has(uploadId)) return;
+        if (!records.has(uploadId)) {
+          await dependencies.discardUnclaimedUpload?.({ uploadId }).catch(() => undefined);
+          return selectedUploadIds;
+        }
         Object.assign(nextRecord, {
           state: "pending" as const,
           previewUri: normalized.previewUri,
@@ -888,11 +900,12 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
               : "The image could not be selected.";
           await persist();
           notify();
-          return;
+          return selectedUploadIds;
         }
         await failEntry(nextRecord, error);
         notify();
       }
+      return selectedUploadIds;
     },
 
     getViewState() {
@@ -1242,9 +1255,14 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       await discardTaskUploadsNow(taskId);
     },
 
-    clearAfterSaveAndStay() {
-      selectionGeneration += 1;
-      visibleUploadIds = [];
+    clearAfterSaveAndStay(uploadIds?: string[]) {
+      if (uploadIds) {
+        const savedIds = new Set(uploadIds);
+        visibleUploadIds = visibleUploadIds.filter((uploadId) => !savedIds.has(uploadId));
+      } else {
+        selectionGeneration += 1;
+        visibleUploadIds = [];
+      }
       lastError = undefined;
       void persist();
       notify();
@@ -1260,8 +1278,8 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     },
 
     discardUploads(uploadIds: string[]) {
-      selectionGeneration += 1;
       const ids = new Set(uploadIds);
+      if (ids.size === 0) return;
       const discardable = [...records.values()].filter(
         (entry) => ids.has(entry.uploadId) && !entry.taskId,
       );

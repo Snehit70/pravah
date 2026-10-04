@@ -32,7 +32,7 @@ vi.mock("../components/TaskImagePasteInput", async () => {
         imagePasteHandlers.add(onPasteImage);
         return () => { imagePasteHandlers.delete(onPasteImage); };
       }, [imagePasteEnabled, onPasteImage]);
-      return React.createElement(TextInput, { ...props, ref });
+      return <TextInput {...props} ref={ref} />;
     }),
   };
 });
@@ -693,6 +693,57 @@ describe("EditTaskSheet compact workbench", () => {
       kind: "paste",
       source: { kind: "paste", uri: "file:///keyboard-image.png", previewUri: "file:///keyboard-image.png" },
     });
+  });
+
+  it("serializes rapid keyboard pastes with the revision returned by the previous attachment", async () => {
+    let finishFirst!: (value: { stale: false; revision: number; active: []; recoverable: [] }) => void;
+    const firstResult = new Promise<{ stale: false; revision: number; active: []; recoverable: [] }>((resolve) => { finishFirst = resolve; });
+    const onSelectTaskImage = vi.fn()
+      .mockImplementationOnce(() => firstResult)
+      .mockResolvedValue({ stale: false, revision: 10, active: [], recoverable: [] });
+    const { ref } = setup({ onSelectTaskImage });
+    await open(ref);
+    fireEvent.click(screen.getByLabelText("Edit task notes"));
+    const handler = [...imagePasteHandlers][0];
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    await act(async () => {
+      first = handler({ kind: "paste", uri: "file:///first.png", previewUri: "file:///first.png" });
+      second = handler({ kind: "paste", uri: "file:///second.png", previewUri: "file:///second.png" });
+    });
+    expect(onSelectTaskImage).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      finishFirst({ stale: false, revision: 9, active: [], recoverable: [] });
+      await Promise.all([first, second]);
+    });
+    expect(onSelectTaskImage).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      taskId: "task1", expectedRevision: 9,
+      source: expect.objectContaining({ uri: "file:///second.png" }),
+    }));
+  });
+
+  it("does not apply an attachment result or start queued pastes after switching Tasks", async () => {
+    let finishFirst!: (value: unknown) => void;
+    const result = new Promise((resolve) => { finishFirst = resolve; });
+    const onSelectTaskImage = vi.fn(() => result);
+    const { ref } = setup({ onSelectTaskImage });
+    await open(ref);
+    fireEvent.click(screen.getByLabelText("Edit task notes"));
+    const handler = [...imagePasteHandlers][0];
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    await act(async () => {
+      first = handler({ kind: "paste", uri: "file:///first.png", previewUri: "file:///first.png" });
+      second = handler({ kind: "paste", uri: "file:///second.png", previewUri: "file:///second.png" });
+    });
+    await open(ref, { ...timelineTask, _id: "task2" as MobileTask["_id"], title: "Another Task" });
+    await act(async () => {
+      finishFirst({ stale: false, revision: 9, active: [{ taskImageId: "old-image", position: 0, state: "pending", previewUri: "file:///old.png" }], recoverable: [] });
+      await Promise.all([first, second]);
+    });
+    expect(onSelectTaskImage).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Another Task")).toBeTruthy();
+    expect(screen.queryByAltText("Selected Task image preview")).toBeNull();
   });
 
   it("keeps deletion in overflow and explains recovery", async () => {
