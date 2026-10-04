@@ -1,0 +1,97 @@
+diff --git a/android/src/main/java/expo/modules/clipboard/ClipboardModule.kt b/android/src/main/java/expo/modules/clipboard/ClipboardModule.kt
+index aad412eb8c6347ae5db5fa39bb4ecf8b2bf04c36..b8968fdd4743d155ab4726d0661b9d7ee08b96c5 100644
+--- a/android/src/main/java/expo/modules/clipboard/ClipboardModule.kt
++++ b/android/src/main/java/expo/modules/clipboard/ClipboardModule.kt
+@@ -4,6 +4,8 @@ import android.content.Context
+ import android.content.ClipData
+ import android.content.ClipDescription
+ import android.content.ClipboardManager
++import android.content.Intent
++import android.net.Uri
+ import android.os.Build
+ import android.text.Html
+ import android.text.Html.FROM_HTML_MODE_LEGACY
+@@ -70,8 +72,9 @@ class ClipboardModule : Module() {
+     AsyncFunction("getImageAsync") Coroutine { options: GetImageOptions ->
+       val imageUri = clipboardManager
+         .takeIf { clipboardHasItemWithType("image/*") }
+-        ?.firstItem
+-        ?.uri
++        ?.primaryClip
++        ?.takeIf { it.itemCount > 0 }
++        ?.let { clip -> firstImageUri(clip) }
+         .ifNull {
+           return@Coroutine null
+         }
+@@ -214,6 +217,39 @@ class ClipboardModule : Module() {
+   private val ClipboardManager.firstItem: ClipData.Item?
+     get() = primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)
+ 
++  /**
++   * Finds the first readable image URI across all clip items. Cross-device
++   * clipboard syncs (e.g. Google Clipboard) can emit a multi-item clip whose
++   * first item is a text label (often a source-device `file://` path) with the
++   * actual image in a later item, or packed inside an Intent with EXTRA_STREAM.
++   * The clip description has already been verified to advertise an image MIME.
++   */
++  private fun firstImageUri(clip: ClipData): Uri? {
++    val uris = ArrayList<Uri>()
++    for (index in 0 until clip.itemCount) {
++      collectItemUris(clip.getItemAt(index), uris)
++    }
++    return uris.firstOrNull { uri -> isReadableImageUri(uri) }
++      ?: uris.firstOrNull()
++  }
++
++  private fun collectItemUris(item: ClipData.Item, output: MutableList<Uri>) {
++    item.uri?.let { output.add(it) }
++    item.intent?.let { intent ->
++      intent.clipData?.let { nested ->
++        for (index in 0 until nested.itemCount) {
++          nested.getItemAt(index).uri?.let { output.add(it) }
++        }
++      }
++      @Suppress("DEPRECATION")
++      intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.let { output.add(it) }
++    }
++  }
++
++  private fun isReadableImageUri(uri: Uri): Boolean = runCatching {
++    context.contentResolver.getType(uri)?.startsWith("image/") == true
++  }.getOrDefault(false)
++
+   // endregion
+ }
+ 
+diff --git a/expo-module.config.json b/expo-module.config.json
+index 7963af5da3d6826df93eab5e73a1d1a62316bd7c..829bdc8a1cffd59b676eec371d7c714ffa41a959 100644
+--- a/expo-module.config.json
++++ b/expo-module.config.json
+@@ -1,15 +1,17 @@
+ {
+-  "platforms": ["apple", "android", "web"],
++  "platforms": [
++    "apple",
++    "android",
++    "web"
++  ],
+   "apple": {
+-    "modules": ["ClipboardModule"]
++    "modules": [
++      "ClipboardModule"
++    ]
+   },
+   "android": {
+-    "modules": ["expo.modules.clipboard.ClipboardModule"],
+-    "publication": {
+-      "groupId": "host.exp.exponent",
+-      "artifactId": "expo.modules.clipboard",
+-      "version": "56.0.4",
+-      "repository": "local-maven-repo"
+-    }
++    "modules": [
++      "expo.modules.clipboard.ClipboardModule"
++    ]
+   }
+ }
+\ No newline at end of file
