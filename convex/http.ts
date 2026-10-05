@@ -51,10 +51,8 @@ import {
   validationError,
 } from "./httpResponses";
 import {
-  buildEagerWebhookVerificationInput,
   isCanonicalTaskImageSiteUrl,
   verifyProviderWebhookMaster,
-  verifyProviderWebhookResult,
   verifyWebhookSignature,
   type ProviderUploadResult,
 } from "./taskImageProvider";
@@ -99,7 +97,7 @@ http.route({
     const context = publicId
       ? await ctx.runQuery(internal.taskImages.getUploadByProviderPublicId, { publicId })
       : null;
-    if (!context) return new Response(null, { status: 204 });
+    if (!context) return new Response(null, { status: 200 });
 
     const eager = Array.isArray(payload.eager)
       ? payload.eager.flatMap((item) => {
@@ -147,91 +145,51 @@ http.route({
         uploadId: context.uploadId,
         publicId: context.publicId,
         version: context.providerVersion ?? callbackResponse.version,
-        result: { status: "failed", failureCode: "variant_too_large" },
+        result: { status: "failed", failureCode: "normalization_failed" },
       });
       try {
         await ctx.runMutation(internal.taskImageOperations.recordOperationalEvent, {
           category: "verification",
-          code: "variant_too_large",
+          code: "normalization_failed",
           now: Date.now(),
         });
       } catch {
         // Webhook acknowledgement must not depend on aggregate diagnostics.
       }
-      return new Response(null, { status: 204 });
+      return new Response(null, { status: 200 });
     }
-    // Eager callbacks often arrive before the master notification has stored
-    // master/providerVersion. Real eager bodies omit master fields; verifying
-    // callbackResponse here stamped normalization_failed permanently.
-    if (isEagerNotification && !(context.master && context.providerVersion !== undefined)) {
-      return new Response(null, { status: 204 });
+    if (isEagerNotification) {
+      await ctx.runMutation(internal.taskImages.storeEagerNotification, {
+        publicId,
+        version: typeof payload.version === "number" ? payload.version : undefined,
+        eager,
+      });
+      return new Response(null, { status: 200 });
     }
-    const response = isEagerNotification
-      ? buildEagerWebhookVerificationInput({
-          publicId,
-          version: context.providerVersion!,
-          master: context.master!,
-          eager,
-        })
-      : callbackResponse;
-    const verified = isEagerNotification
-      ? await verifyProviderWebhookResult(response, expected)
-      : await verifyProviderWebhookMaster(response, expected);
-
-    let verificationResult:
-      | { status: "failed"; failureCode: string }
-      | {
-          status: "verifying";
-          master: { format: "jpg" | "png"; width: number; height: number; bytes: number };
-        }
-      | {
-          status: "ready";
-          master: { format: "jpg" | "png"; width: number; height: number; bytes: number };
-          card: { format: "webp"; width: number; height: number; bytes: number };
-          detail: { format: "webp"; width: number; height: number; bytes: number };
-        };
-    if (!verified.ok) {
-      verificationResult = { status: "failed", failureCode: verified.failureCode };
-    } else if ("variants" in verified) {
-      const variants = verified.variants as {
-        card: { format: "webp"; width: number; height: number; bytes: number };
-        detail: { format: "webp"; width: number; height: number; bytes: number };
-      };
-      verificationResult = {
-        status: "ready",
-        master: verified.master,
-        card: variants.card,
-        detail: variants.detail,
-      };
-    } else {
-      verificationResult = { status: "verifying", master: verified.master };
-    }
+    const verified = await verifyProviderWebhookMaster(callbackResponse, expected);
+    const verificationResult = verified.ok
+      ? { status: "verifying" as const, master: verified.master }
+      : { status: "failed" as const, failureCode: verified.failureCode };
 
     await ctx.runMutation(internal.taskImages.applyUploadVerification, {
       ownerTokenIdentifier: context.ownerTokenIdentifier,
       uploadId: context.uploadId,
       publicId: context.publicId,
-      version: response.version,
+      version: callbackResponse.version,
       result: verificationResult,
     });
-    if (verificationResult.status === "ready" || verificationResult.status === "failed") {
+    if (verificationResult.status === "failed") {
       try {
         await ctx.runMutation(internal.taskImageOperations.recordOperationalEvent, {
           category: "verification",
-          code:
-            verificationResult.status === "ready"
-              ? "success"
-              : verificationResult.failureCode === "master_too_large" ||
-                  verificationResult.failureCode === "variant_too_large"
-                ? verificationResult.failureCode
-                : "normalization_failed",
+          code: verificationResult.failureCode === "master_too_large" ? "master_too_large" : "normalization_failed",
           now: Date.now(),
         });
       } catch {
         // Webhook acknowledgement must not depend on aggregate diagnostics.
       }
     }
-    return new Response(null, { status: 204 });
+    return new Response(null, { status: 200 });
   }),
 });
 

@@ -309,6 +309,11 @@ export default defineSchema({
     grantIssuedAt: v.optional(v.number()),
     claimedAt: v.optional(v.number()),
     verificationStartedAt: v.optional(v.number()),
+    providerReconciledAt: v.optional(v.number()),
+    pendingEager: v.optional(v.object({
+      version: v.optional(v.number()),
+      eager: v.array(v.object({ transformation: v.string(), format: v.string(), width: v.number(), height: v.number(), bytes: v.number() })),
+    })),
     sealedAt: v.optional(v.number()),
     master: v.optional(
       v.object({

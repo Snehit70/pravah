@@ -6,7 +6,10 @@ import { requireTokenIdentifier } from "./authHelpers";
 import {
   buildDeliveryUrl,
   buildUploadGrant,
+  buildEagerWebhookVerificationInput,
+  verifyProviderWebhookResult,
   checkProviderAssetPresence,
+  recoverProviderAsset,
   deleteProviderAsset,
   fetchProviderUsage,
   isCanonicalTaskImageSiteUrl,
@@ -119,17 +122,12 @@ const getUploadVerificationContextRef = makeFunctionReference<
   }
 >("taskImages:getUploadVerificationContext");
 
-const markUploadFailedRef = makeFunctionReference<
-  "mutation",
-  { uploadId: string; failureCode: string },
-  { accepted: boolean; state?: "failed" }
->("taskImages:markUploadFailed");
-
 const getUploadAttemptContextRef = makeFunctionReference<
   "query",
   { ownerTokenIdentifier: string; uploadId: string },
   null | {
     uploadId: string;
+    encodingClass: "jpeg" | "png";
     providerPublicId?: string;
     providerAttempt: number;
     state: string;
@@ -149,6 +147,7 @@ type VerificationMutationArgs = {
   uploadId: string;
   publicId: string;
   version: number;
+  recoverTimedOut?: boolean;
   result:
     | { status: "verifying"; master: { format: "jpg" | "png"; width: number; height: number; bytes: number } }
     | {
@@ -403,6 +402,26 @@ export const reconcileUploadAttempt = action({
       return { status: "unknown" as const };
     }
 
+    // Reconstruct a lost receipt or callback before considering deletion.
+    const reserved = await ctx.runMutation(internal.taskImages.reserveProviderReconciliation, {
+      ownerTokenIdentifier, uploadId: args.uploadId, publicId: context.providerPublicId,
+    });
+    if (!reserved) return { status: "unknown" as const };
+    const recovered = await recoverProviderAsset(provider, context.providerPublicId, context.encodingClass);
+    if (recovered.status === "unknown") return { status: "unknown" as const };
+    if (recovered.status === "ready" || recovered.status === "verifying") {
+      const result = await ctx.runMutation(applyUploadVerificationRef, {
+        ownerTokenIdentifier, uploadId: args.uploadId, publicId: context.providerPublicId,
+        version: recovered.version,
+        recoverTimedOut: true,
+        result: recovered.status === "ready" ? { status: "ready", master: recovered.master, card: recovered.card, detail: recovered.detail }
+          : { status: "verifying", master: recovered.master },
+      });
+      if (!result.accepted) return { status: "unknown" as const };
+      return recovered.status === "ready"
+        ? { status: "ready" as const, attempt: providerAttempt }
+        : { status: "verifying" as const, attempt: providerAttempt };
+    }
     const presence = await checkProviderAssetPresence({
       provider,
       publicId: context.providerPublicId,
@@ -444,6 +463,49 @@ export const reconcileUploadAttempt = action({
   },
 });
 
+export const verifyPendingEager = internalAction({
+  args: { publicId: v.string() },
+  handler: async (ctx, args) => {
+    const context = await ctx.runQuery(
+      internal.taskImages.getUploadByProviderPublicId,
+      args,
+    );
+    if (
+      !context?.master ||
+      context.providerVersion === undefined ||
+      !context.pendingEager
+    )
+      return;
+    if (
+      context.pendingEager.version !== undefined &&
+      context.pendingEager.version !== context.providerVersion
+    )
+      return;
+    const verified = await verifyProviderWebhookResult(
+      buildEagerWebhookVerificationInput({
+        publicId: args.publicId,
+        version: context.providerVersion,
+        master: context.master,
+        eager: context.pendingEager.eager,
+      }),
+      {
+        apiSecret: readProviderConfig().apiSecret,
+        expectedPublicId: args.publicId,
+        expectedEncodingClass: context.encodingClass,
+      },
+    );
+    await ctx.runMutation(internal.taskImages.applyUploadVerification, {
+      ownerTokenIdentifier: context.ownerTokenIdentifier,
+      uploadId: context.uploadId,
+      publicId: args.publicId,
+      version: context.providerVersion,
+      result: verified.ok
+        ? { status: "ready", master: verified.master, ...verified.variants }
+        : { status: "failed", failureCode: verified.failureCode },
+    });
+  },
+});
+
 export const submitUploadResult = action({
   args: providerResultArgs,
   handler: async (ctx, args) => {
@@ -457,14 +519,7 @@ export const submitUploadResult = action({
     // and the edit filmstrip keeps showing Verifying/Image ready because the
     // server row never gets marked failed.
     if (!context || !context.publicId || context.publicId !== args.publicId) {
-      try {
-        await ctx.runMutation(markUploadFailedRef, {
-          uploadId: args.uploadId,
-          failureCode: "normalization_failed",
-        });
-      } catch {
-        // Best-effort: client still receives a failed state to show Retry.
-      }
+      // A stale response must not fail the current provider attempt.
       try {
         await ctx.runMutation(recordOperationalEventRef, {
           category: "verification",

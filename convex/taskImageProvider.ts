@@ -1,3 +1,5 @@
+import { readRecoveryVariant } from "./taskImageVariantRecovery";
+
 export const CARD_TRANSFORMATION =
   "c_limit,h_640,w_640/cs_srgb,f_webp,q_auto:eco";
 export const DETAIL_TRANSFORMATION =
@@ -118,6 +120,114 @@ export async function checkProviderAssetPresence({
     return Array.isArray(payload.resources) && payload.resources.length > 0 ? "present" : "absent";
   } catch {
     return "unknown";
+  }
+}
+
+/** Trusted Admin response; never accept these unsigned fields from a client. */
+export async function recoverProviderAsset(
+  provider: TaskImageProviderConfig,
+  publicId: string,
+  encodingClass: EncodingClass,
+) {
+  try {
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${encodeURIComponent(provider.cloudName)}/resources/image/authenticated/${encodeURIComponent(publicId)}`,
+      {
+        headers: {
+          Authorization: `Basic ${btoa(`${provider.apiKey}:${provider.apiSecret}`)}`,
+        },
+        signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
+      },
+    );
+    if (response.status === 404) return { status: "absent" as const };
+    if (!response.ok) return { status: "unknown" as const };
+    const payload = await response.json();
+    if (
+      !payload ||
+      payload.public_id !== publicId ||
+      payload.resource_type !== "image" ||
+      payload.type !== "authenticated" ||
+      typeof payload.version !== "number" ||
+      typeof payload.width !== "number" ||
+      typeof payload.height !== "number" ||
+      typeof payload.bytes !== "number" ||
+      typeof payload.format !== "string"
+    )
+      return { status: "unknown" as const };
+    const derived: unknown[] = Array.isArray(payload.derived)
+      ? payload.derived
+      : [];
+    const transformations = derived.flatMap((entry) =>
+      entry &&
+      typeof entry === "object" &&
+      "transformation" in entry &&
+      typeof entry.transformation === "string"
+        ? [entry.transformation]
+        : [],
+    );
+    const eager: ProviderVariant[] = [];
+    const input: ProviderUploadResult = {
+      publicId: payload.public_id,
+      version: payload.version,
+      signature: "",
+      resourceType: payload.resource_type,
+      deliveryType: payload.type,
+      format: payload.format,
+      width: payload.width,
+      height: payload.height,
+      bytes: payload.bytes,
+      eager,
+    };
+    const expected = {
+      apiSecret: provider.apiSecret,
+      expectedPublicId: publicId,
+      expectedEncodingClass: encodingClass,
+    };
+    const master = await verifyProviderWebhookMaster(input, expected);
+    if (!master.ok)
+      return { status: "invalid" as const, failureCode: master.failureCode };
+    if (
+      !transformations.includes(CARD_TRANSFORMATION) ||
+      !transformations.includes(DETAIL_TRANSFORMATION)
+    ) {
+      return {
+        status: "verifying" as const,
+        version: master.version,
+        master: master.master,
+      };
+    }
+    // Admin derived entries may omit dimensions. Inspect actual signed fixed
+    // variants rather than inventing dimensions or trusting a forwarded URL.
+    const variants = await Promise.all(
+      (["card", "detail"] as const).map(async (variant) => {
+        const url = await buildDeliveryUrl({
+          ...provider,
+          publicId,
+          version: master.version,
+          variant,
+        });
+        return readRecoveryVariant(
+          url,
+          variant === "card" ? MAX_CARD_BYTES : MAX_DETAIL_BYTES,
+        );
+      }),
+    );
+    if (!variants[0] || !variants[1]) return { status: "unknown" as const };
+    eager.push(
+      { transformation: CARD_TRANSFORMATION, ...variants[0] },
+      { transformation: DETAIL_TRANSFORMATION, ...variants[1] },
+    );
+    const verified = await verifyProviderWebhookResult(input, expected);
+    return verified.ok
+      ? {
+          status: "ready" as const,
+          version: verified.version,
+          master: verified.master,
+          ...verified.variants,
+        }
+      : { status: "invalid" as const, failureCode: verified.failureCode };
+  } catch {
+    return { status: "unknown" as const };
   }
 }
 

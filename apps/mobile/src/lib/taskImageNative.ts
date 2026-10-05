@@ -11,6 +11,9 @@ import type {
   TaskImageUploadGrant,
 } from "./taskImageCoordinator";
 
+import { mobileLogger } from "./logger";
+import { imageTransferTrace, providerFailureCategory, transportFailureCategory } from "./taskImageUploadDiagnostics";
+
 const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
 const MAX_SOURCE_PIXELS = 25_000_000;
 const MAX_CLIPBOARD_BYTES = 6 * 1024 * 1024;
@@ -462,6 +465,9 @@ export async function uploadPreparedTaskImage(
   grant: TaskImageUploadGrant,
   options?: { uploadId: string; onProgress: (progress: number) => void }
 ): Promise<AllowlistedProviderResult> {
+  const startedAt = performance.now();
+  const context = { transferTrace: imageTransferTrace(options?.uploadId ?? "unknown"), attempt: grant.attempt };
+  mobileLogger.info("image_transfer_started", context);
   const file = new File(uri);
   if (!file.exists) fail("source_unavailable");
   const format = uri.toLowerCase().endsWith(".png") ? "png" : "jpg";
@@ -486,10 +492,17 @@ export async function uploadPreparedTaskImage(
   let response;
   try {
     response = await task.uploadAsync();
+  } catch (error) {
+    mobileLogger.warn("image_transfer_failed", { ...context, category: transportFailureCategory(error), elapsedMs: Math.round(performance.now() - startedAt) });
+    fail("upload_failed", true);
   } finally {
-    if (options) activeTaskImageUploads.delete(options.uploadId);
+    if (options && activeTaskImageUploads.get(options.uploadId) === task) activeTaskImageUploads.delete(options.uploadId);
   }
-  if (response.status < 200 || response.status >= 300) fail("upload_failed", true);
+  if (response.status < 200 || response.status >= 300) {
+    mobileLogger.warn("image_transfer_failed", { ...context, httpStatus: response.status, category: providerFailureCategory(response.status, response.body), elapsedMs: Math.round(performance.now() - startedAt) });
+    fail("upload_failed", true);
+  }
+  mobileLogger.info("image_transfer_received", { ...context, httpStatus: response.status, elapsedMs: Math.round(performance.now() - startedAt) });
   let payload: Record<string, unknown>;
   try {
     payload = JSON.parse(response.body) as Record<string, unknown>;

@@ -1,6 +1,8 @@
 import * as Application from "expo-application";
 import * as Device from "expo-device";
 import * as FileSystem from "expo-file-system/legacy";
+import * as Updates from "expo-updates";
+import { sanitizeDiagnosticContext } from "./diagnostics";
 import * as Sharing from "expo-sharing";
 import { getDiagnosticsSnapshot } from "./diagnostics";
 
@@ -24,6 +26,15 @@ export async function writeDiagnosticsBundle(): Promise<string> {
       nativeBuildVersion: Application.nativeBuildVersion,
       nativeApplicationVersion: Application.nativeApplicationVersion,
     },
+    updates: sanitizeDiagnosticContext({
+      runningVersion: process.env.EXPO_PUBLIC_MOBILE_RELEASE_VERSION,
+      updateId: Updates.updateId, runtime: Updates.runtimeVersion, channel: Updates.channel,
+      embeddedLaunch: Updates.isEmbeddedLaunch, emergencyLaunch: Updates.isEmergencyLaunch,
+      // Keep codes and timestamps; native messages can contain asset URLs.
+      recentLogs: Updates.isEnabled ? await Updates.readLogEntriesAsync(24 * 60 * 60 * 1000)
+        .then(logs => logs.slice(-40).map(log => ({ code: log.code, level: log.level, timestamp: log.timestamp })))
+        .catch(() => []) : [],
+    }),
     device: {
       brand: Device.brand,
       manufacturer: Device.manufacturer,

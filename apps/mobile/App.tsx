@@ -32,6 +32,7 @@ import {
 import { GeistMono_500Medium } from "@expo-google-fonts/geist-mono";
 import { ConvexClientProvider } from "./src/lib/convex";
 import { isIsoDate } from "./src/lib/dates";
+import { imageTransferTrace } from "./src/lib/taskImageUploadDiagnostics";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
 import {
   getDiagnosticsSnapshot,
@@ -437,20 +438,14 @@ function MobileApp() {
         abortUpload: ({ uploadId }) => abortPreparedTaskImageUpload(uploadId),
         discardUnclaimedUpload: ({ uploadId }) => discardUnclaimedUploadMutation({ uploadId }).then(() => undefined),
         verify: async (result) => {
-          try {
-            return await submitTaskImageResult(result);
-          } catch (error) {
-            // If submitUploadResult still throws, sync failed to the server so the
-            // edit filmstrip does not sit on Verifying/Image ready forever.
-            await markTaskImageUploadFailedMutation({
-              uploadId: result.uploadId,
-              failureCode: "normalization_failed",
-            }).catch(() => undefined);
-            throw error;
-          }
+          const startedAt = performance.now();
+          const response = await submitTaskImageResult(result);
+          mobileLogger.info("image_server_confirmation", { transferTrace: imageTransferTrace(result.uploadId), state: response.state, elapsedMs: Math.round(performance.now() - startedAt) });
+          return response;
         },
-        reportFailure: ({ uploadId, failureCode }) =>
-          markTaskImageUploadFailedMutation({ uploadId, failureCode }).then(() => undefined),
+        recordTransition: ({ uploadId, ...event }) => mobileLogger.info("image_upload_transition", { ...event, transferTrace: imageTransferTrace(uploadId) }),
+        reportFailure: ({ uploadId, failureCode, attempt }) =>
+          markTaskImageUploadFailedMutation({ uploadId, failureCode, attempt }).then(() => undefined),
       }),
     [
       issueTaskImageGrant,

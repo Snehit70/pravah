@@ -221,7 +221,7 @@ describe("Task-image grant budget boundary", () => {
     });
   });
 
-  it("recycles a present ambiguous provider attempt on explicit retry", async () => {
+  it("keeps an ambiguous provider attempt intact when resource details are malformed", async () => {
     const fetchMock = vi.fn(async (input: unknown) => {
       if (String(input).includes("/resources/image/authenticated")) {
         return new Response(JSON.stringify({ resources: [{ public_id: "provider-private-id" }] }), { status: 200 });
@@ -241,13 +241,12 @@ describe("Task-image grant budget boundary", () => {
       })),
       runMutation,
     }, { uploadId: "upload-1", attempt: 1, restartAttempt: true })).resolves.toEqual({
-      status: "absent",
-      attempt: 1,
+      status: "unknown",
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(runMutation).toHaveBeenCalledWith(
       expect.anything(),
-      { ownerTokenIdentifier: "owner-token", uploadId: "upload-1", providerAttempt: 1 },
+      { ownerTokenIdentifier: "owner-token", uploadId: "upload-1", publicId: "provider-private-id" },
     );
   });
 

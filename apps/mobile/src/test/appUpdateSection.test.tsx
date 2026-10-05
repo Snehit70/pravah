@@ -94,6 +94,15 @@ vi.mock("../theme/tokens", () => ({
 
 import { AppUpdateSection } from "../components/AppUpdateSection";
 
+const mobileRelease = {
+  runningVersion: "3.0.22", latestVersion: "3.0.24", pendingVersion: null,
+  nativeRuntime: "native-5", minimumRuntime: null, needsNativeUpgrade: false, isBelowMinimumRuntime: false,
+  installedVersion: "2.3.0", runningUpdateId: undefined, downloadedUpdateId: undefined,
+  isUpdatePending: false, otaCheck: { status: "failed" as const, reason: "check_failed" },
+  checkForOtaUpdate: vi.fn(async () => undefined), publishedReleases: [], isLoadingPublishedReleases: false,
+  restartToUpdate: vi.fn(async () => undefined),
+};
+
 describe("AppUpdateSection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -103,19 +112,21 @@ describe("AppUpdateSection", () => {
 
   it("is hidden on iOS", () => {
     mocks.platformOs = "ios";
-    const { container } = render(<AppUpdateSection />);
+    const { container } = render(<AppUpdateSection mobileRelease={mobileRelease} />);
 
     expect(container.textContent).toBe("");
   });
 
   it("reports up to date after a successful check", async () => {
     mocks.checkForAppUpdate.mockResolvedValue({ status: "up-to-date" });
-    render(<AppUpdateSection />);
+    render(<AppUpdateSection mobileRelease={mobileRelease} />);
 
     fireEvent.click(screen.getByRole("button", { name: /check for app updates/i }));
 
-    await waitFor(() => expect(screen.getByText("You're up to date.")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Installed APK is current.")).toBeTruthy());
     expect(mocks.checkForAppUpdate).toHaveBeenCalledWith("2.3.0");
+    expect(mobileRelease.checkForOtaUpdate).toHaveBeenCalled();
+    expect(screen.getByText("App-update check or download failed. Try again.")).toBeTruthy();
   });
 
   it("shows release notes and calls the installer for an available update", async () => {
@@ -126,7 +137,7 @@ describe("AppUpdateSection", () => {
       md5Url: "https://example.com/pravah.apk.md5",
       releaseNotes: "Keyboard and update fixes.",
     });
-    render(<AppUpdateSection />);
+    render(<AppUpdateSection mobileRelease={mobileRelease} />);
 
     fireEvent.click(screen.getByRole("button", { name: /check for app updates/i }));
 
@@ -155,7 +166,7 @@ describe("AppUpdateSection", () => {
     ],
   ])("renders %s update-check errors", async (result, message) => {
     mocks.checkForAppUpdate.mockResolvedValue(result);
-    render(<AppUpdateSection />);
+    render(<AppUpdateSection mobileRelease={mobileRelease} />);
 
     fireEvent.click(screen.getByRole("button", { name: /check for app updates/i }));
 
