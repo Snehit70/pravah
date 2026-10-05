@@ -1,4 +1,6 @@
+import { listGoalLinksForOwner } from "./goalLinkQueries";
 import { v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
@@ -7,6 +9,7 @@ import {
   completeTaskForOwner,
   getTimelineForOwner,
   listTasksForOwner,
+  listTasksPageForOwner,
   moveTaskForOwner,
   reopenTaskForOwner,
   unscheduleTaskForOwner,
@@ -28,6 +31,7 @@ import {
 const AUTOMATION_UNDO_WINDOW_MS = 30 * 60 * 1000;
 
 const taskStatus = v.union(
+  v.literal("active"),
   v.literal("inbox"),
   v.literal("timeline"),
   v.literal("scheduled"),
@@ -158,6 +162,8 @@ export const listTasks = internalQuery({
     ownerTokenIdentifier: v.string(),
     date: v.optional(v.string()),
     status: v.optional(taskStatus),
+    before: v.optional(v.string()),
+    after: v.optional(v.string()),
   },
   handler: async (ctx, { ownerTokenIdentifier, status, ...args }) => {
     const tasks = await listTasksForOwner(ctx, ownerTokenIdentifier, {
@@ -173,6 +179,18 @@ export const listTasks = internalQuery({
       ...task,
       imageSummary: summaries.get(task._id),
     }));
+  },
+});
+
+export const listTasksPage = internalQuery({
+  args: { ownerTokenIdentifier: v.string(), date: v.optional(v.string()),
+    status: v.optional(taskStatus), before: v.optional(v.string()), after: v.optional(v.string()),
+    paginationOpts: paginationOptsValidator },
+  handler: async (ctx, { ownerTokenIdentifier, paginationOpts, status, ...args }) => {
+    const result = await listTasksPageForOwner(ctx, ownerTokenIdentifier,
+      { ...args, status: status === "timeline" ? "scheduled" : status }, paginationOpts);
+    const summaries = await getTaskImageSummariesForOwner(ctx, ownerTokenIdentifier, result.page.map((t) => t._id));
+    return { ...result, page: result.page.map((t) => ({ ...t, imageSummary: summaries.get(t._id) })) };
   },
 });
 
@@ -229,16 +247,10 @@ export const listGoals = internalQuery({
 });
 
 export const listGoalLinks = internalQuery({
-  args: {
-    ownerTokenIdentifier: v.string(),
-  },
-  handler: async (ctx, { ownerTokenIdentifier }) => {
-    const links = await ctx.db
-      .query("goalLinks")
-      .withIndex("by_owner", (q) => q.eq("ownerTokenIdentifier", ownerTokenIdentifier))
-      .collect();
-
-    return Object.fromEntries(links.map((link) => [link.taskId, link.goalClientId]));
+  args: { ownerTokenIdentifier: v.string(), taskIds: v.optional(v.array(v.string())) },
+  handler: async (ctx, { ownerTokenIdentifier, taskIds }) => {
+    if (taskIds && taskIds.length > 100) throw new Error("At most 100 task IDs per request");
+    return listGoalLinksForOwner(ctx, ownerTokenIdentifier, taskIds);
   },
 });
 

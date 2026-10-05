@@ -1,3 +1,4 @@
+import { listGoalLinksForOwner } from "./goalLinkQueries";
 import { internalMutation, mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
@@ -259,18 +260,10 @@ export const remove = mutation({
 });
 
 export const listLinks = query({
-  args: {},
-  handler: async (ctx) => {
-    const tokenIdentifier = await requireTokenIdentifier(ctx);
-    const links = await ctx.db
-      .query("goalLinks")
-      .withIndex("by_owner", (q) => q.eq("ownerTokenIdentifier", tokenIdentifier))
-      .collect();
-    const result: Record<string, string> = {};
-    for (const link of links) {
-      result[link.taskId] = link.goalClientId;
-    }
-    return result;
+  args: { taskIds: v.optional(v.array(v.string())) },
+  handler: async (ctx, { taskIds }) => {
+    const owner = await requireTokenIdentifier(ctx);
+    return listGoalLinksForOwner(ctx, owner, taskIds);
   },
 });
 

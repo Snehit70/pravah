@@ -236,7 +236,8 @@ function runQuery(name: string, args: any): unknown {
       }));
     }
     case "goals:listLinks": {
-      return { ...data.goalLinks };
+      const ids = args?.taskIds as string[] | undefined;
+      return ids ? Object.fromEntries(ids.filter((id) => data.goalLinks[id] !== undefined).map((id) => [id, data.goalLinks[id]])) : { ...data.goalLinks };
     }
     case "sync:getIntegrationStatus": {
       const provider = args?.provider as "google_calendar" | "gmail";

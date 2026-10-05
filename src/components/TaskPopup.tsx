@@ -26,7 +26,7 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [titleError, setTitleError] = useState("");
   const goals = useQuery(api.goals.list, webGoalsLinkingEnabled ? {} : "skip");
-  const goalLinks = useQuery(api.goals.listLinks, webGoalsLinkingEnabled ? {} : "skip");
+  const goalLinks = useQuery(api.goals.listLinks, webGoalsLinkingEnabled ? { taskIds: [task._id] } : "skip");
   const [selectedGoalId, setSelectedGoalId] = useState<string>("");
 
   const updateTask = useMutation(api.tasks.updateTask);

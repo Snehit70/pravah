@@ -79,7 +79,10 @@ export function AuthenticatedApp() {
   );
   const kairoTasks = useQuery(api.tasks.listTasks, kairoActive ? {} : "skip");
   const goals = useQuery(api.goals.list, webGoalsLinkingEnabled ? {} : "skip");
-  const goalLinks = useQuery(api.goals.listLinks, webGoalsLinkingEnabled ? {} : "skip");
+  const boardLinkIds = [...new Set([...(boardTasks ?? []), ...(completedToday ?? [])].map((task) => task._id))].sort();
+  const goalLinks = useQuery(api.goals.listLinks, !webGoalsLinkingEnabled ? "skip"
+    : wantsCompletedHistory || boardLinkIds.length > 500 ? {}
+    : boardTasks === undefined ? "skip" : { taskIds: boardLinkIds });
   const upsertGoal = useMutation(api.goals.upsert);
   const removeGoal = useMutation(api.goals.remove);
   const moveTask = useMutation(api.tasks.moveTask);

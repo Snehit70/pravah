@@ -27,7 +27,9 @@ export const createTaskSchema = z.object({
 
 export const taskListSchema = z.object({
   date: z.string().regex(dateRegex, "Invalid date format (YYYY-MM-DD)").optional(),
-  status: z.enum(["inbox", "timeline", "scheduled", "completed", "cancelled"]).optional(),
+  status: z.enum(["active", "inbox", "timeline", "scheduled", "completed", "cancelled"]).optional(),
+  before: z.string().regex(dateRegex).optional(),
+  after: z.string().regex(dateRegex).optional(),
 });
 
 export const updateTaskSchema = z.object({
