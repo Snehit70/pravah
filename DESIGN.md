@@ -19,13 +19,13 @@ colors:
   priority-one: "#934536"
   priority-two: "#805712"
   priority-three: "#5e6662"
-  dark-canvas: "#151118"
-  dark-surface: "#1c1720"
-  dark-card: "#241d28"
-  dark-floating: "#2b2230"
-  dark-ink: "#f3eaf5"
-  dark-text-secondary: "#cbbdce"
-  dark-text-muted: "#a99bab"
+  dark-canvas: "#141413"
+  dark-surface: "#1b1b19"
+  dark-card: "#22221f"
+  dark-floating: "#2b2b27"
+  dark-ink: "#f2f0eb"
+  dark-text-secondary: "#b8b6b0"
+  dark-text-muted: "#97958f"
 typography:
   display:
     fontFamily: "Geist"
@@ -115,8 +115,8 @@ The system rejects enterprise density, playful gamification, calendar-clone
 chrome, and generic AI styling. Purple is a signature for intelligence and
 selection, not the atmosphere of every screen.
 
-At night, Pravah feels like the same planning desk under a shaded lamp: deep
-aubergine-charcoal layers reduce glare while warm text, restrained accents, and
+At night, Pravah feels like the same planning desk under a shaded lamp: warm
+charcoal layers reduce glare while warm text, restrained accents, and
 stable semantic colors preserve the daytime hierarchy.
 
 **Key Characteristics:**
@@ -157,18 +157,37 @@ colors keep fixed meanings. Pair every color state with text, shape, or icon.
 
 ### Dark appearance
 
-- **Night Canvas** (`#151118`): App background.
-- **Night Surface** (`#1c1720`): Secondary surface and input layer.
-- **Night Card** (`#241d28`): Task rows and grouped settings.
-- **Night Floating** (`#2b2230`): Sheets and raised controls.
-- **Warm Light Ink** (`#f3eaf5`): Primary text and icons.
-- **Heather Text** (`#cbbdce`): Supporting copy.
-- **Muted Heather** (`#a99bab`): Metadata.
+- **Night Canvas** (`#141413`): App background.
+- **Night Surface** (`#1b1b19`): Secondary surface and input layer.
+- **Night Card** (`#22221f`): Task rows and grouped settings.
+- **Night Floating** (`#2b2b27`): Sheets and raised controls.
+- **Warm Light Ink** (`#f2f0eb`): Primary text and icons.
+- **Stone Light Text** (`#b8b6b0`): Supporting copy.
+- **Muted Stone** (`#97958f`): Metadata.
+
+Decorative borders use `#3d3d37`; checkbox outlines use the stronger
+`#797973` so simplifying cards never hides controls. Photo overlay labels
+use a fixed light foreground, separate from text on bright accent buttons.
+
+Dark Timeline pills have explicit container/foreground pairs in
+`apps/mobile/src/theme/pills.ts`, shared by both layouts and overdue rows.
+Goal labels keep their existing color-family assignment, using pale sage,
+sand, copper, or the selected accent on deep tints with subtle tonal outlines.
+Priority labels use coral for P1, amber for P2, and neutral stone for P3.
+The completion count is neutral at zero and sage once work is completed.
+These pill treatments do not change light appearance or global status colors.
+Each dark pill foreground must meet 4.5:1 contrast against its own solid fill.
+The treatment follows the paired foreground/container approach in
+[Radix badge variants](https://www.radix-ui.com/themes/docs/components/badge).
 
 Dark appearance keeps the restrained color strategy. The selected app accent
-changes interactive emphasis only; neutral surfaces and semantic state colors
-remain stable. System appearance follows the device live, while manual Warm
-light and Dark choices remain local to the device.
+changes interactive emphasis only, using a softer dark variant (indigo
+`#b8b2d9`, copper `#d0b094`, teal `#9fc6bf`, or rose `#d0adb9`). Keep that
+accent for progress, selected navigation, and the primary action. Repeated
+secondary actions and decorative goal icons use neutral text colors so the
+accent stays a cue instead of a wash. Neutral surfaces and semantic state
+colors remain stable. System appearance follows the device live, while manual
+Warm light and Dark choices remain local to the device.
 
 ## 3. Typography
 

@@ -51,6 +51,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { colors, fonts, motion, radii, shadow, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
+import { goalPillFor, priorityPillFor, progressPillFor } from "../theme/pills";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import type { MobileTask } from "./TaskCard";
 import {
@@ -71,30 +72,6 @@ import { DayStripTrigger, DayStripWeek } from "./TimelineDayStrip";
 import { ThemedDatePicker } from "./ThemedDatePicker";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useUserPreferences } from "../hooks/useUserPreferences";
-
-const PRIORITY_META = {
-  p1: { label: "P1", color: () => colors.priorityP1, bg: () => colors.errorMuted },
-  p2: { label: "P2", color: () => colors.priorityP2, bg: () => colors.warningMuted },
-  p3: { label: "P3", color: () => colors.priorityP3, bg: () => colors.successMuted },
-} as const;
-
-// Pastel goal pills, cycled deterministically off the goal name so the same
-// goal always wears the same tint. Muted semantic washes stay legible in
-// both light and dark themes.
-const GOAL_PILLS = [
-  { backgroundColor: () => colors.accentSoft, textColor: () => colors.accent },
-  { backgroundColor: () => colors.successMuted, textColor: () => colors.success },
-  { backgroundColor: () => colors.warningMuted, textColor: () => colors.warning },
-  { backgroundColor: () => colors.deadlineMuted, textColor: () => colors.deadline },
-] as const;
-
-function goalPillFor(goalName: string): (typeof GOAL_PILLS)[number] {
-  let hash = 0;
-  for (let i = 0; i < goalName.length; i += 1) {
-    hash = (hash * 31 + goalName.charCodeAt(i)) >>> 0;
-  }
-  return GOAL_PILLS[hash % GOAL_PILLS.length];
-}
 
 type TimelineDayCarouselProps = {
   sections: [string, MobileTask[]][];
@@ -142,7 +119,7 @@ function SlimTaskRow({ task, completed, goalName, onToggle, onPress }: SlimTaskR
   const { prefs } = useUserPreferences();
   const reducedMotion = useReducedMotion();
   const compactDensity = prefs.density === "compact";
-  const priority = task.priority ? PRIORITY_META[task.priority] : null;
+  const priority = task.priority ? priorityPillFor(task.priority) : null;
   const timeLabel = task.time && !completed ? formatTime12h(task.time) : null;
   const goalPill = goalName ? goalPillFor(goalName) : null;
   const showPriority = Boolean(priority) && !completed;
@@ -210,9 +187,9 @@ function SlimTaskRow({ task, completed, goalName, onToggle, onPress }: SlimTaskR
             {task.title}
           </Text>
           {showPriority && priority ? (
-            <View style={[styles.priorityPill, { backgroundColor: priority.bg() }]}>
-              <StarIcon color={priority.color()} size={12} strokeWidth={2} />
-              <Text style={[styles.priorityPillText, { color: priority.color() }]}>
+            <View style={[styles.priorityPill, priority.container]}>
+              <StarIcon color={priority.textColor} size={12} strokeWidth={2} />
+              <Text style={[styles.priorityPillText, { color: priority.textColor }]}>
                 {priority.label}
               </Text>
             </View>
@@ -226,9 +203,9 @@ function SlimTaskRow({ task, completed, goalName, onToggle, onPress }: SlimTaskR
         {hasMetaRow ? (
           <View style={styles.rowMeta}>
             {goalName && goalPill && !completed ? (
-              <View style={[styles.goalPill, { backgroundColor: goalPill.backgroundColor() }]}>
+              <View style={[styles.goalPill, goalPill.container]}>
                 <Text
-                  style={[styles.goalPillText, { color: goalPill.textColor() }]}
+                  style={[styles.goalPillText, { color: goalPill.textColor }]}
                   numberOfLines={1}
                   ellipsizeMode="tail"
                 >
@@ -354,6 +331,7 @@ function DayCardView({
     ? rows.filter((task) => completedIds.has(String(task._id))).length
     : 0;
   const totalCount = rows.length;
+  const progressPill = progressPillFor(completedCount);
 
   return (
     <View
@@ -374,9 +352,9 @@ function DayCardView({
         </View>
         {isToday ? (
           <View style={styles.progressBlock} accessibilityLabel={`${completedCount} of ${totalCount} done`}>
-            <View style={styles.progressPill}>
-              <CheckIcon color={colors.success} size={16} strokeWidth={2.4} />
-              <Text style={styles.progressPillText}>
+            <View style={[styles.progressPill, progressPill.container]}>
+              <CheckIcon color={progressPill.textColor} size={16} strokeWidth={2.4} />
+              <Text style={[styles.progressPillText, { color: progressPill.textColor }]}>
                 {completedCount} of {totalCount}
               </Text>
             </View>
@@ -569,10 +547,10 @@ function OverdueCard({
                   <>
                     {goalName && goalPill ? (
                       <View
-                        style={[styles.overdueGoalPill, { backgroundColor: goalPill.backgroundColor() }]}
+                        style={[styles.overdueGoalPill, goalPill.container]}
                       >
                         <Text
-                          style={[styles.overdueGoalPillText, { color: goalPill.textColor() }]}
+                          style={[styles.overdueGoalPillText, { color: goalPill.textColor }]}
                           numberOfLines={1}
                           ellipsizeMode="tail"
                         >
@@ -1140,7 +1118,7 @@ const styles = createThemedStyles({
     justifyContent: "center",
     backgroundColor: colors.bgSurface,
     borderWidth: 1.5,
-    borderColor: colors.border,
+    borderColor: colors.borderControl,
   },
   rowCheckboxCompleted: {
     backgroundColor: colors.accent,

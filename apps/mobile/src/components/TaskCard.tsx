@@ -643,7 +643,7 @@ const styles = createThemedStyles({
     borderRadius: 9,
     borderCurve: "continuous",
     borderWidth: 1.5,
-    borderColor: colors.borderSubtle,
+    borderColor: colors.borderControl,
     backgroundColor: colors.bgSurface,
     alignItems: "center",
     justifyContent: "center",

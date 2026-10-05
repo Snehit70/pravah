@@ -150,7 +150,7 @@ function DragHandle({ onDrop, disabled, slotWidth, compact = false }: { onDrop: 
         hitSlop={4}
         style={({ pressed }) => [compact ? styles.dragHandleCompact : styles.dragHandle, pressed && styles.dragHandlePressed]}
       >
-        <GripHorizontalIcon color={colors.textInverse} size={compact ? 14 : 20} strokeWidth={2} />
+        <GripHorizontalIcon color={colors.textOnMedia} size={compact ? 14 : 20} strokeWidth={2} />
       </Pressable>
     </GestureDetector>
   );
@@ -539,7 +539,7 @@ function CaptureSurface({
               }} disabled={false} /> : null}
               {onRemove ? (
                 <Pressable accessibilityRole="button" accessibilityLabel="Remove Task image" onPress={() => onRemove(image.taskImageId)} style={styles.photoRemove}>
-                  <CloseIcon color={colors.textInverse} size={16} />
+                  <CloseIcon color={colors.textOnMedia} size={16} />
                 </Pressable>
               ) : null}
             </View>
@@ -685,7 +685,7 @@ function EditSurface({
                   hitSlop={8}
                   style={styles.editThumbRemove}
                 >
-                  <CloseIcon color={colors.textInverse} size={14} />
+                  <CloseIcon color={colors.textOnMedia} size={14} />
                 </Pressable>
               ) : null}
               {onReorder && images.length > 1 ? <DragHandle slotWidth={70} onDrop={(translationX) => {
@@ -909,13 +909,13 @@ const styles = createThemedStyles({
   dragHandleCompact: { position: "absolute", left: "50%", bottom: -10, width: 28, height: 28, marginLeft: -14, borderRadius: radii.full, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(32,25,20,0.72)" },
   dragHandlePressed: { backgroundColor: "rgba(32,25,20,0.9)" },
   captureAddThumb: { width: 122, height: 92, alignItems: "center", justifyContent: "center", borderRadius: radii.lg, borderWidth: StyleSheet.hairlineWidth, borderStyle: "dashed", borderColor: colors.border, backgroundColor: colors.bgSurface },
-  primaryFlag: { position: "absolute", left: spacing.xs, top: spacing.xs, ...typography.micro, fontSize: 9, color: colors.textInverse, backgroundColor: "rgba(32,25,20,0.72)", paddingHorizontal: 6, paddingVertical: 3, borderRadius: radii.sm, overflow: "hidden" },
+  primaryFlag: { position: "absolute", left: spacing.xs, top: spacing.xs, ...typography.micro, fontSize: 9, color: colors.textOnMedia, backgroundColor: "rgba(32,25,20,0.72)", paddingHorizontal: 6, paddingVertical: 3, borderRadius: radii.sm, overflow: "hidden" },
   photoRemove: { position: "absolute", right: spacing.xs, top: spacing.xs, width: 44, height: 44, borderRadius: radii.full, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(32,25,20,0.72)" },
   photoCaption: { ...typography.bodyMd, color: colors.textSecondary, marginTop: spacing.xs },
   captureCaptionInput: { width: "100%", minHeight: 44, paddingVertical: spacing.xs, color: colors.textSecondary, ...typography.bodyMd },
   inboxMedia: { marginLeft: spacing.md, alignItems: "flex-end", gap: spacing.xs },
   inboxThumb: { width: 84, height: 68, borderRadius: radii.md },
-  countBadge: { position: "absolute", right: 4, bottom: 4, ...typography.micro, color: colors.textInverse, backgroundColor: "rgba(32,25,20,0.72)", paddingHorizontal: 5, paddingVertical: 2, borderRadius: radii.sm, overflow: "hidden" },
+  countBadge: { position: "absolute", right: 4, bottom: 4, ...typography.micro, color: colors.textOnMedia, backgroundColor: "rgba(32,25,20,0.72)", paddingHorizontal: 5, paddingVertical: 2, borderRadius: radii.sm, overflow: "hidden" },
   inboxStatus: { ...typography.micro, color: colors.warning, maxWidth: 100, textAlign: "right" },
   editSurface: { gap: spacing.sm },
   editHero: { width: "100%", aspectRatio: 1.3, borderRadius: radii.lg },
@@ -924,7 +924,7 @@ const styles = createThemedStyles({
   editThumbDragWrap: { position: "relative" },
   editThumbActive: { borderColor: colors.accent },
   editThumb: { width: 62, height: 54, borderRadius: radii.sm },
-  editThumbNumber: { position: "absolute", left: 6, top: 6, fontFamily: "GeistMono_500Medium", fontSize: 9, color: colors.textInverse, backgroundColor: "rgba(32,25,20,0.66)", paddingHorizontal: 4, paddingVertical: 2, borderRadius: 3, overflow: "hidden" },
+  editThumbNumber: { position: "absolute", left: 6, top: 6, fontFamily: "GeistMono_500Medium", fontSize: 9, color: colors.textOnMedia, backgroundColor: "rgba(32,25,20,0.66)", paddingHorizontal: 4, paddingVertical: 2, borderRadius: 3, overflow: "hidden" },
   editThumbRemove: { position: "absolute", right: -8, top: -8, width: 32, height: 32, borderRadius: radii.full, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(32,25,20,0.78)", zIndex: 2 },
   editAddThumb: { width: 66, height: 58, borderRadius: radii.md, borderWidth: StyleSheet.hairlineWidth, borderStyle: "dashed", borderColor: colors.border, alignItems: "center", justifyContent: "center" },
   editMetaRow: { marginTop: spacing.sm, flexDirection: "row", justifyContent: "space-between" },

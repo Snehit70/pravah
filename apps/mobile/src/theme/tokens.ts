@@ -49,6 +49,8 @@ const lightColors = {
   border: "rgba(78,62,43,0.18)",
   borderSubtle: "rgba(78,62,43,0.09)",
   borderFocus: "rgba(43,32,22,0.46)",
+  // Controls need a visible boundary independently of decorative card borders.
+  borderControl: "#8b7e70",
 
   // ── Text ────────────────────────────────────────────────────────────
   textPrimary: "#201914",
@@ -56,6 +58,8 @@ const lightColors = {
   textMuted: "#6f6358",
   textDim: "#76695e",
   textInverse: "#fffaf2",
+  // Photo scrims stay dark in both appearances; their foreground stays light.
+  textOnMedia: "#faf8f3",
   textCompleted: "#76695e",
 
   // ── Accent ──────────────────────────────────────────────────────────
@@ -97,30 +101,32 @@ const lightColors = {
 } as const;
 
 const darkColors: ColorPalette = {
-  bg: "#151118",
-  bgSurface: "#1c1720",
-  bgCard: "#241d28",
-  bgFloating: "#2b2230",
-  bgCardGlass: "rgba(236,218,240,0.045)",
-  bgInput: "rgba(236,218,240,0.075)",
-  backdrop: "rgba(8,5,10,0.68)",
+  bg: "#141413",
+  bgSurface: "#1b1b19",
+  bgCard: "#22221f",
+  bgFloating: "#2b2b27",
+  bgCardGlass: "rgba(242,240,235,0.045)",
+  bgInput: "rgba(242,240,235,0.075)",
+  backdrop: "rgba(12,12,11,0.68)",
 
-  border: "rgba(231,213,235,0.40)",
-  borderSubtle: "rgba(231,213,235,0.12)",
-  borderFocus: "rgba(231,213,235,0.48)",
+  border: "#3d3d37",
+  borderSubtle: "rgba(242,240,235,0.09)",
+  borderFocus: "#a3a199",
+  borderControl: "#797973",
 
-  textPrimary: "#f3eaf5",
-  textSecondary: "#cbbdce",
-  textMuted: "#b3a5b6",
-  textDim: "#9d8fa1",
-  textInverse: "#18121b",
-  textCompleted: "#9d8fa1",
+  textPrimary: "#f2f0eb",
+  textSecondary: "#b8b6b0",
+  textMuted: "#97958f",
+  textDim: "#93918b",
+  textInverse: "#131311",
+  textOnMedia: "#faf8f3",
+  textCompleted: "#93918b",
 
-  accent: "#a995ff",
-  accentHover: "#bcaeff",
-  accentSoft: "rgba(169,149,255,0.22)",
-  accentGlow: "rgba(169,149,255,0.34)",
-  accentDim: "rgba(169,149,255,0.12)",
+  accent: "#b8b2d9",
+  accentHover: "#c8c3e4",
+  accentSoft: "rgba(184,178,217,0.15)",
+  accentGlow: "rgba(184,178,217,0.22)",
+  accentDim: "rgba(184,178,217,0.07)",
 
   priorityP1: "#f09588",
   priorityP2: "#e4b66a",
@@ -136,9 +142,9 @@ const darkColors: ColorPalette = {
   errorMuted: "rgba(242,139,131,0.17)",
 
   primary: "#69cfa0",
-  primaryDark: "#151118",
-  primaryInk: "#18121b",
-  haloCopper: "rgba(169,149,255,0.12)",
+  primaryDark: "#141413",
+  primaryInk: "#131311",
+  haloCopper: "rgba(184,178,217,0.07)",
 };
 
 export type ColorPalette = { [K in keyof typeof lightColors]: string };
@@ -181,32 +187,32 @@ const accentPalettes: Record<ResolvedAppearance, Record<AccentColor, {
   },
   dark: {
     purple: {
-      accent: "#a995ff",
-      accentHover: "#bcaeff",
-      accentSoft: "rgba(169,149,255,0.22)",
-      accentGlow: "rgba(169,149,255,0.34)",
-      accentDim: "rgba(169,149,255,0.12)",
+      accent: "#b8b2d9",
+      accentHover: "#c8c3e4",
+      accentSoft: "rgba(184,178,217,0.15)",
+      accentGlow: "rgba(184,178,217,0.22)",
+      accentDim: "rgba(184,178,217,0.07)",
     },
     copper: {
-      accent: "#e5a078",
-      accentHover: "#f0b18c",
-      accentSoft: "rgba(229,160,120,0.21)",
-      accentGlow: "rgba(229,160,120,0.32)",
-      accentDim: "rgba(229,160,120,0.11)",
+      accent: "#d0b094",
+      accentHover: "#dcc1a9",
+      accentSoft: "rgba(208,176,148,0.15)",
+      accentGlow: "rgba(208,176,148,0.21)",
+      accentDim: "rgba(208,176,148,0.07)",
     },
     teal: {
-      accent: "#72c9c4",
-      accentHover: "#8bd8d3",
-      accentSoft: "rgba(114,201,196,0.20)",
-      accentGlow: "rgba(114,201,196,0.31)",
-      accentDim: "rgba(114,201,196,0.11)",
+      accent: "#9fc6bf",
+      accentHover: "#b2d3cd",
+      accentSoft: "rgba(159,198,191,0.14)",
+      accentGlow: "rgba(159,198,191,0.20)",
+      accentDim: "rgba(159,198,191,0.06)",
     },
     rose: {
-      accent: "#e69ab3",
-      accentHover: "#f0adc3",
-      accentSoft: "rgba(230,154,179,0.21)",
-      accentGlow: "rgba(230,154,179,0.32)",
-      accentDim: "rgba(230,154,179,0.11)",
+      accent: "#d0adb9",
+      accentHover: "#dfc1cb",
+      accentSoft: "rgba(208,173,185,0.15)",
+      accentGlow: "rgba(208,173,185,0.21)",
+      accentDim: "rgba(208,173,185,0.07)",
     },
   },
 };
@@ -240,17 +246,25 @@ export const colors = new Proxy(lightColors as ColorPalette, {
 function themedValue(value: unknown): unknown {
   if (typeof value !== "string") return value;
   if (value === "#2c2118") {
-    return getResolvedAppearance() === "dark" ? "#08050a" : value;
+    return getResolvedAppearance() === "dark" ? "#0c0c0b" : value;
   }
   const palette = activeColors();
-  const lightPalette = {
-    ...lightColors,
-    ...accentPalettes.light.purple,
-  };
-  const key = (Object.keys(lightPalette) as Array<keyof ColorPalette>).find(
-    (candidate) => lightPalette[candidate] === value,
-  );
-  return key ? palette[key] : value;
+  // Fast Refresh can initialize a style module while dark appearance or a
+  // non-default accent is active. Resolve those captured values too, so the
+  // same styles still follow subsequent appearance and accent changes.
+  const sources = [
+    lightColors,
+    darkColors,
+    ...Object.values(accentPalettes.light),
+    ...Object.values(accentPalettes.dark),
+  ];
+  for (const source of sources) {
+    const key = (Object.keys(source) as Array<keyof typeof source>).find(
+      (candidate) => source[candidate] === value,
+    );
+    if (key) return palette[key as keyof ColorPalette];
+  }
+  return value;
 }
 
 configureThemedValueResolver(themedValue);
@@ -467,7 +481,7 @@ const lightChart: ChartPalette = {
 
 const darkChart: ChartPalette = {
   ...lightChart,
-  heatmapEmpty: "rgba(231,213,235,0.09)",
+  heatmapEmpty: "rgba(242,240,235,0.085)",
   line: darkColors.accent,
   areaColor: darkColors.accent,
   heroAreaColor: darkColors.accent,

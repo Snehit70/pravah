@@ -13,34 +13,11 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { CheckIcon, ChevronRightIcon, ClockIcon, StarIcon } from "./UiIcons";
 import { colors, fonts, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
+import { goalPillFor, priorityPillFor } from "../theme/pills";
 import { formatTime12h } from "../lib/task-form";
 import type { MobileTask } from "./TaskCard";
 
 type TimelineGroupPosition = "only" | "first" | "middle" | "last";
-
-const PRIORITY_META = {
-  p1: { label: "P1", color: () => colors.priorityP1, bg: () => colors.errorMuted },
-  p2: { label: "P2", color: () => colors.priorityP2, bg: () => colors.warningMuted },
-  p3: { label: "P3", color: () => colors.priorityP3, bg: () => colors.successMuted },
-} as const;
-
-// Pastel goal pills, cycled deterministically off the goal name so the same
-// goal always wears the same tint. Uses the muted semantic washes so pills
-// stay legible in both light and dark themes.
-const GOAL_PILLS = [
-  { backgroundColor: () => colors.accentSoft, textColor: () => colors.accent },
-  { backgroundColor: () => colors.successMuted, textColor: () => colors.success },
-  { backgroundColor: () => colors.warningMuted, textColor: () => colors.warning },
-  { backgroundColor: () => colors.deadlineMuted, textColor: () => colors.deadline },
-] as const;
-
-function goalPillFor(goalName: string): (typeof GOAL_PILLS)[number] {
-  let hash = 0;
-  for (let i = 0; i < goalName.length; i += 1) {
-    hash = (hash * 31 + goalName.charCodeAt(i)) >>> 0;
-  }
-  return GOAL_PILLS[hash % GOAL_PILLS.length];
-}
 
 type TimelineTaskRowProps = {
   task: MobileTask;
@@ -71,7 +48,7 @@ function TimelineTaskRowInner({
   onComplete,
   groupPosition = "only",
 }: TimelineTaskRowProps) {
-  const priority = task.priority ? PRIORITY_META[task.priority] : null;
+  const priority = task.priority ? priorityPillFor(task.priority) : null;
   const timeLabel = task.time ? formatTime12h(task.time) : null;
   const goalPill = goalName ? goalPillFor(goalName) : null;
   const hasMetaRow = Boolean(goalName ?? timeLabel ?? priority);
@@ -145,10 +122,10 @@ function TimelineTaskRowInner({
           <View style={styles.metaRow}>
             {goalName && goalPill ? (
               <View
-                style={[styles.goalPill, { backgroundColor: goalPill.backgroundColor() }]}
+                style={[styles.goalPill, goalPill.container]}
               >
                 <Text
-                  style={[styles.goalPillText, { color: goalPill.textColor() }]}
+                  style={[styles.goalPillText, { color: goalPill.textColor }]}
                   numberOfLines={1}
                   ellipsizeMode="tail"
                 >
@@ -163,9 +140,9 @@ function TimelineTaskRowInner({
               </View>
             ) : null}
             {priority ? (
-              <View style={[styles.priorityPill, { backgroundColor: priority.bg() }]}>
-                <StarIcon color={priority.color()} size={12} strokeWidth={2} />
-                <Text style={[styles.priorityPillText, { color: priority.color() }]}>
+              <View style={[styles.priorityPill, priority.container]}>
+                <StarIcon color={priority.textColor} size={12} strokeWidth={2} />
+                <Text style={[styles.priorityPillText, { color: priority.textColor }]}>
                   {priority.label}
                 </Text>
               </View>
@@ -219,7 +196,7 @@ const styles = createThemedStyles({
     borderCurve: "continuous",
     backgroundColor: colors.bgSurface,
     borderWidth: 1.5,
-    borderColor: colors.border,
+    borderColor: colors.borderControl,
     alignItems: "center",
     justifyContent: "center",
   },
