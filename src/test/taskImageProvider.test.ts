@@ -113,7 +113,7 @@ describe("Task-image Cloudinary policy", () => {
         overwrite: "false",
         public_id: "pravah-task-images/opaque123",
         return_delete_token: "false",
-                timestamp: "1776245400",
+        timestamp: "1776245400",
         transformation: "c_limit,h_2560,w_2560/cs_srgb,f_jpg,q_85",
         type: "authenticated",
         unique_filename: "false",
