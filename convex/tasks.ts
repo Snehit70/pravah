@@ -369,7 +369,7 @@ export async function listTasksForOwner(
   } else if (args.date) {
     const [deadlineTasks, legacyScheduledTasks] = await Promise.all([
       listTasksByExactDeadline(ctx, tokenIdentifier, args.date),
-      listActiveTasksByDeadline(ctx, tokenIdentifier, { inbox: true }),
+      listTasksByLegacyStatus(ctx, tokenIdentifier, "scheduled"),
     ]);
     tasks = dedupeTasks([...deadlineTasks, ...legacyScheduledTasks]);
   } else {

@@ -51,7 +51,7 @@ function database(history: number) {
       return query;
     } },
   } as unknown as QueryCtx;
-  return { ctx, reads: () => reads, pageLimits };
+  return { ctx, reads: () => reads, pageLimits, add: (fields: Record<string, unknown>) => rows.push(row("extra", fields)) };
 }
 
 describe("active query read budgets", () => {
@@ -95,4 +95,10 @@ describe("bounded history pagination", () => {
     }
     expect(ids.sort()).toEqual(["inbox","later","legacy","today"]);expect(d.reads()).toBe(5);
   });
+});
+
+it("preserves completed legacy integration tasks in the unfiltered date contract", async () => {
+  const d=database(10);d.add({status:"scheduled",scheduledDate:"2026-10-05",completedAt:10});
+  const all=await listTasksForOwner(d.ctx,"owner",{date:"2026-10-05"});expect(all.map((t)=>String(t._id))).toContain("extra");
+  const active=await listTasksForOwner(d.ctx,"owner",{date:"2026-10-05",status:"active"});expect(active.map((t)=>String(t._id))).not.toContain("extra");
 });
