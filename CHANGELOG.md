@@ -1,5 +1,63 @@
 # Changelog
 
+## [1.22.0](https://github.com/Snehit70/pravah/compare/web-v1.21.0...web-v1.22.0) (2026-10-05)
+
+
+### Features
+
+* **mobile:** accept Android keyboard image content in task inputs ([b1160ad](https://github.com/Snehit70/pravah/commit/b1160ad3e64813295b3eaaac8cb2375730778ecf))
+* **mobile:** add ambient ribbon field to the auth screen ([4c0236e](https://github.com/Snehit70/pravah/commit/4c0236e3c0a5b54196aa7bbf7495820be5191247))
+* **mobile:** add Inbox-style search to Goals ([0a01980](https://github.com/Snehit70/pravah/commit/0a019808355ec58093139ec79a5b57545b555afa))
+* **mobile:** refine clipboard paste, Goals search, and notifications ([c6bea0d](https://github.com/Snehit70/pravah/commit/c6bea0d24aa23c316af7e53143ad4da21bb7daa5))
+* **mobile:** route pasted images into the active task workflow ([b6e57b8](https://github.com/Snehit70/pravah/commit/b6e57b8d476c6131cde94d5a1b7cc57195443c16))
+* **web:** add local-only demo mode with seeded localStorage backend ([1f79526](https://github.com/Snehit70/pravah/commit/1f7952684fa4a8e9cc497e0bc4e3c6efb6b4e1d3))
+* **web:** add shared segmented control and monotone chart geometry ([799d4e9](https://github.com/Snehit70/pravah/commit/799d4e93269c0ae650ca9df805218a638c89494d))
+* **web:** adopt mobile inbox row grammar in the tasks sidebar ([86d63f3](https://github.com/Snehit70/pravah/commit/86d63f38560ef93cef350d83d5972405ab71c450))
+* **web:** adopt mobile warm-paper theme and add public landing page ([47e424a](https://github.com/Snehit70/pravah/commit/47e424a07d3ad45f9fe030dd33e01d5f6cb4b370))
+* **web:** adopt mobile warm-paper theme and add public landing page ([56e8f23](https://github.com/Snehit70/pravah/commit/56e8f239b98aa0f9847f1e41882da4e572a0f033))
+* **web:** local demo mode and mobile-craft UX parity for the workspace ([d2b554a](https://github.com/Snehit70/pravah/commit/d2b554abb62598fc34dd4c231a2beda1f7f32f90))
+* **web:** mobile accent palettes as data-driven CSS tokens ([af2da44](https://github.com/Snehit70/pravah/commit/af2da4492300934b44e4200cf031b8a454c9071b))
+* **web:** rebuild goals page with mobile goal-card grammar ([d4a5d98](https://github.com/Snehit70/pravah/commit/d4a5d9875992352844c3c8fc369683a70ebb0e02))
+* **web:** rebuild insights page with mobile-craft charts ([017e2ec](https://github.com/Snehit70/pravah/commit/017e2ec0e3b78286630faf45ad73f0e2af1f9d7f))
+* **web:** redesign timeline, inbox, header, goals, insights to mobile craft grammar ([dac075d](https://github.com/Snehit70/pravah/commit/dac075d9905c5698a9e1bfa930f3b5119873a688))
+* **web:** replace the settings modal with a mobile-parity settings page ([8d6a026](https://github.com/Snehit70/pravah/commit/8d6a02613eb18618de5aa6d10a2218f42a302920))
+* **web:** two-column goals grid and a rich goal composer ([0725add](https://github.com/Snehit70/pravah/commit/0725addbef6979bccb2c5106ac7551b4349421a3))
+
+
+### Bug Fixes
+
+* **mobile:** align capture planning workbench ([ec91a29](https://github.com/Snehit70/pravah/commit/ec91a29a3f72c49c1a613c7ca3cb4cded9100455))
+* **mobile:** classify local Expo module changes as native releases ([51b9a92](https://github.com/Snehit70/pravah/commit/51b9a929585392b2127277cd616c29d80db0f409))
+* **mobile:** correct auth screen contrast, radius, and Google branding ([4a23394](https://github.com/Snehit70/pravah/commit/4a233949cb31db86023eb1823a043fdbfc58cfbf))
+* **mobile:** correct image upload signatures and ready previews ([#271](https://github.com/Snehit70/pravah/issues/271)) ([a40d4c7](https://github.com/Snehit70/pravah/commit/a40d4c73cfca70029f528926e4b879db19b512cb))
+* **mobile:** find image URIs across clipboard items ([42db1c5](https://github.com/Snehit70/pravah/commit/42db1c5968b33685ea3b2cbd80bc0b9246676bbe))
+* **mobile:** isolate overlapping image pastes and clean cancelled staging ([fcef166](https://github.com/Snehit70/pravah/commit/fcef16618f80b813f20cb4b947205fde5874a82a))
+* **mobile:** recover image receipts and expose update failures ([#270](https://github.com/Snehit70/pravah/issues/270)) ([89d865b](https://github.com/Snehit70/pravah/commit/89d865b7df8ce746fccc624a013dba3ae4c1000e))
+* **mobile:** recover stalled task image uploads ([f42c28a](https://github.com/Snehit70/pravah/commit/f42c28a34845abe1dd98ecf99610f41a893ba789))
+* **mobile:** recover task image uploads and polish dark appearance ([3d98d7a](https://github.com/Snehit70/pravah/commit/3d98d7aed5d6043eda96de07269778ae344ac707))
+* **mobile:** refine dark theme accents and pills ([76b391d](https://github.com/Snehit70/pravah/commit/76b391d569a6498eac5511d024499775c3ae62e9))
+* **mobile:** remove notification shadow halo and enlarge toast controls ([b4ad483](https://github.com/Snehit70/pravah/commit/b4ad48370abe1c969bf2e55b773045e0fae65332))
+* **mobile:** remove redundant timeline task icons ([82790df](https://github.com/Snehit70/pravah/commit/82790df48590a68f4d806eda2e5727c8bca54f19))
+* **mobile:** restore task image previews and live upload progress ([5b0dd3d](https://github.com/Snehit70/pravah/commit/5b0dd3d5006c4d9f474923cb79fe3b074243919b))
+* **mobile:** restore task images and show live upload progress ([45d3640](https://github.com/Snehit70/pravah/commit/45d3640834421fb2ed28d562ab3105b783197e2e))
+* **mobile:** update release and notification branding ([c61edda](https://github.com/Snehit70/pravah/commit/c61edda2967bf5ac8083aa750871e560c3b96437))
+* **mobile:** update the capture workbench test to the two-step flow ([83a6ef9](https://github.com/Snehit70/pravah/commit/83a6ef9441ca37216eb31f0bbbe56221feca5583))
+* **mobile:** use a plain assertion in the Kairo send helper ([f702d58](https://github.com/Snehit70/pravah/commit/f702d58f63049e6f1074c16cdbe67ec94affc721))
+* **release:** treat build-time app assets as native-critical ([acb09df](https://github.com/Snehit70/pravah/commit/acb09df2e76eb12495b71b189edc18335ac033e2))
+* **todo-plugin:** default the widget to the watch transport ([42f17f8](https://github.com/Snehit70/pravah/commit/42f17f8414719c1d4f4fa0bc773ed626e6d9b0ad))
+* **todo-plugin:** default the widget to the watch transport ([2bf8bf3](https://github.com/Snehit70/pravah/commit/2bf8bf3a86ba6d9b39b614d15a142001836f7880))
+* **todo-plugin:** keep task dialogs inside the popup ([3fc6f5b](https://github.com/Snehit70/pravah/commit/3fc6f5bcf970bb69c6847b1eb6ccc6f3333dc02c))
+* **todo-plugin:** prevent task dialog overflow ([186243a](https://github.com/Snehit70/pravah/commit/186243ac56fd0dc9676ca4edb6070875d949bb44))
+* **todo-plugin:** skip goal save when nothing changed ([4d7a5b5](https://github.com/Snehit70/pravah/commit/4d7a5b50e9bfe73449e5bd89b0310f9c69ab44cc))
+* **web:** init reveal state from reduced-motion media query ([fa6669b](https://github.com/Snehit70/pravah/commit/fa6669bfab46d7d8caef0ffe47a694b2fa1a88c8))
+* **web:** warm Kairo panel and Settings overlays, drop glow stripes ([1cd400b](https://github.com/Snehit70/pravah/commit/1cd400be0cf97959a5f456d8546793968e547be8))
+* **web:** widen timeline day columns to 216px ([1757d69](https://github.com/Snehit70/pravah/commit/1757d69910639491727740be06516c8744161af4))
+
+
+### Performance Improvements
+
+* reduce database I/O and record actual usage bytes ([#272](https://github.com/Snehit70/pravah/issues/272)) ([194d073](https://github.com/Snehit70/pravah/commit/194d073779dce200004c2cca205a98032c4e7a2c))
+
 ## [1.21.0](https://github.com/Snehit70/pravah/compare/web-v1.20.1...web-v1.21.0) (2026-09-29)
 
 
