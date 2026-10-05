@@ -338,6 +338,8 @@ http.route({
     const validation = taskListSchema.safeParse({
       date: url.searchParams.get("date") || undefined,
       status: url.searchParams.get("status") || undefined,
+      before: url.searchParams.get("before") || undefined,
+      after: url.searchParams.get("after") || undefined,
     });
     if (!validation.success) {
       return validationError(validation.error.issues);
@@ -351,6 +353,30 @@ http.route({
     return new Response(JSON.stringify(tasks), {
       headers: { "Content-Type": "application/json" },
     });
+  }),
+});
+
+// Explicit page route preserves the existing /tasks array contract.
+http.route({
+  path: "/tasks/page", method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const authCheck = await requireTaskReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const url = new URL(request.url);
+    const validation = taskListSchema.safeParse({ date: url.searchParams.get("date") || undefined,
+      status: url.searchParams.get("status") || undefined,
+      before: url.searchParams.get("before") || undefined, after: url.searchParams.get("after") || undefined });
+    if (!validation.success) return validationError(validation.error.issues);
+    const limit = Number(url.searchParams.get("limit") ?? 100);
+    const cursor = url.searchParams.get("cursor");
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100 || (cursor?.length ?? 0) > 4096) {
+      return jsonResponse({ error: "Invalid page size or cursor" }, 400);
+    }
+    const result = await ctx.runQuery(internal.automationTools.listTasksPage, {
+      ownerTokenIdentifier: authCheck.auth.ownerTokenIdentifier, ...validation.data,
+      paginationOpts: { numItems: limit, cursor },
+    });
+    return jsonResponse(result);
   }),
 });
 
@@ -407,8 +433,11 @@ http.route({
     if (authCheck.response) return authCheck.response;
     const { auth } = authCheck;
 
+    const ids = new URL(request.url).searchParams.get("taskIds");
+    const taskIds = ids === null ? undefined : ids === "" ? [] : ids.split(",");
+    if (taskIds && (taskIds.length > 100 || taskIds.some((id) => !id || id.length > 200))) return jsonResponse({ error: "Invalid task IDs" }, 400);
     const links = await ctx.runQuery(internal.automationTools.listGoalLinks, {
-      ownerTokenIdentifier: auth.ownerTokenIdentifier,
+      ownerTokenIdentifier: auth.ownerTokenIdentifier, taskIds,
     });
 
     return jsonResponse(links);

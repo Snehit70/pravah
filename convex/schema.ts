@@ -280,6 +280,8 @@ export default defineSchema({
     .index("by_owner_status_date_position", ["ownerTokenIdentifier", "status", "scheduledDate", "position"])
     .index("by_owner_status_position", ["ownerTokenIdentifier", "status", "position"])
     .index("by_owner_deadline_position", ["ownerTokenIdentifier", "deadline", "position"])
+    // Existing timestamps keep this range current across complete/reopen/undo/import.
+    .index("by_owner_active_deadline", ["ownerTokenIdentifier", "completedAt", "cancelledAt", "deadline", "position"])
     .index("by_owner_completed_at", ["ownerTokenIdentifier", "completedAt"])
     .index("by_owner_cancelled_at", ["ownerTokenIdentifier", "cancelledAt"])
     .index("by_owner_position", ["ownerTokenIdentifier", "position"]),

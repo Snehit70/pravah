@@ -1,0 +1,16 @@
+[Unit]
+Description=Pravah actual Convex database I/O recorder
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=%h/projects/pravah
+ExecStart=/usr/bin/flock -n %t/pravah-convex-io.lock %h/.bun/bin/bun scripts/observability/convex-io.mjs collect
+Environment=PATH=/usr/local/bin:/usr/bin
+UMask=0077
+Restart=always
+RestartSec=10
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target

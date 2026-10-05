@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { callConvexApi } from "./automationHttpClient";
+import { callConvexApi, ConvexHttpError } from "./automationHttpClient";
 import { loadStoredCredential, type StoredCredential } from "./authStore";
 
 interface CliEnv {
@@ -20,10 +20,10 @@ export interface LiveCliClient {
   credentialLabel: string;
   scopes: string[];
   getCredentialStatus(): Promise<{ label: string; scopes: string[]; ownerTokenIdentifier: string }>;
-  listTasks(filters: { status?: string; date?: string }): Promise<unknown>;
+  listTasks(filters: { status?: string; date?: string; before?: string; after?: string }): Promise<unknown>;
   getTask(taskId: string): Promise<unknown>;
   listGoals(): Promise<unknown>;
-  listGoalLinks(): Promise<unknown>;
+  listGoalLinks(taskIds?: string[]): Promise<unknown>;
   getInbox(): Promise<unknown>;
   getTimeline(endDate: string): Promise<unknown>;
   getReviewQueue(status?: string, limit?: number): Promise<unknown>;
@@ -191,17 +191,43 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
       if (typeof credential.label !== "string" || !Array.isArray(credential.scopes) || !credential.scopes.every((scope): scope is string => typeof scope === "string") || typeof credential.ownerTokenIdentifier !== "string") throw new Error("Credential status response is invalid");
       return { label: credential.label, scopes: credential.scopes, ownerTokenIdentifier: credential.ownerTokenIdentifier };
     },
-    listTasks(filters) {
+    async listTasks(filters) {
       const query = new URLSearchParams();
       if (filters.status) {
         query.set(
           "status",
-          filters.status === "timeline" ? "scheduled" : filters.status
+          filters.status === "timeline" || (filters.status === "active" && filters.date) ? "scheduled" : filters.status
         );
       }
       if (filters.date) query.set("date", filters.date);
+      if (filters.before) query.set("before", filters.before);
+      if (filters.after) query.set("after", filters.after);
       const qs = query.toString();
-      return get(`/tasks${qs ? `?${qs}` : ""}`);
+      // Exact-date and scheduled ranges already have selective server indexes.
+      if (filters.date || ["inbox", "timeline", "scheduled"].includes(filters.status ?? "")) {
+        return get(`/tasks${qs ? `?${qs}` : ""}`);
+      }
+      const tasks: unknown[] = []; const seen = new Set<string>();
+      for (;;) {
+        let raw: unknown;
+        try { raw = await get(`/tasks/page?${query.toString()}`); } catch (error) {
+          // Publishing the CLI may precede the backend rollout. Only an absent
+          // FIRST page permits a legacy fallback; never mask auth or partial-read failures.
+          if (!(error instanceof ConvexHttpError) || error.status !== 404 || seen.size > 0) throw error;
+          const legacy = new URLSearchParams(query);
+          if (filters.status === "active") legacy.delete("status");
+          const result = await get(`/tasks?${legacy.toString()}`);
+          if (!Array.isArray(result)) throw new Error("Invalid legacy task list");
+          return filters.status === "active" ? result.filter((task) => task && typeof task === "object" && task.completedAt === undefined && task.cancelledAt === undefined && task.status !== "completed" && task.status !== "cancelled") : result;
+        }
+        if (!raw || typeof raw !== "object") throw new Error("Invalid task page");
+        const page = raw as { page?: unknown; isDone?: unknown; continueCursor?: unknown };
+        if (!Array.isArray(page.page) || typeof page.isDone !== "boolean") throw new Error("Invalid task page");
+        tasks.push(...page.page);
+        if (page.isDone) return tasks;
+        if (typeof page.continueCursor !== "string" || !page.continueCursor || seen.has(page.continueCursor)) throw new Error("Task pagination did not advance");
+        seen.add(page.continueCursor); query.set("cursor", page.continueCursor);
+      }
     },
     getTask(taskId) {
       const query = new URLSearchParams({ taskId });
@@ -210,8 +236,16 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
     listGoals() {
       return get("/goals");
     },
-    listGoalLinks() {
-      return get("/goal-links");
+    async listGoalLinks(taskIds) {
+      if (!taskIds) return get("/goal-links");
+      const ids = [...new Set(taskIds)]; const links: Record<string, string> = {};
+      for (let start = 0; start < ids.length; start += 100) {
+        const query = new URLSearchParams({ taskIds: ids.slice(start, start + 100).join(",") });
+        const result = await get(`/goal-links?${query.toString()}`);
+        if (!result || typeof result !== "object" || Array.isArray(result) || Object.values(result).some((v) => typeof v !== "string")) throw new Error("Invalid goal links");
+        Object.assign(links, result);
+      }
+      return links;
     },
     getInbox() {
       return get("/inbox");

@@ -126,6 +126,9 @@ jobs:
       - name: Test root
         run: bun run test:run
 
+      - name: Test actual-byte metrics collector
+        run: bun test scripts/observability/store.test.mjs
+
   test-mobile:
     name: Test mobile
     runs-on: ubuntu-latest

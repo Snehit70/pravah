@@ -39,6 +39,7 @@ vi.mock("../../convex/_generated/api", () => ({
   internal: {
     automationTools: {
       listTasks: "automationTools.listTasks",
+      listTasksPage: "automationTools.listTasksPage",
       getTask: "automationTools.getTask",
       listGoals: "automationTools.listGoals",
       listGoalLinks: "automationTools.listGoalLinks",
@@ -727,6 +728,29 @@ describe("http route handlers", () => {
     });
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual([{ _id: "task1", title: "A" }]);
+  });
+
+  it("validates bounded task pages and preserves cursor/owner scoping", async () => {
+    const handler = getHandler("/tasks/page", "GET"); const ctx = createCtx();
+    ctx.runQuery.mockResolvedValue({ page: [], isDone: false, continueCursor: "next" });
+    const request = (query: string) => new Request(`https://example.com/tasks/page?${query}`, { headers: { "x-api-key": "secret" } });
+    expect((await handler(ctx, request("status=active&limit=50&cursor=start"))).status).toBe(200);
+    expect(ctx.runQuery).toHaveBeenCalledWith(internal.automationTools.listTasksPage, expect.objectContaining({ ownerTokenIdentifier: "admin-owner", status: "active", paginationOpts: { numItems: 50, cursor: "start" } }));
+    ctx.runQuery.mockClear();
+    for (const query of ["limit=101", "limit=0", "limit=wat", "status=invalid", "before=not-a-date"]) {
+      expect((await handler(ctx, request(query))).status).toBe(400);
+    }
+    expect(ctx.runQuery).not.toHaveBeenCalled();
+  });
+
+  it("bounds scoped goal links including an empty selection", async () => {
+    const handler = getHandler("/goal-links", "GET"); const ctx = createCtx(); ctx.runQuery.mockResolvedValue({});
+    const request = (ids: string) => new Request(`https://example.com/goal-links?taskIds=${ids}`, { headers: { "x-api-key": "secret" } });
+    expect((await handler(ctx, request(""))).status).toBe(200);
+    expect(ctx.runQuery).toHaveBeenCalledWith(internal.automationTools.listGoalLinks, { ownerTokenIdentifier: "admin-owner", taskIds: [] });
+    ctx.runQuery.mockClear();
+    expect((await handler(ctx, request(Array(101).fill("id").join(",")))).status).toBe(400);
+    expect(ctx.runQuery).not.toHaveBeenCalled();
   });
 
   it("uses a dedicated authorized detail read for full Task-image manifests", async () => {

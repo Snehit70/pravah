@@ -33,10 +33,10 @@ describe("Pravah CLI v2 live adapter", () => {
               recoverable: [{ taskImageId: "image-2", caption: "Removed", removedAt: 90, recoverableUntil: 120, previousPosition: 1 }],
             },
           }
-        : url.endsWith("/tasks")
+        : new URL(url).pathname === "/tasks/page"
           ? [{ _id: "task_1", title: "Ship v2", deadline: "2026-07-26", priority: "p1", imageSummary: { activeCount: 1, readyCount: 1, failedCount: 0 } }]
-          : [];
-      return { ok: true, json: async () => body } as Response;
+          : new URL(url).pathname === "/goal-links" ? {} : [];
+      return { ok: true, json: async () => new URL(url).pathname === "/tasks/page" ? { page: body, isDone: true, continueCursor: "end" } : body } as Response;
     });
     const result = await executeCommand({ command: "tasks show", json: true }, { positionals: ["tasks", "show", "Ship v2"], options: {} });
     expect(result).toMatchObject({ source: "live", task: { id: "task_1", title: "Ship v2", imageSummary: { activeCount: 1 }, imageCollection: { active: [{ taskImageId: "image-1" }], recoverable: [{ taskImageId: "image-2", caption: "Removed" }] } } });
@@ -49,11 +49,11 @@ describe("Pravah CLI v2 live adapter", () => {
       const body = url.endsWith("/automation/credential")
         ? { label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }
         : [];
-      return { ok: true, json: async () => body } as Response;
+      return { ok: true, json: async () => new URL(url).pathname === "/tasks/page" ? { page: body, isDone: true, continueCursor: "end" } : body } as Response;
     });
     await executeCommand({ command: "agent context", json: true }, { positionals: ["agent", "context"], options: {} });
-    expect(fetch).toHaveBeenCalledTimes(4);
-    expect(fetch.mock.calls.map((call) => String(call[0]))).toEqual(expect.arrayContaining(["https://pravah.example.com/automation/credential", "https://pravah.example.com/tasks", "https://pravah.example.com/goals", "https://pravah.example.com/goal-links"]));
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch.mock.calls.map((call) => String(call[0]))).toEqual(expect.arrayContaining(["https://pravah.example.com/automation/credential", "https://pravah.example.com/tasks/page?status=active", "https://pravah.example.com/goals"]));
     expect(fetch.mock.calls.map((call) => String(call[0]).includes("review") || String(call[0]).includes("sync"))).not.toContain(true);
     expect(loadStoredCredential()).toMatchObject({ label: "Live credential", ownerTokenIdentifier: "live-user" });
   });
@@ -63,7 +63,7 @@ describe("Pravah CLI v2 live adapter", () => {
     const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
       if (url.endsWith("/automation/credential")) return { ok: true, json: async () => ({ label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }) } as Response;
-      if (url.endsWith("/tasks")) return { ok: true, json: async () => [{ _id: "task_1", title: "Ship v2" }] } as Response;
+      if (new URL(url).pathname === "/tasks/page") return { ok: true, json: async () => ({ page: [{ _id: "task_1", title: "Ship v2" }], isDone: true, continueCursor: "end" }) } as Response;
       return { ok: true, json: async () => ({ operationId: "op_1", undoAvailable: true }) } as Response;
     });
     const result = await executeCommand({ command: "tasks edit", json: true }, { positionals: ["tasks", "edit", "Ship v2"], options: { title: "Ship better", "idempotency-key": "stable" } });
@@ -85,20 +85,20 @@ describe("Pravah CLI v2 live adapter", () => {
       if (url.endsWith("/automation/credential")) {
         return { ok: true, json: async () => ({ label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }) } as Response;
       }
-      if (url === "https://pravah.example.com/tasks?date=2026-07-27") {
+      if (url === "https://pravah.example.com/tasks?status=scheduled&date=2026-07-27") {
         return { ok: true, json: async () => [
           { _id: "task_1", title: "Relevant", deadline: "2026-07-27", priority: "p1", tags: ["exam"] },
           { _id: "task_2", title: "Other", deadline: "2026-07-27", priority: "p2", tags: ["home"] },
         ] } as Response;
       }
       if (url.endsWith("/goals")) return { ok: true, json: async () => [{ id: "goal_1", text: "MLT" }] } as Response;
-      if (url.endsWith("/goal-links")) return { ok: true, json: async () => ({ task_1: "goal_1" }) } as Response;
+      if (new URL(url).pathname === "/goal-links") return { ok: true, json: async () => ({ task_1: "goal_1" }) } as Response;
       throw new Error(`unexpected fetch ${url}`);
     });
     const result = await executeCommand({ command: "tasks list", json: true }, { positionals: ["tasks", "list"], options: { all: true, goal: "MLT", priority: "p1", date: "2026-07-27" } });
     expect(result).toMatchObject({ tasks: [{ id: "task_1", goal: { text: "MLT" } }] });
     expect(fetch.mock.calls.map((call) => String(call[0])).filter((url) => url.includes("/tasks"))).toEqual([
-      "https://pravah.example.com/tasks?date=2026-07-27",
+      "https://pravah.example.com/tasks?status=scheduled&date=2026-07-27",
     ]);
   });
 
@@ -122,7 +122,7 @@ describe("Pravah CLI v2 live adapter", () => {
 
   it("forwards all editable Task fields and turns remote write errors into a retryable error", async () => {
     const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-      if (String(input).endsWith("/tasks")) return { ok: true, json: async () => [{ _id: "task_1", title: "Ship v2" }] } as Response;
+      if (new URL(String(input)).pathname === "/tasks/page") return { ok: true, json: async () => ({ page: [{ _id: "task_1", title: "Ship v2" }], isDone: true, continueCursor: "end" }) } as Response;
       expect(JSON.parse(String(init?.body))).toMatchObject({ taskId: "task_1", title: "Ship better", tags: ["cli"], estimatedMinutes: 45 });
       return { ok: true, json: async () => ({ operationId: "op_1", undoAvailable: true, undoExpiresAt: "2026-08-01T00:00:00.000Z" }) } as Response;
     });
@@ -158,7 +158,7 @@ describe("Pravah CLI v2 live adapter", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input);
       if (url.endsWith("/automation/credential")) return { ok: true, json: async () => ({ label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }) } as Response;
-      if (url.endsWith("/tasks")) return { ok: true, json: async () => [{ _id: "task_1", title: "Ship v2" }] } as Response;
+      if (new URL(url).pathname === "/tasks/page") return { ok: true, json: async () => ({ page: [{ _id: "task_1", title: "Ship v2" }], isDone: true, continueCursor: "end" }) } as Response;
       if (url.endsWith("/goals")) return { ok: true, json: async () => [{ id: "goal_1", text: "MLT" }] } as Response;
       if (init?.method === "POST") {
         posts.push({ url, body: JSON.parse(String(init.body)) });
@@ -183,14 +183,14 @@ describe("Pravah CLI v2 live adapter", () => {
       if (url.endsWith("/automation/credential")) {
         return { ok: true, json: async () => ({ label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }) } as Response;
       }
-      if (url === `https://pravah.example.com/tasks?date=${today}`) {
+      if (url === `https://pravah.example.com/tasks?status=scheduled&date=${today}`) {
         return { ok: true, json: async () => [] } as Response;
       }
       throw new Error(`unexpected fetch ${url}`);
     });
     await executeCommand({ command: "today", json: true }, { positionals: ["today"], options: {} });
     expect(fetch.mock.calls.map((call) => String(call[0])).filter((url) => url.includes("/tasks"))).toEqual([
-      `https://pravah.example.com/tasks?date=${today}`,
+      `https://pravah.example.com/tasks?status=scheduled&date=${today}`,
     ]);
   });
 
@@ -200,16 +200,16 @@ describe("Pravah CLI v2 live adapter", () => {
       const url = String(input);
       const body = url.endsWith("/automation/credential")
         ? { label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }
-        : url.includes(`/tasks?date=${today}`)
+        : url.includes(`/tasks?status=scheduled&date=${today}`)
           ? [{ _id: "task_1", title: "Today", deadline: today }]
           : [];
-      return { ok: true, json: async () => body } as Response;
+      return { ok: true, json: async () => new URL(url).pathname === "/tasks/page" ? { page: body, isDone: true, continueCursor: "end" } : body } as Response;
     });
     await executeCommand({ command: "today", json: true }, { positionals: ["today"], options: {} });
     await executeCommand({ command: "today", json: true }, { positionals: ["today"], options: {} });
     const urls = fetch.mock.calls.map((call) => String(call[0]));
     expect(urls.filter((url) => url.endsWith("/automation/credential"))).toHaveLength(1);
-    expect(urls.filter((url) => url === `https://pravah.example.com/tasks?date=${today}`)).toHaveLength(2);
+    expect(urls.filter((url) => url === `https://pravah.example.com/tasks?status=scheduled&date=${today}`)).toHaveLength(2);
   });
 
   it("still refreshes credential before a write even when the cache is fresh", async () => {
@@ -230,7 +230,7 @@ describe("Pravah CLI v2 live adapter", () => {
       const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
         const url = String(input);
         if (url.endsWith("/automation/credential")) return { ok: true, json: async () => ({ label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }) } as Response;
-        if (url.endsWith("/tasks")) return { ok: true, json: async () => [{ _id: "task_1", title: "Ship v2" }] } as Response;
+        if (new URL(url).pathname === "/tasks/page") return { ok: true, json: async () => ({ page: [{ _id: "task_1", title: "Ship v2" }], isDone: true, continueCursor: "end" }) } as Response;
         if (url.endsWith("/goals")) return { ok: true, json: async () => [{ id: "goal_1", text: "MLT" }] } as Response;
         return { ok: true, json: async () => ({ operationId: "op_1", undoAvailable: true }) } as Response;
       });

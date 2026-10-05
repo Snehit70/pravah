@@ -945,13 +945,13 @@ export async function getTaskImageSummariesForOwner(
     ])
   );
   if (taskIds.length === 0) return summaries;
-  const included = new Set(taskIds);
-  const images = await ctx.db
-    .query("taskImages")
-    .withIndex("by_owner_task", (q) => q.eq("ownerTokenIdentifier", ownerTokenIdentifier))
-    .collect();
+  const images = (await Promise.all([...new Set(taskIds)].map((taskId) =>
+    ctx.db.query("taskImages").withIndex("by_owner_task", (q) =>
+      q.eq("ownerTokenIdentifier", ownerTokenIdentifier).eq("taskId", taskId)
+    ).collect()
+  ))).flat();
   for (const image of images) {
-    if (image.removedAt !== undefined || !included.has(image.taskId)) continue;
+    if (image.removedAt !== undefined) continue;
     const summary = summaries.get(image.taskId)!;
     summary.activeCount += 1;
     if (image.state === "ready") summary.readyCount += 1;

@@ -187,6 +187,13 @@ function resolveGoal(goals: LiveGoalSummary[], target: string) {
   return matches[0];
 }
 const active = (task: CliTaskSummary) => task.status === "inbox" || task.status === "timeline";
+async function resolveLiveTask(client: LiveCliClient, target: string) {
+  if (!/^[a-z0-9]{32}$/.test(target)) return resolveTask(tasksOf(await client.listTasks({})), target);
+  const task = toTask(await client.getTask(target));
+  if (!task) throw new CliCommandError("not_found", `Task not found: ${target}`);
+  return task;
+}
+
 function horizon(tasks: CliTaskSummary[]) {
   const today = getLocalDateString(); const end = new Date(`${today}T12:00:00`); end.setDate(end.getDate() + 14); const endDate = getLocalDateString(end);
   const byDue = (a: CliTaskSummary, b: CliTaskSummary) => `${a.deadline ?? "9999"}${a.time ?? "99:99"}`.localeCompare(`${b.deadline ?? "9999"}${b.time ?? "99:99"}`) || priorityRank(a.priority) - priorityRank(b.priority) || a.title.localeCompare(b.title);
@@ -197,7 +204,13 @@ function split(value?: string) { return value?.split(",").map((part) => part.tri
 function readFilterDate(name: string, args: ParsedArgs) { const value = readOption(args.options, name); if (value !== undefined && !DATE.test(value)) throw new CliCommandError("validation_failed", `--${name} must use YYYY-MM-DD format`); return value; }
 async function filterTasks(client: LiveCliClient, args: ParsedArgs, includeGoal = false) {
   const date = readFilterDate("date", args);
-  const [tasks, goals, links] = await Promise.all([client.listTasks({ date }).then(tasksOf), includeGoal || readOption(args.options, "goal") ? client.listGoals().then(goalsOf) : Promise.resolve([] as LiveGoalSummary[]), includeGoal || readOption(args.options, "goal") ? client.listGoalLinks().then(linksOf) : Promise.resolve({} as Record<string, string>)]);
+  const status = readOption(args.options, "status") ?? "active";
+  if (!["active", "inbox", "timeline", "completed", "cancelled"].includes(status)) throw new CliCommandError("validation_failed", "Invalid task status");
+  const beforeBound = readFilterDate("before", args);
+  const afterBound = readFilterDate("after", args);
+  const tasks = await client.listTasks({ date, status, before: beforeBound, after: afterBound }).then(tasksOf);
+  const needsGoals = includeGoal || Boolean(readOption(args.options, "goal"));
+  const [goals, links] = await Promise.all([needsGoals ? client.listGoals().then(goalsOf) : Promise.resolve([] as LiveGoalSummary[]), needsGoals ? client.listGoalLinks(tasks.map((t) => t.id)).then(linksOf) : Promise.resolve({} as Record<string, string>)]);
   const goalTarget = readOption(args.options, "goal"); const goalId = goalTarget ? resolveGoal(goals, goalTarget).id : undefined;
   const statuses = readOption(args.options, "status"); const priorities = split(readOption(args.options, "priority")); const tags = split(readOption(args.options, "tag")); const before = readFilterDate("before", args); const after = readFilterDate("after", args);
   if (statuses && !["active", "inbox", "timeline", "completed", "cancelled"].includes(statuses)) throw new CliCommandError("validation_failed", "--status must be one of: active, inbox, timeline, completed, cancelled");
@@ -263,8 +276,11 @@ async function write<T>(action: string, idempotencyKey: string, execute: () => P
 export async function executeLiveCommand(client: LiveCliClient, command: string, args: ParsedArgs): Promise<unknown | null> {
   if (["tasks list", "inbox", "today", "overdue", "upcoming", "agent context", "tasks show"].includes(command)) {
     requireScopes(client, ["tasks:read"]);
-    if (command === "tasks show") { const allTasks = await client.listTasks({}).then(tasksOf); const summary = resolveTask(allTasks, readTarget(args, command)); const [detail, goals, links] = await Promise.all([client.getTask(summary.id).then(toTaskDetail), client.listGoals().then(goalsOf), client.listGoalLinks().then(linksOf)]); if (!detail) throw new CliCommandError("not_found", `Task not found: ${summary.id}`); return { task: { ...detail, goal: links[detail.id] ? goals.find((goal) => goal.id === links[detail.id]) : undefined }, source: "live" }; }
-    const listArgs = command === "today" ? { ...args, options: { ...args.options, date: getLocalDateString() } } : args;
+    if (command === "tasks show") { const target = readTarget(args, command); const summary = /^[a-z0-9]{32}$/.test(target) ? { id: target } : resolveTask(await client.listTasks({}).then(tasksOf), target); const [detail, goals, links] = await Promise.all([client.getTask(summary.id).then(toTaskDetail), client.listGoals().then(goalsOf), client.listGoalLinks([summary.id]).then(linksOf)]); if (!detail) throw new CliCommandError("not_found", `Task not found: ${summary.id}`); return { task: { ...detail, goal: links[detail.id] ? goals.find((goal) => goal.id === links[detail.id]) : undefined }, source: "live" }; }
+    const today = getLocalDateString();
+    const end = new Date(`${today}T12:00:00`); end.setDate(end.getDate() + 15);
+    const preset: Record<string, string> = command === "today" ? { date: today } : command === "inbox" ? { status: "inbox" } : command === "overdue" ? { status: "timeline", before: today } : command === "upcoming" ? { status: "timeline", after: today, before: getLocalDateString(end) } : {};
+    const listArgs = { ...args, options: { ...args.options, ...preset } };
     const tasks = await filterTasks(client, listArgs, command === "agent context" || args.options.long === true);
     const data = horizon(tasks);
     if (command === "inbox") return { tasks: tasks.filter((task) => task.status === "inbox"), source: "live" };
@@ -283,7 +299,7 @@ export async function executeLiveCommand(client: LiveCliClient, command: string,
   if (command === "operations show") { requireScopes(client, ["tasks:read"]); return { operation: operationOf(await client.getOperation(readTarget(args, command))), source: "live" }; }
   if (command === "operations undo") { requireScopes(client, ["tasks:write"]); const metadata = getWriteMetadata(args); const group = readOption(args.options, "group")?.trim() || undefined; const operationId = args.positionals.length === 3 ? readTarget(args, command) : undefined; const target = { id: group ?? operationId! }; if (metadata.dryRun) return { action: "operations.undo", target, ...metadata, source: "dry-run" }; const result = await write("operations.undo", metadata.idempotencyKey, () => client.undoOperation({ operationId, operationGroupId: group }, metadata.idempotencyKey)); return { action: "operations.undo", target, ...metadata, operation: operationOf(result), source: "live" }; }
   if (command.startsWith("tasks ")) {
-    requireScopes(client, ["tasks:write"]); const verb = command.slice(6); const metadata = getWriteMetadata(args); const title = readTarget(args, command); const target = verb === "add" ? { id: "pending", title } : resolveTask(tasksOf(await client.listTasks({})), title);
+    requireScopes(client, ["tasks:write"]); const verb = command.slice(6); const metadata = getWriteMetadata(args); const title = readTarget(args, command); const target = verb === "add" ? { id: "pending", title } : await resolveLiveTask(client, title);
     const goalChange = verb === "add" || verb === "edit" || verb === "link" ? readGoalChange(args, verb === "edit") : undefined;
     if (verb === "link" && goalChange === undefined) throw new CliCommandError("validation_failed", "tasks link requires --goal");
     if (verb === "link" && goalChange === null) throw new CliCommandError("validation_failed", "tasks link requires a Goal; use tasks unlink to remove the link");
