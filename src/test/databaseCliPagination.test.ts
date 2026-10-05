@@ -21,9 +21,20 @@ describe("CLI bounded task reads", () => {
     responses({page:[],isDone:false,continueCursor:"one"},{page:[],isDone:false,continueCursor:"one"});
     await expect(client().listTasks({})).rejects.toThrow("did not advance");
   });
+  it("supports an older backend only when the first page route is absent", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(new Response("Not found",{status:404}))
+      .mockResolvedValueOnce({ok:true,json:async()=>[{_id:"active"},{_id:"done",completedAt:1}]});
+    vi.stubGlobal("fetch",fetch);
+    expect(await client().listTasks({status:"active"})).toEqual([{_id:"active"}]);
+    expect(String(fetch.mock.calls[1][0])).toBe("https://example.convex.site/tasks?");
+  });
+  it("does not mask authentication failures with a legacy full read", async () => {
+    const fetch=vi.fn().mockResolvedValue(new Response("Forbidden",{status:403}));vi.stubGlobal("fetch",fetch);
+    await expect(client().listTasks({status:"active"})).rejects.toThrow("403");expect(fetch).toHaveBeenCalledTimes(1);
+  });
   it("keeps exact dates on the selective endpoint", async () => {
     const fetch = responses([]); await client().listTasks({date:"2026-10-05",status:"active"});
-    expect(fetch.mock.calls[0][0]).toBe("https://example.convex.site/tasks?status=active&date=2026-10-05");
+    expect(fetch.mock.calls[0][0]).toBe("https://example.convex.site/tasks?status=scheduled&date=2026-10-05");
   });
   it("pushes default active and horizon filters to the server", async () => {
     const cli = client(); const spy = vi.spyOn(cli,"listTasks").mockResolvedValue([]);

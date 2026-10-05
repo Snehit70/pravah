@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { executionMetric, openStore, defaultDatabasePath } from './store.mjs';
+import { jsonlLines } from './jsonl.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const deployment = 'combative-zebra-261';
@@ -47,8 +48,10 @@ if (command === 'report') {
     const errors = createInterface({ input: child.stderr, crlfDelay: Infinity });
     errors.on('line', (line) => { if (line.includes('Failed to fetch logs. Waiting')) { store.db.query('INSERT INTO gaps VALUES(?,?,?,?)').run(deployment,Date.now(),Date.now(),'CLI log transport failure'); child.kill('SIGTERM'); } });
     const completed = new Promise((resolveExit) => { child.once('error', () => resolveExit()); child.once('close', () => resolveExit()); });
-    for await (const line of createInterface({ input: child.stdout, crlfDelay: Infinity })) {
+    for await (const line of jsonlLines(child.stdout)) {
       if (stopping) break;
+      // CLI output can include empty separator lines, which carry no event.
+      if (!line.trim()) continue;
       const reject = (reason) => { store.db.query('UPDATE sessions SET rejected=rejected+1 WHERE id=?').run(session); store.db.query('INSERT INTO rejections VALUES(?,?,1) ON CONFLICT(deployment,reason) DO UPDATE SET count=count+1').run(deployment,reason); };
       let event;
       try { event = JSON.parse(line); } catch { reject('invalid JSON'); continue; }

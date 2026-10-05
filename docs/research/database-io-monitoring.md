@@ -74,7 +74,9 @@ excluded. SQLite is telemetry storage, not an application sync database.
   Exact IDs bypass a full task-list read. Doctor probes credential status.
 - `/tasks/page` bounds each scan to 100 rows and 256 KiB. The CLI follows every
   cursor, including empty pages, and rejects repeated cursors. The older
-  `/tasks` array contract remains available. Pagination bounds transactions;
+  `/tasks` array contract remains available. A first-page 404 permits a legacy
+  fallback during rollout; auth errors and failures after a partial read remain
+  explicit errors. Pagination bounds transactions;
   reading every page still costs the sum of matching/scanned data. Active pages
   skip canonical history; completed/cancelled history uses timestamp indexes and a separate status-only
   legacy phase, so pagination does not introduce a full owner scan for history.

@@ -1,3 +1,4 @@
+import { jsonlLines } from './jsonl.mjs';
 import { describe, test, expect } from 'bun:test';
 import { executionMetric, openStore } from './store.mjs';
 const timestamp = Date.now();
@@ -40,4 +41,14 @@ describe('actual-byte metrics store', () => {
     const store = openStore(':memory:'); store.record(executionMetric(event(),'a')); store.record(executionMetric(event(),'b'));
     expect(store.db.query('SELECT COUNT(*) n FROM executions').get().n).toBe(2); store.close();
   });
+});
+
+test('chunked UTF-8 replay preserves every event while SQLite writes apply backpressure', async () => {
+  const store = openStore(':memory:');
+  const raw = new TextEncoder().encode(Array.from({length:2000},(_,i)=>JSON.stringify(event(`burst-${i}`,{logLines:['unicode é 🌊']}))).join('\r\n\n'));
+  async function* chunks() { for(let i=0;i<raw.length;i+=113) yield raw.slice(i,i+113); }
+  for await(const line of jsonlLines(chunks())) store.record(executionMetric(JSON.parse(line),'prod'));
+  expect(store.db.query('SELECT COUNT(*) n FROM executions').get().n).toBe(2000);
+  expect(store.db.query('SELECT SUM(read) n FROM hourly').get().n).toBe(2000*156362);
+  store.close();
 });

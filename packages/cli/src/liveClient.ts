@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { callConvexApi } from "./automationHttpClient";
+import { callConvexApi, ConvexHttpError } from "./automationHttpClient";
 import { loadStoredCredential, type StoredCredential } from "./authStore";
 
 interface CliEnv {
@@ -196,7 +196,7 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
       if (filters.status) {
         query.set(
           "status",
-          filters.status === "timeline" ? "scheduled" : filters.status
+          filters.status === "timeline" || (filters.status === "active" && filters.date) ? "scheduled" : filters.status
         );
       }
       if (filters.date) query.set("date", filters.date);
@@ -209,7 +209,17 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
       }
       const tasks: unknown[] = []; const seen = new Set<string>();
       for (;;) {
-        const raw = await get(`/tasks/page?${query.toString()}`);
+        let raw: unknown;
+        try { raw = await get(`/tasks/page?${query.toString()}`); } catch (error) {
+          // Publishing the CLI may precede the backend rollout. Only an absent
+          // FIRST page permits a legacy fallback; never mask auth or partial-read failures.
+          if (!(error instanceof ConvexHttpError) || error.status !== 404 || seen.size > 0) throw error;
+          const legacy = new URLSearchParams(query);
+          if (filters.status === "active") legacy.delete("status");
+          const result = await get(`/tasks?${legacy.toString()}`);
+          if (!Array.isArray(result)) throw new Error("Invalid legacy task list");
+          return filters.status === "active" ? result.filter((task) => task && typeof task === "object" && task.completedAt === undefined && task.cancelledAt === undefined && task.status !== "completed" && task.status !== "cancelled") : result;
+        }
         if (!raw || typeof raw !== "object") throw new Error("Invalid task page");
         const page = raw as { page?: unknown; isDone?: unknown; continueCursor?: unknown };
         if (!Array.isArray(page.page) || typeof page.isDone !== "boolean") throw new Error("Invalid task page");
