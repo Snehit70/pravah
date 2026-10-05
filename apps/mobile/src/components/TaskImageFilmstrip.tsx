@@ -29,8 +29,10 @@ export type TaskImageFilmstripSurface = "capture" | "inbox" | "edit" | "complete
 export type TaskImageFilmstripEntry = {
   taskImageId: string;
   position: number;
+  attempt?: number;
   state: TaskImageState;
   previewUri?: string;
+  retryAvailable?: boolean;
   caption?: string;
   progress?: number;
   failure?: { code: string; message?: string; retryable: boolean };
@@ -106,6 +108,8 @@ const FAILURE_COPY: Record<string, string> = {
   normalization_failed: "This image could not be prepared safely.",
   network_error: "Upload interrupted. Try again when you're connected.",
   upload_failed: "This image could not be uploaded. Try again.",
+  upload_timeout: "The upload stopped responding. Try again.",
+  verification_timeout: "The image service did not finish preparing this image. Try again.",
   provider_unavailable: "The image service is unavailable. Try again shortly.",
   authorization_failed: "Sign in again to upload this image.",
   usage_blocked: "Image uploads are paused. Try again later.",
@@ -150,7 +154,7 @@ function DragHandle({ onDrop, disabled, slotWidth, compact = false }: { onDrop: 
         hitSlop={4}
         style={({ pressed }) => [compact ? styles.dragHandleCompact : styles.dragHandle, pressed && styles.dragHandlePressed]}
       >
-        <GripHorizontalIcon color={colors.textInverse} size={compact ? 14 : 20} strokeWidth={2} />
+        <GripHorizontalIcon color={colors.textOnMedia} size={compact ? 14 : 20} strokeWidth={2} />
       </Pressable>
     </GestureDetector>
   );
@@ -163,20 +167,46 @@ function failureTitle(image: TaskImageFilmstripEntry) {
 }
 
 function uploadStatusCopy(image: TaskImageFilmstripEntry) {
+  if (image.state === "pending" && image.retryAvailable === false) {
+    return {
+      title: "Image needs to be added",
+      body: "The original image is not available on this installation. Add it here to upload it.",
+    };
+  }
   if (isFailedImage(image)) {
     let body = "Choose another image to try again.";
     if (image.failure?.retryable) {
-      body = image.previewUri
-        ? "Your image is saved on this device. Try uploading again."
-        : "Your task is safe. Retry this image when ready.";
+      body = image.retryAvailable === false
+        ? "The original image is not available on this installation. Retry where you selected it, or add it again."
+        : image.previewUri
+          ? "Your image is saved on this device. Try uploading again."
+          : "Your task is safe. Retry this image when ready.";
     }
     return { title: failureTitle(image), body };
   }
   if (image.state === "verifying") {
-    return { title: "Upload received", body: "Finishing up. You can close this task." };
+    return {
+      title: "Preparing image",
+      body: image.retryAvailable === false
+        ? "The image service is preparing it. This status syncs automatically."
+        : "Upload received. Pravah is preparing the image; this will update automatically.",
+    };
   }
   if (image.state === "preparing") {
     return { title: "Preparing image", body: "Saving a local copy of your image." };
+  }
+  if (image.state === "uploading") {
+    const percentage = image.progress === undefined
+      ? undefined
+      : Math.round(Math.max(0, Math.min(1, image.progress)) * 100);
+    return {
+      title: percentage === undefined ? "Uploading image" : `Uploading · ${percentage}%`,
+      body: image.retryAvailable === false
+        ? "This upload is still running where it started. Status syncs automatically."
+        : image.previewUri
+          ? "Your image is saved on this device. Upload continues while you use Pravah."
+          : "Your image is being sent to Pravah. You can continue using the app.",
+    };
   }
   return {
     title: image.previewUri ? "Saved on this device" : "Upload in progress",
@@ -210,7 +240,7 @@ function statusLabel(image: TaskImageFilmstripEntry) {
   return "";
 }
 
-function StatusMark({ image, compact = false }: { image: TaskImageFilmstripEntry; compact?: boolean }) {
+function StatusMark({ image, compact = false, visible = true }: { image: TaskImageFilmstripEntry; compact?: boolean; visible?: boolean }) {
   const [completion, setCompletion] = useState({ state: image.state, visible: false });
   if (completion.state !== image.state) {
     setCompletion({ state: image.state, visible: image.state === "ready" });
@@ -220,6 +250,7 @@ function StatusMark({ image, compact = false }: { image: TaskImageFilmstripEntry
     const timer = setTimeout(() => setCompletion((current) => ({ ...current, visible: false })), 2_500);
     return () => clearTimeout(timer);
   }, [completion.visible]);
+  if (!visible) return null;
   if (image.state === "ready" && completion.visible) {
     return (
       <View style={[styles.statusMark, styles.statusSuccess]} accessibilityLabel="Image uploaded" accessibilityLiveRegion="polite">
@@ -237,7 +268,7 @@ function StatusMark({ image, compact = false }: { image: TaskImageFilmstripEntry
   if (!compact && !failed) {
     const title = image.state === "uploading"
       ? `Uploading${percentage === undefined ? "…" : ` · ${percentage}%`}`
-      : image.state === "verifying" ? "Finishing upload…" : "Preparing image…";
+      : "Preparing image…";
     return (
       <View
         style={styles.uploadOverlay}
@@ -434,9 +465,11 @@ function ImagePreview({
       ) : image.state === "ready" ? (
         <ReadyTaskImage key={`${image.taskImageId}:${variant}:${download}`} image={image} resolveDelivery={resolveDelivery} variant={variant} download={download} style={StyleSheet.absoluteFill} accessibilityLabel={accessibilityLabel} />
       ) : (
-        <Text style={styles.stateText}>{stateCopy(image)}</Text>
+        <Text style={styles.stateText}>
+          {showStatus ? stateCopy(image) : "Preview appears when the image is ready"}
+        </Text>
       )}
-      {showStatus ? <StatusMark key={image.taskImageId} image={image} compact={compactStatus} /> : null}
+      <StatusMark key={image.taskImageId} image={image} compact={compactStatus} visible={showStatus} />
     </>
   );
   if (!onPress) return <View style={[styles.photoFrame, style]}>{content}</View>;
@@ -539,7 +572,7 @@ function CaptureSurface({
               }} disabled={false} /> : null}
               {onRemove ? (
                 <Pressable accessibilityRole="button" accessibilityLabel="Remove Task image" onPress={() => onRemove(image.taskImageId)} style={styles.photoRemove}>
-                  <CloseIcon color={colors.textInverse} size={16} />
+                  <CloseIcon color={colors.textOnMedia} size={16} />
                 </Pressable>
               ) : null}
             </View>
@@ -650,7 +683,7 @@ function EditSurface({
         resolveDelivery={resolveDelivery}
         variant="detail"
         style={styles.editHero}
-        compactStatus={false}
+        showStatus={selected.state === "ready"}
         onPress={onOpenImage && hasTaskImageVisual(selected) ? () => onOpenImage(selected.taskImageId) : undefined}
         onPressLabel={`Open Task image ${activeSelectedIndex + 1}`}
       />
@@ -674,7 +707,7 @@ function EditSurface({
               }}
             >
               <Pressable accessibilityRole="button" accessibilityLabel={`Select Task image ${index + 1}`} onPress={() => setSelectedIndex(index)} style={[styles.editThumbWrap, index === activeSelectedIndex && styles.editThumbActive]}>
-                <ImagePreview image={image} resolveDelivery={resolveDelivery} variant="card" style={styles.editThumb} accessibilityLabel={`Task image thumbnail ${index + 1}`} />
+                <ImagePreview image={image} resolveDelivery={resolveDelivery} variant="card" style={styles.editThumb} showStatus={index !== activeSelectedIndex} accessibilityLabel={`Task image thumbnail ${index + 1}`} />
                 <Text style={styles.editThumbNumber}>{index + 1}</Text>
               </Pressable>
               {onRemove && index === activeSelectedIndex ? (
@@ -685,7 +718,7 @@ function EditSurface({
                   hitSlop={8}
                   style={styles.editThumbRemove}
                 >
-                  <CloseIcon color={colors.textInverse} size={14} />
+                  <CloseIcon color={colors.textOnMedia} size={14} />
                 </Pressable>
               ) : null}
               {onReorder && images.length > 1 ? <DragHandle slotWidth={70} onDrop={(translationX) => {
@@ -714,16 +747,26 @@ function EditSurface({
           accessibilityLabel={`Caption for Task image ${activeSelectedIndex + 1}`}
         />
       ) : selected.caption ? <Text style={styles.captionText}>{selected.caption}</Text> : null}
-      {selected.state !== "ready" && selected.state !== "pending" ? (
+      {selected.state !== "ready" && (selected.state !== "pending" || selected.retryAvailable === false) ? (
         <View style={[styles.statusPanel, isFailedImage(selected) ? styles.statusPanelError : styles.statusPanelProgress]}>
           <View style={styles.statusPanelCopy}>
             {isFailedImage(selected) ? <AlertCircleIcon color={colors.error} size={18} /> : null}
             <View>
               <Text style={styles.statusPanelTitle}>{uploadStatus.title}</Text>
               <Text style={styles.statusPanelBody}>{uploadStatus.body}</Text>
+              {selected.state === "uploading" && selected.progress !== undefined ? (
+                <View
+                  accessibilityRole="progressbar"
+                  accessibilityLabel={`Upload progress ${Math.round(Math.max(0, Math.min(1, selected.progress)) * 100)} percent`}
+                  accessibilityValue={{ min: 0, max: 100, now: Math.round(Math.max(0, Math.min(1, selected.progress)) * 100) }}
+                  style={styles.statusProgressTrack}
+                >
+                  <View style={[styles.statusProgressFill, { width: `${Math.max(0, Math.min(1, selected.progress)) * 100}%` }]} />
+                </View>
+              ) : null}
             </View>
           </View>
-          {isFailedImage(selected) && selected.failure?.retryable && onRetry ? <Pressable accessibilityRole="button" accessibilityLabel="Retry Task image" onPress={() => onRetry(selected.taskImageId)} style={styles.retryButton}><RetryArrowIcon color={colors.error} size={16} /><Text style={styles.retryText}>Retry</Text></Pressable> : null}
+          {isFailedImage(selected) && selected.failure?.retryable && selected.retryAvailable !== false && onRetry ? <Pressable accessibilityRole="button" accessibilityLabel="Retry Task image" onPress={() => onRetry(selected.taskImageId)} style={styles.retryButton}><RetryArrowIcon color={colors.error} size={16} /><Text style={styles.retryText}>Retry</Text></Pressable> : null}
         </View>
       ) : null}
       <RecoverableSection images={visibleRecoverable} active={images} onRestore={onRestore} />
@@ -909,13 +952,13 @@ const styles = createThemedStyles({
   dragHandleCompact: { position: "absolute", left: "50%", bottom: -10, width: 28, height: 28, marginLeft: -14, borderRadius: radii.full, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(32,25,20,0.72)" },
   dragHandlePressed: { backgroundColor: "rgba(32,25,20,0.9)" },
   captureAddThumb: { width: 122, height: 92, alignItems: "center", justifyContent: "center", borderRadius: radii.lg, borderWidth: StyleSheet.hairlineWidth, borderStyle: "dashed", borderColor: colors.border, backgroundColor: colors.bgSurface },
-  primaryFlag: { position: "absolute", left: spacing.xs, top: spacing.xs, ...typography.micro, fontSize: 9, color: colors.textInverse, backgroundColor: "rgba(32,25,20,0.72)", paddingHorizontal: 6, paddingVertical: 3, borderRadius: radii.sm, overflow: "hidden" },
+  primaryFlag: { position: "absolute", left: spacing.xs, top: spacing.xs, ...typography.micro, fontSize: 9, color: colors.textOnMedia, backgroundColor: "rgba(32,25,20,0.72)", paddingHorizontal: 6, paddingVertical: 3, borderRadius: radii.sm, overflow: "hidden" },
   photoRemove: { position: "absolute", right: spacing.xs, top: spacing.xs, width: 44, height: 44, borderRadius: radii.full, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(32,25,20,0.72)" },
   photoCaption: { ...typography.bodyMd, color: colors.textSecondary, marginTop: spacing.xs },
   captureCaptionInput: { width: "100%", minHeight: 44, paddingVertical: spacing.xs, color: colors.textSecondary, ...typography.bodyMd },
   inboxMedia: { marginLeft: spacing.md, alignItems: "flex-end", gap: spacing.xs },
   inboxThumb: { width: 84, height: 68, borderRadius: radii.md },
-  countBadge: { position: "absolute", right: 4, bottom: 4, ...typography.micro, color: colors.textInverse, backgroundColor: "rgba(32,25,20,0.72)", paddingHorizontal: 5, paddingVertical: 2, borderRadius: radii.sm, overflow: "hidden" },
+  countBadge: { position: "absolute", right: 4, bottom: 4, ...typography.micro, color: colors.textOnMedia, backgroundColor: "rgba(32,25,20,0.72)", paddingHorizontal: 5, paddingVertical: 2, borderRadius: radii.sm, overflow: "hidden" },
   inboxStatus: { ...typography.micro, color: colors.warning, maxWidth: 100, textAlign: "right" },
   editSurface: { gap: spacing.sm },
   editHero: { width: "100%", aspectRatio: 1.3, borderRadius: radii.lg },
@@ -924,7 +967,7 @@ const styles = createThemedStyles({
   editThumbDragWrap: { position: "relative" },
   editThumbActive: { borderColor: colors.accent },
   editThumb: { width: 62, height: 54, borderRadius: radii.sm },
-  editThumbNumber: { position: "absolute", left: 6, top: 6, fontFamily: "GeistMono_500Medium", fontSize: 9, color: colors.textInverse, backgroundColor: "rgba(32,25,20,0.66)", paddingHorizontal: 4, paddingVertical: 2, borderRadius: 3, overflow: "hidden" },
+  editThumbNumber: { position: "absolute", left: 6, top: 6, fontFamily: "GeistMono_500Medium", fontSize: 9, color: colors.textOnMedia, backgroundColor: "rgba(32,25,20,0.66)", paddingHorizontal: 4, paddingVertical: 2, borderRadius: 3, overflow: "hidden" },
   editThumbRemove: { position: "absolute", right: -8, top: -8, width: 32, height: 32, borderRadius: radii.full, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(32,25,20,0.78)", zIndex: 2 },
   editAddThumb: { width: 66, height: 58, borderRadius: radii.md, borderWidth: StyleSheet.hairlineWidth, borderStyle: "dashed", borderColor: colors.border, alignItems: "center", justifyContent: "center" },
   editMetaRow: { marginTop: spacing.sm, flexDirection: "row", justifyContent: "space-between" },
@@ -938,6 +981,8 @@ const styles = createThemedStyles({
   statusPanelCopy: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm },
   statusPanelTitle: { fontFamily: "Geist_600SemiBold", fontSize: 13, color: colors.textPrimary },
   statusPanelBody: { ...typography.bodyMd, color: colors.textSecondary, maxWidth: 230 },
+  statusProgressTrack: { height: 4, width: "100%", marginTop: spacing.sm, borderRadius: radii.full, overflow: "hidden", backgroundColor: colors.border },
+  statusProgressFill: { height: "100%", backgroundColor: colors.accent, borderRadius: radii.full },
   editActionRow: { marginTop: spacing.lg, flexDirection: "row", justifyContent: "space-between", gap: spacing.xs },
   editAction: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3, paddingHorizontal: spacing.sm },
   disabled: { opacity: 0.28 },

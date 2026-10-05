@@ -61,7 +61,7 @@ export type TaskImageReconciliation =
   | { status: "uploading" | "verifying"; attempt?: number }
   | { status: "ready" }
   | { status: "ready"; result: AllowlistedProviderResult }
-  | { status: "failed"; failure: { code: string; retryable?: boolean } }
+  | { status: "failed"; attempt?: number; failure: { code: string; retryable?: boolean } }
   | { status: "unknown" };
 
 export type TaskImageManifestEntry = {
@@ -81,6 +81,7 @@ export type TaskImageManifestEntry = {
   retryAt?: number;
   taskDeletionExpiresAt?: number;
   needsReconciliation: boolean;
+  restartAttempt?: boolean;
   paused: boolean;
   recoverablyRemoved?: boolean;
 };
@@ -162,6 +163,12 @@ type UploadRecord = Omit<TaskImageManifestEntry, "state"> & {
 export const MAX_TASK_IMAGE_COUNT = 5 as const;
 export const MAX_CONCURRENT_TASK_IMAGE_UPLOADS = 2 as const;
 export const UPLOAD_RETRY_DELAYS_MS = [5_000, 30_000, 120_000] as const;
+export const TASK_IMAGE_LOCAL_SOURCE_TIMEOUT_MS = 15_000;
+export const TASK_IMAGE_GRANT_TIMEOUT_MS = 45_000;
+export const TASK_IMAGE_RECONCILIATION_TIMEOUT_MS = 30_000;
+export const TASK_IMAGE_VERIFICATION_REQUEST_TIMEOUT_MS = 30_000;
+export const TASK_IMAGE_UPLOAD_IDLE_TIMEOUT_MS = 90_000;
+export const TASK_IMAGE_UPLOAD_MAX_DURATION_MS = 15 * 60_000;
 export const TASK_DELETION_RECOVERY_MS = 30 * 60 * 1000;
 export const TASK_IMAGE_MANIFEST_VERSION = 2 as const;
 
@@ -184,6 +191,8 @@ const SAFE_FAILURE_CODES = new Set([
   "usage_blocked",
   "network_error",
   "upload_failed",
+  "upload_timeout",
+  "verification_timeout",
 ]);
 
 const NON_RETRYABLE_FAILURES = new Set([
@@ -228,6 +237,26 @@ function safeFailure(error: unknown): SafeTaskImageFailure {
 
 function createGrantRequestKey(uploadId: string, attempt: number) {
   return `grant_${uploadId}_attempt_${attempt}`;
+}
+
+function timeoutError(code: string) {
+  return Object.assign(new Error(code), { code, retryable: true });
+}
+
+function withTimeout<T>(operation: Promise<T>, timeoutMs: number, failureCode: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(timeoutError(failureCode)), timeoutMs);
+    Promise.resolve(operation).then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 function allowlistedProviderResult(
@@ -298,6 +327,7 @@ function parseManifestEntry(value: unknown): TaskImageManifestEntry | null {
       ? raw.taskDeletionExpiresAt
       : undefined,
     needsReconciliation: raw.needsReconciliation,
+    restartAttempt: raw.restartAttempt === true,
     paused: raw.paused,
     recoverablyRemoved: raw.recoverablyRemoved === true,
   };
@@ -329,6 +359,7 @@ function redactManifest(entries: Iterable<UploadRecord>, visibleUploadIds: strin
       retryAt: entry.retryAt,
       taskDeletionExpiresAt: entry.taskDeletionExpiresAt,
       needsReconciliation: entry.needsReconciliation,
+      restartAttempt: entry.restartAttempt,
       paused: entry.paused,
       recoverablyRemoved: entry.recoverablyRemoved,
     })),
@@ -342,7 +373,9 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
   let lastError: string | undefined;
   let foreground = true;
   let hydrated = !dependencies.manifestStore || !dependencies.ownerScope;
+  let manifestReady = hydrated;
   let activeCount = 0;
+  const activeUploadIds = new Set<string>();
   const running = new Set<Promise<void>>();
   const drainWaiters = new Set<() => void>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -380,6 +413,12 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     caption: entry.caption,
     retryAt: entry.retryAt,
     progress: entry.state === "uploading" ? entry.progress : undefined,
+  });
+
+  const taskImageViewState = (entry: UploadRecord) => ({
+    ...viewState(entry),
+    attempt: entry.attempt,
+    restartAttempt: entry.restartAttempt === true,
   });
 
   const removeSource = async (entry: UploadRecord) => {
@@ -466,6 +505,20 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
 
   const failEntry = async (entry: UploadRecord, error: unknown) => {
     const failure = safeFailure(error);
+    if (failure.code === "verification_timeout") {
+      // A timed-out response does not prove provider processing failed. Leave
+      // the attempt reconcilable and let the server deadline settle it before
+      // an automatic retry can delete an asset that may still be preparing.
+      update(entry, {
+        state: "verifying",
+        failure: undefined,
+        retryAt: undefined,
+        needsReconciliation: true,
+        restartAttempt: false,
+        acceptedForUpload: false,
+      });
+      return;
+    }
     const retryCount = failure.retryable ? entry.retryCount + 1 : entry.retryCount;
     const retryAt = failure.retryable && retryCount <= UPLOAD_RETRY_DELAYS_MS.length
       ? now() + UPLOAD_RETRY_DELAYS_MS[retryCount - 1]
@@ -476,6 +529,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       retryCount,
       retryAt,
       needsReconciliation: entry.attempt > 0,
+      restartAttempt: entry.attempt > 0,
     });
     if (!failure.retryable) {
       await Promise.resolve(dependencies.reportFailure?.({ uploadId: entry.uploadId, failureCode: failure.code })).catch(() => undefined);
@@ -488,7 +542,11 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
 
   const verifyReconciledResult = async (entry: UploadRecord, result: AllowlistedProviderResult) => {
     update(entry, { state: "verifying", retryAt: undefined });
-    const verified = await dependencies.verify({ uploadId: entry.uploadId, ...result });
+    const verified = await withTimeout(
+      dependencies.verify({ uploadId: entry.uploadId, ...result }),
+      TASK_IMAGE_VERIFICATION_REQUEST_TIMEOUT_MS,
+      "verification_timeout",
+    );
     if (verified.state === "failed") {
       await failEntry(
         entry,
@@ -514,18 +572,25 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     }
   };
 
-  const reconcileBeforeAttempt = async (entry: UploadRecord, restartAttempt: boolean) => {
-    if (!entry.needsReconciliation) return true;
-    if (!dependencies.reconcileAttempt) return true;
+  const reconcileBeforeAttempt = async (
+    entry: UploadRecord,
+    restartAttempt: boolean,
+  ): Promise<"continue" | "settled" | "retry" | "remote-active"> => {
+    if (!entry.needsReconciliation) return "continue";
+    if (!dependencies.reconcileAttempt) return "continue";
     let result: TaskImageReconciliation;
     try {
-      result = await dependencies.reconcileAttempt({
-        uploadId: entry.uploadId,
-        attempt: entry.attempt,
-        ...(restartAttempt ? { restartAttempt: true } : {}),
-      });
+      result = await withTimeout(
+        dependencies.reconcileAttempt({
+          uploadId: entry.uploadId,
+          attempt: entry.attempt,
+          ...(restartAttempt ? { restartAttempt: true } : {}),
+        }),
+        TASK_IMAGE_RECONCILIATION_TIMEOUT_MS,
+        "provider_unavailable",
+      );
     } catch {
-      return false;
+      return "retry";
     }
     if (result.status === "absent") {
       update(entry, {
@@ -533,7 +598,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         needsReconciliation: false,
         restartAttempt: false,
       });
-      return true;
+      return "continue";
     }
     if (result.status === "ready") {
       if (!("result" in result)) {
@@ -544,67 +609,126 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
           restartAttempt: false,
         });
         await finishReady(entry);
-        return false;
+        return "settled";
       }
       try {
         await verifyReconciledResult(entry, result.result);
       } catch (error) {
         await failEntry(entry, error);
       }
-      return false;
+      return "settled";
     }
     if (result.status === "failed") {
       update(entry, {
+        attempt: result.attempt ?? entry.attempt,
+        state: "failed",
+        acceptedForUpload: false,
         needsReconciliation: false,
         failure: safeFailure(result.failure),
         restartAttempt: false,
       });
-      return true;
+      return "settled";
     }
     if (result.status === "uploading" || result.status === "verifying") {
-      update(entry, { state: "verifying", retryAt: undefined });
+      update(entry, {
+        state: result.status,
+        retryAt: undefined,
+        restartAttempt: false,
+        needsReconciliation: true,
+        acceptedForUpload: false,
+      });
+      return "remote-active";
     }
-    return false;
+    return "retry";
   };
 
   const runEntry = async (entry: UploadRecord) => {
     const generation = entry.generation;
     const restartAttempt = entry.restartAttempt === true;
     activeCount += 1;
+    activeUploadIds.add(entry.uploadId);
     update(entry, { state: "uploading", failure: undefined, progress: undefined });
     try {
       // User Retry sets needsReconciliation + restartAttempt. Auto-retry after
       // failEntry only sets needsReconciliation.
-      if (
-        (entry.needsReconciliation || restartAttempt) &&
-        !(await reconcileBeforeAttempt(entry, restartAttempt))
-      ) {
-        if (entry.state === "uploading") {
-          await failEntry(entry, { code: "provider_unavailable", retryable: true });
+      if (entry.needsReconciliation || restartAttempt) {
+        const reconciliation = await reconcileBeforeAttempt(entry, restartAttempt);
+        if (reconciliation !== "continue") {
+          if (reconciliation === "retry") {
+            await failEntry(entry, { code: "provider_unavailable", retryable: true });
+          }
+          return;
         }
-        return;
       }
       const sourceUri = entry.sourceUri ?? (
         entry.sourceKey && dependencies.sourceStore
-          ? await dependencies.sourceStore.resolve(entry.sourceKey)
+          ? await withTimeout(
+              dependencies.sourceStore.resolve(entry.sourceKey),
+              TASK_IMAGE_LOCAL_SOURCE_TIMEOUT_MS,
+              "upload_timeout",
+            )
           : undefined
       );
       if (!sourceUri) throw Object.assign(new Error("source_unavailable"), { code: "source_unavailable" });
       const nextAttempt = entry.attempt + 1;
-      const grant = await dependencies.issueGrant({
-        uploadId: entry.uploadId,
-        requestKey: createGrantRequestKey(entry.uploadId, nextAttempt),
-      });
+      const grant = await withTimeout(
+        dependencies.issueGrant({
+          uploadId: entry.uploadId,
+          requestKey: createGrantRequestKey(entry.uploadId, nextAttempt),
+        }),
+        TASK_IMAGE_GRANT_TIMEOUT_MS,
+        "provider_unavailable",
+      );
       if (entry.generation !== generation || entry.paused) return;
       entry.attempt = grant.attempt ?? nextAttempt;
-      update(entry, { attempt: entry.attempt, needsReconciliation: false });
-      const rawResult = await dependencies.upload(sourceUri, grant, {
-        uploadId: entry.uploadId,
-        onProgress: (progress) => {
-          if (entry.generation === generation && !entry.paused) {
-            update(entry, { progress: Math.max(0, Math.min(1, progress)) });
-          }
-        },
+      update(entry, { attempt: entry.attempt, needsReconciliation: false, restartAttempt: false });
+      const rawResult = await new Promise<AllowlistedProviderResult & Record<string, unknown>>((resolve, reject) => {
+        let settled = false;
+        const timers: {
+          idle?: ReturnType<typeof setTimeout>;
+          max?: ReturnType<typeof setTimeout>;
+        } = {};
+        const clearTimers = () => {
+          if (timers.idle) clearTimeout(timers.idle);
+          if (timers.max) clearTimeout(timers.max);
+        };
+        const finish = <T>(settle: (value: T) => void, value: T) => {
+          if (settled) return;
+          settled = true;
+          clearTimers();
+          settle(value);
+        };
+        const onTimeout = () => {
+          if (settled) return;
+          settled = true;
+          clearTimers();
+          void Promise.resolve(dependencies.abortUpload?.({ uploadId: entry.uploadId })).catch(() => undefined);
+          reject(timeoutError("upload_timeout"));
+        };
+        const armIdleTimeout = () => {
+          if (timers.idle) clearTimeout(timers.idle);
+          timers.idle = setTimeout(onTimeout, TASK_IMAGE_UPLOAD_IDLE_TIMEOUT_MS);
+        };
+        armIdleTimeout();
+        timers.max = setTimeout(onTimeout, TASK_IMAGE_UPLOAD_MAX_DURATION_MS);
+        let upload: Promise<AllowlistedProviderResult & Record<string, unknown>>;
+        try {
+          upload = dependencies.upload(sourceUri, grant, {
+            uploadId: entry.uploadId,
+            onProgress: (progress) => {
+              if (settled || entry.generation !== generation || entry.paused) return;
+              update(entry, { progress: Math.max(0, Math.min(1, progress)) });
+              armIdleTimeout();
+            },
+          });
+        } catch (error) {
+          finish(reject, error);
+          return;
+        }
+        Promise.resolve(upload).then(
+          (result) => finish(resolve, result),
+          (error) => finish(reject, error),
+        );
       });
       if (entry.generation !== generation || entry.paused) return;
       await verifyReconciledResult(entry, allowlistedProviderResult(rawResult));
@@ -613,6 +737,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       await failEntry(entry, error);
     } finally {
       activeCount -= 1;
+      activeUploadIds.delete(entry.uploadId);
       void persist();
       notify();
       for (const resolve of [...drainWaiters]) {
@@ -672,13 +797,22 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
 
   const hydrateManifest = async () => {
     if (hydrated) return;
-    hydrated = true;
     const ownerScope = dependencies.ownerScope?.();
-    if (!ownerScope || !dependencies.manifestStore) return;
+    if (!ownerScope || !dependencies.manifestStore) {
+      if (!dependencies.ownerScope || !dependencies.manifestStore) {
+        hydrated = true;
+        manifestReady = true;
+        notify();
+      }
+      return;
+    }
+    hydrated = true;
     let raw: unknown;
     try {
       raw = await dependencies.manifestStore.load(ownerScope);
     } catch {
+      manifestReady = true;
+      notify();
       return;
     }
     const manifestVisibleUploadIds =
@@ -700,6 +834,9 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         ...entry,
         state: entry.state === "uploading" || entry.state === "verifying" ? "pending" : entry.state,
         needsReconciliation: entry.needsReconciliation || entry.state === "uploading" || entry.state === "verifying",
+        restartAttempt: entry.state === "failed" && entry.attempt > 0 && entry.needsReconciliation
+          ? true
+          : entry.restartAttempt,
         acceptedForUpload: entry.state !== "ready" && !entry.paused,
         generation: 0,
       };
@@ -743,17 +880,28 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       }
     }
     void persist();
+    manifestReady = true;
     notify();
   };
 
   // Preview reads and foreground reconciliation can start together. Every
   // caller must wait until the manifest has finished loading.
   let hydration: Promise<void> | undefined;
-  const ensureHydrated = () => hydration ??= hydrateManifest();
+  const ensureHydrated = () => {
+    if (hydration) return hydration;
+    hydration = hydrateManifest().finally(() => {
+      if (!hydrated) hydration = undefined;
+    });
+    return hydration;
+  };
 
   return {
     async hydrate() {
       await ensureHydrated();
+    },
+
+    isHydrated() {
+      return manifestReady;
     },
 
     async select(kind: TaskImageSourceKind, availableSlots: number = MAX_TASK_IMAGE_COUNT, suppliedSource?: AcquiredTaskImageSource): Promise<string[]> {
@@ -928,7 +1076,7 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
     getTaskImageViewStates(taskId: string) {
       return [...records.values()]
         .filter((entry) => entry.taskId === taskId && !entry.paused && !entry.recoverablyRemoved)
-        .map(viewState);
+        .map(taskImageViewState);
     },
 
     async resolveLocalTaskImage(taskImageId: string): Promise<string | null> {
@@ -1086,11 +1234,24 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       taskId: string,
       taskImageId: string,
       onState?: (state: ReturnType<typeof viewState>) => void,
+      serverFailure?: { code: string; retryable?: boolean },
+      serverAttempt?: number,
     ) {
       const entry = [...records.values()].find(
         (candidate) => candidate.taskId === taskId && candidate.taskImageId === taskImageId
       );
       if (!entry) return undefined;
+      if (serverFailure?.retryable && entry.state !== "failed") {
+        update(entry, {
+          attempt: Math.max(entry.attempt, serverAttempt ?? entry.attempt),
+          state: "failed",
+          failure: safeFailure(serverFailure),
+          acceptedForUpload: false,
+          needsReconciliation: true,
+        });
+      } else if (serverFailure?.retryable && serverAttempt !== undefined && serverAttempt > entry.attempt) {
+        update(entry, { attempt: serverAttempt });
+      }
 
       let latest = viewState(entry);
       const emit = () => {
@@ -1120,7 +1281,12 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
           continue;
         }
         if (!dependencies.reconcileAttempt || entry.attempt === 0) continue;
-        const reconciliation = await dependencies.reconcileAttempt({ uploadId: entry.uploadId, attempt: entry.attempt }).catch(() => ({ status: "unknown" as const }));
+        if (activeUploadIds.has(entry.uploadId)) continue;
+        const reconciliation = await withTimeout(
+          dependencies.reconcileAttempt({ uploadId: entry.uploadId, attempt: entry.attempt }),
+          TASK_IMAGE_RECONCILIATION_TIMEOUT_MS,
+          "provider_unavailable",
+        ).catch(() => ({ status: "unknown" as const }));
         if (reconciliation.status === "ready") {
           try {
             if ("result" in reconciliation) await verifyReconciledResult(entry, reconciliation.result);
@@ -1146,12 +1312,22 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
         } else if (reconciliation.status === "uploading" || reconciliation.status === "verifying") {
           update(entry, {
             attempt: reconciliation.attempt ?? entry.attempt,
-            state: "verifying",
+            state: reconciliation.status,
             needsReconciliation: true,
             acceptedForUpload: false,
           });
         } else if (reconciliation.status === "failed") {
-          update(entry, { state: "failed", failure: safeFailure(reconciliation.failure), needsReconciliation: false });
+          update(entry, {
+            attempt: reconciliation.attempt ?? entry.attempt,
+            state: "failed",
+            failure: safeFailure(reconciliation.failure),
+            needsReconciliation: false,
+            acceptedForUpload: false,
+            restartAttempt: false,
+            retryAt: undefined,
+          });
+        } else if (reconciliation.status === "unknown" && entry.state === "verifying") {
+          await failEntry(entry, { code: "network_error", retryable: true });
         }
       }
       void pump();

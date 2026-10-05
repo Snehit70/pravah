@@ -3770,7 +3770,7 @@ const styles = createThemedStyles({
     height: 22,
     borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderControl,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.bgSurface,

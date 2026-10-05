@@ -133,6 +133,8 @@ const getUploadAttemptContextRef = makeFunctionReference<
     providerPublicId?: string;
     providerAttempt: number;
     state: string;
+    safeFailureCode?: string;
+    failureRetryable?: boolean;
   }
 >("taskImages:getUploadAttemptContext");
 
@@ -363,7 +365,6 @@ export const reconcileUploadAttempt = action({
   },
   handler: async (ctx, args) => {
     const ownerTokenIdentifier = await requireTokenIdentifier(ctx);
-    const provider = readProviderConfig();
     const context = await ctx.runQuery(getUploadAttemptContextRef, {
       ownerTokenIdentifier,
       uploadId: args.uploadId,
@@ -371,7 +372,36 @@ export const reconcileUploadAttempt = action({
     if (!context) return { status: "absent" as const };
     if (context.state === "ready") return { status: "ready" as const };
     const providerAttempt = context.providerAttempt;
-    if (!context.providerPublicId) return { status: "absent" as const, attempt: providerAttempt };
+    if (context.state === "failed" && args.restartAttempt !== true) {
+      return {
+        status: "failed" as const,
+        attempt: providerAttempt,
+        failure: {
+          code: context.safeFailureCode ?? "normalization_failed",
+          retryable: context.failureRetryable ?? true,
+        },
+      };
+    }
+    if (args.restartAttempt === true && args.attempt !== providerAttempt) {
+      return { status: "unknown" as const };
+    }
+    if (!context.providerPublicId) {
+      if (context.state === "failed" && args.restartAttempt === true) {
+        await ctx.runMutation(resetUploadAttemptRef, {
+          ownerTokenIdentifier,
+          uploadId: args.uploadId,
+          providerAttempt,
+        });
+      }
+      return { status: "absent" as const, attempt: providerAttempt };
+    }
+
+    let provider: TaskImageProviderConfig;
+    try {
+      provider = readProviderConfig();
+    } catch {
+      return { status: "unknown" as const };
+    }
 
     const presence = await checkProviderAssetPresence({
       provider,
@@ -380,7 +410,6 @@ export const reconcileUploadAttempt = action({
     if (presence === "unknown") return { status: "unknown" as const };
     if (presence === "present") {
       if (args.restartAttempt === true) {
-        if (args.attempt !== providerAttempt) return { status: "unknown" as const };
         const cleanup = await deleteProviderAsset({
           provider,
           publicId: context.providerPublicId,
@@ -544,21 +573,11 @@ export const resolveTaskImage = action({
   },
 });
 
-const failStaleVerifyingUploadsRef = makeFunctionReference<
-  "mutation",
-  { olderThanMs?: number; now?: number },
-  { failed: number }
->("taskImages:failStaleVerifyingUploads");
-
 export const reconcileCleanup = internalAction({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
     await ctx.runMutation(promoteDueCleanupRetriesRef, { now });
-    await ctx.runMutation(failStaleVerifyingUploadsRef, {
-      now,
-      olderThanMs: 10 * 60 * 1000,
-    });
     const tombstones = await ctx.runQuery(listDueCleanupTombstonesRef, { now, limit: 50 });
     let terminal = 0;
     let retried = 0;

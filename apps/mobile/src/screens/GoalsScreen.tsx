@@ -28,7 +28,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import { colors, fonts, radii, spacing, typography } from "../theme/tokens";
+import { colors, fonts, getResolvedAppearance, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
 import type { GoalItem } from "../lib/goalsStorage";
 import { useGoals, useGoalLinks } from "../hooks/useGoals";
@@ -67,10 +67,10 @@ function deadlineStatus(iso: string): DeadlineStatus {
 
 const PRIORITY_RANK: Record<string, number> = { p1: 0, p2: 1, p3: 2 };
 
-const PRIORITY_LABEL: Record<"p1" | "p2" | "p3", { label: string; color: string }> = {
-  p1: { label: "P1", color: colors.priorityP1 },
-  p2: { label: "P2", color: colors.priorityP2 },
-  p3: { label: "P3", color: colors.priorityP3 },
+const PRIORITY_LABEL: Record<"p1" | "p2" | "p3", { label: string; color: () => string }> = {
+  p1: { label: "P1", color: () => colors.priorityP1 },
+  p2: { label: "P2", color: () => colors.priorityP2 },
+  p3: { label: "P3", color: () => colors.priorityP3 },
 };
 
 function GoalIcon({
@@ -312,7 +312,7 @@ function GoalDetailSheet({
     metaSegments.push({
       key: "priority",
       text: PRIORITY_LABEL[goal.priority].label,
-      color: PRIORITY_LABEL[goal.priority].color,
+      color: PRIORITY_LABEL[goal.priority].color(),
     });
   }
   if (goal?.deadline) {
@@ -669,6 +669,7 @@ export function GoalsScreen({
   focusGoalId,
   onDetailVisibilityChange,
 }: GoalsScreenProps) {
+  const isDark = getResolvedAppearance() === "dark";
   const reducedMotion = useReducedMotion();
   const confirm = useConfirm();
   const { deleteGoal, updateGoal } = useGoalMutations();
@@ -911,7 +912,10 @@ export function GoalsScreen({
                   style={({ pressed }) => [styles.goalRow, pressed && { opacity: 0.85 }]}
                 >
                   <View style={styles.goalTile}>
-                    <GoalIcon color={isComplete ? colors.success : colors.accent} size={19} />
+                    <GoalIcon
+                      color={isComplete ? colors.success : isDark ? colors.textMuted : colors.accent}
+                      size={19}
+                    />
                   </View>
                   <View style={styles.goalBody}>
                     {/* The title line carries nothing but the title, so titles
@@ -933,8 +937,8 @@ export function GoalsScreen({
                             survives greyscale and a deuteranope's P1/P2. */}
                         {priority ? (
                           <>
-                            <View style={[styles.priorityDot, { backgroundColor: priority.color }]} />
-                            <Text style={[styles.priorityText, { color: priority.color }]}>
+                            <View style={[styles.priorityDot, { backgroundColor: priority.color() }]} />
+                            <Text style={[styles.priorityText, { color: priority.color() }]}>
                               {priority.label}
                             </Text>
                             <Text style={styles.metaSep}>·</Text>
@@ -955,7 +959,14 @@ export function GoalsScreen({
                           accessibilityLabel={`Plan next task for ${item.text}`}
                           style={({ pressed }) => [styles.planNextAction, pressed && { opacity: 0.6 }]}
                         >
-                          <Text style={styles.planNextText}>Add task</Text>
+                          <Text
+                            style={[
+                              styles.planNextText,
+                              isDark && { color: colors.textSecondary },
+                            ]}
+                          >
+                            Add task
+                          </Text>
                         </Pressable>
                       ) : null}
                     </View>

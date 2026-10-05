@@ -723,6 +723,80 @@ describe("EditTaskSheet compact workbench", () => {
     expect((screen.getByTestId("description-input") as HTMLTextAreaElement).value).toBe("Unsaved notes");
   });
 
+  it("lets a current server failure replace a stale local verifying state and keeps retry available", async () => {
+    const providerResult = {
+      publicId: "provider-id",
+      version: 1,
+      signature: "signature",
+      resourceType: "image",
+      deliveryType: "authenticated",
+      format: "png",
+      width: 800,
+      height: 600,
+      bytes: 1000,
+      eager: [],
+    };
+    const coordinator = createTaskImageCoordinator({
+      createUploadId: () => "upl_mobile_1",
+      acquireSource: async (kind) => ({ kind, uri: "file:///clipboard.png", previewUri: "file:///clipboard.png" }),
+      normalize: async () => ({ uri: "file:///normalized.png", previewUri: "file:///clipboard.png", encodingClass: "png", width: 800, height: 600, bytes: 1000 }),
+      stage: async () => undefined,
+      issueGrant: async () => ({ uploadUrl: "https://upload.example", signature: "signature", apiKey: "key", signedParameters: {} }),
+      upload: async () => providerResult,
+      verify: async () => ({ state: "verifying" as const }),
+    });
+    const imageCollection: NonNullable<MobileTask["imageCollection"]> = {
+      revision: 5,
+      observedAt: 1000,
+      active: [{ taskImageId: "image-pasted", position: 0, state: "uploading", attempt: 1 }],
+      recoverable: [],
+    };
+    const task: MobileTask = {
+      ...timelineTask,
+      imageCollection,
+    };
+    const onRetryTaskImage = vi.fn();
+    const ref = React.createRef<EditTaskSheetRef>();
+    const props = {
+      ref,
+      onSave: vi.fn(async () => true),
+      isValidDeadline: (raw: string) => ({ value: raw }),
+      taskImageCoordinator: coordinator,
+      onRetryTaskImage,
+    };
+    const uploadIds = await coordinator.select("paste");
+    coordinator.associateUploadsWithTask("task1", uploadIds);
+    coordinator.associateTaskImageOrder("task1", ["image-pasted"]);
+    await coordinator.beginUploadAfterSave();
+    expect(coordinator.getTaskImageViewStates("task1")).toMatchObject([{ state: "verifying", attempt: 1 }]);
+
+    const { rerender } = render(<EditTaskSheet {...props} imageCollections={new Map([["task1", imageCollection]])} />);
+    await open(ref, task);
+    expect(screen.getByText("Preparing image")).toBeTruthy();
+
+    const failedCollection: NonNullable<MobileTask["imageCollection"]> = {
+      ...imageCollection,
+      revision: 6,
+      active: [{
+        taskImageId: "image-pasted",
+        position: 0,
+        state: "failed" as const,
+        attempt: 1,
+        failure: { code: "verification_timeout", retryable: true },
+      }],
+    };
+    rerender(<EditTaskSheet {...props} imageCollections={new Map([["task1", failedCollection]])} />);
+    await waitFor(() => expect(screen.getByText("Upload failed")).toBeTruthy());
+    expect(screen.getByText("Your image is saved on this device. Try uploading again.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry Task image" }));
+    await waitFor(() => expect(onRetryTaskImage).toHaveBeenCalledWith(expect.objectContaining({
+      taskId: "task1",
+      taskImageId: "image-pasted",
+      failure: { code: "verification_timeout", retryable: true },
+    })));
+    coordinator.dispose();
+  });
+
   it("keeps a hidden upload running when closed and restores its preview and percentage", async () => {
     let finishUpload!: (value: Awaited<ReturnType<TaskImageCoordinatorDependencies["upload"]>>) => void;
     const uploaded = new Promise<Awaited<ReturnType<TaskImageCoordinatorDependencies["upload"]>>>((resolve) => { finishUpload = resolve; });
@@ -773,7 +847,7 @@ describe("EditTaskSheet compact workbench", () => {
         finishUpload({ publicId: "provider-id", version: 1, signature: "signature", resourceType: "image", deliveryType: "authenticated", format: "png", width: 800, height: 600, bytes: 1000, eager: [] });
         await completion;
       });
-      expect(screen.getByText("Finishing upload…")).toBeTruthy();
+      expect(screen.getByText("Preparing image")).toBeTruthy();
     } finally {
       coordinator.dispose();
     }

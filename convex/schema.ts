@@ -307,6 +307,8 @@ export default defineSchema({
     providerAttempt: v.number(),
     grantRequestKey: v.optional(v.string()),
     grantIssuedAt: v.optional(v.number()),
+    claimedAt: v.optional(v.number()),
+    verificationStartedAt: v.optional(v.number()),
     sealedAt: v.optional(v.number()),
     master: v.optional(
       v.object({
@@ -338,6 +340,7 @@ export default defineSchema({
   })
     .index("by_owner_upload_id", ["ownerTokenIdentifier", "uploadId"])
     .index("by_owner_state", ["ownerTokenIdentifier", "state"])
+    .index("by_state_updated_at", ["state", "updatedAt"])
     .index("by_provider_public_id", ["providerPublicId"]),
   taskImages: defineTable({
     ownerTokenIdentifier: v.string(),

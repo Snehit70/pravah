@@ -22,7 +22,7 @@ export function GridBackground() {
   const cell = 32;
   const lineColor =
     getThemeRuntimeSnapshot().appearance === "dark"
-      ? "rgba(231,213,235,0.045)"
+      ? "rgba(242,240,235,0.025)"
       : "rgba(78,62,43,0.055)";
 
   return (

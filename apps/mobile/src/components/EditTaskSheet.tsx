@@ -120,6 +120,8 @@ type EditTaskSheetProps = {
   onRetryTaskImage?: (args: {
     taskId: Id<"tasks">;
     taskImageId: string;
+    attempt?: number;
+    failure?: TaskImageRetryState["failure"];
     onState?: (state: TaskImageRetryState) => void;
   }) => TaskImageRetryState | undefined | void | Promise<TaskImageRetryState | undefined | void>;
   onSaveComplete?: (
@@ -315,10 +317,37 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         .flatMap((image) => image.taskImageId ? [[image.taskImageId, image] as const] : []));
       return (currentTask?.imageCollection?.active ?? []).map((image) => {
         const upload = local.get(image.taskImageId);
-        if (!upload || image.state === "ready") return image;
+        if (!upload) {
+          if (taskImageCoordinator && !taskImageCoordinator.isHydrated()) return image;
+          return (image.state === "failed" && image.failure?.retryable)
+            || ["pending", "uploading", "verifying"].includes(image.state)
+            ? { ...image, retryAvailable: false }
+            : image;
+        }
+        if (image.state === "ready") return { ...image, retryAvailable: true };
+
+        const serverAttempt = image.attempt ?? 0;
+        const localAttempt = upload.attempt ?? 0;
+        const localIsRestarting = upload.restartAttempt === true;
+        const localPreview = upload.previewUri ?? image.previewUri;
+        const serverIsNewer = serverAttempt > localAttempt;
+        const serverFailureIsCurrent = image.state === "failed"
+          && serverAttempt >= localAttempt
+          && !localIsRestarting;
+        if (serverIsNewer || serverFailureIsCurrent) {
+          return { ...image, previewUri: localPreview, retryAvailable: true };
+        }
+
+        const serverIsAhead = image.state === "verifying"
+          || (image.state === "uploading" && upload.state === "pending");
+        if (serverIsAhead && !localIsRestarting) {
+          return { ...image, previewUri: localPreview, retryAvailable: true };
+        }
         return {
           ...image,
           state: upload.state,
+          attempt: localAttempt,
+          retryAvailable: true,
           previewUri: upload.previewUri ?? image.previewUri,
           progress: upload.progress,
           failure: upload.failure,
@@ -1112,6 +1141,8 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
                       void Promise.resolve(onRetryTaskImage({
                         taskId: currentTask._id,
                         taskImageId,
+                        attempt: taskImages.find((image) => image.taskImageId === taskImageId)?.attempt,
+                        failure: taskImages.find((image) => image.taskImageId === taskImageId)?.failure,
                         onState: applyRetryState,
                       })).then((state) => {
                         if (state) applyRetryState(state);

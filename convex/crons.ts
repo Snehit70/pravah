@@ -28,4 +28,11 @@ crons.interval(
   {}
 );
 
+crons.interval(
+  "recover stale Task-image uploads",
+  { minutes: 15 },
+  internal.taskImages.failStaleTaskImageUploads,
+  {}
+);
+
 export default crons;
