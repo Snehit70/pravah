@@ -174,25 +174,29 @@ import { TaskImageFilmstrip } from "../components/TaskImageFilmstrip";
 import { reorderTaskImagesByDrag } from "../lib/taskImageReorder";
 
 describe("TaskImageFilmstrip", () => {
-  it("shows upload percentage over the preview, then finishing and completion", async () => {
+  it("shows one upload status, then a distinct preparation state and completion", async () => {
     vi.useFakeTimers();
     try {
       const image = { taskImageId: "image-flow", position: 0, previewUri: "file:///durable.png" };
       const resolveDelivery = vi.fn(async () => ({ kind: "ready" as const, url: "file:///library/image-flow.png" }));
       const { rerender } = render(<TaskImageFilmstrip surface="edit" images={[{ ...image, state: "uploading", progress: 0.42 }]} resolveDelivery={resolveDelivery} />);
       expect(screen.getByText("Uploading · 42%")).toBeTruthy();
-      expect(screen.getByText("42%")).toBeTruthy();
+      const progressBar = document.querySelector('[accessibilityrole="progressbar"]');
+      expect(progressBar?.getAttribute("accessibilitylabel")).toBe("Upload progress 42 percent");
+      expect(screen.queryByText("42%")).toBeNull();
       expect(screen.getByAltText("Selected Task image preview")).toBeTruthy();
-      expect(screen.getByText("You can close this task. Upload continues while you use Pravah.")).toBeTruthy();
+      expect(screen.getByText("Your image is saved on this device. Upload continues while you use Pravah.")).toBeTruthy();
 
       rerender(<TaskImageFilmstrip surface="edit" images={[{ ...image, state: "verifying" }]} resolveDelivery={resolveDelivery} />);
-      expect(screen.getByText("Finishing upload…")).toBeTruthy();
-      expect(screen.queryByText("42%")).toBeNull();
+      expect(screen.getByText("Preparing image")).toBeTruthy();
+      expect(screen.getByText("Upload received. Pravah is preparing the image; this will update automatically.")).toBeTruthy();
+      expect(screen.queryByRole("progressbar")).toBeNull();
+      expect(screen.queryByText("Finishing upload…")).toBeNull();
       rerender(<TaskImageFilmstrip surface="edit" images={[{ ...image, state: "ready" }]} resolveDelivery={resolveDelivery} />);
       await act(async () => { await Promise.resolve(); });
-      expect(screen.getByText("Image uploaded")).toBeTruthy();
+      expect(document.querySelector('[accessibilitylabel="Image uploaded"]')).toBeTruthy();
       await act(async () => { await vi.advanceTimersByTimeAsync(2_500); });
-      expect(screen.queryByText("Image uploaded")).toBeNull();
+      expect(document.querySelector('[accessibilitylabel="Image uploaded"]')).toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -220,9 +224,9 @@ describe("TaskImageFilmstrip", () => {
       expect(screen.getByAltText("Selected Task image preview")).toBeTruthy();
     });
     expect(resolveDelivery).toHaveBeenCalledWith("image-pasted", "detail", { download: false });
-    // Keep the upload status below the image, rather than replacing the image.
-    expect(screen.queryAllByText("Uploading image")).toHaveLength(0);
-    expect(screen.getByText("Saved on this device")).toBeTruthy();
+    // Keep a single upload status below the image instead of repeating it over the preview.
+    expect(screen.getAllByText("Uploading image")).toHaveLength(1);
+    expect(screen.getByText("Your image is saved on this device. Upload continues while you use Pravah.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Open Task image 1" })).toBeTruthy();
   });
 
@@ -267,6 +271,38 @@ describe("TaskImageFilmstrip", () => {
     expect(screen.getByText("Image could not be prepared")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Retry Task image" })).toBeNull();
     expect(document.body.textContent).not.toContain("decoder");
+  });
+
+  it("explains when this installation cannot retry the image", () => {
+    const onRetry = vi.fn();
+    const { rerender } = render(
+      <TaskImageFilmstrip
+        surface="edit"
+        images={[{ taskImageId: "image-remote", position: 0, state: "pending", retryAvailable: false }]}
+        onRetry={onRetry}
+      />,
+    );
+    expect(screen.getByText("Image needs to be added")).toBeTruthy();
+    expect(screen.getByText("The original image is not available on this installation. Add it here to upload it.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry Task image" })).toBeNull();
+
+    rerender(
+      <TaskImageFilmstrip
+        surface="edit"
+        images={[{
+          taskImageId: "image-remote",
+          position: 0,
+          state: "failed",
+          retryAvailable: false,
+          failure: { code: "verification_timeout", retryable: true },
+        }]}
+        onRetry={onRetry}
+      />,
+    );
+    expect(screen.getByText("Upload failed")).toBeTruthy();
+    expect(screen.getByText("The original image is not available on this installation. Retry where you selected it, or add it again.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry Task image" })).toBeNull();
+    expect(onRetry).not.toHaveBeenCalled();
   });
 
   it("does not present a locally staged image as waiting", () => {

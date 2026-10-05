@@ -428,6 +428,9 @@ function MobileApp() {
           if (result.status === "ready") return { status: "ready" as const };
           if (result.status === "absent") return { status: "absent" as const, attempt: result.attempt };
           if (result.status === "unknown") return { status: "unknown" as const };
+          if (result.status === "failed") {
+            return { status: "failed" as const, attempt: result.attempt, failure: result.failure };
+          }
           return { status: result.status, attempt: result.attempt };
         },
         upload: uploadPreparedTaskImage,
@@ -1778,7 +1781,7 @@ function MobileApp() {
             }
           })();
         }}
-        onRetryTaskImage={async ({ taskId, taskImageId, onState }) => {
+        onRetryTaskImage={async ({ taskId, taskImageId, onState, failure, attempt }) => {
           const emitState = (state: {
             taskImageId?: string;
             state: TaskImageRetryState["state"];
@@ -1795,6 +1798,8 @@ function MobileApp() {
             String(taskId),
             taskImageId,
             emitState,
+            failure,
+            attempt,
           );
           return result?.taskImageId ? { ...result, taskImageId: result.taskImageId } : undefined;
         }}

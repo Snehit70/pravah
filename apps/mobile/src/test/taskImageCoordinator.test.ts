@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createTaskImageCoordinator,
+  TASK_IMAGE_VERIFICATION_REQUEST_TIMEOUT_MS,
   UPLOAD_RETRY_DELAYS_MS,
   type TaskImageCoordinatorDependencies,
   type TaskImageSourceKind,
@@ -593,7 +594,7 @@ describe("Task-image mobile coordinator", () => {
 
     for (let index = 0; index < 5; index += 1) await coordinator.select("photos");
     const completion = coordinator.beginUploadAfterSave();
-    await Promise.resolve();
+    await vi.waitFor(() => expect(dependencies.upload).toHaveBeenCalledTimes(2));
 
     expect(dependencies.upload).toHaveBeenCalledTimes(2);
     expect(coordinator.getViewStates().filter((image) => image.state === "uploading")).toHaveLength(2);
@@ -613,14 +614,10 @@ describe("Task-image mobile coordinator", () => {
     } as Awaited<ReturnType<TaskImageCoordinatorDependencies["upload"]>>;
     uploads[0].resolve(providerResult);
     uploads[1].resolve(providerResult);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(dependencies.upload).toHaveBeenCalledTimes(4);
+    await vi.waitFor(() => expect(dependencies.upload).toHaveBeenCalledTimes(4));
     uploads[2].resolve(providerResult);
     uploads[3].resolve(providerResult);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(dependencies.upload).toHaveBeenCalledTimes(5);
+    await vi.waitFor(() => expect(dependencies.upload).toHaveBeenCalledTimes(5));
     uploads[4].resolve(providerResult);
     await completion;
   });
@@ -636,7 +633,7 @@ describe("Task-image mobile coordinator", () => {
     const coordinator = createTaskImageCoordinator(dependencies);
     await coordinator.select("photos");
     const completion = coordinator.beginUploadAfterSave();
-    await Promise.resolve();
+    await vi.waitFor(() => expect(dependencies.upload).toHaveBeenCalledTimes(1));
 
     expect(coordinator.getViewState()).toMatchObject({ state: "uploading", progress: 0.42 });
     result.resolve({
@@ -654,6 +651,110 @@ describe("Task-image mobile coordinator", () => {
     await completion;
     expect(coordinator.getViewState()).toMatchObject({ state: "verifying" });
     expect(coordinator.getViewState()?.progress).toBeUndefined();
+  });
+
+  it("fails and cancels an upload that stops reporting progress", async () => {
+    vi.useFakeTimers();
+    try {
+      const dependencies = createDependencies();
+      const upload = deferred<Awaited<ReturnType<TaskImageCoordinatorDependencies["upload"]>>>();
+      dependencies.upload = vi.fn(() => upload.promise);
+      dependencies.abortUpload = vi.fn(() => {
+        upload.resolve({
+          publicId: "provider-private-id",
+          version: 1,
+          signature: "provider-response-signature",
+          resourceType: "image",
+          deliveryType: "authenticated",
+          format: "jpg",
+          width: 1600,
+          height: 1200,
+          bytes: 2_000_000,
+          eager: [],
+        });
+      });
+      const coordinator = createTaskImageCoordinator(dependencies);
+      await coordinator.select("photos");
+      const completion = coordinator.beginUploadAfterSave();
+
+      await vi.advanceTimersByTimeAsync(90_000);
+
+      expect(dependencies.abortUpload).toHaveBeenCalledWith({ uploadId: "upl_mobile_1" });
+      expect(coordinator.getViewState()).toMatchObject({
+        state: "failed",
+        failure: { code: "upload_timeout", retryable: true },
+      });
+      await completion;
+      expect(dependencies.verify).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("adopts the server attempt before retrying a newer failed attempt", async () => {
+    const dependencies = createDependencies();
+    dependencies.reconcileAttempt = vi.fn(async () => ({ status: "absent" as const, attempt: 1 }));
+    const coordinator = createTaskImageCoordinator(dependencies);
+    const uploadIds = await coordinator.select("paste");
+    coordinator.associateUploadsWithTask("task_1", uploadIds);
+    coordinator.associateTaskImageOrder("task_1", ["image_1"]);
+
+    await coordinator.retryTaskImageUpload(
+      "task_1",
+      "image_1",
+      undefined,
+      { code: "verification_timeout", retryable: true },
+      1,
+    );
+
+    expect(dependencies.reconcileAttempt).toHaveBeenCalledWith({
+      uploadId: "upl_mobile_1",
+      attempt: 1,
+      restartAttempt: true,
+    });
+    expect(dependencies.issueGrant).toHaveBeenCalledWith({
+      uploadId: "upl_mobile_1",
+      requestKey: "grant_upl_mobile_1_attempt_2",
+    });
+    expect(coordinator.getTaskImageViewStates("task_1")).toMatchObject([{ attempt: 2, state: "verifying" }]);
+  });
+
+  it("keeps an accepted image in preparation when the verification response times out", async () => {
+    vi.useFakeTimers();
+    try {
+      const dependencies = createDependencies();
+      dependencies.verify = vi.fn(() => new Promise<Awaited<ReturnType<TaskImageCoordinatorDependencies["verify"]>>>(() => undefined));
+      const coordinator = createTaskImageCoordinator(dependencies);
+      await coordinator.select("photos");
+      const completion = coordinator.beginUploadAfterSave();
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(dependencies.verify).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(TASK_IMAGE_VERIFICATION_REQUEST_TIMEOUT_MS);
+      await completion;
+
+      expect(coordinator.getViewState()).toMatchObject({ state: "verifying", failure: undefined, retryAt: undefined });
+      expect(coordinator.serialize().uploads[0]).toMatchObject({
+        state: "verifying",
+        needsReconciliation: true,
+        restartAttempt: false,
+      });
+      expect(dependencies.upload).toHaveBeenCalledTimes(1);
+
+      dependencies.reconcileAttempt = vi.fn(async () => ({
+        status: "failed" as const,
+        attempt: 1,
+        failure: { code: "verification_timeout", retryable: true },
+      }));
+      await coordinator.reconcileOnForeground();
+      expect(coordinator.getViewState()).toMatchObject({
+        state: "failed",
+        failure: { code: "verification_timeout", retryable: true },
+      });
+      expect(dependencies.upload).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("retries transient failures on the settled schedule and preserves uploadId for manual retry", async () => {
@@ -919,7 +1020,12 @@ describe("Task-image mobile coordinator", () => {
       await coordinator.beginUploadAfterSave();
       await vi.advanceTimersByTimeAsync(UPLOAD_RETRY_DELAYS_MS[0]);
 
-      expect(dependencies.reconcileAttempt).toHaveBeenCalledWith({ uploadId: "upl_mobile_1", attempt: 1 });
+      await vi.waitFor(() => expect(dependencies.reconcileAttempt).toHaveBeenCalledTimes(1));
+      expect(dependencies.reconcileAttempt).toHaveBeenCalledWith({
+        uploadId: "upl_mobile_1",
+        attempt: 1,
+        restartAttempt: true,
+      });
       expect(dependencies.issueGrant).toHaveBeenCalledTimes(2);
       expect(dependencies.upload).toHaveBeenCalledTimes(2);
     } finally {
@@ -1010,8 +1116,112 @@ describe("Task-image mobile coordinator", () => {
 
     expect(dependencies.reconcileAttempt).toHaveBeenCalledWith({ uploadId: "upl_mobile_1", attempt: 1 });
     expect(dependencies.issueGrant).not.toHaveBeenCalled();
-    expect(coordinator.getViewState()).toMatchObject({ uploadId: "upl_mobile_1", state: "verifying" });
+    expect(coordinator.getViewState()).toMatchObject({ uploadId: "upl_mobile_1", state: "uploading" });
     expect(coordinator.serialize().uploads[0].sourceKey).toBe("upl_mobile_1.jpg");
+  });
+
+  it("does not restart or loop when the server reports an active upload", async () => {
+    const dependencies = createDependencies();
+    dependencies.reconcileAttempt = vi.fn(async () => ({ status: "uploading" as const, attempt: 1 }));
+    const coordinator = createTaskImageCoordinator({
+      ...dependencies,
+      ownerScope: () => "owner-a",
+      manifestStore: {
+        load: vi.fn(async () => ({
+          version: 2,
+          uploads: [{
+            uploadId: "upl_mobile_1",
+            taskId: "task_1",
+            taskImageId: "image_1",
+            state: "failed",
+            sourceKey: "upl_mobile_1.jpg",
+            attempt: 1,
+            retryCount: 0,
+            needsReconciliation: true,
+            restartAttempt: true,
+            paused: false,
+            failure: { code: "network_error", retryable: true },
+          }],
+        })),
+        save: vi.fn(async () => undefined),
+      },
+    });
+
+    await coordinator.hydrate();
+    await coordinator.retry("upl_mobile_1");
+
+    expect(dependencies.reconcileAttempt).toHaveBeenCalledWith({
+      uploadId: "upl_mobile_1",
+      attempt: 1,
+      restartAttempt: true,
+    });
+    expect(dependencies.issueGrant).not.toHaveBeenCalled();
+    expect(dependencies.upload).not.toHaveBeenCalled();
+    expect(coordinator.getTaskImageViewStates("task_1")).toMatchObject([{
+      state: "uploading",
+      retryAt: undefined,
+    }]);
+    expect(coordinator.serialize().uploads[0]).toMatchObject({
+      state: "uploading",
+      needsReconciliation: true,
+    });
+  });
+
+  it("reconciles a persisted verification without restarting its provider attempt", async () => {
+    const dependencies = createDependencies();
+    dependencies.reconcileAttempt = vi.fn(async () => ({ status: "verifying" as const, attempt: 4 }));
+    const coordinator = createTaskImageCoordinator({
+      ...dependencies,
+      ownerScope: () => "owner-a",
+      manifestStore: {
+        load: vi.fn(async () => ({
+          version: 2,
+          uploads: [{
+            uploadId: "upl_mobile_1",
+            taskId: "task_1",
+            taskImageId: "image_1",
+            state: "verifying",
+            sourceKey: "upl_mobile_1.jpg",
+            attempt: 4,
+            retryCount: 0,
+            needsReconciliation: true,
+            restartAttempt: false,
+            paused: false,
+          }],
+        })),
+        save: vi.fn(async () => undefined),
+      },
+      sourceStore: {
+        persist: vi.fn(async () => ({ sourceKey: "upl_mobile_1.jpg", uri: "file:///private/durable.jpg" })),
+        resolve: vi.fn(async () => "file:///private/durable.jpg"),
+        remove: vi.fn(async () => undefined),
+      },
+    });
+
+    await coordinator.reconcileOnForeground();
+
+    expect(dependencies.reconcileAttempt).toHaveBeenCalledWith({ uploadId: "upl_mobile_1", attempt: 4 });
+    expect(dependencies.upload).not.toHaveBeenCalled();
+    expect(coordinator.getTaskImageViewStates("task_1")).toMatchObject([{ state: "verifying", restartAttempt: false }]);
+  });
+
+  it("waits to mark manifest readiness until the authenticated owner is available", async () => {
+    const owner = { id: undefined as string | undefined };
+    const load = vi.fn(async () => ({ version: 2, uploads: [] }));
+    const coordinator = createTaskImageCoordinator({
+      ...createDependencies(),
+      ownerScope: () => owner.id,
+      manifestStore: { load, save: vi.fn(async () => undefined) },
+    });
+
+    await coordinator.hydrate();
+    expect(coordinator.isHydrated()).toBe(false);
+    expect(load).not.toHaveBeenCalled();
+
+    owner.id = "owner-a";
+    await coordinator.hydrate();
+    expect(coordinator.isHydrated()).toBe(true);
+    expect(load).toHaveBeenCalledOnce();
   });
 
   it("restores a recoverably removed image after coordinator hydration", async () => {
@@ -1242,7 +1452,7 @@ describe("Task-image mobile coordinator", () => {
     expect(coordinator.getViewStates()[0]).toMatchObject({ state: "pending" });
 
     await coordinator.resumeTaskImageUpload("task_1", "image_1");
-    expect(coordinator.getViewStates()[0]).toMatchObject({ state: "verifying" });
+    await vi.waitFor(() => expect(coordinator.getViewStates()[0]).toMatchObject({ state: "verifying" }));
   });
 
   it("removes all task-owned records and sources after permanent deletion", async () => {
@@ -1284,7 +1494,7 @@ describe("Task-image mobile coordinator", () => {
     await coordinator.select("photos");
     coordinator.associateUploadsWithTask("task_1", ["upl_mobile_1"]);
     const completion = coordinator.beginUploadAfterSave();
-    await Promise.resolve();
+    await vi.waitFor(() => expect(dependencies.upload).toHaveBeenCalledTimes(1));
 
     coordinator.pauseTaskUploads("task_1");
     firstUpload.resolve({
@@ -1304,7 +1514,7 @@ describe("Task-image mobile coordinator", () => {
 
     await coordinator.resumeTaskUploads("task_1");
     await coordinator.beginUploadAfterSave();
-    expect(dependencies.upload).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(dependencies.upload).toHaveBeenCalledTimes(2));
     expect(coordinator.getViewState()).toBeNull();
     expect(coordinator.serialize().uploads).toHaveLength(0);
   });

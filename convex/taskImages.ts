@@ -9,6 +9,9 @@ import { ensureTaskImageCleanupTombstone, findTaskImageCleanupTombstone } from "
 export const TASK_IMAGE_VARIANT_SET = "task-image-v1" as const;
 export const TASK_IMAGE_POLICY_HASH = "task-image-v1-2026-08-03";
 export const MAX_ACTIVE_TASK_IMAGES = 5 as const;
+export const TASK_IMAGE_UPLOAD_START_TIMEOUT_MS = 30 * 60 * 1000;
+export const TASK_IMAGE_UPLOAD_ATTEMPT_TIMEOUT_MS = 30 * 60 * 1000;
+export const TASK_IMAGE_VERIFICATION_TIMEOUT_MS = 10 * 60 * 1000;
 const IMAGE_RECOVERY_WINDOW_MS = 30 * 60 * 1000;
 
 const MAX_STAGED_BYTES = 8 * 1024 * 1024;
@@ -28,7 +31,9 @@ type SafeFailureCode =
   | "normalization_failed"
   | "master_too_large"
   | "variant_too_large"
-  | "source_unavailable";
+  | "source_unavailable"
+  | "upload_timeout"
+  | "verification_timeout";
 
 const SAFE_FAILURE_CODES = new Set<SafeFailureCode>([
   "unsupported_format",
@@ -43,6 +48,8 @@ const SAFE_FAILURE_CODES = new Set<SafeFailureCode>([
   "master_too_large",
   "variant_too_large",
   "source_unavailable",
+  "upload_timeout",
+  "verification_timeout",
 ]);
 
 type StageArgs = {
@@ -174,6 +181,8 @@ export const markUploadFailed = mutation({
     await ctx.db.patch(upload._id, {
       state: "failed",
       safeFailureCode: failure.code,
+      claimedAt: undefined,
+      verificationStartedAt: undefined,
       updatedAt: now,
     });
     if (upload.taskImageId) {
@@ -226,11 +235,23 @@ export const prepareUploadGrant = internalMutation({
       providerAttempt: nextProviderAttempt,
       grantRequestKey: args.requestKey,
       grantIssuedAt: args.issuedAt,
+      claimedAt: undefined,
+      verificationStartedAt: undefined,
       updatedAt: now,
     });
     if (upload.taskImageId) {
       await ctx.db.patch(upload.taskImageId, { state: "uploading", updatedAt: now });
     }
+    await ctx.scheduler.runAfter(
+      TASK_IMAGE_UPLOAD_ATTEMPT_TIMEOUT_MS,
+      internal.taskImages.expireTaskImageUploadAttempt,
+      {
+        uploadRecordId: upload._id,
+        providerAttempt: nextProviderAttempt,
+        expectedState: "uploading",
+        expectedAt: args.issuedAt,
+      },
+    );
     return {
       uploadId: upload.uploadId,
       publicId: args.candidatePublicId,
@@ -261,11 +282,14 @@ export const getUploadAttemptContext = internalQuery({
   handler: async (ctx, args) => {
     const upload = await findOwnedUpload(ctx, args.ownerTokenIdentifier, args.uploadId);
     if (!upload) return null;
+    const image = upload.taskImageId ? await ctx.db.get(upload.taskImageId) : null;
     return {
       uploadId: upload.uploadId,
       providerPublicId: upload.providerPublicId,
       providerAttempt: upload.providerAttempt,
       state: upload.state,
+      safeFailureCode: upload.safeFailureCode,
+      failureRetryable: image?.failureRetryable,
     };
   },
 });
@@ -285,6 +309,7 @@ export const resetUploadAttempt = internalMutation({
     const now = Date.now();
     await ctx.db.patch(upload._id, {
       state: upload.taskImageId ? "claimed" : "staged",
+      claimedAt: upload.taskImageId ? now : undefined,
       providerPublicId: undefined,
       providerVersion: undefined,
       grantRequestKey: undefined,
@@ -293,6 +318,7 @@ export const resetUploadAttempt = internalMutation({
       variants: undefined,
       verifiedAt: undefined,
       safeFailureCode: undefined,
+      verificationStartedAt: undefined,
       updatedAt: now,
     });
     if (upload.taskImageId) {
@@ -302,6 +328,16 @@ export const resetUploadAttempt = internalMutation({
         failureRetryable: undefined,
         updatedAt: now,
       });
+      await ctx.scheduler.runAfter(
+        TASK_IMAGE_UPLOAD_START_TIMEOUT_MS,
+        internal.taskImages.expireTaskImageUploadAttempt,
+        {
+          uploadRecordId: upload._id,
+          providerAttempt: upload.providerAttempt,
+          expectedState: "claimed",
+          expectedAt: now,
+        },
+      );
     }
     return { reset: true as const };
   },
@@ -378,6 +414,8 @@ export const applyUploadVerification = internalMutation({
       await ctx.db.patch(upload._id, {
         state: "failed",
         safeFailureCode: failure.code,
+        claimedAt: undefined,
+        verificationStartedAt: undefined,
         updatedAt: now,
       });
       if (upload.taskImageId) {
@@ -398,11 +436,17 @@ export const applyUploadVerification = internalMutation({
       if (upload.state === "failed") {
         return { accepted: false, state: "failed" as const };
       }
+      const shouldScheduleVerificationExpiry = upload.state !== "verifying" || upload.verificationStartedAt === undefined;
+      const verificationStartedAt = upload.state === "verifying" && upload.verificationStartedAt
+        ? upload.verificationStartedAt
+        : now;
       await ctx.db.patch(upload._id, {
         state: "verifying",
+        claimedAt: undefined,
         providerVersion: args.version,
         master: args.result.master,
         safeFailureCode: undefined,
+        verificationStartedAt,
         updatedAt: now,
       });
       if (upload.taskImageId) {
@@ -413,15 +457,29 @@ export const applyUploadVerification = internalMutation({
           updatedAt: now,
         });
       }
+      if (shouldScheduleVerificationExpiry) {
+        await ctx.scheduler.runAfter(
+          TASK_IMAGE_VERIFICATION_TIMEOUT_MS,
+          internal.taskImages.expireTaskImageUploadAttempt,
+          {
+            uploadRecordId: upload._id,
+            providerAttempt: upload.providerAttempt,
+            expectedState: "verifying",
+            expectedAt: verificationStartedAt,
+          },
+        );
+      }
       return { accepted: true, state: "verifying" as const };
     }
 
     await ctx.db.patch(upload._id, {
       state: "ready",
+      claimedAt: undefined,
       providerVersion: args.version,
       master: args.result.master,
       variants: { card: args.result.card, detail: args.result.detail },
       safeFailureCode: undefined,
+      verificationStartedAt: undefined,
       verifiedAt: now,
       sealedAt: now,
       updatedAt: now,
@@ -438,37 +496,104 @@ export const applyUploadVerification = internalMutation({
   },
 });
 
-/** Mark verifying uploads that already failed (or aged out) as failed so clients show Retry. */
-export const failStaleVerifyingUploads = internalMutation({
+/** Expire one exact upload attempt without allowing an old timer to affect a retry. */
+export const expireTaskImageUploadAttempt = internalMutation({
   args: {
-    olderThanMs: v.optional(v.number()),
-    now: v.optional(v.number()),
+    uploadRecordId: v.id("taskImageUploads"),
+    providerAttempt: v.number(),
+    expectedState: v.union(v.literal("claimed"), v.literal("uploading"), v.literal("verifying")),
+    expectedAt: v.number(),
   },
   handler: async (ctx, args) => {
-    const now = args.now ?? Date.now();
-    const olderThanMs = args.olderThanMs ?? 10 * 60 * 1000;
-    const uploads = await ctx.db.query("taskImageUploads").collect();
-    let failed = 0;
-    for (const upload of uploads) {
-      if (upload.state !== "verifying") continue;
-      const staleByAge = now - upload.updatedAt >= olderThanMs;
-      const staleByFailure = Boolean(upload.safeFailureCode);
-      if (!staleByAge && !staleByFailure) continue;
-      const failureCode: SafeFailureCode = SAFE_FAILURE_CODES.has(
-        upload.safeFailureCode as SafeFailureCode
-      )
-        ? (upload.safeFailureCode as SafeFailureCode)
-        : "normalization_failed";
-      const failure = safeFailure(failureCode, true)!;
-      await ctx.db.patch(upload._id, {
+    const upload = await ctx.db.get(args.uploadRecordId);
+    if (!upload || upload.providerAttempt !== args.providerAttempt || upload.state !== args.expectedState) {
+      return { expired: false as const };
+    }
+    const currentStateAt = args.expectedState === "claimed"
+      ? upload.claimedAt
+      : args.expectedState === "uploading"
+        ? upload.grantIssuedAt
+        : upload.verificationStartedAt;
+    if (currentStateAt !== args.expectedAt) return { expired: false as const };
+
+    const now = Date.now();
+    const timeoutMs = args.expectedState === "claimed"
+      ? TASK_IMAGE_UPLOAD_START_TIMEOUT_MS
+      : args.expectedState === "uploading"
+        ? TASK_IMAGE_UPLOAD_ATTEMPT_TIMEOUT_MS
+        : TASK_IMAGE_VERIFICATION_TIMEOUT_MS;
+    const expectedAtMs = args.expectedState === "uploading" ? args.expectedAt * 1000 : args.expectedAt;
+    const remainingMs = expectedAtMs + timeoutMs - now;
+    if (remainingMs > 0) {
+      await ctx.scheduler.runAfter(
+        remainingMs,
+        internal.taskImages.expireTaskImageUploadAttempt,
+        args,
+      );
+      return { expired: false as const };
+    }
+
+    const failureCode = args.expectedState === "verifying" ? "verification_timeout" : "upload_timeout";
+    await ctx.db.patch(upload._id, {
+      state: "failed",
+      safeFailureCode: failureCode,
+      claimedAt: undefined,
+      verificationStartedAt: undefined,
+      updatedAt: now,
+    });
+    if (upload.taskImageId && await ctx.db.get(upload.taskImageId)) {
+      await ctx.db.patch(upload.taskImageId, {
         state: "failed",
-        safeFailureCode: failure.code,
+        safeFailureCode: failureCode,
+        failureRetryable: true,
         updatedAt: now,
       });
-      if (upload.taskImageId) {
+    }
+    return { expired: true as const, failureCode };
+  },
+});
+
+/** Recover attempts created before durable per-attempt deadlines were deployed. */
+export const failStaleTaskImageUploads = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const uploadsByState = await Promise.all(
+      (["claimed", "uploading", "verifying"] as const).map((state) =>
+        ctx.db
+          .query("taskImageUploads")
+          .withIndex("by_state_updated_at", (q) => q.eq("state", state))
+          .collect()
+      ),
+    );
+    const uploads = uploadsByState.flat();
+    let failed = 0;
+    for (const upload of uploads) {
+      if (upload.state !== "claimed" && upload.state !== "uploading" && upload.state !== "verifying") continue;
+      const startedAt = upload.state === "claimed"
+        ? upload.claimedAt ?? upload.updatedAt
+        : upload.state === "uploading"
+          ? (upload.grantIssuedAt === undefined ? upload.updatedAt : upload.grantIssuedAt * 1000)
+          : upload.verificationStartedAt ?? upload.updatedAt;
+      const timeoutMs = upload.state === "verifying"
+        ? TASK_IMAGE_VERIFICATION_TIMEOUT_MS
+        : upload.state === "claimed"
+          ? TASK_IMAGE_UPLOAD_START_TIMEOUT_MS
+          : TASK_IMAGE_UPLOAD_ATTEMPT_TIMEOUT_MS;
+      if (now - startedAt < timeoutMs) continue;
+
+      const failureCode = upload.state === "verifying" ? "verification_timeout" : "upload_timeout";
+      await ctx.db.patch(upload._id, {
+        state: "failed",
+        safeFailureCode: failureCode,
+        claimedAt: undefined,
+        verificationStartedAt: undefined,
+        updatedAt: now,
+      });
+      if (upload.taskImageId && await ctx.db.get(upload.taskImageId)) {
         await ctx.db.patch(upload.taskImageId, {
           state: "failed",
-          safeFailureCode: failure.code,
+          safeFailureCode: failureCode,
           failureRetryable: true,
           updatedAt: now,
         });
@@ -591,11 +716,25 @@ export async function claimStagedImagesForTask(
       createdAt: now,
       updatedAt: now,
     });
+    const claimedAt = upload.state === "staged" ? now : undefined;
     await ctx.db.patch(upload._id, {
       taskImageId,
       state: upload.state === "staged" ? "claimed" : upload.state,
+      claimedAt,
       updatedAt: now,
     });
+    if (claimedAt !== undefined) {
+      await ctx.scheduler.runAfter(
+        TASK_IMAGE_UPLOAD_START_TIMEOUT_MS,
+        internal.taskImages.expireTaskImageUploadAttempt,
+        {
+          uploadRecordId: upload._id,
+          providerAttempt: upload.providerAttempt,
+          expectedState: "claimed",
+          expectedAt: claimedAt,
+        },
+      );
+    }
     claimedIds.push(taskImageId);
   }
 
@@ -653,6 +792,7 @@ async function serializeTaskImage(ctx: QueryCtx | MutationCtx, image: Doc<"taskI
     position: image.position,
     caption: image.caption,
     state,
+    attempt: upload?.providerAttempt,
     failure: safeFailure(
       image.safeFailureCode,
       state === "failed" ? image.failureRetryable ?? true : image.failureRetryable

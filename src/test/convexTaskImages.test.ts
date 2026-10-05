@@ -4,7 +4,8 @@ import { addTask } from "../../convex/tasks";
 import {
   addTaskImages,
   applyUploadVerification,
-  failStaleVerifyingUploads,
+  expireTaskImageUploadAttempt,
+  failStaleTaskImageUploads,
   getTaskImageCollection,
   getTaskImageSummaryForOwner,
   getDeliveryContext,
@@ -16,6 +17,7 @@ import {
   discardUnclaimedUpload,
   stageImageUpload,
   updateTaskImageCaption,
+  TASK_IMAGE_UPLOAD_START_TIMEOUT_MS,
 } from "../../convex/taskImages";
 
 type Handler<TArgs, TResult> = {
@@ -137,11 +139,20 @@ const applyUploadVerificationHandler = (
   >
 )._handler;
 
-const failStaleVerifyingUploadsHandler = (
-  failStaleVerifyingUploads as unknown as Handler<
-    { olderThanMs?: number; now?: number },
-    { failed: number }
+const expireTaskImageUploadAttemptHandler = (
+  expireTaskImageUploadAttempt as unknown as Handler<
+    {
+      uploadRecordId: Id<"taskImageUploads">;
+      providerAttempt: number;
+      expectedState: "uploading" | "verifying";
+      expectedAt: number;
+    },
+    { expired: boolean; failureCode?: string }
   >
+)._handler;
+
+const failStaleTaskImageUploadsHandler = (
+  failStaleTaskImageUploads as unknown as Handler<Record<string, never>, { failed: number }>
 )._handler;
 
 const discardUnclaimedUploadHandler = (
@@ -325,6 +336,16 @@ describe("Convex Task-image contract", () => {
         variantSet: "task-image-v1",
       },
     });
+    expect(owner.scheduler.runAfter).toHaveBeenCalledWith(
+      TASK_IMAGE_UPLOAD_START_TIMEOUT_MS,
+      expect.anything(),
+      expect.objectContaining({
+        uploadRecordId: db.rows("taskImageUploads")[0]._id,
+        providerAttempt: 0,
+        expectedState: "claimed",
+        expectedAt: expect.any(Number),
+      }),
+    );
 
     const upload = db.rows("taskImageUploads")[0];
     Object.assign(upload, {
@@ -818,45 +839,95 @@ describe("Convex Task-image contract", () => {
     ).resolves.toEqual({ activeCount: 1, readyCount: 0, failedCount: 1 });
   });
 
-  it("fails stale verifying uploads so Retry becomes available", async () => {
-    const db = createMemoryDb();
-    const owner = authedCtx(db);
-    await stageHandler(owner, {
-      uploadId: "upl_stale_verify",
-      encodingClass: "jpeg",
-      width: 1200,
-      height: 900,
-      bytes: 500_000,
-    });
-    const taskId = await addTaskHandler(owner, {
-      title: "Stale verifying",
-      imageUploadId: "upl_stale_verify",
-    });
-    const image = db.rows("taskImages")[0];
-    const upload = db.rows("taskImageUploads")[0];
-    Object.assign(upload, {
-      state: "verifying",
-      providerPublicId: "pravah-task-images/stale",
-      providerVersion: 1,
-      safeFailureCode: "normalization_failed",
-      updatedAt: 1_000,
-      taskImageId: image._id,
-    });
-    Object.assign(image, {
-      state: "verifying",
-      safeFailureCode: "normalization_failed",
-      uploadRecordId: upload._id,
-    });
+  it("expires a verifying attempt durably so Retry becomes available", async () => {
+    vi.useFakeTimers();
+    try {
+      const now = Date.now();
+      const verificationStartedAt = now - 11 * 60 * 1000;
+      const db = createMemoryDb();
+      const owner = authedCtx(db);
+      await stageHandler(owner, {
+        uploadId: "upl_stale_verify",
+        encodingClass: "jpeg",
+        width: 1200,
+        height: 900,
+        bytes: 500_000,
+      });
+      const taskId = await addTaskHandler(owner, {
+        title: "Stale verifying",
+        imageUploadId: "upl_stale_verify",
+      });
+      const image = db.rows("taskImages")[0];
+      const upload = db.rows("taskImageUploads")[0];
+      Object.assign(upload, {
+        state: "verifying",
+        providerPublicId: "pravah-task-images/stale",
+        providerVersion: 1,
+        providerAttempt: 1,
+        verificationStartedAt,
+        taskImageId: image._id,
+      });
+      Object.assign(image, {
+        state: "verifying",
+        uploadRecordId: upload._id,
+      });
 
-    await expect(
-      failStaleVerifyingUploadsHandler(owner, { now: 1_000 + 11 * 60 * 1000 })
-    ).resolves.toEqual({ failed: 1 });
-    expect(upload).toMatchObject({ state: "failed", safeFailureCode: "normalization_failed" });
-    expect(image).toMatchObject({
-      state: "failed",
-      safeFailureCode: "normalization_failed",
-      failureRetryable: true,
-    });
-    expect(taskId).toBeDefined();
+      await expect(expireTaskImageUploadAttemptHandler(owner, {
+        uploadRecordId: upload._id as Id<"taskImageUploads">,
+        providerAttempt: 1,
+        expectedState: "verifying",
+        expectedAt: verificationStartedAt,
+      })).resolves.toEqual({ expired: true, failureCode: "verification_timeout" });
+      expect(upload).toMatchObject({ state: "failed", safeFailureCode: "verification_timeout" });
+      expect(image).toMatchObject({
+        state: "failed",
+        safeFailureCode: "verification_timeout",
+        failureRetryable: true,
+      });
+      await expect(collectionHandler(owner, { taskId })).resolves.toMatchObject({
+        active: [{ state: "failed", failure: { code: "verification_timeout", retryable: true } }],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("recovers a legacy stuck verifying row without a scheduled deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      const now = Date.now();
+      const db = createMemoryDb();
+      const owner = authedCtx(db);
+      await stageHandler(owner, {
+        uploadId: "upl_legacy_stuck",
+        encodingClass: "jpeg",
+        width: 1200,
+        height: 900,
+        bytes: 500_000,
+      });
+      const taskId = await addTaskHandler(owner, {
+        title: "Legacy stuck verification",
+        imageUploadId: "upl_legacy_stuck",
+      });
+      const image = db.rows("taskImages")[0];
+      const upload = db.rows("taskImageUploads")[0];
+      Object.assign(upload, {
+        state: "verifying",
+        providerPublicId: "pravah-task-images/legacy-stuck",
+        providerAttempt: 1,
+        verificationStartedAt: undefined,
+        updatedAt: now - 24 * 60 * 60 * 1000,
+        taskImageId: image._id,
+      });
+      Object.assign(image, { state: "verifying", uploadRecordId: upload._id });
+
+      await expect(failStaleTaskImageUploadsHandler(owner, {})).resolves.toEqual({ failed: 1 });
+      expect(upload).toMatchObject({ state: "failed", safeFailureCode: "verification_timeout" });
+      await expect(collectionHandler(owner, { taskId })).resolves.toMatchObject({
+        active: [{ state: "failed", failure: { code: "verification_timeout", retryable: true } }],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
