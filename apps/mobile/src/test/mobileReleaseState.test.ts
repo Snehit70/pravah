@@ -1,6 +1,22 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveMobileReleaseState } from "../lib/mobileReleaseState";
+import { resolveMobileReleaseState, runningReleaseVersion } from "../lib/mobileReleaseState";
+
+describe("runningReleaseVersion", () => {
+  it("uses the active OTA manifest ahead of a stale build environment or APK version", () => {
+    expect(runningReleaseVersion({
+      manifest: { extra: { expoClient: { version: "3.0.25" } } },
+      bundleVersion: "3.0.22",
+      nativeVersion: "3.0.22",
+    })).toBe("3.0.25");
+  });
+
+  it("retains the injected bundle identity when no active manifest is available", () => {
+    expect(runningReleaseVersion({ manifest: null, bundleVersion: "3.0.25", nativeVersion: "3.0.22" })).toBe("3.0.25");
+    expect(runningReleaseVersion({ manifest: null, nativeVersion: "3.0.22" })).toBe("3.0.22");
+    expect(runningReleaseVersion({ manifest: null })).toBe("0.0.0-dev");
+  });
+});
 
 describe("resolveMobileReleaseState", () => {
   it("keeps the embedded bundle version primary while reporting a newer published release", () => {

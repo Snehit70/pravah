@@ -35,6 +35,7 @@ import type * as taskImageCleanup from "../taskImageCleanup.js";
 import type * as taskImageOperationalValues from "../taskImageOperationalValues.js";
 import type * as taskImageOperations from "../taskImageOperations.js";
 import type * as taskImageProvider from "../taskImageProvider.js";
+import type * as taskImageVariantRecovery from "../taskImageVariantRecovery.js";
 import type * as taskImages from "../taskImages.js";
 import type * as taskLifecycle from "../taskLifecycle.js";
 import type * as tasks from "../tasks.js";
@@ -74,6 +75,7 @@ declare const fullApi: ApiFromModules<{
   taskImageOperationalValues: typeof taskImageOperationalValues;
   taskImageOperations: typeof taskImageOperations;
   taskImageProvider: typeof taskImageProvider;
+  taskImageVariantRecovery: typeof taskImageVariantRecovery;
   taskImages: typeof taskImages;
   taskLifecycle: typeof taskLifecycle;
   tasks: typeof tasks;

@@ -100,7 +100,7 @@ describe("Task-image Cloudinary policy", () => {
       expiresAt: 1_776_249_000,
       discardAfter: 1_776_246_000,
       signatureAlgorithm: "sha256",
-      signature: "5824a084a4e28cb9d0762a38af570bf35619a3462e615b910c4cb934fc892fc4",
+      signature: "c8e48aa409d8538ec22620dbd54b0ea12f1986997cab47fba5a17178719cd1a4",
       signedParameters: {
         allowed_formats: "jpg,png",
         backup: "false",
@@ -113,14 +113,16 @@ describe("Task-image Cloudinary policy", () => {
         overwrite: "false",
         public_id: "pravah-task-images/opaque123",
         return_delete_token: "false",
-        signature_algorithm: "sha256",
-        timestamp: "1776245400",
+                timestamp: "1776245400",
         transformation: "c_limit,h_2560,w_2560/cs_srgb,f_jpg,q_85",
         type: "authenticated",
         unique_filename: "false",
         use_filename: "false",
       },
     });
+    // signature_algorithm is SDK configuration, not an upload field. Including
+    // it in the digest reproduces Cloudinary HTTP 401 Invalid Signature.
+    expect(grant.signedParameters).not.toHaveProperty("signature_algorithm");
     expect(JSON.stringify(grant)).not.toContain("abcd");
     expect(JSON.stringify(grant)).not.toMatch(
       /"delete_token":|return_delete_token":"true"|CLOUDINARY_URL|secure_url/

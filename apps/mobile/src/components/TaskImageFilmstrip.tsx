@@ -915,7 +915,7 @@ const styles = createThemedStyles({
   container: { gap: spacing.sm },
   item: { minHeight: 84, borderRadius: radii.lg, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.borderSubtle, backgroundColor: colors.bgSurface, overflow: "hidden", alignItems: "center", justifyContent: "center" },
   photoFrame: { overflow: "hidden", backgroundColor: colors.bgSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.borderSubtle },
-  image: { width: "100%", height: 120 },
+  image: { width: "100%", height: "100%" },
   stateText: { ...typography.micro, color: colors.textSecondary, padding: spacing.md },
   statusMark: { position: "absolute", right: spacing.xs, bottom: spacing.xs, flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 6, paddingVertical: 3, borderRadius: radii.sm },
   statusMarkCompact: { paddingHorizontal: 5, paddingVertical: 2 },

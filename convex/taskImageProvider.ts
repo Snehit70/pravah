@@ -406,10 +406,10 @@ export async function buildUploadGrant({
     overwrite: "false",
     public_id: publicId,
     return_delete_token: "false",
-    // Require SHA-256 on both the request signature and the upload response
-    // signature. Without this, Cloudinary accepts a SHA-256 request signature
-    // but returns a SHA-1 response signature, and verifyProviderMaster fails.
-    signature_algorithm: "sha256",
+    // signature_algorithm is SDK configuration, not a signed upload field.
+    // Including it here produces HTTP 401 because Cloudinary omits it from
+    // its string to sign. We hash the request with SHA-256 below and verify
+    // either supported response digest in verifyProviderMaster.
     timestamp: String(timestamp),
     transformation: incomingTransformation(encodingClass),
     type: "authenticated",

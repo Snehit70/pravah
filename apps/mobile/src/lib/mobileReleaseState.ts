@@ -70,3 +70,12 @@ export function manifestReleaseVersion(manifest: unknown): string | null {
   const version = extra?.expoClient?.extra?.mobileReleaseVersion ?? extra?.expoClient?.version;
   return typeof version === "string" && /^\d+\.\d+\.\d+$/.test(version) ? version : null;
 }
+
+/** The active update manifest identifies the bundle even if EAS inlined an old env value. */
+export function runningReleaseVersion({ manifest, bundleVersion, nativeVersion }: {
+  manifest: unknown;
+  bundleVersion?: string;
+  nativeVersion?: string | null;
+}): string {
+  return manifestReleaseVersion(manifest) ?? bundleVersion ?? nativeVersion ?? "0.0.0-dev";
+}

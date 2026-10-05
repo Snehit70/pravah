@@ -5,6 +5,7 @@ import * as Updates from "expo-updates";
 import { sanitizeDiagnosticContext } from "./diagnostics";
 import * as Sharing from "expo-sharing";
 import { getDiagnosticsSnapshot } from "./diagnostics";
+import { runningReleaseVersion } from "./mobileReleaseState";
 
 const DIR = `${FileSystem.documentDirectory ?? ""}diagnostics`;
 
@@ -27,7 +28,11 @@ export async function writeDiagnosticsBundle(): Promise<string> {
       nativeApplicationVersion: Application.nativeApplicationVersion,
     },
     updates: sanitizeDiagnosticContext({
-      runningVersion: process.env.EXPO_PUBLIC_MOBILE_RELEASE_VERSION,
+      runningVersion: runningReleaseVersion({
+        manifest: Updates.manifest,
+        bundleVersion: process.env.EXPO_PUBLIC_MOBILE_RELEASE_VERSION,
+        nativeVersion: Application.nativeApplicationVersion,
+      }),
       updateId: Updates.updateId, runtime: Updates.runtimeVersion, channel: Updates.channel,
       embeddedLaunch: Updates.isEmbeddedLaunch, emergencyLaunch: Updates.isEmergencyLaunch,
       // Keep codes and timestamps; native messages can contain asset URLs.
