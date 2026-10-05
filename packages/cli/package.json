@@ -1,6 +1,6 @@
 {
   "name": "pravah",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "description": "Human-first task planning CLI with explicit JSON automation output",
   "type": "module",
   "bin": {

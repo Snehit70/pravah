@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.1](https://github.com/Snehit70/pravah/compare/cli-v2.5.0...cli-v2.5.1) (2026-10-05)
+
+
+### Performance Improvements
+
+* reduce database I/O and record actual usage bytes ([#272](https://github.com/Snehit70/pravah/issues/272)) ([194d073](https://github.com/Snehit70/pravah/commit/194d073779dce200004c2cca205a98032c4e7a2c))
+
 ## [2.5.0](https://github.com/Snehit70/pravah/compare/cli-v2.4.1...cli-v2.5.0) (2026-09-29)
 
 
