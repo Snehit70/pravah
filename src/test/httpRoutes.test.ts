@@ -55,6 +55,7 @@ vi.mock("../../convex/_generated/api", () => ({
     },
     taskImages: {
       getUploadByProviderPublicId: "taskImages.getUploadByProviderPublicId",
+      storeEagerNotification: "taskImages:storeEagerNotification",
       applyUploadVerification: "taskImages.applyUploadVerification",
     },
     taskImageOperations: {
@@ -232,10 +233,10 @@ describe("http route handlers", () => {
       },
     ));
 
-    expect(response.status).toBe(204);
+    expect(response.status).toBe(200);
     expect(ctx.runMutation).toHaveBeenCalledWith(
       internal.taskImages.applyUploadVerification,
-      expect.objectContaining({ result: { status: "failed", failureCode: "variant_too_large" } }),
+      expect.objectContaining({ result: { status: "failed", failureCode: "normalization_failed" } }),
     );
   });
 
@@ -297,8 +298,11 @@ describe("http route handlers", () => {
       apiSecret: "abcd",
       nowSeconds: timestamp,
     })).toBe(true);
-    expect(response.status).toBe(204);
-    expect(ctx.runMutation).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(ctx.runMutation).toHaveBeenCalledWith(
+      internal.taskImages.storeEagerNotification,
+      expect.objectContaining({ publicId, eager: payload.eager }),
+    );
   });
 
   it("exchanges bootstrap token without requiring API key", async () => {

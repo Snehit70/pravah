@@ -32,6 +32,7 @@ type SafeFailureCode =
   | "master_too_large"
   | "variant_too_large"
   | "source_unavailable"
+  | "upload_failed"
   | "upload_timeout"
   | "verification_timeout";
 
@@ -48,6 +49,7 @@ const SAFE_FAILURE_CODES = new Set<SafeFailureCode>([
   "master_too_large",
   "variant_too_large",
   "source_unavailable",
+  "upload_failed",
   "upload_timeout",
   "verification_timeout",
 ]);
@@ -166,11 +168,12 @@ export const markUploadFailed = mutation({
   args: {
     uploadId: v.string(),
     failureCode: v.string(),
+    attempt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const ownerTokenIdentifier = await requireTokenIdentifier(ctx);
     const upload = await findOwnedUpload(ctx, ownerTokenIdentifier, args.uploadId);
-    if (!upload || upload.state === "ready") {
+    if (!upload || upload.state === "ready" || (args.attempt !== undefined && args.attempt !== upload.providerAttempt)) {
       return { accepted: false as const };
     }
     const failureCode: SafeFailureCode = SAFE_FAILURE_CODES.has(args.failureCode as SafeFailureCode)
@@ -287,6 +290,7 @@ export const getUploadAttemptContext = internalQuery({
       uploadId: upload.uploadId,
       providerPublicId: upload.providerPublicId,
       providerAttempt: upload.providerAttempt,
+      encodingClass: upload.encodingClass,
       state: upload.state,
       safeFailureCode: upload.safeFailureCode,
       failureRetryable: image?.failureRetryable,
@@ -315,6 +319,8 @@ export const resetUploadAttempt = internalMutation({
       grantRequestKey: undefined,
       grantIssuedAt: undefined,
       master: undefined,
+      pendingEager: undefined,
+      providerReconciledAt: undefined,
       variants: undefined,
       verifiedAt: undefined,
       safeFailureCode: undefined,
@@ -358,7 +364,82 @@ export const getUploadByProviderPublicId = internalQuery({
       encodingClass: upload.encodingClass,
       providerVersion: upload.providerVersion,
       master: upload.master,
+      pendingEager: upload.pendingEager,
     };
+  },
+});
+
+export const reserveProviderReconciliation = internalMutation({
+  args: {
+    ownerTokenIdentifier: v.string(),
+    uploadId: v.string(),
+    publicId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const upload = await findOwnedUpload(
+      ctx,
+      args.ownerTokenIdentifier,
+      args.uploadId,
+    );
+    const now = Date.now();
+    if (
+      !upload ||
+      upload.providerPublicId !== args.publicId ||
+      upload.sealedAt ||
+      (upload.providerReconciledAt !== undefined &&
+        now - upload.providerReconciledAt < 30_000)
+    )
+      return false;
+    await ctx.db.patch(upload._id, { providerReconciledAt: now });
+    return true;
+  },
+});
+
+// Only a signature-verified provider callback can enter this internal seam.
+export const storeEagerNotification = internalMutation({
+  args: {
+    publicId: v.string(),
+    version: v.optional(v.number()),
+    eager: v.array(
+      v.object({
+        transformation: v.string(),
+        format: v.string(),
+        width: v.number(),
+        height: v.number(),
+        bytes: v.number(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const upload = await ctx.db
+      .query("taskImageUploads")
+      .withIndex("by_provider_public_id", (q) =>
+        q.eq("providerPublicId", args.publicId),
+      )
+      .first();
+    if (
+      !upload ||
+      upload.sealedAt ||
+      upload.state === "ready" ||
+      upload.state === "failed"
+    )
+      return { accepted: false };
+    if (
+      args.eager.length !== 2 ||
+      (args.version !== undefined &&
+        upload.providerVersion !== undefined &&
+        args.version !== upload.providerVersion)
+    )
+      return { accepted: false };
+    await ctx.db.patch(upload._id, {
+      pendingEager: { version: args.version, eager: args.eager },
+    });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.taskImageActions.verifyPendingEager,
+      { publicId: args.publicId },
+    );
+    return { accepted: true };
   },
 });
 
@@ -382,6 +463,7 @@ export const applyUploadVerification = internalMutation({
     uploadId: v.string(),
     publicId: v.string(),
     version: v.number(),
+    recoverTimedOut: v.optional(v.boolean()),
     result: v.union(
       v.object({
         status: v.literal("verifying"),
@@ -433,7 +515,7 @@ export const applyUploadVerification = internalMutation({
       // Master-only upload notifications must not resurrect a failed verification.
       // That left rows as state=verifying with a stale safeFailureCode, and the
       // client showed "Verifying image" forever with no Retry.
-      if (upload.state === "failed") {
+      if (upload.state === "failed" && !(args.recoverTimedOut && ["upload_timeout", "verification_timeout", "upload_failed"].includes(upload.safeFailureCode ?? ""))) {
         return { accepted: false, state: "failed" as const };
       }
       const shouldScheduleVerificationExpiry = upload.state !== "verifying" || upload.verificationStartedAt === undefined;
@@ -469,6 +551,9 @@ export const applyUploadVerification = internalMutation({
           },
         );
       }
+      if (upload.pendingEager) {
+        await ctx.scheduler.runAfter(0, internal.taskImageActions.verifyPendingEager, { publicId: args.publicId });
+      }
       return { accepted: true, state: "verifying" as const };
     }
 
@@ -478,6 +563,7 @@ export const applyUploadVerification = internalMutation({
       providerVersion: args.version,
       master: args.result.master,
       variants: { card: args.result.card, detail: args.result.detail },
+      pendingEager: undefined,
       safeFailureCode: undefined,
       verificationStartedAt: undefined,
       verifiedAt: now,

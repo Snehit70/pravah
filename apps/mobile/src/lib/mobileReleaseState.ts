@@ -25,11 +25,13 @@ export function resolveMobileReleaseState({
   nativeRuntime,
   control,
   updateDownloaded,
+  downloadedVersion,
 }: {
   runningVersion: string;
   nativeRuntime: string;
   control: MobileReleaseControl | null | undefined;
   updateDownloaded: boolean;
+  downloadedVersion?: string | null;
 }): MobileReleaseState {
   const latestVersion = control?.latestVersion ?? runningVersion;
   const minimumRuntime = control?.minimumRuntime ?? null;
@@ -45,8 +47,8 @@ export function resolveMobileReleaseState({
     runningVersion,
     latestVersion,
     pendingVersion:
-      updateDownloaded && latestVersion !== runningVersion
-        ? latestVersion
+      updateDownloaded && downloadedVersion && downloadedVersion !== runningVersion
+        ? downloadedVersion
         : null,
     nativeRuntime,
     minimumRuntime,
@@ -59,4 +61,12 @@ export function resolveMobileReleaseState({
       minimumRuntimeNumber !== null &&
       installedRuntimeNumber < minimumRuntimeNumber,
   };
+}
+
+/** Release identity comes from the downloaded manifest, never the latest ledger. */
+export function manifestReleaseVersion(manifest: unknown): string | null {
+  if (!manifest || typeof manifest !== "object") return null;
+  const extra = (manifest as { extra?: { expoClient?: { version?: unknown; extra?: { mobileReleaseVersion?: unknown } } } }).extra;
+  const version = extra?.expoClient?.extra?.mobileReleaseVersion ?? extra?.expoClient?.version;
+  return typeof version === "string" && /^\d+\.\d+\.\d+$/.test(version) ? version : null;
 }

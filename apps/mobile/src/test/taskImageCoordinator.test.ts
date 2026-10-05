@@ -305,6 +305,7 @@ describe("Task-image mobile coordinator", () => {
     expect(dependencies.reportFailure).toHaveBeenCalledWith({
       uploadId: "upl_mobile_1",
       failureCode: "storage_unavailable",
+      attempt: 0,
     });
   });
 

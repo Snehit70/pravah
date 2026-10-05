@@ -8,13 +8,16 @@ import { colors, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
 import AppUpdatesIconAsset from "../assets/icons/about-app-updates.svg";
 
+import type { useMobileRelease } from "../hooks/useMobileRelease";
+import { otaStatusCopy } from "../lib/mobileUpdateCheck";
+
 const CANONICAL_PACKAGE = "com.pravah.mobile";
 
 function statusCopy(result: UpdateCheckResult | null): string {
   if (!result) return "Manual check only. OTA updates still arrive automatically.";
   switch (result.status) {
     case "up-to-date":
-      return "You're up to date.";
+      return "Installed APK is current.";
     case "update-available":
       return `APK ${result.version} is available. Installed APK is ${
         Application.nativeApplicationVersion ?? "unknown"
@@ -51,7 +54,7 @@ function installerCopy(status: ReturnType<typeof useAppUpdateInstaller>["status"
   }
 }
 
-export function AppUpdateSection() {
+export function AppUpdateSection({ mobileRelease }: { mobileRelease: ReturnType<typeof useMobileRelease> }) {
   const [checkState, setCheckState] = useState<UpdateCheckResult | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const installer = useAppUpdateInstaller();
@@ -79,6 +82,8 @@ export function AppUpdateSection() {
         <View style={styles.headerCopy}>
           <Text style={styles.label}>App updates</Text>
           <Text style={styles.help}>{statusCopy(checkState)}</Text>
+          <Text style={styles.help}>{otaStatusCopy(mobileRelease.otaCheck, mobileRelease.isUpdatePending)}</Text>
+          <Text style={styles.help}>Running {mobileRelease.runningVersion} · APK {mobileRelease.installedVersion ?? "unknown"}</Text>
         </View>
       </View>
       {update ? (
@@ -100,7 +105,8 @@ export function AppUpdateSection() {
           onPress={async () => {
             setIsChecking(true);
             try {
-              setCheckState(await checkForAppUpdate(Application.nativeApplicationVersion));
+              const [apk] = await Promise.all([checkForAppUpdate(Application.nativeApplicationVersion), mobileRelease.checkForOtaUpdate()]);
+              setCheckState(apk);
             } finally {
               setIsChecking(false);
             }
@@ -118,6 +124,11 @@ export function AppUpdateSection() {
         >
           <Text style={styles.buttonText}>{isChecking ? "Checking…" : "Check for updates"}</Text>
         </Pressable>
+        {mobileRelease.isUpdatePending ? (
+          <Pressable onPress={() => void mobileRelease.restartToUpdate()} accessibilityRole="button" style={[styles.button, styles.primaryButton]}>
+            <Text style={styles.primaryButtonText}>Restart to apply{mobileRelease.pendingVersion ? ` ${mobileRelease.pendingVersion}` : " app update"}</Text>
+          </Pressable>
+        ) : null}
         {update ? (
           <Pressable
             onPress={() => void installer.install(update)}

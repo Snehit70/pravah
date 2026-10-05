@@ -137,7 +137,8 @@ export type TaskImageCoordinatorDependencies = {
     attempt: number;
     restartAttempt?: boolean;
   }) => Promise<TaskImageReconciliation>;
-  reportFailure?: (args: { uploadId: string; failureCode: string }) => Promise<void>;
+  recordTransition?: (event: { uploadId: string; attempt: number; from: TaskImageState; to: TaskImageState; failureCode?: string; elapsedMs?: number }) => void;
+  reportFailure?: (args: { uploadId: string; failureCode: string; attempt: number }) => Promise<void>;
   abortUpload?: (args: { uploadId: string }) => Promise<void> | void;
   discardUnclaimedUpload?: (args: { uploadId: string }) => Promise<void>;
   ownerScope?: () => string | undefined;
@@ -158,6 +159,7 @@ type UploadRecord = Omit<TaskImageManifestEntry, "state"> & {
   acceptedForUpload: boolean;
   generation: number;
   restartAttempt?: boolean;
+  phaseStartedAt?: number;
 };
 
 export const MAX_TASK_IMAGE_COUNT = 5 as const;
@@ -399,7 +401,17 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
   };
 
   const update = (entry: UploadRecord, patch: Partial<UploadRecord>) => {
+    const from = entry.state;
+    const previousStart = entry.phaseStartedAt;
     Object.assign(entry, patch);
+    if (from !== entry.state) {
+      const at = performance.now();
+      entry.phaseStartedAt = at;
+      try {
+        dependencies.recordTransition?.({ uploadId: entry.uploadId, attempt: entry.attempt, from, to: entry.state,
+          failureCode: entry.failure?.code, elapsedMs: previousStart === undefined ? undefined : Math.round(at - previousStart) });
+      } catch { /* Diagnostics must not interrupt an upload. */ }
+    }
     void persist();
     notify();
   };
@@ -531,10 +543,11 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
       needsReconciliation: entry.attempt > 0,
       restartAttempt: entry.attempt > 0,
     });
-    if (!failure.retryable) {
-      await Promise.resolve(dependencies.reportFailure?.({ uploadId: entry.uploadId, failureCode: failure.code })).catch(() => undefined);
-      await removeSource(entry);
+    if (entry.attempt >= 0) {
+      await Promise.resolve(dependencies.reportFailure?.({ uploadId: entry.uploadId, failureCode: failure.code, attempt: entry.attempt })).catch(() => undefined);
     }
+    // Keep the durable preview/source until authoritative readiness or removal.
+
     if (retryAt) {
       scheduleRetry(entry, retryAt);
     }

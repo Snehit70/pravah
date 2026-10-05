@@ -2368,7 +2368,7 @@ function AboutSection({
           <View style={styles.aboutHeaderCopy}>
             <Text style={styles.settingLabel}>Pravah Mobile</Text>
             <Text style={styles.aboutVersion}>
-              Installed {mobileRelease.runningVersion}
+              Running {mobileRelease.runningVersion}
             </Text>
           </View>
           <Pressable
@@ -2450,7 +2450,7 @@ function AboutSection({
           <ArrowUpRightIcon color={colors.textMuted} size={16} />
         </Pressable>
 
-        <AppUpdateSection />
+        <AppUpdateSection mobileRelease={mobileRelease} />
       </View>
     </View>
   );

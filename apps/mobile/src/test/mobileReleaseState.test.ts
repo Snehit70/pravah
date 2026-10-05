@@ -37,8 +37,15 @@ describe("resolveMobileReleaseState", () => {
           minimumRuntime: "native-1",
         },
         updateDownloaded: true,
+        downloadedVersion: "3.0.4",
       }).pendingVersion,
     ).toBe("3.0.4");
+  });
+
+  it("does not label an older or unknown downloaded bundle as the latest release", () => {
+    const input = { runningVersion: "3.0.22", nativeRuntime: "native-5", control: { latestVersion: "3.0.25", supportedRuntime: "native-5" }, updateDownloaded: true };
+    expect(resolveMobileReleaseState({ ...input, downloadedVersion: "3.0.24" }).pendingVersion).toBe("3.0.24");
+    expect(resolveMobileReleaseState(input).pendingVersion).toBeNull();
   });
 
   it("advises a native upgrade when the installed runtime is below the minimum", () => {
