@@ -7,14 +7,16 @@ import { api } from "../../../../convex/_generated/api";
 import {
   manifestReleaseVersion,
   resolveMobileReleaseState,
+  runningReleaseVersion,
 } from "../lib/mobileReleaseState";
 import { createMobileUpdateCheck } from "../lib/mobileUpdateCheck";
 import { mobileLogger } from "../lib/logger";
 
-const RUNNING_VERSION =
-  process.env.EXPO_PUBLIC_MOBILE_RELEASE_VERSION ??
-  Application.nativeApplicationVersion ??
-  "0.0.0-dev";
+const RUNNING_VERSION = runningReleaseVersion({
+  manifest: Updates.manifest,
+  bundleVersion: process.env.EXPO_PUBLIC_MOBILE_RELEASE_VERSION,
+  nativeVersion: Application.nativeApplicationVersion,
+});
 const NATIVE_RUNTIME = Updates.runtimeVersion || "native-dev";
 const checks = createMobileUpdateCheck({
   isEnabled: Updates.isEnabled,

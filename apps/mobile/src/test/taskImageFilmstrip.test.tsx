@@ -140,8 +140,8 @@ vi.mock("../components/UiIcons", () => {
 
 vi.mock("expo-image", () => {
   const Image = Object.assign(
-    ({ source, accessibilityLabel }: { source: { uri: string }; accessibilityLabel: string }) =>
-      React.createElement("img", { src: source.uri, alt: accessibilityLabel }),
+    ({ source, accessibilityLabel, style }: { source: { uri: string }; accessibilityLabel: string; style?: object | object[] }) =>
+      React.createElement("img", { src: source.uri, alt: accessibilityLabel, style: Object.assign({}, ...(Array.isArray(style) ? style : [style])) }),
     { prefetch: vi.fn(async () => true) },
   );
   return { Image };
@@ -717,6 +717,11 @@ describe("TaskImageFilmstrip", () => {
         resolveDelivery={resolveDelivery}
       />
     );
+
+    const hero = await screen.findByAltText("Primary Task image");
+    // A ready remote image must fill the same preview frame as the local
+    // upload; a fixed 120px image leaves most of the Edit hero blank.
+    expect(hero.style.height).toBe("100%");
 
     fireEvent.click(screen.getByRole("button", { name: "Select Task image 2" }));
     expect(screen.getByText("IMAGE 2 OF 2")).toBeTruthy();
