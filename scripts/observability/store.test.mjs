@@ -1,6 +1,11 @@
 import { jsonlLines } from './jsonl.mjs';
 import { describe, test, expect } from 'bun:test';
 import { executionMetric, openStore } from './store.mjs';
+import { reportWindow, windowMetrics } from './report.mjs';
+import { Database } from 'bun:sqlite';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 const timestamp = Date.now();
 function event(id = 'execution-1', changes = {}) {
   return { kind: 'Completion', executionId: id, identifier: 'tasks:listBoardTasks',
@@ -40,6 +45,50 @@ describe('actual-byte metrics store', () => {
   test('identical IDs in different deployments do not collide', () => {
     const store = openStore(':memory:'); store.record(executionMetric(event(),'a')); store.record(executionMetric(event(),'b'));
     expect(store.db.query('SELECT COUNT(*) n FROM executions').get().n).toBe(2); store.close();
+  });
+  test('retains bounded correlation IDs and invocation types without identity or arbitrary content', () => {
+    const store = openStore(':memory:');
+    store.record(executionMetric(event('correlated', {requestId: 'abc123', parentExecutionId: 'parent-456', caller: 'websocket'}), 'prod'));
+    expect(store.db.query('SELECT requestId,parentExecutionId,caller FROM executions').get()).toEqual({requestId: 'abc123', parentExecutionId: 'parent-456', caller: 'websocket'});
+    expect(executionMetric(event('cli', {caller: 'SyncWorker'}), 'prod').caller).toBe('SyncWorker');
+    const privateMetric = executionMetric(event('private', {requestId: 'SECRET TOKEN', parentExecutionId: '<private>', caller: 'SECRET CONTENT'}), 'prod');
+    expect(privateMetric.requestId).toBeNull(); expect(privateMetric.parentExecutionId).toBeNull(); expect(privateMetric.caller).toBeNull();
+    store.close();
+  });
+  test('migrates the original SQLite schema without discarding bytes or replay deduplication', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pravah-io-migration-'));
+    const path = join(dir, 'metrics.sqlite');
+    try {
+      const db = new Database(path);
+      db.exec(`CREATE TABLE executions (deployment TEXT,id TEXT,timestamp INTEGER,function TEXT,component TEXT,kind TEXT,cached INTEGER,success INTEGER,duration REAL,read INTEGER,write INTEGER,readDocs INTEGER,writeDocs INTEGER,indexRows INTEGER,PRIMARY KEY(deployment,id));`);
+      db.query('INSERT INTO executions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run('prod', 'original', timestamp, 'tasks:listBoardTasks', '', 'Query', 0, 1, 1, 1234, 0, 2, 0, 0);
+      db.close();
+      const store = openStore(path);
+      expect(store.db.query('SELECT read,requestId FROM executions').get()).toEqual({read: 1234, requestId: null});
+      expect(store.record(executionMetric(event('original'), 'prod'))).toBe(false);
+      store.close();
+      const reopened = openStore(path);
+      expect(reopened.db.query('SELECT COUNT(*) n FROM executions').get().n).toBe(1);
+      reopened.close();
+    } finally {rmSync(dir, {recursive: true, force: true});}
+  });
+  test('reports exact half-open byte windows without including the rest of an hour', () => {
+    const store = openStore(':memory:');
+    for (const [id, offset] of [['before', -1], ['first', 0], ['last', 999], ['after', 1000]]) {
+      store.record(executionMetric(event(id, {timestamp: (timestamp+offset)/1000, error: null}), 'prod'), timestamp+1000);
+    }
+    const report = windowMetrics(store.db, 'prod', {from: timestamp, to: timestamp+1000, function: null});
+    expect(report.totals.calls).toBe(2); expect(report.totals.readBytes).toBe(312724);
+    expect(report.callers[0].caller).toBe('unknown');
+    expect(windowMetrics(store.db, 'prod', {from: timestamp, to: timestamp+1000, function: 'absent'}).totals.readBytes).toBe(0);
+    store.close();
+  });
+  test('rejects misleading windows outside retention and accepts explicit timezone boundaries', () => {
+    const from = new Date(timestamp-1000).toISOString(), to = new Date(timestamp).toISOString();
+    expect(reportWindow(['--from', from, `--to=${to}`, '--function', 'goals:listLinks'], timestamp)).toEqual({from: timestamp-1000, to: timestamp, function: 'goals:listLinks'});
+    expect(() => reportWindow(['--from', new Date(timestamp-15*86400000).toISOString()], timestamp)).toThrow('retention');
+    expect(() => reportWindow(['--from', to, '--to', from], timestamp)).toThrow('ordered');
+    expect(() => reportWindow(['--from', '2026-10-06T12:00:00'], timestamp)).toThrow('timezone');
   });
 });
 

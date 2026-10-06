@@ -147,8 +147,10 @@ describe("runWatch", () => {
     expect(client().url).toBe(CONVEX_URL);
   });
 
-  it("subscribes to the four public queries with the right names", async () => {
+  it("subscribes to task and goal feeds before requesting selected links", async () => {
     await start();
+    client().named("tasks:listBoardTasks")[0]!.onValue(BOARD);
+    client().named("tasks:listTodayCompletedTasks")[0]!.onValue(DONE);
     const names = client().subscriptions.map((s) => s.name).sort();
     expect(names).toEqual([
       "goals:list",
@@ -175,10 +177,10 @@ describe("runWatch", () => {
     push("goals:list", GOALS);
     expect(snapshots).toHaveLength(0);
 
-    push("goals:listLinks", LINKS);
-    expect(snapshots).toHaveLength(0);
-
+    expect(client().named("goals:listLinks")).toHaveLength(0);
     push("tasks:listTodayCompletedTasks", DONE);
+    expect(snapshots).toHaveLength(0);
+    push("goals:listLinks", LINKS);
     expect(snapshots).toHaveLength(1);
     expect(snapshots[0]!.counts).toMatchObject({
       active: 1,
@@ -203,8 +205,11 @@ describe("runWatch", () => {
       ...BOARD,
       { id: "t3", title: "New", status: "inbox" },
     ]);
+    expect(snapshots).toHaveLength(1);
+    client().named("goals:listLinks")[0]!.onValue({ ...LINKS, t3: "g1" });
     expect(snapshots).toHaveLength(2);
     expect(snapshots[1]!.counts.active).toBe(2);
+    expect(snapshots[1]!.tasks.find(t => t.id === "t3")?.goalId).toBe("g1");
   });
 
   it("re-publishes a heartbeat when idle so generatedAt keeps advancing", async () => {
@@ -376,7 +381,7 @@ describe("runWatch", () => {
     });
   });
 
-  it("withholds the snapshot across the midnight rollover until all four redeliver", async () => {
+  it("refreshes only today at midnight and reuses unchanged links", async () => {
     clock = LATE;
     await start();
     for (const [name, value] of [
@@ -396,22 +401,22 @@ describe("runWatch", () => {
     client().named("goals:list")[0]!.onValue([]);
     expect(snapshots).toHaveLength(1);
 
-    client().named("tasks:listBoardTasks")[0]!.onValue(BOARD);
+    const calls = client().onUpdateCalls;
     client().named("tasks:listTodayCompletedTasks")[0]!.onValue(DONE);
-    client().named("goals:listLinks")[0]!.onValue(LINKS);
     expect(snapshots).toHaveLength(2);
     expect(snapshots[1]!.day).toBe("2026-09-29");
+    expect(client().onUpdateCalls).toBe(calls);
   });
 
   it("unsubscribes the old queries at the rollover", async () => {
     clock = LATE;
     await start();
-    expect(client().subscriptions).toHaveLength(4);
+    expect(client().subscriptions).toHaveLength(3);
 
     clock = new Date(2026, 8, 29, 0, 0, 5).getTime();
     vi.advanceTimersByTime(31 * 1000);
-    // Four fresh subscriptions, and the previous four removed.
-    expect(client().subscriptions).toHaveLength(4);
+    // Base subscriptions are renewed; links wait for both task feeds.
+    expect(client().subscriptions).toHaveLength(3);
   });
 
   it("unsubscribes everything and closes the socket on close", async () => {
@@ -419,6 +424,82 @@ describe("runWatch", () => {
     await handle.close();
     expect(client().subscriptions).toHaveLength(0);
     expect(client().closed).toBe(true);
+  });
+
+  it("deduplicates and sorts canonical task IDs and excludes historical links", async () => {
+    await start();
+    client().named("tasks:listBoardTasks")[0]!.onValue([{ _id: "b" }, { _id: "a" }]);
+    client().named("tasks:listTodayCompletedTasks")[0]!.onValue([{ _id: "a" }]);
+    const links = client().named("goals:listLinks")[0]!;
+    expect(links.args).toEqual({ taskIds: ["a", "b"] });
+    client().named("tasks:listBoardTasks")[0]!.onValue([{ _id: "a", title: "Changed" }, { _id: "b" }]);
+    expect(client().named("goals:listLinks")[0]).toBe(links);
+  });
+
+  it("publishes empty workspaces without a goal-link read", async () => {
+    await start();
+    client().named("tasks:listBoardTasks")[0]!.onValue([]);
+    client().named("tasks:listTodayCompletedTasks")[0]!.onValue([]);
+    client().named("goals:list")[0]!.onValue([]);
+    expect(client().named("goals:listLinks")).toHaveLength(0);
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0]!.counts.active).toBe(0);
+  });
+
+  it("handles synchronous cached link deliveries without duplicate snapshots", async () => {
+    await start();
+    const current = client();
+    const onUpdate = current.onUpdate.bind(current);
+    current.onUpdate = (reference, args, onValue, onError) => {
+      const unsubscribe = onUpdate(reference, args, onValue, onError);
+      if ((reference as Record<symbol, string>)[Symbol.for("functionName")] === "goals:listLinks") onValue(LINKS);
+      return unsubscribe;
+    };
+    current.named("goals:list")[0]!.onValue(GOALS);
+    current.named("tasks:listBoardTasks")[0]!.onValue(BOARD);
+    current.named("tasks:listTodayCompletedTasks")[0]!.onValue(DONE);
+    expect(snapshots).toHaveLength(1);
+  });
+
+  it("chunks more than 500 tasks and waits for all chunks, including recovery", async () => {
+    await start();
+    client().named("tasks:listBoardTasks")[0]!.onValue(Array.from({length: 501}, (_, i) => ({id: `t${i}`, title: "Task"})));
+    client().named("tasks:listTodayCompletedTasks")[0]!.onValue([]);
+    client().named("goals:list")[0]!.onValue(GOALS);
+    const [first, second] = client().named("goals:listLinks");
+    expect((first!.args as {taskIds: string[]}).taskIds).toHaveLength(500);
+    expect((second!.args as {taskIds: string[]}).taskIds).toHaveLength(1);
+    first!.onValue({t0: "g1"});
+    expect(snapshots).toHaveLength(0);
+    second!.onValue({t99: "g1"});
+    expect(snapshots).toHaveLength(1);
+    first!.onError(new Error("first failed"));
+    second!.onValue({});
+    expect(snapshots).toHaveLength(2);
+    expect(snapshots[1]!.errors).toEqual(["goals:listLinks"]);
+    first!.onValue({t0: "g1"});
+    expect(snapshots).toHaveLength(3);
+    expect(snapshots[2]!.errors ?? []).toEqual([]);
+  });
+
+  it("ignores stale link callbacks after selection changes and close", async () => {
+    const handle = await start();
+    client().named("tasks:listBoardTasks")[0]!.onValue(BOARD);
+    client().named("tasks:listTodayCompletedTasks")[0]!.onValue(DONE);
+    client().named("goals:list")[0]!.onValue(GOALS);
+    const old = client().named("goals:listLinks")[0]!;
+    old.onValue(LINKS);
+    client().named("tasks:listTodayCompletedTasks")[0]!.onValue([]);
+    old.onValue({t1: "wrong"});
+    old.onError(new Error("obsolete"));
+    expect(snapshots).toHaveLength(1);
+    const current = client().named("goals:listLinks")[0]!;
+    current.onValue({t1: "g1"});
+    expect(snapshots).toHaveLength(2);
+    expect(snapshots[1]!.tasks[0]!.goalId).toBe("g1");
+    await handle.close();
+    current.onValue({t1: "wrong"});
+    expect(snapshots).toHaveLength(2);
   });
 
   it("does not fire the rollover after close", async () => {

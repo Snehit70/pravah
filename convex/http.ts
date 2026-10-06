@@ -424,6 +424,26 @@ http.route({
   }),
 });
 
+// GET /goals/tasks - Read only tasks linked to a selected goal, or all goals.
+http.route({
+  path: "/goals/tasks",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const authCheck = await requireTaskReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const params = new URL(request.url).searchParams;
+    const goalClientId = params.get("goalId") ?? undefined;
+    if (goalClientId !== undefined && (!goalClientId.trim() || goalClientId.length > 200)) {
+      return jsonResponse({ error: "Invalid goal ID" }, 400);
+    }
+    return jsonResponse(await ctx.runQuery(internal.automationTools.listGoalTasks, {
+      ownerTokenIdentifier: authCheck.auth.ownerTokenIdentifier,
+      goalClientId,
+      paginationOpts: { cursor: params.get("cursor"), numItems: 100 },
+    }));
+  }),
+});
+
 // GET /goal-links - List task-to-goal links for the authenticated owner
 http.route({
   path: "/goal-links",

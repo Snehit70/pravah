@@ -42,6 +42,7 @@ vi.mock("../../convex/_generated/api", () => ({
       listTasksPage: "automationTools.listTasksPage",
       getTask: "automationTools.getTask",
       listGoals: "automationTools.listGoals",
+      listGoalTasks: "automationTools.listGoalTasks",
       listGoalLinks: "automationTools.listGoalLinks",
       updateGoal: "automationTools.updateGoal",
       addTask: "automationTools.addTask",
@@ -472,6 +473,35 @@ describe("http route handlers", () => {
     });
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ task_1: "goal_1" });
+  });
+
+  it("scopes paginated goal tasks to the authorized owner and selected goal", async () => {
+    const ctx = createCtx();
+    mockCredentialQuery(ctx, readCredential, {tasks: [], links: {}, isDone: true, continueCursor: "end"});
+    const response = await getHandler("/goals/tasks", "GET")(ctx,
+      new Request("https://example.com/goals/tasks?goalId=goal-1&cursor=next", {
+        headers: {authorization: "Bearer pravah_cred_demo"},
+      }));
+    expect(response.status).toBe(200);
+    expect(ctx.runQuery).toHaveBeenCalledWith(internal.automationTools.listGoalTasks, {
+      ownerTokenIdentifier: "user-1", goalClientId: "goal-1",
+      paginationOpts: {cursor: "next", numItems: 100},
+    });
+  });
+
+  it("rejects empty goal selections and unauthorized goal task reads", async () => {
+    const handler = getHandler("/goals/tasks", "GET");
+    const ctx = createCtx();
+    mockCredentialQuery(ctx, readCredential);
+    const response = await handler(ctx, new Request("https://example.com/goals/tasks?goalId=", {
+      headers: {authorization: "Bearer pravah_cred_demo"},
+    }));
+    expect(response.status).toBe(400);
+    expect(ctx.runQuery).not.toHaveBeenCalledWith(internal.automationTools.listGoalTasks, expect.anything());
+    const unauthorized = createCtx();
+    const denied = await handler(unauthorized, new Request("https://example.com/goals/tasks"));
+    expect(denied.status).toBe(401);
+    expect(unauthorized.runQuery).not.toHaveBeenCalled();
   });
 
   it("passes nullable goal clears through goal updates", async () => {

@@ -51,11 +51,20 @@ Bearer scopes protect the routes available to the CLI:
 | Route | Scope |
 |---|---|
 | `GET /tasks`, `GET /inbox`, `GET /timeline` | `tasks:read` |
+| `GET /goals`, `GET /goal-links`, `GET /goals/tasks` | `tasks:read` |
 | `POST /tasks`, `/tasks/move`, `/tasks/update`, `/tasks/complete`, `/tasks/reopen`, `/tasks/unschedule` | `tasks:write` |
 | `GET /review-queue` | `review:read` |
 | `GET /sync/status` | `sync:read` |
 
 Admin API-key only routes remain for high-risk or broad operations: task delete, reorder, bulk-reschedule, sync imports, and review-queue decisions. `POST /tasks/update` is available on the bearer-authenticated automation path with idempotency keys.
+
+`GET /goals/tasks?goalId=<id>&cursor=<cursor>` reads tasks associated with a
+selected goal. Omitting `goalId` selects all goal-linked tasks. The response
+contains `tasks`, `links`, `isDone` and `continueCursor`; follow every cursor for
+complete progress counts, even when a page has no tasks because its links are
+dangling or cancelled. Each query reads at most 100 link rows / 256 KiB before
+fetching the associated tasks and their active image summaries. Task ownership
+is checked independently of link ownership. Unlinked tasks are not read.
 
 Planned write expansion should keep the existing coarse scopes initially. Task, Goal, Goal Link, delete, and operation undo commands may use `tasks:write` while `pravah capabilities` reports per-command `requiredScopes`, leaving room to split into narrower scopes later without changing command names.
 

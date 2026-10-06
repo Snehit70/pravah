@@ -24,6 +24,7 @@ export interface LiveCliClient {
   getTask(taskId: string): Promise<unknown>;
   listGoals(): Promise<unknown>;
   listGoalLinks(taskIds?: string[]): Promise<unknown>;
+  listGoalTasks?(goalId?: string): Promise<{ tasks: unknown[]; links: Record<string, string> }>;
   getInbox(): Promise<unknown>;
   getTimeline(endDate: string): Promise<unknown>;
   getReviewQueue(status?: string, limit?: number): Promise<unknown>;
@@ -235,6 +236,38 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
     },
     listGoals() {
       return get("/goals");
+    },
+    async listGoalTasks(goalId) {
+      const query = new URLSearchParams(goalId === undefined ? {} : { goalId });
+      const tasks = new Map<string, unknown>();
+      const links: Record<string, string> = {};
+      const seen = new Set<string>();
+      for (;;) {
+        let raw: unknown;
+        try {
+          raw = await get(`/goals/tasks${query.size ? `?${query}` : ""}`);
+        } catch (error) {
+          if (seen.size && error instanceof ConvexHttpError && error.status === 404) {
+            throw new Error("Goal task pagination failed after the first page", { cause: error });
+          }
+          throw error;
+        }
+        const result = raw as { tasks?: unknown; links?: unknown; isDone?: unknown; continueCursor?: unknown } | null;
+        if (!result || typeof result !== "object" || !Array.isArray(result.tasks) ||
+          !result.links || typeof result.links !== "object" || Array.isArray(result.links) ||
+          Object.values(result.links).some(value => typeof value !== "string") || typeof result.isDone !== "boolean") {
+          throw new Error("Invalid goal tasks response");
+        }
+        for (const task of result.tasks) {
+          if (!task || typeof task !== "object" || typeof task._id !== "string") throw new Error("Invalid goal task");
+          tasks.set(task._id, task);
+        }
+        Object.assign(links, result.links);
+        if (result.isDone) return { tasks: [...tasks.values()], links };
+        if (typeof result.continueCursor !== "string" || !result.continueCursor || seen.has(result.continueCursor)) throw new Error("Goal task pagination did not advance");
+        seen.add(result.continueCursor);
+        query.set("cursor", result.continueCursor);
+      }
     },
     async listGoalLinks(taskIds) {
       if (!taskIds) return get("/goal-links");

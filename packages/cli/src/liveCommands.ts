@@ -4,6 +4,7 @@ import { getLocalDateString } from "./date";
 import { CliCommandError } from "./errors";
 import type { LiveCliClient } from "./liveClient";
 import type { CliTaskStatus, ParsedArgs } from "./types";
+import { ConvexHttpError } from "./automationHttpClient";
 
 interface CliTaskSummary {
   id: string;
@@ -291,9 +292,25 @@ export async function executeLiveCommand(client: LiveCliClient, command: string,
     return hasFlag(args.options, "all") || readOption(args.options, "status") ? { tasks, source: "live" } : { ...data, source: "live" };
   }
   if (command === "goals list" || command === "goals show") {
-    requireScopes(client, ["tasks:read"]); const [goals, tasks, links] = await Promise.all([client.listGoals().then(goalsOf), client.listTasks({}).then(tasksOf), client.listGoalLinks().then(linksOf)]);
+    requireScopes(client, ["tasks:read"]);
+    const goals = goalsOf(await client.listGoals());
+    const selected = command === "goals show" ? resolveGoal(goals, readTarget(args, command)) : undefined;
+    let tasks: CliTaskSummary[];
+    let links: Record<string, string>;
+    try {
+      if (!client.listGoalTasks) throw new ConvexHttpError(404, "Goal task endpoint unavailable");
+      const result = await client.listGoalTasks(selected?.id);
+      tasks = tasksOf(result.tasks);
+      links = linksOf(result.links);
+    } catch (error) {
+      // Compatibility with older deployments only. Auth, server and malformed
+      // response errors must never trigger a costly full-history fallback.
+      if (!(error instanceof ConvexHttpError) || error.status !== 404) throw error;
+      [tasks, links] = await Promise.all([client.listTasks({}).then(tasksOf), client.listGoalLinks().then(linksOf)]);
+    }
     const summaries = goals.map((goal) => { const linked = tasks.filter((task) => links[task.id] === goal.id && task.status !== "cancelled"); return { ...goal, progress: { completed: linked.filter((task) => task.status === "completed").length, active: linked.length }, activeTasks: linked.filter(active).map((task) => ({ ...task, goal: { id: goal.id, text: goal.text } })), historicalTaskCount: linked.filter((task) => !active(task)).length }; }).sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority) || (a.deadline ?? "9999-12-31").localeCompare(b.deadline ?? "9999-12-31") || a.text.localeCompare(b.text));
-    if (command === "goals list") return { goals: summaries, source: "live" }; const goal = resolveGoal(goals, readTarget(args, command)); return { goal: summaries.find((item) => item.id === goal.id), source: "live" };
+    if (command === "goals list") return { goals: summaries, source: "live" };
+    return { goal: summaries.find((item) => item.id === selected!.id), source: "live" };
   }
   if (command === "operations list") { requireScopes(client, ["tasks:read"]); const raw = readOption(args.options, "limit"); const limit = raw === undefined ? 20 : Number(raw); if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new CliCommandError("validation_failed", "--limit must be an integer between 1 and 100"); return { operations: operationsOf(await client.listOperations({ limit, operationGroupId: readOption(args.options, "group") })), source: "live" }; }
   if (command === "operations show") { requireScopes(client, ["tasks:read"]); return { operation: operationOf(await client.getOperation(readTarget(args, command))), source: "live" }; }

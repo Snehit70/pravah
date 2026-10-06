@@ -25,11 +25,34 @@ and outside the phone. It stores allowlisted execution metrics, hourly totals,
 collector sessions and interruptions. Files are private (0600, service umask
 0077). No raw log lines, owners, credentials, arguments, image data or error
 bodies are retained. SQLite WAL supports concurrent reports during collection.
+Request IDs and parent execution IDs are retained for local correlation. The
+allowlisted caller type retains server invocation classes such as `SyncWorker`,
+`HttpEndpoint` and `Action`. It does not reliably distinguish mobile, web, CLI
+or every transport. These fields do not identify a user or device; older records and
+unrecognized invocation types remain unknown.
 
 ```sh
 bun scripts/observability/convex-io.mjs report
 bun scripts/observability/convex-io.mjs collect
 ```
+
+Compare exact windows after a deployment or a controlled token-refresh test:
+
+```sh
+bun scripts/observability/convex-io.mjs report \
+  --from 2026-10-06T12:00:00Z --to 2026-10-06T13:00:00Z \
+  --function tasks:listBoardTasks
+```
+
+The report uses raw events with an inclusive start and exclusive end, rather
+than including entire boundary hours. It reports totals, caller breakdowns,
+mean and P95 uncached execution bytes. Exact windows must fit the 14-day raw
+retention; historical hourly rollups remain in SQLite for a year. Capture gaps
+still limit conclusions. A lower call count alone is not a DB I/O reduction.
+
+When upgrading the collector, restart its managed service before opening a new
+report. The additive schema migration preserves existing metrics, but an older
+collector process still holds SQL prepared against the previous schema.
 
 The collector uses the repository's installed Convex CLI and existing host
 Convex login. It targets `combative-zebra-261` production. No new Convex tables,
