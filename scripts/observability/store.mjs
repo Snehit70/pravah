@@ -5,6 +5,11 @@ import { homedir } from 'node:os';
 
 export const defaultDatabasePath = () => join(process.env.XDG_STATE_HOME || join(homedir(), '.local/state'), 'pravah/observability/convex-io.sqlite');
 const DAY = 86400000;
+const correlationId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(value) ? value : null;
+// CLI labels differ from the hosted log-stream schema. Preserve the bounded
+// invocation class verbatim; SyncWorker does not identify a device/transport.
+const callers = new Set(['SyncWorker', 'HttpEndpoint', 'Action', 'Cron', 'Scheduler', 'Tester', 'Client',
+  'websocket', 'http', 'httpEndpoint', 'cron', 'scheduler', 'action', 'tester']);
 
 export function executionMetric(event, deployment) {
   const usage = event?.usageStats;
@@ -20,7 +25,9 @@ export function executionMetric(event, deployment) {
     success: event.success === false || event.error != null ? 0 : 1, duration: Math.max(0, event.executionTime * 1000),
     read: usage.databaseIoReadBytes, write: usage.databaseIoWriteBytes,
     readDocs: usage.databaseReadDocuments, writeDocs: usage.databaseWriteDocuments,
-    indexRows: usage.databaseWriteIndexRows };
+    indexRows: usage.databaseWriteIndexRows,
+    requestId: correlationId(event.requestId), parentExecutionId: correlationId(event.parentExecutionId),
+    caller: callers.has(event.caller) ? event.caller : null };
 }
 
 export function openStore(path = defaultDatabasePath()) {
@@ -42,7 +49,14 @@ export function openStore(path = defaultDatabasePath()) {
     CREATE TABLE IF NOT EXISTS gaps (deployment TEXT, started INTEGER, ended INTEGER, reason TEXT);
     CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY, deployment TEXT,
       started INTEGER, heartbeat INTEGER, ended INTEGER, rejected INTEGER DEFAULT 0);`);
-  const insert = db.prepare('INSERT OR IGNORE INTO executions VALUES ($deployment,$id,$timestamp,$function,$component,$kind,$cached,$success,$duration,$read,$write,$readDocs,$writeDocs,$indexRows)');
+  // Additive migration preserves existing capture and replay deduplication.
+  const columns = new Set(db.query('PRAGMA table_info(executions)').all().map(column => column.name));
+  for (const column of ['requestId', 'parentExecutionId', 'caller']) {
+    if (!columns.has(column)) db.exec(`ALTER TABLE executions ADD COLUMN ${column} TEXT`);
+  }
+  const insert = db.prepare(`INSERT OR IGNORE INTO executions
+    (deployment,id,timestamp,function,component,kind,cached,success,duration,read,write,readDocs,writeDocs,indexRows,requestId,parentExecutionId,caller)
+    VALUES ($deployment,$id,$timestamp,$function,$component,$kind,$cached,$success,$duration,$read,$write,$readDocs,$writeDocs,$indexRows,$requestId,$parentExecutionId,$caller)`);
   const rollup = db.prepare(`INSERT INTO hourly VALUES ($deployment,$hour,$function,$component,$kind,1,$cached,$failed,$read,$write,$readDocs,$writeDocs,$indexRows)
     ON CONFLICT(deployment,hour,function,component,kind) DO UPDATE SET
     calls=calls+1,hits=hits+excluded.hits,failures=failures+excluded.failures,
@@ -54,7 +68,8 @@ export function openStore(path = defaultDatabasePath()) {
     const params = Object.fromEntries(Object.entries(metric).map(([k,v]) => [`$${k}`,v]));
     const changed = insert.run(params).changes;
     if (!changed) return false;
-    const { $id: _id, $timestamp: _timestamp, $success: _success, $duration: _duration, ...totals } = params;
+    const { $id: _id, $timestamp: _timestamp, $success: _success, $duration: _duration,
+      $requestId: _requestId, $parentExecutionId: _parent, $caller: _caller, ...totals } = params;
     rollup.run({ ...totals, $hour: Math.floor(metric.timestamp / 3600000) * 3600000, $failed: 1 - metric.success });
     return true;
   });

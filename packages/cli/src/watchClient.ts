@@ -21,7 +21,7 @@ const listTodayCompletedTasks = makeFunctionReference<
   unknown
 >("tasks:listTodayCompletedTasks");
 const listGoals = makeFunctionReference<"query", NoArgs, unknown>("goals:list");
-const listGoalLinks = makeFunctionReference<"query", NoArgs, unknown>(
+const listGoalLinks = makeFunctionReference<"query", { taskIds: string[] }, unknown>(
   "goals:listLinks"
 );
 
@@ -191,7 +191,7 @@ export async function runWatch({
     return ownerToken.token;
   });
 
-  let unsubscribes: Array<() => void> = [];
+  const unsubscribes: Array<() => void> = [];
   const latest = emptySources();
   // Only publish once every subscription has produced its first value, so a
   // partial snapshot is never written.
@@ -200,23 +200,28 @@ export async function runWatch({
   // degraded: healthy heartbeats stop and resume only after every source
   // delivers a fresh value again.
   const sourceErrors = new Map<SourceKey, string>();
-  let hasPublished = false;
+  let lastComplete: WatchSnapshot | undefined;
+  let closed = false;
+  let linkGeneration = 0;
+  let linkSelection: string | undefined;
+  let linkUnsubscribes: Array<() => void> = [];
+  let todayUnsubscribe: (() => void) | undefined;
+  let dayGeneration = 0;
   let midnightTimer: ReturnType<typeof setTimeout> | undefined;
   let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
 
   const publish = () => {
     if (!SOURCE_KEYS.every((key) => ready[key])) return;
-    hasPublished = true;
-    onSnapshot(
-      buildSnapshot({
-        convexUrl,
-        boardTasks: latest.boardTasks,
-        completedToday: latest.completedToday,
-        goals: latest.goals,
-        goalLinks: latest.goalLinks,
-        now: new Date(now()),
-      })
-    );
+    if (closed) return;
+    lastComplete = buildSnapshot({
+      convexUrl,
+      boardTasks: latest.boardTasks,
+      completedToday: latest.completedToday,
+      goals: latest.goals,
+      goalLinks: latest.goalLinks,
+      now: new Date(now()),
+    });
+    onSnapshot(lastComplete);
   };
 
   // A failing source must be visible in the file, not hidden behind a
@@ -225,19 +230,10 @@ export async function runWatch({
   // heartbeat path stays gated on `publish`, so it resumes only after fresh
   // results clear every error.
   const publishDegraded = () => {
-    // Only ever mark the last complete data, never a partial read: after a
-    // re-subscribe the sources are null until each one redelivers.
-    if (!hasPublished) return;
-    if (!SOURCE_KEYS.every((key) => latest[key] !== null)) return;
+    // Keep the original data and timestamp while replacement feeds are pending.
+    if (!lastComplete || closed) return;
     onSnapshot({
-      ...buildSnapshot({
-        convexUrl,
-        boardTasks: latest.boardTasks,
-        completedToday: latest.completedToday,
-        goals: latest.goals,
-        goalLinks: latest.goalLinks,
-        now: new Date(now()),
-      }),
+      ...lastComplete,
       errors: SOURCE_KEYS.filter((key) => sourceErrors.has(key)).map(
         (key) => sourceErrors.get(key) as string
       ),
@@ -245,14 +241,17 @@ export async function runWatch({
   };
 
   const track = (name: SourceKey) => (value: unknown) => {
+    if (closed) return;
     latest[name] = value;
     ready[name] = true;
     sourceErrors.delete(name);
+    if (name === "boardTasks" || name === "completedToday") refreshLinks();
     publish();
   };
 
   // Name the Convex query, not the internal key, so the log is actionable.
   const failed = (query: string, key: SourceKey) => (error: unknown) => {
+    if (closed) return;
     reportAsync(error);
     log(`watch: ${query} subscription failed`);
     ready[key] = false;
@@ -260,65 +259,120 @@ export async function runWatch({
     publishDegraded();
   };
 
+  // Link queries depend on both task feeds. Never publish a new task set with
+  // associations from the previous set, and never fall back to all history.
+  const refreshLinks = () => {
+    if (!ready.boardTasks || !ready.completedToday) return;
+    const ids = new Set<string>();
+    for (const source of [latest.boardTasks, latest.completedToday]) {
+      if (!Array.isArray(source)) continue;
+      for (const row of source) {
+        const id = row?.id ?? row?._id ?? row?.clientId;
+        if (typeof id === "string" && id) ids.add(id);
+      }
+    }
+    const taskIds = [...ids].sort();
+    const selection = JSON.stringify(taskIds);
+    if (selection === linkSelection) return;
+    linkSelection = selection;
+    const generation = ++linkGeneration;
+    for (const unsubscribe of linkUnsubscribes) unsubscribe();
+    linkUnsubscribes = [];
+    ready.goalLinks = false;
+    sourceErrors.delete("goalLinks");
+    if (taskIds.length === 0) {
+      latest.goalLinks = {};
+      ready.goalLinks = true;
+      return;
+    }
+    const chunks: string[][] = [];
+    for (let i = 0; i < taskIds.length; i += 500) chunks.push(taskIds.slice(i, i + 500));
+    const results = new Map<number, Record<string, string>>();
+    const errors = new Set<number>();
+    let subscribing = true;
+    const publishLinks = (emit = true) => {
+      if (subscribing || closed || generation !== linkGeneration) return;
+      if (errors.size || results.size !== chunks.length) return;
+      latest.goalLinks = Object.assign({}, ...chunks.map((_, index) => results.get(index)));
+      ready.goalLinks = true;
+      sourceErrors.delete("goalLinks");
+      if (emit) publish();
+    };
+    try {
+      for (const [index, chunk] of chunks.entries()) {
+        linkUnsubscribes.push(client.onUpdate(listGoalLinks, { taskIds: chunk }, (value) => {
+          if (closed || generation !== linkGeneration) return;
+          results.set(index, value as Record<string, string>);
+          errors.delete(index);
+          publishLinks();
+        }, (error) => {
+          if (closed || generation !== linkGeneration) return;
+          errors.add(index);
+          failed("goals:listLinks", "goalLinks")(error);
+        }));
+      }
+    } catch (error) {
+      failed("goals:listLinks", "goalLinks")(error);
+      // Allow the next task delivery to retry setup after a synchronous failure.
+      linkSelection = undefined;
+    } finally {
+      subscribing = false;
+    }
+    // The task delivery calls publish after this returns. Cached callbacks
+    // may have completed synchronously, so do not emit the same snapshot twice.
+    publishLinks(false);
+  };
+
   const scheduleMidnightResubscribe = () => {
     midnightTimer = setTimeout(() => {
-      resubscribe();
+      if (closed) return;
+      ready.completedToday = false;
+      try {
+        subscribeToday();
+      } catch (error) {
+        failed("tasks:listTodayCompletedTasks", "completedToday")(error);
+      }
+      scheduleMidnightResubscribe();
     }, msUntilNextLocalMidnight(new Date(now())));
     // Do not hold the process open for a midnight rollover.
     midnightTimer.unref?.();
   };
 
-  const subscribe = (): Array<() => void> => {
+  const subscribeToday = () => {
+    const generation = ++dayGeneration;
+    todayUnsubscribe?.();
     const { startMs, endMs } = getLocalDayBounds(new Date(now()));
-    return [
-      client.onUpdate(
+    todayUnsubscribe = client.onUpdate(
+      listTodayCompletedTasks,
+      { dayStartMs: startMs, dayEndMs: endMs },
+      (value) => { if (generation === dayGeneration) track("completedToday")(value); },
+      (error) => { if (generation === dayGeneration) failed("tasks:listTodayCompletedTasks", "completedToday")(error); }
+    );
+  };
+
+  const subscribe = () => {
+    subscribeToday();
+    unsubscribes.push(client.onUpdate(
         listBoardTasks,
         {},
         track("boardTasks"),
         failed("tasks:listBoardTasks", "boardTasks")
-      ),
-      client.onUpdate(
-        listTodayCompletedTasks,
-        { dayStartMs: startMs, dayEndMs: endMs },
-        track("completedToday"),
-        failed("tasks:listTodayCompletedTasks", "completedToday")
-      ),
-      client.onUpdate(
+      ));
+    unsubscribes.push(client.onUpdate(
         listGoals,
         {},
         track("goals"),
         failed("goals:list", "goals")
-      ),
-      client.onUpdate(
-        listGoalLinks,
-        {},
-        track("goalLinks"),
-        failed("goals:listLinks", "goalLinks")
-      ),
-    ];
-  };
-
-  // A subscribed query's arguments are fixed for its lifetime, so "today"
-  // bounds go stale at local midnight. Re-subscribe instead of serving yesterday.
-  const resubscribe = () => {
-    for (const unsubscribe of unsubscribes) unsubscribe();
-    unsubscribes = [];
-    for (const key of SOURCE_KEYS) {
-      ready[key] = false;
-      latest[key] = null;
-    }
-    sourceErrors.clear();
-    try {
-      unsubscribes = subscribe();
-    } catch (error) {
-      reportAsync(error);
-    }
-    scheduleMidnightResubscribe();
+      ));
   };
 
   try {
-    unsubscribes = subscribe();
+    subscribe();
   } catch (error) {
+    closed = true;
+    todayUnsubscribe?.();
+    for (const unsubscribe of unsubscribes) unsubscribe();
+    for (const unsubscribe of linkUnsubscribes) unsubscribe();
     await client.close();
     throwOnAuthError(error);
   }
@@ -331,13 +385,19 @@ export async function runWatch({
 
   return {
     async close() {
+      closed = true;
+      ++linkGeneration;
+      ++dayGeneration;
+      todayUnsubscribe?.();
       if (midnightTimer) clearTimeout(midnightTimer);
       if (heartbeatTimer) {
         clearInterval(heartbeatTimer);
         heartbeatTimer = undefined;
       }
       for (const unsubscribe of unsubscribes) unsubscribe();
-      unsubscribes = [];
+      for (const unsubscribe of linkUnsubscribes) unsubscribe();
+      linkUnsubscribes = [];
+      unsubscribes.length = 0;
       await client.close();
     },
   };

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLiveClient } from "../../packages/cli/src/liveClient";
 import { executeLiveCommand } from "../../packages/cli/src/liveCommands";
+import { ConvexHttpError } from "../../packages/cli/src/automationHttpClient";
 vi.mock("../../packages/cli/src/authStore", () => ({ loadStoredCredential: () => null }));
 const client = () => createLiveClient({ PRAVAH_HTTP_URL: "https://example.convex.site", CONVEX_HTTP_API_KEY: "test" })!;
 function responses(...pages: unknown[]) {
@@ -56,5 +57,50 @@ describe("CLI bounded task reads", () => {
     expect(await cli.listGoalLinks(Array.from({length:101},(_,i)=>`id${i}`))).toEqual({a:"goal",b:"goal"});
     expect(fetch.mock.calls).toHaveLength(2);
     expect(new URL(String(fetch.mock.calls[0][0])).searchParams.get("taskIds")!.split(",")).toHaveLength(100);
+  });
+});
+
+describe("CLI selected goal reads", () => {
+  it("reads only the resolved goal and preserves exact progress semantics", async () => {
+    const cli = client();
+    vi.spyOn(cli, "listGoals").mockResolvedValue([{id: "g1", text: "Ship"}, {id: "g2", text: "Other"}]);
+    const selected = vi.spyOn(cli, "listGoalTasks").mockResolvedValue({tasks: [
+      {_id: "a", title: "Active"}, {_id: "b", title: "Done", completedAt: 1},
+    ], links: {a: "g1", b: "g1"}});
+    const all = vi.spyOn(cli, "listTasks");
+    const links = vi.spyOn(cli, "listGoalLinks");
+    const result = await executeLiveCommand(cli, "goals show", {positionals: ["goals", "show", "Ship"], options: {}});
+    expect(selected).toHaveBeenCalledWith("g1");
+    expect(all).not.toHaveBeenCalled();
+    expect(links).not.toHaveBeenCalled();
+    expect(result).toMatchObject({goal: {id: "g1", progress: {completed: 1, active: 2}, historicalTaskCount: 1, activeTasks: [{id: "a"}]}});
+  });
+
+  it("follows empty pages, preserves all results, and deduplicates repeated task IDs", async () => {
+    const fetch = responses(
+      {tasks: [{_id: "a", title: "Before"}], links: {a: "g"}, isDone: false, continueCursor: "one"},
+      {tasks: [], links: {}, isDone: false, continueCursor: "two"},
+      {tasks: [{_id: "a", title: "After"}, {_id: "b"}], links: {b: "g"}, isDone: true, continueCursor: "end"},
+    );
+    expect(await client().listGoalTasks!("g")).toEqual({tasks: [{_id: "a", title: "After"}, {_id: "b"}], links: {a: "g", b: "g"}});
+    expect(String(fetch.mock.calls[0][0])).toContain("/goals/tasks?goalId=g");
+    expect(String(fetch.mock.calls[2][0])).toContain("cursor=two");
+  });
+
+  it("does not replace an authentication failure with full history", async () => {
+    const cli = client();
+    vi.spyOn(cli, "listGoals").mockResolvedValue([]);
+    vi.spyOn(cli, "listGoalTasks").mockRejectedValue(new ConvexHttpError(403, "Forbidden"));
+    const all = vi.spyOn(cli, "listTasks");
+    await expect(executeLiveCommand(cli, "goals list", {positionals: ["goals", "list"], options: {}})).rejects.toThrow("Forbidden");
+    expect(all).not.toHaveBeenCalled();
+  });
+
+  it("rejects repeating cursors and missing routes after the first page", async () => {
+    responses({tasks: [], links: {}, isDone: false, continueCursor: "one"}, {tasks: [], links: {}, isDone: false, continueCursor: "one"});
+    await expect(client().listGoalTasks!()).rejects.toThrow("did not advance");
+    const fetch = responses({tasks: [], links: {}, isDone: false, continueCursor: "one"});
+    fetch.mockResolvedValueOnce(new Response("Not found", {status: 404}));
+    await expect(client().listGoalTasks!()).rejects.toThrow("after the first page");
   });
 });

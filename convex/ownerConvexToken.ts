@@ -121,9 +121,9 @@ export function ownerConvexTokenPlugin({
               iss: convexSiteUrl,
               aud: "convex",
               iat: issuedAt,
-              // Not a Better Auth session. Convex never reads it, but the Convex
-              // plugin's own payload shape includes one.
-              sessionId: `pravah-cli-${issuedAt}`,
+              // This token has no Better Auth session. A changing custom claim
+              // changes Convex identity cache keys on every refresh. Keep only
+              // standard JWT claims; expiry and credential checks still apply.
             },
           });
 

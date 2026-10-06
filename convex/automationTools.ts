@@ -1,4 +1,4 @@
-import { listGoalLinksForOwner } from "./goalLinkQueries";
+import { listGoalLinksForOwner, listGoalTasksForOwner } from "./goalLinkQueries";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import { internalMutation, internalQuery } from "./_generated/server";
@@ -243,6 +243,16 @@ export const listGoals = internalQuery({
         priority: goal.priority,
         createdAt: goal.createdAt,
       }));
+  },
+});
+
+export const listGoalTasks = internalQuery({
+  args: { ownerTokenIdentifier: v.string(), goalClientId: v.optional(v.string()), paginationOpts: paginationOptsValidator },
+  handler: async (ctx, { ownerTokenIdentifier, goalClientId, paginationOpts }) => {
+    const result = await listGoalTasksForOwner(ctx, ownerTokenIdentifier, goalClientId, paginationOpts);
+    const summaries = await getTaskImageSummariesForOwner(ctx, ownerTokenIdentifier,
+      result.tasks.filter(task => task.completedAt === undefined).map(task => task._id));
+    return { ...result, tasks: result.tasks.map(task => ({ ...task, imageSummary: summaries.get(task._id) })) };
   },
 });
 

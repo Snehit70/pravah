@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getTimelineForOwner, listBoardTasks, listTasksForOwner, listTasksPageForOwner } from "../../convex/tasks";
+import { getTaskCounts, getTimelineForOwner, listBoardTasks, listTasksForOwner, listTasksPageForOwner } from "../../convex/tasks";
 import type { QueryCtx } from "../../convex/_generated/server";
 
 // Apply the index range BEFORE charging visited rows, just as Convex does.
@@ -55,6 +55,14 @@ function database(history: number) {
 }
 
 describe("active query read budgets", () => {
+  it("reuses inbox candidates for legacy timeline counts without reading the range twice", async () => {
+    const d = database(10);
+    const handler = (getTaskCounts as unknown as {_handler: (ctx: QueryCtx, args: object) => Promise<unknown>})._handler;
+    expect(await handler(d.ctx, {})).toEqual({inboxCount: 1, timelineCount: 3, completedCount: 11});
+    // Three timestamp-free inbox candidates + two canonical timeline tasks +
+    // ten timestamped completions + one legacy completion.
+    expect(d.reads()).toBe(16);
+  });
   for (const history of [10, 1000]) {
     it(`board ignores ${history} completed and cancelled rows`, async () => {
       const db = database(history);

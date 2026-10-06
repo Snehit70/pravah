@@ -1382,13 +1382,11 @@ export const getTaskCounts = query({
       inboxCandidates,
       deadlineTasks,
       completedTasks,
-      legacyScheduledTasks,
       legacyCompletedTasks,
     ] = await Promise.all([
       listActiveTasksByDeadline(ctx, tokenIdentifier, { inbox: true }),
       listActiveTasksByDeadline(ctx, tokenIdentifier),
       listTasksByCompletedAtRange(ctx, tokenIdentifier),
-      listActiveTasksByDeadline(ctx, tokenIdentifier, { inbox: true }),
       listTasksByLegacyStatus(ctx, tokenIdentifier, "completed"),
     ]);
 
@@ -1396,7 +1394,7 @@ export const getTaskCounts = query({
       inboxCount: inboxCandidates.filter(isInboxTask).length,
       timelineCount: dedupeTasks([
         ...deadlineTasks.filter(isTimelineTask),
-        ...legacyScheduledTasks.filter(
+        ...inboxCandidates.filter(
           (task) => task.deadline === undefined && isTimelineTask(task)
         ),
       ]).length,
