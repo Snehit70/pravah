@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.2](https://github.com/Snehit70/pravah/compare/cli-v2.5.1...cli-v2.5.2) (2026-10-06)
+
+
+### Bug Fixes
+
+* reduce watcher identity churn and scope goal reads ([#273](https://github.com/Snehit70/pravah/issues/273)) ([4475561](https://github.com/Snehit70/pravah/commit/4475561a0b9e86f4a251e7dd398aff19ae510057))
+
 ## [2.5.1](https://github.com/Snehit70/pravah/compare/cli-v2.5.0...cli-v2.5.1) (2026-10-05)
 
 
