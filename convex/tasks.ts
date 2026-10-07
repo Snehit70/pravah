@@ -1,4 +1,5 @@
-import { internalMutation, mutation, query } from "./_generated/server";
+import { query } from "./_generated/server";
+import { internalMutation, mutation } from "./writeServer";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import type { PaginationOptions } from "convex/server";
@@ -112,12 +113,31 @@ async function listTasksByLegacyStatus(
   tokenIdentifier: string,
   status: LegacyTaskStatus
 ) {
+  if (status === "completed") return ctx.db.query("tasks")
+    .withIndex("by_owner_legacy_completed", q => q.eq("ownerTokenIdentifier", tokenIdentifier)
+      .eq("status", status).eq("completedAt", undefined)).collect();
+  if (status === "cancelled") return ctx.db.query("tasks")
+    .withIndex("by_owner_legacy_cancelled", q => q.eq("ownerTokenIdentifier", tokenIdentifier)
+      .eq("status", status).eq("cancelledAt", undefined)).collect();
   return await ctx.db
     .query("tasks")
     .withIndex("by_owner_status", (q) =>
       q.eq("ownerTokenIdentifier", tokenIdentifier).eq("status", status)
     )
     .collect();
+}
+
+// Select only legacy scheduled dates. Canonical inbox records cannot enter
+// this range, while imports retain their compatibility behavior.
+function legacyTimelineQuery(ctx: TaskCtx, owner: string, args: {
+  exact?: string; startDate?: string; endDate?: string;
+} = {}) {
+  return ctx.db.query("tasks").withIndex("by_owner_active_legacy_date", q => {
+    const prefix = q.eq("ownerTokenIdentifier", owner).eq("completedAt", undefined)
+      .eq("cancelledAt", undefined).eq("deadline", undefined);
+    return args.exact !== undefined ? prefix.eq("scheduledDate", args.exact)
+      : prefix.gte("scheduledDate", args.startDate ?? "").lte("scheduledDate", args.endDate ?? "\uffff");
+  });
 }
 
 async function listTasksByCompletedAtRange(
@@ -343,7 +363,7 @@ export async function listTasksForOwner(
       args.date
         ? listActiveTasksByDeadline(ctx, tokenIdentifier, { exact: args.date })
         : listActiveTasksByDeadline(ctx, tokenIdentifier, { startDate: args.after, endDate: args.before }),
-      listActiveTasksByDeadline(ctx, tokenIdentifier, { inbox: true }),
+      legacyTimelineQuery(ctx, tokenIdentifier, { exact: args.date, startDate: args.after, endDate: args.before }).collect(),
     ]);
     tasks = dedupeTasks([...deadlineTasks, ...legacyScheduledTasks]);
   } else if (args.status === "completed" && args.date) {
@@ -412,8 +432,9 @@ export async function listTasksPageForOwner(
   const options = { ...paginationOpts, numItems: Math.min(100, Math.max(1, paginationOpts.numItems)),
     maximumRowsRead: 100, maximumBytesRead: 256 * 1024 };
   const historical = args.status === "completed" || args.status === "cancelled";
+  const selectedActive = args.status === "scheduled" || args.status === "active" && Boolean(args.date || args.before || args.after);
   let result;
-  if (historical) {
+  if (historical || selectedActive) {
     // Preserve legacy status-only history without scanning the entire owner table.
     // Each request executes one bounded paginate; canonical and legacy phases
     // are disjoint, so no row is duplicated or silently lost at the boundary.
@@ -426,15 +447,30 @@ export async function listTasksPageForOwner(
       phase = parsed.phase as "canonical" | "legacy"; cursor = parsed.cursor;
     }
     const completed = args.status === "completed";
-    const source = phase === "legacy"
-      ? ctx.db.query("tasks").withIndex("by_owner_status", (q) =>
-          q.eq("ownerTokenIdentifier", owner).eq("status", completed ? "completed" : "cancelled"))
+    const source = selectedActive
+      ? ctx.db.query("tasks").withIndex(phase === "legacy" ? "by_owner_active_legacy_date" : "by_owner_active_deadline", q => {
+          const active = q.eq("ownerTokenIdentifier", owner).eq("completedAt", undefined).eq("cancelledAt", undefined);
+          if (phase === "legacy") {
+            const legacy = active.eq("deadline", undefined);
+            if (args.date) return legacy.eq("scheduledDate", args.date);
+            const lower = args.after ? legacy.gt("scheduledDate", args.after) : legacy.gte("scheduledDate", "");
+            return args.before ? lower.lt("scheduledDate", args.before) : lower.lte("scheduledDate", "\uffff");
+          }
+          if (args.date) return active.eq("deadline", args.date);
+          const lower = args.after ? active.gt("deadline", args.after) : active.gte("deadline", "");
+          return args.before ? lower.lt("deadline", args.before) : lower.lte("deadline", "\uffff");
+        })
+      : phase === "legacy"
+      ? completed ? ctx.db.query("tasks").withIndex("by_owner_legacy_completed", q =>
+          q.eq("ownerTokenIdentifier", owner).eq("status", "completed").eq("completedAt", undefined))
+        : ctx.db.query("tasks").withIndex("by_owner_legacy_cancelled", q =>
+          q.eq("ownerTokenIdentifier", owner).eq("status", "cancelled").eq("cancelledAt", undefined))
       : completed ? ctx.db.query("tasks").withIndex("by_owner_completed_at", (q) =>
           q.eq("ownerTokenIdentifier", owner).gte("completedAt", 0)).order("desc")
         : ctx.db.query("tasks").withIndex("by_owner_cancelled_at", (q) =>
           q.eq("ownerTokenIdentifier", owner).gte("cancelledAt", 0)).order("desc");
     const scanned = await source.paginate({ ...options, cursor });
-    result = { page: phase === "legacy" ? scanned.page.filter((task) =>
+    result = { page: phase === "legacy" && historical ? scanned.page.filter((task) =>
       (completed ? task.completedAt : task.cancelledAt) === undefined) : scanned.page,
       isDone: phase === "legacy" && scanned.isDone,
       continueCursor: JSON.stringify({ phase: phase === "canonical" && scanned.isDone ? "legacy" : phase,
@@ -905,12 +941,15 @@ export async function reopenTaskForOwner(
   const deadline = getTaskDeadline(task);
   const updates: {
     completedAt: undefined;
+    status?: LegacyTaskStatus;
     position?: number;
     updatedAt: number;
   } = {
     completedAt: undefined,
     updatedAt: Date.now(),
   };
+  // Clearing only the timestamp leaves status-only imported completions done.
+  if (task.status === "completed") updates.status = deadline ? "scheduled" : "inbox";
 
   if (!deadline) {
     updates.position = await getNextPositionForLane(ctx, tokenIdentifier, undefined);
@@ -1346,7 +1385,7 @@ export async function getTimelineForOwner(
       startDate: args.startDate,
       endDate: args.endDate,
     }),
-    listActiveTasksByDeadline(ctx, tokenIdentifier, { inbox: true }),
+    legacyTimelineQuery(ctx, tokenIdentifier, args).collect(),
   ]);
 
   const tasks = dedupeTasks([

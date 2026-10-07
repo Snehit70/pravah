@@ -189,7 +189,7 @@ function resolveGoal(goals: LiveGoalSummary[], target: string) {
 }
 const active = (task: CliTaskSummary) => task.status === "inbox" || task.status === "timeline";
 async function resolveLiveTask(client: LiveCliClient, target: string) {
-  if (!/^[a-z0-9]{32}$/.test(target)) return resolveTask(tasksOf(await client.listTasks({})), target);
+  if (!/^[a-z0-9]{32}$/.test(target)) return resolveTask(tasksOf(await (client.resolveTaskTitle ? client.resolveTaskTitle(target) : client.listTasks({}))), target);
   const task = toTask(await client.getTask(target));
   if (!task) throw new CliCommandError("not_found", `Task not found: ${target}`);
   return task;
@@ -277,13 +277,16 @@ async function write<T>(action: string, idempotencyKey: string, execute: () => P
 export async function executeLiveCommand(client: LiveCliClient, command: string, args: ParsedArgs): Promise<unknown | null> {
   if (["tasks list", "inbox", "today", "overdue", "upcoming", "agent context", "tasks show"].includes(command)) {
     requireScopes(client, ["tasks:read"]);
-    if (command === "tasks show") { const target = readTarget(args, command); const summary = /^[a-z0-9]{32}$/.test(target) ? { id: target } : resolveTask(await client.listTasks({}).then(tasksOf), target); const [detail, goals, links] = await Promise.all([client.getTask(summary.id).then(toTaskDetail), client.listGoals().then(goalsOf), client.listGoalLinks([summary.id]).then(linksOf)]); if (!detail) throw new CliCommandError("not_found", `Task not found: ${summary.id}`); return { task: { ...detail, goal: links[detail.id] ? goals.find((goal) => goal.id === links[detail.id]) : undefined }, source: "live" }; }
+    if (command === "tasks show") { const target = readTarget(args, command); const summary = /^[a-z0-9]{32}$/.test(target) ? { id: target } : await resolveLiveTask(client, target); const [detail, goals, links] = await Promise.all([client.getTask(summary.id).then(toTaskDetail), client.listGoals().then(goalsOf), client.listGoalLinks([summary.id]).then(linksOf)]); if (!detail) throw new CliCommandError("not_found", `Task not found: ${summary.id}`); return { task: { ...detail, goal: links[detail.id] ? goals.find((goal) => goal.id === links[detail.id]) : undefined }, source: "live" }; }
     const today = getLocalDateString();
     const end = new Date(`${today}T12:00:00`); end.setDate(end.getDate() + 15);
-    const preset: Record<string, string> = command === "today" ? { date: today } : command === "inbox" ? { status: "inbox" } : command === "overdue" ? { status: "timeline", before: today } : command === "upcoming" ? { status: "timeline", after: today, before: getLocalDateString(end) } : {};
+    const compactHorizon = ["tasks list", "agent context"].includes(command) && !hasFlag(args.options, "all") &&
+      !["status", "date", "before", "after", "goal", "priority", "tag"].some(key => readOption(args.options, key));
+    const preset: Record<string, string> = command === "today" ? { date: today } : command === "inbox" ? { status: "inbox" } : command === "overdue" ? { status: "timeline", before: today } : command === "upcoming" ? { status: "timeline", after: today, before: getLocalDateString(end) } : compactHorizon ? {before: getLocalDateString(end)} : {};
     const listArgs = { ...args, options: { ...args.options, ...preset } };
     const tasks = await filterTasks(client, listArgs, command === "agent context" || args.options.long === true);
     const data = horizon(tasks);
+    if (compactHorizon) data.inboxCount = tasksOf(await client.listTasks({status: "inbox"})).length;
     if (command === "inbox") return { tasks: tasks.filter((task) => task.status === "inbox"), source: "live" };
     if (command === "today") return { tasks: data.todayTasks, today: data.today, source: "live" };
     if (command === "overdue") return { tasks: data.overdue, today: data.today, source: "live" };

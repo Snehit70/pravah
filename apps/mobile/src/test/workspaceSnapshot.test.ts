@@ -4,6 +4,7 @@ import type { MobileTask } from "../components/TaskCard";
 import {
   hydrateWorkspaceSnapshot,
   prepareWorkspaceSnapshotForPersist,
+  retainCachedLaterTasks,
 } from "../lib/workspace-snapshot";
 
 function makeId(value: string) {
@@ -23,6 +24,15 @@ function makeTask(overrides: Partial<MobileTask> = {}): MobileTask {
 }
 
 describe("workspace snapshot utils", () => {
+  it("retains unqueried future dates but replaces records known in the live range", () => {
+    const future = makeTask({deadline: "2099-01-01"});
+    const staleNear = makeTask({_id: makeId("near"), deadline: "2026-10-08"});
+    const previous = {capturedAt: 1, inboxTasks: [], completedTasks: [], scheduledTasks: [future, staleNear]};
+    const current = {inboxTasks: [], completedTasks: [], scheduledTasks: []};
+    expect(retainCachedLaterTasks(previous, current, "2026-10-21")).toEqual([future]);
+    expect(retainCachedLaterTasks(previous, {...current, inboxTasks: [makeTask()]}, "2026-10-21")).toEqual([]);
+    expect(retainCachedLaterTasks(previous, current)).toEqual([]);
+  });
   it("hydrates a valid snapshot payload", () => {
     const hydrated = hydrateWorkspaceSnapshot(
       JSON.stringify({

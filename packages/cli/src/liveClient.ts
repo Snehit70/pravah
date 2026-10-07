@@ -22,6 +22,7 @@ export interface LiveCliClient {
   getCredentialStatus(): Promise<{ label: string; scopes: string[]; ownerTokenIdentifier: string }>;
   listTasks(filters: { status?: string; date?: string; before?: string; after?: string }): Promise<unknown>;
   getTask(taskId: string): Promise<unknown>;
+  resolveTaskTitle?(title: string): Promise<unknown>;
   listGoals(): Promise<unknown>;
   listGoalLinks(taskIds?: string[]): Promise<unknown>;
   listGoalTasks?(goalId?: string): Promise<{ tasks: unknown[]; links: Record<string, string> }>;
@@ -233,6 +234,18 @@ export function createLiveClient(env: CliEnv): LiveCliClient | null {
     getTask(taskId) {
       const query = new URLSearchParams({ taskId });
       return get(`/tasks/get?${query.toString()}`);
+    },
+    async resolveTaskTitle(title) {
+      try {
+        const rows = await get(`/tasks/resolve?${new URLSearchParams({title})}`);
+        if (!Array.isArray(rows) || rows.length > 2 || rows.some(row => !row || typeof row !== "object" || typeof row._id !== "string" || row.title !== title)) {
+          throw new Error("Invalid task title resolution");
+        }
+        return rows;
+      } catch (error) {
+        if (!(error instanceof ConvexHttpError) || error.status !== 404) throw error;
+        return this.listTasks({});
+      }
     },
     listGoals() {
       return get("/goals");

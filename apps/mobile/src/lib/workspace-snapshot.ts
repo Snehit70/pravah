@@ -149,3 +149,13 @@ export function prepareWorkspaceSnapshotForPersist(snapshot: WorkspaceSnapshot):
     completedTasks: sanitizeTasks(snapshot.completedTasks.slice(0, 120), snapshot.capturedAt),
   };
 }
+
+/** A bounded live range must not evict cached dates it did not query. */
+export function retainCachedLaterTasks(previous: WorkspaceSnapshot | null, current: {
+  inboxTasks: MobileTask[]; scheduledTasks: MobileTask[]; completedTasks: MobileTask[];
+}, scopeEnd?: string): MobileTask[] {
+  if (!scopeEnd) return current.scheduledTasks;
+  const liveIds = new Set([...current.inboxTasks, ...current.scheduledTasks, ...current.completedTasks].map(task => String(task._id)));
+  return [...current.scheduledTasks, ...(previous?.scheduledTasks ?? []).filter(task =>
+    task.deadline && task.deadline > scopeEnd && !liveIds.has(String(task._id)))];
+}

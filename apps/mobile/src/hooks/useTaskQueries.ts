@@ -82,6 +82,7 @@ type UseTaskQueriesOptions = {
   includeCompletedToday?: boolean;
   /** Task cards. Skipped on screens that do not show images. */
   includeImages?: boolean;
+  timelineEndDate?: string;
 };
 
 export function useTaskQueries({
@@ -89,6 +90,7 @@ export function useTaskQueries({
   includeCompletedHistory = false,
   includeCompletedToday = false,
   includeImages = false,
+  timelineEndDate,
 }: UseTaskQueriesOptions) {
   const { today, tomorrow, weekEnd, queryEndDate } = buildTimelineWindow(new Date());
   const imageObservedAt = useImageObservedAt(isAuthenticated && includeImages);
@@ -101,9 +103,8 @@ export function useTaskQueries({
   const timelineQuery = useQuery(
     api.tasks.getTimeline,
     // Omit startDate so overdue tasks (deadline < today) are still surfaced.
-    // queryEndDate is the far-future sentinel, so the full forward horizon is
-    // fetched — no task is dropped for being scheduled beyond the next week.
-    isAuthenticated ? { endDate: queryEndDate } : "skip"
+    // The caller can bound the initial horizon and explicitly expand it later.
+    isAuthenticated ? { endDate: timelineEndDate ?? queryEndDate } : "skip"
   );
 
   const completedHistoryQuery = useQuery(

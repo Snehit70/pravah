@@ -380,6 +380,19 @@ http.route({
   }),
 });
 
+http.route({
+  path: "/tasks/resolve", method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const authCheck = await requireTaskReadAuth(ctx, request);
+    if (authCheck.response) return authCheck.response;
+    const title = new URL(request.url).searchParams.get("title");
+    if (!title || title.length > 4096) return jsonResponse({error: "A task title of at most 4096 characters is required"}, 400);
+    return jsonResponse(await ctx.runQuery(internal.automationTools.resolveTaskTitle, {
+      ownerTokenIdentifier: authCheck.auth.ownerTokenIdentifier, title,
+    }));
+  }),
+});
+
 // GET /tasks/get - Read one authorized Task with its provider-neutral image manifest.
 http.route({
   path: "/tasks/get",

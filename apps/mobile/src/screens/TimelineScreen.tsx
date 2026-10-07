@@ -48,6 +48,7 @@ type TimelineScreenProps = {
   isRefreshing: boolean;
   tabBarHeight: number;
   onRefresh: () => Promise<void>;
+  onLoadLater?: () => void;
   /** Total overdue count (from the workspace buckets). Falls back to a local
    *  count of the dropped sections when not supplied. */
   overdueCount?: number;
@@ -166,6 +167,7 @@ export function TimelineScreen({
   isRefreshing,
   tabBarHeight,
   onRefresh,
+  onLoadLater,
   overdueCount,
   onOpenOverdue,
   onTriageOverdue,
@@ -472,6 +474,11 @@ export function TimelineScreen({
       }
       ListFooterComponent={
         <>
+          {onLoadLater ? (
+            <Pressable onPress={onLoadLater} style={styles.laterSummary} accessibilityRole="button">
+              <Text style={styles.laterSummaryText}>Load later dates</Text>
+            </Pressable>
+          ) : null}
           {laterTaskCount > 0 ? (
             <Pressable
               onPress={() => setShowAllSections((current) => !current)}
@@ -526,6 +533,9 @@ export function TimelineScreen({
     <View style={styles.layoutRoot}>
       {layout === "carousel" ? (
         <Animated.View key="carousel" style={styles.layoutFill} entering={entering} exiting={exiting}>
+          {onLoadLater ? <Pressable onPress={onLoadLater} style={styles.laterSummary} accessibilityRole="button">
+            <Text style={styles.laterSummaryText}>Load later dates</Text>
+          </Pressable> : null}
           {carouselBody}
         </Animated.View>
       ) : (

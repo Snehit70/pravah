@@ -18,6 +18,9 @@ import type * as automationOperations from "../automationOperations.js";
 import type * as automationScopes from "../automationScopes.js";
 import type * as automationTools from "../automationTools.js";
 import type * as crons from "../crons.js";
+import type * as goalLinkQueries from "../goalLinkQueries.js";
+import type * as goalProgress from "../goalProgress.js";
+import type * as goalProgressModel from "../goalProgressModel.js";
 import type * as goals from "../goals.js";
 import type * as http from "../http.js";
 import type * as httpContracts from "../httpContracts.js";
@@ -40,6 +43,7 @@ import type * as taskImages from "../taskImages.js";
 import type * as taskLifecycle from "../taskLifecycle.js";
 import type * as tasks from "../tasks.js";
 import type * as users from "../users.js";
+import type * as writeServer from "../writeServer.js";
 
 import type {
   ApiFromModules,
@@ -58,6 +62,9 @@ declare const fullApi: ApiFromModules<{
   automationScopes: typeof automationScopes;
   automationTools: typeof automationTools;
   crons: typeof crons;
+  goalLinkQueries: typeof goalLinkQueries;
+  goalProgress: typeof goalProgress;
+  goalProgressModel: typeof goalProgressModel;
   goals: typeof goals;
   http: typeof http;
   httpContracts: typeof httpContracts;
@@ -80,6 +87,7 @@ declare const fullApi: ApiFromModules<{
   taskLifecycle: typeof taskLifecycle;
   tasks: typeof tasks;
   users: typeof users;
+  writeServer: typeof writeServer;
 }>;
 
 /**

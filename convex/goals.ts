@@ -1,5 +1,7 @@
-import { listGoalLinksForOwner } from "./goalLinkQueries";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { listGoalLinksForOwner, listGoalTasksForOwner } from "./goalLinkQueries";
+import { paginationOptsValidator } from "convex/server";
+import { query } from "./_generated/server";
+import { internalMutation, mutation } from "./writeServer";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
@@ -104,6 +106,14 @@ export const list = query({
       priority: r.priority,
       createdAt: r.createdAt,
     }));
+  },
+});
+
+export const listTasks = query({
+  args: {goalClientId: v.string(), paginationOpts: paginationOptsValidator},
+  handler: async (ctx, args) => {
+    const result = await listGoalTasksForOwner(ctx, await requireTokenIdentifier(ctx), args.goalClientId, args.paginationOpts);
+    return {page: result.tasks, isDone: result.isDone, continueCursor: result.continueCursor};
   },
 });
 
