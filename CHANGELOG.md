@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.2](https://github.com/Snehit70/pravah/compare/web-v1.22.1...web-v1.22.2) (2026-10-08)
+
+
+### Performance Improvements
+
+* reduce database reads and reconcile actual I/O monitoring ([#275](https://github.com/Snehit70/pravah/issues/275)) ([5f35f22](https://github.com/Snehit70/pravah/commit/5f35f222d2d30df51277e84a8739d5c39018ff7c))
+
 ## [1.22.1](https://github.com/Snehit70/pravah/compare/web-v1.22.0...web-v1.22.1) (2026-10-06)
 
 
