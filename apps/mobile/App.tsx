@@ -18,7 +18,7 @@ import {
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import Animated, { Easing, FadeIn, withTiming } from "react-native-reanimated";
-import { useAction, useConvex, useMutation, useQuery } from "convex/react";
+import { useAction, useConvex, useMutation, useQuery, usePaginatedQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { authStorageReady } from "./src/lib/auth-client";
@@ -31,7 +31,7 @@ import {
 } from "@expo-google-fonts/geist";
 import { GeistMono_500Medium } from "@expo-google-fonts/geist-mono";
 import { ConvexClientProvider } from "./src/lib/convex";
-import { isIsoDate } from "./src/lib/dates";
+import { isIsoDate, toIsoDate } from "./src/lib/dates";
 import { imageTransferTrace } from "./src/lib/taskImageUploadDiagnostics";
 import { classifyError, createActionId, mobileLogger } from "./src/lib/logger";
 import {
@@ -287,6 +287,23 @@ function MobileApp() {
 
   // ── Data ────────────────────────────────────────────────────────────
 
+  const [showLaterDates, setShowLaterDates] = useState(false);
+  const [selectedGoalForTasks, setSelectedGoalForTasks] = useState<string | null>(null);
+  const progressSummary = useQuery(api.goalProgress.list, session ? {} : "skip");
+  const prepareProgress = useMutation(api.goalProgress.prepare);
+  const progressReady = progressSummary?.ready;
+  useEffect(() => {
+    if (session && progressReady === false) void prepareProgress({}).catch(error =>
+      mobileLogger.warn("goal_progress_prepare_failed", {errorType: classifyError(error)}));
+  }, [session, progressReady, prepareProgress]);
+  const goalDetails = usePaginatedQuery(api.goals.listTasks,
+    session && activeTab === "goals" && selectedGoalForTasks ? {goalClientId: selectedGoalForTasks} : "skip",
+    {initialNumItems: 50});
+  const initialTimelineEnd = new Date();
+  initialTimelineEnd.setDate(initialTimelineEnd.getDate() + 14);
+  const boundedTimelineEnd = !showLaterDates && !isKairoActive && activeTab !== "goals" && activeTab !== "insights"
+    ? toIsoDate(initialTimelineEnd) : undefined;
+
   const {
     today,
     tomorrow,
@@ -305,7 +322,8 @@ function MobileApp() {
     retainedImageIds,
   } = useTaskQueries({
     isAuthenticated: Boolean(session),
-    includeCompletedHistory: activeTab === "goals" || activeTab === "insights",
+    includeCompletedHistory: activeTab === "insights" || activeTab === "goals" && !progressSummary?.ready,
+    timelineEndDate: boundedTimelineEnd,
     includeCompletedToday: activeTab === "timeline",
     includeImages:
       activeTab === "inbox" ||
@@ -330,6 +348,7 @@ function MobileApp() {
       inboxTasks,
       scheduledTasks,
       completedTasks,
+      scheduledScopeEnd: boundedTimelineEnd,
     });
 
   const {
@@ -1544,6 +1563,7 @@ function MobileApp() {
               isRefreshing={isRefreshing}
               tabBarHeight={tabBarHeight}
               onRefresh={handleRefresh}
+              onLoadLater={boundedTimelineEnd && canUseWorkspaceActions ? () => setShowLaterDates(true) : undefined}
               overdueCount={isTimelineTriageReady ? displayOverdueCount : undefined}
               onOpenOverdue={canUseWorkspaceActions && isTimelineTriageReady ? openOverdue : undefined}
               onTriageOverdue={
@@ -1572,6 +1592,12 @@ function MobileApp() {
             <GoalsScreen
               tabBarHeight={tabBarHeight}
               tasks={workspaceTaskCorpus}
+              progressSummary={progressSummary?.ready ? progressSummary.progress : undefined}
+              selectedGoalTasks={selectedGoalForTasks ? goalDetails.results.map(task => ({...task,
+                imageCollection: imageCollections.get(String(task._id))})) : undefined}
+              onSelectedGoalChange={setSelectedGoalForTasks}
+              onLoadMoreGoalTasks={goalDetails.status === "CanLoadMore" ? () => goalDetails.loadMore(50) : undefined}
+              isGoalDetailLoading={goalDetails.status === "LoadingFirstPage" || goalDetails.status === "LoadingMore"}
               isTaskDataLoading={isGoalsTaskDataLoading}
               onCreateGoal={
                 canUseWorkspaceActions

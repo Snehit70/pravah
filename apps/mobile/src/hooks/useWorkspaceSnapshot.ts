@@ -5,6 +5,7 @@ import { classifyError, mobileLogger } from "../lib/logger";
 import {
   hydrateWorkspaceSnapshot,
   prepareWorkspaceSnapshotForPersist,
+  retainCachedLaterTasks,
   type WorkspaceSnapshot,
 } from "../lib/workspace-snapshot";
 
@@ -16,6 +17,7 @@ type UseWorkspaceSnapshotOptions = {
   inboxTasks: MobileTask[];
   scheduledTasks: MobileTask[];
   completedTasks: MobileTask[];
+  scheduledScopeEnd?: string;
 };
 
 export function useWorkspaceSnapshot({
@@ -24,6 +26,7 @@ export function useWorkspaceSnapshot({
   inboxTasks,
   scheduledTasks,
   completedTasks,
+  scheduledScopeEnd,
 }: UseWorkspaceSnapshotOptions) {
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
@@ -32,6 +35,7 @@ export function useWorkspaceSnapshot({
   // undoes its result if the token changed in the meantime, so an in-flight
   // read/write cannot resurrect a snapshot that sign-out asked to drop.
   const clearTokenRef = useRef(0);
+  const latestSnapshotRef = useRef<WorkspaceSnapshot | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,6 +57,7 @@ export function useWorkspaceSnapshot({
         }
         const next = hydrateWorkspaceSnapshot(raw);
         if (next) {
+          latestSnapshotRef.current = next;
           setSnapshot(next);
           mobileLogger.info("workspace_snapshot_hydrated", {
             inboxCount: next.inboxTasks.length,
@@ -76,14 +81,16 @@ export function useWorkspaceSnapshot({
   }, [canHydrate]);
 
   useEffect(() => {
-    if (!shouldPersist) return;
+    if (!shouldPersist || !isHydrated) return;
     const next = prepareWorkspaceSnapshotForPersist({
       capturedAt: Date.now(),
       inboxTasks,
-      scheduledTasks,
+      scheduledTasks: retainCachedLaterTasks(latestSnapshotRef.current,
+        {inboxTasks, scheduledTasks, completedTasks}, scheduledScopeEnd),
       completedTasks,
     });
     const tokenAtStart = clearTokenRef.current;
+    latestSnapshotRef.current = next;
     void retryQueueStorage
       .setItem(WORKSPACE_SNAPSHOT_STORAGE_KEY, JSON.stringify(next))
       .then(() => {
@@ -95,11 +102,12 @@ export function useWorkspaceSnapshot({
           errorType: classifyError(error),
         });
       });
-  }, [completedTasks, inboxTasks, scheduledTasks, shouldPersist]);
+  }, [completedTasks, inboxTasks, scheduledTasks, shouldPersist, scheduledScopeEnd, isHydrated]);
 
   const clearSnapshot = useCallback(async () => {
     clearTokenRef.current += 1;
     setSnapshot(null);
+    latestSnapshotRef.current = null;
     try {
       await retryQueueStorage.removeItem(WORKSPACE_SNAPSHOT_STORAGE_KEY);
     } catch (error) {

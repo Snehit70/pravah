@@ -42,7 +42,8 @@ describe("CLI bounded task reads", () => {
     await executeLiveCommand(cli,"overdue",{positionals:["overdue"],options:{}});
     expect(spy).toHaveBeenCalledWith(expect.objectContaining({status:"timeline",before:expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/)}));
     await executeLiveCommand(cli,"tasks list",{positionals:["tasks","list"],options:{}});
-    expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({status:"active"}));
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({status:"active", before: expect.any(String)}));
+    expect(spy).toHaveBeenLastCalledWith({status:"inbox"});
   });
   it("reads exact IDs directly and scopes goal links to that task", async () => {
     const cli = client(); const id = "a".repeat(32);
@@ -61,6 +62,25 @@ describe("CLI bounded task reads", () => {
 });
 
 describe("CLI selected goal reads", () => {
+  it("resolves exact titles without collection reads and preserves ambiguity", async () => {
+    const fetch = responses([{_id: "a", title: "Ship"}, {_id: "b", title: "Ship"}]);
+    const cli = client();
+    await expect(executeLiveCommand(cli, "tasks show", {positionals: ["tasks", "show", "Ship"], options: {}})).rejects.toMatchObject({code: "ambiguous_target"});
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(new URL(String(fetch.mock.calls[0][0])).pathname).toBe("/tasks/resolve");
+  });
+  it("rejects malformed title responses without falling back to a full read", async () => {
+    const fetch = responses([{_id: "a", title: "Other"}]);
+    await expect(client().resolveTaskTitle!("Ship")).rejects.toThrow("Invalid task title resolution");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it("falls back only when an older backend lacks the title route", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(new Response("missing", {status: 404}))
+      .mockResolvedValueOnce(new Response(JSON.stringify({page: [{_id: "a", title: "Ship"}], isDone: true, continueCursor: "end"})));
+    vi.stubGlobal("fetch", fetch);
+    expect(await client().resolveTaskTitle!("Ship")).toEqual([{_id: "a", title: "Ship"}]);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
   it("reads only the resolved goal and preserves exact progress semantics", async () => {
     const cli = client();
     vi.spyOn(cli, "listGoals").mockResolvedValue([{id: "g1", text: "Ship"}, {id: "g2", text: "Other"}]);

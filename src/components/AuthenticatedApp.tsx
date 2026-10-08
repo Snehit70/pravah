@@ -68,7 +68,13 @@ export function AuthenticatedApp() {
 
   const boardTasks = useQuery(api.tasks.listBoardTasks, {});
   const today = getLocalDateString();
-  const wantsCompletedHistory = activePage === "insights" || activePage === "goals";
+  const goalProgress = useQuery(api.goalProgress.list, webGoalsLinkingEnabled ? {} : "skip");
+  const prepareGoalProgress = useMutation(api.goalProgress.prepare);
+  const goalProgressReady = goalProgress?.ready;
+  useEffect(() => {
+    if (goalProgressReady === false) void prepareGoalProgress({}).catch(showError);
+  }, [goalProgressReady, prepareGoalProgress, showError]);
+  const wantsCompletedHistory = activePage === "insights" || activePage === "goals" && !goalProgress?.ready;
   const completedTasks = useQuery(
     api.tasks.listTasks,
     wantsCompletedHistory ? { status: "completed" } : "skip"
@@ -165,8 +171,9 @@ export function AuthenticatedApp() {
   }, [goalLinks, goals, webGoalsLinkingEnabled]);
 
   const progressByGoalId = useMemo(() => {
+    if (goalProgress?.ready) return goalProgress.progress;
     if (!webGoalsLinkingEnabled || !goals || !goalLinks || !boardTasks) return {};
-    const taskById = new Map(boardTasks.map((task) => [String(task._id), task]));
+    const taskById = new Map(allTasksForStats.map((task) => [String(task._id), task]));
     const initial: Record<string, { total: number; done: number }> = {};
     for (const goal of goals) initial[goal.id] = { total: 0, done: 0 };
     for (const [taskId, goalId] of Object.entries(goalLinks)) {
@@ -178,7 +185,7 @@ export function AuthenticatedApp() {
       }
     }
     return initial;
-  }, [boardTasks, goalLinks, goals, webGoalsLinkingEnabled]);
+  }, [boardTasks, allTasksForStats, goalLinks, goals, webGoalsLinkingEnabled, goalProgress]);
 
   const linkedTasksByGoalId = useMemo(() => {
     if (!webGoalsLinkingEnabled || !goalLinks) return {};

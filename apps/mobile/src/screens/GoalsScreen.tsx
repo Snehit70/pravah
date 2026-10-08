@@ -157,6 +157,8 @@ type GoalDetailSheetProps = {
   onScheduleToDate?: (taskId: MobileTask["_id"], isoDate: string) => void;
   /** Mark a batch of linked tasks done; resolves true on success. */
   onMarkManyDone?: (taskIds: MobileTask["_id"][]) => Promise<boolean>;
+  onLoadMore?: () => void;
+  isLoadingMore?: boolean;
 };
 
 /**
@@ -177,6 +179,8 @@ function GoalDetailSheet({
   onCreateTaskForGoal,
   onScheduleToDate,
   onMarkManyDone,
+  onLoadMore,
+  isLoadingMore,
 }: GoalDetailSheetProps) {
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
@@ -518,9 +522,13 @@ function GoalDetailSheet({
                     ))}
                   </View>
                 ) : (
-                  <Text style={detailStyles.noTasksHint}>Completed tasks will collect here.</Text>
+                  <Text style={detailStyles.noTasksHint}>{onLoadMore ? "No completed tasks loaded yet." : "Completed tasks will collect here."}</Text>
                 )
               ) : null}
+              {isLoadingMore ? <Text style={detailStyles.noTasksHint}>Loading tasks...</Text> : null}
+              {onLoadMore ? <Pressable accessibilityRole="button" onPress={onLoadMore}>
+                <Text style={detailStyles.noTasksHint}>Load more tasks</Text>
+              </Pressable> : null}
             </ScrollView>
 
             {onCreateTaskForGoal && !selectMode ? (
@@ -637,6 +645,11 @@ type GoalsScreenProps = {
   tabBarHeight: number;
   tasks: MobileTask[];
   isTaskDataLoading?: boolean;
+  progressSummary?: Record<string, {total: number; done: number}>;
+  selectedGoalTasks?: MobileTask[];
+  onSelectedGoalChange?: (goalId: string | null) => void;
+  onLoadMoreGoalTasks?: () => void;
+  isGoalDetailLoading?: boolean;
   onCreateGoal?: () => void;
   onCreateTaskForGoal?: (goalId: string) => void;
   /** Open a linked task in the shared editor (edit / complete / delete). */
@@ -661,6 +674,11 @@ export function GoalsScreen({
   tabBarHeight,
   tasks,
   isTaskDataLoading = false,
+  progressSummary,
+  selectedGoalTasks,
+  onSelectedGoalChange,
+  onLoadMoreGoalTasks,
+  isGoalDetailLoading,
   onCreateGoal,
   onCreateTaskForGoal,
   onOpenTask,
@@ -681,6 +699,10 @@ export function GoalsScreen({
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
   const [renderGoalId, setRenderGoalId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  useEffect(() => {
+    onSelectedGoalChange?.(selectedGoalId);
+    return () => onSelectedGoalChange?.(null);
+  }, [selectedGoalId, onSelectedGoalChange]);
   const appliedFocusGoalIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -740,13 +762,13 @@ export function GoalsScreen({
     const out = new Map<string, GoalProgress>();
     for (const g of goals) {
       const list = tasksByGoal.get(g.id) ?? [];
-      const total = list.length;
-      const done = list.filter(isTaskCompleted).length;
+      const total = progressSummary ? progressSummary[g.id]?.total ?? 0 : list.length;
+      const done = progressSummary ? progressSummary[g.id]?.done ?? 0 : list.filter(isTaskCompleted).length;
       const ratio = total === 0 ? 0 : done / total;
       out.set(g.id, { total, done, ratio });
     }
     return out;
-  }, [goals, tasksByGoal]);
+  }, [goals, tasksByGoal, progressSummary]);
 
   // The settings sheet owns the delete confirmation (it knows the linked
   // count); by the time this runs the user has already agreed.
@@ -766,7 +788,7 @@ export function GoalsScreen({
   // carry its own confirmation. Same copy as GoalSettingsSheet's.
   const handleDeleteShortcut = useCallback(
     async (goal: GoalItem) => {
-      const linkedCount = tasksByGoal.get(goal.id)?.length ?? 0;
+      const linkedCount = progressSummary ? progressSummary[goal.id]?.total ?? 0 : tasksByGoal.get(goal.id)?.length ?? 0;
       const ok = await confirm({
         title: "Delete goal?",
         message:
@@ -780,7 +802,7 @@ export function GoalsScreen({
       deleteGoal(goal.id);
       haptic.success();
     },
-    [confirm, deleteGoal, tasksByGoal],
+    [confirm, deleteGoal, tasksByGoal, progressSummary],
   );
 
   const emptyBlock = (
@@ -824,7 +846,7 @@ export function GoalsScreen({
   const selectedProgress = selectedGoal
     ? (progressByGoal.get(selectedGoal.id) ?? { total: 0, done: 0, ratio: 0 })
     : { total: 0, done: 0, ratio: 0 };
-  const selectedLinked = selectedGoal ? (tasksByGoal.get(selectedGoal.id) ?? []) : [];
+  const selectedLinked = selectedGoal ? selectedGoalTasks ?? (tasksByGoal.get(selectedGoal.id) ?? []) : [];
 
   useEffect(() => {
     if (!focusGoalId) return;
@@ -992,11 +1014,13 @@ export function GoalsScreen({
         onCreateTaskForGoal={onCreateTaskForGoal}
         onScheduleToDate={onScheduleToDate}
         onMarkManyDone={onMarkManyDone}
+        onLoadMore={onLoadMoreGoalTasks}
+        isLoadingMore={isGoalDetailLoading}
       />
       <GoalSettingsSheet
         visible={settingsOpen}
         goal={selectedGoal}
-        linkedCount={selectedLinked.length}
+        linkedCount={selectedProgress.total}
         onClose={() => setSettingsOpen(false)}
         onSave={(fields) => {
           if (selectedGoal) updateGoal(selectedGoal.id, fields);

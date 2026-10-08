@@ -243,6 +243,14 @@ const openG1Sheet = () => {
 };
 
 describe("GoalsScreen card (variant D2)", () => {
+  it("uses exact summaries independently of the loaded task pages", () => {
+    render(<GoalsScreen tabBarHeight={0} tasks={[]} progressSummary={{g1: {total: 230, done: 83}}} />);
+    expect(screen.getByText("83 of 230 done")).toBeTruthy();
+  });
+  it("treats a ready summary with no contribution as zero rather than stale local tasks", () => {
+    render(<GoalsScreen tabBarHeight={0} tasks={tasks} progressSummary={{}} />);
+    expect(screen.queryByText("1 of 4 done")).toBeNull();
+  });
   it("searches goal titles and notes without changing their order or progress", () => {
     render(<GoalsScreen tabBarHeight={0} tasks={tasks} />);
     const search = screen.getByLabelText("Search goals");

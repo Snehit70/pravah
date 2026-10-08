@@ -16,9 +16,10 @@ afterEach(() => { process.env.HOME = originalHome; if (originalConfigHome === un
 afterEach(() => { rmSync(home, { recursive: true, force: true }); vi.restoreAllMocks(); });
 
 describe("Pravah CLI v2 live adapter", () => {
-  it("resolves a title target after reading the existing task collection", async () => {
+  it("resolves a title target without reading the task collection", async () => {
     const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
+      if (new URL(url).pathname === "/tasks/resolve") return { ok: true, json: async () => [{ _id: "task_1", title: "Ship v2" }] } as Response;
       const body = url.includes("/tasks/get?")
         ? {
             _id: "task_1",
@@ -46,14 +47,18 @@ describe("Pravah CLI v2 live adapter", () => {
   it("adds linked Goal context without requesting held review or sync integrations", async () => {
     const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
+      if (new URL(url).pathname === "/tasks/resolve") return { ok: true, json: async () => [{ _id: "task_1", title: "Ship v2" }] } as Response;
       const body = url.endsWith("/automation/credential")
         ? { label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }
         : [];
       return { ok: true, json: async () => new URL(url).pathname === "/tasks/page" ? { page: body, isDone: true, continueCursor: "end" } : body } as Response;
     });
     await executeCommand({ command: "agent context", json: true }, { positionals: ["agent", "context"], options: {} });
-    expect(fetch).toHaveBeenCalledTimes(3);
-    expect(fetch.mock.calls.map((call) => String(call[0]))).toEqual(expect.arrayContaining(["https://pravah.example.com/automation/credential", "https://pravah.example.com/tasks/page?status=active", "https://pravah.example.com/goals"]));
+    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(fetch.mock.calls.map((call) => new URL(String(call[0])).pathname)).toEqual(expect.arrayContaining(["/automation/credential", "/tasks/page", "/goals", "/tasks"]));
+    const taskPageUrl = new URL(String(fetch.mock.calls.find(call => String(call[0]).includes("/tasks/page"))![0]));
+    expect(taskPageUrl.searchParams.get("status")).toBe("active");
+    expect(taskPageUrl.searchParams.get("before")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(fetch.mock.calls.map((call) => String(call[0]).includes("review") || String(call[0]).includes("sync"))).not.toContain(true);
     expect(loadStoredCredential()).toMatchObject({ label: "Live credential", ownerTokenIdentifier: "live-user" });
   });
@@ -62,6 +67,7 @@ describe("Pravah CLI v2 live adapter", () => {
     saveStoredCredential({ secret: "pravah_test", label: "Stale credential", scopes: ["tasks:read"], ownerTokenIdentifier: "user", siteUrl: "https://pravah.example.com" });
     const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
+      if (new URL(url).pathname === "/tasks/resolve") return { ok: true, json: async () => [{ _id: "task_1", title: "Ship v2" }] } as Response;
       if (url.endsWith("/automation/credential")) return { ok: true, json: async () => ({ label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }) } as Response;
       if (new URL(url).pathname === "/tasks/page") return { ok: true, json: async () => ({ page: [{ _id: "task_1", title: "Ship v2" }], isDone: true, continueCursor: "end" }) } as Response;
       return { ok: true, json: async () => ({ operationId: "op_1", undoAvailable: true }) } as Response;
@@ -82,6 +88,7 @@ describe("Pravah CLI v2 live adapter", () => {
   it("applies goal, priority, and date filters before listing live tasks", async () => {
     const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
+      if (new URL(url).pathname === "/tasks/resolve") return { ok: true, json: async () => [{ _id: "task_1", title: "Ship v2" }] } as Response;
       if (url.endsWith("/automation/credential")) {
         return { ok: true, json: async () => ({ label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }) } as Response;
       }
@@ -122,6 +129,7 @@ describe("Pravah CLI v2 live adapter", () => {
 
   it("forwards all editable Task fields and turns remote write errors into a retryable error", async () => {
     const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (new URL(String(input)).pathname === "/tasks/resolve") return { ok: true, json: async () => [{ _id: "task_1", title: "Ship v2" }] } as Response;
       if (new URL(String(input)).pathname === "/tasks/page") return { ok: true, json: async () => ({ page: [{ _id: "task_1", title: "Ship v2" }], isDone: true, continueCursor: "end" }) } as Response;
       expect(JSON.parse(String(init?.body))).toMatchObject({ taskId: "task_1", title: "Ship better", tags: ["cli"], estimatedMinutes: 45 });
       return { ok: true, json: async () => ({ operationId: "op_1", undoAvailable: true, undoExpiresAt: "2026-08-01T00:00:00.000Z" }) } as Response;
@@ -135,6 +143,7 @@ describe("Pravah CLI v2 live adapter", () => {
     const posts: Array<{ url: string; body: Record<string, unknown> }> = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input);
+      if (new URL(url).pathname === "/tasks/resolve") return { ok: true, json: async () => [{ _id: "task_1", title: "Ship v2" }] } as Response;
       if (url.endsWith("/automation/credential")) return { ok: true, json: async () => ({ label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }) } as Response;
       if (url.endsWith("/goals")) return { ok: true, json: async () => [{ id: "goal_1", text: "MLT" }] } as Response;
       if (init?.method === "POST") {
@@ -157,6 +166,7 @@ describe("Pravah CLI v2 live adapter", () => {
     const posts: Array<{ url: string; body: Record<string, unknown> }> = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input);
+      if (new URL(url).pathname === "/tasks/resolve") return { ok: true, json: async () => [{ _id: "task_1", title: "Ship v2" }] } as Response;
       if (url.endsWith("/automation/credential")) return { ok: true, json: async () => ({ label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }) } as Response;
       if (new URL(url).pathname === "/tasks/page") return { ok: true, json: async () => ({ page: [{ _id: "task_1", title: "Ship v2" }], isDone: true, continueCursor: "end" }) } as Response;
       if (url.endsWith("/goals")) return { ok: true, json: async () => [{ id: "goal_1", text: "MLT" }] } as Response;
@@ -180,6 +190,7 @@ describe("Pravah CLI v2 live adapter", () => {
     const today = getLocalDateString();
     const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
+      if (new URL(url).pathname === "/tasks/resolve") return { ok: true, json: async () => [{ _id: "task_1", title: "Ship v2" }] } as Response;
       if (url.endsWith("/automation/credential")) {
         return { ok: true, json: async () => ({ label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }) } as Response;
       }
@@ -198,6 +209,7 @@ describe("Pravah CLI v2 live adapter", () => {
     const today = getLocalDateString();
     const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
+      if (new URL(url).pathname === "/tasks/resolve") return { ok: true, json: async () => [{ _id: "task_1", title: "Ship v2" }] } as Response;
       const body = url.endsWith("/automation/credential")
         ? { label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }
         : url.includes(`/tasks?status=scheduled&date=${today}`)
@@ -229,6 +241,7 @@ describe("Pravah CLI v2 live adapter", () => {
       });
       const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
         const url = String(input);
+      if (new URL(url).pathname === "/tasks/resolve") return { ok: true, json: async () => [{ _id: "task_1", title: "Ship v2" }] } as Response;
         if (url.endsWith("/automation/credential")) return { ok: true, json: async () => ({ label: "Live credential", scopes: ["tasks:read", "tasks:write"], ownerTokenIdentifier: "live-user" }) } as Response;
         if (new URL(url).pathname === "/tasks/page") return { ok: true, json: async () => ({ page: [{ _id: "task_1", title: "Ship v2" }], isDone: true, continueCursor: "end" }) } as Response;
         if (url.endsWith("/goals")) return { ok: true, json: async () => [{ id: "goal_1", text: "MLT" }] } as Response;

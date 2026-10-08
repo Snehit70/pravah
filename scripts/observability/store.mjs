@@ -14,7 +14,7 @@ const callers = new Set(['SyncWorker', 'HttpEndpoint', 'Action', 'Cron', 'Schedu
 export function executionMetric(event, deployment) {
   const usage = event?.usageStats;
   if (event?.kind !== 'Completion') return null;
-  const fields = ['databaseIoReadBytes', 'databaseIoWriteBytes', 'databaseReadDocuments', 'databaseWriteDocuments', 'databaseWriteIndexRows'];
+  const fields = ['databaseIoReadBytes', 'databaseIoWriteBytes'];
   if (!usage || fields.some((key) => !Number.isFinite(usage[key]) || usage[key] < 0) ||
     typeof event.executionId !== 'string' || typeof event.identifier !== 'string' ||
     !Number.isFinite(event.timestamp) || !Number.isFinite(event.executionTime)) return null;
@@ -24,10 +24,20 @@ export function executionMetric(event, deployment) {
     kind: event.udfType ?? 'Unknown', cached: event.cachedResult === true ? 1 : 0,
     success: event.success === false || event.error != null ? 0 : 1, duration: Math.max(0, event.executionTime * 1000),
     read: usage.databaseIoReadBytes, write: usage.databaseIoWriteBytes,
-    readDocs: usage.databaseReadDocuments, writeDocs: usage.databaseWriteDocuments,
-    indexRows: usage.databaseWriteIndexRows,
+    readDocs: optionalCount(usage.databaseReadDocuments), writeDocs: optionalCount(usage.databaseWriteDocuments),
+    indexRows: optionalCount(usage.databaseWriteIndexRows),
     requestId: correlationId(event.requestId), parentExecutionId: correlationId(event.parentExecutionId),
     caller: callers.has(event.caller) ? event.caller : null };
+}
+
+const optionalCount = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
+export function parseExecution(event, deployment) {
+  if (event?.kind !== 'Completion') return {outcome: 'non_completion', metric: null};
+  const metric = executionMetric(event, deployment);
+  if (metric) return {outcome: 'valid', metric};
+  const usage = event?.usageStats;
+  return {metric: null, outcome: !usage || ['databaseIoReadBytes', 'databaseIoWriteBytes'].some(key => usage[key] == null)
+    ? 'missing_byte_metrics' : 'invalid_metric'};
 }
 
 export function openStore(path = defaultDatabasePath()) {
@@ -48,32 +58,65 @@ export function openStore(path = defaultDatabasePath()) {
     CREATE TABLE IF NOT EXISTS rejections (deployment TEXT, reason TEXT, count INTEGER, PRIMARY KEY(deployment,reason));
     CREATE TABLE IF NOT EXISTS gaps (deployment TEXT, started INTEGER, ended INTEGER, reason TEXT);
     CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY, deployment TEXT,
-      started INTEGER, heartbeat INTEGER, ended INTEGER, rejected INTEGER DEFAULT 0);`);
+      started INTEGER, heartbeat INTEGER, ended INTEGER, rejected INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS captureOutcomes (deployment TEXT,timestamp INTEGER,outcome TEXT,count INTEGER,
+      PRIMARY KEY(deployment,timestamp,outcome));
+    CREATE TABLE IF NOT EXISTS releaseMarkers (deployment TEXT,timestamp INTEGER,sha TEXT,label TEXT,
+      PRIMARY KEY(deployment,timestamp,sha));
+    CREATE TABLE IF NOT EXISTS usageSnapshots (deployment TEXT,timestamp INTEGER,window TEXT,seedStatus TEXT,
+      fromTime INTEGER,toTime INTEGER,providerBytes INTEGER,localBytes INTEGER,rawComplete INTEGER,
+      PRIMARY KEY(deployment,timestamp,window));`);
   // Additive migration preserves existing capture and replay deduplication.
   const columns = new Set(db.query('PRAGMA table_info(executions)').all().map(column => column.name));
   for (const column of ['requestId', 'parentExecutionId', 'caller']) {
     if (!columns.has(column)) db.exec(`ALTER TABLE executions ADD COLUMN ${column} TEXT`);
   }
+  const hourlyColumns = new Set(db.query('PRAGMA table_info(hourly)').all().map(column => column.name));
+  for (const column of ['unknownReadDocs', 'unknownWriteDocs', 'unknownIndexRows']) {
+    if (!hourlyColumns.has(column)) db.exec(`ALTER TABLE hourly ADD COLUMN ${column} INTEGER NOT NULL DEFAULT 0`);
+  }
   const insert = db.prepare(`INSERT OR IGNORE INTO executions
     (deployment,id,timestamp,function,component,kind,cached,success,duration,read,write,readDocs,writeDocs,indexRows,requestId,parentExecutionId,caller)
     VALUES ($deployment,$id,$timestamp,$function,$component,$kind,$cached,$success,$duration,$read,$write,$readDocs,$writeDocs,$indexRows,$requestId,$parentExecutionId,$caller)`);
-  const rollup = db.prepare(`INSERT INTO hourly VALUES ($deployment,$hour,$function,$component,$kind,1,$cached,$failed,$read,$write,$readDocs,$writeDocs,$indexRows)
+  const rollup = db.prepare(`INSERT INTO hourly
+    (deployment,hour,function,component,kind,calls,hits,failures,read,write,readDocs,writeDocs,indexRows,unknownReadDocs,unknownWriteDocs,unknownIndexRows)
+    VALUES ($deployment,$hour,$function,$component,$kind,1,$cached,$failed,$read,$write,$readDocs,$writeDocs,$indexRows,$unknownReadDocs,$unknownWriteDocs,$unknownIndexRows)
     ON CONFLICT(deployment,hour,function,component,kind) DO UPDATE SET
     calls=calls+1,hits=hits+excluded.hits,failures=failures+excluded.failures,
-    read=read+excluded.read,write=write+excluded.write,readDocs=readDocs+excluded.readDocs,
-    writeDocs=writeDocs+excluded.writeDocs,indexRows=indexRows+excluded.indexRows`);
+    read=read+excluded.read,write=write+excluded.write,readDocs=COALESCE(readDocs,0)+COALESCE(excluded.readDocs,0),
+    writeDocs=COALESCE(writeDocs,0)+COALESCE(excluded.writeDocs,0),indexRows=COALESCE(indexRows,0)+COALESCE(excluded.indexRows,0),
+    unknownReadDocs=unknownReadDocs+excluded.unknownReadDocs,unknownWriteDocs=unknownWriteDocs+excluded.unknownWriteDocs,
+    unknownIndexRows=unknownIndexRows+excluded.unknownIndexRows`);
+  const outcomeInsert = db.prepare(`INSERT INTO captureOutcomes VALUES(?,?,?,?)
+    ON CONFLICT(deployment,timestamp,outcome) DO UPDATE SET count=count+excluded.count`);
+  const outcomes = new Set(['accepted','duplicate','expired','future_timestamp','invalid_metric','invalid_json',
+    'missing_byte_metrics','non_completion','sqlite_write_failure','reconciliation_failed','reconciliation_success']);
+  function recordOutcome(deployment, outcome, now = Date.now(), count = 1) {
+    if (!outcomes.has(outcome) || !Number.isSafeInteger(count) || count < 1) throw new Error('Invalid capture outcome');
+    outcomeInsert.run(deployment, now, outcome, count);
+  }
   const record = db.transaction((metric, now) => {
     // Replays older than raw retention cannot be reliably deduplicated.
-    if (!metric || metric.timestamp < now - 14 * DAY || metric.timestamp > now + 60000) return false;
+    if (!metric) return 'invalid_metric';
+    const rejected = metric.timestamp < now - 14 * DAY ? 'expired' : metric.timestamp > now + 60000 ? 'future_timestamp' : null;
+    if (rejected) { recordOutcome(metric.deployment, rejected, now); return rejected; }
     const params = Object.fromEntries(Object.entries(metric).map(([k,v]) => [`$${k}`,v]));
     const changed = insert.run(params).changes;
-    if (!changed) return false;
+    if (!changed) { recordOutcome(metric.deployment, 'duplicate', now); return 'duplicate'; }
     const { $id: _id, $timestamp: _timestamp, $success: _success, $duration: _duration,
       $requestId: _requestId, $parentExecutionId: _parent, $caller: _caller, ...totals } = params;
-    rollup.run({ ...totals, $hour: Math.floor(metric.timestamp / 3600000) * 3600000, $failed: 1 - metric.success });
-    return true;
+    rollup.run({ ...totals, $hour: Math.floor(metric.timestamp / 3600000) * 3600000, $failed: 1 - metric.success,
+      $unknownReadDocs: metric.readDocs === null ? 1 : 0, $unknownWriteDocs: metric.writeDocs === null ? 1 : 0,
+      $unknownIndexRows: metric.indexRows === null ? 1 : 0 });
+    recordOutcome(metric.deployment, 'accepted', now);
+    return 'accepted';
   });
-  return { db, record: (metric, now = Date.now()) => record(metric, now),
-    prune(now = Date.now()) { db.prepare('DELETE FROM executions WHERE timestamp < ?').run(now - 14*DAY); db.prepare('DELETE FROM hourly WHERE hour < ?').run(now - 365*DAY); db.prepare('DELETE FROM sessions WHERE heartbeat < ?').run(now - 365*DAY); db.prepare('DELETE FROM gaps WHERE ended < ?').run(now - 365*DAY); },
+  return { db, record: (metric, now = Date.now()) => record(metric, now) === 'accepted',
+    recordDetailed: (metric, now = Date.now()) => record(metric, now), recordOutcome,
+    markRelease(deployment, sha, label, now = Date.now()) {
+      if (!/^[a-f0-9]{40}$/.test(sha) || typeof label !== 'string' || !/^[a-zA-Z0-9 ._-]{1,100}$/.test(label)) throw new Error('Invalid release marker');
+      db.query('INSERT OR IGNORE INTO releaseMarkers VALUES(?,?,?,?)').run(deployment,now,sha,label);
+    },
+    prune(now = Date.now()) { db.prepare('DELETE FROM executions WHERE timestamp < ?').run(now - 14*DAY); db.prepare('DELETE FROM captureOutcomes WHERE timestamp < ?').run(now - 14*DAY); db.prepare('DELETE FROM hourly WHERE hour < ?').run(now - 365*DAY); db.prepare('DELETE FROM sessions WHERE heartbeat < ?').run(now - 365*DAY); db.prepare('DELETE FROM gaps WHERE ended < ?').run(now - 365*DAY); db.prepare('DELETE FROM usageSnapshots WHERE timestamp < ?').run(now - 365*DAY); db.prepare('DELETE FROM releaseMarkers WHERE timestamp < ?').run(now - 365*DAY); },
     close() { db.close(); } };
 }

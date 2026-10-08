@@ -1,7 +1,8 @@
 import { listGoalLinksForOwner, listGoalTasksForOwner } from "./goalLinkQueries";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
-import { internalMutation, internalQuery } from "./_generated/server";
+import { internalQuery } from "./_generated/server";
+import { internalMutation } from "./writeServer";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import {
@@ -191,6 +192,16 @@ export const listTasksPage = internalQuery({
       { ...args, status: status === "timeline" ? "scheduled" : status }, paginationOpts);
     const summaries = await getTaskImageSummariesForOwner(ctx, ownerTokenIdentifier, result.page.map((t) => t._id));
     return { ...result, page: result.page.map((t) => ({ ...t, imageSummary: summaries.get(t._id) })) };
+  },
+});
+
+export const resolveTaskTitle = internalQuery({
+  args: {ownerTokenIdentifier: v.string(), title: v.string()},
+  handler: async (ctx, {ownerTokenIdentifier, title}) => {
+    const matches = await ctx.db.query("tasks").withIndex("by_owner_title", q =>
+      q.eq("ownerTokenIdentifier", ownerTokenIdentifier).eq("title", title))
+      .filter(q => q.and(q.eq(q.field("cancelledAt"), undefined), q.neq(q.field("status"), "cancelled"))).take(2);
+    return matches.map(toCanonicalTaskShape);
   },
 });
 

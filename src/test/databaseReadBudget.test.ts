@@ -28,14 +28,14 @@ function database(history: number) {
     db: { query: () => {
       let selected = rows;
       const query = { withIndex: (_name: string, range: (q: unknown) => unknown) => {
-        const q = Object.fromEntries(["eq", "gte", "lte", "lt"].map((op) => [op,
+        const q = Object.fromEntries(["eq", "gte", "lte", "lt", "gt"].map((op) => [op,
           (field: string, value: unknown) => {
             selected = selected.filter((r) => {
               const actual = (r as Record<string, unknown>)[field];
               if (op === "eq") return actual === value;
               if (actual === undefined) return false;
               const a = actual as string; const b = value as string;
-              return op === "gte" ? a >= b : op === "lte" ? a <= b : a < b;
+              return op === "gte" ? a >= b : op === "lte" ? a <= b : op === "gt" ? a > b : a < b;
             });
             return q;
           }]));
@@ -85,6 +85,27 @@ describe("active query read budgets", () => {
 });
 
 describe("bounded history pagination", () => {
+  it("bounds dates before reading pages and excludes unrelated inbox/future tasks", async () => {
+    const d = database(1000);
+    for (let i = 0; i < 1000; i++) d.add({title: `unrelated-${i}`});
+    d.add({deadline: "2099-01-01"});
+    let cursor: string | null = null;
+    const ids: string[] = [];
+    for (let page = 0; page < 10; page++) {
+      const result = await listTasksPageForOwner(d.ctx, "owner", {status: "active", after: "2026-10-04", before: "2026-10-06"}, {numItems: 1, cursor});
+      ids.push(...result.page.map(task => String(task._id)));
+      if (result.isDone) break;
+      cursor = result.continueCursor;
+    }
+    expect(ids.sort()).toEqual(["legacy", "today"]);
+    expect(d.reads()).toBe(2);
+  });
+  it("legacy timeline lookup does not read unrelated inbox rows", async () => {
+    const d = database(1000);
+    for (let i = 0; i < 1000; i++) d.add({title: `inbox-${i}`});
+    expect((await getTimelineForOwner(d.ctx, "owner", {endDate: "2026-10-05"}))["2026-10-05"]).toHaveLength(2);
+    expect(d.reads()).toBe(2);
+  });
   it("reads completed rows and legacy completions without scanning cancelled/active tasks", async () => {
     const d=database(1000); let cursor: string | null=null; const ids: string[]=[];
     for(let page=0;page<30;page++) {

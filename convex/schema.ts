@@ -88,6 +88,16 @@ export default defineSchema({
     .index("by_owner", ["ownerTokenIdentifier"])
     .index("by_owner_task", ["ownerTokenIdentifier", "taskId"])
     .index("by_owner_goal", ["ownerTokenIdentifier", "goalClientId"]),
+  goalProgress: defineTable({
+    ownerTokenIdentifier: v.string(), goalClientId: v.string(), total: v.number(), done: v.number(),
+  }).index("by_owner", ["ownerTokenIdentifier"])
+    .index("by_owner_goal", ["ownerTokenIdentifier", "goalClientId"]),
+  goalProgressContributions: defineTable({
+    ownerTokenIdentifier: v.string(), taskId: v.string(), goalClientId: v.string(), done: v.boolean(),
+  }).index("by_owner_task", ["ownerTokenIdentifier", "taskId"]),
+  goalProgressBackfills: defineTable({
+    ownerTokenIdentifier: v.string(), ready: v.boolean(), cursor: v.union(v.string(), v.null()),
+  }).index("by_owner", ["ownerTokenIdentifier"]),
   overdueReflowOperations: defineTable({
     ownerTokenIdentifier: v.string(),
     operationId: v.string(),
@@ -275,6 +285,7 @@ export default defineSchema({
   })
     .index("by_owner", ["ownerTokenIdentifier"])
     .index("by_cancelled_at", ["cancelledAt"])
+    .index("by_owner_title", ["ownerTokenIdentifier", "title"])
     .index("by_status", ["status"])
     .index("by_owner_status", ["ownerTokenIdentifier", "status"])
     .index("by_owner_status_date_position", ["ownerTokenIdentifier", "status", "scheduledDate", "position"])
@@ -282,6 +293,9 @@ export default defineSchema({
     .index("by_owner_deadline_position", ["ownerTokenIdentifier", "deadline", "position"])
     // Existing timestamps keep this range current across complete/reopen/undo/import.
     .index("by_owner_active_deadline", ["ownerTokenIdentifier", "completedAt", "cancelledAt", "deadline", "position"])
+    .index("by_owner_active_legacy_date", ["ownerTokenIdentifier", "completedAt", "cancelledAt", "deadline", "scheduledDate"])
+    .index("by_owner_legacy_completed", ["ownerTokenIdentifier", "status", "completedAt"])
+    .index("by_owner_legacy_cancelled", ["ownerTokenIdentifier", "status", "cancelledAt"])
     .index("by_owner_completed_at", ["ownerTokenIdentifier", "completedAt"])
     .index("by_owner_cancelled_at", ["ownerTokenIdentifier", "cancelledAt"])
     .index("by_owner_position", ["ownerTokenIdentifier", "position"]),
