@@ -127,7 +127,7 @@ jobs:
         run: bun run test:run
 
       - name: Test actual-byte metrics collector
-        run: bun test scripts/observability/store.test.mjs
+        run: bun test scripts/observability
 
   test-mobile:
     name: Test mobile
