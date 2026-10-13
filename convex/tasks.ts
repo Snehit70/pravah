@@ -492,10 +492,7 @@ export async function listTasksPageForOwner(
   }).map(toCanonicalTaskShape) };
 }
 
-export const listBoardTasks = query({
-  args: {},
-  handler: async (ctx) => {
-    const tokenIdentifier = await requireTokenIdentifier(ctx);
+export async function listBoardTasksForOwner(ctx: TaskCtx, tokenIdentifier: string) {
     const [inboxCandidates, deadlineTasks] = await Promise.all([
       listActiveTasksByDeadline(ctx, tokenIdentifier, { inbox: true }),
       listActiveTasksByDeadline(ctx, tokenIdentifier),
@@ -510,8 +507,9 @@ export const listBoardTasks = query({
     ])
       .filter((task) => isInboxTask(task) || isTimelineTask(task))
       .map(toCanonicalTaskShape);
-  },
-});
+}
+export const listBoardTasks = query({args: {}, handler: async ctx =>
+  listBoardTasksForOwner(ctx, await requireTokenIdentifier(ctx))});
 
 export const listTodayCompletedTasks = query({
   args: {
@@ -520,6 +518,11 @@ export const listTodayCompletedTasks = query({
   },
   handler: async (ctx, { dayStartMs, dayEndMs }) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
+    return listTodayCompletedTasksForOwner(ctx, tokenIdentifier, dayStartMs, dayEndMs);
+  },
+});
+
+export async function listTodayCompletedTasksForOwner(ctx: TaskCtx, tokenIdentifier: string, dayStartMs: number, dayEndMs: number) {
     const [completedTasks, legacyCompletedTasks] = await Promise.all([
       listTasksByCompletedAtRange(ctx, tokenIdentifier, {
         startMs: dayStartMs,
@@ -544,8 +547,7 @@ export const listTodayCompletedTasks = query({
         return completedAt >= dayStartMs && completedAt < dayEndMs;
       })
       .map(toCanonicalTaskShape);
-  },
-});
+}
 
 export const addTask = mutation({
   args: {

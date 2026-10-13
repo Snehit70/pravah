@@ -37,6 +37,9 @@ vi.mock("../../convex/_generated/api", () => ({
     betterAuth: "betterAuth",
   },
   internal: {
+    watchProjection: {
+      prepareForOwner: "watchProjection.prepareForOwner",
+    },
     automationTools: {
       listTasks: "automationTools.listTasks",
       listTasksPage: "automationTools.listTasksPage",
@@ -1232,6 +1235,10 @@ describe("http route handlers", () => {
         convexUrl: "https://combative-zebra-261.eu-west-1.convex.cloud",
         siteUrl: SITE_URL,
         label: "Laptop",
+        watchReadModel: 1,
+      });
+      expect(ctx.runMutation).toHaveBeenCalledWith(internal.watchProjection.prepareForOwner, {
+        owner: `${SITE_URL}|user_abc123`,
       });
       // The bearer secret must never be echoed back to the client.
       expect(JSON.stringify(body)).not.toContain("pravah_cred_secret");

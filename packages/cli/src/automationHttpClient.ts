@@ -17,6 +17,7 @@ interface CallConvexApiOptions {
   bearerToken?: string;
   idempotencyKey?: string;
   fetchImpl?: typeof fetch;
+  signal?: AbortSignal;
 }
 
 export class ConvexHttpError extends Error {
@@ -38,6 +39,7 @@ export async function callConvexApi({
   bearerToken,
   idempotencyKey,
   fetchImpl = fetch,
+  signal,
 }: CallConvexApiOptions) {
   if (!convexUrl) {
     throw new Error("CONVEX_URL is not configured");
@@ -58,6 +60,7 @@ export async function callConvexApi({
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
+    ...(signal ? { signal } : {}),
   });
 
   if (!response.ok) {

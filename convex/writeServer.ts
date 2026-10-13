@@ -3,12 +3,18 @@ import type { DataModel } from "./_generated/dataModel";
 import { Triggers } from "convex-helpers/server/triggers";
 import { customCtx, customMutation } from "convex-helpers/server/customFunctions";
 import { syncGoalProgress } from "./goalProgressModel";
+import { affectsWatch, syncWatchTask } from "./watchProjectionModel";
 
 const triggers = new Triggers<DataModel>();
 triggers.register("tasks", async (ctx, change) => {
   // Text, ordering, image revisions and rescheduling do not affect progress.
   const previous = change.oldDoc;
   const next = change.newDoc;
+  if (affectsWatch(previous, next)) {
+    for (const owner of new Set([previous?.ownerTokenIdentifier, next?.ownerTokenIdentifier])) {
+      if (owner) await syncWatchTask(ctx, owner, String(change.id), next?.ownerTokenIdentifier === owner ? next : null);
+    }
+  }
   if (previous && next && previous.ownerTokenIdentifier === next.ownerTokenIdentifier &&
       previous.completedAt === next.completedAt && previous.cancelledAt === next.cancelledAt &&
       previous.status === next.status) return;
@@ -19,7 +25,11 @@ triggers.register("tasks", async (ctx, change) => {
 triggers.register("goalLinks", async (ctx, change) => {
   const keys = new Map([change.oldDoc, change.newDoc].filter(doc => doc !== null)
     .map(doc => [`${doc.ownerTokenIdentifier}\0${doc.taskId}`, doc]));
-  for (const doc of keys.values()) await syncGoalProgress(ctx, doc.ownerTokenIdentifier, doc.taskId);
+  for (const doc of keys.values()) {
+    await syncGoalProgress(ctx, doc.ownerTokenIdentifier, doc.taskId);
+    const id = ctx.db.normalizeId("tasks", doc.taskId);
+    await syncWatchTask(ctx, doc.ownerTokenIdentifier, doc.taskId, id ? await ctx.db.get(id) : null);
+  }
 });
 export const mutation = customMutation(rawMutation, customCtx(triggers.wrapDB));
 export const internalMutation = customMutation(rawInternalMutation, customCtx(triggers.wrapDB));

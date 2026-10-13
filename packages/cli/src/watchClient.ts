@@ -4,6 +4,7 @@ import { makeFunctionReference } from "convex/server";
 import { callConvexApi, ConvexHttpError } from "./automationHttpClient";
 import { getLocalDayBounds, msUntilNextLocalMidnight } from "./localDay";
 import { buildSnapshot, type WatchSnapshot } from "./watchSnapshot";
+import { createWatchAuth } from "./watchAuth";
 
 /**
  * The public queries `pravah watch` subscribes to. `makeFunctionReference` is
@@ -21,6 +22,9 @@ const listTodayCompletedTasks = makeFunctionReference<
   unknown
 >("tasks:listTodayCompletedTasks");
 const listGoals = makeFunctionReference<"query", NoArgs, unknown>("goals:list");
+const listWatchSources = makeFunctionReference<
+  "query", { dayStartMs: number; dayEndMs: number }, unknown
+>("watchProjection:sources");
 const listGoalLinks = makeFunctionReference<"query", { taskIds: string[] }, unknown>(
   "goals:listLinks"
 );
@@ -31,10 +35,8 @@ export interface OwnerToken {
   convexUrl: string;
   siteUrl: string;
   label: string;
+  watchReadModel?: number;
 }
-
-/** Refresh a little before expiry so a long-lived socket is never left unauthenticated. */
-const TOKEN_REFRESH_SKEW_MS = 60 * 1000;
 
 /**
  * Re-publish the latest snapshot this often even when no query changed, so a
@@ -45,13 +47,15 @@ export const WATCH_HEARTBEAT_MS = 60 * 1000;
 
 export async function fetchOwnerToken(
   siteUrl: string,
-  bearerToken: string
+  bearerToken: string,
+  signal?: AbortSignal,
 ): Promise<OwnerToken> {
   const response = await callConvexApi({
     convexUrl: siteUrl,
     endpoint: "/automation/convex-token",
     method: "POST",
     bearerToken,
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000),
   });
 
   if (
@@ -157,6 +161,7 @@ export async function runWatch({
 
   const convexUrl = ownerToken.convexUrl;
   const client = new ConvexClient(convexUrl);
+  const usesReadModel = ownerToken.watchReadModel === 1;
 
   // Invoked from Convex callbacks, where throwing would surface as an unhandled
   // rejection rather than a message the user can act on.
@@ -177,20 +182,6 @@ export async function runWatch({
     throw error;
   };
 
-  client.setAuth(async () => {
-    if (ownerToken.expiresAt - TOKEN_REFRESH_SKEW_MS <= now()) {
-      try {
-        ownerToken = await fetchOwnerToken(siteUrl, bearerToken);
-      } catch (error) {
-        reportAsync(error);
-        // Returning a token we already hold keeps the socket usable while the
-        // caller shuts down; the next refresh attempt reports the real reason.
-        return ownerToken.token;
-      }
-    }
-    return ownerToken.token;
-  });
-
   const unsubscribes: Array<() => void> = [];
   const latest = emptySources();
   // Only publish once every subscription has produced its first value, so a
@@ -209,10 +200,11 @@ export async function runWatch({
   let dayGeneration = 0;
   let midnightTimer: ReturnType<typeof setTimeout> | undefined;
   let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+  let authenticationPending = false;
 
   const publish = () => {
     if (!SOURCE_KEYS.every((key) => ready[key])) return;
-    if (closed) return;
+    if (closed || authenticationPending) return;
     lastComplete = buildSnapshot({
       convexUrl,
       boardTasks: latest.boardTasks,
@@ -234,18 +226,41 @@ export async function runWatch({
     if (!lastComplete || closed) return;
     onSnapshot({
       ...lastComplete,
-      errors: SOURCE_KEYS.filter((key) => sourceErrors.has(key)).map(
+      errors: [...(authenticationPending ? ["authentication"] : []), ...SOURCE_KEYS.filter((key) => sourceErrors.has(key)).map(
         (key) => sourceErrors.get(key) as string
-      ),
+      )],
     });
   };
+
+  const auth = createWatchAuth({
+    initialToken: ownerToken,
+    mint: signal => fetchOwnerToken(siteUrl, bearerToken, signal),
+    isRevoked: error => asAuthError(error) !== null,
+    onRevoked: error => {
+      authenticationPending = true;
+      publishDegraded();
+      reportAsync(error);
+    },
+    onRetry: delayMs => {
+      authenticationPending = true;
+      publishDegraded();
+      log(`watch: authentication renewal pending; retrying in ${delayMs / 1000}s`);
+    },
+    onRenewed: () => {
+      authenticationPending = false;
+      // Initial query values can arrive during a same-second JWT retry.
+      if (!lastComplete) publish();
+    },
+    now,
+  });
+  client.setAuth(auth.fetchToken);
 
   const track = (name: SourceKey) => (value: unknown) => {
     if (closed) return;
     latest[name] = value;
     ready[name] = true;
     sourceErrors.delete(name);
-    if (name === "boardTasks" || name === "completedToday") refreshLinks();
+    if (!usesReadModel && (name === "boardTasks" || name === "completedToday")) refreshLinks();
     publish();
   };
 
@@ -330,7 +345,7 @@ export async function runWatch({
       try {
         subscribeToday();
       } catch (error) {
-        failed("tasks:listTodayCompletedTasks", "completedToday")(error);
+        failed(usesReadModel ? "watchProjection:sources" : "tasks:listTodayCompletedTasks", "completedToday")(error);
       }
       scheduleMidnightResubscribe();
     }, msUntilNextLocalMidnight(new Date(now())));
@@ -342,6 +357,30 @@ export async function runWatch({
     const generation = ++dayGeneration;
     todayUnsubscribe?.();
     const { startMs, endMs } = getLocalDayBounds(new Date(now()));
+    if (usesReadModel) {
+      ready.boardTasks = false;
+      ready.goalLinks = false;
+      todayUnsubscribe = client.onUpdate(listWatchSources, { dayStartMs: startMs, dayEndMs: endMs }, value => {
+        if (closed || generation !== dayGeneration) return;
+        const sources = value as { boardTasks?: unknown; completedToday?: unknown; goalLinks?: unknown } | null;
+        if (!sources || !Array.isArray(sources.boardTasks) || !Array.isArray(sources.completedToday) ||
+            !sources.goalLinks || typeof sources.goalLinks !== "object" || Array.isArray(sources.goalLinks)) {
+          failed("watchProjection:sources", "boardTasks")(new Error("Invalid watcher read model"));
+          return;
+        }
+        latest.boardTasks = sources.boardTasks;
+        latest.completedToday = sources.completedToday;
+        latest.goalLinks = sources.goalLinks;
+        for (const key of ["boardTasks", "completedToday", "goalLinks"] as const) {
+          ready[key] = true;
+          sourceErrors.delete(key);
+        }
+        publish();
+      }, error => {
+        if (generation === dayGeneration) failed("watchProjection:sources", "boardTasks")(error);
+      });
+      return;
+    }
     todayUnsubscribe = client.onUpdate(
       listTodayCompletedTasks,
       { dayStartMs: startMs, dayEndMs: endMs },
@@ -352,7 +391,7 @@ export async function runWatch({
 
   const subscribe = () => {
     subscribeToday();
-    unsubscribes.push(client.onUpdate(
+    if (!usesReadModel) unsubscribes.push(client.onUpdate(
         listBoardTasks,
         {},
         track("boardTasks"),
@@ -370,6 +409,7 @@ export async function runWatch({
     subscribe();
   } catch (error) {
     closed = true;
+    auth.close();
     todayUnsubscribe?.();
     for (const unsubscribe of unsubscribes) unsubscribe();
     for (const unsubscribe of linkUnsubscribes) unsubscribe();
@@ -386,6 +426,7 @@ export async function runWatch({
   return {
     async close() {
       closed = true;
+      auth.close();
       ++linkGeneration;
       ++dayGeneration;
       todayUnsubscribe?.();

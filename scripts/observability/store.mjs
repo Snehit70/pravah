@@ -65,7 +65,10 @@ export function openStore(path = defaultDatabasePath()) {
       PRIMARY KEY(deployment,timestamp,sha));
     CREATE TABLE IF NOT EXISTS usageSnapshots (deployment TEXT,timestamp INTEGER,window TEXT,seedStatus TEXT,
       fromTime INTEGER,toTime INTEGER,providerBytes INTEGER,localBytes INTEGER,rawComplete INTEGER,
-      PRIMARY KEY(deployment,timestamp,window));`);
+      PRIMARY KEY(deployment,timestamp,window));
+    CREATE TABLE IF NOT EXISTS logCheckpoints (deployment TEXT PRIMARY KEY,cursor REAL,lastPollAt INTEGER,lastEventAt INTEGER);
+    CREATE TABLE IF NOT EXISTS logBatches (deployment TEXT,receivedAt INTEGER,cursorBefore REAL,cursorAfter REAL,entries INTEGER,
+      firstEventAt INTEGER,lastEventAt INTEGER,PRIMARY KEY(deployment,receivedAt));`);
   // Additive migration preserves existing capture and replay deduplication.
   const columns = new Set(db.query('PRAGMA table_info(executions)').all().map(column => column.name));
   for (const column of ['requestId', 'parentExecutionId', 'caller']) {
@@ -90,7 +93,7 @@ export function openStore(path = defaultDatabasePath()) {
   const outcomeInsert = db.prepare(`INSERT INTO captureOutcomes VALUES(?,?,?,?)
     ON CONFLICT(deployment,timestamp,outcome) DO UPDATE SET count=count+excluded.count`);
   const outcomes = new Set(['accepted','duplicate','expired','future_timestamp','invalid_metric','invalid_json',
-    'missing_byte_metrics','non_completion','sqlite_write_failure','reconciliation_failed','reconciliation_success']);
+    'missing_byte_metrics','non_completion','sqlite_write_failure','reconciliation_failed','reconciliation_success','log_stream_failure']);
   function recordOutcome(deployment, outcome, now = Date.now(), count = 1) {
     if (!outcomes.has(outcome) || !Number.isSafeInteger(count) || count < 1) throw new Error('Invalid capture outcome');
     outcomeInsert.run(deployment, now, outcome, count);
@@ -117,6 +120,6 @@ export function openStore(path = defaultDatabasePath()) {
       if (!/^[a-f0-9]{40}$/.test(sha) || typeof label !== 'string' || !/^[a-zA-Z0-9 ._-]{1,100}$/.test(label)) throw new Error('Invalid release marker');
       db.query('INSERT OR IGNORE INTO releaseMarkers VALUES(?,?,?,?)').run(deployment,now,sha,label);
     },
-    prune(now = Date.now()) { db.prepare('DELETE FROM executions WHERE timestamp < ?').run(now - 14*DAY); db.prepare('DELETE FROM captureOutcomes WHERE timestamp < ?').run(now - 14*DAY); db.prepare('DELETE FROM hourly WHERE hour < ?').run(now - 365*DAY); db.prepare('DELETE FROM sessions WHERE heartbeat < ?').run(now - 365*DAY); db.prepare('DELETE FROM gaps WHERE ended < ?').run(now - 365*DAY); db.prepare('DELETE FROM usageSnapshots WHERE timestamp < ?').run(now - 365*DAY); db.prepare('DELETE FROM releaseMarkers WHERE timestamp < ?').run(now - 365*DAY); },
+    prune(now = Date.now()) { db.prepare('DELETE FROM executions WHERE timestamp < ?').run(now - 14*DAY); db.prepare('DELETE FROM captureOutcomes WHERE timestamp < ?').run(now - 14*DAY); db.prepare('DELETE FROM hourly WHERE hour < ?').run(now - 365*DAY); db.prepare('DELETE FROM sessions WHERE heartbeat < ?').run(now - 365*DAY); db.prepare('DELETE FROM gaps WHERE ended < ?').run(now - 365*DAY); db.prepare('DELETE FROM usageSnapshots WHERE timestamp < ?').run(now - 365*DAY); db.prepare('DELETE FROM releaseMarkers WHERE timestamp < ?').run(now - 365*DAY); db.prepare('DELETE FROM logBatches WHERE receivedAt < ?').run(now-14*DAY); },
     close() { db.close(); } };
 }

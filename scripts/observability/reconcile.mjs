@@ -18,7 +18,7 @@ export function parseUsageSnapshot(data, timestamp) {
 }
 
 /** Uses the same local login/authorize_prod protocol as the installed Convex CLI. */
-export async function fetchCurrentUsage(fetcher = fetch) {
+export async function authorizeCanonicalDeployment(fetcher = fetch,signal) {
   let adminKey = process.env.CONVEX_DEPLOY_KEY;
   if (adminKey && !adminKey.startsWith('prod:combative-zebra-261|')) throw new Error('Usage key must target canonical deployment');
   if (!adminKey) {
@@ -27,14 +27,18 @@ export async function fetchCurrentUsage(fetcher = fetch) {
     if (typeof accessToken !== 'string' || !accessToken) throw new Error('Convex login is required');
     const auth = await fetcher('https://api.convex.dev/api/deployment/authorize_prod',{
       method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},
-      body:JSON.stringify({deploymentName:'combative-zebra-261'}),signal:AbortSignal.timeout(15000)});
+      body:JSON.stringify({deploymentName:'combative-zebra-261'}),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(15000)]):AbortSignal.timeout(15000)});
     if (!auth.ok) throw new Error(`Usage authorization failed (${auth.status})`);
     const credentials = await auth.json();
     if (credentials.url !== canonical || typeof credentials.adminKey !== 'string') throw new Error('Unexpected usage deployment');
     adminKey=credentials.adminKey;
   }
-  const response=await fetcher(`${canonical}/api/v1/get_current_usage`,{
-    headers:{Authorization:`Convex ${adminKey}`},signal:AbortSignal.timeout(15000)});
+  return {url:canonical,adminKey};
+}
+export async function fetchCurrentUsage(fetcher = fetch,signal) {
+  const {url,adminKey}=await authorizeCanonicalDeployment(fetcher,signal);
+  const response=await fetcher(`${url}/api/v1/get_current_usage`,{
+    headers:{Authorization:`Convex ${adminKey}`},signal:signal?AbortSignal.any([signal,AbortSignal.timeout(15000)]):AbortSignal.timeout(15000)});
   if (!response.ok) throw new Error(`Usage snapshot unavailable (${response.status})`);
   return response.json();
 }
@@ -58,9 +62,38 @@ export function reconciliationReport(db,deployment,now=Date.now()) {
     const row=db.query('SELECT * FROM usageSnapshots WHERE deployment=? AND window=? ORDER BY timestamp DESC LIMIT 1').get(deployment,window);
     if (!row) return {window,status:'not_collected'};
     const {rawComplete,...metadata}=row;
+    const today=new Date(now);
+    const currentStart=window==='day'?Date.UTC(today.getUTCFullYear(),today.getUTCMonth(),today.getUTCDate()):Date.UTC(today.getUTCFullYear(),today.getUTCMonth(),1);
+    const currentWindow=row.fromTime===currentStart;
+    const fresh=currentWindow && now-row.timestamp<=30*60000 && now>=row.timestamp;
     return {...metadata,rawRetentionCoversWindow:Boolean(rawComplete),
-      status:row.seedStatus==='complete' ? 'comparable_with_delivery_lag' : 'provider_incomplete',
-      ageMs:now-row.timestamp,differenceBytes:row.seedStatus==='complete' ? row.providerBytes-row.localBytes : null,
+      currentWindow,fresh,
+      status:!currentWindow?'previous_window':!fresh?'stale_snapshot':row.seedStatus==='complete' ? 'comparable_with_delivery_lag' : 'provider_incomplete',
+      ageMs:now-row.timestamp,differenceBytes:fresh&&row.seedStatus==='complete' ? row.providerBytes-row.localBytes : null,
+      observedDifferenceBytes:row.seedStatus==='complete'?row.providerBytes-row.localBytes:null,
       note:'Provider snapshot and local capture are asynchronous. A positive difference suggests missing/delayed capture, not exact lost-event attribution; a negative difference also requires investigation.'};
   });
+}
+
+/** Month minus current day gives provider usage before that UTC midnight. */
+export function completedWindowReconciliation(db,deployment,now=Date.now()) {
+  const pairs=db.query(`SELECT m.timestamp,m.fromTime monthStart,d.fromTime dayStart,
+    m.providerBytes-d.providerBytes priorBytes FROM usageSnapshots m JOIN usageSnapshots d
+    ON m.deployment=d.deployment AND m.timestamp=d.timestamp WHERE m.deployment=?
+    AND m.window='month' AND d.window='day' AND m.seedStatus='complete' AND d.seedStatus='complete'
+    ORDER BY m.timestamp`).all(deployment);
+  const latest=new Map();for(const row of pairs)latest.set(row.dayStart,row);
+  const points=[...latest.values()].sort((a,b)=>a.dayStart-b.dayStart),result=[];
+  for(let i=1;i<points.length;i++) {
+    const a=points[i-1],b=points[i];
+    if(a.monthStart!==b.monthStart||b.priorBytes<a.priorBytes)continue;
+    const providerBytes=b.priorBytes-a.priorBytes;
+    const raw=a.dayStart>=now-14*86400000;
+    const localBytes=raw
+      ?db.query('SELECT COALESCE(SUM(read+write),0) bytes FROM executions WHERE deployment=? AND timestamp>=? AND timestamp<?').get(deployment,a.dayStart,b.dayStart).bytes
+      :db.query('SELECT COALESCE(SUM(read+write),0) bytes FROM hourly WHERE deployment=? AND hour>=? AND hour<?').get(deployment,a.dayStart,b.dayStart).bytes;
+    result.push({from:a.dayStart,to:b.dayStart,providerBytes,localBytes,differenceBytes:providerBytes-localBytes,
+      rawRetentionCoversWindow:raw,note:'Provider totals are derived from complete snapshots; delivery lag and retention may affect the discrepancy. Missing snapshot days remain combined intervals.'});
+  }
+  return result;
 }
