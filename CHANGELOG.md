@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.3](https://github.com/Snehit70/pravah/compare/web-v1.22.2...web-v1.22.3) (2026-10-13)
+
+
+### Bug Fixes
+
+* recover watcher authentication and reduce database I/O ([#277](https://github.com/Snehit70/pravah/issues/277)) ([547d9e4](https://github.com/Snehit70/pravah/commit/547d9e4901c36bf22fcfda0a23e5eb8e5a24a98e))
+
 ## [1.22.2](https://github.com/Snehit70/pravah/compare/web-v1.22.1...web-v1.22.2) (2026-10-08)
 
 
