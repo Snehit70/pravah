@@ -3,6 +3,14 @@ import { describe, expect, it } from "vitest";
 import { classifyMobileRelease } from "../../scripts/mobile-release/classifier";
 
 describe("mobile release classification", () => {
+  it("allows backend/testing lockfile changes only with a matching native fingerprint", () => {
+    const input={changedFiles:["bun.lock"],labels:["mobile-ota"],sourceFingerprint:"same",supportedFingerprint:"same",
+      pullRequestBody:"## Mobile release notes\n\nDependency maintenance."};
+    expect(classifyMobileRelease(input).ok).toBe(true);
+    expect(classifyMobileRelease({...input,sourceFingerprint:"different"}).ok).toBe(false);
+    expect(classifyMobileRelease({...input,supportedFingerprint:undefined}).ok).toBe(false);
+    expect(classifyMobileRelease({...input,fingerprintError:"failed"}).ok).toBe(false);
+  });
   it("requires a native release for local Expo module changes even if fingerprints match", () => {
     const path = "apps/mobile/modules/pravah-image-input/android/src/main/java/PravahImageInputModule.kt";
     const result = classifyMobileRelease({

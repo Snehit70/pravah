@@ -98,6 +98,18 @@ export default defineSchema({
   goalProgressBackfills: defineTable({
     ownerTokenIdentifier: v.string(), ready: v.boolean(), cursor: v.union(v.string(), v.null()),
   }).index("by_owner", ["ownerTokenIdentifier"]),
+  watchTasks: defineTable({
+    ownerTokenIdentifier: v.string(), taskId: v.string(), title: v.string(),
+    status: v.union(v.literal("inbox"),v.literal("scheduled"),v.literal("completed")),
+    deadline: v.optional(v.string()), time: v.optional(v.string()), completedAt: v.optional(v.number()),
+    priority: v.optional(v.union(v.literal("p1"),v.literal("p2"),v.literal("p3"))),
+    description: v.optional(v.string()), tags: v.optional(v.array(v.string())), estimatedMinutes: v.optional(v.number()),
+    goalId: v.optional(v.string()),
+  }).index("by_owner_task", ["ownerTokenIdentifier", "taskId"])
+    .index("by_owner_completion", ["ownerTokenIdentifier", "completedAt"]),
+  watchBackfills: defineTable({
+    ownerTokenIdentifier: v.string(), ready: v.boolean(), cursor: v.union(v.string(), v.null()),
+  }).index("by_owner", ["ownerTokenIdentifier"]),
   overdueReflowOperations: defineTable({
     ownerTokenIdentifier: v.string(),
     operationId: v.string(),

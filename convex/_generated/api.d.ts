@@ -43,6 +43,8 @@ import type * as taskImages from "../taskImages.js";
 import type * as taskLifecycle from "../taskLifecycle.js";
 import type * as tasks from "../tasks.js";
 import type * as users from "../users.js";
+import type * as watchProjection from "../watchProjection.js";
+import type * as watchProjectionModel from "../watchProjectionModel.js";
 import type * as writeServer from "../writeServer.js";
 
 import type {
@@ -87,6 +89,8 @@ declare const fullApi: ApiFromModules<{
   taskLifecycle: typeof taskLifecycle;
   tasks: typeof tasks;
   users: typeof users;
+  watchProjection: typeof watchProjection;
+  watchProjectionModel: typeof watchProjectionModel;
   writeServer: typeof writeServer;
 }>;
 

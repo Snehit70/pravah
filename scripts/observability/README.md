@@ -20,7 +20,14 @@ recorded only after deployment verification, not inferred from a local checkout.
 Reports clip and merge session gaps within the requested window. Session
 coverage measures process availability, not complete log delivery. Replayed
 events may fill a process gap; the collector cannot determine exactly which
-events were permanently lost. It replays up to 1,000 recent events on reconnect.
+events were permanently lost. The collector now uses the administrative log
+protocol used by the Convex CLI and persists its cursor. Each batch, its metrics
+and the new cursor commit in one SQLite transaction. A failed write replays
+the batch without double-counting. Initial capture processes all entries the
+server returns rather than slicing the last 1,000. Server log retention still
+limits recovery during long outages or sleep; a cursor cannot restore discarded
+logs. Poll metadata retains cursor positions, receipt times and event ranges,
+not raw log contents or credentials.
 
 Capture outcomes distinguish accepted events, duplicates, expired/future events,
 malformed input and unavailable byte metrics. Their timestamps are receipt times;
@@ -34,6 +41,12 @@ The collector polls the administrative usage API every 15 minutes using the same
 local Convex login as the CLI, or an explicitly configured canonical deployment
 key. Failures record a fixed outcome; tokens and response/error bodies are never
 stored. Reports show the age of the latest snapshot and the latest attempt.
+Snapshots from an earlier UTC day/month or older than 30 minutes cannot be
+presented as a current difference. Historical observed differences remain
+available explicitly. `completedWindows` compares provider month-minus-day
+totals at successive UTC boundaries against captured bytes for those completed
+intervals, making growth in the discrepancy visible. Missing snapshot days
+remain combined intervals; month transitions are skipped rather than guessed.
 
 [The usage API](https://docs.convex.dev/deployment-api/get-current-usage) is beta.
 Only `seedStatus=complete` permits a numerical difference. Its day/month windows
@@ -49,6 +62,5 @@ does not reliably identify a client device. Local SQLite disk activity is separa
 from Convex DB I/O. Administrative API requests use network traffic; their provider
 overhead is not measured separately by this collector.
 
-The schema migration preserves raw events, rollups and deduplication keys. Restart
-the collector promptly when installing this upgrade because its hourly insert
-statement changes with the additive schema migration.
+The schema migration preserves raw events, rollups and deduplication keys.
+Restart the collector when installing this upgrade to activate durable capture.

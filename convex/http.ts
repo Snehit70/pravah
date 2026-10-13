@@ -314,6 +314,7 @@ http.route({
       body: { subject: owner.subject, ttlSeconds: OWNER_TOKEN_TTL_SECONDS },
       headers: new Headers(),
     });
+    await ctx.runMutation(internal.watchProjection.prepareForOwner, { owner: auth.ownerTokenIdentifier });
 
     return jsonResponse({
       token: minted.token,
@@ -321,6 +322,7 @@ http.route({
       convexUrl: deriveConvexCloudUrl(convexSiteUrl),
       siteUrl: convexSiteUrl,
       label: auth.label,
+      watchReadModel: 1,
     });
   }),
 });

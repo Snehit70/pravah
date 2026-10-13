@@ -27,7 +27,6 @@ const nativeCriticalPaths = [
   "apps/mobile/app.json",
   "apps/mobile/package.json",
   "apps/mobile/eas.json",
-  "bun.lock",
 ] as const;
 
 // The mobile app calls Convex functions directly. These files implement the
@@ -161,6 +160,8 @@ export function classifyMobileRelease(
         "Release source fingerprint does not match the supported native runtime",
       );
     }
+    // A lockfile change alone is compatible when the installed native runtime
+    // fingerprint matches. Native code/config/assets remain independently blocked.
     const critical = changedFiles.filter(isNativeCritical);
     if (critical.length > 0) {
       reasons.push(`OTA includes native-critical paths: ${critical.join(", ")}`);

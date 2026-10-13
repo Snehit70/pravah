@@ -16,7 +16,7 @@ const { FakeConvexClient } = vi.hoisted(() => {
     static instances: FakeConvexClient[] = [];
 
     readonly url: string;
-    authFetcher: (() => Promise<string>) | null = null;
+    authFetcher: ((args?: {forceRefreshToken: boolean}) => Promise<string | null>) | null = null;
     subscriptions: Subscription[] = [];
     closed = false;
     onUpdateCalls = 0;
@@ -26,7 +26,7 @@ const { FakeConvexClient } = vi.hoisted(() => {
       FakeConvexClient.instances.push(this);
     }
 
-    setAuth(fetcher: () => Promise<string>) {
+    setAuth(fetcher: (args?: {forceRefreshToken: boolean}) => Promise<string | null>) {
       this.authFetcher = fetcher;
     }
 
@@ -62,7 +62,7 @@ const { FakeConvexClient } = vi.hoisted(() => {
 
 vi.mock("convex/browser", () => ({ ConvexClient: FakeConvexClient }));
 
-import { runWatch, WatchAuthError } from "../../packages/cli/src/watchClient";
+import { runWatch, WatchAuthError, WATCH_HEARTBEAT_MS } from "../../packages/cli/src/watchClient";
 import type { WatchSnapshot } from "../../packages/cli/src/watchSnapshot";
 
 const SITE_URL = "https://x.eu-west-1.convex.site";
@@ -74,7 +74,7 @@ const MINT_URL = `${SITE_URL}/automation/convex-token`;
 let tokenCalls: Array<{ token: string; expiresAt: number }> = [];
 let fetchMock: ReturnType<typeof vi.fn>;
 
-function respondWithToken(token: string, expiresAt: number) {
+function respondWithToken(token: string, expiresAt: number, watchReadModel?: number) {
   tokenCalls.push({ token, expiresAt });
   fetchMock.mockResolvedValueOnce({
     ok: true,
@@ -82,6 +82,7 @@ function respondWithToken(token: string, expiresAt: number) {
     json: async () => ({
       token,
       expiresAt,
+      watchReadModel,
       convexUrl: CONVEX_URL,
       siteUrl: SITE_URL,
       label: "Laptop",
@@ -126,8 +127,8 @@ describe("runWatch", () => {
     vi.unstubAllGlobals();
   });
 
-  const start = async (overrides: Partial<Parameters<typeof runWatch>[0]> = {}) => {
-    respondWithToken("token-1", clock + 15 * 60 * 1000);
+  const start = async (overrides: Partial<Parameters<typeof runWatch>[0]> = {}, watchReadModel?: number) => {
+    respondWithToken("token-1", clock + 15 * 60 * 1000, watchReadModel);
     return runWatch({
       siteUrl: SITE_URL,
       bearerToken: BEARER,
@@ -145,6 +146,47 @@ describe("runWatch", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]![0]).toBe(MINT_URL);
     expect(client().url).toBe(CONVEX_URL);
+  });
+
+  it("uses the negotiated read model without broad board or separate link subscriptions", async () => {
+    const handle=await start({},1);
+    expect(client().subscriptions.map(s=>s.name).sort()).toEqual(["goals:list","watchProjection:sources"]);
+    const feed=client().named("watchProjection:sources")[0];
+    feed.onValue({boardTasks:BOARD,completedToday:DONE,goalLinks:LINKS});
+    client().named("goals:list")[0].onValue(GOALS);
+    expect(snapshots).toHaveLength(1);expect(snapshots[0].counts.active).toBe(1);
+    expect(snapshots[0].tasks.find(t=>t.id==="t2")?.goalId).toBe("g1");
+    const at=snapshots[0].generatedAt;
+    feed.onError(new Error("temporary"));
+    expect(snapshots.at(-1)).toMatchObject({generatedAt:at,errors:["watchProjection:sources"]});
+    feed.onValue({boardTasks:BOARD,completedToday:DONE,goalLinks:LINKS});
+    expect(snapshots.at(-1)!.errors??[]).toEqual([]);
+    await handle.close();expect(client().subscriptions).toHaveLength(0);
+  });
+
+  it("holds the last complete read model across invalid responses and midnight replacement", async () => {
+    clock = LATE;
+    const handle = await start({}, 1);
+    const old = client().named("watchProjection:sources")[0];
+    old.onValue({boardTasks: BOARD, completedToday: DONE, goalLinks: LINKS});
+    client().named("goals:list")[0].onValue(GOALS);
+    old.onValue({boardTasks: BOARD, completedToday: [], goalLinks: []});
+    expect(snapshots.at(-1)!.errors).toEqual(["watchProjection:sources"]);
+    const count = snapshots.length;
+    clock = new Date(2026, 8, 29, 0, 0, 5).getTime();
+    vi.advanceTimersByTime(31000);
+    const current = client().named("watchProjection:sources")[0];
+    expect(current).not.toBe(old);
+    old.onValue({boardTasks: [], completedToday: [], goalLinks: {}});
+    old.onError(new Error("obsolete"));
+    vi.advanceTimersByTime(WATCH_HEARTBEAT_MS);
+    expect(snapshots).toHaveLength(count);
+    current.onValue({boardTasks: BOARD, completedToday: [], goalLinks: {}});
+    expect(snapshots.at(-1)!.counts.completedToday).toBe(0);
+    expect(snapshots.at(-1)!.errors ?? []).toEqual([]);
+    await handle.close();
+    current.onValue({boardTasks: [], completedToday: [], goalLinks: {}});
+    expect(snapshots.at(-1)!.counts.active).toBe(1);
   });
 
   it("subscribes to task and goal feeds before requesting selected links", async () => {
@@ -321,12 +363,43 @@ describe("runWatch", () => {
     expect(tokenCalls).toHaveLength(2);
   });
 
-  it("keeps the current token when a refresh fails, so the socket survives", async () => {
-    await start();
+  it("honors forced refresh while the current token is still valid", async () => {
+    const handle = await start();
+    respondWithToken("forced-token", clock + 15 * 60 * 1000);
+    expect(await client().authFetcher!({forceRefreshToken: true})).toBe("forced-token");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await handle.close();
+  });
+
+  it("publishes initial values after an identical-token retry without waiting for a heartbeat", async () => {
+    const handle = await start();
+    respondWithToken("token-1", clock + 15 * 60 * 1000);
+    const pending = client().authFetcher!({forceRefreshToken: true});
+    await vi.advanceTimersByTimeAsync(0);
+    client().named("tasks:listBoardTasks")[0]!.onValue(BOARD);
+    client().named("tasks:listTodayCompletedTasks")[0]!.onValue(DONE);
+    client().named("goals:listLinks")[0]!.onValue(LINKS);
+    client().named("goals:list")[0]!.onValue(GOALS);
+    expect(snapshots).toHaveLength(0);
+    respondWithToken("fresh", clock + 15 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await pending).toBe("fresh");
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0]!.errors ?? []).toEqual([]);
+    await handle.close();
+  });
+
+  it("waits for recovery after a renewal timeout instead of returning an expired token", async () => {
+    const handle = await start();
     const fetchToken = client().authFetcher!;
-    clock = tokenCalls[0]!.expiresAt - 30 * 1000;
-    respondWithStatus(503);
-    expect(await fetchToken()).toBe("token-1");
+    clock = tokenCalls[0]!.expiresAt + 1000;
+    fetchMock.mockRejectedValueOnce(new DOMException("timed out", "TimeoutError"));
+    const pending = fetchToken({forceRefreshToken: true});
+    await vi.advanceTimersByTimeAsync(0);
+    respondWithToken("recovered", clock + 15 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await pending).toBe("recovered");
+    await handle.close();
   });
 
   it("reports a revoked credential without throwing from the callback", async () => {
@@ -338,6 +411,45 @@ describe("runWatch", () => {
     expect(authErrors).toHaveLength(1);
     expect(authErrors[0]).toBeInstanceOf(WatchAuthError);
     expect(authErrors[0]!.message).toContain("no longer authorized");
+  });
+
+  it("aborts an in-flight renewal when the watcher closes", async () => {
+    const handle = await start();
+    let signal: AbortSignal | undefined;
+    fetchMock.mockImplementationOnce((_input, init) => {
+      signal = init.signal;
+      return new Promise((_resolve, reject) => signal!.addEventListener("abort", () => reject(signal!.reason), {once: true}));
+    });
+    const pending = client().authFetcher!({forceRefreshToken: true});
+    await vi.advanceTimersByTimeAsync(0);
+    await handle.close();
+    expect(signal!.aborted).toBe(true);
+    expect(await pending).toBeNull();
+    expect(client().closed).toBe(true);
+  });
+
+  it("marks renewal retries degraded and keeps the last timestamp until recovery", async () => {
+    const handle = await start();
+    client().named("tasks:listBoardTasks")[0]!.onValue(BOARD);
+    client().named("tasks:listTodayCompletedTasks")[0]!.onValue(DONE);
+    client().named("goals:listLinks")[0]!.onValue(LINKS);
+    client().named("goals:list")[0]!.onValue(GOALS);
+    const last = snapshots.at(-1)!;
+    fetchMock.mockRejectedValueOnce(new DOMException("timed out", "TimeoutError"));
+    const pending = client().authFetcher!({forceRefreshToken: true});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(snapshots.at(-1)).toMatchObject({generatedAt: last.generatedAt, errors: ["authentication"]});
+    const count = snapshots.length;
+    clock += WATCH_HEARTBEAT_MS;
+    // A retry may run here, but it must never emit a healthy cached heartbeat.
+    await vi.advanceTimersByTimeAsync(WATCH_HEARTBEAT_MS);
+    expect(snapshots.slice(count).every(snapshot => snapshot.generatedAt === last.generatedAt && snapshot.errors?.includes("authentication"))).toBe(true);
+    respondWithToken("recovered", clock + 15 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(await pending).toBe("recovered");
+    await vi.advanceTimersByTimeAsync(WATCH_HEARTBEAT_MS);
+    expect(snapshots.at(-1)!.errors ?? []).toEqual([]);
+    await handle.close();
   });
 
   it("fails to start with an actionable error when the credential is unauthorized", async () => {
