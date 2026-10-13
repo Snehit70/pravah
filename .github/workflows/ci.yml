@@ -183,4 +183,3 @@ jobs:
 
       - name: Build web
         run: bun run build
-
