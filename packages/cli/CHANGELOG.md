@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.4](https://github.com/Snehit70/pravah/compare/cli-v2.5.3...cli-v2.5.4) (2026-10-13)
+
+
+### Bug Fixes
+
+* recover watcher authentication and reduce database I/O ([#277](https://github.com/Snehit70/pravah/issues/277)) ([547d9e4](https://github.com/Snehit70/pravah/commit/547d9e4901c36bf22fcfda0a23e5eb8e5a24a98e))
+
 ## [2.5.3](https://github.com/Snehit70/pravah/compare/cli-v2.5.2...cli-v2.5.3) (2026-10-08)
 
 
