@@ -10,11 +10,13 @@ The mobile app (Expo / React Native) currently targets Android preview builds:
 inbox, timeline, goals, Kairo AI, and sync in the same mobile shell.
 
 <p align="center">
-  <img src="public/images/mobile/mobile-auth.jpeg" width="18%" alt="Sign in" />
-  <img src="public/images/mobile/mobile-kairo.jpeg" width="18%" alt="Kairo AI copilot" />
-  <img src="public/images/mobile/mobile-settings-assistant.jpeg" width="18%" alt="Settings — Assistant" />
-  <img src="public/images/mobile/mobile-settings-timeline.jpeg" width="18%" alt="Settings — Timeline" />
-  <img src="public/images/mobile/mobile-settings-more.jpeg" width="18%" alt="Settings — More" />
+  <img src="public/images/mobile/mobile-timeline.png" width="13%" alt="Timeline" />
+  <img src="public/images/mobile/mobile-timeline-overdue.png" width="13%" alt="Overdue" />
+  <img src="public/images/mobile/mobile-inbox.png" width="13%" alt="Inbox" />
+  <img src="public/images/mobile/mobile-goals.png" width="13%" alt="Goals" />
+  <img src="public/images/mobile/mobile-progress.png" width="13%" alt="Progress" />
+  <img src="public/images/mobile/mobile-capture.png" width="13%" alt="Capture" />
+  <img src="public/images/mobile/mobile-settings.png" width="13%" alt="Settings" />
 </p>
 
 Pravah is currently designed and operated as a single-user system. Auth and `ownerTokenIdentifier` still scope records per signed-in identity, but that isolation exists for session safety, sync ownership, and legacy-data migration compatibility - not as a supported multi-user workspace model.
