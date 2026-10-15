@@ -53,12 +53,12 @@ const updateTaskHandler = (
     {
       taskId: Id<"tasks">;
       title?: string;
-      description?: string;
+      description?: string | null;
       deadline?: string | null;
       time?: string | null;
       estimatedMinutes?: number;
       tags?: string[];
-      priority?: "p1" | "p2" | "p3";
+      priority?: "p1" | "p2" | "p3" | null;
     },
     void
   >
@@ -740,6 +740,32 @@ describe("convex/tasks handlers", () => {
 
     expect(db.patch).toHaveBeenCalledWith(taskId, {
       title: "Retitle only",
+      updatedAt: expect.any(Number),
+    });
+  });
+
+  it("clears description and priority with JSON-serializable null arguments", async () => {
+    const taskId = makeId("task-clear-fields");
+    const db = {
+      get: vi.fn().mockResolvedValue({
+        _id: taskId,
+        ownerTokenIdentifier: "user-1",
+        description: "Old notes",
+        priority: "p1",
+        scheduledAt: 111,
+        createdAt: 111,
+        updatedAt: 222,
+      }),
+      patch: vi.fn().mockResolvedValue(undefined),
+    };
+    await updateTaskHandler(createAuthedCtx(db), JSON.parse(JSON.stringify({
+      taskId,
+      description: null,
+      priority: null,
+    })));
+    expect(db.patch).toHaveBeenCalledWith(taskId, {
+      description: undefined,
+      priority: undefined,
       updatedAt: expect.any(Number),
     });
   });
