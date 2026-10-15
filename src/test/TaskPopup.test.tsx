@@ -134,7 +134,7 @@ describe("TaskPopup", () => {
   it("sends explicit clearing values for description and priority", async () => {
     render(<TaskPopup task={makeTask({ description: "Old notes", priority: "p1" })} onClose={vi.fn()} />);
     fireEvent.change(screen.getByLabelText("Description"), { target: { value: "" } });
-    fireEvent.click(screen.getByRole("button", { name: "None", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "None" }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(updateTaskMock).toHaveBeenCalledWith(expect.objectContaining({
       description: null,

@@ -226,7 +226,7 @@ describe("SettingsPage", () => {
     const revokeObjectURL = vi.fn();
     vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-    fireEvent.click(screen.getByRole("button", { name: "Export", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
     const blob = createObjectURL.mock.calls[0]?.[0] as Blob | undefined;
     expect(blob).toBeDefined();
     const payload = JSON.parse(await blob!.text());
