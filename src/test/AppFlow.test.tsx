@@ -48,7 +48,7 @@ vi.mock("@dnd-kit/utilities", () => ({
 }));
 
 vi.mock("convex/react", () => ({
-  AuthLoading: ({ children }: { children: ReactNode }) => <>{children}</>,
+  AuthLoading: () => null,
   Authenticated: ({ children }: { children: ReactNode }) => <>{children}</>,
   Unauthenticated: () => null,
   useConvexAuth: () => ({ isAuthenticated: true, isLoading: false }),
@@ -57,7 +57,13 @@ vi.mock("convex/react", () => ({
     hasInflightRequests: false,
     connectionCount: 1,
   }),
-  useQuery: (...args: unknown[]) => useQueryMock(...args),
+  useQuery: (ref: unknown, args: unknown) => {
+    if (args === "skip") return undefined;
+    if (ref === "goalProgress.list") return { ready: true, progress: {} };
+    if (ref === "goals.list") return [];
+    if (ref === "goals.listLinks") return {};
+    return useQueryMock(ref, args);
+  },
   useMutation: (...args: unknown[]) => useMutationMock(...args),
 }));
 
@@ -73,6 +79,7 @@ vi.mock("../../convex/_generated/api", () => ({
       reorderInboxTasks: "tasks.reorderInboxTasks",
       addTask: "tasks.addTask",
     },
+    goalProgress: { list: "goalProgress.list", prepare: "goalProgress.prepare" },
     goals: {
       list: "goals.list",
       listLinks: "goals.listLinks",
@@ -121,13 +128,14 @@ function makeTask(overrides: Partial<Task>): Task {
 describe("App task flow integration", () => {
   beforeEach(() => {
     localStorage.removeItem("pravah:ff:web-goals-linking");
+    sessionStorage.clear();
     useQueryMock.mockReset();
     useMutationMock.mockReset();
 
     useMutationMock.mockImplementation(() => vi.fn().mockResolvedValue(undefined));
   });
 
-  it("renders authenticated app shell", () => {
+  it("renders authenticated app shell", async () => {
     const today = getLocalDateString();
     useQueryMock.mockReturnValue([
       makeTask({ _id: "inbox_1" as Id<"tasks">, title: "Inbox Task" }),
@@ -140,7 +148,7 @@ describe("App task flow integration", () => {
 
     renderWithProviders(<App />);
 
-    expect(screen.getAllByText("Pravah").length).toBeGreaterThan(0);
+    expect(await screen.findByRole("button", { name: "Settings" })).toBeEnabled();
     expect(screen.getAllByText("Timeline").length).toBeGreaterThan(0);
   });
 
@@ -153,7 +161,7 @@ describe("App task flow integration", () => {
     fireEvent.keyDown(window, { key: "Escape" });
 
     await waitFor(() => {
-      expect(screen.getAllByText("Pravah").length).toBeGreaterThan(0);
+      expect(screen.getByRole("button", { name: "Settings" })).toBeEnabled();
     });
   });
 
@@ -170,8 +178,16 @@ describe("App task flow integration", () => {
     renderWithProviders(<App />);
 
     await waitFor(() => {
-      expect(screen.getAllByText("Pravah").length).toBeGreaterThan(0);
+      expect(screen.getByText("Click Me")).toBeInTheDocument();
     });
+  });
+
+  it("shows the Insights loading layout until completion history arrives", async () => {
+    useQueryMock.mockImplementation((ref, args) => ref === "tasks.listTasks" && args?.status === "completed" ? undefined : []);
+    renderWithProviders(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Insights" }));
+    expect(screen.getByRole("status", { name: "Loading insights" })).toBeInTheDocument();
+    expect(screen.queryByText(/tasks tracked/)).not.toBeInTheDocument();
   });
 
 });
