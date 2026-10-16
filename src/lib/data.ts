@@ -9,6 +9,7 @@ export {
   useConvexAuth,
   useConvexConnectionState,
   useQuery,
+  usePaginatedQuery,
   useMutation,
   useAction,
 } from "./demoBridge";

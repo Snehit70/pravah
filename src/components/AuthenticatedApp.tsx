@@ -51,6 +51,7 @@ export function AuthenticatedApp() {
     if (saved === "goals" || saved === "insights" || saved === "settings") return saved;
     return "timeline";
   });
+  const [showGoalsInbox, setShowGoalsInbox] = useState(false);
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [kairoActive, setKairoActive] = useState(false);
   // Which settings category a deep link (e.g. Kairo's "finish setup" banner)
@@ -223,13 +224,13 @@ export function AuthenticatedApp() {
   const handleUpdateGoal = useCallback(
     async (
       goalId: string,
-      patch: { description?: string; deadline?: string; priority?: "p1" | "p2" | "p3" }
+      patch: { text: string; description?: string; deadline?: string; priority?: "p1" | "p2" | "p3" }
     ) => {
       const goal = goals?.find((candidate) => candidate.id === goalId);
       if (!goal) throw new Error("Goal not found");
       await upsertGoal({
         clientId: goalId,
-        text: goal.text,
+        text: patch.text,
         description: patch.description,
         deadline: patch.deadline,
         priority: patch.priority,
@@ -331,7 +332,7 @@ export function AuthenticatedApp() {
           className="flex flex-1 overflow-hidden"
           style={{ transition: "opacity var(--dur-slow) var(--ease-out-expo)", ...fade }}
         >
-          <main className="flex-1 overflow-hidden">
+          <main className="min-w-0 flex-1 overflow-hidden">
             {activePage === "settings" ? (
               <SettingsPage
                 initialCategory={settingsSeed.category}
@@ -351,6 +352,8 @@ export function AuthenticatedApp() {
             ) : activePage === "goals" ? (
               <LongTermGoalsPage
                 readOnly={false}
+                inboxVisible={showGoalsInbox}
+                onToggleInbox={() => setShowGoalsInbox((visible) => !visible)}
                 serverBacked={webGoalsLinkingEnabled}
                 serverGoals={goals ?? undefined}
                 progressByGoalId={progressByGoalId}
@@ -369,7 +372,9 @@ export function AuthenticatedApp() {
               />
             )}
           </main>
-          {activePage !== "settings" && (
+          {activePage !== "settings" && (activePage !== "goals" || showGoalsInbox) && (
+            <div className={activePage === "goals" ? "fixed bottom-0 right-0 top-14 z-40 flex flex-col border-l border-line bg-[var(--color-bg-base)] shadow-xl lg:static lg:shadow-none" : "flex"}>
+            {activePage === "goals" && <button type="button" className="min-h-11 border-b border-line px-4 text-sm text-ink-soft lg:hidden" onClick={() => setShowGoalsInbox(false)}>Close inbox</button>}
             <InboxSidebar
               tasks={inboxTasks}
               goalNameByTaskId={goalNameByTaskId}
@@ -379,6 +384,7 @@ export function AuthenticatedApp() {
               onCompleteMany={handleCompleteManyInboxTasks}
               onDeleteMany={handleDeleteManyInboxTasks}
             />
+            </div>
           )}
         </div>
 

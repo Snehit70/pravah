@@ -18,6 +18,8 @@ import { DEMO_DATA_KEY } from "./demoFlag";
 
 type TaskState = "inbox" | "scheduled" | "completed" | "cancelled";
 
+const bulkTaskRequests = new Map<string, { signature: string; taskIds: string[] }>();
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PURGE_GRACE_MS = 30 * 60 * 1000;
 
@@ -235,6 +237,11 @@ function runQuery(name: string, args: any): unknown {
         createdAt: goal.createdAt,
       }));
     }
+    case "goals:listTasks": {
+      const rows = data.tasks.filter((task) => data.goalLinks[task._id] === args.goalClientId && taskState(task) !== "cancelled");
+      const count = args.paginationOpts.numItems;
+      return { page: rows.slice(0, count).map(toCanonical), isDone: count >= rows.length, continueCursor: String(count) };
+    }
     case "goals:listLinks": {
       const ids = args?.taskIds as string[] | undefined;
       return ids ? Object.fromEntries(ids.filter((id) => data.goalLinks[id] !== undefined).map((id) => [id, data.goalLinks[id]])) : { ...data.goalLinks };
@@ -294,6 +301,24 @@ function runMutation(name: string, args: any): unknown {
   switch (name) {
     case "users:store": {
       return "demo-user";
+    }
+    case "tasks:bulkCreateTasks": {
+      const signature = JSON.stringify(args.tasks);
+      const previous = bulkTaskRequests.get(args.idempotencyKey);
+      if (previous) {
+        if (previous.signature !== signature) throw new Error("Idempotency key reused for a different request");
+        return { taskIds: previous.taskIds };
+      }
+      for (const draft of args.tasks) {
+        if (draft.goalClientId && !data.goals.some((goal) => goal.clientId === draft.goalClientId)) throw new Error("Goal not found");
+      }
+      const taskIds = args.tasks.map((draft: any) => {
+        const taskId = runMutation("tasks:addTask", draft) as string;
+        if (draft.goalClientId) data.goalLinks[taskId] = draft.goalClientId;
+        return taskId;
+      });
+      bulkTaskRequests.set(args.idempotencyKey, { signature, taskIds });
+      return { taskIds };
     }
     case "tasks:addTask": {
       const now = Date.now();

@@ -2,7 +2,7 @@
 // Signatures mirror the real hooks so call sites need no changes.
 /* eslint-disable react-refresh/only-export-components -- shim module, not a component file */
 
-import { useCallback, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useState, useSyncExternalStore, type ReactNode } from "react";
 import * as store from "./store";
 
 const FUNCTION_NAME = Symbol.for("functionName");
@@ -68,4 +68,16 @@ export function useAction(ref: unknown): (args: unknown) => Promise<unknown> {
 // network, so this stub only satisfies the constructor call site.
 export class ConvexReactClient {
   constructor(_address?: string, _options?: unknown) {}
+}
+
+export function usePaginatedQuery(ref: unknown, args: Record<string, unknown>, options: { initialNumItems: number }) {
+  const [count, setCount] = useState(options.initialNumItems);
+  const name = functionName(ref);
+  const getSnapshot = () => store.snapshot(name, { ...args, paginationOpts: { cursor: null, numItems: count } });
+  const result = useSyncExternalStore(store.subscribe, getSnapshot, getSnapshot) as { page: unknown[]; isDone: boolean };
+  return {
+    results: result.page,
+    status: result.isDone ? "Exhausted" : "CanLoadMore",
+    loadMore: (amount: number) => setCount((current) => current + amount),
+  };
 }
