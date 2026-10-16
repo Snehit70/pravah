@@ -33,6 +33,7 @@
 }
 
 :root {
+  --color-grid: rgba(74, 54, 35, 0.045);
   --color-bg-base: #f7f1e8;
   --color-bg-surface: #fbf7ef;
   --color-bg-elevated: #fffaf2;
@@ -174,6 +175,84 @@ body {
   --shadow-glow: 0 0 0 2px rgba(152, 81, 106, 0.4);
 }
 
+/* Dark surfaces and accent hues mirror the phone's palette. Both semantic
+   tokens and Tailwind aliases change so inline styles and utilities agree. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg-base: oklch(0.190839 0.001983 106.5859);
+  --color-bg-surface: oklch(0.221344 0.003813 106.7070);
+  --color-bg-elevated: oklch(0.250834 0.005533 106.7919);
+  --color-bg-floating: oklch(0.287630 0.007122 106.8391);
+  --color-card-bg: oklch(0.250834 0.005533 106.7919);
+  --color-canvas: oklch(0.190839 0.001983 106.5859);
+  --color-paper: oklch(0.221344 0.003813 106.7070);
+  --color-sheet: oklch(0.250834 0.005533 106.7919);
+  --color-fresh: oklch(0.287630 0.007122 106.8391);
+  --color-text-primary: oklch(0.955293 0.006995 88.6433);
+  --color-text-secondary: oklch(0.776159 0.008695 91.5051);
+  --color-text-muted: oklch(0.669728 0.009014 91.5233);
+  --color-text-dim: oklch(0.656548 0.009057 91.5259);
+  --color-text-inverse: oklch(0.185928 0.003977 106.7802);
+  --color-ink: oklch(0.955293 0.006995 88.6433);
+  --color-ink-soft: oklch(0.776159 0.008695 91.5051);
+  --color-ink-mute: oklch(0.669728 0.009014 91.5233);
+  --color-ink-dim: oklch(0.656548 0.009057 91.5259);
+  --color-success: oklch(0.780138 0.118369 161.9038);
+  --color-warning: oklch(0.801800 0.108278 78.8113);
+  --color-deadline: oklch(0.763161 0.111655 42.7309);
+  --color-error: oklch(0.745083 0.126702 25.2475);
+  --color-priority-1: oklch(0.760144 0.112291 28.7214);
+  --color-priority-2: oklch(0.801800 0.108278 78.8113);
+  --color-priority-3: oklch(0.742894 0.024317 172.5880);
+  --color-border-default: oklch(0.357978 0.010102 106.8992);
+  --color-line: oklch(0.357978 0.010102 106.8992);
+  --color-accent-primary: oklch(0.781432 0.055283 292.1233);
+  --color-accent-primary-hover: oklch(0.831731 0.046017 292.3193);
+  --color-bg-overlay: rgba(12, 12, 11, 0.68);
+  --color-border-subtle: rgba(242, 240, 235, 0.09);
+  --color-border-strong: rgba(242, 240, 235, 0.28);
+  --color-line-subtle: var(--color-border-subtle);
+  --color-line-strong: var(--color-border-strong);
+  --color-fill-faint: rgba(242, 240, 235, 0.035);
+  --color-fill-soft: rgba(242, 240, 235, 0.05);
+  --color-fill-strong: rgba(242, 240, 235, 0.09);
+  --color-success-muted: rgba(105, 207, 160, 0.17);
+  --color-warning-muted: rgba(228, 182, 106, 0.17);
+  --color-deadline-muted: rgba(238, 154, 120, 0.18);
+  --color-error-muted: rgba(242, 139, 131, 0.17);
+  --color-accent: var(--color-accent-primary);
+  --color-accent-deep: var(--color-accent-primary-hover);
+  --color-accent-primary-rgb: 184, 178, 217;
+  --color-accent-primary-muted: rgba(var(--color-accent-primary-rgb), 0.15);
+  --color-accent-glow: rgba(var(--color-accent-primary-rgb), 0.22);
+  --color-accent-dim: rgba(var(--color-accent-primary-rgb), 0.07);
+  --color-border-focus: rgba(var(--color-accent-primary-rgb), 0.6);
+  --shadow-glow: 0 0 0 2px rgba(var(--color-accent-primary-rgb), 0.4);
+  --shadow-sm: 0 1px 2px rgba(12, 12, 11, 0.28);
+  --shadow-md: 0 4px 12px rgba(12, 12, 11, 0.36);
+  --shadow-lg: 0 8px 28px rgba(12, 12, 11, 0.44);
+  --shadow-xl: 0 40px 80px rgba(12, 12, 11, 0.5);
+  --color-grid: rgba(242, 240, 235, 0.025);
+}
+
+:root[data-theme="dark"][data-accent="copper"] {
+  --color-accent-primary: oklch(0.778094 0.053444 63.1047);
+  --color-accent-primary-hover: oklch(0.827576 0.044854 63.7930);
+  --color-accent-primary-rgb: 208, 176, 148;
+}
+
+:root[data-theme="dark"][data-accent="teal"] {
+  --color-accent-primary: oklch(0.796304 0.042660 183.0757);
+  --color-accent-primary-hover: oklch(0.841057 0.036031 183.2296);
+  --color-accent-primary-rgb: 159, 198, 191;
+}
+
+:root[data-theme="dark"][data-accent="rose"] {
+  --color-accent-primary: oklch(0.781990 0.043587 355.5581);
+  --color-accent-primary-hover: oklch(0.839297 0.036434 355.8062);
+  --color-accent-primary-rgb: 208, 173, 185;
+}
+
 body::before {
   content: "";
   position: fixed;
@@ -181,8 +260,8 @@ body::before {
   pointer-events: none;
   z-index: 0;
   background-image:
-    linear-gradient(to right, rgba(74, 54, 35, 0.045) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(74, 54, 35, 0.045) 1px, transparent 1px);
+    linear-gradient(to right, var(--color-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--color-grid) 1px, transparent 1px);
   background-size: 32px 32px;
   mask-image: radial-gradient(ellipse at center, black 30%, transparent 85%);
   -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 85%);
@@ -211,18 +290,18 @@ body::before {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(74, 54, 35, 0.16);
+  background: var(--color-border-default);
   border-radius: 99px;
   transition: background var(--dur-instant) var(--ease-out-expo);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(74, 54, 35, 0.28);
+  background: var(--color-border-strong);
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(74, 54, 35, 0.16) transparent;
+  scrollbar-color: var(--color-border-default) transparent;
 }
 
 *:focus-visible {
@@ -243,8 +322,8 @@ body::before {
 kbd {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  background: rgba(74, 54, 35, 0.05);
-  border: 1px solid rgba(78, 62, 43, 0.18);
+  background: var(--color-fill-soft);
+  border: 1px solid var(--color-border-default);
   border-radius: 4px;
   padding: 1px 5px;
   font-size: 10px;
@@ -253,7 +332,6 @@ kbd {
 
 button {
   font-family: inherit;
-  color: inherit;
 }
 
 input,

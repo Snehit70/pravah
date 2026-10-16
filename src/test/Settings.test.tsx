@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
 import type { Task } from "../types";
 import type { Id } from "../../convex/_generated/dataModel";
+import { initializeAppearance } from "../lib/appearance";
 import { SettingsPage } from "../components/settings/SettingsPage";
 
 const fullExportTasks: Task[] = [
@@ -174,6 +175,23 @@ async function openCategory(name: string) {
 }
 
 describe("SettingsPage", () => {
+  it("switches and saves accessible Light, Dark and System theme choices", async () => {
+    localStorage.removeItem("pravah:web-appearance");
+    const disposeAppearance = initializeAppearance();
+    try {
+      render(<SettingsPage initialCategory="appearance" onBack={vi.fn()} />);
+      expect(screen.getByRole("button", { name: "System", pressed: true })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Dark" }));
+      expect(document.documentElement.dataset.theme).toBe("dark");
+      expect(localStorage.getItem("pravah:web-appearance")).toBe("dark");
+      expect(screen.getByRole("button", { name: "Dark", pressed: true })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Warm light" }));
+      expect(document.documentElement.dataset.theme).toBe("light");
+      fireEvent.click(screen.getByRole("button", { name: "System" }));
+      expect(localStorage.getItem("pravah:web-appearance")).toBe("system");
+    } finally { disposeAppearance(); }
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
