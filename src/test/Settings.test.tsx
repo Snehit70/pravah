@@ -181,13 +181,13 @@ describe("SettingsPage", () => {
     try {
       render(<SettingsPage initialCategory="appearance" onBack={vi.fn()} />);
       expect(screen.getByRole("button", { name: "System", pressed: true })).toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: "Dark", exact: true }));
+      fireEvent.click(screen.getByRole("button", { name: "Dark" }));
       expect(document.documentElement.dataset.theme).toBe("dark");
       expect(localStorage.getItem("pravah:web-appearance")).toBe("dark");
       expect(screen.getByRole("button", { name: "Dark", pressed: true })).toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: "Warm light", exact: true }));
+      fireEvent.click(screen.getByRole("button", { name: "Warm light" }));
       expect(document.documentElement.dataset.theme).toBe("light");
-      fireEvent.click(screen.getByRole("button", { name: "System", exact: true }));
+      fireEvent.click(screen.getByRole("button", { name: "System" }));
       expect(localStorage.getItem("pravah:web-appearance")).toBe("system");
     } finally { disposeAppearance(); }
   });

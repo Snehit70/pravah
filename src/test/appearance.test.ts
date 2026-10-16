@@ -74,7 +74,7 @@ describe("Web appearance", () => {
   });
 });
 
-const bootScript = readFileSync(new URL("../../public/theme-init.js", import.meta.url), "utf8");
+const bootScript = readFileSync("public/theme-init.js", "utf8");
 describe("Theme before first paint", () => {
   it.each(["dark", "light", "system", "invalid"])("resolves %s consistently with the runtime", (stored) => {
     Object.defineProperty(media, "matches", { value: true });
