@@ -1,21 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Reorder, motion, useReducedMotion } from "framer-motion";
-import { cn } from "../lib/utils";
-import { isTaskCompleted } from "../lib/taskState";
+import { Reorder, motion } from "framer-motion";
+import { cn, getLocalDateString } from "../lib/utils";
 import { EASE_OUT_EXPO } from "../lib/motion";
-import { GripHorizontalIcon, PencilIcon, PlusIcon, TrashIcon } from "./ui/icons";
+import { GripHorizontalIcon, PlusIcon, TrashIcon } from "./ui/icons";
 import { navGoalsIcon } from "./ui/traced-icons";
 import type { Task } from "../types";
+import { GoalCard } from "./goals/GoalCard";
+import { GoalTasks } from "./goals/GoalTasks";
 
 const NavGoalsGlyph = navGoalsIcon;
 
 const STORAGE_KEY = "pravah_long_term_goals";
-
-const PRIORITY_META = {
-  p1: { label: "P1", color: "var(--color-priority-1)" },
-  p2: { label: "P2", color: "var(--color-priority-2)" },
-  p3: { label: "P3", color: "var(--color-priority-3)" },
-} as const;
 
 interface GoalItem {
   id: string;
@@ -25,7 +20,7 @@ interface GoalItem {
   priority?: "p1" | "p2" | "p3";
 }
 
-interface GoalReadModel {
+export interface GoalReadModel {
   id: string;
   text: string;
   description?: string;
@@ -34,7 +29,7 @@ interface GoalReadModel {
   createdAt?: number;
 }
 
-interface GoalProgress {
+export interface GoalProgress {
   total: number;
   done: number;
 }
@@ -47,24 +42,22 @@ interface GoalCreateFields {
 
 interface LongTermGoalsPageProps {
   readOnly?: boolean;
+  inboxVisible?: boolean;
+  onToggleInbox?: () => void;
   serverBacked?: boolean;
   serverGoals?: GoalReadModel[];
   progressByGoalId?: Record<string, GoalProgress>;
   onCreateServerGoal?: (text: string, fields?: GoalCreateFields) => Promise<void>;
-  onUpdateServerGoal?: (goalId: string, patch: Pick<GoalReadModel, "description" | "deadline" | "priority">) => Promise<void>;
+  onUpdateServerGoal?: (goalId: string, patch: Pick<GoalReadModel, "text" | "description" | "deadline" | "priority">) => Promise<void>;
   onDeleteServerGoal?: (goalId: string) => Promise<void>;
   linkedTasksByGoalId?: Record<string, Task[]>;
   onOpenTask?: (task: Task) => void;
 }
 
-function shortDate(date: string): string {
-  return new Date(`${date}T12:00:00`)
-    .toLocaleDateString(undefined, { month: "short", day: "numeric" })
-    .toUpperCase();
-}
-
 export function LongTermGoalsPage({
   readOnly = false,
+  inboxVisible = false,
+  onToggleInbox,
   serverBacked = false,
   serverGoals,
   progressByGoalId,
@@ -82,6 +75,12 @@ export function LongTermGoalsPage({
   const [serverBusy, setServerBusy] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<"all" | "active" | "finished">("active");
+  const [sort, setSort] = useState("priority");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [editDescription, setEditDescription] = useState("");
   const [editDeadline, setEditDeadline] = useState("");
   const [editPriority, setEditPriority] = useState<"p1" | "p2" | "p3" | undefined>(undefined);
@@ -183,6 +182,8 @@ export function LongTermGoalsPage({
       setServerError(null);
       try {
         await onDeleteServerGoal(goalId);
+        setConfirmDeleteId(null);
+        setSelectedGoalId((current) => current === goalId ? null : current);
       } catch {
         setServerError("Could not delete goal. Try again.");
       } finally {
@@ -195,6 +196,7 @@ export function LongTermGoalsPage({
 
   const beginEdit = (goal: GoalReadModel) => {
     setEditingGoalId(goal.id);
+    setEditTitle(goal.text);
     setEditDescription(goal.description ?? "");
     setEditDeadline(goal.deadline ?? "");
     setEditPriority(goal.priority);
@@ -203,10 +205,15 @@ export function LongTermGoalsPage({
 
   const saveEdit = async (goal: GoalReadModel) => {
     if (!onUpdateServerGoal) return;
+    if (!editTitle.trim()) {
+      setServerError("Give the goal a name before saving.");
+      return;
+    }
     setServerBusy(true);
     setServerError(null);
     try {
       await onUpdateServerGoal(goal.id, {
+        text: editTitle.trim(),
         description: editDescription.trim() || undefined,
         deadline: editDeadline || undefined,
         priority: editPriority,
@@ -219,21 +226,90 @@ export function LongTermGoalsPage({
     }
   };
 
+  const isFinished = (goal: GoalReadModel) => {
+    const progress = progressByGoalId?.[goal.id];
+    return Boolean(progress && progress.total > 0 && progress.done >= progress.total);
+  };
+  const finishedCount = displayGoals.filter(isFinished).length;
+  const today = getLocalDateString();
+  const visibleGoals = displayGoals.filter((goal) => {
+    const matchesStatus = status === "all" || (status === "finished" ? isFinished(goal) : !isFinished(goal));
+    return matchesStatus && `${goal.text} ${goal.description ?? ""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
+  }).sort((a, b) => {
+    if (sort === "name") return a.text.localeCompare(b.text);
+    if (sort === "newest") return (b.createdAt ?? 0) - (a.createdAt ?? 0);
+    if (sort === "deadline") return (a.deadline ?? "9999").localeCompare(b.deadline ?? "9999");
+    const rank = { p1: 0, p2: 1, p3: 2 };
+    return (a.priority ? rank[a.priority] : 3) - (b.priority ? rank[b.priority] : 3)
+      || (a.deadline ?? "9999").localeCompare(b.deadline ?? "9999") || a.text.localeCompare(b.text);
+  });
+  const selectedGoal = displayGoals.find((goal) => goal.id === selectedGoalId);
+  const renderGoal = (goal: GoalReadModel, detail = false) => (
+    <GoalCard
+      key={goal.id}
+      goal={goal}
+      progress={progressByGoalId?.[goal.id] ?? { total: 0, done: 0 }}
+      linkedTasks={detail ? [] : linkedTasksByGoalId[goal.id] ?? []}
+      busy={serverBusy}
+      canEdit={!readOnly && Boolean(onUpdateServerGoal)}
+      canDelete={!readOnly && Boolean(onDeleteServerGoal)}
+      editing={editingGoalId === goal.id}
+      onBeginEdit={() => beginEdit(goal)}
+      onOpenGoal={detail ? undefined : () => { setSelectedGoalId(goal.id); setEditingGoalId(null); }}
+      onOpenTask={onOpenTask}
+      onRemove={() => setConfirmDeleteId(goal.id)}
+      editFields={{
+        title: editTitle, description: editDescription, deadline: editDeadline, priority: editPriority,
+        setTitle: setEditTitle, setDescription: setEditDescription, setDeadline: setEditDeadline, setPriority: setEditPriority,
+      }}
+      onSaveEdit={() => void saveEdit(goal)}
+      onCancelEdit={() => setEditingGoalId(null)}
+    />
+  );
+
   return (
     <div className="h-full overflow-y-auto bg-[var(--color-bg-base)]">
-      <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-6 pb-10 pt-5">
-        {/* List header: count + server note, no title (the navbar carries it) */}
-        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-          <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
-            {displayGoals.length} active
-          </span>
-          {serverBacked && (
-            <span style={{ fontSize: 11.5, color: "var(--color-text-dim)" }}>
-              Goals and task links are server-backed.
-            </span>
-          )}
+      <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 pb-28 pt-6 sm:px-6">
+        {onToggleInbox && <button type="button" aria-expanded={inboxVisible} onClick={onToggleInbox} className="mb-3 min-h-11 self-end rounded-md border border-line px-3 text-sm text-ink-soft">{inboxVisible ? "Hide inbox" : "Show inbox"}</button>}
+        {serverError && <p role="alert" className="mb-4 text-sm text-error">{serverError}</p>}
+        {confirmDeleteId && (
+          <section aria-label="Confirm goal deletion" className="mb-5 rounded-lg border border-error/30 bg-[var(--color-bg-elevated)] p-4">
+            <p className="text-sm font-semibold text-ink">Delete {displayGoals.find((goal) => goal.id === confirmDeleteId)?.text}?</p>
+            <p className="mt-1 text-sm text-ink-soft">Its tasks will stay in your workspace, but their links to this goal will be removed. This cannot be undone.</p>
+            <div className="mt-3 flex gap-3">
+              <button type="button" disabled={serverBusy} className="min-h-11 rounded-md border border-line px-4 text-sm" onClick={() => setConfirmDeleteId(null)}>Keep goal</button>
+              <button type="button" disabled={serverBusy} className="min-h-11 rounded-md border border-error/30 px-4 text-sm text-error" onClick={() => { void removeGoal(confirmDeleteId); }}>Delete goal permanently</button>
+            </div>
+          </section>
+        )}
+        {serverBacked && selectedGoal ? (
+          <>
+            <button type="button" className="mb-4 min-h-11 self-start rounded-md px-2 text-sm text-ink-soft hover:bg-fill-soft" onClick={() => { setSelectedGoalId(null); setEditingGoalId(null); }}>← All goals</button>
+            {renderGoal(selectedGoal, true)}
+            <GoalTasks key={selectedGoal.id} goal={selectedGoal} progress={progressByGoalId?.[selectedGoal.id]} onOpenTask={onOpenTask} readOnly={readOnly} />
+          </>
+        ) : (
+          <>
+        <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-sm text-ink-soft">{displayGoals.length - finishedCount} active · {finishedCount} finished</p>
+            <p className="mt-1 text-xs text-ink-mute">Open a goal to see all its linked tasks.</p>
+          </div>
+          {serverBacked && <p className="text-xs text-ink-mute">{displayGoals.filter((goal) => goal.deadline && goal.deadline < today && !isFinished(goal)).length} overdue goals</p>}
         </div>
-
+        {serverBacked && (
+          <div className="mb-5 flex flex-wrap items-center gap-3">
+            <input type="search" aria-label="Search goals" placeholder="Search goals…" value={query} onChange={(event) => setQuery(event.target.value)} className="min-h-11 min-w-0 flex-1 rounded-md border border-line bg-[var(--color-bg-surface)] px-3 text-sm text-ink" />
+            <div role="group" aria-label="Goal status" className="flex gap-1">
+              {(["active", "finished", "all"] as const).map((value) => <button key={value} type="button" aria-pressed={status === value} onClick={() => setStatus(value)} className={cn("min-h-11 rounded-md border px-3 text-sm capitalize", status === value ? "border-accent bg-[var(--color-accent-dim)] text-accent" : "border-line text-ink-soft")}>{value}</button>)}
+            </div>
+            <label className="flex items-center gap-2 text-xs text-ink-mute">Sort
+              <select aria-label="Sort goals" value={sort} onChange={(event) => setSort(event.target.value)} className="min-h-11 rounded-md border border-line bg-[var(--color-bg-surface)] px-2 text-sm text-ink">
+                <option value="priority">Priority</option><option value="deadline">Deadline</option><option value="name">Name</option><option value="newest">Newest</option>
+              </select>
+            </label>
+          </div>
+        )}
         {/* Composer: title + optional notes/priority/deadline, revealed on focus.
             Mirrors the mobile AddTaskSheet "New goal" kind. */}
         {!readOnly && (
@@ -274,7 +350,7 @@ export function LongTermGoalsPage({
                 onClick={() => void addGoal()}
                 disabled={serverBusy}
                 className={cn(
-                  "grid h-9 w-9 shrink-0 place-items-center rounded-[9px]",
+                  "grid h-11 w-11 shrink-0 place-items-center rounded-[9px]",
                   "bg-accent text-canvas transition-opacity hover:opacity-90",
                   "disabled:opacity-50"
                 )}
@@ -317,7 +393,6 @@ export function LongTermGoalsPage({
             )}
           </div>
         )}
-        {serverError && <p className="mb-3 text-xs text-error">{serverError}</p>}
 
         {displayGoals.length === 0 ? (
           <GoalsEmptyState
@@ -326,33 +401,9 @@ export function LongTermGoalsPage({
             onAddClick={() => addInputRef.current?.focus()}
           />
         ) : serverBacked ? (
-          <div className="grid items-start gap-3 lg:grid-cols-2">
-            {displayGoals.map((goal, index) => (
-              <GoalCard
-                key={goal.id}
-                goal={goal}
-                index={index}
-                progress={progressByGoalId?.[goal.id] ?? { total: 0, done: 0 }}
-                linkedTasks={linkedTasksByGoalId[goal.id] ?? []}
-                busy={serverBusy}
-                canEdit={Boolean(onUpdateServerGoal)}
-                editing={editingGoalId === goal.id}
-                onBeginEdit={() => beginEdit(goal)}
-                onOpenTask={onOpenTask}
-                onRemove={() => void removeGoal(goal.id)}
-                editFields={{
-                  description: editDescription,
-                  deadline: editDeadline,
-                  priority: editPriority,
-                  setDescription: setEditDescription,
-                  setDeadline: setEditDeadline,
-                  setPriority: setEditPriority,
-                }}
-                onSaveEdit={() => void saveEdit(goal)}
-                onCancelEdit={() => setEditingGoalId(null)}
-              />
-            ))}
-          </div>
+          <section aria-label="Goals" className="border-t border-line-subtle">
+            {visibleGoals.length === 0 ? <div className="py-12 text-center"><p className="text-sm font-medium text-ink">No goals match this view.</p><button type="button" className="mt-3 min-h-11 px-3 text-sm text-accent" onClick={() => { setQuery(""); setStatus("all"); }}>Show all goals</button></div> : visibleGoals.map((goal) => renderGoal(goal))}
+          </section>
         ) : (
           <Reorder.Group axis="y" values={goals} onReorder={setGoals} className="flex flex-col gap-2">
             {goals.map((goal) => (
@@ -390,6 +441,8 @@ export function LongTermGoalsPage({
               </Reorder.Item>
             ))}
           </Reorder.Group>
+        )}
+          </>
         )}
       </div>
     </div>
@@ -466,252 +519,6 @@ function GoalsEmptyState({
         >
           Add goal
         </button>
-      )}
-    </motion.div>
-  );
-}
-
-function GoalCard({
-  goal,
-  index,
-  progress,
-  linkedTasks,
-  busy,
-  canEdit,
-  editing,
-  onBeginEdit,
-  onOpenTask,
-  onRemove,
-  editFields,
-  onSaveEdit,
-  onCancelEdit,
-}: {
-  goal: GoalReadModel;
-  index: number;
-  progress: GoalProgress;
-  linkedTasks: Task[];
-  busy: boolean;
-  canEdit: boolean;
-  editing: boolean;
-  onBeginEdit: () => void;
-  onOpenTask?: (task: Task) => void;
-  onRemove: () => void;
-  editFields: {
-    description: string;
-    deadline: string;
-    priority: "p1" | "p2" | "p3" | undefined;
-    setDescription: (value: string) => void;
-    setDeadline: (value: string) => void;
-    setPriority: (value: "p1" | "p2" | "p3" | undefined) => void;
-  };
-  onSaveEdit: () => void;
-  onCancelEdit: () => void;
-}) {
-  const reduceMotion = useReducedMotion();
-  const { total, done } = progress;
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-  const complete = total > 0 && done >= total;
-  const today = new Date().toISOString().slice(0, 10);
-  const overdue = goal.deadline !== undefined && goal.deadline < today;
-  const priority = goal.priority ? PRIORITY_META[goal.priority] : null;
-
-  const nextTasks = linkedTasks
-    .filter((task) => !isTaskCompleted(task))
-    .sort((a, b) => (a.deadline ?? "\uffff").localeCompare(b.deadline ?? "\uffff"))
-    .slice(0, 2);
-
-  const countLabel = complete ? "All done" : total === 0 ? "No tasks linked" : `${done} of ${total} done`;
-
-  return (
-    <motion.div
-      initial={reduceMotion ? false : { opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.28, ease: EASE_OUT_EXPO, delay: reduceMotion ? 0 : Math.min(index * 0.05, 0.3) }}
-      className={cn(
-        "group rounded-[10px] border bg-[var(--color-bg-elevated)] px-4 py-3.5",
-        complete ? "border-[rgba(34,107,75,0.4)]" : "border-line-subtle hover:border-line-strong"
-      )}
-      style={{ transition: "border-color 180ms cubic-bezier(0.16, 1, 0.3, 1)" }}
-    >
-      <div className="flex items-start gap-3">
-        {/* Icon tile, matching the settings category tile */}
-        <span
-          aria-hidden
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-line-subtle bg-[var(--color-bg-surface)]"
-          style={{ color: complete ? "var(--color-success)" : "var(--color-accent-primary)" }}
-        >
-          <NavGoalsGlyph size={18} />
-        </span>
-
-        <div className="min-w-0 flex-1">
-          {/* Title with the thin progress bar as its underline */}
-          <div style={{ paddingBottom: 7 }}>
-            <span className="text-[15px] font-semibold leading-[1.35] tracking-[-0.01em] text-ink break-words">
-              {goal.text}
-            </span>
-          </div>
-          <div
-            aria-hidden
-            className="overflow-hidden"
-            style={{ height: 2, borderRadius: 1, background: "var(--color-fill-strong)" }}
-          >
-            <motion.div
-              initial={reduceMotion ? false : { width: 0 }}
-              animate={{ width: `${pct}%` }}
-              transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-              style={{
-                height: "100%",
-                borderRadius: 1,
-                background: complete ? "var(--color-success)" : "var(--color-accent-primary)",
-              }}
-            />
-          </div>
-
-          {/* Meta line: priority dot + P1 · count · deadline */}
-          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
-            {priority && (
-              <span className="inline-flex items-center gap-1.5">
-                <span aria-hidden style={{ width: 6, height: 6, borderRadius: 3, background: priority.color }} />
-                <span style={{ fontSize: 10.5, fontFamily: "var(--font-mono)", fontWeight: 700, letterSpacing: 0.4, color: priority.color }}>
-                  {priority.label}
-                </span>
-              </span>
-            )}
-            {priority && <span aria-hidden style={{ color: "var(--color-text-dim)" }}>·</span>}
-            <span
-              style={{
-                fontSize: 12,
-                color: complete ? "var(--color-success)" : total === 0 ? "var(--color-text-dim)" : "var(--color-text-muted)",
-              }}
-            >
-              {countLabel}
-            </span>
-            {goal.deadline && (
-              <>
-                <span aria-hidden style={{ color: "var(--color-text-dim)" }}>·</span>
-                <span
-                  className="tabular"
-                  style={{
-                    fontSize: 10,
-                    fontFamily: "var(--font-mono)",
-                    letterSpacing: 0.5,
-                    color: overdue ? "var(--color-error)" : "var(--color-warning)",
-                  }}
-                >
-                  {overdue ? "PAST" : "BY"} {shortDate(goal.deadline)}
-                </span>
-              </>
-            )}
-          </div>
-
-          {goal.description && (
-            <p className="mt-1.5 text-xs leading-5 text-ink-mute" style={{ maxWidth: "60ch" }}>
-              {goal.description}
-            </p>
-          )}
-        </div>
-
-        {/* Row actions */}
-        <div
-          className={cn(
-            "flex shrink-0 items-center gap-1",
-            "opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
-          )}
-        >
-          {canEdit && (
-            <button
-              type="button"
-              onClick={onBeginEdit}
-              disabled={busy}
-              aria-label={`Edit goal: ${goal.text}`}
-              className="rounded-[7px] p-1.5 text-ink-dim hover:bg-fill-soft hover:text-ink"
-            >
-              <PencilIcon size={13} strokeWidth={1.8} />
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={onRemove}
-            disabled={busy}
-            aria-label={`Delete goal: ${goal.text}`}
-            className="rounded-[7px] p-1.5 text-ink-dim hover:bg-error-muted hover:text-error"
-          >
-            <TrashIcon size={13} strokeWidth={1.8} />
-          </button>
-        </div>
-      </div>
-
-      {nextTasks.length > 0 && (
-        <div className="mt-3 border-t border-line-subtle pt-2.5">
-          <p className="text-[9.5px] uppercase tracking-[0.12em] text-ink-dim" style={{ fontFamily: "var(--font-mono)" }}>
-            Next up
-          </p>
-          <div className="mt-1 space-y-0.5">
-            {nextTasks.map((task) => (
-              <button
-                key={task._id}
-                type="button"
-                onClick={() => onOpenTask?.(task)}
-                className="flex w-full items-center justify-between gap-2 rounded-[6px] px-1.5 py-1 text-left text-xs text-ink-soft hover:bg-fill-soft hover:text-ink"
-              >
-                <span className="min-w-0 truncate">{task.title}</span>
-                <span className="tabular shrink-0 text-[10px] text-ink-dim">{task.deadline ?? "Inbox"}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {editing && (
-        <div className="mt-3 space-y-2.5 border-t border-line-subtle pt-3">
-          <textarea
-            value={editFields.description}
-            onChange={(event) => editFields.setDescription(event.target.value)}
-            placeholder="What does this goal mean?"
-            rows={2}
-            aria-label={`Description for ${goal.text}`}
-            className="w-full resize-none rounded-[8px] border border-line bg-fill-soft px-2.5 py-2 text-xs text-ink outline-none placeholder:text-ink-dim focus:border-accent/45"
-          />
-          <div className="grid grid-cols-2 gap-2">
-            <label className="text-[10px] uppercase tracking-[0.1em] text-ink-dim">
-              Deadline
-              <input
-                type="date"
-                value={editFields.deadline}
-                onChange={(event) => editFields.setDeadline(event.target.value)}
-                aria-label={`Deadline for ${goal.text}`}
-                className="mt-1 w-full rounded-[8px] border border-line bg-fill-soft px-2 py-1.5 text-xs normal-case tracking-normal text-ink outline-none focus:border-accent/45"
-              />
-            </label>
-            <div className="text-[10px] uppercase tracking-[0.1em] text-ink-dim">
-              Priority
-              <div className="mt-1">
-                <PriorityChips
-                  value={editFields.priority}
-                  onChange={editFields.setPriority}
-                  groupLabel={`Priority for ${goal.text}`}
-                />
-              </div>
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={onCancelEdit}
-              className="rounded-[8px] px-3 py-1.5 text-xs text-ink-mute hover:text-ink"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={onSaveEdit}
-              disabled={busy}
-              className="rounded-[8px] bg-accent px-3.5 py-1.5 text-xs font-semibold text-canvas hover:bg-accent-deep disabled:opacity-50"
-            >
-              Save goal
-            </button>
-          </div>
-        </div>
       )}
     </motion.div>
   );

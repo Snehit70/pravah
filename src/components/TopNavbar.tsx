@@ -70,7 +70,7 @@ export function TopNavbar({
   return (
     <header
       className={cn(
-        "flex items-center gap-3 px-[18px] border-b",
+        "flex items-center gap-1 px-2 sm:gap-3 sm:px-[18px] border-b",
         "bg-[var(--color-bg-base)]"
       )}
       style={{
@@ -80,7 +80,7 @@ export function TopNavbar({
       }}
     >
       {/* Brand + view title */}
-      <div className="flex items-center gap-2.5">
+      <div className="hidden items-center gap-2.5 sm:flex">
         <BrandMark />
         <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
           <span
@@ -112,7 +112,7 @@ export function TopNavbar({
 
       {/* Nav tabs with directional fill icons */}
       <div
-        className="flex gap-0.5 ml-3 p-[3px] rounded-[8px]"
+        className="flex gap-0.5 sm:ml-3 p-[3px] rounded-[8px]"
         style={{
           background: "var(--color-fill-soft)",
           border: "1px solid var(--color-border-subtle)",

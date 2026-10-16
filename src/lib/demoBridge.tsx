@@ -20,6 +20,7 @@ export interface ConvexSurface {
     hasInflightRequests: boolean;
     connectionCount: number;
   };
+  usePaginatedQuery: (ref: never, ...rest: never[]) => unknown;
   useQuery: (ref: never, ...rest: never[]) => unknown;
   useMutation: (ref: never) => (...args: never[]) => Promise<unknown>;
   useAction: (ref: never) => (...args: never[]) => Promise<unknown>;
@@ -68,3 +69,6 @@ export const useMutation = ((ref: unknown) =>
 
 export const useAction = ((ref: unknown) =>
   (impl().useAction as (ref: unknown) => (...args: unknown[]) => Promise<unknown>)(ref)) as unknown as typeof real.useAction;
+
+export const usePaginatedQuery = ((ref: unknown, ...rest: unknown[]) =>
+  (impl().usePaginatedQuery as (...args: unknown[]) => unknown)(ref, ...rest)) as typeof real.usePaginatedQuery;
