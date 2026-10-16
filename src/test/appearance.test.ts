@@ -59,10 +59,12 @@ describe("Web appearance", () => {
     localStorage.setItem(APPEARANCE_STORAGE_KEY, "sepia");
     dispose = initializeAppearance();
     expect(getAppearance()).toBe("system");
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("blocked"); });
+    vi.stubGlobal("localStorage", {
+      getItem: () => { throw new Error("blocked"); },
+      setItem: () => { throw new Error("blocked"); },
+    });
     expect(() => setAppearance("dark")).not.toThrow();
     expect(theme()).toBe("dark");
-    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
     expect(loadAppearance()).toBe("system");
   });
 
@@ -88,7 +90,7 @@ describe("Theme before first paint", () => {
 
   it("still follows the system when storage throws before startup", () => {
     Object.defineProperty(media, "matches", { value: true });
-    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
+    vi.stubGlobal("localStorage", { getItem: () => { throw new Error("blocked"); } });
     expect(() => new Function(bootScript)()).not.toThrow();
     expect(theme()).toBe("dark");
   });
