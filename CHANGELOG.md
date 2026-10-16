@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.23.0](https://github.com/Snehit70/pravah/compare/web-v1.22.3...web-v1.23.0) (2026-10-16)
+
+
+### Features
+
+* add a complete web goal workspace ([c13018a](https://github.com/Snehit70/pravah/commit/c13018a004b5e914ea5af75020802bff7b1bab77))
+* add dark and system themes to the web app ([7219c7f](https://github.com/Snehit70/pravah/commit/7219c7f81502b950e232b2a50fd6e16c4c99f395))
+* add dark mode and system appearance to web ([10af642](https://github.com/Snehit70/pravah/commit/10af642b26155e455d7bbd7d3f00a89b35571ca3))
+* make web goals a complete task workspace ([ef0d8d6](https://github.com/Snehit70/pravah/commit/ef0d8d6be03ac96a50546fc17af139a4cd21fc89))
+
+
+### Bug Fixes
+
+* align web loading skeletons with current screens ([aa8c230](https://github.com/Snehit70/pravah/commit/aa8c230b221148c990302cff1171104accb8e067))
+* preserve web task data and correct progress history ([daafb79](https://github.com/Snehit70/pravah/commit/daafb7959d20e0212bb52f3e92658fed66042d1f))
+* preserve web task data and correct progress history ([d4856ac](https://github.com/Snehit70/pravah/commit/d4856accd72ce064dd41f4085b75b201d9f4c4aa))
+* refresh web skeletons for the current UI ([b303aca](https://github.com/Snehit70/pravah/commit/b303aca486782922bc74aa1ed547285de16864d6))
+* remove unused goals import ([2070b31](https://github.com/Snehit70/pravah/commit/2070b3173fd35cdc2a3947a557124438ba4ab8bc))
+* theme the landing header and empty heatmap cells ([7406605](https://github.com/Snehit70/pravah/commit/7406605ec1ec4e69d49278ad4019447a33bc9597))
+
 ## [1.22.3](https://github.com/Snehit70/pravah/compare/web-v1.22.2...web-v1.22.3) (2026-10-13)
 
 
