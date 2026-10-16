@@ -16,6 +16,18 @@ const renderTasks = (readOnly = false) => render(<GoalTasks goal={{ id: "g1", te
 beforeEach(() => { mock.results = []; mock.status = "Exhausted"; vi.clearAllMocks(); mock.mutate.mockResolvedValue(undefined); });
 
 describe("Goal linked tasks", () => {
+  it("replaces loading rows with fetched goal tasks without showing an empty list first", () => {
+    mock.status = "LoadingFirstPage";
+    const view = renderTasks();
+    expect(screen.getByRole("status", { name: "Loading linked tasks" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Active tasks" })).not.toBeInTheDocument();
+    mock.status = "Exhausted";
+    mock.results = [task("loaded")];
+    view.rerender(<GoalTasks goal={{ id: "g1", text: "Ship" }} readOnly={false} />);
+    expect(screen.queryByRole("status", { name: "Loading linked tasks" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "loaded" })).toBeInTheDocument();
+  });
+
   it("reads this goal, displays every returned task, deduplicates and separates completed tasks", () => {
     mock.results = [task("one"), task("two"), task("three"), task("one"), task("done", { completedAt: 100 }), task("deleted", { cancelledAt: 100 })];
     renderTasks();

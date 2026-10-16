@@ -16,6 +16,8 @@ import type { Task } from "../types";
 import { Timeline } from "./Timeline";
 import { InboxSidebar } from "./InboxSidebar";
 import { LoadingSkeleton } from "./LoadingSkeleton";
+import { PageSkeleton } from "./loading/PageSkeleton";
+import { readWorkspacePage } from "../lib/workspacePage";
 import { GoogleCallback } from "./GoogleCallback";
 import { LongTermGoalsPage } from "./LongTermGoalsPage";
 import { InsightsPage } from "./InsightsPage";
@@ -46,11 +48,7 @@ const SettingsPage = lazy(() =>
 
 export function AuthenticatedApp() {
   const webGoalsLinkingEnabled = isWebGoalsLinkingEnabled();
-  const [activePage, setActivePage] = useState<AppPage>(() => {
-    const saved = window.sessionStorage.getItem("pravah_active_page");
-    if (saved === "goals" || saved === "insights" || saved === "settings") return saved;
-    return "timeline";
-  });
+  const [activePage, setActivePage] = useState<AppPage>(readWorkspacePage);
   const [showGoalsInbox, setShowGoalsInbox] = useState(false);
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [kairoActive, setKairoActive] = useState(false);
@@ -309,7 +307,7 @@ export function AuthenticatedApp() {
   );
 
   if (!bootstrapReady || boardTasks === undefined) {
-    return <LoadingSkeleton />;
+    return <LoadingSkeleton page={activePage} />;
   }
 
   const fade = kairoActive
@@ -333,6 +331,7 @@ export function AuthenticatedApp() {
           style={{ transition: "opacity var(--dur-slow) var(--ease-out-expo)", ...fade }}
         >
           <main className="min-w-0 flex-1 overflow-hidden">
+            <Suspense fallback={<PageSkeleton page="settings" />}>
             {activePage === "settings" ? (
               <SettingsPage
                 initialCategory={settingsSeed.category}
@@ -363,6 +362,8 @@ export function AuthenticatedApp() {
                 linkedTasksByGoalId={linkedTasksByGoalId}
                 onOpenTask={openTaskPopup}
               />
+            ) : completedTasks === undefined ? (
+              <PageSkeleton page="insights" />
             ) : (
               <InsightsPage
                 tasks={allTasksForStats}
@@ -371,6 +372,7 @@ export function AuthenticatedApp() {
                 progressByGoalId={progressByGoalId}
               />
             )}
+            </Suspense>
           </main>
           {activePage !== "settings" && (activePage !== "goals" || showGoalsInbox) && (
             <div className={activePage === "goals" ? "fixed bottom-0 right-0 top-14 z-40 flex flex-col border-l border-line bg-[var(--color-bg-base)] shadow-xl lg:static lg:shadow-none" : "flex"}>
