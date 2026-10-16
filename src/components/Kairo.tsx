@@ -1,3 +1,4 @@
+import { SkeletonBlock, LoadingRegion } from "./ui/Skeleton";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -209,54 +210,14 @@ function KairoPlaceholderOverlay({ text, phase }: { text: string; phase: TypingP
 }
 
 function KairoThinking() {
-  return (
-    <div
-      style={{
-        alignSelf: "flex-start",
-        width: "min(420px, 82%)",
-        padding: "12px 14px",
-        background: "linear-gradient(180deg, var(--color-fill-soft), var(--color-fill-faint))",
-        border: "1px solid var(--color-border-default)",
-        borderLeft: `3px solid ${ACCENT}`,
-        borderRadius: 4,
-        display: "grid",
-        gap: 9,
-      }}
-    >
-      <div
-        style={{
-          width: 130,
-          height: 12,
-          background: "linear-gradient(90deg, var(--color-text-muted) 0%, rgba(var(--color-accent-primary-rgb), 0.28) 42%, var(--color-text-muted) 78%)",
-          backgroundSize: "220% 100%",
-          WebkitBackgroundClip: "text",
-          backgroundClip: "text",
-          color: "transparent",
-          animation: "kairoShine 1.2s ease-in-out infinite",
-          fontFamily: "var(--font-mono)",
-          fontSize: 11,
-          letterSpacing: 1,
-          textTransform: "uppercase",
-        }}
-      >
-        thinking
-      </div>
-      <div style={{ display: "grid", gap: 6 }}>
-        {[0.92, 0.74, 0.48].map((width, index) => (
-          <span
-            key={index}
-            style={{
-              width: `${width * 100}%`,
-              height: 8,
-              background: "linear-gradient(90deg, var(--color-fill-soft), var(--color-border-strong), var(--color-fill-soft))",
-              backgroundSize: "220% 100%",
-              animation: `kairoSkeletonSweep 1.4s ease-in-out ${index * 0.08}s infinite`,
-            }}
-          />
-        ))}
-      </div>
+  return <LoadingRegion label="Kairo is thinking" className="w-[min(420px,82%)] self-start rounded-xl border border-line-subtle bg-[var(--color-bg-surface)] px-3.5 py-3">
+    <p className="mb-3 text-xs text-ink-mute">Thinking…</p>
+    <div className="space-y-2">
+      <SkeletonBlock width="92%" height={8} />
+      <SkeletonBlock width="74%" height={8} />
+      <SkeletonBlock width="48%" height={8} />
     </div>
-  );
+  </LoadingRegion>;
 }
 
 function useRevealText(text: string, enabled: boolean): string {

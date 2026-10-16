@@ -17,6 +17,7 @@ const AppSettingsGlyph = appSettingsIcon;
 export type AppPage = "timeline" | "goals" | "insights" | "settings";
 
 interface TopNavbarProps {
+  disabled?: boolean;
   activePage: AppPage;
   onNavigate: (page: AppPage) => void;
   centerContent?: ReactNode;
@@ -61,6 +62,7 @@ export function TopNavbar({
   activePage,
   onNavigate,
   rightContent,
+  disabled = false,
 }: TopNavbarProps) {
   const now = new Date();
   const monthName = now.toLocaleDateString("en-US", { month: "short" }).toUpperCase();
@@ -122,6 +124,7 @@ export function TopNavbar({
           <NavTab
             key={page}
             active={activePage === page}
+            disabled={disabled}
             icons={VIEW_META[page].icon}
             onClick={() => onNavigate(page)}
           >
@@ -136,6 +139,7 @@ export function TopNavbar({
       <div className="flex items-center gap-2">
         {rightContent}
         <button
+          disabled={disabled}
           onClick={() => onNavigate("settings")}
           aria-label="Settings"
           aria-current={activePage === "settings" ? "page" : undefined}
@@ -172,11 +176,13 @@ export function TopNavbar({
 }
 
 function NavTab({
+  disabled,
   active,
   icons,
   children,
   onClick,
 }: {
+  disabled?: boolean;
   active: boolean;
   icons: [React.ComponentType<{ size?: number }>, React.ComponentType<{ size?: number }>];
   children: React.ReactNode;
@@ -186,6 +192,7 @@ function NavTab({
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       aria-current={active ? "page" : undefined}
       style={{
         display: "inline-flex",

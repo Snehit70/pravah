@@ -6,6 +6,7 @@ import { GripHorizontalIcon, PlusIcon, TrashIcon } from "./ui/icons";
 import { navGoalsIcon } from "./ui/traced-icons";
 import type { Task } from "../types";
 import { GoalCard } from "./goals/GoalCard";
+import { PageSkeleton } from "./loading/PageSkeleton";
 import { GoalTasks } from "./goals/GoalTasks";
 
 const NavGoalsGlyph = navGoalsIcon;
@@ -266,6 +267,8 @@ export function LongTermGoalsPage({
       onCancelEdit={() => setEditingGoalId(null)}
     />
   );
+
+  if (serverBacked && serverGoals === undefined) return <PageSkeleton page="goals" />;
 
   return (
     <div className="h-full overflow-y-auto bg-[var(--color-bg-base)]">

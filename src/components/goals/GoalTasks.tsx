@@ -6,6 +6,7 @@ import { compareTaskOrder } from "../../lib/taskLifecycle";
 import { getLocalDateString } from "../../lib/utils";
 import type { Task } from "../../types";
 import type { GoalProgress, GoalReadModel } from "../LongTermGoalsPage";
+import { GoalTaskListSkeleton } from "../loading/PageSkeleton";
 import { GoalTaskComposer } from "./GoalTaskComposer";
 
 export function GoalTasks({ goal, progress, onOpenTask, readOnly }: {
@@ -22,7 +23,7 @@ export function GoalTasks({ goal, progress, onOpenTask, readOnly }: {
   return (
     <div className="pt-6">
       {!readOnly && <GoalTaskComposer goalId={goal.id} />}
-      {status === "LoadingFirstPage" ? <div role="status" aria-label="Loading linked tasks" className="space-y-3 py-4">{[0, 1, 2].map((key) => <div key={key} className="h-14 rounded-md bg-fill-soft" />)}</div> : (
+      {status === "LoadingFirstPage" ? <GoalTaskListSkeleton readOnly={readOnly} /> : (
         <>
           <p className="mb-5 text-xs text-ink-mute" role="status">{status === "Exhausted" ? `${tasks.length} linked tasks` : `${tasks.length}${progress ? ` of ${progress.total}` : ""} linked tasks loaded. Load more to see the rest.`}</p>
           <TaskSection title="Active tasks" tasks={active} onOpenTask={onOpenTask} readOnly={readOnly} />
