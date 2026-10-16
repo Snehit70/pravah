@@ -10,6 +10,10 @@ import { App } from './App.tsx'
 import { enterDemo, isDemoMode, wantsDemoFromQuery } from './demo/demoFlag'
 import { setDemoImpl } from './lib/demoBridge'
 import { applyAccent, loadAccent } from './lib/accent'
+import { initializeAppearance } from './lib/appearance'
+
+const disposeAppearance = initializeAppearance()
+if (import.meta.hot) import.meta.hot.dispose(disposeAppearance)
 
 const mount = async () => {
   applyAccent(loadAccent())

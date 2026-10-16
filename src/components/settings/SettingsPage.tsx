@@ -19,6 +19,8 @@ import {
   storeAccent,
   type WebAccent,
 } from "../../lib/accent";
+import { useAppearance } from "../../hooks/useAppearance";
+import type { WebAppearance } from "../../lib/appearance";
 import { useToast } from "../useToast";
 import { version as webVersion } from "../../../package.json";
 import {
@@ -168,6 +170,7 @@ export function SettingsPage({
   const credentials = useQuery(api.automation.listCredentials, {}) ?? [];
   const activeCredentials = credentials.filter((c) => c.status === "active").length;
   const currentUser = useQuery(api.auth.getCurrentUser, {});
+  const [appearance, setAppearance] = useAppearance();
   const [accent, setAccentState] = useState<WebAccent>(() => loadAccent());
   const googleConnected = useMemo(() => {
     // Cheap, reactive-enough for the rail: read the same token store the
@@ -193,7 +196,7 @@ export function SettingsPage({
       ? { label: "Reduced", tone: "success" }
       : { label: "Full", tone: "idle" },
     appearance: {
-      label: ACCENT_OPTIONS.find((a) => a.value === accent)?.label ?? "Purple",
+      label: `${appearance === "light" ? "Light" : appearance === "dark" ? "Dark" : "System"} · ${ACCENT_OPTIONS.find((a) => a.value === accent)?.label ?? "Purple"}`,
       tone: "idle",
     },
     data: { label: "Ready", tone: "idle" },
@@ -370,7 +373,7 @@ export function SettingsPage({
             {category === "reminders" && <RemindersSection />}
             {category === "interaction" && <InteractionSection />}
             {category === "appearance" && (
-              <AppearanceSection accent={accent} onChangeAccent={setAccentState} />
+              <AppearanceSection accent={accent} onChangeAccent={setAccentState} appearance={appearance} onChangeAppearance={setAppearance} />
             )}
             {category === "data" && <DataSection />}
             {category === "account" && <AccountSection />}
@@ -521,9 +524,13 @@ function InteractionSection() {
 }
 
 function AppearanceSection({
+  appearance,
+  onChangeAppearance,
   accent,
   onChangeAccent,
 }: {
+  appearance: WebAppearance;
+  onChangeAppearance: (appearance: WebAppearance) => void;
   accent: WebAccent;
   onChangeAccent: (accent: WebAccent) => void;
 }) {
@@ -587,21 +594,26 @@ function AppearanceSection({
         <SettingRow
           icon={<ThemeSystemIcon size={17} />}
           title="Theme"
-          help="Warm light is the web baseline for now; the full dark surface ships with the mobile theme engine."
+          help="Choose a theme for this browser. System follows your device and updates automatically."
         />
         <div
-          className="grid grid-cols-3 gap-2"
+          role="group"
+          aria-label="Theme"
+          className="grid grid-cols-1 gap-2 sm:grid-cols-3"
           style={{ borderTop: "1px solid var(--color-border-subtle)", paddingTop: 12 }}
         >
           {[
-            { icon: appearanceThemeWarmIcon, label: "Warm light", active: true },
-            { icon: appearanceThemeSystemIcon, label: "System", active: false },
-            { icon: appearanceThemeDarkIcon, label: "Dark", active: false },
-          ].map(({ icon: ThemeIcon, label, active }) => (
-            <div
+            { icon: appearanceThemeWarmIcon, label: "Warm light", value: "light" as const },
+            { icon: appearanceThemeSystemIcon, label: "System", value: "system" as const },
+            { icon: appearanceThemeDarkIcon, label: "Dark", value: "dark" as const },
+          ].map(({ icon: ThemeIcon, label, value }) => {
+            const active = appearance === value;
+            return <button
               key={label}
-              aria-hidden
-              className="flex items-center gap-2.5 justify-center"
+              type="button"
+              aria-pressed={active}
+              onClick={() => onChangeAppearance(value)}
+              className="flex min-h-11 items-center gap-2.5 justify-center cursor-pointer"
               style={{
                 padding: "9px 10px",
                 borderRadius: 10,
@@ -612,16 +624,8 @@ function AppearanceSection({
             >
               <ThemeIcon size={16} />
               <span className="text-[12px] font-medium">{label}</span>
-              {!active && (
-                <span
-                  className="uppercase"
-                  style={{ fontFamily: "var(--font-mono)", fontSize: 8.5, letterSpacing: "0.1em" }}
-                >
-                  Soon
-                </span>
-              )}
-            </div>
-          ))}
+            </button>;
+          })}
         </div>
       </SettingsCard>
     </div>

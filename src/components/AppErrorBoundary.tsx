@@ -38,7 +38,7 @@ export class AppErrorBoundary extends Component<
             </p>
             <button
               type="button"
-              className="mt-6 rounded-md bg-white px-4 py-2 text-sm font-semibold text-[var(--color-text-inverse)] transition-colors hover:bg-paper"
+              className="mt-6 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-[var(--color-text-inverse)] transition-colors hover:bg-accent-deep"
               onClick={() => window.location.reload()}
             >
               Reload Pravah
