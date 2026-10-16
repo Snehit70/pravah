@@ -17,7 +17,7 @@ const RAMP = [
   "rgba(var(--color-accent-primary-rgb), 0.78)",
   "rgba(var(--color-accent-primary-rgb), 1)",
 ];
-const EMPTY = "rgba(78, 62, 43, 0.07)";
+const EMPTY = "var(--color-fill-soft)";
 
 function prettyDay(date: string): string {
   return new Date(`${date}T12:00:00`).toLocaleDateString("en-US", {
