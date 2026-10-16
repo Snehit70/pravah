@@ -518,7 +518,7 @@ function ProgressSection() {
                     const v = seeded(w * 7 + d);
                     const level = v < 0.24 ? 0 : v < 0.5 ? 1 : v < 0.74 ? 2 : v < 0.9 ? 3 : 4;
                     const background =
-                      level === 0 ? "rgba(78, 62, 43, 0.07)" : ramp[level - 1];
+                      level === 0 ? "var(--color-fill-soft)" : ramp[level - 1];
                     return (
                       <span
                         key={d}
@@ -536,7 +536,7 @@ function ProgressSection() {
               <span className="flex items-center gap-1.5">
                 QUIET
                 <span className="flex gap-[3px]">
-                  {["rgba(78,62,43,0.07)", ...ramp].map((c) => (
+                  {["var(--color-fill-soft)", ...ramp].map((c) => (
                     <span
                       key={c}
                       className="h-2 w-2 rounded-[2px]"
@@ -588,7 +588,7 @@ export function Landing() {
   return (
     <div className="h-screen overflow-y-auto bg-[var(--color-bg-base)] text-ink">
       {/* ---------------- Nav ---------------- */}
-      <header className="sticky top-0 z-30 border-b border-line-subtle bg-[rgba(247,241,232,0.92)] backdrop-blur-sm">
+      <header className="sticky top-0 z-30 border-b border-line-subtle bg-[var(--color-bg-base)]">
         <div className="mx-auto flex h-[56px] w-full max-w-6xl items-center gap-3 px-6 sm:px-10">
           <img src="/favicon.png" alt="" width={22} height={22} style={{ borderRadius: 5 }} />
           <span className="text-[15px] font-semibold tracking-[-0.01em]">Pravah</span>
