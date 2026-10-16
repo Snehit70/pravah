@@ -18,6 +18,7 @@ type RangeWindow = "7d" | "30d" | "90d";
 const RANGE_DAYS: Record<RangeWindow, number> = { "7d": 7, "30d": 30, "90d": 90 };
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const HEATMAP_DAYS = 182;
+const HISTORY_PAGE_SIZE = 100;
 
 interface InsightsPageProps {
   tasks: Task[];
@@ -36,9 +37,14 @@ function localDayStart(timestamp: number): Date {
   return date;
 }
 
-function completionSeries(tasks: Task[], now: number, days: number): number[] {
+function windowStart(now: number, days: number): Date {
   const start = localDayStart(now);
   start.setDate(start.getDate() - (days - 1));
+  return start;
+}
+
+function completionSeries(tasks: Task[], now: number, days: number): number[] {
+  const start = windowStart(now, days);
   const counts = new Array<number>(days).fill(0);
   for (const task of tasks) {
     if (!isTaskCompleted(task) || task.completedAt === undefined) continue;
@@ -205,6 +211,7 @@ export function InsightsPage({
   const [activeTab, setActiveTab] = useState<InsightsTab>("stats");
   const [historyWindow, setHistoryWindow] = useState<HistoryWindow>("30d");
   const [historyQuery, setHistoryQuery] = useState("");
+  const [historyPage, setHistoryPage] = useState(0);
   const [historyNow] = useState(() => Date.now());
   const [range, setRange] = useState<RangeWindow>("30d");
 
@@ -228,16 +235,15 @@ export function InsightsPage({
     const series = completionSeries(analyticsTasks, historyNow, days);
     const previous = completionSeries(
       analyticsTasks,
-      historyNow - days * 86_400_000,
+      windowStart(historyNow, days).getTime() - 1,
       days
     );
     const weekdayCounts = new Array<number>(7).fill(0);
     const hourCounts = new Array<number>(24).fill(0);
-    const cutoff = localDayStart(historyNow);
-    cutoff.setDate(cutoff.getDate() - (days - 1));
+    const cutoff = windowStart(historyNow, days);
     const cycleDays: number[] = [];
     for (const task of analyticsTasks) {
-      if (!isTaskCompleted(task) || task.completedAt === undefined || task.completedAt < cutoff.getTime()) continue;
+      if (!isTaskCompleted(task) || task.completedAt === undefined || task.completedAt < cutoff.getTime() || task.completedAt > historyNow) continue;
       const completed = new Date(task.completedAt);
       weekdayCounts[completed.getDay()] += 1;
       hourCounts[completed.getHours()] += 1;
@@ -269,26 +275,24 @@ export function InsightsPage({
 
   // Journey: 26 full weeks, Sunday-aligned columns, cells stop at today.
   const heat = useMemo(() => {
-    const days = HEATMAP_DAYS;
-    const counts = completionSeries(analyticsTasks, historyNow, days);
-    const done = new Set(
-      analyticsTasks
-        .filter((task) => isTaskCompleted(task) && task.completedAt !== undefined)
-        .map((task) => getLocalDateString(new Date(task.completedAt as number)))
-    );
-    const start = localDayStart(historyNow);
-    start.setDate(start.getDate() - (days - 1));
+    const counts = new Map<string, number>();
+    for (const task of analyticsTasks) {
+      if (!isTaskCompleted(task) || task.completedAt === undefined || task.completedAt > historyNow) continue;
+      const date = getLocalDateString(new Date(task.completedAt));
+      counts.set(date, (counts.get(date) ?? 0) + 1);
+    }
+    const done = new Set(counts.keys());
+    const start = windowStart(historyNow, HEATMAP_DAYS);
     while (start.getDay() !== 0) start.setDate(start.getDate() - 1);
     const weeks: Array<Array<{ count: number; date: string }>> = [];
     const cursor = new Date(start);
-    let index = 0;
     while (cursor.getTime() <= historyNow) {
       const week: Array<{ count: number; date: string }> = [];
       for (let d = 0; d < 7; d += 1) {
         if (cursor.getTime() > historyNow) break;
-        week.push({ count: counts[index] ?? 0, date: getLocalDateString(cursor) });
+        const date = getLocalDateString(cursor);
+        week.push({ count: counts.get(date) ?? 0, date });
         cursor.setDate(cursor.getDate() + 1);
-        index += 1;
       }
       weeks.push(week);
     }
@@ -332,10 +336,10 @@ export function InsightsPage({
     const cutoff =
       historyWindow === "all"
         ? undefined
-        : historyNow - (historyWindow === "7d" ? 7 : 30) * 24 * 60 * 60 * 1000;
+        : windowStart(historyNow, historyWindow === "7d" ? 7 : 30).getTime();
 
     return (completedTaskSource ?? tasks.filter(isTaskCompleted))
-      .filter((task) => cutoff === undefined || completionTimestamp(task) >= cutoff)
+      .filter((task) => completionTimestamp(task) <= historyNow && (cutoff === undefined || completionTimestamp(task) >= cutoff))
       .filter((task) => {
         if (!normalizedQuery) return true;
         return `${task.title} ${task.description ?? ""}`
@@ -344,6 +348,11 @@ export function InsightsPage({
       })
       .sort((a, b) => completionTimestamp(b) - completionTimestamp(a));
   }, [completedTaskSource, historyNow, historyQuery, historyWindow, tasks]);
+
+  const pageCount = Math.max(1, Math.ceil(completed.length / HISTORY_PAGE_SIZE));
+  const currentPage = Math.min(historyPage, pageCount - 1);
+  const historyStart = currentPage * HISTORY_PAGE_SIZE;
+  const visibleCompleted = completed.slice(historyStart, historyStart + HISTORY_PAGE_SIZE);
 
   return (
     <div className="h-full overflow-y-auto bg-[var(--color-bg-base)]">
@@ -476,7 +485,7 @@ export function InsightsPage({
               caption="A searchable record of finished work."
               right={
                 <span className="tabular" style={{ fontSize: 10, fontFamily: "var(--font-mono)", letterSpacing: 0.8, color: "var(--color-text-dim)" }}>
-                  {completed.length} SHOWN
+                  {completed.length === 0 ? "0" : `${historyStart + 1}–${historyStart + visibleCompleted.length}`} of {completed.length} shown
                 </span>
               }
             >
@@ -485,7 +494,10 @@ export function InsightsPage({
                   <input
                     type="search"
                     value={historyQuery}
-                    onChange={(event) => setHistoryQuery(event.target.value)}
+                    onChange={(event) => {
+                      setHistoryQuery(event.target.value);
+                      setHistoryPage(0);
+                    }}
                     placeholder="Search completed tasks…"
                     aria-label="Search completed tasks"
                     style={{
@@ -507,7 +519,10 @@ export function InsightsPage({
                   <Segmented
                     ariaLabel="Completion history window"
                     value={historyWindow}
-                    onChange={setHistoryWindow}
+                    onChange={(value) => {
+                      setHistoryWindow(value);
+                      setHistoryPage(0);
+                    }}
                     options={[
                       { value: "7d", label: "7D", ariaLabel: "Last 7 days" },
                       { value: "30d", label: "30D", ariaLabel: "Last 30 days" },
@@ -542,7 +557,7 @@ export function InsightsPage({
                   </div>
                 ) : (
                   <ul style={{ margin: "14px 0 0", padding: 0, listStyle: "none" }}>
-                    {completed.slice(0, 100).map((task) => (
+                    {visibleCompleted.map((task) => (
                       <li
                         key={task._id}
                         style={{
@@ -600,6 +615,27 @@ export function InsightsPage({
                       </li>
                     ))}
                   </ul>
+                )}
+                {pageCount > 1 && (
+                  <nav aria-label="Completion history pages" className="mt-4 flex items-center justify-between gap-3 text-xs text-ink-soft">
+                    <button
+                      type="button"
+                      disabled={currentPage === 0}
+                      onClick={() => setHistoryPage(currentPage - 1)}
+                      className="rounded-md border border-line px-3 py-2 disabled:opacity-50"
+                    >
+                      Previous
+                    </button>
+                    <span role="status">Page {currentPage + 1} of {pageCount}</span>
+                    <button
+                      type="button"
+                      disabled={currentPage === pageCount - 1}
+                      onClick={() => setHistoryPage(currentPage + 1)}
+                      className="rounded-md border border-line px-3 py-2 disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  </nav>
                 )}
               </Card>
             </Section>

@@ -2,7 +2,6 @@
 // SettingsSheet: a category rail (the mobile home list, same nine sections,
 // same icons and summaries) beside the selected section's detail cards.
 import { useEffect, useMemo, useState } from "react";
-import type { Task } from "../../types";
 import { useQuery } from "../../lib/data";
 import { api } from "../../../convex/_generated/api";
 import { tx } from "../../lib/motion";
@@ -131,14 +130,12 @@ interface SettingsPageProps {
   /** Bumped by deep links (e.g. Kairo's setup banner) so re-opening the same
       category re-selects it even when it didn't change. */
   seedNonce?: number;
-  tasks: Task[];
   onBack: () => void;
 }
 
 export function SettingsPage({
   initialCategory = "kairo",
   seedNonce = 0,
-  tasks,
   onBack,
 }: SettingsPageProps) {
   const [category, setCategory] = useState<SettingsCategory>(initialCategory);
@@ -375,7 +372,7 @@ export function SettingsPage({
             {category === "appearance" && (
               <AppearanceSection accent={accent} onChangeAccent={setAccentState} />
             )}
-            {category === "data" && <DataSection tasks={tasks} />}
+            {category === "data" && <DataSection />}
             {category === "account" && <AccountSection />}
             {category === "about" && <AboutSection />}
           </div>
@@ -631,10 +628,17 @@ function AppearanceSection({
   );
 }
 
-function DataSection({ tasks }: { tasks: Task[] }) {
+function DataSection() {
+  // Mount these subscriptions only in Data settings. Board data deliberately
+  // omits history and must never be used as the source of a workspace export.
+  const tasks = useQuery(api.tasks.listTasks, {});
+  const goals = useQuery(api.goals.list, {});
+  const goalLinks = useQuery(api.goals.listLinks, {});
+  const ready = tasks !== undefined && goals !== undefined && goalLinks !== undefined;
   const exportTasks = () => {
+    if (!ready) return;
     const payload = JSON.stringify(
-      { exportedAt: new Date().toISOString(), tasks },
+      { schemaVersion: 1, exportedAt: new Date().toISOString(), tasks, goals, goalLinks },
       null,
       2
     );
@@ -652,10 +656,10 @@ function DataSection({ tasks }: { tasks: Task[] }) {
         <SettingRow
           icon={<ExportTasksIcon size={17} />}
           title="Export tasks"
-          help="Download the current workspace as portable JSON."
+          help="Download all active and completed tasks, goals, and goal links as JSON. Images and cancelled tasks are not included."
         />
-        <SettingsButton variant="soft" onClick={exportTasks}>
-          Export
+        <SettingsButton variant="soft" onClick={exportTasks} disabled={!ready}>
+          {ready ? "Export" : "Loading export…"}
         </SettingsButton>
       </div>
       <div

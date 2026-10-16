@@ -1,5 +1,5 @@
 /** @vitest-environment happy-dom */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { Task } from "../types";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -20,6 +20,59 @@ function makeTask(overrides: Partial<Task>): Task {
 }
 
 describe("InsightsPage", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("keeps heatmap completions on their actual dates after Sunday alignment", () => {
+    const now = new Date(2026, 9, 15, 12).getTime();
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    render(<InsightsPage tasks={[
+      makeTask({ _id: "today" as Id<"tasks">, completedAt: now }),
+      makeTask({ _id: "old" as Id<"tasks">, completedAt: new Date(2026, 3, 17, 12).getTime() }),
+    ]} />);
+    expect(screen.getByRole("button", { name: "Thu, Oct 15: 1 completed" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fri, Apr 17: 1 completed" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sun, Apr 12: no completions" })).toBeInTheDocument();
+  });
+
+  it("uses the chart's calendar-day boundary for completion history", () => {
+    const now = new Date(2026, 9, 15, 12).getTime();
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    render(<InsightsPage tasks={[
+      makeTask({ _id: "start" as Id<"tasks">, title: "First day", completedAt: new Date(2026, 8, 16).getTime() }),
+      makeTask({ _id: "before" as Id<"tasks">, title: "Outside window", completedAt: new Date(2026, 8, 15, 18).getTime() }),
+      makeTask({ _id: "today" as Id<"tasks">, title: "Today", completedAt: now }),
+      makeTask({ _id: "future" as Id<"tasks">, title: "Future", completedAt: now + 60_000 }),
+    ]} />);
+    expect(screen.getByText("tasks completed").previousElementSibling).toHaveTextContent("2");
+    fireEvent.click(screen.getByRole("tab", { name: "Completed" }));
+    expect(screen.getByText("1–2 of 2 shown")).toBeInTheDocument();
+    expect(screen.getByText("First day")).toBeInTheDocument();
+    expect(screen.queryByText("Outside window")).not.toBeInTheDocument();
+    expect(screen.queryByText("Future")).not.toBeInTheDocument();
+  });
+
+  it("lets users browse every completed task and resets pagination on search", () => {
+    const now = Date.now();
+    const tasks = Array.from({ length: 239 }, (_, index) => makeTask({
+      _id: `history-${index}` as Id<"tasks">,
+      title: `History task ${index}`,
+      completedAt: now - index * 1000,
+    }));
+    render(<InsightsPage tasks={[]} completedTasks={tasks} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Completed" }));
+    expect(screen.getByText("1–100 of 239 shown")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("101–200 of 239 shown")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("History task 238")).toBeInTheDocument();
+    expect(screen.getByText("201–239 of 239 shown")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search completed tasks" }), { target: { value: "History task 0" } });
+    expect(screen.getByText("1–1 of 1 shown")).toBeInTheDocument();
+    expect(screen.getByText("History task 0")).toBeInTheDocument();
+  });
+
   it("renders lean stats metrics from task data", () => {
     const today = getLocalDateString();
     const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);

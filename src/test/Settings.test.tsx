@@ -1,8 +1,19 @@
 /** @vitest-environment happy-dom */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
+import type { Task } from "../types";
+import type { Id } from "../../convex/_generated/dataModel";
 import { SettingsPage } from "../components/settings/SettingsPage";
+
+const fullExportTasks: Task[] = [
+  { _id: "active" as Id<"tasks">, title: "Active", position: 0, scheduledAt: 1, createdBy: "user", createdAt: 1, updatedAt: 1 },
+  { _id: "completed" as Id<"tasks">, title: "Completed", position: 0, scheduledAt: 1, completedAt: 2, createdBy: "user", createdAt: 1, updatedAt: 2 },
+];
+let exportTasksResult: Task[] | undefined = fullExportTasks;
+const exportGoals = [{ id: "goal-1", text: "Goal" }];
+const exportLinks = { completed: "goal-1" };
+const queryReadMock = vi.fn();
 
 const upsertIntegrationMock = vi.fn();
 const enqueueGmailCandidateMock = vi.fn();
@@ -55,6 +66,10 @@ vi.mock("convex/react", () => ({
   },
   useAction: () => importGoogleCalendarMock,
   useQuery: (query: unknown, args: unknown) => {
+    queryReadMock(query, args);
+    if (query === "tasks.listTasks") return exportTasksResult;
+    if (query === "goals.list") return exportGoals;
+    if (query === "goals.listLinks") return exportLinks;
     if (query === "automation.listCredentials") {
       return [
         {
@@ -103,6 +118,8 @@ vi.mock("convex/react", () => ({
 
 vi.mock("../../convex/_generated/api", () => ({
   api: {
+    tasks: { listTasks: "tasks.listTasks" },
+    goals: { list: "goals.list", listLinks: "goals.listLinks" },
     automation: {
       issueBootstrapToken: "automation.issueBootstrapToken",
       revokeCredential: "automation.revokeCredential",
@@ -157,7 +174,14 @@ async function openCategory(name: string) {
 }
 
 describe("SettingsPage", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
   beforeEach(() => {
+    exportTasksResult = fullExportTasks;
+    queryReadMock.mockClear();
     upsertIntegrationMock.mockReset();
     upsertIntegrationMock.mockResolvedValue(undefined);
     enqueueGmailCandidateMock.mockReset();
@@ -181,8 +205,44 @@ describe("SettingsPage", () => {
     showSuccessMock.mockReset();
   });
 
+  it("loads the complete export only when Data settings opens", async () => {
+    render(<SettingsPage onBack={vi.fn()} />);
+    expect(queryReadMock).not.toHaveBeenCalledWith("tasks.listTasks", {});
+    await openCategory("Data & diagnostics");
+    expect(queryReadMock).toHaveBeenCalledWith("tasks.listTasks", {});
+    expect(queryReadMock).toHaveBeenCalledWith("goals.list", {});
+    expect(queryReadMock).toHaveBeenCalledWith("goals.listLinks", {});
+  });
+
+  it("waits for the complete dataset before enabling export", () => {
+    exportTasksResult = undefined;
+    render(<SettingsPage onBack={vi.fn()} initialCategory="data" />);
+    expect(screen.getByRole("button", { name: "Loading export…" })).toBeDisabled();
+  });
+
+  it("downloads completed tasks and goal links with the active tasks", async () => {
+    render(<SettingsPage onBack={vi.fn()} initialCategory="data" />);
+    const createObjectURL = vi.fn((_blob: Blob) => "blob:pravah-export");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    const blob = createObjectURL.mock.calls[0]?.[0] as Blob | undefined;
+    expect(blob).toBeDefined();
+    const payload = JSON.parse(await blob!.text());
+    expect(payload).toEqual({
+      schemaVersion: 1,
+      exportedAt: expect.any(String),
+      tasks: fullExportTasks,
+      goals: exportGoals,
+      goalLinks: exportLinks,
+    });
+    expect(click).toHaveBeenCalledOnce();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:pravah-export");
+  });
+
   it("renders the nine mobile-parity categories in the rail", () => {
-    render(<SettingsPage tasks={[]} onBack={vi.fn()} />);
+    render(<SettingsPage onBack={vi.fn()} />);
 
     for (const title of [
       "Kairo",
@@ -201,7 +261,7 @@ describe("SettingsPage", () => {
   });
 
   it("shows explicit review queue guidance in the Sync section", async () => {
-    render(<SettingsPage tasks={[]} onBack={vi.fn()} />);
+    render(<SettingsPage onBack={vi.fn()} />);
     await openCategory("Sync");
 
     expect(await screen.findByText("Your Task Review Queue")).toBeInTheDocument();
@@ -216,7 +276,7 @@ describe("SettingsPage", () => {
   });
 
   it("passes optional schedule date when approving a review item", async () => {
-    render(<SettingsPage tasks={[]} onBack={vi.fn()} />);
+    render(<SettingsPage onBack={vi.fn()} />);
     await openCategory("Sync");
 
     const scheduleInput = await screen.findByLabelText(/Schedule date on approve/i);
@@ -233,7 +293,7 @@ describe("SettingsPage", () => {
   });
 
   it("preserves accountEmail when persisting calendar toggle state", async () => {
-    render(<SettingsPage tasks={[]} onBack={vi.fn()} />);
+    render(<SettingsPage onBack={vi.fn()} />);
     await openCategory("Sync");
 
     const calendarLabel = await screen.findByText("Google Calendar").then((el) => el.closest("label"));
@@ -253,7 +313,7 @@ describe("SettingsPage", () => {
   });
 
   it("passes selected calendar IDs and fullResync flag when syncing", async () => {
-    render(<SettingsPage tasks={[]} onBack={vi.fn()} />);
+    render(<SettingsPage onBack={vi.fn()} />);
     await openCategory("Sync");
 
     await waitFor(() => {
@@ -273,7 +333,7 @@ describe("SettingsPage", () => {
 
   it("preserves stored calendar selection during hydration", async () => {
     localStorage.setItem("pravah_google_calendar_selection", JSON.stringify(["team@example.com"]));
-    render(<SettingsPage tasks={[]} onBack={vi.fn()} />);
+    render(<SettingsPage onBack={vi.fn()} />);
     await openCategory("Sync");
 
     await waitFor(() => {
@@ -292,7 +352,7 @@ describe("SettingsPage", () => {
   });
 
   it("issues a bootstrap token and shows the one-time value", async () => {
-    render(<SettingsPage tasks={[]} onBack={vi.fn()} />);
+    render(<SettingsPage onBack={vi.fn()} />);
     await openCategory("Access tokens");
 
     fireEvent.click(screen.getByRole("button", { name: "Issue Bootstrap Token" }));
@@ -310,7 +370,7 @@ describe("SettingsPage", () => {
   });
 
   it("requires explicit opt-in before issuing task write scope", async () => {
-    render(<SettingsPage tasks={[]} onBack={vi.fn()} />);
+    render(<SettingsPage onBack={vi.fn()} />);
     await openCategory("Access tokens");
 
     fireEvent.click(screen.getByRole("switch", { name: /Allow task writes/i }));
@@ -326,7 +386,7 @@ describe("SettingsPage", () => {
   });
 
   it("revokes an existing automation credential", async () => {
-    render(<SettingsPage tasks={[]} onBack={vi.fn()} />);
+    render(<SettingsPage onBack={vi.fn()} />);
     await openCategory("Access tokens");
 
     const revokeButtons = await screen.findAllByRole("button", { name: "Revoke" });
@@ -341,7 +401,7 @@ describe("SettingsPage", () => {
   });
 
   it("exposes Kairo provider rows with brand marks and expands the editor", async () => {
-    render(<SettingsPage tasks={[]} onBack={vi.fn()} initialCategory="kairo" />);
+    render(<SettingsPage onBack={vi.fn()} initialCategory="kairo" />);
 
     expect(screen.getByText("Kairo providers")).toBeInTheDocument();
     expect(screen.getAllByText("Anthropic").length).toBeGreaterThan(0);

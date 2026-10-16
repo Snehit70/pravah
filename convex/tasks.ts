@@ -1006,14 +1006,14 @@ export const updateTask = mutation({
   args: {
     taskId: v.id("tasks"),
     title: v.optional(v.string()),
-    description: v.optional(v.string()),
+    description: v.optional(v.union(v.string(), v.null())),
     // null clears the field. Clients cannot send `undefined` through Convex —
     // optional undefined args are stripped before the handler runs.
     deadline: v.optional(v.union(v.string(), v.null())),
     time: v.optional(v.union(v.string(), v.null())),
     estimatedMinutes: v.optional(v.number()),
     tags: v.optional(v.array(v.string())),
-    priority: v.optional(v.union(v.literal("p1"), v.literal("p2"), v.literal("p3"))),
+    priority: v.optional(v.union(v.literal("p1"), v.literal("p2"), v.literal("p3"), v.null())),
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
@@ -1024,7 +1024,7 @@ export const updateTask = mutation({
       patch.title = args.title;
     }
     if (Object.prototype.hasOwnProperty.call(args, "description")) {
-      patch.description = args.description;
+      patch.description = args.description ?? undefined;
     }
     if (Object.prototype.hasOwnProperty.call(args, "deadline")) {
       patch.deadline = args.deadline ?? undefined;
@@ -1045,7 +1045,7 @@ export const updateTask = mutation({
       patch.tags = args.tags;
     }
     if (Object.prototype.hasOwnProperty.call(args, "priority")) {
-      patch.priority = args.priority;
+      patch.priority = args.priority ?? undefined;
     }
     await updateTaskForOwner(ctx, tokenIdentifier, patch);
   },

@@ -336,7 +336,6 @@ export function AuthenticatedApp() {
               <SettingsPage
                 initialCategory={settingsSeed.category}
                 seedNonce={settingsSeed.nonce}
-                tasks={allTasksForStats}
                 onBack={() => navigate(lastWorkspacePageRef.current)}
               />
             ) : activePage === "timeline" ? (

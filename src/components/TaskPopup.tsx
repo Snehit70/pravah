@@ -27,7 +27,8 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
   const [titleError, setTitleError] = useState("");
   const goals = useQuery(api.goals.list, webGoalsLinkingEnabled ? {} : "skip");
   const goalLinks = useQuery(api.goals.listLinks, webGoalsLinkingEnabled ? { taskIds: [task._id] } : "skip");
-  const [selectedGoalId, setSelectedGoalId] = useState<string>("");
+  // undefined leaves the existing link alone; an empty string explicitly clears it.
+  const [selectedGoalId, setSelectedGoalId] = useState<string | undefined>();
 
   const updateTask = useMutation(api.tasks.updateTask);
   const setGoalLink = useMutation(api.goals.setLink);
@@ -40,7 +41,7 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
   const { showToast, showError, showSuccess } = useToast();
   const minDate = getLocalDateString();
   const currentGoalId = webGoalsLinkingEnabled ? (goalLinks?.[String(task._id)] ?? "") : "";
-  const selectedOrCurrentGoalId = selectedGoalId || currentGoalId;
+  const selectedOrCurrentGoalId = selectedGoalId ?? currentGoalId;
   const selectedGoalName = goals?.find((goal) => goal.id === selectedOrCurrentGoalId)?.text;
 
   const quickScheduleOptions = [
@@ -60,13 +61,13 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
       await updateTask({
         taskId: task._id,
         title: title.trim(),
-        description: description || undefined,
+        description: description || null,
         // null clears the schedule; undefined would be stripped by Convex
         deadline: deadline || null,
         time: deadline ? time || null : null,
-        priority,
+        priority: priority ?? null,
       });
-      if (webGoalsLinkingEnabled && selectedGoalId !== currentGoalId) {
+      if (webGoalsLinkingEnabled && selectedGoalId !== undefined && selectedGoalId !== currentGoalId) {
         try {
           await setGoalLink({
             taskId: String(task._id),
@@ -295,7 +296,7 @@ export function TaskPopup({ task, onClose }: TaskPopupProps) {
               Linked Goal
             </span>
             <select
-              value={selectedGoalId || currentGoalId}
+              value={selectedOrCurrentGoalId}
               onChange={(e) => setSelectedGoalId(e.target.value)}
               className="w-full rounded-[3px] border bg-fill-soft px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent/45"
               style={{ borderColor: "var(--color-border-default)" }}

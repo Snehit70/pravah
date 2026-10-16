@@ -108,6 +108,8 @@ describe("TaskPopup", () => {
     fireEvent.change(screen.getByLabelText("Linked Goal"), {
       target: { value: "" },
     });
+    expect(screen.getByLabelText("Linked Goal")).toHaveValue("");
+    expect(screen.getByTitle("No linked goal")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
@@ -118,6 +120,26 @@ describe("TaskPopup", () => {
     });
     expect(showSuccessMock).toHaveBeenCalledWith("Task updated successfully");
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("preserves an untouched goal link when saving task fields", async () => {
+    render(<TaskPopup task={makeTask()} onClose={vi.fn()} />);
+    expect(screen.getByLabelText("Linked Goal")).toHaveValue("g1");
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Renamed task" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(showSuccessMock).toHaveBeenCalled());
+    expect(setGoalLinkMock).not.toHaveBeenCalled();
+  });
+
+  it("sends explicit clearing values for description and priority", async () => {
+    render(<TaskPopup task={makeTask({ description: "Old notes", priority: "p1" })} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Description"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "None" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(updateTaskMock).toHaveBeenCalledWith(expect.objectContaining({
+      description: null,
+      priority: null,
+    })));
   });
 
   it("shows partial success when task saves but goal link fails", async () => {
@@ -154,10 +176,10 @@ describe("TaskPopup", () => {
       expect(updateTaskMock).toHaveBeenCalledWith({
         taskId: "task_1",
         title: "Updated title",
-        description: undefined,
+        description: null,
         deadline: null,
         time: null,
-        priority: undefined,
+        priority: null,
       });
     });
 
