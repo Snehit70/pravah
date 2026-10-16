@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Reorder, motion } from "framer-motion";
 import { cn, getLocalDateString } from "../lib/utils";
-import { isTaskCompleted } from "../lib/taskState";
 import { EASE_OUT_EXPO } from "../lib/motion";
 import { GripHorizontalIcon, PlusIcon, TrashIcon } from "./ui/icons";
 import { navGoalsIcon } from "./ui/traced-icons";
