@@ -7,7 +7,7 @@ import type { Id } from "../../convex/_generated/dataModel";
 import { getLocalDateString } from "../lib/utils";
 import { renderWithProviders } from "./renderWithProviders";
 
-const useQueryMock = vi.fn();
+const queryMock = vi.fn();
 const useMutationMock = vi.fn();
 
 vi.mock("@dnd-kit/core", () => ({
@@ -62,7 +62,7 @@ vi.mock("convex/react", () => ({
     if (ref === "goalProgress.list") return { ready: true, progress: {} };
     if (ref === "goals.list") return [];
     if (ref === "goals.listLinks") return {};
-    return useQueryMock(ref, args);
+    return queryMock(ref, args);
   },
   useMutation: (...args: unknown[]) => useMutationMock(...args),
 }));
@@ -129,7 +129,7 @@ describe("App task flow integration", () => {
   beforeEach(() => {
     localStorage.removeItem("pravah:ff:web-goals-linking");
     sessionStorage.clear();
-    useQueryMock.mockReset();
+    queryMock.mockReset();
     useMutationMock.mockReset();
 
     useMutationMock.mockImplementation(() => vi.fn().mockResolvedValue(undefined));
@@ -137,7 +137,7 @@ describe("App task flow integration", () => {
 
   it("renders authenticated app shell", async () => {
     const today = getLocalDateString();
-    useQueryMock.mockReturnValue([
+    queryMock.mockReturnValue([
       makeTask({ _id: "inbox_1" as Id<"tasks">, title: "Inbox Task" }),
       makeTask({
         _id: "scheduled_1" as Id<"tasks">,
@@ -153,7 +153,7 @@ describe("App task flow integration", () => {
   });
 
   it("keeps app responsive to keyboard events", async () => {
-    useQueryMock.mockReturnValue([]);
+    queryMock.mockReturnValue([]);
 
     renderWithProviders(<App />);
 
@@ -167,7 +167,7 @@ describe("App task flow integration", () => {
 
   it("renders without crashing when scheduled tasks exist", async () => {
     const today = getLocalDateString();
-    useQueryMock.mockReturnValue([
+    queryMock.mockReturnValue([
       makeTask({
         _id: "scheduled_1" as Id<"tasks">,
         title: "Click Me",
@@ -183,7 +183,7 @@ describe("App task flow integration", () => {
   });
 
   it("shows the Insights loading layout until completion history arrives", async () => {
-    useQueryMock.mockImplementation((ref, args) => ref === "tasks.listTasks" && args?.status === "completed" ? undefined : []);
+    queryMock.mockImplementation((ref, args) => ref === "tasks.listTasks" && args?.status === "completed" ? undefined : []);
     renderWithProviders(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Insights" }));
     expect(screen.getByRole("status", { name: "Loading insights" })).toBeInTheDocument();
