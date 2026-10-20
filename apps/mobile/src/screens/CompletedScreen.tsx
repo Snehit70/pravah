@@ -7,7 +7,8 @@
 
 import type { JSX } from "react";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { FlatList, RefreshControl, Text, View } from "react-native";
+import { RefreshControl, Text, View } from "react-native";
+import { FlatListWithScrollbar } from "../components/FlatListWithScrollbar";
 import { colors, spacing, typography } from "../theme/tokens";
 import type { MobileTask } from "../components/TaskCard";
 import { TaskListSkeleton } from "../components/LoadingSkeleton";
@@ -48,11 +49,12 @@ export function CompletedScreen({
   const loadingBlock = <TaskListSkeleton variant="completed" />;
 
   return (
-    <FlatList
+    <FlatListWithScrollbar
+      indicatorBottomInset={tabBarHeight}
       style={{ flex: 1 }}
       contentContainerStyle={{
         paddingTop: spacing.md,
-        paddingBottom: tabBarHeight + 84,
+        paddingBottom: tabBarHeight + spacing.lg,
       }}
       data={visibleTasks}
       initialNumToRender={8}
@@ -62,7 +64,6 @@ export function CompletedScreen({
       removeClippedSubviews
       keyExtractor={(item) => item._id}
       renderItem={renderItem}
-      showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl
           refreshing={isRefreshing}

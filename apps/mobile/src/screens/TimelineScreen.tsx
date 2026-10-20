@@ -14,7 +14,8 @@
 
 import { useCallback, useMemo, useState, type JSX } from "react";
 import Animated, { FadeIn, FadeOut, withDelay, withTiming } from "react-native-reanimated";
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { FlatListWithScrollbar } from "../components/FlatListWithScrollbar";
 import Svg, { Line, Rect } from "react-native-svg";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
@@ -398,11 +399,12 @@ export function TimelineScreen({
   );
 
   const listBody = (
-    <FlatList<TimelineRow>
+    <FlatListWithScrollbar<TimelineRow>
+      indicatorBottomInset={tabBarHeight}
       style={{ flex: 1 }}
       contentContainerStyle={{
         paddingTop: spacing.md,
-        paddingBottom: tabBarHeight + (selectMode ? 132 : 84),
+        paddingBottom: tabBarHeight + (selectMode ? 52 + spacing.md + spacing.lg : spacing.lg),
       }}
       data={rows}
       extraData={selectMode ? selectedIds : false}
@@ -456,7 +458,6 @@ export function TimelineScreen({
           </Animated.View>
         );
       }}
-      showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl
           refreshing={isRefreshing}

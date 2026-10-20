@@ -21,6 +21,11 @@ const {
   imagePasteHandlers: new Set<(source: { kind: "paste"; uri: string; previewUri: string }) => Promise<void>>(),
 }));
 
+vi.mock("../components/ScrollViewWithScrollbar", async () => {
+  const { ScrollView } = await import("react-native");
+  return { ScrollViewWithScrollbar: ScrollView };
+});
+
 vi.mock("../components/TaskImagePasteInput", async () => {
   const { TextInput } = await import("react-native");
   return {
@@ -435,9 +440,9 @@ describe("EditTaskSheet compact workbench", () => {
     const { ref, onSave } = setup();
     await open(ref);
 
-    fireEvent.click(screen.getByLabelText("Priority, P1 — High"));
+    fireEvent.click(screen.getByLabelText("Priority, P1 · High"));
     expect(screen.getByText("Priority")).toBeTruthy();
-    fireEvent.click(screen.getByText("P2 — Medium"));
+    fireEvent.click(screen.getByText("P2 · Medium"));
     await act(async () => fireEvent.click(screen.getByText("Save changes")));
 
     await waitFor(() => {

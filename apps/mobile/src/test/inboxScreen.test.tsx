@@ -18,6 +18,11 @@ const { mockConfirm } = vi.hoisted(() => ({
 let hideGoalLinkedTasksFromInbox = false;
 
 // ─── react-native mock ────────────────────────────────────────────────────────
+vi.mock("../components/FlatListWithScrollbar", async () => {
+  const { FlatList } = await import("react-native");
+  return { FlatListWithScrollbar: FlatList };
+});
+
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
   const View = ({ children, ...rest }: AnyProps) => {

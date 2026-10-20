@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { ScrollViewWithScrollbar } from "./ScrollViewWithScrollbar";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { humanDate } from "../lib/dates";
@@ -94,7 +95,7 @@ export function CompletedTaskSheet({
     ? `${humanDate(task.deadline)}${task.time ? ` · ${formatTime12h(task.time)}` : ""}`
     : "Inbox";
   const priorityValue = task.priority
-    ? `${priorityLabel(task.priority)} — ${task.priority === "p1" ? "High" : task.priority === "p2" ? "Medium" : "Low"}`
+    ? `${priorityLabel(task.priority)} · ${task.priority === "p1" ? "High" : task.priority === "p2" ? "Medium" : "Low"}`
     : "No priority";
 
   const handleDelete = async () => {
@@ -189,7 +190,7 @@ export function CompletedTaskSheet({
             </View>
           ) : null}
 
-          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <ScrollViewWithScrollbar contentContainerStyle={styles.content}>
             <View style={styles.titleBlock}>
               <Text style={styles.title}>{task.title}</Text>
               <View style={styles.completedLine}>
@@ -270,7 +271,7 @@ export function CompletedTaskSheet({
               <InfoCircleIcon color={colors.textMuted} size={16} />
               <Text style={styles.readOnlyText}>Editing is available after you reopen this task.</Text>
             </View>
-          </ScrollView>
+          </ScrollViewWithScrollbar>
 
           <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
             <Pressable

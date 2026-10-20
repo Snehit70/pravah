@@ -13,11 +13,11 @@ import {
   Keyboard,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { ScrollViewWithScrollbar } from "./ScrollViewWithScrollbar";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -784,7 +784,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
 
     const completed = taskState === "completed";
     const planningWhen = whenLabel(deadline, time);
-    const planningPriority = priority ? `${priorityLabel(priority)} — ${priority === "p1" ? "High" : priority === "p2" ? "Medium" : "Low"}` : "No priority";
+    const planningPriority = priority ? `${priorityLabel(priority)} · ${priority === "p1" ? "High" : priority === "p2" ? "Medium" : "Low"}` : "No priority";
     const planningGoal = linkedGoal?.text ?? "No goal";
 
     const renderUtilityHeader = () => (
@@ -871,7 +871,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
       return (
         <>
           {renderPickerHeader("When")}
-          <ScrollView contentContainerStyle={styles.pickerContent} keyboardShouldPersistTaps="handled">
+          <ScrollViewWithScrollbar contentContainerStyle={styles.pickerContent} keyboardShouldPersistTaps="handled">
             <View style={styles.optionGroup}>
               {options.map((option) => (
                 <PlanningRow
@@ -915,7 +915,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
               <Text style={styles.previewValue}>{planningWhen}</Text>
               <Text style={styles.previewDetail}>{deadline ? humanDate(deadline) : "Returns this task to Inbox"}</Text>
             </View>
-          </ScrollView>
+          </ScrollViewWithScrollbar>
         </>
       );
     };
@@ -923,10 +923,10 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
     const renderPriorityPicker = () => (
       <>
         {renderPickerHeader("Priority")}
-        <ScrollView contentContainerStyle={styles.pickerContent}>
+        <ScrollViewWithScrollbar contentContainerStyle={styles.pickerContent}>
           <View style={styles.optionGroup}>
             {PRIORITY_OPTIONS.map((option) => {
-              const label = option.detail ? `${option.label} — ${option.detail}` : option.label;
+              const label = option.detail ? `${option.label} · ${option.detail}` : option.label;
               return (
                 <PlanningRow
                   key={option.label}
@@ -945,7 +945,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             })}
           </View>
           <Text style={styles.helperText}>Set priority to help focus on what matters most.</Text>
-        </ScrollView>
+        </ScrollViewWithScrollbar>
       </>
     );
 
@@ -962,7 +962,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             autoFocus
           />
         </View>
-        <ScrollView contentContainerStyle={styles.goalList} keyboardShouldPersistTaps="handled">
+        <ScrollViewWithScrollbar contentContainerStyle={styles.goalList} keyboardShouldPersistTaps="handled">
           <PlanningRow
             icon={<NavGoalsAsset color={colors.textMuted} width={19} height={19} />}
             label="No goal"
@@ -997,14 +997,14 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
           {filteredGoals.length === 0 ? (
             <Text style={styles.emptySearch}>No Goals match “{goalQuery.trim()}”.</Text>
           ) : null}
-        </ScrollView>
+        </ScrollViewWithScrollbar>
       </>
     );
 
     const renderDetails = () => (
       <>
         {renderPickerHeader("Task details")}
-        <ScrollView contentContainerStyle={styles.pickerContent}>
+        <ScrollViewWithScrollbar contentContainerStyle={styles.pickerContent}>
           <View style={styles.detailsCard}>
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Created</Text>
@@ -1025,17 +1025,16 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
               <Text style={styles.detailValue}>{initialDraft?.deadline ? "Timeline" : "Inbox"}</Text>
             </View>
           </View>
-        </ScrollView>
+        </ScrollViewWithScrollbar>
       </>
     );
 
     const renderInspector = () => (
       <>
         {renderUtilityHeader()}
-        <ScrollView
+        <ScrollViewWithScrollbar
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
         >
           <View style={styles.titleBlock}>
             {titleEditing && !completed ? (
@@ -1249,7 +1248,7 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
             </View>
           ) : null}
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
-        </ScrollView>
+        </ScrollViewWithScrollbar>
       </>
     );
 

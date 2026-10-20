@@ -20,7 +20,8 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import { FlatList, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { FlatListWithScrollbar } from "../components/FlatListWithScrollbar";
 import Svg, { Path } from "react-native-svg";
 import { colors, motion, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
@@ -495,11 +496,12 @@ export function InboxScreen({
 
   return (
     <View style={{ flex: 1 }}>
-      <FlatList<InboxRow>
+      <FlatListWithScrollbar<InboxRow>
+        indicatorBottomInset={tabBarHeight + (selectMode && selectedCount > 0 ? 52 + spacing.sm * 2 : 0)}
         style={{ flex: 1 }}
         contentContainerStyle={{
           paddingTop: spacing.md,
-          paddingBottom: tabBarHeight + (selectMode ? 132 : 84),
+          paddingBottom: tabBarHeight + (selectMode ? 52 + spacing.sm * 2 + spacing.lg : spacing.lg),
         }}
         data={rows}
         extraData={selectMode ? visibleSelectedIds : false}
@@ -545,7 +547,6 @@ export function InboxScreen({
             </Animated.View>
           );
         }}
-        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -588,7 +589,7 @@ export function InboxScreen({
             </View>
             <View style={styles.noPriorityHeaderSpacer} />
           </View>
-          <FlatList<MobileTask>
+          <FlatListWithScrollbar<MobileTask>
             data={noPriorityTasks}
             keyExtractor={(task) => task._id}
             renderItem={({ item, index }) => (
@@ -600,7 +601,6 @@ export function InboxScreen({
               paddingTop: spacing.sm,
               paddingBottom: Math.max(insets.bottom, spacing.lg) + spacing.lg,
             }}
-            showsVerticalScrollIndicator={false}
             ListEmptyComponent={
               <View style={styles.noPriorityEmpty}>
                 <Text style={styles.noPriorityEmptyTitle}>No matching tasks</Text>

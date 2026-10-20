@@ -414,7 +414,7 @@ function SourceActions({
 function EmptyImages({ onOpenSource, compact = false }: { onOpenSource?: OpenSource; compact?: boolean }) {
   const content = (
     <>
-      <View style={styles.emptyImageIcon}><ImagePlusIcon color={colors.accent} size={30} /></View>
+      <View style={styles.emptyImageIcon}><ImagePlusIcon color={colors.accent} size={30} strokeWidth={1.8} /></View>
       <View style={compact ? styles.compactEmptyCopy : undefined}>
         <Text style={styles.emptyImagesTitle}>{compact ? "Add a visual reference" : "Add an image"}</Text>
         <Text style={[styles.emptyImagesBody, compact && styles.compactEmptyBody]}>{compact ? "Tap to choose an image" : "Tap the image area to add a visual reference."}</Text>
@@ -940,7 +940,7 @@ const styles = createThemedStyles({
   emptyImagesCompact: { minHeight: 84, marginTop: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, flexDirection: "row", alignItems: "center", gap: spacing.md, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.borderSubtle, borderRadius: radii.lg, backgroundColor: colors.bgCard },
   compactEmptyCopy: { flex: 1, gap: 2 },
   compactEmptyBody: { textAlign: "left" },
-  emptyImageIcon: { width: 44, height: 44, borderRadius: radii.full, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" },
+  emptyImageIcon: { width: 44, height: 44, borderRadius: radii.xl, borderCurve: "continuous", backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" },
   emptyImagesTitle: { ...typography.title, color: colors.textPrimary },
   emptyImagesBody: { ...typography.bodyMd, color: colors.textMuted, textAlign: "center", maxWidth: 260 },
   filmstripContent: { gap: spacing.sm, paddingRight: spacing.lg },

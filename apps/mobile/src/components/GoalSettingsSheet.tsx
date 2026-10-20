@@ -11,7 +11,8 @@
  */
 
 import { useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ScrollViewWithScrollbar } from "./ScrollViewWithScrollbar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useConfirm } from "../hooks/useConfirm";
@@ -137,13 +138,12 @@ export function GoalSettingsSheet({
               </Pressable>
             </View>
 
-            <ScrollView
+            <ScrollViewWithScrollbar
               style={styles.scrollArea}
               contentContainerStyle={[
                 styles.scrollContent,
                 { paddingBottom: Math.max(insets.bottom, spacing.lg) },
               ]}
-              showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
               <View style={styles.fieldGroup}>
@@ -273,7 +273,7 @@ export function GoalSettingsSheet({
                   </Text>
                 </Pressable>
               </View>
-            </ScrollView>
+            </ScrollViewWithScrollbar>
 
             <ThemedDatePicker
               visible={pickingDate}

@@ -4,6 +4,16 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
 
+vi.mock("../components/ScrollViewWithScrollbar", async () => {
+  const { ScrollView } = await import("react-native");
+  return { ScrollViewWithScrollbar: ScrollView };
+});
+
+vi.mock("../components/FlatListWithScrollbar", async () => {
+  const { FlatList } = await import("react-native");
+  return { FlatListWithScrollbar: FlatList };
+});
+
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
   // react-native-web maps accessibility* onto ARIA. Model that here: without it

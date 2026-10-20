@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { ScrollViewWithScrollbar } from "./ScrollViewWithScrollbar";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, radii, spacing, typography } from "../theme/tokens";
@@ -70,7 +71,7 @@ function OverviewView({ totalOverdue, groups, orphans, today, onOpenPreview, onA
     return next;
   });
   return <>
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent} accessibilityLabel="Overdue tasks">
+    <ScrollViewWithScrollbar contentContainerStyle={styles.scrollContent} accessibilityLabel="Overdue tasks">
       <Text style={styles.title}>{isLoading ? "Checking overdue tasks" : `${totalOverdue} overdue tasks`}</Text>
 
       {groups.length > 0 ? <View style={styles.section}>
@@ -85,7 +86,7 @@ function OverviewView({ totalOverdue, groups, orphans, today, onOpenPreview, onA
         </View>
       </View> : null}
       {groups.length === 0 && orphans.length === 0 ? <View style={styles.empty}><CheckIcon color={colors.success} size={25} /><Text style={styles.emptyTitle}>Nothing needs review</Text><Text style={styles.emptyCopy}>Your timeline is up to date.</Text></View> : null}
-    </ScrollView>
+    </ScrollViewWithScrollbar>
     <View style={styles.footer}>
       <Pressable disabled={pending.size === 0} onPress={() => onApplyChanges([...pending.values()])} accessibilityRole="button" accessibilityState={{ disabled: pending.size === 0 }} accessibilityLabel={pending.size ? `Apply ${pending.size} changes` : "Apply changes"} style={({ pressed }) => [styles.primaryButton, pending.size === 0 && styles.primaryDisabled, pressed && pending.size > 0 && styles.pressed]}>
         <CheckIcon color={pending.size ? colors.textInverse : colors.textMuted} size={18} />
@@ -139,11 +140,11 @@ function PreviewView({ preview, applyDeadline, onBack, onSetApplyDeadline, onCon
   for (const task of preview.tasks) tasksByDate.set(task.nextDate, [...(tasksByDate.get(task.nextDate) ?? []), task]);
   return <>
     <Header title="Plan preview" onBack={onBack} />
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+    <ScrollViewWithScrollbar contentContainerStyle={styles.scrollContent}>
       <Text style={styles.title} numberOfLines={2}>{preview.goalText}</Text><Text style={styles.help}>{preview.overdueCount} overdue · {preview.movedCount} tasks will receive new dates</Text>
       <View style={styles.previewList}>{[...tasksByDate.entries()].map(([date, tasks]) => <View key={date} style={styles.dateGroup}><View style={styles.dateHeader}><CalendarIcon color={colors.accent} size={16} /><Text style={styles.dateText}>{weekdayDate(date)}</Text><Text style={styles.dateCount}>{tasks.length} {tasks.length === 1 ? "task" : "tasks"}</Text></View>{tasks.slice(0, 8).map((task) => <View key={task.taskId} style={styles.previewTask}><CheckIcon color={colors.success} size={15} /><Text style={styles.previewTaskText} numberOfLines={1}>{task.title}</Text></View>)}</View>)}</View>
       {preview.suggestedDeadline ? <Pressable style={styles.toggle} onPress={() => onSetApplyDeadline(!applyDeadline)} accessibilityRole="checkbox" accessibilityState={{ checked: applyDeadline }} accessibilityLabel="Move goal deadline too"><View style={[styles.checkbox, applyDeadline && styles.checkboxOn]}>{applyDeadline ? <CheckIcon color={colors.textInverse} size={14} /> : null}</View><View style={styles.copy}><Text style={styles.goalTitle}>Move goal deadline too</Text><Text style={styles.meta}>{weekdayDate(preview.suggestedDeadline)}</Text></View></Pressable> : null}
-    </ScrollView>
+    </ScrollViewWithScrollbar>
     <View style={styles.footer}><Pressable style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]} onPress={onConfirm} accessibilityRole="button" accessibilityLabel="Apply overdue plan"><CheckIcon color={colors.textInverse} size={18} /><Text style={styles.primaryText}>Apply plan</Text></Pressable><Text style={styles.undoNote}>This reflow can be undone.</Text></View>
   </>;
 }

@@ -12,12 +12,12 @@ import {
   Keyboard,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { ScrollViewWithScrollbar } from "./ScrollViewWithScrollbar";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
@@ -588,7 +588,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
       ? `${dateLabel(deadline, today, tomorrow)}${time ? ` · ${formatTime12h(time)}` : ""}`
       : "Inbox";
     const priorityValue = priority
-      ? `${priorityLabel(priority)} — ${priority === "p1" ? "High" : priority === "p2" ? "Medium" : "Low"}`
+      ? `${priorityLabel(priority)} · ${priority === "p1" ? "High" : priority === "p2" ? "Medium" : "Low"}`
       : "No priority";
     const goalValue = prefs.bulkTaskCaptureEnabled
       ? goalIds.length > 0
@@ -656,7 +656,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
     const renderWhenPicker = () => (
       <>
         {renderPickerHeader("When")}
-        <ScrollView contentContainerStyle={styles.pickerContent} keyboardShouldPersistTaps="handled">
+        <ScrollViewWithScrollbar contentContainerStyle={styles.pickerContent} keyboardShouldPersistTaps="handled">
           <View style={styles.optionGroup}>
             {[
               { label: "Inbox", value: "", icon: <NavInboxAsset color={colors.textSecondary} width={19} height={19} /> },
@@ -704,17 +704,17 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
             <Text style={styles.previewValue}>{whenValue}</Text>
             <Text style={styles.previewDetail}>{deadline ? humanDate(deadline) : "Keeps this task in Inbox"}</Text>
           </View>
-        </ScrollView>
+        </ScrollViewWithScrollbar>
       </>
     );
 
     const renderPriorityPicker = () => (
       <>
         {renderPickerHeader("Priority")}
-        <ScrollView contentContainerStyle={styles.pickerContent}>
+        <ScrollViewWithScrollbar contentContainerStyle={styles.pickerContent}>
           <View style={styles.optionGroup}>
             {PRIORITY_OPTIONS.map((option) => {
-              const label = option.detail ? `${option.label} — ${option.detail}` : option.label;
+              const label = option.detail ? `${option.label} · ${option.detail}` : option.label;
               return (
                 <CapturePlanningRow
                   key={option.label}
@@ -733,7 +733,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
             })}
           </View>
           <Text style={styles.helperText}>Set priority to help focus on what matters most.</Text>
-        </ScrollView>
+        </ScrollViewWithScrollbar>
       </>
     );
 
@@ -750,7 +750,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
             autoFocus
           />
         </View>
-        <ScrollView contentContainerStyle={styles.goalList} keyboardShouldPersistTaps="handled">
+        <ScrollViewWithScrollbar contentContainerStyle={styles.goalList} keyboardShouldPersistTaps="handled">
           <CapturePlanningRow
             icon={<NavGoalsAsset width={19} height={19} color={colors.textMuted} />}
             label="No goal"
@@ -794,7 +794,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               {goalQuery.trim() ? `No Goals match “${goalQuery.trim()}”.` : "No Goals yet."}
             </Text>
           ) : null}
-        </ScrollView>
+        </ScrollViewWithScrollbar>
       </>
     );
 
@@ -867,11 +867,10 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
               style={styles.accentTopGlow}
             />
             {planningMode === "summary" ? (
-            <ScrollView
+            <ScrollViewWithScrollbar
               style={styles.scrollArea}
               contentContainerStyle={styles.content}
               keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
             >
               <Text style={styles.sheetKicker}>Capture</Text>
               <SlidingSegmented
@@ -1058,7 +1057,7 @@ export const AddTaskSheet = forwardRef<AddTaskSheetRef, AddTaskSheetProps>(
                   </Text>
                 </Animated.View>
               ) : null}
-            </ScrollView>
+            </ScrollViewWithScrollbar>
             ) : null}
 
             {renderPlanningPicker()}

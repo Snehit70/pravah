@@ -25,10 +25,9 @@ import {
   type ReactNode,
 } from "react";
 import {
-  FlatList,
+  type FlatList,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -36,6 +35,8 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
+import { FlatListWithScrollbar } from "./FlatListWithScrollbar";
+import { ScrollViewWithScrollbar } from "./ScrollViewWithScrollbar";
 import Animated, {
   Extrapolation,
   FadeOut,
@@ -376,11 +377,10 @@ function DayCardView({
 
       {weekPanel}
 
-      <FlatList<MobileTask>
+      <FlatListWithScrollbar<MobileTask>
         data={rows}
         keyExtractor={(task) => String(task._id)}
         nestedScrollEnabled
-        showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.cardListContent}
         refreshControl={
           <RefreshControl
@@ -463,9 +463,8 @@ function OverdueCard({
         </View>
       </View>
 
-      <ScrollView
+      <ScrollViewWithScrollbar
         nestedScrollEnabled
-        showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.overdueList}
       >
         {visibleTasks.map((task) => {
@@ -665,7 +664,7 @@ function OverdueCard({
             </Pressable>
           </View>
         ) : null}
-      </ScrollView>
+      </ScrollViewWithScrollbar>
       <ThemedDatePicker
          visible={datePickerTaskId !== null}
          minDate={today}

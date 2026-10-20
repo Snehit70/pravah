@@ -133,11 +133,12 @@ export const CopyIcon = icon(({ color, size, strokeWidth }) => (
 
 export const ImagePlusIcon = icon(({ color, size, strokeWidth }) => (
   <Svg {...frame(color, size, strokeWidth)}>
-    <Path d="M15 5h6" />
-    <Path d="M18 2v6" />
-    <Path d="M19 11.5V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7.5" />
-    <Path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-    <Circle cx="9" cy="9" r="2" />
+    {/* Leave a clean break in the photo frame so the add mark reads separately. */}
+    <Path d="M12.5 4.5H8a3.5 3.5 0 0 0-3.5 3.5v8A3.5 3.5 0 0 0 8 19.5h8a3.5 3.5 0 0 0 3.5-3.5v-4" />
+    <Circle cx="9.25" cy="9.25" r="1.25" />
+    <Path d="m6.75 17.25 3.1-3.1a1.5 1.5 0 0 1 2.12 0l1.18 1.18 1.3-1.3a1.5 1.5 0 0 1 2.12 0l1.68 1.68" />
+    <Path d="M19.25 1.5v5" />
+    <Path d="M16.75 4h5" />
   </Svg>
 ));
 
