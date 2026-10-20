@@ -48,13 +48,13 @@ export function ScrollbarFrame({
   const animatedOnScroll = useAnimatedScrollHandler({
     onScroll: (event) => {
       "worklet";
-      scrollY.value = event.contentOffset.y;
+      scrollY.set(event.contentOffset.y);
     },
   });
 
   // Settings needs the original JS event to preserve each route's position.
   const handleJSScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    scrollY.value = event.nativeEvent.contentOffset.y;
+    scrollY.set(event.nativeEvent.contentOffset.y);
     onScroll?.(event);
   }, [onScroll, scrollY]);
 
@@ -68,7 +68,7 @@ export function ScrollbarFrame({
   const thumbTravel = Math.max(0, trackHeight - thumbHeight);
   const thumbAnimation = useAnimatedStyle(() => {
     "worklet";
-    const progress = Math.min(1, Math.max(0, scrollY.value / scrollRange));
+    const progress = Math.min(1, Math.max(0, scrollY.get() / scrollRange));
     return { transform: [{ translateY: progress * thumbTravel }] };
   }, [scrollRange, scrollY, thumbTravel]);
 
