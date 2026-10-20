@@ -19,6 +19,11 @@ const { mockConfirm, mockGoals } = vi.hoisted(() => ({
 }));
 
 // ─── react-native mock ────────────────────────────────────────────────────────
+vi.mock("../components/ScrollViewWithScrollbar", async () => {
+  const { ScrollView } = await import("react-native");
+  return { ScrollViewWithScrollbar: ScrollView };
+});
+
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
   const View = ({ children, ...rest }: AnyProps) => {
@@ -598,8 +603,8 @@ describe("AddTaskSheet", () => {
     expect(screen.getByRole("button", { name: "When, Today · 4:30 PM" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Priority, No priority" }));
-    fireEvent.click(screen.getByText("P2 — Medium"));
-    expect(screen.getByRole("button", { name: "Priority, P2 — Medium" })).toBeTruthy();
+    fireEvent.click(screen.getByText("P2 · Medium"));
+    expect(screen.getByRole("button", { name: "Priority, P2 · Medium" })).toBeTruthy();
   });
 
   it("searches Capture goals and stages a selection", async () => {

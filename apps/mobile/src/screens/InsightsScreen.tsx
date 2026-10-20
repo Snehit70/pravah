@@ -14,15 +14,15 @@
 import { useEffect, useMemo, useState, type JSX, type ReactNode } from "react";
 import {
   AppState,
-  FlatList,
   Modal,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { ScrollViewWithScrollbar } from "../components/ScrollViewWithScrollbar";
+import { FlatListWithScrollbar } from "../components/FlatListWithScrollbar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import type { MobileTask } from "../components/TaskCard";
@@ -247,16 +247,16 @@ export function InsightsScreen({
 
   return (
     <View style={styles.root}>
-      <ScrollView
+      <ScrollViewWithScrollbar
+        indicatorBottomInset={tabBarHeight}
         style={styles.root}
         contentContainerStyle={{
           paddingTop: spacing.md,
-          paddingBottom: tabBarHeight + 84,
+          paddingBottom: tabBarHeight + spacing.lg,
           // tokens.ts documents `section` as the gap between major sections, and
           // these are the major sections; `lg` packed them at half that density.
           gap: spacing.section,
         }}
-        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -361,7 +361,7 @@ export function InsightsScreen({
         ) : null}
           </>
         )}
-      </ScrollView>
+      </ScrollViewWithScrollbar>
 
       <Modal
         visible={historyVisible}
@@ -413,7 +413,7 @@ export function InsightsScreen({
             />
           </View>
 
-          <FlatList
+          <FlatListWithScrollbar
             data={historyTasks}
             keyExtractor={(item) => String(item._id)}
             renderItem={renderCompletedTaskItem}
@@ -422,7 +422,6 @@ export function InsightsScreen({
               paddingBottom: Math.max(insets.bottom, spacing.lg) + spacing.lg,
             }}
             keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
             ListEmptyComponent={
               <View style={styles.emptyState}>
                 <View style={styles.emptyIconWrap}>

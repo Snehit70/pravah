@@ -17,6 +17,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // useKairoChats persists chats to AsyncStorage. We back the mock with an
 // in-memory map so the hook hydrates immediately and writes are observable.
 const asyncStorageBacking = new Map<string, string>();
+vi.mock("../components/ScrollViewWithScrollbar", async () => {
+  const { ScrollView } = await import("react-native");
+  return { ScrollViewWithScrollbar: ScrollView };
+});
+
+vi.mock("../components/FlatListWithScrollbar", async () => {
+  const { FlatList } = await import("react-native");
+  return { FlatListWithScrollbar: FlatList };
+});
+
 vi.mock("@react-native-async-storage/async-storage", () => ({
   default: {
     getItem: vi.fn(async (key: string) => asyncStorageBacking.get(key) ?? null),

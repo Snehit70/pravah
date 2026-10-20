@@ -13,7 +13,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BackHandler, FlatList, Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { BackHandler, Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatListWithScrollbar } from "../components/FlatListWithScrollbar";
+import { ScrollViewWithScrollbar } from "../components/ScrollViewWithScrollbar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import NavGoalsAsset from "../assets/icons/nav-goals.svg";
@@ -46,6 +48,7 @@ import { GoalsPageSkeleton } from "../components/LoadingSkeleton";
 import { SearchField } from "../components/SearchField";
 import {
   AdjustmentsIcon,
+  CalendarIcon,
   CheckIcon,
   ChevronLeftIcon,
   CloseIcon,
@@ -309,8 +312,8 @@ function GoalDetailSheet({
     return () => subscription.remove();
   }, [visible, selectMode, exitSelectMode, onClose]);
 
-  // One line of metadata over the progress rule: priority, deadline, count.
-  // Each segment keeps its own ink; separators stay muted.
+  // Priority and deadline sit above the progress rule. The exact task count
+  // stays beside the bar so the two read as one progress summary.
   const metaSegments: { key: string; text: string; color: string }[] = [];
   if (goal?.priority) {
     metaSegments.push({
@@ -330,12 +333,6 @@ function GoalDetailSheet({
       color: ds === "overdue" ? colors.error : ds === "soon" ? colors.warning : colors.textMuted,
     });
   }
-  metaSegments.push({
-    key: "count",
-    text: hasTasks ? `${progress.done} of ${progress.total} done` : "No tasks linked",
-    color: colors.textSecondary,
-  });
-
   if (!visible) return null;
 
   return (
@@ -366,22 +363,46 @@ function GoalDetailSheet({
                 </Pressable>
               </View>
               <View style={detailStyles.titleRow}>
+                <View style={detailStyles.titleIcon}>
+                  <GoalIcon color={colors.accent} size={21} />
+                </View>
                 <Text style={detailStyles.title} numberOfLines={2}>{goal.text}</Text>
               </View>
               {goal.description ? (
-                <Text style={detailStyles.description} numberOfLines={2}>
-                  {goal.description}
+                <View style={detailStyles.descriptionCard}>
+                  <View style={detailStyles.descriptionRule} />
+                  <View style={detailStyles.descriptionContent}>
+                    <Text style={detailStyles.descriptionEyebrow}>About this goal</Text>
+                    <Text style={detailStyles.description} numberOfLines={3}>
+                      {goal.description}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+              {metaSegments.length > 0 ? (
+                <Text style={detailStyles.metaLine}>
+                  {metaSegments.map((seg, index) => (
+                    <Text key={seg.key}>
+                      {index > 0 ? <Text style={detailStyles.metaSeparator}>{"  ·  "}</Text> : null}
+                      <Text style={{ color: seg.color }}>{seg.text}</Text>
+                    </Text>
+                  ))}
                 </Text>
               ) : null}
-              <Text style={detailStyles.metaLine}>
-                {metaSegments.map((seg, index) => (
-                  <Text key={seg.key}>
-                    {index > 0 ? <Text style={detailStyles.metaSeparator}>{"  ·  "}</Text> : null}
-                    <Text style={{ color: seg.color }}>{seg.text}</Text>
-                  </Text>
-                ))}
-              </Text>
-              <GoalProgressBar ratio={progress.ratio} isComplete={isComplete} />
+              <View style={detailStyles.progressSummaryRow}>
+                <View style={detailStyles.progressBarWrap}>
+                  <GoalProgressBar ratio={progress.ratio} isComplete={isComplete} />
+                </View>
+                <Text
+                  style={detailStyles.progressCount}
+                  numberOfLines={1}
+                  accessibilityLabel={hasTasks
+                    ? `${progress.done} of ${progress.total} tasks complete`
+                    : "No tasks linked"}
+                >
+                  {hasTasks ? `${progress.done}/${progress.total}` : "No tasks"}
+                </Text>
+              </View>
             </View>
 
             <View style={detailStyles.filterRow}>
@@ -435,33 +456,45 @@ function GoalDetailSheet({
               </View>
             ) : null}
 
-            <ScrollView
+            <ScrollViewWithScrollbar
+              indicatorBottomInset={onCreateTaskForGoal && !selectMode
+                ? 52 + spacing.sm + Math.max(insets.bottom, spacing.sm)
+                : 0}
               style={detailStyles.scrollArea}
               contentContainerStyle={[
                 detailStyles.scrollContent,
                 { paddingBottom: Math.max(insets.bottom, spacing.lg) + 84 },
               ]}
-              showsVerticalScrollIndicator={false}
             >
               {taskFilter === "open" && hasTasks ? (
                 <>
                   <View>
                     <Text style={detailStyles.groupLabel}>Next</Text>
                     {nextTasks.length > 0 ? nextTasks.map((task) => (
-                    <GoalTaskRow
-                      key={String(task._id)}
-                      task={task}
-                      card
-                      overdue={Boolean(task.deadline && task.deadline < todayIso)}
-                      selectMode={selectMode}
-                      selected={selectedIds.has(String(task._id))}
-                      onPress={() => onOpenTask(task)}
-                      onLongPress={() => enterSelectMode(task)}
-                      onToggleSelect={() => toggleSelected(task)}
-                      onSchedule={onScheduleToDate ? () => setScheduleTask(task) : undefined}
-                    />
+                      <GoalTaskRow
+                        key={String(task._id)}
+                        task={task}
+                        card
+                        overdue={Boolean(task.deadline && task.deadline < todayIso)}
+                        selectMode={selectMode}
+                        selected={selectedIds.has(String(task._id))}
+                        onPress={() => onOpenTask(task)}
+                        onLongPress={() => enterSelectMode(task)}
+                        onToggleSelect={() => toggleSelected(task)}
+                        onSchedule={onScheduleToDate ? () => setScheduleTask(task) : undefined}
+                      />
                     )) : (
-                      <Text style={detailStyles.emptyGroupText}>Nothing scheduled next.</Text>
+                      <View style={detailStyles.nextEmptyState}>
+                        <View style={detailStyles.nextEmptyIcon}>
+                          <CalendarIcon color={colors.accent} size={20} />
+                        </View>
+                        <View style={detailStyles.nextEmptyCopy}>
+                          <Text style={detailStyles.nextEmptyTitle}>No upcoming tasks</Text>
+                          <Text style={detailStyles.nextEmptyDescription}>
+                            Schedule an open task to see what’s next.
+                          </Text>
+                        </View>
+                      </View>
                     )}
                   </View>
                   {unscheduledTasks.length > 0 ? (
@@ -529,7 +562,7 @@ function GoalDetailSheet({
               {onLoadMore ? <Pressable accessibilityRole="button" onPress={onLoadMore}>
                 <Text style={detailStyles.noTasksHint}>Load more tasks</Text>
               </Pressable> : null}
-            </ScrollView>
+            </ScrollViewWithScrollbar>
 
             {onCreateTaskForGoal && !selectMode ? (
               <View style={[detailStyles.addDock, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
@@ -859,11 +892,12 @@ export function GoalsScreen({
 
   return (
     <View style={{ flex: 1 }}>
-      <FlatList<GoalItem>
+      <FlatListWithScrollbar<GoalItem>
+        indicatorBottomInset={tabBarHeight}
         style={{ flex: 1 }}
         contentContainerStyle={{
           paddingTop: spacing.md,
-          paddingBottom: tabBarHeight + 84,
+          paddingBottom: tabBarHeight + spacing.lg,
         }}
         data={filteredGoals}
         keyboardShouldPersistTaps="handled"
@@ -998,7 +1032,7 @@ export function GoalsScreen({
             </Animated.View>
           );
         }}
-        showsVerticalScrollIndicator={false}
+
       />
       <GoalDetailSheet
         visible={selectedGoalId !== null}
@@ -1264,13 +1298,47 @@ const detailStyles = createThemedStyles({
   },
   titleRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.xs,
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  titleIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    borderCurve: "continuous",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.accentSoft,
   },
   title: {
     flex: 1,
     ...typography.display,
     color: colors.textPrimary,
+  },
+  descriptionCard: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    borderRadius: radii.md,
+    borderCurve: "continuous",
+  },
+  descriptionRule: {
+    width: 3,
+    borderRadius: radii.full,
+    backgroundColor: colors.accent,
+  },
+  descriptionContent: {
+    flex: 1,
+    gap: 4,
+  },
+  descriptionEyebrow: {
+    ...typography.micro,
+    color: colors.accent,
   },
   iconBtn: {
     width: 44,
@@ -1287,7 +1355,20 @@ const detailStyles = createThemedStyles({
     color: colors.textSecondary,
   },
   description: {
-    ...typography.bodyMd,
+    ...typography.bodyLg,
+    color: colors.textSecondary,
+  },
+  progressSummaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  progressBarWrap: {
+    flex: 1,
+  },
+  progressCount: {
+    ...typography.micro,
+    fontFamily: fonts.mono,
     color: colors.textSecondary,
   },
   metaLine: {
@@ -1374,12 +1455,40 @@ const detailStyles = createThemedStyles({
     ...typography.bodyMd,
     color: colors.textMuted,
   },
-  emptyGroupText: {
+  nextEmptyState: {
+    minHeight: 76,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    marginTop: spacing.xs,
+    padding: spacing.md,
+    backgroundColor: colors.bgSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    borderRadius: radii.lg,
+    borderCurve: "continuous",
+  },
+  nextEmptyIcon: {
+    width: 40,
+    height: 40,
+    flexShrink: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.accentSoft,
+    borderRadius: radii.md,
+    borderCurve: "continuous",
+  },
+  nextEmptyCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  nextEmptyTitle: {
+    ...typography.title,
+    color: colors.textPrimary,
+  },
+  nextEmptyDescription: {
     ...typography.bodyMd,
-    color: colors.textMuted,
-    paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderSubtle,
+    color: colors.textSecondary,
   },
   addDock: {
     position: "absolute",

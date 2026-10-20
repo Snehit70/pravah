@@ -6,6 +6,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockConfirm = vi.fn(async () => true);
 
+vi.mock("../components/ScrollViewWithScrollbar", async () => {
+  const { ScrollView } = await import("react-native");
+  return { ScrollViewWithScrollbar: ScrollView };
+});
+
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
   const strip = (rest: AnyProps) => {

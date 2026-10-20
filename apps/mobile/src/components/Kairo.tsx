@@ -8,7 +8,7 @@ import {
 import {
   ActivityIndicator,
   BackHandler,
-  FlatList,
+  type FlatList,
   Keyboard,
   Modal,
   Pressable,
@@ -17,6 +17,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { FlatListWithScrollbar } from "./FlatListWithScrollbar";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import * as Clipboard from "expo-clipboard";
 import Animated, {
@@ -889,7 +890,7 @@ export function Kairo({
         </View>
       </View>
 
-      <FlatList
+      <FlatListWithScrollbar
         ref={listRef}
         style={styles.scroll}
         // `extraData` covers the thinking row's live status label, which changes
@@ -900,7 +901,6 @@ export function Kairo({
         renderItem={renderChatRow}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
         onContentSizeChange={handleScrollToEnd}
       />
 

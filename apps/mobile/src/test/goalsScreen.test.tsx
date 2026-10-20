@@ -21,6 +21,16 @@ import React from "react";
 import { describe, expect, it, vi } from "vitest";
 
 // ─── react-native mock ────────────────────────────────────────────────────────
+vi.mock("../components/ScrollViewWithScrollbar", async () => {
+  const { ScrollView } = await import("react-native");
+  return { ScrollViewWithScrollbar: ScrollView };
+});
+
+vi.mock("../components/FlatListWithScrollbar", async () => {
+  const { FlatList } = await import("react-native");
+  return { FlatListWithScrollbar: FlatList };
+});
+
 vi.mock("react-native", () => {
   type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
   // RN props with no DOM meaning. Dropped so React doesn't warn on them.
@@ -120,6 +130,7 @@ vi.mock("react-native", () => {
 vi.mock("react-native-reanimated", () => ({
   default: {
     View: ({ children }: { children?: React.ReactNode }) => React.createElement("div", {}, children),
+    ScrollView: ({ children }: { children?: React.ReactNode }) => React.createElement("div", {}, children),
   },
   FadeIn: { duration: () => undefined },
   FadeInDown: { duration: () => ({ delay: () => undefined }) },
@@ -127,6 +138,7 @@ vi.mock("react-native-reanimated", () => ({
   Easing: { out: () => undefined, cubic: undefined },
   interpolateColor: () => "transparent",
   useAnimatedStyle: () => ({}),
+  useAnimatedScrollHandler: () => () => {},
   useSharedValue: (v: unknown) => ({ value: v }),
   withSpring: (v: unknown) => v,
   withTiming: (v: unknown) => v,

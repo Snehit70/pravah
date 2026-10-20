@@ -7,7 +7,8 @@
  */
 
 import { useMemo } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ScrollViewWithScrollbar } from "./ScrollViewWithScrollbar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ChatMeta } from "../lib/kairoChatStorage";
 import { formatRelative } from "../lib/formatRelative";
@@ -70,12 +71,11 @@ export function KairoChatList({
         </Pressable>
       </View>
 
-      <ScrollView
+      <ScrollViewWithScrollbar
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: insets.bottom + spacing.lg },
         ]}
-        showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
         {sorted.length === 0 ? (
@@ -136,7 +136,7 @@ export function KairoChatList({
             );
           })
         )}
-      </ScrollView>
+      </ScrollViewWithScrollbar>
     </View>
   );
 }

@@ -13,7 +13,7 @@ import {
   Linking,
   Modal,
   Pressable,
-  ScrollView,
+  type ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -21,6 +21,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
+import { ScrollViewWithScrollbar } from "./ScrollViewWithScrollbar";
 import { useMutation, useQuery } from "convex/react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
@@ -3429,14 +3430,13 @@ export function SettingsSheet({
         </View>
 
         <View style={styles.contentWrap}>
-          <ScrollView
+          <ScrollViewWithScrollbar
             ref={scrollRef}
             style={styles.scroll}
             contentContainerStyle={[
               styles.scrollContent,
               { paddingBottom: bottomInset + spacing.lg },
             ]}
-            showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             onContentSizeChange={restoreScrollPosition}
             onScroll={handleSettingsScroll}
@@ -3528,7 +3528,7 @@ export function SettingsSheet({
               })
               )}
             </Animated.View>
-          </ScrollView>
+          </ScrollViewWithScrollbar>
         </View>
       </View>
       </GestureHandlerRootView>

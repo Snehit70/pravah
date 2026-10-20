@@ -12,11 +12,15 @@ import { useMemo, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import TaskIcon from "../assets/icons/add-new-task.svg";
 import { colors, radii, spacing, typography } from "../theme/tokens";
 import { createThemedStyles } from "../theme/themeRuntime";
-import { addDays, toIsoDate, weekdayDate } from "../lib/dates";
+import { addDays, shortDate, toIsoDate, weekdayDate } from "../lib/dates";
+import { haptic } from "../lib/haptic";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { ThemedDatePicker } from "./ThemedDatePicker";
+import { ScrollViewWithScrollbar } from "./ScrollViewWithScrollbar";
+import { CalendarIcon, ChevronRightIcon, CloseIcon } from "./UiIcons";
 
 type QuickScheduleSheetProps = {
   visible: boolean;
@@ -69,6 +73,7 @@ export function QuickScheduleSheet({
   }, [visible]);
 
   const handlePick = (iso: string) => {
+    haptic.selection();
     onPick(iso);
     onClose();
   };
@@ -81,7 +86,7 @@ export function QuickScheduleSheet({
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <View style={[styles.overlay, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+      <View style={styles.overlay}>
         <BlurView intensity={22} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
         <Pressable
@@ -91,44 +96,85 @@ export function QuickScheduleSheet({
           onPress={onClose}
         />
 
-        <View style={styles.card}>
+        <View style={[styles.card, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
           <View style={styles.grab} />
-          <Text style={styles.kicker}>Schedule</Text>
-          {displayTitle ? (
-            <Text style={styles.title} numberOfLines={1}>
-              {displayTitle}
-            </Text>
-          ) : null}
-
-          <View style={styles.optionList}>
-            {options.map((option, index) => (
-              <Pressable
-                key={option.key}
-                onPress={() => handlePick(option.iso)}
-                accessibilityRole="button"
-                accessibilityLabel={`Schedule for ${option.label}`}
-                style={({ pressed }) => [
-                  styles.option,
-                  index === 0 && styles.optionPrimary,
-                  pressed && { opacity: 0.7 },
-                ]}
-              >
-                <Text style={[styles.optionLabel, index === 0 && styles.optionLabelPrimary]}>
-                  {option.label}
-                </Text>
-                <Text style={styles.optionHint}>{weekdayDate(option.iso)}</Text>
-              </Pressable>
-            ))}
-
+          <View style={styles.header}>
+            <View style={styles.headingCopy}>
+              <View style={styles.headingRow}>
+                <CalendarIcon color={colors.accent} size={22} strokeWidth={1.8} />
+                <Text style={styles.heading}>Schedule task</Text>
+              </View>
+              {displayTitle ? (
+                <View style={styles.taskTitleRow}>
+                  <TaskIcon width={22} height={22} color={colors.accent} />
+                  <Text style={styles.taskTitle} numberOfLines={2}>{displayTitle}</Text>
+                </View>
+              ) : null}
+            </View>
             <Pressable
-              onPress={() => setShowDatePicker(true)}
+              onPress={onClose}
               accessibilityRole="button"
-              accessibilityLabel="Pick a date"
-              style={({ pressed }) => [styles.option, pressed && { opacity: 0.7 }]}
+              accessibilityLabel="Close schedule"
+              style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
             >
-              <Text style={styles.optionLabel}>Pick a date…</Text>
+              <CloseIcon color={colors.textSecondary} size={18} strokeWidth={1.8} />
             </Pressable>
           </View>
+
+          <ScrollViewWithScrollbar style={styles.scrollArea} contentContainerStyle={styles.scrollContent}>
+            <View style={styles.optionGroup}>
+              {options.map((option, index) => (
+                <Pressable
+                  key={option.key}
+                  onPress={() => handlePick(option.iso)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Schedule for ${option.label}, ${weekdayDate(option.iso)}`}
+                  style={({ pressed }) => [
+                    styles.option,
+                    index > 0 && styles.optionDivider,
+                    pressed && styles.optionPressed,
+                  ]}
+                >
+                  <View
+                    accessible={false}
+                    accessibilityElementsHidden
+                    importantForAccessibility="no-hide-descendants"
+                    style={[styles.dateBadge, index === 0 && styles.dateBadgeToday]}
+                  >
+                    <Text style={[styles.badgeMonth, index === 0 && styles.todayInk]}>
+                      {shortDate(option.iso).split(" ")[0]}
+                    </Text>
+                    <Text style={[styles.badgeDay, index === 0 && styles.todayInk]}>
+                      {Number(option.iso.slice(-2))}
+                    </Text>
+                  </View>
+                  <View style={styles.optionCopy}>
+                    <Text style={styles.optionLabel}>{option.label}</Text>
+                    <Text style={styles.optionHint}>{weekdayDate(option.iso)}</Text>
+                  </View>
+                </Pressable>
+              ))}
+
+              <Pressable
+                onPress={() => {
+                  haptic.selection();
+                  setShowDatePicker(true);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Pick a date"
+                style={({ pressed }) => [styles.option, styles.optionDivider, pressed && styles.optionPressed]}
+              >
+                <View style={styles.dateBadge}>
+                  <CalendarIcon color={colors.textSecondary} size={21} strokeWidth={1.8} />
+                </View>
+                <View style={styles.optionCopy}>
+                  <Text style={styles.optionLabel}>Pick a date</Text>
+                  <Text style={styles.optionHint}>Open calendar</Text>
+                </View>
+                <ChevronRightIcon color={colors.textMuted} size={18} strokeWidth={1.8} />
+              </Pressable>
+            </View>
+          </ScrollViewWithScrollbar>
         </View>
       </View>
 
@@ -153,12 +199,18 @@ const styles = createThemedStyles({
     backgroundColor: colors.backdrop,
   },
   card: {
-    backgroundColor: colors.bgFloating,
+    width: "100%",
+    maxWidth: 480,
+    maxHeight: "90%",
+    alignSelf: "center",
+    backgroundColor: colors.bg,
     borderTopLeftRadius: radii.xl,
     borderTopRightRadius: radii.xl,
-    paddingHorizontal: spacing.lg,
+    borderCurve: "continuous",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    overflow: "hidden",
     paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
   },
   grab: {
     width: 38,
@@ -169,42 +221,120 @@ const styles = createThemedStyles({
     marginTop: spacing.xs,
     marginBottom: spacing.md,
   },
-  kicker: {
-    ...typography.micro,
-    color: colors.textMuted,
+  header: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
   },
-  title: {
-    ...typography.title,
-    color: colors.textPrimary,
-    marginTop: 2,
-    marginBottom: spacing.sm,
+  headingCopy: {
+    flex: 1,
+    gap: spacing.sm,
   },
-  optionList: {
-    gap: spacing.xs,
-    paddingTop: spacing.xs,
+  heading: {
+    ...typography.bodyMd,
+    fontFamily: typography.title.fontFamily,
+    flexShrink: 1,
+    color: colors.textSecondary,
   },
-  option: {
-    minHeight: 52,
+  headingRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.lg,
-    borderCurve: "continuous",
+    gap: spacing.sm,
   },
-  optionPrimary: {
-    backgroundColor: colors.accentDim,
-  },
-  optionLabel: {
-    ...typography.bodyLg,
-    fontSize: 16,
+  taskTitle: {
+    ...typography.headline,
+    flex: 1,
     color: colors.textPrimary,
   },
-  optionLabelPrimary: {
-    fontFamily: typography.title.fontFamily,
+  taskTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  closeButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: -spacing.sm,
+    marginTop: -spacing.sm,
+    borderRadius: radii.md,
+  },
+  pressed: {
+    opacity: 0.65,
+  },
+  scrollArea: {
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: spacing.lg,
+  },
+  optionGroup: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: radii.xl,
+    borderCurve: "continuous",
+    backgroundColor: colors.bgCard,
+    overflow: "hidden",
+  },
+  option: {
+    minHeight: 64,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  optionDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
+  },
+  optionPressed: {
+    backgroundColor: colors.accentDim,
+  },
+  dateBadge: {
+    width: 42,
+    height: 46,
+    borderRadius: radii.lg,
+    borderCurve: "continuous",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    backgroundColor: colors.bgSurface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dateBadgeToday: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accentSoft,
+  },
+  badgeMonth: {
+    ...typography.micro,
+    fontSize: 10,
+    lineHeight: 12,
+    color: colors.textMuted,
+  },
+  badgeDay: {
+    ...typography.title,
+    fontSize: 18,
+    lineHeight: 22,
+    color: colors.textPrimary,
+  },
+  todayInk: {
+    color: colors.accent,
+  },
+  optionCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  optionLabel: {
+    ...typography.title,
+    color: colors.textPrimary,
   },
   optionHint: {
-    ...typography.numeric,
-    color: colors.textMuted,
+    ...typography.bodyMd,
+    color: colors.textSecondary,
   },
 });
