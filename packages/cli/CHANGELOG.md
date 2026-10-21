@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.5.5](https://github.com/Snehit70/pravah/compare/cli-v2.5.4...cli-v2.5.5) (2026-10-21)
+
+
+### Bug Fixes
+
+* **cli:** keep plugin task text out of process args ([db07c42](https://github.com/Snehit70/pravah/commit/db07c4232b4d931f674f394f6fdc3b86349a2488))
+* **cli:** keep plugin task text out of process args ([a083376](https://github.com/Snehit70/pravah/commit/a08337694bb3bc5d212e1af855798afd7997746f))
+
 ## [2.5.4](https://github.com/Snehit70/pravah/compare/cli-v2.5.3...cli-v2.5.4) (2026-10-13)
 
 
