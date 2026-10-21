@@ -304,6 +304,8 @@ function MobileApp() {
   const boundedTimelineEnd = !showLaterDates && !isKairoActive && activeTab !== "goals" && activeTab !== "insights"
     ? toIsoDate(initialTimelineEnd) : undefined;
 
+  const includeCompletedHistory =
+    activeTab === "insights" || (activeTab === "goals" && !progressSummary?.ready);
   const {
     today,
     tomorrow,
@@ -322,7 +324,7 @@ function MobileApp() {
     retainedImageIds,
   } = useTaskQueries({
     isAuthenticated: Boolean(session),
-    includeCompletedHistory: activeTab === "insights" || activeTab === "goals" && !progressSummary?.ready,
+    includeCompletedHistory,
     timelineEndDate: boundedTimelineEnd,
     includeCompletedToday: activeTab === "timeline",
     includeImages:
@@ -390,6 +392,26 @@ function MobileApp() {
     isSnapshotHydrated: isWorkspaceSnapshotHydrated,
     optimisticTasks,
   });
+
+  // Completed history is only subscribed while Progress (or un-summarised
+  // Goals) is open. Progress stays mounted when hidden, so without this it
+  // recomputed from today-only data while away and redrew every chart from
+  // partial numbers on return. Hold the last full-history pair instead and
+  // swap in fresh data once the query resolves. Live data only: the snapshot
+  // path rebuilds its corpus array every render, which would loop here.
+  const hasFullHistory =
+    includeCompletedHistory && isAllTasksReady && !shouldUseWorkspaceSnapshot;
+  const [progressData, setProgressData] = useState<{
+    tasks: MobileTask[];
+    completedTasks: MobileTask[];
+  } | null>(null);
+  if (
+    hasFullHistory &&
+    (progressData?.tasks !== workspaceTaskCorpus ||
+      progressData?.completedTasks !== displayCompletedTasks)
+  ) {
+    setProgressData({ tasks: workspaceTaskCorpus, completedTasks: displayCompletedTasks });
+  }
 
   const addTaskMutation = useMutation(api.tasks.addTask);
   const addTaskImagesMutation = useMutation(api.taskImages.addTaskImages);
@@ -1626,9 +1648,9 @@ function MobileApp() {
         >
           <ScreenErrorBoundary screenName="Progress">
             <InsightsScreen
-              tasks={workspaceTaskCorpus}
-              completedTasks={displayCompletedTasks}
-              isLoading={isActiveListLoading || isBootShellLoading}
+              tasks={progressData?.tasks ?? workspaceTaskCorpus}
+              completedTasks={progressData?.completedTasks ?? displayCompletedTasks}
+              isLoading={isActiveListLoading || isBootShellLoading || !progressData}
               isRefreshing={isRefreshing}
               tabBarHeight={tabBarHeight}
               onRefresh={handleRefresh}

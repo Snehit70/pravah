@@ -24,7 +24,7 @@ import {
 import { ScrollViewWithScrollbar } from "../components/ScrollViewWithScrollbar";
 import { FlatListWithScrollbar } from "../components/FlatListWithScrollbar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import Animated, { FadeInDown, LinearTransition } from "react-native-reanimated";
 import type { MobileTask } from "../components/TaskCard";
 import { HeroVelocityChart } from "../components/HeroVelocityChart";
 import { ConsistencyHeatmap } from "../components/ConsistencyHeatmap";
@@ -244,6 +244,9 @@ export function InsightsScreen({
   const showInitialSkeleton = isLoading && tasks.length === 0 && completedTasks.length === 0;
   const sectionEnter = (i: number) =>
     reducedMotion ? undefined : FadeInDown.duration(360).delay(60 * i);
+  // Goals load separately from tasks, so that section can land after the rest;
+  // this slides Task history down instead of snapping it.
+  const sectionLayout = reducedMotion ? undefined : LinearTransition.duration(240);
 
   return (
     <View style={styles.root}>
@@ -274,7 +277,7 @@ export function InsightsScreen({
           <ProgressPageSkeleton />
         ) : (
           <>
-        <Wrap>
+        <Wrap entering={sectionEnter(0)}>
           <SectionHeader
             label="Recent momentum"
             right={
@@ -285,17 +288,14 @@ export function InsightsScreen({
               />
             }
           />
-
-          <Wrap entering={sectionEnter(0)}>
-            <HeroVelocityChart
-              series={heroSeries}
-              rawCounts={series.map((p) => p.count)}
-              total={rangeTotal}
-              periodLabel={RANGE_PERIOD[range]}
-              comparisonLabel={RANGE_COMPARISON[range]}
-              delta={delta}
-            />
-          </Wrap>
+          <HeroVelocityChart
+            series={heroSeries}
+            rawCounts={series.map((p) => p.count)}
+            total={rangeTotal}
+            periodLabel={RANGE_PERIOD[range]}
+            comparisonLabel={RANGE_COMPARISON[range]}
+            delta={delta}
+          />
         </Wrap>
 
         <Wrap entering={sectionEnter(1)}>
@@ -313,7 +313,7 @@ export function InsightsScreen({
         </Wrap>
 
         {goalRows.length > 0 ? (
-          <Wrap entering={sectionEnter(3)}>
+          <Wrap entering={sectionEnter(3)} layout={sectionLayout}>
             <SectionHeader
               label="Goals in motion"
               caption={`${goalRows.length} ${goalRows.length === 1 ? "goal" : "goals"} moving forward`}
@@ -327,7 +327,7 @@ export function InsightsScreen({
         ) : null}
 
         {orderedCompleted.length > 0 ? (
-          <Wrap entering={sectionEnter(4)}>
+          <Wrap entering={sectionEnter(4)} layout={sectionLayout}>
             <SectionHeader label="Task history" />
             <Pressable
               onPress={() => setHistoryVisible(true)}
@@ -354,11 +354,6 @@ export function InsightsScreen({
           </Wrap>
         ) : null}
 
-        {isLoading && orderedCompleted.length === 0 ? (
-          <Text accessibilityLiveRegion="polite" style={styles.footerNote}>
-            Loading your progress…
-          </Text>
-        ) : null}
           </>
         )}
       </ScrollViewWithScrollbar>
@@ -536,13 +531,6 @@ const styles = createThemedStyles({
   historyButtonCount: {
     ...typography.numeric,
     color: colors.textSecondary,
-  },
-  footerNote: {
-    ...typography.micro,
-    color: colors.textMuted,
-    textAlign: "center",
-    paddingHorizontal: spacing.lg,
-    marginTop: spacing.sm,
   },
   historyRoot: {
     flex: 1,

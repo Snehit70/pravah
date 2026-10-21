@@ -31,9 +31,7 @@ import {
   Text,
   View,
 } from "react-native";
-import Animated, { FadeIn } from "react-native-reanimated";
 import Svg, { Rect } from "react-native-svg";
-import { useReducedMotion } from "../hooks/useReducedMotion";
 import { haptic } from "../lib/haptic";
 import { CalendarIcon, ClockIcon, StarIcon } from "./UiIcons";
 import type { DayPoint } from "../lib/statsAggregators";
@@ -90,7 +88,6 @@ function rampColor(count: number, max: number): string {
 }
 
 export function ConsistencyHeatmap({ series, currentStreak, bestStreak }: Props) {
-  const reducedMotion = useReducedMotion();
   const [selected, setSelected] = useState<{ date: string; count: number } | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -177,10 +174,7 @@ export function ConsistencyHeatmap({ series, currentStreak, bestStreak }: Props)
   const gridH = ROWS * PITCH;
 
   return (
-    <Animated.View
-      style={styles.card}
-      entering={reducedMotion ? undefined : FadeIn.duration(400)}
-    >
+    <View style={styles.card}>
       {cells.length === 0 ? (
         <Text style={styles.emptyText}>
           Your consistency calendar fills in as you complete tasks over the days ahead.
@@ -310,7 +304,7 @@ export function ConsistencyHeatmap({ series, currentStreak, bestStreak }: Props)
           />
         )}
       </View>
-    </Animated.View>
+    </View>
   );
 }
 
