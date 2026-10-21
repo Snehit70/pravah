@@ -14,7 +14,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import HERO_PLATE from "../../assets/auth-hero.jpg";
+import HERO_PLATE from "../assets/images/auth-hero.jpg";
 import GoogleIconAsset from "../assets/icons/provider-google.svg";
 import { AuthGlassLight } from "./AuthGlassLight";
 import { colors, fonts, radii, spacing, typography } from "../theme/tokens";
