@@ -489,13 +489,15 @@ ShellRoot {
     return part ? part.split(" ")[0] : ""
   }
 
-  function flagsBeforeSentinel(line, title, expectDryRun) {
+  function flagsBeforeSentinel(line, expectDryRun) {
     var idx = String(line || "").indexOf(" -- ")
     if (idx === -1) return false
     var before = line.slice(0, idx)
     var after = line.slice(idx + 4)
-    if (after.indexOf(title) === -1) return false
+    if (after.indexOf("__pravah_private_input_target__") === -1) return false
+    if (String(line || "").indexOf("Widget add repro") !== -1) return false
     if (before.indexOf("--idempotency-key") === -1) return false
+    if (before.indexOf("--private-input-stdin") === -1) return false
     if (expectDryRun && before.indexOf("--dry-run") === -1) return false
     if (!expectDryRun && before.indexOf("--dry-run") !== -1) return false
     if (after.indexOf("--dry-run") !== -1) return false
@@ -535,8 +537,8 @@ ShellRoot {
       if (addLines.length >= 2) {
         ok("add dry-run first", addLines[0].indexOf("--dry-run") !== -1)
         ok("add apply has no dry-run", addLines[1].indexOf("--dry-run") === -1)
-        ok("add dry-run flags before --", flagsBeforeSentinel(addLines[0], "Widget add repro", true))
-        ok("add apply flags before --", flagsBeforeSentinel(addLines[1], "Widget add repro", false))
+        ok("add dry-run keeps text out of argv", flagsBeforeSentinel(addLines[0], true))
+        ok("add apply keeps text out of argv", flagsBeforeSentinel(addLines[1], false))
         var addKey0 = idempotencyKey(addLines[0])
         var addKey1 = idempotencyKey(addLines[1])
         ok("add shared idempotency key", addKey0 && addKey0 === addKey1 && String(addKey0).indexOf("omarchy-widget-") === 0)

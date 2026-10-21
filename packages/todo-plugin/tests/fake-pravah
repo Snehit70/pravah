@@ -9,6 +9,14 @@ LOG="${PRAVAH_FAKE_LOG:-/tmp/pravah-fake.log}"
   printf '%s\n' "$*"
 } >>"$LOG"
 
+if [[ " $* " == *" --private-input-stdin "* ]]; then
+  IFS= read -r private_input
+  if [[ -z "$private_input" ]]; then
+    echo "private input was not received" >&2
+    exit 1
+  fi
+fi
+
 python3 - "$@" <<'PY'
 import datetime as dt
 import json

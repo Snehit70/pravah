@@ -664,8 +664,13 @@ QtObject {
   // -------------------------------------------------------------- writes ---
   property Process writeProc: Process {
     id: writeProc
+    stdinEnabled: true
     stdout: StdioCollector { id: writeStdout; waitForEnd: true }
     stderr: StdioCollector { id: writeStderr; waitForEnd: true }
+    onStarted: {
+      if (root._write && root._write.privateInput)
+        write(JSON.stringify(root._write.privateInput) + "\n")
+    }
     onExited: function(exitCode) { root.finishWrite(exitCode, writeStdout.text, writeStderr.text) }
   }
 
@@ -682,6 +687,42 @@ QtObject {
     return argv.slice(0, cut).concat(flags).concat(argv.slice(cut))
   }
 
+  // Text values cross the process boundary over stdin instead of argv, where
+  // other local users can read them while the CLI is running.
+  function extractPrivateInput(baseArgv) {
+    var argv = baseArgv.slice(0)
+    var command = argv.length > 2 ? argv[1] + " " + argv[2] : ""
+    var privateInput = {}
+    var privateOptions = {}
+    var adding = command === "tasks add" || command === "goals add"
+    var optionNames = []
+
+    if (command === "tasks add") optionNames = ["description", "tags", "goal"]
+    else if (command === "tasks edit") optionNames = ["title", "description", "tags", "goal"]
+    else if (command === "goals add" || command === "goals edit") optionNames = ["description"]
+
+    if (adding) {
+      var separator = argv.indexOf("--")
+      if (separator >= 0 && separator + 1 < argv.length) {
+        privateInput.target = argv[separator + 1]
+        argv[separator + 1] = "__pravah_private_input_target__"
+      }
+    }
+
+    for (var i = 0; i < optionNames.length; i++) {
+      var flagIndex = argv.indexOf("--" + optionNames[i])
+      if (flagIndex >= 0 && flagIndex + 1 < argv.length) {
+        privateOptions[optionNames[i]] = argv[flagIndex + 1]
+        argv.splice(flagIndex, 2)
+      }
+    }
+
+    if (Object.keys(privateOptions).length > 0) privateInput.options = privateOptions
+    var hasPrivateInput = adding || Object.keys(privateOptions).length > 0
+    if (hasPrivateInput) argv = withWriteFlags(argv, ["--private-input-stdin"])
+    return { argv: argv, input: hasPrivateInput ? privateInput : null }
+  }
+
   // baseArgv must include --json but no --dry-run/--idempotency-key.
   // Returns false when a write is already in flight or the credential
   // lacks tasks:write.
@@ -691,8 +732,13 @@ QtObject {
     writeLabel = label
     lastWriteError = ""
     var key = "omarchy-widget-" + Date.now() + "-" + Math.floor(Math.random() * 1000000)
-    _write = { argv: withWriteFlags(baseArgv, ["--idempotency-key", key]), applied: false }
-    writeProc.command = withWriteFlags(baseArgv, ["--dry-run", "--idempotency-key", key])
+    var privateWrite = extractPrivateInput(baseArgv)
+    _write = {
+      argv: withWriteFlags(privateWrite.argv, ["--idempotency-key", key]),
+      privateInput: privateWrite.input,
+      applied: false
+    }
+    writeProc.command = withWriteFlags(privateWrite.argv, ["--dry-run", "--idempotency-key", key])
     writeProc.running = true
     return true
   }
