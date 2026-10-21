@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "raja.pravah-todo",
   "name": "Pravah Todo",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "author": "Raja",
   "license": "MIT",
   "description": "A full front-end for the Pravah CLI: today, inbox, upcoming, and goals from the bar.",

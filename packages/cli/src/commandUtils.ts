@@ -49,6 +49,9 @@ export function validateCommandArgs(command: string, args: ParsedArgs) {
   if (hasFlag(args.options, "json") && hasFlag(args.options, "long")) {
     throw new Error("--json and --long cannot be used together");
   }
+  if (hasFlag(args.options, "private-input-stdin") && !hasFlag(args.options, "json")) {
+    throw new Error("--private-input-stdin requires --json");
+  }
   if (spec.confirmationFlag && !hasFlag(args.options, spec.confirmationFlag)) {
     throw new Error(`--${spec.confirmationFlag} is required for ${command}`);
   }

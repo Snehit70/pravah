@@ -34,10 +34,9 @@ fails.
 ## Requirements
 
 - Omarchy Shell
-- `pravah` installed and available on the shell's `PATH` (CLI v2). The `watch`
-  transport, which is now the default, is not in a published CLI release yet —
-  build from source with `bun run --cwd packages/cli build` and check
-  `pravah watch --help` works before relying on it.
+- Pravah CLI v2.5.5 or later, available on the shell's `PATH`. This release
+  supports sending task and goal text over stdin so it is not exposed in process
+  arguments. The default `watch` transport also needs `pravah watch --path`.
 - An authenticated Pravah credential with `tasks:read`, and `tasks:write`
   for anything beyond viewing
 
