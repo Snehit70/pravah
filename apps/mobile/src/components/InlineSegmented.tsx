@@ -13,7 +13,7 @@
  * clear jobs rather than one component with mode-switching complexity.
  */
 
-import { useEffect, useState, type ComponentType } from "react";
+import { useEffect, useRef, useState, type ComponentType } from "react";
 import { Pressable, StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import Animated, {
   interpolateColor,
@@ -51,8 +51,8 @@ export function InlineSegmented<T extends string | number>({
   const [segmentLayouts, setSegmentLayouts] = useState<Array<SegmentLayout | undefined>>([]);
   const index = Math.max(0, options.findIndex((option) => option.value === value));
   const progress = useSharedValue(index);
-  const thumbX = useSharedValue(0);
-  const thumbWidth = useSharedValue(0);
+  const slideOffset = useSharedValue(0);
+  const placedX = useRef<number | null>(null);
   const selectedLayout = segmentLayouts[index];
 
   useEffect(() => {
@@ -63,23 +63,26 @@ export function InlineSegmented<T extends string | number>({
     );
   }, [index, progress, reducedMotion]);
 
+  // The thumb's resting position and width are plain React styles; only a
+  // temporary slide offset is animated, and it always settles at 0. Animated
+  // values written while a parent `entering` animation runs (the Progress
+  // sections fade in) are dropped when it finishes, which left the thumb at
+  // x=0 / width 0 behind the wrong label. Losing an offset is harmless.
   useEffect(() => {
     if (!selectedLayout) return;
-    thumbX.set(
-      reducedMotion
-        ? selectedLayout.x
-        : withSpring(selectedLayout.x, { damping: 15, stiffness: 220, mass: 0.7 }),
-    );
-    thumbWidth.set(
-      reducedMotion
-        ? selectedLayout.width
-        : withSpring(selectedLayout.width, { damping: 15, stiffness: 220, mass: 0.7 }),
-    );
-  }, [reducedMotion, selectedLayout, thumbWidth, thumbX]);
+    const previousX = placedX.current;
+    placedX.current = selectedLayout.x;
+    if (previousX === null || reducedMotion) {
+      slideOffset.set(0);
+      return;
+    }
+    // Start from wherever the thumb is drawn now, even mid-slide.
+    slideOffset.set(previousX + slideOffset.get() - selectedLayout.x);
+    slideOffset.set(withSpring(0, { damping: 15, stiffness: 220, mass: 0.7 }));
+  }, [reducedMotion, selectedLayout, slideOffset]);
 
   const thumbStyle = useAnimatedStyle(() => ({
-    width: thumbWidth.value,
-    transform: [{ translateX: thumbX.value }],
+    transform: [{ translateX: slideOffset.value }],
   }));
 
   const recordSegmentLayout = (optionIndex: number, event: LayoutChangeEvent) => {
@@ -96,7 +99,13 @@ export function InlineSegmented<T extends string | number>({
   return (
     <View style={styles.track}>
       {selectedLayout ? (
-        <Animated.View style={[styles.thumb, thumbStyle]} />
+        <Animated.View
+          style={[
+            styles.thumb,
+            { left: selectedLayout.x, width: selectedLayout.width },
+            thumbStyle,
+          ]}
+        />
       ) : null}
       {options.map((option, optionIndex) => (
         <InlineSegmentOption

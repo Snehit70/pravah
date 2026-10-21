@@ -24,7 +24,6 @@ import { shortDate, toIsoDate } from "../lib/dates";
 import Animated, {
   Easing,
   FadeIn,
-  FadeInDown,
   FadeOut,
   useAnimatedStyle,
   useSharedValue,
@@ -36,6 +35,7 @@ import type { GoalItem } from "../lib/goalsStorage";
 import { useGoals, useGoalLinks } from "../hooks/useGoals";
 import { useGoalMutations } from "../hooks/useGoalMutations";
 import { useConfirm } from "../hooks/useConfirm";
+import { useListIntroStagger } from "../hooks/useListIntroStagger";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { TaskCard, type MobileTask } from "../components/TaskCard";
 import { isTaskCompleted } from "../lib/taskState";
@@ -103,19 +103,22 @@ function GoalProgressBar({
   thin?: boolean;
 }) {
   const reducedMotion = useReducedMotion();
+  // Empty while loading, then fills to the real ratio. It used to show a fake
+  // 30% fill that dropped to 0 and refilled once the data landed.
+  const target = isLoading ? 0 : ratio;
   const progress = useSharedValue(0);
   useEffect(() => {
     if (reducedMotion) {
-      progress.value = ratio;
+      progress.value = target;
       return;
     }
-    progress.value = withTiming(ratio, {
+    progress.value = withTiming(target, {
       duration: 600,
       easing: Easing.out(Easing.cubic),
     });
-  }, [ratio, progress, reducedMotion]);
+  }, [target, progress, reducedMotion]);
   const fillStyle = useAnimatedStyle(() => ({
-    width: `${(isLoading ? 0.3 : progress.value) * 100}%`,
+    width: `${progress.value * 100}%`,
   }));
   return (
     <View
@@ -136,8 +139,10 @@ function GoalProgressBar({
       <Animated.View
         style={[
           styles.progressFill,
-          isLoading && styles.progressFillLoading,
           isComplete && styles.progressFillComplete,
+          // The static width is the fallback the bar lands on if a row's
+          // entering animation drops the animated value mid-fill.
+          { width: `${target * 100}%` },
           fillStyle,
         ]}
       />
@@ -725,6 +730,9 @@ export function GoalsScreen({
   const confirm = useConfirm();
   const { deleteGoal, updateGoal } = useGoalMutations();
   const { goals, isHydrated } = useGoals();
+  // Capped, one-shot cascade: raw index delays made row 30 wait 1.5s and
+  // replayed whenever a row remounted on scroll or search.
+  const introStagger = useListIntroStagger(isHydrated);
   const links = useGoalLinks();
   const [query, setQuery] = useState("");
   // Keep the rendered goal separate from visibility so nested sheets can
@@ -951,9 +959,7 @@ export function GoalsScreen({
             : "No tasks linked";
           return (
             <Animated.View
-              entering={
-                reducedMotion ? undefined : FadeInDown.duration(280).delay(index * 50)
-              }
+              entering={introStagger(index)}
             >
               <View style={[styles.goalCard, isComplete && styles.goalCardComplete]}>
                 <Pressable
@@ -1177,9 +1183,6 @@ const styles = createThemedStyles({
   },
   progressFillComplete: {
     backgroundColor: colors.success,
-  },
-  progressFillLoading: {
-    opacity: 0.45,
   },
   goalMetaLeft: {
     flex: 1,

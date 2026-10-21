@@ -1,11 +1,11 @@
 import { forwardRef, type ForwardedRef, type ReactElement, type RefAttributes } from "react";
 import type { FlatList, FlatListProps } from "react-native";
-import Animated from "react-native-reanimated";
+import Animated, { type FlatListPropsWithLayout } from "react-native-reanimated";
 import { ScrollbarFrame, type ScrollbarOptions } from "./ScrollbarFrame";
 
 type FlatListWithScrollbarProps<ItemT> = Omit<
   FlatListProps<ItemT>, "horizontal" | "CellRendererComponent"
-> & ScrollbarOptions;
+> & Pick<FlatListPropsWithLayout<ItemT>, "itemLayoutAnimation"> & ScrollbarOptions;
 
 function FlatListWithScrollbarInner<ItemT>({
   style, indicatorColor, indicatorBottomInset, onLayout, onContentSizeChange, onScroll,

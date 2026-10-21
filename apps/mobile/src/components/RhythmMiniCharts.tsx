@@ -281,6 +281,10 @@ function MorphChart({
     };
   }, [geom]);
 
+  // Regrow when the numbers change, not when the array identity does: every
+  // query refresh rebuilds `counts`, and replaying the entrance on identical
+  // data made the charts flash back to the baseline.
+  const countsKey = counts.join(",");
   useEffect(() => {
     if (width <= 0) {
       grow.set(0);
@@ -295,7 +299,7 @@ function MorphChart({
       duration: motion.duration.slow,
       easing: Easing.out(Easing.cubic),
     }));
-  }, [counts, reducedMotion, grow, width]);
+  }, [countsKey, reducedMotion, grow, width]);
 
   useEffect(() => {
     const target = shape === "line" ? 1 : 0;

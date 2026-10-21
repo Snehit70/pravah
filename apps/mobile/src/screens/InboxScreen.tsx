@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Animated, {
   FadeIn,
   FadeOut,
+  LinearTransition,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -84,6 +85,8 @@ type InboxRow =
     }
   | { kind: "no-priority-summary"; count: number }
   | { kind: "task"; task: MobileTask };
+
+const listItemLayout = LinearTransition.duration(220);
 
 const BUCKET_ORDER: PriorityBucket[] = ["p1", "p2", "p3", "none"];
 const BUCKET_LABEL: Record<PriorityBucket, string> = {
@@ -236,7 +239,7 @@ export function InboxScreen({
 }: InboxScreenProps) {
   const reducedMotion = useReducedMotion();
   const insets = useSafeAreaInsets();
-  const introStagger = useListIntroStagger();
+  const introStagger = useListIntroStagger(!isLoading);
   const confirm = useConfirm();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterValue>("all");
@@ -424,7 +427,6 @@ export function InboxScreen({
   });
   const visibleRowCount = useIncrementalRowCount(expandableRows.length);
   const rows = expandableRows.slice(0, visibleRowCount);
-  const hasPendingRows = rows.length < expandableRows.length;
 
   const selectedCount = visibleSelectedIds.size;
 
@@ -510,6 +512,9 @@ export function InboxScreen({
         updateCellsBatchingPeriod={50}
         windowSize={7}
         removeClippedSubviews
+        // Collapsing a priority group or completing a task slides the rows
+        // below into place instead of snapping them.
+        itemLayoutAnimation={reducedMotion ? undefined : listItemLayout}
         keyExtractor={(row) => {
           if (row.kind === "header") return `header-${row.bucket}`;
           if (row.kind === "no-priority-summary") return "no-priority-summary";
@@ -557,9 +562,6 @@ export function InboxScreen({
           />
         }
         ListHeaderComponent={selectMode || tasks.length > 0 || isFiltering || isLoading ? listHeader : null}
-        ListFooterComponent={
-          hasPendingRows ? <Text style={styles.loadingMore}>Preparing more tasks...</Text> : null
-        }
         ListEmptyComponent={isLoading ? loadingBlock : emptyBlock}
       />
 
@@ -843,11 +845,5 @@ const styles = createThemedStyles({
   emptyCta: {
     color: colors.accent,
     ...typography.micro,
-  },
-  loadingMore: {
-    color: colors.textSecondary,
-    ...typography.micro,
-    textAlign: "center",
-    paddingTop: spacing.md,
   },
 });

@@ -72,7 +72,8 @@ function GoalRow({ row, urgency }: { row: GoalProgressRow; urgency: Urgency }) {
       fill.value = row.ratio;
       return;
     }
-    fill.value = 0;
+    // Animate from wherever the bar is, so a refresh slides it to the new
+    // ratio instead of emptying and refilling it.
     fill.value = withTiming(row.ratio, {
       duration: motion.duration.deliberate,
       easing: Easing.out(Easing.cubic),
@@ -107,7 +108,11 @@ function GoalRow({ row, urgency }: { row: GoalProgressRow; urgency: Urgency }) {
         </View>
       </View>
       <View style={styles.track} importantForAccessibility="no-hide-descendants">
-        <Animated.View style={[styles.fill, fillStyle]} />
+        <Animated.View
+          // Static fallback width: the Progress section's entering animation
+          // can drop an animated value written while it runs.
+          style={[styles.fill, { width: `${row.ratio * 100}%` }, fillStyle]}
+        />
       </View>
     </View>
   );
