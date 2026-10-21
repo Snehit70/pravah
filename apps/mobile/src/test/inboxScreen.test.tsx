@@ -574,13 +574,11 @@ describe("InboxScreen", () => {
 
     expect(screen.getByTestId("task-bulk-22")).toBeTruthy();
     expect(screen.queryByTestId("task-bulk-23")).toBeNull();
-    expect(screen.getByText("Preparing more tasks...")).toBeTruthy();
 
     act(() => {
       vi.advanceTimersByTime(32);
     });
 
     expect(screen.getByTestId("task-bulk-29")).toBeTruthy();
-    expect(screen.queryByText("Preparing more tasks...")).toBeNull();
   });
 });

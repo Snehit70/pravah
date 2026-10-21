@@ -122,6 +122,9 @@ vi.mock("react-native-reanimated", () => ({
   FadeIn: { duration: () => undefined },
   FadeOut: { duration: () => undefined },
   FadeInDown: { duration: () => ({ delay: () => undefined }) },
+  LinearTransition: { duration: () => undefined },
+  useSharedValue: (value: unknown) => ({ value }),
+  useAnimatedStyle: (factory: () => unknown) => factory(),
   withDelay: (_delay: number, value: unknown) => value,
   withTiming: (value: unknown) => value,
 }));
@@ -535,14 +538,12 @@ describe("TimelineScreen", () => {
 
     expect(screen.getByTestId("task-bulk-22")).toBeTruthy();
     expect(screen.queryByTestId("task-bulk-23")).toBeNull();
-    expect(screen.getByText("Preparing more tasks...")).toBeTruthy();
 
     act(() => {
       vi.advanceTimersByTime(32);
     });
 
     expect(screen.getByTestId("task-bulk-29")).toBeTruthy();
-    expect(screen.queryByText("Preparing more tasks...")).toBeNull();
   });
 
   it("expands later sections so hidden tasks become reachable", () => {

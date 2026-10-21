@@ -2870,13 +2870,18 @@ export function SettingsSheet({
   const routeTransition = useMemo(() => {
     if (reducedMotion) return undefined;
     const easing = TAB_REORDER_EASING;
+    // The outgoing page fades under the incoming slide instead of vanishing
+    // on the first frame.
+    const exiting = FadeOut.duration(motion.duration.instant).easing(easing);
     if (routeDirection === "forward") {
       return {
         entering: SlideInRight.duration(motion.duration.fast).easing(easing),
+        exiting,
       };
     }
     return {
       entering: SlideInLeft.duration(motion.duration.fast).easing(easing),
+      exiting,
     };
   }, [reducedMotion, routeDirection]);
   const headerTransition = useMemo(
@@ -3445,6 +3450,7 @@ export function SettingsSheet({
             <Animated.View
               key={currentRouteKey}
               entering={routeTransition?.entering}
+              exiting={routeTransition?.exiting}
             >
               {navigation.screen === "list" ? (
                 <SettingsCategoryList

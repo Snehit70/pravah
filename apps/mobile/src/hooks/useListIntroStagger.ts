@@ -29,14 +29,20 @@ const STEP_MS = 40;
 /** Rows past the first screenful share the final step instead of queuing. */
 const MAX_STEPS = 9;
 
-export function useListIntroStagger() {
+/**
+ * `ready` holds the window open until real rows can render. A cold start can
+ * sit on the skeleton longer than the window, and starting the clock at mount
+ * made those first rows pop in with no entrance at all.
+ */
+export function useListIntroStagger(ready = true) {
   const reducedMotion = useReducedMotion();
   const [introActive, setIntroActive] = useState(true);
 
   useEffect(() => {
+    if (!ready) return;
     const timeout = setTimeout(() => setIntroActive(false), INTRO_WINDOW_MS);
     return () => clearTimeout(timeout);
-  }, []);
+  }, [ready]);
 
   return (index: number) => {
     if (reducedMotion || !introActive) return undefined;

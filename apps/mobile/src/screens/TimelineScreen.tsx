@@ -12,8 +12,16 @@
  * The comfortable day-card carousel keeps its full rows.
  */
 
-import { useCallback, useMemo, useState, type JSX } from "react";
-import Animated, { FadeIn, FadeOut, withDelay, withTiming } from "react-native-reanimated";
+import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
+import Animated, {
+  FadeIn,
+  FadeOut,
+  LinearTransition,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from "react-native-reanimated";
 import { Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { FlatListWithScrollbar } from "../components/FlatListWithScrollbar";
 import Svg, { Line, Rect } from "react-native-svg";
@@ -86,6 +94,23 @@ function layoutEntering() {
       transform: [{ scale: withDelay(120, withTiming(1, { duration: 220 })) }],
     },
   };
+}
+
+const listItemLayout = LinearTransition.duration(220);
+
+/** Today's done/total bar. Fills from where it is when a task is completed. */
+function TodayProgressBar({ ratio }: { ratio: number }) {
+  const reducedMotion = useReducedMotion();
+  const fill = useSharedValue(ratio);
+  useEffect(() => {
+    fill.value = reducedMotion ? ratio : withTiming(ratio, { duration: 320 });
+  }, [fill, ratio, reducedMotion]);
+  const fillStyle = useAnimatedStyle(() => ({ width: `${fill.value * 100}%` }));
+  return (
+    <View style={styles.progressTrack}>
+      <Animated.View style={[styles.progressFill, fillStyle]} />
+    </View>
+  );
 }
 
 function countTimelineRows(sections: [string, MobileTask[]][]) {
@@ -183,7 +208,7 @@ export function TimelineScreen({
   onMarkManyDone,
 }: TimelineScreenProps) {
   const reducedMotion = useReducedMotion();
-  const introStagger = useListIntroStagger();
+  const introStagger = useListIntroStagger(!isLoading);
   const confirm = useConfirm();
   const [showAllSections, setShowAllSections] = useState(false);
 
@@ -228,7 +253,6 @@ export function TimelineScreen({
   // Build only the rows currently released to FlatList. Large timelines still
   // hydrate quickly, but the first paint avoids handing every row to React.
   const rows = buildTimelineRows(visibleSections, today, tomorrow, visibleRowCount);
-  const hasPendingRows = rows.length < totalRows;
 
   // The pool select-all and the bulk actions operate on: only tasks whose
   // rows are actually released to the list. Rows still pending incremental
@@ -413,6 +437,9 @@ export function TimelineScreen({
       updateCellsBatchingPeriod={50}
       windowSize={7}
       removeClippedSubviews
+      // Completing or rescheduling a task slides the rows below up into its
+      // place instead of snapping them.
+      itemLayoutAnimation={reducedMotion ? undefined : listItemLayout}
       keyExtractor={(row) =>
         row.kind === "header" ? `header-${row.dateKey}` : row.task._id
       }
@@ -431,9 +458,7 @@ export function TimelineScreen({
                       {completedTodayCount} of {todayTotal} done
                     </Text>
                   </View>
-                  <View style={styles.progressTrack}>
-                    <View style={[styles.progressFill, { width: `${todayProgress * 100}%` }]} />
-                  </View>
+                  <TodayProgressBar ratio={todayProgress} />
                 </View>
               ) : (
                 <TimelineSectionHeader
@@ -493,7 +518,6 @@ export function TimelineScreen({
               </View>
             </Pressable>
           ) : null}
-          {hasPendingRows ? <Text style={styles.loadingMore}>Preparing more tasks...</Text> : null}
         </>
       }
       ListEmptyComponent={
@@ -867,11 +891,5 @@ const styles = createThemedStyles({
     color: colors.textSecondary,
     ...typography.bodyMd,
     textAlign: "center",
-  },
-  loadingMore: {
-    color: colors.textSecondary,
-    ...typography.micro,
-    textAlign: "center",
-    paddingTop: spacing.md,
   },
 });
