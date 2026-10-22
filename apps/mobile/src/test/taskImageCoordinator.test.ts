@@ -156,6 +156,34 @@ function createDependencies(): TaskImageCoordinatorDependencies {
 }
 
 describe("Task-image mobile coordinator", () => {
+  it("publishes progress without persisting recovery manifests for every callback", async () => {
+    const dependencies = createDependencies();
+    const save = vi.fn(async () => undefined);
+    const response = deferred<Awaited<ReturnType<TaskImageCoordinatorDependencies["upload"]>>>();
+    let progress!: (value: number) => void;
+    dependencies.upload = vi.fn(async (_uri, _grant, options) => {
+      progress = options!.onProgress;
+      return response.promise;
+    });
+    const coordinator = createTaskImageCoordinator({ ...dependencies,
+      ownerScope: () => "owner", manifestStore: { load: async () => null, save } });
+    await coordinator.select("photos");
+    const completion = coordinator.beginUploadAfterSave();
+    await vi.waitFor(() => expect(dependencies.upload).toHaveBeenCalledOnce());
+    // Drain recovery checkpoints that preceded the native transport start.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const checkpoints = save.mock.calls.length;
+    for (let index = 1; index <= 100; index += 1) progress(index / 100);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(coordinator.getViewState()).toMatchObject({ state: "uploading", progress: 1 });
+    expect(save).toHaveBeenCalledTimes(checkpoints);
+    response.resolve(await createDependencies().upload("file:///fixture", {
+      uploadUrl: "https://fixture.invalid", signature: "signature", apiKey: "key", signedParameters: {},
+    }));
+    await completion;
+    expect(save.mock.calls.length).toBeGreaterThan(checkpoints);
+    coordinator.dispose();
+  });
   it.each(["photos", "camera", "paste"] as const)(
     "routes %s through the same normalization and owner staging contract",
     async (kind) => {

@@ -1,0 +1,52 @@
+appId: com.pravah.mobile.e2e
+name: Native workspace workflows
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Fixture task 000"
+    timeout: 30000
+- assertVisible: "Inbox"
+- tapOn: "Capture a new task"
+- tapOn: "Task title"
+- inputText: "Native CI captured task"
+# Assert the real footer remains visible with the native keyboard open.
+- assertVisible: "Save & close"
+- tapOn: "Save & close"
+- extendedWaitUntil:
+    visible: "Native CI captured task"
+    timeout: 10000
+- tapOn: "Native CI captured task"
+- tapOn: "Edit task title"
+- eraseText
+- inputText: "Native CI edited task"
+- assertVisible: "Save changes"
+- tapOn: "Save changes"
+- assertVisible: "Native CI edited task"
+- tapOn: "Complete task"
+- tapOn: "Timeline"
+- assertVisible: "Fixture task 300"
+- tapOn: "Goals"
+- tapOn: "Goal: Native workflow goal.*"
+- assertVisible: "Fixture task 300"
+- back
+- tapOn: "Progress"
+- scrollUntilVisible:
+    element:
+      text: "Completion history"
+    direction: DOWN
+- tapOn: "Completion history"
+- assertVisible: "Native CI edited task"
+- back
+- tapOn: "Open settings"
+- assertVisible: "Appearance"
+- back
+- tapOn: "Open Kairo assistant"
+- tapOn: "Message Kairo"
+- inputText: "Check my scheduled tasks"
+- tapOn: "Send message"
+- extendedWaitUntil:
+    visible: "Native fixture response: scheduled tasks received"
+    timeout: 10000
+- tapOn: "Close Kairo"
+- assertVisible: "Progress"

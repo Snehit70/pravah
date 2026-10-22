@@ -268,7 +268,7 @@ export function useTaskQueries({
   const isCompletedLoading =
     (includeCompletedHistory && completedHistoryQuery === undefined) ||
     (includeCompletedToday && !includeCompletedHistory && completedTodayQuery === undefined);
-  const isAllTasksReady = !includeCompletedHistory || completedHistoryQuery !== undefined;
+  const isAllTasksReady = isAuthenticated && !isInboxLoading && !isTimelineLoading && !isCompletedLoading;
   const isImageCollectionsReady = !includeImages || imageCollectionsQuery !== undefined;
   const retainedImageIds = useMemo(
     () => (isAuthenticated && includeImages ? collectServerImageIds(imageCollectionsQuery) : null),

@@ -305,7 +305,7 @@ function MobileApp() {
     ? toIsoDate(initialTimelineEnd) : undefined;
 
   const includeCompletedHistory =
-    activeTab === "insights" || (activeTab === "goals" && !progressSummary?.ready);
+    isKairoActive || activeTab === "insights" || (activeTab === "goals" && !progressSummary?.ready);
   const {
     today,
     tomorrow,
@@ -610,7 +610,7 @@ function MobileApp() {
     session && overduePreviewEnabled ? { today } : "skip"
   );
 
-  useConvexGoalsSync(Boolean(session) && (activeTab === "goals" || activeTab === "insights"));
+  useConvexGoalsSync(Boolean(session) && (isKairoActive || activeTab === "goals" || activeTab === "insights"));
   const { setGoalLink, clearAll: clearAllGoals } = useGoalMutations();
 
   // ── Derived data ────────────────────────────────────────────────────
@@ -633,9 +633,10 @@ function MobileApp() {
   const tabBarBottomPadding = Math.max(insets.bottom, spacing.md);
   const tabBarHeight = 62 + tabBarBottomPadding;
 
-  const shouldSyncReminders = Boolean(session) && notificationsEnabled && isAllTasksReady;
+  const reminderTasks = useMemo(() => [...inboxTasks, ...scheduledTasks], [inboxTasks, scheduledTasks]);
+  const shouldSyncReminders = Boolean(session) && notificationsEnabled && !isInboxLoading && !isTimelineLoading;
   useReminderSync(
-    [...inboxTasks, ...scheduledTasks],
+    reminderTasks,
     prefs,
     shouldSyncReminders,
   );
@@ -812,7 +813,7 @@ function MobileApp() {
   useEffect(() => {
     if (!session) return;
     if (!isDataBootstrapReady) return;
-    if (!isAllTasksReady) return;
+    if (isActiveListLoading || isBootShellLoading || shouldUseWorkspaceSnapshot || sessionLoading) return;
     if (!didMarkInteractiveRef.current) {
       didMarkInteractiveRef.current = true;
       markInteractive();
@@ -826,10 +827,13 @@ function MobileApp() {
     displayCompletedTasks.length,
     displayInboxTasks.length,
     displayScheduledTasks.length,
-    isAllTasksReady,
+    isActiveListLoading,
+    isBootShellLoading,
     isDataBootstrapReady,
     markInteractive,
     session,
+    sessionLoading,
+    shouldUseWorkspaceSnapshot,
   ]);
 
   useEffect(() => {
@@ -867,6 +871,7 @@ function MobileApp() {
       switch (payload.type) {
         case "addTask": {
           const retriedId = await addTaskMutation({
+            idempotencyKey: payload.idempotencyKey,
             title: payload.title,
             description: payload.description,
             deadline: payload.deadline,
@@ -1109,6 +1114,7 @@ function MobileApp() {
       });
       try {
         const newTaskId = await addTaskMutation({
+          idempotencyKey: actionId,
           title: data.title,
           description: data.description,
           deadline: data.deadline,
@@ -1144,6 +1150,7 @@ function MobileApp() {
             label: `Add "${data.title}"`,
             payload: {
               type: "addTask",
+              idempotencyKey: actionId,
               title: data.title,
               description: data.description,
               deadline: data.deadline,
@@ -1538,8 +1545,8 @@ function MobileApp() {
         >
           <ScreenErrorBoundary screenName="Inbox">
             <InboxScreen
-              tasks={visibleTasks}
-              isLoading={isActiveListLoading || isBootShellLoading}
+              tasks={activeTab === "inbox" ? visibleTasks : displayInboxTasks}
+              isLoading={isInboxLoading || isBootShellLoading}
               isRefreshing={isRefreshing}
               tabBarHeight={tabBarHeight}
               onRefresh={handleRefresh}

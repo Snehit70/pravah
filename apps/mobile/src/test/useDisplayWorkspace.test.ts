@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import type { MobileTask } from "../components/TaskCard";
 import { deriveDisplayWorkspace, type DisplayWorkspaceInput } from "../hooks/useDisplayWorkspace";
+import { createHandleRegistry, runReadTool } from "../lib/kairoTools";
 
 type TaskOverrides = Omit<Partial<MobileTask>, "_id"> & { _id?: string };
 
@@ -110,7 +111,25 @@ describe("deriveDisplayWorkspace", () => {
     expect(display.hasLiveWorkspaceData).toBe(true);
     expect(display.isActiveListLoading).toBe(false);
     expect(display.isTimelineTriageReady).toBe(true);
-    expect(display.kairoTasks.map((task) => task._id)).toEqual(["live-inbox"]);
+    expect(display.kairoTasks.map((task) => task._id)).toEqual(["all-task"]);
+  });
+
+  it("feeds scheduled, overdue and completed tasks through the actual Kairo read tools", () => {
+    const corpus = [
+      makeTask({ _id: "scheduled", deadline: "2026-06-16" }),
+      makeTask({ _id: "overdue", deadline: "2026-06-15" }),
+      makeTask({ _id: "done", completedAt: 1 }),
+    ];
+    const input = baseInput({ allWorkspaceTasks: corpus });
+    const display = deriveDisplayWorkspace(input);
+    const env = { tasks: display.kairoTasks, inboxTasks: input.inboxTasks,
+      today: input.today, registry: createHandleRegistry() };
+    for (const [tool, args] of [
+      ["get_tasks_in_range", { startDate: "2026-06-16", endDate: "2026-06-16" }],
+      ["get_overdue", {}], ["get_completed", {}],
+    ] as const) {
+      expect(runReadTool(tool, args, env)).toMatchObject({ ok: true, data: { tasks: [expect.any(Object)] } });
+    }
   });
 
   it("uses the workspace corpus as the mutation base on Goals", () => {

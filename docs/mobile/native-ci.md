@@ -1,0 +1,17 @@
+# Native workflow and performance CI
+
+`Mobile native CI` builds a fresh Android release APK on every PR and main push, then runs it on an API 35 Pixel 6 emulator. All compilation and validation run in GitHub Actions.
+
+The `com.pravah.mobile.e2e` variant runs the production App, screens, sheets, keyboard and native dependencies with a deterministic in-memory transport. Metro replaces only Convex/auth modules for this CI-only variant. It contains 500 tasks and one goal. A loopback provider fixture checks that Kairo's actual prompt contains scheduled tasks. No production backend, Google login, provider key, release upload or OTA is used. EAS rejects this variant and updates are disabled.
+
+The native workflow covers launch, capture, keyboard-visible save, title edit, completion, Timeline, Goals detail, Progress history, settings, and Kairo. These checks exercise the native UI with fixture transport. Google sign-in, Convex connectivity/auth enforcement, real notification delivery, image-provider delivery and OTA installation still need separate integration/device verification.
+
+The performance checks collect five cold launches to the app's interactive marker, raw native activity-launch output, a large-Inbox scroll, window frame timings and process memory. Initial conservative emulator budgets are a median interactive time at most 8 seconds, every startup at most 15 seconds, and sampled scroll frame p95 at most 100 ms. Missing markers or insufficient frames fail the check. The host-observed startup value includes ADB polling overhead. The frame data is coarse Android `gfxinfo` evidence and does not replace Perfetto or physical-device tracing. Memory is recorded without a gate until a repeatable baseline exists.
+
+`Mobile persistence performance` compares the old byte-limited diagnostics retention algorithm at `55b1275` with the new algorithm on the same fixture, checks identical retained results, and saves seven-sample median times. It measures host JavaScript pruning cost. It does not measure app startup, FPS, battery, or the overall app speedup.
+
+Download `mobile-native-evidence` for Maestro JUnit reports, screenshots, logcat, startup samples, frame statistics and memory. Download `mobile-persistence-benchmark` for the algorithm comparison. No retry conceals a failing native flow.
+
+The checks fail the workflow on regression. Making them mandatory for merges requires repository rules to require the exact check names `Android native workflows and performance` and `Mobile persistence performance`. At implementation time, the GitHub API reported that `main` was not protected; adding this workflow does not change repository branch rules.
+
+References: [Expo native builds](https://docs.expo.dev/guides/local-app-overview/), [Maestro reports](https://docs.maestro.dev/maestro-flows/workspace-management/test-reports-and-artifacts), [Android frame/startup metric definitions](https://developer.android.com/topic/performance/benchmarking/macrobenchmark-metrics). The generated APK is intentionally a release build so production JavaScript behavior and native bundling are exercised without Metro running during tests.

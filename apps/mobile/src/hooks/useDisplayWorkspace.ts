@@ -170,7 +170,7 @@ export function deriveDisplayWorkspace(input: DisplayWorkspaceInput): DisplayWor
     isTimelineTriageReady: shouldUseWorkspaceSnapshot || !input.loading.timeline,
     isBootShellLoading:
       shouldRenderOptimisticShell && !shouldUseWorkspaceSnapshot && !input.sessionReady,
-    kairoTasks: input.inboxTasks,
+    kairoTasks: input.allWorkspaceTasks,
   };
 }
 

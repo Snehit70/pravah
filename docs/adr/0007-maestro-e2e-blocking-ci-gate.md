@@ -1,5 +1,7 @@
 # Maestro E2E as a blocking, build-every-PR CI gate
 
+Implementation update, 22 October 2026: [native CI](../mobile/native-ci.md) now defines a fresh isolated release-build fixture gate and performance artifacts. This supersedes the dev-client mechanism below. Auth/data/provider boundaries are deterministic fixtures, while the production App and native UI run unchanged. Repository branch rules must separately require the check names; the workflow alone does not enforce merge protection. Coverage ratcheting described below remains a proposal rather than an implemented guarantee.
+
 Every pull request must pass a Maestro end-to-end suite running on a freshly built Android dev-client against a cold emulator, in addition to lint, typechecks, unit tests, and the web build — all enforced as required status checks on `main`. A fast `expo-doctor` pre-gate runs first to fail on native-dependency / `app.json` config drift before the expensive build. This is the only layer that can catch the native/runtime class of bug (keyboard covering the submit button, Modal windowing, native-module regressions) that the react-native-web unit seam ([[0006-react-native-web-for-mobile-component-tests]]) structurally cannot.
 
 ## Considered Options

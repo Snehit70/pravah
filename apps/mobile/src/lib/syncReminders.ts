@@ -15,15 +15,20 @@ export async function syncRemindersAsync(specs: ReminderSpec[]): Promise<void> {
 
   const newIds = new Set(specs.map((s) => s.id));
   const existingIds = new Set(existing.map((n) => n.identifier));
+  const desiredById = new Map(specs.map((spec) => [spec.id, spec]));
+  const changedIds = new Set(existing.filter((notification) => {
+    const desired = desiredById.get(notification.identifier);
+    return desired && (notification.content.title !== desired.title || notification.content.body !== desired.body);
+  }).map((notification) => notification.identifier));
 
   // Cancel notifications no longer in the planner output.
-  const toCancel = existing.filter((n) => !newIds.has(n.identifier));
+  const toCancel = existing.filter((n) => !newIds.has(n.identifier) || changedIds.has(n.identifier));
   await Promise.all(
     toCancel.map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier))
   );
 
   // Schedule specs not yet in the OS notification list.
-  const toSchedule = specs.filter((s) => !existingIds.has(s.id));
+  const toSchedule = specs.filter((s) => !existingIds.has(s.id) || changedIds.has(s.id));
   await Promise.all(
     toSchedule.map((spec) =>
       Notifications.scheduleNotificationAsync({

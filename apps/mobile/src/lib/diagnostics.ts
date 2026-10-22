@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppState, type AppStateStatus, type NativeEventSubscription } from "react-native";
+import { retainDiagnosticEvents } from "./diagnosticRetention";
 
 export type DiagnosticLevel = "debug" | "info" | "warn" | "error";
 export type DiagnosticFlow =
@@ -97,7 +98,8 @@ let flushTimer: ReturnType<typeof setInterval> | null = null;
 let appStateSubscription: NativeEventSubscription | null = null;
 let isInitialized = false;
 let initializationPromise: Promise<void> | null = null;
-let isFlushing = false;
+let flushing: Promise<void> | null = null;
+let persistedSeq = 0;
 
 function inferFlow(event: string): DiagnosticFlow {
   const key = event.toLowerCase();
@@ -148,23 +150,8 @@ export function sanitizeDiagnosticContext(
   return sanitizeValue(context) as Record<string, unknown>;
 }
 
-function approxBytes(events: DiagnosticEvent[]): number {
-  try {
-    return events.reduce((sum, item) => sum + JSON.stringify(item).length, 0);
-  } catch {
-    return MAX_BYTES + 1;
-  }
-}
-
 function pruneEvents(events: DiagnosticEvent[]): DiagnosticEvent[] {
-  const cutoff = Date.now() - MAX_AGE_MS;
-  const fresh = events.filter((event) => event.ts >= cutoff);
-  if (fresh.length <= MAX_EVENTS && approxBytes(fresh) <= MAX_BYTES) return fresh;
-  const mutable = [...fresh];
-  while (mutable.length > MAX_EVENTS || approxBytes(mutable) > MAX_BYTES) {
-    mutable.shift();
-  }
-  return mutable;
+  return retainDiagnosticEvents(events, Date.now() - MAX_AGE_MS, MAX_EVENTS, MAX_BYTES);
 }
 
 async function loadPersisted(): Promise<void> {
@@ -184,9 +171,13 @@ async function loadPersisted(): Promise<void> {
 }
 
 async function flushNow(reason: string): Promise<void> {
-  if (isFlushing) return;
-  isFlushing = true;
-  try {
+  if (flushing) {
+    await flushing;
+    return flushNow(reason);
+  }
+  if (seq === persistedSeq) return;
+  const flushSeq = seq;
+  flushing = (async () => {
     const current = {
       sessionId,
       startedAt: Number(sessionId.split("-")[1] ?? Date.now()),
@@ -195,11 +186,15 @@ async function flushNow(reason: string): Promise<void> {
     const sessions = [...priorSessions.filter((s) => s.sessionId !== sessionId), current]
       .slice(-MAX_SESSIONS)
       .map((s) => ({ ...s, events: pruneEvents(s.events) }));
-    priorSessions = sessions;
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ sessions }));
+    priorSessions = sessions;
+    persistedSeq = flushSeq;
     void reason;
+  })();
+  try {
+    await flushing;
   } finally {
-    isFlushing = false;
+    flushing = null;
   }
 }
 
@@ -208,7 +203,7 @@ function handleAppStateChange(nextState: AppStateStatus): void {
     appState: nextState,
   });
   if (nextState !== "active") {
-    void flushNow("background");
+    void flushNow("background").catch(() => undefined);
   }
 }
 
@@ -220,7 +215,7 @@ export async function initializeDiagnostics(): Promise<void> {
     recordDiagnosticEvent("app_session_started", "info", { restoredSessions: priorSessions.length });
     appStateSubscription = AppState.addEventListener("change", handleAppStateChange);
     flushTimer = setInterval(() => {
-      void flushNow("interval");
+      void flushNow("interval").catch(() => undefined);
     }, FLUSH_INTERVAL_MS);
   })();
   return initializationPromise;

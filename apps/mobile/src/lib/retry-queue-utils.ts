@@ -1,7 +1,5 @@
 import type { RetryQueueItem } from "../hooks/useRetryQueue";
 
-export const MAX_RETRY_QUEUE_PERSIST = 20;
-
 export function hydrateRetryQueue(raw: string | null): RetryQueueItem[] {
   if (!raw) return [];
 
@@ -15,12 +13,16 @@ export function hydrateRetryQueue(raw: string | null): RetryQueueItem[] {
         typeof item?.label === "string" &&
         typeof item?.attempts === "number" &&
         item?.payload !== undefined
-    );
+    ).map((item) => item.payload.type === "addTask"
+      ? { ...item, payload: { ...item.payload, idempotencyKey: item.payload.idempotencyKey ?? `mobile-retry:${item.id}` } }
+      : item);
   } catch {
     return [];
   }
 }
 
 export function prepareRetryQueueForPersist(queue: RetryQueueItem[]): RetryQueueItem[] {
-  return queue.slice(-MAX_RETRY_QUEUE_PERSIST);
+  // Every accepted pending operation must survive restart, including older
+  // entries. A display/history cap must never truncate a durable outbox.
+  return queue;
 }
