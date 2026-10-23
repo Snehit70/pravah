@@ -12,6 +12,11 @@ export function sha256(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+export function androidRuntime(resources: string): string | null {
+  // Newer build-tools append flags to the resource header.
+  return resources.match(/string\/expo_runtime_version[^\n]*\n[^\n]*"([^"]+)"/)?.[1] ?? null;
+}
+
 export function mobileChange(files: readonly string[]): boolean {
   return files.some((path) => {
     if (/^apps\/mobile\/(docs\/|src\/test\/)/.test(path)) return false;

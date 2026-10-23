@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  checkState, mobileChange, REQUIRED_CHECKS, reusableValidation, SCHEMA,
+  androidRuntime, checkState, mobileChange, REQUIRED_CHECKS, reusableValidation, SCHEMA,
   sha256, TOOLCHAIN, validBase, type Base, type Check, type Context, type Validation,
 } from "../../scripts/mobile-ci/contracts";
 import { classifyMobileRelease } from "../../scripts/mobile-release/classifier";
@@ -16,6 +16,14 @@ const validation: Validation = {
   runId: 123, artifactName: "mobile-native-apk-1", apkFile: "base.apk", apkSha256: "e".repeat(64),
   checks: { workflows: "success", performance: "success", persistence: "success" },
 };
+
+describe("APK resource formats", () => {
+  it("reads runtime identity with both plain and flagged resource headers", () => {
+    expect(androidRuntime('resource 0x7f1300b3 string/expo_runtime_version\n  () "native-7"\n')).toBe("native-7");
+    expect(androidRuntime('resource 0x7f1300b3 string/expo_runtime_version: flags=0x00000000\n  () (string8) "native-7"\n')).toBe("native-7");
+    expect(androidRuntime('resource 0x123 string/another_value\n  () "native-7"\n')).toBeNull();
+  });
+});
 
 describe("mobile CI routing", () => {
   it.each(["src/components/Inbox.tsx", "docs/guide.md", "packages/cli/src/list.ts", "apps/mobile/docs/notes.md", "apps/mobile/src/test/new.test.ts"])("keeps independent changes on the fast path: %s", (path) => {

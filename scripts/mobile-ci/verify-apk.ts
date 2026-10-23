@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { command, json, required } from "./runtime";
-import { sha256, type Context } from "./contracts";
+import { androidRuntime, sha256, type Context } from "./contracts";
 
 const [kind, file] = process.argv.slice(2);
 if (!["fixture", "release"].includes(kind) || !file) throw new Error("Expected fixture|release APK");
@@ -19,8 +19,8 @@ const runtime = fixture ? "native-e2e" : required("MOBILE_NATIVE_RUNTIME");
 const packageName = fixture ? "com.pravah.mobile.e2e" : "com.pravah.mobile";
 if (!badging.includes(`name='${packageName}'`) || !badging.includes(`versionName='${version}'`)) throw new Error("APK package/version mismatch");
 if (!badging.includes(fixture ? "'x86_64'" : "'arm64-v8a'")) throw new Error("APK lacks the required architecture");
-const runtimeResource = resources.match(/string\/expo_runtime_version\s*\n[^\n]*"([^"]+)"/);
-if (runtimeResource?.[1] !== runtime) throw new Error("APK runtime mismatch");
+const observedRuntime = androidRuntime(resources);
+if (observedRuntime !== runtime) throw new Error(`APK runtime mismatch: expected ${runtime}, observed ${observedRuntime}; resource ${resources.split("\n").filter((line, index, lines) => line.includes("string/expo_runtime_version") || lines[index - 1]?.includes("string/expo_runtime_version")).join(" ")}`);
 const bundle = Buffer.from(command(["python", "-c", "import sys,zipfile,base64; print(base64.b64encode(zipfile.ZipFile(sys.argv[1]).read('assets/index.android.bundle')).decode())", apk]), "base64");
 if (fixture) {
   const context = json<Context>("artifacts/mobile-ci/context.json");
