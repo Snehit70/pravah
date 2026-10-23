@@ -4,6 +4,8 @@ set -euo pipefail
 out=artifacts/mobile-native
 mkdir -p "$out"
 trap 'adb logcat -d > "$out/logcat.txt"; adb shell dumpsys meminfo com.pravah.mobile.e2e > "$out/memory-final.txt"; kill "${fixture_pid:-}" 2>/dev/null || true' EXIT
+git rev-parse HEAD > "$out/revision.txt"
+adb shell getprop ro.build.fingerprint > "$out/device-fingerprint.txt"
 adb install apps/mobile/android/app/build/outputs/apk/release/app-release.apk
 adb reverse tcp:8765 tcp:8765
 python - <<'PY'

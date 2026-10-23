@@ -35,10 +35,12 @@ The Expo Doctor precheck rejected the original Expo 56 / React Native 0.85.3 run
 
 The remaining findings in the [27-item audit](mobile-performance-workflow-audit-2026-10-22.md) remain open. In particular, this PR does not implement a fully durable offline-first capture path, bound the image/history queries, virtualize the two eager detail lists, or claim physical-device workflow coverage.
 
+Clean diagnostics ticks still remove expired records on the first flush tick after their 14-day limit. Capture replay protection uses the backend's existing 30-day idempotency window. It is not an unlimited exactly-once guarantee, and keys added to legacy retry entries cannot deduplicate an earlier request that never carried a key.
+
 ## Release requirements
 
 The SDK upgrade requires a new native binary. Deploy the updated Convex `tasks.addTask` signature to the canonical deployment before publishing the candidate mobile app, because the app now sends an optional idempotency key. The APK release workflow already waits for its backend deployment job before publishing. This PR does not trigger that release.
 
-## Remaining measurements
+## Reading native results
 
-The native fixture workflow must pass before native startup and frame results can be reported. Physical-device ADB checks have not detected a connected phone. No overall app-performance percentage is established. The native suite's fixture boundaries, conservative budgets and artifacts are documented in [native-ci.md](../mobile/native-ci.md).
+Only a fully passing native workflow establishes a valid candidate result. The PR's Android check links to startup, frame and memory artifacts for its tested revision. These are absolute candidate measurements on a fixed emulator, not a before/after comparison against the installed app. Physical-device ADB checks have not detected a connected phone. No overall app-performance percentage is established. The native suite's fixture boundaries, conservative budgets and artifacts are documented in [native-ci.md](../mobile/native-ci.md).

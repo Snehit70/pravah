@@ -100,6 +100,7 @@ let isInitialized = false;
 let initializationPromise: Promise<void> | null = null;
 let flushing: Promise<void> | null = null;
 let persistedSeq = 0;
+let nextPersistedExpiry = Infinity;
 
 function inferFlow(event: string): DiagnosticFlow {
   const key = event.toLowerCase();
@@ -175,7 +176,7 @@ async function flushNow(reason: string): Promise<void> {
     await flushing;
     return flushNow(reason);
   }
-  if (seq === persistedSeq) return;
+  if (seq === persistedSeq && Date.now() < nextPersistedExpiry) return;
   const flushSeq = seq;
   flushing = (async () => {
     const current = {
@@ -189,6 +190,14 @@ async function flushNow(reason: string): Promise<void> {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ sessions }));
     priorSessions = sessions;
     persistedSeq = flushSeq;
+    // A clean buffer still needs one cleanup when persisted history expires.
+    // Calculate this at write time so idle ticks do not scan the history.
+    nextPersistedExpiry = Infinity;
+    for (const session of sessions) {
+      for (const event of session.events) {
+        nextPersistedExpiry = Math.min(nextPersistedExpiry, event.ts + MAX_AGE_MS + 1);
+      }
+    }
     void reason;
   })();
   try {

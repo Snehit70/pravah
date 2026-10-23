@@ -39,12 +39,15 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
-          cache-dependency-path: |
-            bun.lock
-            apps/mobile/app.config.ts
-            apps/mobile/plugins/**
-            patches/**
+      - name: Restore Gradle dependencies and build cache
+        id: gradle-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: mobile-gradle-${{ runner.os }}-${{ hashFiles('bun.lock', 'apps/mobile/app.config.ts', 'apps/mobile/plugins/**', 'patches/**') }}-${{ github.sha }}
+          restore-keys: mobile-gradle-${{ runner.os }}-${{ hashFiles('bun.lock', 'apps/mobile/app.config.ts', 'apps/mobile/plugins/**', 'patches/**') }}-
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Check native dependency and Expo config compatibility
@@ -68,8 +71,37 @@ jobs:
           tree.write(manifest, encoding='utf-8', xml_declaration=True)
           PY
       - name: Build release fixture APK
+        timeout-minutes: 30
         working-directory: apps/mobile/android
-        run: ./gradlew assembleRelease -PreactNativeArchitectures=x86_64 --max-workers=2 --no-daemon
+        run: |
+          build_evidence="$GITHUB_WORKSPACE/artifacts/mobile-native/build"
+          mkdir -p "$build_evidence"
+          # Remote CI diagnostics keep a slow native build inspectable even
+          # before GitHub makes the completed job's logs available via its API.
+          (
+            for minute in {1..10}; do sleep 60; done
+            free -m > "$build_evidence/memory.txt"
+            ps -eo pid,ppid,stat,pcpu,pmem,comm --sort=-pcpu > "$build_evidence/processes.txt"
+            jps -l | while read -r pid main_class; do
+              case "$main_class" in
+                *GradleDaemon|*KotlinCompileDaemon)
+                  jcmd "$pid" Thread.print > "$build_evidence/threads-$pid.txt" 2>&1 || true ;;
+              esac
+            done
+          ) &
+          probe_pid=$!
+          trap 'kill "$probe_pid" 2>/dev/null || true' EXIT
+          ./gradlew assembleRelease -PreactNativeArchitectures=x86_64 --max-workers=2 --no-parallel --no-daemon --console=plain --stacktrace 2>&1 | tee "$build_evidence/gradle.log"
+      # Preserve a successful compilation even if a later device assertion
+      # fails, so fixing a flow does not discard reusable native build work.
+      - name: Save Gradle cache after compilation
+        if: steps.gradle-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ steps.gradle-cache.outputs.cache-primary-key }}
       - name: Install pinned Maestro CLI
         run: |
           curl --fail --location --retry 3 https://github.com/mobile-dev-inc/Maestro/releases/download/cli-2.11.0/maestro.zip --output /tmp/maestro.zip

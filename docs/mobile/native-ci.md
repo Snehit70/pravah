@@ -12,7 +12,7 @@ The performance checks collect five cold launches to the app's interactive marke
 
 `Mobile persistence performance` compares the old byte-limited diagnostics retention algorithm at `55b1275` with the new algorithm on the same fixture, checks identical retained results, and saves seven-sample median times. It measures host JavaScript pruning cost. It does not measure app startup, FPS, battery, or the overall app speedup.
 
-Download `mobile-native-evidence` for Maestro JUnit reports, screenshots, logcat, startup samples, frame statistics and memory. Download `mobile-persistence-benchmark` for the algorithm comparison. No retry conceals a failing native flow.
+Download `mobile-native-evidence` for the tested revision, emulator build fingerprint, Maestro JUnit reports, screenshots, logcat, startup samples, frame statistics and memory. Download `mobile-persistence-benchmark` for the algorithm comparison. No retry conceals a failing native flow.
 
 The checks fail the workflow on regression. Making them mandatory for merges requires repository rules to require the exact check names `Android native workflows and performance` and `Mobile persistence performance`. At implementation time, the GitHub API reported that `main` was not protected; adding this workflow does not change repository branch rules.
 

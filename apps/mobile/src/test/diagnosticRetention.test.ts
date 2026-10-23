@@ -6,6 +6,10 @@ describe("diagnostic retention", () => {
   it("preserves order and newest count after expiry", () => {
     expect(retainDiagnosticEvents(rows, 2, 1, 1000)).toEqual([rows[2]]);
   });
+  it("discards missing or invalid persisted timestamps", () => {
+    const persisted = [...rows, { ts: NaN }, {}] as Array<{ ts: number; seq?: number }>;
+    expect(retainDiagnosticEvents(persisted, 0, 10, 1000)).toEqual(rows);
+  });
   it("keeps the same newest suffix under the serialized-size budget", () => {
     const size = JSON.stringify(rows[2]).length;
     expect(retainDiagnosticEvents(rows, 0, 10, size)).toEqual([rows[2]]);

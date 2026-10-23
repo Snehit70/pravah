@@ -43,7 +43,7 @@ function query(name, args = {}) {
     })) };
     case "taskImages:listWorkspaceImageCollections": return [];
     case "taskImages:getTaskImageCollection": return { revision: 0, active: [], recoverable: [] };
-    case "taskImageBudget:getOwnerBudgetStatus": return { warning: false, grantsBlocked: false };
+    case "taskImageBudget:getOwnerBudgetStatus": return { status: "normal", warning: false, grantsBlocked: false, usage: { pooledPercentage: 10 } };
     case "mobileReleases:getState": return null;
     case "mobileReleases:listPublished":
     case "automation:listCredentials":
