@@ -34,6 +34,8 @@ describe("APK resource formats", () => {
   it("normalizes signer output and retains distinct certificates", () => {
     const digest = "ab".repeat(32);
     expect(signingDigests(`Signer #1 certificate SHA-256 digest: ${digest}\n`)).toEqual([digest]);
+    expect(signingDigests(`V2 Signer: certificate SHA-256 digest: ${digest}\n`)).toEqual([digest]);
+    expect(signingDigests(`V2 Signer: certificate SHA-256 digest: ${digest}\nSource Stamp Signer certificate SHA-256 digest: ${"cd".repeat(32)}\n`)).toEqual([digest]);
     expect(signingDigests(`Signer #1 certificate SHA-256 digest: ${digest.toUpperCase()}\nSigner #1 certificate SHA-256 digest: ${digest}\n`)).toEqual([digest]);
     expect(signingDigests(`Signer #1 certificate SHA-256 digest: ${digest}\nSigner #2 certificate SHA-256 digest: ${"cd".repeat(32)}\n`)).toHaveLength(2);
     expect(signingDigests("no signer data")).toEqual([]);

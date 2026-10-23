@@ -23,7 +23,7 @@ export function androidUpdatesDisabled(manifest: string): boolean {
 }
 
 export function signingDigests(certificate: string): string[] {
-  return [...new Set([...certificate.matchAll(/Signer #\d+[^\n]*? certificate SHA-256 digest:\s*([a-f0-9]{64})/gi)].map((match) => match[1].toLowerCase()))];
+  return [...new Set([...certificate.matchAll(/^(?:Signer #\d+[^\n]*?|V\d+ Signer:) certificate SHA-256 digest:[ \t]*([a-f0-9]{64})[ \t]*$/gim)].map((match) => match[1].toLowerCase()))];
 }
 
 export function mobileChange(files: readonly string[]): boolean {
