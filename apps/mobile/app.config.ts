@@ -108,7 +108,15 @@ const config: ExpoConfig = {
   web: {
     favicon: "./assets/favicon.png",
   },
-  extra: IS_E2E ? { nativeFixture: true } : {
+  extra: IS_E2E ? {
+    nativeFixture: true,
+    eas: {
+      // Observe requires an ID even in an isolated release fixture. Use the
+      // nil UUID and a loopback sink rather than the production project.
+      projectId: "00000000-0000-0000-0000-000000000000",
+      observe: { endpointUrl: "http://127.0.0.1:8765/observe" },
+    },
+  } : {
     eas: {
       projectId: "0bafd3f9-d42e-426a-8662-08828e4e9f00",
     },

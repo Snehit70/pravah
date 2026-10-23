@@ -6,8 +6,22 @@ import re
 
 
 class Handler(BaseHTTPRequestHandler):
+    def send_json(self, value):
+        payload = json.dumps(value).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def do_POST(self):
-        request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        body = self.rfile.read(int(self.headers["Content-Length"]))
+        if self.path.startswith("/observe"):
+            # Keep real native Observe instrumentation active, but discard its
+            # exports locally without parsing compressed OTLP payloads.
+            self.send_json({})
+            return
+        request = json.loads(body)
         messages = request.get("messages", [])
         tool_results = [message.get("content", "") for message in messages if message.get("role") == "tool"]
         if not tool_results:
@@ -25,12 +39,7 @@ class Handler(BaseHTTPRequestHandler):
             text = json.dumps(tool_results)
             valid = "Fixture task 300" in text and "Fixture task 450" in text
             message = {"role": "assistant", "content": "Native fixture response: scheduled tasks received" if valid else "Native fixture ERROR: task scope missing"}
-        payload = json.dumps({"choices": [{"message": message}]}).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(payload)))
-        self.end_headers()
-        self.wfile.write(payload)
+        self.send_json({"choices": [{"message": message}]})
 
     def log_message(self, *_args):
         pass

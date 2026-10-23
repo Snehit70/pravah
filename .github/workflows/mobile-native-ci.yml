@@ -22,6 +22,7 @@ env:
   MOBILE_NATIVE_RUNTIME: native-e2e
   EXPO_PUBLIC_CONVEX_URL: https://native-ci.invalid.convex.cloud
   EXPO_NO_TELEMETRY: '1'
+  MAESTRO_CLI_NO_ANALYTICS: '1'
 
 jobs:
   native-workflows:
