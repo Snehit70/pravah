@@ -57,6 +57,7 @@ function isNonShipping(path: string): boolean {
     path === "CONTEXT.md" ||
     path.startsWith("apps/mobile/docs/") ||
     path.startsWith("apps/mobile/src/test/") ||
+    path.startsWith("apps/mobile/e2e/") ||
     /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(path) ||
     path.startsWith("scripts/mobile-release/") ||
     path.startsWith(".github/")

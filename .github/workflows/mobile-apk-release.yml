@@ -156,6 +156,34 @@ jobs:
           CONVEX_URL: ${{ secrets.CONVEX_URL }}
         run: bun scripts/mobile-release/release-command.ts state
 
+  validate-source:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      checks: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Load release policy from this workflow revision
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .release-policy
+          persist-credentials: false
+      - run: mv "$GITHUB_WORKSPACE/.release-policy" "$RUNNER_TEMP/release-policy"
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: bun "$RUNNER_TEMP/release-policy/scripts/mobile-ci/wait-for-checks.ts"
+
   build-and-stage:
     needs: prepare
     runs-on: ubuntu-latest
@@ -174,7 +202,14 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
       - run: bun install --frozen-lockfile
       - name: Install pinned EAS CLI
-        run: npm install --global eas-cli@${EAS_CLI_VERSION}
+        run: bun add --global eas-cli@${EAS_CLI_VERSION}
+      - name: Load APK policy from this workflow revision
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .release-policy
+          persist-credentials: false
+      - run: mv "$GITHUB_WORKSPACE/.release-policy" "$RUNNER_TEMP/release-policy"
       - name: Build exact native candidate
         working-directory: apps/mobile
         env:
@@ -197,11 +232,19 @@ jobs:
         working-directory: apps/mobile
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
         run: |
           ARTIFACT_URL=$(node -e "const builds=require('./eas-build.json'); const build=Array.isArray(builds)?builds[0]:builds; const url=build?.artifacts?.buildUrl; if (!url) process.exit(1); process.stdout.write(url)")
-          curl --fail --location "$ARTIFACT_URL" --output "pravah-$VERSION.apk"
+          BUILT_SHA=$(node -e "const builds=require('./eas-build.json'); const build=Array.isArray(builds)?builds[0]:builds; process.stdout.write(build?.gitCommitHash || '')")
+          test "$BUILT_SHA" = "$SOURCE_SHA"
+          curl --fail --location --retry 3 "$ARTIFACT_URL" --output "pravah-$VERSION.apk"
           md5sum "pravah-$VERSION.apk" > "pravah-$VERSION.apk.md5"
           sha256sum "pravah-$VERSION.apk" > "pravah-$VERSION.apk.sha256"
+      - name: Verify installable APK before staging
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          MOBILE_NATIVE_RUNTIME: ${{ needs.prepare.outputs.runtime }}
+        run: bun "$RUNNER_TEMP/release-policy/scripts/mobile-ci/verify-apk.ts" release "apps/mobile/pravah-$RELEASE_VERSION.apk"
       - id: release
         name: Create verified draft release
         env:
@@ -247,7 +290,7 @@ jobs:
           echo "checksum_url=$CHECKSUM_URL" >> "$GITHUB_OUTPUT"
 
   publish-and-finalize:
-    needs: [prepare, deploy-backend, build-and-stage]
+    needs: [prepare, deploy-backend, build-and-stage, validate-source]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -290,8 +333,9 @@ jobs:
       always() &&
       needs.prepare.result == 'success' &&
       (needs.deploy-backend.result == 'failure' ||
-       needs.build-and-stage.result == 'failure')
-    needs: [prepare, deploy-backend, build-and-stage, publish-and-finalize]
+       needs.build-and-stage.result == 'failure' ||
+       needs.validate-source.result == 'failure')
+    needs: [prepare, deploy-backend, build-and-stage, validate-source, publish-and-finalize]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
