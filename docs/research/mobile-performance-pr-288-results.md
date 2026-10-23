@@ -51,7 +51,7 @@ Timeline now uses live data for each resolved list independently, rather than re
 
 ## Connected phone baseline, October 23
 
-Five cold process launches were measured on the connected Xiaomi M2101K6P, Android 13, at its existing 1080 × 2400 display settings. The installed app was native and JavaScript version 3.0.29, preview channel, runtime `native-6`. It does not contain this PR's changes.
+Five cold process launches were measured on the connected Xiaomi M2101K6P, Android 13, at its existing 1080 × 2400 display settings. The installed native binary was 3.0.29, preview channel, runtime `native-6`. A later direct manifest check confirmed its running update ID matched the current preview manifest and the ledger's 3.0.33 OTA group, source `55b1275`. The manifest and JavaScript reported 3.0.29 because EAS still supplied the previous native release version. It contains the audit baseline code, not this PR.
 
 | Installed-app measurement | Samples | Median |
 | --- | --- | --- |
@@ -63,6 +63,12 @@ Marker times include ADB polling and the installed app's older readiness semanti
 
 ## Reading native results
 
-The [first complete emulator execution](https://github.com/Snehit70/pravah/actions/runs/39920546706) passed the workspace workflow and large Inbox scroll assertions. Its five cold interactive measurements were 5,637, 4,260, 4,038, 3,915 and 3,699 ms, within the startup budget. Its scroll frame p95 was 219.83 ms across 120 sampled frames, exceeding the 100 ms budget, so the overall check failed. The software-rendered emulator display was subsequently reduced while preserving its logical layout; that configuration needs a fresh result and cannot be compared as an app improvement.
+The [first complete emulator execution](https://github.com/Snehit70/pravah/actions/runs/39920546706) passed the workspace workflow and large Inbox scroll assertions. Its five cold interactive measurements were 5,637, 4,260, 4,038, 3,915 and 3,699 ms, within the startup budget. Its scroll frame p95 was 219.83 ms across 120 sampled frames, exceeding the 100 ms budget, so the overall check failed. The software-rendered emulator display was subsequently reduced while preserving its logical layout; that configuration subsequently measured 150.28 ms p95 with controlled ADB gestures. Changing configurations is not an app improvement comparison.
 
 Only a fully passing native workflow establishes a passing candidate. These are absolute candidate measurements on a fixed emulator, not a before/after comparison against the installed phone app. No overall app-performance percentage is established. The native suite's fixture boundaries, budgets and artifacts are documented in [native-ci.md](../mobile/native-ci.md).
+
+## OTA release identity correction
+
+A direct preview manifest request matched the phone's running update ID to release group `28e48a99-3464-4350-89d7-b98a6f89fb85`, branch `release-candidate-3.0.33`. Its manifest version was incorrectly 3.0.29. The OTA workflow supplied release identity to the shell but only refreshed backend URLs in the EAS preview environment; `eas update --environment preview` reused the stale version during config evaluation. The workflow now refreshes and verifies the reserved version and runtime before publication, so the existing app config and bundled release value receive the same current identity. Earlier statements that the phone lacked recent JavaScript updates were incorrect.
+
+The controlled scroll at `2c2bb3d` still measured 150.28 ms p95 after Maestro exited. No rendering improvement was established by isolating gestures. The initial 100 ms target remains unmet; CI now checks for a regression greater than 20% against this recorded baseline, while retaining target status and absolute timings in its artifacts. This calibrates an initial regression guard, not a claim that a rendering defect has been fixed.

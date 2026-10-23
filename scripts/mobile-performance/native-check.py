@@ -8,6 +8,7 @@ import subprocess
 import time
 
 PACKAGE = "com.pravah.mobile.e2e"
+BASELINE = json.loads(pathlib.Path(__file__).with_name("native-baseline.json").read_text())
 
 
 def adb(*args):
@@ -63,9 +64,14 @@ def frames(out):
     result = {"sampledFrames": len(ordered), "frameMedianMs": statistics.median(ordered),
               "frameP95Ms": ordered[int((len(ordered) - 1) * .95)],
               "framesOver100Ms": sum(value > 100 for value in ordered),
+              "baselineFrameP95Ms": BASELINE["frameP95Ms"],
+              "frameP95BudgetMs": BASELINE["frameP95Ms"] * BASELINE["maximumRegressionRatio"],
+              "targetFrameP95Ms": BASELINE["targetFrameP95Ms"],
               "method": "Android gfxinfo window frames during fixed ADB swipes after Maestro exits; not Perfetto attribution"}
+    result["frameP95RegressionPercent"] = (result["frameP95Ms"] / BASELINE["frameP95Ms"] - 1) * 100
+    result["meetsTarget"] = result["frameP95Ms"] <= BASELINE["targetFrameP95Ms"]
     (out / "frames.json").write_text(json.dumps(result, indent=2))
-    if result["frameP95Ms"] > 100:
+    if result["frameP95Ms"] > result["frameP95BudgetMs"]:
         raise RuntimeError(f"Native frame budget exceeded: {result}")
     (out / "memory.txt").write_text(adb("shell", "dumpsys", "meminfo", PACKAGE))
 
@@ -79,6 +85,13 @@ def scroll(out):
     if not sizes:
         raise RuntimeError("Cannot determine emulator display size")
     width, height = map(int, sizes[-1])
+    densities = re.findall(r"\d+", adb("shell", "wm", "density"))
+    api_level = int(adb("shell", "getprop", "ro.build.version.sdk").strip())
+    if (width, height, int(densities[-1]), api_level) != (
+        BASELINE["displayWidth"], BASELINE["displayHeight"],
+        BASELINE["displayDensity"], BASELINE["apiLevel"],
+    ):
+        raise RuntimeError("Display/API configuration does not match the native baseline")
     x, top, bottom = width // 2, int(height * .32), int(height * .76)
     protocol = {"displayWidth": width, "displayHeight": height, "swipes": 12,
                 "durationMs": 600, "directions": "six up, six down",

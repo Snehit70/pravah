@@ -1,0 +1,12 @@
+{
+  "sourceSha": "2c2bb3d3c75615c666ebf28552b7f307c18e51d6",
+  "runUrl": "https://github.com/Snehit70/pravah/actions/runs/39925097257",
+  "apiLevel": 35,
+  "displayWidth": 720,
+  "displayHeight": 1600,
+  "displayDensity": 280,
+  "frameP95Ms": 150.278484,
+  "maximumRegressionRatio": 1.2,
+  "targetFrameP95Ms": 100,
+  "protocol": "12 ADB swipes of 600 ms, six up then six down, after Maestro exits"
+}
