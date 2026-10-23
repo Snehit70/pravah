@@ -1,6 +1,10 @@
 import type { ExpoConfig } from "expo/config";
 
 const IS_DEV = process.env.APP_VARIANT === "dev";
+const IS_E2E = process.env.APP_VARIANT === "e2e";
+if (IS_E2E && (process.env.PRAVAH_E2E !== "1" || !process.env.CI || process.env.EAS_BUILD_PROFILE)) {
+  throw new Error("E2E builds are CI-only and cannot be published through EAS");
+}
 const IS_RELEASE_BUILD = Boolean(process.env.CI || process.env.EAS_BUILD_PROFILE);
 const releaseVersion = process.env.EXPO_PUBLIC_MOBILE_RELEASE_VERSION;
 const nativeRuntime = process.env.MOBILE_NATIVE_RUNTIME;
@@ -20,11 +24,13 @@ if (
 }
 
 const getPackageName = (): string => {
+  if (IS_E2E) return "com.pravah.mobile.e2e";
   if (IS_DEV) return "com.pravah.mobile.dev";
   return "com.pravah.mobile";
 };
 
 const getAppName = (): string => {
+  if (IS_E2E) return "Pravah E2E";
   if (IS_DEV) return "Pravah Dev";
   return "Pravah";
 };
@@ -32,7 +38,7 @@ const getAppName = (): string => {
 const config: ExpoConfig = {
   name: getAppName(),
   slug: "pravah-mobile",
-  scheme: "pravah",
+  scheme: IS_E2E ? "pravah-e2e" : "pravah",
   version: MOBILE_RELEASE_VERSION,
   orientation: "portrait",
   icon: "./assets/icon.png",
@@ -102,13 +108,22 @@ const config: ExpoConfig = {
   web: {
     favicon: "./assets/favicon.png",
   },
-  extra: {
+  extra: IS_E2E ? {
+    nativeFixture: true,
+    eas: {
+      // Observe requires an ID even in an isolated release fixture. Use the
+      // nil UUID and a loopback sink rather than the production project.
+      projectId: "00000000-0000-0000-0000-000000000000",
+      observe: { endpointUrl: "http://127.0.0.1:8765/observe" },
+    },
+  } : {
     eas: {
       projectId: "0bafd3f9-d42e-426a-8662-08828e4e9f00",
     },
   },
   runtimeVersion: MOBILE_NATIVE_RUNTIME,
   updates: {
+    enabled: !IS_E2E,
     url: "https://u.expo.dev/0bafd3f9-d42e-426a-8662-08828e4e9f00",
   },
 };

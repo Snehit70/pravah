@@ -1,0 +1,68 @@
+appId: com.pravah.mobile.e2e
+name: Native workspace workflows
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Fixture task 000"
+    timeout: 30000
+- assertVisible: "Inbox"
+- tapOn: "Capture a new task"
+- assertVisible: "Task title"
+- scrollUntilVisible:
+    element:
+      text: "Priority, No priority"
+    direction: DOWN
+- tapOn: "Priority, No priority"
+- tapOn: "P1 · High"
+- tapOn: "Task title"
+- inputText: "Native CI captured task"
+# Assert the real footer remains visible with the native keyboard open.
+- assertVisible: "Save & close"
+- tapOn: "Save & close"
+- extendedWaitUntil:
+    visible: "Native CI captured task"
+    timeout: 10000
+- tapOn: "Native CI captured task"
+- tapOn: "Edit task title"
+- eraseText
+- inputText: "Native CI edited task"
+- assertVisible: "Save changes"
+- tapOn: "Save changes"
+# Completion history below verifies that the renamed title was persisted.
+- tapOn: "Complete task"
+- tapOn:
+    id: "tab-timeline"
+- assertVisible: "Fixture task 300"
+- tapOn:
+    id: "tab-goals"
+- tapOn: "Goal: Native workflow goal.*"
+- assertVisible: "Fixture task 300.*"
+- back
+- tapOn:
+    id: "tab-insights"
+- scrollUntilVisible:
+    element:
+      text: "View completion history.*"
+    direction: DOWN
+- tapOn: "View completion history.*"
+- assertVisible: "Completion history"
+- assertVisible: "Native CI edited task"
+- back
+- tapOn: "Open settings"
+- scrollUntilVisible:
+    element:
+      text: "Open Appearance settings"
+    direction: DOWN
+- tapOn: "Open Appearance settings"
+- assertVisible: "Appearance"
+- back
+- back
+- tapOn: "Open Kairo"
+- tapOn: "Message Kairo"
+- inputText: "Check my scheduled tasks"
+- tapOn: "Send message"
+- extendedWaitUntil:
+    visible: "Native fixture response: scheduled tasks received"
+    timeout: 10000
+- tapOn: "Close Kairo"
+- assertVisible: "Progress"

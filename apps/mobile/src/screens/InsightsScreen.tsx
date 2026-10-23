@@ -24,7 +24,6 @@ import {
 import { ScrollViewWithScrollbar } from "../components/ScrollViewWithScrollbar";
 import { FlatListWithScrollbar } from "../components/FlatListWithScrollbar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { FadeInDown, LinearTransition } from "react-native-reanimated";
 import type { MobileTask } from "../components/TaskCard";
 import { HeroVelocityChart } from "../components/HeroVelocityChart";
 import { ConsistencyHeatmap } from "../components/ConsistencyHeatmap";
@@ -240,13 +239,7 @@ export function InsightsScreen({
     });
   }, [now, orderedCompleted, query, window]);
 
-  const Wrap = reducedMotion ? View : Animated.View;
-  const showInitialSkeleton = isLoading && tasks.length === 0 && completedTasks.length === 0;
-  const sectionEnter = (i: number) =>
-    reducedMotion ? undefined : FadeInDown.duration(360).delay(60 * i);
-  // Goals load separately from tasks, so that section can land after the rest;
-  // this slides Task history down instead of snapping it.
-  const sectionLayout = reducedMotion ? undefined : LinearTransition.duration(240);
+  const showInitialSkeleton = isLoading;
 
   return (
     <View style={styles.root}>
@@ -277,7 +270,7 @@ export function InsightsScreen({
           <ProgressPageSkeleton />
         ) : (
           <>
-        <Wrap entering={sectionEnter(0)}>
+        <View>
           <SectionHeader
             label="Recent momentum"
             right={
@@ -296,24 +289,24 @@ export function InsightsScreen({
             comparisonLabel={RANGE_COMPARISON[range]}
             delta={delta}
           />
-        </Wrap>
+        </View>
 
-        <Wrap entering={sectionEnter(1)}>
+        <View>
           <SectionHeader label="Rhythm" caption="When you do your best work" />
           <RhythmMiniCharts weekday={weekday} hour={hour} cycleDays={cycle} />
-        </Wrap>
+        </View>
 
-        <Wrap entering={sectionEnter(2)}>
+        <View>
           <SectionHeader label="Journey" caption="Every day you showed up" />
           <ConsistencyHeatmap
             series={journeySeries}
             currentStreak={streak}
             bestStreak={best}
           />
-        </Wrap>
+        </View>
 
         {goalRows.length > 0 ? (
-          <Wrap entering={sectionEnter(3)} layout={sectionLayout}>
+          <View>
             <SectionHeader
               label="Goals in motion"
               caption={`${goalRows.length} ${goalRows.length === 1 ? "goal" : "goals"} moving forward`}
@@ -323,11 +316,11 @@ export function InsightsScreen({
               todayKey={todayKey}
               moreCount={Math.max(0, goalRows.length - GOALS_SHOWN)}
             />
-          </Wrap>
+          </View>
         ) : null}
 
         {orderedCompleted.length > 0 ? (
-          <Wrap entering={sectionEnter(4)} layout={sectionLayout}>
+          <View>
             <SectionHeader label="Task history" />
             <Pressable
               onPress={() => setHistoryVisible(true)}
@@ -351,7 +344,7 @@ export function InsightsScreen({
                 <ChevronRightIcon color={colors.textDim} size={16} />
               </View>
             </Pressable>
-          </Wrap>
+          </View>
         ) : null}
 
           </>

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import type { MobileTask } from "../components/TaskCard";
 import { deriveDisplayWorkspace, type DisplayWorkspaceInput } from "../hooks/useDisplayWorkspace";
+import { createHandleRegistry, runReadTool } from "../lib/kairoTools";
 
 type TaskOverrides = Omit<Partial<MobileTask>, "_id"> & { _id?: string };
 
@@ -94,6 +95,49 @@ describe("deriveDisplayWorkspace", () => {
     expect(display.visibleTasks.map((task) => task._id)).toEqual(["optimistic"]);
   });
 
+  it("keeps a resolved Timeline live while Inbox still uses its snapshot", () => {
+    const display = deriveDisplayWorkspace(baseInput({
+      activeTab: "timeline",
+      loading: { inbox: true, timeline: false, completed: false, allTasksReady: false, imageCollectionsReady: true },
+      isSnapshotHydrated: true,
+      snapshot: {
+        capturedAt: 1,
+        inboxTasks: [makeTask({ _id: "cached-inbox" })],
+        scheduledTasks: [makeTask({ _id: "stale-timeline", deadline: "2026-06-18" })],
+        completedTasks: [],
+      },
+    }));
+
+    expect(display.displayInboxTasks.map(task => task._id)).toEqual(["cached-inbox"]);
+    expect(display.displayScheduledTasks.map(task => task._id)).toEqual(["live-timeline"]);
+    expect(display.displayCompletedTasks.map(task => task._id)).toEqual(["live-done"]);
+  });
+
+  it("limits a cached Timeline to the same horizon as the live query", () => {
+    const display = deriveDisplayWorkspace(baseInput({
+      activeTab: "timeline",
+      timelineEndDate: "2026-06-30",
+      loading: { inbox: false, timeline: true, completed: false, allTasksReady: false, imageCollectionsReady: true },
+      isSnapshotHydrated: true,
+      snapshot: {
+        capturedAt: 1,
+        inboxTasks: [makeTask({ _id: "stale-inbox" })],
+        scheduledTasks: [
+          makeTask({ _id: "overdue", deadline: "2026-06-15" }),
+          makeTask({ _id: "near", deadline: "2026-06-30" }),
+          makeTask({ _id: "later", deadline: "2026-07-01" }),
+        ],
+        completedTasks: [],
+      },
+    }));
+
+    expect(display.displayInboxTasks.map(task => task._id)).toEqual(["live-inbox"]);
+    expect(display.displayScheduledTasks.map(task => task._id)).toEqual(["overdue", "near"]);
+    expect(display.displayTimelineSections.map(([date]) => date)).toEqual(["2026-06-30", "overdue"]);
+    expect(display.displayOverdueCount).toBe(1);
+    expect(display.displayUpcomingCount).toBe(1);
+  });
+
   it("shows the inbox while image metadata is still loading", () => {
     const display = deriveDisplayWorkspace(
       baseInput({
@@ -110,7 +154,25 @@ describe("deriveDisplayWorkspace", () => {
     expect(display.hasLiveWorkspaceData).toBe(true);
     expect(display.isActiveListLoading).toBe(false);
     expect(display.isTimelineTriageReady).toBe(true);
-    expect(display.kairoTasks.map((task) => task._id)).toEqual(["live-inbox"]);
+    expect(display.kairoTasks.map((task) => task._id)).toEqual(["all-task"]);
+  });
+
+  it("feeds scheduled, overdue and completed tasks through the actual Kairo read tools", () => {
+    const corpus = [
+      makeTask({ _id: "scheduled", deadline: "2026-06-16" }),
+      makeTask({ _id: "overdue", deadline: "2026-06-15" }),
+      makeTask({ _id: "done", completedAt: 1 }),
+    ];
+    const input = baseInput({ allWorkspaceTasks: corpus });
+    const display = deriveDisplayWorkspace(input);
+    const env = { tasks: display.kairoTasks, inboxTasks: input.inboxTasks,
+      today: input.today, registry: createHandleRegistry() };
+    for (const [tool, args] of [
+      ["get_tasks_in_range", { startDate: "2026-06-16", endDate: "2026-06-16" }],
+      ["get_overdue", {}], ["get_completed", {}],
+    ] as const) {
+      expect(runReadTool(tool, args, env)).toMatchObject({ ok: true, data: { tasks: [expect.any(Object)] } });
+    }
   });
 
   it("uses the workspace corpus as the mutation base on Goals", () => {

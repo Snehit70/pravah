@@ -99,6 +99,18 @@ describe("useTaskQueries — full corpus gating", () => {
     expect(result.current.isImageCollectionsReady).toBe(false);
   });
 
+  it.each([LIST_REF.__ref, TIMELINE_REF.__ref])("waits for %s before task readiness", (pending) => {
+    useQueryMock.mockImplementation((ref: { __ref?: string }, args: unknown) =>
+      ref.__ref === pending && args !== "skip" ? undefined : []);
+    const { result } = renderHook(() => useTaskQueries({ isAuthenticated: true }));
+    expect(result.current.isAllTasksReady).toBe(false);
+  });
+
+  it("never reports signed-out task queries ready", () => {
+    const { result } = renderHook(() => useTaskQueries({ isAuthenticated: false }));
+    expect(result.current.isAllTasksReady).toBe(false);
+  });
+
   it("omits startDate so overdue scheduled tasks remain visible in the timeline", () => {
     const window = buildTimelineWindow(new Date());
 

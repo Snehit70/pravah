@@ -72,6 +72,6 @@
     "vitest": "^4.1.2"
   },
   "patchedDependencies": {
-    "expo-clipboard@56.0.4": "patches/expo-clipboard@56.0.4.patch"
+    "expo-clipboard@57.0.2": "patches/expo-clipboard@57.0.2.patch"
   }
 }

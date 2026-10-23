@@ -551,6 +551,7 @@ export async function listTodayCompletedTasksForOwner(ctx: TaskCtx, tokenIdentif
 
 export const addTask = mutation({
   args: {
+    idempotencyKey: v.optional(v.string()),
     title: v.string(),
     description: v.optional(v.string()),
     deadline: v.optional(v.string()),
@@ -574,7 +575,14 @@ export const addTask = mutation({
   },
   handler: async (ctx, args) => {
     const tokenIdentifier = await requireTokenIdentifier(ctx);
-    return addTaskForOwner(ctx, tokenIdentifier, args);
+    const { idempotencyKey, ...request } = args;
+    return (await runIdempotentMutation(ctx, {
+      ownerTokenIdentifier: tokenIdentifier,
+      idempotencyKey,
+      operation: "tasks.add",
+      request,
+      execute: () => addTaskForOwner(ctx, tokenIdentifier, request),
+    })).result;
   },
 });
 

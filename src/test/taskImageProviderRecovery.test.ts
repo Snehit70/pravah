@@ -50,11 +50,14 @@ function webp(width: number, height: number) {
 afterEach(() => vi.unstubAllGlobals());
 describe("trusted provider recovery", () => {
   it("recovers variants even when Admin metadata omits dimensions", async () => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(Response.json(resource))
-      .mockResolvedValueOnce(new Response(webp(640, 480)))
-      .mockResolvedValueOnce(new Response(webp(1600, 1200)));
+    // Variant URLs are signed concurrently, so detail can reach fetch first.
+    // Return bytes for the requested transformation, not the invocation order.
+    const fetch = vi.fn(async (url: string) => {
+      if (url.startsWith("https://api.cloudinary.com/")) return Response.json(resource);
+      if (url.includes(CARD_TRANSFORMATION)) return new Response(webp(640, 480));
+      if (url.includes(DETAIL_TRANSFORMATION)) return new Response(webp(1600, 1200));
+      throw new Error(`Unexpected fixture URL: ${url}`);
+    });
     vi.stubGlobal("fetch", fetch);
     expect(
       await recoverProviderAsset(provider, "public", "jpeg"),

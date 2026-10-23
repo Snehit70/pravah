@@ -134,6 +134,7 @@ import AppSettingsIcon from "./src/assets/icons/app-settings.svg";
 import KairoMarkIcon from "./src/assets/icons/settings-kairo.svg";
 
 const TASK_IMAGE_MANIFEST_STORAGE_PREFIX = "@pravah/task-image-manifest:";
+const EMPTY_TASKS: MobileTask[] = [];
 const taskImageManifestStore = {
   async load(ownerScope: string) {
     const raw = await AsyncStorage.getItem(`${TASK_IMAGE_MANIFEST_STORAGE_PREFIX}${ownerScope}`);
@@ -305,7 +306,7 @@ function MobileApp() {
     ? toIsoDate(initialTimelineEnd) : undefined;
 
   const includeCompletedHistory =
-    activeTab === "insights" || (activeTab === "goals" && !progressSummary?.ready);
+    isKairoActive || activeTab === "insights" || (activeTab === "goals" && !progressSummary?.ready);
   const {
     today,
     tomorrow,
@@ -377,6 +378,7 @@ function MobileApp() {
     sessionLoading,
     hasCachedSessionHint,
     today,
+    timelineEndDate: boundedTimelineEnd,
     inboxTasks,
     scheduledTasks,
     completedTasks,
@@ -402,16 +404,22 @@ function MobileApp() {
   const hasFullHistory =
     includeCompletedHistory && isAllTasksReady && !shouldUseWorkspaceSnapshot;
   const [progressData, setProgressData] = useState<{
+    ownerScope: string;
     tasks: MobileTask[];
     completedTasks: MobileTask[];
   } | null>(null);
-  if (
+  const progressOwner = session?.user?.id;
+  if (progressData && progressData.ownerScope !== progressOwner) {
+    setProgressData(null);
+  } else if (
+    progressOwner &&
     hasFullHistory &&
     (progressData?.tasks !== workspaceTaskCorpus ||
       progressData?.completedTasks !== displayCompletedTasks)
   ) {
-    setProgressData({ tasks: workspaceTaskCorpus, completedTasks: displayCompletedTasks });
+    setProgressData({ ownerScope: progressOwner, tasks: workspaceTaskCorpus, completedTasks: displayCompletedTasks });
   }
+  const visibleProgressData = progressData?.ownerScope === progressOwner ? progressData : null;
 
   const addTaskMutation = useMutation(api.tasks.addTask);
   const addTaskImagesMutation = useMutation(api.taskImages.addTaskImages);
@@ -610,7 +618,7 @@ function MobileApp() {
     session && overduePreviewEnabled ? { today } : "skip"
   );
 
-  useConvexGoalsSync(Boolean(session) && (activeTab === "goals" || activeTab === "insights"));
+  useConvexGoalsSync(Boolean(session) && (isKairoActive || activeTab === "goals" || activeTab === "insights"));
   const { setGoalLink, clearAll: clearAllGoals } = useGoalMutations();
 
   // ── Derived data ────────────────────────────────────────────────────
@@ -633,9 +641,10 @@ function MobileApp() {
   const tabBarBottomPadding = Math.max(insets.bottom, spacing.md);
   const tabBarHeight = 62 + tabBarBottomPadding;
 
-  const shouldSyncReminders = Boolean(session) && notificationsEnabled && isAllTasksReady;
+  const reminderTasks = useMemo(() => [...inboxTasks, ...scheduledTasks], [inboxTasks, scheduledTasks]);
+  const shouldSyncReminders = Boolean(session) && notificationsEnabled && !isInboxLoading && !isTimelineLoading;
   useReminderSync(
-    [...inboxTasks, ...scheduledTasks],
+    reminderTasks,
     prefs,
     shouldSyncReminders,
   );
@@ -812,7 +821,7 @@ function MobileApp() {
   useEffect(() => {
     if (!session) return;
     if (!isDataBootstrapReady) return;
-    if (!isAllTasksReady) return;
+    if (isActiveListLoading || isBootShellLoading || shouldUseWorkspaceSnapshot || sessionLoading) return;
     if (!didMarkInteractiveRef.current) {
       didMarkInteractiveRef.current = true;
       markInteractive();
@@ -826,10 +835,13 @@ function MobileApp() {
     displayCompletedTasks.length,
     displayInboxTasks.length,
     displayScheduledTasks.length,
-    isAllTasksReady,
+    isActiveListLoading,
+    isBootShellLoading,
     isDataBootstrapReady,
     markInteractive,
     session,
+    sessionLoading,
+    shouldUseWorkspaceSnapshot,
   ]);
 
   useEffect(() => {
@@ -867,6 +879,7 @@ function MobileApp() {
       switch (payload.type) {
         case "addTask": {
           const retriedId = await addTaskMutation({
+            idempotencyKey: payload.idempotencyKey,
             title: payload.title,
             description: payload.description,
             deadline: payload.deadline,
@@ -1109,6 +1122,7 @@ function MobileApp() {
       });
       try {
         const newTaskId = await addTaskMutation({
+          idempotencyKey: actionId,
           title: data.title,
           description: data.description,
           deadline: data.deadline,
@@ -1144,6 +1158,7 @@ function MobileApp() {
             label: `Add "${data.title}"`,
             payload: {
               type: "addTask",
+              idempotencyKey: actionId,
               title: data.title,
               description: data.description,
               deadline: data.deadline,
@@ -1538,8 +1553,8 @@ function MobileApp() {
         >
           <ScreenErrorBoundary screenName="Inbox">
             <InboxScreen
-              tasks={visibleTasks}
-              isLoading={isActiveListLoading || isBootShellLoading}
+              tasks={activeTab === "inbox" ? visibleTasks : displayInboxTasks}
+              isLoading={isInboxLoading || isBootShellLoading}
               isRefreshing={isRefreshing}
               tabBarHeight={tabBarHeight}
               onRefresh={handleRefresh}
@@ -1556,7 +1571,6 @@ function MobileApp() {
 
       {visitedTabsRef.current.has("timeline") ? (
         <Animated.View
-          entering={tabEnterAnimation}
           style={[styles.tabScreen, activeTab !== "timeline" && styles.tabHidden]}
         >
           {/* Ambient, silent-when-healthy sync indicator. The timeline is the
@@ -1643,14 +1657,13 @@ function MobileApp() {
 
       {visitedTabsRef.current.has("insights") ? (
         <Animated.View
-          entering={tabEnterAnimation}
           style={[styles.tabScreen, activeTab !== "insights" && styles.tabHidden]}
         >
           <ScreenErrorBoundary screenName="Progress">
             <InsightsScreen
-              tasks={progressData?.tasks ?? workspaceTaskCorpus}
-              completedTasks={progressData?.completedTasks ?? displayCompletedTasks}
-              isLoading={isActiveListLoading || isBootShellLoading || !progressData}
+              tasks={visibleProgressData?.tasks ?? EMPTY_TASKS}
+              completedTasks={visibleProgressData?.completedTasks ?? EMPTY_TASKS}
+              isLoading={!visibleProgressData}
               isRefreshing={isRefreshing}
               tabBarHeight={tabBarHeight}
               onRefresh={handleRefresh}

@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View, type PressableStateCallbackType } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -108,7 +108,8 @@ function NavTab({
         accessibilityRole="tab"
         accessibilityState={{ selected: active }}
         accessibilityLabel={tab.label}
-        style={({ pressed }) => [styles.tabItem, pressed && { opacity: 0.78 }]}
+        testID={`tab-${tab.key}`}
+        style={({ pressed }: PressableStateCallbackType) => [styles.tabItem, pressed && { opacity: 0.78 }]}
       >
         <Animated.View style={[styles.iconWrap, iconStyle]}>
           <TabNavIcon

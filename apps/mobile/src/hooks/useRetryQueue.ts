@@ -6,11 +6,11 @@ import { hydrateRetryQueue, prepareRetryQueueForPersist } from "../lib/retry-que
 import type { Id } from "../../../../convex/_generated/dataModel";
 
 const RETRY_QUEUE_STORAGE_KEY = "pravah_mobile_retry_queue_v1";
-const MAX_RETRY_ATTEMPTS = 5;
 
 export type RetryPayload =
   | {
       type: "addTask";
+      idempotencyKey?: string;
       title: string;
       description?: string;
       deadline?: string;
@@ -74,10 +74,16 @@ export function useRetryQueue({
   const [retryQueue, setRetryQueue] = useState<RetryQueueItem[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
   const lastRetryPersistLogMsRef = useRef<number>(0);
+  const replayingRef = useRef(false);
+  const persistChainRef = useRef(Promise.resolve());
 
   const enqueueRetry = useCallback((item: Omit<RetryQueueItem, "id" | "attempts">) => {
     setRetryQueue((current) => {
-      const next = [...current, { id: `${Date.now()}-${current.length}`, attempts: 0, ...item }];
+      const id = createActionId("retry-item");
+      const payload = item.payload.type === "addTask"
+        ? { ...item.payload, idempotencyKey: item.payload.idempotencyKey ?? id }
+        : item.payload;
+      const next = [...current, { ...item, id, payload, attempts: 0 }];
       mobileLogger.warn("retry_enqueued", {
         label: item.label,
         nextQueueSize: next.length,
@@ -97,7 +103,7 @@ export function useRetryQueue({
       }
       try {
         const hydrated = hydrateRetryQueue(raw);
-        setRetryQueue(hydrated);
+        setRetryQueue((current) => [...new Map([...hydrated, ...current].map((item) => [item.id, item])).values()]);
         mobileLogger.info("retry_queue_hydrated", { hydratedCount: hydrated.length });
       } catch {
         void retryQueueStorage.removeItem(RETRY_QUEUE_STORAGE_KEY);
@@ -128,7 +134,10 @@ export function useRetryQueue({
     // Persist on AsyncStorage first because the retry queue is non-secret
     // operational state, not credential material.
     const toStore = prepareRetryQueueForPersist(retryQueue);
-    void retryQueueStorage.setItem(RETRY_QUEUE_STORAGE_KEY, JSON.stringify(toStore)).catch((error) => {
+    const stored = JSON.stringify(toStore);
+    persistChainRef.current = persistChainRef.current
+      .catch(() => undefined)
+      .then(() => retryQueueStorage.setItem(RETRY_QUEUE_STORAGE_KEY, stored)).catch((error) => {
       mobileLogger.warn("retry_queue_persist_failed", { errorType: classifyError(error) });
     });
 
@@ -140,49 +149,53 @@ export function useRetryQueue({
   }, [isHydrated, retryQueue]);
 
   const retryQueuedMutations = useCallback(async () => {
-    if (!retryQueue.length) return;
+    if (!isHydrated || !retryQueue.length || replayingRef.current) return;
+    replayingRef.current = true;
 
     const actionId = createActionId("retry");
     const startedAt = Date.now();
     mobileLogger.info("retry_run_started", { actionId, queueSize: retryQueue.length });
 
     const snapshot = [...retryQueue];
-    setRetryQueue([]);
     let failed = 0;
+    try {
+      for (const queued of snapshot) {
+        try {
+          await runRetryPayload(queued.payload);
+          // Keep every unacknowledged entry persisted throughout replay.
+          setRetryQueue((current) => current.filter((entry) => entry.id !== queued.id));
+        } catch {
+          failed += 1;
+          const nextAttempts = queued.attempts + 1;
+          mobileLogger.warn("retry_item_failed", {
+            actionId,
+            label: queued.label,
+            payloadType: queued.payload.type,
+            attempts: nextAttempts,
+            dropped: false,
+          });
 
-    for (const queued of snapshot) {
-      try {
-        await runRetryPayload(queued.payload);
-      } catch {
-        failed += 1;
-        const nextAttempts = queued.attempts + 1;
-        mobileLogger.warn("retry_item_failed", {
-          actionId,
-          label: queued.label,
-          payloadType: queued.payload.type,
-          attempts: nextAttempts,
-          dropped: nextAttempts >= MAX_RETRY_ATTEMPTS,
-        });
-
-        if (nextAttempts < MAX_RETRY_ATTEMPTS) {
-          setRetryQueue((current) => [...current, { ...queued, attempts: nextAttempts }]);
+          setRetryQueue((current) => current.map((entry) =>
+            entry.id === queued.id ? { ...entry, attempts: nextAttempts } : entry));
         }
       }
-    }
 
-    if (failed === 0) {
-      onRetryComplete("Retry complete");
-      haptic.success();
-    }
+      if (failed === 0) {
+        onRetryComplete("Retry complete");
+        haptic.success();
+      }
 
-    mobileLogger.info("retry_run_finished", {
-      actionId,
-      elapsedMs: Date.now() - startedAt,
-      attempted: snapshot.length,
-      failed,
-      succeeded: snapshot.length - failed,
-    });
-  }, [onRetryComplete, retryQueue, runRetryPayload]);
+      mobileLogger.info("retry_run_finished", {
+        actionId,
+        elapsedMs: Date.now() - startedAt,
+        attempted: snapshot.length,
+        failed,
+        succeeded: snapshot.length - failed,
+      });
+    } finally {
+      replayingRef.current = false;
+    }
+  }, [isHydrated, onRetryComplete, retryQueue, runRetryPayload]);
 
   return {
     retryQueue,

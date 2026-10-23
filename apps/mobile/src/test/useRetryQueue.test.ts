@@ -93,6 +93,7 @@ describe("useRetryQueue", () => {
         payload: { type: "reopenTask", taskId: makeId("task-2") },
       });
     });
+    await waitFor(() => expect(storageSetItemMock).toHaveBeenCalled());
 
     await act(async () => {
       await result.current.retryQueuedMutations();
@@ -124,6 +125,7 @@ describe("useRetryQueue", () => {
         payload: { type: "moveTask", taskId: makeId("task-3"), targetDate: "2026-04-25" },
       });
     });
+    await waitFor(() => expect(storageSetItemMock).toHaveBeenCalled());
 
     await act(async () => {
       await result.current.retryQueuedMutations();
@@ -134,5 +136,22 @@ describe("useRetryQueue", () => {
     });
     expect(result.current.retryQueue[0]?.attempts).toBe(1);
     expect(onRetryComplete).not.toHaveBeenCalled();
+  });
+
+  it("retains in-flight entries durably and prevents overlapping replay", async () => {
+    let acknowledge!: () => void;
+    const runRetryPayload = vi.fn(() => new Promise<void>((resolve) => { acknowledge = resolve; }));
+    const { result } = renderHook(() => useRetryQueue({ runRetryPayload, onRetryComplete: vi.fn() }));
+    await waitFor(() => expect(storageSetItemMock).toHaveBeenCalled());
+    act(() => result.current.enqueueRetry({ label: "Retry", payload: { type: "completeTask", taskId: makeId("pending") } }));
+    await waitFor(() => expect(JSON.parse(storageSetItemMock.mock.calls.at(-1)![1])).toHaveLength(1));
+    let replay!: Promise<void>;
+    act(() => { replay = result.current.retryQueuedMutations(); });
+    await act(async () => { await result.current.retryQueuedMutations(); });
+    expect(runRetryPayload).toHaveBeenCalledTimes(1);
+    expect(result.current.retryQueue).toHaveLength(1);
+    expect(JSON.parse(storageSetItemMock.mock.calls.at(-1)![1])).toHaveLength(1);
+    await act(async () => { acknowledge(); await replay; });
+    expect(result.current.retryQueue).toHaveLength(0);
   });
 });

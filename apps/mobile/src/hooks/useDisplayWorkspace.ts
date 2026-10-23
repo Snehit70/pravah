@@ -17,6 +17,7 @@ export type DisplayWorkspaceInput = {
   sessionLoading: boolean;
   hasCachedSessionHint: boolean;
   today: string;
+  timelineEndDate?: string;
   inboxTasks: MobileTask[];
   scheduledTasks: MobileTask[];
   completedTasks: MobileTask[];
@@ -92,13 +93,15 @@ export function deriveDisplayWorkspace(input: DisplayWorkspaceInput): DisplayWor
     input.isSnapshotHydrated &&
     !hasLiveWorkspaceData;
 
-  const displayInboxTasks = shouldUseWorkspaceSnapshot
+  // A slow query must not replace another list that has already resolved.
+  const displayInboxTasks = shouldUseWorkspaceSnapshot && input.loading.inbox
     ? input.snapshot!.inboxTasks
     : input.inboxTasks;
-  const displayScheduledTasks = shouldUseWorkspaceSnapshot
-    ? input.snapshot!.scheduledTasks
+  const displayScheduledTasks = shouldUseWorkspaceSnapshot && input.loading.timeline
+    ? input.snapshot!.scheduledTasks.filter((task) =>
+        !input.timelineEndDate || (task.deadline !== undefined && task.deadline <= input.timelineEndDate))
     : input.scheduledTasks;
-  const displayCompletedTasks = shouldUseWorkspaceSnapshot
+  const displayCompletedTasks = shouldUseWorkspaceSnapshot && input.loading.completed
     ? input.snapshot!.completedTasks
     : input.completedTasks;
 
@@ -170,7 +173,7 @@ export function deriveDisplayWorkspace(input: DisplayWorkspaceInput): DisplayWor
     isTimelineTriageReady: shouldUseWorkspaceSnapshot || !input.loading.timeline,
     isBootShellLoading:
       shouldRenderOptimisticShell && !shouldUseWorkspaceSnapshot && !input.sessionReady,
-    kairoTasks: input.inboxTasks,
+    kairoTasks: input.allWorkspaceTasks,
   };
 }
 

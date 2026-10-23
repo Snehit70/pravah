@@ -49,8 +49,8 @@ describe("syncRemindersAsync", () => {
 
   it("cancels stale reminder notifications and schedules missing ones", async () => {
     getAllScheduledNotificationsAsync.mockResolvedValue([
-      { identifier: `${REMINDER_ID_PREFIX}keep` },
-      { identifier: `${REMINDER_ID_PREFIX}stale` },
+      { identifier: `${REMINDER_ID_PREFIX}keep`, content: { title: "Pravah", body: "Keep" } },
+      { identifier: `${REMINDER_ID_PREFIX}stale`, content: { title: "Pravah", body: "Stale" } },
       { identifier: "foreign-id" },
     ]);
 
@@ -94,6 +94,19 @@ describe("syncRemindersAsync", () => {
     expect(cancelScheduledNotificationAsync).toHaveBeenCalledWith(
       `${REMINDER_ID_PREFIX}two`,
     );
+  });
+
+  it("replaces changed contents without cancelling unrelated reminders", async () => {
+    const id = `${REMINDER_ID_PREFIX}digest`;
+    getAllScheduledNotificationsAsync.mockResolvedValue([
+      { identifier: id, content: { title: "Pravah", body: "1 Task due today" } },
+      { identifier: "foreign", content: {} },
+    ]);
+    await syncRemindersAsync([{ id, fireAt: new Date(2026, 5, 18), title: "Pravah", body: "2 Tasks due today" }]);
+    expect(cancelScheduledNotificationAsync).toHaveBeenCalledExactlyOnceWith(id);
+    expect(scheduleNotificationAsync).toHaveBeenCalledWith(expect.objectContaining({
+      identifier: id, content: expect.objectContaining({ body: "2 Tasks due today" }),
+    }));
   });
 });
 

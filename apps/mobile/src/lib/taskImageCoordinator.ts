@@ -412,7 +412,9 @@ export function createTaskImageCoordinator(dependencies: TaskImageCoordinatorDep
           failureCode: entry.failure?.code, elapsedMs: previousStart === undefined ? undefined : Math.round(at - previousStart) });
       } catch { /* Diagnostics must not interrupt an upload. */ }
     }
-    void persist();
+    // Progress is transient. Persist only recovery-relevant changes; saving
+    // the complete manifest for each native progress event creates a backlog.
+    if (Object.keys(patch).some((key) => key !== "progress")) void persist();
     notify();
   };
 

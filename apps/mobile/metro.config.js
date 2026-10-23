@@ -25,4 +25,26 @@ config.resolver.extraNodeModules = new Proxy(
   }
 );
 
+// The fixture transport is compiled only into an isolated, non-updating CI
+// package. Production bundles always resolve the real auth and Convex modules.
+if (process.env.PRAVAH_E2E === "1") {
+  if (process.env.APP_VARIANT !== "e2e" || !process.env.CI || process.env.EAS_BUILD_PROFILE) {
+    throw new Error("Fixture transport requires the CI-only E2E variant");
+  }
+  const replacements = new Map([
+    [path.join(projectRoot, "src/lib/auth-client.ts"), "auth.js"],
+    [path.join(projectRoot, "src/lib/convex.tsx"), "provider.js"],
+  ]);
+  config.resolver.resolveRequest = (context, moduleName, platform) => {
+    if (moduleName === "convex/react") {
+      return { type: "sourceFile", filePath: path.join(projectRoot, "e2e/convex.js") };
+    }
+    const resolved = context.resolveRequest(context, moduleName, platform);
+    const replacement = replacements.get(resolved.filePath);
+    return replacement
+      ? { type: "sourceFile", filePath: path.join(projectRoot, "e2e", replacement) }
+      : resolved;
+  };
+}
+
 module.exports = config;

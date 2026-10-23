@@ -48,7 +48,7 @@ describe("retry queue utils", () => {
     ]);
   });
 
-  it("keeps only the most recent retry items for persistence", () => {
+  it("keeps all unacknowledged retry items for persistence", () => {
     const queue = Array.from({ length: 25 }, (_, index) => ({
       id: `retry-${index}`,
       label: `Retry ${index}`,
@@ -58,8 +58,8 @@ describe("retry queue utils", () => {
 
     const persisted = prepareRetryQueueForPersist(queue);
 
-    expect(persisted).toHaveLength(20);
-    expect(persisted[0]?.id).toBe("retry-5");
+    expect(persisted).toHaveLength(25);
+    expect(persisted[0]?.id).toBe("retry-0");
     expect(persisted.at(-1)?.id).toBe("retry-24");
   });
 });

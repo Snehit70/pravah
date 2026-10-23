@@ -25,6 +25,9 @@ const { withGradleProperties, withDangerousMod } = require("@expo/config-plugins
  */
 
 const PERFORMANCE_PROPERTIES = [
+  // The SDK 57 release graph exhausts Expo's 512 MiB metaspace during native
+  // lint. Keep the heap at 2 GiB and give class metadata its own 1 GiB budget.
+  { key: "org.gradle.jvmargs", value: "-Xmx2048m -XX:MaxMetaspaceSize=1024m -XX:+ExitOnOutOfMemoryError" },
   { key: "org.gradle.parallel", value: "true" },
   { key: "org.gradle.caching", value: "true" },
   // Expo/RN Android build scripts still spawn node during configuration, which
