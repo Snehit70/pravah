@@ -31,6 +31,5 @@ adb shell am force-stop com.pravah.mobile.e2e
 timeout 30s adb wait-for-device
 maestro test --format junit --output "$out/workflows.xml" --test-output-dir "$out/maestro-workflows" apps/mobile/e2e/workflows.yaml
 python scripts/mobile-performance/native-check.py startup --out "$out"
-adb shell dumpsys gfxinfo com.pravah.mobile.e2e reset > "$out/frame-reset.txt"
 maestro test --format junit --output "$out/scroll.xml" --test-output-dir "$out/maestro-scroll" apps/mobile/e2e/scroll.yaml
-python scripts/mobile-performance/native-check.py frames --out "$out"
+python scripts/mobile-performance/native-check.py scroll --out "$out"

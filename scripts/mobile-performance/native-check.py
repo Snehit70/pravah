@@ -2,6 +2,7 @@
 import argparse
 import json
 import pathlib
+import re
 import statistics
 import subprocess
 import time
@@ -62,17 +63,39 @@ def frames(out):
     result = {"sampledFrames": len(ordered), "frameMedianMs": statistics.median(ordered),
               "frameP95Ms": ordered[int((len(ordered) - 1) * .95)],
               "framesOver100Ms": sum(value > 100 for value in ordered),
-              "method": "Android gfxinfo window frames on fixed CI emulator; not Perfetto attribution"}
+              "method": "Android gfxinfo window frames during fixed ADB swipes after Maestro exits; not Perfetto attribution"}
     (out / "frames.json").write_text(json.dumps(result, indent=2))
     if result["frameP95Ms"] > 100:
         raise RuntimeError(f"Native frame budget exceeded: {result}")
     (out / "memory.txt").write_text(adb("shell", "dumpsys", "meminfo", PACKAGE))
 
 
+def scroll(out):
+    # Maestro verifies navigation and scrolling separately. Its UI hierarchy
+    # inspections and screenshots must not run alongside the timed gestures.
+    (out / "maestro-framestats.txt").write_text(
+        adb("shell", "dumpsys", "gfxinfo", PACKAGE, "framestats"))
+    sizes = re.findall(r"(\d+)x(\d+)", adb("shell", "wm", "size"))
+    if not sizes:
+        raise RuntimeError("Cannot determine emulator display size")
+    width, height = map(int, sizes[-1])
+    x, top, bottom = width // 2, int(height * .32), int(height * .76)
+    protocol = {"displayWidth": width, "displayHeight": height, "swipes": 12,
+                "durationMs": 600, "directions": "six up, six down",
+                "settleBetweenSwipesMs": 100}
+    (out / "scroll-protocol.json").write_text(json.dumps(protocol, indent=2))
+    adb("shell", "dumpsys", "gfxinfo", PACKAGE, "reset")
+    for iteration in range(12):
+        start, end = (bottom, top) if iteration < 6 else (top, bottom)
+        adb("shell", "input", "swipe", str(x), str(start), str(x), str(end), "600")
+        time.sleep(.1)
+    frames(out)
+
+
 parser = argparse.ArgumentParser()
-parser.add_argument("mode", choices=["startup", "frames"])
+parser.add_argument("mode", choices=["startup", "scroll"])
 parser.add_argument("--out", default="artifacts/mobile-native")
 args = parser.parse_args()
 output = pathlib.Path(args.out)
 output.mkdir(parents=True, exist_ok=True)
-measure(output) if args.mode == "startup" else frames(output)
+measure(output) if args.mode == "startup" else scroll(output)
