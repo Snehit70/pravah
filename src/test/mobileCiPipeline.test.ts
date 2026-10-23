@@ -21,6 +21,7 @@ describe("APK resource formats", () => {
   it("reads runtime identity with both plain and flagged resource headers", () => {
     expect(androidRuntime('resource 0x7f1300b3 string/expo_runtime_version\n  () "native-7"\n')).toBe("native-7");
     expect(androidRuntime('resource 0x7f1300b3 string/expo_runtime_version: flags=0x00000000\n  () (string8) "native-7"\n')).toBe("native-7");
+    expect(androidRuntime('resource 0x7f1300b3 string/expo_runtime_version\n  () "native-7"\nresource 0x7f1300b4 string/next_value\n  () "contain"\n')).toBe("native-7");
     expect(androidRuntime('resource 0x123 string/another_value\n  () "native-7"\n')).toBeNull();
   });
 });

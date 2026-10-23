@@ -14,7 +14,7 @@ export function sha256(value: string | Uint8Array): string {
 
 export function androidRuntime(resources: string): string | null {
   // Newer build-tools append flags to the resource header.
-  return resources.match(/string\/expo_runtime_version[^\n]*\n[^\n]*"([^"]+)"/)?.[1] ?? null;
+  return resources.match(/string\/expo_runtime_version[^\n]*\n[^"\n]*"([^"\n]+)"/)?.[1] ?? null;
 }
 
 export function mobileChange(files: readonly string[]): boolean {
