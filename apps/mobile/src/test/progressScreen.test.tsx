@@ -291,6 +291,7 @@ describe("Progress screen", () => {
       isRefreshing: false,
       tabBarHeight: 60,
       onRefresh: vi.fn(async () => undefined),
+      renderCompletedTaskItem: ({ item }: { item: MobileTask }) => <span>{item.title}</span>,
     };
     const { rerender } = render(<InsightsScreen {...props} />);
 
