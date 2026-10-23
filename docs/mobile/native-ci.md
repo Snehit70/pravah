@@ -20,6 +20,14 @@ The timed scroll runs after the Maestro functional assertions finish, using six 
 
 Download the `mobile-native-workflows-evidence-*` and `mobile-native-performance-evidence-*` artifacts for the tested revision, emulator build fingerprint, Maestro JUnit reports, screenshots, logcat, startup samples, frame statistics and memory. `mobile-native-result-*` records successful validation inputs for merge reuse. Download `mobile-persistence-benchmark` for the algorithm comparison. No retry conceals a failing native flow.
 
+On this emulator image, Pixel Launcher can show its own ANR over the already
+loaded fixture Inbox. The shared Inbox preflight closes only a dialog with the
+exact Pixel Launcher title, then still requires the fixture task. Pravah ANRs
+and failed app assertions remain failures. Startup sampling tolerates at most
+two transient ADB log-read disconnects or timeouts per launch. It records each
+transport error, keeps the same app PID and original start time, and includes
+all recovery time in the unchanged budgets. No launch sample is discarded.
+
 The checks fail the workflow on regression. Making them mandatory for merges requires repository rules to require the exact check names `Android native workflows and performance` and `Mobile persistence performance`. At implementation time, the GitHub API reported that `main` was not protected; adding this workflow does not change repository branch rules.
 
 References: [Expo native builds](https://docs.expo.dev/guides/local-app-overview/), [Maestro reports](https://docs.maestro.dev/maestro-flows/workspace-management/test-reports-and-artifacts), [Android frame/startup metric definitions](https://developer.android.com/topic/performance/benchmarking/macrobenchmark-metrics). The generated APK is intentionally a release build so production JavaScript behavior and native bundling are exercised without Metro running during tests.

@@ -129,6 +129,9 @@ jobs:
       - name: Test actual-byte metrics collector
         run: bun test scripts/observability
 
+      - name: Test native startup transport handling
+        run: python -m unittest discover -s scripts/mobile-performance -p 'test_*.py'
+
   test-mobile:
     name: Test mobile
     runs-on: ubuntu-latest

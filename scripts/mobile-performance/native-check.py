@@ -11,8 +11,31 @@ PACKAGE = "com.pravah.mobile.e2e"
 BASELINE = json.loads(pathlib.Path(__file__).with_name("native-baseline.json").read_text())
 
 
-def adb(*args):
-    return subprocess.check_output(["adb", *args], text=True)
+def adb(*args, timeout=None):
+    return subprocess.check_output(["adb", *args], text=True, timeout=timeout)
+
+
+def interactive_time(pid, began, out, iteration):
+    disconnects = 0
+    while time.monotonic() - began < 30:
+        try:
+            logs = adb("logcat", "-d", "--pid", pid, "-v", "epoch",
+                       timeout=min(5, 30 - (time.monotonic() - began)))
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            if isinstance(error, subprocess.CalledProcessError) and error.returncode != 255:
+                raise
+            disconnects += 1
+            with (out / "startup-transport-errors.jsonl").open("a") as evidence:
+                evidence.write(json.dumps({"iteration": iteration, "pid": pid,
+                    "elapsedMs": round((time.monotonic() - began) * 1000),
+                    "returnCode": getattr(error, "returncode", "timeout")}) + "\n")
+            if disconnects >= 3:
+                raise
+        else:
+            if "app_interactive_ready" in logs:
+                return round((time.monotonic() - began) * 1000)
+        time.sleep(0.1)
+    raise RuntimeError("App did not report interactive within 30 seconds")
 
 
 def measure(out):
@@ -25,14 +48,7 @@ def measure(out):
         # Only the current app PID's log window is examined. Do not count a
         # previous launch's interactive marker as this launch's readiness.
         pid = adb("shell", "pidof", PACKAGE).strip()
-        while time.monotonic() - began < 30:
-            logs = adb("logcat", "-d", "--pid", pid, "-v", "epoch")
-            if "app_interactive_ready" in logs:
-                starts.append(round((time.monotonic() - began) * 1000))
-                break
-            time.sleep(0.1)
-        else:
-            raise RuntimeError("App did not report interactive within 30 seconds")
+        starts.append(interactive_time(pid, began, out, iteration))
         time.sleep(1)
     result = {"coldInteractiveMs": starts, "coldInteractiveMedianMs": statistics.median(starts),
               "coldInteractiveMaxMs": max(starts), "fixtureTasks": 500,
@@ -105,10 +121,11 @@ def scroll(out):
     frames(out)
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument("mode", choices=["startup", "scroll"])
-parser.add_argument("--out", default="artifacts/mobile-native")
-args = parser.parse_args()
-output = pathlib.Path(args.out)
-output.mkdir(parents=True, exist_ok=True)
-measure(output) if args.mode == "startup" else scroll(output)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("mode", choices=["startup", "scroll"])
+    parser.add_argument("--out", default="artifacts/mobile-native")
+    args = parser.parse_args()
+    output = pathlib.Path(args.out)
+    output.mkdir(parents=True, exist_ok=True)
+    measure(output) if args.mode == "startup" else scroll(output)
