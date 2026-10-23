@@ -93,6 +93,7 @@ describe("useRetryQueue", () => {
         payload: { type: "reopenTask", taskId: makeId("task-2") },
       });
     });
+    await waitFor(() => expect(storageSetItemMock).toHaveBeenCalled());
 
     await act(async () => {
       await result.current.retryQueuedMutations();
@@ -124,6 +125,7 @@ describe("useRetryQueue", () => {
         payload: { type: "moveTask", taskId: makeId("task-3"), targetDate: "2026-04-25" },
       });
     });
+    await waitFor(() => expect(storageSetItemMock).toHaveBeenCalled());
 
     await act(async () => {
       await result.current.retryQueuedMutations();

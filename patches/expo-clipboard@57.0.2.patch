@@ -86,7 +86,7 @@ index 7963af5da3d6826df93eab5e73a1d1a62316bd7c..829bdc8a1cffd59b676eec371d7c714f
 -    "publication": {
 -      "groupId": "host.exp.exponent",
 -      "artifactId": "expo.modules.clipboard",
--      "version": "56.0.4",
+-      "version": "57.0.2",
 -      "repository": "local-maven-repo"
 -    }
 +    "modules": [
