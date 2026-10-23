@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.24.0](https://github.com/Snehit70/pravah/compare/web-v1.23.0...web-v1.24.0) (2026-10-23)
+
+
+### Features
+
+* **mobile:** glass hero sign-in screen with tilt-reactive light ([88ed041](https://github.com/Snehit70/pravah/commit/88ed04180cb6baa8b9b8fc7dfc7c21b683071600))
+
+
+### Bug Fixes
+
+* **mobile:** glass sign-in, Progress tab fixes, smoother list motion ([55b1275](https://github.com/Snehit70/pravah/commit/55b12757dc2ae6f051d49af8187be875e666da12))
+* **mobile:** progress tab segment thumb, loading jumps and chart replays ([0ce5fd5](https://github.com/Snehit70/pravah/commit/0ce5fd5c9d14de7cebedc6fa24db19a029ec866d))
+* **mobile:** smoother list entrances and layout changes across tabs ([2ed2046](https://github.com/Snehit70/pravah/commit/2ed2046eb54cb59ed60bb00b66de0b72e43725ea))
+* **mobile:** stabilize loading, sync and native performance checks ([85f60a9](https://github.com/Snehit70/pravah/commit/85f60a92ba3c53accfcc84ed1eb5cecb5003ca94))
+
 ## [1.23.0](https://github.com/Snehit70/pravah/compare/web-v1.22.3...web-v1.23.0) (2026-10-21)
 
 
