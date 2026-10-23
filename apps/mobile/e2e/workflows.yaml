@@ -29,7 +29,7 @@ name: Native workspace workflows
 - inputText: "Native CI edited task"
 - assertVisible: "Save changes"
 - tapOn: "Save changes"
-- assertVisible: "Native CI edited task"
+# Completion history below verifies that the renamed title was persisted.
 - tapOn: "Complete task"
 - tapOn:
     id: "tab-timeline"
@@ -50,9 +50,15 @@ name: Native workspace workflows
 - assertVisible: "Native CI edited task"
 - back
 - tapOn: "Open settings"
+- scrollUntilVisible:
+    element:
+      text: "Open Appearance settings"
+    direction: DOWN
+- tapOn: "Open Appearance settings"
 - assertVisible: "Appearance"
 - back
-- tapOn: "Open Kairo assistant"
+- back
+- tapOn: "Open Kairo"
 - tapOn: "Message Kairo"
 - inputText: "Check my scheduled tasks"
 - tapOn: "Send message"

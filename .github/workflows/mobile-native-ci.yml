@@ -57,6 +57,10 @@ jobs:
           python - <<'PY'
           import pathlib
           import xml.etree.ElementTree as ET
+          # Android's manifest tooling also injects literal android:* attrs.
+          # Keep standard prefixes rather than ElementTree's generated ns0.
+          ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')
+          ET.register_namespace('tools', 'http://schemas.android.com/tools')
           manifest = pathlib.Path('android/app/src/main/AndroidManifest.xml')
           tree = ET.parse(manifest)
           # Local provider fixture only. Production app configuration is unchanged.

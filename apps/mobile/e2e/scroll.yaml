@@ -16,3 +16,4 @@ name: Native large Inbox scroll
 - scroll
 - scroll
 - assertVisible: "Inbox"
+- assertNotVisible: "Fixture task 000"
