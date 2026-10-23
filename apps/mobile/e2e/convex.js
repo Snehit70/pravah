@@ -73,7 +73,11 @@ async function mutate(name, args = {}) {
     case "tasks:softDeleteTask":
     case "tasks:restoreTask": {
       tasks = tasks.map((task) => task._id !== args.taskId ? task : {
-        ...task, ...(name === "tasks:updateTask" ? args : {}), updatedAt: Date.now(),
+        ...task, ...(name === "tasks:updateTask" ? {
+          ...args,
+          deadline: args.deadline === null ? undefined : args.deadline,
+          time: args.time === null ? undefined : args.time,
+        } : {}), updatedAt: Date.now(),
         ...(name === "tasks:completeTask" ? { completedAt: Date.now() } : {}),
         ...(name === "tasks:reopenTask" ? { completedAt: undefined } : {}),
         ...(name === "tasks:moveTask" ? { deadline: args.targetDate } : {}),

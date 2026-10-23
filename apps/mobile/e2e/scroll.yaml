@@ -2,7 +2,8 @@ appId: com.pravah.mobile.e2e
 name: Native large Inbox scroll
 ---
 - launchApp
-- tapOn: "Inbox"
+- tapOn:
+    id: "tab-inbox"
 - assertVisible: "Fixture task 000"
 - scroll
 - scroll

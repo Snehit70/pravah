@@ -8,6 +8,13 @@ name: Native workspace workflows
     timeout: 30000
 - assertVisible: "Inbox"
 - tapOn: "Capture a new task"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Priority, No priority"
+    direction: DOWN
+- tapOn: "Priority, No priority"
+- tapOn: "P1 · High"
 - tapOn: "Task title"
 - inputText: "Native CI captured task"
 # Assert the real footer remains visible with the native keyboard open.
@@ -24,18 +31,22 @@ name: Native workspace workflows
 - tapOn: "Save changes"
 - assertVisible: "Native CI edited task"
 - tapOn: "Complete task"
-- tapOn: "Timeline"
+- tapOn:
+    id: "tab-timeline"
 - assertVisible: "Fixture task 300"
-- tapOn: "Goals"
+- tapOn:
+    id: "tab-goals"
 - tapOn: "Goal: Native workflow goal.*"
-- assertVisible: "Fixture task 300"
+- assertVisible: "Fixture task 300.*"
 - back
-- tapOn: "Progress"
+- tapOn:
+    id: "tab-insights"
 - scrollUntilVisible:
     element:
-      text: "Completion history"
+      text: "View completion history.*"
     direction: DOWN
-- tapOn: "Completion history"
+- tapOn: "View completion history.*"
+- assertVisible: "Completion history"
 - assertVisible: "Native CI edited task"
 - back
 - tapOn: "Open settings"

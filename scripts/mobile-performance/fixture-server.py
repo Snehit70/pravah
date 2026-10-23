@@ -2,6 +2,7 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import date
 import json
+import re
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -12,7 +13,9 @@ class Handler(BaseHTTPRequestHandler):
         if not tool_results:
             # Exercise the production agent loop and local read tools, with no
             # model variability. The second round validates their actual results.
-            day = date.today().isoformat()
+            prompt = str(messages[0].get("content", "")) if messages else ""
+            match = re.search(r"Today: (\d{4}-\d{2}-\d{2})", prompt)
+            day = match.group(1) if match else date.today().isoformat()
             calls = [("get_tasks_in_range", {"startDate": day, "endDate": day}), ("get_completed", {})]
             message = {"role": "assistant", "content": None, "tool_calls": [
                 {"id": f"fixture-{index}", "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}
