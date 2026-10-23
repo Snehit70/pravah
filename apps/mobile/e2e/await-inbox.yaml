@@ -1,0 +1,16 @@
+appId: com.pravah.mobile.e2e
+name: Wait for fixture Inbox without a launcher overlay
+---
+- extendedWaitUntil:
+    visible: "^(Fixture task 000|Pixel Launcher isn't responding)$"
+    timeout: 30000
+# Close only the disposable emulator launcher's ANR. Pravah ANRs still fail.
+- runFlow:
+    when:
+      visible: "^Pixel Launcher isn't responding$"
+    commands:
+      - tapOn:
+          id: "android:id/aerr_close"
+- extendedWaitUntil:
+    visible: "Fixture task 000"
+    timeout: 30000

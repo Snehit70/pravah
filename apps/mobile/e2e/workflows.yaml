@@ -2,9 +2,7 @@ appId: com.pravah.mobile.e2e
 name: Native workspace workflows
 ---
 - launchApp
-- extendedWaitUntil:
-    visible: "Fixture task 000"
-    timeout: 30000
+- runFlow: await-inbox.yaml
 - assertVisible: "Inbox"
 - tapOn: "Capture a new task"
 - assertVisible: "Task title"
