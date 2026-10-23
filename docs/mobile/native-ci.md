@@ -1,8 +1,8 @@
 # Native workflow and performance CI
 
-`Mobile native CI` builds a fresh Android release APK on every PR and main push, then runs it on an API 35 Pixel 6 emulator. All compilation and validation run in GitHub Actions.
+`Mobile native CI` prepares an Android release fixture APK for mobile-affecting PRs. It reuses a matching native base, embeds current JavaScript with Repack and runs functional and performance suites on separate API 35 Pixel 6 emulators. Exact successful internal-PR results can be reused after merge. Scheduled clean compilation remains enabled. All compilation and validation run in GitHub Actions. See [the execution and trust rules](ci-pipeline.md).
 
-The first precheck exposed Expo 56's Hermes V1 memory regression. This PR upgrades to Expo 57 and React Native 0.86.3 with the corrected Hermes compiler, aligns native SDK dependencies, and ports the existing Android clipboard patch to expo-clipboard 57.0.2. This requires a new native binary. See [Expo's regression notes](https://expo.dev/changelog/sdk-57#known-regressions).
+The first precheck exposed Expo 56's Hermes V1 memory regression. PR #288 upgraded to Expo 57 and React Native 0.86.3 with the corrected Hermes compiler, aligned native SDK dependencies, and ported the existing Android clipboard patch to expo-clipboard 57.0.2. That runtime shipped in native release 3.0.34. See [Expo's regression notes](https://expo.dev/changelog/sdk-57#known-regressions).
 
 The SDK 57 release graph also exhausted Expo's default 512 MiB Gradle metaspace during native lint. The prebuild plugin keeps a 2 GiB heap and raises metaspace to 1 GiB, with immediate exit on memory exhaustion. CI serializes project execution, caps compilation at 30 minutes, captures delayed process/thread evidence, and saves a successful build cache before device tests. Native lint remains enabled.
 
@@ -18,7 +18,7 @@ The timed scroll runs after the Maestro functional assertions finish, using six 
 
 `Mobile persistence performance` compares the old byte-limited diagnostics retention algorithm at `55b1275` with the new algorithm on the same fixture, checks identical retained results, and saves seven-sample median times. It measures host JavaScript pruning cost. It does not measure app startup, FPS, battery, or the overall app speedup.
 
-Download `mobile-native-evidence` for the tested revision, emulator build fingerprint, Maestro JUnit reports, screenshots, logcat, startup samples, frame statistics and memory. Download `mobile-persistence-benchmark` for the algorithm comparison. No retry conceals a failing native flow.
+Download the `mobile-native-workflows-evidence-*` and `mobile-native-performance-evidence-*` artifacts for the tested revision, emulator build fingerprint, Maestro JUnit reports, screenshots, logcat, startup samples, frame statistics and memory. `mobile-native-result-*` records successful validation inputs for merge reuse. Download `mobile-persistence-benchmark` for the algorithm comparison. No retry conceals a failing native flow.
 
 The checks fail the workflow on regression. Making them mandatory for merges requires repository rules to require the exact check names `Android native workflows and performance` and `Mobile persistence performance`. At implementation time, the GitHub API reported that `main` was not protected; adding this workflow does not change repository branch rules.
 
