@@ -95,6 +95,49 @@ describe("deriveDisplayWorkspace", () => {
     expect(display.visibleTasks.map((task) => task._id)).toEqual(["optimistic"]);
   });
 
+  it("keeps a resolved Timeline live while Inbox still uses its snapshot", () => {
+    const display = deriveDisplayWorkspace(baseInput({
+      activeTab: "timeline",
+      loading: { inbox: true, timeline: false, completed: false, allTasksReady: false, imageCollectionsReady: true },
+      isSnapshotHydrated: true,
+      snapshot: {
+        capturedAt: 1,
+        inboxTasks: [makeTask({ _id: "cached-inbox" })],
+        scheduledTasks: [makeTask({ _id: "stale-timeline", deadline: "2026-06-18" })],
+        completedTasks: [],
+      },
+    }));
+
+    expect(display.displayInboxTasks.map(task => task._id)).toEqual(["cached-inbox"]);
+    expect(display.displayScheduledTasks.map(task => task._id)).toEqual(["live-timeline"]);
+    expect(display.displayCompletedTasks.map(task => task._id)).toEqual(["live-done"]);
+  });
+
+  it("limits a cached Timeline to the same horizon as the live query", () => {
+    const display = deriveDisplayWorkspace(baseInput({
+      activeTab: "timeline",
+      timelineEndDate: "2026-06-30",
+      loading: { inbox: false, timeline: true, completed: false, allTasksReady: false, imageCollectionsReady: true },
+      isSnapshotHydrated: true,
+      snapshot: {
+        capturedAt: 1,
+        inboxTasks: [makeTask({ _id: "stale-inbox" })],
+        scheduledTasks: [
+          makeTask({ _id: "overdue", deadline: "2026-06-15" }),
+          makeTask({ _id: "near", deadline: "2026-06-30" }),
+          makeTask({ _id: "later", deadline: "2026-07-01" }),
+        ],
+        completedTasks: [],
+      },
+    }));
+
+    expect(display.displayInboxTasks.map(task => task._id)).toEqual(["live-inbox"]);
+    expect(display.displayScheduledTasks.map(task => task._id)).toEqual(["overdue", "near"]);
+    expect(display.displayTimelineSections.map(([date]) => date)).toEqual(["2026-06-30", "overdue"]);
+    expect(display.displayOverdueCount).toBe(1);
+    expect(display.displayUpcomingCount).toBe(1);
+  });
+
   it("shows the inbox while image metadata is still loading", () => {
     const display = deriveDisplayWorkspace(
       baseInput({

@@ -134,6 +134,7 @@ import AppSettingsIcon from "./src/assets/icons/app-settings.svg";
 import KairoMarkIcon from "./src/assets/icons/settings-kairo.svg";
 
 const TASK_IMAGE_MANIFEST_STORAGE_PREFIX = "@pravah/task-image-manifest:";
+const EMPTY_TASKS: MobileTask[] = [];
 const taskImageManifestStore = {
   async load(ownerScope: string) {
     const raw = await AsyncStorage.getItem(`${TASK_IMAGE_MANIFEST_STORAGE_PREFIX}${ownerScope}`);
@@ -377,6 +378,7 @@ function MobileApp() {
     sessionLoading,
     hasCachedSessionHint,
     today,
+    timelineEndDate: boundedTimelineEnd,
     inboxTasks,
     scheduledTasks,
     completedTasks,
@@ -402,16 +404,22 @@ function MobileApp() {
   const hasFullHistory =
     includeCompletedHistory && isAllTasksReady && !shouldUseWorkspaceSnapshot;
   const [progressData, setProgressData] = useState<{
+    ownerScope: string;
     tasks: MobileTask[];
     completedTasks: MobileTask[];
   } | null>(null);
-  if (
+  const progressOwner = session?.user?.id;
+  if (progressData && progressData.ownerScope !== progressOwner) {
+    setProgressData(null);
+  } else if (
+    progressOwner &&
     hasFullHistory &&
     (progressData?.tasks !== workspaceTaskCorpus ||
       progressData?.completedTasks !== displayCompletedTasks)
   ) {
-    setProgressData({ tasks: workspaceTaskCorpus, completedTasks: displayCompletedTasks });
+    setProgressData({ ownerScope: progressOwner, tasks: workspaceTaskCorpus, completedTasks: displayCompletedTasks });
   }
+  const visibleProgressData = progressData?.ownerScope === progressOwner ? progressData : null;
 
   const addTaskMutation = useMutation(api.tasks.addTask);
   const addTaskImagesMutation = useMutation(api.taskImages.addTaskImages);
@@ -1563,7 +1571,6 @@ function MobileApp() {
 
       {visitedTabsRef.current.has("timeline") ? (
         <Animated.View
-          entering={tabEnterAnimation}
           style={[styles.tabScreen, activeTab !== "timeline" && styles.tabHidden]}
         >
           {/* Ambient, silent-when-healthy sync indicator. The timeline is the
@@ -1650,14 +1657,13 @@ function MobileApp() {
 
       {visitedTabsRef.current.has("insights") ? (
         <Animated.View
-          entering={tabEnterAnimation}
           style={[styles.tabScreen, activeTab !== "insights" && styles.tabHidden]}
         >
           <ScreenErrorBoundary screenName="Progress">
             <InsightsScreen
-              tasks={progressData?.tasks ?? workspaceTaskCorpus}
-              completedTasks={progressData?.completedTasks ?? displayCompletedTasks}
-              isLoading={isActiveListLoading || isBootShellLoading || !progressData}
+              tasks={visibleProgressData?.tasks ?? EMPTY_TASKS}
+              completedTasks={visibleProgressData?.completedTasks ?? EMPTY_TASKS}
+              isLoading={!visibleProgressData}
               isRefreshing={isRefreshing}
               tabBarHeight={tabBarHeight}
               onRefresh={handleRefresh}

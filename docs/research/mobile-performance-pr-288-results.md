@@ -41,6 +41,28 @@ Clean diagnostics ticks still remove expired records on the first flush tick aft
 
 The SDK upgrade requires a new native binary. Deploy the updated Convex `tasks.addTask` signature to the canonical deployment before publishing the candidate mobile app, because the app now sends an optional idempotency key. The APK release workflow already waits for its backend deployment job before publishing. This PR does not trigger that release.
 
+## Progress and Timeline loading
+
+Progress requests full completed history when opened. Its previous skeleton condition also required the active task list to be empty, so an already populated Inbox could hide the loading state before history arrived. The screen then drew partial analytics and changed them after the query resolved. It also added a 220 ms tab entrance, staggered 360 ms section entrances, and a chart draw animation. These timings are source values, not measured network latency.
+
+Progress now shows its structural skeleton until the first complete live task corpus is ready, retains the previous complete view during later subscriptions, and scopes that retained data to the signed-in user. The screen and chart display immediately when data is available. Deliberate chart range changes retain their morph animation. This fixes presentation and avoids misleading intermediate charts; it does not make the first full-history request smaller or eliminate its network wait.
+
+Timeline now uses live data for each resolved list independently, rather than replacing it with a snapshot while another list loads. Its cached scheduled tasks obey the same date horizon as the live query, preventing distant dates from briefly appearing and disappearing. Its first tab entrance no longer hides the initial structure.
+
+## Connected phone baseline, October 23
+
+Five cold process launches were measured on the connected Xiaomi M2101K6P, Android 13, at its existing 1080 × 2400 display settings. The installed app was native and JavaScript version 3.0.29, preview channel, runtime `native-6`. It does not contain this PR's changes.
+
+| Installed-app measurement | Samples | Median |
+| --- | --- | --- |
+| Android activity `TotalTime` | 869, 916, 891, 873, 915 ms | 891 ms |
+| Host first interactive marker | 2,690, 2,732, 2,668, 2,783, 2,717 ms | 2,717 ms |
+| Host post-bootstrap marker | 3,547, 3,157, 3,565, 3,204, 3,139 ms | 3,204 ms |
+
+Marker times include ADB polling and the installed app's older readiness semantics. They do not establish the first fully usable frame. A tab-navigation recording showed cached Progress content, but concurrent phone use interrupted the sequence, so it does not quantify a first-open blank interval. Private recordings and task contents remain outside the repository. A comparable physical-device candidate run still requires the new native binary.
+
 ## Reading native results
 
-Only a fully passing native workflow establishes a valid candidate result. The PR's Android check links to startup, frame and memory artifacts for its tested revision. These are absolute candidate measurements on a fixed emulator, not a before/after comparison against the installed app. Physical-device ADB checks have not detected a connected phone. No overall app-performance percentage is established. The native suite's fixture boundaries, conservative budgets and artifacts are documented in [native-ci.md](../mobile/native-ci.md).
+The [first complete emulator execution](https://github.com/Snehit70/pravah/actions/runs/39920546706) passed the workspace workflow and large Inbox scroll assertions. Its five cold interactive measurements were 5,637, 4,260, 4,038, 3,915 and 3,699 ms, within the startup budget. Its scroll frame p95 was 219.83 ms across 120 sampled frames, exceeding the 100 ms budget, so the overall check failed. The software-rendered emulator display was subsequently reduced while preserving its logical layout; that configuration needs a fresh result and cannot be compared as an app improvement.
+
+Only a fully passing native workflow establishes a passing candidate. These are absolute candidate measurements on a fixed emulator, not a before/after comparison against the installed phone app. No overall app-performance percentage is established. The native suite's fixture boundaries, budgets and artifacts are documented in [native-ci.md](../mobile/native-ci.md).

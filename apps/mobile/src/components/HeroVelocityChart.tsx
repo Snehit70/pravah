@@ -15,8 +15,7 @@
  *    fill only gives the trend a body. Stops split color from opacity — see
  *    the note on `chart.heroAreaColor` in theme/tokens.ts for why an rgba()
  *    stopColor renders as a solid silhouette.
- *  - Entrance "draw-on": `d` stays static; we animate `strokeDashoffset`
- *    (line sweep) + area `fillOpacity`/`translateY` (rise) off one shared value.
+ *  - The first chart is fully visible as soon as its data is ready.
  *
  * Phase 2 interactivity (§3–§4):
  *  - Touch-scrub: a Pan gesture maps finger x → nearest day (binary search on
@@ -236,8 +235,8 @@ export function HeroVelocityChart({
     };
   }, [series]);
 
-  // ── Entrance draw-on + anchored range morph ─────────────────────────────
-  const progress = useSharedValue(reducedMotion ? 1 : 0);
+  // Keep the chart visible during initial load and live data refreshes.
+  const progress = useSharedValue(1);
   const morph = useSharedValue(1);
   const fromXs = useSharedValue<number[]>([]);
   const fromYs = useSharedValue<number[]>([]);
@@ -255,8 +254,7 @@ export function HeroVelocityChart({
       return;
     }
 
-    // A different day count at the same width is a range switch. Anything else
-    // (first mount, a task completing) is a data refresh, which draws on.
+    // Animate deliberate range changes, without replaying an entrance on refresh.
     const rangeChanged =
       !!prev &&
       prev.width === width &&
@@ -285,11 +283,7 @@ export function HeroVelocityChart({
     }
 
     morph.value = 1;
-    progress.value = 0;
-    progress.value = withTiming(1, {
-      duration: motion.duration.deliberate,
-      easing: Easing.out(Easing.cubic),
-    });
+    progress.value = 1;
   }, [series, width, height, reducedMotion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // One pass per frame, shared by the line and the area.

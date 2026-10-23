@@ -283,6 +283,32 @@ describe("Progress screen", () => {
     expect(screen.queryByText("Insights")).toBeNull();
   });
 
+  it("waits for history even when active tasks have already loaded", () => {
+    const props = {
+      tasks: [task("active", "Still in Inbox")],
+      completedTasks: [] as MobileTask[],
+      isLoading: true,
+      isRefreshing: false,
+      tabBarHeight: 60,
+      onRefresh: vi.fn(async () => undefined),
+    };
+    const { rerender } = render(<InsightsScreen {...props} />);
+
+    expect(screen.getByText("Loading Progress")).toBeTruthy();
+    expect(screen.queryByText("Recent momentum")).toBeNull();
+
+    rerender(<InsightsScreen {...props} tasks={completed} completedTasks={completed} isLoading={false} />);
+    expect(screen.queryByText("Loading Progress")).toBeNull();
+    expect(screen.getByText("Recent momentum")).toBeTruthy();
+    expect(screen.getByLabelText(/2 tasks completed last 30 days/i)).toBeTruthy();
+  });
+
+  it("shows a loaded empty history rather than waiting indefinitely", () => {
+    renderScreen([]);
+    expect(screen.queryByText("Loading Progress")).toBeNull();
+    expect(screen.getByText("Recent momentum")).toBeTruthy();
+  });
+
   it("switches the momentum range", () => {
     renderScreen(completed);
     fireEvent.click(screen.getByRole("button", { name: /show last 7 days/i }));

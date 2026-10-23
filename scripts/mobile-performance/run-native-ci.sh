@@ -6,6 +6,12 @@ mkdir -p "$out"
 trap 'adb logcat -d > "$out/logcat.txt"; adb shell dumpsys meminfo com.pravah.mobile.e2e > "$out/memory-final.txt"; kill "${fixture_pid:-}" 2>/dev/null || true' EXIT
 git rev-parse HEAD > "$out/revision.txt"
 adb shell getprop ro.build.fingerprint > "$out/device-fingerprint.txt"
+# Keep the Pixel 6 logical layout, with fewer pixels for the CI host's
+# software renderer. These settings apply only to the disposable emulator.
+adb shell wm size 720x1600
+adb shell wm density 280
+adb shell wm size > "$out/display-size.txt"
+adb shell wm density > "$out/display-density.txt"
 adb install apps/mobile/android/app/build/outputs/apk/release/app-release.apk
 adb shell pm clear com.pravah.mobile.e2e > "$out/clear-state.txt"
 timeout 30s adb wait-for-device
