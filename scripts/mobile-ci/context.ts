@@ -27,4 +27,5 @@ const context: Context = {
   releaseContractRequired: !base || files.some((path) => /^(scripts\/mobile-ci\/|scripts\/mobile-release\/android-signer|\.github\/workflows\/mobile-(apk|ota)-release)/.test(path)),
 };
 writeJson("artifacts/mobile-ci/context.json", context);
-output({ mobile_required: context.mobileRequired, force_clean: forceClean, tree: context.tree, release_contract: context.releaseContractRequired });
+output({ mobile_required: context.mobileRequired, force_clean: forceClean, tree: context.tree,
+  release_contract: context.releaseContractRequired, context_artifact: `mobile-native-context-${required("GITHUB_RUN_ATTEMPT")}` });

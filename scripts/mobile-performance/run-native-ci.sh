@@ -5,7 +5,17 @@ mode=${1:-all}
 case "$mode" in workflows|performance|all) ;; *) echo 'Unknown native test suite' >&2; exit 1 ;; esac
 out="artifacts/mobile-native/$mode"
 mkdir -p "$out"
-trap 'adb logcat -d > "$out/logcat.txt"; adb shell dumpsys meminfo com.pravah.mobile.e2e > "$out/memory-final.txt"; kill "${fixture_pid:-}" 2>/dev/null || true' EXIT
+collect_evidence() {
+  local exit_status=$?
+  trap - EXIT
+  timeout 15s adb logcat -d > "$out/logcat.txt" 2> "$out/logcat-error.txt" || true
+  timeout 15s adb shell dumpsys meminfo com.pravah.mobile.e2e > "$out/memory-final.txt" 2>&1 || true
+  timeout 15s adb devices -l > "$out/adb-devices.txt" 2>&1 || true
+  adb version > "$out/adb-version.txt" 2>&1 || true
+  kill "${fixture_pid:-}" 2>/dev/null || true
+  exit "$exit_status"
+}
+trap collect_evidence EXIT
 git rev-parse HEAD > "$out/revision.txt"
 adb shell getprop ro.build.fingerprint > "$out/device-fingerprint.txt"
 # Keep the Pixel 6 logical layout, with fewer pixels for the CI host's
