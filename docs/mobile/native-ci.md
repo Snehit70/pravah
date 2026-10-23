@@ -4,6 +4,8 @@
 
 The first precheck exposed Expo 56's Hermes V1 memory regression. This PR upgrades to Expo 57 and React Native 0.86.3 with the corrected Hermes compiler, aligns native SDK dependencies, and ports the existing Android clipboard patch to expo-clipboard 57.0.2. This requires a new native binary. See [Expo's regression notes](https://expo.dev/changelog/sdk-57#known-regressions).
 
+The SDK 57 release graph also exhausted Expo's default 512 MiB Gradle metaspace during native lint. The prebuild plugin keeps a 2 GiB heap and raises metaspace to 1 GiB, with immediate exit on memory exhaustion. CI serializes project execution, caps compilation at 30 minutes, captures delayed process/thread evidence, and saves a successful build cache before device tests. Native lint remains enabled.
+
 The `com.pravah.mobile.e2e` variant runs the production App, screens, sheets, keyboard and native dependencies with a deterministic in-memory transport. Metro replaces only Convex/auth modules for this CI-only variant. It contains 500 tasks and one goal. A loopback provider fixture checks that Kairo's actual prompt contains scheduled tasks. No production backend, Google login, provider key, release upload or OTA is used. EAS rejects this variant and updates are disabled.
 
 The native workflow covers launch, capture, keyboard-visible save, title edit, completion, Timeline, Goals detail, Progress history, settings, and Kairo. These checks exercise the native UI with fixture transport. Google sign-in, Convex connectivity/auth enforcement, real notification delivery, image-provider delivery and OTA installation still need separate integration/device verification.
