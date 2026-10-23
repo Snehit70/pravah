@@ -7,7 +7,7 @@ name: Native workspace workflows
     timeout: 30000
 - assertVisible: "Inbox"
 - tapOn: "Capture a new task"
-- hideKeyboard
+- assertVisible: "Task title"
 - scrollUntilVisible:
     element:
       text: "Priority, No priority"
