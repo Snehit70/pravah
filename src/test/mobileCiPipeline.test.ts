@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  androidRuntime, checkState, mobileChange, REQUIRED_CHECKS, reusableValidation, SCHEMA,
+  androidRuntime, androidUpdatesDisabled, signingDigests, checkState, mobileChange, REQUIRED_CHECKS, reusableValidation, SCHEMA,
   sha256, TOOLCHAIN, validBase, type Base, type Check, type Context, type Validation,
 } from "../../scripts/mobile-ci/contracts";
 import { classifyMobileRelease } from "../../scripts/mobile-release/classifier";
@@ -23,6 +23,20 @@ describe("APK resource formats", () => {
     expect(androidRuntime('resource 0x7f1300b3 string/expo_runtime_version: flags=0x00000000\n  () (string8) "native-7"\n')).toBe("native-7");
     expect(androidRuntime('resource 0x7f1300b3 string/expo_runtime_version\n  () "native-7"\nresource 0x7f1300b4 string/next_value\n  () "contain"\n')).toBe("native-7");
     expect(androidRuntime('resource 0x123 string/another_value\n  () "native-7"\n')).toBeNull();
+  });
+  it("accepts explicit false metadata without reading a neighboring flag", () => {
+    const prefix = 'A: name="expo.modules.updates.ENABLED" (Raw: "expo.modules.updates.ENABLED")\n';
+    expect(androidUpdatesDisabled(prefix + 'A: value(0x01010024)=false\n')).toBe(true);
+    expect(androidUpdatesDisabled(prefix + 'A: value(0x01010024)=(type 0x12)0x0\n')).toBe(true);
+    expect(androidUpdatesDisabled(prefix + 'A: value(0x01010024)=true\nA: name="other"\nA: value=false\n')).toBe(false);
+    expect(androidUpdatesDisabled('A: name="other"\nA: value=false\n')).toBe(false);
+  });
+  it("normalizes signer output and retains distinct certificates", () => {
+    const digest = "ab".repeat(32);
+    expect(signingDigests(`Signer #1 certificate SHA-256 digest: ${digest}\n`)).toEqual([digest]);
+    expect(signingDigests(`Signer #1 certificate SHA-256 digest: ${digest.toUpperCase()}\nSigner #1 certificate SHA-256 digest: ${digest}\n`)).toEqual([digest]);
+    expect(signingDigests(`Signer #1 certificate SHA-256 digest: ${digest}\nSigner #2 certificate SHA-256 digest: ${"cd".repeat(32)}\n`)).toHaveLength(2);
+    expect(signingDigests("no signer data")).toEqual([]);
   });
 });
 

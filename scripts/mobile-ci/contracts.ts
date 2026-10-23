@@ -17,6 +17,15 @@ export function androidRuntime(resources: string): string | null {
   return resources.match(/string\/expo_runtime_version[^\n]*\n[^"\n]*"([^"\n]+)"/)?.[1] ?? null;
 }
 
+export function androidUpdatesDisabled(manifest: string): boolean {
+  const value = manifest.match(/"expo\.modules\.updates\.ENABLED"[^\n]*\n([^\n]+)/)?.[1] ?? "";
+  return /=false(?:\s|$)/.test(value) || /=\(type 0x12\)0x0(?:\s|$)/.test(value);
+}
+
+export function signingDigests(certificate: string): string[] {
+  return [...new Set([...certificate.matchAll(/Signer #\d+[^\n]*? certificate SHA-256 digest:\s*([a-f0-9]{64})/gi)].map((match) => match[1].toLowerCase()))];
+}
+
 export function mobileChange(files: readonly string[]): boolean {
   return files.some((path) => {
     if (/^apps\/mobile\/(docs\/|src\/test\/)/.test(path)) return false;

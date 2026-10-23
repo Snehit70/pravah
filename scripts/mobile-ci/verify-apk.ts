@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { command, json, required } from "./runtime";
-import { androidRuntime, sha256, type Context } from "./contracts";
+import { androidRuntime, androidUpdatesDisabled, signingDigests, sha256, type Context } from "./contracts";
 
 const [kind, file] = process.argv.slice(2);
 if (!["fixture", "release"].includes(kind) || !file) throw new Error("Expected fixture|release APK");
@@ -27,13 +27,13 @@ if (fixture) {
   const expectedSource = process.env.EXPECTED_FIXTURE_SOURCE ?? context.tree;
   if (!bundle.includes(Buffer.from(expectedSource)) || !bundle.includes(Buffer.from("native-ci-user"))) throw new Error("Fixture APK does not contain this source tree's test bundle");
   const manifest = command([`${tools}/aapt2`, "dump", "xmltree", apk, "--file", "AndroidManifest.xml"]);
-  if (!/"expo\.modules\.updates\.ENABLED"[^\n]*\n[^\n]*value[^\n]*0x0\b/.test(manifest)) throw new Error("Fixture APK must disable OTA updates");
+  if (!androidUpdatesDisabled(manifest)) throw new Error(`Fixture APK must disable OTA updates: ${manifest.split("\n").filter((line, index, lines) => line.includes('"expo.modules.updates.ENABLED"') || lines[index - 1]?.includes('"expo.modules.updates.ENABLED"')).join(" ")}`);
 } else {
   const [major, minor, patch] = version.split(".").map(Number);
   if (!badging.includes(`versionCode='${major * 1_000_000 + minor * 1000 + patch}'`)) throw new Error("APK version code mismatch");
   const expected = readFileSync(new URL("../mobile-release/android-signer.sha256", import.meta.url), "utf8").trim();
-  const signers = [...certificate.matchAll(/Signer #\d+ certificate SHA-256 digest: ([a-f0-9]+)/g)];
-  if (signers.length !== 1 || signers[0][1] !== expected) throw new Error("APK signer differs from the installed release lineage");
+  const signers = signingDigests(certificate);
+  if (signers.length !== 1 || signers[0] !== expected) throw new Error(`APK signer differs from the installed release lineage: expected ${expected}; observed ${signers.join(", ")}; ${certificate.split("\n").filter((line) => line.includes("certificate SHA-256")).join(" ")}`);
   if (!bundle.includes(Buffer.from("https://combative-zebra-261.eu-west-1.convex.cloud")) || bundle.includes(Buffer.from("native-ci-user"))) throw new Error("Release APK backend/fixture isolation mismatch");
 }
 console.log(`Verified ${kind} APK: ${packageName} ${version}, runtime ${runtime}`);
