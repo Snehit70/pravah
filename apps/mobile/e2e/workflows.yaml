@@ -1,8 +1,7 @@
 appId: com.pravah.mobile.e2e
 name: Native workspace workflows
 ---
-- launchApp:
-    clearState: true
+- launchApp
 - extendedWaitUntil:
     visible: "Fixture task 000"
     timeout: 30000
