@@ -421,7 +421,11 @@ export function TimelineScreen({
     </Animated.View>
   );
 
-  const loadingBlock = <TaskListSkeleton variant="timeline" layout={layout} />;
+  // The date comes from the device clock, so it shows on the first frame while
+  // the timeline query is still pending.
+  const loadingBlock = (
+    <TaskListSkeleton variant="timeline" layout={layout} todayDate={weekdayDate(today)} />
+  );
 
   const animateCrossfade = crossfadeArmed && !reducedMotion;
   const entering = animateCrossfade ? layoutEntering : undefined;
