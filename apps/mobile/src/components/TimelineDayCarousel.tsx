@@ -71,6 +71,7 @@ import { formatTime12h } from "../lib/task-form";
 import { buildDayCards, cardKey, type DayCarouselCard } from "../lib/timelineCarousel";
 import { DayStripTrigger, DayStripWeek } from "./TimelineDayStrip";
 import { ThemedDatePicker } from "./ThemedDatePicker";
+import { LaterDatesSkeleton } from "./LoadingSkeleton";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 
@@ -94,7 +95,15 @@ type TimelineDayCarouselProps = {
   getGoalName?: (taskId: string) => string | undefined;
   /** Rendered when no cards exist — same empty state as compact mode. */
   emptyComponent: JSX.Element;
+  /** Present until later dates are requested; called at the end of the axis. */
+  onNeedLaterDates?: () => void;
+  isLaterDatesLoading?: boolean;
 };
+
+/** Trailing placeholder standing in for dates that are not loaded yet. */
+const LATER_CARD_KEY = "later";
+type CarouselItem = DayCarouselCard | { kind: "later" };
+const itemKey = (item: CarouselItem) => (item.kind === "later" ? LATER_CARD_KEY : cardKey(item));
 
 /** Card takes ~85% of the window so the next day peeks at the trailing edge. */
 const CARD_WIDTH_RATIO = 0.85;
@@ -750,13 +759,15 @@ export function TimelineDayCarousel({
   onEditTask,
   getGoalName,
   emptyComponent,
+  onNeedLaterDates,
+  isLaterDatesLoading = false,
 }: TimelineDayCarouselProps) {
   const reducedMotion = useReducedMotion();
   const { width: windowWidth } = useWindowDimensions();
   const cardWidth = Math.round(windowWidth * CARD_WIDTH_RATIO);
   const interval = cardWidth + CARD_GAP;
 
-  const listRef = useRef<FlatList<DayCarouselCard>>(null);
+  const listRef = useRef<FlatList<CarouselItem>>(null);
   // Scroll offset mirrored to the UI thread — every swipe animation (focus
   // scale, worm) is a pure function of this value.
   const scrollX = useSharedValue(0);
@@ -768,7 +779,8 @@ export function TimelineDayCarousel({
   // Week accordion lives in the viewed card's header; closed by default.
   const [weekOpen, setWeekOpen] = useState(false);
 
-  const heldDateKey = current && current.key !== "overdue" ? current.key : null;
+  const heldDateKey =
+    current && current.key !== "overdue" && current.key !== LATER_CARD_KEY ? current.key : null;
   const { cards, landingIndex } = useMemo(
     () =>
       buildDayCards({
@@ -779,6 +791,11 @@ export function TimelineDayCarousel({
         heldDateKey,
       }),
     [sections, today, overdueCount, heldDateKey]
+  );
+  const hasLaterCard = onNeedLaterDates !== undefined || isLaterDatesLoading;
+  const items = useMemo<CarouselItem[]>(
+    () => (hasLaterCard && cards.length > 0 ? [...cards, { kind: "later" }] : cards),
+    [cards, hasLaterCard]
   );
   const overdueTasks = useMemo(
     () => sections.flatMap(([dateKey, tasks]) => dateKey === "overdue" || dateKey < today ? tasks : []),
@@ -795,10 +812,14 @@ export function TimelineDayCarousel({
   } else if (current === null) {
     resolvedCurrent = { key: cardKey(cards[landingIndex]), index: landingIndex };
   } else {
-    const index = cards.findIndex((card) => cardKey(card) === current.key);
+    const index = items.findIndex((item) => itemKey(item) === current.key);
     if (index === -1) {
-      // Only the overdue card can vanish (day cards are held) — fall back home.
-      const fallback = Math.min(landingIndex, cards.length - 1);
+      // Day cards are held, so only two cards can vanish. Overdue falls back
+      // home. The later placeholder gives way to the dates it stood for, and
+      // the user stays on the first of them (or the last card if none came).
+      const fallback = current.key === LATER_CARD_KEY
+        ? Math.min(current.index, cards.length - 1)
+        : Math.min(landingIndex, cards.length - 1);
       resolvedCurrent = { key: cardKey(cards[fallback]), index: fallback };
     } else if (index !== current.index) {
       resolvedCurrent = { key: current.key, index };
@@ -824,10 +845,13 @@ export function TimelineDayCarousel({
 
   const handleMomentumEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      if (cards.length === 0) return;
+      if (items.length === 0) return;
       const raw = Math.round(event.nativeEvent.contentOffset.x / interval);
-      const index = Math.max(0, Math.min(cards.length - 1, raw));
-      const key = cardKey(cards[index]);
+      const index = Math.max(0, Math.min(items.length - 1, raw));
+      const key = itemKey(items[index]);
+      // Settling on the last loaded day (the placeholder peeks next to it) or
+      // on the placeholder itself is the user reaching past what is loaded.
+      if (index >= cards.length - 1) onNeedLaterDates?.();
       if (key !== current?.key) {
         scrollSettledRef.current = true;
         setCurrent({ key, index });
@@ -836,7 +860,7 @@ export function TimelineDayCarousel({
         setWeekOpen(false);
       }
     },
-    [cards, current, interval]
+    [cards.length, current, interval, items, onNeedLaterDates]
   );
 
   const handleToggle = useCallback(
@@ -875,8 +899,19 @@ export function TimelineDayCarousel({
     [cards, interval, reducedMotion]
   );
 
+  // With no card to swipe from, the empty near window is itself the edge of
+  // what is loaded: there is no gesture left, so look further out.
+  const isAxisEmpty = cards.length === 0;
+  useEffect(() => {
+    if (isAxisEmpty) onNeedLaterDates?.();
+  }, [isAxisEmpty, onNeedLaterDates]);
+
   if (cards.length === 0) {
-    return <View style={styles.emptyContainer}>{emptyComponent}</View>;
+    return (
+      <View style={styles.emptyContainer}>
+        {isLaterDatesLoading ? <LaterDatesSkeleton layout="carousel" /> : emptyComponent}
+      </View>
+    );
   }
 
   // Week nav pieces for the viewed card only — trigger in the title slot,
@@ -916,11 +951,11 @@ export function TimelineDayCarousel({
 
   return (
     <View style={[styles.container, { paddingBottom: tabBarHeight + spacing.sm }]}>
-      <Animated.FlatList<DayCarouselCard>
+      <Animated.FlatList<CarouselItem>
         ref={listRef}
         horizontal
-        data={cards}
-        keyExtractor={cardKey}
+        data={items}
+        keyExtractor={itemKey}
         showsHorizontalScrollIndicator={false}
         snapToInterval={interval}
         decelerationRate="fast"
@@ -939,7 +974,11 @@ export function TimelineDayCarousel({
             scrollX={scrollX}
             reducedMotion={reducedMotion}
           >
-            {item.kind === "overdue" ? (
+            {item.kind === "later" ? (
+              <View style={styles.card}>
+                <LaterDatesSkeleton layout="carousel" />
+              </View>
+            ) : item.kind === "overdue" ? (
               <OverdueCard
                 tasks={overdueTasks}
                 today={today}

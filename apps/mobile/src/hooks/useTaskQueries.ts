@@ -82,7 +82,16 @@ type UseTaskQueriesOptions = {
   includeCompletedToday?: boolean;
   /** Task cards. Skipped on screens that do not show images. */
   includeImages?: boolean;
-  timelineEndDate?: string;
+  /**
+   * Last date (inclusive) of the always-live near timeline. Overdue tasks are
+   * included. Omit to subscribe to the whole horizon in one query.
+   */
+  nearTimelineEnd?: string;
+  /**
+   * Subscribe to tasks after `nearTimelineEnd`. Off until the user scrolls past
+   * the near window, so the common case reads only the next two weeks.
+   */
+  includeLaterTimeline?: boolean;
 };
 
 export function useTaskQueries({
@@ -90,7 +99,8 @@ export function useTaskQueries({
   includeCompletedHistory = false,
   includeCompletedToday = false,
   includeImages = false,
-  timelineEndDate,
+  nearTimelineEnd,
+  includeLaterTimeline = false,
 }: UseTaskQueriesOptions) {
   const { today, tomorrow, weekEnd, queryEndDate } = buildTimelineWindow(new Date());
   const imageObservedAt = useImageObservedAt(isAuthenticated && includeImages);
@@ -103,9 +113,18 @@ export function useTaskQueries({
   const timelineQuery = useQuery(
     api.tasks.getTimeline,
     // Omit startDate so overdue tasks (deadline < today) are still surfaced.
-    // The caller can bound the initial horizon and explicitly expand it later.
-    isAuthenticated ? { endDate: timelineEndDate ?? queryEndDate } : "skip"
+    // The args stay identical all day, so this subscription never re-runs when
+    // later dates load; the later range is a separate, disjoint query.
+    isAuthenticated ? { endDate: nearTimelineEnd ?? queryEndDate } : "skip"
   );
+  const laterStartDate = nearTimelineEnd ? nextIsoDate(nearTimelineEnd) : null;
+  const laterTimelineQuery = useQuery(
+    api.tasks.getTimeline,
+    isAuthenticated && includeLaterTimeline && laterStartDate
+      ? { startDate: laterStartDate, endDate: TIMELINE_FAR_FUTURE }
+      : "skip"
+  );
+  const wantsLaterTimeline = isAuthenticated && includeLaterTimeline && laterStartDate !== null;
 
   const completedHistoryQuery = useQuery(
     api.tasks.listTasks,
@@ -127,6 +146,7 @@ export function useTaskQueries({
     recordDiagnosticEvent("convex_subscriptions", "debug", {
       inbox: true,
       timeline: true,
+      laterTimeline: wantsLaterTimeline,
       completedHistory: includeCompletedHistory,
       completedToday: includeCompletedToday && !includeCompletedHistory,
       images: includeImages,
@@ -136,19 +156,15 @@ export function useTaskQueries({
     includeCompletedHistory,
     includeCompletedToday,
     includeImages,
+    wantsLaterTimeline,
   ]);
 
   const queryRows = useMemo(() => {
     if (!isAuthenticated) return null;
-    const timelineRows = timelineQuery && typeof timelineQuery === "object"
-      ? Object.values(timelineQuery as Record<string, unknown>).reduce<number>(
-        (sum, day) => sum + (Array.isArray(day) ? day.length : 0),
-        0,
-      )
-      : null;
     return {
       inbox: Array.isArray(inboxQuery) ? inboxQuery.length : null,
-      timeline: timelineRows,
+      timeline: countTimelineRows(timelineQuery),
+      laterTimeline: wantsLaterTimeline ? countTimelineRows(laterTimelineQuery) : null,
       completedHistory: includeCompletedHistory
         ? (Array.isArray(completedHistoryQuery) ? completedHistoryQuery.length : null)
         : null,
@@ -168,7 +184,9 @@ export function useTaskQueries({
     includeCompletedToday,
     includeImages,
     isAuthenticated,
+    laterTimelineQuery,
     timelineQuery,
+    wantsLaterTimeline,
   ]);
   const queryRowsKey = queryRows ? JSON.stringify(queryRows) : null;
   useEffect(() => {
@@ -206,9 +224,12 @@ export function useTaskQueries({
   }, [inboxQuery, withImages]);
 
   const scheduledTasks = useMemo<MobileTask[]>(() => {
-    const flat = Object.values(timelineQuery ?? {}).flat() as MobileTask[];
+    const flat = [
+      ...Object.values(timelineQuery ?? {}).flat(),
+      ...Object.values(laterTimelineQuery ?? {}).flat(),
+    ] as MobileTask[];
     return buildScheduledTasks(flat).map(withImages);
-  }, [timelineQuery, withImages]);
+  }, [laterTimelineQuery, timelineQuery, withImages]);
 
   const completedTasks = useMemo<MobileTask[]>(() => {
     const source = (includeCompletedHistory ? completedHistoryQuery : completedTodayQuery) as
@@ -265,10 +286,13 @@ export function useTaskQueries({
 
   const isInboxLoading = inboxQuery === undefined;
   const isTimelineLoading = timelineQuery === undefined;
+  const isLaterTimelineLoading = wantsLaterTimeline && laterTimelineQuery === undefined;
+  const hasLaterTimeline = wantsLaterTimeline && laterTimelineQuery !== undefined;
   const isCompletedLoading =
     (includeCompletedHistory && completedHistoryQuery === undefined) ||
     (includeCompletedToday && !includeCompletedHistory && completedTodayQuery === undefined);
-  const isAllTasksReady = isAuthenticated && !isInboxLoading && !isTimelineLoading && !isCompletedLoading;
+  const isAllTasksReady = isAuthenticated && !isInboxLoading && !isTimelineLoading &&
+    !isLaterTimelineLoading && !isCompletedLoading;
   const isImageCollectionsReady = !includeImages || imageCollectionsQuery !== undefined;
   const retainedImageIds = useMemo(
     () => (isAuthenticated && includeImages ? collectServerImageIds(imageCollectionsQuery) : null),
@@ -291,12 +315,29 @@ export function useTaskQueries({
     completedCount,
     isInboxLoading,
     isTimelineLoading,
+    isLaterTimelineLoading,
+    hasLaterTimeline,
     isCompletedLoading,
     isAllTasksReady,
     isImageCollectionsReady,
     imageCollections,
     retainedImageIds,
   };
+}
+
+function countTimelineRows(result: unknown): number | null {
+  if (!result || typeof result !== "object") return null;
+  return Object.values(result as Record<string, unknown>).reduce<number>(
+    (sum, day) => sum + (Array.isArray(day) ? day.length : 0),
+    0,
+  );
+}
+
+/** `2026-11-21` -> `2026-11-22`, in UTC so no local DST shift can skip a day. */
+export function nextIsoDate(isoDate: string): string {
+  const next = new Date(`${isoDate}T00:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return next.toISOString().slice(0, 10);
 }
 
 // Sentinel upper bound meaning "no horizon cap": the timeline fetches every

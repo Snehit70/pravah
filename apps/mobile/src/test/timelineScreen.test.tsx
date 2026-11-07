@@ -72,8 +72,10 @@ vi.mock("react-native", () => {
     ListEmptyComponent,
     ListFooterComponent,
     ListHeaderComponent,
+    onEndReached,
   }: {
     data: unknown[];
+    onEndReached?: (info: { distanceFromEnd: number }) => void;
     renderItem: (params: { item: unknown; index: number }) => React.ReactNode;
     keyExtractor: (item: unknown) => string;
     ListEmptyComponent?: React.ReactNode;
@@ -100,7 +102,14 @@ vi.mock("react-native", () => {
           renderItem({ item, index })
         )
       ),
-      ListFooterComponent
+      ListFooterComponent,
+      onEndReached
+        ? React.createElement(
+            "button",
+            { "aria-label": "reach-end", onClick: () => onEndReached({ distanceFromEnd: 0 }) },
+            "end"
+          )
+        : null
     );
   };
   return {
@@ -231,6 +240,7 @@ vi.mock("../hooks/useConfirm", () => ({ useConfirm: () => vi.fn(async () => true
 vi.mock("../components/LoadingSkeleton", () => ({
   TaskListSkeleton: ({ variant }: { variant: string }) =>
     React.createElement("div", { "data-testid": `skeleton-${variant}` }),
+  LaterDatesSkeleton: () => React.createElement("div", { "data-testid": "skeleton-later-dates" }),
 }));
 
 vi.mock("../hooks/useReducedMotion", () => ({
@@ -555,6 +565,50 @@ describe("TimelineScreen", () => {
 
     expect(screen.getByTestId("task-task5")).toBeTruthy();
     expect(screen.queryByText("Later · 1 tasks")).toBeNull();
+  });
+
+  it("never shows a load-later button", () => {
+    render(<TimelineScreen {...baseProps} sections={extendedSections} onNeedLaterDates={vi.fn()} />);
+
+    expect(screen.queryByText(/load later dates/i)).toBeNull();
+  });
+
+  it("reveals loaded later sections first and loads more only at the end of the list", () => {
+    const onNeedLaterDates = vi.fn();
+    render(
+      <TimelineScreen {...baseProps} sections={extendedSections} onNeedLaterDates={onNeedLaterDates} />
+    );
+
+    // Collapsed, the end of the list is the disclosure, not the edge of data.
+    fireEvent.click(screen.getByRole("button", { name: "reach-end" }));
+    expect(onNeedLaterDates).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /show 1 later tasks/i }));
+    expect(screen.getByTestId("task-task5")).toBeTruthy();
+    expect(onNeedLaterDates).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "reach-end" }));
+    expect(onNeedLaterDates).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers later dates when nothing loaded lies past the visible sections", () => {
+    const onNeedLaterDates = vi.fn();
+    const { rerender } = render(
+      <TimelineScreen {...baseProps} sections={sampleSections} onNeedLaterDates={onNeedLaterDates} />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /show later dates/i }));
+    expect(onNeedLaterDates).toHaveBeenCalledTimes(1);
+
+    rerender(<TimelineScreen {...baseProps} sections={sampleSections} isLaterDatesLoading />);
+    expect(screen.getByTestId("skeleton-later-dates")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /show later dates/i })).toBeNull();
+  });
+
+  it("hides the later-dates disclosure once every date is loaded", () => {
+    render(<TimelineScreen {...baseProps} sections={sampleSections} />);
+
+    expect(screen.queryByRole("button", { name: /later/i })).toBeNull();
   });
 
   it("renders the compact list by default (no carousel)", () => {
