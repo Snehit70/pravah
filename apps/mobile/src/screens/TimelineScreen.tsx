@@ -548,28 +548,41 @@ export function TimelineScreen({
     />
   );
 
+  // The skeleton fades out and the real carousel fades in, so the first load
+  // reads as one motion instead of a hard cut.
   const carouselBody = isLoading ? (
-    loadingBlock
+    <Animated.View
+      exiting={reducedMotion ? undefined : FadeOut.duration(150)}
+      pointerEvents="none"
+      style={StyleSheet.absoluteFill}
+    >
+      {loadingBlock}
+    </Animated.View>
   ) : (
-    <TimelineDayCarousel
-      sections={sections}
-      today={today}
-      tomorrow={tomorrow}
-      isRefreshing={isRefreshing}
-      tabBarHeight={tabBarHeight}
-      onRefresh={onRefresh}
-      overdueCount={overdueCount}
-      completedTasks={completedTasks}
-      onTriageOverdue={onTriageOverdue}
-      onRescheduleAllGoals={onRescheduleAllGoals}
-      onCompleteTask={onCompleteTask}
-      onReopenTask={onReopenTask}
-      onEditTask={onEditTask}
-      getGoalName={getGoalName}
-      emptyComponent={emptyBlock}
-      onNeedLaterDates={onNeedLaterDates}
-      isLaterDatesLoading={isLaterDatesLoading}
-    />
+    <Animated.View
+      entering={reducedMotion ? undefined : FadeIn.duration(220)}
+      style={styles.layoutFill}
+    >
+      <TimelineDayCarousel
+        sections={sections}
+        today={today}
+        tomorrow={tomorrow}
+        isRefreshing={isRefreshing}
+        tabBarHeight={tabBarHeight}
+        onRefresh={onRefresh}
+        overdueCount={overdueCount}
+        completedTasks={completedTasks}
+        onTriageOverdue={onTriageOverdue}
+        onRescheduleAllGoals={onRescheduleAllGoals}
+        onCompleteTask={onCompleteTask}
+        onReopenTask={onReopenTask}
+        onEditTask={onEditTask}
+        getGoalName={getGoalName}
+        emptyComponent={emptyBlock}
+        onNeedLaterDates={onNeedLaterDates}
+        isLaterDatesLoading={isLaterDatesLoading}
+      />
+    </Animated.View>
   );
 
   // Both layouts mount in an absolute-fill wrapper so the exiting one can
