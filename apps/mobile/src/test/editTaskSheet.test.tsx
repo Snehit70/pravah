@@ -407,7 +407,7 @@ describe("EditTaskSheet compact workbench", () => {
     expect(keyboardView.getAttribute("data-automatic-offset")).toBe("true");
   });
 
-  it("stages title edits, saves, and remains open", async () => {
+  it("stages title edits, saves, and closes", async () => {
     const { ref, onSave, onSheetChange } = setup();
     await open(ref);
 
@@ -431,9 +431,7 @@ describe("EditTaskSheet compact workbench", () => {
         priority: "p1",
       });
     });
-    expect(screen.getByText("Updated task")).toBeTruthy();
-    expect(screen.queryByText("Save changes")).toBeNull();
-    expect(onSheetChange).not.toHaveBeenLastCalledWith(false);
+    expect(onSheetChange).toHaveBeenLastCalledWith(false);
   });
 
   it("uses an explicit priority selector instead of cycling", async () => {

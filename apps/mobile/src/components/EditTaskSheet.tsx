@@ -726,22 +726,12 @@ export const EditTaskSheet = forwardRef<EditTaskSheetRef, EditTaskSheetProps>(
         });
         onSaveComplete?.({ message: "Changes saved" }, sourceTask, previousState);
       }
-      setInitialDraft(savedDraft);
-      setInitialImageOrder(orderedTaskImageIds);
-      imageRevision.current = undefined;
-      setTitle(savedDraft.title);
-      setDescription(savedDraft.description);
-      setDeadline(savedDraft.deadline);
-      setTime(savedDraft.time);
-      setTaskState((current) =>
-        current === "completed" ? current : savedDraft.deadline ? "timeline" : "inbox",
-      );
-      setMode("inspector");
-      setTitleEditing(false);
-      setNotesEditing(false);
-      Keyboard.dismiss();
+      // Close on save. Staying open kept the footer's primary action in the same
+      // spot, so a quick second tap could land on a row action underneath.
+      closeModal();
       haptic.success();
     }, [
+      closeModal,
       currentTask,
       deadline,
       description,
