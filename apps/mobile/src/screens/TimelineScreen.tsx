@@ -16,7 +16,6 @@ import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
 import Animated, {
   FadeIn,
   FadeOut,
-  LinearTransition,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -101,7 +100,6 @@ function layoutEntering() {
   };
 }
 
-const listItemLayout = LinearTransition.duration(220);
 
 /** Today's done/total bar. Fills from where it is when a task is completed. */
 function TodayProgressBar({ ratio }: { ratio: number }) {
@@ -460,9 +458,6 @@ export function TimelineScreen({
       updateCellsBatchingPeriod={50}
       windowSize={7}
       removeClippedSubviews
-      // Completing or rescheduling a task slides the rows below up into its
-      // place instead of snapping them.
-      itemLayoutAnimation={reducedMotion ? undefined : listItemLayout}
       keyExtractor={(row) =>
         row.kind === "header" ? `header-${row.dateKey}` : row.task._id
       }
