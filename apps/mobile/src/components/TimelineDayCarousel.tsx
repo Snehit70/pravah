@@ -122,10 +122,20 @@ type SlimTaskRowProps = {
   completed: boolean;
   goalName?: string;
   onToggle?: (task: MobileTask, completed: boolean) => void;
+  /** Keeps the checkbox in place but inert, e.g. while a snapshot is shown. */
+  toggleDisabled?: boolean;
   onPress?: (task: MobileTask) => void;
 };
 
-function SlimTaskRow({ task, completed, goalName, onToggle, onPress }: SlimTaskRowProps) {
+function SlimTaskRow({
+  task,
+  completed,
+  goalName,
+  onToggle,
+  toggleDisabled = false,
+  onPress,
+}: SlimTaskRowProps) {
+  const toggleOff = toggleDisabled || !onToggle;
   const { prefs } = useUserPreferences();
   const reducedMotion = useReducedMotion();
   const compactDensity = prefs.density === "compact";
@@ -151,26 +161,35 @@ function SlimTaskRow({ task, completed, goalName, onToggle, onPress }: SlimTaskR
   }, [bodyOpacity, completed, reducedMotion]);
   const bodyAnimStyle = useAnimatedStyle(() => ({ opacity: bodyOpacity.value }));
   const hasDescription = Boolean(task.description) && !completed;
-  const checkbox = onToggle ? (
+  // Always rendered so the row keeps the same width whether or not actions are
+  // wired yet; the skeleton reserves this slot too.
+  const checkbox = (
     <Pressable
       onPress={(event) => {
         event.stopPropagation();
-        onToggle(task, completed);
+        onToggle?.(task, completed);
       }}
+      disabled={toggleOff}
       hitSlop={4}
       accessibilityRole="checkbox"
-      accessibilityState={{ checked: completed }}
+      accessibilityState={{ checked: completed, disabled: toggleOff }}
       accessibilityLabel={`Mark ${task.title} ${completed ? "incomplete" : "complete"}`}
       style={({ pressed }) => [
         styles.rowCheckboxHit,
-        pressed && styles.rowCheckboxPressed,
+        pressed && !toggleOff && styles.rowCheckboxPressed,
       ]}
     >
-      <View style={[styles.rowCheckbox, completed && styles.rowCheckboxCompleted]}>
+      <View
+        style={[
+          styles.rowCheckbox,
+          completed && styles.rowCheckboxCompleted,
+          toggleOff && styles.rowCheckboxDisabled,
+        ]}
+      >
         {completed ? <CheckIcon size={15} color={colors.textInverse} strokeWidth={2.4} /> : null}
       </View>
     </Pressable>
-  ) : null;
+  );
 
   return (
     <Pressable
@@ -233,11 +252,10 @@ function SlimTaskRow({ task, completed, goalName, onToggle, onPress }: SlimTaskR
         ) : null}
       </Animated.View>
 
-      {onPress ? (
-        <View style={styles.rowChevron}>
-          <ChevronRightIcon color={colors.textMuted} size={17} strokeWidth={1.8} />
-        </View>
-      ) : null}
+      {/* Reserved even when inert, so the title keeps the same width. */}
+      <View style={styles.rowChevron}>
+        {onPress ? <ChevronRightIcon color={colors.textMuted} size={17} strokeWidth={1.8} /> : null}
+      </View>
     </Pressable>
   );
 }
@@ -285,6 +303,7 @@ type DayCardViewProps = {
   isRefreshing: boolean;
   onRefresh: () => Promise<void>;
   onToggle?: (task: MobileTask, completed: boolean) => void;
+  toggleDisabled?: boolean;
   onEditTask?: (task: MobileTask) => void;
   getGoalName?: (taskId: string) => string | undefined;
   /** Collapsed week-nav handle under the title (viewed card only). */
@@ -304,6 +323,7 @@ function DayCardView({
   isRefreshing,
   onRefresh,
   onToggle,
+  toggleDisabled,
   onEditTask,
   getGoalName,
   weekTrigger,
@@ -407,6 +427,7 @@ function DayCardView({
             completed={!liveIds.has(String(item._id))}
             goalName={getGoalName?.(String(item._id))}
             onToggle={onToggle}
+            toggleDisabled={toggleDisabled}
             onPress={onEditTask}
           />
         )}
@@ -999,7 +1020,8 @@ export function TimelineDayCarousel({
                 completedTasks={completedTasks}
                 isRefreshing={isRefreshing}
                 onRefresh={onRefresh}
-                onToggle={canToggle ? handleToggle : undefined}
+                onToggle={handleToggle}
+                toggleDisabled={!canToggle}
                 onEditTask={onEditTask}
                 getGoalName={getGoalName}
                 weekTrigger={weekTriggerFor(item)}
@@ -1164,6 +1186,9 @@ const styles = createThemedStyles({
   },
   rowCheckboxPressed: {
     opacity: 0.68,
+  },
+  rowCheckboxDisabled: {
+    opacity: 0.45,
   },
   rowCompact: {
     paddingVertical: spacing.sm,
