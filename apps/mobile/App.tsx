@@ -189,6 +189,8 @@ function MobileApp() {
   const editTaskSheetRef = useRef<EditTaskSheetRef>(null);
   const lastListStateLogMsRef = useRef<number>(0);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  // Measured so the floating toast can sit just under the header.
+  const [headerHeight, setHeaderHeight] = useState(0);
   const [diagnosticEvents, setDiagnosticEvents] = useState<DiagnosticEvent[]>([]);
   const [selectedCompletedTask, setSelectedCompletedTask] = useState<MobileTask | null>(null);
   const [focusGoalId, setFocusGoalId] = useState<string | null>(null);
@@ -1437,7 +1439,7 @@ function MobileApp() {
       {/* Compact header: brand mark + view name on one line (the mark already
           says "Pravah"; no caps label needed), subtitle tucked beneath.
           Top inset comes from SafeAreaView — do not re-apply insets.top here. */}
-      {!isGoalDetailOpen ? <View style={styles.header}>
+      {!isGoalDetailOpen ? <View style={styles.header} onLayout={(event) => setHeaderHeight(event.nativeEvent.layout.height)}>
         <View style={styles.headerMain}>
           <View style={styles.titleLockup}>
             <BrandMark size={28} />
@@ -1487,12 +1489,16 @@ function MobileApp() {
 
       <TaskImageBudgetNotice status={taskImageBudgetStatus} />
 
-      {/* Toast — sits under the header in flow (not an overlay). */}
+      {/* Toast — floats over the content just under the header, so showing it
+          never pushes the list down. */}
       {toast ? (
         <Animated.View
           entering={reducedMotion ? undefined : FadeIn.duration(200)}
           accessibilityLiveRegion={toast.kind === "error" ? "assertive" : "polite"}
-          style={styles.toastWrap}
+          style={[
+            styles.toastWrap,
+            { top: isGoalDetailOpen ? spacing.sm : headerHeight + spacing.xs },
+          ]}
         >
           <View
             style={[
@@ -1522,7 +1528,7 @@ function MobileApp() {
             ) : null}
             <Pressable
               onPress={dismissToast}
-              hitSlop={10}
+              hitSlop={14}
               accessibilityRole="button"
               accessibilityLabel="Dismiss notification"
               style={({ pressed }) => [styles.toastDismiss, pressed && { opacity: 0.6 }]}
@@ -2252,11 +2258,14 @@ const styles = createThemedStyles({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
   },
-  // Toast — in-flow row under the header so it never covers card chrome.
+  // Toast — absolutely positioned under the header; floats over content.
   toastWrap: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    zIndex: 20,
+    elevation: 20,
     marginHorizontal: spacing.lg,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xs,
   },
   toastCard: {
     flexDirection: "row",
@@ -2281,8 +2290,7 @@ const styles = createThemedStyles({
     ...typography.bodyMd,
   },
   toastAction: {
-    minHeight: 44,
-    minWidth: 44,
+    minHeight: 28,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: spacing.sm,
@@ -2293,8 +2301,8 @@ const styles = createThemedStyles({
     fontWeight: "600",
   },
   toastDismiss: {
-    width: 44,
-    height: 44,
+    width: 28,
+    height: 28,
     alignItems: "center",
     justifyContent: "center",
     marginRight: -spacing.sm,
