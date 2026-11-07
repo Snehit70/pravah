@@ -49,6 +49,20 @@ describe('monitoring completeness',() => {
     expect(windowCoverage(store.db,'missing',{from:0,to:250},250).sessionCoverageFraction).toBe(0);
     store.close();
   });
+  test('attributes subscription re-runs to the nearest preceding trigger',() => {
+    const store=openStore(':memory:');
+    const at=(id,identifier,offsetMs,extra={}) => store.record(executionMetric({...event(id),identifier,
+      timestamp:(now-60000+offsetMs)/1000,caller:'SyncWorker',udfType:'Query',...extra},'prod'),now);
+    at('mint','POST /automation/convex-token',0,{udfType:'HttpAction',caller:'HttpEndpoint'});
+    at('afterMint','watch:sources',2000);
+    at('write','tasks:updateTask',20000,{udfType:'Mutation'});
+    at('afterWrite','watch:sources',21000);
+    at('alone','watch:sources',40000);
+    at('cached','watch:sources',41000,{cachedResult:true});
+    const causes=windowMetrics(store.db,'prod',{from:now-60000,to:now+1,function:'watch:sources'}).rerunCauses;
+    expect(causes.map(({cause,misses}) => [cause,misses]).sort()).toEqual([['cliTokenRenewal',1],['dataWrite',1],['unattributed',1]]);
+    store.close();
+  });
   test('fresh active sessions cover a window after their last heartbeat',() => {
     const store=openStore(':memory:');
     store.db.query('INSERT INTO sessions(deployment,started,heartbeat) VALUES(?,?,?)').run('prod',now-60000,now-10000);

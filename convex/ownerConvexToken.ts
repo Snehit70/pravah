@@ -25,7 +25,11 @@ export function deriveConvexCloudUrl(convexSiteUrl: string): string {
   return convexSiteUrl.replace(/\.convex\.site$/, ".convex.cloud");
 }
 
-export const OWNER_TOKEN_TTL_SECONDS = 15 * 60;
+// Every renewal is a new Convex identity, so all watcher subscriptions re-run
+// uncached (~83% of watcher reads, Nov 2026 telemetry). Stable claims did not
+// prevent that; the remaining lever is fewer renewals. Revocation still applies
+// on the next renewal, so a revoked credential keeps its socket at most an hour.
+export const OWNER_TOKEN_TTL_SECONDS = 60 * 60;
 const MIN_TTL_SECONDS = 60;
 const MAX_TTL_SECONDS = 60 * 60;
 

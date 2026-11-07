@@ -63,9 +63,9 @@ It is replaced atomically and kept at mode `0600`. A pid lock in the same
 directory prevents two daemons from writing the same file.
 
 The automation credential is never placed on the socket. `pravah watch`
-exchanges it over HTTP for a 15-minute Convex token scoped to the credential's
+exchanges it over HTTP for a 60-minute Convex token scoped to the credential's
 own owner, and refreshes that token before it expires. Revoking a credential
-therefore takes effect within 15 minutes.
+therefore takes effect within 60 minutes.
 
 Reads are subscribe-only. `pravah watch` never silently falls back to polling,
 so if the daemon dies, consumers see a stale snapshot rather than plausible data
