@@ -21,7 +21,7 @@ import { colors, fonts, motion, radii, shadow, spacing, typography } from "../th
 import { createThemedStyles } from "../theme/themeRuntime";
 import { CalendarIcon, ChevronDownIcon } from "./UiIcons";
 
-function SkeletonPulse({ children }: { children: ReactNode }) {
+function SkeletonPulse({ children, fill = false }: { children: ReactNode; fill?: boolean }) {
   const reducedMotion = useReducedMotion();
   const opacity = useSharedValue(0.55);
 
@@ -52,7 +52,7 @@ function SkeletonPulse({ children }: { children: ReactNode }) {
     opacity: opacity.value,
   }));
 
-  return <Animated.View style={style}>{children}</Animated.View>;
+  return <Animated.View style={[style, fill && styles.pageFill]}>{children}</Animated.View>;
 }
 
 function Block({
@@ -78,12 +78,15 @@ function SlimCardRows({ count }: { count: number }) {
     <>
       {Array.from({ length: count }, (_, index) => (
         <View key={`slim-skeleton-${index}`} style={styles.slimRow}>
-          <View style={styles.slimCheck} />
+          <View style={styles.slimCheckHit}>
+            <View style={styles.slimCheck} />
+          </View>
           <View style={styles.slimBody}>
             <Block fill width={index % 2 === 0 ? "70%" : "58%"} height={14} />
             <Block fill width={index % 2 === 0 ? "38%" : "46%"} height={10} />
           </View>
-          <Block fill width={8} height={14} />
+          {/* Trailing chevron slot, reserved by the real row even when inert. */}
+          <View style={styles.slimChevron} />
         </View>
       ))}
     </>
@@ -126,6 +129,17 @@ function TimelineCarouselSkeleton({ todayDate }: { todayDate?: string }) {
           </View>
         </View>
         <View style={[styles.timelineCard, { width: cardWidth }]}>
+          {/* Other days show a label and a task count, so the header is reserved. */}
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.cardHeaderText}>
+              <View style={styles.peekHeaderLabel}>
+                <Block fill width={92} height={16} />
+              </View>
+            </View>
+            <View style={styles.peekHeaderCount}>
+              <Block fill width={42} height={10} />
+            </View>
+          </View>
           <View style={styles.cardRows}>
             <SlimCardRows count={2} />
           </View>
@@ -242,21 +256,25 @@ function PageSkeleton({
   label,
   children,
   style,
+  fill = false,
 }: {
   label: string;
   children: ReactNode;
   style?: ViewStyle;
+  /** Fill the parent height, like the real screen does. */
+  fill?: boolean;
 }) {
   return (
-    <View style={style}>
+    <View style={[style, fill && styles.pageFill]}>
       <Text accessibilityLiveRegion="polite" style={styles.loadingAnnouncement}>
         Loading {label}
       </Text>
-      <SkeletonPulse>
+      <SkeletonPulse fill={fill}>
         <View
           accessible={false}
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
+          style={fill ? styles.pageFill : undefined}
         >
           {children}
         </View>
@@ -294,7 +312,7 @@ export function TaskListSkeleton({
 }) {
   if (variant === "timeline") {
     return (
-      <PageSkeleton label="Timeline">
+      <PageSkeleton label="Timeline" fill>
         {layout === "carousel" ? (
           <TimelineCarouselSkeleton todayDate={todayDate} />
         ) : (
@@ -348,9 +366,6 @@ export function GoalsPageSkeleton() {
   return (
     <PageSkeleton label="Goals">
       <View>
-        <View style={styles.goalsSearchWrap}>
-          <View style={styles.searchField} />
-        </View>
         <View style={styles.goalsListHeader}>
           <Block width={82} height={12} />
         </View>
@@ -363,13 +378,9 @@ export function GoalsPageSkeleton() {
   );
 }
 
-function ChartLineSkeleton({
-  width = "100%",
-  height = 148,
-}: {
-  width?: DimensionValue;
-  height?: number;
-}) {
+// Empty plot frame with the real chart's three y-axis ticks (top, middle,
+// baseline). No fake data line: a shape there reads as a real trend.
+function ChartLineSkeleton({ height = 148 }: { height?: number }) {
   return (
     <View style={[styles.chartLineArea, { height }]}>
       <View style={styles.chartAxis}>
@@ -380,7 +391,7 @@ function ChartLineSkeleton({
       <View style={styles.chartPlot}>
         <View style={styles.chartGridLine} />
         <View style={styles.chartGridLine} />
-        <View style={[styles.chartLine, { width }]} />
+        <View style={styles.chartGridLine} />
       </View>
     </View>
   );
@@ -600,11 +611,6 @@ const styles = createThemedStyles({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
   },
-  goalsSearchWrap: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.sm,
-  },
   goalsListHeader: {
     minHeight: 44,
     paddingHorizontal: spacing.lg,
@@ -651,11 +657,17 @@ const styles = createThemedStyles({
     gap: spacing.sm,
     paddingTop: 6,
   },
+  // Fill the screen like the real carousel, so the card runs to the tab bar.
+  pageFill: {
+    flex: 1,
+  },
   carouselStage: {
+    flex: 1,
     overflow: "hidden",
     paddingTop: spacing.md,
   },
   carouselTrack: {
+    flex: 1,
     flexDirection: "row",
     paddingLeft: spacing.lg,
     gap: CAROUSEL_CARD_GAP,
@@ -721,6 +733,14 @@ const styles = createThemedStyles({
     gap: spacing.xs,
     paddingTop: 4,
   },
+  peekHeaderLabel: {
+    minHeight: 26,
+    justifyContent: "center",
+  },
+  peekHeaderCount: {
+    minHeight: 24,
+    paddingTop: 4,
+  },
   cardRows: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
@@ -737,10 +757,15 @@ const styles = createThemedStyles({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
   },
+  slimCheckHit: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   slimCheck: {
     width: 24,
     height: 24,
-    marginHorizontal: 10,
     borderRadius: 7,
     borderCurve: "continuous",
     borderWidth: 1.5,
@@ -751,6 +776,10 @@ const styles = createThemedStyles({
     flex: 1,
     minWidth: 0,
     gap: 6,
+  },
+  slimChevron: {
+    minWidth: 24,
+    minHeight: 44,
   },
   listTimelineWrap: {
     paddingTop: spacing.md,
@@ -851,22 +880,12 @@ const styles = createThemedStyles({
   chartPlot: {
     flex: 1,
     justifyContent: "space-between",
-    position: "relative",
     paddingVertical: spacing.sm,
   },
   chartGridLine: {
     height: StyleSheet.hairlineWidth,
     width: "100%",
     backgroundColor: colors.borderSubtle,
-  },
-  chartLine: {
-    position: "absolute",
-    left: "8%",
-    top: "42%",
-    height: 4,
-    borderRadius: radii.full,
-    backgroundColor: colors.accentSoft,
-    transform: [{ rotate: "-8deg" }],
   },
   rhythmCard: {
     marginHorizontal: spacing.lg,
