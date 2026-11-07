@@ -288,7 +288,7 @@ function MobileApp() {
 
   // ── Data ────────────────────────────────────────────────────────────
 
-  const [showLaterDates, setShowLaterDates] = useState(false);
+  const [laterDatesRequested, setLaterDatesRequested] = useState(false);
   const [selectedGoalForTasks, setSelectedGoalForTasks] = useState<string | null>(null);
   const progressSummary = useQuery(api.goalProgress.list, session ? {} : "skip");
   const prepareProgress = useMutation(api.goalProgress.prepare);
@@ -300,10 +300,17 @@ function MobileApp() {
   const goalDetails = usePaginatedQuery(api.goals.listTasks,
     session && activeTab === "goals" && selectedGoalForTasks ? {goalClientId: selectedGoalForTasks} : "skip",
     {initialNumItems: 50});
-  const initialTimelineEnd = new Date();
-  initialTimelineEnd.setDate(initialTimelineEnd.getDate() + 14);
-  const boundedTimelineEnd = !showLaterDates && !isKairoActive && activeTab !== "goals" && activeTab !== "insights"
-    ? toIsoDate(initialTimelineEnd) : undefined;
+  // The timeline subscribes to overdue + the next 14 days. Later dates are a
+  // second, disjoint query that starts only when the user scrolls past the
+  // near window, or when a surface that needs every task opens. The request
+  // latches for the session so tab switches never churn the subscription.
+  const nearTimelineEndDate = new Date();
+  nearTimelineEndDate.setDate(nearTimelineEndDate.getDate() + 14);
+  const nearTimelineEnd = toIsoDate(nearTimelineEndDate);
+  const needsWholeTimeline = isKairoActive || activeTab === "goals" || activeTab === "insights";
+  if (needsWholeTimeline && !laterDatesRequested) setLaterDatesRequested(true);
+  const includeLaterTimeline = laterDatesRequested || needsWholeTimeline;
+  const requestLaterDates = useCallback(() => setLaterDatesRequested(true), []);
 
   const includeCompletedHistory =
     isKairoActive || activeTab === "insights" || (activeTab === "goals" && !progressSummary?.ready);
@@ -318,6 +325,8 @@ function MobileApp() {
     timelineSections,
     isInboxLoading,
     isTimelineLoading,
+    isLaterTimelineLoading,
+    hasLaterTimeline,
     isCompletedLoading,
     isAllTasksReady,
     isImageCollectionsReady,
@@ -326,7 +335,8 @@ function MobileApp() {
   } = useTaskQueries({
     isAuthenticated: Boolean(session),
     includeCompletedHistory,
-    timelineEndDate: boundedTimelineEnd,
+    nearTimelineEnd,
+    includeLaterTimeline,
     includeCompletedToday: activeTab === "timeline",
     includeImages:
       activeTab === "inbox" ||
@@ -339,6 +349,9 @@ function MobileApp() {
     session && isAuthStorageReady ? {} : "skip"
   );
 
+  // Until later dates arrive, live data covers only the near window: the
+  // snapshot keeps its cached later tasks and the display filters them out.
+  const timelineScopeEnd = hasLaterTimeline ? undefined : nearTimelineEnd;
   const hasLiveWorkspaceData =
     !isInboxLoading &&
     !isTimelineLoading &&
@@ -351,7 +364,7 @@ function MobileApp() {
       inboxTasks,
       scheduledTasks,
       completedTasks,
-      scheduledScopeEnd: boundedTimelineEnd,
+      scheduledScopeEnd: timelineScopeEnd,
     });
 
   const {
@@ -378,7 +391,7 @@ function MobileApp() {
     sessionLoading,
     hasCachedSessionHint,
     today,
-    timelineEndDate: boundedTimelineEnd,
+    timelineEndDate: timelineScopeEnd,
     inboxTasks,
     scheduledTasks,
     completedTasks,
@@ -1599,7 +1612,8 @@ function MobileApp() {
               isRefreshing={isRefreshing}
               tabBarHeight={tabBarHeight}
               onRefresh={handleRefresh}
-              onLoadLater={boundedTimelineEnd && canUseWorkspaceActions ? () => setShowLaterDates(true) : undefined}
+              onNeedLaterDates={hasLaterTimeline || isLaterTimelineLoading ? undefined : requestLaterDates}
+              isLaterDatesLoading={isLaterTimelineLoading}
               overdueCount={isTimelineTriageReady ? displayOverdueCount : undefined}
               onOpenOverdue={canUseWorkspaceActions && isTimelineTriageReady ? openOverdue : undefined}
               onTriageOverdue={

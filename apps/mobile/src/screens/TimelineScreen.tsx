@@ -33,7 +33,7 @@ import { TimelineSectionHeader } from "../components/TimelineSectionHeader";
 import { TimelineDayCarousel } from "../components/TimelineDayCarousel";
 import { TimelineTaskRow } from "../components/TimelineTaskRow";
 import { QuickScheduleSheet } from "../components/QuickScheduleSheet";
-import { TaskListSkeleton } from "../components/LoadingSkeleton";
+import { LaterDatesSkeleton, TaskListSkeleton } from "../components/LoadingSkeleton";
 import { CalendarIcon, CheckIcon, ClockIcon, CloseIcon } from "../components/UiIcons";
 import { dateLabel, weekdayDate } from "../lib/dates";
 import type { TimelineLayout } from "../lib/userPreferences";
@@ -57,7 +57,12 @@ type TimelineScreenProps = {
   isRefreshing: boolean;
   tabBarHeight: number;
   onRefresh: () => Promise<void>;
-  onLoadLater?: () => void;
+  /**
+   * Starts loading dates after the near window. Present until they are
+   * requested; called when the user scrolls past what is loaded.
+   */
+  onNeedLaterDates?: () => void;
+  isLaterDatesLoading?: boolean;
   /** Total overdue count (from the workspace buckets). Falls back to a local
    *  count of the dropped sections when not supplied. */
   overdueCount?: number;
@@ -193,7 +198,8 @@ export function TimelineScreen({
   isRefreshing,
   tabBarHeight,
   onRefresh,
-  onLoadLater,
+  onNeedLaterDates,
+  isLaterDatesLoading = false,
   overdueCount,
   onOpenOverdue,
   onTriageOverdue,
@@ -246,6 +252,19 @@ export function TimelineScreen({
   const todayTotal = todayTasks.length + completedTodayCount;
   const todayProgress = todayTotal > 0 ? completedTodayCount / todayTotal : 0;
   const totalOverdue = overdueCount ?? localOverdueCount;
+  // Collapsed, the list ends at the "Later" disclosure. It also stands in for
+  // dates that are not loaded yet, so there is always a way past the window.
+  const showLaterDisclosure = !showAllSections && (laterTaskCount > 0 || onNeedLaterDates !== undefined);
+  const expandLater = () => {
+    setShowAllSections(true);
+    // Nothing loaded is left to reveal: the user is already past the window.
+    if (laterTaskCount === 0) onNeedLaterDates?.();
+  };
+  // Expanded and at the end of the list (scrolled there, or the list is too
+  // short to scroll) means the user is past everything loaded.
+  const handleEndReached = () => {
+    if (showAllSections) onNeedLaterDates?.();
+  };
 
   const totalRows = countTimelineRows(visibleSections);
   const visibleRowCount = useIncrementalRowCount(totalRows);
@@ -498,26 +517,26 @@ export function TimelineScreen({
           {!selectMode ? todaySummary : null}
         </>
       }
+      onEndReached={handleEndReached}
+      onEndReachedThreshold={0.5}
       ListFooterComponent={
         <>
-          {onLoadLater ? (
-            <Pressable onPress={onLoadLater} style={styles.laterSummary} accessibilityRole="button">
-              <Text style={styles.laterSummaryText}>Load later dates</Text>
-            </Pressable>
-          ) : null}
-          {laterTaskCount > 0 ? (
+          {showLaterDisclosure ? (
             <Pressable
-              onPress={() => setShowAllSections((current) => !current)}
+              onPress={expandLater}
               style={({ pressed }) => [styles.laterSummary, pressed && styles.laterSummaryPressed]}
               accessibilityRole="button"
-              accessibilityLabel={`${showAllSections ? "Collapse" : "Show"} ${laterTaskCount} later tasks`}
+              accessibilityLabel={laterTaskCount > 0 ? `Show ${laterTaskCount} later tasks` : "Show later dates"}
             >
               <View style={styles.laterSummaryRow}>
-                <Text style={styles.laterSummaryText}>Later · {laterTaskCount} tasks</Text>
-                <Text style={styles.laterSummaryAction}>{showAllSections ? "Collapse" : "Show"}</Text>
+                <Text style={styles.laterSummaryText}>
+                  {laterTaskCount > 0 ? `Later · ${laterTaskCount} tasks` : "Later dates"}
+                </Text>
+                <Text style={styles.laterSummaryAction}>Show</Text>
               </View>
             </Pressable>
           ) : null}
+          {showAllSections && isLaterDatesLoading ? <LaterDatesSkeleton /> : null}
         </>
       }
       ListEmptyComponent={
@@ -549,6 +568,8 @@ export function TimelineScreen({
       onEditTask={onEditTask}
       getGoalName={getGoalName}
       emptyComponent={emptyBlock}
+      onNeedLaterDates={onNeedLaterDates}
+      isLaterDatesLoading={isLaterDatesLoading}
     />
   );
 
@@ -558,9 +579,6 @@ export function TimelineScreen({
     <View style={styles.layoutRoot}>
       {layout === "carousel" ? (
         <Animated.View key="carousel" style={styles.layoutFill} entering={entering} exiting={exiting}>
-          {onLoadLater ? <Pressable onPress={onLoadLater} style={styles.laterSummary} accessibilityRole="button">
-            <Text style={styles.laterSummaryText}>Load later dates</Text>
-          </Pressable> : null}
           {carouselBody}
         </Animated.View>
       ) : (

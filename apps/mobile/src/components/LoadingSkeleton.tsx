@@ -170,6 +170,28 @@ export function TaskListSkeleton({
   );
 }
 
+/** Trailing placeholder while dates after the near window load. */
+export function LaterDatesSkeleton({ layout = "list" }: { layout?: "list" | "carousel" }) {
+  return (
+    <PageSkeleton label="later dates">
+      {layout === "carousel" ? (
+        <View style={styles.carouselLaterCard}>
+          <View style={styles.carouselCardHeader}>
+            <Block width={92} height={16} />
+            <Block width={42} height={10} />
+          </View>
+          <TaskRows count={3} slim />
+        </View>
+      ) : (
+        <View style={styles.laterWrap}>
+          <Block width={84} height={11} />
+          <TaskRows count={2} />
+        </View>
+      )}
+    </PageSkeleton>
+  );
+}
+
 function SkeletonCardRows({ count }: { count: number }) {
   return (
     <>
@@ -390,6 +412,16 @@ const styles = createThemedStyles({
     backgroundColor: colors.bgCard,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
+  },
+  carouselLaterCard: {
+    flex: 1,
+    padding: spacing.md,
+    gap: spacing.md,
+  },
+  laterWrap: {
+    paddingTop: spacing.md,
+    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
   },
   carouselCardHeader: {
     flexDirection: "row",

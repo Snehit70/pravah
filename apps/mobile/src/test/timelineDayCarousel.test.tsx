@@ -9,7 +9,7 @@
  * is possible until the user swipes away.
  */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -105,25 +105,43 @@ vi.mock("react-native", () => {
   return { View, Text, Pressable, ScrollView, StyleSheet, RefreshControl, FlatList, useWindowDimensions };
 });
 
+// Swipes settle through the list's momentum callback; tests call the latest one.
+const carouselScroll = vi.hoisted(() => ({
+  settle: null as null | ((event: { nativeEvent: { contentOffset: { x: number } } }) => void),
+}));
+// 400px window: 340px card + 12px gap.
+const CARD_INTERVAL = 352;
+function settleOn(index: number) {
+  act(() => carouselScroll.settle?.({ nativeEvent: { contentOffset: { x: index * CARD_INTERVAL } } }));
+}
+
+vi.mock("../components/LoadingSkeleton", () => ({
+  LaterDatesSkeleton: () => React.createElement("div", { "data-testid": "skeleton-later-dates" }),
+}));
+
 // ─── react-native-reanimated mock ─────────────────────────────────────────────
 vi.mock("react-native-reanimated", () => {
   const AnimatedFlatList = ({
     data,
     renderItem,
     keyExtractor,
+    onMomentumScrollEnd,
   }: {
     data: unknown[];
     renderItem: (params: { item: unknown; index: number }) => React.ReactNode;
     keyExtractor: (item: unknown) => string;
+    onMomentumScrollEnd?: typeof carouselScroll.settle;
     [key: string]: unknown;
-  }) =>
-    React.createElement(
+  }) => {
+    carouselScroll.settle = onMomentumScrollEnd ?? null;
+    return React.createElement(
       "div",
       {},
       data.map((item, index) =>
         React.createElement("div", { key: keyExtractor(item) }, renderItem({ item, index }))
       )
     );
+  };
   return {
     default: {
       View: ({ children }: { children?: React.ReactNode; [key: string]: unknown }) =>
@@ -376,5 +394,58 @@ describe("TimelineDayCarousel", () => {
   it("renders the shared empty state when there are no cards at all", () => {
     renderCarousel([]);
     expect(screen.getByTestId("empty-state")).toBeTruthy();
+  });
+
+  describe("later dates", () => {
+    const near: [string, MobileTask[]][] = [
+      [TODAY, [task("a", TODAY)]],
+      [TOMORROW, [task("b", TOMORROW)]],
+      ["2026-07-08", [task("c", "2026-07-08")]],
+    ];
+
+    it("ends the axis with a placeholder only while later dates are unloaded", () => {
+      const { rerender, props } = renderCarousel(near, { onNeedLaterDates: vi.fn() });
+      expect(screen.getByTestId("skeleton-later-dates")).toBeTruthy();
+
+      rerender(<TimelineDayCarousel {...props} onNeedLaterDates={undefined} />);
+      expect(screen.queryByTestId("skeleton-later-dates")).toBeNull();
+    });
+
+    it("loads later dates only when a swipe settles at the end of the loaded days", () => {
+      const onNeedLaterDates = vi.fn();
+      renderCarousel(near, { onNeedLaterDates });
+
+      settleOn(1);
+      expect(onNeedLaterDates).not.toHaveBeenCalled();
+      settleOn(2);
+      expect(onNeedLaterDates).toHaveBeenCalledTimes(1);
+    });
+
+    it("hands the placeholder's place to the first later day once it loads", () => {
+      const { rerender, props } = renderCarousel(near, { onNeedLaterDates: vi.fn() });
+      settleOn(3);
+      expect(screen.queryByText("Jump to a day")).toBeNull();
+
+      rerender(
+        <TimelineDayCarousel
+          {...props}
+          sections={[...near, ["2026-08-01", [task("later", "2026-08-01", "Later task")]]]}
+          onNeedLaterDates={undefined}
+        />
+      );
+      // The viewed card is now 2026-08-01, so its header offers the day picker.
+      expect(screen.getByText("Jump to a day")).toBeTruthy();
+      expect(screen.getByText("Later task")).toBeTruthy();
+    });
+
+    it("looks further out when the near window has no cards to swipe", () => {
+      const onNeedLaterDates = vi.fn();
+      const { rerender, props } = renderCarousel([], { onNeedLaterDates });
+      expect(onNeedLaterDates).toHaveBeenCalledTimes(1);
+
+      rerender(<TimelineDayCarousel {...props} onNeedLaterDates={undefined} isLaterDatesLoading />);
+      expect(screen.getByTestId("skeleton-later-dates")).toBeTruthy();
+      expect(screen.queryByTestId("empty-state")).toBeNull();
+    });
   });
 });

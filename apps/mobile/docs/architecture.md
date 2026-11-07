@@ -234,7 +234,8 @@ Derived outputs include:
 - `timelineSections`
 - `inboxCount`, `timelineCount`, `overdueCount`, `thisWeekCount`, `completedCount`
 - `today`, `tomorrow`, `weekEnd`
-- loading flags: `isInboxLoading`, `isTimelineLoading`, `isCompletedLoading`, `isAllTasksReady`
+- loading flags: `isInboxLoading`, `isTimelineLoading`, `isLaterTimelineLoading`, `hasLaterTimeline`, `isCompletedLoading`, `isAllTasksReady`
+- the timeline is two disjoint `getTimeline` subscriptions: overdue through `nearTimelineEnd` (today+14) always, and the later range only once `includeLaterTimeline` is set (the user scrolled or swiped past the near window, or Kairo, Goals or Insights opened)
 
 ### 3. Mutation state - `useTaskMutations.ts`
 

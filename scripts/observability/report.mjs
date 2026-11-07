@@ -51,12 +51,26 @@ export function windowMetrics(db, deployment, window) {
     WHERE deployment=$deployment AND timestamp >= $from AND timestamp < $to GROUP BY outcome`).all(params);
   const releaseMarkers = db.query(`SELECT timestamp,sha,label FROM releaseMarkers
     WHERE deployment=$deployment AND timestamp >= $from AND timestamp < $to ORDER BY timestamp`).all(params);
+  // The admin log protocol carries no run reason, so attribute each subscription
+  // re-run to the nearest plausible trigger: a token renewal changes identity and
+  // re-runs every query; a write re-runs only queries that read what changed.
+  const rerunCauses = db.query(`WITH m AS (SELECT function, timestamp t, read+write bytes FROM executions
+      WHERE ${where} AND cached=0 AND kind='Query' AND caller='SyncWorker')
+    SELECT function, cause, COUNT(*) misses, SUM(bytes) bytes FROM (SELECT function, bytes, CASE
+      WHEN EXISTS(SELECT 1 FROM executions e WHERE e.deployment=$deployment AND e.timestamp BETWEEN m.t-10000 AND m.t
+        AND e.function='POST /automation/convex-token') THEN 'cliTokenRenewal'
+      WHEN EXISTS(SELECT 1 FROM executions e WHERE e.deployment=$deployment AND e.timestamp BETWEEN m.t-5000 AND m.t
+        AND e.kind='Mutation' AND e.write>0 AND e.function NOT LIKE 'automation:%') THEN 'dataWrite'
+      WHEN EXISTS(SELECT 1 FROM executions e WHERE e.deployment=$deployment AND e.timestamp BETWEEN m.t-10000 AND m.t
+        AND e.function LIKE '% /api/auth/%') THEN 'appAuthRequest'
+      ELSE 'unattributed' END cause FROM m) GROUP BY function, cause ORDER BY bytes DESC`).all(params);
   const totals = functions.reduce((total, row) => {
     for (const key of Object.keys(total)) total[key] += row[key] ?? 0;
     return total;
   }, {calls: 0, cacheHits: 0, readBytes: 0, writeBytes: 0, readDocuments: 0, writeDocuments: 0, writeIndexRows: 0, failures: 0,
     unknownReadDocuments: 0, unknownWriteDocuments: 0, unknownWriteIndexRows: 0});
-  return {functions, missCosts, callers, totals, hours, captureOutcomes, releaseMarkers,
+  return {functions, missCosts, rerunCauses, callers, totals, hours, captureOutcomes, releaseMarkers,
+    rerunCauseNote: 'Inferred from the nearest preceding token renewal (10 s), data write (5 s) or app auth request (10 s); not a provider run reason.',
     captureOutcomeTimeBasis: 'receipt time, all functions; execution totals use event time',
     documentCountNote: 'Document/index totals sum known values only; unknown counters indicate incomplete counts.'};
 }

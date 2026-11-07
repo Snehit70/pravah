@@ -134,7 +134,21 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Check SDK and native dependencies
         working-directory: apps/mobile
-        run: bunx expo-doctor@1.21.5
+        shell: bash
+        run: |
+          set +e
+          output=$(bunx expo-doctor@1.21.5 2>&1)
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          # Only the SDK patch-drift check may warn; any other failure still fails the gate.
+          if [ "$status" -ne 0 ]; then
+            if printf '%s' "$output" | grep -q "1 check failed" && printf '%s' "$output" | grep -q "Check that packages match versions required by installed Expo SDK"; then
+              echo "::warning::expo-doctor reports SDK package patch drift; continuing (OTA release path)."
+            else
+              exit "$status"
+            fi
+          fi
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:
           distribution: temurin

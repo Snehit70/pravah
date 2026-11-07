@@ -24,10 +24,11 @@ describe("owner websocket token claims", () => {
       body: { subject, ttlSeconds: OWNER_TOKEN_TTL_SECONDS },
       json: (value: unknown) => value,
     });
+    const ttlMs = OWNER_TOKEN_TTL_SECONDS * 1000;
     vi.setSystemTime(1_800_000_000_000);
-    expect(await invoke("owner-a")).toEqual({token: "signed-token", expiresAt: 1_800_000_900_000});
-    vi.setSystemTime(1_800_000_900_000);
-    expect(await invoke("owner-a")).toEqual({token: "signed-token", expiresAt: 1_800_001_800_000});
+    expect(await invoke("owner-a")).toEqual({token: "signed-token", expiresAt: 1_800_000_000_000 + ttlMs});
+    vi.setSystemTime(1_800_000_000_000 + ttlMs);
+    expect(await invoke("owner-a")).toEqual({token: "signed-token", expiresAt: 1_800_000_000_000 + 2 * ttlMs});
     const first = sign.mock.calls[0] as unknown as [unknown, {payload: Record<string, unknown>; options: unknown}];
     const second = sign.mock.calls[1] as unknown as typeof first;
     const { iat: firstIat, ...firstIdentity } = first[1].payload;
@@ -35,7 +36,7 @@ describe("owner websocket token claims", () => {
     expect(firstIdentity).toEqual({sub: "owner-a", iss: issuer, aud: "convex"});
     expect(secondIdentity).toEqual(firstIdentity);
     expect(secondIat).not.toBe(firstIat);
-    expect(second[1].options).toMatchObject({jwt: {issuer, audience: "convex", expirationTime: "900s"}});
+    expect(second[1].options).toMatchObject({jwt: {issuer, audience: "convex", expirationTime: `${OWNER_TOKEN_TTL_SECONDS}s`}});
     await invoke("owner-b");
     expect((sign.mock.calls[2] as unknown as typeof first)[1].payload.sub).toBe("owner-b");
   });
