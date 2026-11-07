@@ -87,8 +87,10 @@ function computeIsActiveListLoading(
 export function deriveDisplayWorkspace(input: DisplayWorkspaceInput): DisplayWorkspace {
   const hasLiveWorkspaceData = !input.loading.inbox && !input.loading.timeline;
   const shouldRenderOptimisticShell = input.sessionLoading && input.hasCachedSessionHint;
+  // A cached session hint is enough to show the snapshot. Waiting for the live
+  // session object as well kept the timeline on a skeleton on cold start.
   const shouldUseWorkspaceSnapshot =
-    input.sessionReady &&
+    (input.sessionReady || input.hasCachedSessionHint) &&
     input.snapshot !== null &&
     input.isSnapshotHydrated &&
     !hasLiveWorkspaceData;
