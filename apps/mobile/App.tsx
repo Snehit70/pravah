@@ -1396,26 +1396,20 @@ function MobileApp() {
   const padCount = (n: number) => (n < 10 ? `0${n}` : `${n}`);
   // Timeline no longer wears an overdue/upcoming counts line — overdue lives on
   // its own card/doorway; counts wrapped to two lines and stole header height.
+  // Loading status ("Opening your timeline", "Syncing…") is not shown here: the
+  // skeleton already says it, and a line that appears and disappears under the
+  // title made the header jump. The inbox count waits for live or snapshot data
+  // so it never reads "0 to triage" while loading.
   const headerSubtitle =
-    shouldRenderOptimisticShell
-      ? "Restoring your session"
-      : session && !hasLiveWorkspaceData
-        ? activeTab === "timeline"
-          ? "Opening your timeline"
-          : activeTab === "insights"
-            ? "Opening your stats"
-            : activeTab === "goals"
-              ? "Opening your goals"
-              : "Opening your inbox"
-        : session && !isDataBootstrapReady
-          ? "Syncing your workspace"
-        : activeTab === "timeline"
-          ? ""
-          : activeTab === "insights"
-            ? "On-device snapshot"
-            : activeTab === "goals"
-              ? "Long horizon"
-              : `${padCount(displayInboxCount)} to triage`;
+    activeTab === "timeline"
+      ? null
+      : activeTab === "insights"
+        ? "On-device snapshot"
+        : activeTab === "goals"
+          ? "Long horizon"
+          : hasLiveWorkspaceData || shouldUseWorkspaceSnapshot
+            ? `${padCount(displayInboxCount)} to triage`
+            : null;
 
   // ── Main layout ─────────────────────────────────────────────────────
 
