@@ -416,6 +416,9 @@ export function InboxScreen({
   );
 
   const loadingBlock = <TaskListSkeleton variant="inbox" />;
+  // Select stays in the header whenever there are rows, so it is reserved while
+  // workspace actions are gated (snapshot / loading) and only dimmed.
+  const selectInert = !canAct || isLoading || tasks.length === 0;
   const allRows = buildInboxRows(filteredTasks);
   const expandableRows = allRows.filter((row) => {
     if (row.kind !== "task") return true;
@@ -464,18 +467,18 @@ export function InboxScreen({
             accessibilityLabel="Search inbox"
           />
         </View>
-        {canAct && (tasks.length > 0 || isLoading) ? (
+        {tasks.length > 0 || isLoading ? (
           <Pressable
             onPress={() => setSelectMode(true)}
-            disabled={isLoading || tasks.length === 0}
+            disabled={selectInert}
             hitSlop={10}
             accessibilityRole="button"
-            accessibilityState={{ disabled: isLoading || tasks.length === 0 }}
+            accessibilityState={{ disabled: selectInert }}
             accessibilityLabel="Select tasks"
             style={({ pressed }) => [
               styles.selectEnter,
-              (isLoading || tasks.length === 0) && styles.selectEnterDisabled,
-              pressed && { opacity: 0.6 },
+              selectInert && styles.selectEnterDisabled,
+              pressed && !selectInert && { opacity: 0.6 },
             ]}
           >
             <SelectGlyph size={18} />

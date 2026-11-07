@@ -929,16 +929,21 @@ export function GoalsScreen({
                 <Text style={styles.sectionMeta}>
                   {isSearching ? `${filteredGoals.length} of ${sortedGoals.length} goals` : `${sortedGoals.length} active`}
                 </Text>
-                {onCreateGoal ? (
-                  <Pressable
-                    onPress={onCreateGoal}
-                    accessibilityRole="button"
-                    accessibilityLabel="Create a new goal"
-                    style={({ pressed }) => [styles.newGoalAction, pressed && { opacity: 0.7 }]}
-                  >
-                    <Text style={styles.actionText}>Add goal</Text>
-                  </Pressable>
-                ) : null}
+                {/* Always rendered so the header keeps its width while actions are gated (snapshot/loading). */}
+                <Pressable
+                  onPress={onCreateGoal}
+                  disabled={!onCreateGoal}
+                  accessibilityRole="button"
+                  accessibilityLabel="Create a new goal"
+                  accessibilityState={{ disabled: !onCreateGoal }}
+                  style={({ pressed }) => [
+                    styles.newGoalAction,
+                    !onCreateGoal && styles.newGoalActionDisabled,
+                    pressed && onCreateGoal && { opacity: 0.7 },
+                  ]}
+                >
+                  <Text style={styles.actionText}>Add goal</Text>
+                </Pressable>
             </View>
           ) : null}
           </View>
@@ -1100,6 +1105,9 @@ const styles = createThemedStyles({
     paddingHorizontal: spacing.sm,
     alignItems: "center",
     justifyContent: "center",
+  },
+  newGoalActionDisabled: {
+    opacity: 0.45,
   },
   actionText: {
     ...typography.micro,
