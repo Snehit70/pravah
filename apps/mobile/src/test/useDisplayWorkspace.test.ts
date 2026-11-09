@@ -79,6 +79,47 @@ describe("deriveDisplayWorkspace", () => {
     expect(display.isActiveListLoading).toBe(false);
   });
 
+  it("shows the cached snapshot while the session object is still restoring", () => {
+    const display = deriveDisplayWorkspace(
+      baseInput({
+        sessionReady: false,
+        hasCachedSessionHint: true,
+        loading: { inbox: true, timeline: true, completed: true, allTasksReady: false, imageCollectionsReady: false },
+        snapshot: {
+          capturedAt: 1,
+          inboxTasks: [],
+          scheduledTasks: [makeTask({ _id: "snapshot-timeline", deadline: "2026-06-17" })],
+          completedTasks: [],
+        },
+        isSnapshotHydrated: true,
+        activeTab: "timeline",
+      })
+    );
+
+    expect(display.shouldUseWorkspaceSnapshot).toBe(true);
+    expect(display.isActiveListLoading).toBe(false);
+    expect(display.displayScheduledTasks.map((task) => task._id)).toEqual(["snapshot-timeline"]);
+  });
+
+  it("does not show the snapshot without a session or a cached session hint", () => {
+    const display = deriveDisplayWorkspace(
+      baseInput({
+        sessionReady: false,
+        hasCachedSessionHint: false,
+        loading: { inbox: true, timeline: true, completed: true, allTasksReady: false, imageCollectionsReady: false },
+        snapshot: {
+          capturedAt: 1,
+          inboxTasks: [makeTask({ _id: "snapshot-inbox" })],
+          scheduledTasks: [],
+          completedTasks: [],
+        },
+        isSnapshotHydrated: true,
+      })
+    );
+
+    expect(display.shouldUseWorkspaceSnapshot).toBe(false);
+  });
+
   it("keeps optimistic tasks scoped to the active tab display", () => {
     const display = deriveDisplayWorkspace(
       baseInput({

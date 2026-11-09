@@ -16,7 +16,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Animated, {
   FadeIn,
   FadeOut,
-  LinearTransition,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -85,8 +84,6 @@ type InboxRow =
     }
   | { kind: "no-priority-summary"; count: number }
   | { kind: "task"; task: MobileTask };
-
-const listItemLayout = LinearTransition.duration(220);
 
 const BUCKET_ORDER: PriorityBucket[] = ["p1", "p2", "p3", "none"];
 const BUCKET_LABEL: Record<PriorityBucket, string> = {
@@ -419,6 +416,9 @@ export function InboxScreen({
   );
 
   const loadingBlock = <TaskListSkeleton variant="inbox" />;
+  // Select stays in the header whenever there are rows, so it is reserved while
+  // workspace actions are gated (snapshot / loading) and only dimmed.
+  const selectInert = !canAct || isLoading || tasks.length === 0;
   const allRows = buildInboxRows(filteredTasks);
   const expandableRows = allRows.filter((row) => {
     if (row.kind !== "task") return true;
@@ -467,18 +467,18 @@ export function InboxScreen({
             accessibilityLabel="Search inbox"
           />
         </View>
-        {canAct && (tasks.length > 0 || isLoading) ? (
+        {tasks.length > 0 || isLoading ? (
           <Pressable
             onPress={() => setSelectMode(true)}
-            disabled={isLoading || tasks.length === 0}
+            disabled={selectInert}
             hitSlop={10}
             accessibilityRole="button"
-            accessibilityState={{ disabled: isLoading || tasks.length === 0 }}
+            accessibilityState={{ disabled: selectInert }}
             accessibilityLabel="Select tasks"
             style={({ pressed }) => [
               styles.selectEnter,
-              (isLoading || tasks.length === 0) && styles.selectEnterDisabled,
-              pressed && { opacity: 0.6 },
+              selectInert && styles.selectEnterDisabled,
+              pressed && !selectInert && { opacity: 0.6 },
             ]}
           >
             <SelectGlyph size={18} />
@@ -512,9 +512,6 @@ export function InboxScreen({
         updateCellsBatchingPeriod={50}
         windowSize={7}
         removeClippedSubviews
-        // Collapsing a priority group or completing a task slides the rows
-        // below into place instead of snapping them.
-        itemLayoutAnimation={reducedMotion ? undefined : listItemLayout}
         keyExtractor={(row) => {
           if (row.kind === "header") return `header-${row.bucket}`;
           if (row.kind === "no-priority-summary") return "no-priority-summary";

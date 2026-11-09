@@ -26,7 +26,12 @@ name: Native workspace workflows
 - inputText: "Native CI edited task"
 - assertVisible: "Save changes"
 - tapOn: "Save changes"
+# The sheet closes on save, so reopen the renamed task before completing it.
 # Completion history below verifies that the renamed title was persisted.
+- extendedWaitUntil:
+    visible: "Native CI edited task"
+    timeout: 10000
+- tapOn: "Native CI edited task"
 - tapOn: "Complete task"
 - tapOn:
     id: "tab-timeline"

@@ -16,7 +16,6 @@ import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
 import Animated, {
   FadeIn,
   FadeOut,
-  LinearTransition,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -101,7 +100,6 @@ function layoutEntering() {
   };
 }
 
-const listItemLayout = LinearTransition.duration(220);
 
 /** Today's done/total bar. Fills from where it is when a task is completed. */
 function TodayProgressBar({ ratio }: { ratio: number }) {
@@ -421,7 +419,11 @@ export function TimelineScreen({
     </Animated.View>
   );
 
-  const loadingBlock = <TaskListSkeleton variant="timeline" layout={layout} />;
+  // The date comes from the device clock, so it shows on the first frame while
+  // the timeline query is still pending.
+  const loadingBlock = (
+    <TaskListSkeleton variant="timeline" layout={layout} todayDate={weekdayDate(today)} />
+  );
 
   const animateCrossfade = crossfadeArmed && !reducedMotion;
   const entering = animateCrossfade ? layoutEntering : undefined;
@@ -456,9 +458,6 @@ export function TimelineScreen({
       updateCellsBatchingPeriod={50}
       windowSize={7}
       removeClippedSubviews
-      // Completing or rescheduling a task slides the rows below up into its
-      // place instead of snapping them.
-      itemLayoutAnimation={reducedMotion ? undefined : listItemLayout}
       keyExtractor={(row) =>
         row.kind === "header" ? `header-${row.dateKey}` : row.task._id
       }
@@ -549,28 +548,41 @@ export function TimelineScreen({
     />
   );
 
+  // The skeleton fades out and the real carousel fades in, so the first load
+  // reads as one motion instead of a hard cut.
   const carouselBody = isLoading ? (
-    loadingBlock
+    <Animated.View
+      exiting={reducedMotion ? undefined : FadeOut.duration(150)}
+      pointerEvents="none"
+      style={StyleSheet.absoluteFill}
+    >
+      {loadingBlock}
+    </Animated.View>
   ) : (
-    <TimelineDayCarousel
-      sections={sections}
-      today={today}
-      tomorrow={tomorrow}
-      isRefreshing={isRefreshing}
-      tabBarHeight={tabBarHeight}
-      onRefresh={onRefresh}
-      overdueCount={overdueCount}
-      completedTasks={completedTasks}
-      onTriageOverdue={onTriageOverdue}
-      onRescheduleAllGoals={onRescheduleAllGoals}
-      onCompleteTask={onCompleteTask}
-      onReopenTask={onReopenTask}
-      onEditTask={onEditTask}
-      getGoalName={getGoalName}
-      emptyComponent={emptyBlock}
-      onNeedLaterDates={onNeedLaterDates}
-      isLaterDatesLoading={isLaterDatesLoading}
-    />
+    <Animated.View
+      entering={reducedMotion ? undefined : FadeIn.duration(220)}
+      style={styles.layoutFill}
+    >
+      <TimelineDayCarousel
+        sections={sections}
+        today={today}
+        tomorrow={tomorrow}
+        isRefreshing={isRefreshing}
+        tabBarHeight={tabBarHeight}
+        onRefresh={onRefresh}
+        overdueCount={overdueCount}
+        completedTasks={completedTasks}
+        onTriageOverdue={onTriageOverdue}
+        onRescheduleAllGoals={onRescheduleAllGoals}
+        onCompleteTask={onCompleteTask}
+        onReopenTask={onReopenTask}
+        onEditTask={onEditTask}
+        getGoalName={getGoalName}
+        emptyComponent={emptyBlock}
+        onNeedLaterDates={onNeedLaterDates}
+        isLaterDatesLoading={isLaterDatesLoading}
+      />
+    </Animated.View>
   );
 
   // Both layouts mount in an absolute-fill wrapper so the exiting one can

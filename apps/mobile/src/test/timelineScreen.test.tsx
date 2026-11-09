@@ -238,8 +238,8 @@ vi.mock("../hooks/useConfirm", () => ({ useConfirm: () => vi.fn(async () => true
 
 // ─── LoadingSkeleton mock ─────────────────────────────────────────────────────
 vi.mock("../components/LoadingSkeleton", () => ({
-  TaskListSkeleton: ({ variant }: { variant: string }) =>
-    React.createElement("div", { "data-testid": `skeleton-${variant}` }),
+  TaskListSkeleton: ({ variant, todayDate }: { variant: string; todayDate?: string }) =>
+    React.createElement("div", { "data-testid": `skeleton-${variant}` }, todayDate ?? null),
   LaterDatesSkeleton: () => React.createElement("div", { "data-testid": "skeleton-later-dates" }),
 }));
 
@@ -469,6 +469,12 @@ describe("TimelineScreen", () => {
 
     expect(screen.queryByText("Today is clear.")).toBeNull();
     expect(screen.getByTestId("skeleton-timeline")).toBeTruthy();
+  });
+
+  it("shows today's date inside the loading skeleton", () => {
+    render(<TimelineScreen {...baseProps} sections={[]} isLoading={true} />);
+    // The date lives inside the skeleton so it sits in the same card as the real header.
+    expect(screen.getByTestId("skeleton-timeline").textContent).toBe("MON · MAY 4");
   });
 
   it("collapses overdue tasks into one review entry", () => {
