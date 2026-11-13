@@ -29,7 +29,9 @@ mkdir -p "$build_evidence"
 ) &
 probe_pid=$!
 trap 'kill "$probe_pid" 2>/dev/null || true' EXIT
-gradle_args=(assembleRelease -PreactNativeArchitectures=x86_64 --max-workers=2 --no-parallel --no-daemon --console=plain --stacktrace)
+# Use all 4 runner vCPUs and parallel project execution (heap 2 GiB, metaspace
+# 1 GiB per withBuildPerformance.js; the 16 GB runner has headroom).
+gradle_args=(assembleRelease -PreactNativeArchitectures=x86_64 --max-workers=4 --no-daemon --console=plain --stacktrace)
 if [[ "${FORCE_CLEAN:-false}" == true ]]; then gradle_args+=(--no-build-cache --rerun-tasks); fi
 ./gradlew "${gradle_args[@]}" 2>&1 | tee "$build_evidence/gradle.log"
 cd "$repo_root"
