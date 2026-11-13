@@ -8,5 +8,10 @@
   "frameP95Ms": 150.278484,
   "maximumRegressionRatio": 1.2,
   "targetFrameP95Ms": 100,
-  "protocol": "12 ADB swipes of 600 ms, six up then six down, after Maestro exits"
+  "protocol": "12 ADB swipes of 600 ms, six up then six down, after Maestro exits",
+  "startupInteractiveMedianMs": 5100,
+  "maximumStartupRegressionRatio": 1.65,
+  "startupLaunchCeilingMs": 15000,
+  "startupSource": "5 device-timestamp CI runs at 46af18f (2026-11-13: 43372923177, 43372934206, 43372941733, 43372949228, 43372957121); run medians 3966, 4032, 5062, 5748 and 6870 ms; baseline is their median rounded; ratio covers the 1.73x run-to-run spread with about 20% headroom",
+  "startupProtocol": "one warm-up then eight cold launches; device logcat START to app_interactive_ready"
 }

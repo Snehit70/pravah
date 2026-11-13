@@ -5,7 +5,9 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '15 3 * * *'
+    # Off the busy top/quarter-hour slots, which GitHub delays the most (runs
+    # queued for 03:15 started 5-8 h late). Expect some drift regardless.
+    - cron: '41 2 * * *'
   workflow_dispatch:
     inputs:
       force_clean:
@@ -49,6 +51,7 @@ jobs:
       artifact_name: ${{ steps.reuse.outputs.artifact_name }}
       release_contract: ${{ steps.context.outputs.release_contract }}
       context_artifact: ${{ steps.context.outputs.context_artifact }}
+      warm: ${{ steps.base-lookup.outputs.cache-hit == 'true' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -58,12 +61,6 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
       - id: context
         run: bun scripts/mobile-ci/context.ts
-      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
-        if: steps.context.outputs.mobile_required == 'true'
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: ${{ runner.os }}-bun-
       - if: steps.context.outputs.mobile_required == 'true'
         run: bun install --frozen-lockfile
       - id: fingerprint
@@ -74,6 +71,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bun scripts/mobile-ci/reuse.ts
+      # Warm path: when a native base for this fingerprint is cached, each device
+      # job repacks the JS bundle itself while its emulator boots, and the
+      # separate prepare job is skipped.
+      - id: base-lookup
+        if: steps.context.outputs.mobile_required == 'true' && steps.reuse.outputs.reused != 'true' && steps.context.outputs.force_clean != 'true'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: artifacts/mobile-native-base
+          key: ${{ steps.fingerprint.outputs.cache_key }}
+          lookup-only: true
       - name: Retrieve the validated PR base
         if: steps.reuse.outputs.promote_base == 'true'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
@@ -104,7 +111,7 @@ jobs:
   prepare:
     name: Prepare current mobile test APK
     needs: plan
-    if: needs.plan.outputs.mobile_required == 'true' && needs.plan.outputs.reused != 'true'
+    if: needs.plan.outputs.mobile_required == 'true' && needs.plan.outputs.reused != 'true' && needs.plan.outputs.warm != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     outputs:
@@ -126,29 +133,9 @@ jobs:
         with:
           name: ${{ needs.plan.outputs.context_artifact }}
           path: artifacts/mobile-ci
-      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: ${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
       - name: Check SDK and native dependencies
-        working-directory: apps/mobile
-        shell: bash
-        run: |
-          set +e
-          output=$(bunx expo-doctor@1.21.5 2>&1)
-          status=$?
-          set -e
-          printf '%s\n' "$output"
-          # Only the SDK patch-drift check may warn; any other failure still fails the gate.
-          if [ "$status" -ne 0 ]; then
-            if printf '%s' "$output" | grep -q "1 check failed" && printf '%s' "$output" | grep -q "Check that packages match versions required by installed Expo SDK"; then
-              echo "::warning::expo-doctor reports SDK package patch drift; continuing (OTA release path)."
-            else
-              exit "$status"
-            fi
-          fi
+        run: bash scripts/mobile-ci/expo-doctor.sh
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:
           distribution: temurin
@@ -167,6 +154,9 @@ jobs:
           FORCE_CLEAN: ${{ needs.plan.outputs.force_clean }}
         run: |
           bun -e 'const fs=require("node:fs"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "preparation="+(process.env.BASE_VALID==="true"&&process.env.FORCE_CLEAN!=="true"?"repack":"build")+"\nimage="+(process.env.ImageVersion??"unknown")+"\n")'
+      # One ~1.9 GB entry per native fingerprint. Keying on the commit as well
+      # saved a fresh copy on every build and pushed the repo against the 10 GB
+      # Actions cache cap.
       - id: gradle-cache
         if: steps.mode.outputs.preparation == 'build'
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
@@ -174,9 +164,8 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: mobile-gradle-${{ runner.os }}-${{ needs.plan.outputs.native_fingerprint }}-${{ github.sha }}
+          key: mobile-gradle-${{ runner.os }}-${{ needs.plan.outputs.native_fingerprint }}
           restore-keys: |
-            mobile-gradle-${{ runner.os }}-${{ needs.plan.outputs.native_fingerprint }}-
             mobile-gradle-${{ runner.os }}-
       - name: Compile a native base when required
         if: steps.mode.outputs.preparation == 'build'
@@ -185,22 +174,20 @@ jobs:
           FORCE_CLEAN: ${{ needs.plan.outputs.force_clean }}
           EXPO_PUBLIC_NATIVE_CI_SOURCE: '0000000000000000000000000000000000000000'
         run: bash scripts/mobile-ci/build-base.sh
+      # A forced clean build runs with --no-build-cache, so its Gradle home has no
+      # build outputs worth keeping. Saving it under the fingerprint key would
+      # pin a cache that makes every later build for that fingerprint cold.
       - name: Retain reusable Gradle dependencies
-        if: steps.mode.outputs.preparation == 'build' && steps.gradle-cache.outputs.cache-hit != 'true'
+        if: steps.mode.outputs.preparation == 'build' && steps.gradle-cache.outputs.cache-hit != 'true' && needs.plan.outputs.force_clean != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
           key: ${{ steps.gradle-cache.outputs.cache-primary-key }}
-      - name: Embed the current source bundle
+      - name: Embed and verify the current source bundle
         timeout-minutes: 10
-        working-directory: apps/mobile
-        run: |
-          mkdir -p "$GITHUB_WORKSPACE/artifacts/mobile-native-apk"
-          bunx @expo/repack-app@0.10.4 --platform android --js-bundle-only --embed-bundle-assets --source-app "$GITHUB_WORKSPACE/artifacts/mobile-native-base/base.apk" --output "$GITHUB_WORKSPACE/artifacts/mobile-native-apk/app.apk" --ks "$GITHUB_WORKSPACE/artifacts/mobile-native-base/debug.keystore" --ks-key-alias androiddebugkey --ks-pass pass:android --ks-key-pass pass:android
-      - name: Verify the prepared bundle and native configuration
-        run: bun scripts/mobile-ci/verify-apk.ts fixture artifacts/mobile-native-apk/app.apk
+        run: bash scripts/mobile-ci/repack.sh
       - id: prepared
         run: bun scripts/mobile-ci/native-base.ts prepared
       - name: Cache this profile's native base
@@ -228,10 +215,20 @@ jobs:
   workflows:
     name: Android native workflows
     needs: [plan, prepare]
+    if: >-
+      !cancelled() && needs.plan.result == 'success' &&
+      (needs.prepare.result == 'success' ||
+       (needs.prepare.result == 'skipped' && needs.plan.outputs.warm == 'true'))
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    env:
+      EXPO_PUBLIC_NATIVE_CI_SOURCE: ${{ needs.plan.outputs.tree }}
     outputs:
       image: ${{ steps.device.outputs.image }}
+      artifact_name: ${{ steps.device.outputs.artifact_name }}
+      apk_file: ${{ steps.device.outputs.apk_file }}
+      apk_sha256: ${{ steps.device.outputs.apk_sha256 }}
+      apk_content_sha256: ${{ steps.device.outputs.apk_content_sha256 }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -243,15 +240,35 @@ jobs:
         with:
           name: ${{ needs.plan.outputs.context_artifact }}
           path: artifacts/mobile-ci
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - if: needs.plan.outputs.warm != 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: ${{ needs.prepare.outputs.artifact_name }}
           path: artifacts/mobile-native-apk
+      - if: needs.plan.outputs.warm == 'true'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: artifacts/mobile-native-base
+          key: ${{ needs.plan.outputs.cache_key }}
+          fail-on-cache-miss: true
+      - if: needs.plan.outputs.warm == 'true'
+        run: bun scripts/mobile-ci/native-base.ts assert
       - id: device
         uses: ./.github/actions/mobile-device
         with:
           suite: workflows
           apk-sha256: ${{ needs.prepare.outputs.apk_sha256 }}
+          prepare: ${{ needs.plan.outputs.warm }}
+          doctor: true
+      # Warm path: this job is the APK producer that a later merge promotes.
+      - if: needs.plan.outputs.warm == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ${{ steps.device.outputs.artifact_name }}
+          path: artifacts/mobile-native-base
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -263,10 +280,20 @@ jobs:
   performance:
     name: Android startup and scroll performance
     needs: [plan, prepare]
+    if: >-
+      !cancelled() && needs.plan.result == 'success' &&
+      (needs.prepare.result == 'success' ||
+       (needs.prepare.result == 'skipped' && needs.plan.outputs.warm == 'true'))
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    env:
+      EXPO_PUBLIC_NATIVE_CI_SOURCE: ${{ needs.plan.outputs.tree }}
     outputs:
       image: ${{ steps.device.outputs.image }}
+      artifact_name: ${{ steps.device.outputs.artifact_name }}
+      apk_file: ${{ steps.device.outputs.apk_file }}
+      apk_sha256: ${{ steps.device.outputs.apk_sha256 }}
+      apk_content_sha256: ${{ steps.device.outputs.apk_content_sha256 }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -278,15 +305,26 @@ jobs:
         with:
           name: ${{ needs.plan.outputs.context_artifact }}
           path: artifacts/mobile-ci
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - if: needs.plan.outputs.warm != 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: ${{ needs.prepare.outputs.artifact_name }}
           path: artifacts/mobile-native-apk
+      - if: needs.plan.outputs.warm == 'true'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: artifacts/mobile-native-base
+          key: ${{ needs.plan.outputs.cache_key }}
+          fail-on-cache-miss: true
+      - if: needs.plan.outputs.warm == 'true'
+        run: bun scripts/mobile-ci/native-base.ts assert
       - id: device
         uses: ./.github/actions/mobile-device
         with:
           suite: performance
           apk-sha256: ${{ needs.prepare.outputs.apk_sha256 }}
+          prepare: ${{ needs.plan.outputs.warm }}
+          doctor: false
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -353,14 +391,17 @@ jobs:
           PREPARE_RESULT: ${{ needs.prepare.result }}
           WORKFLOWS_RESULT: ${{ needs.workflows.result }}
           PERFORMANCE_RESULT: ${{ needs.performance.result }}
-          PREPARE_IMAGE: ${{ needs.prepare.outputs.image }}
+          WARM: ${{ needs.plan.outputs.warm }}
+          PREPARE_IMAGE: ${{ needs.prepare.outputs.image || needs.workflows.outputs.image }}
           WORKFLOWS_IMAGE: ${{ needs.workflows.outputs.image }}
           PERFORMANCE_IMAGE: ${{ needs.performance.outputs.image }}
           REUSED: ${{ needs.plan.outputs.reused }}
-          APK_ARTIFACT: ${{ needs.prepare.outputs.artifact_name }}
-          APK_FILE: ${{ needs.prepare.outputs.apk_file }}
-          APK_SHA256: ${{ needs.prepare.outputs.apk_sha256 }}
-          APK_PREPARATION: ${{ needs.prepare.outputs.preparation }}
+          APK_ARTIFACT: ${{ needs.prepare.outputs.artifact_name || needs.workflows.outputs.artifact_name }}
+          APK_FILE: ${{ needs.prepare.outputs.apk_file || needs.workflows.outputs.apk_file }}
+          APK_SHA256: ${{ needs.prepare.outputs.apk_sha256 || needs.workflows.outputs.apk_sha256 }}
+          WORKFLOWS_APK_CONTENT_SHA256: ${{ needs.workflows.outputs.apk_content_sha256 }}
+          PERFORMANCE_APK_CONTENT_SHA256: ${{ needs.performance.outputs.apk_content_sha256 }}
+          APK_PREPARATION: ${{ needs.prepare.outputs.preparation || 'repack-on-device-runner' }}
         run: bun scripts/mobile-ci/result.ts
       - if: needs.plan.outputs.mobile_required == 'true' && needs.plan.outputs.reused != 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

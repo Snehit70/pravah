@@ -9,8 +9,15 @@ permissions:
   contents: read
   pull-requests: read
 
+# Only labeled merges join the shared release lane. Every other closed PR gets a
+# throwaway group so it skips at once and never queues behind, or displaces a
+# pending, real release in `mobile-release`.
 concurrency:
-  group: mobile-release
+  group: >-
+    ${{ github.event.pull_request.merged == true &&
+    (contains(github.event.pull_request.labels.*.name, 'mobile-ota') ||
+     contains(github.event.pull_request.labels.*.name, 'mobile-ota-recovery'))
+    && 'mobile-release' || format('mobile-ota-release-noop-{0}', github.run_id) }}
   cancel-in-progress: false
 
 env:

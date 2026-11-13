@@ -8,6 +8,18 @@ import subprocess
 import time
 
 PACKAGE = "com.pravah.mobile.e2e"
+ACTIVITY = f"{PACKAGE}/.MainActivity"
+# A stock app on the same emulator. Its cold start tracks runner speed without
+# depending on Pravah code, so one is recorded before every Pravah launch.
+CONTROL_ACTIVITY = "com.android.settings/.Settings"
+MARKER = "app_interactive_ready"
+# Launch 0 is a declared warm-up: it was the slowest launch in 15 of 23 runs.
+# It is still recorded and still held to the per-launch ceiling.
+WARMUP_LAUNCHES = 1
+MEASURED_LAUNCHES = 8
+READY_TIMEOUT_S = 30
+TRANSPORT_ERRORS_ALLOWED = 2
+EPOCH = re.compile(r"^\s*(\d+\.\d+)\s")
 BASELINE = json.loads(pathlib.Path(__file__).with_name("native-baseline.json").read_text())
 
 
@@ -15,47 +27,150 @@ def adb(*args, timeout=None):
     return subprocess.check_output(["adb", *args], text=True, timeout=timeout)
 
 
-def interactive_time(pid, began, out, iteration):
+def epoch_ms(line):
+    match = EPOCH.match(line)
+    if not match:
+        raise RuntimeError(f"Unparseable logcat line: {line!r}")
+    return round(float(match.group(1)) * 1000)
+
+
+def launch_fields(output):
+    return dict(re.findall(r"^(\w+): (.*?)\s*$", output, re.M))
+
+
+def ready_at(pid, began, out, iteration):
+    """Device time at which this PID logged the interactive marker.
+
+    One logcat stream, filtered on the device, waits for the marker. Repeated
+    full log dumps from the host are slower, and they load the emulator while
+    the app starts. A dropped stream reopens for the same PID. The marker keeps
+    its device timestamp, so reconnect time does not enter the sample.
+    """
     disconnects = 0
-    while time.monotonic() - began < 30:
+    while True:
+        remaining = READY_TIMEOUT_S - (time.monotonic() - began)
+        if remaining <= 0:
+            raise RuntimeError(f"App did not report interactive within {READY_TIMEOUT_S} seconds")
         try:
-            logs = adb("logcat", "-d", "--pid", pid, "-v", "epoch",
-                       timeout=min(5, 30 - (time.monotonic() - began)))
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
-            if isinstance(error, subprocess.CalledProcessError) and error.returncode != 255:
+            output = adb("logcat", "-v", "epoch", f"--pid={pid}", "-e", MARKER, "-m", "1",
+                         timeout=remaining)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"App did not report interactive within {READY_TIMEOUT_S} seconds") from None
+        except subprocess.CalledProcessError as error:
+            if error.returncode != 255:
                 raise
             disconnects += 1
             with (out / "startup-transport-errors.jsonl").open("a") as evidence:
                 evidence.write(json.dumps({"iteration": iteration, "pid": pid,
                     "elapsedMs": round((time.monotonic() - began) * 1000),
-                    "returnCode": getattr(error, "returncode", "timeout")}) + "\n")
-            if disconnects >= 3:
+                    "returnCode": error.returncode}) + "\n")
+            if disconnects > TRANSPORT_ERRORS_ALLOWED:
                 raise
-        else:
-            if "app_interactive_ready" in logs:
-                return round((time.monotonic() - began) * 1000)
-        time.sleep(0.1)
-    raise RuntimeError("App did not report interactive within 30 seconds")
+            continue
+        lines = [line for line in output.splitlines() if MARKER in line]
+        if not lines:
+            raise RuntimeError(f"logcat ended before PID {pid} reported {MARKER}")
+        return epoch_ms(lines[0])
+
+
+def launch_started_at(after_ms, ready_ms):
+    """Device time at which ActivityTaskManager started this launch."""
+    log = adb("logcat", "-d", "-v", "epoch", "-s", "ActivityTaskManager:I")
+    starts = [epoch_ms(line) for line in log.splitlines()
+              if "START u" in line and f"cmp={ACTIVITY}" in line]
+    starts = [started for started in starts if after_ms < started <= ready_ms]
+    if not starts:
+        raise RuntimeError("ActivityTaskManager START line for this launch is missing from logcat")
+    return max(starts)
+
+
+def control_first_frame(out, iteration):
+    """Cold first-frame time of the control app, or None if it did not cold start."""
+    package = CONTROL_ACTIVITY.split("/")[0]
+    try:
+        adb("shell", "am", "force-stop", package)
+        output = adb("shell", "am", "start", "-W", "-n", CONTROL_ACTIVITY, timeout=30)
+        adb("shell", "am", "force-stop", package)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        (out / f"control-launch-{iteration}.txt").write_text(f"control launch failed: {error!r}\n")
+        return None
+    (out / f"control-launch-{iteration}.txt").write_text(output)
+    fields = launch_fields(output)
+    if fields.get("Status") != "ok" or fields.get("LaunchState") != "COLD":
+        return None
+    return int(fields["TotalTime"])
+
+
+def summarize(launches):
+    measured = [launch for launch in launches if not launch["warmUp"]]
+    interactive = [launch["deviceInteractiveMs"] for launch in measured]
+    ratios = [launch["deviceInteractiveMs"] / launch["controlFirstFrameMs"]
+              for launch in measured if launch["controlFirstFrameMs"]]
+    controls = [launch["controlFirstFrameMs"] for launch in measured if launch["controlFirstFrameMs"]]
+    baseline = BASELINE["startupInteractiveMedianMs"]
+    median = round(statistics.median(interactive))
+    return {
+        "launches": launches,
+        "interactiveMedianMs": median,
+        "interactiveMaxMs": max(launch["deviceInteractiveMs"] for launch in launches),
+        "baselineInteractiveMedianMs": baseline,
+        "interactiveMedianBudgetMs": round(baseline * BASELINE["maximumStartupRegressionRatio"]),
+        "launchCeilingMs": BASELINE["startupLaunchCeilingMs"],
+        "regressionPercent": round((median / baseline - 1) * 100, 1),
+        "firstFrameMedianMs": round(statistics.median(launch["firstFrameMs"] for launch in measured)),
+        "hostObservedMedianMs": round(statistics.median(launch["hostObservedMs"] for launch in measured)),
+        "controlFirstFrameMedianMs": round(statistics.median(controls)) if controls else None,
+        "interactivePerControlMedian": round(statistics.median(ratios), 3) if ratios else None,
+        "warmUpLaunches": WARMUP_LAUNCHES,
+        "measuredLaunches": len(measured),
+        "fixtureTasks": 500,
+        "method": ("device logcat timestamps from the ActivityTaskManager START line to the app's "
+                   f"{MARKER} line; launch 0 is a declared warm-up; {CONTROL_ACTIVITY} cold "
+                   "first frame is recorded before each launch as a runner-speed reference"),
+    }
+
+
+def startup_failures(result):
+    failures = []
+    if result["interactiveMedianMs"] > result["interactiveMedianBudgetMs"]:
+        failures.append(f"median {result['interactiveMedianMs']} ms > {result['interactiveMedianBudgetMs']} ms")
+    if result["interactiveMaxMs"] > result["launchCeilingMs"]:
+        failures.append(f"slowest launch {result['interactiveMaxMs']} ms > {result['launchCeilingMs']} ms")
+    return failures
 
 
 def measure(out):
-    starts = []
-    for iteration in range(5):
+    launches = []
+    previous_ready = 0
+    for iteration in range(WARMUP_LAUNCHES + MEASURED_LAUNCHES):
+        control = control_first_frame(out, iteration)
         adb("shell", "am", "force-stop", PACKAGE)
         began = time.monotonic()
-        launch = adb("shell", "am", "start", "-W", "-n", f"{PACKAGE}/.MainActivity")
+        launch = adb("shell", "am", "start", "-W", "-n", ACTIVITY)
         (out / f"launch-{iteration}.txt").write_text(launch)
-        # Only the current app PID's log window is examined. Do not count a
-        # previous launch's interactive marker as this launch's readiness.
+        fields = launch_fields(launch)
+        if fields.get("Status") != "ok" or fields.get("LaunchState") != "COLD":
+            raise RuntimeError(f"Launch {iteration} was not a successful cold start: {fields}")
+        # Only the current app PID's log is examined, so a previous launch's
+        # interactive marker never counts as this launch's readiness.
         pid = adb("shell", "pidof", PACKAGE).strip()
-        starts.append(interactive_time(pid, began, out, iteration))
+        if not pid:
+            raise RuntimeError(f"App process is not running after launch {iteration}")
+        ready = ready_at(pid, began, out, iteration)
+        host_observed = round((time.monotonic() - began) * 1000)
+        started = launch_started_at(previous_ready, ready)
+        previous_ready = ready
+        launches.append({"iteration": iteration, "warmUp": iteration < WARMUP_LAUNCHES,
+                         "deviceInteractiveMs": ready - started,
+                         "firstFrameMs": int(fields["TotalTime"]),
+                         "hostObservedMs": host_observed,
+                         "controlFirstFrameMs": control})
         time.sleep(1)
-    result = {"coldInteractiveMs": starts, "coldInteractiveMedianMs": statistics.median(starts),
-              "coldInteractiveMaxMs": max(starts), "fixtureTasks": 500,
-              "method": "host-observed release app log marker; includes ADB polling overhead"}
+    result = summarize(launches)
     (out / "startup.json").write_text(json.dumps(result, indent=2))
-    if result["coldInteractiveMedianMs"] > 8000 or result["coldInteractiveMaxMs"] > 15000:
-        raise RuntimeError(f"Native startup budget exceeded: {result}")
+    failures = startup_failures(result)
+    if failures:
+        raise RuntimeError(f"Native startup budget exceeded: {'; '.join(failures)}. See startup.json")
 
 
 def frames(out):

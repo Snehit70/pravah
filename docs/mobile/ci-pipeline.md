@@ -12,11 +12,13 @@ flowchart TD
   Change --> Reuse{Matching successful PR result?}
   Reuse -->|yes, main only| Gate[Native quality gate]
   Reuse -->|no, mobile affected| Base{Matching native base?}
-  Base -->|yes| Repack[Embed current JavaScript]
+  Base -->|yes| Warm[Each device job repacks while its emulator boots]
   Base -->|no or forced clean| Compile[Compile native base]
-  Compile --> Repack
+  Compile --> Repack[Embed current JavaScript]
   Repack --> Workflows[Functional emulator]
   Repack --> Performance[Performance emulator]
+  Warm --> Workflows
+  Warm --> Performance
   Workflows --> Gate
   Performance --> Gate
   Fast --> Publish[Publication gate]
@@ -26,8 +28,12 @@ flowchart TD
 ```
 
 Known independent web UI, CLI and documentation changes skip native jobs.
-Mobile code, shared backend code, root dependency changes, native patches,
-CI harness changes and unknown paths take the mobile validation path.
+Mobile code, generated Convex API types (`convex/_generated/`, the only
+backend files the app imports), root dependency changes, native patches,
+CI harness changes and unknown paths take the mobile validation path. Other
+`convex/` changes cannot reach the fixture app, which talks only to a loopback
+server, so they keep only the fast checks. `src/test/mobileCiPipeline.test.ts`
+pins these routing rules.
 Mobile test-only changes retain their fast tests without compiling Android.
 New shared code should be added to the classifier rather than assumed independent.
 
@@ -50,8 +56,19 @@ also checks package, runtime, architecture, signature and disabled OTA updates.
 The initial native build uses a zero marker, so even a cold run proves that
 Repack replaced the embedded bundle before tests begin.
 
-The prepared APK is uploaded once for both device jobs. APK artifacts expire
-after one day; result metadata and device evidence remain for 14 days.
+When `plan` finds a cached base for the fingerprint (the warm path), there is
+no separate prepare job. Each device job restores and asserts the base, then
+repacks in the background while Android SDK packages install and the emulator
+boots; the device script waits for that repack before installing anything, so
+no measurement overlaps it. The functional job also runs `expo-doctor` and
+uploads its APK as the artifact a later merge promotes. Repacked APK bytes
+differ between runners even from identical inputs, so each job also records a
+digest of the APK's entries (name and content). The gate fails if the two
+device jobs tested different contents.
+
+On the cold path the prepare job compiles, repacks and uploads the APK once
+for both device jobs. APK artifacts expire after one day; result metadata and
+device evidence remain for 14 days.
 If a required artifact has expired, main performs validation again.
 
 ## Independent device jobs
@@ -118,7 +135,10 @@ separate and unchanged. No release is triggered by this CI-only change.
 ## Clean builds and measurements
 
 The daily scheduled run forces the native compilation path with Gradle's
-build cache disabled and tasks rerun. Manual dispatch supports `force_clean`.
+build cache disabled and tasks rerun. It restores downloaded dependencies but
+never saves the Gradle cache, since a no-build-cache home would make later
+builds for that fingerprint cold. The Gradle cache holds one entry per native
+fingerprint. Manual dispatch supports `force_clean`.
 Neither schedules nor manual runs reuse prior validation results.
 PR runs cancel obsolete PR work; main and scheduled runs do not cancel one
 another's candidate validation.

@@ -12,6 +12,11 @@ export function sha256(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+/** Digest of an APK's entries (name and content), independent of zip metadata and signing-block bytes. */
+export function apkContentDigest(entries: ReadonlyArray<readonly [name: string, sha256: string]>): string {
+  return sha256([...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([name, digest]) => `${name}\0${digest}\n`).join(""));
+}
+
 export function androidRuntime(resources: string): string | null {
   // Newer build-tools append flags to the resource header.
   return resources.match(/string\/expo_runtime_version[^\n]*\n[^"\n]*"([^"\n]+)"/)?.[1] ?? null;
@@ -29,12 +34,14 @@ export function signingDigests(certificate: string): string[] {
 export function mobileChange(files: readonly string[]): boolean {
   return files.some((path) => {
     if (/^apps\/mobile\/(docs\/|src\/test\/)/.test(path)) return false;
-    if (/^(apps\/mobile\/|convex\/|patches\/|scripts\/mobile-|\.github\/actions\/)/.test(path)) return true;
+    // The app only imports convex/_generated/{api,dataModel}; other backend
+    // files reach the device through those generated types or not at all.
+    if (/^(apps\/mobile\/|convex\/_generated\/|patches\/|scripts\/mobile-|\.github\/actions\/mobile-)/.test(path)) return true;
     if (/^\.github\/workflows\/(mobile-|ci\.yml)/.test(path)) return true;
     if (["package.json", "bun.lock"].includes(path)) return true;
     // Only known independent areas skip native CI. New shared directories
     // and configuration files take the full path until classified explicitly.
-    return !/^(src\/(?:components\/|pages\/|test\/|App\.tsx$|main\.tsx$|(?:index|App)\.css$)|public\/|docs\/|packages\/(cli|todo-plugin)\/|\.github\/|[^/]+\.md$|index\.html$|vite\.|vitest\.|tsconfig|eslint\.|\.gitignore$|\.prettier)/.test(path);
+    return !/^(src\/(?:components\/|pages\/|test\/|App\.tsx$|main\.tsx$|(?:index|App)\.css$)|public\/|docs\/|convex\/|packages\/(cli|todo-plugin)\/|\.github\/|[^/]+\.md$|index\.html$|vite\.|vitest\.|tsconfig|eslint\.|\.gitignore$|\.prettier)/.test(path);
   });
 }
 

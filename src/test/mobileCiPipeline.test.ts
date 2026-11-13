@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  androidRuntime, androidUpdatesDisabled, signingDigests, checkState, mobileChange, REQUIRED_CHECKS, reusableValidation, SCHEMA,
+  androidRuntime, androidUpdatesDisabled, apkContentDigest, signingDigests, checkState, mobileChange, REQUIRED_CHECKS, reusableValidation, SCHEMA,
   sha256, TOOLCHAIN, validBase, type Base, type Check, type Context, type Validation,
 } from "../../scripts/mobile-ci/contracts";
 import { classifyMobileRelease } from "../../scripts/mobile-release/classifier";
@@ -42,15 +42,29 @@ describe("APK resource formats", () => {
   });
 });
 
+describe("APK content identity", () => {
+  const entries = [["classes.dex", "1".repeat(64)], ["assets/index.android.bundle", "2".repeat(64)]] as const;
+
+  it("ignores entry order", () => {
+    expect(apkContentDigest([...entries].reverse())).toBe(apkContentDigest(entries));
+  });
+
+  it("changes when an entry's content or name changes", () => {
+    const digest = apkContentDigest(entries);
+    expect(apkContentDigest([entries[0], ["assets/index.android.bundle", "3".repeat(64)]])).not.toBe(digest);
+    expect(apkContentDigest([entries[0], ["assets/other.bundle", "2".repeat(64)]])).not.toBe(digest);
+  });
+});
+
 describe("mobile CI routing", () => {
-  it.each(["src/components/Inbox.tsx", "docs/guide.md", "packages/cli/src/list.ts", "apps/mobile/docs/notes.md", "apps/mobile/src/test/new.test.ts"])("keeps independent changes on the fast path: %s", (path) => {
+  it.each(["src/components/Inbox.tsx", "docs/guide.md", "packages/cli/src/list.ts", "apps/mobile/docs/notes.md", "apps/mobile/src/test/new.test.ts", "convex/tasks.ts", "convex/schema.ts", ".github/actions/setup-workspace/action.yml", ".github/workflows/release-please.yml"])("keeps independent changes on the fast path: %s", (path) => {
     expect(mobileChange([path])).toBe(false);
   });
-  it.each(["apps/mobile/App.tsx", "convex/tasks.ts", "src/lib/shared.ts", "apps/mobile/e2e/workflows.yaml", "patches/expo.patch", "scripts/mobile-ci/context.ts", ".github/actions/mobile-device/action.yml", ".github/workflows/mobile-native-ci.yml", "bun.lock", "packages/new-shared/index.ts", "unknown.config.js"])("validates mobile or unknown inputs: %s", (path) => {
+  it.each(["apps/mobile/App.tsx", "convex/_generated/api.d.ts", "convex/_generated/dataModel.d.ts", "src/lib/shared.ts", "apps/mobile/e2e/workflows.yaml", "patches/expo.patch", "scripts/mobile-ci/context.ts", ".github/actions/mobile-device/action.yml", ".github/workflows/mobile-native-ci.yml", "bun.lock", "packages/new-shared/index.ts", "unknown.config.js"])("validates mobile or unknown inputs: %s", (path) => {
     expect(mobileChange([path])).toBe(true);
   });
-  it("does not let independent files hide a shared-backend change", () => {
-    expect(mobileChange(["docs/guide.md", "convex/tasks.ts"])).toBe(true);
+  it("does not let independent files hide a generated-API change", () => {
+    expect(mobileChange(["docs/guide.md", "convex/tasks.ts", "convex/_generated/api.d.ts"])).toBe(true);
   });
   it("allows test transport changes without shipping an app update", () => {
     expect(classifyMobileRelease({ changedFiles: ["apps/mobile/e2e/provider.js"], labels: ["mobile-no-release"] }).ok).toBe(true);
