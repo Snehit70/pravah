@@ -31,13 +31,16 @@ const nativeCriticalPaths = [
 
 // The mobile app calls Convex functions directly. These files implement the
 // separate HTTP adapter used by the web and CLI clients, so changing them does
-// not alter a shipped mobile bundle's behavior.
+// not alter a shipped mobile bundle's behavior. `ownerConvexToken.ts` is a
+// server-only auth endpoint that mints automation watcher tokens; only the
+// HTTP adapter calls it.
 const mobileIndependentConvexPaths = [
   "convex/http.ts",
   "convex/httpContracts.ts",
   "convex/httpResponses.ts",
   "convex/automationHttpAuth.ts",
   "convex/automationScopes.ts",
+  "convex/ownerConvexToken.ts",
 ] as const;
 
 function isMobileAffecting(path: string): boolean {
