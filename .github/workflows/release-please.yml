@@ -10,14 +10,24 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  actions: write
 
 jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
       - name: Run release-please
-        uses: googleapis/release-please-action@v4
+        id: release
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      # GITHUB_TOKEN may start workflow_dispatch runs. Publishing stays in
+      # publish-cli.yml because npm trusted publishing is bound to that file.
+      - name: Publish the new CLI release to npm
+        if: ${{ steps.release.outputs['packages/cli--release_created'] == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run publish-cli.yml --repo "$GITHUB_REPOSITORY" --ref main
