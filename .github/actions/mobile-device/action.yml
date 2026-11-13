@@ -5,19 +5,37 @@ inputs:
     required: true
     description: workflows or performance
   apk-sha256:
-    required: true
-    description: Prepared artifact checksum
+    required: false
+    default: ''
+    description: Prepared artifact checksum (cold path, where the prepare job built the APK)
+  prepare:
+    required: false
+    default: 'false'
+    description: Repack this commit's APK on this runner while the emulator boots (warm path)
+  doctor:
+    required: false
+    default: 'false'
+    description: Run expo-doctor as part of the on-runner preparation
 outputs:
   image:
     description: Runner image used for the measurements
     value: ${{ steps.image.outputs.image }}
+  artifact_name:
+    description: Artifact name for the APK prepared on this runner (warm path)
+    value: ${{ steps.prepared.outputs.artifact_name }}
+  apk_file:
+    description: APK file inside that artifact (warm path)
+    value: ${{ steps.prepared.outputs.apk_file }}
+  apk_sha256:
+    description: Checksum of the APK prepared on this runner (warm path)
+    value: ${{ steps.prepared.outputs.apk_sha256 }}
 runs:
   using: composite
   steps:
     - id: image
       shell: bash
       run: |
-        mkdir -p "artifacts/mobile-native/$SUITE"
+        mkdir -p "artifacts/mobile-native/$SUITE" "$RUNNER_TEMP/mobile-device"
         printf '%s\n' "${ImageVersion:-unknown}" > "artifacts/mobile-native/$SUITE/runner-image.txt"
         echo "image=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
       env:
@@ -26,7 +44,14 @@ runs:
       with:
         distribution: temurin
         java-version: '17'
+    - name: Repack the current bundle in the background
+      if: inputs.prepare == 'true'
+      shell: bash
+      env:
+        DOCTOR: ${{ inputs.doctor }}
+      run: nohup bash scripts/mobile-ci/device-prepare.sh "$RUNNER_TEMP/mobile-device" "$DOCTOR" > /dev/null 2>&1 &
     - name: Verify the downloaded fixture
+      if: inputs.prepare != 'true'
       shell: bash
       env:
         EXPECTED_APK_SHA256: ${{ inputs.apk-sha256 }}
@@ -46,11 +71,14 @@ runs:
         echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
         sudo udevadm control --reload-rules
         sudo udevadm trigger --name-match=kvm
+    # On the warm path the device script first waits for the background repack,
+    # so no measurement ever overlaps it.
     - name: Run isolated device suite
       uses: reactivecircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808 # v2
       env:
         SUITE: ${{ inputs.suite }}
         APK_PATH: artifacts/mobile-native-apk/base.apk
+        PREPARE_ON_RUNNER: ${{ inputs.prepare }}
       with:
         api-level: 35
         emulator-build: '16428233'
@@ -59,4 +87,9 @@ runs:
         profile: pixel_6
         disable-animations: false
         emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none
-        script: bash scripts/mobile-performance/run-native-ci.sh "$SUITE"
+        script: if [ "$PREPARE_ON_RUNNER" = true ]; then bash scripts/mobile-ci/await.sh "$RUNNER_TEMP/mobile-device" prepare; fi && bash scripts/mobile-performance/run-native-ci.sh "$SUITE"
+    - id: prepared
+      name: Record the APK prepared on this runner
+      if: inputs.prepare == 'true'
+      shell: bash
+      run: cat "$RUNNER_TEMP/mobile-device/prepared.out" >> "$GITHUB_OUTPUT"

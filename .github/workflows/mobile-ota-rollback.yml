@@ -22,8 +22,15 @@ on:
 permissions:
   contents: read
 
+# Only dispatches and labeled merges join the shared release lane. Every other
+# closed PR gets a throwaway group so it skips at once and never queues behind,
+# or displaces a pending, real release in `mobile-release`.
 concurrency:
-  group: mobile-release
+  group: >-
+    ${{ (github.event_name == 'workflow_dispatch' ||
+    (github.event.pull_request.merged == true &&
+     contains(github.event.pull_request.labels.*.name, 'mobile-ota-rollback')))
+    && 'mobile-release' || format('mobile-ota-rollback-noop-{0}', github.run_id) }}
   cancel-in-progress: false
 
 env:

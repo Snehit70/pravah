@@ -43,14 +43,14 @@ describe("APK resource formats", () => {
 });
 
 describe("mobile CI routing", () => {
-  it.each(["src/components/Inbox.tsx", "docs/guide.md", "packages/cli/src/list.ts", "apps/mobile/docs/notes.md", "apps/mobile/src/test/new.test.ts"])("keeps independent changes on the fast path: %s", (path) => {
+  it.each(["src/components/Inbox.tsx", "docs/guide.md", "packages/cli/src/list.ts", "apps/mobile/docs/notes.md", "apps/mobile/src/test/new.test.ts", "convex/tasks.ts", "convex/schema.ts", ".github/actions/setup-workspace/action.yml", ".github/workflows/release-please.yml"])("keeps independent changes on the fast path: %s", (path) => {
     expect(mobileChange([path])).toBe(false);
   });
-  it.each(["apps/mobile/App.tsx", "convex/tasks.ts", "src/lib/shared.ts", "apps/mobile/e2e/workflows.yaml", "patches/expo.patch", "scripts/mobile-ci/context.ts", ".github/actions/mobile-device/action.yml", ".github/workflows/mobile-native-ci.yml", "bun.lock", "packages/new-shared/index.ts", "unknown.config.js"])("validates mobile or unknown inputs: %s", (path) => {
+  it.each(["apps/mobile/App.tsx", "convex/_generated/api.d.ts", "convex/_generated/dataModel.d.ts", "src/lib/shared.ts", "apps/mobile/e2e/workflows.yaml", "patches/expo.patch", "scripts/mobile-ci/context.ts", ".github/actions/mobile-device/action.yml", ".github/workflows/mobile-native-ci.yml", "bun.lock", "packages/new-shared/index.ts", "unknown.config.js"])("validates mobile or unknown inputs: %s", (path) => {
     expect(mobileChange([path])).toBe(true);
   });
-  it("does not let independent files hide a shared-backend change", () => {
-    expect(mobileChange(["docs/guide.md", "convex/tasks.ts"])).toBe(true);
+  it("does not let independent files hide a generated-API change", () => {
+    expect(mobileChange(["docs/guide.md", "convex/tasks.ts", "convex/_generated/api.d.ts"])).toBe(true);
   });
   it("allows test transport changes without shipping an app update", () => {
     expect(classifyMobileRelease({ changedFiles: ["apps/mobile/e2e/provider.js"], labels: ["mobile-no-release"] }).ok).toBe(true);

@@ -68,3 +68,6 @@ skills-lock.json
 .zcodeignore
 .impeccable/hook.cache.json
 .grok/
+
+# ESLint content cache (bun run lint)
+.eslintcache
