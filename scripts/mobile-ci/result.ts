@@ -12,8 +12,15 @@ if (!context.mobileRequired) {
   const result = json<Validation>("artifacts/mobile-ci/reused-result.json");
   summary = `Reused successful native validation from https://github.com/${context.repository}/actions/runs/${result.runId}. The complete Git tree, test inputs, native fingerprint and runner image match.\n`;
 } else {
+  // Warm path: no prepare job; each device job repacked the APK on its own runner.
+  const warm = process.env.WARM === "true";
   for (const name of ["PREPARE_RESULT", "WORKFLOWS_RESULT", "PERFORMANCE_RESULT"]) {
+    if (warm && name === "PREPARE_RESULT" && required(name) === "skipped") continue;
     if (required(name) !== "success") throw new Error(`${name} did not pass: ${process.env[name]}`);
+  }
+  const performanceApk = process.env.PERFORMANCE_APK_SHA256;
+  if (warm && performanceApk && performanceApk !== required("APK_SHA256")) {
+    console.log(`::warning::The performance suite measured APK ${performanceApk}; the recorded workflows APK is ${required("APK_SHA256")}. Both were repacked from the same tree and native base.`);
   }
   const images = [required("PREPARE_IMAGE"), required("WORKFLOWS_IMAGE"), required("PERFORMANCE_IMAGE")];
   const result: Validation = {
