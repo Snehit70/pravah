@@ -29,12 +29,14 @@ export function signingDigests(certificate: string): string[] {
 export function mobileChange(files: readonly string[]): boolean {
   return files.some((path) => {
     if (/^apps\/mobile\/(docs\/|src\/test\/)/.test(path)) return false;
-    if (/^(apps\/mobile\/|convex\/|patches\/|scripts\/mobile-|\.github\/actions\/)/.test(path)) return true;
+    // The app only imports convex/_generated/{api,dataModel}; other backend
+    // files reach the device through those generated types or not at all.
+    if (/^(apps\/mobile\/|convex\/_generated\/|patches\/|scripts\/mobile-|\.github\/actions\/mobile-)/.test(path)) return true;
     if (/^\.github\/workflows\/(mobile-|ci\.yml)/.test(path)) return true;
     if (["package.json", "bun.lock"].includes(path)) return true;
     // Only known independent areas skip native CI. New shared directories
     // and configuration files take the full path until classified explicitly.
-    return !/^(src\/(?:components\/|pages\/|test\/|App\.tsx$|main\.tsx$|(?:index|App)\.css$)|public\/|docs\/|packages\/(cli|todo-plugin)\/|\.github\/|[^/]+\.md$|index\.html$|vite\.|vitest\.|tsconfig|eslint\.|\.gitignore$|\.prettier)/.test(path);
+    return !/^(src\/(?:components\/|pages\/|test\/|App\.tsx$|main\.tsx$|(?:index|App)\.css$)|public\/|docs\/|convex\/|packages\/(cli|todo-plugin)\/|\.github\/|[^/]+\.md$|index\.html$|vite\.|vitest\.|tsconfig|eslint\.|\.gitignore$|\.prettier)/.test(path);
   });
 }
 
