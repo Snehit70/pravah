@@ -29,6 +29,9 @@ outputs:
   apk_sha256:
     description: Checksum of the APK prepared on this runner (warm path)
     value: ${{ steps.prepared.outputs.apk_sha256 }}
+  apk_content_sha256:
+    description: Digest of the prepared APK's entries, stable across repacks of the same inputs (warm path)
+    value: ${{ steps.prepared.outputs.apk_content_sha256 }}
 runs:
   using: composite
   steps:

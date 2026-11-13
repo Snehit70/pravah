@@ -61,8 +61,10 @@ no separate prepare job. Each device job restores and asserts the base, then
 repacks in the background while Android SDK packages install and the emulator
 boots; the device script waits for that repack before installing anything, so
 no measurement overlaps it. The functional job also runs `expo-doctor` and
-uploads its APK as the artifact a later merge promotes. The gate warns if the
-performance job's repack produced a different checksum.
+uploads its APK as the artifact a later merge promotes. Repacked APK bytes
+differ between runners even from identical inputs, so each job also records a
+digest of the APK's entries (name and content). The gate fails if the two
+device jobs tested different contents.
 
 On the cold path the prepare job compiles, repacks and uploads the APK once
 for both device jobs. APK artifacts expire after one day; result metadata and

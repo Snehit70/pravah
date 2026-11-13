@@ -228,6 +228,7 @@ jobs:
       artifact_name: ${{ steps.device.outputs.artifact_name }}
       apk_file: ${{ steps.device.outputs.apk_file }}
       apk_sha256: ${{ steps.device.outputs.apk_sha256 }}
+      apk_content_sha256: ${{ steps.device.outputs.apk_content_sha256 }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -292,6 +293,7 @@ jobs:
       artifact_name: ${{ steps.device.outputs.artifact_name }}
       apk_file: ${{ steps.device.outputs.apk_file }}
       apk_sha256: ${{ steps.device.outputs.apk_sha256 }}
+      apk_content_sha256: ${{ steps.device.outputs.apk_content_sha256 }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -397,7 +399,8 @@ jobs:
           APK_ARTIFACT: ${{ needs.prepare.outputs.artifact_name || needs.workflows.outputs.artifact_name }}
           APK_FILE: ${{ needs.prepare.outputs.apk_file || needs.workflows.outputs.apk_file }}
           APK_SHA256: ${{ needs.prepare.outputs.apk_sha256 || needs.workflows.outputs.apk_sha256 }}
-          PERFORMANCE_APK_SHA256: ${{ needs.performance.outputs.apk_sha256 }}
+          WORKFLOWS_APK_CONTENT_SHA256: ${{ needs.workflows.outputs.apk_content_sha256 }}
+          PERFORMANCE_APK_CONTENT_SHA256: ${{ needs.performance.outputs.apk_content_sha256 }}
           APK_PREPARATION: ${{ needs.prepare.outputs.preparation || 'repack-on-device-runner' }}
         run: bun scripts/mobile-ci/result.ts
       - if: needs.plan.outputs.mobile_required == 'true' && needs.plan.outputs.reused != 'true'

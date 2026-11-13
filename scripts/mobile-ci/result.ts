@@ -18,9 +18,9 @@ if (!context.mobileRequired) {
     if (warm && name === "PREPARE_RESULT" && required(name) === "skipped") continue;
     if (required(name) !== "success") throw new Error(`${name} did not pass: ${process.env[name]}`);
   }
-  const performanceApk = process.env.PERFORMANCE_APK_SHA256;
-  if (warm && performanceApk && performanceApk !== required("APK_SHA256")) {
-    console.log(`::warning::The performance suite measured APK ${performanceApk}; the recorded workflows APK is ${required("APK_SHA256")}. Both were repacked from the same tree and native base.`);
+  // Each warm device job repacked its own APK. The bytes differ between runners; the entries must not.
+  if (warm && required("WORKFLOWS_APK_CONTENT_SHA256") !== required("PERFORMANCE_APK_CONTENT_SHA256")) {
+    throw new Error(`The performance suite measured different APK contents (${process.env.PERFORMANCE_APK_CONTENT_SHA256}) from the workflows suite (${process.env.WORKFLOWS_APK_CONTENT_SHA256})`);
   }
   const images = [required("PREPARE_IMAGE"), required("WORKFLOWS_IMAGE"), required("PERFORMANCE_IMAGE")];
   const result: Validation = {
