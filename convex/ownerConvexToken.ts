@@ -26,12 +26,13 @@ export function deriveConvexCloudUrl(convexSiteUrl: string): string {
 }
 
 // Every renewal is a new Convex identity, so all watcher subscriptions re-run
-// uncached (~83% of watcher reads, Nov 2026 telemetry). Stable claims did not
-// prevent that; the remaining lever is fewer renewals. Revocation still applies
-// on the next renewal, so a revoked credential keeps its socket at most an hour.
-export const OWNER_TOKEN_TTL_SECONDS = 60 * 60;
+// uncached. At one hour, renewals still caused 79 of 147 `watchProjection:sources`
+// re-runs (Nov 7-13 2026 telemetry). Twelve hours covers a working day with one
+// renewal. Revocation applies on the next renewal, so a revoked credential keeps
+// its socket for at most twelve hours.
+export const OWNER_TOKEN_TTL_SECONDS = 12 * 60 * 60;
 const MIN_TTL_SECONDS = 60;
-const MAX_TTL_SECONDS = 60 * 60;
+const MAX_TTL_SECONDS = 12 * 60 * 60;
 
 const mintBodySchema = z.object({
   subject: z.string().min(1).max(512),

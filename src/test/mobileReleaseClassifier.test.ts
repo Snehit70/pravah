@@ -45,6 +45,7 @@ describe("mobile release classification", () => {
           "packages/cli/src/commands.ts",
           "convex/http.ts",
           "convex/automationHttpAuth.ts",
+          "convex/ownerConvexToken.ts",
         ],
         labels: [],
       }),
