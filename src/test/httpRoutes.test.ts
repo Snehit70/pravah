@@ -1227,7 +1227,7 @@ describe("http route handlers", () => {
         { body: { subject: string; ttlSeconds: number } },
       ];
       expect(mintBody.subject).toBe("user_abc123");
-      expect(mintBody.ttlSeconds).toBe(60 * 60);
+      expect(mintBody.ttlSeconds).toBe(12 * 60 * 60);
 
       // The CLI needs the websocket url, not the http action url.
       expect(body).toMatchObject({
