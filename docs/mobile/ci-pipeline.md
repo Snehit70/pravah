@@ -32,7 +32,7 @@ Mobile code, generated Convex API types (`convex/_generated/`, the only
 backend files the app imports), root dependency changes, native patches,
 CI harness changes and unknown paths take the mobile validation path. Other
 `convex/` changes cannot reach the fixture app, which talks only to a loopback
-server, so they keep only the fast checks. `scripts/mobile-ci/contracts.test.ts`
+server, so they keep only the fast checks. `src/test/mobileCiPipeline.test.ts`
 pins these routing rules.
 Mobile test-only changes retain their fast tests without compiling Android.
 New shared code should be added to the classifier rather than assumed independent.
