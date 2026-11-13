@@ -12,6 +12,11 @@ export function sha256(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+/** Digest of an APK's entries (name and content), independent of zip metadata and signing-block bytes. */
+export function apkContentDigest(entries: ReadonlyArray<readonly [name: string, sha256: string]>): string {
+  return sha256([...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([name, digest]) => `${name}\0${digest}\n`).join(""));
+}
+
 export function androidRuntime(resources: string): string | null {
   // Newer build-tools append flags to the resource header.
   return resources.match(/string\/expo_runtime_version[^\n]*\n[^"\n]*"([^"\n]+)"/)?.[1] ?? null;

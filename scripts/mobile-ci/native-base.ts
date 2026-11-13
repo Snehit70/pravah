@@ -1,6 +1,6 @@
 import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
-import { SCHEMA, sha256, TOOLCHAIN, validBase, type Base, type Context } from "./contracts";
-import { json, output, required, writeJson } from "./runtime";
+import { apkContentDigest, SCHEMA, sha256, TOOLCHAIN, validBase, type Base, type Context } from "./contracts";
+import { command, json, output, required, writeJson } from "./runtime";
 
 const context = json<Context>("artifacts/mobile-ci/context.json");
 const folder = "artifacts/mobile-native-base";
@@ -27,6 +27,9 @@ if (mode === "check" || mode === "assert") {
   const base = json<Base>(`${folder}/base.json`);
   base.apkSha256 = apkSha256;
   writeJson(`${folder}/base.json`, base);
-  writeJson(`${folder}/prepared.json`, { tree: context.tree, nativeFingerprint: context.nativeFingerprint, apkSha256 });
-  output({ artifact_name: `mobile-native-apk-${required("GITHUB_RUN_ATTEMPT")}`, apk_file: "base.apk", apk_sha256: apkSha256 });
+  // Repack output is not byte-reproducible across runners, but its entries are.
+  const listing = command(["python", "-c", "import sys,zipfile,hashlib; z=zipfile.ZipFile(sys.argv[1]); print('\\n'.join(i.filename+'\\t'+hashlib.sha256(z.read(i)).hexdigest() for i in z.infolist() if not i.is_dir()))", `${folder}/base.apk`]);
+  const apkContentSha256 = apkContentDigest(listing.split("\n").map((line) => line.split("\t") as [string, string]));
+  writeJson(`${folder}/prepared.json`, { tree: context.tree, nativeFingerprint: context.nativeFingerprint, apkSha256, apkContentSha256 });
+  output({ artifact_name: `mobile-native-apk-${required("GITHUB_RUN_ATTEMPT")}`, apk_file: "base.apk", apk_sha256: apkSha256, apk_content_sha256: apkContentSha256 });
 } else throw new Error("Expected check, seal or prepared");

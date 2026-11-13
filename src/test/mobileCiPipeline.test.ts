@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  androidRuntime, androidUpdatesDisabled, signingDigests, checkState, mobileChange, REQUIRED_CHECKS, reusableValidation, SCHEMA,
+  androidRuntime, androidUpdatesDisabled, apkContentDigest, signingDigests, checkState, mobileChange, REQUIRED_CHECKS, reusableValidation, SCHEMA,
   sha256, TOOLCHAIN, validBase, type Base, type Check, type Context, type Validation,
 } from "../../scripts/mobile-ci/contracts";
 import { classifyMobileRelease } from "../../scripts/mobile-release/classifier";
@@ -39,6 +39,20 @@ describe("APK resource formats", () => {
     expect(signingDigests(`Signer #1 certificate SHA-256 digest: ${digest.toUpperCase()}\nSigner #1 certificate SHA-256 digest: ${digest}\n`)).toEqual([digest]);
     expect(signingDigests(`Signer #1 certificate SHA-256 digest: ${digest}\nSigner #2 certificate SHA-256 digest: ${"cd".repeat(32)}\n`)).toHaveLength(2);
     expect(signingDigests("no signer data")).toEqual([]);
+  });
+});
+
+describe("APK content identity", () => {
+  const entries = [["classes.dex", "1".repeat(64)], ["assets/index.android.bundle", "2".repeat(64)]] as const;
+
+  it("ignores entry order", () => {
+    expect(apkContentDigest([...entries].reverse())).toBe(apkContentDigest(entries));
+  });
+
+  it("changes when an entry's content or name changes", () => {
+    const digest = apkContentDigest(entries);
+    expect(apkContentDigest([entries[0], ["assets/index.android.bundle", "3".repeat(64)]])).not.toBe(digest);
+    expect(apkContentDigest([entries[0], ["assets/other.bundle", "2".repeat(64)]])).not.toBe(digest);
   });
 });
 
