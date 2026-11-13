@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Wait for a background task started by the mobile-device action, replay its
-# log, and exit with its status. Usage: await.sh <state-dir> <sdk|prepare>
+# log, and exit with its status. Usage: await.sh <state-dir> <name>
 set -euo pipefail
 state=$1
 name=$2

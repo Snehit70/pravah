@@ -44,11 +44,6 @@ runs:
       with:
         distribution: temurin
         java-version: '17'
-    # The system image download is ~25 s of the emulator runner's SDK step.
-    # Fetch it now so it overlaps the remaining setup instead of running serially.
-    - name: Prefetch Android SDK packages
-      shell: bash
-      run: nohup bash scripts/mobile-ci/prefetch-sdk.sh "$RUNNER_TEMP/mobile-device" > /dev/null 2>&1 &
     - name: Repack the current bundle in the background
       if: inputs.prepare == 'true'
       shell: bash
@@ -76,10 +71,6 @@ runs:
         echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
         sudo udevadm control --reload-rules
         sudo udevadm trigger --name-match=kvm
-    # A failed prefetch is not fatal: the emulator runner installs what is missing.
-    - name: Wait for the SDK prefetch
-      shell: bash
-      run: bash scripts/mobile-ci/await.sh "$RUNNER_TEMP/mobile-device" sdk || echo "::warning::SDK prefetch failed; the emulator runner will install the packages itself."
     # On the warm path the device script first waits for the background repack,
     # so no measurement ever overlaps it.
     - name: Run isolated device suite
