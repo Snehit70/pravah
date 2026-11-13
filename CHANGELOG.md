@@ -1,5 +1,43 @@
 # Changelog
 
+## [1.24.0](https://github.com/Snehit70/pravah/compare/web-v1.23.0...web-v1.24.0) (2026-11-13)
+
+
+### Features
+
+* **mobile:** glass hero sign-in screen with tilt-reactive light ([88ed041](https://github.com/Snehit70/pravah/commit/88ed04180cb6baa8b9b8fc7dfc7c21b683071600))
+
+
+### Bug Fixes
+
+* lengthen watcher token to cut identity re-reads ([5299e55](https://github.com/Snehit70/pravah/commit/5299e55aa25549849b6dab7c315041dbbb0af510))
+* **mobile:** close task sheet after save ([645d864](https://github.com/Snehit70/pravah/commit/645d864f7ff61d88dab807e53bdf4c06f937cccd))
+* **mobile:** drop loading text from header subtitle ([24f57fd](https://github.com/Snehit70/pravah/commit/24f57fd65cd4419d402e791437fed7d1860b9547))
+* **mobile:** fade timeline carousel between skeleton and content ([79a05d2](https://github.com/Snehit70/pravah/commit/79a05d28e4b6e8775442fcaf943de7da9723930b))
+* **mobile:** fill timeline skeleton height and match real layouts ([5d7112e](https://github.com/Snehit70/pravah/commit/5d7112e0b31b56e9de71979abf766dc639dda887))
+* **mobile:** float up-to-date toast over content and shrink it ([f44215e](https://github.com/Snehit70/pravah/commit/f44215e700af39092bbdce593d6b1f285974b8fe))
+* **mobile:** glass sign-in, Progress tab fixes, smoother list motion ([55b1275](https://github.com/Snehit70/pravah/commit/55b12757dc2ae6f051d49af8187be875e666da12))
+* **mobile:** keep carousel row checkbox and chevron slots ([5c4f567](https://github.com/Snehit70/pravah/commit/5c4f567d64ec7a4acdcb870b0c555210a695d823))
+* **mobile:** keep inbox Select and goals Add goal visible when gated ([d387996](https://github.com/Snehit70/pravah/commit/d387996e858c127f4c154263d5d2f1d8943b201f))
+* **mobile:** match loading skeletons to real screen layouts ([5949e8c](https://github.com/Snehit70/pravah/commit/5949e8cb0a5b4eebf5dfa2bbd187476fe402c0f4))
+* **mobile:** progress tab segment thumb, loading jumps and chart replays ([0ce5fd5](https://github.com/Snehit70/pravah/commit/0ce5fd5c9d14de7cebedc6fa24db19a029ec866d))
+* **mobile:** remove list layout animation that stacked rows ([4d7ec19](https://github.com/Snehit70/pravah/commit/4d7ec19ebe017a691d04f12f794f31f34d24bebe))
+* **mobile:** show cached workspace snapshot without waiting for session ([2fad187](https://github.com/Snehit70/pravah/commit/2fad18764b7ae83f15475824a4cd7e7ac27c5b31))
+* **mobile:** smoother list entrances and layout changes across tabs ([2ed2046](https://github.com/Snehit70/pravah/commit/2ed2046eb54cb59ed60bb00b66de0b72e43725ea))
+* **mobile:** stabilize loading states, toast and task sheet ([4da1a2d](https://github.com/Snehit70/pravah/commit/4da1a2d06e40921de1bef00a7346738c2db11a56))
+* **mobile:** stabilize loading, sync and native performance checks ([85f60a9](https://github.com/Snehit70/pravah/commit/85f60a92ba3c53accfcc84ed1eb5cecb5003ca94))
+
+
+### Performance Improvements
+
+* **mobile-ci:** compile the native base with four parallel Gradle workers ([d148119](https://github.com/Snehit70/pravah/commit/d14811934531681b31838a354b10de50732a8bdd))
+* **mobile-ci:** drop the SDK prefetch from device jobs ([dc249c3](https://github.com/Snehit70/pravah/commit/dc249c315c3be5fafef6ff1f55d177c752decd8d))
+* **mobile-ci:** repack on device runners when the native base is cached ([2bb5de0](https://github.com/Snehit70/pravah/commit/2bb5de0685acccd37ecdb506a4737c9f5acd628c))
+* **mobile:** load later timeline dates on demand ([40fabbf](https://github.com/Snehit70/pravah/commit/40fabbf912dac9ff9780f06aff9d04f1a3ba8299))
+* **mobile:** load later timeline dates on demand ([3b7bf04](https://github.com/Snehit70/pravah/commit/3b7bf045f7497df9d23700de47739cd83823526a))
+* **watch:** raise owner Convex token TTL to 12 hours ([6079844](https://github.com/Snehit70/pravah/commit/6079844f85ba88d464af7f24c53573b6dd36c735))
+* **watch:** raise owner Convex token TTL to 12 hours ([229f21a](https://github.com/Snehit70/pravah/commit/229f21ab23a551d31a1a20c4581b6291a4987dfc))
+
 ## [1.23.0](https://github.com/Snehit70/pravah/compare/web-v1.22.3...web-v1.23.0) (2026-10-21)
 
 

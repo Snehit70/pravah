@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.5.6](https://github.com/Snehit70/pravah/compare/cli-v2.5.5...cli-v2.5.6) (2026-11-13)
+
+
+### Bug Fixes
+
+* lengthen watcher token to cut identity re-reads ([5299e55](https://github.com/Snehit70/pravah/commit/5299e55aa25549849b6dab7c315041dbbb0af510))
+
+
+### Performance Improvements
+
+* **mobile:** load later timeline dates on demand ([40fabbf](https://github.com/Snehit70/pravah/commit/40fabbf912dac9ff9780f06aff9d04f1a3ba8299))
+
 ## [2.5.5](https://github.com/Snehit70/pravah/compare/cli-v2.5.4...cli-v2.5.5) (2026-10-21)
 
 
