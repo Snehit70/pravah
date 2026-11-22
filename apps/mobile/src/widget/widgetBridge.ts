@@ -1,6 +1,6 @@
 import { NativeModules, Platform, TurboModuleRegistry } from "react-native";
 import { headerDateLabel } from "./widgetModel";
-import { WIDGET_NAMES } from "./widgetNames";
+import { WIDGET_NAMES, type WidgetName } from "./widgetNames";
 
 /**
  * The only door from app code into react-native-android-widget.
@@ -86,4 +86,24 @@ export function refreshHomeWidgets(): Promise<void> {
     }
   })();
   return inFlight;
+}
+
+export type PinWidgetResult = "requested" | "unsupported" | "failed";
+
+/**
+ * Asks the launcher to place a widget, showing its own "Add to home screen"
+ * prompt. Some launchers (MIUI) hide Pravah from their widget picker, so this
+ * is the reliable way in. "requested" means the launcher took the request,
+ * not that the user confirmed it.
+ */
+export async function requestPinHomeWidget(widgetName: WidgetName): Promise<PinWidgetResult> {
+  if (!isWidgetSupported()) return "unsupported";
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- must stay lazy, see above
+    const { requestPinWidget } = require("react-native-android-widget") as typeof import("react-native-android-widget");
+    if (typeof requestPinWidget !== "function") return "unsupported";
+    return (await requestPinWidget({ widgetName })) ? "requested" : "unsupported";
+  } catch {
+    return "failed";
+  }
 }
