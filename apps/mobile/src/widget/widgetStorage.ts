@@ -31,10 +31,11 @@ export async function readPendingCompletions(): Promise<WidgetPendingCompletion[
   return parsePendingCompletions(await AsyncStorage.getItem(WIDGET_PENDING_KEY));
 }
 
-// The app and the headless task can both edit the pending list. Serialize the
-// read-modify-write inside this JS runtime; across runtimes the window is a
-// single tap wide and every entry is idempotent (completeTask is a no-op on a
-// completed task), so a lost update only costs a retry.
+// The app and the headless task can both edit the pending list. They share
+// one JS runtime: the library's HeadlessJsTaskWorker starts widget tasks in
+// the app's current ReactContext when one exists, and only boots a new one
+// when the app isn't running (so no foreground drain can race it). This chain
+// therefore serializes every read-modify-write of the list.
 let pendingChain: Promise<unknown> = Promise.resolve();
 
 export function updatePendingCompletions(
