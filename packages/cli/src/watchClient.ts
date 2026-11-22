@@ -374,6 +374,7 @@ export async function runWatch({
         const sources = value as { boardTasks?: unknown; completedToday?: unknown; goalLinks?: unknown } | null;
         if (!sources || !Array.isArray(sources.boardTasks) || !Array.isArray(sources.completedToday) ||
             !sources.goalLinks || typeof sources.goalLinks !== "object" || Array.isArray(sources.goalLinks)) {
+          received.delete(part ?? "all");
           failed("watchProjection:sources", "boardTasks")(new Error("Invalid watcher read model"));
           return;
         }
@@ -389,7 +390,11 @@ export async function runWatch({
         }
         publish();
       }, error => {
-        if (generation === dayGeneration) failed("watchProjection:sources", "boardTasks")(error);
+        if (generation !== dayGeneration) return;
+        // A failed part must deliver afresh before the pair counts as healthy,
+        // or the other part's next update would publish this part's stale half.
+        received.delete(part ?? "all");
+        failed("watchProjection:sources", "boardTasks")(error);
       }));
       todayUnsubscribe = () => { for (const unsubscribe of unsubscribeParts) unsubscribe(); };
       return;

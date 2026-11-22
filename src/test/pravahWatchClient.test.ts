@@ -181,6 +181,13 @@ describe("runWatch", () => {
     inbox.onValue({boardTasks: [{id: "t9", title: "Inbox idea", status: "inbox"}], completedToday: [], goalLinks: {}});
     expect(snapshots.at(-1)!.counts.active).toBe(2);
     expect(snapshots.at(-1)!.tasks.find(t => t.id === "t2")?.goalId).toBe("g1");
+    inbox.onError(new Error("temporary"));
+    expect(snapshots.at(-1)!.errors).toEqual(["watchProjection:sources"]);
+    timeline.onValue({boardTasks: BOARD, completedToday: DONE, goalLinks: LINKS});
+    expect(snapshots.at(-1)!.errors).toEqual(["watchProjection:sources"]);
+    inbox.onValue({boardTasks: [], completedToday: [], goalLinks: {}});
+    expect(snapshots.at(-1)!.errors ?? []).toEqual([]);
+    expect(snapshots.at(-1)!.counts.active).toBe(1);
     await handle.close();
     expect(client().subscriptions).toHaveLength(0);
   });
