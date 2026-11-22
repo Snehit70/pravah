@@ -395,7 +395,8 @@ function plural(count: number, word: string) {
 
 function allClearMessage(view: ReadyView, palette: WidgetPalette) {
   if (view.done.length > 0) {
-    const next = view.tomorrow[0];
+    const upcoming = view.tomorrow.filter((row) => !row.done);
+    const next = upcoming[0];
     return (
       <CenterMessage
         palette={palette}
@@ -407,7 +408,7 @@ function allClearMessage(view: ReadyView, palette: WidgetPalette) {
         title="Clear for today"
         body={
           next
-            ? `Tomorrow: ${next.title}${view.tomorrow.length > 1 ? ` +${view.tomorrow.length - 1}` : ""}`
+            ? `Tomorrow: ${next.title}${upcoming.length > 1 ? ` +${upcoming.length - 1}` : ""}`
             : undefined
         }
       />

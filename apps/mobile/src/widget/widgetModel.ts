@@ -375,7 +375,10 @@ export function buildWidgetView(input: {
       saving,
     };
     if (saving) {
+      // Drawn ticked in place until the server confirms: today's (and
+      // overdue) join Done; tomorrow's stay in Tomorrow.
       if (task.deadline <= today) done.push(row);
+      else if (task.deadline === tomorrow) tomorrowRows.push(row);
       continue;
     }
     if (isOverdue) overdue.push(row);

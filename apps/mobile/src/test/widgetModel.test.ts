@@ -165,6 +165,17 @@ describe("buildWidgetView", () => {
     expect(result.remaining).toBe(1);
   });
 
+  it("keeps a ticked tomorrow task visible in Tomorrow while it saves", () => {
+    const snap = snapshot({ scheduled: [task("t", "2026-11-23"), task("u", "2026-11-23")] });
+    const result = ready(view(snap, { pending: [{ taskId: "t", title: "Task t", at: NOW.getTime() }] }));
+    expect(result.tomorrow).toEqual([
+      expect.objectContaining({ id: "t", done: true, saving: true }),
+      expect.objectContaining({ id: "u", done: false }),
+    ]);
+    expect(result.done).toEqual([]);
+    expect(result.remaining).toBe(0);
+  });
+
   it("marks a confirmed tick done in the snapshot", () => {
     const snap = snapshot({ scheduled: [task("a", "2026-11-22")] });
     const confirmed = markSnapshotTaskDone(snap, "a", NOW.getTime());
