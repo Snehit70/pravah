@@ -306,7 +306,7 @@ export type WidgetView =
       /** Done today (server or widget), newest last. */
       done: WidgetRow[];
       tomorrow: WidgetRow[];
-      /** Rows still to do: overdue + today. */
+      /** Today's open rows. Overdue is counted separately, as in the app. */
       remaining: number;
       inboxCount: number;
       nextTimed: WidgetRow | null;
@@ -401,7 +401,6 @@ export function buildWidgetView(input: {
   const nextTimed =
     todayRows.find((row) => row.meta !== "—" && row.meta >= nowHm) ??
     todayRows[0] ??
-    overdue[0] ??
     null;
 
   const notice =
@@ -414,7 +413,7 @@ export function buildWidgetView(input: {
     today: todayRows,
     done,
     tomorrow: tomorrowRows,
-    remaining: overdue.length + todayRows.length,
+    remaining: todayRows.length,
     inboxCount: snapshot.inboxCount,
     nextTimed,
     stale: nowMs - snapshot.capturedAt > WIDGET_STALE_AFTER_MS,
@@ -424,9 +423,13 @@ export function buildWidgetView(input: {
   };
 }
 
-/** Rows a list-style widget shows, in display order: overdue, then today. */
-export function attentionRows(view: Extract<WidgetView, { kind: "ready" }>): WidgetRow[] {
-  return [...view.overdue, ...view.today];
+/**
+ * Rows the Today list shows: today's open tasks plus today's ticks still
+ * saving. Overdue never lists inline, matching the app's Timeline: it
+ * collapses into one "N overdue" bar.
+ */
+export function todayListRows(view: Extract<WidgetView, { kind: "ready" }>): WidgetRow[] {
+  return [...view.today, ...view.done.filter((row) => row.saving && !row.overdue)];
 }
 
 /** How many task rows fit in a widget of the given height (dp). */

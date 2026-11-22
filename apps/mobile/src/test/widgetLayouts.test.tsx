@@ -152,7 +152,9 @@ describe("home-screen widget layouts", () => {
     );
     const completes = nodes.filter((node) => node.props.clickAction === "PRAVAH_COMPLETE_TASK");
     const ids = completes.map((node) => (node.props.clickActionData as { taskId: string }).taskId);
-    expect(ids).toContain("t0");
+    expect(ids).toContain("t6");
+    // Overdue collapses into the overdue bar, so its rows can't be ticked here.
+    expect(ids).not.toContain("t0");
     expect(ids).not.toContain("t3");
     expect(ids).not.toContain("t4");
   });

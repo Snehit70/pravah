@@ -7,6 +7,13 @@ import type { AccentColor } from "../lib/userPreferences";
 export type WidgetPalette = {
   bg: `#${string}`;
   row: `#${string}`;
+  /** Hairline edge on rows and buttons (tokens `border`). */
+  border: `#${string}`;
+  borderSubtle: `#${string}`;
+  /** Unchecked checkbox edge (tokens `borderControl`). */
+  control: `#${string}`;
+  deadline: `#${string}`;
+  deadlineSoft: `#${string}`;
   text: `#${string}`;
   textSecondary: `#${string}`;
   textMuted: `#${string}`;
@@ -26,6 +33,11 @@ export type WidgetPalette = {
 const light: Omit<WidgetPalette, "accent" | "accentSoft"> = {
   bg: "#fbf7ef",
   row: "#fffaf2",
+  border: "#4e3e2b2e",
+  borderSubtle: "#4e3e2b17",
+  control: "#8b7e70",
+  deadline: "#98502d",
+  deadlineSoft: "#98502d29",
   text: "#201914",
   textSecondary: "#5b5048",
   textMuted: "#6f6358",
@@ -42,7 +54,12 @@ const light: Omit<WidgetPalette, "accent" | "accentSoft"> = {
 
 const dark: Omit<WidgetPalette, "accent" | "accentSoft"> = {
   bg: "#1b1b19",
-  row: "#262623",
+  row: "#22221f",
+  border: "#3d3d37",
+  borderSubtle: "#f2f0eb17",
+  control: "#797973",
+  deadline: "#ee9a78",
+  deadlineSoft: "#ee9a782e",
   text: "#f2f0eb",
   textSecondary: "#b8b6b0",
   textMuted: "#97958f",
