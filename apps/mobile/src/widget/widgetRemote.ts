@@ -1,15 +1,10 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../../convex/_generated/api";
-import type { Id } from "../../../../convex/_generated/dataModel";
 import { authClient, authStorageReady, hasCachedAuthSessionHint } from "../lib/auth-client";
-import { classifyCompletionFailure } from "./widgetModel";
+import { completionOutcome, type CompletionOutcome } from "./widgetModel";
 
-export type RemoteCompletionResult =
-  | { kind: "done" }
-  /** Offline or a transient failure: keep it pending and retry later. */
-  | { kind: "retry" }
-  /** The server said no for good (deleted, cancelled, signed out): drop it. */
-  | { kind: "rejected"; reason: "auth" | "server" };
+/** One network call from the headless task never runs longer than this. */
+const REQUEST_TIMEOUT_MS = 8_000;
 
 export async function hasWidgetSession(): Promise<boolean> {
   await authStorageReady;
@@ -19,27 +14,34 @@ export async function hasWidgetSession(): Promise<boolean> {
 /**
  * Completes a task from the widget's headless task, without the React tree.
  * Uses the stored better-auth session to mint a Convex JWT, then one HTTP
- * mutation call. Never throws.
+ * mutation call, each capped at REQUEST_TIMEOUT_MS. Never throws.
  */
-export async function completeTaskRemotely(taskId: string): Promise<RemoteCompletionResult> {
+export async function completeTaskRemotely(taskId: string): Promise<CompletionOutcome> {
   const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL;
-  if (!convexUrl) return { kind: "retry" };
+  if (!convexUrl) return "retry";
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     await authStorageReady;
-    if (!hasCachedAuthSessionHint()) return { kind: "rejected", reason: "auth" };
-    const { data, error } = await authClient.convex.token({ fetchOptions: { throw: false } });
+    if (!hasCachedAuthSessionHint()) return "auth";
+    const { data, error } = await authClient.convex.token({
+      fetchOptions: { throw: false, signal: controller.signal },
+    });
     const token = data?.token;
     if (!token) {
       const status = (error as { status?: number } | null)?.status;
-      return status === 401 || status === 403 ? { kind: "rejected", reason: "auth" } : { kind: "retry" };
+      return status === 401 || status === 403 ? "auth" : "retry";
     }
-    const client = new ConvexHttpClient(convexUrl);
+    const client = new ConvexHttpClient(convexUrl, {
+      logger: false,
+      fetch: (input, init) => fetch(input, { ...init, signal: controller.signal }),
+    });
     client.setAuth(token);
-    await client.mutation(api.tasks.completeTask, { taskId: taskId as Id<"tasks"> });
-    return { kind: "done" };
-  } catch (error) {
-    const failure = classifyCompletionFailure(error);
-    if (failure === "retry") return { kind: "retry" };
-    return { kind: "rejected", reason: failure === "auth" ? "auth" : "server" };
+    return completionOutcome(await client.mutation(api.tasks.completeTaskFromWidget, { taskId }));
+  } catch {
+    // Offline, timed out, or a server that doesn't have the mutation yet.
+    return "retry";
+  } finally {
+    clearTimeout(timer);
   }
 }

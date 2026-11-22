@@ -5,7 +5,7 @@ import {
   WIDGET_STALE_AFTER_MS,
   buildWidgetSnapshot,
   buildWidgetView,
-  classifyCompletionFailure,
+  completionOutcome,
   headerDateLabel,
   markSnapshotTaskDone,
   overdueLabel,
@@ -249,17 +249,17 @@ describe("widget links", () => {
   });
 });
 
-describe("classifyCompletionFailure", () => {
+describe("completionOutcome", () => {
   it("drops only answers that won't change on retry", () => {
-    expect(classifyCompletionFailure(new Error("[CONVEX M(tasks:completeTask)] Uncaught Error: Task not found"))).toBe("rejected");
-    expect(classifyCompletionFailure(new Error("Task is cancelled"))).toBe("rejected");
-    expect(classifyCompletionFailure(new Error("Uncaught Error: Not authenticated"))).toBe("auth");
-    expect(classifyCompletionFailure({ status: 401, message: "" })).toBe("auth");
+    expect(completionOutcome("done")).toBe("done");
+    expect(completionOutcome("not_found")).toBe("rejected");
+    expect(completionOutcome("cancelled")).toBe("rejected");
+    expect(completionOutcome("unauthenticated")).toBe("auth");
   });
 
-  it("retries network failures and server errors", () => {
-    expect(classifyCompletionFailure(new TypeError("Network request failed"))).toBe("retry");
-    expect(classifyCompletionFailure(new Error("Server Error"))).toBe("retry");
-    expect(classifyCompletionFailure({ status: 503, message: "Service Unavailable" })).toBe("retry");
+  it("retries anything it doesn't recognise", () => {
+    expect(completionOutcome(undefined)).toBe("retry");
+    expect(completionOutcome(null)).toBe("retry");
+    expect(completionOutcome("something_new")).toBe("retry");
   });
 });

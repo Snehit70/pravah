@@ -1,6 +1,6 @@
 "use no memo";
 import type { WidgetTaskHandler, WidgetTaskHandlerProps } from "react-native-android-widget";
-import { headerDateLabel, markSnapshotTaskDone } from "./widgetModel";
+import { WIDGET_PENDING_MAX_AGE_MS, completionNotice, headerDateLabel, markSnapshotTaskDone } from "./widgetModel";
 import { COMPLETE_ACTION } from "./widgetNames";
 import { completeTaskRemotely } from "./widgetRemote";
 import { loadWidgetState, renderWidget } from "./widgetRender";
@@ -16,16 +16,20 @@ async function draw(props: WidgetTaskHandlerProps) {
   props.renderWidget(renderWidget(props.widgetInfo, await loadWidgetState()));
 }
 
-/** Sends one tick and settles it in storage. Returns false while it should stay pending. */
-async function settleRemote(taskId: string): Promise<boolean> {
-  const result = await completeTaskRemotely(taskId);
-  if (result.kind === "retry") return false;
-  if (result.kind === "done") {
+/**
+ * Sends one tick and settles it in storage. Returns false while it should
+ * stay pending; a tick that has failed for longer than
+ * WIDGET_PENDING_MAX_AGE_MS is dropped with a notice instead.
+ */
+async function settleRemote(taskId: string, queuedAt: number): Promise<boolean> {
+  const outcome = await completeTaskRemotely(taskId);
+  if (outcome === "retry" && Date.now() - queuedAt < WIDGET_PENDING_MAX_AGE_MS) return false;
+  if (outcome === "done") {
     const snapshot = await readWidgetSnapshot();
     if (snapshot) await writeWidgetSnapshot(markSnapshotTaskDone(snapshot, taskId, Date.now()));
   } else {
     await writeWidgetNotice({
-      message: result.reason === "auth" ? "Sign in again to sync" : "Couldn't complete · tap to open",
+      message: completionNotice(outcome === "retry" ? "expired" : outcome),
       at: Date.now(),
     });
   }
@@ -44,17 +48,25 @@ async function completeFromWidget(props: WidgetTaskHandlerProps) {
   const title = props.clickActionData?.title;
   if (typeof taskId !== "string" || !taskId) return draw(props);
 
-  await updatePendingCompletions((current) =>
-    current.some((entry) => entry.taskId === taskId)
-      ? current
-      : [...current, { taskId, title: typeof title === "string" ? title : "", at: Date.now() }],
-  );
+  let queuedAt = Date.now();
+  await updatePendingCompletions((current) => {
+    const existing = current.find((entry) => entry.taskId === taskId);
+    if (existing) {
+      queuedAt = existing.at;
+      return current;
+    }
+    return [...current, { taskId, title: typeof title === "string" ? title : "", at: queuedAt }];
+  });
   await draw(props);
-  if (await settleRemote(taskId)) await draw(props);
+  if (await settleRemote(taskId, queuedAt)) await draw(props);
 }
 
-/** Headless tasks get ~30s; leave room for the final draw. */
-const RETRY_BUDGET_MS = 15_000;
+/**
+ * Headless tasks get 30s. A retry is two calls of up to 8s each, so only
+ * start one while enough of this budget is left, keeping room for a redraw.
+ */
+const RETRY_BUDGET_MS = 20_000;
+const RETRY_COST_MS = 16_000;
 
 /** Periodic update: retry ticks still waiting, oldest first, within budget. */
 async function retryPending(props: WidgetTaskHandlerProps) {
@@ -63,8 +75,8 @@ async function retryPending(props: WidgetTaskHandlerProps) {
   const started = Date.now();
   let changed = false;
   for (const entry of pending) {
-    if (Date.now() - started > RETRY_BUDGET_MS) break;
-    if (await settleRemote(entry.taskId)) changed = true;
+    if (Date.now() - started + RETRY_COST_MS > RETRY_BUDGET_MS) break;
+    if (await settleRemote(entry.taskId, entry.at)) changed = true;
     else break; // Still offline; don't spend the budget on the rest.
   }
   if (changed) await draw(props);

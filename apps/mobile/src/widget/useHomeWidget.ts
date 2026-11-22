@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { AppState, Linking } from "react-native";
-import type { Id } from "../../../../convex/_generated/dataModel";
+import { useMutation } from "convex/react";
+import { api } from "../../../../convex/_generated/api";
 import type { MobileTask } from "../components/TaskCard";
 import { classifyError, mobileLogger } from "../lib/logger";
 import type { AccentColor, ThemePreference } from "../lib/userPreferences";
@@ -9,12 +10,14 @@ import { parseWidgetLink, type WidgetLinkTarget } from "./widgetLinks";
 import {
   WIDGET_PENDING_MAX_AGE_MS,
   buildWidgetSnapshot,
-  classifyCompletionFailure,
+  completionNotice,
+  completionOutcome,
   markSnapshotTaskDone,
 } from "./widgetModel";
 import {
   clearWidgetStorage,
   readPendingCompletions,
+  readWidgetNotice,
   readWidgetSnapshot,
   updatePendingCompletions,
   writeWidgetNotice,
@@ -22,6 +25,7 @@ import {
 } from "./widgetStorage";
 
 const SNAPSHOT_DEBOUNCE_MS = 800;
+const WIDGET_LINK_HOLD_MS = 30_000;
 
 /** Signs the home-screen widget out and redraws it. Never throws. */
 export async function clearHomeWidgets(): Promise<void> {
@@ -44,14 +48,14 @@ type SyncOptions = {
   completedTasks: readonly MobileTask[];
   accent: AccentColor;
   theme: ThemePreference;
-  completeTask: (args: { taskId: Id<"tasks"> }) => Promise<unknown>;
 };
 
 /**
  * Keeps the Android home-screen widget in step with the app:
  * - writes a snapshot after live data changes (debounced) and redraws;
  * - signs the widget out when the session ends;
- * - on foreground, sends ticks made from the widget while offline.
+ * - once live data is in (so Convex auth is set) and on foreground, sends
+ *   ticks the widget couldn't deliver itself.
  * Does nothing where the widget module is not installed.
  */
 export function useHomeWidgetSync(options: SyncOptions): void {
@@ -65,7 +69,6 @@ export function useHomeWidgetSync(options: SyncOptions): void {
     completedTasks,
     accent,
     theme,
-    completeTask,
   } = options;
 
   // Guards a debounced write that is still in flight when the session ends,
@@ -107,31 +110,33 @@ export function useHomeWidgetSync(options: SyncOptions): void {
     void clearHomeWidgets();
   }, [sessionLoading, signedIn, supported]);
 
-  const completeTaskRef = useRef(completeTask);
+  const completeFromWidget = useMutation(api.tasks.completeTaskFromWidget);
+  const completeRef = useRef(completeFromWidget);
   useEffect(() => {
-    completeTaskRef.current = completeTask;
-  }, [completeTask]);
+    completeRef.current = completeFromWidget;
+  }, [completeFromWidget]);
   const drainingRef = useRef(false);
 
   const drainPending = useCallback(async () => {
     if (drainingRef.current) return;
     drainingRef.current = true;
+    const startedAt = Date.now();
     try {
       const pending = await readPendingCompletions();
       const settled = new Set<string>();
       const confirmed: string[] = [];
       let notice: string | null = null;
       for (const entry of pending) {
+        let outcome: ReturnType<typeof completionOutcome>;
         try {
-          await completeTaskRef.current({ taskId: entry.taskId as Id<"tasks"> });
-          settled.add(entry.taskId);
-          confirmed.push(entry.taskId);
-        } catch (error) {
-          const failure = classifyCompletionFailure(error);
-          if (failure === "retry" && Date.now() - entry.at < WIDGET_PENDING_MAX_AGE_MS) continue;
-          settled.add(entry.taskId);
-          notice = failure === "auth" ? "Sign in again to sync" : "Couldn't complete · tap to open";
+          outcome = completionOutcome(await completeRef.current({ taskId: entry.taskId }));
+        } catch {
+          outcome = "retry";
         }
+        if (outcome === "retry" && Date.now() - entry.at < WIDGET_PENDING_MAX_AGE_MS) continue;
+        settled.add(entry.taskId);
+        if (outcome === "done") confirmed.push(entry.taskId);
+        else notice = completionNotice(outcome === "retry" ? "expired" : outcome);
       }
       if (settled.size > 0) {
         await updatePendingCompletions((current) => current.filter((entry) => !settled.has(entry.taskId)));
@@ -144,8 +149,14 @@ export function useHomeWidgetSync(options: SyncOptions): void {
           await writeWidgetSnapshot(confirmed.reduce((next, taskId) => markSnapshotTaskDone(next, taskId, at), snapshot));
         }
       }
-      // Opening the app answers any earlier notice; only a fresh rejection shows one.
-      await writeWidgetNotice(notice ? { message: notice, at: Date.now() } : null);
+      if (notice) {
+        await writeWidgetNotice({ message: notice, at: Date.now() });
+      } else {
+        // Opening the app answers an earlier notice, but not one the widget
+        // wrote while this drain was running.
+        const current = await readWidgetNotice();
+        if (current && current.at < startedAt) await writeWidgetNotice(null);
+      }
       await refreshHomeWidgets();
     } catch (error) {
       mobileLogger.warn("home_widget_drain_failed", { errorType: classifyError(error) });
@@ -155,34 +166,39 @@ export function useHomeWidgetSync(options: SyncOptions): void {
   }, []);
 
   useEffect(() => {
-    if (!supported || !signedIn) return;
+    // Live data means the Convex client is authenticated; a cached session
+    // alone is not enough.
+    if (!supported || !signedIn || !hasLiveData) return;
     void drainPending();
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") void drainPending();
     });
     return () => subscription.remove();
-  }, [drainPending, signedIn, supported]);
+  }, [drainPending, hasLiveData, signedIn, supported]);
 }
 
 /**
  * Delivers widget deep links (cold start and while running). The handler
  * returns false when the app can't act on a link yet (e.g. still showing the
  * cached workspace); the link then waits and is offered again whenever the
- * handler changes. Only the latest link is kept.
+ * handler changes. Only the latest link is kept, and only briefly: one that
+ * is still waiting after WIDGET_LINK_HOLD_MS is dropped rather than yanking
+ * the user somewhere long after the tap.
  */
 export function useWidgetDeepLinks(onLink: (target: WidgetLinkTarget) => boolean): void {
-  const pendingRef = useRef<WidgetLinkTarget | null>(null);
+  const pendingRef = useRef<{ target: WidgetLinkTarget; at: number } | null>(null);
   const onLinkRef = useRef(onLink);
 
   const deliver = useCallback((target: WidgetLinkTarget | null) => {
     if (!target) return;
-    pendingRef.current = onLinkRef.current(target) ? null : target;
+    pendingRef.current = onLinkRef.current(target) ? null : { target, at: Date.now() };
   }, []);
 
   useEffect(() => {
     onLinkRef.current = onLink;
-    const target = pendingRef.current;
-    if (target) pendingRef.current = onLink(target) ? null : target;
+    const held = pendingRef.current;
+    if (!held) return;
+    if (Date.now() - held.at > WIDGET_LINK_HOLD_MS || onLink(held.target)) pendingRef.current = null;
   }, [onLink]);
 
   useEffect(() => {

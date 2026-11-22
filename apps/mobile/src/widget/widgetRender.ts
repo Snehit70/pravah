@@ -1,7 +1,7 @@
 "use no memo";
 import { createElement, type FunctionComponent, type ReactElement } from "react";
 import type { WidgetInfo, WidgetRepresentation } from "react-native-android-widget";
-import { buildWidgetView, type WidgetView } from "./widgetModel";
+import { buildWidgetView, headerDateLabel, type WidgetView } from "./widgetModel";
 import { renderWidgetByName } from "./PravahWidgets";
 import { hasWidgetSession } from "./widgetRemote";
 import { readPendingCompletions, readWidgetNotice, readWidgetSnapshot } from "./widgetStorage";
@@ -29,7 +29,8 @@ export async function loadWidgetState(now = new Date()): Promise<WidgetState> {
       theme: snapshot?.theme ?? "system",
     };
   } catch {
-    return { view: { kind: "signedOut" }, accent: "purple", theme: "system" };
+    // Unreadable storage says nothing about the session; don't claim signed out.
+    return { view: { kind: "loading", dateLabel: headerDateLabel(now) }, accent: "purple", theme: "system" };
   }
 }
 

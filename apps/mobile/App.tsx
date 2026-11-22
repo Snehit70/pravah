@@ -462,7 +462,6 @@ function MobileApp() {
     completedTasks,
     accent: prefs.accentColor,
     theme: prefs.theme,
-    completeTask: completeTaskMutation,
   });
   const moveTaskMutation = useMutation(api.tasks.moveTask);
   const unscheduleTaskMutation = useMutation(api.tasks.unscheduleTask);
