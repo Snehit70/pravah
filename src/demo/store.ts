@@ -235,6 +235,7 @@ function runQuery(name: string, args: any): unknown {
         deadline: goal.deadline,
         priority: goal.priority,
         createdAt: goal.createdAt,
+        completedAt: goal.completedAt,
       }));
     }
     case "goals:listTasks": {
@@ -507,6 +508,33 @@ function runMutation(name: string, args: any): unknown {
         if (goalId === clientId) delete data.goalLinks[taskId];
       }
       return undefined;
+    }
+    case "goals:settle": {
+      const clientId = args?.clientId as string;
+      const goal = data.goals.find((item) => item.clientId === clientId);
+      if (!goal) return { status: "not_found" };
+      if (goal.completedAt !== undefined) return { status: "settled", completedAt: goal.completedAt, completedTaskCount: 0 };
+      const open = data.tasks.filter((task) => {
+        if (data.goalLinks[task._id] !== clientId) return false;
+        const state = taskState(task);
+        return state !== "completed" && state !== "cancelled";
+      });
+      if (open.length > 0 && (args?.completeOpenTasks !== true || (args?.expectedOpenTaskCount !== undefined && args.expectedOpenTaskCount !== open.length))) {
+        return { status: "open_tasks", openTaskCount: open.length };
+      }
+      const now = Date.now();
+      for (const task of open) {
+        task.completedAt = now;
+        task.updatedAt = now;
+      }
+      goal.completedAt = now;
+      return { status: "settled", completedAt: now, completedTaskCount: open.length };
+    }
+    case "goals:reopen": {
+      const goal = data.goals.find((item) => item.clientId === (args?.clientId as string));
+      if (!goal) return { reopened: false };
+      delete goal.completedAt;
+      return { reopened: true };
     }
     case "goals:setLink": {
       const taskId = args?.taskId as string;

@@ -30,6 +30,7 @@ export interface DemoGoal {
   deadline?: string;
   priority?: "p1" | "p2" | "p3";
   createdAt: number;
+  completedAt?: number;
 }
 
 export interface DemoIntegration {
