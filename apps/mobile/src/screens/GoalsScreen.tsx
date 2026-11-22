@@ -40,6 +40,8 @@ import { useReducedMotion } from "../hooks/useReducedMotion";
 import { TaskCard, type MobileTask } from "../components/TaskCard";
 import { isTaskCompleted } from "../lib/taskState";
 import { groupLinkedTasks } from "../lib/goalTasks";
+import { isGoalSettled, partitionSettledLast, settleGoalWithConfirm } from "../lib/goalSettle";
+import { classifyError, mobileLogger } from "../lib/logger";
 import { GoalTaskRow } from "../components/GoalTaskRow";
 import { SlidingSegmented } from "../components/SlidingSegmented";
 import { GoalSettingsSheet } from "../components/GoalSettingsSheet";
@@ -167,6 +169,10 @@ type GoalDetailSheetProps = {
   onMarkManyDone?: (taskIds: MobileTask["_id"][]) => Promise<boolean>;
   onLoadMore?: () => void;
   isLoadingMore?: boolean;
+  /** Mark the goal done; confirms first when linked tasks are still open. */
+  onSettle?: () => Promise<void>;
+  /** Reopen a settled goal. Its tasks keep their state. */
+  onReopen?: () => Promise<void>;
 };
 
 /**
@@ -189,6 +195,8 @@ function GoalDetailSheet({
   onMarkManyDone,
   onLoadMore,
   isLoadingMore,
+  onSettle,
+  onReopen,
 }: GoalDetailSheetProps) {
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
@@ -200,6 +208,7 @@ function GoalDetailSheet({
   const [taskFilter, setTaskFilter] = useState<"open" | "done">("open");
   const [sortControlsOpen, setSortControlsOpen] = useState(false);
   const [sortMode, setSortMode] = useState<"plan" | "newest">("plan");
+  const [settleBusy, setSettleBusy] = useState(false);
   // Reset interaction state on open (adjust-during-render, per React docs) —
   // the sheet stays mounted across open/close so the exit animation keeps its
   // content, which means state no longer resets by remount.
@@ -215,7 +224,17 @@ function GoalDetailSheet({
     }
   }
   const hasTasks = progress.total > 0;
-  const isComplete = hasTasks && progress.done === progress.total;
+  const settled = goal ? isGoalSettled(goal) : false;
+  const isComplete = settled || (hasTasks && progress.done === progress.total);
+  const runSettleAction = useCallback(async (action: (() => Promise<void>) | undefined) => {
+    if (!action || settleBusy) return;
+    setSettleBusy(true);
+    try {
+      await action();
+    } finally {
+      setSettleBusy(false);
+    }
+  }, [settleBusy]);
 
   const todayIso = toIsoDate(new Date());
   const { groups, done } = useMemo(
@@ -408,6 +427,51 @@ function GoalDetailSheet({
                   {hasTasks ? `${progress.done}/${progress.total}` : "No tasks"}
                 </Text>
               </View>
+              {settled ? (
+                <View style={detailStyles.settleRow}>
+                  <View style={detailStyles.settleStatus}>
+                    <CheckIcon size={14} strokeWidth={2.4} color={colors.success} />
+                    <Text style={detailStyles.settledText} numberOfLines={1}>
+                      {goal.completedAt
+                        ? `Settled ${shortDate(toIsoDate(new Date(goal.completedAt)))}`
+                        : "Settled"}
+                    </Text>
+                  </View>
+                  {onReopen ? (
+                    <Pressable
+                      onPress={() => void runSettleAction(onReopen)}
+                      disabled={settleBusy}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Reopen goal ${goal.text}`}
+                      style={({ pressed }) => [
+                        detailStyles.settleBtn,
+                        settleBusy && detailStyles.settleBtnBusy,
+                        pressed && { opacity: 0.7 },
+                      ]}
+                    >
+                      <Text style={detailStyles.settleBtnText}>Reopen</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : onSettle ? (
+                <View style={detailStyles.settleRow}>
+                  <View style={detailStyles.settleStatus} />
+                  <Pressable
+                    onPress={() => void runSettleAction(onSettle)}
+                    disabled={settleBusy}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Mark goal ${goal.text} as done`}
+                    style={({ pressed }) => [
+                      detailStyles.settleBtn,
+                      settleBusy && detailStyles.settleBtnBusy,
+                      pressed && { opacity: 0.7 },
+                    ]}
+                  >
+                    <CheckIcon size={14} strokeWidth={2.4} color={colors.textSecondary} />
+                    <Text style={detailStyles.settleBtnText}>Mark goal done</Text>
+                  </Pressable>
+                </View>
+              ) : null}
             </View>
 
             <View style={detailStyles.filterRow}>
@@ -728,7 +792,7 @@ export function GoalsScreen({
   const isDark = getResolvedAppearance() === "dark";
   const reducedMotion = useReducedMotion();
   const confirm = useConfirm();
-  const { deleteGoal, updateGoal } = useGoalMutations();
+  const { deleteGoal, updateGoal, settleGoal, reopenGoal } = useGoalMutations();
   const { goals, isHydrated } = useGoals();
   // Capped, one-shot cascade: raw index delays made row 30 wait 1.5s and
   // replayed whenever a row remounted on scroll or search.
@@ -781,13 +845,15 @@ export function GoalsScreen({
     return out;
   }, [tasks, links]);
 
+  // Settled goals keep their place in the list but sink below open ones.
   const sortedGoals = useMemo(() => {
-    return [...goals].sort((a, b) => {
+    return partitionSettledLast([...goals].sort((a, b) => {
       const pr = (PRIORITY_RANK[a.priority ?? ""] ?? 3) - (PRIORITY_RANK[b.priority ?? ""] ?? 3);
       if (pr !== 0) return pr;
       return (a.createdAt ?? 0) - (b.createdAt ?? 0);
-    });
+    }));
   }, [goals]);
+  const settledCount = useMemo(() => goals.filter(isGoalSettled).length, [goals]);
 
   const filteredGoals = useMemo(() => {
     const search = query.trim().toLowerCase();
@@ -844,6 +910,35 @@ export function GoalsScreen({
       haptic.success();
     },
     [confirm, deleteGoal, tasksByGoal, progressSummary],
+  );
+
+  const handleSettleGoal = useCallback(
+    async (goal: GoalItem) => {
+      try {
+        const outcome = await settleGoalWithConfirm({
+          goalId: goal.id,
+          goalText: goal.text,
+          settle: settleGoal,
+          confirm,
+        });
+        if (outcome.kind === "settled") haptic.success();
+      } catch (error) {
+        mobileLogger.warn("goal_settle_failed", { errorType: classifyError(error) });
+      }
+    },
+    [confirm, settleGoal],
+  );
+
+  const handleReopenGoal = useCallback(
+    async (goal: GoalItem) => {
+      try {
+        await reopenGoal(goal.id);
+        haptic.light();
+      } catch (error) {
+        mobileLogger.warn("goal_reopen_failed", { errorType: classifyError(error) });
+      }
+    },
+    [reopenGoal],
   );
 
   const emptyBlock = (
@@ -927,7 +1022,11 @@ export function GoalsScreen({
             {sortedGoals.length > 0 ? (
               <View style={styles.listHeader}>
                 <Text style={styles.sectionMeta}>
-                  {isSearching ? `${filteredGoals.length} of ${sortedGoals.length} goals` : `${sortedGoals.length} active`}
+                  {isSearching
+                    ? `${filteredGoals.length} of ${sortedGoals.length} goals`
+                    : settledCount > 0
+                      ? `${sortedGoals.length - settledCount} active · ${settledCount} settled`
+                      : `${sortedGoals.length} active`}
                 </Text>
                 {/* Always rendered so the header keeps its width while actions are gated (snapshot/loading). */}
                 <Pressable
@@ -953,9 +1052,12 @@ export function GoalsScreen({
           const progress = progressByGoal.get(item.id) ?? { total: 0, done: 0, ratio: 0 };
           const hasTasks = progress.total > 0;
           const showLinkedLoading = isTaskDataLoading && !hasTasks;
-          const isComplete = hasTasks && progress.done === progress.total;
+          const settled = isGoalSettled(item);
+          const isComplete = settled || (hasTasks && progress.done === progress.total);
           const priority = item.priority ? PRIORITY_LABEL[item.priority] : null;
-          const countLabel = showLinkedLoading
+          const countLabel = settled
+            ? "Settled"
+            : showLinkedLoading
             ? "Loading…"
             : isComplete
             ? "All done"
@@ -966,7 +1068,13 @@ export function GoalsScreen({
             <Animated.View
               entering={introStagger(index)}
             >
-              <View style={[styles.goalCard, isComplete && styles.goalCardComplete]}>
+              <View
+                style={[
+                  styles.goalCard,
+                  isComplete && styles.goalCardComplete,
+                  settled && styles.goalCardSettled,
+                ]}
+              >
                 <Pressable
                   onPress={() => { openGoalSheet(item.id); haptic.light(); }}
                   onLongPress={() => void handleDeleteShortcut(item)}
@@ -1018,7 +1126,7 @@ export function GoalsScreen({
                           {countLabel}
                         </Text>
                       </View>
-                      {onCreateTaskForGoal ? (
+                      {onCreateTaskForGoal && !settled ? (
                         <Pressable
                           onPress={() => onCreateTaskForGoal(item.id)}
                           hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
@@ -1061,6 +1169,8 @@ export function GoalsScreen({
         onMarkManyDone={onMarkManyDone}
         onLoadMore={onLoadMoreGoalTasks}
         isLoadingMore={isGoalDetailLoading}
+        onSettle={selectedGoal ? () => handleSettleGoal(selectedGoal) : undefined}
+        onReopen={selectedGoal ? () => handleReopenGoal(selectedGoal) : undefined}
       />
       <GoalSettingsSheet
         visible={settingsOpen}
@@ -1125,6 +1235,10 @@ const styles = createThemedStyles({
   },
   goalCardComplete: {
     borderColor: colors.success,
+  },
+  // Settled goals recede: still readable, clearly finished business.
+  goalCardSettled: {
+    opacity: 0.72,
   },
   goalRow: {
     flexDirection: "row",
@@ -1380,6 +1494,42 @@ const detailStyles = createThemedStyles({
   progressCount: {
     ...typography.micro,
     fontFamily: fonts.mono,
+    color: colors.textSecondary,
+  },
+  settleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  settleStatus: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  settledText: {
+    ...typography.micro,
+    color: colors.success,
+  },
+  settleBtn: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
+    borderCurve: "continuous",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard,
+  },
+  settleBtnBusy: {
+    opacity: 0.5,
+  },
+  settleBtnText: {
+    ...typography.micro,
+    fontWeight: "600",
     color: colors.textSecondary,
   },
   metaLine: {

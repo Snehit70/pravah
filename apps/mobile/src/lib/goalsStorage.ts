@@ -14,6 +14,8 @@ export type GoalItem = {
   priority?: GoalPriority;
   /** ms epoch. Optional because legacy goals saved before this field exists. */
   createdAt?: number;
+  /** ms epoch the goal was settled (marked done). Absent while it is open. */
+  completedAt?: number;
 };
 
 export type GoalDraft = {
@@ -62,6 +64,7 @@ function sanitize(value: unknown): GoalItem[] {
       goal.priority = e.priority;
     }
     if (typeof e.createdAt === "number") goal.createdAt = e.createdAt;
+    if (typeof e.completedAt === "number") goal.completedAt = e.completedAt;
     out.push(goal);
   }
   return out;
@@ -193,6 +196,20 @@ export const goalsStore = {
     const trimmed = text.trim();
     if (!trimmed) return;
     cached = cached.map((g) => (g.id === id ? { ...g, text: trimmed } : g));
+    void saveGoals(cached);
+    emit();
+  },
+  /** Settle (a timestamp) or reopen (undefined) a goal locally. */
+  setCompletedAt(id: string, completedAt: number | undefined): void {
+    let changed = false;
+    cached = cached.map((g) => {
+      if (g.id !== id || g.completedAt === completedAt) return g;
+      changed = true;
+      const next: GoalItem = { ...g, completedAt };
+      if (completedAt === undefined) delete next.completedAt;
+      return next;
+    });
+    if (!changed) return;
     void saveGoals(cached);
     emit();
   },

@@ -9,6 +9,8 @@ export function useGoalMutations() {
   const removeGoalMutation = useMutation(api.goals.remove);
   const setLinkMutation = useMutation(api.goals.setLink);
   const clearAllMutation = useMutation(api.goals.clearAll);
+  const settleMutation = useMutation(api.goals.settle);
+  const reopenMutation = useMutation(api.goals.reopen);
 
   const addGoal = useCallback(
     async (draft: GoalDraft | string) => {
@@ -61,11 +63,43 @@ export function useGoalMutations() {
     [setLinkMutation],
   );
 
+  /**
+   * Ask the server to settle a goal. It refuses while tasks are open and
+   * reports how many; pass `completeOpenTasks` with that count once the user
+   * has confirmed completing them.
+   */
+  const settleGoal = useCallback(
+    async (
+      id: string,
+      options?: { completeOpenTasks: true; expectedOpenTaskCount: number },
+    ) => {
+      const result = await settleMutation({ clientId: id, ...options });
+      if (result.status === "settled") goalsStore.setCompletedAt(id, result.completedAt);
+      return result;
+    },
+    [settleMutation],
+  );
+
+  /** Reopen a settled goal. Its tasks stay as they are. */
+  const reopenGoal = useCallback(
+    async (id: string) => {
+      const previous = goalsStore.get().find((g) => g.id === id)?.completedAt;
+      goalsStore.setCompletedAt(id, undefined);
+      try {
+        await reopenMutation({ clientId: id });
+      } catch (error) {
+        goalsStore.setCompletedAt(id, previous);
+        throw error;
+      }
+    },
+    [reopenMutation],
+  );
+
   const clearAll = useCallback(() => {
     goalsStore.reset();
     goalLinksStore.reset();
     void clearAllMutation();
   }, [clearAllMutation]);
 
-  return { addGoal, updateGoal, deleteGoal, setGoalLink, clearAll };
+  return { addGoal, updateGoal, deleteGoal, setGoalLink, settleGoal, reopenGoal, clearAll };
 }

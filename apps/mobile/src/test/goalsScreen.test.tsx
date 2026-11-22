@@ -16,7 +16,7 @@
  * assertions through @testing-library queries.
  */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -177,8 +177,12 @@ vi.mock("../assets/icons/add-new-task.svg", () => ({
 vi.mock("../lib/haptic", () => ({ haptic: { light: vi.fn(), success: vi.fn() } }));
 vi.mock("../hooks/useConfirm", () => ({ useConfirm: () => vi.fn(async () => true) }));
 vi.mock("../hooks/useReducedMotion", () => ({ useReducedMotion: () => true }));
+const goalMutations = vi.hoisted(() => ({
+  settleGoal: vi.fn(async () => ({ status: "settled", completedAt: 1, completedTaskCount: 0 })),
+  reopenGoal: vi.fn(async () => undefined),
+}));
 vi.mock("../hooks/useGoalMutations", () => ({
-  useGoalMutations: () => ({ deleteGoal: vi.fn(), setGoalLink: vi.fn(), updateGoal: vi.fn() }),
+  useGoalMutations: () => ({ deleteGoal: vi.fn(), setGoalLink: vi.fn(), updateGoal: vi.fn(), ...goalMutations }),
 }));
 vi.mock("../components/TaskCard", () => ({
   TaskCard: ({ task }: { task: { title: string } }) =>
@@ -210,7 +214,7 @@ vi.mock("../components/SlidingSegmented", () => ({
     ),
 }));
 
-const goals = [
+const goals: Array<Record<string, unknown>> = [
   { id: "g1", text: "Mad 2 project", description: "Mad 2 college project", priority: "p1", createdAt: 1 },
   { id: "g2", text: "Kairo tool-calling rebuild", createdAt: 2 },
 ];
@@ -440,5 +444,52 @@ describe("GoalDetailSheet workbench", () => {
     openG1Sheet();
     expect(screen.queryByText(/Tap Edit to change/)).toBeNull();
     expect(screen.queryByText("Unlink")).toBeNull();
+  });
+});
+
+describe("GoalsScreen settling", () => {
+  const settleOne = () => {
+    goals.unshift({ id: "g0", text: "Old launch", createdAt: 0, completedAt: Date.UTC(2026, 0, 15, 12) });
+    return () => { goals.shift(); };
+  };
+
+  it("sinks a settled goal to the end, labels it and counts it apart", () => {
+    const restore = settleOne();
+    try {
+      render(<GoalsScreen tabBarHeight={0} tasks={tasks} onCreateTaskForGoal={vi.fn()} />);
+      expect(screen.getByText("2 active · 1 settled")).toBeTruthy();
+      expect(screen.getAllByTestId(/^goal-item-/).map((row) => row.textContent)).toEqual([
+        expect.stringContaining("Mad 2 project"),
+        expect.stringContaining("Kairo tool-calling rebuild"),
+        expect.stringContaining("Old launch"),
+      ]);
+      expect(screen.getByLabelText("Goal: Old launch. Settled. Open goal details.")).toBeTruthy();
+      expect(screen.queryByLabelText("Plan next task for Old launch")).toBeNull();
+    } finally {
+      restore();
+    }
+  });
+
+  it("marks an open goal done from its detail", async () => {
+    goalMutations.settleGoal.mockClear();
+    render(<GoalsScreen tabBarHeight={0} tasks={tasks} />);
+    openG1Sheet();
+    fireEvent.click(screen.getByLabelText("Mark goal Mad 2 project as done"));
+    await waitFor(() => expect(goalMutations.settleGoal).toHaveBeenCalledWith("g1"));
+  });
+
+  it("offers reopen instead of settle on a settled goal", async () => {
+    const restore = settleOne();
+    try {
+      goalMutations.reopenGoal.mockClear();
+      render(<GoalsScreen tabBarHeight={0} tasks={tasks} />);
+      fireEvent.click(screen.getByLabelText("Goal: Old launch. Settled. Open goal details."));
+      expect(screen.queryByLabelText("Mark goal Old launch as done")).toBeNull();
+      expect(screen.getByText("Settled Jan 15")).toBeTruthy();
+      fireEvent.click(screen.getByLabelText("Reopen goal Old launch"));
+      await waitFor(() => expect(goalMutations.reopenGoal).toHaveBeenCalledWith("g0"));
+    } finally {
+      restore();
+    }
   });
 });
