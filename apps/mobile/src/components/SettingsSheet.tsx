@@ -148,6 +148,7 @@ import Animated, {
 import { KairoSettingsSection } from "./KairoSettingsSection";
 import { GmailReviewSection } from "./GmailReviewSection";
 import { AppUpdateSection } from "./AppUpdateSection";
+import { HomeWidgetSection } from "./HomeWidgetSection";
 import { WhatsNewPage } from "./WhatsNewSheet";
 import { SnapWheelTimePicker } from "./SnapWheelTimePicker";
 import { SlidingSegmented, type SegmentedItem } from "./SlidingSegmented";
@@ -2333,6 +2334,7 @@ function AppearanceSection({
           onReorder={handleReorderTab}
            onReset={handleResetTabOrder}
          />
+        <HomeWidgetSection />
        </View>
 
     </View>
