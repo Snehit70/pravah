@@ -143,7 +143,8 @@ describe("buildWidgetView", () => {
     expect(result.overdue[0].meta).toBe("Yday");
     expect(result.today.map((row) => row.id)).toEqual(["early", "late", "untimed-p1", "untimed-p3"]);
     expect(result.tomorrow.map((row) => row.id)).toEqual(["tomorrow"]);
-    expect(result.remaining).toBe(5);
+    // Overdue is counted on its own, as in the app's Timeline.
+    expect(result.remaining).toBe(4);
     // 08:00 has passed at 09:30, so the next timed task is 14:00.
     expect(result.nextTimed?.id).toBe("late");
   });

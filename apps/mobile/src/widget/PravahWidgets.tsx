@@ -10,8 +10,8 @@ import {
 } from "react-native-android-widget";
 import ICON_SOURCE from "../../assets/icon.png";
 import {
-  attentionRows,
   rowsThatFit,
+  todayListRows,
   type WidgetRow,
   type WidgetView,
 } from "./widgetModel";
@@ -48,18 +48,31 @@ function Mono({ text, color, size = 10 }: { text: string; color: ColorProp; size
 }
 
 /**
- * Task rows. The complete circle's cell is 40×36dp and rows sit 4dp apart, so
- * a thumb aimed at one circle doesn't land on its neighbour; a tick from the
- * widget has no undo.
+ * Task rows. The checkbox cell is 40×34dp and rows sit 4dp apart, so a thumb
+ * aimed at one box doesn't land on its neighbour; a tick from the widget has
+ * no undo.
+ *
+ * Shapes and sizes follow the app's tokens (src/theme/tokens.ts): radii
+ * sm 4 / md 6 / lg 10 / xl 16, hairline borders, square checkboxes.
  */
-const ROW_HEIGHT = 36;
+const ROW_HEIGHT = 34;
 const ROW_GAP = 4;
+const RADIUS_MD = 6;
+const RADIUS_LG = 10;
+const RADIUS_XL = 16;
+const HAIRLINE = 0.5;
 
 function Spacer() {
   return <FlexWidget style={{ flex: 1, height: 1 }} />;
 }
 
-function PlusButton({ palette, size = 34 }: { palette: WidgetPalette; size?: number }) {
+/** The app's PlusIcon (UiIcons.tsx): two 12-unit strokes on a 24 grid. */
+function plusSvg(color: string): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 6v12M6 12h12" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round"/></svg>`;
+}
+
+/** Mirrors the app's small icon buttons: surface fill, hairline edge, radii.md. */
+function PlusButton({ palette, size = 28 }: { palette: WidgetPalette; size?: number }) {
   return (
     <FlexWidget
       clickAction="OPEN_URI"
@@ -68,16 +81,15 @@ function PlusButton({ palette, size = 34 }: { palette: WidgetPalette; size?: num
       style={{
         width: size,
         height: size,
-        borderRadius: 11,
-        backgroundColor: palette.accentSoft,
+        borderRadius: RADIUS_MD,
+        backgroundColor: palette.bg,
+        borderWidth: HAIRLINE,
+        borderColor: palette.border,
         justifyContent: "center",
         alignItems: "center",
       }}
     >
-      <TextWidget
-        text="+"
-        style={{ fontFamily: widgetFonts.medium, fontSize: size * 0.64, color: palette.accent }}
-      />
+      <SvgWidget svg={plusSvg(palette.textSecondary)} style={{ width: 16, height: 16 }} />
     </FlexWidget>
   );
 }
@@ -93,22 +105,27 @@ function BrandMark({ size }: { size: number }) {
   );
 }
 
-/** The tick takes the widget background so it reads on light and dark fills. */
-function checkSvg(fill: string, stroke: string): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="${fill}"/><path d="M4.6 8.3l2.2 2.2 4.6-4.8" fill="none" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-}
+/**
+ * The app's task checkbox scaled to 18dp: a rounded square (radius ≈ 0.3 of
+ * the side) with a control-coloured edge; checked fills with the accent.
+ */
+const CHECK_SIZE = 18;
 
-function ringColor(row: WidgetRow, palette: WidgetPalette): ColorProp {
-  if (row.priority === "p1") return palette.p1;
-  if (row.priority === "p2") return palette.p2;
-  return palette.p3;
+function checkboxSvg(palette: WidgetPalette, checked: boolean): string {
+  const box = checked
+    ? `<rect x="0" y="0" width="18" height="18" rx="5.5" fill="${palette.accent}"/>`
+    : `<rect x="0.75" y="0.75" width="16.5" height="16.5" rx="5" fill="${palette.bg}" stroke="${palette.control}" stroke-width="1.5"/>`;
+  const tick = checked
+    ? `<path d="M5.2 9.2l2.6 2.6 5-5.4" fill="none" stroke="${palette.onAccent}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`
+    : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18">${box}${tick}</svg>`;
 }
 
 function Chip({ text, fg, bg, uri }: { text: string; fg: ColorProp; bg: ColorProp; uri?: string }) {
   return (
     <FlexWidget
       {...(uri ? { clickAction: "OPEN_URI", clickActionData: { uri } } : {})}
-      style={{ backgroundColor: bg, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}
+      style={{ backgroundColor: bg, borderRadius: RADIUS_MD, paddingHorizontal: 8, paddingVertical: 3 }}
     >
       <TextWidget
         text={text}
@@ -132,7 +149,9 @@ function TaskRow({ row, palette }: { row: WidgetRow; palette: WidgetPalette }) {
         flexDirection: "row",
         alignItems: "center",
         backgroundColor: palette.row,
-        borderRadius: 11,
+        borderRadius: RADIUS_LG,
+        borderWidth: HAIRLINE,
+        borderColor: palette.border,
         paddingRight: 10,
         marginBottom: ROW_GAP,
       }}
@@ -147,19 +166,7 @@ function TaskRow({ row, palette }: { row: WidgetRow; palette: WidgetPalette }) {
             })}
         style={{ width: 40, height: ROW_HEIGHT, justifyContent: "center", alignItems: "center" }}
       >
-        {row.done ? (
-          <SvgWidget svg={checkSvg(palette.success, palette.bg)} style={{ width: 15, height: 15 }} />
-        ) : (
-          <FlexWidget
-            style={{
-              width: 15,
-              height: 15,
-              borderRadius: 8,
-              borderWidth: 1.6,
-              borderColor: ringColor(row, palette),
-            }}
-          />
-        )}
+        <SvgWidget svg={checkboxSvg(palette, row.done)} style={{ width: CHECK_SIZE, height: CHECK_SIZE }} />
       </FlexWidget>
       <FlexWidget style={{ flex: 1, height: ROW_HEIGHT, justifyContent: "center" }}>
         <TextWidget
@@ -168,7 +175,7 @@ function TaskRow({ row, palette }: { row: WidgetRow; palette: WidgetPalette }) {
           truncate="END"
           style={{
             fontFamily: widgetFonts.regular,
-            fontSize: 13,
+            fontSize: 12,
             color: row.done ? palette.textMuted : palette.text,
           }}
         />
@@ -178,11 +185,49 @@ function TaskRow({ row, palette }: { row: WidgetRow; palette: WidgetPalette }) {
         maxLines={1}
         truncate="END"
         style={{
-          fontFamily: widgetFonts.mono,
-          fontSize: 10.5,
+          fontFamily: widgetFonts.regular,
+          fontSize: 11,
           marginLeft: 8,
-          color: row.overdue ? palette.error : palette.textMuted,
+          color: row.overdue ? palette.deadline : palette.textMuted,
         }}
+      />
+    </FlexWidget>
+  );
+}
+
+/**
+ * The app's Timeline overdue bar in widget form: overdue never lists inline,
+ * it collapses into one row that opens the app, where triage lives.
+ */
+function OverdueBar({ count, palette }: { count: number; palette: WidgetPalette }) {
+  return (
+    <FlexWidget
+      clickAction="OPEN_URI"
+      clickActionData={{ uri: widgetLink("today") }}
+      accessibilityLabel={`Review ${count} overdue tasks`}
+      style={{
+        width: "match_parent",
+        height: ROW_HEIGHT,
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: palette.row,
+        borderRadius: RADIUS_LG,
+        borderWidth: HAIRLINE,
+        borderColor: palette.deadline,
+        paddingHorizontal: 12,
+        marginBottom: ROW_GAP,
+      }}
+    >
+      <TextWidget
+        text={`${count} overdue`}
+        maxLines={1}
+        style={{ fontFamily: widgetFonts.medium, fontSize: 12, color: palette.text }}
+      />
+      <Spacer />
+      <TextWidget
+        text="Review"
+        maxLines={1}
+        style={{ fontFamily: widgetFonts.medium, fontSize: 12, color: palette.deadline }}
       />
     </FlexWidget>
   );
@@ -209,16 +254,20 @@ function Header({
       >
         <TextWidget
           text="Today"
-          style={{ fontFamily: widgetFonts.semibold, fontSize: 15, color: palette.text, marginRight: 8 }}
+          style={{ fontFamily: widgetFonts.semibold, fontSize: 14, color: palette.accent, marginRight: 8 }}
         />
-        <Mono text={dateLabel} color={palette.textMuted} />
+        <TextWidget
+          text={dateLabel}
+          maxLines={1}
+          style={{ fontFamily: widgetFonts.regular, fontSize: 11, color: palette.textSecondary }}
+        />
         <Spacer />
         {countLabel ? (
           <TextWidget
             text={countLabel}
             maxLines={1}
             truncate="END"
-            style={{ fontFamily: widgetFonts.regular, fontSize: 11, color: palette.textSecondary, marginRight: 8 }}
+            style={{ fontFamily: widgetFonts.regular, fontSize: 11, color: palette.accent, marginRight: 8 }}
           />
         ) : null}
       </FlexWidget>
@@ -245,7 +294,7 @@ function Shell({
         width: "match_parent",
         height: "match_parent",
         backgroundColor: palette.bg,
-        borderRadius: 22,
+        borderRadius: RADIUS_XL,
         padding,
         flexDirection: "column",
       }}
@@ -281,7 +330,7 @@ function CenterMessage({
         text={title}
         maxLines={1}
         truncate="END"
-        style={{ fontFamily: widgetFonts.semibold, fontSize: 15, color: palette.text, textAlign: "center" }}
+        style={{ fontFamily: widgetFonts.semibold, fontSize: 14, color: palette.text, textAlign: "center" }}
       />
       {body ? (
         <TextWidget
@@ -304,7 +353,7 @@ function CenterMessage({
           style={{
             marginTop: 8,
             backgroundColor: palette.accent,
-            borderRadius: 10,
+            borderRadius: RADIUS_MD,
             paddingHorizontal: 14,
             paddingVertical: 6,
           }}
@@ -326,7 +375,7 @@ function SignedOut({ palette }: { palette: WidgetPalette }) {
         <BrandMark size={22} />
         <TextWidget
           text="Pravah"
-          style={{ fontFamily: widgetFonts.semibold, fontSize: 15, color: palette.text, marginLeft: 8 }}
+          style={{ fontFamily: widgetFonts.semibold, fontSize: 14, color: palette.text, marginLeft: 8 }}
         />
       </FlexWidget>
       <CenterMessage
@@ -348,7 +397,7 @@ function Skeleton({ palette, rows }: { palette: WidgetPalette; rows: number }) {
           style={{
             width: "match_parent",
             height: ROW_HEIGHT,
-            borderRadius: 11,
+            borderRadius: RADIUS_LG,
             backgroundColor: palette.row,
             marginBottom: ROW_GAP,
             marginRight: index === 1 ? 40 : index === 2 ? 80 : 0,
@@ -458,8 +507,9 @@ export function TodayWidget({ view, palette, size }: Props) {
       </Shell>
     );
   }
-  const rows = [...attentionRows(view), ...view.done.filter((row) => row.saving)];
-  if (rows.length === 0) {
+  const rows = todayListRows(view);
+  const overdueCount = view.overdue.length;
+  if (rows.length === 0 && overdueCount === 0) {
     return (
       <Shell palette={palette}>
         <Header palette={palette} dateLabel={view.dateLabel} />
@@ -468,13 +518,11 @@ export function TodayWidget({ view, palette, size }: Props) {
       </Shell>
     );
   }
-  const capacity = rowsThatFit(size.height, 84, ROW_HEIGHT + ROW_GAP);
+  const capacity = Math.max(1, rowsThatFit(size.height, 76, ROW_HEIGHT + ROW_GAP) - (overdueCount > 0 ? 1 : 0));
   const shown = rows.slice(0, capacity);
   const hidden = rows.length - shown.length;
-  const hiddenOverdue = view.overdue.filter((row) => !shown.includes(row)).length;
   const parts = [
     hidden > 0 ? `+${hidden} more` : null,
-    hiddenOverdue > 0 ? `${hiddenOverdue} overdue` : null,
     view.done.length > 0 ? `${view.done.length} done` : null,
   ].filter(Boolean);
   return (
@@ -485,6 +533,7 @@ export function TodayWidget({ view, palette, size }: Props) {
         countLabel={view.remaining > 0 ? `${view.remaining} left` : undefined}
       />
       <FlexWidget style={{ width: "match_parent", flex: 1, flexDirection: "column" }}>
+        {overdueCount > 0 ? <OverdueBar count={overdueCount} palette={palette} /> : null}
         {shown.map((row) => (
           <TaskRow key={row.id} row={row} palette={palette} />
         ))}
@@ -499,7 +548,12 @@ export function TodayWidget({ view, palette, size }: Props) {
 function SectionLabel({ text, color }: { text: string; color: ColorProp }) {
   return (
     <FlexWidget style={{ width: "match_parent", paddingTop: 6, paddingBottom: 4, paddingLeft: 2 }}>
-      <Mono text={text} color={color} />
+      <TextWidget
+        text={text}
+        maxLines={1}
+        truncate="END"
+        style={{ fontFamily: widgetFonts.semibold, fontSize: 12, color }}
+      />
     </FlexWidget>
   );
 }
@@ -517,17 +571,16 @@ export function AgendaWidget({ view, palette }: Props) {
   const hasAttention = view.overdue.length + view.today.length > 0;
   const items: { key: string; node: unknown }[] = [];
   if (view.overdue.length > 0) {
-    items.push({ key: "h-overdue", node: <SectionLabel text={`Overdue · ${view.overdue.length}`} color={palette.error} /> });
-    for (const row of view.overdue) items.push({ key: row.id, node: <TaskRow row={row} palette={palette} /> });
+    items.push({ key: "overdue", node: <OverdueBar count={view.overdue.length} palette={palette} /> });
   }
   if (view.today.length > 0 || view.done.length > 0) {
     const label = view.today.length > 0 ? `Today · ${view.today.length} left` : "Today · all done";
-    items.push({ key: "h-today", node: <SectionLabel text={label} color={palette.textMuted} /> });
+    items.push({ key: "h-today", node: <SectionLabel text={label} color={palette.textSecondary} /> });
     for (const row of view.today) items.push({ key: row.id, node: <TaskRow row={row} palette={palette} /> });
     for (const row of view.done) items.push({ key: `done-${row.id}`, node: <TaskRow row={row} palette={palette} /> });
   }
   if (view.tomorrow.length > 0) {
-    items.push({ key: "h-tomorrow", node: <SectionLabel text="Tomorrow" color={palette.textMuted} /> });
+    items.push({ key: "h-tomorrow", node: <SectionLabel text="Tomorrow" color={palette.textSecondary} /> });
     for (const row of view.tomorrow) items.push({ key: `t-${row.id}`, node: <TaskRow row={row} palette={palette} /> });
   }
 
@@ -621,10 +674,7 @@ export function FocusWidget({ view, palette, size }: Props) {
       </FlexWidget>
       {next ? (
         <FlexWidget style={{ width: "match_parent", flexDirection: "column" }}>
-          <Mono
-            text={next.overdue ? `Overdue · ${next.meta}` : next.meta === "—" ? "Next" : `Next · ${next.meta}`}
-            color={next.overdue ? palette.error : palette.accent}
-          />
+          <Mono text={next.meta === "—" ? "Next" : `Next · ${next.meta}`} color={palette.accent} />
           <TextWidget
             text={next.title}
             maxLines={compact ? 1 : 2}
@@ -641,9 +691,9 @@ export function FocusWidget({ view, palette, size }: Props) {
       <Spacer />
       {view.stale ? (
         <Mono text={`Synced ${view.syncedAgo}`} color={palette.warning} />
-      ) : view.overdue.length > 0 && next && !next.overdue ? (
+      ) : view.overdue.length > 0 ? (
         <FlexWidget style={{ flexDirection: "row" }}>
-          <Chip text={`${view.overdue.length} overdue`} fg={palette.error} bg={palette.errorSoft} />
+          <Chip text={`${view.overdue.length} overdue`} fg={palette.deadline} bg={palette.deadlineSoft} />
         </FlexWidget>
       ) : null}
     </Shell>
@@ -662,7 +712,7 @@ export function CaptureWidget({ palette }: { palette: WidgetPalette }) {
         width: "match_parent",
         height: "match_parent",
         backgroundColor: palette.bg,
-        borderRadius: 22,
+        borderRadius: RADIUS_XL,
         paddingHorizontal: 12,
         flexDirection: "row",
         alignItems: "center",
@@ -671,20 +721,20 @@ export function CaptureWidget({ palette }: { palette: WidgetPalette }) {
       <BrandMark size={24} />
       <TextWidget
         text="Capture"
-        style={{ fontFamily: widgetFonts.semibold, fontSize: 13.5, color: palette.text, marginLeft: 9 }}
+        style={{ fontFamily: widgetFonts.semibold, fontSize: 13, color: palette.text, marginLeft: 9 }}
       />
       <Spacer />
       <FlexWidget
         style={{
           width: 24,
           height: 24,
-          borderRadius: 8,
+          borderRadius: RADIUS_MD,
           backgroundColor: palette.accentSoft,
           justifyContent: "center",
           alignItems: "center",
         }}
       >
-        <TextWidget text="+" style={{ fontFamily: widgetFonts.medium, fontSize: 16, color: palette.accent }} />
+        <SvgWidget svg={plusSvg(palette.accent)} style={{ width: 16, height: 16 }} />
       </FlexWidget>
     </FlexWidget>
   );
@@ -700,7 +750,7 @@ export function CaptureIconWidget({ palette }: { palette: WidgetPalette }) {
         width: "match_parent",
         height: "match_parent",
         backgroundColor: palette.bg,
-        borderRadius: 22,
+        borderRadius: RADIUS_XL,
         justifyContent: "center",
         alignItems: "center",
       }}
