@@ -171,21 +171,40 @@ describe("runWatch", () => {
     expect(feeds.map(feed => (feed.args as {part?: string}).part).sort()).toEqual(["inbox", "timeline"]);
     const inbox = feeds.find(feed => (feed.args as {part?: string}).part === "inbox")!;
     const timeline = feeds.find(feed => (feed.args as {part?: string}).part === "timeline")!;
+    // Parts merge in a microtask, after Convex finishes delivering a transition.
+    const settle = () => Promise.resolve();
     client().named("goals:list")[0].onValue(GOALS);
     timeline.onValue({boardTasks: BOARD, completedToday: DONE, goalLinks: LINKS});
+    await settle();
     expect(snapshots).toHaveLength(0);
     inbox.onValue({boardTasks: [], completedToday: [], goalLinks: {}});
+    await settle();
     expect(snapshots).toHaveLength(1);
     expect(snapshots[0].counts.active).toBe(1);
     expect(snapshots[0].tasks.find(t => t.id === "t2")?.goalId).toBe("g1");
     inbox.onValue({boardTasks: [{id: "t9", title: "Inbox idea", status: "inbox"}], completedToday: [], goalLinks: {}});
+    await settle();
     expect(snapshots.at(-1)!.counts.active).toBe(2);
     expect(snapshots.at(-1)!.tasks.find(t => t.id === "t2")?.goalId).toBe("g1");
+    // One transaction moves t9 from the inbox to the timeline: both parts update
+    // in the same delivery, and only the finished union is published.
+    const moved = {...BOARD[0], id: "t9", title: "Inbox idea"};
+    const before = snapshots.length;
+    inbox.onValue({boardTasks: [], completedToday: [], goalLinks: {}});
+    timeline.onValue({boardTasks: [...BOARD, moved], completedToday: DONE, goalLinks: LINKS});
+    await settle();
+    expect(snapshots).toHaveLength(before + 1);
+    expect(snapshots.at(-1)!.tasks.filter(t => t.id === "t9")).toHaveLength(1);
+    expect(snapshots.at(-1)!.counts.active).toBe(2);
+    timeline.onValue({boardTasks: BOARD, completedToday: DONE, goalLinks: LINKS});
+    await settle();
     inbox.onError(new Error("temporary"));
     expect(snapshots.at(-1)!.errors).toEqual(["watchProjection:sources"]);
     timeline.onValue({boardTasks: BOARD, completedToday: DONE, goalLinks: LINKS});
+    await settle();
     expect(snapshots.at(-1)!.errors).toEqual(["watchProjection:sources"]);
     inbox.onValue({boardTasks: [], completedToday: [], goalLinks: {}});
+    await settle();
     expect(snapshots.at(-1)!.errors ?? []).toEqual([]);
     expect(snapshots.at(-1)!.counts.active).toBe(1);
     await handle.close();

@@ -368,6 +368,32 @@ export async function runWatch({
       // Publish only once both parts of this day's generation have arrived.
       const parts = usesSourceParts ? (["inbox", "timeline"] as const) : ([undefined] as const);
       const received = new Map<string, Sources>();
+      const merge = () => {
+        if (closed || generation !== dayGeneration || received.size !== parts.length) return;
+        const all = [...received.values()];
+        latest.boardTasks = all.flatMap(source => source.boardTasks);
+        latest.completedToday = all.flatMap(source => source.completedToday);
+        latest.goalLinks = Object.assign({}, ...all.map(source => source.goalLinks));
+        for (const key of ["boardTasks", "completedToday", "goalLinks"] as const) {
+          ready[key] = true;
+          sourceErrors.delete(key);
+        }
+        publish();
+      };
+      // Convex delivers every query a transaction changed in one synchronous
+      // loop. A task moving between inbox and timeline updates both parts, so
+      // merging on the first callback would publish it missing or twice.
+      // Merging in a microtask waits until the whole transition has arrived.
+      let mergeQueued = false;
+      const queueMerge = () => {
+        if (parts.length === 1) return merge();
+        if (mergeQueued) return;
+        mergeQueued = true;
+        queueMicrotask(() => {
+          mergeQueued = false;
+          merge();
+        });
+      };
       const unsubscribeParts = parts.map(part => client.onUpdate(listWatchSources,
         part ? { dayStartMs: startMs, dayEndMs: endMs, part } : { dayStartMs: startMs, dayEndMs: endMs }, value => {
         if (closed || generation !== dayGeneration) return;
@@ -379,16 +405,7 @@ export async function runWatch({
           return;
         }
         received.set(part ?? "all", sources as Sources);
-        if (received.size !== parts.length) return;
-        const all = [...received.values()];
-        latest.boardTasks = all.flatMap(source => source.boardTasks);
-        latest.completedToday = all.flatMap(source => source.completedToday);
-        latest.goalLinks = Object.assign({}, ...all.map(source => source.goalLinks));
-        for (const key of ["boardTasks", "completedToday", "goalLinks"] as const) {
-          ready[key] = true;
-          sourceErrors.delete(key);
-        }
-        publish();
+        queueMerge();
       }, error => {
         if (generation !== dayGeneration) return;
         // A failed part must deliver afresh before the pair counts as healthy,
