@@ -3,9 +3,11 @@ import { paginationOptsValidator } from "convex/server";
 import { query } from "./_generated/server";
 import { internalMutation, mutation } from "./writeServer";
 import type { MutationCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { requireTokenIdentifier } from "./authHelpers";
+import { completeTaskForOwner } from "./tasks";
+import { planGoalSettle, selectOpenGoalTasks, type SettleGoalResult } from "./goalSettleModel";
 
 export type GoalDedupeCandidate = {
   _id: string;
@@ -104,6 +106,7 @@ export const list = query({
       description: r.description,
       deadline: r.deadline,
       priority: r.priority,
+      completedAt: r.completedAt,
       createdAt: r.createdAt,
     }));
   },
@@ -266,6 +269,103 @@ export const remove = mutation({
       )
       .collect();
     for (const link of links) await ctx.db.delete(link._id);
+  },
+});
+
+async function getOwnedGoal(ctx: MutationCtx, owner: string, goalClientId: string) {
+  return ctx.db
+    .query("goals")
+    .withIndex("by_owner_client_id", (q) =>
+      q.eq("ownerTokenIdentifier", owner).eq("clientId", goalClientId),
+    )
+    .first();
+}
+
+/**
+ * Every task currently linked to the goal, owner-checked. A task counts for
+ * the goal its newest link names, the same rule goal progress uses, so a
+ * stale duplicate link never pulls another goal's task into a settle.
+ */
+async function listLinkedTasksForGoal(ctx: MutationCtx, owner: string, goalClientId: string) {
+  const links = await ctx.db
+    .query("goalLinks")
+    .withIndex("by_owner_goal", (q) =>
+      q.eq("ownerTokenIdentifier", owner).eq("goalClientId", goalClientId),
+    )
+    .collect();
+  const tasks: Doc<"tasks">[] = [];
+  for (const taskId of new Set(links.map((link) => link.taskId))) {
+    const id = ctx.db.normalizeId("tasks", taskId);
+    if (!id) continue;
+    const task = await ctx.db.get(id);
+    if (!task || task.ownerTokenIdentifier !== owner) continue;
+    const current = await ctx.db
+      .query("goalLinks")
+      .withIndex("by_owner_task", (q) => q.eq("ownerTokenIdentifier", owner).eq("taskId", taskId))
+      .order("desc")
+      .first();
+    if (current?.goalClientId !== goalClientId) continue;
+    tasks.push(task);
+  }
+  return tasks;
+}
+
+export async function settleGoalForOwner(
+  ctx: MutationCtx,
+  owner: string,
+  goalClientId: string,
+  options: { completeOpenTasks?: boolean; expectedOpenTaskCount?: number } = {},
+): Promise<SettleGoalResult> {
+  const goal = await getOwnedGoal(ctx, owner, goalClientId);
+  if (!goal) return { status: "not_found" };
+  if (goal.completedAt !== undefined) {
+    return { status: "settled", completedAt: goal.completedAt, completedTaskCount: 0 };
+  }
+
+  const open = selectOpenGoalTasks(await listLinkedTasksForGoal(ctx, owner, goalClientId));
+  const plan = planGoalSettle(open.length, options);
+  if (plan.action === "ask") return { status: "open_tasks", openTaskCount: plan.openTaskCount };
+
+  // The same path the task checkbox uses, so completedAt, updatedAt and the
+  // progress/watch triggers behave exactly as a manual completion would.
+  if (plan.completeOpen) {
+    for (const task of open) await completeTaskForOwner(ctx, owner, task._id);
+  }
+  const now = Date.now();
+  await ctx.db.patch(goal._id, { completedAt: now, updatedAt: now });
+  return { status: "settled", completedAt: now, completedTaskCount: plan.completeOpen ? open.length : 0 };
+}
+
+/**
+ * Mark a goal done. With open tasks and no `completeOpenTasks`, nothing
+ * changes and the open count comes back so the client can confirm. With it,
+ * the open tasks are completed and the goal settled in this one transaction.
+ */
+export const settle = mutation({
+  args: {
+    clientId: v.string(),
+    completeOpenTasks: v.optional(v.boolean()),
+    expectedOpenTaskCount: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const owner = await requireTokenIdentifier(ctx);
+    return settleGoalForOwner(ctx, owner, args.clientId, {
+      completeOpenTasks: args.completeOpenTasks,
+      expectedOpenTaskCount: args.expectedOpenTaskCount,
+    });
+  },
+});
+
+/** Reopen a settled goal. Its tasks keep whatever state they are in. */
+export const reopen = mutation({
+  args: { clientId: v.string() },
+  handler: async (ctx, args) => {
+    const owner = await requireTokenIdentifier(ctx);
+    const goal = await getOwnedGoal(ctx, owner, args.clientId);
+    if (!goal) return { reopened: false };
+    if (goal.completedAt === undefined) return { reopened: true };
+    await ctx.db.patch(goal._id, { completedAt: undefined, updatedAt: Date.now() });
+    return { reopened: true };
   },
 });
 

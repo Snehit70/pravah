@@ -21,6 +21,7 @@ import type * as crons from "../crons.js";
 import type * as goalLinkQueries from "../goalLinkQueries.js";
 import type * as goalProgress from "../goalProgress.js";
 import type * as goalProgressModel from "../goalProgressModel.js";
+import type * as goalSettleModel from "../goalSettleModel.js";
 import type * as goals from "../goals.js";
 import type * as http from "../http.js";
 import type * as httpContracts from "../httpContracts.js";
@@ -67,6 +68,7 @@ declare const fullApi: ApiFromModules<{
   goalLinkQueries: typeof goalLinkQueries;
   goalProgress: typeof goalProgress;
   goalProgressModel: typeof goalProgressModel;
+  goalSettleModel: typeof goalSettleModel;
   goals: typeof goals;
   http: typeof http;
   httpContracts: typeof httpContracts;

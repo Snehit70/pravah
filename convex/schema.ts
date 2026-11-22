@@ -74,6 +74,8 @@ export default defineSchema({
     description: v.optional(v.string()),
     deadline: v.optional(v.string()),
     priority: v.optional(v.union(v.literal("p1"), v.literal("p2"), v.literal("p3"))),
+    /** Set when the goal is settled (marked done); absent on open and legacy goals. */
+    completedAt: v.optional(v.number()),
     ownerTokenIdentifier: v.string(),
     createdAt: v.number(),
     updatedAt: v.number(),
