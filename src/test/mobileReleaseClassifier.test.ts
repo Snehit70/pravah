@@ -46,6 +46,8 @@ describe("mobile release classification", () => {
           "convex/http.ts",
           "convex/automationHttpAuth.ts",
           "convex/ownerConvexToken.ts",
+          "convex/watchProjection.ts",
+          "convex/automationCredentialUsage.ts",
         ],
         labels: [],
       }),

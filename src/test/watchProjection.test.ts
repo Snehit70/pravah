@@ -94,4 +94,28 @@ describe("watcher read model",()=>{
     expect((await t.query(api.watchProjection.sources,options)).completedToday[0].completedAt).toBe(2000);
     await expect(t.query(api.watchProjection.sources,{dayStartMs:10,dayEndMs:1})).rejects.toThrow("Invalid watch day window");
   });
+  it("splits the board into disjoint inbox and timeline parts before and after backfill",async()=>{
+    const {t}=setup();
+    const inboxId=await t.mutation(api.tasks.addTask,{title:"idea"});
+    const datedId=await t.mutation(api.tasks.addTask,{title:"dated",deadline:"2026-10-13"});
+    const doneId=await t.mutation(api.tasks.addTask,{title:"done",deadline:"2026-10-13"});
+    await t.mutation(api.tasks.completeTask,{taskId:doneId});
+    await t.mutation(api.goals.setLink,{taskId:inboxId,goalClientId:"g"});
+    const day={dayStartMs:Date.now()-1000,dayEndMs:Date.now()+1000};
+    const check=async()=>{
+      const all=await t.query(api.watchProjection.sources,day);
+      const inbox=await t.query(api.watchProjection.sources,{...day,part:"inbox"});
+      const timeline=await t.query(api.watchProjection.sources,{...day,part:"timeline"});
+      expect(inbox.boardTasks.map(task=>String(task._id))).toEqual([String(inboxId)]);
+      expect(inbox.completedToday).toEqual([]);
+      expect(inbox.goalLinks).toEqual({[inboxId]:"g"});
+      expect(timeline.boardTasks.map(task=>String(task._id))).toEqual([String(datedId)]);
+      expect(timeline.completedToday.map(task=>String(task._id))).toEqual([String(doneId)]);
+      expect(snapshot({boardTasks:[...inbox.boardTasks,...timeline.boardTasks],completedToday:timeline.completedToday,
+        goalLinks:{...inbox.goalLinks,...timeline.goalLinks}})).toEqual(snapshot(all));
+    };
+    await check();
+    await t.mutation(internal.watchProjection.prepareForOwner,{owner:"owner"});
+    await check();
+  });
 });

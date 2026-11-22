@@ -5,6 +5,7 @@ import { v } from "convex/values";
 import { requireTokenIdentifier } from "./authHelpers";
 import { syncWatchTask } from "./watchProjectionModel";
 import { listBoardTasksForOwner, listTodayCompletedTasksForOwner } from "./tasks";
+import { getTaskState } from "./taskLifecycle";
 import { listGoalLinksForOwner } from "./goalLinkQueries";
 
 async function backfill(ctx: MutationCtx, owner: string) {
@@ -26,9 +27,18 @@ export const prepareForOwner = internalMutation({
   handler: (ctx, { owner }) => backfill(ctx, owner),
 });
 
+const sourcePart = v.optional(v.union(v.literal("inbox"), v.literal("timeline")));
+
+/**
+ * Without `part`, returns the whole board (the contract older watchers use).
+ * With `part`, returns one disjoint half: "inbox" holds undated active tasks and
+ * "timeline" holds dated active tasks plus today's completions. Each half reads
+ * its own index range, so a write to an inbox task does not re-read the
+ * timeline and vice versa. Merging both halves equals the unsplit result.
+ */
 export const sources = query({
-  args: { dayStartMs: v.number(), dayEndMs: v.number() },
-  handler: async (ctx, { dayStartMs, dayEndMs }) => {
+  args: { dayStartMs: v.number(), dayEndMs: v.number(), part: sourcePart },
+  handler: async (ctx, { dayStartMs, dayEndMs, part }) => {
     if (!Number.isFinite(dayStartMs) || !Number.isFinite(dayEndMs) ||
         dayEndMs <= dayStartMs || dayEndMs - dayStartMs > 26 * 60 * 60 * 1000) {
       throw new Error("Invalid watch day window");
@@ -38,10 +48,13 @@ export const sources = query({
       .withIndex("by_owner", q => q.eq("ownerTokenIdentifier", owner)).unique();
     // A partly populated read model must never undercount the board.
     if (!state?.ready) {
-      const [boardTasks, completedToday] = await Promise.all([
+      const [allBoardTasks, allCompletedToday] = await Promise.all([
         listBoardTasksForOwner(ctx, owner),
         listTodayCompletedTasksForOwner(ctx, owner, dayStartMs, dayEndMs),
       ]);
+      const boardTasks = part === undefined ? allBoardTasks
+        : allBoardTasks.filter(task => (getTaskState(task) === "inbox") === (part === "inbox"));
+      const completedToday = part === "inbox" ? [] : allCompletedToday;
       const ids = [...new Set([...boardTasks, ...completedToday].map(task => String(task._id)))];
       const goalLinks: Record<string, string> = {};
       for (let i = 0; i < ids.length; i += 500) {
@@ -49,10 +62,17 @@ export const sources = query({
       }
       return { boardTasks, completedToday, goalLinks };
     }
+    const activeRows = (range: "inbox" | "timeline" | "all") => ctx.db.query("watchTasks")
+      .withIndex("by_owner_completion_status", q => {
+        const active = q.eq("ownerTokenIdentifier", owner).eq("completedAt", undefined);
+        if (range === "inbox") return active.eq("status", "inbox");
+        // "scheduled" and any legacy "completed" row without a completion time.
+        if (range === "timeline") return active.gt("status", "inbox");
+        return active;
+      }).collect();
     const [active, done] = await Promise.all([
-      ctx.db.query("watchTasks").withIndex("by_owner_completion", q =>
-        q.eq("ownerTokenIdentifier", owner).eq("completedAt", undefined)).collect(),
-      ctx.db.query("watchTasks").withIndex("by_owner_completion", q =>
+      activeRows(part ?? "all"),
+      part === "inbox" ? Promise.resolve([]) : ctx.db.query("watchTasks").withIndex("by_owner_completion_status", q =>
         q.eq("ownerTokenIdentifier", owner).gte("completedAt", dayStartMs).lt("completedAt", dayEndMs)).collect(),
     ]);
     const shape = (row: typeof active[number]) => {

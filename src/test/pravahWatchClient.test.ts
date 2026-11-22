@@ -74,7 +74,7 @@ const MINT_URL = `${SITE_URL}/automation/convex-token`;
 let tokenCalls: Array<{ token: string; expiresAt: number }> = [];
 let fetchMock: ReturnType<typeof vi.fn>;
 
-function respondWithToken(token: string, expiresAt: number, watchReadModel?: number) {
+function respondWithToken(token: string, expiresAt: number, watchReadModel?: number, watchSourceParts?: number) {
   tokenCalls.push({ token, expiresAt });
   fetchMock.mockResolvedValueOnce({
     ok: true,
@@ -83,6 +83,7 @@ function respondWithToken(token: string, expiresAt: number, watchReadModel?: num
       token,
       expiresAt,
       watchReadModel,
+      watchSourceParts,
       convexUrl: CONVEX_URL,
       siteUrl: SITE_URL,
       label: "Laptop",
@@ -127,8 +128,8 @@ describe("runWatch", () => {
     vi.unstubAllGlobals();
   });
 
-  const start = async (overrides: Partial<Parameters<typeof runWatch>[0]> = {}, watchReadModel?: number) => {
-    respondWithToken("token-1", clock + 15 * 60 * 1000, watchReadModel);
+  const start = async (overrides: Partial<Parameters<typeof runWatch>[0]> = {}, watchReadModel?: number, watchSourceParts?: number) => {
+    respondWithToken("token-1", clock + 15 * 60 * 1000, watchReadModel, watchSourceParts);
     return runWatch({
       siteUrl: SITE_URL,
       bearerToken: BEARER,
@@ -162,6 +163,52 @@ describe("runWatch", () => {
     feed.onValue({boardTasks:BOARD,completedToday:DONE,goalLinks:LINKS});
     expect(snapshots.at(-1)!.errors??[]).toEqual([]);
     await handle.close();expect(client().subscriptions).toHaveLength(0);
+  });
+
+  it("subscribes to inbox and timeline parts separately and publishes their union", async () => {
+    const handle = await start({}, 1, 1);
+    const feeds = client().named("watchProjection:sources");
+    expect(feeds.map(feed => (feed.args as {part?: string}).part).sort()).toEqual(["inbox", "timeline"]);
+    const inbox = feeds.find(feed => (feed.args as {part?: string}).part === "inbox")!;
+    const timeline = feeds.find(feed => (feed.args as {part?: string}).part === "timeline")!;
+    // Parts merge in a microtask, after Convex finishes delivering a transition.
+    const settle = () => Promise.resolve();
+    client().named("goals:list")[0].onValue(GOALS);
+    timeline.onValue({boardTasks: BOARD, completedToday: DONE, goalLinks: LINKS});
+    await settle();
+    expect(snapshots).toHaveLength(0);
+    inbox.onValue({boardTasks: [], completedToday: [], goalLinks: {}});
+    await settle();
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0].counts.active).toBe(1);
+    expect(snapshots[0].tasks.find(t => t.id === "t2")?.goalId).toBe("g1");
+    inbox.onValue({boardTasks: [{id: "t9", title: "Inbox idea", status: "inbox"}], completedToday: [], goalLinks: {}});
+    await settle();
+    expect(snapshots.at(-1)!.counts.active).toBe(2);
+    expect(snapshots.at(-1)!.tasks.find(t => t.id === "t2")?.goalId).toBe("g1");
+    // One transaction moves t9 from the inbox to the timeline: both parts update
+    // in the same delivery, and only the finished union is published.
+    const moved = {...BOARD[0], id: "t9", title: "Inbox idea"};
+    const before = snapshots.length;
+    inbox.onValue({boardTasks: [], completedToday: [], goalLinks: {}});
+    timeline.onValue({boardTasks: [...BOARD, moved], completedToday: DONE, goalLinks: LINKS});
+    await settle();
+    expect(snapshots).toHaveLength(before + 1);
+    expect(snapshots.at(-1)!.tasks.filter(t => t.id === "t9")).toHaveLength(1);
+    expect(snapshots.at(-1)!.counts.active).toBe(2);
+    timeline.onValue({boardTasks: BOARD, completedToday: DONE, goalLinks: LINKS});
+    await settle();
+    inbox.onError(new Error("temporary"));
+    expect(snapshots.at(-1)!.errors).toEqual(["watchProjection:sources"]);
+    timeline.onValue({boardTasks: BOARD, completedToday: DONE, goalLinks: LINKS});
+    await settle();
+    expect(snapshots.at(-1)!.errors).toEqual(["watchProjection:sources"]);
+    inbox.onValue({boardTasks: [], completedToday: [], goalLinks: {}});
+    await settle();
+    expect(snapshots.at(-1)!.errors ?? []).toEqual([]);
+    expect(snapshots.at(-1)!.counts.active).toBe(1);
+    await handle.close();
+    expect(client().subscriptions).toHaveLength(0);
   });
 
   it("holds the last complete read model across invalid responses and midnight replacement", async () => {

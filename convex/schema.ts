@@ -108,7 +108,9 @@ export default defineSchema({
     description: v.optional(v.string()), tags: v.optional(v.array(v.string())), estimatedMinutes: v.optional(v.number()),
     goalId: v.optional(v.string()),
   }).index("by_owner_task", ["ownerTokenIdentifier", "taskId"])
-    .index("by_owner_completion", ["ownerTokenIdentifier", "completedAt"]),
+    // `status` lets the watcher subscribe to inbox and timeline rows as separate
+    // index ranges, so a write to one part does not re-read the other.
+    .index("by_owner_completion_status", ["ownerTokenIdentifier", "completedAt", "status"]),
   watchBackfills: defineTable({
     ownerTokenIdentifier: v.string(), ready: v.boolean(), cursor: v.union(v.string(), v.null()),
   }).index("by_owner", ["ownerTokenIdentifier"]),

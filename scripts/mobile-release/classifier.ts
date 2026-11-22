@@ -33,7 +33,9 @@ const nativeCriticalPaths = [
 // separate HTTP adapter used by the web and CLI clients, so changing them does
 // not alter a shipped mobile bundle's behavior. `ownerConvexToken.ts` is a
 // server-only auth endpoint that mints automation watcher tokens; only the
-// HTTP adapter calls it.
+// HTTP adapter calls it. `watchProjection.ts` serves only the CLI watcher's
+// read model, and `automationCredentialUsage.ts` only throttles automation
+// credential bookkeeping on the HTTP auth path.
 const mobileIndependentConvexPaths = [
   "convex/http.ts",
   "convex/httpContracts.ts",
@@ -41,6 +43,8 @@ const mobileIndependentConvexPaths = [
   "convex/automationHttpAuth.ts",
   "convex/automationScopes.ts",
   "convex/ownerConvexToken.ts",
+  "convex/watchProjection.ts",
+  "convex/automationCredentialUsage.ts",
 ] as const;
 
 function isMobileAffecting(path: string): boolean {
