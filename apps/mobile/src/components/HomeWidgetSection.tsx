@@ -11,6 +11,7 @@ const CHOICES: { name: WidgetName; label: string }[] = [
   { name: WIDGET_NAMES.agenda, label: "Agenda" },
   { name: WIDGET_NAMES.focus, label: "Focus" },
   { name: WIDGET_NAMES.capture, label: "Capture" },
+  { name: WIDGET_NAMES.captureIcon, label: "Capture icon" },
 ];
 
 function resultCopy(result: PinWidgetResult): string {
