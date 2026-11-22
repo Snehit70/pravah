@@ -518,7 +518,9 @@ export function TodayWidget({ view, palette, size }: Props) {
       </Shell>
     );
   }
-  const capacity = Math.max(1, rowsThatFit(size.height, 76, ROW_HEIGHT + ROW_GAP) - (overdueCount > 0 ? 1 : 0));
+  // The overdue bar takes one slot; at the minimum height it may be the only
+  // row, and the footer's "+N more" covers the rest.
+  const capacity = Math.max(0, rowsThatFit(size.height, 76, ROW_HEIGHT + ROW_GAP) - (overdueCount > 0 ? 1 : 0));
   const shown = rows.slice(0, capacity);
   const hidden = rows.length - shown.length;
   const parts = [
