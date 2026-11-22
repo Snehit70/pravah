@@ -12,6 +12,9 @@ vi.mock("convex/react", () => ({
   useMutation: (...args: unknown[]) => useMutationMock(...args),
 }));
 
+// Widget snapshot bookkeeping touches native storage; not under test here.
+vi.mock("../widget/useHomeWidget", () => ({ noteTasksCompletedForWidget: async () => undefined }));
+
 vi.mock("../lib/feedback", () => ({
   feedback: {
     error: vi.fn(),

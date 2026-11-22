@@ -14,6 +14,7 @@ import {
 } from "../lib/task-optimistic";
 import type { RetryPayload } from "./useRetryQueue";
 import type { ToastState } from "./useWorkspaceState";
+import { noteTasksCompletedForWidget } from "../widget/useHomeWidget";
 
 type UndoSpec = { message: string; run: () => void };
 
@@ -164,6 +165,7 @@ export function useTaskMutations({
       actionName: "complete_task",
       optimistic: (cur) => removeTaskFromOptimisticView(cur, taskId),
       mutation: async () => {
+        void noteTasksCompletedForWidget([taskId]);
         await completeTaskMutation({ taskId });
       },
       errorMessage: "Could not mark task as done.",
@@ -554,6 +556,7 @@ export function useTaskMutations({
         actionName: "complete_tasks_bulk",
         optimistic: (cur) => cur.filter((task) => !ids.has(String(task._id))),
         mutation: async () => {
+          void noteTasksCompletedForWidget(taskIds.map(String));
           await Promise.all(taskIds.map((taskId) => completeTaskMutation({ taskId })));
         },
         errorMessage:

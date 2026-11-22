@@ -41,6 +41,26 @@ export async function clearHomeWidgets(): Promise<void> {
   await refreshHomeWidgets();
 }
 
+/**
+ * Records in-app completions in the widget snapshot before the server
+ * confirms them. The app only watches today's completions by deadline, so an
+ * overdue or later task finished today would otherwise vanish from the widget
+ * instead of counting as done. Local storage only; if the completion fails
+ * the task comes back open in the next live snapshot. Never throws.
+ */
+export async function noteTasksCompletedForWidget(taskIds: readonly string[]): Promise<void> {
+  if (!isWidgetSupported() || taskIds.length === 0) return;
+  try {
+    const snapshot = await readWidgetSnapshot();
+    if (!snapshot) return;
+    const at = Date.now();
+    const next = taskIds.reduce((current, taskId) => markSnapshotTaskDone(current, taskId, at), snapshot);
+    if (next.tasks.some((task, index) => task !== snapshot.tasks[index])) await writeWidgetSnapshot(next);
+  } catch (error) {
+    mobileLogger.warn("home_widget_note_failed", { errorType: classifyError(error) });
+  }
+}
+
 type SyncOptions = {
   signedIn: boolean;
   sessionLoading: boolean;
