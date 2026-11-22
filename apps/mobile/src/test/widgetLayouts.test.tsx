@@ -160,7 +160,8 @@ describe("home-screen widget layouts", () => {
   it("expands every widget to primitives inside renderWidget", () => {
     for (const widgetName of Object.values(WIDGET_NAMES)) {
       const tree = renderWidget({ widgetName, width: 320, height: 180 }, { view: states.busy, accent: "teal", theme: "system" });
-      for (const element of [tree.light, tree.dark]) {
+      const { light, dark } = tree as { light: unknown; dark: unknown };
+      for (const element of [light, dark]) {
         const nodes = collect(walk(element));
         expect(nodes.length).toBeGreaterThan(1);
       }

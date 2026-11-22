@@ -1,5 +1,5 @@
 "use no memo";
-import { createElement, type ReactElement } from "react";
+import { createElement, type FunctionComponent, type ReactElement } from "react";
 import type { WidgetInfo, WidgetRepresentation } from "react-native-android-widget";
 import { buildWidgetView, type WidgetView } from "./widgetModel";
 import { renderWidgetByName } from "./PravahWidgets";
@@ -59,7 +59,7 @@ export function expandWidgetElement(element: unknown): ReactElement {
   const expandChild = (child: unknown): unknown =>
     Array.isArray(child) ? child.map(expandChild) : child ? expandWidgetElement(child) : child;
   return createElement(
-    current.type as WidgetComponent,
+    current.type as unknown as FunctionComponent,
     { ...props, key: current.key ?? undefined },
     ...(list.map(expandChild) as ReactElement[]),
   );
