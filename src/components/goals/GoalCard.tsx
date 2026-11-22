@@ -39,9 +39,11 @@ export function GoalCard({
 }) {
   const { total, done } = progress;
   const settled = goal.completedAt !== undefined;
-  const complete = settled || (total > 0 && done >= total);
+  // Progress follows the tasks, not the settled flag: a settled goal that
+  // later gains or reopens a task shows that honestly.
+  const complete = total > 0 && done >= total;
   const percent = total > 0 ? Math.min(100, Math.round(done / total * 100)) : 0;
-  const overdue = Boolean(goal.deadline && goal.deadline < getLocalDateString() && !complete);
+  const overdue = Boolean(goal.deadline && goal.deadline < getLocalDateString() && !complete && !settled);
   const nextTasks = linkedTasks.filter((task) => !isTaskCompleted(task))
     .sort((a, b) => (a.deadline ?? "9999").localeCompare(b.deadline ?? "9999")).slice(0, 2);
 

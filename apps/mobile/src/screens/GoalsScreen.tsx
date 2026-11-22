@@ -225,7 +225,9 @@ function GoalDetailSheet({
   }
   const hasTasks = progress.total > 0;
   const settled = goal ? isGoalSettled(goal) : false;
-  const isComplete = settled || (hasTasks && progress.done === progress.total);
+  // Progress follows the tasks; a goal settled and later given more work
+  // shows that work honestly.
+  const isComplete = hasTasks && progress.done === progress.total;
   const runSettleAction = useCallback(async (action: (() => Promise<void>) | undefined) => {
     if (!action || settleBusy) return;
     setSettleBusy(true);
@@ -1053,10 +1055,12 @@ export function GoalsScreen({
           const hasTasks = progress.total > 0;
           const showLinkedLoading = isTaskDataLoading && !hasTasks;
           const settled = isGoalSettled(item);
-          const isComplete = settled || (hasTasks && progress.done === progress.total);
+          const isComplete = hasTasks && progress.done === progress.total;
           const priority = item.priority ? PRIORITY_LABEL[item.priority] : null;
           const countLabel = settled
-            ? "Settled"
+            ? hasTasks && !isComplete
+              ? `Settled · ${progress.done} of ${progress.total} done`
+              : "Settled"
             : showLinkedLoading
             ? "Loading…"
             : isComplete
