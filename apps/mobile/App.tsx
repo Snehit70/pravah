@@ -87,6 +87,8 @@ import { useRetryQueue, type RetryPayload } from "./src/hooks/useRetryQueue";
 import { useTaskMutations } from "./src/hooks/useTaskMutations";
 import { useTaskQueries } from "./src/hooks/useTaskQueries";
 import { useWorkspaceSnapshot } from "./src/hooks/useWorkspaceSnapshot";
+import { clearHomeWidgets, useHomeWidgetSync, useWidgetDeepLinks } from "./src/widget/useHomeWidget";
+import type { WidgetLinkTarget } from "./src/widget/widgetLinks";
 import { useWorkspaceState } from "./src/hooks/useWorkspaceState";
 import { useGoogleAuth } from "./src/hooks/useGoogleAuth";
 import { useNotificationsSettings } from "./src/hooks/useNotificationsSettings";
@@ -451,6 +453,16 @@ function MobileApp() {
   const restoreTaskImageMutation = useMutation(api.taskImages.restoreTaskImage);
   const updateTaskMutation = useMutation(api.tasks.updateTask);
   const completeTaskMutation = useMutation(api.tasks.completeTask);
+  useHomeWidgetSync({
+    signedIn: Boolean(session),
+    sessionLoading,
+    hasLiveData: hasLiveWorkspaceData && isDataBootstrapReady,
+    inboxTasks,
+    scheduledTasks,
+    completedTasks,
+    accent: prefs.accentColor,
+    theme: prefs.theme,
+  });
   const moveTaskMutation = useMutation(api.tasks.moveTask);
   const unscheduleTaskMutation = useMutation(api.tasks.unscheduleTask);
   const rescheduleTasksMutation = useMutation(api.tasks.rescheduleTasks);
@@ -698,6 +710,7 @@ function MobileApp() {
     setSelectedCompletedTask(null);
     setIsSettingsModalOpen(false);
     await clearSnapshot();
+    await clearHomeWidgets();
     await googleSignOut();
   }, [clearSnapshot, googleSignOut, setIsSettingsModalOpen]);
 
@@ -709,6 +722,7 @@ function MobileApp() {
     setSelectedCompletedTask(null);
     setIsSettingsModalOpen(false);
     await clearSnapshot();
+    await clearHomeWidgets();
     await googleSignOut();
   }, [clearAllGoals, clearSnapshot, googleSignOut, setIsSettingsModalOpen]);
 
@@ -1266,6 +1280,31 @@ function MobileApp() {
   // hydrating) — making interactive-looking rows silently no-op.
   const canUseWorkspaceActions =
     canOpenSession && !isActiveListLoading && !shouldUseWorkspaceSnapshot;
+
+  // Home-screen widget taps arrive as pravah:// links. Returning false keeps
+  // a link waiting until the live workspace can act on it.
+  const handleWidgetLink = useCallback(
+    (target: WidgetLinkTarget): boolean => {
+      if (!canUseWorkspaceActions) return false;
+      if (target.kind === "inbox") {
+        handleTabChange("inbox");
+        return true;
+      }
+      handleTabChange("timeline");
+      if (target.kind === "capture") {
+        addTaskSheetRef.current?.open();
+        return true;
+      }
+      if (target.kind === "task") {
+        const task = workspaceTaskCorpus.find((candidate) => String(candidate._id) === target.taskId);
+        if (task && task.completedAt !== undefined) setSelectedCompletedTask(task);
+        else if (task) handleEditTask(task);
+      }
+      return true;
+    },
+    [canUseWorkspaceActions, handleEditTask, handleTabChange, workspaceTaskCorpus],
+  );
+  useWidgetDeepLinks(handleWidgetLink);
 
   const openSettingsModal = useCallback(() => {
     if (!canOpenSession) return;

@@ -920,15 +920,45 @@ export async function completeTaskForOwner(
   if (isCancelledTask(task)) {
     throw new Error("Task is cancelled");
   }
+  await markOpenTaskCompleted(ctx, task);
+}
+
+async function markOpenTaskCompleted(ctx: MutationCtx, task: Doc<"tasks">) {
   if (isCompletedTask(task)) {
     return;
   }
   const now = Date.now();
-  await ctx.db.patch(taskId, {
+  await ctx.db.patch(task._id, {
     completedAt: now,
     updatedAt: now,
   });
 }
+
+/**
+ * completeTask for the Android home-screen widget. Production deployments
+ * redact thrown messages, so the widget could not tell "task gone" from a
+ * transient failure; this answers with a status instead of throwing. Same
+ * reads and write as completeTask.
+ */
+export const completeTaskFromWidget = mutation({
+  args: { taskId: v.string() },
+  returns: v.union(
+    v.literal("done"),
+    v.literal("not_found"),
+    v.literal("cancelled"),
+    v.literal("unauthenticated")
+  ),
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return "unauthenticated" as const;
+    const taskId = ctx.db.normalizeId("tasks", args.taskId);
+    const task = taskId ? await ctx.db.get(taskId) : null;
+    if (!task || task.ownerTokenIdentifier !== identity.tokenIdentifier) return "not_found" as const;
+    if (isCancelledTask(task)) return "cancelled" as const;
+    await markOpenTaskCompleted(ctx, task);
+    return "done" as const;
+  },
+});
 
 export const reopenTask = mutation({
   args: { taskId: v.id("tasks") },
