@@ -323,6 +323,8 @@ http.route({
       siteUrl: convexSiteUrl,
       label: auth.label,
       watchReadModel: 1,
+      // Watchers may subscribe to `watchProjection:sources` per `part`.
+      watchSourceParts: 1,
     });
   }),
 });

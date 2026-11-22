@@ -23,7 +23,7 @@ const listTodayCompletedTasks = makeFunctionReference<
 >("tasks:listTodayCompletedTasks");
 const listGoals = makeFunctionReference<"query", NoArgs, unknown>("goals:list");
 const listWatchSources = makeFunctionReference<
-  "query", { dayStartMs: number; dayEndMs: number }, unknown
+  "query", { dayStartMs: number; dayEndMs: number; part?: "inbox" | "timeline" }, unknown
 >("watchProjection:sources");
 const listGoalLinks = makeFunctionReference<"query", { taskIds: string[] }, unknown>(
   "goals:listLinks"
@@ -36,6 +36,8 @@ export interface OwnerToken {
   siteUrl: string;
   label: string;
   watchReadModel?: number;
+  /** Set when `watchProjection:sources` accepts a `part` argument. */
+  watchSourceParts?: number;
 }
 
 /**
@@ -162,6 +164,7 @@ export async function runWatch({
   const convexUrl = ownerToken.convexUrl;
   const client = new ConvexClient(convexUrl);
   const usesReadModel = ownerToken.watchReadModel === 1;
+  const usesSourceParts = usesReadModel && ownerToken.watchSourceParts === 1;
 
   // Invoked from Convex callbacks, where throwing would surface as an unhandled
   // rejection rather than a message the user can act on.
@@ -360,7 +363,13 @@ export async function runWatch({
     if (usesReadModel) {
       ready.boardTasks = false;
       ready.goalLinks = false;
-      todayUnsubscribe = client.onUpdate(listWatchSources, { dayStartMs: startMs, dayEndMs: endMs }, value => {
+      type Sources = { boardTasks: unknown[]; completedToday: unknown[]; goalLinks: Record<string, string> };
+      // Split subscriptions: an inbox write re-runs only the inbox query.
+      // Publish only once both parts of this day's generation have arrived.
+      const parts = usesSourceParts ? (["inbox", "timeline"] as const) : ([undefined] as const);
+      const received = new Map<string, Sources>();
+      const unsubscribeParts = parts.map(part => client.onUpdate(listWatchSources,
+        part ? { dayStartMs: startMs, dayEndMs: endMs, part } : { dayStartMs: startMs, dayEndMs: endMs }, value => {
         if (closed || generation !== dayGeneration) return;
         const sources = value as { boardTasks?: unknown; completedToday?: unknown; goalLinks?: unknown } | null;
         if (!sources || !Array.isArray(sources.boardTasks) || !Array.isArray(sources.completedToday) ||
@@ -368,9 +377,12 @@ export async function runWatch({
           failed("watchProjection:sources", "boardTasks")(new Error("Invalid watcher read model"));
           return;
         }
-        latest.boardTasks = sources.boardTasks;
-        latest.completedToday = sources.completedToday;
-        latest.goalLinks = sources.goalLinks;
+        received.set(part ?? "all", sources as Sources);
+        if (received.size !== parts.length) return;
+        const all = [...received.values()];
+        latest.boardTasks = all.flatMap(source => source.boardTasks);
+        latest.completedToday = all.flatMap(source => source.completedToday);
+        latest.goalLinks = Object.assign({}, ...all.map(source => source.goalLinks));
         for (const key of ["boardTasks", "completedToday", "goalLinks"] as const) {
           ready[key] = true;
           sourceErrors.delete(key);
@@ -378,7 +390,8 @@ export async function runWatch({
         publish();
       }, error => {
         if (generation === dayGeneration) failed("watchProjection:sources", "boardTasks")(error);
-      });
+      }));
+      todayUnsubscribe = () => { for (const unsubscribe of unsubscribeParts) unsubscribe(); };
       return;
     }
     todayUnsubscribe = client.onUpdate(

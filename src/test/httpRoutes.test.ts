@@ -1236,6 +1236,7 @@ describe("http route handlers", () => {
         siteUrl: SITE_URL,
         label: "Laptop",
         watchReadModel: 1,
+        watchSourceParts: 1,
       });
       expect(ctx.runMutation).toHaveBeenCalledWith(internal.watchProjection.prepareForOwner, {
         owner: `${SITE_URL}|user_abc123`,
