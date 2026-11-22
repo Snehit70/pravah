@@ -21,7 +21,7 @@ Explicitly deferred:
 - Smart daily suggestions
 - Location-based reminders
 - Habit layer
-- Widgets and lock screen surfaces
+- Lock screen surfaces (Android home-screen widgets shipped, ADR-0026)
 
 ## Product direction
 
@@ -121,7 +121,7 @@ Backend work:
 Keep these documented but out of current implementation scope:
 
 - Subtasks and checklists
-- Widgets and lock screen surfaces
+- Lock screen surfaces (Android home-screen widgets shipped, ADR-0026)
 - Recurring tasks
 - Smart daily suggestions
 - Tags and duration on mobile
