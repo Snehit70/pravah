@@ -6,7 +6,12 @@ import { classifyError, mobileLogger } from "../lib/logger";
 import type { AccentColor, ThemePreference } from "../lib/userPreferences";
 import { isWidgetSupported, refreshHomeWidgets } from "./widgetBridge";
 import { parseWidgetLink, type WidgetLinkTarget } from "./widgetLinks";
-import { buildWidgetSnapshot } from "./widgetModel";
+import {
+  WIDGET_PENDING_MAX_AGE_MS,
+  buildWidgetSnapshot,
+  classifyCompletionFailure,
+  markSnapshotTaskDone,
+} from "./widgetModel";
 import {
   clearWidgetStorage,
   readPendingCompletions,
@@ -113,23 +118,34 @@ export function useHomeWidgetSync(options: SyncOptions): void {
     drainingRef.current = true;
     try {
       const pending = await readPendingCompletions();
-      if (pending.length === 0) return;
       const settled = new Set<string>();
-      let rejected = false;
+      const confirmed: string[] = [];
+      let notice: string | null = null;
       for (const entry of pending) {
         try {
           await completeTaskRef.current({ taskId: entry.taskId as Id<"tasks"> });
           settled.add(entry.taskId);
+          confirmed.push(entry.taskId);
         } catch (error) {
-          if (classifyError(error) === "network") continue;
+          const failure = classifyCompletionFailure(error);
+          if (failure === "retry" && Date.now() - entry.at < WIDGET_PENDING_MAX_AGE_MS) continue;
           settled.add(entry.taskId);
-          rejected = true;
+          notice = failure === "auth" ? "Sign in again to sync" : "Couldn't complete · tap to open";
         }
       }
       if (settled.size > 0) {
         await updatePendingCompletions((current) => current.filter((entry) => !settled.has(entry.taskId)));
       }
-      if (!rejected) await writeWidgetNotice(null);
+      if (confirmed.length > 0) {
+        // Show the ticks as done now; the next live snapshot write agrees.
+        const snapshot = await readWidgetSnapshot();
+        if (snapshot) {
+          const at = Date.now();
+          await writeWidgetSnapshot(confirmed.reduce((next, taskId) => markSnapshotTaskDone(next, taskId, at), snapshot));
+        }
+      }
+      // Opening the app answers any earlier notice; only a fresh rejection shows one.
+      await writeWidgetNotice(notice ? { message: notice, at: Date.now() } : null);
       await refreshHomeWidgets();
     } catch (error) {
       mobileLogger.warn("home_widget_drain_failed", { errorType: classifyError(error) });
@@ -149,31 +165,25 @@ export function useHomeWidgetSync(options: SyncOptions): void {
 }
 
 /**
- * Delivers widget deep links (cold start and while running) once the app can
- * act on them. Links that arrive before `ready` wait; only the latest is kept.
+ * Delivers widget deep links (cold start and while running). The handler
+ * returns false when the app can't act on a link yet (e.g. still showing the
+ * cached workspace); the link then waits and is offered again whenever the
+ * handler changes. Only the latest link is kept.
  */
-export function useWidgetDeepLinks(ready: boolean, onLink: (target: WidgetLinkTarget) => void): void {
+export function useWidgetDeepLinks(onLink: (target: WidgetLinkTarget) => boolean): void {
   const pendingRef = useRef<WidgetLinkTarget | null>(null);
-  const readyRef = useRef(ready);
   const onLinkRef = useRef(onLink);
-  useEffect(() => {
-    onLinkRef.current = onLink;
-  }, [onLink]);
 
   const deliver = useCallback((target: WidgetLinkTarget | null) => {
     if (!target) return;
-    if (readyRef.current) onLinkRef.current(target);
-    else pendingRef.current = target;
+    pendingRef.current = onLinkRef.current(target) ? null : target;
   }, []);
 
   useEffect(() => {
-    readyRef.current = ready;
-    if (ready && pendingRef.current) {
-      const target = pendingRef.current;
-      pendingRef.current = null;
-      onLinkRef.current(target);
-    }
-  }, [ready]);
+    onLinkRef.current = onLink;
+    const target = pendingRef.current;
+    if (target) pendingRef.current = onLink(target) ? null : target;
+  }, [onLink]);
 
   useEffect(() => {
     let cancelled = false;

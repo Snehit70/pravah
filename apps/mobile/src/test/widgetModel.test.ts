@@ -5,6 +5,7 @@ import {
   WIDGET_STALE_AFTER_MS,
   buildWidgetSnapshot,
   buildWidgetView,
+  classifyCompletionFailure,
   headerDateLabel,
   markSnapshotTaskDone,
   overdueLabel,
@@ -245,5 +246,20 @@ describe("widget links", () => {
     expect(parseWidgetLink("pravah://task/")).toBeNull();
     expect(parseWidgetLink("pravah://task/%E0%A4%A")).toBeNull();
     expect(parseWidgetLink(null)).toBeNull();
+  });
+});
+
+describe("classifyCompletionFailure", () => {
+  it("drops only answers that won't change on retry", () => {
+    expect(classifyCompletionFailure(new Error("[CONVEX M(tasks:completeTask)] Uncaught Error: Task not found"))).toBe("rejected");
+    expect(classifyCompletionFailure(new Error("Task is cancelled"))).toBe("rejected");
+    expect(classifyCompletionFailure(new Error("Uncaught Error: Not authenticated"))).toBe("auth");
+    expect(classifyCompletionFailure({ status: 401, message: "" })).toBe("auth");
+  });
+
+  it("retries network failures and server errors", () => {
+    expect(classifyCompletionFailure(new TypeError("Network request failed"))).toBe("retry");
+    expect(classifyCompletionFailure(new Error("Server Error"))).toBe("retry");
+    expect(classifyCompletionFailure({ status: 503, message: "Service Unavailable" })).toBe("retry");
   });
 });

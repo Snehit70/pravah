@@ -1,4 +1,5 @@
 import { NativeModules, Platform, TurboModuleRegistry } from "react-native";
+import { headerDateLabel } from "./widgetModel";
 import { WIDGET_NAMES } from "./widgetNames";
 
 /**
@@ -10,13 +11,17 @@ import { WIDGET_NAMES } from "./widgetNames";
  * library only after that, and swallows every error: the widget is a nice
  * extra and must never take the app down.
  */
+let supported: boolean | null = null;
+
 export function isWidgetSupported(): boolean {
-  if (Platform.OS !== "android") return false;
+  if (supported !== null) return supported;
+  if (Platform.OS !== "android") return (supported = false);
   try {
-    return TurboModuleRegistry.get("AndroidWidget") != null || NativeModules.AndroidWidget != null;
+    supported = TurboModuleRegistry.get("AndroidWidget") != null || NativeModules.AndroidWidget != null;
   } catch {
-    return false;
+    supported = false;
   }
+  return supported;
 }
 
 /** Called once from index.ts, before the app registers its root component. */
@@ -42,7 +47,7 @@ async function redrawAll(): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { loadWidgetState, renderWidget } = require("./widgetRender") as typeof import("./widgetRender");
   const state = await loadWidgetState();
-  const fallback = { ...state, view: { kind: "signedOut" as const } };
+  const fallback = { ...state, view: { kind: "loading" as const, dateLabel: headerDateLabel(new Date()) } };
   await Promise.all(
     Object.values(WIDGET_NAMES).map((widgetName) =>
       requestWidgetUpdate({

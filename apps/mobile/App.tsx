@@ -1282,28 +1282,30 @@ function MobileApp() {
   const canUseWorkspaceActions =
     canOpenSession && !isActiveListLoading && !shouldUseWorkspaceSnapshot;
 
-  // Home-screen widget taps arrive as pravah:// links.
+  // Home-screen widget taps arrive as pravah:// links. Returning false keeps
+  // a link waiting until the live workspace can act on it.
   const handleWidgetLink = useCallback(
-    (target: WidgetLinkTarget) => {
+    (target: WidgetLinkTarget): boolean => {
+      if (!canUseWorkspaceActions) return false;
       if (target.kind === "inbox") {
         handleTabChange("inbox");
-        return;
+        return true;
       }
       handleTabChange("timeline");
       if (target.kind === "capture") {
-        if (canUseWorkspaceActions) addTaskSheetRef.current?.open();
-        return;
+        addTaskSheetRef.current?.open();
+        return true;
       }
       if (target.kind === "task") {
         const task = workspaceTaskCorpus.find((candidate) => String(candidate._id) === target.taskId);
-        if (!task) return;
-        if (task.completedAt !== undefined) setSelectedCompletedTask(task);
-        else if (canUseWorkspaceActions) handleEditTask(task);
+        if (task && task.completedAt !== undefined) setSelectedCompletedTask(task);
+        else if (task) handleEditTask(task);
       }
+      return true;
     },
     [canUseWorkspaceActions, handleEditTask, handleTabChange, workspaceTaskCorpus],
   );
-  useWidgetDeepLinks(canOpenSession && !isActiveListLoading, handleWidgetLink);
+  useWidgetDeepLinks(handleWidgetLink);
 
   const openSettingsModal = useCallback(() => {
     if (!canOpenSession) return;

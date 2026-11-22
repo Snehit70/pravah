@@ -430,3 +430,30 @@ export function attentionRows(view: Extract<WidgetView, { kind: "ready" }>): Wid
 export function rowsThatFit(heightDp: number, reservedDp: number, rowDp: number): number {
   return Math.max(1, Math.floor((heightDp - reservedDp) / rowDp));
 }
+
+/** A widget tick older than this that still can't reach the server is dropped with a notice. */
+export const WIDGET_PENDING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+export type CompletionFailure = "retry" | "auth" | "rejected";
+
+/**
+ * Sorts a failed completeTask call. Only answers the server gives for good
+ * (task gone or cancelled, signed out) drop the tick; anything else, such as a
+ * network blip or a Convex 5xx, keeps it pending for another try.
+ */
+export function classifyCompletionFailure(error: unknown): CompletionFailure {
+  const message =
+    typeof error === "object" && error !== null && "message" in error
+      ? String((error as { message?: unknown }).message ?? "")
+      : String(error ?? "");
+  const status =
+    typeof error === "object" && error !== null && "status" in error
+      ? Number((error as { status?: unknown }).status)
+      : NaN;
+  const text = message.toLowerCase();
+  if (status === 401 || status === 403 || text.includes("not authenticated") || text.includes("unauthenticated")) {
+    return "auth";
+  }
+  if (text.includes("task not found") || text.includes("task is cancelled")) return "rejected";
+  return "retry";
+}

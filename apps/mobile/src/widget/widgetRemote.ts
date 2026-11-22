@@ -2,13 +2,13 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { authClient, authStorageReady, hasCachedAuthSessionHint } from "../lib/auth-client";
-import { classifyError } from "../lib/logger";
+import { classifyCompletionFailure } from "./widgetModel";
 
 export type RemoteCompletionResult =
   | { kind: "done" }
   /** Offline or a transient failure: keep it pending and retry later. */
   | { kind: "retry" }
-  /** The server said no (deleted, cancelled, not ours, signed out): drop it. */
+  /** The server said no for good (deleted, cancelled, signed out): drop it. */
   | { kind: "rejected"; reason: "auth" | "server" };
 
 export async function hasWidgetSession(): Promise<boolean> {
@@ -38,9 +38,8 @@ export async function completeTaskRemotely(taskId: string): Promise<RemoteComple
     await client.mutation(api.tasks.completeTask, { taskId: taskId as Id<"tasks"> });
     return { kind: "done" };
   } catch (error) {
-    const kind = classifyError(error);
-    if (kind === "network") return { kind: "retry" };
-    if (kind === "auth") return { kind: "rejected", reason: "auth" };
-    return { kind: "rejected", reason: "server" };
+    const failure = classifyCompletionFailure(error);
+    if (failure === "retry") return { kind: "retry" };
+    return { kind: "rejected", reason: failure === "auth" ? "auth" : "server" };
   }
 }

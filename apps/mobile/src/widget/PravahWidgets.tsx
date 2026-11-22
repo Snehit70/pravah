@@ -42,7 +42,7 @@ function Mono({ text, color, size = 10 }: { text: string; color: ColorProp; size
       text={text.toUpperCase()}
       maxLines={1}
       truncate="END"
-      style={{ fontFamily: widgetFonts.mono, fontSize: size, color, letterSpacing: 0.06 }}
+      style={{ fontFamily: widgetFonts.mono, fontSize: size, color, letterSpacing: size * 0.06 }}
     />
   );
 }

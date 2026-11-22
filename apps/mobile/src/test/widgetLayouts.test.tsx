@@ -17,10 +17,19 @@ vi.mock("react-native-android-widget", () => {
   };
 });
 
+// widgetRender reads the session and storage; layout tests need neither.
+vi.mock("../widget/widgetRemote", () => ({ hasWidgetSession: async () => true }));
+vi.mock("../widget/widgetStorage", () => ({
+  readPendingCompletions: async () => [],
+  readWidgetNotice: async () => null,
+  readWidgetSnapshot: async () => null,
+}));
+
 import { renderWidgetByName } from "../widget/PravahWidgets";
 import { WIDGET_NAMES } from "../widget/widgetNames";
 import { buildWidgetSnapshot, buildWidgetView, type WidgetView } from "../widget/widgetModel";
 import { widgetPalette } from "../widget/widgetTheme";
+import { expandWidgetElement, renderWidget } from "../widget/widgetRender";
 
 type Node = { type: string; props: Record<string, unknown>; children: Node[] };
 
@@ -38,7 +47,7 @@ function walk(element: unknown): Node {
     throw new Error(`unsupported widget node: ${current === null ? "null" : String(current?.type)}`);
   }
   const { children, ...props } = current.props;
-  const list = (Array.isArray(children) ? children : children ? [children] : []).flat(1).filter(Boolean);
+  const list = (Array.isArray(children) ? children : children ? [children] : []).filter(Boolean).flat(1);
   return { type: (current.type as unknown as { __name__: string }).__name__, props, children: list.map(walk) };
 }
 
@@ -146,5 +155,20 @@ describe("home-screen widget layouts", () => {
     expect(ids).toContain("t0");
     expect(ids).not.toContain("t3");
     expect(ids).not.toContain("t4");
+  });
+
+  it("expands every widget to primitives inside renderWidget", () => {
+    for (const widgetName of Object.values(WIDGET_NAMES)) {
+      const tree = renderWidget({ widgetName, width: 320, height: 180 }, { view: states.busy, accent: "teal", theme: "system" });
+      for (const element of [tree.light, tree.dark]) {
+        const nodes = collect(walk(element));
+        expect(nodes.length).toBeGreaterThan(1);
+      }
+    }
+  });
+
+  it("throws while expanding a tree the native builder would choke on", () => {
+    const Broken = () => null;
+    expect(() => expandWidgetElement({ type: Broken, props: {} })).toThrow();
   });
 });

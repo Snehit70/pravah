@@ -89,6 +89,8 @@ const config: ExpoConfig = {
       // src/widget/widgetNames.ts; renaming one orphans placed widgets.
       "react-native-android-widget",
       {
+        // Resolved against the working directory of the prebuild (apps/mobile),
+        // reaching the hoisted workspace node_modules.
         fonts: [
           "../../node_modules/@expo-google-fonts/geist/400Regular/Geist_400Regular.ttf",
           "../../node_modules/@expo-google-fonts/geist/500Medium/Geist_500Medium.ttf",
