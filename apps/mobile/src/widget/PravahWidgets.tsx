@@ -6,6 +6,7 @@ import {
   SvgWidget,
   TextWidget,
   type ColorProp,
+  type ImageWidgetSource,
 } from "react-native-android-widget";
 import ICON_SOURCE from "../../assets/icon.png";
 import {
@@ -76,7 +77,7 @@ function PlusButton({ palette, size = 28 }: { palette: WidgetPalette; size?: num
 function BrandMark({ size }: { size: number }) {
   return (
     <ImageWidget
-      image={ICON_SOURCE}
+      image={ICON_SOURCE as ImageWidgetSource}
       imageWidth={size}
       imageHeight={size}
       radius={Math.round(size * 0.28)}

@@ -39,7 +39,7 @@ function walk(element: unknown): Node {
   }
   const { children, ...props } = current.props;
   const list = (Array.isArray(children) ? children : children ? [children] : []).flat(1).filter(Boolean);
-  return { type: (current.type as { __name__: string }).__name__, props, children: list.map(walk) };
+  return { type: (current.type as unknown as { __name__: string }).__name__, props, children: list.map(walk) };
 }
 
 function collect(node: Node, out: Node[] = []): Node[] {
