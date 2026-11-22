@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.5.6](https://github.com/Snehit70/pravah/compare/cli-v2.5.5...cli-v2.5.6) (2026-11-22)
+
+
+### Bug Fixes
+
+* lengthen watcher token to cut identity re-reads ([5299e55](https://github.com/Snehit70/pravah/commit/5299e55aa25549849b6dab7c315041dbbb0af510))
+* **watch:** merge source parts after the whole Convex transition arrives ([643f0a4](https://github.com/Snehit70/pravah/commit/643f0a4bd77986d7bd1beb48b8d430527f90843a))
+* **watch:** require a fresh delivery from a failed source part ([4770da2](https://github.com/Snehit70/pravah/commit/4770da282bb3fa28ca83cc205bee0c863335f626))
+
+
+### Performance Improvements
+
+* **mobile:** load later timeline dates on demand ([40fabbf](https://github.com/Snehit70/pravah/commit/40fabbf912dac9ff9780f06aff9d04f1a3ba8299))
+* split watcher sources by inbox and timeline, throttle credential usage writes ([36ae4bb](https://github.com/Snehit70/pravah/commit/36ae4bbd0b007d857e9f3de19b202136ea2221bc))
+* split watcher sources by inbox and timeline, throttle credential usage writes ([11a1fb9](https://github.com/Snehit70/pravah/commit/11a1fb9258776055715b13dd86dbf19de922357d))
+
 ## [2.5.5](https://github.com/Snehit70/pravah/compare/cli-v2.5.4...cli-v2.5.5) (2026-10-21)
 
 

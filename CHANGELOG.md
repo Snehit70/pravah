@@ -1,5 +1,62 @@
 # Changelog
 
+## [1.24.0](https://github.com/Snehit70/pravah/compare/web-v1.23.0...web-v1.24.0) (2026-11-22)
+
+
+### Features
+
+* **convex:** settle and reopen goals ([962f057](https://github.com/Snehit70/pravah/commit/962f057138dcaf6cb48d8712111f38b521337c65))
+* **mobile:** add Android home-screen widgets ([0194cd9](https://github.com/Snehit70/pravah/commit/0194cd98602a526acb53b759d93dd7b6be921cc3))
+* **mobile:** Android home-screen widgets ([61b3011](https://github.com/Snehit70/pravah/commit/61b301107eac05961dc7f0caceb5c358338fd0cf))
+* **mobile:** glass hero sign-in screen with tilt-reactive light ([88ed041](https://github.com/Snehit70/pravah/commit/88ed04180cb6baa8b9b8fc7dfc7c21b683071600))
+* **mobile:** settle and reopen goals ([f52b76c](https://github.com/Snehit70/pravah/commit/f52b76c3e895ef9728bbedab0eeef7c977cc2ec3))
+* settle and reopen goals ([5462d98](https://github.com/Snehit70/pravah/commit/5462d989bdf6e7b52a23622c8f2845b94f8de1ab))
+* **web:** settle and reopen goals ([9ed8ede](https://github.com/Snehit70/pravah/commit/9ed8edea42e5dc8bf229a72d99d02233b80894dd))
+
+
+### Bug Fixes
+
+* keep goal progress tied to task counts after settling ([f0f05c4](https://github.com/Snehit70/pravah/commit/f0f05c4158469e34123a9aa44df6e727c8185cd6))
+* lengthen watcher token to cut identity re-reads ([5299e55](https://github.com/Snehit70/pravah/commit/5299e55aa25549849b6dab7c315041dbbb0af510))
+* **mobile:** close task sheet after save ([645d864](https://github.com/Snehit70/pravah/commit/645d864f7ff61d88dab807e53bdf4c06f937cccd))
+* **mobile:** complete widget ticks through a status-returning mutation ([3c5d04c](https://github.com/Snehit70/pravah/commit/3c5d04c92a732d43bc09a23b48dc3c9830b4c1e7))
+* **mobile:** count in-app completions of overdue and later tasks on the widget ([bb9c60c](https://github.com/Snehit70/pravah/commit/bb9c60ce63bf4053eddeb91c761f85ec2a7dd15a))
+* **mobile:** drop loading text from header subtitle ([24f57fd](https://github.com/Snehit70/pravah/commit/24f57fd65cd4419d402e791437fed7d1860b9547))
+* **mobile:** fade timeline carousel between skeleton and content ([79a05d2](https://github.com/Snehit70/pravah/commit/79a05d28e4b6e8775442fcaf943de7da9723930b))
+* **mobile:** fill timeline skeleton height and match real layouts ([5d7112e](https://github.com/Snehit70/pravah/commit/5d7112e0b31b56e9de71979abf766dc639dda887))
+* **mobile:** float up-to-date toast over content and shrink it ([f44215e](https://github.com/Snehit70/pravah/commit/f44215e700af39092bbdce593d6b1f285974b8fe))
+* **mobile:** glass sign-in, Progress tab fixes, smoother list motion ([55b1275](https://github.com/Snehit70/pravah/commit/55b12757dc2ae6f051d49af8187be875e666da12))
+* **mobile:** harden widget sync, retries and deep links ([af57e98](https://github.com/Snehit70/pravah/commit/af57e98085983c09fb06c356acc6b11447dc353a))
+* **mobile:** keep carousel row checkbox and chevron slots ([5c4f567](https://github.com/Snehit70/pravah/commit/5c4f567d64ec7a4acdcb870b0c555210a695d823))
+* **mobile:** keep inbox Select and goals Add goal visible when gated ([d387996](https://github.com/Snehit70/pravah/commit/d387996e858c127f4c154263d5d2f1d8943b201f))
+* **mobile:** keep ticked tomorrow tasks visible while they save ([6a55b0c](https://github.com/Snehit70/pravah/commit/6a55b0cb542153c84b95030c657d1044d1dcea94))
+* **mobile:** match loading skeletons to real screen layouts ([5949e8c](https://github.com/Snehit70/pravah/commit/5949e8cb0a5b4eebf5dfa2bbd187476fe402c0f4))
+* **mobile:** polish widget rows and reuse the widget's Convex token ([87879cd](https://github.com/Snehit70/pravah/commit/87879cd9521ad76d65ade1cbbdcbb6b329784a99))
+* **mobile:** progress tab segment thumb, loading jumps and chart replays ([0ce5fd5](https://github.com/Snehit70/pravah/commit/0ce5fd5c9d14de7cebedc6fa24db19a029ec866d))
+* **mobile:** remove list layout animation that stacked rows ([4d7ec19](https://github.com/Snehit70/pravah/commit/4d7ec19ebe017a691d04f12f794f31f34d24bebe))
+* **mobile:** satisfy strict types in widget icon and layout test ([000df05](https://github.com/Snehit70/pravah/commit/000df05fea01bdc63fe44dbb7a6bf6f27a7efecb))
+* **mobile:** satisfy strict types in widget tree expansion ([dff8dcd](https://github.com/Snehit70/pravah/commit/dff8dcde07f01799525c47fe104d118487f84f3e))
+* **mobile:** show cached workspace snapshot without waiting for session ([2fad187](https://github.com/Snehit70/pravah/commit/2fad18764b7ae83f15475824a4cd7e7ac27c5b31))
+* **mobile:** smoother list entrances and layout changes across tabs ([2ed2046](https://github.com/Snehit70/pravah/commit/2ed2046eb54cb59ed60bb00b66de0b72e43725ea))
+* **mobile:** stabilize loading states, toast and task sheet ([4da1a2d](https://github.com/Snehit70/pravah/commit/4da1a2d06e40921de1bef00a7346738c2db11a56))
+* **mobile:** stabilize loading, sync and native performance checks ([85f60a9](https://github.com/Snehit70/pravah/commit/85f60a92ba3c53accfcc84ed1eb5cecb5003ca94))
+* **watch:** merge source parts after the whole Convex transition arrives ([643f0a4](https://github.com/Snehit70/pravah/commit/643f0a4bd77986d7bd1beb48b8d430527f90843a))
+* **watch:** require a fresh delivery from a failed source part ([4770da2](https://github.com/Snehit70/pravah/commit/4770da282bb3fa28ca83cc205bee0c863335f626))
+* **web:** hide goal settle actions for local-only goals ([d572469](https://github.com/Snehit70/pravah/commit/d57246918617eca735e650874114fe1fdeb55df9))
+
+
+### Performance Improvements
+
+* **mobile-ci:** compile the native base with four parallel Gradle workers ([d148119](https://github.com/Snehit70/pravah/commit/d14811934531681b31838a354b10de50732a8bdd))
+* **mobile-ci:** drop the SDK prefetch from device jobs ([dc249c3](https://github.com/Snehit70/pravah/commit/dc249c315c3be5fafef6ff1f55d177c752decd8d))
+* **mobile-ci:** repack on device runners when the native base is cached ([2bb5de0](https://github.com/Snehit70/pravah/commit/2bb5de0685acccd37ecdb506a4737c9f5acd628c))
+* **mobile:** load later timeline dates on demand ([40fabbf](https://github.com/Snehit70/pravah/commit/40fabbf912dac9ff9780f06aff9d04f1a3ba8299))
+* **mobile:** load later timeline dates on demand ([3b7bf04](https://github.com/Snehit70/pravah/commit/3b7bf045f7497df9d23700de47739cd83823526a))
+* split watcher sources by inbox and timeline, throttle credential usage writes ([36ae4bb](https://github.com/Snehit70/pravah/commit/36ae4bbd0b007d857e9f3de19b202136ea2221bc))
+* split watcher sources by inbox and timeline, throttle credential usage writes ([11a1fb9](https://github.com/Snehit70/pravah/commit/11a1fb9258776055715b13dd86dbf19de922357d))
+* **watch:** raise owner Convex token TTL to 12 hours ([6079844](https://github.com/Snehit70/pravah/commit/6079844f85ba88d464af7f24c53573b6dd36c735))
+* **watch:** raise owner Convex token TTL to 12 hours ([229f21a](https://github.com/Snehit70/pravah/commit/229f21ab23a551d31a1a20c4581b6291a4987dfc))
+
 ## [1.23.0](https://github.com/Snehit70/pravah/compare/web-v1.22.3...web-v1.23.0) (2026-10-21)
 
 
