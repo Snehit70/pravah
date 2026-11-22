@@ -102,8 +102,8 @@ describe("Goal workspace navigation", () => {
     expect(screen.getByLabelText("Search goals")).toBeInTheDocument();
   });
 
-  it("separates finished goals, searches notes and sorts by name", () => {
-    render(<LongTermGoalsPage serverBacked serverGoals={[{ id: "a", text: "Zebra", description: "Travel" }, { id: "b", text: "Alpha" }, { id: "c", text: "Finished" }]} progressByGoalId={{ c: { total: 1, done: 1 } }} />);
+  it("separates settled goals, searches notes and sorts by name", () => {
+    render(<LongTermGoalsPage serverBacked serverGoals={[{ id: "a", text: "Zebra", description: "Travel" }, { id: "b", text: "Alpha" }, { id: "c", text: "Finished", completedAt: 30 }]} progressByGoalId={{ c: { total: 1, done: 1 } }} />);
     expect(screen.queryByText("Finished", { selector: "h2 button" })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Sort goals"), { target: { value: "name" } });
     expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Alpha", "Zebra"]);
@@ -111,7 +111,7 @@ describe("Goal workspace navigation", () => {
     expect(screen.queryByText("Alpha")).not.toBeInTheDocument();
     expect(screen.getByText("Zebra")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Search goals"), { target: { value: "" } });
-    fireEvent.click(screen.getByRole("button", { name: "finished" }));
+    fireEvent.click(screen.getByRole("button", { name: "settled" }));
     expect(screen.getByRole("heading", { level: 2, name: "Finished" })).toBeInTheDocument();
   });
 
@@ -134,5 +134,38 @@ describe("Goal workspace navigation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete goal permanently" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not delete goal");
     expect(screen.getByRole("button", { name: "Delete goal permanently" })).toBeEnabled();
+  });
+});
+
+describe("Goal settling", () => {
+  it("asks before completing open tasks, then settles with the confirmed count", async () => {
+    const settle = vi.fn()
+      .mockResolvedValueOnce({ status: "open_tasks", openTaskCount: 2 })
+      .mockResolvedValueOnce({ status: "settled", completedAt: 50, completedTaskCount: 2 });
+    render(<LongTermGoalsPage serverBacked serverGoals={[{ id: "g1", text: "Ship" }]} onSettleServerGoal={settle} />);
+    fireEvent.click(screen.getByLabelText("Mark goal done: Ship"));
+    await waitFor(() => expect(settle).toHaveBeenCalledWith("g1", undefined));
+    const confirm = await screen.findByRole("region", { name: "Confirm settling goal" });
+    expect(confirm).toHaveTextContent("Complete 2 open tasks and settle Ship?");
+    fireEvent.click(screen.getByRole("button", { name: "Complete 2 and settle" }));
+    await waitFor(() => expect(settle).toHaveBeenLastCalledWith("g1", { completeOpenTasks: true, expectedOpenTaskCount: 2 }));
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Confirm settling goal" })).not.toBeInTheDocument());
+  });
+
+  it("keeps the goal open when the confirmation is dismissed", async () => {
+    const settle = vi.fn().mockResolvedValue({ status: "open_tasks", openTaskCount: 1 });
+    render(<LongTermGoalsPage serverBacked serverGoals={[{ id: "g1", text: "Ship" }]} onSettleServerGoal={settle} />);
+    fireEvent.click(screen.getByLabelText("Mark goal done: Ship"));
+    fireEvent.click(await screen.findByRole("button", { name: "Keep open" }));
+    expect(screen.queryByRole("region", { name: "Confirm settling goal" })).not.toBeInTheDocument();
+    expect(settle).toHaveBeenCalledTimes(1);
+  });
+
+  it("reopens a settled goal", async () => {
+    const reopen = vi.fn().mockResolvedValue(undefined);
+    render(<LongTermGoalsPage serverBacked serverGoals={[{ id: "g1", text: "Ship", completedAt: 50 }]} onReopenServerGoal={reopen} />);
+    fireEvent.click(screen.getByRole("button", { name: "settled" }));
+    fireEvent.click(screen.getByLabelText("Reopen goal: Ship"));
+    await waitFor(() => expect(reopen).toHaveBeenCalledWith("g1"));
   });
 });

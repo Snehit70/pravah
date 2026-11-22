@@ -8,6 +8,7 @@ import type { Task } from "../types";
 import { GoalCard } from "./goals/GoalCard";
 import { PageSkeleton } from "./loading/PageSkeleton";
 import { GoalTasks } from "./goals/GoalTasks";
+import type { SettleGoalResult } from "../../convex/goalSettleModel";
 
 const NavGoalsGlyph = navGoalsIcon;
 
@@ -28,6 +29,8 @@ export interface GoalReadModel {
   deadline?: string;
   priority?: "p1" | "p2" | "p3";
   createdAt?: number;
+  /** Set once the goal is settled (marked done). */
+  completedAt?: number;
 }
 
 export interface GoalProgress {
@@ -51,6 +54,11 @@ interface LongTermGoalsPageProps {
   onCreateServerGoal?: (text: string, fields?: GoalCreateFields) => Promise<void>;
   onUpdateServerGoal?: (goalId: string, patch: Pick<GoalReadModel, "text" | "description" | "deadline" | "priority">) => Promise<void>;
   onDeleteServerGoal?: (goalId: string) => Promise<void>;
+  onSettleServerGoal?: (
+    goalId: string,
+    options?: { completeOpenTasks: true; expectedOpenTaskCount: number },
+  ) => Promise<SettleGoalResult>;
+  onReopenServerGoal?: (goalId: string) => Promise<void>;
   linkedTasksByGoalId?: Record<string, Task[]>;
   onOpenTask?: (task: Task) => void;
 }
@@ -65,6 +73,8 @@ export function LongTermGoalsPage({
   onCreateServerGoal,
   onUpdateServerGoal,
   onDeleteServerGoal,
+  onSettleServerGoal,
+  onReopenServerGoal,
   linkedTasksByGoalId = {},
   onOpenTask,
 }: LongTermGoalsPageProps = {}) {
@@ -79,9 +89,10 @@ export function LongTermGoalsPage({
   const [editTitle, setEditTitle] = useState("");
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<"all" | "active" | "finished">("active");
+  const [status, setStatus] = useState<"all" | "active" | "settled">("active");
   const [sort, setSort] = useState("priority");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmSettle, setConfirmSettle] = useState<{ goalId: string; openTaskCount: number } | null>(null);
   const [editDescription, setEditDescription] = useState("");
   const [editDeadline, setEditDeadline] = useState("");
   const [editPriority, setEditPriority] = useState<"p1" | "p2" | "p3" | undefined>(undefined);
@@ -195,6 +206,38 @@ export function LongTermGoalsPage({
     setGoals((prev) => prev.filter((goal) => goal.id !== goalId));
   };
 
+  // The server refuses to settle while tasks are open and says how many; the
+  // confirmed count goes back so a task added meanwhile prompts again.
+  const settleGoal = async (goalId: string, openTaskCount?: number) => {
+    if (!serverBacked || !onSettleServerGoal) return;
+    setServerBusy(true);
+    setServerError(null);
+    try {
+      const result = await onSettleServerGoal(
+        goalId,
+        openTaskCount === undefined ? undefined : { completeOpenTasks: true, expectedOpenTaskCount: openTaskCount },
+      );
+      setConfirmSettle(result.status === "open_tasks" ? { goalId, openTaskCount: result.openTaskCount } : null);
+    } catch {
+      setServerError("Could not mark goal done. Try again.");
+    } finally {
+      setServerBusy(false);
+    }
+  };
+
+  const reopenGoal = async (goalId: string) => {
+    if (!serverBacked || !onReopenServerGoal) return;
+    setServerBusy(true);
+    setServerError(null);
+    try {
+      await onReopenServerGoal(goalId);
+    } catch {
+      setServerError("Could not reopen goal. Try again.");
+    } finally {
+      setServerBusy(false);
+    }
+  };
+
   const beginEdit = (goal: GoalReadModel) => {
     setEditingGoalId(goal.id);
     setEditTitle(goal.text);
@@ -227,14 +270,11 @@ export function LongTermGoalsPage({
     }
   };
 
-  const isFinished = (goal: GoalReadModel) => {
-    const progress = progressByGoalId?.[goal.id];
-    return Boolean(progress && progress.total > 0 && progress.done >= progress.total);
-  };
+  const isFinished = (goal: GoalReadModel) => goal.completedAt !== undefined;
   const finishedCount = displayGoals.filter(isFinished).length;
   const today = getLocalDateString();
   const visibleGoals = displayGoals.filter((goal) => {
-    const matchesStatus = status === "all" || (status === "finished" ? isFinished(goal) : !isFinished(goal));
+    const matchesStatus = status === "all" || (status === "settled" ? isFinished(goal) : !isFinished(goal));
     return matchesStatus && `${goal.text} ${goal.description ?? ""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
   }).sort((a, b) => {
     if (sort === "name") return a.text.localeCompare(b.text);
@@ -254,6 +294,8 @@ export function LongTermGoalsPage({
       busy={serverBusy}
       canEdit={!readOnly && Boolean(onUpdateServerGoal)}
       canDelete={!readOnly && Boolean(onDeleteServerGoal)}
+      onSettle={serverBacked && !readOnly && onSettleServerGoal ? () => void settleGoal(goal.id) : undefined}
+      onReopen={serverBacked && !readOnly && onReopenServerGoal ? () => void reopenGoal(goal.id) : undefined}
       editing={editingGoalId === goal.id}
       onBeginEdit={() => beginEdit(goal)}
       onOpenGoal={detail ? undefined : () => { setSelectedGoalId(goal.id); setEditingGoalId(null); }}
@@ -285,6 +327,20 @@ export function LongTermGoalsPage({
             </div>
           </section>
         )}
+        {confirmSettle && (() => {
+          const count = confirmSettle.openTaskCount;
+          const tasks = count === 1 ? "1 open task" : `${count} open tasks`;
+          return (
+            <section aria-label="Confirm settling goal" className="mb-5 rounded-lg border border-error/30 bg-[var(--color-bg-elevated)] p-4">
+              <p className="text-sm font-semibold text-ink">Complete {tasks} and settle {displayGoals.find((goal) => goal.id === confirmSettle.goalId)?.text}?</p>
+              <p className="mt-1 text-sm text-ink-soft">{count === 1 ? "Its 1 open task" : `All ${count} open tasks`} will be marked done with the goal. Reopening the goal later keeps them done.</p>
+              <div className="mt-3 flex gap-3">
+                <button type="button" disabled={serverBusy} className="min-h-11 rounded-md border border-line px-4 text-sm" onClick={() => setConfirmSettle(null)}>Keep open</button>
+                <button type="button" disabled={serverBusy} className="min-h-11 rounded-md border border-error/30 px-4 text-sm text-error" onClick={() => { void settleGoal(confirmSettle.goalId, count); }}>Complete {count} and settle</button>
+              </div>
+            </section>
+          );
+        })()}
         {serverBacked && selectedGoal ? (
           <>
             <button type="button" className="mb-4 min-h-11 self-start rounded-md px-2 text-sm text-ink-soft hover:bg-fill-soft" onClick={() => { setSelectedGoalId(null); setEditingGoalId(null); }}>← All goals</button>
@@ -295,7 +351,7 @@ export function LongTermGoalsPage({
           <>
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-sm text-ink-soft">{displayGoals.length - finishedCount} active · {finishedCount} finished</p>
+            <p className="text-sm text-ink-soft">{displayGoals.length - finishedCount} active · {finishedCount} settled</p>
             <p className="mt-1 text-xs text-ink-mute">Open a goal to see all its linked tasks.</p>
           </div>
           {serverBacked && <p className="text-xs text-ink-mute">{displayGoals.filter((goal) => goal.deadline && goal.deadline < today && !isFinished(goal)).length} overdue goals</p>}
@@ -304,7 +360,7 @@ export function LongTermGoalsPage({
           <div className="mb-5 flex flex-wrap items-center gap-3">
             <input type="search" aria-label="Search goals" placeholder="Search goals…" value={query} onChange={(event) => setQuery(event.target.value)} className="min-h-11 min-w-0 flex-1 rounded-md border border-line bg-[var(--color-bg-surface)] px-3 text-sm text-ink" />
             <div role="group" aria-label="Goal status" className="flex gap-1">
-              {(["active", "finished", "all"] as const).map((value) => <button key={value} type="button" aria-pressed={status === value} onClick={() => setStatus(value)} className={cn("min-h-11 rounded-md border px-3 text-sm capitalize", status === value ? "border-accent bg-[var(--color-accent-dim)] text-accent" : "border-line text-ink-soft")}>{value}</button>)}
+              {(["active", "settled", "all"] as const).map((value) => <button key={value} type="button" aria-pressed={status === value} onClick={() => setStatus(value)} className={cn("min-h-11 rounded-md border px-3 text-sm capitalize", status === value ? "border-accent bg-[var(--color-accent-dim)] text-accent" : "border-line text-ink-soft")}>{value}</button>)}
             </div>
             <label className="flex items-center gap-2 text-xs text-ink-mute">Sort
               <select aria-label="Sort goals" value={sort} onChange={(event) => setSort(event.target.value)} className="min-h-11 rounded-md border border-line bg-[var(--color-bg-surface)] px-2 text-sm text-ink">

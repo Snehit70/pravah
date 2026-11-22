@@ -90,6 +90,8 @@ export function AuthenticatedApp() {
     : boardTasks === undefined ? "skip" : { taskIds: boardLinkIds });
   const upsertGoal = useMutation(api.goals.upsert);
   const removeGoal = useMutation(api.goals.remove);
+  const settleGoal = useMutation(api.goals.settle);
+  const reopenGoal = useMutation(api.goals.reopen);
   const moveTask = useMutation(api.tasks.moveTask);
   const completeTask = useMutation(api.tasks.completeTask);
   const bulkSoftDeleteInboxTasks = useMutation(api.tasks.bulkSoftDeleteInboxTasks);
@@ -245,6 +247,19 @@ export function AuthenticatedApp() {
     [removeGoal]
   );
 
+  const handleSettleGoal = useCallback(
+    (goalId: string, options?: { completeOpenTasks: true; expectedOpenTaskCount: number }) =>
+      settleGoal({ clientId: goalId, ...options }),
+    [settleGoal]
+  );
+
+  const handleReopenGoal = useCallback(
+    async (goalId: string) => {
+      await reopenGoal({ clientId: goalId });
+    },
+    [reopenGoal]
+  );
+
   const handleInboxSchedule = useCallback(
     async (taskId: Task["_id"], targetDate: string) => {
       try {
@@ -359,6 +374,8 @@ export function AuthenticatedApp() {
                 onCreateServerGoal={handleCreateGoal}
                 onUpdateServerGoal={handleUpdateGoal}
                 onDeleteServerGoal={handleDeleteGoal}
+                onSettleServerGoal={handleSettleGoal}
+                onReopenServerGoal={handleReopenGoal}
                 linkedTasksByGoalId={linkedTasksByGoalId}
                 onOpenTask={openTaskPopup}
               />

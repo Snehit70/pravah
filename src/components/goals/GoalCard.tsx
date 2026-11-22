@@ -16,7 +16,7 @@ interface EditFields {
 
 export function GoalCard({
   goal, progress, linkedTasks, busy, canEdit, canDelete, editing,
-  onBeginEdit, onOpenGoal, onOpenTask, onRemove, editFields, onSaveEdit, onCancelEdit,
+  onBeginEdit, onOpenGoal, onOpenTask, onRemove, onSettle, onReopen, editFields, onSaveEdit, onCancelEdit,
 }: {
   goal: GoalReadModel;
   progress: GoalProgress;
@@ -29,19 +29,26 @@ export function GoalCard({
   onOpenGoal?: () => void;
   onOpenTask?: (task: Task) => void;
   onRemove: () => void;
+  /** Mark the goal done; absent when the viewer cannot change it. */
+  onSettle?: () => void;
+  /** Reopen a settled goal. */
+  onReopen?: () => void;
   editFields: EditFields;
   onSaveEdit: () => void;
   onCancelEdit: () => void;
 }) {
   const { total, done } = progress;
+  const settled = goal.completedAt !== undefined;
+  // Progress follows the tasks, not the settled flag: a settled goal that
+  // later gains or reopens a task shows that honestly.
   const complete = total > 0 && done >= total;
   const percent = total > 0 ? Math.min(100, Math.round(done / total * 100)) : 0;
-  const overdue = Boolean(goal.deadline && goal.deadline < getLocalDateString() && !complete);
+  const overdue = Boolean(goal.deadline && goal.deadline < getLocalDateString() && !complete && !settled);
   const nextTasks = linkedTasks.filter((task) => !isTaskCompleted(task))
     .sort((a, b) => (a.deadline ?? "9999").localeCompare(b.deadline ?? "9999")).slice(0, 2);
 
   return (
-    <article className="border-b border-line-subtle py-5">
+    <article className={settled ? "border-b border-line-subtle py-5 opacity-75" : "border-b border-line-subtle py-5"}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1 basis-64">
           {onOpenGoal ? (
@@ -50,12 +57,15 @@ export function GoalCard({
           {goal.description && <p className="mt-1 max-w-prose whitespace-pre-wrap break-words text-sm leading-6 text-ink-soft">{goal.description}</p>}
           <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-ink-mute">
             {goal.priority && <span className="font-semibold uppercase">{goal.priority}</span>}
+            {settled && <span className="font-semibold text-success">Settled {new Date(goal.completedAt ?? 0).toLocaleDateString(undefined, { day: "numeric", month: "short" })}</span>}
             <span>{complete ? "All done" : total === 0 ? "No tasks linked" : `${done} of ${total} done`}</span>
             {goal.deadline && <span className={overdue ? "text-error" : "text-ink-soft"}>{overdue ? "Overdue · " : "Due "}{new Date(`${goal.deadline}T12:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</span>}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {onOpenGoal && <button type="button" onClick={onOpenGoal} aria-label={`View all tasks for ${goal.text}`} className="min-h-11 rounded-md border border-line px-3 text-sm text-ink-soft hover:bg-fill-soft">View tasks <span aria-hidden>→</span></button>}
+          {!settled && onSettle && <button type="button" disabled={busy} onClick={onSettle} aria-label={`Mark goal done: ${goal.text}`} className="min-h-11 rounded-md border border-line px-3 text-sm text-ink-soft hover:bg-fill-soft">Mark done</button>}
+          {settled && onReopen && <button type="button" disabled={busy} onClick={onReopen} aria-label={`Reopen goal: ${goal.text}`} className="min-h-11 rounded-md border border-line px-3 text-sm text-ink-soft hover:bg-fill-soft">Reopen</button>}
           {canEdit && <button type="button" disabled={busy} onClick={onBeginEdit} aria-label={`Edit goal: ${goal.text}`} className="min-h-11 rounded-md px-3 text-sm text-ink-soft hover:bg-fill-soft">Edit</button>}
           {canDelete && <button type="button" disabled={busy} onClick={onRemove} aria-label={`Delete goal: ${goal.text}`} className="min-h-11 rounded-md px-3 text-sm text-ink-mute hover:bg-error-muted hover:text-error">Delete</button>}
         </div>
