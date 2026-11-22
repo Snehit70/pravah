@@ -209,7 +209,7 @@ export function LongTermGoalsPage({
   // The server refuses to settle while tasks are open and says how many; the
   // confirmed count goes back so a task added meanwhile prompts again.
   const settleGoal = async (goalId: string, openTaskCount?: number) => {
-    if (!onSettleServerGoal) return;
+    if (!serverBacked || !onSettleServerGoal) return;
     setServerBusy(true);
     setServerError(null);
     try {
@@ -226,7 +226,7 @@ export function LongTermGoalsPage({
   };
 
   const reopenGoal = async (goalId: string) => {
-    if (!onReopenServerGoal) return;
+    if (!serverBacked || !onReopenServerGoal) return;
     setServerBusy(true);
     setServerError(null);
     try {
@@ -294,8 +294,8 @@ export function LongTermGoalsPage({
       busy={serverBusy}
       canEdit={!readOnly && Boolean(onUpdateServerGoal)}
       canDelete={!readOnly && Boolean(onDeleteServerGoal)}
-      onSettle={!readOnly && onSettleServerGoal ? () => void settleGoal(goal.id) : undefined}
-      onReopen={!readOnly && onReopenServerGoal ? () => void reopenGoal(goal.id) : undefined}
+      onSettle={serverBacked && !readOnly && onSettleServerGoal ? () => void settleGoal(goal.id) : undefined}
+      onReopen={serverBacked && !readOnly && onReopenServerGoal ? () => void reopenGoal(goal.id) : undefined}
       editing={editingGoalId === goal.id}
       onBeginEdit={() => beginEdit(goal)}
       onOpenGoal={detail ? undefined : () => { setSelectedGoalId(goal.id); setEditingGoalId(null); }}
