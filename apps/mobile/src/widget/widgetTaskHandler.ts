@@ -2,7 +2,7 @@
 import type { WidgetTaskHandler, WidgetTaskHandlerProps } from "react-native-android-widget";
 import { WIDGET_PENDING_MAX_AGE_MS, completionNotice, headerDateLabel, markSnapshotTaskDone } from "./widgetModel";
 import { COMPLETE_ACTION } from "./widgetNames";
-import { completeTaskRemotely } from "./widgetRemote";
+import { WIDGET_REQUEST_TIMEOUT_MS, completeTaskRemotely } from "./widgetRemote";
 import { loadWidgetState, renderWidget } from "./widgetRender";
 import {
   readPendingCompletions,
@@ -62,11 +62,12 @@ async function completeFromWidget(props: WidgetTaskHandlerProps) {
 }
 
 /**
- * Headless tasks get 30s. A retry is two calls of up to 8s each, so only
- * start one while enough of this budget is left, keeping room for a redraw.
+ * Headless tasks get 30s. One retry is capped at WIDGET_REQUEST_TIMEOUT_MS,
+ * so only start one while that much of this budget is left, keeping room for
+ * the redraw.
  */
 const RETRY_BUDGET_MS = 20_000;
-const RETRY_COST_MS = 16_000;
+const RETRY_COST_MS = WIDGET_REQUEST_TIMEOUT_MS + 1_000;
 
 /** Periodic update: retry ticks still waiting, oldest first, within budget. */
 async function retryPending(props: WidgetTaskHandlerProps) {

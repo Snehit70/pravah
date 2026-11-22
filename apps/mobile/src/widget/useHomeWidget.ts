@@ -6,9 +6,11 @@ import type { MobileTask } from "../components/TaskCard";
 import { classifyError, mobileLogger } from "../lib/logger";
 import type { AccentColor, ThemePreference } from "../lib/userPreferences";
 import { isWidgetSupported, refreshHomeWidgets } from "./widgetBridge";
+import { forgetWidgetToken } from "./widgetRemote";
 import { parseWidgetLink, type WidgetLinkTarget } from "./widgetLinks";
 import {
   WIDGET_PENDING_MAX_AGE_MS,
+  type CompletionOutcome,
   buildWidgetSnapshot,
   completionNotice,
   completionOutcome,
@@ -30,6 +32,7 @@ const WIDGET_LINK_HOLD_MS = 30_000;
 /** Signs the home-screen widget out and redraws it. Never throws. */
 export async function clearHomeWidgets(): Promise<void> {
   if (!isWidgetSupported()) return;
+  forgetWidgetToken();
   try {
     await clearWidgetStorage();
   } catch {
@@ -127,7 +130,7 @@ export function useHomeWidgetSync(options: SyncOptions): void {
       const confirmed: string[] = [];
       let notice: string | null = null;
       for (const entry of pending) {
-        let outcome: ReturnType<typeof completionOutcome>;
+        let outcome: CompletionOutcome;
         try {
           outcome = completionOutcome(await completeRef.current({ taskId: entry.taskId }));
         } catch {
@@ -149,15 +152,20 @@ export function useHomeWidgetSync(options: SyncOptions): void {
           await writeWidgetSnapshot(confirmed.reduce((next, taskId) => markSnapshotTaskDone(next, taskId, at), snapshot));
         }
       }
+      let changed = settled.size > 0;
       if (notice) {
         await writeWidgetNotice({ message: notice, at: Date.now() });
+        changed = true;
       } else {
         // Opening the app answers an earlier notice, but not one the widget
         // wrote while this drain was running.
         const current = await readWidgetNotice();
-        if (current && current.at < startedAt) await writeWidgetNotice(null);
+        if (current && current.at < startedAt) {
+          await writeWidgetNotice(null);
+          changed = true;
+        }
       }
-      await refreshHomeWidgets();
+      if (changed) await refreshHomeWidgets();
     } catch (error) {
       mobileLogger.warn("home_widget_drain_failed", { errorType: classifyError(error) });
     } finally {
