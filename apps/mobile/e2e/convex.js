@@ -32,6 +32,8 @@ function query(name, args = {}) {
       if (args.status === "completed") return task.completedAt !== undefined && (!args.date || task.deadline === args.date);
       return active(task);
     });
+    case "tasks:listTodayCompletedTasks": return tasks.filter((task) =>
+      task.completedAt !== undefined && task.completedAt >= args.dayStartMs && task.completedAt < args.dayEndMs);
     case "tasks:getTimeline": return tasks.filter((task) => active(task) && task.deadline && task.deadline <= args.endDate)
       .reduce((days, task) => { (days[task.deadline] ??= []).push(task); return days; }, {});
     case "goals:list": return goals;
