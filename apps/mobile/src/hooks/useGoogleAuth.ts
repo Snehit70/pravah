@@ -76,11 +76,25 @@ export function useGoogleAuth({
         showToast({ kind: "error", message: "Google sign-in did not return an ID token." });
         return;
       }
-      await authClient.signIn.social({
+      // better-auth reports server rejections in `error` instead of throwing.
+      const { error: authError } = await authClient.signIn.social({
         provider: "google",
         idToken: { token: idToken },
         callbackURL: "/",
       });
+      if (authError) {
+        showToast({ kind: "error", message: `Sign-in rejected: ${authError.message ?? authError.statusText ?? "unknown error"}` });
+        haptic.error();
+        mobileLogger.error("login_failed", {
+          actionId,
+          provider: "google",
+          elapsedMs: Date.now() - startedAt,
+          status: authError.status,
+          errorCode: authError.code,
+          errorMessage: authError.message ?? authError.statusText,
+        });
+        return;
+      }
       mobileLogger.info("login_success", { actionId, provider: "google", elapsedMs: Date.now() - startedAt });
       mobileLogger.info("google_signin_succeeded", { actionId, elapsedMs: Date.now() - startedAt });
     } catch (error) {
