@@ -391,7 +391,7 @@ function DayCardView({
   return (
     <View
       style={[styles.card, isToday && styles.cardToday]}
-      accessibilityLabel={`${label}, ${tasks.length} ${tasks.length === 1 ? "task" : "tasks"}`}
+      accessibilityLabel={`${label}, ${openCount} ${openCount === 1 ? "task" : "tasks"}`}
     >
       <View style={styles.cardHeader}>
         <View style={styles.cardHeaderText}>
@@ -520,7 +520,7 @@ function OverdueCard({
             <Text style={styles.overdueLabel}>Overdue</Text>
             <View style={styles.overdueCountPill}>
               <Text style={styles.overdueCountPillText}>
-                {openCount} {openCount === 1 ? "task" : "tasks"}
+                {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
               </Text>
             </View>
           </View>
@@ -832,6 +832,8 @@ export function TimelineDayCarousel({
   const [current, setCurrent] = useState<{ key: string; index: number } | null>(null);
   const [justCompleted, setJustCompleted] = useState<Record<string, MobileTask>>({});
   const [settlingIds, setSettlingIds] = useState<ReadonlySet<string>>(() => new Set());
+  // Held ids the server has listed as completed at least once.
+  const [confirmedIds, setConfirmedIds] = useState<ReadonlySet<string>>(() => new Set());
   const settleTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const holdTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   useEffect(() => {
@@ -854,16 +856,36 @@ export function TimelineDayCarousel({
       delete next[id];
       return next;
     });
+    setConfirmedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   }, []);
-  // Once the server lists a settled completion, its data takes over from the
+  // Once the server has listed a completion, its data takes over from the
   // local hold, so a later reopen (the toast's Undo, another device) shows.
+  // Confirmation is remembered because it can arrive and be undone while the
+  // row is still settling.
+  const serverCompleted = (id: string) => completedTasks.some((task) => String(task._id) === id);
+  const newlyConfirmed = Object.keys(justCompleted).filter(
+    (id) => !confirmedIds.has(id) && serverCompleted(id)
+  );
+  if (newlyConfirmed.length > 0) {
+    setConfirmedIds((prev) => new Set([...prev, ...newlyConfirmed]));
+  }
   const confirmedHolds = Object.keys(justCompleted).filter(
-    (id) => !settlingIds.has(id) && completedTasks.some((task) => String(task._id) === id)
+    (id) => !settlingIds.has(id) && (confirmedIds.has(id) || serverCompleted(id))
   );
   if (confirmedHolds.length > 0) {
     setJustCompleted((prev) => {
       const next = { ...prev };
       for (const id of confirmedHolds) delete next[id];
+      return next;
+    });
+    setConfirmedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of confirmedHolds) next.delete(id);
       return next;
     });
   }
@@ -885,6 +907,7 @@ export function TimelineDayCarousel({
     holdTimers.current.clear();
     setSettlingIds((prev) => (prev.size === 0 ? prev : new Set()));
     setJustCompleted({});
+    setConfirmedIds((prev) => (prev.size === 0 ? prev : new Set()));
   }, []);
   // Week accordion lives in the viewed card's header; closed by default.
   const [weekOpen, setWeekOpen] = useState(false);
@@ -990,6 +1013,12 @@ export function TimelineDayCarousel({
         setJustCompleted((prev) => ({ ...prev, [id]: { ...task, completedAt: Date.now() } }));
         const previous = settleTimers.current.get(id);
         if (previous !== undefined) clearTimeout(previous);
+        setConfirmedIds((prev) => {
+          if (!prev.has(id)) return prev;
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
         const previousHold = holdTimers.current.get(id);
         if (previousHold !== undefined) clearTimeout(previousHold);
         holdTimers.current.delete(id);
