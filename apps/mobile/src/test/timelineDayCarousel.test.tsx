@@ -11,7 +11,7 @@
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ─── react-native mock ────────────────────────────────────────────────────────
 vi.mock("../components/ScrollViewWithScrollbar", async () => {
@@ -81,11 +81,13 @@ vi.mock("react-native", () => {
     renderItem,
     keyExtractor,
     ListHeaderComponent,
+    ListFooterComponent,
   }: {
     data: unknown[];
     renderItem: (params: { item: unknown; index: number }) => React.ReactNode;
     keyExtractor: (item: unknown) => string;
     ListHeaderComponent?: React.ReactNode;
+    ListFooterComponent?: React.ReactNode;
     [key: string]: unknown;
   }) =>
     React.createElement(
@@ -98,7 +100,8 @@ vi.mock("react-native", () => {
           { key: keyExtractor(item) },
           renderItem({ item, index })
         )
-      )
+      ),
+      ListFooterComponent
     );
   const useWindowDimensions = () => ({ width: 400, height: 800 });
   const ScrollView = View;
@@ -149,6 +152,7 @@ vi.mock("react-native-reanimated", () => {
       FlatList: AnimatedFlatList,
     },
     Extrapolation: { CLAMP: "clamp" },
+    FadeIn: { duration: () => undefined },
     FadeOut: { duration: () => undefined },
     interpolate: () => 1,
     useAnimatedScrollHandler: () => () => {},
@@ -202,6 +206,7 @@ vi.mock("../hooks/useUserPreferences", () => ({
 }));
 
 import { TimelineDayCarousel } from "../components/TimelineDayCarousel";
+import { DONE_SETTLE_MS } from "../lib/timelineDone";
 import type { MobileTask } from "../components/TaskCard";
 import type { Id } from "../../../../convex/_generated/dataModel";
 
@@ -240,6 +245,10 @@ function renderCarousel(
 describe("TimelineDayCarousel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("renders overdue tasks directly inside the first card", () => {
@@ -330,18 +339,28 @@ describe("TimelineDayCarousel", () => {
     expect(screen.getByText("Already done")).toBeTruthy();
   });
 
-  it("does not render completed tasks from other dates inside Today", () => {
-    renderCarousel([[TODAY, [task("t1", TODAY, "Write tests")]]], {
-      completedTasks: [
-        task("done-today", TODAY, "Done today"),
-        task("done-old", "2026-06-20", "Historical completion"),
+  it("collects everything finished today under Today, whatever its deadline", () => {
+    renderCarousel(
+      [
+        [TODAY, [task("t1", TODAY, "Write tests")]],
+        [TOMORROW, [task("t2", TOMORROW, "Plan sprint")]],
       ],
-    });
+      {
+        completedTasks: [
+          task("done-today", TODAY, "Done today"),
+          task("done-early", TOMORROW, "Finished early"),
+          task("done-late", "2026-06-20", "Finished late"),
+        ],
+      }
+    );
 
-    expect(screen.getByText("1 of 2")).toBeTruthy();
-    expect(screen.getByLabelText("1 of 2 done")).toBeTruthy();
+    expect(screen.getByText("3 of 4")).toBeTruthy();
+    expect(screen.getByLabelText("3 of 4 done")).toBeTruthy();
+    // One Done section, on Today, holding all three.
+    expect(screen.getAllByText("Done · 3")).toHaveLength(1);
     expect(screen.getByText("Done today")).toBeTruthy();
-    expect(screen.queryByText("Historical completion")).toBeNull();
+    expect(screen.getByText("Finished early")).toBeTruthy();
+    expect(screen.getByText("Finished late")).toBeTruthy();
   });
 
   it("opens the edit sheet when the row itself is tapped", () => {
@@ -356,6 +375,7 @@ describe("TimelineDayCarousel", () => {
   });
 
   it("holds a locally emptied day as Day clear with uncheckable rows", () => {
+    vi.useFakeTimers();
     const onCompleteTask = vi.fn();
     const onReopenTask = vi.fn();
     const first = renderCarousel([[TODAY, [task("t1", TODAY, "Write tests")]]], {
@@ -369,10 +389,20 @@ describe("TimelineDayCarousel", () => {
       <TimelineDayCarousel {...first.props} sections={[]} />
     );
 
+    // While settling, the checked row keeps its slot and the day is not clear yet.
+    expect(screen.getByRole("checkbox", { name: "Mark Write tests incomplete" })).toBeTruthy();
+    expect(screen.queryByText("Day clear")).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(DONE_SETTLE_MS);
+    });
+    vi.useRealTimers();
+
     // The card stays on the axis in the Day-clear state...
     expect(screen.getByText("Day clear")).toBeTruthy();
     expect(screen.getByText("Today")).toBeTruthy();
-    // ...with the completed row still visible and uncheckable.
+    // ...with the completed row in Done, still uncheckable.
+    expect(screen.getByText("Done · 1")).toBeTruthy();
     const uncheck = screen.getByRole("checkbox", { name: "Mark Write tests incomplete" });
     expect(uncheck.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(uncheck);
@@ -389,6 +419,71 @@ describe("TimelineDayCarousel", () => {
     expect(screen.getByText("Day clear")).toBeTruthy();
     // Nothing was completed locally, so there is no row to uncheck.
     expect(screen.queryByText("Write tests")).toBeNull();
+  });
+
+  describe("Done section", () => {
+    it("lets a checked row settle in place, then moves it into Done", () => {
+      vi.useFakeTimers();
+      const first = renderCarousel(
+        [[TODAY, [task("t1", TODAY, "Write tests"), task("t2", TODAY, "Ship it")]]],
+        { onCompleteTask: vi.fn(), onReopenTask: vi.fn() }
+      );
+
+      fireEvent.click(screen.getByRole("checkbox", { name: "Mark Write tests complete" }));
+      // Live data drops the completed task right away.
+      first.rerender(
+        <TimelineDayCarousel {...first.props} sections={[[TODAY, [task("t2", TODAY, "Ship it")]]]} />
+      );
+
+      // Still settling: the struck row sits in the open list, no Done fold yet.
+      expect(screen.getByRole("checkbox", { name: "Mark Write tests incomplete" })).toBeTruthy();
+      expect(screen.queryByText("Done · 1")).toBeNull();
+
+      act(() => {
+        vi.advanceTimersByTime(DONE_SETTLE_MS);
+      });
+
+      expect(screen.getByText("Done · 1")).toBeTruthy();
+      expect(screen.getByText("Write tests")).toBeTruthy();
+      expect(screen.getByText("1 of 2")).toBeTruthy();
+    });
+
+    it("reopens a task from its Done row", () => {
+      const onReopenTask = vi.fn();
+      renderCarousel([[TODAY, [task("t1", TODAY, "Write tests")]]], {
+        onCompleteTask: vi.fn(),
+        onReopenTask,
+        completedTasks: [{ ...task("done", TODAY, "Already done"), completedAt: new Date(2026, 6, 5, 11, 42).getTime() }],
+      });
+
+      expect(screen.getByText("Done · 1")).toBeTruthy();
+      fireEvent.click(screen.getByRole("checkbox", { name: "Mark Already done incomplete" }));
+      expect(onReopenTask).toHaveBeenCalledWith("done");
+    });
+
+    it("starts collapsed past three done rows and expands on tap", () => {
+      renderCarousel([[TODAY, [task("t1", TODAY)]]], {
+        completedTasks: ["d1", "d2", "d3", "d4"].map((id) => task(id, TODAY, `Finished ${id}`)),
+      });
+
+      expect(screen.getByText("Done · 4")).toBeTruthy();
+      expect(screen.queryByText("Finished d1")).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "Show 4 done tasks" }));
+      expect(screen.getByText("Finished d1")).toBeTruthy();
+      expect(screen.getByText("Finished d4")).toBeTruthy();
+    });
+
+    it("keeps a card for a day whose tasks are all done", () => {
+      renderCarousel([[TOMORROW, [task("b", TOMORROW)]]], {
+        completedTasks: [task("done", TODAY, "Already done")],
+      });
+
+      expect(screen.getByText("Today")).toBeTruthy();
+      expect(screen.getByText("Day clear")).toBeTruthy();
+      expect(screen.getByText("Done · 1")).toBeTruthy();
+      expect(screen.getByText("Already done")).toBeTruthy();
+    });
   });
 
   it("renders the shared empty state when there are no cards at all", () => {

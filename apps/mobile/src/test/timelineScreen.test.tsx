@@ -167,6 +167,36 @@ vi.mock("../components/UiIcons", () => ({
   CloseIcon: () => React.createElement("span", { "data-testid": "icon-close" }),
 }));
 
+// ─── done section mock ────────────────────────────────────────────────────────
+vi.mock("../components/TimelineDoneSection", () => ({
+  TimelineDoneSection: ({
+    tasks,
+    onReopen,
+  }: {
+    tasks: MobileTask[];
+    onReopen?: (task: MobileTask) => void;
+  }) =>
+    tasks.length === 0
+      ? null
+      : React.createElement(
+          "div",
+          { "data-testid": "done-section" },
+          `Done · ${tasks.length}`,
+          tasks.map((task) =>
+            React.createElement(
+              "button",
+              {
+                key: String(task._id),
+                type: "button",
+                "aria-label": `reopen-${String(task._id)}`,
+                onClick: () => onReopen?.(task),
+              },
+              task.title
+            )
+          )
+        ),
+}));
+
 // ─── compact row mock ─────────────────────────────────────────────────────────
 // Drive interactions through simple buttons keyed by task id.
 vi.mock("../components/TimelineTaskRow", () => ({
@@ -434,7 +464,7 @@ describe("TimelineScreen", () => {
             deadline: "2026-05-04",
             scheduledAt: 1500,
             position: 2,
-            completedAt: 2000,
+            completedAt: new Date(2026, 4, 4, 11, 42).getTime(),
             updatedAt: 2000,
             createdAt: 1000,
           },
@@ -443,6 +473,62 @@ describe("TimelineScreen", () => {
     );
 
     expect(screen.getByText("1 of 3 done")).toBeTruthy();
+  });
+
+  it("lists today's completions in a Done fold under the day and reopens from it", () => {
+    const onReopenTask = vi.fn();
+    render(
+      <TimelineScreen
+        {...baseProps}
+        sections={sampleSections}
+        onReopenTask={onReopenTask}
+        completedTasks={[
+          {
+            _id: "completed-today" as Id<"tasks">,
+            title: "Completed Today",
+            deadline: "2026-05-04",
+            scheduledAt: 1500,
+            position: 2,
+            completedAt: new Date(2026, 4, 4, 11, 42).getTime(),
+            updatedAt: 2000,
+            createdAt: 1000,
+          },
+        ]}
+      />
+    );
+
+    const fold = screen.getByTestId("done-section");
+    expect(fold.textContent).toContain("Done · 1");
+    // The fold follows the day's open rows rather than mixing with them.
+    const openRow = screen.getByRole("button", { name: "row-task2" });
+    expect(openRow.compareDocumentPosition(fold) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "reopen-completed-today" }));
+    expect(onReopenTask).toHaveBeenCalledWith("completed-today");
+  });
+
+  it("keeps today's Done fold under the clear summary when nothing is left open", () => {
+    render(
+      <TimelineScreen
+        {...baseProps}
+        sections={sampleSections.filter(([dateKey]) => dateKey !== "2026-05-04")}
+        completedTasks={[
+          {
+            _id: "completed-today" as Id<"tasks">,
+            title: "Completed Today",
+            deadline: "2026-05-04",
+            scheduledAt: 1500,
+            position: 2,
+            completedAt: new Date(2026, 4, 4, 11, 42).getTime(),
+            updatedAt: 2000,
+            createdAt: 1000,
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText("Today is clear")).toBeTruthy();
+    expect(screen.getByTestId("done-section").textContent).toContain("Completed Today");
   });
 
   it("opens the editor from a row tap and completes from the row check", () => {

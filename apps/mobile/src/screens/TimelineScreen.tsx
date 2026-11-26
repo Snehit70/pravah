@@ -31,6 +31,8 @@ import type { MobileTask } from "../components/TaskCard";
 import { TimelineSectionHeader } from "../components/TimelineSectionHeader";
 import { TimelineDayCarousel } from "../components/TimelineDayCarousel";
 import { TimelineTaskRow } from "../components/TimelineTaskRow";
+import { TimelineDoneSection } from "../components/TimelineDoneSection";
+import { doneTasksForDay } from "../lib/timelineDone";
 import { QuickScheduleSheet } from "../components/QuickScheduleSheet";
 import { LaterDatesSkeleton, TaskListSkeleton } from "../components/LoadingSkeleton";
 import { CalendarIcon, CheckIcon, ClockIcon, CloseIcon } from "../components/UiIcons";
@@ -44,7 +46,8 @@ import { useReducedMotion } from "../hooks/useReducedMotion";
 
 type TimelineRow =
   | { kind: "header"; dateKey: string; label: string; isToday: boolean; count: number }
-  | { kind: "task"; dateKey: string; task: MobileTask };
+  | { kind: "task"; dateKey: string; task: MobileTask }
+  | { kind: "done"; dateKey: string; tasks: MobileTask[] };
 
 type TimelineGroupPosition = "only" | "first" | "middle" | "last";
 
@@ -116,11 +119,18 @@ function TodayProgressBar({ ratio }: { ratio: number }) {
   );
 }
 
-function countTimelineRows(sections: [string, MobileTask[]][]) {
+function countTimelineRows(
+  sections: [string, MobileTask[]][],
+  doneByDate: ReadonlyMap<string, MobileTask[]>
+) {
   let count = 0;
-  for (const [, tasks] of sections) count += 1 + tasks.length;
+  for (const [dateKey, tasks] of sections) {
+    count += 1 + tasks.length + (doneByDate.has(dateKey) ? 1 : 0);
+  }
   return count;
 }
+
+const NO_TASKS: MobileTask[] = [];
 
 /** Drop overdue out of the listed sections; return the rest plus how many
  *  overdue tasks were removed. Overdue lives in the collapsed header instead. */
@@ -144,7 +154,8 @@ function buildTimelineRows(
   sections: [string, MobileTask[]][],
   today: string,
   tomorrow: string,
-  maxRows: number
+  maxRows: number,
+  doneByDate: ReadonlyMap<string, MobileTask[]>
 ) {
   const rows: TimelineRow[] = [];
 
@@ -162,6 +173,9 @@ function buildTimelineRows(
       if (rows.length >= maxRows) break;
       rows.push({ kind: "task", dateKey, task });
     }
+
+    const done = doneByDate.get(dateKey);
+    if (done && rows.length < maxRows) rows.push({ kind: "done", dateKey, tasks: done });
   }
 
   return rows;
@@ -245,8 +259,14 @@ export function TimelineScreen({
     : sourceSections.slice(0, DEFAULT_VISIBLE_SECTION_COUNT);
   const laterSections = showAllSections ? [] : sourceSections.slice(DEFAULT_VISIBLE_SECTION_COUNT);
   const laterTaskCount = laterSections.reduce((sum, [, tasks]) => sum + tasks.length, 0);
-  const todayTasks = sourceSections.find(([dateKey]) => dateKey === today)?.[1] ?? [];
-  const completedTodayCount = completedTasks.filter((task) => task.deadline === today).length;
+  const todayTasks = sourceSections.find(([dateKey]) => dateKey === today)?.[1] ?? NO_TASKS;
+  // Everything finished today counts toward Today, whatever its deadline.
+  const todayDone = useMemo(
+    () =>
+      doneTasksForDay(today, today, completedTasks, [], new Set(todayTasks.map((task) => String(task._id)))),
+    [completedTasks, today, todayTasks]
+  );
+  const completedTodayCount = todayDone.length;
   const todayTotal = todayTasks.length + completedTodayCount;
   const todayProgress = todayTotal > 0 ? completedTodayCount / todayTotal : 0;
   const totalOverdue = overdueCount ?? localOverdueCount;
@@ -264,12 +284,24 @@ export function TimelineScreen({
     if (showAllSections) onNeedLaterDates?.();
   };
 
-  const totalRows = countTimelineRows(visibleSections);
+  // Work finished today collects in a "Done · N" fold under Today's open tasks.
+  // Done lives only on Today: a fold after Today's open rows when Today is listed.
+  const todayListed = visibleSections.some(([dateKey]) => dateKey === today);
+  const doneByDate = useMemo(
+    () =>
+      new Map<string, MobileTask[]>(todayListed && todayDone.length > 0 ? [[today, todayDone]] : []),
+    [today, todayDone, todayListed]
+  );
+  // Today with nothing left open has no section; its fold sits under the
+  // "Today is clear" summary instead.
+  const todayDoneWhenClear = todayTasks.length === 0 ? todayDone : [];
+
+  const totalRows = countTimelineRows(visibleSections, doneByDate);
   const visibleRowCount = useIncrementalRowCount(totalRows);
 
   // Build only the rows currently released to FlatList. Large timelines still
   // hydrate quickly, but the first paint avoids handing every row to React.
-  const rows = buildTimelineRows(visibleSections, today, tomorrow, visibleRowCount);
+  const rows = buildTimelineRows(visibleSections, today, tomorrow, visibleRowCount, doneByDate);
 
   // The pool select-all and the bulk actions operate on: only tasks whose
   // rows are actually released to the list. Rows still pending incremental
@@ -365,17 +397,26 @@ export function TimelineScreen({
   ) : null;
 
   const todaySummary = todayTasks.length === 0 ? (
-    <View style={styles.todayClearInline}>
-      <View>
-        <Text style={styles.todayClearTitle}>Today is clear</Text>
-        <Text style={styles.todayClearDate}>{weekdayDate(today)}</Text>
+    <>
+      <View style={styles.todayClearInline}>
+        <View>
+          <Text style={styles.todayClearTitle}>Today is clear</Text>
+          <Text style={styles.todayClearDate}>{weekdayDate(today)}</Text>
+        </View>
+        {todayTotal > 0 ? (
+          <Text style={styles.todayClearProgress}>
+            {completedTodayCount} of {todayTotal} done
+          </Text>
+        ) : null}
       </View>
-      {todayTotal > 0 ? (
-        <Text style={styles.todayClearProgress}>
-          {completedTodayCount} of {todayTotal} done
-        </Text>
-      ) : null}
-    </View>
+      <TimelineDoneSection
+        variant="list"
+        tasks={todayDoneWhenClear}
+        getGoalName={getGoalName}
+        onReopen={onReopenTask ? (task) => onReopenTask(task._id) : undefined}
+        onPress={onEditTask}
+      />
+    </>
   ) : null;
 
   const selectHeader = (
@@ -459,7 +500,11 @@ export function TimelineScreen({
       windowSize={7}
       removeClippedSubviews
       keyExtractor={(row) =>
-        row.kind === "header" ? `header-${row.dateKey}` : row.task._id
+        row.kind === "header"
+          ? `header-${row.dateKey}`
+          : row.kind === "done"
+            ? `done-${row.dateKey}`
+            : row.task._id
       }
       renderItem={({ item: row, index }) => {
         if (row.kind === "header") {
@@ -489,10 +534,25 @@ export function TimelineScreen({
             </Animated.View>
           );
         }
+        if (row.kind === "done") {
+          return (
+            <Animated.View entering={introStagger(index)}>
+              <TimelineDoneSection
+                key={row.dateKey}
+                variant="list"
+                tasks={row.tasks}
+                getGoalName={getGoalName}
+                onReopen={onReopenTask ? (task) => onReopenTask(task._id) : undefined}
+                onPress={onEditTask}
+              />
+            </Animated.View>
+          );
+        }
         const previous = rows[index - 1];
         const next = rows[index + 1];
         const isFirst = previous?.kind === "header" || previous?.dateKey !== row.dateKey;
-        const isLast = !next || next.dateKey !== row.dateKey || next.kind === "header";
+        const isLast =
+          !next || next.dateKey !== row.dateKey || next.kind === "header" || next.kind === "done";
         const groupPosition: TimelineGroupPosition =
           isFirst && isLast ? "only" : isFirst ? "first" : isLast ? "last" : "middle";
         return (

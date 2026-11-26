@@ -9,10 +9,15 @@
  * per-row swipe actions are always disabled here — horizontal drags belong to
  * the carousel.
  *
+ * Done lifecycle: a checked row settles in place for a beat (still
+ * uncheckable), then leaves the open list. Done means "finished today", so
+ * only the Today card has a "Done · N" section, holding everything completed
+ * today whatever its deadline, newest first. Reopening one sends it back to
+ * its day's open list.
+ *
  * Day-clear rule: completing the last task on the viewed card does not remove
- * the card. Locally completed tasks are held (checked, uncheckable) and the
- * card shows a quiet "Day clear" state until the user swipes away or leaves
- * the tab.
+ * the card. It shows a quiet "Day clear" badge above its Done section until
+ * the user swipes away or leaves the tab.
  */
 
 import {
@@ -70,6 +75,9 @@ import { dateLabel, weekdayDate } from "../lib/dates";
 import { formatTime12h } from "../lib/task-form";
 import { buildDayCards, cardKey, type DayCarouselCard } from "../lib/timelineCarousel";
 import { DayStripTrigger, DayStripWeek } from "./TimelineDayStrip";
+import { TimelineDoneSection } from "./TimelineDoneSection";
+import { DONE_SETTLE_MS, doneTasksForDay } from "../lib/timelineDone";
+import { compareTaskOrder, compareTasksWithinDay } from "../lib/taskLifecycle";
 import { ThemedDatePicker } from "./ThemedDatePicker";
 import { LaterDatesSkeleton } from "./LoadingSkeleton";
 import { useReducedMotion } from "../hooks/useReducedMotion";
@@ -299,6 +307,8 @@ type DayCardViewProps = {
   today: string;
   tomorrow: string;
   justCompleted: Record<string, MobileTask>;
+  /** Just-checked task ids still settling in place before they move to Done. */
+  settlingIds: ReadonlySet<string>;
   completedTasks: MobileTask[];
   isRefreshing: boolean;
   onRefresh: () => Promise<void>;
@@ -319,6 +329,7 @@ function DayCardView({
   today,
   tomorrow,
   justCompleted,
+  settlingIds,
   completedTasks,
   isRefreshing,
   onRefresh,
@@ -332,35 +343,33 @@ function DayCardView({
   const label = dateLabel(dateKey, today, tomorrow);
   const isToday = dateKey === today;
 
-  // Locally completed tasks stay rendered (checked) on the current card so a
-  // mistap can be undone. They leave with the hold, on swipe-away.
+  // A just-checked task settles in place (checked) for a beat so a mistap is
+  // easy to undo, then moves down into the Done section. Held completions
+  // only bridge the viewed card until the server's completed list catches up.
   const liveIds = useMemo(() => new Set(tasks.map((t) => String(t._id))), [tasks]);
+  const held = useMemo(
+    () => (isCurrent ? Object.values(justCompleted).filter((task) => task.deadline === dateKey) : []),
+    [dateKey, isCurrent, justCompleted]
+  );
+  const settling = useMemo(
+    () => held.filter((task) => settlingIds.has(String(task._id)) && !liveIds.has(String(task._id))),
+    [held, liveIds, settlingIds]
+  );
   const rows = useMemo(() => {
-    if (!isCurrent) return tasks;
-    const scopedJustCompleted = Object.values(justCompleted).filter((task) => task.deadline === dateKey);
-    const held = [
-      ...(isToday ? completedTasks.filter((task) => task.deadline === today) : []),
-      ...scopedJustCompleted,
-    ].filter((t, index, all) =>
-      !liveIds.has(String(t._id)) &&
-      all.findIndex((candidate) => String(candidate._id) === String(t._id)) === index
+    if (settling.length === 0) return tasks;
+    // Same order as the live Timeline, so a settling row keeps its slot.
+    return [...tasks, ...settling].sort(
+      (a, b) => compareTasksWithinDay(a, b) || compareTaskOrder(a, b)
     );
-    if (held.length === 0) return tasks;
-    return [...tasks, ...held].sort(
-      (a, b) => a.position - b.position || a.scheduledAt - b.scheduledAt
-    );
-  }, [completedTasks, dateKey, isCurrent, isToday, justCompleted, liveIds, tasks, today]);
+  }, [settling, tasks]);
+  const doneTasks = useMemo(() => {
+    const inOpenList = new Set(rows.map((task) => String(task._id)));
+    return doneTasksForDay(dateKey, today, completedTasks, held, inOpenList);
+  }, [completedTasks, dateKey, held, rows, today]);
 
-  const isDayClear = tasks.length === 0;
-  const scopedJustCompleted = Object.values(justCompleted).filter((task) => task.deadline === dateKey);
-  const completedIds = new Set([
-    ...completedTasks.filter((task) => task.deadline === today).map((task) => String(task._id)),
-    ...scopedJustCompleted.map((task) => String(task._id)),
-  ]);
-  const completedCount = isToday
-    ? rows.filter((task) => completedIds.has(String(task._id))).length
-    : 0;
-  const totalCount = rows.length;
+  const isDayClear = rows.length === 0;
+  const completedCount = doneTasks.length + settling.length;
+  const totalCount = tasks.length + completedCount;
   const progressPill = progressPillFor(completedCount);
 
   return (
@@ -421,10 +430,19 @@ function DayCardView({
           />
         }
         ListHeaderComponent={isDayClear ? <DayClearHeader /> : null}
+        ListFooterComponent={
+          <TimelineDoneSection
+            key={dateKey}
+            tasks={doneTasks}
+            getGoalName={getGoalName}
+            onReopen={onToggle && !toggleDisabled ? (task) => onToggle(task, true) : undefined}
+            onPress={onEditTask}
+          />
+        }
         renderItem={({ item }) => (
           <SlimTaskRow
             task={item}
-            completed={!liveIds.has(String(item._id))}
+            completed={!liveIds.has(String(item._id)) || settlingIds.has(String(item._id))}
             goalName={getGoalName?.(String(item._id))}
             onToggle={onToggle}
             toggleDisabled={toggleDisabled}
@@ -797,11 +815,39 @@ export function TimelineDayCarousel({
   });
   const [current, setCurrent] = useState<{ key: string; index: number } | null>(null);
   const [justCompleted, setJustCompleted] = useState<Record<string, MobileTask>>({});
+  const [settlingIds, setSettlingIds] = useState<ReadonlySet<string>>(() => new Set());
+  const settleTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  useEffect(() => {
+    const timers = settleTimers.current;
+    return () => {
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+    };
+  }, []);
+  const endSettle = useCallback((id: string) => {
+    const timer = settleTimers.current.get(id);
+    if (timer !== undefined) clearTimeout(timer);
+    settleTimers.current.delete(id);
+    setSettlingIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+  const releaseHold = useCallback(() => {
+    for (const timer of settleTimers.current.values()) clearTimeout(timer);
+    settleTimers.current.clear();
+    setSettlingIds((prev) => (prev.size === 0 ? prev : new Set()));
+    setJustCompleted({});
+  }, []);
   // Week accordion lives in the viewed card's header; closed by default.
   const [weekOpen, setWeekOpen] = useState(false);
 
   const heldDateKey =
     current && current.key !== "overdue" && current.key !== LATER_CARD_KEY ? current.key : null;
+  // Done lives only on Today, so work finished today keeps Today's card.
+  const hasDoneToday = completedTasks.length > 0;
   const { cards, landingIndex } = useMemo(
     () =>
       buildDayCards({
@@ -810,8 +856,9 @@ export function TimelineDayCarousel({
         overdueCount,
         includeOverdueCard: Boolean(overdueCount),
         heldDateKey,
+        doneDateKeys: hasDoneToday ? [today] : [],
       }),
-    [sections, today, overdueCount, heldDateKey]
+    [sections, today, overdueCount, heldDateKey, hasDoneToday]
   );
   const hasLaterCard = onNeedLaterDates !== undefined || isLaterDatesLoading;
   const items = useMemo<CarouselItem[]>(
@@ -877,11 +924,11 @@ export function TimelineDayCarousel({
         scrollSettledRef.current = true;
         setCurrent({ key, index });
         // Swipe-away releases the previous card's hold and its checked rows.
-        setJustCompleted({});
+        releaseHold();
         setWeekOpen(false);
       }
     },
-    [cards.length, current, interval, items, onNeedLaterDates]
+    [cards.length, current, interval, items, onNeedLaterDates, releaseHold]
   );
 
   const handleToggle = useCallback(
@@ -889,6 +936,7 @@ export function TimelineDayCarousel({
       const id = String(task._id);
       if (completed) {
         onReopenTask?.(task._id);
+        endSettle(id);
         setJustCompleted((prev) => {
           if (!(id in prev)) return prev;
           const next = { ...prev };
@@ -897,10 +945,16 @@ export function TimelineDayCarousel({
         });
       } else {
         onCompleteTask?.(task._id);
-        setJustCompleted((prev) => ({ ...prev, [id]: task }));
+        // Stamp the local completion so the Done row shows its time before
+        // the server's completed list arrives.
+        setJustCompleted((prev) => ({ ...prev, [id]: { ...task, completedAt: Date.now() } }));
+        const previous = settleTimers.current.get(id);
+        if (previous !== undefined) clearTimeout(previous);
+        settleTimers.current.set(id, setTimeout(() => endSettle(id), DONE_SETTLE_MS));
+        setSettlingIds((prev) => new Set(prev).add(id));
       }
     },
-    [onCompleteTask, onReopenTask]
+    [endSettle, onCompleteTask, onReopenTask]
   );
   const canToggle = Boolean(onCompleteTask);
 
@@ -914,10 +968,10 @@ export function TimelineDayCarousel({
       scrollSettledRef.current = true;
       setCurrent({ key: cardKey(cards[index]), index });
       // Navigating away releases the previous card's Day-clear hold.
-      setJustCompleted({});
+      releaseHold();
       setWeekOpen(false);
     },
-    [cards, interval, reducedMotion]
+    [cards, interval, reducedMotion, releaseHold]
   );
 
   // With no card to swipe from, the empty near window is itself the edge of
@@ -1017,6 +1071,7 @@ export function TimelineDayCarousel({
                 today={today}
                 tomorrow={tomorrow}
                 justCompleted={justCompleted}
+                settlingIds={settlingIds}
                 completedTasks={completedTasks}
                 isRefreshing={isRefreshing}
                 onRefresh={onRefresh}

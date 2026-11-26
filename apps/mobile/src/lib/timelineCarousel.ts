@@ -4,10 +4,10 @@ import type { MobileTask } from "../components/TaskCard";
  * Axis construction for the comfortable-mode day carousel (PRD:
  * docs/prd/mobile-timeline-comfortable-carousel.md).
  *
- * Only dates that have tasks become cards — no empty-day filler. Overdue
- * collapses into a single muted card at the far left. A "held" date lets the
- * currently viewed card stay on the axis after its last task is completed
- * (the Day-clear state) until the user swipes away.
+ * Only dates that have open or done-today tasks become cards — no empty-day
+ * filler. Overdue collapses into a single muted card at the far left. A
+ * "held" date lets the currently viewed card stay on the axis after its last
+ * task is completed (the Day-clear state) until the user swipes away.
  */
 
 export type DayCarouselCard =
@@ -32,6 +32,9 @@ type BuildDayCardsArgs = {
   /** Date of the currently viewed card — kept on the axis (as an empty day)
    *  even when live data no longer has tasks for it. */
   heldDateKey?: string | null;
+  /** Dates that show a Done section (in practice only Today). They keep a
+   *  card (Day clear plus Done) even when nothing is left open on them. */
+  doneDateKeys?: Iterable<string>;
 };
 
 export function buildDayCards({
@@ -40,6 +43,7 @@ export function buildDayCards({
   overdueCount,
   includeOverdueCard,
   heldDateKey,
+  doneDateKeys = [],
 }: BuildDayCardsArgs): { cards: DayCarouselCard[]; landingIndex: number } {
   const days: DayCarouselCard[] = [];
   let localOverdue = 0;
@@ -52,11 +56,15 @@ export function buildDayCards({
     }
   }
 
-  // Re-insert the held date at its sorted position when live data dropped it,
-  // so the viewed card can show "Day clear" instead of vanishing mid-look.
-  if (heldDateKey && heldDateKey >= today && !days.some((d) => d.kind === "day" && d.dateKey === heldDateKey)) {
-    const at = days.findIndex((d) => d.kind === "day" && d.dateKey > heldDateKey);
-    const held: DayCarouselCard = { kind: "day", dateKey: heldDateKey, tasks: [] };
+  // Re-insert the held date and any date with done work at its sorted
+  // position when live data dropped it, so the card shows "Day clear" and
+  // its Done section instead of vanishing.
+  const keep = new Set(doneDateKeys);
+  if (heldDateKey) keep.add(heldDateKey);
+  for (const dateKey of [...keep].sort()) {
+    if (dateKey < today || days.some((d) => d.kind === "day" && d.dateKey === dateKey)) continue;
+    const at = days.findIndex((d) => d.kind === "day" && d.dateKey > dateKey);
+    const held: DayCarouselCard = { kind: "day", dateKey, tasks: [] };
     if (at === -1) days.push(held);
     else days.splice(at, 0, held);
   }
