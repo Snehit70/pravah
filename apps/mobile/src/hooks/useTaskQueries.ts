@@ -14,6 +14,7 @@ import { api } from "../../../../convex/_generated/api";
 import type { MobileTask } from "../components/TaskCard";
 import { addDays, toIsoDate } from "../lib/dates";
 import { compareTaskOrder, compareTasksWithinDay } from "../lib/taskLifecycle";
+import { localDayBounds } from "../lib/timelineDone";
 
 /**
  * Maps a raw task document to the MobileTask shape the UI consumes. Pure and
@@ -130,10 +131,13 @@ export function useTaskQueries({
     api.tasks.listTasks,
     isAuthenticated && includeCompletedHistory ? { status: "completed" } : "skip"
   );
+  // Finished today (by completedAt, local midnight to midnight), whatever the
+  // deadline. Bounds derive from the date key, so args stay stable all day.
+  const { startMs: dayStartMs, endMs: dayEndMs } = localDayBounds(today);
   const completedTodayQuery = useQuery(
-    api.tasks.listTasks,
+    api.tasks.listTodayCompletedTasks,
     isAuthenticated && includeCompletedToday && !includeCompletedHistory
-      ? { status: "completed", date: today }
+      ? { dayStartMs, dayEndMs }
       : "skip"
   );
   const imageCollectionsQuery = useQuery(

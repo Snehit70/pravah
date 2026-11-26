@@ -12,6 +12,7 @@ vi.mock("../../../../convex/_generated/api", () => ({
   api: {
     tasks: {
       listTasks: { __ref: "tasks.listTasks" },
+      listTodayCompletedTasks: { __ref: "tasks.listTodayCompletedTasks" },
       getTimeline: { __ref: "tasks.getTimeline" },
     },
     taskImages: {
@@ -20,6 +21,7 @@ vi.mock("../../../../convex/_generated/api", () => ({
   },
 }));
 
+import { localDayBounds } from "../lib/timelineDone";
 import {
   TIMELINE_FAR_FUTURE,
   buildTimelineWindow,
@@ -29,6 +31,7 @@ import {
 
 const LIST_REF = { __ref: "tasks.listTasks" };
 const TIMELINE_REF = { __ref: "tasks.getTimeline" };
+const COMPLETED_TODAY_REF = { __ref: "tasks.listTodayCompletedTasks" };
 const COUNTS_REF = { __ref: "tasks.getTaskCounts" };
 const IMAGE_COLLECTIONS_REF = { __ref: "taskImages.listWorkspaceImageCollections" };
 
@@ -82,14 +85,16 @@ describe("useTaskQueries — full corpus gating", () => {
     expect(callsTo(LIST_REF, {})).toHaveLength(0);
   });
 
-  it("asks for today's completed tasks by deadline instead of the full history", () => {
+  it("asks for tasks finished today, by completion time, instead of the full history", () => {
     const window = buildTimelineWindow(new Date());
+    const { startMs, endMs } = localDayBounds(window.today);
     renderHook(() =>
       useTaskQueries({ isAuthenticated: true, includeCompletedToday: true })
     );
 
-    expect(callsTo(LIST_REF, { status: "completed", date: window.today })).toHaveLength(1);
+    expect(callsTo(COMPLETED_TODAY_REF, { dayStartMs: startMs, dayEndMs: endMs })).toHaveLength(1);
     expect(callsTo(LIST_REF, { status: "completed" })).toHaveLength(0);
+    expect(callsTo(LIST_REF, { status: "completed", date: window.today })).toHaveLength(0);
   });
 
   it("does not report image metadata readiness before its subscription resolves", () => {
