@@ -76,8 +76,63 @@ describe("useGoogleAuth", () => {
       data: { idToken: "id-token" },
     });
     googleSignOutMock.mockResolvedValue(undefined);
-    authSignInSocialMock.mockResolvedValue(undefined);
+    authSignInSocialMock.mockResolvedValue({ data: { redirect: false }, error: null });
     authSignOutMock.mockResolvedValue(undefined);
+  });
+
+  function renderAuth() {
+    return renderHook(() =>
+      useGoogleAuth({
+        googleWebClientId: "web-client-id",
+        googleIosClientId: "ios-client-id",
+        showToast: toastMock,
+      })
+    );
+  }
+
+  async function signIn(result: ReturnType<typeof renderAuth>["result"]) {
+    await waitFor(() => expect(result.current.canGoogleSignIn).toBe(true));
+    await act(async () => {
+      await result.current.handleGoogleSignIn();
+    });
+  }
+
+  it("logs success when the server accepts the Google ID token", async () => {
+    const { result } = renderAuth();
+    await signIn(result);
+
+    expect(authSignInSocialMock).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "google", idToken: { token: "id-token" } })
+    );
+    expect(loggerInfoMock).toHaveBeenCalledWith("login_success", expect.anything());
+    expect(toastMock).not.toHaveBeenCalled();
+    expect(result.current.isSigningIn).toBe(false);
+  });
+
+  it("surfaces a sign-in the server rejects instead of logging success", async () => {
+    authSignInSocialMock.mockResolvedValue({
+      data: null,
+      error: { status: 404, statusText: "Not Found", code: "PROVIDER_NOT_FOUND", message: "Provider not found" },
+    });
+    const { result } = renderAuth();
+    await signIn(result);
+
+    expect(toastMock).toHaveBeenCalledWith({ kind: "error", message: "Sign-in rejected: Provider not found" });
+    expect(hapticErrorMock).toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      "login_failed",
+      expect.objectContaining({ status: 404, errorCode: "PROVIDER_NOT_FOUND" })
+    );
+    expect(loggerInfoMock).not.toHaveBeenCalledWith("login_success", expect.anything());
+    expect(result.current.isSigningIn).toBe(false);
+  });
+
+  it("falls back to the HTTP status when the rejection has no message", async () => {
+    authSignInSocialMock.mockResolvedValue({ data: null, error: { status: 503, statusText: "" } });
+    const { result } = renderAuth();
+    await signIn(result);
+
+    expect(toastMock).toHaveBeenCalledWith({ kind: "error", message: "Sign-in rejected: HTTP 503" });
   });
 
   it("retries sign-out and succeeds on a later attempt", async () => {

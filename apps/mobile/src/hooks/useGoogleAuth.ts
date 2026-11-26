@@ -83,7 +83,9 @@ export function useGoogleAuth({
         callbackURL: "/",
       });
       if (authError) {
-        showToast({ kind: "error", message: `Sign-in rejected: ${authError.message ?? authError.statusText ?? "unknown error"}` });
+        // `||` on purpose: an empty or non-JSON error body leaves these as "".
+        const reason = authError.message || authError.statusText || `HTTP ${authError.status}`;
+        showToast({ kind: "error", message: `Sign-in rejected: ${reason}` });
         haptic.error();
         mobileLogger.error("login_failed", {
           actionId,
@@ -91,7 +93,7 @@ export function useGoogleAuth({
           elapsedMs: Date.now() - startedAt,
           status: authError.status,
           errorCode: authError.code,
-          errorMessage: authError.message ?? authError.statusText,
+          errorMessage: reason,
         });
         return;
       }
