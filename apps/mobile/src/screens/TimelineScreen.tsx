@@ -119,6 +119,26 @@ function TodayProgressBar({ ratio }: { ratio: number }) {
   );
 }
 
+/**
+ * Today's finished tasks and the list's Done folds. Done lives only on Today,
+ * as a fold after Today's open rows when Today is listed. This is a hook so
+ * the React Compiler treats the fresh arrays as frozen; built inline, they
+ * keep later callbacks from being memoized.
+ */
+function useTodayDone(
+  today: string,
+  completedTasks: readonly MobileTask[],
+  todayTasks: readonly MobileTask[],
+  todayListed: boolean
+): { todayDone: MobileTask[]; doneByDate: ReadonlyMap<string, MobileTask[]> } {
+  const openIds = new Set(todayTasks.map((task) => String(task._id)));
+  const todayDone = doneTasksForDay(today, today, completedTasks, [], openIds);
+  const doneByDate = new Map<string, MobileTask[]>(
+    todayListed && todayDone.length > 0 ? [[today, todayDone]] : []
+  );
+  return { todayDone, doneByDate };
+}
+
 function countTimelineRows(
   sections: [string, MobileTask[]][],
   doneByDate: ReadonlyMap<string, MobileTask[]>
@@ -261,14 +281,8 @@ export function TimelineScreen({
   const laterTaskCount = laterSections.reduce((sum, [, tasks]) => sum + tasks.length, 0);
   const todayTasks = sourceSections.find(([dateKey]) => dateKey === today)?.[1] ?? NO_TASKS;
   // Everything finished today counts toward Today, whatever its deadline.
-  // The React Compiler memoizes these; manual useMemo here fails its lint.
-  const todayDone = doneTasksForDay(
-    today,
-    today,
-    completedTasks,
-    [],
-    new Set(todayTasks.map((task) => String(task._id)))
-  );
+  const todayListed = visibleSections.some(([dateKey]) => dateKey === today);
+  const { todayDone, doneByDate } = useTodayDone(today, completedTasks, todayTasks, todayListed);
   const completedTodayCount = todayDone.length;
   const todayTotal = todayTasks.length + completedTodayCount;
   const todayProgress = todayTotal > 0 ? completedTodayCount / todayTotal : 0;
@@ -287,12 +301,6 @@ export function TimelineScreen({
     if (showAllSections) onNeedLaterDates?.();
   };
 
-  // Work finished today collects in a "Done · N" fold under Today's open tasks.
-  // Done lives only on Today: a fold after Today's open rows when Today is listed.
-  const todayListed = visibleSections.some(([dateKey]) => dateKey === today);
-  const doneByDate = new Map<string, MobileTask[]>(
-    todayListed && todayDone.length > 0 ? [[today, todayDone]] : []
-  );
   // Today with nothing left open has no section; its fold sits under the
   // "Today is clear" summary instead.
   const todayDoneWhenClear = todayTasks.length === 0 ? todayDone : [];

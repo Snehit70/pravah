@@ -76,7 +76,7 @@ import { formatTime12h } from "../lib/task-form";
 import { buildDayCards, cardKey, type DayCarouselCard } from "../lib/timelineCarousel";
 import { DayStripTrigger, DayStripWeek } from "./TimelineDayStrip";
 import { TimelineDoneSection } from "./TimelineDoneSection";
-import { DONE_SETTLE_MS, doneTasksForDay } from "../lib/timelineDone";
+import { DONE_HOLD_MAX_MS, DONE_SETTLE_MS, doneTasksForDay } from "../lib/timelineDone";
 import { compareTaskOrder, compareTasksWithinDay } from "../lib/taskLifecycle";
 import { ThemedDatePicker } from "./ThemedDatePicker";
 import { LaterDatesSkeleton } from "./LoadingSkeleton";
@@ -383,6 +383,7 @@ function DayCardView({
     const id = String(task._id);
     return heldIds.has(id) && settlingIds.has(id);
   }).length;
+  const openCount = rows.length - settlingCount;
   const completedCount = doneTasks.length + settlingCount;
   const totalCount = rows.length + doneTasks.length;
   const progressPill = progressPillFor(completedCount);
@@ -423,7 +424,7 @@ function DayCardView({
           </View>
         ) : (
           <Text style={styles.cardCount}>
-            {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
+            {openCount} {openCount === 1 ? "task" : "tasks"}
           </Text>
         )}
       </View>
@@ -519,7 +520,7 @@ function OverdueCard({
             <Text style={styles.overdueLabel}>Overdue</Text>
             <View style={styles.overdueCountPill}>
               <Text style={styles.overdueCountPillText}>
-                {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
+                {openCount} {openCount === 1 ? "task" : "tasks"}
               </Text>
             </View>
           </View>
@@ -832,13 +833,40 @@ export function TimelineDayCarousel({
   const [justCompleted, setJustCompleted] = useState<Record<string, MobileTask>>({});
   const [settlingIds, setSettlingIds] = useState<ReadonlySet<string>>(() => new Set());
   const settleTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const holdTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   useEffect(() => {
-    const timers = settleTimers.current;
+    const settles = settleTimers.current;
+    const holds = holdTimers.current;
     return () => {
-      for (const timer of timers.values()) clearTimeout(timer);
-      timers.clear();
+      for (const timer of settles.values()) clearTimeout(timer);
+      for (const timer of holds.values()) clearTimeout(timer);
+      settles.clear();
+      holds.clear();
     };
   }, []);
+  const dropHold = useCallback((id: string) => {
+    const timer = holdTimers.current.get(id);
+    if (timer !== undefined) clearTimeout(timer);
+    holdTimers.current.delete(id);
+    setJustCompleted((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }, []);
+  // Once the server lists a settled completion, its data takes over from the
+  // local hold, so a later reopen (the toast's Undo, another device) shows.
+  const confirmedHolds = Object.keys(justCompleted).filter(
+    (id) => !settlingIds.has(id) && completedTasks.some((task) => String(task._id) === id)
+  );
+  if (confirmedHolds.length > 0) {
+    setJustCompleted((prev) => {
+      const next = { ...prev };
+      for (const id of confirmedHolds) delete next[id];
+      return next;
+    });
+  }
   const endSettle = useCallback((id: string) => {
     const timer = settleTimers.current.get(id);
     if (timer !== undefined) clearTimeout(timer);
@@ -852,7 +880,9 @@ export function TimelineDayCarousel({
   }, []);
   const releaseHold = useCallback(() => {
     for (const timer of settleTimers.current.values()) clearTimeout(timer);
+    for (const timer of holdTimers.current.values()) clearTimeout(timer);
     settleTimers.current.clear();
+    holdTimers.current.clear();
     setSettlingIds((prev) => (prev.size === 0 ? prev : new Set()));
     setJustCompleted({});
   }, []);
@@ -952,12 +982,7 @@ export function TimelineDayCarousel({
       if (completed) {
         onReopenTask?.(task._id);
         endSettle(id);
-        setJustCompleted((prev) => {
-          if (!(id in prev)) return prev;
-          const next = { ...prev };
-          delete next[id];
-          return next;
-        });
+        dropHold(id);
       } else {
         onCompleteTask?.(task._id);
         // Stamp the local completion so the Done row shows its time before
@@ -965,11 +990,20 @@ export function TimelineDayCarousel({
         setJustCompleted((prev) => ({ ...prev, [id]: { ...task, completedAt: Date.now() } }));
         const previous = settleTimers.current.get(id);
         if (previous !== undefined) clearTimeout(previous);
-        settleTimers.current.set(id, setTimeout(() => endSettle(id), DONE_SETTLE_MS));
+        const previousHold = holdTimers.current.get(id);
+        if (previousHold !== undefined) clearTimeout(previousHold);
+        holdTimers.current.delete(id);
+        settleTimers.current.set(
+          id,
+          setTimeout(() => {
+            endSettle(id);
+            holdTimers.current.set(id, setTimeout(() => dropHold(id), DONE_HOLD_MAX_MS));
+          }, DONE_SETTLE_MS)
+        );
         setSettlingIds((prev) => new Set(prev).add(id));
       }
     },
-    [endSettle, onCompleteTask, onReopenTask]
+    [dropHold, endSettle, onCompleteTask, onReopenTask]
   );
   const canToggle = Boolean(onCompleteTask);
 

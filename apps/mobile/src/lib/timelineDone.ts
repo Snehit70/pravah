@@ -12,6 +12,12 @@ import type { MobileTask } from "../components/TaskCard";
 
 /** How long a just-checked row stays in place before it moves to Done. */
 export const DONE_SETTLE_MS = 1500;
+/**
+ * After settling, a local completion keeps overriding live data only this long.
+ * It stops early once the server confirms it. The cap stops a completion that
+ * failed, or was undone elsewhere, from hiding an open task.
+ */
+export const DONE_HOLD_MAX_MS = 10_000;
 
 /** The section starts expanded up to this many rows and collapsed beyond. */
 export const DONE_SECTION_EXPANDED_MAX = 3;
