@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.25.0](https://github.com/Snehit70/pravah/compare/web-v1.24.0...web-v1.25.0) (2026-11-26)
+
+
+### Features
+
+* **mobile:** add widgets to the home screen from Settings ([c59e87f](https://github.com/Snehit70/pravah/commit/c59e87fb3bec1109dd3614d3a0e7d9842cb08899))
+* **mobile:** add widgets to the home screen from Settings ([c592d2c](https://github.com/Snehit70/pravah/commit/c592d2cfcff815a34d567098d26275da8c648d00))
+* **mobile:** collect today's finished tasks in a Done section on Today ([072ccf5](https://github.com/Snehit70/pravah/commit/072ccf51becbe8251428b40912f030e7546b4728))
+* **mobile:** collect today's finished tasks in a Done section on Today ([40cf777](https://github.com/Snehit70/pravah/commit/40cf777acfc1b5b2c532c6850de09cc3cea18e9f))
+
+
+### Bug Fixes
+
+* **mobile:** fall back to HTTP status for empty sign-in rejections ([e5452e1](https://github.com/Snehit70/pravah/commit/e5452e18506362ace8d20225d300a879eb7339e3))
+* **mobile:** keep overdue card count and honor confirmations seen while settling ([92d9795](https://github.com/Snehit70/pravah/commit/92d979552bdb89d75e8e4b2a1bffd72bab89f50d))
+* **mobile:** keep settled completions in Done while the server catches up ([efc7caa](https://github.com/Snehit70/pravah/commit/efc7caa8c807eab30cb501fb17674a48156e5036))
+* **mobile:** keep the overdue bar inside the Today widget's row budget ([f25e1bf](https://github.com/Snehit70/pravah/commit/f25e1bfbbb9bc395b3f9fbc25f796a468e6cbce6))
+* **mobile:** match home widgets to the app's overdue and styling conventions ([c9f7004](https://github.com/Snehit70/pravah/commit/c9f70042eb3eaa0d1ef3fe7cba80cff4d53edce0))
+* **mobile:** match home widgets to the app's overdue and styling conventions ([27c8d39](https://github.com/Snehit70/pravah/commit/27c8d39f6ae77bdc26450bb3b0e60f9b8a8b04f8))
+* **mobile:** offer the compact capture widget in Settings ([6207a0d](https://github.com/Snehit70/pravah/commit/6207a0d8a37a8bd019611f2b2fbc325bac2c2506))
+* **mobile:** release Done holds once the server confirms them ([be68078](https://github.com/Snehit70/pravah/commit/be68078184781ffc101ae0de3123b9aee1b449f7))
+* **mobile:** surface server-rejected Google sign-ins instead of failing silently ([e232ee2](https://github.com/Snehit70/pravah/commit/e232ee2456fade8a775e5f5be172c52e02d5f5ee))
+* **mobile:** surface server-rejected Google sign-ins instead of failing silently ([9902cab](https://github.com/Snehit70/pravah/commit/9902cabf841c380c60d104cc2dc77a8d920a7ae3))
+
 ## [1.24.0](https://github.com/Snehit70/pravah/compare/web-v1.23.0...web-v1.24.0) (2026-11-22)
 
 
