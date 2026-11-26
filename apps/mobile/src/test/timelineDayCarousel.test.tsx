@@ -211,6 +211,8 @@ import type { MobileTask } from "../components/TaskCard";
 import type { Id } from "../../../../convex/_generated/dataModel";
 
 const TODAY = "2026-07-05";
+// Held completions are stamped with Date.now(), so pin the clock inside TODAY.
+const TODAY_NOON = new Date(2026, 6, 5, 12);
 const TOMORROW = "2026-07-06";
 
 function task(id: string, deadline: string, title = `Task ${id}`): MobileTask {
@@ -376,6 +378,7 @@ describe("TimelineDayCarousel", () => {
 
   it("holds a locally emptied day as Day clear with uncheckable rows", () => {
     vi.useFakeTimers();
+    vi.setSystemTime(TODAY_NOON);
     const onCompleteTask = vi.fn();
     const onReopenTask = vi.fn();
     const first = renderCarousel([[TODAY, [task("t1", TODAY, "Write tests")]]], {
@@ -424,6 +427,7 @@ describe("TimelineDayCarousel", () => {
   describe("Done section", () => {
     it("lets a checked row settle in place, then moves it into Done", () => {
       vi.useFakeTimers();
+      vi.setSystemTime(TODAY_NOON);
       const first = renderCarousel(
         [[TODAY, [task("t1", TODAY, "Write tests"), task("t2", TODAY, "Ship it")]]],
         { onCompleteTask: vi.fn(), onReopenTask: vi.fn() }
@@ -446,6 +450,26 @@ describe("TimelineDayCarousel", () => {
       expect(screen.getByText("Done · 1")).toBeTruthy();
       expect(screen.getByText("Write tests")).toBeTruthy();
       expect(screen.getByText("1 of 2")).toBeTruthy();
+    });
+
+    it("moves a settled row into Done even before live data drops it", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(TODAY_NOON);
+      renderCarousel(
+        [[TODAY, [task("t1", TODAY, "Write tests"), task("t2", TODAY, "Ship it")]]],
+        { onCompleteTask: vi.fn(), onReopenTask: vi.fn() }
+      );
+
+      // The server is slow: live data still lists t1 as open after the settle.
+      fireEvent.click(screen.getByRole("checkbox", { name: "Mark Write tests complete" }));
+      act(() => {
+        vi.advanceTimersByTime(DONE_SETTLE_MS);
+      });
+
+      expect(screen.getByText("Done · 1")).toBeTruthy();
+      expect(screen.getByText("1 of 2")).toBeTruthy();
+      expect(screen.getByRole("checkbox", { name: "Mark Write tests incomplete" })).toBeTruthy();
+      expect(screen.queryByRole("checkbox", { name: "Mark Write tests complete" })).toBeNull();
     });
 
     it("reopens a task from its Done row", () => {

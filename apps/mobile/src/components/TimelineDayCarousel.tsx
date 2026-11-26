@@ -351,25 +351,40 @@ function DayCardView({
     () => (isCurrent ? Object.values(justCompleted).filter((task) => task.deadline === dateKey) : []),
     [dateKey, isCurrent, justCompleted]
   );
+  const heldIds = useMemo(() => new Set(held.map((task) => String(task._id))), [held]);
+  // A held task that finished settling leaves the open list even if live data
+  // still lists it, so a slow mutation or refresh can't revert the row.
+  const liveOpen = useMemo(
+    () =>
+      tasks.filter((task) => {
+        const id = String(task._id);
+        return !heldIds.has(id) || settlingIds.has(id);
+      }),
+    [heldIds, settlingIds, tasks]
+  );
   const settling = useMemo(
     () => held.filter((task) => settlingIds.has(String(task._id)) && !liveIds.has(String(task._id))),
     [held, liveIds, settlingIds]
   );
   const rows = useMemo(() => {
-    if (settling.length === 0) return tasks;
+    if (settling.length === 0) return liveOpen;
     // Same order as the live Timeline, so a settling row keeps its slot.
-    return [...tasks, ...settling].sort(
+    return [...liveOpen, ...settling].sort(
       (a, b) => compareTasksWithinDay(a, b) || compareTaskOrder(a, b)
     );
-  }, [settling, tasks]);
+  }, [liveOpen, settling]);
   const doneTasks = useMemo(() => {
     const inOpenList = new Set(rows.map((task) => String(task._id)));
     return doneTasksForDay(dateKey, today, completedTasks, held, inOpenList);
   }, [completedTasks, dateKey, held, rows, today]);
 
   const isDayClear = rows.length === 0;
-  const completedCount = doneTasks.length + settling.length;
-  const totalCount = tasks.length + completedCount;
+  const settlingCount = rows.filter((task) => {
+    const id = String(task._id);
+    return heldIds.has(id) && settlingIds.has(id);
+  }).length;
+  const completedCount = doneTasks.length + settlingCount;
+  const totalCount = rows.length + doneTasks.length;
   const progressPill = progressPillFor(completedCount);
 
   return (

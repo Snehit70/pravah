@@ -261,10 +261,13 @@ export function TimelineScreen({
   const laterTaskCount = laterSections.reduce((sum, [, tasks]) => sum + tasks.length, 0);
   const todayTasks = sourceSections.find(([dateKey]) => dateKey === today)?.[1] ?? NO_TASKS;
   // Everything finished today counts toward Today, whatever its deadline.
-  const todayDone = useMemo(
-    () =>
-      doneTasksForDay(today, today, completedTasks, [], new Set(todayTasks.map((task) => String(task._id)))),
-    [completedTasks, today, todayTasks]
+  // The React Compiler memoizes these; manual useMemo here fails its lint.
+  const todayDone = doneTasksForDay(
+    today,
+    today,
+    completedTasks,
+    [],
+    new Set(todayTasks.map((task) => String(task._id)))
   );
   const completedTodayCount = todayDone.length;
   const todayTotal = todayTasks.length + completedTodayCount;
@@ -287,10 +290,8 @@ export function TimelineScreen({
   // Work finished today collects in a "Done · N" fold under Today's open tasks.
   // Done lives only on Today: a fold after Today's open rows when Today is listed.
   const todayListed = visibleSections.some(([dateKey]) => dateKey === today);
-  const doneByDate = useMemo(
-    () =>
-      new Map<string, MobileTask[]>(todayListed && todayDone.length > 0 ? [[today, todayDone]] : []),
-    [today, todayDone, todayListed]
+  const doneByDate = new Map<string, MobileTask[]>(
+    todayListed && todayDone.length > 0 ? [[today, todayDone]] : []
   );
   // Today with nothing left open has no section; its fold sits under the
   // "Today is clear" summary instead.
